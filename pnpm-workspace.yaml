@@ -1,0 +1,20 @@
+minimumReleaseAgeExcludePrune: true
+
+trustPolicy: no-downgrade
+# semver 6.3.1 (последняя в ветке 6.x, её тянет @babel/core) вышла до появления
+# npm provenance, поэтому no-downgrade ложно считает её понижением доверия
+trustPolicyExclude:
+  - semver@6.3.1
+
+shellEmulator: true
+
+packages:
+  - apps/*
+  - packages/*
+
+overrides:
+  zod: ^4.6.7
+
+allowBuilds:
+  esbuild: true
+  simple-git-hooks: true

@@ -1,0 +1,13 @@
+{
+  "name": "@torsher/eslint-config",
+  "type": "module",
+  "version": "0.0.0",
+  "private": true,
+  "exports": {
+    ".": "./index.mjs"
+  },
+  "peerDependencies": {
+    "@antfu/eslint-config": "^9.5.1",
+    "eslint": "^10.0.0"
+  }
+}

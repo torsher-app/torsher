@@ -1,0 +1,68 @@
+{
+  "name": "torsher",
+  "type": "module",
+  "private": true,
+  "packageManager": "pnpm@12.14.0",
+  "description": "Self-hosted media center: catalog, instant torrent streaming, personal library and series automation in one container",
+  "author": "Anton Reshetov <reshetov.art@gmail.com>",
+  "license": "AGPL-3.0-only",
+  "homepage": "https://github.com/torsher-app/torsher#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/torsher-app/torsher.git"
+  },
+  "bugs": {
+    "url": "https://github.com/torsher-app/torsher/issues"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @torsher/server --filter @torsher/web run dev",
+    "dev:web": "pnpm --filter @torsher/web dev",
+    "dev:server": "pnpm --filter @torsher/server dev",
+    "build": "pnpm --filter @torsher/web build",
+    "start:server": "pnpm --filter @torsher/server start",
+    "seed": "pnpm --filter @torsher/server seed",
+    "openapi": "pnpm --filter @torsher/server openapi",
+    "generate:api": "pnpm --filter @torsher/web generate:api",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "typecheck": "pnpm --filter @torsher/server typecheck && pnpm --filter @torsher/web typecheck",
+    "test": "pnpm --filter @torsher/server test",
+    "release": "bumpy release",
+    "lint-staged": "lint-staged",
+    "prepare": "simple-git-hooks"
+  },
+  "devDependencies": {
+    "@antfu/eslint-config": "^9.5.1",
+    "@antonreshetov/bumpy": "^0.5.0",
+    "@commitlint/cli": "^21.2.4",
+    "@commitlint/config-conventional": "^21.2.4",
+    "@torsher/eslint-config": "workspace:*",
+    "@torsher/tsconfig": "workspace:*",
+    "eslint": "^10.13.0",
+    "eslint-plugin-format": "^2.0.1",
+    "lint-staged": "^17.6.0",
+    "prettier": "^3.9.10",
+    "simple-git-hooks": "^2.14.0",
+    "typescript": "^5.9.2"
+  },
+  "simple-git-hooks": {
+    "pre-commit": "pnpm lint-staged",
+    "commit-msg": "pnpm exec commitlint --edit $1"
+  },
+  "lint-staged": {
+    "*.{js,ts,vue}": [
+      "prettier --write",
+      "eslint --fix"
+    ]
+  },
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": "24.21.0",
+      "onFail": "download"
+    }
+  }
+}
