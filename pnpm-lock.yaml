@@ -266,6 +266,9 @@ importers:
 
   apps/tv:
     dependencies:
+      '@torsher/api-client':
+        specifier: workspace:*
+        version: link:../../packages/api-client
       '@torsher/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n

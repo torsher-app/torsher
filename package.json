@@ -18,7 +18,7 @@
     "node": ">=24"
   },
   "scripts": {
-    "dev": "pnpm --parallel --filter @torsher/server --filter @torsher/web run dev",
+    "dev": "pnpm --parallel --filter @torsher/server --filter @torsher/web --filter @torsher/tv run dev",
     "dev:web": "pnpm --filter @torsher/web dev",
     "dev:server": "pnpm --filter @torsher/server dev",
     "dev:tv": "pnpm --filter @torsher/tv dev",

@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@torsher/api-client": "workspace:*",
     "@torsher/i18n": "workspace:*",
     "@torsher/tokens": "workspace:*",
     "vue": "^3.5.44",

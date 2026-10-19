@@ -1,26 +1,30 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { onActivated, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import FocusSection from '../components/FocusSection.vue'
 import PosterCard from '../components/PosterCard.vue'
-import { sampleTitles } from '../sampleTitles.ts'
+import PosterSkeleton from '../components/PosterSkeleton.vue'
+import ScreenState from '../components/ScreenState.vue'
+import { useCatalogSearch } from '../composables/useCatalogSearch.ts'
+import { useFocus } from '../focus/index.ts'
+
+defineOptions({ name: 'SearchPage' })
+
+// Две строки сетки: столько видно на экране без прокрутки
+const SKELETON_COUNT = 12
 
 const { t } = useI18n()
 const router = useRouter()
+const focus = useFocus()
 const query = ref('')
 
-const results = computed(() => {
-  const needle = query.value.trim().toLowerCase()
+const { status, items, error, retry } = useCatalogSearch(query)
 
-  if (!needle)
-    return sampleTitles
-
-  return sampleTitles.filter(
-    item =>
-      item.title.toLowerCase().includes(needle)
-      || item.originalTitle.toLowerCase().includes(needle),
-  )
+// Возврат из карточки: фокус на ту карточку, с которой ушли
+onActivated(() => {
+  if (!focus.activate('search-results'))
+    focus.activate('search-input')
 })
 </script>
 
@@ -45,16 +49,25 @@ const results = computed(() => {
     </FocusSection>
 
     <FocusSection name="search-results" :edges="{ up: 'search-input' }">
-      <div v-if="results.length > 0" class="grid">
+      <ScreenState
+        v-if="status === 'error' && error"
+        :kind="error"
+        @retry="retry"
+      />
+      <div v-else-if="items.length > 0" class="grid">
         <PosterCard
-          v-for="item in results"
+          v-for="item in items"
           :key="item.id"
-          :title="item"
+          :card="item"
           @select="router.push(`/title/${item.id}`)"
         />
       </div>
-      <p v-else class="empty">
-        {{ t("search.empty") }}
+      <div v-else-if="status === 'loading'" class="grid">
+        <PosterSkeleton v-for="index in SKELETON_COUNT" :key="index" />
+      </div>
+      <ScreenState v-else-if="status === 'ready'" kind="empty" />
+      <p v-else class="hint">
+        {{ t("search.hint") }}
       </p>
     </FocusSection>
   </main>
@@ -84,7 +97,7 @@ const results = computed(() => {
   margin-top: var(--space-5);
 }
 
-.empty {
+.hint {
   margin-top: var(--space-5);
   color: var(--color-text-muted);
 }
