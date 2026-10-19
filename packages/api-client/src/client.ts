@@ -20,9 +20,9 @@ const REFRESH_PATH = '/auth/refresh'
 const UNAUTHORIZED = 401
 
 /**
- * Ядро API-клиента: ничего не знает про Nuxt, поэтому переносимо
- * в любое Vue-приложение. Всё, что зависит от фреймворка, приходит
- * колбэками из `index.ts`.
+ * Ядро API-клиента: ничего не знает про Nuxt, поэтому подходит любому
+ * Vue-приложению монорепо. Всё, что зависит от фреймворка, приходит
+ * колбэками из приложения.
  */
 export function createApiClient(options: ApiClientOptions) {
   const baseUrl = options.baseUrl ?? '/api'

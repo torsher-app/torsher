@@ -8,19 +8,18 @@
     "build": "nuxt build",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
-    "typecheck": "nuxt typecheck",
-    "generate:api": "pnpm --filter @torsher/server openapi && node scripts/api-generate.ts"
+    "typecheck": "nuxt typecheck"
   },
   "dependencies": {
     "@lucide/vue": "^1.59.0",
     "@nuxt/icon": "^2.5.1",
     "@nuxtjs/color-mode": "^4.0.1",
     "@tailwindcss/vite": "^4.3.3",
+    "@torsher/api-client": "workspace:*",
     "@vee-validate/zod": "^4.15.1",
     "@vueuse/core": "^14.4.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "ky": "^2.2.0",
     "nuxt": "^4.6.2",
     "reka-ui": "^2.11.0",
     "shadcn-nuxt": "^2.8.2",
@@ -35,7 +34,6 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "swagger-typescript-api": "^13.13.0",
     "typescript": "^5.9.2",
     "vue-tsc": "^3.3.13"
   }

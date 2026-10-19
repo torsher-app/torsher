@@ -1,4 +1,4 @@
-import type { MeResponse } from '~/services/api/generated'
+import type { MeResponse } from '@torsher/api-client'
 import { api } from '~/services/api'
 
 // Состояние живёт в модуле, а не в Pinia: приложению нужен один

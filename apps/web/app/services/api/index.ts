@@ -1,8 +1,8 @@
 import { toast } from 'vue-sonner'
-import { createApiClient } from './client'
+import { createApiClient } from '@torsher/api-client'
 
-export { getErrorMessage } from './client'
-export type { ErrorMode } from './client'
+export { getErrorMessage } from '@torsher/api-client'
+export type { ErrorMode } from '@torsher/api-client'
 
 export const api = createApiClient({
   baseUrl: '/api',
