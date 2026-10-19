@@ -1,0 +1,17 @@
+{
+  "common": {
+    "back": "Back"
+  },
+  "search": {
+    "title": "Search",
+    "placeholder": "Movie or series title",
+    "empty": "Nothing found"
+  },
+  "title": {
+    "watch": "Watch",
+    "sources": "Sources",
+    "movie": "Movie",
+    "series": "Series",
+    "notFound": "Title not found"
+  }
+}

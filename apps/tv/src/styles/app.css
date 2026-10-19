@@ -1,0 +1,34 @@
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-family);
+  font-size: var(--font-size-m);
+  line-height: var(--line-height);
+  overflow: hidden;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+#app {
+  height: 100%;
+  padding: var(--safe-y) var(--safe-x);
+  overflow-y: auto;
+}
+
+/* Только :focus: :focus-visible в Chromium 68 нет */
+[data-focusable] {
+  outline: none;
+  transition:
+    transform var(--motion-fast) var(--motion-easing),
+    box-shadow var(--motion-fast) var(--motion-easing);
+}
+
+[data-focusable]:focus {
+  box-shadow: 0 0 0 var(--focus-ring-width) var(--color-focus);
+  transform: scale(var(--focus-scale));
+}

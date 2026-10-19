@@ -12,6 +12,7 @@
     "noFallthroughCasesInSwitch": true,
     "forceConsistentCasingInFileNames": true,
     "verbatimModuleSyntax": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "resolveJsonModule": true
   }
 }

@@ -1,0 +1,9 @@
+{
+  "name": "@torsher/tokens",
+  "type": "module",
+  "version": "0.0.0",
+  "private": true,
+  "exports": {
+    "./tokens.css": "./tokens.css"
+  }
+}
