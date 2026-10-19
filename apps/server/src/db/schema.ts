@@ -25,3 +25,11 @@ export const users = sqliteTable('users', {
 })
 
 export type User = typeof users.$inferSelect
+
+// Ответы внешних источников метаданных как есть: маппинг в DTO меняется
+// без сброса кэша. Протухшие записи не удаляются — их отдают, когда источник недоступен
+export const metaCache = sqliteTable('meta_cache', {
+  key: text('key').primaryKey(),
+  json: text('json').notNull(),
+  fetchedAt: integer('fetched_at', { mode: 'timestamp_ms' }).notNull(),
+})

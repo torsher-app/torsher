@@ -21,6 +21,11 @@ export const config = {
   get secretKey() {
     return required('SECRET_KEY')
   },
+
+  // Без токена сервер работает, а каталог отвечает понятной ошибкой
+  get tmdbAccessToken() {
+    return process.env.TMDB_ACCESS_TOKEN || undefined
+  },
 }
 
 const cookiePrefix = process.env.COOKIE_PREFIX ?? 'torsher'
