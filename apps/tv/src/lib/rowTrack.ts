@@ -102,3 +102,25 @@ export function renderWindow(
     end: Math.min(count, first + perScreen * 2),
   }
 }
+
+/**
+ * Сдвиг ленты элементов разной ширины (чипы сезонов), при котором элемент
+ * целиком в окне: лента едет, только если элемент вышел за край, и не дальше
+ * своего конца. `gap` — запас у края под масштаб фокуса.
+ */
+export function revealOffset(
+  offset: number,
+  item: { left: number, width: number },
+  viewWidth: number,
+  contentWidth: number,
+  gap = 0,
+) {
+  let next = offset
+
+  if (item.left - gap < next)
+    next = item.left - gap
+  else if (item.left + item.width + gap > next + viewWidth)
+    next = item.left + item.width + gap - viewWidth
+
+  return Math.max(0, Math.min(next, contentWidth - viewWidth))
+}

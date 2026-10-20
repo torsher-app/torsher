@@ -10,7 +10,9 @@ export type IconName
     | 'about'
     | 'chevronLeft'
     | 'chevronRight'
+    | 'chevronDown'
     | 'play'
+    | 'recent'
 
 const props = defineProps<{ name: IconName }>()
 
@@ -32,6 +34,11 @@ const PATHS: Record<IconName, string[]> = {
   about: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z', 'M12 11v5.5M12 7.5h.01'],
   chevronLeft: ['m15 5-7 7 7 7'],
   chevronRight: ['m9 5 7 7-7 7'],
+  chevronDown: ['m6 9 6 6 6-6'],
+  recent: [
+    'M3.5 12a8.5 8.5 0 1 0 2.6-6.1L3.5 8.5',
+    'M3.5 3.5v5h5M12 7.5V12l3 2',
+  ],
   play: ['M7 4.5v15l12.5-7.5z'],
 }
 

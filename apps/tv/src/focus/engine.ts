@@ -170,6 +170,18 @@ export function createFocusEngine(options: FocusEngineOptions = {}) {
     return true
   }
 
+  /** Фокус на конкретный элемент: экран сам знает, какой из элементов секции нужен. */
+  function focusOn(el: HTMLElement, via: FocusVia = 'nav') {
+    const name = owners.get(el)
+
+    if (!name || !isVisible(el))
+      return false
+
+    focusElement(section(name), el, via)
+
+    return true
+  }
+
   /** Шаг фокуса без оглядки на режим ввода: стрелки пульта (`nav`) и колесо (`wheel`). */
   function move(direction: Direction, via: FocusVia = 'nav') {
     const current = active?.last
@@ -270,6 +282,7 @@ export function createFocusEngine(options: FocusEngineOptions = {}) {
     unregister,
     configure,
     activate,
+    focusOn,
     move,
     key,
     pointerMove,

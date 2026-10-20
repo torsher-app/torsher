@@ -10,7 +10,13 @@ import {
 import { createApp } from '../app.ts'
 import { ACCESS_TOKEN_COOKIE } from '../config.ts'
 import { migrateDb } from '../db/index.ts'
-import { movie, searchResponse } from '../services/tmdb/fixtures/index.ts'
+import {
+  movie,
+  movieExtras,
+  searchResponse,
+  season,
+  trendingAll,
+} from '../services/tmdb/fixtures/index.ts'
 import { signToken } from '../utils/token.ts'
 
 const app = createApp()
@@ -141,5 +147,120 @@ describe('get /catalog/titles/:id', () => {
       runtime: 136,
       genres: ['боевик', 'фантастика'],
     })
+  })
+})
+
+describe('get /catalog/titles/:id/seasons/:number', () => {
+  const url = (id: string, number: string) =>
+    `/catalog/titles/${encodeURIComponent(id)}/seasons/${number}`
+
+  it('отвечает 401 без cookie', async () => {
+    const res = await app.inject({ url: url('tmdb:tv:2000', '1') })
+
+    expect(res.statusCode).toBe(401)
+  })
+
+  it.each(['0', '01', '1000', 'x'])(
+    'отвечает 400 на сезон %s',
+    async (number) => {
+      const res = await app.inject({
+        url: url('tmdb:tv:2000', number),
+        cookies: authed(),
+      })
+
+      expect(res.statusCode).toBe(400)
+    },
+  )
+
+  it('отвечает 404 на сезон фильма', async () => {
+    const res = await app.inject({
+      url: url('tmdb:movie:603', '1'),
+      cookies: authed(),
+    })
+
+    expect(res.statusCode).toBe(404)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('отвечает 404, если сезона нет в TMDB', async () => {
+    fetchMock.mockResolvedValue(json({ status_code: 34 }, 404))
+
+    const res = await app.inject({
+      url: url('tmdb:tv:2000', '9'),
+      cookies: authed(),
+    })
+
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('отдаёт серии сезона', async () => {
+    fetchMock.mockResolvedValue(json(season))
+
+    const res = await app.inject({
+      url: `${url('tmdb:tv:2000', '2')}?language=en-US`,
+      cookies: authed(),
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toMatchObject({ number: 2, name: 'Сезон 2' })
+    expect(res.json().episodes).toHaveLength(3)
+  })
+})
+
+describe('get /catalog/titles/:id/extras', () => {
+  it('отвечает 401 без cookie', async () => {
+    const res = await app.inject({
+      url: '/catalog/titles/tmdb:movie:603/extras',
+    })
+
+    expect(res.statusCode).toBe(401)
+  })
+
+  it('отвечает 404 на неизвестный ID', async () => {
+    const res = await app.inject({
+      url: '/catalog/titles/unknown/extras',
+      cookies: authed(),
+    })
+
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('отдаёт актёров, похожее и названия', async () => {
+    fetchMock
+      .mockResolvedValueOnce(json(movieExtras))
+      .mockResolvedValueOnce(json({ results: [] }))
+
+    const res = await app.inject({
+      url: `/catalog/titles/${encodeURIComponent('tmdb:movie:603')}/extras`,
+      cookies: authed(),
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toMatchObject({
+      similar: [],
+      aka: ['Matrix'],
+      directors: ['Lilly Wachowski', 'Lana Wachowski'],
+    })
+    expect(res.json().cast).toHaveLength(2)
+  })
+})
+
+describe('get /catalog/trending', () => {
+  it('отвечает 401 без cookie', async () => {
+    const res = await app.inject({ url: '/catalog/trending' })
+
+    expect(res.statusCode).toBe(401)
+  })
+
+  it('отдаёт тренды дня', async () => {
+    fetchMock.mockResolvedValue(json(trendingAll))
+
+    const res = await app.inject({
+      url: '/catalog/trending?language=ru-RU',
+      cookies: authed(),
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json().items).toHaveLength(2)
   })
 })

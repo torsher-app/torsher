@@ -6,6 +6,7 @@ import {
   offsetOnFocus,
   pageOffset,
   renderWindow,
+  revealOffset,
 } from './rowTrack.ts'
 
 // 20 карточек по 240 с шагом 268, видно 1000 px
@@ -108,5 +109,34 @@ describe('renderWindow', () => {
   it('не выходит за границы ряда', () => {
     expect(renderWindow(0, metrics)).toEqual({ start: 0, end: 8 })
     expect(renderWindow(maxOffset(metrics), metrics).end).toBe(20)
+  })
+})
+
+describe('revealOffset', () => {
+  it('не двигает ленту, пока элемент в окне', () => {
+    expect(revealOffset(0, { left: 300, width: 100 }, 1000, 3000, 20)).toBe(0)
+  })
+
+  it('подтягивает элемент за правым краем с запасом', () => {
+    expect(revealOffset(0, { left: 1000, width: 100 }, 1000, 3000, 20)).toBe(
+      120,
+    )
+  })
+
+  it('возвращает элемент слева и не уходит за начало', () => {
+    expect(revealOffset(500, { left: 400, width: 100 }, 1000, 3000, 20)).toBe(
+      380,
+    )
+    expect(revealOffset(500, { left: 10, width: 100 }, 1000, 3000, 20)).toBe(0)
+  })
+
+  it('упирается в конец ленты', () => {
+    expect(revealOffset(0, { left: 2950, width: 50 }, 1000, 3000, 20)).toBe(
+      2000,
+    )
+  })
+
+  it('короткая лента не едет', () => {
+    expect(revealOffset(0, { left: 600, width: 100 }, 1000, 700, 20)).toBe(0)
   })
 })

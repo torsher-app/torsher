@@ -1,5 +1,4 @@
-<script setup lang="ts">
-import type { Card } from '@torsher/api-client'
+<script setup lang="ts" generic="T">
 import type { FocusVia, SectionEdges } from '../focus/index.ts'
 import type { TrackMetrics } from '../lib/rowTrack.ts'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -14,24 +13,28 @@ import {
 } from '../lib/rowTrack.ts'
 import AppIcon from './AppIcon.vue'
 import FocusSection from './FocusSection.vue'
-import PosterCard from './PosterCard.vue'
-import TopCard from './TopCard.vue'
 
+/**
+ * Лента карточек любого вида: трек, упор, окно рендера и стрелки листания.
+ * Карточку рисует слот `item`; у всех карточек ряда одна ширина.
+ */
 const props = withDefaults(
   defineProps<{
     section: string
-    title: string
-    kind: 'top10' | 'posters'
-    items: Card[]
+    items: T[]
+    itemKey: (item: T) => string | number
+    title?: string
     edges?: SectionEdges
-    loadImages?: boolean
   }>(),
-  { loadImages: true },
+  { title: undefined, edges: undefined },
 )
 
 const emit = defineEmits<{
   focusItem: [index: number, via: FocusVia]
-  select: [card: Card]
+}>()
+
+defineSlots<{
+  item: (props: { item: T, index: number }) => unknown
 }>()
 
 const { t } = useI18n()
@@ -99,7 +102,8 @@ const stopFocus = focus.onFocus((el, via) => {
     return
   }
 
-  const index = Number(el.dataset.index)
+  // Фокусируется сама карточка, а позицию в ряду знает её обёртка
+  const index = Number(el.closest<HTMLElement>('[data-index]')?.dataset.index)
 
   offset.value = offsetOnFocus(
     offset.value,
@@ -125,7 +129,7 @@ onBeforeUnmount(() => {
 
 <template>
   <section ref="root" class="row">
-    <h2 class="row__title">
+    <h2 v-if="title" class="row__title">
       {{ title }}
     </h2>
     <div ref="view" class="row__view">
@@ -148,23 +152,14 @@ onBeforeUnmount(() => {
         class="row__track"
         :style="trackStyle"
       >
-        <template v-for="(card, i) in visible" :key="card.id">
-          <TopCard
-            v-if="kind === 'top10'"
-            :card="card"
-            :rank="range.start + i + 1"
-            :load-image="loadImages"
-            :data-index="range.start + i"
-            @select="emit('select', card)"
-          />
-          <PosterCard
-            v-else
-            :card="card"
-            :load-image="loadImages"
-            :data-index="range.start + i"
-            @select="emit('select', card)"
-          />
-        </template>
+        <div
+          v-for="(item, i) in visible"
+          :key="itemKey(item)"
+          class="row__item"
+          :data-index="range.start + i"
+        >
+          <slot name="item" :item="item" :index="range.start + i" />
+        </div>
       </FocusSection>
       <button
         v-if="offset < max"
@@ -211,7 +206,8 @@ onBeforeUnmount(() => {
   will-change: transform;
 }
 
-.row__track > * {
+.row__item {
+  flex-shrink: 0;
   margin-right: calc(var(--u) * 28);
 }
 

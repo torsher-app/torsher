@@ -3,13 +3,24 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import {
   catalogSearchQuery,
   catalogSearchResponse,
+  catalogSeasonParams,
   catalogTitleParams,
   catalogTitleQuery,
+  catalogTrendingResponse,
+  seasonDetails,
   titleDetails,
+  titleExtras,
 } from '../dto/catalog.ts'
 import { messageResponse } from '../dto/common.ts'
 import { requireAuth } from '../middleware/auth.ts'
-import { getTitle, searchTitles, TmdbError } from '../services/tmdb/index.ts'
+import {
+  getSeason,
+  getTitle,
+  getTitleExtras,
+  getTrending,
+  searchTitles,
+  TmdbError,
+} from '../services/tmdb/index.ts'
 
 const errorResponses = {
   401: messageResponse,
@@ -85,6 +96,103 @@ export const catalogRoutes: FastifyPluginAsyncZod = async (app) => {
           return reply.code(404).send({ message: 'Title not found' })
 
         return details
+      }
+      catch (err) {
+        return sendTmdbError(reply, err)
+      }
+    },
+  )
+
+  app.get(
+    '/titles/:id/seasons/:number',
+    {
+      preHandler: requireAuth,
+      schema: {
+        operationId: 'getCatalogSeason',
+        tags: ['Catalog'],
+        params: catalogSeasonParams,
+        querystring: catalogTitleQuery,
+        response: {
+          200: seasonDetails,
+          400: messageResponse,
+          404: messageResponse,
+          ...errorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { id, number } = request.params
+
+      try {
+        const season = await getSeason(
+          id,
+          Number(number),
+          request.query.language,
+        )
+
+        if (!season)
+          return reply.code(404).send({ message: 'Season not found' })
+
+        return season
+      }
+      catch (err) {
+        return sendTmdbError(reply, err)
+      }
+    },
+  )
+
+  app.get(
+    '/titles/:id/extras',
+    {
+      preHandler: requireAuth,
+      schema: {
+        operationId: 'getCatalogTitleExtras',
+        tags: ['Catalog'],
+        params: catalogTitleParams,
+        querystring: catalogTitleQuery,
+        response: {
+          200: titleExtras,
+          404: messageResponse,
+          ...errorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const extras = await getTitleExtras(
+          request.params.id,
+          request.query.language,
+        )
+
+        if (!extras)
+          return reply.code(404).send({ message: 'Title not found' })
+
+        return extras
+      }
+      catch (err) {
+        return sendTmdbError(reply, err)
+      }
+    },
+  )
+
+  app.get(
+    '/trending',
+    {
+      preHandler: requireAuth,
+      schema: {
+        operationId: 'getCatalogTrending',
+        tags: ['Catalog'],
+        querystring: catalogTitleQuery,
+        response: {
+          200: catalogTrendingResponse,
+          400: messageResponse,
+          ...errorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return { items: await getTrending(request.query.language) }
       }
       catch (err) {
         return sendTmdbError(reply, err)

@@ -3,7 +3,7 @@ import type { TmdbMediaType } from './mappers.ts'
 import type { TmdbListResponse } from './types.ts'
 import { withMetaCache } from './cache.ts'
 import { TmdbError, tmdbGet } from './client.ts'
-import { listResultToCard } from './mappers.ts'
+import { listResultToCard, regionOf } from './mappers.ts'
 
 const LIST_TTL_MS = 24 * 60 * 60 * 1000
 const TOP_COUNT = 10
@@ -79,16 +79,8 @@ const LAYOUT: Record<HomeMode, HomeRowId[]> = {
   ],
 }
 
-// ru-RU → RU. Позже регион придёт из профиля
-function regionOf(language: string) {
-  return language.slice(3)
-}
-
-async function loadRow(
-  id: HomeRowId,
-  spec: RowSpec,
-  language: string,
-): Promise<HomeRow> {
+/** Карточки списка TMDB с постером: без постера тайтл в ряду выглядит дырой. */
+async function loadList(spec: RowSpec, language: string) {
   const params: Record<string, string> = {
     language,
     include_adult: 'false',
@@ -108,13 +100,27 @@ async function loadRow(
     () => tmdbGet<TmdbListResponse>(spec.path, params),
   )
 
-  // Ряд витрины без постера выглядит дырой: такие тайтлы остаются в поиске
-  const items = response.results
+  return response.results
     .flatMap(result => listResultToCard(result, spec.type) ?? [])
     .filter(item => item.poster)
-    .slice(0, spec.kind === 'top10' ? TOP_COUNT : ROW_LIMIT)
+}
+
+async function loadRow(
+  id: HomeRowId,
+  spec: RowSpec,
+  language: string,
+): Promise<HomeRow> {
+  const items = (await loadList(spec, language)).slice(
+    0,
+    spec.kind === 'top10' ? TOP_COUNT : ROW_LIMIT,
+  )
 
   return { id, kind: spec.kind, title: `home.rows.${id}`, items }
+}
+
+/** Тренд дня — тот же список и та же запись кэша, что у «Топ-10» главной. */
+export function getTrendingCards(language: string) {
+  return loadList(ROWS.trending, language)
 }
 
 /**

@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import type { Card } from '@torsher/api-client'
+import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     card: Card
     // В рядах карточка без текста, в сетке поиска — с названием и годом
@@ -13,6 +15,17 @@ withDefaults(
 )
 
 defineEmits<{ select: [] }>()
+
+const { t } = useI18n()
+
+// Подпись в сетке поиска: «2024 · фильм»
+const meta = computed(() => {
+  const kind = t(
+    props.card.kind === 'movie' ? 'search.movie' : 'search.series',
+  )
+
+  return props.card.year ? `${props.card.year} · ${kind}` : kind
+})
 </script>
 
 <template>
@@ -37,7 +50,7 @@ defineEmits<{ select: [] }>()
     </span>
     <template v-if="caption">
       <span class="poster-card__title">{{ card.title }}</span>
-      <span class="poster-card__year">{{ card.year }}</span>
+      <span class="poster-card__year">{{ meta }}</span>
     </template>
   </button>
 </template>
