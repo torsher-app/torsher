@@ -9,6 +9,7 @@ const CACHE_CONTROL = `public, max-age=${TMDB_MAX_CACHE_AGE_MS / 1000}, immutabl
 
 const IMAGE_SIZES = [
   'w185',
+  'w300',
   'w342',
   'w500',
   'w780',

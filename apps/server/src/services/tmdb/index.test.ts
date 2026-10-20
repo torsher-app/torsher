@@ -8,8 +8,24 @@ import {
   vi,
 } from 'vitest'
 import { migrateDb } from '../../db/index.ts'
-import { movie, searchResponse, tv } from './fixtures/index.ts'
-import { getTitle, searchTitles, TmdbError } from './index.ts'
+import {
+  movie,
+  movieExtras,
+  searchResponse,
+  season,
+  seasonEnglish,
+  trendingAll,
+  tv,
+  tvExtras,
+} from './fixtures/index.ts'
+import {
+  getSeason,
+  getTitle,
+  getTitleExtras,
+  getTrending,
+  searchTitles,
+  TmdbError,
+} from './index.ts'
 
 const fetchMock = vi.fn<typeof fetch>()
 
@@ -96,7 +112,9 @@ describe('getTitle', () => {
     const requested = new URL(String(fetchMock.mock.calls[0]![0]))
 
     expect(requested.pathname).toBe('/3/movie/603')
-    expect(requested.searchParams.get('append_to_response')).toBe('images')
+    expect(requested.searchParams.get('append_to_response')).toBe(
+      'images,release_dates',
+    )
     expect(requested.searchParams.get('include_image_language')).toBe(
       'ru,null,en',
     )
@@ -122,5 +140,87 @@ describe('getTitle', () => {
     await expect(getTitle('tmdb:movie:999999', 'en-US')).rejects.toMatchObject({
       kind: 'not_found',
     })
+  })
+})
+
+describe('getSeason', () => {
+  it('не ходит в сеть с ID фильма', async () => {
+    expect(await getSeason('tmdb:movie:603', 1, 'en-US')).toBeUndefined()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('добирает пустые описания серий с en-US', async () => {
+    fetchMock
+      .mockResolvedValueOnce(json(season))
+      .mockResolvedValueOnce(json(seasonEnglish))
+
+    const result = await getSeason('tmdb:tv:2000', 2, 'ru-RU')
+
+    expect(new URL(String(fetchMock.mock.calls[0]![0])).pathname).toBe(
+      '/3/tv/2000/season/2',
+    )
+    expect(result?.episodes.map(episode => episode.overview)).toEqual([
+      'Экипаж просыпается.',
+      'Episode 2 in English.',
+      'Episode 5 in English.',
+    ])
+  })
+
+  it('без английской версии отдаёт серии как есть', async () => {
+    fetchMock
+      .mockResolvedValueOnce(json(season))
+      .mockRejectedValueOnce(new TypeError('fetch failed'))
+
+    const result = await getSeason('tmdb:tv:2001', 2, 'ru-RU')
+
+    expect(result?.episodes[1]?.overview).toBe('')
+  })
+})
+
+describe('getTitleExtras', () => {
+  it('просит актёров, рекомендации и названия одним запросом и кэширует урезанное', async () => {
+    fetchMock.mockResolvedValue(json(tvExtras))
+
+    const extras = await getTitleExtras('tmdb:tv:2000', 'ru-RU')
+    const again = await getTitleExtras('tmdb:tv:2000', 'ru-RU')
+
+    const requested = new URL(String(fetchMock.mock.calls[0]![0]))
+
+    expect(requested.pathname).toBe('/3/tv/2000')
+    expect(requested.searchParams.get('append_to_response')).toBe(
+      'aggregate_credits,recommendations,alternative_titles',
+    )
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(extras?.cast).toHaveLength(20)
+    expect(again).toEqual(extras)
+  })
+
+  it('без рекомендаций берёт похожие', async () => {
+    fetchMock
+      .mockResolvedValueOnce(json(movieExtras))
+      .mockResolvedValueOnce(json(trendingAll))
+
+    const extras = await getTitleExtras('tmdb:movie:603', 'en-US')
+
+    expect(new URL(String(fetchMock.mock.calls[1]![0])).pathname).toBe(
+      '/3/movie/603/similar',
+    )
+    expect(extras?.similar.map(card => card.id)).toEqual(['tmdb:tv:1396'])
+  })
+})
+
+describe('getTrending', () => {
+  it('берёт тренд дня с постерами', async () => {
+    fetchMock.mockResolvedValue(json(trendingAll))
+
+    const items = await getTrending('en-US')
+
+    expect(new URL(String(fetchMock.mock.calls[0]![0])).pathname).toBe(
+      '/3/trending/all/day',
+    )
+    expect(items.map(item => item.id)).toEqual([
+      'tmdb:movie:603',
+      'tmdb:tv:1396',
+    ])
   })
 })

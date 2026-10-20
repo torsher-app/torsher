@@ -72,6 +72,11 @@ export interface TitleSeasonInput {
    * @min -9007199254740991
    * @max 9007199254740991
    */
+  airedEpisodeCount: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
   year?: number;
 }
 
@@ -96,10 +101,65 @@ export interface TitleDetailsInput {
   rating?: number;
   backdrop?: string;
   logo?: string;
+  ongoing?: boolean;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  endYear?: number;
+  certification?: string;
+  countries: string[];
+  studios: string[];
+  creators: string[];
   seasons?: TitleSeasonInput[];
 }
 
+export interface EpisodeInput {
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  number: number;
+  title: string;
+  overview: string;
+  airDate?: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  runtime?: number;
+  still?: string;
+}
+
+export interface SeasonDetailsInput {
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  number: number;
+  name: string;
+  episodes: EpisodeInput[];
+}
+
+export interface PersonInput {
+  id: string;
+  name: string;
+  role?: string;
+  photo?: string;
+}
+
+export interface TitleExtrasInput {
+  cast: PersonInput[];
+  similar: CardInput[];
+  aka: string[];
+  directors: string[];
+}
+
 export interface CatalogSearchResponseInput {
+  items: CardInput[];
+}
+
+export interface CatalogTrendingResponseInput {
   items: CardInput[];
 }
 
@@ -199,6 +259,11 @@ export interface TitleSeason {
    * @min -9007199254740991
    * @max 9007199254740991
    */
+  airedEpisodeCount: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
   year?: number;
 }
 
@@ -223,10 +288,65 @@ export interface TitleDetails {
   rating?: number;
   backdrop?: string;
   logo?: string;
+  ongoing?: boolean;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  endYear?: number;
+  certification?: string;
+  countries: string[];
+  studios: string[];
+  creators: string[];
   seasons?: TitleSeason[];
 }
 
+export interface Episode {
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  number: number;
+  title: string;
+  overview: string;
+  airDate?: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  runtime?: number;
+  still?: string;
+}
+
+export interface SeasonDetails {
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  number: number;
+  name: string;
+  episodes: Episode[];
+}
+
+export interface Person {
+  id: string;
+  name: string;
+  role?: string;
+  photo?: string;
+}
+
+export interface TitleExtras {
+  cast: Person[];
+  similar: Card[];
+  aka: string[];
+  directors: string[];
+}
+
 export interface CatalogSearchResponse {
+  items: Card[];
+}
+
+export interface CatalogTrendingResponse {
   items: Card[];
 }
 
@@ -277,6 +397,12 @@ export type PatchUsersMeError = MessageResponse;
 export type GetCatalogSearchError = MessageResponse;
 
 export type GetCatalogTitleError = MessageResponse;
+
+export type GetCatalogSeasonError = MessageResponse;
+
+export type GetCatalogTitleExtrasError = MessageResponse;
+
+export type GetCatalogTrendingError = MessageResponse;
 
 export type GetHomeError = MessageResponse;
 
@@ -709,6 +835,84 @@ export class Api<
     ) =>
       this.request<TitleDetails, GetCatalogTitleError>({
         path: `/catalog/titles/${id}`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Catalog
+     * @name GetCatalogSeason
+     * @request GET:/catalog/titles/{id}/seasons/{number}
+     */
+    getCatalogSeason: (
+      id: string,
+      number: string,
+      query?: {
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<SeasonDetails, GetCatalogSeasonError>({
+        path: `/catalog/titles/${id}/seasons/${number}`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Catalog
+     * @name GetCatalogTitleExtras
+     * @request GET:/catalog/titles/{id}/extras
+     */
+    getCatalogTitleExtras: (
+      id: string,
+      query?: {
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<TitleExtras, GetCatalogTitleExtrasError>({
+        path: `/catalog/titles/${id}/extras`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Catalog
+     * @name GetCatalogTrending
+     * @request GET:/catalog/trending
+     */
+    getCatalogTrending: (
+      query?: {
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<CatalogTrendingResponse, GetCatalogTrendingError>({
+        path: `/catalog/trending`,
         method: "GET",
         query: query,
         format: "json",

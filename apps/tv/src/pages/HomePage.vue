@@ -21,8 +21,10 @@ import BackdropLayer from '../components/BackdropLayer.vue'
 import ContentRow from '../components/ContentRow.vue'
 import FocusSection from '../components/FocusSection.vue'
 import HeroPanel from '../components/HeroPanel.vue'
+import PosterCard from '../components/PosterCard.vue'
 import PosterSkeleton from '../components/PosterSkeleton.vue'
 import ScreenState from '../components/ScreenState.vue'
+import TopCard from '../components/TopCard.vue'
 import { useHero } from '../composables/useHero.ts'
 import { useHome } from '../composables/useHome.ts'
 import { useFocus } from '../focus/index.ts'
@@ -123,6 +125,10 @@ function onFocusItem(rowIndex: number, index: number, via: FocusVia) {
   show(row.items[index]!, via)
 }
 
+function cardKey(card: Card) {
+  return card.id
+}
+
 function open(card: Card) {
   router.push(`/title/${card.id}`)
 }
@@ -208,13 +214,27 @@ onBeforeUnmount(() => {
         :class="{ 'home__row--above': index < firstVisible }"
         :section="sectionOf(row)"
         :title="t(row.title)"
-        :kind="row.kind"
         :items="row.items"
+        :item-key="cardKey"
         :edges="edgesOf(index)"
-        :load-images="isNear(index)"
         @focus-item="(item, via) => onFocusItem(index, item, via)"
-        @select="open"
-      />
+      >
+        <template #item="{ item, index: position }">
+          <TopCard
+            v-if="row.kind === 'top10'"
+            :card="item"
+            :rank="position + 1"
+            :load-image="isNear(index)"
+            @select="open(item)"
+          />
+          <PosterCard
+            v-else
+            :card="item"
+            :load-image="isNear(index)"
+            @select="open(item)"
+          />
+        </template>
+      </ContentRow>
     </div>
 
     <div v-else-if="status === 'ready'" class="home__state">

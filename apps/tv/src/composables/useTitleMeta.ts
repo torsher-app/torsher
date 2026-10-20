@@ -46,5 +46,5 @@ export function useTitleMeta() {
     return parts
   }
 
-  return { metaParts, formatRating }
+  return { metaParts, formatRating, formatRuntime }
 }

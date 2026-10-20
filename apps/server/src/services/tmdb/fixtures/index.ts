@@ -1,8 +1,10 @@
 import type {
+  TmdbExtras,
   TmdbImage,
   TmdbListResponse,
   TmdbMovie,
   TmdbSearchResponse,
+  TmdbSeason,
   TmdbTv,
 } from '../types.ts'
 
@@ -157,3 +159,194 @@ export const tvList = {
 } as TmdbListResponse
 
 export const emptyList = { page: 1, results: [] } as TmdbListResponse
+
+// Идущий сериал: вышел первый сезон и 4 серии второго
+export const tvOngoing = {
+  ...tv,
+  id: 2000,
+  name: 'Долгая орбита',
+  original_name: 'Long Orbit',
+  status: 'Returning Series',
+  last_air_date: '2026-10-17',
+  origin_country: ['US', 'GB'],
+  networks: [
+    { id: 1, name: 'Канал 1' },
+    { id: 2, name: 'Канал 2' },
+    { id: 3, name: 'Канал 3' },
+    { id: 4, name: 'Канал 4' },
+  ],
+  created_by: [{ id: 10, name: 'Анна Автор' }],
+  last_episode_to_air: { season_number: 2, episode_number: 4 },
+  seasons: [
+    {
+      season_number: 1,
+      name: 'Сезон 1',
+      episode_count: 8,
+      air_date: '2025-01-10',
+    },
+    {
+      season_number: 2,
+      name: 'Сезон 2',
+      episode_count: 10,
+      air_date: '2026-09-26',
+    },
+    { season_number: 3, name: 'Сезон 3', episode_count: 8, air_date: null },
+  ],
+  content_ratings: {
+    results: [
+      { iso_3166_1: 'DE', rating: '16' },
+      { iso_3166_1: 'RU', rating: '' },
+      { iso_3166_1: 'US', rating: 'TV-MA' },
+    ],
+  },
+} as TmdbTv
+
+export const season = {
+  season_number: 2,
+  name: 'Сезон 2',
+  episodes: [
+    {
+      episode_number: 1,
+      name: 'Пробуждение',
+      overview: 'Экипаж просыпается.',
+      air_date: '2026-09-26',
+      runtime: 52,
+      still_path: '/still1.jpg',
+    },
+    {
+      episode_number: 2,
+      name: 'Эпизод 2',
+      overview: '',
+      air_date: '2026-10-03',
+      runtime: null,
+      still_path: null,
+    },
+    {
+      episode_number: 5,
+      name: 'Эпизод 5',
+      overview: '',
+      air_date: null,
+      runtime: null,
+      still_path: null,
+    },
+  ],
+} as TmdbSeason
+
+export const seasonEnglish = {
+  ...season,
+  episodes: season.episodes.map(episode => ({
+    ...episode,
+    overview: `Episode ${episode.episode_number} in English.`,
+  })),
+} as TmdbSeason
+
+export const tvExtras = {
+  name: 'Долгая орбита',
+  original_name: 'Long Orbit',
+  overview: 'Лишнее поле: в кэш не попадает',
+  aggregate_credits: {
+    cast: Array.from({ length: 25 }, (_, index) => ({
+      id: 500 + index,
+      name: `Актёр ${index + 1}`,
+      profile_path: index === 0 ? '/face.jpg' : null,
+      // Порядок титров не совпадает с порядком массива
+      order: 24 - index,
+      roles: [
+        { character: 'Эпизод', episode_count: 1 },
+        { character: `Герой ${index + 1}`, episode_count: 10 },
+      ],
+    })),
+    crew: [{ id: 900, name: 'Оператор', jobs: [] }],
+  },
+  recommendations: {
+    results: [
+      {
+        id: 2000,
+        media_type: 'tv',
+        name: 'Долгая орбита',
+        poster_path: '/self.jpg',
+      },
+      {
+        id: 1396,
+        media_type: 'tv',
+        name: 'Во все тяжкие',
+        original_name: 'Breaking Bad',
+        first_air_date: '2008-01-20',
+        poster_path: '/ztkUQFLlC19CCMYHW9o1zWhJRNq.jpg',
+      },
+      { id: 3000, media_type: 'tv', name: 'Без постера', poster_path: null },
+    ],
+  },
+  alternative_titles: {
+    results: [
+      { iso_3166_1: 'US', title: 'Long Orbit' },
+      { iso_3166_1: 'US', title: 'The Long Orbit' },
+      { iso_3166_1: 'RU', title: 'Орбита' },
+      { iso_3166_1: 'UA', title: 'орбита' },
+      { iso_3166_1: 'RU', title: '  ' },
+    ],
+  },
+} as unknown as TmdbExtras
+
+export const movieExtras = {
+  title: 'Матрица',
+  original_title: 'The Matrix',
+  credits: {
+    cast: [
+      {
+        id: 6384,
+        name: 'Keanu Reeves',
+        character: 'Neo',
+        profile_path: '/keanu.jpg',
+        order: 0,
+      },
+      {
+        id: 2975,
+        name: 'Laurence Fishburne',
+        character: '',
+        profile_path: null,
+        order: 1,
+      },
+    ],
+    crew: [
+      { id: 9339, name: 'Lilly Wachowski', job: 'Director' },
+      { id: 9340, name: 'Lana Wachowski', job: 'Director' },
+      { id: 1, name: 'Composer', job: 'Original Music Composer' },
+    ],
+  },
+  recommendations: { results: [] },
+  alternative_titles: { titles: [{ iso_3166_1: 'US', title: 'Matrix' }] },
+} as TmdbExtras
+
+// Персона из мультипоиска со своими известными тайтлами
+export const searchWithPerson = {
+  results: [
+    {
+      id: 603,
+      media_type: 'movie',
+      title: 'Матрица',
+      original_title: 'The Matrix',
+      release_date: '1999-03-31',
+      poster_path: '/matrix.jpg',
+    },
+    {
+      id: 6384,
+      media_type: 'person',
+      name: 'Keanu Reeves',
+      known_for: [
+        {
+          id: 603,
+          media_type: 'movie',
+          title: 'Матрица',
+          poster_path: '/matrix.jpg',
+        },
+        {
+          id: 245891,
+          media_type: 'movie',
+          title: 'Джон Уик',
+          poster_path: '/wick.jpg',
+        },
+      ],
+    },
+  ],
+} as TmdbSearchResponse
