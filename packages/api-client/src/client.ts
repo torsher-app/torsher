@@ -1,10 +1,9 @@
-import ky, { HTTPError } from 'ky'
 import { Api } from './generated'
 
 export type ErrorMode = 'global' | 'toast' | 'silent'
 
 export interface ApiClientOptions {
-  /** Все запросы идут на Nitro-прокси того же origin */
+  /** Все запросы идут на прокси того же origin */
   baseUrl?: string
   /** Как показывать ошибку текущего запроса */
   getErrorMode: () => ErrorMode
@@ -18,25 +17,53 @@ export interface ApiClientOptions {
 
 const REFRESH_PATH = '/auth/refresh'
 const UNAUTHORIZED = 401
+const TIMEOUT_MS = 10_000
+const RETRY_DELAY_MS = 300
+// Повторяем только идемпотентные запросы: вход или изменение профиля
+// не должны уйти на сервер дважды
+const RETRY_METHODS = ['GET', 'HEAD']
+const RETRY_STATUSES = [408, 429, 500, 502, 503, 504]
+const FALLBACK_MESSAGE = 'Something went wrong'
+
+/** Сервер ответил неуспешным статусом */
+class HttpError extends Error {
+  readonly response: Response
+  readonly status: number
+
+  constructor(response: Response) {
+    super(`Request failed with status ${response.status}`)
+    this.name = 'HttpError'
+    this.response = response
+    this.status = response.status
+  }
+}
+
+class TimeoutError extends Error {
+  constructor() {
+    super(`Request timed out after ${TIMEOUT_MS} ms`)
+    this.name = 'TimeoutError'
+  }
+}
 
 /**
- * Ядро API-клиента: ничего не знает про Nuxt, поэтому подходит любому
- * Vue-приложению монорепо. Всё, что зависит от фреймворка, приходит
- * колбэками из приложения.
+ * Ядро API-клиента на нативном `fetch`: ничего не знает про Nuxt, поэтому
+ * подходит любому Vue-приложению монорепо. Всё, что зависит от фреймворка,
+ * приходит колбэками из приложения. Использует только API, которые есть в
+ * Chromium 68: на нём работает витрина на старых ТВ.
  */
 export function createApiClient(options: ApiClientOptions) {
   const baseUrl = options.baseUrl ?? '/api'
 
-  // Клиент без хуков: им обновляем сессию. Иначе 401 от самого
-  // /auth/refresh снова попал бы в хук и запустил refresh рекурсивно
-  const rawFetch = ky.create({ credentials: 'include' })
+  let refreshPromise: Promise<void> | null = null
 
-  let refreshPromise: Promise<unknown> | null = null
-
-  // Один refresh на все параллельные 401: остальные ждут тот же промис
+  // Один refresh на все параллельные 401: остальные ждут тот же промис.
+  // Идёт мимо `request`, иначе 401 от самого refresh запустил бы его снова
   function refreshSession() {
-    refreshPromise ??= rawFetch
-      .post(`${baseUrl}${REFRESH_PATH}`)
+    refreshPromise ??= send(`${baseUrl}${REFRESH_PATH}`, { method: 'POST' })
+      .then((response) => {
+        if (!response.ok)
+          throw new HttpError(response)
+      })
       .finally(() => {
         refreshPromise = null
       })
@@ -44,82 +71,129 @@ export function createApiClient(options: ApiClientOptions) {
     return refreshPromise
   }
 
-  const customFetch = ky.create({
-    credentials: 'include',
-    retry: {
-      limit: 1,
-      methods: ['get', 'post', 'patch', 'put', 'delete'],
-    },
-    hooks: {
-      afterResponse: [
-        async ({ request, response, retryCount }) => {
-          if (response.ok)
-            return response
+  async function request(url: string, init: RequestInit) {
+    let response = await sendWithRetry(url, init)
 
-          const isRefreshable
-            = response.status === UNAUTHORIZED
-              && !request.url.includes(REFRESH_PATH)
-              && retryCount === 0
+    if (response.status === UNAUTHORIZED && !url.includes(REFRESH_PATH)) {
+      try {
+        await refreshSession()
+      }
+      catch {
+        await options.onSessionExpired()
 
-          if (isRefreshable) {
-            try {
-              await refreshSession()
+        throw new HttpError(response)
+      }
 
-              // ky сам повторит исходный запрос — уже с новой cookie
-              return ky.retry()
-            }
-            catch {
-              await options.onSessionExpired()
+      // Повтор исходного запроса уже с новой cookie
+      response = await sendWithRetry(url, init)
+    }
 
-              return response
-            }
-          }
+    if (response.ok)
+      return response
 
-          const mode = options.getErrorMode()
+    await reportError(response)
 
-          if (mode === 'silent')
-            return response
+    throw new HttpError(response)
+  }
 
-          if (mode === 'toast') {
-            options.onError(await readErrorMessage(response), response.status)
+  async function reportError(response: Response) {
+    const mode = options.getErrorMode()
 
-            return response
-          }
-
-          options.onFatal(response.status)
-
-          return response
-        },
-      ],
-    },
-  })
+    if (mode === 'toast')
+      options.onError(await readErrorMessage(response), response.status)
+    else if (mode === 'global')
+      options.onFatal(response.status)
+  }
 
   return new Api({
     baseUrl,
-    customFetch: customFetch as unknown as typeof fetch,
+    // Сгенерированный клиент всегда передаёт URL строкой
+    customFetch: (input, init = {}) => request(String(input), init),
   })
+}
+
+async function sendWithRetry(url: string, init: RequestInit) {
+  const isRetryable = RETRY_METHODS.includes(
+    (init.method ?? 'GET').toUpperCase(),
+  )
+
+  try {
+    const response = await send(url, init)
+
+    if (!isRetryable || !RETRY_STATUSES.includes(response.status))
+      return response
+  }
+  catch (error) {
+    // `fetch` отклоняет сетевой сбой `TypeError`; отмену и таймаут не повторяем
+    if (!isRetryable || !(error instanceof TypeError))
+      throw error
+  }
+
+  await delay(RETRY_DELAY_MS)
+
+  return send(url, init)
+}
+
+/**
+ * Одна попытка с таймаутом. `AbortSignal.any` и `AbortSignal.timeout` на
+ * Chromium 68 нет, поэтому сигнал вызывающего кода и таймер отменяют
+ * собственный контроллер попытки.
+ */
+function send(url: string, init: RequestInit) {
+  const controller = new AbortController()
+  const outerSignal = init.signal
+  let isTimedOut = false
+
+  const abort = () => controller.abort()
+
+  if (outerSignal?.aborted)
+    abort()
+
+  outerSignal?.addEventListener('abort', abort)
+
+  const timer = setTimeout(() => {
+    isTimedOut = true
+    abort()
+  }, TIMEOUT_MS)
+
+  return fetch(url, {
+    ...init,
+    credentials: 'include',
+    signal: controller.signal,
+  })
+    .catch((error: unknown) => {
+      throw isTimedOut ? new TimeoutError() : error
+    })
+    .finally(() => {
+      clearTimeout(timer)
+      outerSignal?.removeEventListener('abort', abort)
+    })
+}
+
+function delay(ms: number) {
+  return new Promise(resolve => setTimeout(resolve, ms))
 }
 
 async function readErrorMessage(response: Response) {
   try {
     const body = (await response.clone().json()) as { message?: string }
 
-    return body.message ?? 'Something went wrong'
+    return body.message ?? FALLBACK_MESSAGE
   }
   catch {
-    return 'Something went wrong'
+    return FALLBACK_MESSAGE
   }
 }
 
-/** Достаёт сообщение из ошибки ky, чтобы показать его в форме */
+/** Достаёт сообщение из ошибки запроса, чтобы показать его в форме */
 export async function getErrorMessage(err: unknown) {
-  if (err instanceof HTTPError)
+  if (err instanceof HttpError)
     return readErrorMessage(err.response)
 
-  return 'Something went wrong'
+  return FALLBACK_MESSAGE
 }
 
 /** HTTP-статус ошибки запроса; `undefined` — ответа от сервера не было */
 export function getErrorStatus(err: unknown) {
-  return err instanceof HTTPError ? err.response.status : undefined
+  return err instanceof HttpError ? err.status : undefined
 }

@@ -8,15 +8,14 @@
   },
   "scripts": {
     "generate": "pnpm --filter @torsher/server openapi && node scripts/generate.ts",
-    "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "ky": "^2.2.0"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "devDependencies": {
     "@torsher/tsconfig": "workspace:*",
     "@types/node": "^24.0.0",
     "swagger-typescript-api": "^13.13.0",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "vitest": "^5.0.5"
   }
 }
