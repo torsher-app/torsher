@@ -1,6 +1,7 @@
 {
   "common": {
-    "back": "Back"
+    "back": "Back",
+    "about": "About"
   },
   "search": {
     "title": "Search",
@@ -45,5 +46,17 @@
       "title": "Something went wrong",
       "text": "Couldn't load the data. Try again"
     }
+  },
+  "about": {
+    "title": "About",
+    "license": "Torsher is free software: you can use, study, change and share it under the {license} license",
+    "version": "Version",
+    "commit": "Commit",
+    "source": "Source code",
+    "unknown": "Unknown",
+    "serverUnavailable": "Couldn't get version information from the server",
+    "dataSource": "Movie and series information and images are provided by TMDB",
+    "tmdbNotice": "This product uses the TMDB API but is not endorsed or certified by TMDB.",
+    "tmdbLogo": "TMDB logo"
   }
 }

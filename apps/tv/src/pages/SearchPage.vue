@@ -30,13 +30,25 @@ onActivated(() => {
 
 <template>
   <main>
-    <h1 class="heading">
-      {{ t("search.title") }}
-    </h1>
+    <header class="header">
+      <h1 class="heading">
+        {{ t("search.title") }}
+      </h1>
+      <FocusSection name="search-menu" :edges="{ down: 'search-input' }">
+        <button
+          v-focusable
+          class="action"
+          type="button"
+          @click="router.push('/about')"
+        >
+          {{ t("common.about") }}
+        </button>
+      </FocusSection>
+    </header>
 
     <FocusSection
       name="search-input"
-      :edges="{ down: 'search-results' }"
+      :edges="{ up: 'search-menu', down: 'search-results' }"
       autofocus
     >
       <input
@@ -74,8 +86,16 @@ onActivated(() => {
 </template>
 
 <style scoped>
+/* Без gap у flexbox: его нет в Chromium 68 */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-4);
+}
+
 .heading {
-  margin: 0 0 var(--space-4);
+  margin: 0;
   font-size: var(--font-size-xl);
 }
 

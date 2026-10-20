@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -14,6 +15,7 @@ definePageMeta({
 
 const { user } = useUser()
 const { logout } = useAuth()
+const { t } = useI18n()
 </script>
 
 <template>
@@ -30,6 +32,9 @@ const { logout } = useAuth()
         <Button variant="outline" @click="logout">
           Выйти
         </Button>
+        <NuxtLink to="/about" class="text-center text-sm underline">
+          {{ t("common.about") }}
+        </NuxtLink>
       </CardContent>
     </Card>
   </div>
