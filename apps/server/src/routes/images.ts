@@ -1,7 +1,11 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { Readable } from 'node:stream'
 import { z } from 'zod'
+import { TMDB_MAX_CACHE_AGE_MS } from '../services/tmdb/cache.ts'
 import { fetchTmdbImage, TmdbError } from '../services/tmdb/index.ts'
+
+// Браузер и ТВ тоже хранят картинку: срок не длиннее предела хранения данных TMDB
+const CACHE_CONTROL = `public, max-age=${TMDB_MAX_CACHE_AGE_MS / 1000}, immutable`
 
 const IMAGE_SIZES = ['w185', 'w342', 'w780', 'w1280', 'original'] as const
 
@@ -55,7 +59,7 @@ export const imageRoutes: FastifyPluginAsyncZod = async (app) => {
 
       return reply
         .header('Content-Type', contentType)
-        .header('Cache-Control', 'public, max-age=31536000, immutable')
+        .header('Cache-Control', CACHE_CONTROL)
         .send(Readable.fromWeb(upstream.body))
     },
   )

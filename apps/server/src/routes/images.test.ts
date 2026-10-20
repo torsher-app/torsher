@@ -15,7 +15,7 @@ afterEach(() => {
 })
 
 describe('get /img/:size/:file', () => {
-  it('отдаёт картинку TMDB без авторизации и с долгим кэшем', async () => {
+  it('отдаёт картинку TMDB без авторизации и с кэшем на 180 дней', async () => {
     fetchMock.mockResolvedValue(
       new Response(new Uint8Array([1, 2, 3]), {
         headers: { 'content-type': 'image/jpeg' },
@@ -30,7 +30,7 @@ describe('get /img/:size/:file', () => {
     expect(res.statusCode).toBe(200)
     expect(res.headers['content-type']).toBe('image/jpeg')
     expect(res.headers['cache-control']).toBe(
-      'public, max-age=31536000, immutable',
+      'public, max-age=15552000, immutable',
     )
     expect(res.rawPayload).toEqual(Buffer.from([1, 2, 3]))
   })

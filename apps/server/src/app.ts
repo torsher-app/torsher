@@ -12,6 +12,7 @@ import {
 } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { config } from './config.ts'
+import { aboutRoutes } from './routes/about.ts'
 import { authRoutes } from './routes/auth.ts'
 import { catalogRoutes } from './routes/catalog.ts'
 import { imageRoutes } from './routes/images.ts'
@@ -43,6 +44,7 @@ export function createApp(options: FastifyServerOptions = {}) {
         { name: 'Auth', description: 'Регистрация, вход, сессия' },
         { name: 'Users', description: 'Профиль пользователя' },
         { name: 'Catalog', description: 'Каталог: поиск и карточки тайтлов' },
+        { name: 'About', description: 'Версия, лицензия и исходники' },
       ],
     },
     transform: jsonSchemaTransform,
@@ -63,6 +65,7 @@ export function createApp(options: FastifyServerOptions = {}) {
     () => ({ status: 'ok' as const }),
   )
 
+  app.register(aboutRoutes, { prefix: '/about' })
   app.register(authRoutes, { prefix: '/auth' })
   app.register(userRoutes, { prefix: '/users' })
   app.register(catalogRoutes, { prefix: '/catalog' })

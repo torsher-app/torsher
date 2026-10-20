@@ -10,6 +10,14 @@
  * ---------------------------------------------------------------
  */
 
+export interface AboutResponseInput {
+  version: string;
+  commit?: string;
+  license: string;
+  /** @format uri */
+  sourceUrl: string;
+}
+
 export interface SignupInput {
   /** @minLength 2 */
   name: string;
@@ -105,6 +113,14 @@ export interface MeResponseInput {
   email: string;
   isActive: boolean;
   createdAt: string;
+}
+
+export interface AboutResponse {
+  version: string;
+  commit?: string;
+  license: string;
+  /** @format uri */
+  sourceUrl: string;
 }
 
 export interface Signup {
@@ -482,6 +498,22 @@ export class HttpClient<SecurityDataType = unknown> {
 export class Api<
   SecurityDataType extends unknown,
 > extends HttpClient<SecurityDataType> {
+  about = {
+    /**
+     * No description
+     *
+     * @tags About
+     * @name GetAbout
+     * @request GET:/about/
+     */
+    getAbout: (params: RequestParams = {}) =>
+      this.request<AboutResponse, any>({
+        path: `/about/`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+  };
   auth = {
     /**
      * No description

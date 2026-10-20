@@ -1,6 +1,11 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
-import { migrateDb } from '../../db/index.ts'
-import { withMetaCache } from './cache.ts'
+import { getDb, migrateDb } from '../../db/index.ts'
+import { metaCache } from '../../db/schema.ts'
+import {
+  purgeExpiredMetaCache,
+  TMDB_MAX_CACHE_AGE_MS,
+  withMetaCache,
+} from './cache.ts'
 
 const TTL_MS = 60_000
 
@@ -47,11 +52,49 @@ describe('withMetaCache', () => {
     expect(result).toEqual({ value: 1 })
   })
 
+  it('не отдаёт запись старше предела хранения, даже если загрузка упала', async () => {
+    vi.useFakeTimers()
+    await withMetaCache('expired', TTL_MS, async () => ({ value: 1 }))
+    vi.advanceTimersByTime(TMDB_MAX_CACHE_AGE_MS)
+
+    await expect(
+      withMetaCache('expired', TTL_MS, async () => {
+        throw new Error('network')
+      }),
+    ).rejects.toThrow('network')
+    expect(cachedKeys()).not.toContain('expired')
+  })
+
   it('пробрасывает ошибку, если записи нет', async () => {
     await expect(
       withMetaCache('missing', TTL_MS, async () => {
         throw new Error('network')
       }),
     ).rejects.toThrow('network')
+  })
+})
+
+function cachedKeys() {
+  return getDb()
+    .select({ key: metaCache.key })
+    .from(metaCache)
+    .all()
+    .map(row => row.key)
+}
+
+describe('purgeExpiredMetaCache', () => {
+  it('удаляет только записи старше предела хранения', async () => {
+    vi.useFakeTimers()
+    await withMetaCache('purge:old', TTL_MS, async () => ({ value: 1 }))
+    vi.advanceTimersByTime(TMDB_MAX_CACHE_AGE_MS - TTL_MS)
+    await withMetaCache('purge:recent', TTL_MS, async () => ({ value: 2 }))
+    vi.advanceTimersByTime(TTL_MS)
+
+    purgeExpiredMetaCache()
+
+    const keys = cachedKeys()
+
+    expect(keys).not.toContain('purge:old')
+    expect(keys).toContain('purge:recent')
   })
 })

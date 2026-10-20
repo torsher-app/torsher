@@ -26,6 +26,19 @@ export const config = {
   get tmdbAccessToken() {
     return process.env.TMDB_ACCESS_TOKEN || undefined
   },
+
+  // Коммит сборки передаёт образ при сборке; в разработке его нет
+  get commit() {
+    return process.env.TORSHER_COMMIT || undefined
+  },
+
+  // AGPL требует дать пользователям исходники именно запущенной версии:
+  // изменённая сборка указывает свой репозиторий
+  get sourceUrl() {
+    return (
+      process.env.TORSHER_SOURCE_URL || 'https://github.com/torsher-app/torsher'
+    )
+  },
 }
 
 const cookiePrefix = process.env.COOKIE_PREFIX ?? 'torsher'

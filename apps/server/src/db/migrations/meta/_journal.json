@@ -15,6 +15,13 @@
       "when": 1792422007249,
       "tag": "0001_modern_mastermind",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1792461923758,
+      "tag": "0002_empty_medusa",
+      "breakpoints": true
     }
   ]
 }

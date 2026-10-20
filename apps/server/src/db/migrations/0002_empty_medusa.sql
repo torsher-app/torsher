@@ -1,0 +1,1 @@
+CREATE INDEX `meta_cache_fetched_at_idx` ON `meta_cache` (`fetched_at`);
