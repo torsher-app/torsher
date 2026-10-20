@@ -32,3 +32,35 @@ body {
   box-shadow: 0 0 0 var(--focus-ring-width) var(--color-focus);
   transform: scale(var(--focus-scale));
 }
+
+.action {
+  margin-right: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  border: 0;
+  border-radius: var(--radius-m);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.action--primary {
+  background: var(--color-accent);
+  color: var(--color-bg);
+}
+
+/* Скелетон мерцает через opacity: на ТВ анимируем только transform и opacity */
+.skeleton {
+  background: var(--color-surface-raised);
+  animation: skeleton-pulse 1s var(--motion-easing) infinite alternate;
+}
+
+@keyframes skeleton-pulse {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0.5;
+  }
+}

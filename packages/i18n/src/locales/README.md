@@ -22,7 +22,8 @@ Add `messages.json` (dialogs, errors, notifications) or `preferences.json` (sett
 ```
 common.*   — shared labels (back, close, ...)
 search.*   — search screen
-title.*    — title page: actions, kinds, empty states
+title.*    — title page: actions, kinds, meta line
+state.*    — screen states shared by screens: empty, sign-in required, errors
 ```
 
 Group keys by screen or entity, keep nesting shallow, and reuse `common.*` instead of duplicating labels.
@@ -45,6 +46,7 @@ Pull requests to this repository are not accepted. To contribute a translation, 
 ## Translation Guidelines
 
 1. Keep placeholders such as `{count}` and `{name}` unchanged.
-2. Mind the context: the same English word may need different translations on different screens.
-3. Keep labels short: the interface is read from a couch, on a TV.
-4. Keep terminology consistent across files.
+2. Plural strings list their forms separated by `|`: two for English (`{n} season | {n} seasons`), as many as the language needs otherwise (Russian has three). A language with more than two forms needs a rule in `../plural.ts`.
+3. Mind the context: the same English word may need different translations on different screens.
+4. Keep labels short: the interface is read from a couch, on a TV.
+5. Keep terminology consistent across files.

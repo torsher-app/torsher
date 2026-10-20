@@ -16,6 +16,8 @@
     "@nuxtjs/color-mode": "^4.0.1",
     "@tailwindcss/vite": "^4.3.3",
     "@torsher/api-client": "workspace:*",
+    "@torsher/i18n": "workspace:*",
+    "@torsher/tokens": "workspace:*",
     "@vee-validate/zod": "^4.15.1",
     "@vueuse/core": "^14.4.0",
     "class-variance-authority": "^0.7.1",
@@ -29,6 +31,7 @@
     "ufo": "^1.6.4",
     "vee-validate": "^4.15.1",
     "vue": "^3.5.44",
+    "vue-i18n": "^11.4.16",
     "vue-router": "^5.4.0",
     "vue-sonner": "^2.0.9",
     "zod": "^4.6.7"

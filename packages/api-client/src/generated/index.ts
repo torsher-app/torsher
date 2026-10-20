@@ -10,6 +10,14 @@
  * ---------------------------------------------------------------
  */
 
+export interface AboutResponseInput {
+  version: string;
+  commit?: string;
+  license: string;
+  /** @format uri */
+  sourceUrl: string;
+}
+
 export interface SignupInput {
   /** @minLength 2 */
   name: string;
@@ -35,6 +43,65 @@ export interface MessageResponseInput {
   message: string;
 }
 
+export interface CardInput {
+  id: string;
+  kind: "movie" | "series";
+  title: string;
+  originalTitle: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  year?: number;
+  poster?: string;
+}
+
+export interface TitleSeasonInput {
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  number: number;
+  name: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  episodeCount: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  year?: number;
+}
+
+export interface TitleDetailsInput {
+  id: string;
+  kind: "movie" | "series";
+  title: string;
+  originalTitle: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  year?: number;
+  poster?: string;
+  overview: string;
+  genres: string[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  runtime?: number;
+  rating?: number;
+  backdrop?: string;
+  seasons?: TitleSeasonInput[];
+}
+
+export interface CatalogSearchResponseInput {
+  items: CardInput[];
+}
+
 export interface UpdateMeInput {
   /** @minLength 2 */
   name?: string;
@@ -46,6 +113,14 @@ export interface MeResponseInput {
   email: string;
   isActive: boolean;
   createdAt: string;
+}
+
+export interface AboutResponse {
+  version: string;
+  commit?: string;
+  license: string;
+  /** @format uri */
+  sourceUrl: string;
 }
 
 export interface Signup {
@@ -73,6 +148,65 @@ export interface MessageResponse {
   message: string;
 }
 
+export interface Card {
+  id: string;
+  kind: "movie" | "series";
+  title: string;
+  originalTitle: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  year?: number;
+  poster?: string;
+}
+
+export interface TitleSeason {
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  number: number;
+  name: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  episodeCount: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  year?: number;
+}
+
+export interface TitleDetails {
+  id: string;
+  kind: "movie" | "series";
+  title: string;
+  originalTitle: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  year?: number;
+  poster?: string;
+  overview: string;
+  genres: string[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  runtime?: number;
+  rating?: number;
+  backdrop?: string;
+  seasons?: TitleSeason[];
+}
+
+export interface CatalogSearchResponse {
+  items: Card[];
+}
+
 export interface UpdateMe {
   /** @minLength 2 */
   name?: string;
@@ -95,6 +229,10 @@ export type PostAuthRefreshError = MessageResponse;
 export type GetUsersMeError = MessageResponse;
 
 export type PatchUsersMeError = MessageResponse;
+
+export type GetCatalogSearchError = MessageResponse;
+
+export type GetCatalogTitleError = MessageResponse;
 
 export type QueryParamsType = Record<string | number, any>;
 export type ResponseFormat = keyof Omit<Body, "body" | "bodyUsed">;
@@ -360,6 +498,22 @@ export class HttpClient<SecurityDataType = unknown> {
 export class Api<
   SecurityDataType extends unknown,
 > extends HttpClient<SecurityDataType> {
+  about = {
+    /**
+     * No description
+     *
+     * @tags About
+     * @name GetAbout
+     * @request GET:/about/
+     */
+    getAbout: (params: RequestParams = {}) =>
+      this.request<AboutResponse, any>({
+        path: `/about/`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+  };
   auth = {
     /**
      * No description
@@ -454,6 +608,63 @@ export class Api<
         method: "PATCH",
         body: data,
         type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+  };
+  catalog = {
+    /**
+     * No description
+     *
+     * @tags Catalog
+     * @name GetCatalogSearch
+     * @request GET:/catalog/search
+     */
+    getCatalogSearch: (
+      query: {
+        /**
+         * @minLength 1
+         * @maxLength 200
+         */
+        query: string;
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<CatalogSearchResponse, GetCatalogSearchError>({
+        path: `/catalog/search`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Catalog
+     * @name GetCatalogTitle
+     * @request GET:/catalog/titles/{id}
+     */
+    getCatalogTitle: (
+      id: string,
+      query?: {
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<TitleDetails, GetCatalogTitleError>({
+        path: `/catalog/titles/${id}`,
+        method: "GET",
+        query: query,
         format: "json",
         ...params,
       }),

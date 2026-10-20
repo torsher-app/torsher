@@ -118,3 +118,8 @@ export async function getErrorMessage(err: unknown) {
 
   return 'Something went wrong'
 }
+
+/** HTTP-статус ошибки запроса; `undefined` — ответа от сервера не было */
+export function getErrorStatus(err: unknown) {
+  return err instanceof HTTPError ? err.response.status : undefined
+}

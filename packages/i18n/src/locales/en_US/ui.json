@@ -1,17 +1,62 @@
 {
   "common": {
-    "back": "Back"
+    "back": "Back",
+    "about": "About"
   },
   "search": {
     "title": "Search",
     "placeholder": "Movie or series title",
-    "empty": "Nothing found"
+    "hint": "Start typing to find a movie or series"
   },
   "title": {
     "watch": "Watch",
     "sources": "Sources",
     "movie": "Movie",
     "series": "Series",
-    "notFound": "Title not found"
+    "seasons": "Seasons",
+    "seasonCount": "{n} season | {n} seasons",
+    "episodeCount": "{n} episode | {n} episodes",
+    "runtime": "{hours} h {minutes} min",
+    "runtimeMinutes": "{minutes} min",
+    "rating": "TMDB {rating}"
+  },
+  "state": {
+    "retry": "Try again",
+    "empty": {
+      "title": "Nothing found",
+      "text": "Try a different title or check the spelling"
+    },
+    "unauthorized": {
+      "title": "Sign in required",
+      "text": "Open the Torsher control panel in this browser, sign in and come back"
+    },
+    "notConfigured": {
+      "title": "Catalog is not set up",
+      "text": "The server has no TMDB access token. Add TMDB_ACCESS_TOKEN to the server environment"
+    },
+    "unavailable": {
+      "title": "TMDB is unavailable",
+      "text": "The server can't reach TMDB. Check the network and try again"
+    },
+    "notFound": {
+      "title": "Title not found",
+      "text": "It may have been removed from the catalog"
+    },
+    "unknown": {
+      "title": "Something went wrong",
+      "text": "Couldn't load the data. Try again"
+    }
+  },
+  "about": {
+    "title": "About",
+    "license": "Torsher is free software: you can use, study, change and share it under the {license} license",
+    "version": "Version",
+    "commit": "Commit",
+    "source": "Source code",
+    "unknown": "Unknown",
+    "serverUnavailable": "Couldn't get version information from the server",
+    "dataSource": "Movie and series information and images are provided by TMDB",
+    "tmdbNotice": "This product uses the TMDB API but is not endorsed or certified by TMDB.",
+    "tmdbLogo": "TMDB logo"
   }
 }

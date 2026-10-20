@@ -4,6 +4,8 @@ import ruRU from './locales/ru_RU/ui.json' with { type: 'json' }
 
 export type { Language } from './language.ts'
 export { language, resolveLanguage } from './language.ts'
+export { pluralRules } from './plural.ts'
+export type { PluralRule } from './plural.ts'
 
 /** Схему строк задаёт en_US: остальные локали обязаны совпадать с ней по ключам. */
 export type Messages = typeof enUS
