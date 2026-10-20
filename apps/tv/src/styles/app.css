@@ -8,6 +8,7 @@ body {
   font-size: var(--font-size-m);
   line-height: var(--line-height);
   overflow: hidden;
+  -webkit-font-smoothing: antialiased;
 }
 
 * {
@@ -16,37 +17,154 @@ body {
 
 #app {
   height: 100%;
-  padding: var(--safe-y) var(--safe-x);
   overflow-y: auto;
 }
 
-/* Только :focus: :focus-visible в Chromium 68 нет */
-[data-focusable] {
-  outline: none;
-  transition:
-    transform var(--motion-fast) var(--motion-easing),
-    box-shadow var(--motion-fast) var(--motion-easing);
+/* Экран со свёрнутым рейлом слева: контент начинается от --content-x */
+.screen {
+  min-height: 100%;
+  padding: var(--safe-y) var(--safe-x) var(--safe-y) var(--content-x);
 }
 
-[data-focusable]:focus {
-  box-shadow: 0 0 0 var(--focus-ring-width) var(--color-focus);
-  transform: scale(var(--focus-scale));
+[data-platform='web'] [data-focusable] {
+  cursor: pointer;
+}
+
+/*
+ * Фокус-язык. Карточки — белое кольцо и масштаб, кнопки, чипы и строки —
+ * белая заливка с тёмным текстом. Только :focus: :focus-visible в Chromium 68 нет.
+ * --bump-scale держит масштаб фокуса и во время толчка на краю ряда.
+ */
+[data-focusable] {
+  --bump-scale: 1;
+
+  outline: none;
+  transition:
+    transform var(--motion-base) var(--motion-easing),
+    background-color var(--motion-fast) var(--motion-easing),
+    color var(--motion-fast) var(--motion-easing);
+}
+
+.card:focus,
+.action:focus,
+.chip:focus {
+  --bump-scale: var(--focus-scale);
+
+  z-index: 2;
+  transform: scale(var(--bump-scale));
+}
+
+/* Кольцо — отдельный элемент внутри карточки: карточка решает, что оно обводит */
+.card__ring {
+  position: absolute;
+  top: calc(var(--u) * -8);
+  right: calc(var(--u) * -8);
+  bottom: calc(var(--u) * -8);
+  left: calc(var(--u) * -8);
+  border: var(--focus-ring-width) solid var(--color-focus);
+  border-radius: calc(var(--radius-m) + var(--u) * 8);
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--motion-easing);
+  pointer-events: none;
+}
+
+.card:focus .card__ring {
+  opacity: 1;
+}
+
+.action,
+.chip {
+  display: inline-flex;
+  align-items: center;
+  border: 0;
+  background: var(--color-glass);
+  color: var(--color-text);
+  font: inherit;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .action {
-  margin-right: var(--space-3);
-  padding: var(--space-2) var(--space-4);
-  border: 0;
-  border-radius: var(--radius-m);
-  background: var(--color-surface-raised);
-  color: var(--color-text);
-  font: inherit;
-  cursor: pointer;
+  height: calc(var(--u) * 84);
+  margin-right: var(--space-2);
+  padding: 0 calc(var(--u) * 30);
+  border-radius: calc(var(--u) * 16);
+  font-size: var(--font-size-m);
 }
 
 .action--primary {
   background: var(--color-accent);
+  color: var(--color-accent-ink);
+}
+
+.chip {
+  height: calc(var(--u) * 64);
+  margin-right: calc(var(--u) * 14);
+  padding: 0 calc(var(--u) * 26);
+  border-radius: calc(var(--u) * 32);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-s);
+  font-weight: 500;
+}
+
+.action:focus,
+.chip:focus {
+  background: var(--color-focus);
   color: var(--color-bg);
+}
+
+.field {
+  border: 0;
+  border-radius: var(--radius-l);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  transition: box-shadow var(--motion-fast) var(--motion-easing);
+}
+
+.field:focus {
+  box-shadow: 0 0 0 var(--focus-ring-width) var(--color-focus);
+}
+
+/* Толчок на краю: соседа нет, фокус остаётся на месте (движок ставит класс) */
+.focus-bump-left {
+  animation: focus-bump-left var(--motion-base) var(--motion-easing);
+}
+
+.focus-bump-right {
+  animation: focus-bump-right var(--motion-base) var(--motion-easing);
+}
+
+.focus-bump-up {
+  animation: focus-bump-up var(--motion-base) var(--motion-easing);
+}
+
+.focus-bump-down {
+  animation: focus-bump-down var(--motion-base) var(--motion-easing);
+}
+
+@keyframes focus-bump-left {
+  40% {
+    transform: translateX(calc(var(--u) * -10)) scale(var(--bump-scale));
+  }
+}
+
+@keyframes focus-bump-right {
+  40% {
+    transform: translateX(calc(var(--u) * 10)) scale(var(--bump-scale));
+  }
+}
+
+@keyframes focus-bump-up {
+  40% {
+    transform: translateY(calc(var(--u) * -10)) scale(var(--bump-scale));
+  }
+}
+
+@keyframes focus-bump-down {
+  40% {
+    transform: translateY(calc(var(--u) * 10)) scale(var(--bump-scale));
+  }
 }
 
 /* Скелетон мерцает через opacity: на ТВ анимируем только transform и opacity */
@@ -62,5 +180,14 @@ body {
 
   to {
     opacity: 0.5;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 1ms !important;
+    animation-duration: 1ms !important;
   }
 }

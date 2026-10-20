@@ -3,7 +3,7 @@ import type { LoadError } from '../lib/loadError.ts'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-const props = defineProps<{ kind: LoadError | 'empty' }>()
+const props = defineProps<{ kind: LoadError | 'empty' | 'homeEmpty' }>()
 
 defineEmits<{ retry: [] }>()
 

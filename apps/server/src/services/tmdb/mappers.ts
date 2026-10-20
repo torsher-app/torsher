@@ -1,5 +1,7 @@
 import type { Card, TitleDetails, TitleSeason } from '../../dto/catalog.ts'
 import type {
+  TmdbImage,
+  TmdbListResult,
   TmdbMovie,
   TmdbMultiResult,
   TmdbTv,
@@ -15,6 +17,9 @@ export interface TmdbRef {
 
 const POSTER_SIZE = 'w342'
 const BACKDROP_SIZE = 'w1280'
+const LOGO_SIZE = 'w500'
+// Только PNG: SVG от внешнего источника на своём origin мог бы выполнить скрипт
+const LOGO_FILE = /\.png$/
 
 const CATALOG_ID = /^tmdb:(movie|tv):(\d+)$/
 
@@ -77,7 +82,54 @@ export function searchResultToCard(result: TmdbMultiResult): Card | undefined {
   return undefined
 }
 
-export function movieToDetails(movie: TmdbMovie): TitleDetails {
+/** Элемент списка TMDB. Списки фильмов и сериалов не пишут media_type — его знает вызывающий. */
+export function listResultToCard(
+  result: TmdbListResult,
+  type?: TmdbMediaType,
+): Card | undefined {
+  const mediaType = result.media_type ?? type
+
+  return mediaType
+    ? searchResultToCard({ ...result, media_type: mediaType })
+    : undefined
+}
+
+/**
+ * Логотип на языке интерфейса, затем без текста, затем английский;
+ * внутри группы — с лучшей оценкой.
+ */
+export function pickLogo(
+  logos: TmdbImage[] | undefined,
+  language: string,
+): string | undefined {
+  const preferred = [language.slice(0, 2), null, 'en']
+  const candidates = (logos ?? []).filter(logo =>
+    LOGO_FILE.test(logo.file_path),
+  )
+
+  for (const iso of preferred) {
+    let best: TmdbImage | undefined
+
+    for (const logo of candidates) {
+      if (
+        logo.iso_639_1 === iso
+        && (!best || logo.vote_average > best.vote_average)
+      ) {
+        best = logo
+      }
+    }
+
+    if (best)
+      return imageUrl(LOGO_SIZE, best.file_path)
+  }
+
+  return undefined
+}
+
+export function movieToDetails(
+  movie: TmdbMovie,
+  language = 'en-US',
+): TitleDetails {
   return {
     id: toCatalogId('movie', movie.id),
     kind: 'movie',
@@ -86,6 +138,7 @@ export function movieToDetails(movie: TmdbMovie): TitleDetails {
     year: yearOf(movie.release_date),
     poster: imageUrl(POSTER_SIZE, movie.poster_path),
     backdrop: imageUrl(BACKDROP_SIZE, movie.backdrop_path),
+    logo: pickLogo(movie.images?.logos, language),
     overview: movie.overview,
     genres: movie.genres.map(genre => genre.name),
     runtime: movie.runtime || undefined,
@@ -103,7 +156,7 @@ function toSeason(season: TmdbTvSeason): TitleSeason {
 }
 
 /** Спецвыпуски (сезон 0) в ряд сезонов не попадают. */
-export function tvToDetails(tv: TmdbTv): TitleDetails {
+export function tvToDetails(tv: TmdbTv, language = 'en-US'): TitleDetails {
   return {
     id: toCatalogId('tv', tv.id),
     kind: 'series',
@@ -112,6 +165,7 @@ export function tvToDetails(tv: TmdbTv): TitleDetails {
     year: yearOf(tv.first_air_date),
     poster: imageUrl(POSTER_SIZE, tv.poster_path),
     backdrop: imageUrl(BACKDROP_SIZE, tv.backdrop_path),
+    logo: pickLogo(tv.images?.logos, language),
     overview: tv.overview,
     genres: tv.genres.map(genre => genre.name),
     rating: ratingOf(tv.vote_average, tv.vote_count),

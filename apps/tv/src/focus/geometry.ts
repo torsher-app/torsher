@@ -81,3 +81,30 @@ export function findNext<T>(
 
   return best?.item
 }
+
+/**
+ * Кандидат в той же колонке: ближайший по центру по горизонтали. Так выбирается
+ * карточка соседнего ряда «под» или «над» текущей, куда бы ни был пролистан ряд.
+ */
+export function findInColumn<T>(
+  from: Rect,
+  candidates: Candidate<T>[],
+): T | undefined {
+  const center = (from.left + from.right) / 2
+
+  let best: Candidate<T> | undefined
+  let bestDistance = Number.POSITIVE_INFINITY
+
+  for (const candidate of candidates) {
+    const distance = Math.abs(
+      (candidate.rect.left + candidate.rect.right) / 2 - center,
+    )
+
+    if (distance < bestDistance) {
+      best = candidate
+      bestDistance = distance
+    }
+  }
+
+  return best?.item
+}

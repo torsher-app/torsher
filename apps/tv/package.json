@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@fontsource/onest": "5.3.1",
     "@torsher/api-client": "workspace:*",
     "@torsher/i18n": "workspace:*",
     "@torsher/tokens": "workspace:*",

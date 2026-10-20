@@ -7,11 +7,21 @@ const props = defineProps<{
   name: string
   edges?: SectionEdges
   autofocus?: boolean
+  // Секция сама двигает контент под фокус (ряд на transform)
+  manualScroll?: boolean
+  // Колесо здесь не шагает, а уводит фокус в эту секцию
+  wheelTarget?: string
 }>()
 
 const focus = useFocus()
 
-watchEffect(() => focus.setEdges(props.name, props.edges ?? {}))
+watchEffect(() =>
+  focus.configure(props.name, {
+    edges: props.edges,
+    manualScroll: props.manualScroll,
+    wheelTarget: props.wheelTarget,
+  }),
+)
 
 // Дочерние v-focusable регистрируются раньше: их mounted срабатывает до mounted секции
 onMounted(() => {

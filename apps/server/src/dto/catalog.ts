@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 // Язык в формате TMDB: en-US, ru-RU
-const tmdbLanguage = z
+export const tmdbLanguage = z
   .string()
   .regex(/^[a-z]{2}-[A-Z]{2}$/)
   .default('en-US')
@@ -49,6 +49,8 @@ export const titleDetails = card
     runtime: z.number().int().optional(),
     rating: z.number().optional(),
     backdrop: z.string().optional(),
+    // PNG логотипа с названием; без него клиент пишет название текстом
+    logo: z.string().optional(),
     seasons: z.array(titleSeason).optional(),
   })
   .meta({ id: 'titleDetails' })

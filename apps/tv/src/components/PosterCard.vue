@@ -1,31 +1,52 @@
 <script setup lang="ts">
 import type { Card } from '@torsher/api-client'
 
-defineProps<{ card: Card }>()
+withDefaults(
+  defineProps<{
+    card: Card
+    // В рядах карточка без текста, в сетке поиска — с названием и годом
+    caption?: boolean
+    // Далёкие от фокуса ряды не держат картинки в памяти ТВ
+    loadImage?: boolean
+  }>(),
+  { caption: false, loadImage: true },
+)
 
 defineEmits<{ select: [] }>()
 </script>
 
 <template>
-  <button v-focusable class="poster" type="button" @click="$emit('select')">
-    <span class="poster__frame">
+  <button
+    v-focusable
+    class="card poster-card"
+    type="button"
+    @click="$emit('select')"
+  >
+    <span class="poster-card__frame">
       <img
-        v-if="card.poster"
-        class="poster__image"
+        v-if="card.poster && loadImage"
+        class="poster-card__image"
         :src="card.poster"
         alt=""
         decoding="async"
       >
-      <span v-else class="poster__placeholder">{{ card.title }}</span>
+      <span v-else-if="!card.poster" class="poster-card__placeholder">
+        {{ card.title }}
+      </span>
+      <span class="card__ring" />
     </span>
-    <span class="poster__title">{{ card.title }}</span>
-    <span class="poster__year">{{ card.year }}</span>
+    <template v-if="caption">
+      <span class="poster-card__title">{{ card.title }}</span>
+      <span class="poster-card__year">{{ card.year }}</span>
+    </template>
   </button>
 </template>
 
 <style scoped>
-.poster {
+.poster-card {
+  position: relative;
   display: block;
+  flex-shrink: 0;
   width: var(--poster-width);
   padding: 0;
   border: 0;
@@ -34,44 +55,44 @@ defineEmits<{ select: [] }>()
   color: inherit;
   font: inherit;
   text-align: left;
-  cursor: pointer;
 }
 
 /* aspect-ratio появился в Chromium 88 — пропорции 2:3 держим через padding */
-.poster__frame {
+.poster-card__frame {
   position: relative;
   display: block;
   padding-top: 150%;
-  overflow: hidden;
   border-radius: var(--radius-m);
   background: var(--color-surface-raised);
 }
 
-.poster__image,
-.poster__placeholder {
+.poster-card__image,
+.poster-card__placeholder {
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
+  border-radius: var(--radius-m);
 }
 
-.poster__image {
+.poster-card__image {
   object-fit: cover;
 }
 
-.poster__placeholder {
+.poster-card__placeholder {
   display: flex;
   align-items: center;
   justify-content: center;
   padding: var(--space-2);
+  overflow: hidden;
   color: var(--color-text-muted);
   font-size: var(--font-size-s);
   text-align: center;
 }
 
-.poster__title,
-.poster__year {
+.poster-card__title,
+.poster-card__year {
   display: block;
   min-height: calc(var(--font-size-s) * var(--line-height));
   overflow: hidden;
@@ -80,11 +101,12 @@ defineEmits<{ select: [] }>()
   text-overflow: ellipsis;
 }
 
-.poster__title {
-  margin-top: var(--space-2);
+.poster-card__title {
+  margin-top: calc(var(--u) * 14);
+  font-weight: 600;
 }
 
-.poster__year {
+.poster-card__year {
   color: var(--color-text-muted);
 }
 </style>

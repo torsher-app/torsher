@@ -95,11 +95,33 @@ export interface TitleDetailsInput {
   runtime?: number;
   rating?: number;
   backdrop?: string;
+  logo?: string;
   seasons?: TitleSeasonInput[];
 }
 
 export interface CatalogSearchResponseInput {
   items: CardInput[];
+}
+
+export interface HomeRowInput {
+  id:
+    | "trending"
+    | "trendingMovies"
+    | "trendingSeries"
+    | "popularMovies"
+    | "popularSeries"
+    | "russianSeries"
+    | "nowPlaying"
+    | "onTheAir"
+    | "topRatedMovies"
+    | "topRatedSeries";
+  kind: "top10" | "posters";
+  title: string;
+  items: CardInput[];
+}
+
+export interface HomeResponseInput {
+  rows: HomeRowInput[];
 }
 
 export interface UpdateMeInput {
@@ -200,11 +222,33 @@ export interface TitleDetails {
   runtime?: number;
   rating?: number;
   backdrop?: string;
+  logo?: string;
   seasons?: TitleSeason[];
 }
 
 export interface CatalogSearchResponse {
   items: Card[];
+}
+
+export interface HomeRow {
+  id:
+    | "trending"
+    | "trendingMovies"
+    | "trendingSeries"
+    | "popularMovies"
+    | "popularSeries"
+    | "russianSeries"
+    | "nowPlaying"
+    | "onTheAir"
+    | "topRatedMovies"
+    | "topRatedSeries";
+  kind: "top10" | "posters";
+  title: string;
+  items: Card[];
+}
+
+export interface HomeResponse {
+  rows: HomeRow[];
 }
 
 export interface UpdateMe {
@@ -233,6 +277,8 @@ export type PatchUsersMeError = MessageResponse;
 export type GetCatalogSearchError = MessageResponse;
 
 export type GetCatalogTitleError = MessageResponse;
+
+export type GetHomeError = MessageResponse;
 
 export type QueryParamsType = Record<string | number, any>;
 export type ResponseFormat = keyof Omit<Body, "body" | "bodyUsed">;
@@ -663,6 +709,34 @@ export class Api<
     ) =>
       this.request<TitleDetails, GetCatalogTitleError>({
         path: `/catalog/titles/${id}`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+  };
+  home = {
+    /**
+     * No description
+     *
+     * @tags Catalog
+     * @name GetHome
+     * @request GET:/home
+     */
+    getHome: (
+      query?: {
+        /** @default "all" */
+        mode?: "all" | "movies" | "series";
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<HomeResponse, GetHomeError>({
+        path: `/home`,
         method: "GET",
         query: query,
         format: "json",

@@ -15,6 +15,7 @@ import { config } from './config.ts'
 import { aboutRoutes } from './routes/about.ts'
 import { authRoutes } from './routes/auth.ts'
 import { catalogRoutes } from './routes/catalog.ts'
+import { homeRoutes } from './routes/home.ts'
 import { imageRoutes } from './routes/images.ts'
 import { userRoutes } from './routes/users.ts'
 
@@ -43,7 +44,10 @@ export function createApp(options: FastifyServerOptions = {}) {
       tags: [
         { name: 'Auth', description: 'Регистрация, вход, сессия' },
         { name: 'Users', description: 'Профиль пользователя' },
-        { name: 'Catalog', description: 'Каталог: поиск и карточки тайтлов' },
+        {
+          name: 'Catalog',
+          description: 'Каталог: главная, поиск и карточки тайтлов',
+        },
         { name: 'About', description: 'Версия, лицензия и исходники' },
       ],
     },
@@ -69,6 +73,7 @@ export function createApp(options: FastifyServerOptions = {}) {
   app.register(authRoutes, { prefix: '/auth' })
   app.register(userRoutes, { prefix: '/users' })
   app.register(catalogRoutes, { prefix: '/catalog' })
+  app.register(homeRoutes, { prefix: '/home' })
   app.register(imageRoutes, { prefix: '/img' })
 
   return app

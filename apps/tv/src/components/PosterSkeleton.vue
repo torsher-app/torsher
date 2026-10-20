@@ -1,14 +1,25 @@
+<script setup lang="ts">
+withDefaults(defineProps<{ caption?: boolean }>(), { caption: true })
+</script>
+
 <template>
   <div class="poster-skeleton" aria-hidden="true">
     <span class="poster-skeleton__frame skeleton" />
-    <span class="poster-skeleton__line poster-skeleton__line--title skeleton" />
-    <span class="poster-skeleton__line poster-skeleton__line--short skeleton" />
+    <template v-if="caption">
+      <span
+        class="poster-skeleton__line poster-skeleton__line--title skeleton"
+      />
+      <span
+        class="poster-skeleton__line poster-skeleton__line--short skeleton"
+      />
+    </template>
   </div>
 </template>
 
 <style scoped>
-/* Повторяет размеры PosterCard: сетка не прыгает, когда приходят данные */
+/* Повторяет размеры PosterCard: сетка и ряды не прыгают, когда приходят данные */
 .poster-skeleton {
+  flex-shrink: 0;
   width: var(--poster-width);
 }
 
@@ -27,7 +38,7 @@
 }
 
 .poster-skeleton__line--title {
-  margin-top: calc(var(--space-2) + var(--font-size-s) * (var(--line-height) - 1));
+  margin-top: calc(var(--u) * 14 + var(--font-size-s) * (var(--line-height) - 1));
 }
 
 .poster-skeleton__line--short {
