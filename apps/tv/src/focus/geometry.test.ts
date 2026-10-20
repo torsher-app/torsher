@@ -1,6 +1,6 @@
 import type { Rect } from './geometry.ts'
 import { describe, expect, it } from 'vitest'
-import { findNext } from './geometry.ts'
+import { findInColumn, findNext } from './geometry.ts'
 
 function rect(left: number, top: number, width = 100, height = 100): Rect {
   return { left, top, right: left + width, bottom: top + height }
@@ -58,5 +58,27 @@ describe('findNext', () => {
     ]
 
     expect(findNext(input, row, 'down')).toBe('middle')
+  })
+})
+
+describe('findInColumn', () => {
+  // Соседний ряд пролистан на полкарточки
+  const row = [
+    { item: 'first', rect: rect(-60, 500) },
+    { item: 'second', rect: rect(90, 500) },
+    { item: 'third', rect: rect(240, 500) },
+  ]
+
+  it('берёт карточку в той же колонке', () => {
+    expect(findInColumn(rect(250, 0), row)).toBe('third')
+    expect(findInColumn(rect(100, 0), row)).toBe('second')
+  })
+
+  it('не зависит от того, выше ряд или ниже', () => {
+    expect(findInColumn(rect(100, 900), row)).toBe('second')
+  })
+
+  it('пустой ряд — undefined', () => {
+    expect(findInColumn(rect(0, 0), [])).toBeUndefined()
   })
 })

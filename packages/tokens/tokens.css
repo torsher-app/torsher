@@ -9,12 +9,23 @@
   --color-bg: #0b0d12;
   --color-surface: #161a22;
   --color-surface-raised: #1f2430;
+  --color-surface-raised-2: #2a3040;
   --color-text: #f2f4f8;
   --color-text-muted: #9aa3b2;
+  --color-text-dim: #6b7383;
   --color-accent: #e8b84a;
+  --color-accent-ink: #231800;
   --color-focus: #ffffff;
+  /* Прозрачные слои поверх фона: чипы, подсказки клавиш, разделители */
+  --color-glass: rgba(242, 244, 248, 0.1);
+  --color-line: rgba(242, 244, 248, 0.12);
+  --color-ok: #6fd39a;
+  --color-info: #8db6ff;
+  --color-warn: #ffb35c;
+  --color-bad: #ff7a7a;
 
-  --font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /* Onest раздаёт сама витрина: system-ui на разных ТВ — разные шрифты */
+  --font-family: 'Onest', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   --font-size-xl: calc(var(--u) * 56);
   --font-size-l: calc(var(--u) * 36);
   --font-size-m: calc(var(--u) * 28);
@@ -34,6 +45,7 @@
 
   --radius-s: calc(var(--u) * 8);
   --radius-m: calc(var(--u) * 12);
+  --radius-l: calc(var(--u) * 20);
 
   --focus-ring-width: calc(var(--u) * 4);
   --focus-scale: 1.06;
@@ -43,4 +55,8 @@
   --motion-easing: cubic-bezier(0.2, 0, 0, 1);
 
   --poster-width: calc(var(--u) * 240);
+
+  /* Свёрнутый рейл и левый край контента рядом с ним */
+  --rail-width: calc(var(--u) * 120);
+  --content-x: calc(var(--u) * 168);
 }

@@ -1,59 +1,47 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
+import AppIcon from '../components/AppIcon.vue'
 import FocusSection from '../components/FocusSection.vue'
 import ScreenState from '../components/ScreenState.vue'
 import { useCatalogTitle } from '../composables/useCatalogTitle.ts'
+import { useTitleMeta } from '../composables/useTitleMeta.ts'
 
 const props = defineProps<{ id: string }>()
 
-const MAX_GENRES = 3
-
 const { t } = useI18n()
+const router = useRouter()
+const { metaParts } = useTitleMeta()
 
 const { status, title, error, retry } = useCatalogTitle(
   computed(() => props.id),
 )
 
-function formatRuntime(minutes: number) {
-  const hours = Math.floor(minutes / 60)
-  const rest = minutes % 60
+// Логотип не загрузился — пишем название текстом
+const logoFailed = ref(false)
 
-  return hours > 0
-    ? t('title.runtime', { hours, minutes: rest })
-    : t('title.runtimeMinutes', { minutes: rest })
-}
+watch(
+  () => title.value?.logo,
+  () => {
+    logoFailed.value = false
+  },
+)
 
-// Год · тип · длительность или число сезонов · рейтинг · жанры
 const meta = computed(() => {
   const value = title.value
 
-  if (!value)
-    return ''
-
-  const parts: string[] = []
-
-  if (value.year)
-    parts.push(String(value.year))
-
-  parts.push(t(value.kind === 'movie' ? 'title.movie' : 'title.series'))
-
-  if (value.runtime)
-    parts.push(formatRuntime(value.runtime))
-
-  if (value.seasons?.length)
-    parts.push(t('title.seasonCount', value.seasons.length))
-
-  if (value.rating)
-    parts.push(t('title.rating', { rating: value.rating.toFixed(1) }))
-
-  if (value.genres.length > 0)
-    parts.push(value.genres.slice(0, MAX_GENRES).join(', '))
-
-  return parts.join(' · ')
+  return value ? metaParts(value, { rating: true }).join(' · ') : ''
 })
 
 const seasons = computed(() => title.value?.seasons ?? [])
+
+// Открыли карточку по прямой ссылке — назад некуда, ведём на главную
+function back() {
+  if (router.options.history.state.back)
+    router.back()
+  else router.push('/')
+}
 
 function seasonMeta(season: { year?: number, episodeCount: number }) {
   const episodes = t('title.episodeCount', season.episodeCount)
@@ -73,10 +61,25 @@ function seasonMeta(season: { year?: number, episodeCount: number }) {
     >
     <div class="title__shade" />
 
+    <!--
+      В браузере кнопка видна всегда и доступна стрелкой вверх; на ТВ — только
+      под указкой: у 5-way есть клавиша Back, скрытую кнопку движок пропускает
+    -->
+    <FocusSection
+      name="title-back"
+      :edges="{ down: status === 'error' ? 'title-state' : 'title-actions' }"
+    >
+      <button v-focusable class="title__back" type="button" @click="back">
+        <AppIcon name="chevronLeft" />
+        <span class="title__back-label">{{ t("common.back") }}</span>
+      </button>
+    </FocusSection>
+
     <FocusSection
       v-if="status === 'error' && error"
       name="title-state"
       class="title__content"
+      :edges="{ up: 'title-back' }"
       autofocus
     >
       <ScreenState :kind="error" @retry="retry" />
@@ -96,7 +99,17 @@ function seasonMeta(season: { year?: number, episodeCount: number }) {
 
         <div class="title__info">
           <h1 class="title__name">
-            {{ title.title }}
+            <img
+              v-if="title.logo && !logoFailed"
+              class="title__logo"
+              :src="title.logo"
+              :alt="title.title"
+              decoding="async"
+              @error="logoFailed = true"
+            >
+            <template v-else>
+              {{ title.title }}
+            </template>
           </h1>
           <p
             v-if="title.originalTitle && title.originalTitle !== title.title"
@@ -113,7 +126,7 @@ function seasonMeta(season: { year?: number, episodeCount: number }) {
 
           <FocusSection
             name="title-actions"
-            :edges="{ down: 'title-seasons' }"
+            :edges="{ up: 'title-back', down: 'title-seasons' }"
             autofocus
           >
             <button v-focusable class="action action--primary" type="button">
@@ -171,7 +184,47 @@ function seasonMeta(season: { year?: number, episodeCount: number }) {
   left: 0;
   overflow-x: hidden;
   overflow-y: auto;
-  padding: var(--safe-y) var(--safe-x);
+  padding: var(--safe-y) var(--safe-x) var(--safe-y) var(--content-x);
+}
+
+.title__back {
+  position: fixed;
+  z-index: 10;
+  top: var(--safe-y);
+  left: calc(var(--u) * 28);
+  display: none;
+  align-items: center;
+  height: calc(var(--u) * 64);
+  padding: 0 calc(var(--u) * 26) 0 calc(var(--u) * 18);
+  border: 0;
+  border-radius: calc(var(--u) * 32);
+  background: var(--color-glass);
+  color: var(--color-text);
+  font: inherit;
+  font-size: calc(var(--u) * 32);
+}
+
+[data-platform='web'] .title__back,
+[data-input='pointer'] .title__back {
+  display: flex;
+}
+
+.title__back:hover,
+.title__back:focus {
+  --bump-scale: var(--focus-scale);
+
+  background: var(--color-focus);
+  color: var(--color-bg);
+}
+
+.title__back:focus {
+  transform: scale(var(--bump-scale));
+}
+
+.title__back-label {
+  margin-left: calc(var(--u) * 10);
+  font-size: var(--font-size-s);
+  font-weight: 600;
 }
 
 .title__backdrop,
@@ -230,6 +283,14 @@ function seasonMeta(season: { year?: number, episodeCount: number }) {
   font-size: var(--font-size-xl);
 }
 
+.title__logo {
+  display: block;
+  max-width: calc(var(--u) * 760);
+  max-height: calc(var(--u) * 200);
+  object-fit: contain;
+  object-position: left bottom;
+}
+
 .title__original {
   margin: var(--space-1) 0 0;
   color: var(--color-text-muted);
@@ -273,11 +334,23 @@ function seasonMeta(season: { year?: number, episodeCount: number }) {
   padding: var(--space-3);
   border: 0;
   border-radius: var(--radius-m);
-  background: var(--color-surface-raised);
+  background: var(--color-glass);
   color: var(--color-text);
   font: inherit;
   text-align: left;
-  cursor: pointer;
+}
+
+/* Строка-кнопка: белая заливка с тёмным текстом, как у кнопок */
+.season:focus {
+  --bump-scale: var(--focus-scale);
+
+  background: var(--color-focus);
+  color: var(--color-bg);
+  transform: scale(var(--bump-scale));
+}
+
+.season:focus .season__meta {
+  color: var(--color-surface-raised-2);
 }
 
 .season__name,

@@ -23,7 +23,7 @@ const TMDB_ERROR_STATUS = {
   unavailable: 502,
 } as const
 
-function sendTmdbError(reply: FastifyReply, err: unknown) {
+export function sendTmdbError(reply: FastifyReply, err: unknown) {
   if (!(err instanceof TmdbError))
     throw err
 

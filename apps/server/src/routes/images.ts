@@ -7,7 +7,14 @@ import { fetchTmdbImage, TmdbError } from '../services/tmdb/index.ts'
 // Браузер и ТВ тоже хранят картинку: срок не длиннее предела хранения данных TMDB
 const CACHE_CONTROL = `public, max-age=${TMDB_MAX_CACHE_AGE_MS / 1000}, immutable`
 
-const IMAGE_SIZES = ['w185', 'w342', 'w780', 'w1280', 'original'] as const
+const IMAGE_SIZES = [
+  'w185',
+  'w342',
+  'w500',
+  'w780',
+  'w1280',
+  'original',
+] as const
 
 const imageParams = z.object({
   size: z.enum(IMAGE_SIZES),

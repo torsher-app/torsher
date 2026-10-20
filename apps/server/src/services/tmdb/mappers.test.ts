@@ -1,8 +1,17 @@
 import { describe, expect, it } from 'vitest'
-import { movie, searchResponse, tv } from './fixtures/index.ts'
 import {
+  logos,
+  movie,
+  movieList,
+  searchResponse,
+  trendingAll,
+  tv,
+} from './fixtures/index.ts'
+import {
+  listResultToCard,
   movieToDetails,
   parseCatalogId,
+  pickLogo,
   searchResultToCard,
   toCatalogId,
   tvToDetails,
@@ -58,6 +67,43 @@ describe('searchResultToCard', () => {
   })
 })
 
+describe('listResultToCard', () => {
+  it('берёт тип из media_type в трендах', () => {
+    expect(listResultToCard(trendingAll.results[1]!)?.id).toBe('tmdb:tv:1396')
+    expect(listResultToCard(trendingAll.results[2]!)).toBeUndefined()
+  })
+
+  it('берёт тип списка, если media_type нет', () => {
+    expect(listResultToCard(movieList.results[0]!, 'movie')).toMatchObject({
+      id: 'tmdb:movie:100',
+      kind: 'movie',
+      title: 'Фильм 1',
+    })
+    expect(listResultToCard(movieList.results[0]!)).toBeUndefined()
+  })
+})
+
+describe('pickLogo', () => {
+  it('предпочитает логотип на языке интерфейса с лучшей оценкой, только PNG', () => {
+    expect(pickLogo(logos, 'ru-RU')).toBe('/img/w500/ruLogo.png')
+  })
+
+  it('без перевода берёт логотип без текста, затем английский', () => {
+    expect(pickLogo(logos, 'de-DE')).toBe('/img/w500/neutralLogo.png')
+    expect(
+      pickLogo(
+        logos.filter(logo => logo.iso_639_1 !== null),
+        'de-DE',
+      ),
+    ).toBe('/img/w500/enLogo.png')
+  })
+
+  it('без логотипов — undefined', () => {
+    expect(pickLogo(undefined, 'en-US')).toBeUndefined()
+    expect(pickLogo([], 'en-US')).toBeUndefined()
+  })
+})
+
 describe('movieToDetails', () => {
   it('собирает карточку фильма', () => {
     expect(movieToDetails(movie)).toEqual({
@@ -73,6 +119,17 @@ describe('movieToDetails', () => {
       runtime: 136,
       rating: 8.2,
     })
+  })
+})
+
+describe('логотип в деталях', () => {
+  it('выбирается по языку запроса', () => {
+    expect(movieToDetails({ ...movie, images: { logos } }, 'ru-RU').logo).toBe(
+      '/img/w500/ruLogo.png',
+    )
+    expect(tvToDetails({ ...tv, images: { logos } }, 'en-US').logo).toBe(
+      '/img/w500/enLogo.png',
+    )
   })
 })
 

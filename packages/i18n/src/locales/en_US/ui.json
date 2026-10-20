@@ -3,10 +3,37 @@
     "back": "Back",
     "about": "About"
   },
+  "nav": {
+    "label": "Sections",
+    "home": "Home",
+    "search": "Search",
+    "movies": "Movies",
+    "series": "Series"
+  },
   "search": {
     "title": "Search",
     "placeholder": "Movie or series title",
     "hint": "Start typing to find a movie or series"
+  },
+  "home": {
+    "rows": {
+      "trending": "Top 10 today",
+      "trendingMovies": "Top 10 movies today",
+      "trendingSeries": "Top 10 series today",
+      "popularMovies": "Popular movies",
+      "popularSeries": "Popular series",
+      "russianSeries": "Russian series",
+      "nowPlaying": "In theaters",
+      "onTheAir": "On the air",
+      "topRatedMovies": "Top rated movies",
+      "topRatedSeries": "Top rated series"
+    },
+    "hint": {
+      "details": "Details",
+      "watch": "Watch"
+    },
+    "pageBack": "Scroll back",
+    "pageForward": "Scroll forward"
   },
   "title": {
     "watch": "Watch",
@@ -45,6 +72,10 @@
     "unknown": {
       "title": "Something went wrong",
       "text": "Couldn't load the data. Try again"
+    },
+    "homeEmpty": {
+      "title": "Nothing to show yet",
+      "text": "The catalog returned no rows. Try again later"
     }
   },
   "about": {
@@ -57,6 +88,7 @@
     "serverUnavailable": "Couldn't get version information from the server",
     "dataSource": "Movie and series information and images are provided by TMDB",
     "tmdbNotice": "This product uses the TMDB API but is not endorsed or certified by TMDB.",
-    "tmdbLogo": "TMDB logo"
+    "tmdbLogo": "TMDB logo",
+    "font": "The Onest font is distributed under the SIL Open Font License 1.1"
   }
 }

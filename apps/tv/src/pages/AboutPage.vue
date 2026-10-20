@@ -2,16 +2,19 @@
 import tmdbLogo from '@torsher/tokens/assets/tmdb.svg'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
+import AppRail from '../components/AppRail.vue'
 import FocusSection from '../components/FocusSection.vue'
 import { useAbout } from '../composables/useAbout.ts'
 
 const { t } = useI18n()
 const router = useRouter()
 const { status, about } = useAbout()
+
+const RAIL_SECTION = 'rail-about'
 </script>
 
 <template>
-  <main class="about">
+  <main class="screen about">
     <h1 class="about__app">
       Torsher
     </h1>
@@ -57,19 +60,28 @@ const { status, about } = useAbout()
       <p class="tmdb__text about__muted">
         {{ t("about.tmdbNotice") }}
       </p>
+      <p class="tmdb__text about__muted">
+        {{ t("about.font") }}
+      </p>
     </section>
 
-    <FocusSection name="about-actions" autofocus>
+    <FocusSection
+      name="about-actions"
+      :edges="{ left: RAIL_SECTION }"
+      autofocus
+    >
       <button v-focusable class="action" type="button" @click="router.back()">
         {{ t("common.back") }}
       </button>
     </FocusSection>
+
+    <AppRail current="about" :section="RAIL_SECTION" content="about-actions" />
   </main>
 </template>
 
 <style scoped>
 .about {
-  max-width: calc(var(--u) * 1200);
+  max-width: calc(var(--content-x) + var(--u) * 1200);
 }
 
 .about__app {

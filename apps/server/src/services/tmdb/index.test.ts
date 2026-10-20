@@ -93,8 +93,12 @@ describe('getTitle', () => {
 
     const details = await getTitle('tmdb:movie:603', 'ru-RU')
 
-    expect(new URL(String(fetchMock.mock.calls[0]![0])).pathname).toBe(
-      '/3/movie/603',
+    const requested = new URL(String(fetchMock.mock.calls[0]![0]))
+
+    expect(requested.pathname).toBe('/3/movie/603')
+    expect(requested.searchParams.get('append_to_response')).toBe('images')
+    expect(requested.searchParams.get('include_image_language')).toBe(
+      'ru,null,en',
     )
     expect(details?.title).toBe('Матрица')
   })

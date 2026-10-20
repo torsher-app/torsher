@@ -11,6 +11,7 @@ import {
 } from './mappers.ts'
 
 export { fetchTmdbImage, TmdbError } from './client.ts'
+export { getHomeRows } from './home.ts'
 
 const HOUR_MS = 60 * 60 * 1000
 const SEARCH_TTL_MS = HOUR_MS
@@ -38,21 +39,33 @@ export async function searchTitles(
   return response.results.flatMap(result => searchResultToCard(result) ?? [])
 }
 
+// Логотипы приходят вместе с деталями одним запросом и кэшируются с ними
+function detailsParams(language: string) {
+  const iso = language.slice(0, 2)
+  const imageLanguages = iso === 'en' ? 'en,null' : `${iso},null,en`
+
+  return {
+    language,
+    append_to_response: 'images',
+    include_image_language: imageLanguages,
+  }
+}
+
 async function loadDetails(ref: TmdbRef, language: string) {
   const key = `tmdb:${ref.type}:${ref.tmdbId}:${language}`
-  const params = { language }
+  const params = detailsParams(language)
 
   if (ref.type === 'movie') {
     const movie = await withMetaCache(key, DETAILS_TTL_MS, () =>
       tmdbGet<TmdbMovie>(`/movie/${ref.tmdbId}`, params))
 
-    return movieToDetails(movie)
+    return movieToDetails(movie, language)
   }
 
   const tv = await withMetaCache(key, DETAILS_TTL_MS, () =>
     tmdbGet<TmdbTv>(`/tv/${ref.tmdbId}`, params))
 
-  return tvToDetails(tv)
+  return tvToDetails(tv, language)
 }
 
 /** `undefined` — ID не из каталога; отсутствие тайтла в TMDB — `TmdbError`. */
