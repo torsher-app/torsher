@@ -5,12 +5,18 @@ import { useRouter } from 'vue-router'
 import AppRail from '../components/AppRail.vue'
 import FocusSection from '../components/FocusSection.vue'
 import { useAbout } from '../composables/useAbout.ts'
+import { platform } from '../platform/index.ts'
+import { canReturnToShell, returnToShell } from '../platform/shell.ts'
 
 const { t } = useI18n()
 const router = useRouter()
 const { status, about } = useAbout()
 
 const RAIL_SECTION = 'rail-about'
+
+// Сервер выбирают в обёртке ТВ; в браузере адрес и так в строке адреса
+const isTv = platform === 'tv'
+const server = window.location.host
 </script>
 
 <template>
@@ -51,6 +57,14 @@ const RAIL_SECTION = 'rail-about'
           <span v-if="about">{{ about.sourceUrl }}</span>
           <span v-else class="facts__skeleton skeleton" />
         </dd>
+        <template v-if="isTv">
+          <dt class="facts__label">
+            {{ t("about.server") }}
+          </dt>
+          <dd class="facts__value">
+            {{ server }}
+          </dd>
+        </template>
       </dl>
     </template>
 
@@ -75,6 +89,15 @@ const RAIL_SECTION = 'rail-about'
     >
       <button v-focusable class="action" type="button" @click="router.back()">
         {{ t("common.back") }}
+      </button>
+      <button
+        v-if="isTv && canReturnToShell"
+        v-focusable
+        class="action"
+        type="button"
+        @click="returnToShell(router.options.history)"
+      >
+        {{ t("about.changeServer") }}
       </button>
     </FocusSection>
 

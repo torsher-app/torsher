@@ -92,4 +92,13 @@ describe('get /api/health', () => {
     expect(res.statusCode).toBe(200)
     expect(res.json()).toEqual({ status: 'ok' })
   })
+
+  it('открыт странице с file:// (origin null)', async () => {
+    const res = await app.inject({
+      url: '/api/health',
+      headers: { origin: 'null' },
+    })
+
+    expect(res.headers['access-control-allow-origin']).toBe('*')
+  })
 })

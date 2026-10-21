@@ -28,7 +28,13 @@ export const apiRoutes: FastifyPluginAsyncZod = async (app) => {
         },
       },
     },
-    () => ({ status: 'ok' as const }),
+    (_request, reply) => {
+      // Обёртка ТВ проверяет адрес со своей страницы на file:// (origin null).
+      // Роут публичный и без cookie, поэтому открыт любому origin
+      reply.header('Access-Control-Allow-Origin', '*')
+
+      return { status: 'ok' as const }
+    },
   )
 
   app.register(aboutRoutes, { prefix: '/about' })

@@ -132,55 +132,64 @@ onBeforeUnmount(() => {
     <h2 v-if="title" class="row__title">
       {{ title }}
     </h2>
-    <div ref="view" class="row__view">
-      <!-- Стрелки листания видны только под указкой; фокус они не забирают -->
-      <button
-        v-if="offset > 0"
-        class="row__page row__page--back"
-        type="button"
-        tabindex="-1"
-        :aria-label="t('home.pageBack')"
-        @mousedown.prevent
-        @click="page(-1)"
-      >
-        <AppIcon name="chevronLeft" />
-      </button>
-      <FocusSection
-        :name="section"
-        :edges="edges"
-        manual-scroll
-        class="row__track"
-        :style="trackStyle"
-      >
-        <div
-          v-for="(item, i) in visible"
-          :key="itemKey(item)"
-          class="row__item"
-          :data-index="range.start + i"
+    <div class="row__clip">
+      <div ref="view" class="row__view">
+        <!-- Стрелки листания видны только под указкой; фокус они не забирают -->
+        <button
+          v-if="offset > 0"
+          class="row__page row__page--back"
+          type="button"
+          tabindex="-1"
+          :aria-label="t('home.pageBack')"
+          @mousedown.prevent
+          @click="page(-1)"
         >
-          <slot name="item" :item="item" :index="range.start + i" />
-        </div>
-      </FocusSection>
-      <button
-        v-if="offset < max"
-        class="row__page row__page--forward"
-        type="button"
-        tabindex="-1"
-        :aria-label="t('home.pageForward')"
-        @mousedown.prevent
-        @click="page(1)"
-      >
-        <AppIcon name="chevronRight" />
-      </button>
+          <AppIcon name="chevronLeft" />
+        </button>
+        <FocusSection
+          :name="section"
+          :edges="edges"
+          manual-scroll
+          class="row__track"
+          :style="trackStyle"
+        >
+          <div
+            v-for="(item, i) in visible"
+            :key="itemKey(item)"
+            class="row__item"
+            :data-index="range.start + i"
+          >
+            <slot name="item" :item="item" :index="range.start + i" />
+          </div>
+        </FocusSection>
+        <button
+          v-if="offset < max"
+          class="row__page row__page--forward"
+          type="button"
+          tabindex="-1"
+          :aria-label="t('home.pageForward')"
+          @mousedown.prevent
+          @click="page(1)"
+        >
+          <AppIcon name="chevronRight" />
+        </button>
+      </div>
     </div>
   </section>
 </template>
 
 <style scoped>
 .row {
+  /* Отрицательные отступы обрезки не схлопываются с отступами ряда */
+  display: flow-root;
   padding-left: var(--content-x);
   margin-bottom: calc(var(--u) * 52);
   transition: opacity var(--motion-base) var(--motion-easing);
+  /*
+   * Свой слой: ряд, уходящий под hero, гаснет без перерисовки. Без слоя
+   * на ТВ каждая такая анимация перерисовывала ряд и роняла кадры
+   */
+  will-change: opacity;
 }
 
 .row__title {
@@ -190,13 +199,21 @@ onBeforeUnmount(() => {
 }
 
 /*
- * Видимая часть ряда — до safe area справа. Слева остаётся полоска 48 px
- * предыдущей карточки, сверху и снизу — место под кольцо и масштаб фокуса.
+ * Обрезка ленты: слева остаётся полоска 48 px предыдущей карточки, сверху
+ * и снизу — место под кольцо и масштаб фокуса, справа лента идёт до края
+ * экрана. overflow, а не clip-path: clip-path над лентой на своём слое
+ * GPU ТВ рисует маской, и это роняло кадры при листании рядов.
  */
+.row__clip {
+  margin: calc(var(--u) * -40) 0 calc(var(--u) * -40) calc(var(--u) * -48);
+  padding: calc(var(--u) * 40) 0 calc(var(--u) * 40) calc(var(--u) * 48);
+  overflow: hidden;
+}
+
+/* Видимая часть ряда для расчётов — до safe area справа */
 .row__view {
   position: relative;
   margin-right: var(--safe-x);
-  clip-path: inset(calc(var(--u) * -40) calc(var(--u) * -3000) calc(var(--u) * -40) calc(var(--u) * -48));
 }
 
 /* margin вместо gap: gap у flexbox появился только в Chromium 84 */

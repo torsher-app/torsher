@@ -36,6 +36,17 @@ describe('createInputModeTracker', () => {
     expect(onChange).toHaveBeenLastCalledWith('remote')
   })
 
+  it('спрятанный курсор возвращает пульт, а появившийся — указку', () => {
+    const tracker = createInputModeTracker()
+
+    tracker.pointerMove(10, 20)
+    tracker.pointerHidden()
+    expect(tracker.mode).toBe('remote')
+
+    expect(tracker.pointerMove(10, 20)).toBe(true)
+    expect(tracker.mode).toBe('pointer')
+  })
+
   it('не сообщает о смене режима, если он не менялся', () => {
     const onChange = vi.fn()
     const tracker = createInputModeTracker(onChange)

@@ -91,6 +91,15 @@ export function createFocus(options: FocusOptions) {
     engine.pointerMove(event.screenX, event.screenY, event.target)
   }
 
+  // webOS сообщает, что курсор Magic Remote показался или спрятался
+  function onCursorStateChange(event: Event) {
+    const detail = (event as CustomEvent<{ visibility?: boolean } | null>)
+      .detail
+
+    if (detail?.visibility === false)
+      engine.pointerHidden()
+  }
+
   // Клик мимо элементов не должен уводить DOM-фокус с текущего элемента
   function onMousedown(event: MouseEvent) {
     const target = event.target
@@ -114,6 +123,7 @@ export function createFocus(options: FocusOptions) {
       app.directive('focusable', createDirective(engine))
       window.addEventListener('keydown', onKeydown)
       window.addEventListener('mousemove', onMousemove)
+      document.addEventListener('cursorStateChange', onCursorStateChange)
       window.addEventListener('mousedown', onMousedown)
       window.addEventListener('wheel', onWheel, { passive: false })
     },

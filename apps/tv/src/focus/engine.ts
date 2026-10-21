@@ -253,6 +253,14 @@ export function createFocusEngine(options: FocusEngineOptions = {}) {
     focusElement(section(name), el, 'pointer')
   }
 
+  /**
+   * Курсор спрятался: стрелки листания и задержки указки ему больше не нужны.
+   * Фокус остаётся на подсвеченном элементе.
+   */
+  function pointerHidden() {
+    input.pointerHidden()
+  }
+
   /** Колесо: сначала экран (последний подписавшийся), иначе — шаг фокуса. */
   function wheel(direction: Direction) {
     for (const handler of [...wheelHandlers].reverse()) {
@@ -312,6 +320,7 @@ export function createFocusEngine(options: FocusEngineOptions = {}) {
     move,
     key,
     pointerMove,
+    pointerHidden,
     wheel,
     current,
     onFocus,
