@@ -5,23 +5,14 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import StorageDiskCard from '~/components/settings/StorageDiskCard.vue'
 import StorageQueueCard from '~/components/settings/StorageQueueCard.vue'
-import StorageSizeCard from '~/components/settings/StorageSizeCard.vue'
-import { formatBytes } from '~/lib/format'
+import StoragePolicyCards from '~/components/settings/StoragePolicyCards.vue'
 
 definePageMeta({
   middleware: 'required-auth',
 })
 
-const { t, locale } = useI18n()
+const { t } = useI18n()
 const { overview, state, load } = useStorage()
-
-const cachePercent = computed(() => {
-  const value = overview.value
-
-  return value && value.policy.cacheLimit > 0
-    ? Math.round((value.cacheUsed / value.policy.cacheLimit) * 100)
-    : 0
-})
 
 onMounted(load)
 </script>
@@ -74,37 +65,7 @@ onMounted(load)
     <template v-else>
       <StorageDiskCard :overview="overview" />
 
-      <StorageSizeCard
-        field="cacheLimit"
-        :value="overview.policy.cacheLimit"
-        :title="t('panel.settings.storage.cacheTitle')"
-        :description="t('panel.settings.storage.cacheText')"
-        :saved-title="t('panel.settings.storage.cacheSaved')"
-      >
-        <template #hint>
-          {{
-            t("panel.settings.storage.cacheHint", {
-              used: formatBytes(overview.cacheUsed, locale),
-              percent: cachePercent,
-            })
-          }}
-          <template v-if="!overview.policy.custom">
-            {{ t("panel.settings.storage.defaults") }}
-          </template>
-        </template>
-      </StorageSizeCard>
-
-      <StorageSizeCard
-        field="minFree"
-        :value="overview.policy.minFree"
-        :title="t('panel.settings.storage.reserveTitle')"
-        :description="t('panel.settings.storage.reserveText')"
-        :saved-title="t('panel.settings.storage.reserveSaved')"
-      >
-        <template #hint>
-          {{ t("panel.settings.storage.reserveHint") }}
-        </template>
-      </StorageSizeCard>
+      <StoragePolicyCards :overview="overview" />
 
       <StorageQueueCard :queue="overview.queue" />
     </template>

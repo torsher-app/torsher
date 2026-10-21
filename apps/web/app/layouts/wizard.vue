@@ -12,6 +12,14 @@ const route = useRoute()
 
 // Номер шага задаёт страница через definePageMeta({ wizardStep })
 const current = computed(() => Number(route.meta.wizardStep ?? 1))
+
+// Прокрутка живёт в <main> оболочки, а не в окне: новый шаг начинается сверху
+const content = useTemplateRef('content')
+
+watch(
+  () => route.path,
+  () => content.value?.scrollTo({ top: 0 }),
+)
 </script>
 
 <template>
@@ -102,6 +110,7 @@ const current = computed(() => Number(route.meta.wizardStep ?? 1))
     </div>
 
     <main
+      ref="content"
       class="min-h-0 flex-1 overflow-y-auto bg-background md:my-2 md:mr-2 md:rounded-xl md:border"
     >
       <div
