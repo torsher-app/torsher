@@ -29,6 +29,8 @@ import {
 
 export { fetchTmdbImage, TmdbError } from './client.ts'
 export { getHomeRows } from './home.ts'
+export { getTitleIdentity } from './identity.ts'
+export type { TitleIdentity, TitleName, TitleNameKind } from './identity.ts'
 
 const HOUR_MS = 60 * 60 * 1000
 const SEARCH_TTL_MS = HOUR_MS

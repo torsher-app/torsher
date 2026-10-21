@@ -1,6 +1,14 @@
 <script setup lang="ts">
-import type { Card, Episode, Person, TitleSeason } from '@torsher/api-client'
+import type {
+  Card,
+  Episode,
+  Person,
+  TitleSeason,
+  VoiceOption,
+} from '@torsher/api-client'
+import type { EpisodeRef } from '../composables/useTitleWatch.ts'
 import type { SectionEdges } from '../focus/index.ts'
+import type { WatchTarget } from '../lib/sources.ts'
 import {
   computed,
   nextTick,
@@ -18,16 +26,26 @@ import FocusSection from '../components/FocusSection.vue'
 import PersonCard from '../components/PersonCard.vue'
 import PosterCard from '../components/PosterCard.vue'
 import ScreenState from '../components/ScreenState.vue'
+import SourcesSheet from '../components/SourcesSheet.vue'
+import VoicePanel from '../components/VoicePanel.vue'
 import { useCatalogLanguage } from '../composables/useCatalogLanguage.ts'
 import { useCatalogTitle } from '../composables/useCatalogTitle.ts'
 import { useTitleMeta } from '../composables/useTitleMeta.ts'
+import { api } from '../api.ts'
+import { useSourceLabels } from '../composables/useSourceLabels.ts'
 import {
   useTitleExtras,
   useTitleSeason,
 } from '../composables/useTitleSections.ts'
+import {
+  useTitleProgress,
+  useTitleSources,
+} from '../composables/useTitleSources.ts'
+import { useTitleWatch } from '../composables/useTitleWatch.ts'
 import { useFocus } from '../focus/index.ts'
 import { stackOffset } from '../lib/rowStack.ts'
 import { revealOffset } from '../lib/rowTrack.ts'
+import { bestCandidate, watchTarget } from '../lib/sources.ts'
 import {
   formatAirDate,
   formatYears,
@@ -159,11 +177,169 @@ const meta = computed(() => {
   return parts.filter(Boolean)
 })
 
-const primaryLabel = computed(() =>
-  isSeries.value && seasons.value[0]
-    ? t('title.watchEpisode', { season: seasons.value[0].number, episode: 1 })
-    : t('title.watch'),
+// Что запустит главная кнопка: ждём прогресс, чтобы не искать раздачи дважды
+const { progress, status: progressStatus } = useTitleProgress(id)
+const target = computed<WatchTarget | undefined>(() => {
+  const value = title.value
+
+  if (
+    !value
+    || progressStatus.value === 'idle'
+    || progressStatus.value === 'loading'
+  ) {
+    return undefined
+  }
+
+  return watchTarget(value.kind, seasons.value, progress.value?.last ?? null)
+})
+
+const {
+  sources,
+  status: sourcesStatus,
+  refresh: refreshSources,
+  reload: reloadSources,
+  startNow: searchNow,
+} = useTitleSources(id, target)
+const watcher = useTitleWatch(id)
+const { phase: watchPhase, error: watchError } = watcher
+const { bestLine } = useSourceLabels()
+
+const primaryLabel = computed(() => {
+  const value = target.value
+  const resume = !!value?.resume
+
+  if (value?.season && value.episode) {
+    return t(resume ? 'title.continueEpisode' : 'title.watchEpisode', {
+      season: value.season,
+      episode: value.episode,
+    })
+  }
+
+  if (isSeries.value && seasons.value[0]) {
+    return t('title.watchEpisode', {
+      season: seasons.value[0].number,
+      episode: 1,
+    })
+  }
+
+  return t(resume ? 'title.continue' : 'title.watch')
+})
+
+// Вторая строка главной кнопки: что вы получите или что сейчас происходит
+const primaryHint = computed(() => {
+  const phase = watchPhase.value
+
+  if (phase === 'searching')
+    return t('watch.searching')
+
+  if (phase === 'preparing' || phase === 'waitingFiles')
+    return t(`watch.${phase}`)
+
+  if (sourcesStatus.value === 'loading')
+    return t('watch.searching')
+
+  if (sourcesStatus.value === 'error')
+    return t('watch.searchFailed')
+
+  const value = sources.value
+
+  if (!value)
+    return ''
+
+  if (value.indexers.total === 0)
+    return t('watch.noIndexers')
+
+  const best = bestCandidate(value)
+
+  if (!best)
+    return t('watch.nothing')
+
+  const remaining = target.value?.resume ? target.value.remaining : undefined
+
+  return remaining
+    ? `${t('title.left', { n: Math.ceil(remaining / 60) })} · ${bestLine(best)}`
+    : bestLine(best)
+})
+
+const sourcesLabel = computed(() =>
+  sources.value && sources.value.candidates.length > 0
+    ? t('title.sourcesCount', { n: sources.value.candidates.length })
+    : t('title.sources'),
 )
+const voices = computed(() => sources.value?.voices ?? [])
+const sheetContext = computed(() =>
+  target.value?.season && target.value.episode
+    ? `S${target.value.season}E${target.value.episode}`
+    : '',
+)
+
+// Открытый лист или панель забирают фокус; при закрытии он возвращается на кнопку
+const overlay = ref<'sources' | 'voices'>()
+let overlayOpener: HTMLElement | undefined
+
+function openOverlay(kind: 'sources' | 'voices') {
+  overlayOpener = focus.current() ?? undefined
+  searchNow()
+  overlay.value = kind
+}
+
+function closeOverlay() {
+  overlay.value = undefined
+
+  nextTick(() => {
+    if (overlayOpener?.isConnected)
+      focus.focusOn(overlayOpener)
+    else focus.activate('title-actions')
+  })
+}
+
+function play(ref: EpisodeRef, candidateId?: string) {
+  void watcher.start(ref, candidateId)
+}
+
+function playTarget() {
+  if (target.value)
+    play({ season: target.value.season, episode: target.value.episode })
+}
+
+function playEpisode(item: Episode) {
+  if (isUpcoming(item.airDate) || selectedSeason.value === undefined)
+    return
+
+  play({ season: selectedSeason.value, episode: item.number })
+}
+
+function playCandidate(candidateId: string) {
+  closeOverlay()
+
+  if (target.value) {
+    play(
+      { season: target.value.season, episode: target.value.episode },
+      candidateId,
+    )
+  }
+}
+
+async function pinVoice(option: VoiceOption | null) {
+  closeOverlay()
+
+  try {
+    await api.titles.putTitleVoice(props.id, {
+      season: target.value?.season ?? 0,
+      voice: option ? { studio: option.studio, type: option.type } : null,
+    })
+  }
+  catch {
+    // Не закрепилось — кнопка останется с прежней озвучкой
+    return
+  }
+
+  reloadSources()
+}
+
+function openSourcesFromVoices() {
+  overlay.value = 'sources'
+}
 
 function countryName(code: string) {
   const key = `countries.${code}`
@@ -342,7 +518,8 @@ function revealChip(chip: HTMLElement) {
 let previousSection: string | undefined
 
 const stopFocus = focus.onFocus((el, via) => {
-  if (!screen.value?.contains(el))
+  // Лист и панель лежат поверх экрана: экран под ними не двигается
+  if (overlay.value || !screen.value?.contains(el))
     return
 
   const name = sectionName(el) ?? undefined
@@ -376,6 +553,10 @@ const stopFocus = focus.onFocus((el, via) => {
 
 // Колесо листает секции на одну от выровненной, элемент — в той же колонке
 const stopWheel = focus.onWheel((direction) => {
+  // Колесо над листом шагает по его строкам
+  if (overlay.value)
+    return false
+
   if (direction !== 'up' && direction !== 'down')
     return true
 
@@ -508,14 +689,47 @@ onBeforeUnmount(() => {
           :edges="edgesOf('title-actions')"
           autofocus
         >
-          <button v-focusable class="action action--primary" type="button">
+          <button
+            v-focusable
+            class="action action--primary title__primary"
+            type="button"
+            @click="playTarget"
+          >
             <AppIcon name="play" class="title__action-icon" />
-            {{ primaryLabel }}
+            <span class="title__primary-text">
+              {{ primaryLabel }}
+              <small v-if="primaryHint" class="title__primary-hint">
+                {{ primaryHint }}
+              </small>
+            </span>
           </button>
-          <button v-focusable class="action" type="button">
-            {{ t("title.sources") }}
+          <button
+            v-if="voices.length > 0"
+            v-focusable
+            class="action"
+            type="button"
+            @click="openOverlay('voices')"
+          >
+            <AppIcon name="audio" class="title__action-icon" />
+            {{ t("title.voice") }}
+          </button>
+          <button
+            v-focusable
+            class="action"
+            type="button"
+            @click="openOverlay('sources')"
+          >
+            {{ sourcesLabel }}
           </button>
         </FocusSection>
+
+        <p
+          v-if="watchPhase === 'error' && watchError"
+          class="title__status"
+          role="status"
+        >
+          {{ t(`watch.errors.${watchError}`) }}
+        </p>
 
         <p class="title__peek">
           <AppIcon name="chevronDown" class="title__peek-icon" />
@@ -582,7 +796,11 @@ onBeforeUnmount(() => {
             @focus-item="onEpisodeFocus"
           >
             <template #item="{ item }">
-              <EpisodeCard :episode="item" :meta="episodeMeta(item)" />
+              <EpisodeCard
+                :episode="item"
+                :meta="episodeMeta(item)"
+                @select="playEpisode(item)"
+              />
             </template>
           </ContentRow>
 
@@ -701,6 +919,23 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </div>
+
+    <SourcesSheet
+      v-if="overlay === 'sources'"
+      :sources="sources"
+      :status="sourcesStatus"
+      :context="sheetContext"
+      @select="playCandidate"
+      @refresh="refreshSources"
+      @close="closeOverlay"
+    />
+    <VoicePanel
+      v-else-if="overlay === 'voices'"
+      :voices="voices"
+      @pin="pinVoice"
+      @sources="openSourcesFromVoices"
+      @close="closeOverlay"
+    />
   </main>
 </template>
 
@@ -885,10 +1120,44 @@ onBeforeUnmount(() => {
   top: calc(var(--u) * 742);
   left: var(--content-x);
   display: flex;
+  align-items: center;
 }
 
 .title__action-icon {
   margin-right: calc(var(--u) * 14);
+}
+
+/* Главная кнопка говорит, что вы получите: вторая строка — качество и озвучка */
+.title__primary {
+  height: auto;
+  min-height: calc(var(--u) * 84);
+  padding-top: calc(var(--u) * 12);
+  padding-bottom: calc(var(--u) * 12);
+}
+
+.title__primary-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.title__primary-hint {
+  max-width: calc(var(--u) * 640);
+  overflow: hidden;
+  font-size: var(--font-size-s);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  opacity: 0.75;
+}
+
+.title__status {
+  position: absolute;
+  top: calc(var(--u) * 870);
+  left: var(--content-x);
+  max-width: calc(var(--u) * 1100);
+  margin: 0;
+  color: var(--color-warn);
+  font-size: var(--font-size-s);
 }
 
 .title__peek {

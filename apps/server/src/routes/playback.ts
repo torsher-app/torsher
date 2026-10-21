@@ -9,13 +9,18 @@ import {
 import { engineUnavailableResponse } from '../dto/torrents.ts'
 import { requireAuth } from '../middleware/auth.ts'
 import {
+  getTitleProgress,
+  saveTitleProgress,
+} from '../services/sources/progress.ts'
+import { parseCatalogId } from '../services/tmdb/mappers.ts'
+import { resumePosition } from '../services/torrents/playback.ts'
+import {
   fileNameOf,
   getTorrent,
   getWatchState,
   playableFile,
   prepareStream,
   saveWatchState,
-  startPositionOf,
 } from '../services/torrents/index.ts'
 import { signToken } from '../utils/token.ts'
 import { sendEngineError } from './engineResponses.ts'
@@ -57,11 +62,11 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
       },
     },
     async (request, reply) => {
-      const { torrentId, fileIndex } = request.body
+      const { torrentId, fileIndex, title } = request.body
       const found = getTorrent(torrentId)
       const file = found && playableFile(found, fileIndex)
 
-      if (!found || !file)
+      if (!found || !file || (title && !parseCatalogId(title.id)))
         return reply.code(404).send({ message: 'File not found' })
 
       if (found.status !== 'ready') {
@@ -77,7 +82,17 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
         return sendEngineError(reply, err)
       }
 
-      const state = getWatchState(torrentId, fileIndex)
+      // Прогресс серии сильнее позиции файла: раздачу могли сменить
+      const progress = title
+        ? getTitleProgress({
+            titleId: title.id,
+            season: title.season,
+            episode: title.episode,
+          })
+        : undefined
+      const state = progress?.position
+        ? progress
+        : getWatchState(torrentId, fileIndex)
 
       return {
         streamUrl: streamUrlOf(torrentId, fileIndex, request.userId),
@@ -86,7 +101,9 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
         fileName: fileNameOf(file.path),
         size: file.size,
         duration: state?.duration ?? null,
-        startPosition: startPositionOf(state),
+        startPosition: state
+          ? resumePosition(state.position, state.duration)
+          : null,
       }
     },
   )
@@ -106,11 +123,23 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
       },
     },
     async (request, reply) => {
-      const { torrentId, fileIndex, position, duration } = request.body
+      const { torrentId, fileIndex, position, duration, title } = request.body
       const found = getTorrent(torrentId)
 
-      if (!found || !playableFile(found, fileIndex))
+      if (
+        !found
+        || !playableFile(found, fileIndex)
+        || (title && !parseCatalogId(title.id))
+      ) {
         return reply.code(404).send({ message: 'File not found' })
+      }
+
+      if (title) {
+        saveTitleProgress(
+          { titleId: title.id, season: title.season, episode: title.episode },
+          { position, duration: duration ?? null, torrentId, fileIndex },
+        )
+      }
 
       const saved = saveWatchState({
         torrentId,

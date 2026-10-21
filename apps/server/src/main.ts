@@ -3,6 +3,7 @@ import { createApp } from './app.ts'
 import { config } from './config.ts'
 import { migrateDb } from './db/index.ts'
 import { createEngine } from './services/engine/index.ts'
+import { purgeExpiredAliases } from './services/sources/aliases.ts'
 import { purgeExpiredMetaCache } from './services/tmdb/cache.ts'
 import { resumeResolving } from './services/torrents/index.ts'
 
@@ -11,22 +12,30 @@ const DAY_MS = 24 * 60 * 60 * 1000
 migrateDb()
 
 // Срок хранения данных TMDB ограничен: чистим и при старте, и раз в сутки
-purgeExpiredMetaCache()
-setInterval(purgeExpiredMetaCache, DAY_MS).unref()
+function purgeTmdbData() {
+  purgeExpiredMetaCache()
+  purgeExpiredAliases()
+}
 
-const app = createApp({
-  logger: {
-    serializers: {
-      // Токен потока в адресе действует часами: в журнал он не попадает
-      req: request => ({
-        method: request.method,
-        url: request.url.replace(/([?&]token=)[^&]+/, '$1[redacted]'),
-        host: request.host,
-        remoteAddress: request.ip,
-      }),
+purgeTmdbData()
+setInterval(purgeTmdbData, DAY_MS).unref()
+
+const app = createApp(
+  {
+    logger: {
+      serializers: {
+        // Токен потока в адресе действует часами: в журнал он не попадает
+        req: request => ({
+          method: request.method,
+          url: request.url.replace(/([?&]token=)[^&]+/, '$1[redacted]'),
+          host: request.host,
+          remoteAddress: request.ip,
+        }),
+      },
     },
   },
-}, config.clients)
+  config.clients,
+)
 
 const engineLog = app.log.child({ module: 'engine' })
 

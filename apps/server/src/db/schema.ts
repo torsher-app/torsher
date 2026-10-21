@@ -181,3 +181,83 @@ export const watchStates = sqliteTable(
 )
 
 export type WatchState = typeof watchStates.$inferSelect
+
+// `official`, `original`, `alternative` и `translit` собираются из TMDB и живут
+// не дольше его данных; `tracker` и `user` — названия из раздач и от пользователя
+export const titleAliasKinds = [
+  'official',
+  'original',
+  'alternative',
+  'translit',
+  'tracker',
+  'user',
+] as const
+
+export type TitleAliasKind = (typeof titleAliasKinds)[number]
+
+// Названия тайтла, по которым ищутся раздачи. `title_id` — каталожный ID
+// (`tmdb:tv:1396`), пока у тайтлов нет своей таблицы
+export const titleAliases = sqliteTable(
+  'title_aliases',
+  {
+    titleId: text('title_id').notNull(),
+    value: text('value').notNull(),
+    // Ключ `titleKey`: одинаковый у написаний кириллицей и транслитом
+    normalized: text('normalized').notNull(),
+    lang: text('lang'),
+    kind: text('kind', { enum: titleAliasKinds }).notNull(),
+    syncedAt: integer('synced_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  table => [
+    primaryKey({ columns: [table.titleId, table.kind, table.value] }),
+    index('title_aliases_normalized_idx').on(table.normalized),
+    index('title_aliases_synced_at_idx').on(table.syncedAt),
+  ],
+)
+
+export type TitleAlias = typeof titleAliases.$inferSelect
+
+// Озвучка, закреплённая за сезоном (у фильма сезон 0): студия, а без неё — тип
+export const titleVoices = sqliteTable(
+  'title_voices',
+  {
+    titleId: text('title_id').notNull(),
+    season: integer('season').notNull(),
+    studio: text('studio'),
+    type: text('type'),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  table => [primaryKey({ columns: [table.titleId, table.season] })],
+)
+
+// Позиция просмотра тайтла и серии (у фильма сезон и серия — 0): не зависит
+// от раздачи, поэтому смена раздачи или озвучки прогресс не сбрасывает.
+// `profile_id` появится вместе с профилями
+export const titleProgress = sqliteTable(
+  'title_progress',
+  {
+    titleId: text('title_id').notNull(),
+    season: integer('season').notNull(),
+    episode: integer('episode').notNull(),
+    position: real('position').notNull(),
+    duration: real('duration'),
+    // Чем смотрели в последний раз: по студии работает «как в прошлых сериях»
+    torrentId: text('torrent_id').references(() => torrents.id, {
+      onDelete: 'set null',
+    }),
+    fileIndex: integer('file_index'),
+    voiceStudio: text('voice_studio'),
+    voiceType: text('voice_type'),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  table => [
+    primaryKey({ columns: [table.titleId, table.season, table.episode] }),
+    index('title_progress_updated_at_idx').on(table.titleId, table.updatedAt),
+  ],
+)
+
+export type TitleProgress = typeof titleProgress.$inferSelect

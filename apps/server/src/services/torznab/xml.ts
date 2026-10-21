@@ -2,7 +2,13 @@ import { XMLParser } from 'fast-xml-parser'
 
 // Элементы, которые бывают одиночными или повторяются: всегда массив,
 // чтобы разбор не зависел от того, сколько их пришло
-const ALWAYS_ARRAY = new Set(['category', 'subcat', 'indexer', 'item'])
+const ALWAYS_ARRAY = new Set([
+  'category',
+  'subcat',
+  'indexer',
+  'item',
+  'torznab:attr',
+])
 
 const parser = new XMLParser({
   ignoreAttributes: false,

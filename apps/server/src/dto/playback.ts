@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { playbackTitle } from './titles.ts'
 
 const fileIndex = z.number().int().min(0).max(99_999)
 const seconds = z.number().min(0).max(1_000_000)
@@ -7,6 +8,8 @@ export const createPlayback = z
   .object({
     torrentId: z.string().min(1).max(100),
     fileIndex,
+    // Смотрим из карточки: позиция для продолжения — по серии, а не по файлу
+    title: playbackTitle.optional(),
   })
   .meta({ id: 'createPlayback' })
 
@@ -32,6 +35,7 @@ export const updateWatchState = z
     fileIndex,
     position: seconds,
     duration: seconds.optional(),
+    title: playbackTitle.optional(),
   })
   .meta({ id: 'updateWatchState' })
 

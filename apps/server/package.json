@@ -19,6 +19,7 @@
     "@fastify/static": "^10.1.6",
     "@fastify/swagger": "^9.9.2",
     "@node-rs/argon2": "^2.2.2",
+    "@torsher/release-parser": "workspace:*",
     "better-sqlite3": "^13.0.3",
     "drizzle-orm": "^0.45.4",
     "fast-xml-parser": "^5.11.2",

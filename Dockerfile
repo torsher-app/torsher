@@ -59,7 +59,14 @@ RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
  # Исходники SQLite и бинарники под другие платформы рантайму не нужны
  && sqlite=$(echo node_modules/.pnpm/better-sqlite3@*/node_modules/better-sqlite3) \
  && rm -rf "$sqlite/deps" "$sqlite/src" \
- && find "$sqlite/prebuilds" -type f ! -name "linux-$cpu.node" -delete
+ && find "$sqlite/prebuilds" -type f ! -name "linux-$cpu.node" -delete \
+ # Node не снимает типы с .ts внутри node_modules: пакеты монорепо на TS лежат
+ # рядом с сервером, а в node_modules остаётся ссылка на них
+ && mkdir -p /out/packages/release-parser \
+ && cp -r /src/packages/release-parser/package.json /src/packages/release-parser/src /out/packages/release-parser/ \
+ && find /out/packages -name '*.test.ts' -delete \
+ && rm -rf node_modules/@torsher/release-parser \
+ && ln -s ../../../packages/release-parser node_modules/@torsher/release-parser
 
 FROM node:${NODE_VERSION}-bookworm-slim
 
@@ -83,6 +90,7 @@ WORKDIR /app
 COPY --from=build /out/server/package.json server/package.json
 COPY --from=build /out/server/node_modules server/node_modules
 COPY --from=build /out/server/src server/src
+COPY --from=build /out/packages packages
 COPY --from=build /src/apps/tv/dist tv/dist
 COPY --from=build /src/apps/web/.output/public web/.output/public
 COPY --from=engine /out/torsher-engine /usr/local/bin/torsher-engine

@@ -318,6 +318,167 @@ export interface IndexerManagerSyncResultInput {
   missing: number;
 }
 
+export interface VoiceRefInput {
+  studio?: string;
+  type?: "D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original";
+}
+
+export interface AudioTrackInput {
+  type?: "D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original";
+  studio?: string;
+  language?: string;
+}
+
+export interface SourceCandidateInput {
+  id: string;
+  title: string;
+  indexers: string[];
+  size: number | null;
+  episodeSize: number | null;
+  seeders: number;
+  peers: number | null;
+  quality:
+    | "2160p"
+    | "1440p"
+    | "1080p"
+    | "1080i"
+    | "720p"
+    | "576p"
+    | "480p"
+    | "360p"
+    | null;
+  source: string | null;
+  codec: string | null;
+  hdr: string[];
+  audio: AudioTrackInput[];
+  voice: AudioTrackInput | null;
+  seasons: number[];
+  episodes: {
+    from: number;
+    to: number;
+    total?: number;
+  } | null;
+  isPack: boolean;
+  confidence: "high" | "medium";
+  pickReason:
+    | "pinnedVoice"
+    | "profile"
+    | "bestQuality"
+    | "smaller"
+    | "moreSeeders"
+    | "originalAudio"
+    | null;
+  publishedAt: string | null;
+}
+
+export interface VoiceOptionInput {
+  key: string;
+  studio?: string;
+  type?: "D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original";
+  maxQuality?:
+    "2160p" | "1440p" | "1080p" | "1080i" | "720p" | "576p" | "480p" | "360p";
+  seeders: number;
+  count: number;
+  pinned: boolean;
+}
+
+export interface TitleSourcesInput {
+  season: number | null;
+  episode: number | null;
+  updatedAt: string;
+  profile: {
+    qualities: (
+      "2160p" | "1440p" | "1080p" | "1080i" | "720p" | "576p" | "480p" | "360p"
+    )[];
+    voiceTypes: ("D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original")[];
+  };
+  pinnedVoice: VoiceRefInput | null;
+  top: string[];
+  candidates: SourceCandidateInput[];
+  voices: VoiceOptionInput[];
+  indexers: {
+    total: number;
+    failed: {
+      name: string;
+      kind:
+        | "auth"
+        | "timeout"
+        | "unreachable"
+        | "bad_response"
+        | "remote"
+        | "unsupported";
+    }[];
+  };
+}
+
+export interface PinTitleVoiceInput {
+  /**
+   * @min 0
+   * @max 999
+   */
+  season: number;
+  voice: VoiceRefInput | null;
+}
+
+export interface WatchTitleInput {
+  /**
+   * @min 1
+   * @max 999
+   */
+  season?: number;
+  /**
+   * @min 1
+   * @max 9999
+   */
+  episode?: number;
+  /**
+   * @minLength 1
+   * @maxLength 64
+   */
+  candidateId?: string;
+}
+
+export interface TitleWatchInput {
+  status: "ready" | "resolving";
+  torrentId: string;
+  fileIndex: number | null;
+  candidateId: string;
+}
+
+export interface WatchErrorResponseInput {
+  message: string;
+  kind: "no_sources" | "not_playable" | "candidate_gone";
+}
+
+export interface TitleProgressInput {
+  last: {
+    season: number | null;
+    episode: number | null;
+    position: number;
+    duration: number | null;
+    watched: boolean;
+    updatedAt: string;
+  } | null;
+}
+
+export interface PlaybackTitleInput {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  id: string;
+  /**
+   * @min 1
+   * @max 999
+   */
+  season?: number;
+  /**
+   * @min 1
+   * @max 9999
+   */
+  episode?: number;
+}
+
 export interface CreatePlaybackInput {
   /**
    * @minLength 1
@@ -329,6 +490,7 @@ export interface CreatePlaybackInput {
    * @max 99999
    */
   fileIndex: number;
+  title?: PlaybackTitleInput;
 }
 
 export interface PlaybackInput {
@@ -362,6 +524,7 @@ export interface UpdateWatchStateInput {
    * @max 1000000
    */
   duration?: number;
+  title?: PlaybackTitleInput;
 }
 
 export interface WatchStateInput {
@@ -752,6 +915,167 @@ export interface IndexerManagerSyncResult {
   missing: number;
 }
 
+export interface VoiceRef {
+  studio?: string;
+  type?: "D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original";
+}
+
+export interface AudioTrack {
+  type?: "D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original";
+  studio?: string;
+  language?: string;
+}
+
+export interface SourceCandidate {
+  id: string;
+  title: string;
+  indexers: string[];
+  size: number | null;
+  episodeSize: number | null;
+  seeders: number;
+  peers: number | null;
+  quality:
+    | "2160p"
+    | "1440p"
+    | "1080p"
+    | "1080i"
+    | "720p"
+    | "576p"
+    | "480p"
+    | "360p"
+    | null;
+  source: string | null;
+  codec: string | null;
+  hdr: string[];
+  audio: AudioTrack[];
+  voice: AudioTrack | null;
+  seasons: number[];
+  episodes: {
+    from: number;
+    to: number;
+    total?: number;
+  } | null;
+  isPack: boolean;
+  confidence: "high" | "medium";
+  pickReason:
+    | "pinnedVoice"
+    | "profile"
+    | "bestQuality"
+    | "smaller"
+    | "moreSeeders"
+    | "originalAudio"
+    | null;
+  publishedAt: string | null;
+}
+
+export interface VoiceOption {
+  key: string;
+  studio?: string;
+  type?: "D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original";
+  maxQuality?:
+    "2160p" | "1440p" | "1080p" | "1080i" | "720p" | "576p" | "480p" | "360p";
+  seeders: number;
+  count: number;
+  pinned: boolean;
+}
+
+export interface TitleSources {
+  season: number | null;
+  episode: number | null;
+  updatedAt: string;
+  profile: {
+    qualities: (
+      "2160p" | "1440p" | "1080p" | "1080i" | "720p" | "576p" | "480p" | "360p"
+    )[];
+    voiceTypes: ("D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original")[];
+  };
+  pinnedVoice: VoiceRef | null;
+  top: string[];
+  candidates: SourceCandidate[];
+  voices: VoiceOption[];
+  indexers: {
+    total: number;
+    failed: {
+      name: string;
+      kind:
+        | "auth"
+        | "timeout"
+        | "unreachable"
+        | "bad_response"
+        | "remote"
+        | "unsupported";
+    }[];
+  };
+}
+
+export interface PinTitleVoice {
+  /**
+   * @min 0
+   * @max 999
+   */
+  season: number;
+  voice: VoiceRef | null;
+}
+
+export interface WatchTitle {
+  /**
+   * @min 1
+   * @max 999
+   */
+  season?: number;
+  /**
+   * @min 1
+   * @max 9999
+   */
+  episode?: number;
+  /**
+   * @minLength 1
+   * @maxLength 64
+   */
+  candidateId?: string;
+}
+
+export interface TitleWatch {
+  status: "ready" | "resolving";
+  torrentId: string;
+  fileIndex: number | null;
+  candidateId: string;
+}
+
+export interface WatchErrorResponse {
+  message: string;
+  kind: "no_sources" | "not_playable" | "candidate_gone";
+}
+
+export interface TitleProgress {
+  last: {
+    season: number | null;
+    episode: number | null;
+    position: number;
+    duration: number | null;
+    watched: boolean;
+    updatedAt: string;
+  } | null;
+}
+
+export interface PlaybackTitle {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  id: string;
+  /**
+   * @min 1
+   * @max 999
+   */
+  season?: number;
+  /**
+   * @min 1
+   * @max 9999
+   */
+  episode?: number;
+}
+
 export interface CreatePlayback {
   /**
    * @minLength 1
@@ -763,6 +1087,7 @@ export interface CreatePlayback {
    * @max 99999
    */
   fileIndex: number;
+  title?: PlaybackTitle;
 }
 
 export interface Playback {
@@ -796,6 +1121,7 @@ export interface UpdateWatchState {
    * @max 1000000
    */
   duration?: number;
+  title?: PlaybackTitle;
 }
 
 export interface WatchState {
@@ -917,6 +1243,15 @@ export type PostIndexerManagerError = MessageResponse | SourceErrorResponse;
 export type PostIndexerManagerSyncError = MessageResponse | SourceErrorResponse;
 
 export type DeleteIndexerManagerError = MessageResponse;
+
+export type GetTitleSourcesError = MessageResponse;
+
+export type PutTitleVoiceError = MessageResponse;
+
+export type PostTitleWatchError =
+  MessageResponse | WatchErrorResponse | EngineUnavailableResponse;
+
+export type GetTitleProgressError = MessageResponse;
 
 export type GetTorrentsError = MessageResponse;
 
@@ -1665,6 +2000,90 @@ export class Api<
         path: `/api/indexer-managers/${id}`,
         method: "DELETE",
         query: query,
+        format: "json",
+        ...params,
+      }),
+  };
+  titles = {
+    /**
+     * No description
+     *
+     * @tags Titles
+     * @name GetTitleSources
+     * @request GET:/api/titles/{id}/sources
+     */
+    getTitleSources: (
+      id: string,
+      query?: {
+        /** @pattern ^[1-9]\d{0,2}$ */
+        season?: string;
+        /** @pattern ^[1-9]\d{0,3}$ */
+        episode?: string;
+        refresh?: "1";
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<TitleSources, GetTitleSourcesError>({
+        path: `/api/titles/${id}/sources`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Titles
+     * @name PutTitleVoice
+     * @request PUT:/api/titles/{id}/voice
+     */
+    putTitleVoice: (
+      id: string,
+      data: PinTitleVoiceInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<PinTitleVoice, PutTitleVoiceError>({
+        path: `/api/titles/${id}/voice`,
+        method: "PUT",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Titles
+     * @name PostTitleWatch
+     * @request POST:/api/titles/{id}/watch
+     */
+    postTitleWatch: (
+      id: string,
+      data: WatchTitleInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<TitleWatch, PostTitleWatchError>({
+        path: `/api/titles/${id}/watch`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Titles
+     * @name GetTitleProgress
+     * @request GET:/api/titles/{id}/progress
+     */
+    getTitleProgress: (id: string, params: RequestParams = {}) =>
+      this.request<TitleProgress, GetTitleProgressError>({
+        path: `/api/titles/${id}/progress`,
+        method: "GET",
         format: "json",
         ...params,
       }),
