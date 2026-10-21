@@ -13,9 +13,6 @@ import {
 } from 'fastify-type-provider-zod'
 import { config } from './config.ts'
 import { apiRoutes } from './routes/api.ts'
-import { playbackRoutes } from './routes/playback.ts'
-import { streamRoutes } from './routes/stream.ts'
-import { torrentRoutes } from './routes/torrents.ts'
 import { registerClients } from './static.ts'
 
 /**
@@ -73,9 +70,6 @@ export function createApp(
   // Весь API — под /api: корень и /panel/ занимают витрина и панель,
   // которые сервер отдаёт с того же origin
   app.register(apiRoutes, { prefix: '/api' })
-  app.register(torrentRoutes, { prefix: '/torrents' })
-  app.register(streamRoutes, { prefix: '/stream' })
-  app.register(playbackRoutes)
 
   if (clients)
     registerClients(app, clients)

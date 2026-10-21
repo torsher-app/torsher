@@ -6,6 +6,7 @@ set -eu
 
 data_dir=/data
 db_dir=$(dirname "$DATABASE_PATH")
+downloads_dir=${DOWNLOADS_PATH:-$data_dir/torrents}
 
 fail() {
   echo "torsher: $*" >&2
@@ -16,13 +17,13 @@ case "$PUID$PGID" in
   *[!0-9]*) fail "PUID and PGID must be numeric (got PUID=$PUID PGID=$PGID)" ;;
 esac
 
-mkdir -p "$db_dir" 2>/dev/null || true
+mkdir -p "$db_dir" "$downloads_dir" 2>/dev/null || true
 
 if [ "$(id -u)" = 0 ]; then
   # Рекурсивно — только каталог базы: в /data лежат загрузки и библиотека,
   # обходить их при каждом старте долго. На сетевых томах root может не иметь
   # права на chown — тогда решает проверка записи ниже
-  chown "$PUID:$PGID" "$data_dir" 2>/dev/null || true
+  chown "$PUID:$PGID" "$data_dir" "$downloads_dir" 2>/dev/null || true
   chown -R "$PUID:$PGID" "$db_dir" 2>/dev/null || true
   run_as="setpriv --reuid=$PUID --regid=$PGID --clear-groups"
   user="$PUID:$PGID"
@@ -31,9 +32,16 @@ else
   user="$(id -u):$(id -g)"
 fi
 
-if ! $run_as test -w "$db_dir"; then
-  fail "$db_dir is not writable by $user; check the owner of the /data volume or set PUID and PGID"
-fi
+for dir in "$db_dir" "$downloads_dir"; do
+  if ! $run_as test -w "$dir"; then
+    fail "$dir is not writable by $user; check the owner of the /data volume or set PUID and PGID"
+  fi
+done
+
+# После сброса привилегий HOME остался бы /root, куда пользователю не
+# записать, а движок хранит в ~/.cache таблицу DHT. В каталоге базы она ещё
+# и переживает перезапуск
+export HOME="$db_dir"
 
 # Ключ подписи сессий: без явного SECRET_KEY создаётся один раз и живёт
 # рядом с базой, иначе после перезапуска все входы бы сбрасывались

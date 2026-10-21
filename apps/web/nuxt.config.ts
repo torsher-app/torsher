@@ -11,10 +11,15 @@ export default defineNuxtConfig({
   devtools: { enabled: true },
 
   // В продакшене панель — статика, которую сервер отдаёт на /panel/
-  // рядом с витриной; в разработке Nuxt работает на своём порту в корне
+  // рядом с витриной в корне; в разработке Nuxt работает на своём порту
   $production: {
     app: {
       baseURL: '/panel/',
+    },
+    runtimeConfig: {
+      public: {
+        tvUrl: '/',
+      },
     },
   },
 

@@ -1675,11 +1675,11 @@ export class Api<
      *
      * @tags Torrents
      * @name GetTorrents
-     * @request GET:/torrents
+     * @request GET:/api/torrents
      */
     getTorrents: (params: RequestParams = {}) =>
       this.request<TorrentList, GetTorrentsError>({
-        path: `/torrents`,
+        path: `/api/torrents`,
         method: "GET",
         format: "json",
         ...params,
@@ -1690,11 +1690,11 @@ export class Api<
      *
      * @tags Torrents
      * @name PostTorrent
-     * @request POST:/torrents
+     * @request POST:/api/torrents
      */
     postTorrent: (data: CreateTorrentInput, params: RequestParams = {}) =>
       this.request<Torrent, PostTorrentError>({
-        path: `/torrents`,
+        path: `/api/torrents`,
         method: "POST",
         body: data,
         type: ContentType.Json,
@@ -1707,11 +1707,11 @@ export class Api<
      *
      * @tags Torrents
      * @name GetTorrent
-     * @request GET:/torrents/{id}
+     * @request GET:/api/torrents/{id}
      */
     getTorrent: (id: string, params: RequestParams = {}) =>
       this.request<Torrent, GetTorrentError>({
-        path: `/torrents/${id}`,
+        path: `/api/torrents/${id}`,
         method: "GET",
         format: "json",
         ...params,
@@ -1722,11 +1722,11 @@ export class Api<
      *
      * @tags Torrents
      * @name DeleteTorrent
-     * @request DELETE:/torrents/{id}
+     * @request DELETE:/api/torrents/{id}
      */
     deleteTorrent: (id: string, params: RequestParams = {}) =>
       this.request<MessageResponse, DeleteTorrentError>({
-        path: `/torrents/${id}`,
+        path: `/api/torrents/${id}`,
         method: "DELETE",
         format: "json",
         ...params,
@@ -1737,11 +1737,11 @@ export class Api<
      *
      * @tags Torrents
      * @name PostTorrentRetry
-     * @request POST:/torrents/{id}/retry
+     * @request POST:/api/torrents/{id}/retry
      */
     postTorrentRetry: (id: string, params: RequestParams = {}) =>
       this.request<Torrent, PostTorrentRetryError>({
-        path: `/torrents/${id}/retry`,
+        path: `/api/torrents/${id}/retry`,
         method: "POST",
         format: "json",
         ...params,
@@ -1752,7 +1752,7 @@ export class Api<
      *
      * @tags Torrents
      * @name GetTorrentStats
-     * @request GET:/torrents/{id}/stats
+     * @request GET:/api/torrents/{id}/stats
      */
     getTorrentStats: (
       id: string,
@@ -1765,7 +1765,7 @@ export class Api<
       params: RequestParams = {},
     ) =>
       this.request<TorrentStats, GetTorrentStatsError>({
-        path: `/torrents/${id}/stats`,
+        path: `/api/torrents/${id}/stats`,
         method: "GET",
         query: query,
         format: "json",
@@ -1778,11 +1778,11 @@ export class Api<
      *
      * @tags Playback
      * @name PostPlayback
-     * @request POST:/playback
+     * @request POST:/api/playback
      */
     postPlayback: (data: CreatePlaybackInput, params: RequestParams = {}) =>
       this.request<Playback, PostPlaybackError>({
-        path: `/playback`,
+        path: `/api/playback`,
         method: "POST",
         body: data,
         type: ContentType.Json,
@@ -1796,11 +1796,11 @@ export class Api<
      *
      * @tags Playback
      * @name PutWatchState
-     * @request PUT:/watch-state
+     * @request PUT:/api/watch-state
      */
     putWatchState: (data: UpdateWatchStateInput, params: RequestParams = {}) =>
       this.request<WatchState, PutWatchStateError>({
-        path: `/watch-state`,
+        path: `/api/watch-state`,
         method: "PUT",
         body: data,
         type: ContentType.Json,

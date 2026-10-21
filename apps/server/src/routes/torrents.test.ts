@@ -115,15 +115,15 @@ afterEach(() => {
 
 describe('доступ', () => {
   it.each([
-    ['GET', '/torrents'],
-    ['POST', '/torrents'],
-    ['GET', '/torrents/x'],
-    ['DELETE', '/torrents/x'],
-    ['POST', '/torrents/x/retry'],
-    ['GET', '/torrents/x/stats?fileIndex=0'],
-    ['POST', '/playback'],
-    ['PUT', '/watch-state'],
-    ['GET', '/stream/x/0'],
+    ['GET', '/api/torrents'],
+    ['POST', '/api/torrents'],
+    ['GET', '/api/torrents/x'],
+    ['DELETE', '/api/torrents/x'],
+    ['POST', '/api/torrents/x/retry'],
+    ['GET', '/api/torrents/x/stats?fileIndex=0'],
+    ['POST', '/api/playback'],
+    ['PUT', '/api/watch-state'],
+    ['GET', '/api/stream/x/0'],
   ] as const)('%s %s: 401 без входа', async (method, url) => {
     const anonymous = await app.inject({ method, url })
 
@@ -133,7 +133,7 @@ describe('доступ', () => {
   it('поток не принимает токен другого назначения', async () => {
     const torrent = insertTorrent()
     const response = await app.inject({
-      url: `/stream/${torrent.id}/0?token=${signToken('owner', 'user_access')}`,
+      url: `/api/stream/${torrent.id}/0?token=${signToken('owner', 'user_access')}`,
     })
 
     expect(response.statusCode).toBe(401)
@@ -144,13 +144,13 @@ describe('добавление раздачи', () => {
   it('без magnet и файла или с обоими — 400', async () => {
     const empty = await app.inject({
       method: 'POST',
-      url: '/torrents',
+      url: '/api/torrents',
       cookies: owner,
       payload: {},
     })
     const both = await app.inject({
       method: 'POST',
-      url: '/torrents',
+      url: '/api/torrents',
       cookies: owner,
       payload: { magnet: MAGNET, torrentFile: 'ZA==' },
     })
@@ -162,7 +162,7 @@ describe('добавление раздачи', () => {
   it('magnet без infohash v1 — 400', async () => {
     const response = await app.inject({
       method: 'POST',
-      url: '/torrents',
+      url: '/api/torrents',
       cookies: owner,
       payload: { magnet: 'magnet:?dn=nothing' },
     })
@@ -176,7 +176,7 @@ describe('добавление раздачи', () => {
 
     const response = await app.inject({
       method: 'POST',
-      url: '/torrents',
+      url: '/api/torrents',
       cookies: owner,
       payload: { magnet: MAGNET },
     })
@@ -200,7 +200,7 @@ describe('добавление раздачи', () => {
 
     const response = await app.inject({
       method: 'POST',
-      url: '/torrents',
+      url: '/api/torrents',
       cookies: owner,
       payload: { magnet: MAGNET },
     })
@@ -249,7 +249,7 @@ describe('добавление раздачи', () => {
 
     const pending = app.inject({
       method: 'POST',
-      url: '/torrents',
+      url: '/api/torrents',
       cookies: owner,
       payload: { magnet: MAGNET },
     })
@@ -281,7 +281,7 @@ describe('добавление раздачи', () => {
 
     const failed = await app.inject({
       method: 'POST',
-      url: '/torrents',
+      url: '/api/torrents',
       cookies: owner,
       payload: { magnet: MAGNET },
     })
@@ -295,7 +295,7 @@ describe('добавление раздачи', () => {
 
     const retried = await app.inject({
       method: 'POST',
-      url: '/torrents',
+      url: '/api/torrents',
       cookies: owner,
       payload: { magnet: MAGNET },
     })
@@ -324,7 +324,7 @@ describe('добавление раздачи', () => {
 
     const response = await app.inject({
       method: 'POST',
-      url: `/torrents/${torrent.id}/retry`,
+      url: `/api/torrents/${torrent.id}/retry`,
       cookies: owner,
     })
 
@@ -341,13 +341,13 @@ describe('добавление раздачи', () => {
     }
     const created = await app.inject({
       method: 'POST',
-      url: '/torrents',
+      url: '/api/torrents',
       cookies: owner,
       payload,
     })
     const again = await app.inject({
       method: 'POST',
-      url: '/torrents',
+      url: '/api/torrents',
       cookies: owner,
       payload,
     })
@@ -370,7 +370,7 @@ describe('добавление раздачи', () => {
 
     const response = await app.inject({
       method: 'POST',
-      url: '/torrents',
+      url: '/api/torrents',
       cookies: owner,
       payload: { torrentFile: 'bm90IGEgdG9ycmVudA==' },
     })
@@ -383,12 +383,15 @@ describe('список и удаление', () => {
   it('список и карточка раздачи', async () => {
     const torrent = insertTorrent()
 
-    const list = await app.inject({ url: '/torrents', cookies: owner })
+    const list = await app.inject({ url: '/api/torrents', cookies: owner })
     const one = await app.inject({
-      url: `/torrents/${torrent.id}`,
+      url: `/api/torrents/${torrent.id}`,
       cookies: owner,
     })
-    const missing = await app.inject({ url: '/torrents/nope', cookies: owner })
+    const missing = await app.inject({
+      url: '/api/torrents/nope',
+      cookies: owner,
+    })
 
     expect(list.json()).toMatchObject({ engine: 'ready' })
     expect(list.json().items).toHaveLength(1)
@@ -402,7 +405,7 @@ describe('список и удаление', () => {
     const torrent = insertTorrent()
     const response = await app.inject({
       method: 'DELETE',
-      url: `/torrents/${torrent.id}`,
+      url: `/api/torrents/${torrent.id}`,
       cookies: owner,
     })
 
@@ -417,7 +420,7 @@ describe('список и удаление', () => {
 
     const down = await app.inject({
       method: 'DELETE',
-      url: `/torrents/${torrent.id}`,
+      url: `/api/torrents/${torrent.id}`,
       cookies: owner,
     })
 
@@ -429,7 +432,7 @@ describe('список и удаление', () => {
 
     const deleted = await app.inject({
       method: 'DELETE',
-      url: `/torrents/${torrent.id}`,
+      url: `/api/torrents/${torrent.id}`,
       cookies: owner,
     })
 
@@ -445,7 +448,7 @@ describe('статистика', () => {
     engine({})
 
     const response = await app.inject({
-      url: `/torrents/${torrent.id}/stats?fileIndex=0`,
+      url: `/api/torrents/${torrent.id}/stats?fileIndex=0`,
       cookies: owner,
     })
 
@@ -468,7 +471,7 @@ describe('статистика', () => {
     })
 
     const response = await app.inject({
-      url: `/torrents/${torrent.id}/stats?fileIndex=0&offset=1048576`,
+      url: `/api/torrents/${torrent.id}/stats?fileIndex=0&offset=1048576`,
       cookies: owner,
     })
 
@@ -488,11 +491,11 @@ describe('статистика', () => {
   it('файл-выравнивание и чужой индекс — 404', async () => {
     const torrent = insertTorrent()
     const padding = await app.inject({
-      url: `/torrents/${torrent.id}/stats?fileIndex=1`,
+      url: `/api/torrents/${torrent.id}/stats?fileIndex=1`,
       cookies: owner,
     })
     const outside = await app.inject({
-      url: `/torrents/${torrent.id}/stats?fileIndex=9`,
+      url: `/api/torrents/${torrent.id}/stats?fileIndex=9`,
       cookies: owner,
     })
 
@@ -506,7 +509,7 @@ describe('статистика', () => {
     setEngineDown('starting')
 
     const response = await app.inject({
-      url: `/torrents/${torrent.id}/stats?fileIndex=0`,
+      url: `/api/torrents/${torrent.id}/stats?fileIndex=0`,
       cookies: owner,
     })
 
@@ -520,7 +523,7 @@ describe('воспроизведение и позиция', () => {
     const torrent = insertTorrent({ status: 'resolving', torrentFile: null })
     const response = await app.inject({
       method: 'POST',
-      url: '/playback',
+      url: '/api/playback',
       cookies: owner,
       payload: { torrentId: torrent.id, fileIndex: 0 },
     })
@@ -551,7 +554,7 @@ describe('воспроизведение и позиция', () => {
 
     const response = await app.inject({
       method: 'POST',
-      url: '/playback',
+      url: '/api/playback',
       cookies: owner,
       payload: { torrentId: torrent.id, fileIndex: 0 },
     })
@@ -587,7 +590,7 @@ describe('воспроизведение и позиция', () => {
 
     await app.inject({
       method: 'POST',
-      url: '/playback',
+      url: '/api/playback',
       cookies: owner,
       payload: { torrentId: torrent.id, fileIndex: 0 },
     })
@@ -605,7 +608,7 @@ describe('воспроизведение и позиция', () => {
 
     const saved = await app.inject({
       method: 'PUT',
-      url: '/watch-state',
+      url: '/api/watch-state',
       cookies: owner,
       payload: {
         torrentId: torrent.id,
@@ -620,7 +623,7 @@ describe('воспроизведение и позиция', () => {
 
     const response = await app.inject({
       method: 'POST',
-      url: '/playback',
+      url: '/api/playback',
       cookies: owner,
       payload: { torrentId: torrent.id, fileIndex: 0 },
     })
@@ -634,7 +637,7 @@ describe('воспроизведение и позиция', () => {
   it('позиция чужого файла — 404', async () => {
     const response = await app.inject({
       method: 'PUT',
-      url: '/watch-state',
+      url: '/api/watch-state',
       cookies: owner,
       payload: { torrentId: 'nope', fileIndex: 0, position: 10 },
     })
@@ -645,7 +648,7 @@ describe('воспроизведение и позиция', () => {
 
 describe('поток', () => {
   function streamUrl(torrent: Torrent, fileIndex = 0) {
-    return `/stream/${torrent.id}/${fileIndex}?token=${signToken('owner', 'stream')}`
+    return `/api/stream/${torrent.id}/${fileIndex}?token=${signToken('owner', 'stream')}`
   }
 
   it('диапазон Range уходит в движок, 206 и Content-Range возвращаются плееру', async () => {
@@ -686,7 +689,7 @@ describe('поток', () => {
     })
 
     const response = await app.inject({
-      url: `/stream/${torrent.id}/0`,
+      url: `/api/stream/${torrent.id}/0`,
       cookies: owner,
     })
 
