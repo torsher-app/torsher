@@ -3,7 +3,7 @@ import type { StorageOverview } from '../services/storage/index.ts'
 import { messageResponse } from '../dto/common.ts'
 import { storageOverview, updateStoragePolicy } from '../dto/storage.ts'
 import { engineUnavailableResponse } from '../dto/torrents.ts'
-import { requireAuth } from '../middleware/auth.ts'
+import { requireOwner } from '../middleware/auth.ts'
 import { getStorageOverview, updatePolicy } from '../services/storage/index.ts'
 import { sendEngineError } from './engineResponses.ts'
 
@@ -35,7 +35,7 @@ const responses = {
 
 /** Хранилище — настройка сервера: только сессия аккаунта */
 export const storageRoutes: FastifyPluginAsyncZod = async (app) => {
-  app.addHook('onRequest', requireAuth)
+  app.addHook('onRequest', requireOwner)
 
   app.get(
     '',

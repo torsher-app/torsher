@@ -15,7 +15,7 @@ import {
   torrentStatsQuery,
   updateRetention,
 } from '../dto/torrents.ts'
-import { requireAuth } from '../middleware/auth.ts'
+import { requireByRoute } from '../middleware/auth.ts'
 import { engineState } from '../services/engine/index.ts'
 import { cacheSummary } from '../services/storage/index.ts'
 import {
@@ -56,7 +56,9 @@ const engineResponses = {
 }
 
 export const torrentRoutes: FastifyPluginAsyncZod = async (app) => {
-  app.addHook('onRequest', requireAuth)
+  // Раздачу и её статистику читает и витрина (ожидание magnet, буфер
+  // плеера) — такие роуты помечены `config.viewer`; остальное — панель
+  app.addHook('onRequest', requireByRoute)
 
   app.get(
     '',
@@ -131,6 +133,7 @@ export const torrentRoutes: FastifyPluginAsyncZod = async (app) => {
   app.get(
     '/:id',
     {
+      config: { viewer: true },
       schema: {
         operationId: 'getTorrent',
         tags: ['Torrents'],
@@ -340,6 +343,7 @@ export const torrentRoutes: FastifyPluginAsyncZod = async (app) => {
   app.get(
     '/:id/stats',
     {
+      config: { viewer: true },
       schema: {
         operationId: 'getTorrentStats',
         tags: ['Torrents'],

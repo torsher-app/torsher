@@ -167,6 +167,84 @@ export interface CatalogTrendingResponseInput {
   items: CardInput[];
 }
 
+export interface StartPairingInput {
+  type?: "tv" | "browser" | "other";
+}
+
+export interface PairingInput {
+  secret: string;
+  code: string;
+  expiresAt: string;
+}
+
+export interface PairingStatusInput {
+  status: "pending" | "approved" | "expired";
+  expiresAt: string;
+  device: {
+    id: string;
+    name: string;
+  } | null;
+}
+
+export interface ConfirmPairingInput {
+  /**
+   * @minLength 1
+   * @maxLength 20
+   */
+  code: string;
+  /**
+   * @minLength 1
+   * @maxLength 60
+   */
+  name: string;
+}
+
+export interface ConfirmedPairingInput {
+  name: string;
+  type: "tv" | "browser" | "other";
+}
+
+export interface PairingErrorResponseInput {
+  message: string;
+  kind: "invalid" | "expired";
+}
+
+export interface DeviceInput {
+  id: string;
+  name: string;
+  type: "tv" | "browser" | "other";
+  profile: {
+    id: string;
+    name: string;
+    color:
+      | "violet"
+      | "green"
+      | "orange"
+      | "blue"
+      | "rose"
+      | "teal"
+      | "amber"
+      | "slate";
+  } | null;
+  address: string | null;
+  userAgent: string | null;
+  createdAt: string;
+  lastSeenAt: string | null;
+  watching: boolean;
+}
+
+export interface DeviceListInput {
+  items: DeviceInput[];
+}
+
+export interface UpdateDeviceInput {
+  /**
+   * @minLength 1
+   * @maxLength 60
+   */
+  name: string;
+}
+
 export interface HomeRowInput {
   id:
     | "trending"
@@ -376,14 +454,7 @@ export interface VoiceOptionInput {
   studio?: string;
   type?: "D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original";
   maxQuality?:
-    | "2160p"
-    | "1440p"
-    | "1080p"
-    | "1080i"
-    | "720p"
-    | "576p"
-    | "480p"
-    | "360p";
+    "2160p" | "1440p" | "1080p" | "1080i" | "720p" | "576p" | "480p" | "360p";
   seeders: number;
   count: number;
   pinned: boolean;
@@ -395,14 +466,7 @@ export interface TitleSourcesInput {
   updatedAt: string;
   profile: {
     qualities: (
-      | "2160p"
-      | "1440p"
-      | "1080p"
-      | "1080i"
-      | "720p"
-      | "576p"
-      | "480p"
-      | "360p"
+      "2160p" | "1440p" | "1080p" | "1080i" | "720p" | "576p" | "480p" | "360p"
     )[];
     voiceTypes: ("D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original")[];
   };
@@ -660,6 +724,93 @@ export interface TorrentStatsInput {
   };
 }
 
+export interface ProfileInput {
+  id: string;
+  name: string;
+  color:
+    | "violet"
+    | "green"
+    | "orange"
+    | "blue"
+    | "rose"
+    | "teal"
+    | "amber"
+    | "slate";
+  language: "ru_RU" | "en_US" | null;
+  hasPin: boolean;
+  ageLimit: 6 | 12 | 16 | 18 | null;
+}
+
+export interface ProfileListInput {
+  items: ProfileInput[];
+  currentId: string;
+}
+
+export interface CreateProfileInput {
+  /**
+   * @minLength 1
+   * @maxLength 40
+   */
+  name: string;
+  color:
+    | "violet"
+    | "green"
+    | "orange"
+    | "blue"
+    | "rose"
+    | "teal"
+    | "amber"
+    | "slate";
+  language?: "ru_RU" | "en_US" | null;
+  ageLimit?: 6 | 12 | 16 | 18 | null;
+  /** @pattern ^\d{4}$ */
+  pin?: string;
+}
+
+export interface UpdateProfileInput {
+  /**
+   * @minLength 1
+   * @maxLength 40
+   */
+  name?: string;
+  color?:
+    | "violet"
+    | "green"
+    | "orange"
+    | "blue"
+    | "rose"
+    | "teal"
+    | "amber"
+    | "slate";
+  language?: "ru_RU" | "en_US" | null;
+  ageLimit?: 6 | 12 | 16 | 18 | null;
+}
+
+export interface SetProfilePinInput {
+  /** @pattern ^\d{4}$ */
+  pin: string;
+}
+
+export interface SelectProfileInput {
+  /** @pattern ^\d{4}$ */
+  pin?: string;
+}
+
+export interface PinErrorResponseInput {
+  message: string;
+  kind: "wrong_pin" | "locked";
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  attemptsLeft: number | null;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  retryAfter: number | null;
+}
+
 export interface StorageQueueItemInput {
   torrentId: string;
   name: string;
@@ -863,6 +1014,84 @@ export interface CatalogSearchResponse {
 
 export interface CatalogTrendingResponse {
   items: Card[];
+}
+
+export interface StartPairing {
+  type?: "tv" | "browser" | "other";
+}
+
+export interface Pairing {
+  secret: string;
+  code: string;
+  expiresAt: string;
+}
+
+export interface PairingStatus {
+  status: "pending" | "approved" | "expired";
+  expiresAt: string;
+  device: {
+    id: string;
+    name: string;
+  } | null;
+}
+
+export interface ConfirmPairing {
+  /**
+   * @minLength 1
+   * @maxLength 20
+   */
+  code: string;
+  /**
+   * @minLength 1
+   * @maxLength 60
+   */
+  name: string;
+}
+
+export interface ConfirmedPairing {
+  name: string;
+  type: "tv" | "browser" | "other";
+}
+
+export interface PairingErrorResponse {
+  message: string;
+  kind: "invalid" | "expired";
+}
+
+export interface Device {
+  id: string;
+  name: string;
+  type: "tv" | "browser" | "other";
+  profile: {
+    id: string;
+    name: string;
+    color:
+      | "violet"
+      | "green"
+      | "orange"
+      | "blue"
+      | "rose"
+      | "teal"
+      | "amber"
+      | "slate";
+  } | null;
+  address: string | null;
+  userAgent: string | null;
+  createdAt: string;
+  lastSeenAt: string | null;
+  watching: boolean;
+}
+
+export interface DeviceList {
+  items: Device[];
+}
+
+export interface UpdateDevice {
+  /**
+   * @minLength 1
+   * @maxLength 60
+   */
+  name: string;
 }
 
 export interface HomeRow {
@@ -1074,14 +1303,7 @@ export interface VoiceOption {
   studio?: string;
   type?: "D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original";
   maxQuality?:
-    | "2160p"
-    | "1440p"
-    | "1080p"
-    | "1080i"
-    | "720p"
-    | "576p"
-    | "480p"
-    | "360p";
+    "2160p" | "1440p" | "1080p" | "1080i" | "720p" | "576p" | "480p" | "360p";
   seeders: number;
   count: number;
   pinned: boolean;
@@ -1093,14 +1315,7 @@ export interface TitleSources {
   updatedAt: string;
   profile: {
     qualities: (
-      | "2160p"
-      | "1440p"
-      | "1080p"
-      | "1080i"
-      | "720p"
-      | "576p"
-      | "480p"
-      | "360p"
+      "2160p" | "1440p" | "1080p" | "1080i" | "720p" | "576p" | "480p" | "360p"
     )[];
     voiceTypes: ("D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original")[];
   };
@@ -1358,6 +1573,93 @@ export interface TorrentStats {
   };
 }
 
+export interface Profile {
+  id: string;
+  name: string;
+  color:
+    | "violet"
+    | "green"
+    | "orange"
+    | "blue"
+    | "rose"
+    | "teal"
+    | "amber"
+    | "slate";
+  language: "ru_RU" | "en_US" | null;
+  hasPin: boolean;
+  ageLimit: 6 | 12 | 16 | 18 | null;
+}
+
+export interface ProfileList {
+  items: Profile[];
+  currentId: string;
+}
+
+export interface CreateProfile {
+  /**
+   * @minLength 1
+   * @maxLength 40
+   */
+  name: string;
+  color:
+    | "violet"
+    | "green"
+    | "orange"
+    | "blue"
+    | "rose"
+    | "teal"
+    | "amber"
+    | "slate";
+  language?: "ru_RU" | "en_US" | null;
+  ageLimit?: 6 | 12 | 16 | 18 | null;
+  /** @pattern ^\d{4}$ */
+  pin?: string;
+}
+
+export interface UpdateProfile {
+  /**
+   * @minLength 1
+   * @maxLength 40
+   */
+  name?: string;
+  color?:
+    | "violet"
+    | "green"
+    | "orange"
+    | "blue"
+    | "rose"
+    | "teal"
+    | "amber"
+    | "slate";
+  language?: "ru_RU" | "en_US" | null;
+  ageLimit?: 6 | 12 | 16 | 18 | null;
+}
+
+export interface SetProfilePin {
+  /** @pattern ^\d{4}$ */
+  pin: string;
+}
+
+export interface SelectProfile {
+  /** @pattern ^\d{4}$ */
+  pin?: string;
+}
+
+export interface PinErrorResponse {
+  message: string;
+  kind: "wrong_pin" | "locked";
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  attemptsLeft: number | null;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  retryAfter: number | null;
+}
+
 export interface StorageQueueItem {
   torrentId: string;
   name: string;
@@ -1451,9 +1753,7 @@ export type GetTitleSourcesError = MessageResponse;
 export type PutTitleVoiceError = MessageResponse;
 
 export type PostTitleWatchError =
-  | MessageResponse
-  | WatchErrorResponse
-  | EngineUnavailableResponse;
+  MessageResponse | WatchErrorResponse | EngineUnavailableResponse;
 
 export type GetTitleProgressError = MessageResponse;
 
@@ -1468,18 +1768,15 @@ export type DeleteTorrentError = MessageResponse | EngineUnavailableResponse;
 export type PostTorrentRetryError = MessageResponse | EngineUnavailableResponse;
 
 export type PostTorrentDownloadError =
-  | MessageResponse
-  | EngineUnavailableResponse;
+  MessageResponse | EngineUnavailableResponse;
 
 export type PostTorrentPauseError = MessageResponse | EngineUnavailableResponse;
 
 export type PostTorrentResumeError =
-  | MessageResponse
-  | EngineUnavailableResponse;
+  MessageResponse | EngineUnavailableResponse;
 
 export type PutTorrentRetentionError =
-  | MessageResponse
-  | EngineUnavailableResponse;
+  MessageResponse | EngineUnavailableResponse;
 
 export type GetTorrentStatsError = MessageResponse | EngineUnavailableResponse;
 
@@ -1488,11 +1785,36 @@ export type GetStorageError = MessageResponse | EngineUnavailableResponse;
 export type PutStoragePolicyError = MessageResponse | EngineUnavailableResponse;
 
 export type PostPlaybackError =
-  | MessageResponse
-  | EngineUnavailableResponse
-  | InsufficientStorageResponse;
+  MessageResponse | EngineUnavailableResponse | InsufficientStorageResponse;
 
 export type PutWatchStateError = MessageResponse;
+
+export type GetProfilesError = MessageResponse;
+
+export type PostProfileError = MessageResponse;
+
+export type PatchProfileError = MessageResponse;
+
+export type DeleteProfileError = MessageResponse;
+
+export type PutProfilePinError = MessageResponse;
+
+export type DeleteProfilePinError = MessageResponse;
+
+export type PostProfileSelectError = MessageResponse | PinErrorResponse;
+
+export type PostDevicePairingError = MessageResponse;
+
+export type GetDevicePairingError = MessageResponse;
+
+export type PostDevicePairingConfirmError =
+  MessageResponse | PairingErrorResponse;
+
+export type GetDevicesError = MessageResponse;
+
+export type PatchDeviceError = MessageResponse;
+
+export type DeleteDeviceError = MessageResponse;
 
 export type QueryParamsType = Record<string | number, any>;
 export type ResponseFormat = keyof Omit<Body, "body" | "bodyUsed">;
@@ -1530,8 +1852,10 @@ export interface ApiConfig<SecurityDataType = unknown> {
   customFetch?: typeof fetch;
 }
 
-export interface HttpResponse<D extends unknown, E extends unknown = unknown>
-  extends Response {
+export interface HttpResponse<
+  D extends unknown,
+  E extends unknown = unknown,
+> extends Response {
   data: D;
   error: E;
 }
@@ -2561,6 +2885,247 @@ export class Api<
         method: "PUT",
         body: data,
         type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+  };
+  profiles = {
+    /**
+     * No description
+     *
+     * @tags Profiles
+     * @name GetProfiles
+     * @request GET:/api/profiles
+     */
+    getProfiles: (params: RequestParams = {}) =>
+      this.request<ProfileList, GetProfilesError>({
+        path: `/api/profiles`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Profiles
+     * @name PostProfile
+     * @request POST:/api/profiles
+     */
+    postProfile: (data: CreateProfileInput, params: RequestParams = {}) =>
+      this.request<Profile, PostProfileError>({
+        path: `/api/profiles`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Profiles
+     * @name PatchProfile
+     * @request PATCH:/api/profiles/{id}
+     */
+    patchProfile: (
+      id: string,
+      data: UpdateProfileInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<Profile, PatchProfileError>({
+        path: `/api/profiles/${id}`,
+        method: "PATCH",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Profiles
+     * @name DeleteProfile
+     * @request DELETE:/api/profiles/{id}
+     */
+    deleteProfile: (
+      id: string,
+      query?: {
+        /**
+         * @minLength 1
+         * @maxLength 100
+         */
+        moveTo?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<MessageResponse, DeleteProfileError>({
+        path: `/api/profiles/${id}`,
+        method: "DELETE",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Profiles
+     * @name PutProfilePin
+     * @request PUT:/api/profiles/{id}/pin
+     */
+    putProfilePin: (
+      id: string,
+      data: SetProfilePinInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<Profile, PutProfilePinError>({
+        path: `/api/profiles/${id}/pin`,
+        method: "PUT",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Profiles
+     * @name DeleteProfilePin
+     * @request DELETE:/api/profiles/{id}/pin
+     */
+    deleteProfilePin: (id: string, params: RequestParams = {}) =>
+      this.request<Profile, DeleteProfilePinError>({
+        path: `/api/profiles/${id}/pin`,
+        method: "DELETE",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Profiles
+     * @name PostProfileSelect
+     * @request POST:/api/profiles/{id}/select
+     */
+    postProfileSelect: (
+      id: string,
+      data: SelectProfileInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<Profile, PostProfileSelectError>({
+        path: `/api/profiles/${id}/select`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+  };
+  devices = {
+    /**
+     * No description
+     *
+     * @tags Devices
+     * @name PostDevicePairing
+     * @request POST:/api/devices/pairing
+     */
+    postDevicePairing: (data: StartPairingInput, params: RequestParams = {}) =>
+      this.request<Pairing, PostDevicePairingError>({
+        path: `/api/devices/pairing`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Devices
+     * @name GetDevicePairing
+     * @request GET:/api/devices/pairing/{secret}
+     */
+    getDevicePairing: (secret: string, params: RequestParams = {}) =>
+      this.request<PairingStatus, GetDevicePairingError>({
+        path: `/api/devices/pairing/${secret}`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Devices
+     * @name PostDevicePairingConfirm
+     * @request POST:/api/devices/pairing/confirm
+     */
+    postDevicePairingConfirm: (
+      data: ConfirmPairingInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<ConfirmedPairing, PostDevicePairingConfirmError>({
+        path: `/api/devices/pairing/confirm`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Devices
+     * @name GetDevices
+     * @request GET:/api/devices
+     */
+    getDevices: (params: RequestParams = {}) =>
+      this.request<DeviceList, GetDevicesError>({
+        path: `/api/devices`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Devices
+     * @name PatchDevice
+     * @request PATCH:/api/devices/{id}
+     */
+    patchDevice: (
+      id: string,
+      data: UpdateDeviceInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<Device, PatchDeviceError>({
+        path: `/api/devices/${id}`,
+        method: "PATCH",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Devices
+     * @name DeleteDevice
+     * @request DELETE:/api/devices/{id}
+     */
+    deleteDevice: (id: string, params: RequestParams = {}) =>
+      this.request<MessageResponse, DeleteDeviceError>({
+        path: `/api/devices/${id}`,
+        method: "DELETE",
         format: "json",
         ...params,
       }),

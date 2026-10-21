@@ -49,6 +49,103 @@ export const metaCache = sqliteTable(
   table => [index('meta_cache_fetched_at_idx').on(table.fetchedAt)],
 )
 
+export const profileColors = [
+  'violet',
+  'green',
+  'orange',
+  'blue',
+  'rose',
+  'teal',
+  'amber',
+  'slate',
+] as const
+export const profileLanguages = ['ru_RU', 'en_US'] as const
+
+// Профиль смотрящего: свой прогресс, язык витрины и ограничения. Профиль по
+// умолчанию — первый по `position`, его получают сессия владельца и ТВ,
+// на котором профиль ещё не выбран
+export const profiles = sqliteTable('profiles', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => randomUUID()),
+  name: text('name').notNull(),
+  color: text('color', { enum: profileColors }).notNull(),
+  // null — язык устройства
+  language: text('language', { enum: profileLanguages }),
+  // Хеш PIN — тем же argon2id, что и пароль (utils/password)
+  pinHash: text('pin_hash'),
+  // Возраст, с которого тайтлы скрываются на витрине; null — без ограничений
+  ageLimit: integer('age_limit'),
+  position: integer('position').notNull().default(0),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' })
+    .notNull()
+    .$defaultFn(() => new Date()),
+})
+
+export type Profile = typeof profiles.$inferSelect
+
+export const deviceTypes = ['tv', 'browser', 'other'] as const
+
+export type DeviceType = (typeof deviceTypes)[number]
+
+// Устройство, подключённое по коду. Токен — случайная строка в httpOnly cookie,
+// в базе только её SHA-256; удаление строки отзывает токен
+export const devices = sqliteTable('devices', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => randomUUID()),
+  name: text('name').notNull(),
+  type: text('type', { enum: deviceTypes }).notNull(),
+  tokenHash: text('token_hash').notNull().unique(),
+  // null — профиль на устройстве ещё не выбран
+  profileId: text('profile_id').references(() => profiles.id, {
+    onDelete: 'set null',
+  }),
+  lastIp: text('last_ip'),
+  userAgent: text('user_agent'),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  lastSeenAt: integer('last_seen_at', { mode: 'timestamp_ms' }),
+  // Последний запрос потока: по нему панель показывает «Смотрит сейчас»
+  lastStreamAt: integer('last_stream_at', { mode: 'timestamp_ms' }),
+})
+
+export type Device = typeof devices.$inferSelect
+
+// `pending` — код на экране, `approved` — владелец подтвердил, устройство ещё
+// не забрало токен, `claimed` — токен выдан, секрет больше не действует
+export const pairingStates = ['pending', 'approved', 'claimed'] as const
+
+// Подключение устройства по коду. Секрет знает только устройство (в базе —
+// SHA-256), код вводит владелец в панели
+export const devicePairings = sqliteTable(
+  'device_pairings',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => randomUUID()),
+    secretHash: text('secret_hash').notNull().unique(),
+    code: text('code').notNull(),
+    state: text('state', { enum: pairingStates }).notNull(),
+    type: text('type', { enum: deviceTypes }).notNull(),
+    // Имя, которое дал владелец при подтверждении
+    name: text('name'),
+    ip: text('ip'),
+    userAgent: text('user_agent'),
+    approvedBy: text('approved_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    expiresAt: integer('expires_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  table => [index('device_pairings_code_idx').on(table.code)],
+)
+
+export type DevicePairing = typeof devicePairings.$inferSelect
+
 export const indexerManagerKinds = ['prowlarr', 'jackett'] as const
 
 export type IndexerManagerKind = (typeof indexerManagerKinds)[number]
@@ -185,11 +282,13 @@ export const storagePolicy = sqliteTable('storage_policy', {
     .$defaultFn(() => new Date()),
 })
 
-// Позиция просмотра файла раздачи. Привязка к тайтлу и серии появится вместе
-// с выбором раздачи из карточки
+// Позиция просмотра файла раздачи у профиля
 export const watchStates = sqliteTable(
   'watch_states',
   {
+    profileId: text('profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
     torrentId: text('torrent_id')
       .notNull()
       .references(() => torrents.id, { onDelete: 'cascade' }),
@@ -200,7 +299,11 @@ export const watchStates = sqliteTable(
       .notNull()
       .$defaultFn(() => new Date()),
   },
-  table => [primaryKey({ columns: [table.torrentId, table.fileIndex] })],
+  table => [
+    primaryKey({
+      columns: [table.profileId, table.torrentId, table.fileIndex],
+    }),
+  ],
 )
 
 export type WatchState = typeof watchStates.$inferSelect
@@ -257,10 +360,13 @@ export const titleVoices = sqliteTable(
 
 // Позиция просмотра тайтла и серии (у фильма сезон и серия — 0): не зависит
 // от раздачи, поэтому смена раздачи или озвучки прогресс не сбрасывает.
-// `profile_id` появится вместе с профилями
+// У каждого профиля свой прогресс
 export const titleProgress = sqliteTable(
   'title_progress',
   {
+    profileId: text('profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
     titleId: text('title_id').notNull(),
     season: integer('season').notNull(),
     episode: integer('episode').notNull(),
@@ -278,8 +384,14 @@ export const titleProgress = sqliteTable(
       .$defaultFn(() => new Date()),
   },
   table => [
-    primaryKey({ columns: [table.titleId, table.season, table.episode] }),
-    index('title_progress_updated_at_idx').on(table.titleId, table.updatedAt),
+    primaryKey({
+      columns: [table.profileId, table.titleId, table.season, table.episode],
+    }),
+    index('title_progress_updated_at_idx').on(
+      table.profileId,
+      table.titleId,
+      table.updatedAt,
+    ),
   ],
 )
 

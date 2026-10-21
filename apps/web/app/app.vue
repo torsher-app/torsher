@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { Toaster } from '@/components/ui/sonner'
 
-// Цвет иконки — по типу тоста, подробности приглушены
+// Цвет иконки — по типу тоста, подробности приглушены. Тост выравнивает
+// по верху: иконка 16 px опущена на 2 px к середине строки заголовка (20 px)
 const toastOptions = {
   classes: {
-    toast: 'rounded-xl! gap-3! items-start!',
+    toast: 'rounded-xl! gap-3! items-start! [&_[data-icon]]:mt-0.5!',
     title: 'font-semibold! text-[13.5px]!',
     description: 'text-muted-foreground! text-[13px]!',
     success: '[&_[data-icon]]:text-success',

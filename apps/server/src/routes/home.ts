@@ -1,7 +1,7 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { messageResponse } from '../dto/common.ts'
 import { homeQuery, homeResponse } from '../dto/home.ts'
-import { requireAuth } from '../middleware/auth.ts'
+import { requireViewer } from '../middleware/auth.ts'
 import { getHomeRows } from '../services/tmdb/index.ts'
 import { sendTmdbError } from './catalog.ts'
 
@@ -9,7 +9,7 @@ export const homeRoutes: FastifyPluginAsyncZod = async (app) => {
   app.get(
     '',
     {
-      preHandler: requireAuth,
+      onRequest: requireViewer,
       schema: {
         operationId: 'getHome',
         tags: ['Catalog'],

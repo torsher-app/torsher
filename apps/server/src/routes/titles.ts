@@ -12,7 +12,7 @@ import {
   watchErrorResponse,
   watchTitle as watchTitleBody,
 } from '../dto/titles.ts'
-import { requireAuth } from '../middleware/auth.ts'
+import { requireViewer } from '../middleware/auth.ts'
 import {
   DEFAULT_PROFILE,
   getTitleSources,
@@ -93,7 +93,7 @@ export function toSourcesResponse(sources: TitleSources) {
 }
 
 export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
-  app.addHook('onRequest', requireAuth)
+  app.addHook('onRequest', requireViewer)
 
   app.get(
     '/:id/sources',
@@ -119,6 +119,7 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
           season: season === undefined ? undefined : Number(season),
           episode: episode === undefined ? undefined : Number(episode),
           refresh: refresh === '1',
+          profileId: request.profileId,
         })
 
         if (!sources)
@@ -184,7 +185,11 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
       let result
 
       try {
-        result = await watchTitle(request.params.id, request.body)
+        result = await watchTitle(
+          request.params.id,
+          request.body,
+          request.profileId,
+        )
       }
       catch (err) {
         if (err instanceof WatchError)
@@ -225,7 +230,7 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
       if (!parseCatalogId(request.params.id))
         return reply.code(404).send({ message: 'Title not found' })
 
-      const last = lastTitleProgress(request.params.id)
+      const last = lastTitleProgress(request.profileId, request.params.id)
 
       return {
         last: last

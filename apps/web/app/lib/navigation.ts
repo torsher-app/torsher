@@ -1,10 +1,14 @@
 import type { Component } from 'vue'
-import { ArrowDownToLineIcon, RadarIcon } from '@lucide/vue'
+import {
+  ArrowDownToLineIcon,
+  MonitorSmartphoneIcon,
+  RadarIcon,
+} from '@lucide/vue'
 
 export interface NavItem {
   to: string
   /** Ключ строки в `panel.nav` */
-  label: 'torrents' | 'sources'
+  label: 'torrents' | 'sources' | 'people'
   icon: Component
 }
 
@@ -13,6 +17,7 @@ export interface NavItem {
 export const navItems: NavItem[] = [
   { to: '/downloads', label: 'torrents', icon: ArrowDownToLineIcon },
   { to: '/sources', label: 'sources', icon: RadarIcon },
+  { to: '/people', label: 'people', icon: MonitorSmartphoneIcon },
 ]
 
 export interface SettingsItem {

@@ -5,7 +5,7 @@ import { getDb } from '../db/index.ts'
 import { users } from '../db/schema.ts'
 import { messageResponse } from '../dto/common.ts'
 import { meResponse, updateMe } from '../dto/users.ts'
-import { requireAuth } from '../middleware/auth.ts'
+import { requireOwner } from '../middleware/auth.ts'
 
 const responses = {
   200: meResponse,
@@ -28,7 +28,7 @@ export const userRoutes: FastifyPluginAsyncZod = async (app) => {
   app.get(
     '/me',
     {
-      preHandler: requireAuth,
+      onRequest: requireOwner,
       schema: {
         operationId: 'getUsersMe',
         tags: ['Users'],
@@ -52,7 +52,7 @@ export const userRoutes: FastifyPluginAsyncZod = async (app) => {
   app.patch(
     '/me',
     {
-      preHandler: requireAuth,
+      onRequest: requireOwner,
       schema: {
         operationId: 'patchUsersMe',
         tags: ['Users'],

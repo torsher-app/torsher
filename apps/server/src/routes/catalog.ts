@@ -12,7 +12,7 @@ import {
   titleExtras,
 } from '../dto/catalog.ts'
 import { messageResponse } from '../dto/common.ts'
-import { requireAuth } from '../middleware/auth.ts'
+import { requireViewer } from '../middleware/auth.ts'
 import {
   getSeason,
   getTitle,
@@ -45,7 +45,7 @@ export const catalogRoutes: FastifyPluginAsyncZod = async (app) => {
   app.get(
     '/search',
     {
-      preHandler: requireAuth,
+      onRequest: requireViewer,
       schema: {
         operationId: 'getCatalogSearch',
         tags: ['Catalog'],
@@ -72,7 +72,7 @@ export const catalogRoutes: FastifyPluginAsyncZod = async (app) => {
   app.get(
     '/titles/:id',
     {
-      preHandler: requireAuth,
+      onRequest: requireViewer,
       schema: {
         operationId: 'getCatalogTitle',
         tags: ['Catalog'],
@@ -106,7 +106,7 @@ export const catalogRoutes: FastifyPluginAsyncZod = async (app) => {
   app.get(
     '/titles/:id/seasons/:number',
     {
-      preHandler: requireAuth,
+      onRequest: requireViewer,
       schema: {
         operationId: 'getCatalogSeason',
         tags: ['Catalog'],
@@ -144,7 +144,7 @@ export const catalogRoutes: FastifyPluginAsyncZod = async (app) => {
   app.get(
     '/titles/:id/extras',
     {
-      preHandler: requireAuth,
+      onRequest: requireViewer,
       schema: {
         operationId: 'getCatalogTitleExtras',
         tags: ['Catalog'],
@@ -178,7 +178,7 @@ export const catalogRoutes: FastifyPluginAsyncZod = async (app) => {
   app.get(
     '/trending',
     {
-      preHandler: requireAuth,
+      onRequest: requireViewer,
       schema: {
         operationId: 'getCatalogTrending',
         tags: ['Catalog'],

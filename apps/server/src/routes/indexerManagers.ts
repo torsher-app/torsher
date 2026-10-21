@@ -8,7 +8,7 @@ import {
   indexerManagerSyncResult,
   sourceErrorResponse,
 } from '../dto/sources.ts'
-import { requireAuth } from '../middleware/auth.ts'
+import { requireOwner } from '../middleware/auth.ts'
 import {
   checkIndexers,
   deleteManager,
@@ -30,7 +30,7 @@ const guardResponses = {
 export const indexerManagerRoutes: FastifyPluginAsyncZod = async (app) => {
   // onRequest, а не preHandler: без входа ответ 401 приходит до разбора
   // тела, а не 400 о неверных полях
-  app.addHook('onRequest', requireAuth)
+  app.addHook('onRequest', requireOwner)
 
   app.get(
     '',

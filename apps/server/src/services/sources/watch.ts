@@ -158,11 +158,13 @@ export function pickFile(
 export async function watchTitle(
   titleId: string,
   request: WatchRequest,
+  profileId: string,
 ): Promise<WatchResult | undefined> {
   // У сериала без серии — первая; у фильма серия не учитывается
   const sources = await getTitleSources(titleId, {
     season: request.season,
     episode: request.episode ?? 1,
+    profileId,
   })
 
   if (!sources)
@@ -231,7 +233,7 @@ export async function watchTitle(
       continue
 
     rememberChoice(
-      { titleId, season: target.season, episode: target.episode },
+      { profileId, titleId, season: target.season, episode: target.episode },
       { torrentId: torrent.id, fileIndex, voice: release.voice },
     )
 

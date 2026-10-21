@@ -1,5 +1,5 @@
 import { getDb } from '../../db/index.ts'
-import { users } from '../../db/schema.ts'
+import { profiles, users } from '../../db/schema.ts'
 
 export interface NewUser {
   name: string
@@ -22,7 +22,8 @@ export function needsSetup() {
 
 /**
  * Аккаунт на сервере один — владелец, он создаётся при первом запуске.
- * Остальные смотрят через профили этого аккаунта. Проверка и вставка идут
+ * Остальные смотрят через профили этого аккаунта; первый профиль создаётся
+ * вместе с ним. Проверка и вставка идут
  * в одной синхронной транзакции, поэтому две одновременные отправки формы
  * не создадут два аккаунта.
  */
@@ -31,6 +32,15 @@ export function createOwner(values: NewUser) {
     if (tx.select({ id: users.id }).from(users).limit(1).get())
       throw new SetupDoneError()
 
-    return tx.insert(users).values(values).returning().get()
+    const owner = tx.insert(users).values(values).returning().get()
+
+    // Первый профиль — с именем владельца: витрине сразу есть, чей прогресс писать
+    if (!tx.select({ id: profiles.id }).from(profiles).limit(1).get()) {
+      tx.insert(profiles)
+        .values({ name: owner.name, color: 'violet', position: 0 })
+        .run()
+    }
+
+    return owner
   })
 }
