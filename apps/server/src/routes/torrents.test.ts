@@ -14,7 +14,7 @@ import {
 import { createApp } from '../app.ts'
 import { ACCESS_TOKEN_COOKIE } from '../config.ts'
 import { getDb, migrateDb } from '../db/index.ts'
-import { torrents } from '../db/schema.ts'
+import { torrents, users } from '../db/schema.ts'
 import { setEngineDown, setEngineReady } from '../services/engine/index.ts'
 import {
   engineError,
@@ -106,6 +106,16 @@ function insertTorrent(
 
 beforeAll(() => {
   migrateDb()
+  // Сессию проверяют по аккаунту в базе (версия сессий)
+  getDb()
+    .insert(users)
+    .values({
+      id: 'owner',
+      name: 'Owner',
+      email: 'owner@example.com',
+      passwordHash: 'hash',
+    })
+    .run()
 })
 
 /** Запросы к движку, кроме списка раздач (его читает проверка места) */

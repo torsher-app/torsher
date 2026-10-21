@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import {
   ChevronsUpDownIcon,
+  LanguagesIcon,
   LogOutIcon,
   MonitorIcon,
   MoonIcon,
   SunIcon,
   UserIcon,
 } from '@lucide/vue'
+import { language as languageNames } from '@torsher/i18n'
 import { useI18n } from 'vue-i18n'
 import {
   DropdownMenu,
@@ -16,6 +18,9 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { SidebarMenuButton } from '@/components/ui/sidebar'
@@ -28,6 +33,7 @@ const { t } = useI18n()
 const { user } = useUser()
 const { logout } = useAuth()
 const colorMode = useColorMode()
+const { language } = usePanelLanguage()
 
 const THEMES = [
   { value: 'light', icon: SunIcon },
@@ -42,6 +48,18 @@ const initials = computed(() =>
     .slice(0, 2)
     .map(word => word[0]!.toUpperCase())
     .join(''),
+)
+
+// Названия языков — на самих языках: свой язык узнают и в чужом интерфейсе
+const LANGUAGES = Object.entries(languageNames).map(([value, label]) => ({
+  value,
+  label,
+}))
+
+const languageLabel = computed(() =>
+  language.value === 'browser'
+    ? t('panel.account.languageBrowser')
+    : languageNames[language.value],
 )
 
 const theme = computed({
@@ -88,6 +106,32 @@ const theme = computed({
           {{ t(`panel.account.themes.${item.value}`) }}
         </DropdownMenuRadioItem>
       </DropdownMenuRadioGroup>
+      <DropdownMenuSeparator />
+      <DropdownMenuSub>
+        <DropdownMenuSubTrigger>
+          <LanguagesIcon aria-hidden="true" />
+          <!-- flex-1 у подписи прижимает текущий язык к стрелке подменю -->
+          <span class="flex-1">{{ t("panel.account.language") }}</span>
+          <span class="truncate text-muted-foreground">{{
+            languageLabel
+          }}</span>
+        </DropdownMenuSubTrigger>
+        <DropdownMenuSubContent class="min-w-44">
+          <DropdownMenuRadioGroup v-model="language">
+            <DropdownMenuRadioItem
+              v-for="item in LANGUAGES"
+              :key="item.value"
+              :value="item.value"
+              :lang="item.value.split('_')[0]"
+            >
+              {{ item.label }}
+            </DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="browser">
+              {{ t("panel.account.languageBrowser") }}
+            </DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+        </DropdownMenuSubContent>
+      </DropdownMenuSub>
       <DropdownMenuSeparator />
       <DropdownMenuItem as-child>
         <NuxtLink to="/settings/account">

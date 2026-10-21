@@ -4,13 +4,40 @@ import { and, eq } from 'drizzle-orm'
 import { getDb } from '../db/index.ts'
 import { users } from '../db/schema.ts'
 import { messageResponse } from '../dto/common.ts'
-import { meResponse, updateMe } from '../dto/users.ts'
+import {
+  changeEmail,
+  changePassword,
+  meResponse,
+  updateMe,
+  wrongPasswordResponse,
+} from '../dto/users.ts'
 import { requireOwner } from '../middleware/auth.ts'
+import {
+  findActiveUser,
+  updateEmail,
+  updatePassword,
+} from '../services/users/index.ts'
+import { normalizeEmail } from '../utils/email.ts'
+import { hashPassword, verifyPassword } from '../utils/password.ts'
+import { setSession } from './sessionCookies.ts'
 
 const responses = {
   200: meResponse,
   401: messageResponse,
   404: messageResponse,
+}
+
+const WRONG_PASSWORD = {
+  message: 'Current password is incorrect',
+  field: 'currentPassword',
+} as const
+
+/** Аккаунт запроса, если текущий пароль верен; иначе `undefined` */
+async function confirmPassword(userId: string, password: string) {
+  const user = findActiveUser(userId)
+
+  if (user && (await verifyPassword(password, user.passwordHash)))
+    return user
 }
 
 // Наружу отдаём явно собранный объект, а не строку таблицы (в ней passwordHash)
@@ -72,6 +99,73 @@ export const userRoutes: FastifyPluginAsyncZod = async (app) => {
         return reply.code(404).send({ message: 'User not found' })
 
       return toMeResponse(user)
+    },
+  )
+
+  // Смена пароля и email выкидывает все прочие сессии (версия сессий растёт),
+  // а текущая получает новые cookie и остаётся во входе
+  app.put(
+    '/me/password',
+    {
+      onRequest: requireOwner,
+      schema: {
+        operationId: 'putUsersMePassword',
+        tags: ['Users'],
+        body: changePassword,
+        response: {
+          200: messageResponse,
+          401: messageResponse,
+          403: wrongPasswordResponse,
+        },
+      },
+    },
+    async (request, reply) => {
+      const user = await confirmPassword(
+        request.userId,
+        request.body.currentPassword,
+      )
+
+      if (!user)
+        return reply.code(403).send(WRONG_PASSWORD)
+
+      setSession(
+        reply,
+        updatePassword(user.id, await hashPassword(request.body.newPassword)),
+      )
+
+      return { message: 'Password changed' }
+    },
+  )
+
+  app.put(
+    '/me/email',
+    {
+      onRequest: requireOwner,
+      schema: {
+        operationId: 'putUsersMeEmail',
+        tags: ['Users'],
+        body: changeEmail,
+        response: {
+          200: meResponse,
+          401: messageResponse,
+          403: wrongPasswordResponse,
+        },
+      },
+    },
+    async (request, reply) => {
+      const user = await confirmPassword(
+        request.userId,
+        request.body.currentPassword,
+      )
+
+      if (!user)
+        return reply.code(403).send(WRONG_PASSWORD)
+
+      const updated = updateEmail(user.id, normalizeEmail(request.body.email))
+
+      setSession(reply, updated)
+
+      return toMeResponse(updated)
     },
   )
 }

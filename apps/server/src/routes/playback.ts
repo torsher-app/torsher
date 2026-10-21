@@ -1,3 +1,4 @@
+import type { FastifyRequest } from 'fastify'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { messageResponse } from '../dto/common.ts'
 import {
@@ -23,6 +24,7 @@ import {
   prepareStream,
   saveWatchState,
 } from '../services/torrents/index.ts'
+import { sessionVersionOf } from '../services/users/session.ts'
 import { signToken } from '../utils/token.ts'
 import { sendEngineError } from './engineResponses.ts'
 
@@ -34,8 +36,18 @@ const guardResponses = {
  * Клиенты ходят в API через `/api` своего origin (прокси панели и витрины,
  * в продакшене — сам сервер), поэтому адрес потока для `<video>` — с этим префиксом.
  */
-function streamUrlOf(torrentId: string, fileIndex: number, subject: string) {
-  const token = encodeURIComponent(signToken(subject, 'stream'))
+function streamUrlOf(
+  torrentId: string,
+  fileIndex: number,
+  request: FastifyRequest,
+) {
+  // Устройство отзывается удалением строки, у владельца — версия сессий
+  const subject = streamSubjectOf(request)
+  const token = encodeURIComponent(
+    request.deviceId
+      ? signToken(subject, 'stream')
+      : signToken(subject, 'stream', sessionVersionOf(subject)),
+  )
 
   return `/api/stream/${torrentId}/${fileIndex}?token=${token}`
 }
@@ -99,7 +111,7 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
         : getWatchState(request.profileId, torrentId, fileIndex)
 
       return {
-        streamUrl: streamUrlOf(torrentId, fileIndex, streamSubjectOf(request)),
+        streamUrl: streamUrlOf(torrentId, fileIndex, request),
         mode: 'direct' as const,
         title: found.name,
         fileName: fileNameOf(file.path),

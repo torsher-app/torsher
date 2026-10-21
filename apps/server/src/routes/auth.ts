@@ -1,11 +1,6 @@
-import type { FastifyReply } from 'fastify'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { eq } from 'drizzle-orm'
-import {
-  ACCESS_TOKEN_COOKIE,
-  REFRESH_TOKEN_COOKIE,
-  sessionCookieOptions,
-} from '../config.ts'
+import { REFRESH_TOKEN_COOKIE } from '../config.ts'
 import { getDb } from '../db/index.ts'
 import { users } from '../db/schema.ts'
 import { setupResponse, signin, signup } from '../dto/auth.ts'
@@ -15,9 +10,10 @@ import {
   needsSetup,
   SetupDoneError,
 } from '../services/users/index.ts'
+import { verifySession } from '../services/users/session.ts'
 import { normalizeEmail } from '../utils/email.ts'
 import { hashPassword, verifyPassword } from '../utils/password.ts'
-import { generateSessionTokens, verifyTokenFor } from '../utils/token.ts'
+import { clearSession, setSession } from './sessionCookies.ts'
 
 // Drizzle может завернуть ошибку драйвера в свою, тогда код лежит в cause
 function isUniqueViolation(err: unknown): boolean {
@@ -28,18 +24,6 @@ function isUniqueViolation(err: unknown): boolean {
     return true
 
   return 'cause' in err && isUniqueViolation(err.cause)
-}
-
-function setSession(reply: FastifyReply, userId: string) {
-  const { accessToken, refreshToken } = generateSessionTokens(userId)
-
-  reply.setCookie(ACCESS_TOKEN_COOKIE, accessToken, sessionCookieOptions)
-  reply.setCookie(REFRESH_TOKEN_COOKIE, refreshToken, sessionCookieOptions)
-}
-
-function clearSession(reply: FastifyReply) {
-  reply.clearCookie(ACCESS_TOKEN_COOKIE, { path: sessionCookieOptions.path })
-  reply.clearCookie(REFRESH_TOKEN_COOKIE, { path: sessionCookieOptions.path })
 }
 
 export const authRoutes: FastifyPluginAsyncZod = async (app) => {
@@ -136,7 +120,7 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
       if (!user.isActive)
         return reply.code(403).send({ message: 'Account is not active' })
 
-      setSession(reply, user.id)
+      setSession(reply, user)
 
       return { message: 'Signed in' }
     },
@@ -156,12 +140,13 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
     },
     async (request, reply) => {
       try {
-        const { userId } = verifyTokenFor(
+        // Отозванная сессия (сменился пароль или email) не продлевается
+        const { userId, sessionVersion } = verifySession(
           request.cookies[REFRESH_TOKEN_COOKIE] ?? '',
           'user_refresh',
         )
 
-        setSession(reply, userId)
+        setSession(reply, { id: userId, sessionVersion })
 
         return { message: 'Refreshed' }
       }

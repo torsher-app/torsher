@@ -1,227 +1,9 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "ba8fda9e-e896-40c0-8c6e-e9348592fcbe",
+  "id": "e7a260ee-c573-4ad0-bd49-0d1da1eb7c2d",
   "prevId": "47326111-6bcf-4102-9b20-4b54b748a6d0",
   "tables": {
-    "device_pairings": {
-      "name": "device_pairings",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "secret_hash": {
-          "name": "secret_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "code": {
-          "name": "code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "state": {
-          "name": "state",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "type": {
-          "name": "type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "ip": {
-          "name": "ip",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "user_agent": {
-          "name": "user_agent",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "approved_by": {
-          "name": "approved_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "device_pairings_secret_hash_unique": {
-          "name": "device_pairings_secret_hash_unique",
-          "columns": [
-            "secret_hash"
-          ],
-          "isUnique": true
-        },
-        "device_pairings_code_idx": {
-          "name": "device_pairings_code_idx",
-          "columns": [
-            "code"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {
-        "device_pairings_approved_by_users_id_fk": {
-          "name": "device_pairings_approved_by_users_id_fk",
-          "tableFrom": "device_pairings",
-          "tableTo": "users",
-          "columnsFrom": [
-            "approved_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "devices": {
-      "name": "devices",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "type": {
-          "name": "type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "token_hash": {
-          "name": "token_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "profile_id": {
-          "name": "profile_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "last_ip": {
-          "name": "last_ip",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "user_agent": {
-          "name": "user_agent",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "last_seen_at": {
-          "name": "last_seen_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "last_stream_at": {
-          "name": "last_stream_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "devices_token_hash_unique": {
-          "name": "devices_token_hash_unique",
-          "columns": [
-            "token_hash"
-          ],
-          "isUnique": true
-        }
-      },
-      "foreignKeys": {
-        "devices_profile_id_profiles_id_fk": {
-          "name": "devices_profile_id_profiles_id_fk",
-          "tableFrom": "devices",
-          "tableTo": "profiles",
-          "columnsFrom": [
-            "profile_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
     "indexer_managers": {
       "name": "indexer_managers",
       "columns": {
@@ -441,73 +223,6 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "profiles": {
-      "name": "profiles",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "color": {
-          "name": "color",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "language": {
-          "name": "language",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "pin_hash": {
-          "name": "pin_hash",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "age_limit": {
-          "name": "age_limit",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "position": {
-          "name": "position",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
     "storage_policy": {
       "name": "storage_policy",
       "columns": {
@@ -625,13 +340,6 @@
     "title_progress": {
       "name": "title_progress",
       "columns": {
-        "profile_id": {
-          "name": "profile_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
         "title_id": {
           "name": "title_id",
           "type": "text",
@@ -707,7 +415,6 @@
         "title_progress_updated_at_idx": {
           "name": "title_progress_updated_at_idx",
           "columns": [
-            "profile_id",
             "title_id",
             "updated_at"
           ],
@@ -715,19 +422,6 @@
         }
       },
       "foreignKeys": {
-        "title_progress_profile_id_profiles_id_fk": {
-          "name": "title_progress_profile_id_profiles_id_fk",
-          "tableFrom": "title_progress",
-          "tableTo": "profiles",
-          "columnsFrom": [
-            "profile_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
         "title_progress_torrent_id_torrents_id_fk": {
           "name": "title_progress_torrent_id_torrents_id_fk",
           "tableFrom": "title_progress",
@@ -743,14 +437,13 @@
         }
       },
       "compositePrimaryKeys": {
-        "title_progress_profile_id_title_id_season_episode_pk": {
+        "title_progress_title_id_season_episode_pk": {
           "columns": [
-            "profile_id",
             "title_id",
             "season",
             "episode"
           ],
-          "name": "title_progress_profile_id_title_id_season_episode_pk"
+          "name": "title_progress_title_id_season_episode_pk"
         }
       },
       "uniqueConstraints": {},
@@ -1003,6 +696,14 @@
           "autoincrement": false,
           "default": false
         },
+        "session_version": {
+          "name": "session_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
         "created_at": {
           "name": "created_at",
           "type": "integer",
@@ -1035,13 +736,6 @@
     "watch_states": {
       "name": "watch_states",
       "columns": {
-        "profile_id": {
-          "name": "profile_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
         "torrent_id": {
           "name": "torrent_id",
           "type": "text",
@@ -1080,19 +774,6 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "watch_states_profile_id_profiles_id_fk": {
-          "name": "watch_states_profile_id_profiles_id_fk",
-          "tableFrom": "watch_states",
-          "tableTo": "profiles",
-          "columnsFrom": [
-            "profile_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
         "watch_states_torrent_id_torrents_id_fk": {
           "name": "watch_states_torrent_id_torrents_id_fk",
           "tableFrom": "watch_states",
@@ -1108,13 +789,12 @@
         }
       },
       "compositePrimaryKeys": {
-        "watch_states_profile_id_torrent_id_file_index_pk": {
+        "watch_states_torrent_id_file_index_pk": {
           "columns": [
-            "profile_id",
             "torrent_id",
             "file_index"
           ],
-          "name": "watch_states_profile_id_torrent_id_file_index_pk"
+          "name": "watch_states_torrent_id_file_index_pk"
         }
       },
       "uniqueConstraints": {},

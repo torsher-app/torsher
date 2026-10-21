@@ -859,6 +859,26 @@ export interface MeResponseInput {
   createdAt: string;
 }
 
+export interface ChangePasswordInput {
+  currentPassword: string;
+  /** @minLength 8 */
+  newPassword: string;
+}
+
+export interface ChangeEmailInput {
+  /**
+   * @format email
+   * @pattern ^(?:[A-Za-z0-9_'+\-]+\.)*[A-Za-z0-9_'+\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}$
+   */
+  email: string;
+  currentPassword: string;
+}
+
+export interface WrongPasswordResponseInput {
+  message: string;
+  field: "currentPassword";
+}
+
 export interface AboutResponse {
   version: string;
   commit?: string;
@@ -1708,6 +1728,26 @@ export interface MeResponse {
   createdAt: string;
 }
 
+export interface ChangePassword {
+  currentPassword: string;
+  /** @minLength 8 */
+  newPassword: string;
+}
+
+export interface ChangeEmail {
+  /**
+   * @format email
+   * @pattern ^(?:[A-Za-z0-9_'+\-]+\.)*[A-Za-z0-9_'+\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}$
+   */
+  email: string;
+  currentPassword: string;
+}
+
+export interface WrongPasswordResponse {
+  message: string;
+  field: "currentPassword";
+}
+
 export type PostAuthSignupError = MessageResponse;
 
 export type PostAuthSigninError = MessageResponse;
@@ -1717,6 +1757,10 @@ export type PostAuthRefreshError = MessageResponse;
 export type GetUsersMeError = MessageResponse;
 
 export type PatchUsersMeError = MessageResponse;
+
+export type PutUsersMePasswordError = MessageResponse | WrongPasswordResponse;
+
+export type PutUsersMeEmailError = MessageResponse | WrongPasswordResponse;
 
 export type GetCatalogSearchError = MessageResponse;
 
@@ -2224,6 +2268,43 @@ export class Api<
       this.request<MeResponse, PatchUsersMeError>({
         path: `/api/users/me`,
         method: "PATCH",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Users
+     * @name PutUsersMePassword
+     * @request PUT:/api/users/me/password
+     */
+    putUsersMePassword: (
+      data: ChangePasswordInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<MessageResponse, PutUsersMePasswordError>({
+        path: `/api/users/me/password`,
+        method: "PUT",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Users
+     * @name PutUsersMeEmail
+     * @request PUT:/api/users/me/email
+     */
+    putUsersMeEmail: (data: ChangeEmailInput, params: RequestParams = {}) =>
+      this.request<MeResponse, PutUsersMeEmailError>({
+        path: `/api/users/me/email`,
+        method: "PUT",
         body: data,
         type: ContentType.Json,
         format: "json",

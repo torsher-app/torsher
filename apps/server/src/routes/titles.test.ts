@@ -10,7 +10,7 @@ import {
 import { createApp } from '../app.ts'
 import { ACCESS_TOKEN_COOKIE } from '../config.ts'
 import { getDb, migrateDb } from '../db/index.ts'
-import { indexers } from '../db/schema.ts'
+import { indexers, users } from '../db/schema.ts'
 import { encryptSecret } from '../services/secrets/index.ts'
 import { clearSearchCache } from '../services/sources/cache.ts'
 import { tvIdentity } from '../services/tmdb/fixtures/index.ts'
@@ -37,6 +37,16 @@ const textCaps = {
 
 beforeAll(() => {
   migrateDb()
+  // Сессию проверяют по аккаунту в базе (версия сессий)
+  getDb()
+    .insert(users)
+    .values({
+      id: 'user-1',
+      name: 'Owner',
+      email: 'owner@example.com',
+      passwordHash: 'hash',
+    })
+    .run()
   getDb()
     .insert(indexers)
     .values([

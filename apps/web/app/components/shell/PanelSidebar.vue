@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { SettingsIcon } from '@lucide/vue'
+import { SettingsIcon, TvIcon } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
+  SidebarGroup,
+  SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuBadge,
@@ -21,6 +23,9 @@ const route = useRoute()
 const { setOpenMobile } = useSidebar()
 const { attentionCount, ensureLoaded } = useSources()
 const downloads = useTorrents()
+
+// Витрина открывается с профилем по умолчанию: вход у неё общий с панелью
+const { tvUrl } = useRuntimeConfig().public
 
 // Имени сервера пока нет: подписью служит адрес, по которому открыта панель
 const host = useRequestURL().host
@@ -104,6 +109,23 @@ watch(
           </SidebarMenuItem>
         </SidebarMenu>
       </nav>
+
+      <SidebarGroup class="mt-3 p-0">
+        <SidebarGroupLabel class="h-6.5">
+          {{ t("panel.nav.links") }}
+        </SidebarGroupLabel>
+        <SidebarMenu class="gap-px">
+          <SidebarMenuItem>
+            <SidebarMenuButton as-child :class="itemClass">
+              <a :href="tvUrl" target="_blank" rel="noopener">
+                <TvIcon aria-hidden="true" />
+                <span>{{ t("panel.nav.showcase") }}</span>
+                <span class="sr-only">({{ t("panel.nav.newTab") }})</span>
+              </a>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarGroup>
     </SidebarContent>
 
     <SidebarFooter class="px-2 pb-3 md:px-0 md:pb-1">

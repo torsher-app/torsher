@@ -96,6 +96,7 @@ COPY --from=build /src/apps/web/.output/public web/.output/public
 COPY --from=engine /out/torsher-engine /usr/local/bin/torsher-engine
 COPY --from=engine /out/licenses /usr/share/licenses/torsher-engine
 COPY --chmod=755 docker/entrypoint.sh /usr/local/bin/torsher-entrypoint
+COPY --chmod=755 docker/torsher.sh /usr/local/bin/torsher
 
 ARG TORSHER_COMMIT=""
 ENV TORSHER_COMMIT=$TORSHER_COMMIT

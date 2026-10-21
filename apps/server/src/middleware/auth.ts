@@ -13,6 +13,7 @@ import {
   touchDevice,
 } from '../services/devices/index.ts'
 import { defaultProfile, getProfile } from '../services/profiles/index.ts'
+import { verifySession } from '../services/users/session.ts'
 import { verifyTokenFor } from '../utils/token.ts'
 
 declare module 'fastify' {
@@ -41,11 +42,12 @@ function unauthorized(reply: FastifyReply) {
   return reply.code(401).send({ message: 'Unauthorized' })
 }
 
+/** Владелец по access-cookie; токен отозванной сессии (сменился пароль или email) не проходит */
 function ownerIdOf(request: FastifyRequest) {
   const token = request.cookies[ACCESS_TOKEN_COOKIE] ?? ''
 
   try {
-    return verifyTokenFor(token, 'user_access').userId
+    return verifySession(token, 'user_access').userId
   }
   catch {
     return undefined
@@ -172,7 +174,13 @@ export async function requireStream(
       asDevice(request, device)
     }
     else {
-      request.userId = subject
+      // Поток владельца несёт версию сессий: после смены пароля он закрывается
+      try {
+        request.userId = verifySession(token, 'stream').userId
+      }
+      catch {
+        return unauthorized(reply)
+      }
     }
   }
 
