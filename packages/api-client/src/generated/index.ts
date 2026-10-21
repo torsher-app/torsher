@@ -318,6 +318,119 @@ export interface IndexerManagerSyncResultInput {
   missing: number;
 }
 
+export interface CreatePlaybackInput {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  torrentId: string;
+  /**
+   * @min 0
+   * @max 99999
+   */
+  fileIndex: number;
+}
+
+export interface PlaybackInput {
+  streamUrl: string;
+  mode: "direct";
+  title: string;
+  fileName: string;
+  size: number;
+  duration: number | null;
+  startPosition: number | null;
+}
+
+export interface UpdateWatchStateInput {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  torrentId: string;
+  /**
+   * @min 0
+   * @max 99999
+   */
+  fileIndex: number;
+  /**
+   * @min 0
+   * @max 1000000
+   */
+  position: number;
+  /**
+   * @min 0
+   * @max 1000000
+   */
+  duration?: number;
+}
+
+export interface WatchStateInput {
+  torrentId: string;
+  fileIndex: number;
+  position: number;
+  duration: number | null;
+  updatedAt: string;
+}
+
+export interface EngineUnavailableResponseInput {
+  message: string;
+  kind: "not_installed" | "starting" | "stopped";
+}
+
+export interface TorrentFileInput {
+  index: number;
+  path: string;
+  size: number;
+  isVideo: boolean;
+}
+
+export interface TorrentInput {
+  id: string;
+  infoHash: string;
+  name: string;
+  source: "magnet" | "file";
+  status: "resolving" | "ready" | "failed";
+  error: "timeout" | "rejected" | "failed" | null;
+  files: TorrentFileInput[];
+  totalSize: number;
+  addedAt: string;
+  lastAccessAt: string | null;
+}
+
+export interface TorrentListInput {
+  items: TorrentInput[];
+  engine: "ready" | "not_installed" | "starting" | "stopped";
+}
+
+export interface CreateTorrentInput {
+  /**
+   * @maxLength 20000
+   * @pattern ^magnet:\?
+   */
+  magnet?: string;
+  /**
+   * @format base64
+   * @maxLength 11184812
+   * @pattern ^$|^(?:[0-9a-zA-Z+/]{4})*(?:(?:[0-9a-zA-Z+/]{2}==)|(?:[0-9a-zA-Z+/]{3}=))?$
+   */
+  torrentFile?: string;
+}
+
+export interface TorrentStatsInput {
+  activity: "idle" | "checking" | "downloading" | "paused" | "error";
+  peers: {
+    connected: number;
+    found: number;
+  };
+  downloadSpeed: number;
+  uploadSpeed: number;
+  file: {
+    size: number;
+    downloaded: number;
+    bufferedAhead: number;
+  };
+}
+
 export interface UpdateMeInput {
   /** @minLength 2 */
   name?: string;
@@ -639,6 +752,119 @@ export interface IndexerManagerSyncResult {
   missing: number;
 }
 
+export interface CreatePlayback {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  torrentId: string;
+  /**
+   * @min 0
+   * @max 99999
+   */
+  fileIndex: number;
+}
+
+export interface Playback {
+  streamUrl: string;
+  mode: "direct";
+  title: string;
+  fileName: string;
+  size: number;
+  duration: number | null;
+  startPosition: number | null;
+}
+
+export interface UpdateWatchState {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  torrentId: string;
+  /**
+   * @min 0
+   * @max 99999
+   */
+  fileIndex: number;
+  /**
+   * @min 0
+   * @max 1000000
+   */
+  position: number;
+  /**
+   * @min 0
+   * @max 1000000
+   */
+  duration?: number;
+}
+
+export interface WatchState {
+  torrentId: string;
+  fileIndex: number;
+  position: number;
+  duration: number | null;
+  updatedAt: string;
+}
+
+export interface EngineUnavailableResponse {
+  message: string;
+  kind: "not_installed" | "starting" | "stopped";
+}
+
+export interface TorrentFile {
+  index: number;
+  path: string;
+  size: number;
+  isVideo: boolean;
+}
+
+export interface Torrent {
+  id: string;
+  infoHash: string;
+  name: string;
+  source: "magnet" | "file";
+  status: "resolving" | "ready" | "failed";
+  error: "timeout" | "rejected" | "failed" | null;
+  files: TorrentFile[];
+  totalSize: number;
+  addedAt: string;
+  lastAccessAt: string | null;
+}
+
+export interface TorrentList {
+  items: Torrent[];
+  engine: "ready" | "not_installed" | "starting" | "stopped";
+}
+
+export interface CreateTorrent {
+  /**
+   * @maxLength 20000
+   * @pattern ^magnet:\?
+   */
+  magnet?: string;
+  /**
+   * @format base64
+   * @maxLength 11184812
+   * @pattern ^$|^(?:[0-9a-zA-Z+/]{4})*(?:(?:[0-9a-zA-Z+/]{2}==)|(?:[0-9a-zA-Z+/]{3}=))?$
+   */
+  torrentFile?: string;
+}
+
+export interface TorrentStats {
+  activity: "idle" | "checking" | "downloading" | "paused" | "error";
+  peers: {
+    connected: number;
+    found: number;
+  };
+  downloadSpeed: number;
+  uploadSpeed: number;
+  file: {
+    size: number;
+    downloaded: number;
+    bufferedAhead: number;
+  };
+}
+
 export interface UpdateMe {
   /** @minLength 2 */
   name?: string;
@@ -691,6 +917,22 @@ export type PostIndexerManagerError = MessageResponse | SourceErrorResponse;
 export type PostIndexerManagerSyncError = MessageResponse | SourceErrorResponse;
 
 export type DeleteIndexerManagerError = MessageResponse;
+
+export type GetTorrentsError = MessageResponse;
+
+export type PostTorrentError = MessageResponse | EngineUnavailableResponse;
+
+export type GetTorrentError = MessageResponse;
+
+export type DeleteTorrentError = MessageResponse | EngineUnavailableResponse;
+
+export type PostTorrentRetryError = MessageResponse | EngineUnavailableResponse;
+
+export type GetTorrentStatsError = MessageResponse | EngineUnavailableResponse;
+
+export type PostPlaybackError = MessageResponse | EngineUnavailableResponse;
+
+export type PutWatchStateError = MessageResponse;
 
 export type QueryParamsType = Record<string | number, any>;
 export type ResponseFormat = keyof Omit<Body, "body" | "bodyUsed">;
@@ -1402,6 +1644,145 @@ export class Api<
         path: `/indexer-managers/${id}`,
         method: "DELETE",
         query: query,
+        format: "json",
+        ...params,
+      }),
+  };
+  torrents = {
+    /**
+     * No description
+     *
+     * @tags Torrents
+     * @name GetTorrents
+     * @request GET:/torrents
+     */
+    getTorrents: (params: RequestParams = {}) =>
+      this.request<TorrentList, GetTorrentsError>({
+        path: `/torrents`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Torrents
+     * @name PostTorrent
+     * @request POST:/torrents
+     */
+    postTorrent: (data: CreateTorrentInput, params: RequestParams = {}) =>
+      this.request<Torrent, PostTorrentError>({
+        path: `/torrents`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Torrents
+     * @name GetTorrent
+     * @request GET:/torrents/{id}
+     */
+    getTorrent: (id: string, params: RequestParams = {}) =>
+      this.request<Torrent, GetTorrentError>({
+        path: `/torrents/${id}`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Torrents
+     * @name DeleteTorrent
+     * @request DELETE:/torrents/{id}
+     */
+    deleteTorrent: (id: string, params: RequestParams = {}) =>
+      this.request<MessageResponse, DeleteTorrentError>({
+        path: `/torrents/${id}`,
+        method: "DELETE",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Torrents
+     * @name PostTorrentRetry
+     * @request POST:/torrents/{id}/retry
+     */
+    postTorrentRetry: (id: string, params: RequestParams = {}) =>
+      this.request<Torrent, PostTorrentRetryError>({
+        path: `/torrents/${id}/retry`,
+        method: "POST",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Torrents
+     * @name GetTorrentStats
+     * @request GET:/torrents/{id}/stats
+     */
+    getTorrentStats: (
+      id: string,
+      query: {
+        /** @pattern ^\d{1,5}$ */
+        fileIndex: string;
+        /** @pattern ^\d{1,16}$ */
+        offset?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<TorrentStats, GetTorrentStatsError>({
+        path: `/torrents/${id}/stats`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+  };
+  playback = {
+    /**
+     * No description
+     *
+     * @tags Playback
+     * @name PostPlayback
+     * @request POST:/playback
+     */
+    postPlayback: (data: CreatePlaybackInput, params: RequestParams = {}) =>
+      this.request<Playback, PostPlaybackError>({
+        path: `/playback`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+  };
+  watchState = {
+    /**
+     * No description
+     *
+     * @tags Playback
+     * @name PutWatchState
+     * @request PUT:/watch-state
+     */
+    putWatchState: (data: UpdateWatchStateInput, params: RequestParams = {}) =>
+      this.request<WatchState, PutWatchStateError>({
+        path: `/watch-state`,
+        method: "PUT",
+        body: data,
+        type: ContentType.Json,
         format: "json",
         ...params,
       }),

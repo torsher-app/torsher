@@ -46,3 +46,23 @@ export function formatRelative(iso: string, locale: string, now = Date.now()) {
 
   return rtf.format(Math.round(value), 'year')
 }
+
+const BYTE_UNITS = ['byte', 'kilobyte', 'megabyte', 'gigabyte', 'terabyte']
+
+/** «4,2 ГБ»: шаг 1024, как у файловых менеджеров */
+export function formatBytes(bytes: number, locale: string) {
+  let value = bytes
+  let index = 0
+
+  while (value >= 1024 && index < BYTE_UNITS.length - 1) {
+    value /= 1024
+    index++
+  }
+
+  return new Intl.NumberFormat(locale.replace('_', '-'), {
+    style: 'unit',
+    unit: BYTE_UNITS[index],
+    unitDisplay: 'short',
+    maximumFractionDigits: index < 2 ? 0 : 1,
+  }).format(value)
+}

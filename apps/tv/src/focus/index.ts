@@ -7,12 +7,14 @@ import { readKey } from './keys.ts'
 
 export type {
   FocusListener,
+  KeyHandler,
   SectionEdges,
   SectionOptions,
   WheelHandler,
 } from './engine.ts'
 export type { Direction } from './geometry.ts'
 export type { FocusVia, InputMode } from './inputMode.ts'
+export type { KeyAction, MediaKey } from './keys.ts'
 
 declare module 'vue' {
   interface GlobalDirectives {
@@ -74,11 +76,15 @@ export function createFocus(options: FocusOptions) {
 
     event.preventDefault()
 
+    if (engine.intercept(action, event))
+      return
+
     if (action.type === 'move')
       engine.key(action.direction)
     else if (action.type === 'enter')
       engine.current()?.click()
-    else options.onBack()
+    else if (action.type === 'back')
+      options.onBack()
   }
 
   function onMousemove(event: MouseEvent) {

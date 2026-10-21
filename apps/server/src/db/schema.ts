@@ -1,8 +1,11 @@
 import type { TorznabCaps } from '../services/torznab/caps.ts'
 import { randomUUID } from 'node:crypto'
 import {
+  blob,
   index,
   integer,
+  primaryKey,
+  real,
   sqliteTable,
   text,
   uniqueIndex,
@@ -119,3 +122,62 @@ export const indexers = sqliteTable(
 )
 
 export type Indexer = typeof indexers.$inferSelect
+
+export const torrentSources = ['magnet', 'file'] as const
+// `resolving` — ждём метаданные magnet от пиров, `failed` — не дождались
+export const torrentStatuses = ['resolving', 'ready', 'failed'] as const
+export const torrentErrors = ['timeout', 'rejected', 'failed'] as const
+
+export interface TorrentFileEntry {
+  path: string
+  size: number
+  // Файл-выравнивание между файлами раздачи: в списке не показывается,
+  // но держит индексы и смещения файлов такими же, как в движке
+  padding: boolean
+}
+
+export const torrents = sqliteTable('torrents', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => randomUUID()),
+  infoHash: text('info_hash').notNull().unique(),
+  name: text('name').notNull(),
+  source: text('source', { enum: torrentSources }).notNull(),
+  // magnet хранится, чтобы дождаться метаданных и после перезапуска сервера
+  magnet: text('magnet'),
+  // Сам `.torrent`: по нему раздача заново добавляется в движок, если тот её забыл
+  torrentFile: blob('torrent_file', { mode: 'buffer' }),
+  files: text('files', { mode: 'json' }).$type<TorrentFileEntry[]>(),
+  pieceLength: integer('piece_length'),
+  status: text('status', { enum: torrentStatuses }).notNull(),
+  error: text('error', { enum: torrentErrors }),
+  // Раздача добавлена в движок (её начинали смотреть): удалить её можно,
+  // только когда движок доступен, иначе он продолжит её качать
+  inEngine: integer('in_engine', { mode: 'boolean' }).notNull().default(false),
+  addedAt: integer('added_at', { mode: 'timestamp_ms' })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  lastAccessAt: integer('last_access_at', { mode: 'timestamp_ms' }),
+})
+
+export type Torrent = typeof torrents.$inferSelect
+
+// Позиция просмотра файла раздачи. Привязка к тайтлу и серии появится вместе
+// с выбором раздачи из карточки
+export const watchStates = sqliteTable(
+  'watch_states',
+  {
+    torrentId: text('torrent_id')
+      .notNull()
+      .references(() => torrents.id, { onDelete: 'cascade' }),
+    fileIndex: integer('file_index').notNull(),
+    position: real('position').notNull(),
+    duration: real('duration'),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  table => [primaryKey({ columns: [table.torrentId, table.fileIndex] })],
+)
+
+export type WatchState = typeof watchStates.$inferSelect

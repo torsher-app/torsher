@@ -19,6 +19,9 @@ import { homeRoutes } from './routes/home.ts'
 import { imageRoutes } from './routes/images.ts'
 import { indexerManagerRoutes } from './routes/indexerManagers.ts'
 import { indexerRoutes } from './routes/indexers.ts'
+import { playbackRoutes } from './routes/playback.ts'
+import { streamRoutes } from './routes/stream.ts'
+import { torrentRoutes } from './routes/torrents.ts'
 import { userRoutes } from './routes/users.ts'
 
 /**
@@ -54,6 +57,14 @@ export function createApp(options: FastifyServerOptions = {}) {
           name: 'Sources',
           description: 'Torznab-индексаторы и менеджеры индексаторов',
         },
+        {
+          name: 'Torrents',
+          description: 'Раздачи по magnet и .torrent, статистика движка',
+        },
+        {
+          name: 'Playback',
+          description: 'Запуск воспроизведения и позиция просмотра',
+        },
         { name: 'About', description: 'Версия, лицензия и исходники' },
       ],
     },
@@ -83,6 +94,9 @@ export function createApp(options: FastifyServerOptions = {}) {
   app.register(imageRoutes, { prefix: '/img' })
   app.register(indexerRoutes, { prefix: '/indexers' })
   app.register(indexerManagerRoutes, { prefix: '/indexer-managers' })
+  app.register(torrentRoutes, { prefix: '/torrents' })
+  app.register(streamRoutes, { prefix: '/stream' })
+  app.register(playbackRoutes)
 
   return app
 }

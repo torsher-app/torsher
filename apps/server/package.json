@@ -10,7 +10,8 @@
     "seed": "NODE_ENV=development node --env-file-if-exists=.env scripts/seed.ts",
     "db:generate": "drizzle-kit generate",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "engine:install": "node --env-file-if-exists=.env scripts/engineInstall.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.3",

@@ -1,6 +1,7 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import AboutPage from './pages/AboutPage.vue'
 import HomePage from './pages/HomePage.vue'
+import PlayerPage from './pages/PlayerPage.vue'
 import SearchPage from './pages/SearchPage.vue'
 import TitlePage from './pages/TitlePage.vue'
 
@@ -14,5 +15,6 @@ export const router = createRouter({
     { path: '/search', component: SearchPage },
     { path: '/title/:id', component: TitlePage, props: true },
     { path: '/about', component: AboutPage },
+    { path: '/play/:torrentId/:fileIndex', component: PlayerPage, props: true },
   ],
 })

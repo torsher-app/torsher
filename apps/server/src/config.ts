@@ -37,6 +37,23 @@ export const config = {
       : join(dirname(databasePath), 'secret.key')
   },
 
+  // Каталог данных сервера: рядом с базой лежат движок, его сессия и загрузки
+  get dataDir() {
+    return this.databasePath === ':memory:'
+      ? '.data'
+      : dirname(this.databasePath)
+  },
+
+  // Бинарник движка. По умолчанию его кладёт `engine:install` в каталог данных,
+  // образ передаёт свой путь
+  get rqbitPath() {
+    return process.env.RQBIT_PATH || undefined
+  },
+
+  get downloadsPath() {
+    return process.env.DOWNLOADS_PATH || join(this.dataDir, 'downloads')
+  },
+
   // Без токена сервер работает, а каталог отвечает понятной ошибкой
   get tmdbAccessToken() {
     return process.env.TMDB_ACCESS_TOKEN || undefined

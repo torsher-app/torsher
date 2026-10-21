@@ -12,7 +12,12 @@ export type IconName
     | 'chevronRight'
     | 'chevronDown'
     | 'play'
+    | 'pause'
     | 'recent'
+    | 'download'
+    | 'audio'
+    | 'subtitles'
+    | 'check'
 
 const props = defineProps<{ name: IconName }>()
 
@@ -40,9 +45,17 @@ const PATHS: Record<IconName, string[]> = {
     'M3.5 3.5v5h5M12 7.5V12l3 2',
   ],
   play: ['M7 4.5v15l12.5-7.5z'],
+  pause: ['M6.5 4.5h4v15h-4z', 'M13.5 4.5h4v15h-4z'],
+  download: ['M12 4.5v14M6 12.5l6 6 6-6'],
+  audio: ['M4 14.5v-5M8 18V6M12 21V3M16 18V6M20 14.5v-5'],
+  subtitles: [
+    'M5.5 5h13A2.5 2.5 0 0 1 21 7.5v9a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 16.5v-9A2.5 2.5 0 0 1 5.5 5z',
+    'M10.5 10.2a2.2 2.2 0 1 0 0 3.6M17 10.2a2.2 2.2 0 1 0 0 3.6',
+  ],
+  check: ['m5 12.5 4.5 4.5L19 7.5'],
 }
 
-const filled = computed(() => props.name === 'play')
+const filled = computed(() => props.name === 'play' || props.name === 'pause')
 </script>
 
 <template>
