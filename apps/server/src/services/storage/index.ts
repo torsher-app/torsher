@@ -284,13 +284,27 @@ export async function updatePolicy(values: {
   return getStorageOverview()
 }
 
-/** Сколько занято кэшем и каков лимит — для строки фильтров загрузок */
-export async function cacheSummary(live: Map<string, EngineTorrentState>) {
+/** Том, кэш и политика без очереди вытеснения — для «Обзора» */
+export async function storageSummary(live: Map<string, EngineTorrentState>) {
   const disk = await diskUsage(config.downloadsPath)
   const rows = getDb().select().from(torrents).all()
-  const used = storedOf(rows, live, Date.now())
+  const cacheUsed = storedOf(rows, live, Date.now())
     .filter(item => item.retention === 'cache')
     .reduce((total, item) => total + item.size, 0)
+  const policy = getPolicy(disk.total)
 
-  return { used, limit: getPolicy(disk.total).cacheLimit }
+  return {
+    total: disk.total,
+    free: disk.free,
+    cacheUsed,
+    cacheLimit: policy.cacheLimit,
+    minFree: policy.minFree,
+  }
+}
+
+/** Сколько занято кэшем и каков лимит — для строки фильтров загрузок */
+export async function cacheSummary(live: Map<string, EngineTorrentState>) {
+  const summary = await storageSummary(live)
+
+  return { used: summary.cacheUsed, limit: summary.cacheLimit }
 }

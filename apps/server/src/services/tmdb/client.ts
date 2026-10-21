@@ -1,6 +1,10 @@
 import { netFetch } from '../net/index.ts'
 import { SecretError } from '../secrets/index.ts'
-import { currentTmdbKey, tmdbAuth } from './credentials.ts'
+import {
+  currentTmdbKey,
+  markTmdbKeyRejected,
+  tmdbAuth,
+} from './credentials.ts'
 
 export const TMDB_API_ORIGIN = 'https://api.themoviedb.org'
 export const TMDB_IMAGE_ORIGIN = 'https://image.tmdb.org'
@@ -75,9 +79,11 @@ function keyOrThrow() {
 export async function tmdbGet<T>(
   path: string,
   params: Record<string, string>,
-  key = keyOrThrow(),
+  key?: string,
 ): Promise<T> {
-  const auth = tmdbAuth(key)
+  // Ответ на ключ сервера — признак для «Обзора»; проверка чужого ключа его не меняет
+  const serverKey = key === undefined
+  const auth = tmdbAuth(key ?? keyOrThrow())
   const url = new URL(`${API_URL}${path}`)
 
   for (const [name, value] of Object.entries({ ...params, ...auth.params }))
@@ -87,6 +93,10 @@ export async function tmdbGet<T>(
     ...auth.headers,
     Accept: 'application/json',
   })
+
+  // 404 и 5xx о ключе ничего не говорят
+  if (serverKey && (res.ok || res.status === 401))
+    markTmdbKeyRejected(res.status === 401)
 
   if (res.status === 401)
     throw new TmdbError('config', 'TMDB rejected the access token')
@@ -118,7 +128,7 @@ export type TmdbKeyCheck
 /** Проверка ключа запросом `/configuration`: он отвечает с любым ключом */
 export async function checkTmdbKey(key?: string): Promise<TmdbKeyCheck> {
   try {
-    await tmdbGet('/configuration', {}, key ?? keyOrThrow())
+    await tmdbGet('/configuration', {}, key)
 
     return { ok: true, kind: null }
   }

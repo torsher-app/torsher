@@ -563,6 +563,54 @@ export interface MetadataKeyCheckInput {
   kind: "rejected" | "unavailable" | "missing" | null;
 }
 
+export interface AttentionItemInput {
+  kind:
+    | "engine_down"
+    | "storage_low"
+    | "storage_paused"
+    | "indexer_error"
+    | "indexer_missing"
+    | "dns_spoofing"
+    | "host_unreachable"
+    | "tmdb_key_invalid";
+  severity: "error" | "warning";
+  section: "downloads" | "storage" | "sources" | "network" | "metadata";
+  params: {
+    count?: number;
+    name?: string;
+    reason?: string;
+    free?: number;
+    minFree?: number;
+  };
+}
+
+export interface OverviewResponseInput {
+  startedAt: string;
+  version: string;
+  attention: AttentionItemInput[];
+  downloads: {
+    total: number;
+    active: number;
+    downloadSpeed: number;
+    uploadSpeed: number;
+  };
+  storage: {
+    usedByCache: number;
+    cacheLimit: number;
+    free: number;
+    total: number;
+    minFree: number;
+  };
+  sources: {
+    ok: number;
+    total: number;
+  };
+  devices: {
+    total: number;
+    watching: number;
+  };
+}
+
 export interface VoiceRefInput {
   studio?: string;
   type?: "D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original";
@@ -1599,6 +1647,54 @@ export interface MetadataKeyCheck {
   kind: "rejected" | "unavailable" | "missing" | null;
 }
 
+export interface AttentionItem {
+  kind:
+    | "engine_down"
+    | "storage_low"
+    | "storage_paused"
+    | "indexer_error"
+    | "indexer_missing"
+    | "dns_spoofing"
+    | "host_unreachable"
+    | "tmdb_key_invalid";
+  severity: "error" | "warning";
+  section: "downloads" | "storage" | "sources" | "network" | "metadata";
+  params: {
+    count?: number;
+    name?: string;
+    reason?: string;
+    free?: number;
+    minFree?: number;
+  };
+}
+
+export interface OverviewResponse {
+  startedAt: string;
+  version: string;
+  attention: AttentionItem[];
+  downloads: {
+    total: number;
+    active: number;
+    downloadSpeed: number;
+    uploadSpeed: number;
+  };
+  storage: {
+    usedByCache: number;
+    cacheLimit: number;
+    free: number;
+    total: number;
+    minFree: number;
+  };
+  sources: {
+    ok: number;
+    total: number;
+  };
+  devices: {
+    total: number;
+    watching: number;
+  };
+}
+
 export interface VoiceRef {
   studio?: string;
   type?: "D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original";
@@ -2082,6 +2178,8 @@ export interface WrongPasswordResponse {
   field: "currentPassword";
 }
 
+export type GetOverviewError = MessageResponse;
+
 export type PostAuthSignupError = MessageResponse;
 
 export type PostAuthSigninError = MessageResponse;
@@ -2512,6 +2610,22 @@ export class Api<
     getAbout: (params: RequestParams = {}) =>
       this.request<AboutResponse, any>({
         path: `/api/about/`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+  };
+  overview = {
+    /**
+     * No description
+     *
+     * @tags Overview
+     * @name GetOverview
+     * @request GET:/api/overview
+     */
+    getOverview: (params: RequestParams = {}) =>
+      this.request<OverviewResponse, GetOverviewError>({
+        path: `/api/overview`,
         method: "GET",
         format: "json",
         ...params,

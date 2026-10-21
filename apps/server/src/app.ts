@@ -67,6 +67,10 @@ export function createApp(
           name: 'Playback',
           description: 'Запуск воспроизведения и позиция просмотра',
         },
+        {
+          name: 'Overview',
+          description: 'Состояние сервера для первой страницы панели',
+        },
         { name: 'About', description: 'Версия, лицензия и исходники' },
       ],
     },

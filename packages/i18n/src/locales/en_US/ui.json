@@ -335,6 +335,7 @@
   "panel": {
     "nav": {
       "label": "Panel sections",
+      "overview": "Overview",
       "torrents": "Downloads",
       "sources": "Sources",
       "people": "Profiles & devices",
@@ -433,6 +434,82 @@
         "emailHint": "Only for signing in. The server sends no email.",
         "submit": "Create account and continue",
         "failed": "Couldn't create the account"
+      }
+    },
+    "overview": {
+      "title": "Overview",
+      "description": "Whether the server is fine, and where to fix it if not.",
+      "uptime": {
+        "minutes": "Up {n} minute | Up {n} minutes",
+        "hours": "Up {n} hour | Up {n} hours",
+        "days": "Up {n} day | Up {n} days"
+      },
+      "version": "Torsher {version}",
+      "loadError": "Couldn't load the overview",
+      "loadErrorText": "The server didn't respond. If the panel has been open for a while, reload the page.",
+      "attention": {
+        "title": "Needs attention",
+        "count": "{n} issue | {n} issues",
+        "error": "Error",
+        "warning": "Warning",
+        "engine_down": {
+          "not_installed": "Torrent engine isn't installed: torrents can't be added or played",
+          "starting": "Torrent engine is starting",
+          "stopped": "Torrent engine isn't running: torrents can't be added or played"
+        },
+        "storage_low": "{free} free, below the {minFree} reserve: new playback won't start",
+        "storage_paused": {
+          "one": "“{name}” is paused: not enough space",
+          "many": "{n} torrent is paused: not enough space | {n} torrents are paused: not enough space"
+        },
+        "indexer_error": {
+          "one": "Indexer “{name}” doesn't respond or rejects requests",
+          "many": "{n} indexer doesn't respond or rejects requests | {n} indexers don't respond or reject requests"
+        },
+        "indexer_missing": {
+          "one": "Indexer “{name}” is gone from the manager",
+          "many": "{n} indexer is gone from the manager | {n} indexers are gone from the manager"
+        },
+        "dns_spoofing": {
+          "one": "DNS returns a wrong address for {name}",
+          "many": "DNS returns wrong addresses for {n} host | DNS returns wrong addresses for {n} hosts"
+        },
+        "host_unreachable": {
+          "one": "{name} is unreachable",
+          "many": "{n} host is unreachable | {n} hosts are unreachable"
+        },
+        "tmdb_key_invalid": {
+          "missing": "No TMDB key: the catalog and showcase are empty",
+          "rejected": "TMDB rejects the key: the catalog and showcase are empty",
+          "unreadable": "The saved TMDB key can't be decrypted: enter it again"
+        }
+      },
+      "tiles": {
+        "downloads": {
+          "active": "{n} downloading | {n} downloading",
+          "idle": "Nothing is downloading",
+          "speed": "↓ {down}/s · ↑ {up}/s",
+          "total": "{n} torrent in the list | {n} torrents in the list",
+          "empty": "No torrents yet"
+        },
+        "storage": {
+          "label": "{used} of {total} used",
+          "legend": "Cache {used} of {limit} · reserve {reserve}"
+        },
+        "sources": {
+          "working": "{ok} of {n} indexer working | {ok} of {n} indexers working",
+          "allWorking": "All enabled ones work",
+          "notAll": "The rest have errors or aren't checked yet",
+          "empty": "No indexers",
+          "emptyHint": "Connect any Torznab indexer, for example Prowlarr or Jackett"
+        },
+        "devices": {
+          "count": "{n} device | {n} devices",
+          "empty": "No devices",
+          "emptyHint": "Pair a TV with the code on its screen",
+          "watching": "Watching now: {n} | Watching now: {n}",
+          "idle": "Nobody is watching"
+        }
       }
     },
     "settings": {
