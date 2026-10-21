@@ -3,10 +3,6 @@ import type { XmlNode } from './xml.ts'
 import { readTorznabXml, sourceGet, torznabRequestUrl } from './client.ts'
 import { child, children, text } from './xml.ts'
 
-// Стандартные категории Torznab
-export const MOVIE_CATEGORY = 2000
-export const TV_CATEGORY = 5000
-
 export interface SearchIds {
   /** С префиксом `tt`, как в TMDB. */
   imdb?: string
@@ -52,10 +48,6 @@ function supportsText(mode: TorznabSearchMode) {
   )
 }
 
-function hasCategory(caps: TorznabCaps, id: number) {
-  return caps.categories.some(category => category.id === id)
-}
-
 function idParams(
   caps: TorznabCaps,
   query: SearchQuery,
@@ -97,27 +89,27 @@ function idParams(
  * индексаторы ID не понимают или знают не все раздачи по ID. Сезон в текстовый
  * запрос не добавляется — индексаторы переводят его в `S02`, а в русских
  * названиях сезон пишут словами; лишнее отсеет матчер.
+ *
+ * Категорию (`cat`) не передаём: многие индексаторы отдают раздачи без
+ * стандартных категорий Torznab или со своими, и фильтр по «Фильмам» или «ТВ»
+ * отсекает всё. Фильм это или сериал, проверяет матчер по разобранному названию.
  */
 export function buildSearchRequests(
   caps: TorznabCaps,
   query: SearchQuery,
 ): SearchParams[] {
-  const category = query.kind === 'movie' ? MOVIE_CATEGORY : TV_CATEGORY
-  const cat: SearchParams = hasCategory(caps, category)
-    ? { cat: String(category) }
-    : {}
   const requests: SearchParams[] = []
   const byId = idParams(caps, query)
 
   if (byId)
-    requests.push({ ...byId, ...cat })
+    requests.push(byId)
 
   if (supportsText(caps.search)) {
     for (const title of query.titles) {
       const q
         = query.kind === 'movie' && query.year ? `${title} ${query.year}` : title
 
-      requests.push({ t: 'search', q, ...cat })
+      requests.push({ t: 'search', q })
     }
   }
 
