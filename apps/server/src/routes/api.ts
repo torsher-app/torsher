@@ -13,6 +13,8 @@ export const apiRoutes: FastifyPluginAsyncZod = async (app) => {
   app.get(
     '/health',
     {
+      // HEALTHCHECK образа дёргает роут каждые 30 с: без этого он забивает лог
+      logLevel: 'warn',
       schema: {
         operationId: 'getHealth',
         tags: ['Health'],

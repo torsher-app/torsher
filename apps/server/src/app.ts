@@ -1,4 +1,5 @@
 import type { FastifyServerOptions } from 'fastify'
+import type { ClientDirs } from './static.ts'
 import type { ZodTypeProvider } from 'fastify-type-provider-zod'
 import cookie from '@fastify/cookie'
 import cors from '@fastify/cors'
@@ -15,12 +16,17 @@ import { apiRoutes } from './routes/api.ts'
 import { playbackRoutes } from './routes/playback.ts'
 import { streamRoutes } from './routes/stream.ts'
 import { torrentRoutes } from './routes/torrents.ts'
+import { registerClients } from './static.ts'
 
 /**
  * Приложение отделено от `main.ts`, чтобы тесты и выгрузка OpenAPI могли
  * поднять его через `app.inject()` без сокета и без файла базы.
+ * Собранные клиенты раздаются, только если переданы их каталоги.
  */
-export function createApp(options: FastifyServerOptions = {}) {
+export function createApp(
+  options: FastifyServerOptions = {},
+  clients?: ClientDirs,
+) {
   const app = Fastify(options).withTypeProvider<ZodTypeProvider>()
 
   app.setValidatorCompiler(validatorCompiler)
@@ -70,6 +76,9 @@ export function createApp(options: FastifyServerOptions = {}) {
   app.register(torrentRoutes, { prefix: '/torrents' })
   app.register(streamRoutes, { prefix: '/stream' })
   app.register(playbackRoutes)
+
+  if (clients)
+    registerClients(app, clients)
 
   return app
 }

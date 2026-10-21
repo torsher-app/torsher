@@ -98,3 +98,19 @@ INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
 DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
 OTHER DEALINGS IN THE FONT SOFTWARE.
+
+
+Docker image
+============
+
+The image is based on the official Node.js image (node:<version>-bookworm-slim).
+Node.js is under the MIT License, with the licenses of its bundled components
+listed in https://github.com/nodejs/node/blob/main/LICENSE. The Debian packages
+of the base image carry their licenses in /usr/share/doc/<package>/copyright.
+
+tini (init process, Debian package)
+https://github.com/krallin/tini
+License: MIT, full text in /usr/share/doc/tini/copyright inside the image
+
+Server dependencies are installed into /app/server/node_modules, each package
+with its own license file.

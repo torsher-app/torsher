@@ -17,6 +17,12 @@ export const config = {
   databasePath: process.env.DATABASE_PATH ?? '.data/torsher.db',
   isProduction: process.env.NODE_ENV === 'production',
 
+  // Собранные витрина и панель: в монорепо и в образе лежат по одним путям
+  clients: {
+    tv: join(import.meta.dirname, '../../tv/dist'),
+    panel: join(import.meta.dirname, '../../web/.output/public'),
+  },
+
   // Секрет читается лениво: приложение можно поднять в памяти
   // (например, чтобы выгрузить OpenAPI-спеку) без настроенного окружения
   get secretKey() {
@@ -78,10 +84,15 @@ const cookiePrefix = process.env.COOKIE_PREFIX ?? 'torsher'
 export const ACCESS_TOKEN_COOKIE = `${cookiePrefix}_access_token`
 export const REFRESH_TOKEN_COOKIE = `${cookiePrefix}_refresh_token`
 
-/** Общие атрибуты сессионных cookie. Токены живут только в httpOnly. */
+/**
+ * Общие атрибуты сессионных cookie. Токены живут только в httpOnly.
+ * `secure: 'auto'` ставит Secure только на HTTPS-соединении: в локальной сети
+ * сервер открывают по http://<адрес>:<порт>, и cookie с Secure браузер бы
+ * не сохранил.
+ */
 export const sessionCookieOptions = {
   httpOnly: true,
-  secure: config.isProduction,
+  secure: 'auto',
   sameSite: 'lax',
   path: '/',
 } as const

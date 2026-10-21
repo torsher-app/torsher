@@ -1,0 +1,16 @@
+**/node_modules
+**/.nuxt
+**/.output
+**/.nitro
+**/.cache
+**/.data
+**/dist
+**/*.log
+**/.env
+**/.env.*
+!**/.env.example
+.git
+.github
+.DS_Store
+Dockerfile
+docker-compose*.yml

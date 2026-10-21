@@ -26,7 +26,7 @@ const app = createApp({
       }),
     },
   },
-})
+}, config.clients)
 
 const engineLog = app.log.child({ module: 'engine' })
 

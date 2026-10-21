@@ -69,6 +69,20 @@ describe('первый запуск', () => {
 
     expect(second.statusCode).toBe(403)
   })
+
+  it('выдаёт cookie без Secure на http: сервер открывают по адресу в сети', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/auth/signin',
+      payload: { email: 'owner@example.com', password: 'password123' },
+    })
+    const cookie = res.cookies.find(
+      item => item.name === ACCESS_TOKEN_COOKIE,
+    )
+
+    expect(cookie).toMatchObject({ httpOnly: true, sameSite: 'Lax' })
+    expect(cookie?.secure).toBeUndefined()
+  })
 })
 
 describe('get /api/health', () => {

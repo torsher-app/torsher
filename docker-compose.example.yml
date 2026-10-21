@@ -1,0 +1,45 @@
+# Copy to docker-compose.yml and adjust the values below.
+#
+#   docker compose up -d                        # Torsher only
+#   docker compose --profile prowlarr up -d     # Torsher and Prowlarr
+#
+# Then open http://<host>:8080/panel/ to create the owner account.
+
+services:
+  torsher:
+    image: ghcr.io/torsher-app/torsher:latest
+    container_name: torsher
+    restart: unless-stopped
+    ports:
+      - '8080:8080'
+    environment:
+      # Owner of the files in /data on the host (`id -u` and `id -g`)
+      PUID: 1000
+      PGID: 1000
+      TZ: Etc/UTC
+      # Optional: key that encrypts indexer API keys in the database.
+      # Without it a key file is created in /data/db. Keep it with your backups
+      # TORSHER_SECRET: change-me
+      # Optional: your own TMDB API Read Access Token for the catalog
+      # TMDB_ACCESS_TOKEN:
+    volumes:
+      # Database, keys and downloads. Keep downloads and the library
+      # on the same filesystem
+      - ./data:/data
+
+  # Optional: any Torznab indexer works. Prowlarr starts empty: you add
+  # the indexers you are allowed to use, then connect it in Torsher under
+  # Sources with its address (http://prowlarr:9696) and API key
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    restart: unless-stopped
+    profiles: [prowlarr]
+    ports:
+      - '9696:9696'
+    environment:
+      PUID: 1000
+      PGID: 1000
+      TZ: Etc/UTC
+    volumes:
+      - ./prowlarr:/config
