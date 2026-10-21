@@ -19,11 +19,13 @@ pnpm typecheck
 pnpm test
 ```
 
-Streaming needs the torrent engine ([rqbit](https://github.com/ikatson/rqbit)). This downloads the pinned release for your platform into the server data folder and verifies its checksum:
+Streaming needs the torrent engine ([rqbit](https://github.com/ikatson/rqbit)). `pnpm dev` downloads the pinned release for your platform into the server data folder on first start and verifies its checksum; offline, the server starts without it. To install it separately:
 
 ```bash
 pnpm --filter @torsher/server engine:install
 ```
+
+To use your own binary instead, set `RQBIT_PATH` in `apps/server/.env`.
 
 ## Contributing
 

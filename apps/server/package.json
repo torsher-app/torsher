@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "dev": "NODE_ENV=development node --env-file-if-exists=.env --watch src/main.ts",
+    "dev": "node --env-file-if-exists=.env scripts/engineInstall.ts --optional && NODE_ENV=development node --env-file-if-exists=.env --watch src/main.ts",
     "start": "NODE_ENV=production node --env-file-if-exists=.env src/main.ts",
     "openapi": "node scripts/openapi.ts",
     "seed": "NODE_ENV=development node --env-file-if-exists=.env scripts/seed.ts",
