@@ -70,6 +70,11 @@ function onLoad(index: number) {
   object-position: right center;
   opacity: 0;
   transition: opacity calc(var(--motion-base) * 2) var(--motion-easing);
+  /*
+   * Постоянный слой: без него смена кадра на ТВ обходится вдвое дороже.
+   * Именно transform — подсказка opacity такого эффекта не дала
+   */
+  will-change: transform;
 }
 
 .backdrop__image--shown {

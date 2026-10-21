@@ -10,7 +10,7 @@ afterEach(() => {
 })
 
 describe('createHeroScheduler', () => {
-  it('под пультом меняет hero через 120 мс', () => {
+  it('под пультом меняет hero, когда фокус остановился', () => {
     const apply = vi.fn()
     const hero = createHeroScheduler(apply)
 
