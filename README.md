@@ -20,14 +20,14 @@ Torsher runs as a single Docker container on x86-64 and arm64 Linux: a mini PC, 
    docker compose up -d
    ```
 
-4. Open `http://<host>:8080/panel/` and create the owner account. The server has one account.
+4. Open `http://<host>:8080/panel/` and create the owner account. The server has one account. A setup wizard then checks storage, network access to TMDB and looks for Prowlarr or Jackett nearby; every step can be skipped.
 5. Open `http://<host>:8080/` on a TV or in a browser to use the showcase.
 
 Updating is `docker compose pull && docker compose up -d`. Database migrations run on start.
 
 ### Sources
 
-Torsher comes without any sources. Connect any Torznab indexer, for example Prowlarr or Jackett: in the panel open **Sources** and choose **Import from Prowlarr or Jackett** (address and API key) or **Add manually** for a single Torznab indexer.
+Torsher comes without any sources. Connect any Torznab indexer, for example Prowlarr or Jackett. The setup wizard finds a manager at its usual address (a compose service named `prowlarr` or `jackett`, the Docker host, this machine) and connects it with the API key. Later, in the panel open **Sources** and choose **Import from Prowlarr or Jackett** (address and API key) or **Add manually** for a single Torznab indexer.
 
 The example file has an optional Prowlarr service. It starts empty, and you add the indexers you are allowed to use:
 

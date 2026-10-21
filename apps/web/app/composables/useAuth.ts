@@ -5,6 +5,7 @@ import { api } from '~/services/api'
 export function useAuth() {
   const { fetchMe, reset } = useUser()
   const { markDone } = useSetup()
+  const wizard = useWizard()
 
   async function signin(body: SigninInput) {
     await api.auth.postAuthSignin(body)
@@ -31,6 +32,7 @@ export function useAuth() {
   /** Сессия истекла: чистим состояние и уводим на вход */
   async function clearSession() {
     reset()
+    wizard.reset()
     await navigateTo('/auth/login')
   }
 
