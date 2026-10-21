@@ -66,3 +66,28 @@ export function formatBytes(bytes: number, locale: string) {
     maximumFractionDigits: index < 2 ? 0 : 1,
   }).format(value)
 }
+
+/** «1 ч 50 мин» или «2 мин» — оставшееся время загрузки, без секунд */
+export function formatDuration(seconds: number, locale: string) {
+  const tag = locale.replace('_', '-')
+  const unit = (value: number, name: 'hour' | 'minute' | 'day') =>
+    new Intl.NumberFormat(tag, {
+      style: 'unit',
+      unit: name,
+      unitDisplay: 'short',
+    }).format(value)
+  const minutes = Math.max(1, Math.round(seconds / 60))
+  const hours = Math.floor(minutes / 60)
+
+  if (hours >= 48)
+    return unit(Math.round(hours / 24), 'day')
+
+  if (hours === 0)
+    return unit(minutes, 'minute')
+
+  const rest = minutes % 60
+
+  return rest
+    ? `${unit(hours, 'hour')} ${unit(rest, 'minute')}`
+    : unit(hours, 'hour')
+}

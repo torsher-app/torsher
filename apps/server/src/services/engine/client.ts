@@ -77,23 +77,67 @@ const engineTorrentDetails = z.object({
   ),
 })
 
-const engineStats = z.object({
+const engineTorrentState = z.object({
+  infoHash: z.string(),
+  paused: z.boolean(),
+  // Выбранные файлы качаются целиком, а не только то, что читает поток
+  background: z.boolean(),
+  selected: z.array(z.number()).nullable(),
+  // Скачано всего, включая куски вне выбора, прочитанные потоком
+  bytesCompleted: z.number(),
+  bytesWanted: z.number(),
+  wantedCompleted: z.number(),
+  seeding: z.boolean(),
   peers: z.object({ connected: z.number(), found: z.number() }),
   downloadSpeed: z.number(),
   uploadSpeed: z.number(),
   fileProgress: z.array(z.number()).nullable(),
+})
+
+const engineStats = engineTorrentState.extend({
   // Скачанные куски строкой из 0 и 1 по порядку кусков
   pieces: z.string(),
 })
 
+const engineForget = z.object({ deletedBytes: z.number() })
+
 export type EngineTorrentDetails = z.infer<typeof engineTorrentDetails>
 
-export interface EngineStats {
+/** Раздача в движке: пауза, выбор, сколько скачано, пиры и скорость */
+export interface EngineTorrentState {
+  infoHash: string
+  paused: boolean
+  background: boolean
+  selected: number[]
+  bytesCompleted: number
+  bytesWanted: number
+  wantedCompleted: number
+  seeding: boolean
   peers: { connected: number, found: number }
   downloadSpeed: number
   uploadSpeed: number
   fileProgress: number[]
+}
+
+export interface EngineStats extends EngineTorrentState {
   pieces: string
+}
+
+function toState(raw: z.infer<typeof engineTorrentState>): EngineTorrentState {
+  return {
+    infoHash: raw.infoHash.toLowerCase(),
+    paused: raw.paused,
+    background: raw.background,
+    selected: raw.selected ?? [],
+    bytesCompleted: raw.bytesCompleted,
+    bytesWanted: raw.bytesWanted,
+    wantedCompleted: raw.wantedCompleted,
+    seeding: raw.seeding,
+    peers: { connected: raw.peers.connected, found: raw.peers.found },
+    downloadSpeed: raw.downloadSpeed,
+    uploadSpeed: raw.uploadSpeed,
+    fileProgress: raw.fileProgress ?? [],
+  }
 }
 
 function isTimeout(err: unknown) {
@@ -127,7 +171,7 @@ async function errorOf(response: Response) {
 }
 
 interface EngineRequest {
-  method?: 'GET' | 'POST' | 'DELETE'
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
   body?: RequestInit['body']
   headers?: Record<string, string>
   timeoutMs?: number
@@ -231,26 +275,69 @@ export async function addTorrent(bytes: Uint8Array, onlyFiles: number[]) {
   )
 }
 
-/** Убирает раздачу из движка, файлы остаются на диске */
-export async function forgetTorrent(infoHash: string) {
-  const response = await engineFetch(`/torrents/${infoHash}`, {
-    method: 'DELETE',
-  })
+async function engineEmpty(path: string, request: EngineRequest) {
+  const response = await engineFetch(path, request)
 
   if (!response.ok)
     throw await errorOf(response)
 }
 
+/**
+ * Меняет выбор файлов. `now` — качать выбранные целиком сразу; без него
+ * движок ждёт начала просмотра (у раздачи, которая уже докачивается, — сразу).
+ */
+export async function selectFiles(
+  infoHash: string,
+  files: number[],
+  now: boolean,
+) {
+  await engineEmpty(`/torrents/${infoHash}/files`, {
+    method: 'PUT',
+    body: JSON.stringify({ files, now }),
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
+
+/** Пауза останавливает и закачку, и раздачу; переживает перезапуск движка */
+export async function pauseTorrent(infoHash: string) {
+  await engineEmpty(`/torrents/${infoHash}/pause`, { method: 'POST' })
+}
+
+export async function resumeTorrent(infoHash: string) {
+  await engineEmpty(`/torrents/${infoHash}/resume`, { method: 'POST' })
+}
+
+/**
+ * Убирает раздачу из движка. С `deleteFiles` движок удаляет и её файлы;
+ * ответ — сколько байт освободилось. Без него файлы остаются на диске.
+ */
+export async function forgetTorrent(
+  infoHash: string,
+  options: { deleteFiles?: boolean } = {},
+) {
+  const query = options.deleteFiles ? '?delete_files=true' : ''
+  const result = await engineJson(
+    `/torrents/${infoHash}${query}`,
+    engineForget,
+    {
+      method: 'DELETE',
+    },
+  )
+
+  return result.deletedBytes
+}
+
+/** Все раздачи движка одним запросом: для списка загрузок и учёта места */
+export async function listEngineTorrents() {
+  const list = await engineJson('/torrents', z.array(engineTorrentState))
+
+  return list.map(toState)
+}
+
 export async function torrentStats(infoHash: string): Promise<EngineStats> {
   const stats = await engineJson(`/torrents/${infoHash}/stats`, engineStats)
 
-  return {
-    peers: stats.peers,
-    downloadSpeed: stats.downloadSpeed,
-    uploadSpeed: stats.uploadSpeed,
-    fileProgress: stats.fileProgress ?? [],
-    pieces: stats.pieces,
-  }
+  return { ...toState(stats), pieces: stats.pieces }
 }
 
 /**

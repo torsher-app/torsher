@@ -1,6 +1,8 @@
 import { z } from 'zod'
 import {
   torrentErrors,
+  torrentPauseReasons,
+  torrentRetentions,
   torrentSources,
   torrentStatuses,
 } from '../db/schema.ts'
@@ -26,6 +28,16 @@ export const torrentIdParams = z.object({
   id: z.string().min(1).max(100),
 })
 
+export const downloadStates = [
+  'idle',
+  'partial',
+  'downloading',
+  'stalled',
+  'seeding',
+  'complete',
+  'paused',
+] as const
+
 export const torrentFile = z
   .object({
     // Индекс файла в раздаче — тот же, что у движка
@@ -33,8 +45,13 @@ export const torrentFile = z
     path: z.string(),
     size: z.number(),
     isVideo: z.boolean(),
+    downloaded: z.number(),
+    // Качается целиком (выбран для скачивания или его смотрели)
+    selected: z.boolean(),
   })
   .meta({ id: 'torrentFile' })
+
+const peers = z.object({ connected: z.number(), found: z.number() })
 
 export const torrent = z
   .object({
@@ -49,6 +66,21 @@ export const torrent = z
     totalSize: z.number(),
     addedAt: z.string(),
     lastAccessAt: z.string().nullable(),
+    // Каталожный ID тайтла, если раздачу выбрали из карточки
+    titleId: z.string().nullable(),
+    retention: z.enum(torrentRetentions),
+    pauseReason: z.enum(torrentPauseReasons).nullable(),
+    state: z.enum(downloadStates),
+    // Файл раздачи сейчас смотрят
+    streaming: z.boolean(),
+    // Выбранные файлы: размер и сколько скачано
+    progress: z.object({ downloaded: z.number(), wanted: z.number() }),
+    // Занято на диске, включая прочитанное потоком вне выбора
+    sizeOnDisk: z.number(),
+    // Байт в секунду
+    downloadSpeed: z.number(),
+    uploadSpeed: z.number(),
+    peers,
   })
   .meta({ id: 'torrent' })
 
@@ -57,8 +89,26 @@ export const torrentList = z
     items: z.array(torrent),
     // Список живёт и без движка, но добавить и смотреть без него нельзя
     engine: z.enum(['ready', ...engineUnavailableKinds]),
+    totals: z.object({ downloadSpeed: z.number(), uploadSpeed: z.number() }),
+    // Кэш просмотров (раздачи без «Оставить») и его лимит, байт
+    cache: z.object({ used: z.number(), limit: z.number() }),
   })
   .meta({ id: 'torrentList' })
+
+export const deleteTorrentQuery = z.object({
+  // `delete` удаляет и скачанные файлы
+  files: z.enum(['keep', 'delete']).optional(),
+})
+
+export const downloadTorrent = z
+  .object({
+    files: z.array(z.number().int().min(0).max(99_999)).min(1).max(10_000),
+  })
+  .meta({ id: 'downloadTorrent' })
+
+export const updateRetention = z
+  .object({ retention: z.enum(torrentRetentions) })
+  .meta({ id: 'updateRetention' })
 
 export const createTorrent = z
   .object({

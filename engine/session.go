@@ -19,8 +19,11 @@ type session struct {
 
 type savedTorrent struct {
 	Selected []int `json:"selected"`
-	// Выбранные файлы уже докачиваются целиком (просмотр начинался)
+	// Выбранные файлы уже докачиваются целиком (просмотр начинался или
+	// скачивание попросили сразу)
 	Background bool `json:"background"`
+	// Пауза владельца или сервера: раздача не качает и не раздаёт
+	Paused bool `json:"paused"`
 }
 
 type restoredTorrent struct {
@@ -74,6 +77,25 @@ func (s *session) saveSelection(hash metainfo.Hash, saved savedTorrent) error {
 	}
 
 	return writeFileAtomic(s.path(hash, ".json"), data)
+}
+
+// Сохранённое состояние раздачи; нет записи — пустое
+func (s *session) get(hash metainfo.Hash) savedTorrent {
+	var saved savedTorrent
+
+	if data, err := os.ReadFile(s.path(hash, ".json")); err == nil {
+		_ = json.Unmarshal(data, &saved)
+	}
+
+	return saved
+}
+
+// Меняет одно поле состояния, не затирая остальные
+func (s *session) update(hash metainfo.Hash, change func(*savedTorrent)) error {
+	saved := s.get(hash)
+	change(&saved)
+
+	return s.saveSelection(hash, saved)
 }
 
 func (s *session) remove(hash metainfo.Hash) error {

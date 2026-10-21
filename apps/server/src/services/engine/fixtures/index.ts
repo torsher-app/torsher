@@ -35,11 +35,23 @@ export function piecesDone(count: number) {
   return '1'.repeat(count) + '0'.repeat(41 - count)
 }
 
-export const liveStats = {
+export const liveState = {
+  infoHash: INFO_HASH,
+  paused: false,
+  background: false,
+  selected: [0],
+  bytesCompleted: 3_145_728,
+  bytesWanted: 9_437_184,
+  wantedCompleted: 3_145_728,
+  seeding: true,
   peers: { connected: 7, found: 41, seeders: 3 },
   downloadSpeed: 2_621_440,
   uploadSpeed: 262_144,
   fileProgress: [3_145_728, 0, 0],
+}
+
+export const liveStats = {
+  ...liveState,
   pieces: piecesDone(12),
 }
 

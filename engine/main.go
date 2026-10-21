@@ -26,42 +26,53 @@ func main() {
 	downloads := flag.String("downloads", "downloads", "каталог файлов раздач")
 	dataDir := flag.String("data", "engine-data", "каталог состояния движка")
 	peerPort := flag.Int("peer-port", 0, "порт для входящих соединений пиров (0 — любой свободный)")
+	seed := flag.Bool("seed", true, "раздавать скачанное пирам")
 	flag.Parse()
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
-	if err := run(*listen, *downloads, *dataDir, *peerPort, logger); err != nil {
+	if err := run(*listen, *downloads, *dataDir, *peerPort, *seed, logger); err != nil {
 		logger.Error("engine stopped", "err", err)
 		os.Exit(1)
 	}
 }
 
+// Хранилище клиента: каталог загрузок и отметки скачанных кусков
+type clientStorage struct {
+	downloads  string
+	completion storage.PieceCompletion
+}
+
 // Конфигурация клиента общая для движка и тестов: тесты отключают сеть наружу
-func newClientConfig(downloads, dataDir string, peerPort int) (*torrent.ClientConfig, error) {
+func newClientConfig(downloads, dataDir string, peerPort int, seed bool) (*torrent.ClientConfig, clientStorage, error) {
 	if err := os.MkdirAll(downloads, 0o755); err != nil {
-		return nil, err
+		return nil, clientStorage{}, err
 	}
 
 	completion, err := storage.NewBoltPieceCompletion(dataDir)
 	if err != nil {
-		return nil, err
+		return nil, clientStorage{}, err
 	}
 
 	cfg := torrent.NewDefaultClientConfig()
 	cfg.ListenPort = peerPort
 	cfg.DataDir = downloads
+	// Без `Seed` библиотека отдаёт куски только в обмен на свои и перестаёт
+	// раздавать скачанное
+	cfg.Seed = seed
 	cfg.DefaultStorage = storage.NewFileOpts(storage.NewFileClientOpts{
 		ClientBaseDir:   downloads,
+		FilePathMaker:   filePathOf,
 		PieceCompletion: completion,
 	})
 	// Сообщения библиотеки — только предупреждения и ошибки: остальное шумит в журнале сервера
 	cfg.Slogger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
 
-	return cfg, nil
+	return cfg, clientStorage{downloads: downloads, completion: completion}, nil
 }
 
-func run(listen, downloads, dataDir string, peerPort int, logger *slog.Logger) error {
-	cfg, err := newClientConfig(downloads, dataDir, peerPort)
+func run(listen, downloads, dataDir string, peerPort int, seed bool, logger *slog.Logger) error {
+	cfg, store, err := newClientConfig(downloads, dataDir, peerPort, seed)
 	if err != nil {
 		return err
 	}
@@ -77,7 +88,7 @@ func run(listen, downloads, dataDir string, peerPort int, logger *slog.Logger) e
 		return err
 	}
 
-	engine := newAPI(client, sess, logger)
+	engine := newAPI(client, sess, store, logger)
 	engine.restore()
 
 	ln, err := net.Listen("tcp", listen)
@@ -92,6 +103,8 @@ func run(listen, downloads, dataDir string, peerPort int, logger *slog.Logger) e
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	go engine.speeds.run(ctx, client)
 
 	go func() {
 		<-ctx.Done()

@@ -1,13 +1,10 @@
 <script setup lang="ts">
-import TorrentsView from '~/components/torrents/TorrentsView.vue'
-
+// Раздел назывался «Раздачи»: старые закладки ведут в «Загрузки»
 definePageMeta({
-  middleware: 'required-auth',
+  redirect: to => ({ path: '/downloads', query: to.query }),
 })
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-1 flex-col">
-    <TorrentsView />
-  </div>
+  <div />
 </template>

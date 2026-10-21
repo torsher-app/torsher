@@ -18,6 +18,7 @@ import {
   byteOffset,
   clampTime,
   formatDuration,
+  formatGigabytes,
 } from '../lib/player.ts'
 import { titleRefOf } from '../lib/sources.ts'
 
@@ -33,7 +34,7 @@ const props = defineProps<{
 // Позиция сохраняется по ходу просмотра, а не только на выходе: ТВ могут выключить
 const SAVE_EVERY_S = 10
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const router = useRouter()
 const focus = useFocus()
 const player = usePlayback(
@@ -114,11 +115,24 @@ const trackOptions = computed(() =>
     : tracks.subtitleOptions.value,
 )
 
-const errorKey = computed(() =>
-  player.error.value === 'engine'
-    ? `player.errors.engine.${player.engineKind.value ?? 'starting'}`
-    : `player.errors.${player.error.value ?? 'unknown'}`,
-)
+const errorKey = computed(() => {
+  if (player.error.value === 'engine')
+    return `player.errors.engine.${player.engineKind.value ?? 'starting'}`
+
+  if (player.error.value === 'storage')
+    return `player.errors.storage.${player.storage.value?.kind ?? 'no_space'}`
+
+  return `player.errors.${player.error.value ?? 'unknown'}`
+})
+
+// Цифры места — в гигабайтах: так их видит панель
+const errorParams = computed(() => ({
+  needed: formatGigabytes(player.storage.value?.needed ?? 0, locale.value),
+  available: formatGigabytes(
+    player.storage.value?.available ?? 0,
+    locale.value,
+  ),
+}))
 
 function save() {
   if (phase.value === 'playing') {
@@ -428,7 +442,7 @@ onBeforeUnmount(() => {
     <PlayerPrompt
       v-if="player.status.value === 'error'"
       :title="t(`${errorKey}.title`)"
-      :text="t(`${errorKey}.text`)"
+      :text="t(`${errorKey}.text`, errorParams)"
       :actions="[
         { id: 'retry', label: t('player.retry') },
         { id: 'back', label: t('player.back') },

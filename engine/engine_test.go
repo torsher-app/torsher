@@ -90,7 +90,7 @@ func newFixture(t *testing.T) fixture {
 func newTestEngine(t *testing.T, dataDir string) (*api, *httptest.Server) {
 	t.Helper()
 
-	cfg, err := newClientConfig(filepath.Join(dataDir, "downloads"), dataDir, 0)
+	cfg, store, err := newClientConfig(filepath.Join(dataDir, "downloads"), dataDir, 0, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +106,7 @@ func newTestEngine(t *testing.T, dataDir string) (*api, *httptest.Server) {
 		t.Fatal(err)
 	}
 
-	engine := newAPI(client, sess, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	engine := newAPI(client, sess, store, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	server := httptest.NewServer(engine.routes())
 
 	t.Cleanup(func() {
@@ -259,7 +259,7 @@ func TestStatsAndForget(t *testing.T) {
 	missing, _ := http.Get(server.URL + "/torrents/" + hash + "/stats")
 	body := decode[map[string]string](t, missing)
 
-	if deleted.StatusCode != http.StatusNoContent || missing.StatusCode != http.StatusNotFound || body["kind"] != "torrent_not_found" {
+	if deleted.StatusCode != http.StatusOK || missing.StatusCode != http.StatusNotFound || body["kind"] != "torrent_not_found" {
 		t.Fatalf("delete %d, stats after %d %v", deleted.StatusCode, missing.StatusCode, body)
 	}
 }
@@ -329,5 +329,252 @@ func copyDir(t *testing.T, from, to string) {
 		if err := os.WriteFile(filepath.Join(to, entry.Name()), data, 0o644); err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+func waitFor(t *testing.T, timeout time.Duration, done func() bool) {
+	t.Helper()
+
+	deadline := time.Now().Add(timeout)
+	for !done() {
+		if time.Now().After(deadline) {
+			t.Fatal("condition was not met in time")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+func put(t *testing.T, url string, body string) *http.Response {
+	t.Helper()
+
+	request, _ := http.NewRequest(http.MethodPut, url, bytes.NewReader([]byte(body)))
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return response
+}
+
+func stateOfHash(t *testing.T, engine *api, hash metainfo.Hash) torrentState {
+	t.Helper()
+
+	added, ok := engine.client.Torrent(hash)
+	if !ok {
+		t.Fatal("torrent is not in the engine")
+	}
+
+	return engine.stateOf(added)
+}
+
+// Раздача добавлена, выбран файл 0 и сразу качается с сидера
+func downloadFixture(t *testing.T, engine *api, server *httptest.Server, fx fixture) metainfo.Hash {
+	t.Helper()
+
+	hash := fx.meta.HashInfoBytes()
+	post(t, server.URL+"/torrents?files=0", fx.raw).Body.Close()
+
+	response := put(t, server.URL+"/torrents/"+hash.HexString()+"/files", `{"files":[0],"now":true}`)
+	response.Body.Close()
+	if response.StatusCode != http.StatusNoContent {
+		t.Fatalf("select: status %d", response.StatusCode)
+	}
+
+	added, _ := engine.client.Torrent(hash)
+	added.AddClientPeer(fx.seeder)
+
+	return hash
+}
+
+func TestDownloadNowFetchesTheWholeFile(t *testing.T) {
+	fx := newFixture(t)
+	engine, server := newTestEngine(t, t.TempDir())
+	hash := downloadFixture(t, engine, server, fx)
+
+	waitFor(t, 30*time.Second, func() bool {
+		state := stateOfHash(t, engine, hash)
+		return state.WantedCompleted == int64(len(fx.content))
+	})
+
+	response, _ := http.Get(server.URL + "/torrents")
+	states := decode[[]torrentState](t, response)
+
+	if len(states) != 1 || !states[0].Background || states[0].BytesWanted != int64(len(fx.content)) || states[0].Selected[0] != 0 {
+		t.Fatalf("unexpected list %+v", states)
+	}
+}
+
+func TestPauseStopsDownloadAndSurvivesRestart(t *testing.T) {
+	fx := newFixture(t)
+	dataDir := t.TempDir()
+	engine, server := newTestEngine(t, dataDir)
+	hash := fx.meta.HashInfoBytes()
+
+	post(t, server.URL+"/torrents?files=0", fx.raw).Body.Close()
+
+	paused := post(t, server.URL+"/torrents/"+hash.HexString()+"/pause", nil)
+	paused.Body.Close()
+	if paused.StatusCode != http.StatusNoContent {
+		t.Fatalf("pause: status %d", paused.StatusCode)
+	}
+
+	put(t, server.URL+"/torrents/"+hash.HexString()+"/files", `{"files":[0],"now":true}`).Body.Close()
+	added, _ := engine.client.Torrent(hash)
+	added.AddClientPeer(fx.seeder)
+
+	time.Sleep(time.Second)
+
+	state := stateOfHash(t, engine, hash)
+	if !state.Paused || state.Seeding || state.WantedCompleted != 0 {
+		t.Fatalf("paused torrent downloaded: %+v", state)
+	}
+
+	restartDir := t.TempDir()
+	copyDir(t, filepath.Join(dataDir, "torrents"), filepath.Join(restartDir, "torrents"))
+	restarted, _ := newTestEngine(t, restartDir)
+	restarted.restore()
+
+	if state := stateOfHash(t, restarted, hash); !state.Paused || !state.Background {
+		t.Fatalf("pause was not restored: %+v", state)
+	}
+
+	post(t, server.URL+"/torrents/"+hash.HexString()+"/resume", nil).Body.Close()
+
+	waitFor(t, 30*time.Second, func() bool {
+		return stateOfHash(t, engine, hash).WantedCompleted == int64(len(fx.content))
+	})
+}
+
+func TestForgetWithFilesDeletesDataAndCompletion(t *testing.T) {
+	fx := newFixture(t)
+	dataDir := t.TempDir()
+	engine, server := newTestEngine(t, dataDir)
+	hash := downloadFixture(t, engine, server, fx)
+	downloads := filepath.Join(dataDir, "downloads")
+
+	waitFor(t, 30*time.Second, func() bool {
+		return stateOfHash(t, engine, hash).WantedCompleted == int64(len(fx.content))
+	})
+
+	neighbour := filepath.Join(downloads, "keep.txt")
+	if err := os.WriteFile(neighbour, []byte("not part of the torrent"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	request, _ := http.NewRequest(http.MethodDelete, server.URL+"/torrents/"+hash.HexString()+"?delete_files=true", nil)
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deleted := decode[forgetResponse](t, response)
+
+	if response.StatusCode != http.StatusOK || deleted.DeletedBytes != int64(len(fx.content)) {
+		t.Fatalf("status %d, deleted %+v", response.StatusCode, deleted)
+	}
+
+	for _, path := range []string{"Sample.Movie.mkv", "Sample.Movie.mkv" + partFileSuffix} {
+		if _, err := os.Stat(filepath.Join(downloads, path)); !os.IsNotExist(err) {
+			t.Fatalf("%s was not deleted: %v", path, err)
+		}
+	}
+
+	if _, err := os.Stat(neighbour); err != nil {
+		t.Fatalf("neighbour file was touched: %v", err)
+	}
+
+	post(t, server.URL+"/torrents?files=0", fx.raw).Body.Close()
+
+	if state := stateOfHash(t, engine, hash); state.BytesCompleted != 0 {
+		t.Fatalf("re-added torrent counts deleted pieces: %+v", state)
+	}
+}
+
+func TestDeleteFilesStaysInsideDownloads(t *testing.T) {
+	root := t.TempDir()
+	downloads := filepath.Join(root, "downloads")
+	outside := filepath.Join(root, "escape.txt")
+
+	for _, dir := range []string{filepath.Join(downloads, "pack", "Season 1"), filepath.Join(downloads, "pack", "Extras")} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	files := map[string]string{
+		outside: "outside",
+		filepath.Join(downloads, "pack", "Season 1", "e01.mkv"):      "one",
+		filepath.Join(downloads, "pack", "Season 1", "e02.mkv.part"): "two",
+		filepath.Join(downloads, "pack", "Extras", "user.txt"):       "user",
+	}
+	for path, content := range files {
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	info := &metainfo.Info{
+		Name: "pack",
+		Files: []metainfo.FileInfo{
+			{Path: []string{"Season 1", "e01.mkv"}, Length: 3},
+			{Path: []string{"Season 1", "e02.mkv"}, Length: 3},
+			{Path: []string{"..", "..", "escape.txt"}, Length: 7},
+		},
+	}
+
+	freed, err := deleteTorrentFiles(downloads, info)
+	if err == nil {
+		t.Fatal("path outside the downloads directory must be reported")
+	}
+
+	if freed != 6 {
+		t.Fatalf("freed %d bytes, want 6", freed)
+	}
+
+	if _, err := os.Stat(outside); err != nil {
+		t.Fatalf("file outside downloads was touched: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(downloads, "pack", "Season 1")); !os.IsNotExist(err) {
+		t.Fatalf("empty directory was kept: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(downloads, "pack", "Extras", "user.txt")); err != nil {
+		t.Fatalf("unrelated file in the torrent directory was touched: %v", err)
+	}
+}
+
+func TestDownloadedDataIsSeeded(t *testing.T) {
+	fx := newFixture(t)
+	engine, server := newTestEngine(t, t.TempDir())
+	hash := downloadFixture(t, engine, server, fx)
+
+	waitFor(t, 30*time.Second, func() bool {
+		return stateOfHash(t, engine, hash).WantedCompleted == int64(len(fx.content))
+	})
+
+	// Сидер ушёл: данные есть только у движка
+	fx.seeder.Close()
+
+	cfg := torrent.NewDefaultClientConfig()
+	offline(cfg)
+	cfg.DataDir = t.TempDir()
+
+	leecher, err := torrent.NewClient(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { leecher.Close() })
+
+	lt, err := leecher.AddTorrent(fx.meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lt.AddClientPeer(engine.client)
+	lt.DownloadAll()
+
+	waitFor(t, 30*time.Second, func() bool { return lt.BytesMissing() == 0 })
+
+	if !stateOfHash(t, engine, hash).Seeding {
+		t.Fatal("engine must report seeding")
 	}
 }

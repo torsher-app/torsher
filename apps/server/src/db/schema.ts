@@ -127,6 +127,10 @@ export const torrentSources = ['magnet', 'file'] as const
 // `resolving` — ждём метаданные magnet от пиров, `failed` — не дождались
 export const torrentStatuses = ['resolving', 'ready', 'failed'] as const
 export const torrentErrors = ['timeout', 'rejected', 'failed'] as const
+// `cache` — просмотренное, вытесняется по давности; `keep` — «Оставить»
+export const torrentRetentions = ['cache', 'keep'] as const
+// Кто поставил паузу: владелец или сервер, когда кончилось место
+export const torrentPauseReasons = ['user', 'storage'] as const
 
 export interface TorrentFileEntry {
   path: string
@@ -154,6 +158,14 @@ export const torrents = sqliteTable('torrents', {
   // Раздача добавлена в движок (её начинали смотреть): удалить её можно,
   // только когда движок доступен, иначе он продолжит её качать
   inEngine: integer('in_engine', { mode: 'boolean' }).notNull().default(false),
+  // Каталожный ID тайтла (`tmdb:tv:1396`), если раздачу выбрали из карточки
+  titleId: text('title_id'),
+  retention: text('retention', { enum: torrentRetentions })
+    .notNull()
+    .default('cache'),
+  // Файлы, которые качаются целиком; остальные — только то, что читает поток
+  selectedFiles: text('selected_files', { mode: 'json' }).$type<number[]>(),
+  pauseReason: text('pause_reason', { enum: torrentPauseReasons }),
   addedAt: integer('added_at', { mode: 'timestamp_ms' })
     .notNull()
     .$defaultFn(() => new Date()),
@@ -161,6 +173,17 @@ export const torrents = sqliteTable('torrents', {
 })
 
 export type Torrent = typeof torrents.$inferSelect
+
+// Политика хранения — одна строка (`id = 1`); нет строки — значения по
+// умолчанию от размера тома
+export const storagePolicy = sqliteTable('storage_policy', {
+  id: integer('id').primaryKey(),
+  cacheLimitBytes: integer('cache_limit_bytes').notNull(),
+  minFreeBytes: integer('min_free_bytes').notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+    .notNull()
+    .$defaultFn(() => new Date()),
+})
 
 // Позиция просмотра файла раздачи. Привязка к тайтлу и серии появится вместе
 // с выбором раздачи из карточки

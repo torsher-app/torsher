@@ -274,7 +274,7 @@
       },
       "notFound": {
         "title": "File not found",
-        "text": "The torrent was deleted or the link is outdated. Open the file from Torrents in the panel."
+        "text": "The torrent was deleted or the link is outdated. Open the file from Downloads in the panel."
       },
       "notReady": {
         "title": "The torrent isn't ready yet",
@@ -301,18 +301,29 @@
           "title": "The torrent engine isn't running",
           "text": "Restart the server and try again."
         }
+      },
+      "storage": {
+        "no_space": {
+          "title": "The server is low on disk space",
+          "text": "Playback needs {needed} GB more, but only {available} GB is free above the reserve. Free up space in the panel: Downloads or Settings → Storage."
+        },
+        "cache_limit": {
+          "title": "The file doesn't fit in the cache",
+          "text": "Playback needs {needed} GB more, but the cache has {available} GB left. Raise the cache limit in the panel or keep the torrent."
+        }
       }
     }
   },
   "panel": {
     "nav": {
       "label": "Panel sections",
-      "torrents": "Torrents",
+      "torrents": "Downloads",
       "sources": "Sources",
       "settings": "Settings",
       "server": "Server",
       "open": "Open menu",
-      "attention": "{n} needs attention | {n} need attention"
+      "attention": "{n} needs attention | {n} need attention",
+      "downloading": "Downloads in progress"
     },
     "account": {
       "menu": "Account menu",
@@ -397,7 +408,8 @@
       "nav": {
         "label": "Settings sections",
         "account": "Account",
-        "about": "About"
+        "about": "About",
+        "storage": "Storage"
       },
       "account": {
         "description": "The server owner account. A second one can't be created: the household watches through profiles.",
@@ -408,6 +420,42 @@
         "emailTitle": "Email",
         "emailText": "Email is only used to sign in: the server sends no email.",
         "single": "There is one account per server — the owner."
+      },
+      "storage": {
+        "description": "Where downloads live and how much space the watch cache may take.",
+        "loadError": "Couldn't load storage",
+        "loadErrorText": "The server didn't respond. Try again.",
+        "disk": {
+          "freeOf": "{free} free of {total}",
+          "label": "Kept {kept}, cache {cache}, other {other}, free {free}",
+          "kept": "Kept {size}",
+          "cache": "Cache {size}",
+          "other": "Other {size}",
+          "free": "Free {size}"
+        },
+        "cacheTitle": "Cache limit",
+        "cacheText": "What you watch without “Keep” stays in the cache. When it's full, the oldest is deleted automatically.",
+        "cacheHint": "{used} used — {percent}% of the limit.",
+        "reserveTitle": "Keep free",
+        "reserveText": "If less is left on disk, new playback won't start and the showcase explains why. Downloads pause.",
+        "reserveHint": "We recommend at least 20 GB.",
+        "defaults": "Defaults based on the disk size are in effect.",
+        "unit": "GB",
+        "cacheSaved": "Cache limit saved",
+        "reserveSaved": "Free space reserve saved",
+        "savedText": "If space is short, extra cache is deleted right away",
+        "validation": {
+          "number": "Enter a number of gigabytes",
+          "min": "At least 1 GB"
+        },
+        "queue": {
+          "title": "Deleted automatically",
+          "text": "When the cache is full or space runs out, these torrents go first — they haven't been opened for the longest time.",
+          "empty": "The cache is empty: what you watched is kept or not downloaded yet.",
+          "watched": "watched {when}",
+          "notWatched": "not watched",
+          "open": "All downloads"
+        }
       }
     },
     "sources": {
@@ -597,13 +645,13 @@
       }
     },
     "torrents": {
-      "title": "Torrents",
+      "title": "Downloads",
       "add": "Add torrent",
-      "loadError": "Couldn't load torrents",
+      "loadError": "Couldn't load downloads",
       "loadErrorText": "The server didn't respond. If the panel has been open for a while, reload the page.",
       "empty": {
         "title": "Add your first torrent",
-        "text": "A magnet link or a .torrent file — and you can watch its videos in the showcase while they download.",
+        "text": "A magnet link or a .torrent file — watch its videos in the showcase while they download, or download the whole torrent.",
         "foot": "Free films such as Big Buck Bunny or Sintel are good for a first check."
       },
       "engine": {
@@ -625,7 +673,6 @@
         "failed": "Couldn't get the file list"
       },
       "meta": "{size} · {n} file | {size} · {n} files",
-      "fromFile": "from a .torrent file",
       "open": "Open in showcase",
       "openFile": "Open “{name}” in the showcase",
       "actions": "Actions for “{name}”",
@@ -660,7 +707,8 @@
         "stopped": "The torrent engine isn't running",
         "invalid": "Torrent not accepted",
         "timeout": "The engine didn't respond",
-        "unknown": "Something went wrong"
+        "unknown": "Something went wrong",
+        "notReady": "The torrent isn't ready yet"
       },
       "errors": {
         "not_installed": "Build the engine on the server or point ENGINE_PATH to a prebuilt binary.",
@@ -668,12 +716,110 @@
         "stopped": "Restart the server and try again.",
         "invalid": "Check the magnet link or the .torrent file.",
         "timeout": "The engine didn't respond in time. Try again.",
-        "unknown": "Something went wrong. Try again."
+        "unknown": "Something went wrong. Try again.",
+        "notReady": "The server is waiting for the file list from peers. Try again in a minute."
+      },
+      "filters": {
+        "label": "Downloads filter",
+        "all": "All",
+        "active": "Active",
+        "paused": "Paused",
+        "seeding": "Seeding",
+        "cache": "Cache",
+        "search": "Search downloads",
+        "searchPlaceholder": "Find a torrent",
+        "summary": "↓ {down} · ↑ {up} · cache {used} of {limit}",
+        "speed": "{value}/s",
+        "nothing": "Nothing found for “{query}”",
+        "nothingFilter": "Nothing here yet",
+        "reset": "Reset filters"
+      },
+      "groups": {
+        "attention": "Need attention",
+        "active": "Active",
+        "paused": "Paused",
+        "seeding": "Seeding",
+        "complete": "Downloaded",
+        "idle": "Not downloading"
+      },
+      "states": {
+        "watching": "Watching now",
+        "downloading": "Downloading",
+        "stalled": "Waiting for peers",
+        "paused": "Paused",
+        "pausedStorage": "Low disk space",
+        "seeding": "Seeding",
+        "complete": "Downloaded",
+        "partial": "Partly downloaded",
+        "idle": "Not downloading",
+        "resolving": "Waiting for the file list",
+        "failed": "No file list"
+      },
+      "reasons": {
+        "pausedStorage": "Low disk space — download paused",
+        "stalled": "No peers — the download resumes when they appear"
+      },
+      "problems": {
+        "pausedStorage": "Free space is below the reserve and there is nothing to free: everything in the cache is being watched or kept. Delete what you don't need or lower the reserve in Storage — the download resumes by itself.",
+        "stalled": "Nobody is seeding this torrent right now. Torsher continues as soon as it finds peers.",
+        "failed": "Peers didn't send the file list. Check the magnet link and try again, or add the .torrent file."
+      },
+      "zones": {
+        "cache": "Cache",
+        "keep": "Kept"
+      },
+      "peers": "{n} peer | {n} peers",
+      "eta": "≈ {time}",
+      "percent": "{value}%",
+      "progressOf": "{done} of {total}",
+      "pause": "Pause",
+      "resume": "Resume",
+      "pauseFor": "Pause: {name}",
+      "resumeFor": "Resume: {name}",
+      "keep": "Keep",
+      "unkeep": "Don't keep",
+      "download": "Download selected",
+      "selectFile": "Download “{name}”",
+      "storageLink": "Storage",
+      "card": {
+        "status": "Status",
+        "size": "Size",
+        "downloaded": "Downloaded",
+        "onDisk": "On disk",
+        "speed": "Speed",
+        "peers": "Peers",
+        "peersValue": "{connected} connected of {found}",
+        "storage": "Storage",
+        "storageCache": "Deleted automatically when the cache is full",
+        "storageKeep": "Kept — never deleted automatically",
+        "added": "Added",
+        "watched": "Last watched",
+        "never": "Not watched yet",
+        "files": "Files",
+        "filesHint": "Checked files download in full. The rest downloads only while it's being watched.",
+        "title": "Title"
+      },
+      "toasts": {
+        "kept": "Torrent kept",
+        "keptText": "It won't be deleted when the cache is full",
+        "unkept": "Torrent moved back to the cache",
+        "unkeptText": "It may be deleted automatically when the cache is full",
+        "download": "Downloading",
+        "downloadText": "{n} file | {n} files",
+        "downloadStorage": "Low disk space — the download is paused",
+        "paused": "Download paused",
+        "resumed": "Download resumed"
       },
       "deleteDialog": {
         "title": "Delete “{name}”?",
-        "text": "The torrent disappears from the list and the engine stops downloading it. Downloaded files stay on disk.",
-        "deleted": "Torrent deleted"
+        "text": "The torrent disappears from the list and the engine stops downloading and seeding it.",
+        "withFiles": "Delete with files",
+        "withFilesText": "Frees {size} on disk.",
+        "withFilesEmpty": "Nothing of it is on disk.",
+        "keepFiles": "Remove from the list, keep files",
+        "keepFilesText": "Downloaded files stay on disk, but Torsher stops counting them and never deletes them automatically.",
+        "deleted": "Torrent deleted",
+        "deletedFiles": "Files deleted from disk"
       }
     }
   }

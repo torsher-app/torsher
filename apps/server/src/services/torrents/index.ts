@@ -1,5 +1,8 @@
 import type { Torrent, TorrentFileEntry, WatchState } from '../../db/schema.ts'
-import type { EngineTorrentDetails } from '../engine/index.ts'
+import type {
+  EngineTorrentDetails,
+  EngineTorrentState,
+} from '../engine/index.ts'
 import { Buffer } from 'node:buffer'
 import { and, desc, eq } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
@@ -11,15 +14,24 @@ import {
   forgetTorrent,
   inspectTorrent,
   isEngineReady,
+  listEngineTorrents,
   openStream,
+  pauseTorrent,
   resolveMagnet,
+  resumeTorrent,
+  selectFiles,
   torrentStats,
 } from '../engine/index.ts'
+import { enforceStorage, ensureSpaceFor } from '../storage/index.ts'
 import { parseMagnet } from './magnet.ts'
 import { bufferedAheadBytes, fileOffsetOf } from './playback.ts'
 
+export { InsufficientStorageError } from '../storage/index.ts'
+
 export { parseMagnet } from './magnet.ts'
 export { contentTypeOf, fileNameOf, isVideoFile } from './media.ts'
+export { downloadStateOf } from './state.ts'
+export type { DownloadState } from './state.ts'
 
 // Метаданные magnet приходят от пиров: у живой раздачи за секунды,
 // у редкой — долго. Дальше считаем, что пиров нет
@@ -240,11 +252,17 @@ export async function addTorrentFile(bytes: Uint8Array): Promise<AddResult> {
   return { torrent, created: true }
 }
 
-/** Убирает раздачу из списка и из движка; скачанные файлы остаются на диске */
-export async function deleteTorrent(torrent: Torrent) {
+/**
+ * Убирает раздачу из списка и из движка. С `deleteFiles` движок удаляет и её
+ * файлы, иначе скачанное остаётся на диске.
+ */
+export async function deleteTorrent(
+  torrent: Torrent,
+  options: { deleteFiles?: boolean } = {},
+) {
   if (torrent.inEngine) {
     try {
-      await forgetTorrent(torrent.infoHash)
+      await forgetTorrent(torrent.infoHash, options)
     }
     catch (err) {
       if (!(err instanceof EngineError) || err.kind !== 'not_found')
@@ -255,6 +273,128 @@ export async function deleteTorrent(torrent: Torrent) {
   getDb().delete(torrents).where(eq(torrents.id, torrent.id)).run()
 }
 
+/** Раздачи движка по infohash; без движка или при его ошибке — пусто */
+export async function liveTorrents() {
+  if (!isEngineReady())
+    return new Map<string, EngineTorrentState>()
+
+  try {
+    const list = await listEngineTorrents()
+
+    return new Map(list.map(item => [item.infoHash, item]))
+  }
+  catch (err) {
+    if (err instanceof EngineError)
+      return new Map<string, EngineTorrentState>()
+
+    throw err
+  }
+}
+
+/** Сколько файла уже скачано: раздачи нет в движке — ничего */
+async function downloadedOf(torrent: Torrent, fileIndex: number) {
+  if (!torrent.inEngine)
+    return 0
+
+  try {
+    return (await torrentStats(torrent.infoHash)).fileProgress[fileIndex] ?? 0
+  }
+  catch (err) {
+    if (err instanceof EngineError && err.kind === 'not_found')
+      return 0
+
+    throw err
+  }
+}
+
+function withFile(selected: number[] | null, fileIndex: number) {
+  const files = selected ?? []
+
+  return files.includes(fileIndex) ? files : [...files, fileIndex]
+}
+
+/** Метаданных magnet ещё нет — скачивать и смотреть нечего */
+export class NotReadyError extends Error {
+  constructor() {
+    super('Torrent metadata is not ready')
+    this.name = 'NotReadyError'
+  }
+}
+
+/** Раздачи нет в движке — ставить на паузу нечего */
+export class NotInEngineError extends Error {
+  constructor() {
+    super('Torrent is not downloading')
+    this.name = 'NotInEngineError'
+  }
+}
+
+/** Раздача выбрана из карточки тайтла: «Загрузки» показывают его постер и название */
+export function linkTitle(torrent: Torrent, titleId: string) {
+  return torrent.titleId === titleId ? torrent : update(torrent.id, { titleId })
+}
+
+/**
+ * Скачать выбранные файлы целиком сейчас. Скачанное руками закрепляется
+ * («Оставить»): само оно не удалится. Места мало — сервер сразу ставит
+ * загрузку на паузу, и раздача попадает в «Требуют внимания».
+ */
+export async function downloadFiles(torrent: Torrent, files: number[]) {
+  if (!torrent.torrentFile)
+    throw new NotReadyError()
+
+  await addTorrent(torrent.torrentFile, files)
+  await selectFiles(torrent.infoHash, files, true)
+
+  if (torrent.pauseReason)
+    await resumeTorrent(torrent.infoHash)
+
+  update(torrent.id, {
+    inEngine: true,
+    selectedFiles: files,
+    retention: 'keep',
+    pauseReason: null,
+  })
+
+  await enforceStorage()
+
+  return getTorrent(torrent.id) ?? torrent
+}
+
+export async function pauseDownload(torrent: Torrent) {
+  if (!torrent.inEngine)
+    throw new NotInEngineError()
+
+  await pauseTorrent(torrent.infoHash)
+
+  return update(torrent.id, { pauseReason: 'user' })
+}
+
+/** Снимает любую паузу; если места всё ещё мало, сервер поставит свою снова */
+export async function resumeDownload(torrent: Torrent) {
+  if (!torrent.inEngine)
+    throw new NotInEngineError()
+
+  await resumeTorrent(torrent.infoHash)
+  update(torrent.id, { pauseReason: null })
+  await enforceStorage()
+
+  return getTorrent(torrent.id) ?? torrent
+}
+
+/** «Оставить» выводит раздачу из-под вытеснения; «Не оставлять» возвращает в кэш */
+export async function setRetention(
+  torrent: Torrent,
+  retention: Torrent['retention'],
+) {
+  const updated = update(torrent.id, { retention })
+
+  if (retention === 'cache' && isEngineReady())
+    await enforceStorage()
+
+  return getTorrent(torrent.id) ?? updated
+}
+
 export function playableFile(torrent: Torrent, fileIndex: number) {
   const file = torrent.files?.[fileIndex]
 
@@ -262,16 +402,33 @@ export function playableFile(torrent: Torrent, fileIndex: number) {
 }
 
 /**
- * Готовит файл к просмотру: добавляет раздачу в движок (или находит её там)
- * и выбирает только этот файл — пак сезона не скачивается целиком из-за одной серии.
+ * Готовит файл к просмотру: освобождает место под остаток файла (или
+ * объясняет, почему не может), добавляет раздачу в движок и добавляет файл
+ * к выбранным — просмотр серии не отменяет скачивание сезона. Просмотр
+ * снимает паузу: смотреть — значит качать.
  */
 export async function prepareStream(torrent: Torrent, fileIndex: number) {
   if (!torrent.torrentFile)
     throw new EngineError('rejected', 'Torrent metadata is not ready')
 
-  await addTorrent(torrent.torrentFile, [fileIndex])
+  const size = torrent.files?.[fileIndex]?.size ?? 0
+  const downloaded = await downloadedOf(torrent, fileIndex)
 
-  return update(torrent.id, { inEngine: true, lastAccessAt: new Date() })
+  await ensureSpaceFor({ torrent, bytes: Math.max(0, size - downloaded) })
+
+  const selected = withFile(torrent.selectedFiles, fileIndex)
+
+  await addTorrent(torrent.torrentFile, selected)
+
+  if (torrent.pauseReason)
+    await resumeTorrent(torrent.infoHash)
+
+  return update(torrent.id, {
+    inEngine: true,
+    selectedFiles: selected,
+    pauseReason: null,
+    lastAccessAt: new Date(),
+  })
 }
 
 /**
@@ -291,7 +448,15 @@ export async function openFileStream(
     if (!(err instanceof EngineError) || err.kind !== 'not_found')
       throw err
 
-    await prepareStream(torrent, fileIndex)
+    if (!torrent.torrentFile)
+      throw new EngineError('rejected', 'Torrent metadata is not ready')
+
+    // Движок потерял раздачу; место под неё проверялось при старте просмотра
+    await addTorrent(
+      torrent.torrentFile,
+      withFile(torrent.selectedFiles, fileIndex),
+    )
+    update(torrent.id, { inEngine: true })
 
     return openStream(torrent.infoHash, fileIndex, range, signal)
   }

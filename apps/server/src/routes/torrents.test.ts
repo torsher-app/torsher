@@ -25,6 +25,13 @@ import {
 } from '../services/engine/fixtures/index.ts'
 import { signToken } from '../utils/token.ts'
 
+const GIB = 1024 ** 3
+const disk = vi.hoisted(() => ({ total: 0, free: 0 }))
+
+vi.mock('../services/storage/disk.ts', () => ({
+  diskUsage: async () => ({ ...disk }),
+}))
+
 const app = createApp()
 const fetchMock = vi.fn<typeof fetch>()
 const ENGINE = 'http://127.0.0.1:4000'
@@ -40,11 +47,16 @@ function json(body: unknown, status = 200) {
   })
 }
 
-/** Подменённый движок: ответы по пути запроса */
+/** Подменённый движок: ответы по пути запроса; список раздач по умолчанию пуст */
 function engine(routes: Record<string, Route>) {
+  const all: Record<string, Route> = {
+    'GET /torrents': () => json([]),
+    ...routes,
+  }
+
   fetchMock.mockImplementation(async (input, init = {}) => {
     const url = new URL(String(input))
-    const route = routes[`${init.method ?? 'GET'} ${url.pathname}`]
+    const route = all[`${init.method ?? 'GET'} ${url.pathname}`]
 
     if (!route) {
       return json(engineError('torrent_not_found', 'torrent not found'), 404)
@@ -96,7 +108,19 @@ beforeAll(() => {
   migrateDb()
 })
 
+/** Запросы к движку, кроме списка раздач (его читает проверка места) */
+function engineCalls() {
+  return fetchMock.mock.calls
+    .map(
+      ([input, init]) =>
+        `${init?.method ?? 'GET'} ${new URL(String(input)).pathname}`,
+    )
+    .filter(call => call !== 'GET /torrents')
+}
+
 beforeEach(() => {
+  disk.total = 1000 * GIB
+  disk.free = 500 * GIB
   fetchMock.mockReset()
   vi.stubGlobal('fetch', fetchMock)
   setEngineReady(ENGINE)
@@ -214,12 +238,16 @@ describe('добавление раздачи', () => {
         path: 'Sample.Movie.2008.1080p.mkv',
         size: 9_437_184,
         isVideo: true,
+        downloaded: 0,
+        selected: false,
       },
       {
         index: 2,
         path: 'Sample.Movie.2008.srt',
         size: 20_480,
         isVideo: false,
+        downloaded: 0,
+        selected: false,
       },
     ])
     // Ни .torrent, ни magnet в ответ не попадают
@@ -376,6 +404,8 @@ describe('список и удаление', () => {
   it('список и карточка раздачи', async () => {
     const torrent = insertTorrent()
 
+    engine({})
+
     const list = await app.inject({ url: '/api/torrents', cookies: owner })
     const one = await app.inject({
       url: `/api/torrents/${torrent.id}`,
@@ -422,8 +452,10 @@ describe('список и удаление', () => {
 
     setEngineReady(ENGINE)
     engine({
-      [`DELETE /torrents/${INFO_HASH}`]: () =>
-        new Response(null, { status: 204 }),
+      [`DELETE /torrents/${INFO_HASH}`]: (url) => {
+        expect(url.searchParams.has('delete_files')).toBe(false)
+        return json({ deletedBytes: 0 })
+      },
     })
 
     const deleted = await app.inject({
@@ -433,7 +465,7 @@ describe('список и удаление', () => {
     })
 
     expect(deleted.statusCode).toBe(200)
-    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(engineCalls()).toEqual([`DELETE /torrents/${INFO_HASH}`])
   })
 })
 
@@ -553,7 +585,7 @@ describe('воспроизведение и позиция', () => {
     expect(body.streamUrl).toMatch(
       new RegExp(`^/api/stream/${torrent.id}/0\\?token=.+`),
     )
-    expect(fetchMock).toHaveBeenCalledOnce()
+    expect(engineCalls()).toEqual(['POST /torrents'])
     expect(getDb().select().from(torrents).get()?.inEngine).toBe(true)
   })
 

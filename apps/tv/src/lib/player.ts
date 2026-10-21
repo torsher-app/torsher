@@ -158,7 +158,16 @@ export function endsAt(now: Date, remainingSeconds: number) {
 
 /** Мегабайты в секунду с одним знаком: «2,4»; без данных локали — точка */
 export function formatSpeed(bytesPerSecond: number, locale: string) {
-  const value = bytesPerSecond / (1024 * 1024)
+  return formatOneDecimal(bytesPerSecond / (1024 * 1024), locale)
+}
+
+/** Гигабайты с одним знаком: «2,1»; единицу добавляет строка i18n */
+export function formatGigabytes(bytes: number, locale: string) {
+  return formatOneDecimal(bytes / 1024 ** 3, locale)
+}
+
+// Chromium 68 не знает `style: 'unit'`, поэтому только число
+function formatOneDecimal(value: number, locale: string) {
   const tag = locale.replace('_', '-')
 
   if (
