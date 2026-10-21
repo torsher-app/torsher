@@ -1,4 +1,8 @@
-import type { MeResponse } from '@torsher/api-client'
+import type {
+  ChangeEmailInput,
+  ChangePasswordInput,
+  MeResponse,
+} from '@torsher/api-client'
 import { api } from '~/services/api'
 
 // Состояние живёт в модуле, а не в Pinia: приложению нужен один
@@ -27,6 +31,15 @@ export function useUser() {
     user.value = await api.users.patchUsersMe({ name })
   }
 
+  // Сервер выдаёт текущей сессии новые cookie, прочие сессии выходят
+  async function changePassword(body: ChangePasswordInput) {
+    await api.users.putUsersMePassword(body)
+  }
+
+  async function changeEmail(body: ChangeEmailInput) {
+    user.value = await api.users.putUsersMeEmail(body)
+  }
+
   // После выхода гость известен: профиль не перезапрашиваем, вход открывается сразу
   function reset() {
     user.value = null
@@ -39,6 +52,8 @@ export function useUser() {
     isAuthenticated,
     fetchMe,
     updateName,
+    changePassword,
+    changeEmail,
     reset,
   }
 }

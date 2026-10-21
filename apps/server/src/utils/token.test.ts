@@ -44,4 +44,16 @@ describe('verifyTokenFor', () => {
 
     expect(() => verifyTokenFor(token, 'user_access')).toThrow()
   })
+
+  it('отдаёт версию сессий, а токен без неё считает версией 0', () => {
+    const versioned = signToken('user-1', 'user_access', 3)
+    const legacy = jwt.sign(
+      { userId: 'user-1', purpose: 'user_access' },
+      config.secretKey,
+      { expiresIn: 15 * 60, algorithm: 'HS256' },
+    )
+
+    expect(verifyTokenFor(versioned, 'user_access').sessionVersion).toBe(3)
+    expect(verifyTokenFor(legacy, 'user_access').sessionVersion).toBe(0)
+  })
 })

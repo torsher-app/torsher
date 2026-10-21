@@ -25,6 +25,9 @@ export const users = sqliteTable('users', {
   isDeleted: integer('is_deleted', { mode: 'boolean' })
     .notNull()
     .default(false),
+  // Входит в токены сессии: смена пароля или email и сброс увеличивают её,
+  // и все выданные раньше токены перестают приниматься
+  sessionVersion: integer('session_version').notNull().default(0),
   createdAt: integer('created_at', { mode: 'timestamp_ms' })
     .notNull()
     .$defaultFn(() => new Date()),

@@ -3,10 +3,14 @@
   "type": "module",
   "version": "0.0.0",
   "private": true,
+  "bin": {
+    "torsher": "src/cli.ts"
+  },
   "scripts": {
     "dev": "node --env-file-if-exists=.env scripts/engineBuild.ts --optional && NODE_ENV=development node --env-file-if-exists=.env --watch src/main.ts",
     "start": "NODE_ENV=production node --env-file-if-exists=.env src/main.ts",
     "openapi": "node scripts/openapi.ts",
+    "cli": "node --env-file-if-exists=.env src/cli.ts",
     "seed": "NODE_ENV=development node --env-file-if-exists=.env scripts/seed.ts",
     "db:generate": "drizzle-kit generate",
     "typecheck": "tsc --noEmit",

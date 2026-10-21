@@ -1,3 +1,4 @@
+import { eq, sql } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import { users } from '../../db/schema.ts'
 
@@ -33,4 +34,50 @@ export function createOwner(values: NewUser) {
 
     return tx.insert(users).values(values).returning().get()
   })
+}
+
+const nextSessionVersion = sql`${users.sessionVersion} + 1`
+
+/** Аккаунт, которому разрешено входить: есть, не удалён, не заблокирован и включён */
+export function findActiveUser(userId: string) {
+  const user = getDb().select().from(users).where(eq(users.id, userId)).get()
+
+  if (!user || !user.isActive || user.isBanned || user.isDeleted)
+    return undefined
+
+  return user
+}
+
+/**
+ * Новый пароль выкидывает все сессии аккаунта: версия сессий растёт.
+ * Возвращает обновлённый аккаунт — по нему текущей сессии выдаются новые токены.
+ */
+export function updatePassword(userId: string, passwordHash: string) {
+  return getDb()
+    .update(users)
+    .set({ passwordHash, sessionVersion: nextSessionVersion })
+    .where(eq(users.id, userId))
+    .returning()
+    .get()
+}
+
+/** Email — логин аккаунта, поэтому его смена тоже выкидывает прочие сессии */
+export function updateEmail(userId: string, email: string) {
+  return getDb()
+    .update(users)
+    .set({ email, sessionVersion: nextSessionVersion })
+    .where(eq(users.id, userId))
+    .returning()
+    .get()
+}
+
+/**
+ * Сброс пароля владельца командой на сервере (`torsher reset-password`):
+ * писем нет, другого способа вернуть доступ к единственному аккаунту тоже.
+ * `undefined` — аккаунта ещё нет.
+ */
+export function resetOwnerPassword(passwordHash: string) {
+  const owner = getDb().select({ id: users.id }).from(users).limit(1).get()
+
+  return owner && updatePassword(owner.id, passwordHash)
 }

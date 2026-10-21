@@ -341,7 +341,10 @@
       "server": "Server",
       "open": "Open menu",
       "attention": "{n} needs attention | {n} need attention",
-      "downloading": "Downloads in progress"
+      "downloading": "Downloads in progress",
+      "links": "Links",
+      "showcase": "Open showcase",
+      "newTab": "opens in a new tab"
     },
     "account": {
       "menu": "Account menu",
@@ -352,7 +355,9 @@
         "system": "System"
       },
       "settings": "Account",
-      "logout": "Sign out"
+      "logout": "Sign out",
+      "language": "Language",
+      "languageBrowser": "Browser language"
     },
     "common": {
       "cancel": "Cancel",
@@ -386,7 +391,14 @@
         "passwordRequired": "Enter the password",
         "password": "At least 8 characters",
         "name": "At least 2 characters"
-      }
+      },
+      "forgot": "Forgot password?",
+      "forgotTitle": "Reset the password on the server",
+      "forgotText": "There is no email recovery: a command on the machine where Torsher runs sets a new password:",
+      "forgotHint": "The command prints a new password and signs out every browser and device. If the container has another name, put it in place of the first torsher.",
+      "copyCommand": "Copy command",
+      "commandCopied": "Command copied",
+      "copyFailed": "Couldn't copy the command"
     },
     "wizard": {
       "label": "First run",
@@ -437,7 +449,21 @@
         "saved": "Name saved",
         "emailTitle": "Email",
         "emailText": "Email is only used to sign in: the server sends no email.",
-        "single": "There is one account per server — the owner."
+        "passwordTitle": "Password",
+        "passwordText": "After the change, all other browsers and devices are signed out of the panel.",
+        "currentPassword": "Current password",
+        "newPassword": "New password",
+        "repeatPassword": "Repeat the new password",
+        "passwordHint": "At least 8 characters.",
+        "passwordSaved": "Password changed",
+        "emailHint": "Other browsers and devices will be signed out.",
+        "emailSaved": "Email changed",
+        "signedOut": "Other browsers and devices have been signed out.",
+        "failed": "Couldn't save",
+        "validation": {
+          "wrongPassword": "Wrong password",
+          "mismatch": "Passwords don't match"
+        }
       },
       "storage": {
         "description": "Where downloads live and how much space the watch cache may take.",

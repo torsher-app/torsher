@@ -23,6 +23,7 @@ import {
   prepareStream,
   saveWatchState,
 } from '../services/torrents/index.ts'
+import { sessionVersionOf } from '../services/users/session.ts'
 import { signToken } from '../utils/token.ts'
 import { sendEngineError } from './engineResponses.ts'
 
@@ -35,7 +36,9 @@ const guardResponses = {
  * в продакшене — сам сервер), поэтому адрес потока для `<video>` — с этим префиксом.
  */
 function streamUrlOf(torrentId: string, fileIndex: number, userId: string) {
-  const token = encodeURIComponent(signToken(userId, 'stream'))
+  const token = encodeURIComponent(
+    signToken(userId, 'stream', sessionVersionOf(userId)),
+  )
 
   return `/api/stream/${torrentId}/${fileIndex}?token=${token}`
 }

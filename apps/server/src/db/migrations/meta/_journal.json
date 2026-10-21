@@ -57,6 +57,13 @@
       "when": 1792578984973,
       "tag": "0007_low_lightspeed",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1792582440515,
+      "tag": "0008_melodic_loa",
+      "breakpoints": true
     }
   ]
 }
