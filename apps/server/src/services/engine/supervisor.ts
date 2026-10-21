@@ -34,7 +34,7 @@ export interface EngineSupervisorOptions {
   healthTimeoutMs?: number
   healthIntervalMs?: number
   stopTimeoutMs?: number
-  /** Как часто проверять, не появился ли бинарник после `engine:install` */
+  /** Как часто проверять, не появился ли бинарник после `engine:build` */
   missingRecheckMs?: number
 }
 
@@ -69,7 +69,7 @@ export function findFreePort() {
 
 async function defaultIsHealthy(baseUrl: string) {
   try {
-    const response = await fetch(`${baseUrl}/`, {
+    const response = await fetch(`${baseUrl}/health`, {
       signal: AbortSignal.timeout(1000),
     })
 
@@ -171,7 +171,7 @@ export function createEngineSupervisor(options: EngineSupervisorOptions) {
     if (!binaryExists(options.binaryPath)) {
       if (status !== 'missing') {
         log.warn(
-          `Engine binary not found at ${options.binaryPath}: run \`pnpm --filter @torsher/server engine:install\` or set RQBIT_PATH`,
+          `Engine binary not found at ${options.binaryPath}: run \`pnpm --filter @torsher/server engine:build\` or set ENGINE_PATH`,
         )
       }
 

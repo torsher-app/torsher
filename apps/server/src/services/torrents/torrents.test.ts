@@ -1,6 +1,4 @@
 import { describe, expect, it } from 'vitest'
-import { sampleTorrentFile } from '../engine/fixtures/index.ts'
-import { decodeBencode, readPieceLength } from './bencode.ts'
 import { parseMagnet } from './magnet.ts'
 import { contentTypeOf, isVideoFile } from './media.ts'
 import {
@@ -47,25 +45,6 @@ describe('magnet', () => {
   })
 })
 
-describe('bencode', () => {
-  it('размер куска из .torrent', () => {
-    expect(readPieceLength(sampleTorrentFile(524_288))).toBe(524_288)
-  })
-
-  it('строки остаются байтами, ключи словаря — текстом', () => {
-    expect(
-      decodeBencode(new TextEncoder().encode('d3:keyl4:spami-3eee')),
-    ).toEqual({
-      key: [new TextEncoder().encode('spam'), -3],
-    })
-  })
-
-  it('битый файл — null, а не исключение', () => {
-    expect(readPieceLength(new TextEncoder().encode('d4:info'))).toBeNull()
-    expect(readPieceLength(new TextEncoder().encode('i42e'))).toBeNull()
-  })
-})
-
 describe('файлы', () => {
   it('видео по расширению и тип для плеера', () => {
     expect(isVideoFile('Show/Episode.01.MKV')).toBe(true)
@@ -89,8 +68,7 @@ describe('файлы', () => {
 
 describe('буфер впереди позиции', () => {
   // Куски по 100 байт: скачаны 0, 1, 2 и 5
-  const bits = new Uint8Array([0b1110_0100])
-  const base = { bits, pieceCount: 8, pieceLength: 100 }
+  const base = { pieces: '11100100', pieceLength: 100 }
 
   it('считает подряд скачанное от позиции до первого пропуска', () => {
     expect(

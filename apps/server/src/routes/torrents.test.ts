@@ -17,7 +17,6 @@ import { getDb, migrateDb } from '../db/index.ts'
 import { torrents } from '../db/schema.ts'
 import { setEngineDown, setEngineReady } from '../services/engine/index.ts'
 import {
-  addResponse,
   engineError,
   INFO_HASH,
   liveStats,
@@ -48,10 +47,7 @@ function engine(routes: Record<string, Route>) {
     const route = routes[`${init.method ?? 'GET'} ${url.pathname}`]
 
     if (!route) {
-      return json(
-        engineError(404, 'torrent_not_found', 'torrent not found'),
-        404,
-      )
+      return json(engineError('torrent_not_found', 'torrent not found'), 404)
     }
 
     return route(url, init)
@@ -84,9 +80,9 @@ function insertTorrent(
       source: 'file',
       torrentFile: Buffer.from(file),
       files: movieDetails.files.map(item => ({
-        path: item.components.join('/'),
+        path: item.path,
         size: item.length,
-        padding: item.attributes.padding,
+        padding: item.padding,
       })),
       pieceLength: 262_144,
       status: 'ready',
@@ -191,11 +187,8 @@ describe('добавление раздачи', () => {
 
   it('magnet: метаданные пришли быстро — файлы сразу, без выравнивания', async () => {
     engine({
-      'POST /torrents/resolve_magnet': () => new Response(sampleTorrentFile()),
-      'POST /torrents': (url) => {
-        expect(url.searchParams.get('list_only')).toBe('true')
-        return json(addResponse())
-      },
+      'POST /torrents/resolve': () => new Response(sampleTorrentFile()),
+      'POST /torrents/inspect': () => json(movieDetails),
     })
 
     const response = await app.inject({
@@ -218,13 +211,13 @@ describe('добавление раздачи', () => {
     expect(body.files).toEqual([
       {
         index: 0,
-        path: 'Sample Movie (2008)/Sample.Movie.2008.1080p.mkv',
+        path: 'Sample.Movie.2008.1080p.mkv',
         size: 9_437_184,
         isVideo: true,
       },
       {
         index: 2,
-        path: 'Sample Movie (2008)/Sample.Movie.2008.srt',
+        path: 'Sample.Movie.2008.srt',
         size: 20_480,
         isVideo: false,
       },
@@ -240,11 +233,11 @@ describe('добавление раздачи', () => {
     let respond: (value: Response) => void = () => {}
 
     engine({
-      'POST /torrents/resolve_magnet': () =>
+      'POST /torrents/resolve': () =>
         new Promise<Response>((resolve) => {
           respond = resolve
         }),
-      'POST /torrents': () => json(addResponse()),
+      'POST /torrents/inspect': () => json(movieDetails),
     })
 
     const pending = app.inject({
@@ -275,8 +268,8 @@ describe('добавление раздачи', () => {
 
   it('magnet: пиры так и не прислали метаданные — failed, повторное добавление — повтор', async () => {
     engine({
-      'POST /torrents/resolve_magnet': () =>
-        json(engineError(500, 'internal_error', 'timeout'), 500),
+      'POST /torrents/resolve': () =>
+        json(engineError('timeout', 'no peers sent the torrent metadata'), 504),
     })
 
     const failed = await app.inject({
@@ -289,8 +282,8 @@ describe('добавление раздачи', () => {
     expect(failed.json()).toMatchObject({ status: 'failed', error: 'timeout' })
 
     engine({
-      'POST /torrents/resolve_magnet': () => new Response(sampleTorrentFile()),
-      'POST /torrents': () => json(addResponse()),
+      'POST /torrents/resolve': () => new Response(sampleTorrentFile()),
+      'POST /torrents/inspect': () => json(movieDetails),
     })
 
     const retried = await app.inject({
@@ -318,8 +311,8 @@ describe('добавление раздачи', () => {
     })
 
     engine({
-      'POST /torrents/resolve_magnet': () => new Response(sampleTorrentFile()),
-      'POST /torrents': () => json(addResponse()),
+      'POST /torrents/resolve': () => new Response(sampleTorrentFile()),
+      'POST /torrents/inspect': () => json(movieDetails),
     })
 
     const response = await app.inject({
@@ -334,7 +327,7 @@ describe('добавление раздачи', () => {
   })
 
   it('.torrent: файлы сразу, повторное добавление возвращает ту же раздачу', async () => {
-    engine({ 'POST /torrents': () => json(addResponse()) })
+    engine({ 'POST /torrents/inspect': () => json(movieDetails) })
 
     const payload = {
       torrentFile: Buffer.from(sampleTorrentFile()).toString('base64'),
@@ -364,8 +357,8 @@ describe('добавление раздачи', () => {
 
   it('битый .torrent — 400 с текстом движка', async () => {
     engine({
-      'POST /torrents': () =>
-        json(engineError(400, 'internal_error', 'error adding torrent'), 400),
+      'POST /torrents/inspect': () =>
+        json(engineError('internal_error', 'error adding torrent'), 400),
     })
 
     const response = await app.inject({
@@ -428,7 +421,10 @@ describe('список и удаление', () => {
     expect(getDb().select().from(torrents).all()).toHaveLength(1)
 
     setEngineReady(ENGINE)
-    engine({ [`POST /torrents/${INFO_HASH}/forget`]: () => json({}) })
+    engine({
+      [`DELETE /torrents/${INFO_HASH}`]: () =>
+        new Response(null, { status: 204 }),
+    })
 
     const deleted = await app.inject({
       method: 'DELETE',
@@ -462,12 +458,8 @@ describe('статистика', () => {
     const torrent = insertTorrent()
 
     engine({
-      [`GET /torrents/${INFO_HASH}/stats/v1`]: () => json(liveStats),
       // Скачаны первые 12 кусков по 256 КиБ
-      [`GET /torrents/${INFO_HASH}/haves`]: () =>
-        new Response(new Uint8Array([0xFF, 0xF0, 0, 0, 0, 0]), {
-          headers: { 'x-bitfield-len': '41' },
-        }),
+      [`GET /torrents/${INFO_HASH}/stats`]: () => json(liveStats),
     })
 
     const response = await app.inject({
@@ -536,19 +528,8 @@ describe('воспроизведение и позиция', () => {
 
     engine({
       'POST /torrents': (url) => {
-        expect(url.searchParams.get('only_files')).toBe('0')
-        return json(
-          addResponse(
-            {
-              ...movieDetails,
-              files: movieDetails.files.map((file, index) => ({
-                ...file,
-                included: index === 0,
-              })),
-            },
-            1,
-          ),
-        )
+        expect(url.searchParams.get('files')).toBe('0')
+        return json(movieDetails)
       },
     })
 
@@ -576,34 +557,11 @@ describe('воспроизведение и позиция', () => {
     expect(getDb().select().from(torrents).get()?.inEngine).toBe(true)
   })
 
-  it('раздача уже в движке с другими файлами — выбор файлов меняется', async () => {
-    const torrent = insertTorrent()
-    const updates: unknown[] = []
-
-    engine({
-      'POST /torrents': () => json(addResponse(movieDetails, 1)),
-      [`POST /torrents/${INFO_HASH}/update_only_files`]: (_url, init) => {
-        updates.push(JSON.parse(String(init.body)))
-        return json({})
-      },
-    })
-
-    await app.inject({
-      method: 'POST',
-      url: '/api/playback',
-      cookies: owner,
-      payload: { torrentId: torrent.id, fileIndex: 0 },
-    })
-
-    expect(updates).toEqual([{ only_files: [0] }])
-  })
-
   it('сохранённая позиция предлагается при следующем открытии', async () => {
     const torrent = insertTorrent()
 
     engine({
-      'POST /torrents': () => json(addResponse(movieDetails, 1)),
-      [`POST /torrents/${INFO_HASH}/update_only_files`]: () => json({}),
+      'POST /torrents': () => json(movieDetails),
     })
 
     const saved = await app.inject({
@@ -655,7 +613,7 @@ describe('поток', () => {
     const torrent = insertTorrent()
 
     engine({
-      [`GET /torrents/${INFO_HASH}/stream/0`]: (_url, init) => {
+      [`GET /torrents/${INFO_HASH}/files/0/stream`]: (_url, init) => {
         expect(init.headers).toEqual({ Range: 'bytes=100-104' })
         return new Response('hello', {
           status: 206,
@@ -685,7 +643,7 @@ describe('поток', () => {
     const torrent = insertTorrent()
 
     engine({
-      [`GET /torrents/${INFO_HASH}/stream/0`]: () => new Response('x'),
+      [`GET /torrents/${INFO_HASH}/files/0/stream`]: () => new Response('x'),
     })
 
     const response = await app.inject({
@@ -700,8 +658,8 @@ describe('поток', () => {
     const torrent = insertTorrent()
 
     engine({
-      [`GET /torrents/${INFO_HASH}/stream/0`]: () =>
-        json(engineError(416, 'internal_error', 'bad range'), 416),
+      [`GET /torrents/${INFO_HASH}/files/0/stream`]: () =>
+        new Response(null, { status: 416 }),
     })
 
     const response = await app.inject({
@@ -720,58 +678,18 @@ describe('поток', () => {
     engine({
       'POST /torrents': () => {
         added = true
-        return json(
-          addResponse(
-            {
-              ...movieDetails,
-              files: movieDetails.files.map((file, index) => ({
-                ...file,
-                included: index === 0,
-              })),
-            },
-            1,
-          ),
-        )
+        return json(movieDetails)
       },
-      [`GET /torrents/${INFO_HASH}/stream/0`]: () =>
+      [`GET /torrents/${INFO_HASH}/files/0/stream`]: () =>
         added
           ? new Response('ok')
-          : json(
-              engineError(404, 'torrent_not_found', 'torrent not found'),
-              404,
-            ),
+          : json(engineError('torrent_not_found', 'torrent not found'), 404),
     })
 
     const response = await app.inject({ url: streamUrl(torrent) })
 
     expect(response.statusCode).toBe(200)
     expect(response.body).toBe('ok')
-  })
-
-  it('пока движок проверяет скачанные куски, поток ждёт', async () => {
-    const torrent = insertTorrent()
-    let calls = 0
-
-    engine({
-      [`GET /torrents/${INFO_HASH}/stream/0`]: () => {
-        calls++
-        return calls === 1
-          ? json(
-              engineError(
-                500,
-                'internal_error',
-                'streams: invalid state initializing',
-              ),
-              500,
-            )
-          : new Response('ok')
-      },
-    })
-
-    const response = await app.inject({ url: streamUrl(torrent) })
-
-    expect(response.statusCode).toBe(200)
-    expect(calls).toBe(2)
   })
 
   it('без движка — 503', async () => {
@@ -789,7 +707,7 @@ describe('поток', () => {
     let signal: AbortSignal | undefined
 
     engine({
-      [`GET /torrents/${INFO_HASH}/stream/0`]: (_url, init) => {
+      [`GET /torrents/${INFO_HASH}/files/0/stream`]: (_url, init) => {
         signal = init.signal ?? undefined
 
         // Движок отдал начало и ждёт куски, которых ещё нет

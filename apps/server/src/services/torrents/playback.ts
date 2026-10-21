@@ -9,15 +9,9 @@ export function fileOffsetOf(files: TorrentFileEntry[], index: number) {
   return offset
 }
 
-function hasPiece(bits: Uint8Array, piece: number) {
-  const byte = bits[piece >> 3] ?? 0
-
-  return (byte & (0x80 >> (piece & 7))) !== 0
-}
-
 export interface BufferInput {
-  bits: Uint8Array
-  pieceCount: number
+  /** Скачанные куски строкой из 0 и 1 по порядку кусков */
+  pieces: string
   pieceLength: number
   fileOffset: number
   fileSize: number
@@ -30,7 +24,7 @@ export interface BufferInput {
  * проиграет без ожидания пиров. Кусок на позиции не скачан — ноль.
  */
 export function bufferedAheadBytes(input: BufferInput) {
-  const { bits, pieceCount, pieceLength, fileOffset, fileSize } = input
+  const { pieces, pieceLength, fileOffset, fileSize } = input
   const position = Math.min(Math.max(input.position, 0), fileSize)
   const start = fileOffset + position
   const fileEnd = fileOffset + fileSize
@@ -41,9 +35,9 @@ export function bufferedAheadBytes(input: BufferInput) {
   let piece = Math.floor(start / pieceLength)
 
   while (
-    piece < pieceCount
+    piece < pieces.length
     && piece * pieceLength < fileEnd
-    && hasPiece(bits, piece)
+    && pieces[piece] === '1'
   ) {
     piece++
   }

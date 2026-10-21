@@ -2,20 +2,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   addTorrent,
   EngineError,
+  forgetTorrent,
   inspectTorrent,
   openStream,
   resolveMagnet,
   setEngineDown,
   setEngineReady,
-  torrentHaves,
   torrentStats,
 } from './client.ts'
 import {
-  addResponse,
   engineError,
   INFO_HASH,
-  initializingStats,
   liveStats,
+  movieDetails,
 } from './fixtures/index.ts'
 
 const fetchMock = vi.fn<typeof fetch>()
@@ -52,37 +51,29 @@ describe('клиент движка', () => {
     })
   })
 
-  it('статистика: пиры, скорость в байтах и прогресс файлов', async () => {
+  it('статистика: пиры, скорость, прогресс файлов и скачанные куски', async () => {
     fetchMock.mockResolvedValue(json(liveStats))
 
     const stats = await torrentStats(INFO_HASH)
 
     expect(String(fetchMock.mock.calls[0]![0])).toBe(
-      `http://127.0.0.1:4000/torrents/${INFO_HASH}/stats/v1`,
+      `http://127.0.0.1:4000/torrents/${INFO_HASH}/stats`,
     )
     expect(stats).toEqual({
-      state: 'live',
-      error: null,
-      fileProgress: [3_145_728, 0, 0],
       peers: { connected: 7, found: 41 },
       downloadSpeed: 2_621_440,
       uploadSpeed: 262_144,
+      fileProgress: [3_145_728, 0, 0],
+      pieces: liveStats.pieces,
     })
-  })
-
-  it('статистика раздачи, которая ещё проверяет файлы, — без пиров', async () => {
-    fetchMock.mockResolvedValue(json(initializingStats))
-
-    const stats = await torrentStats(INFO_HASH)
-
-    expect(stats.state).toBe('initializing')
-    expect(stats.peers).toEqual({ connected: 0, found: 0 })
-    expect(stats.downloadSpeed).toBe(0)
   })
 
   it('раздачи нет в движке — not_found', async () => {
     fetchMock.mockResolvedValue(
-      json(engineError(404, 'torrent_not_found', 'torrent not found'), 404),
+      json(
+        engineError('torrent_not_found', 'torrent is not in the engine'),
+        404,
+      ),
     )
 
     await expect(torrentStats(INFO_HASH)).rejects.toMatchObject({
@@ -91,7 +82,7 @@ describe('клиент движка', () => {
   })
 
   it('неожиданная форма ответа — failed', async () => {
-    fetchMock.mockResolvedValue(json({ state: 'live' }))
+    fetchMock.mockResolvedValue(json({ peers: 'many' }))
 
     await expect(torrentStats(INFO_HASH)).rejects.toMatchObject({
       kind: 'failed',
@@ -100,31 +91,31 @@ describe('клиент движка', () => {
 
   it('битый .torrent — rejected с текстом движка', async () => {
     fetchMock.mockResolvedValue(
-      json(engineError(400, 'internal_error', 'error adding torrent'), 400),
+      json(engineError('invalid_torrent', 'bencode: syntax error'), 400),
     )
 
     await expect(inspectTorrent(new Uint8Array([1, 2]))).rejects.toMatchObject({
       kind: 'rejected',
-      message: 'error adding torrent',
+      message: 'bencode: syntax error',
     })
   })
 
-  it('добавляет раздачу с выбранными файлами и разрешает дописывать скачанное', async () => {
-    fetchMock.mockResolvedValue(json(addResponse(undefined, 3)))
+  it('добавляет раздачу с выбранными файлами', async () => {
+    fetchMock.mockResolvedValue(json(movieDetails))
 
     const details = await addTorrent(new Uint8Array([100]), [0])
     const url = new URL(String(fetchMock.mock.calls[0]![0]))
 
     expect(url.pathname).toBe('/torrents')
-    expect(url.searchParams.get('only_files')).toBe('0')
-    expect(url.searchParams.get('overwrite')).toBe('true')
-    expect(url.searchParams.get('is_url')).toBe('false')
+    expect(url.searchParams.get('files')).toBe('0')
+    expect(fetchMock.mock.calls[0]![1]!.method).toBe('POST')
     expect(details.files).toHaveLength(3)
+    expect(details.pieceLength).toBe(262_144)
   })
 
-  it('magnet без пиров упирается в таймаут движка — timeout', async () => {
+  it('magnet без пиров — timeout', async () => {
     fetchMock.mockResolvedValue(
-      json(engineError(500, 'internal_error', 'timeout'), 500),
+      json(engineError('timeout', 'no peers sent the torrent metadata'), 504),
     )
 
     await expect(
@@ -132,28 +123,26 @@ describe('клиент движка', () => {
     ).rejects.toMatchObject({ kind: 'timeout' })
   })
 
-  it('битовое поле кусков; пока раздача проверяется — null', async () => {
+  it('забыть раздачу — DELETE, отсутствующая — not_found', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }))
     fetchMock.mockResolvedValueOnce(
-      new Response(new Uint8Array([0b1110_0000]), {
-        headers: { 'x-bitfield-len': '3' },
-      }),
-    )
-    fetchMock.mockResolvedValueOnce(
-      json(engineError(412, 'internal_error', 'torrent is not live'), 412),
+      json(
+        engineError('torrent_not_found', 'torrent is not in the engine'),
+        404,
+      ),
     )
 
-    expect(await torrentHaves(INFO_HASH)).toEqual({
-      bits: new Uint8Array([0b1110_0000]),
-      pieceCount: 3,
+    await forgetTorrent(INFO_HASH)
+
+    expect(fetchMock.mock.calls[0]![1]!.method).toBe('DELETE')
+    await expect(forgetTorrent(INFO_HASH)).rejects.toMatchObject({
+      kind: 'not_found',
     })
-    expect(await torrentHaves(INFO_HASH)).toBeNull()
   })
 
   it('поток: Range уходит в движок, 206 и 416 отдаются как есть', async () => {
     fetchMock.mockResolvedValueOnce(new Response('abc', { status: 206 }))
-    fetchMock.mockResolvedValueOnce(
-      json(engineError(416, 'internal_error', 'bad range'), 416),
-    )
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 416 }))
 
     const controller = new AbortController()
     const partial = await openStream(
@@ -164,6 +153,9 @@ describe('клиент движка', () => {
     )
     const init = fetchMock.mock.calls[0]![1]!
 
+    expect(String(fetchMock.mock.calls[0]![0])).toBe(
+      `http://127.0.0.1:4000/torrents/${INFO_HASH}/files/0/stream`,
+    )
     expect(partial.status).toBe(206)
     expect(init.headers).toEqual({ Range: 'bytes=0-2' })
     expect(init.signal).toBe(controller.signal)

@@ -417,7 +417,7 @@ export interface CreateTorrentInput {
 }
 
 export interface TorrentStatsInput {
-  activity: "idle" | "checking" | "downloading" | "paused" | "error";
+  activity: "idle" | "downloading";
   peers: {
     connected: number;
     found: number;
@@ -851,7 +851,7 @@ export interface CreateTorrent {
 }
 
 export interface TorrentStats {
-  activity: "idle" | "checking" | "downloading" | "paused" | "error";
+  activity: "idle" | "downloading";
   peers: {
     connected: number;
     found: number;

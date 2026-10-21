@@ -532,7 +532,7 @@
           "stopped": "The torrent engine isn't running"
         },
         "texts": {
-          "not_installed": "Without it torrents can't be added or watched. Install the engine on the server or point RQBIT_PATH to your own binary.",
+          "not_installed": "Without it torrents can't be added or watched. Build the engine on the server or point ENGINE_PATH to a prebuilt binary.",
           "starting": "It will be ready in a few seconds. If this message stays, check the server log.",
           "stopped": "Torrents can't be added or watched. Restart the server."
         }
@@ -582,7 +582,7 @@
         "unknown": "Something went wrong"
       },
       "errors": {
-        "not_installed": "Install the engine on the server or point RQBIT_PATH to your own binary.",
+        "not_installed": "Build the engine on the server or point ENGINE_PATH to a prebuilt binary.",
         "starting": "Wait a few seconds and try again.",
         "stopped": "Restart the server and try again.",
         "invalid": "Check the magnet link or the .torrent file.",

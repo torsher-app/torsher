@@ -50,10 +50,15 @@ export const config = {
       : dirname(this.databasePath)
   },
 
-  // Бинарник движка. По умолчанию его кладёт `engine:install` в каталог данных,
+  // Бинарник движка. В разработке его собирает `engine:build` в каталог данных,
   // образ передаёт свой путь
-  get rqbitPath() {
-    return process.env.RQBIT_PATH || undefined
+  get enginePath() {
+    return process.env.ENGINE_PATH || undefined
+  },
+
+  // Порт для входящих соединений пиров; 0 — любой свободный
+  get enginePeerPort() {
+    return Number(process.env.ENGINE_PEER_PORT || 0)
   },
 
   get downloadsPath() {

@@ -18,3 +18,7 @@ uploads
 
 # Промежуточный артефакт codegen: пересоздаётся при каждом generate:api
 apps/server/openapi.json
+
+# Бинарник движка, если собрать его `go build` прямо в каталоге модуля
+/engine/engine
+/engine/torsher-engine
