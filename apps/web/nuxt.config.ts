@@ -10,7 +10,8 @@ export default defineNuxtConfig({
 
   devtools: { enabled: true },
 
-  css: ['~/assets/css/tailwind.css'],
+  // Без стилей vue-sonner тосты рендерятся статично в конце страницы, за экраном
+  css: ['~/assets/css/tailwind.css', 'vue-sonner/style.css'],
 
   runtimeConfig: {
     // Адрес backend для прокси. Переопределяется через NUXT_PROXY_URL

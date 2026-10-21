@@ -19,6 +19,7 @@
     "@node-rs/argon2": "^2.2.2",
     "better-sqlite3": "^13.0.3",
     "drizzle-orm": "^0.45.4",
+    "fast-xml-parser": "^5.11.2",
     "fastify": "^5.12.7",
     "fastify-type-provider-zod": "^7.0.0",
     "jsonwebtoken": "^9.0.3",

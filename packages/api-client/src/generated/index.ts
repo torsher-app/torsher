@@ -30,6 +30,10 @@ export interface SignupInput {
   password: string;
 }
 
+export interface SetupResponseInput {
+  needsSetup: boolean;
+}
+
 export interface SigninInput {
   /**
    * @format email
@@ -184,6 +188,136 @@ export interface HomeResponseInput {
   rows: HomeRowInput[];
 }
 
+export interface SourceErrorResponseInput {
+  message: string;
+  kind:
+    | "auth"
+    | "timeout"
+    | "unreachable"
+    | "bad_response"
+    | "remote"
+    | "unsupported";
+}
+
+export interface IndexerInput {
+  id: string;
+  name: string;
+  url: string;
+  hasApiKey: boolean;
+  enabled: boolean;
+  managerId: string | null;
+  managerKind: "prowlarr" | "jackett" | null;
+  missing: boolean;
+  categories: {
+    id: number;
+    name: string;
+  }[];
+  searchModes: {
+    search: boolean;
+    tvSearch: boolean;
+    movieSearch: boolean;
+  } | null;
+  checkStatus:
+    | "ok"
+    | "auth"
+    | "timeout"
+    | "unreachable"
+    | "bad_response"
+    | "remote"
+    | null;
+  checkedAt: string | null;
+}
+
+export interface IndexerListInput {
+  items: IndexerInput[];
+}
+
+export interface CreateIndexerInput {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  name: string;
+  /**
+   * @format uri
+   * @maxLength 2000
+   */
+  url: string;
+  /**
+   * @minLength 1
+   * @maxLength 500
+   */
+  apiKey?: string;
+}
+
+export interface UpdateIndexerInput {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  name?: string;
+  enabled?: boolean;
+  /**
+   * @minLength 1
+   * @maxLength 500
+   */
+  apiKey?: string;
+}
+
+export interface IndexerManagerInput {
+  id: string;
+  kind: "prowlarr" | "jackett";
+  url: string;
+  syncedAt: string | null;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  indexerCount: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  missingCount: number;
+}
+
+export interface IndexerManagerListInput {
+  items: IndexerManagerInput[];
+}
+
+export interface CreateIndexerManagerInput {
+  kind: "prowlarr" | "jackett";
+  /**
+   * @format uri
+   * @maxLength 2000
+   */
+  url: string;
+  /**
+   * @minLength 1
+   * @maxLength 500
+   */
+  apiKey: string;
+}
+
+export interface IndexerManagerSyncResultInput {
+  manager: IndexerManagerInput;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  added: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  updated: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  missing: number;
+}
+
 export interface UpdateMeInput {
   /** @minLength 2 */
   name?: string;
@@ -215,6 +349,10 @@ export interface Signup {
   email: string;
   /** @minLength 8 */
   password: string;
+}
+
+export interface SetupResponse {
+  needsSetup: boolean;
 }
 
 export interface Signin {
@@ -371,6 +509,136 @@ export interface HomeResponse {
   rows: HomeRow[];
 }
 
+export interface SourceErrorResponse {
+  message: string;
+  kind:
+    | "auth"
+    | "timeout"
+    | "unreachable"
+    | "bad_response"
+    | "remote"
+    | "unsupported";
+}
+
+export interface Indexer {
+  id: string;
+  name: string;
+  url: string;
+  hasApiKey: boolean;
+  enabled: boolean;
+  managerId: string | null;
+  managerKind: "prowlarr" | "jackett" | null;
+  missing: boolean;
+  categories: {
+    id: number;
+    name: string;
+  }[];
+  searchModes: {
+    search: boolean;
+    tvSearch: boolean;
+    movieSearch: boolean;
+  } | null;
+  checkStatus:
+    | "ok"
+    | "auth"
+    | "timeout"
+    | "unreachable"
+    | "bad_response"
+    | "remote"
+    | null;
+  checkedAt: string | null;
+}
+
+export interface IndexerList {
+  items: Indexer[];
+}
+
+export interface CreateIndexer {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  name: string;
+  /**
+   * @format uri
+   * @maxLength 2000
+   */
+  url: string;
+  /**
+   * @minLength 1
+   * @maxLength 500
+   */
+  apiKey?: string;
+}
+
+export interface UpdateIndexer {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  name?: string;
+  enabled?: boolean;
+  /**
+   * @minLength 1
+   * @maxLength 500
+   */
+  apiKey?: string;
+}
+
+export interface IndexerManager {
+  id: string;
+  kind: "prowlarr" | "jackett";
+  url: string;
+  syncedAt: string | null;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  indexerCount: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  missingCount: number;
+}
+
+export interface IndexerManagerList {
+  items: IndexerManager[];
+}
+
+export interface CreateIndexerManager {
+  kind: "prowlarr" | "jackett";
+  /**
+   * @format uri
+   * @maxLength 2000
+   */
+  url: string;
+  /**
+   * @minLength 1
+   * @maxLength 500
+   */
+  apiKey: string;
+}
+
+export interface IndexerManagerSyncResult {
+  manager: IndexerManager;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  added: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  updated: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  missing: number;
+}
+
 export interface UpdateMe {
   /** @minLength 2 */
   name?: string;
@@ -405,6 +673,24 @@ export type GetCatalogTitleExtrasError = MessageResponse;
 export type GetCatalogTrendingError = MessageResponse;
 
 export type GetHomeError = MessageResponse;
+
+export type GetIndexersError = MessageResponse;
+
+export type PostIndexerError = MessageResponse | SourceErrorResponse;
+
+export type PatchIndexerError = MessageResponse;
+
+export type DeleteIndexerError = MessageResponse;
+
+export type PostIndexerTestError = MessageResponse;
+
+export type GetIndexerManagersError = MessageResponse;
+
+export type PostIndexerManagerError = MessageResponse | SourceErrorResponse;
+
+export type PostIndexerManagerSyncError = MessageResponse | SourceErrorResponse;
+
+export type DeleteIndexerManagerError = MessageResponse;
 
 export type QueryParamsType = Record<string | number, any>;
 export type ResponseFormat = keyof Omit<Body, "body" | "bodyUsed">;
@@ -691,6 +977,21 @@ export class Api<
      * No description
      *
      * @tags Auth
+     * @name GetAuthSetup
+     * @request GET:/auth/setup
+     */
+    getAuthSetup: (params: RequestParams = {}) =>
+      this.request<SetupResponse, any>({
+        path: `/auth/setup`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Auth
      * @name PostAuthSignup
      * @request POST:/auth/signup
      */
@@ -942,6 +1243,164 @@ export class Api<
       this.request<HomeResponse, GetHomeError>({
         path: `/home`,
         method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+  };
+  indexers = {
+    /**
+     * No description
+     *
+     * @tags Sources
+     * @name GetIndexers
+     * @request GET:/indexers
+     */
+    getIndexers: (params: RequestParams = {}) =>
+      this.request<IndexerList, GetIndexersError>({
+        path: `/indexers`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Sources
+     * @name PostIndexer
+     * @request POST:/indexers
+     */
+    postIndexer: (data: CreateIndexerInput, params: RequestParams = {}) =>
+      this.request<Indexer, PostIndexerError>({
+        path: `/indexers`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Sources
+     * @name PatchIndexer
+     * @request PATCH:/indexers/{id}
+     */
+    patchIndexer: (
+      id: string,
+      data: UpdateIndexerInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<Indexer, PatchIndexerError>({
+        path: `/indexers/${id}`,
+        method: "PATCH",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Sources
+     * @name DeleteIndexer
+     * @request DELETE:/indexers/{id}
+     */
+    deleteIndexer: (id: string, params: RequestParams = {}) =>
+      this.request<MessageResponse, DeleteIndexerError>({
+        path: `/indexers/${id}`,
+        method: "DELETE",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Sources
+     * @name PostIndexerTest
+     * @request POST:/indexers/{id}/test
+     */
+    postIndexerTest: (id: string, params: RequestParams = {}) =>
+      this.request<Indexer, PostIndexerTestError>({
+        path: `/indexers/${id}/test`,
+        method: "POST",
+        format: "json",
+        ...params,
+      }),
+  };
+  indexerManagers = {
+    /**
+     * No description
+     *
+     * @tags Sources
+     * @name GetIndexerManagers
+     * @request GET:/indexer-managers
+     */
+    getIndexerManagers: (params: RequestParams = {}) =>
+      this.request<IndexerManagerList, GetIndexerManagersError>({
+        path: `/indexer-managers`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Sources
+     * @name PostIndexerManager
+     * @request POST:/indexer-managers
+     */
+    postIndexerManager: (
+      data: CreateIndexerManagerInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<IndexerManagerSyncResult, PostIndexerManagerError>({
+        path: `/indexer-managers`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Sources
+     * @name PostIndexerManagerSync
+     * @request POST:/indexer-managers/{id}/sync
+     */
+    postIndexerManagerSync: (id: string, params: RequestParams = {}) =>
+      this.request<IndexerManagerSyncResult, PostIndexerManagerSyncError>({
+        path: `/indexer-managers/${id}/sync`,
+        method: "POST",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Sources
+     * @name DeleteIndexerManager
+     * @request DELETE:/indexer-managers/{id}
+     */
+    deleteIndexerManager: (
+      id: string,
+      query?: {
+        /** @default "keep" */
+        indexers?: "keep" | "delete";
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<MessageResponse, DeleteIndexerManagerError>({
+        path: `/indexer-managers/${id}`,
+        method: "DELETE",
         query: query,
         format: "json",
         ...params,

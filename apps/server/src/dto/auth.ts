@@ -8,6 +8,13 @@ export const signup = z
   })
   .meta({ id: 'signup' })
 
+export const setupResponse = z
+  .object({
+    // Аккаунта ещё нет: панель предлагает создать аккаунт владельца
+    needsSetup: z.boolean(),
+  })
+  .meta({ id: 'setupResponse' })
+
 export const signin = z
   .object({
     email: z.email(),

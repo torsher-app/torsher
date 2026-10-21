@@ -22,6 +22,20 @@
       "when": 1792461923758,
       "tag": "0002_empty_medusa",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1792515806806,
+      "tag": "0003_military_venom",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1792542932307,
+      "tag": "0004_graceful_king_cobra",
+      "breakpoints": true
     }
   ]
 }

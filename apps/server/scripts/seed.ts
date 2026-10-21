@@ -1,7 +1,8 @@
 /**
  * Создаёт dev-пользователя с известными кредами для локальной разработки и e2e.
  *
- * Идемпотентно: повторный запуск не создаёт дубликат. Заблокировано в проде,
+ * Идемпотентно: повторный запуск не создаёт дубликат, а на сервере с другим
+ * аккаунтом ничего не делает — аккаунт на сервере один. Заблокировано в проде,
  * чтобы известный пароль никогда не попал в боевую базу — это seed для
  * разработки, а не бэкдор.
  *
@@ -12,6 +13,7 @@ import { eq } from 'drizzle-orm'
 import { config } from '../src/config.ts'
 import { getDb, migrateDb } from '../src/db/index.ts'
 import { users } from '../src/db/schema.ts'
+import { createOwner, needsSetup } from '../src/services/users/index.ts'
 import { normalizeEmail } from '../src/utils/email.ts'
 import { hashPassword } from '../src/utils/password.ts'
 
@@ -31,13 +33,15 @@ const existing = db.select().from(users).where(eq(users.email, email)).get()
 if (existing) {
   console.log(`Пользователь уже существует: ${email}`)
 }
+else if (!needsSetup()) {
+  // Аккаунт на сервере один: seed не заводит второй рядом с созданным вручную
+  console.log('На сервере уже есть аккаунт, dev-пользователь не создан')
+}
 else {
-  db.insert(users)
-    .values({
-      name: 'Dev User',
-      email,
-      passwordHash: await hashPassword(password),
-    })
-    .run()
+  createOwner({
+    name: 'Dev User',
+    email,
+    passwordHash: await hashPassword(password),
+  })
   console.log(`Создан dev-пользователь: ${email} / ${password}`)
 }

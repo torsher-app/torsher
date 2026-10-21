@@ -1,3 +1,4 @@
+import { dirname, join } from 'node:path'
 import process from 'node:process'
 
 function required(name: 'SECRET_KEY') {
@@ -20,6 +21,20 @@ export const config = {
   // (например, чтобы выгрузить OpenAPI-спеку) без настроенного окружения
   get secretKey() {
     return required('SECRET_KEY')
+  },
+
+  // Ключ шифрования секретов в базе (API-ключи индексаторов и т. п.).
+  // Без него ключ берётся из файла рядом с базой (services/secrets)
+  get torsherSecret() {
+    return process.env.TORSHER_SECRET || undefined
+  },
+
+  get secretKeyPath() {
+    const databasePath = this.databasePath
+
+    return databasePath === ':memory:'
+      ? undefined
+      : join(dirname(databasePath), 'secret.key')
   },
 
   // Без токена сервер работает, а каталог отвечает понятной ошибкой

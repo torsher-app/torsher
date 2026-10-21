@@ -151,5 +151,108 @@
     "tmdbNotice": "This product uses the TMDB API but is not endorsed or certified by TMDB.",
     "tmdbLogo": "TMDB logo",
     "font": "The Onest font is distributed under the SIL Open Font License 1.1"
+  },
+  "panel": {
+    "nav": {
+      "label": "Panel sections",
+      "sources": "Sources",
+      "about": "About"
+    },
+    "header": {
+      "logout": "Sign out",
+      "darkTheme": "Dark theme",
+      "lightTheme": "Light theme"
+    },
+    "common": {
+      "cancel": "Cancel",
+      "retry": "Try again",
+      "delete": "Delete"
+    },
+    "kinds": {
+      "prowlarr": "Prowlarr",
+      "jackett": "Jackett"
+    },
+    "sources": {
+      "title": "Sources",
+      "description": "Torznab indexers the server searches for releases",
+      "import": "Import from Prowlarr or Jackett",
+      "add": "Add Torznab indexer",
+      "loadError": "Couldn't load sources",
+      "empty": {
+        "title": "No sources yet",
+        "text": "Connect any Torznab indexer, for example Prowlarr or Jackett"
+      },
+      "status": {
+        "ok": "Working",
+        "pending": "Not checked",
+        "auth": "API key rejected",
+        "timeout": "No response",
+        "unreachable": "Unreachable",
+        "bad_response": "Not Torznab",
+        "remote": "Indexer error",
+        "unsupported": "Not supported"
+      },
+      "errors": {
+        "auth": "The API key was rejected. Check the key and try again.",
+        "timeout": "The address didn't respond in time. Check that the service is running and the server can reach it.",
+        "unreachable": "Can't connect to the address. Check it and make sure the server can reach it.",
+        "bad_response": "The address answered, but not with Torznab. Check the address.",
+        "remote": "The indexer answered with an error. Check it in its own interface or try later.",
+        "unsupported": "No manager API at this address. Check the type and the address, or update the manager.",
+        "unknown": "Something went wrong. Try again."
+      },
+      "validation": {
+        "name": "Enter a name",
+        "url": "Enter an http or https address",
+        "apiKey": "Enter the API key"
+      },
+      "indexers": {
+        "title": "Indexers",
+        "manual": "Added manually",
+        "missing": "Gone from {manager}",
+        "enable": "Search {name}",
+        "test": "Check",
+        "testPassed": "{name}: check passed",
+        "testFailed": "{name}: {status}",
+        "checkedAt": "Checked {time}",
+        "moreCategories": "+{n}",
+        "deleteTitle": "Delete {name}?",
+        "deleteText": "The server will stop searching this indexer.",
+        "deleteManagedText": "The server will stop searching this indexer. The next sync with {manager} will add it back.",
+        "deleted": "{name} deleted"
+      },
+      "managers": {
+        "title": "Indexer managers",
+        "syncedAt": "Synced {time}",
+        "indexerCount": "{n} indexer | {n} indexers",
+        "missingCount": "{n} gone",
+        "sync": "Sync",
+        "synced": "Added {added}, updated {updated}, gone from the manager {missing}",
+        "disconnect": "Disconnect",
+        "disconnectTitle": "Disconnect {manager}?",
+        "disconnectText": "The server will stop syncing indexers from {url}. Imported indexers can stay as manual ones.",
+        "keepIndexers": "Keep indexers",
+        "deleteIndexers": "Delete indexers too",
+        "disconnected": "{manager} disconnected"
+      },
+      "importDialog": {
+        "title": "Import from Prowlarr or Jackett",
+        "description": "The server adds every indexer configured in the manager and keeps them in sync. The API key is in the manager's settings.",
+        "kind": "Manager",
+        "url": "Address",
+        "apiKey": "API key",
+        "submit": "Import"
+      },
+      "addDialog": {
+        "title": "Add Torznab indexer",
+        "description": "The server checks the indexer before saving it.",
+        "name": "Name",
+        "url": "Torznab address",
+        "apiKey": "API key",
+        "apiKeyHint": "Leave empty if the indexer doesn't need a key",
+        "submit": "Check and add",
+        "added": "{name} added"
+      }
+    }
   }
 }
