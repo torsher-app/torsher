@@ -21,21 +21,30 @@ export type TokenPurpose = keyof typeof TOKEN_TTL
 export interface VerifiedToken {
   userId: string
   purpose: TokenPurpose
+  sessionVersion: number
   iat: number
   exp: number
 }
 
-export function signToken(userId: string, purpose: TokenPurpose) {
-  return jwt.sign({ userId, purpose }, config.secretKey, {
+/**
+ * `sv` — версия сессий аккаунта на момент выдачи (`users.sessionVersion`):
+ * токен старой версии отвергает `verifySession` из `services/users`.
+ */
+export function signToken(
+  userId: string,
+  purpose: TokenPurpose,
+  sessionVersion = 0,
+) {
+  return jwt.sign({ userId, purpose, sv: sessionVersion }, config.secretKey, {
     expiresIn: TOKEN_TTL[purpose],
     algorithm: 'HS256',
   })
 }
 
-export function generateSessionTokens(userId: string) {
+export function generateSessionTokens(userId: string, sessionVersion: number) {
   return {
-    accessToken: signToken(userId, 'user_access'),
-    refreshToken: signToken(userId, 'user_refresh'),
+    accessToken: signToken(userId, 'user_access', sessionVersion),
+    refreshToken: signToken(userId, 'user_refresh', sessionVersion),
   }
 }
 
@@ -50,11 +59,12 @@ export function verifyTokenFor(
   if (typeof payload !== 'object' || payload === null)
     throw new TypeError('Invalid token payload')
 
-  const { userId, purpose, iat, exp } = payload as Record<string, unknown>
+  const { userId, purpose, sv, iat, exp } = payload as Record<string, unknown>
 
   if (
     typeof userId !== 'string'
     || userId.length === 0
+    || (sv !== undefined && !Number.isInteger(sv))
     || typeof iat !== 'number'
     || typeof exp !== 'number'
   ) {
@@ -67,5 +77,13 @@ export function verifyTokenFor(
   if (Math.abs(exp - iat - TOKEN_TTL[expectedPurpose]) > 5)
     throw new TypeError('Invalid token TTL')
 
-  return { userId, purpose: expectedPurpose, iat, exp }
+  // Токены, выданные до появления версии сессий, считаются версией 0:
+  // обновление сервера никого не разлогинивает
+  return {
+    userId,
+    purpose: expectedPurpose,
+    sessionVersion: (sv as number | undefined) ?? 0,
+    iat,
+    exp,
+  }
 }

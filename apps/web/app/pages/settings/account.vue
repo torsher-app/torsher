@@ -7,6 +7,8 @@ import * as z from 'zod'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import LoadingButton from '~/components/LoadingButton.vue'
+import EmailCard from '~/components/settings/EmailCard.vue'
+import PasswordCard from '~/components/settings/PasswordCard.vue'
 import SettingsCard from '~/components/settings/SettingsCard.vue'
 
 definePageMeta({
@@ -86,16 +88,7 @@ const onSubmit = handleSubmit(async (values) => {
       </SettingsCard>
     </form>
 
-    <SettingsCard
-      :title="t('panel.settings.account.emailTitle')"
-      :description="t('panel.settings.account.emailText')"
-    >
-      <p class="font-medium break-all">
-        {{ user?.email }}
-      </p>
-      <template #hint>
-        {{ t("panel.settings.account.single") }}
-      </template>
-    </SettingsCard>
+    <EmailCard />
+    <PasswordCard />
   </div>
 </template>

@@ -1,31 +1,25 @@
 import type { Language, Messages } from '@torsher/i18n'
-import {
-  defaultLocale,
-  fallbackLocale,
-  language,
-  messages,
-  pluralRules,
-} from '@torsher/i18n'
+import { fallbackLocale, messages, pluralRules } from '@torsher/i18n'
 import { createI18n } from 'vue-i18n'
-
-// Язык браузера по основному тегу: ru-KZ и ru-RU оба дают ru_RU
-function browserLanguage(): Language {
-  const primary = navigator.language.split('-')[0]
-  const languages = Object.keys(language) as Language[]
-
-  return (
-    languages.find(item => item.startsWith(`${primary}_`)) ?? defaultLocale
-  )
-}
+import { languageOf, readPreference } from '~/lib/panelLanguage'
 
 export default defineNuxtPlugin((nuxtApp) => {
-  nuxtApp.vueApp.use(
-    createI18n<[Messages], Language, false>({
-      legacy: false,
-      locale: browserLanguage(),
-      fallbackLocale,
-      messages,
-      pluralRules,
-    }),
+  const i18n = createI18n<[Messages], Language, false>({
+    legacy: false,
+    locale: languageOf(readPreference()),
+    fallbackLocale,
+    messages,
+    pluralRules,
+  })
+
+  nuxtApp.vueApp.use(i18n)
+
+  // Скринридер и переносы слов читают язык страницы из <html lang>
+  watch(
+    i18n.global.locale,
+    (locale) => {
+      document.documentElement.lang = locale.split('_')[0]!
+    },
+    { immediate: true },
   )
 })

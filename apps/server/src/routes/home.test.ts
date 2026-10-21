@@ -9,7 +9,8 @@ import {
 } from 'vitest'
 import { createApp } from '../app.ts'
 import { ACCESS_TOKEN_COOKIE } from '../config.ts'
-import { migrateDb } from '../db/index.ts'
+import { getDb, migrateDb } from '../db/index.ts'
+import { users } from '../db/schema.ts'
 import { movieList } from '../services/tmdb/fixtures/index.ts'
 import { signToken } from '../utils/token.ts'
 
@@ -22,6 +23,16 @@ function authed() {
 
 beforeAll(() => {
   migrateDb()
+  // Сессию проверяют по аккаунту в базе (версия сессий)
+  getDb()
+    .insert(users)
+    .values({
+      id: 'user-1',
+      name: 'Owner',
+      email: 'owner@example.com',
+      passwordHash: 'hash',
+    })
+    .run()
 })
 
 beforeEach(() => {

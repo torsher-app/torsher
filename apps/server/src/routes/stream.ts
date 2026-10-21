@@ -11,7 +11,7 @@ import {
   playableFile,
   touchTorrent,
 } from '../services/torrents/index.ts'
-import { verifyTokenFor } from '../utils/token.ts'
+import { verifySession } from '../services/users/session.ts'
 import { sendEngineError } from './engineResponses.ts'
 
 // Заголовки ответа движка, которые нужны плееру для перемотки
@@ -25,7 +25,7 @@ async function requireStreamAuth(request: FastifyRequest, reply: FastifyReply) {
     return requireAuth(request, reply)
 
   try {
-    request.userId = verifyTokenFor(token, 'stream').userId
+    request.userId = verifySession(token, 'stream').userId
   }
   catch {
     return reply.code(401).send({ message: 'Unauthorized' })

@@ -16,6 +16,7 @@ import {
   titleProgress,
   titleVoices,
   torrents,
+  users,
 } from '../db/schema.ts'
 import { setEngineDown, setEngineReady } from '../services/engine/index.ts'
 import {
@@ -100,6 +101,16 @@ function routeOf(url: URL, method: string): Route | undefined {
 
 beforeAll(() => {
   migrateDb()
+  // Сессию проверяют по аккаунту в базе (версия сессий)
+  getDb()
+    .insert(users)
+    .values({
+      id: 'owner',
+      name: 'Owner',
+      email: 'owner@example.com',
+      passwordHash: 'hash',
+    })
+    .run()
   getDb()
     .insert(indexers)
     .values({

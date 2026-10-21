@@ -376,14 +376,7 @@ export interface VoiceOptionInput {
   studio?: string;
   type?: "D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original";
   maxQuality?:
-    | "2160p"
-    | "1440p"
-    | "1080p"
-    | "1080i"
-    | "720p"
-    | "576p"
-    | "480p"
-    | "360p";
+    "2160p" | "1440p" | "1080p" | "1080i" | "720p" | "576p" | "480p" | "360p";
   seeders: number;
   count: number;
   pinned: boolean;
@@ -395,14 +388,7 @@ export interface TitleSourcesInput {
   updatedAt: string;
   profile: {
     qualities: (
-      | "2160p"
-      | "1440p"
-      | "1080p"
-      | "1080i"
-      | "720p"
-      | "576p"
-      | "480p"
-      | "360p"
+      "2160p" | "1440p" | "1080p" | "1080i" | "720p" | "576p" | "480p" | "360p"
     )[];
     voiceTypes: ("D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original")[];
   };
@@ -706,6 +692,26 @@ export interface MeResponseInput {
   email: string;
   isActive: boolean;
   createdAt: string;
+}
+
+export interface ChangePasswordInput {
+  currentPassword: string;
+  /** @minLength 8 */
+  newPassword: string;
+}
+
+export interface ChangeEmailInput {
+  /**
+   * @format email
+   * @pattern ^(?:[A-Za-z0-9_'+\-]+\.)*[A-Za-z0-9_'+\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}$
+   */
+  email: string;
+  currentPassword: string;
+}
+
+export interface WrongPasswordResponseInput {
+  message: string;
+  field: "currentPassword";
 }
 
 export interface AboutResponse {
@@ -1074,14 +1080,7 @@ export interface VoiceOption {
   studio?: string;
   type?: "D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original";
   maxQuality?:
-    | "2160p"
-    | "1440p"
-    | "1080p"
-    | "1080i"
-    | "720p"
-    | "576p"
-    | "480p"
-    | "360p";
+    "2160p" | "1440p" | "1080p" | "1080i" | "720p" | "576p" | "480p" | "360p";
   seeders: number;
   count: number;
   pinned: boolean;
@@ -1093,14 +1092,7 @@ export interface TitleSources {
   updatedAt: string;
   profile: {
     qualities: (
-      | "2160p"
-      | "1440p"
-      | "1080p"
-      | "1080i"
-      | "720p"
-      | "576p"
-      | "480p"
-      | "360p"
+      "2160p" | "1440p" | "1080p" | "1080i" | "720p" | "576p" | "480p" | "360p"
     )[];
     voiceTypes: ("D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original")[];
   };
@@ -1406,6 +1398,26 @@ export interface MeResponse {
   createdAt: string;
 }
 
+export interface ChangePassword {
+  currentPassword: string;
+  /** @minLength 8 */
+  newPassword: string;
+}
+
+export interface ChangeEmail {
+  /**
+   * @format email
+   * @pattern ^(?:[A-Za-z0-9_'+\-]+\.)*[A-Za-z0-9_'+\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}$
+   */
+  email: string;
+  currentPassword: string;
+}
+
+export interface WrongPasswordResponse {
+  message: string;
+  field: "currentPassword";
+}
+
 export type PostAuthSignupError = MessageResponse;
 
 export type PostAuthSigninError = MessageResponse;
@@ -1415,6 +1427,10 @@ export type PostAuthRefreshError = MessageResponse;
 export type GetUsersMeError = MessageResponse;
 
 export type PatchUsersMeError = MessageResponse;
+
+export type PutUsersMePasswordError = MessageResponse | WrongPasswordResponse;
+
+export type PutUsersMeEmailError = MessageResponse | WrongPasswordResponse;
 
 export type GetCatalogSearchError = MessageResponse;
 
@@ -1451,9 +1467,7 @@ export type GetTitleSourcesError = MessageResponse;
 export type PutTitleVoiceError = MessageResponse;
 
 export type PostTitleWatchError =
-  | MessageResponse
-  | WatchErrorResponse
-  | EngineUnavailableResponse;
+  MessageResponse | WatchErrorResponse | EngineUnavailableResponse;
 
 export type GetTitleProgressError = MessageResponse;
 
@@ -1468,18 +1482,15 @@ export type DeleteTorrentError = MessageResponse | EngineUnavailableResponse;
 export type PostTorrentRetryError = MessageResponse | EngineUnavailableResponse;
 
 export type PostTorrentDownloadError =
-  | MessageResponse
-  | EngineUnavailableResponse;
+  MessageResponse | EngineUnavailableResponse;
 
 export type PostTorrentPauseError = MessageResponse | EngineUnavailableResponse;
 
 export type PostTorrentResumeError =
-  | MessageResponse
-  | EngineUnavailableResponse;
+  MessageResponse | EngineUnavailableResponse;
 
 export type PutTorrentRetentionError =
-  | MessageResponse
-  | EngineUnavailableResponse;
+  MessageResponse | EngineUnavailableResponse;
 
 export type GetTorrentStatsError = MessageResponse | EngineUnavailableResponse;
 
@@ -1488,9 +1499,7 @@ export type GetStorageError = MessageResponse | EngineUnavailableResponse;
 export type PutStoragePolicyError = MessageResponse | EngineUnavailableResponse;
 
 export type PostPlaybackError =
-  | MessageResponse
-  | EngineUnavailableResponse
-  | InsufficientStorageResponse;
+  MessageResponse | EngineUnavailableResponse | InsufficientStorageResponse;
 
 export type PutWatchStateError = MessageResponse;
 
@@ -1530,8 +1539,10 @@ export interface ApiConfig<SecurityDataType = unknown> {
   customFetch?: typeof fetch;
 }
 
-export interface HttpResponse<D extends unknown, E extends unknown = unknown>
-  extends Response {
+export interface HttpResponse<
+  D extends unknown,
+  E extends unknown = unknown,
+> extends Response {
   data: D;
   error: E;
 }
@@ -1900,6 +1911,43 @@ export class Api<
       this.request<MeResponse, PatchUsersMeError>({
         path: `/api/users/me`,
         method: "PATCH",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Users
+     * @name PutUsersMePassword
+     * @request PUT:/api/users/me/password
+     */
+    putUsersMePassword: (
+      data: ChangePasswordInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<MessageResponse, PutUsersMePasswordError>({
+        path: `/api/users/me/password`,
+        method: "PUT",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Users
+     * @name PutUsersMeEmail
+     * @request PUT:/api/users/me/email
+     */
+    putUsersMeEmail: (data: ChangeEmailInput, params: RequestParams = {}) =>
+      this.request<MeResponse, PutUsersMeEmailError>({
+        path: `/api/users/me/email`,
+        method: "PUT",
         body: data,
         type: ContentType.Json,
         format: "json",

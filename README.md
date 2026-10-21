@@ -57,6 +57,22 @@ Everything lives in the `/data` volume. `/data/db` holds the database and the ke
 
 The server exposes `GET /api/health`, and the image uses it for the Docker health check.
 
+### Forgot password
+
+The server has one account and sends no email, so the password is reset with a command inside the container:
+
+```bash
+docker exec -it torsher torsher reset-password
+```
+
+It prints a new random password and signs out every browser and device. To set your own password instead, pass it on standard input:
+
+```bash
+printf '%s' 'new password' | docker exec -i torsher torsher reset-password --stdin
+```
+
+Change the password afterwards in the panel under **Settings → Account**. Use your container name in place of the first `torsher` if it differs.
+
 ## Development
 
 Requires Node.js 24 and pnpm (`corepack enable`).

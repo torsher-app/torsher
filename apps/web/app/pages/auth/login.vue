@@ -6,9 +6,11 @@ import { useForm } from 'vee-validate'
 import { useI18n } from 'vue-i18n'
 import * as z from 'zod'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import ResetPasswordHelp from '~/components/auth/ResetPasswordHelp.vue'
 import LoadingButton from '~/components/LoadingButton.vue'
 import SecretInput from '~/components/SecretInput.vue'
 import BrandMark from '~/components/shell/BrandMark.vue'
@@ -23,6 +25,7 @@ const { signin } = useAuth()
 const { t } = useI18n()
 
 const isRejected = ref(false)
+const isResetShown = ref(false)
 const formError = ref('')
 const about = shallowRef<AboutResponse>()
 
@@ -88,9 +91,7 @@ onMounted(async () => {
           <CircleAlertIcon />
           <AlertTitle>{{ t("panel.auth.rejected") }}</AlertTitle>
           <AlertDescription>
-            {{
-              t("panel.auth.rejectedText")
-            }}
+            {{ t("panel.auth.rejectedText") }}
           </AlertDescription>
         </Alert>
         <Alert v-else-if="formError" variant="destructive">
@@ -115,7 +116,20 @@ onMounted(async () => {
         </div>
 
         <div class="grid gap-2">
-          <Label for="password">{{ t("panel.auth.password") }}</Label>
+          <div class="flex items-center justify-between gap-3">
+            <Label for="password">{{ t("panel.auth.password") }}</Label>
+            <Button
+              type="button"
+              variant="link"
+              size="xs"
+              class="h-auto p-0 text-[12.5px] text-muted-foreground"
+              aria-controls="reset-password-help"
+              :aria-expanded="isResetShown"
+              @click="isResetShown = !isResetShown"
+            >
+              {{ t("panel.auth.forgot") }}
+            </Button>
+          </div>
           <SecretInput
             id="password"
             v-model="password"
@@ -134,6 +148,8 @@ onMounted(async () => {
           {{ t("panel.auth.submit") }}
         </LoadingButton>
       </form>
+
+      <ResetPasswordHelp v-show="isResetShown" id="reset-password-help" />
     </Card>
 
     <div
