@@ -51,8 +51,8 @@ const movie: SearchQuery = {
 describe('buildSearchRequests', () => {
   it('без ID-параметров в caps ищет только текстом', () => {
     expect(buildSearchRequests(capsWith(), series)).toEqual([
-      { t: 'search', q: 'Тихая гавань', cat: '5000' },
-      { t: 'search', q: 'Quiet Harbor', cat: '5000' },
+      { t: 'search', q: 'Тихая гавань' },
+      { t: 'search', q: 'Quiet Harbor' },
     ])
   })
 
@@ -68,7 +68,6 @@ describe('buildSearchRequests', () => {
       t: 'tvsearch',
       tvdbid: '202',
       season: '2',
-      cat: '5000',
     })
   })
 
@@ -80,7 +79,6 @@ describe('buildSearchRequests', () => {
     expect(buildSearchRequests(caps, series)[0]).toEqual({
       t: 'tvsearch',
       imdbid: 'tt0000001',
-      cat: '5000',
     })
   })
 
@@ -93,8 +91,8 @@ describe('buildSearchRequests', () => {
         movie,
       ),
     ).toEqual([
-      { t: 'movie', tmdbid: '303', cat: '2000' },
-      { t: 'search', q: 'Бумажный фонарь 2021', cat: '2000' },
+      { t: 'movie', tmdbid: '303' },
+      { t: 'search', q: 'Бумажный фонарь 2021' },
     ])
 
     expect(
@@ -102,10 +100,10 @@ describe('buildSearchRequests', () => {
         capsWith({ movieSearch: { available: true, params: ['imdbid'] } }),
         movie,
       )[0],
-    ).toEqual({ t: 'movie', imdbid: '0000002', cat: '2000' })
+    ).toEqual({ t: 'movie', imdbid: '0000002' })
   })
 
-  it('категорию не передаёт, если её нет в caps; без поиска текстом — пусто', () => {
+  it('категорию не передаёт никогда; без поиска текстом — пусто', () => {
     const caps = capsWith({
       search: { available: false, params: [] },
       categories: [],

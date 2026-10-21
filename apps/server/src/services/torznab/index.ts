@@ -24,9 +24,7 @@ export type {
 } from './search.ts'
 export {
   buildSearchRequests,
-  MOVIE_CATEGORY,
   parseSearchResults,
   searchIndexer,
-  TV_CATEGORY,
 } from './search.ts'
 export { child, children, parseXml, text } from './xml.ts'
