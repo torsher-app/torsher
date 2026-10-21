@@ -1,7 +1,12 @@
-import { config } from '../../config.ts'
+import { netFetch } from '../net/index.ts'
+import { SecretError } from '../secrets/index.ts'
+import { currentTmdbKey, tmdbAuth } from './credentials.ts'
 
-const API_URL = 'https://api.themoviedb.org/3'
-const IMAGE_URL = 'https://image.tmdb.org/t/p'
+export const TMDB_API_ORIGIN = 'https://api.themoviedb.org'
+export const TMDB_IMAGE_ORIGIN = 'https://image.tmdb.org'
+
+const API_URL = `${TMDB_API_ORIGIN}/3`
+const IMAGE_URL = `${TMDB_IMAGE_ORIGIN}/t/p`
 // При DNS-подмене соединение может висеть долго — ждём ограниченно
 const API_TIMEOUT_MS = 10_000
 const IMAGE_TIMEOUT_MS = 30_000
@@ -29,7 +34,7 @@ async function send(
   headers?: Record<string, string>,
 ) {
   try {
-    return await fetch(url, {
+    return await netFetch(url, {
       headers,
       signal: AbortSignal.timeout(timeoutMs),
     })
@@ -39,26 +44,47 @@ async function send(
   }
 }
 
-export async function tmdbGet<T>(
-  path: string,
-  params: Record<string, string>,
-): Promise<T> {
-  const token = config.tmdbAccessToken
+function keyOrThrow() {
+  let key
 
-  if (!token) {
+  try {
+    key = currentTmdbKey()
+  }
+  catch (err) {
+    if (!(err instanceof SecretError))
+      throw err
+
+    throw new TmdbError(
+      'config',
+      'Stored TMDB key cannot be decrypted, enter it again',
+      { cause: err },
+    )
+  }
+
+  if (!key) {
     throw new TmdbError(
       'config',
       'TMDB access token is not configured on the server',
     )
   }
 
+  return key
+}
+
+/** `key` — проверить ключ до сохранения; иначе текущий ключ сервера */
+export async function tmdbGet<T>(
+  path: string,
+  params: Record<string, string>,
+  key = keyOrThrow(),
+): Promise<T> {
+  const auth = tmdbAuth(key)
   const url = new URL(`${API_URL}${path}`)
 
-  for (const [key, value] of Object.entries(params))
-    url.searchParams.set(key, value)
+  for (const [name, value] of Object.entries({ ...params, ...auth.params }))
+    url.searchParams.set(name, value)
 
   const res = await send(url.href, API_TIMEOUT_MS, {
-    Authorization: `Bearer ${token}`,
+    ...auth.headers,
     Accept: 'application/json',
   })
 
@@ -83,4 +109,39 @@ export async function tmdbGet<T>(
 
 export function fetchTmdbImage(size: string, file: string) {
   return send(`${IMAGE_URL}/${size}/${file}`, IMAGE_TIMEOUT_MS)
+}
+
+export type TmdbKeyCheck
+  = | { ok: true, kind: null }
+    | { ok: false, kind: 'rejected' | 'unavailable' | 'missing' }
+
+/** Проверка ключа запросом `/configuration`: он отвечает с любым ключом */
+export async function checkTmdbKey(key?: string): Promise<TmdbKeyCheck> {
+  try {
+    await tmdbGet('/configuration', {}, key ?? keyOrThrow())
+
+    return { ok: true, kind: null }
+  }
+  catch (err) {
+    if (!(err instanceof TmdbError))
+      throw err
+
+    if (err.kind === 'unavailable' || err.kind === 'not_found')
+      return { ok: false, kind: 'unavailable' }
+
+    return {
+      ok: false,
+      kind: !key && !currentKeySafe() ? 'missing' : 'rejected',
+    }
+  }
+}
+
+function currentKeySafe() {
+  try {
+    return currentTmdbKey()
+  }
+  catch {
+    // Нерасшифровываемый ключ есть, но не принят
+    return 'unreadable'
+  }
 }

@@ -399,3 +399,50 @@ export const titleProgress = sqliteTable(
 )
 
 export type TitleProgress = typeof titleProgress.$inferSelect
+
+// `socks5h` — имя хоста разрешает прокси; `http` — CONNECT по имени хоста
+export const netRouteVias = ['direct', 'socks5h', 'http'] as const
+// `system` — DNS ОС; остальное — встроенный DoH (`custom` — свой адрес)
+export const netRouteDns = [
+  'system',
+  'quad9',
+  'google',
+  'cloudflare',
+  'custom',
+] as const
+
+export type NetRouteVia = (typeof netRouteVias)[number]
+export type NetRouteDns = (typeof netRouteDns)[number]
+
+// Маршрут исходящих запросов сервера: `match` — точный хост, `*.домен`
+// (поддомены) или `*` (по умолчанию, удалить нельзя). Сопоставляется только
+// с хостом адреса, не с подстрокой URL (services/net)
+export const netRoutes = sqliteTable('net_routes', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => randomUUID()),
+  match: text('match').notNull().unique(),
+  via: text('via', { enum: netRouteVias }).notNull(),
+  // `host:port` прокси; null у `direct`
+  proxyAddress: text('proxy_address'),
+  // Шифртекст (services/secrets)
+  proxyUsername: text('proxy_username'),
+  proxyPassword: text('proxy_password'),
+  dns: text('dns', { enum: netRouteDns }).notNull().default('system'),
+  dohUrl: text('doh_url'),
+  position: integer('position').notNull().default(0),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+    .notNull()
+    .$defaultFn(() => new Date()),
+})
+
+export type NetRoute = typeof netRoutes.$inferSelect
+
+// Настройки сервера ключ — значение (JSON). Секреты внутри — шифртекстом
+export const serverSettings = sqliteTable('server_settings', {
+  key: text('key').primaryKey(),
+  value: text('value', { mode: 'json' }).notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+    .notNull()
+    .$defaultFn(() => new Date()),
+})

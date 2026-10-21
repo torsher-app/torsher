@@ -396,6 +396,173 @@ export interface IndexerManagerSyncResultInput {
   missing: number;
 }
 
+export interface NetRouteErrorResponseInput {
+  message: string;
+  field: "match" | "proxy" | "dohUrl";
+  kind: "invalid" | "duplicate" | "default_route";
+}
+
+export interface NetRouteInput {
+  id: string;
+  match: string;
+  isDefault: boolean;
+  via: "direct" | "socks5h" | "http";
+  proxy: string | null;
+  envProxy: boolean;
+  hasUsername: boolean;
+  hasPassword: boolean;
+  dns: "system" | "quad9" | "google" | "cloudflare" | "custom";
+  dohUrl: string | null;
+  updatedAt: string;
+}
+
+export interface NetRouteListInput {
+  items: NetRouteInput[];
+}
+
+export interface CreateNetRouteInput {
+  /**
+   * @minLength 1
+   * @maxLength 253
+   */
+  match: string;
+  via: "direct" | "socks5h" | "http";
+  /**
+   * @minLength 1
+   * @maxLength 300
+   */
+  proxy?: string;
+  /** @maxLength 300 */
+  username?: string;
+  /** @maxLength 300 */
+  password?: string;
+  /** @default "system" */
+  dns?: "system" | "quad9" | "google" | "cloudflare" | "custom";
+  /**
+   * @minLength 1
+   * @maxLength 2000
+   */
+  dohUrl?: string;
+}
+
+export interface UpdateNetRouteInput {
+  /**
+   * @minLength 1
+   * @maxLength 253
+   */
+  match?: string;
+  via?: "direct" | "socks5h" | "http";
+  /**
+   * @minLength 1
+   * @maxLength 300
+   */
+  proxy?: string;
+  /** @maxLength 300 */
+  username?: string | null;
+  /** @maxLength 300 */
+  password?: string | null;
+  dns?: "system" | "quad9" | "google" | "cloudflare" | "custom";
+  /**
+   * @minLength 1
+   * @maxLength 2000
+   */
+  dohUrl?: string | null;
+}
+
+export interface NetRouteOrderInput {
+  /** @maxItems 500 */
+  ids: string[];
+}
+
+export interface DnsProviderListInput {
+  items: {
+    id: "system" | "quad9" | "google" | "cloudflare" | "custom";
+    name: string;
+    url: string;
+  }[];
+}
+
+export interface NetHostInput {
+  id: string;
+  host: string;
+  hostname: string;
+  kind: "tmdb" | "tmdb_images" | "manager" | "indexer";
+  label: string;
+  route: {
+    id: string;
+    match: string;
+    via: "direct" | "socks5h" | "http";
+    dns: "system" | "quad9" | "google" | "cloudflare" | "custom";
+    envProxy: boolean;
+  };
+  checking: boolean;
+  status: "ok" | "dns" | "doh" | "timeout" | "refused" | "tls" | "http" | null;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  httpStatus: number | null;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  latencyMs: number | null;
+  dnsSpoofed: boolean;
+  checkedAt: string | null;
+}
+
+export interface NetCheckStateInput {
+  running: boolean;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  done: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  total: number;
+  finishedAt: string | null;
+  hosts: NetHostInput[];
+}
+
+export interface StartNetCheckInput {
+  /**
+   * @minLength 1
+   * @maxLength 2000
+   */
+  host?: string;
+}
+
+export interface MetadataSettingsInput {
+  tmdb: {
+    source: "custom" | "app" | "none";
+    hasAppKey: boolean;
+  };
+}
+
+export interface UpdateMetadataSettingsInput {
+  /**
+   * @minLength 16
+   * @maxLength 1000
+   */
+  tmdbKey: string | null;
+}
+
+export interface CheckMetadataKeyInput {
+  /**
+   * @minLength 16
+   * @maxLength 1000
+   */
+  tmdbKey?: string;
+}
+
+export interface MetadataKeyCheckInput {
+  ok: boolean;
+  kind: "rejected" | "unavailable" | "missing" | null;
+}
+
 export interface VoiceRefInput {
   studio?: string;
   type?: "D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original";
@@ -1265,6 +1432,173 @@ export interface IndexerManagerSyncResult {
   missing: number;
 }
 
+export interface NetRouteErrorResponse {
+  message: string;
+  field: "match" | "proxy" | "dohUrl";
+  kind: "invalid" | "duplicate" | "default_route";
+}
+
+export interface NetRoute {
+  id: string;
+  match: string;
+  isDefault: boolean;
+  via: "direct" | "socks5h" | "http";
+  proxy: string | null;
+  envProxy: boolean;
+  hasUsername: boolean;
+  hasPassword: boolean;
+  dns: "system" | "quad9" | "google" | "cloudflare" | "custom";
+  dohUrl: string | null;
+  updatedAt: string;
+}
+
+export interface NetRouteList {
+  items: NetRoute[];
+}
+
+export interface CreateNetRoute {
+  /**
+   * @minLength 1
+   * @maxLength 253
+   */
+  match: string;
+  via: "direct" | "socks5h" | "http";
+  /**
+   * @minLength 1
+   * @maxLength 300
+   */
+  proxy?: string;
+  /** @maxLength 300 */
+  username?: string;
+  /** @maxLength 300 */
+  password?: string;
+  /** @default "system" */
+  dns: "system" | "quad9" | "google" | "cloudflare" | "custom";
+  /**
+   * @minLength 1
+   * @maxLength 2000
+   */
+  dohUrl?: string;
+}
+
+export interface UpdateNetRoute {
+  /**
+   * @minLength 1
+   * @maxLength 253
+   */
+  match?: string;
+  via?: "direct" | "socks5h" | "http";
+  /**
+   * @minLength 1
+   * @maxLength 300
+   */
+  proxy?: string;
+  /** @maxLength 300 */
+  username?: string | null;
+  /** @maxLength 300 */
+  password?: string | null;
+  dns?: "system" | "quad9" | "google" | "cloudflare" | "custom";
+  /**
+   * @minLength 1
+   * @maxLength 2000
+   */
+  dohUrl?: string | null;
+}
+
+export interface NetRouteOrder {
+  /** @maxItems 500 */
+  ids: string[];
+}
+
+export interface DnsProviderList {
+  items: {
+    id: "system" | "quad9" | "google" | "cloudflare" | "custom";
+    name: string;
+    url: string;
+  }[];
+}
+
+export interface NetHost {
+  id: string;
+  host: string;
+  hostname: string;
+  kind: "tmdb" | "tmdb_images" | "manager" | "indexer";
+  label: string;
+  route: {
+    id: string;
+    match: string;
+    via: "direct" | "socks5h" | "http";
+    dns: "system" | "quad9" | "google" | "cloudflare" | "custom";
+    envProxy: boolean;
+  };
+  checking: boolean;
+  status: "ok" | "dns" | "doh" | "timeout" | "refused" | "tls" | "http" | null;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  httpStatus: number | null;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  latencyMs: number | null;
+  dnsSpoofed: boolean;
+  checkedAt: string | null;
+}
+
+export interface NetCheckState {
+  running: boolean;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  done: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  total: number;
+  finishedAt: string | null;
+  hosts: NetHost[];
+}
+
+export interface StartNetCheck {
+  /**
+   * @minLength 1
+   * @maxLength 2000
+   */
+  host?: string;
+}
+
+export interface MetadataSettings {
+  tmdb: {
+    source: "custom" | "app" | "none";
+    hasAppKey: boolean;
+  };
+}
+
+export interface UpdateMetadataSettings {
+  /**
+   * @minLength 16
+   * @maxLength 1000
+   */
+  tmdbKey: string | null;
+}
+
+export interface CheckMetadataKey {
+  /**
+   * @minLength 16
+   * @maxLength 1000
+   */
+  tmdbKey?: string;
+}
+
+export interface MetadataKeyCheck {
+  ok: boolean;
+  kind: "rejected" | "unavailable" | "missing" | null;
+}
+
 export interface VoiceRef {
   studio?: string;
   type?: "D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original";
@@ -1827,6 +2161,28 @@ export type GetTorrentStatsError = MessageResponse | EngineUnavailableResponse;
 export type GetStorageError = MessageResponse | EngineUnavailableResponse;
 
 export type PutStoragePolicyError = MessageResponse | EngineUnavailableResponse;
+
+export type GetNetRoutesError = MessageResponse;
+
+export type PostNetRouteError = MessageResponse | NetRouteErrorResponse;
+
+export type PatchNetRouteError = MessageResponse | NetRouteErrorResponse;
+
+export type DeleteNetRouteError = MessageResponse | NetRouteErrorResponse;
+
+export type PutNetRouteOrderError = MessageResponse;
+
+export type GetNetDnsProvidersError = MessageResponse;
+
+export type GetNetCheckError = MessageResponse;
+
+export type PostNetCheckError = MessageResponse;
+
+export type GetMetadataSettingsError = MessageResponse;
+
+export type PutMetadataSettingsError = MessageResponse;
+
+export type PostMetadataCheckError = MessageResponse;
 
 export type PostPlaybackError =
   MessageResponse | EngineUnavailableResponse | InsufficientStorageResponse;
@@ -2928,6 +3284,195 @@ export class Api<
       this.request<StorageOverview, PutStoragePolicyError>({
         path: `/api/storage/policy`,
         method: "PUT",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+  };
+  net = {
+    /**
+     * No description
+     *
+     * @tags Network
+     * @name GetNetRoutes
+     * @request GET:/api/net/routes
+     */
+    getNetRoutes: (params: RequestParams = {}) =>
+      this.request<NetRouteList, GetNetRoutesError>({
+        path: `/api/net/routes`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Network
+     * @name PostNetRoute
+     * @request POST:/api/net/routes
+     */
+    postNetRoute: (data: CreateNetRouteInput, params: RequestParams = {}) =>
+      this.request<NetRoute, PostNetRouteError>({
+        path: `/api/net/routes`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Network
+     * @name PatchNetRoute
+     * @request PATCH:/api/net/routes/{id}
+     */
+    patchNetRoute: (
+      id: string,
+      data: UpdateNetRouteInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<NetRoute, PatchNetRouteError>({
+        path: `/api/net/routes/${id}`,
+        method: "PATCH",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Network
+     * @name DeleteNetRoute
+     * @request DELETE:/api/net/routes/{id}
+     */
+    deleteNetRoute: (id: string, params: RequestParams = {}) =>
+      this.request<MessageResponse, DeleteNetRouteError>({
+        path: `/api/net/routes/${id}`,
+        method: "DELETE",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Network
+     * @name PutNetRouteOrder
+     * @request PUT:/api/net/routes/order
+     */
+    putNetRouteOrder: (data: NetRouteOrderInput, params: RequestParams = {}) =>
+      this.request<NetRouteList, PutNetRouteOrderError>({
+        path: `/api/net/routes/order`,
+        method: "PUT",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Network
+     * @name GetNetDnsProviders
+     * @request GET:/api/net/dns-providers
+     */
+    getNetDnsProviders: (params: RequestParams = {}) =>
+      this.request<DnsProviderList, GetNetDnsProvidersError>({
+        path: `/api/net/dns-providers`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Network
+     * @name GetNetCheck
+     * @request GET:/api/net/check
+     */
+    getNetCheck: (params: RequestParams = {}) =>
+      this.request<NetCheckState, GetNetCheckError>({
+        path: `/api/net/check`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Network
+     * @name PostNetCheck
+     * @request POST:/api/net/check
+     */
+    postNetCheck: (data: StartNetCheckInput, params: RequestParams = {}) =>
+      this.request<NetCheckState, PostNetCheckError>({
+        path: `/api/net/check`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+  };
+  settings = {
+    /**
+     * No description
+     *
+     * @tags Settings
+     * @name GetMetadataSettings
+     * @request GET:/api/settings/metadata
+     */
+    getMetadataSettings: (params: RequestParams = {}) =>
+      this.request<MetadataSettings, GetMetadataSettingsError>({
+        path: `/api/settings/metadata`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Settings
+     * @name PutMetadataSettings
+     * @request PUT:/api/settings/metadata
+     */
+    putMetadataSettings: (
+      data: UpdateMetadataSettingsInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<MetadataSettings, PutMetadataSettingsError>({
+        path: `/api/settings/metadata`,
+        method: "PUT",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Settings
+     * @name PostMetadataCheck
+     * @request POST:/api/settings/metadata/check
+     */
+    postMetadataCheck: (
+      data: CheckMetadataKeyInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<MetadataKeyCheck, PostMetadataCheckError>({
+        path: `/api/settings/metadata/check`,
+        method: "POST",
         body: data,
         type: ContentType.Json,
         format: "json",

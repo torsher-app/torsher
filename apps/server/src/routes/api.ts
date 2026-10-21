@@ -8,8 +8,10 @@ import { homeRoutes } from './home.ts'
 import { imageRoutes } from './images.ts'
 import { indexerManagerRoutes } from './indexerManagers.ts'
 import { indexerRoutes } from './indexers.ts'
+import { netRoutes } from './net.ts'
 import { playbackRoutes } from './playback.ts'
 import { profileRoutes } from './profiles.ts'
+import { settingsRoutes } from './settings.ts'
 import { storageRoutes } from './storage.ts'
 import { streamRoutes } from './stream.ts'
 import { titleRoutes } from './titles.ts'
@@ -51,6 +53,8 @@ export const apiRoutes: FastifyPluginAsyncZod = async (app) => {
   app.register(torrentRoutes, { prefix: '/torrents' })
   app.register(streamRoutes, { prefix: '/stream' })
   app.register(storageRoutes, { prefix: '/storage' })
+  app.register(netRoutes, { prefix: '/net' })
+  app.register(settingsRoutes, { prefix: '/settings' })
   app.register(playbackRoutes)
   app.register(profileRoutes, { prefix: '/profiles' })
   app.register(deviceRoutes, { prefix: '/devices' })

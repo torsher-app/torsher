@@ -1,0 +1,66 @@
+import { config } from '../../config.ts'
+import { decryptSecret, encryptSecret } from '../secrets/index.ts'
+import { deleteSetting, getSetting, setSetting } from '../settings/index.ts'
+
+const SETTING_KEY = 'tmdb'
+
+interface StoredTmdbSettings {
+  // Шифртекст ключа владельца
+  key: string
+}
+
+/** `custom` — ключ владельца, `app` — ключ из окружения, `none` — ключа нет */
+export type TmdbKeySource = 'custom' | 'app' | 'none'
+
+// undefined — ещё не читали из базы
+let stored: string | null | undefined
+
+function storedCiphertext() {
+  if (stored === undefined)
+    stored = getSetting<StoredTmdbSettings>(SETTING_KEY)?.key ?? null
+
+  return stored
+}
+
+export function tmdbKeySource(): TmdbKeySource {
+  if (storedCiphertext())
+    return 'custom'
+
+  return config.tmdbAccessToken ? 'app' : 'none'
+}
+
+/**
+ * Ключ запросов: свой ключ владельца важнее ключа приложения — TMDB вправе
+ * отозвать ключ приложения. Нерасшифровываемый ключ бросает `SecretError`.
+ */
+export function currentTmdbKey() {
+  const ciphertext = storedCiphertext()
+
+  return ciphertext ? decryptSecret(ciphertext) : config.tmdbAccessToken
+}
+
+/** `null` — вернуться к ключу приложения */
+export function saveTmdbKey(key: string | null) {
+  if (key) {
+    setSetting(SETTING_KEY, {
+      key: encryptSecret(key),
+    } satisfies StoredTmdbSettings)
+  }
+  else {
+    deleteSetting(SETTING_KEY)
+  }
+
+  stored = undefined
+}
+
+// Ключ API v3 — 32 hex-символа и идёт параметром; токен чтения v4 — Bearer
+const V3_KEY = /^[0-9a-f]{32}$/i
+
+export function tmdbAuth(key: string): {
+  headers: Record<string, string>
+  params: Record<string, string>
+} {
+  return V3_KEY.test(key)
+    ? { headers: {}, params: { api_key: key } }
+    : { headers: { Authorization: `Bearer ${key}` }, params: {} }
+}
