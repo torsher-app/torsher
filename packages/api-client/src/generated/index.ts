@@ -1198,17 +1198,38 @@ export class HttpClient<SecurityDataType = unknown> {
 export class Api<
   SecurityDataType extends unknown,
 > extends HttpClient<SecurityDataType> {
+  health = {
+    /**
+     * No description
+     *
+     * @tags Health
+     * @name GetHealth
+     * @request GET:/api/health
+     */
+    getHealth: (params: RequestParams = {}) =>
+      this.request<
+        {
+          status: "ok";
+        },
+        any
+      >({
+        path: `/api/health`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+  };
   about = {
     /**
      * No description
      *
      * @tags About
      * @name GetAbout
-     * @request GET:/about/
+     * @request GET:/api/about/
      */
     getAbout: (params: RequestParams = {}) =>
       this.request<AboutResponse, any>({
-        path: `/about/`,
+        path: `/api/about/`,
         method: "GET",
         format: "json",
         ...params,
@@ -1220,11 +1241,11 @@ export class Api<
      *
      * @tags Auth
      * @name GetAuthSetup
-     * @request GET:/auth/setup
+     * @request GET:/api/auth/setup
      */
     getAuthSetup: (params: RequestParams = {}) =>
       this.request<SetupResponse, any>({
-        path: `/auth/setup`,
+        path: `/api/auth/setup`,
         method: "GET",
         format: "json",
         ...params,
@@ -1235,11 +1256,11 @@ export class Api<
      *
      * @tags Auth
      * @name PostAuthSignup
-     * @request POST:/auth/signup
+     * @request POST:/api/auth/signup
      */
     postAuthSignup: (data: SignupInput, params: RequestParams = {}) =>
       this.request<MessageResponse, PostAuthSignupError>({
-        path: `/auth/signup`,
+        path: `/api/auth/signup`,
         method: "POST",
         body: data,
         type: ContentType.Json,
@@ -1252,11 +1273,11 @@ export class Api<
      *
      * @tags Auth
      * @name PostAuthSignin
-     * @request POST:/auth/signin
+     * @request POST:/api/auth/signin
      */
     postAuthSignin: (data: SigninInput, params: RequestParams = {}) =>
       this.request<MessageResponse, PostAuthSigninError>({
-        path: `/auth/signin`,
+        path: `/api/auth/signin`,
         method: "POST",
         body: data,
         type: ContentType.Json,
@@ -1269,11 +1290,11 @@ export class Api<
      *
      * @tags Auth
      * @name PostAuthRefresh
-     * @request POST:/auth/refresh
+     * @request POST:/api/auth/refresh
      */
     postAuthRefresh: (params: RequestParams = {}) =>
       this.request<MessageResponse, PostAuthRefreshError>({
-        path: `/auth/refresh`,
+        path: `/api/auth/refresh`,
         method: "POST",
         format: "json",
         ...params,
@@ -1284,11 +1305,11 @@ export class Api<
      *
      * @tags Auth
      * @name PostAuthLogout
-     * @request POST:/auth/logout
+     * @request POST:/api/auth/logout
      */
     postAuthLogout: (params: RequestParams = {}) =>
       this.request<MessageResponse, any>({
-        path: `/auth/logout`,
+        path: `/api/auth/logout`,
         method: "POST",
         format: "json",
         ...params,
@@ -1300,11 +1321,11 @@ export class Api<
      *
      * @tags Users
      * @name GetUsersMe
-     * @request GET:/users/me
+     * @request GET:/api/users/me
      */
     getUsersMe: (params: RequestParams = {}) =>
       this.request<MeResponse, GetUsersMeError>({
-        path: `/users/me`,
+        path: `/api/users/me`,
         method: "GET",
         format: "json",
         ...params,
@@ -1315,11 +1336,11 @@ export class Api<
      *
      * @tags Users
      * @name PatchUsersMe
-     * @request PATCH:/users/me
+     * @request PATCH:/api/users/me
      */
     patchUsersMe: (data: UpdateMeInput, params: RequestParams = {}) =>
       this.request<MeResponse, PatchUsersMeError>({
-        path: `/users/me`,
+        path: `/api/users/me`,
         method: "PATCH",
         body: data,
         type: ContentType.Json,
@@ -1333,7 +1354,7 @@ export class Api<
      *
      * @tags Catalog
      * @name GetCatalogSearch
-     * @request GET:/catalog/search
+     * @request GET:/api/catalog/search
      */
     getCatalogSearch: (
       query: {
@@ -1351,7 +1372,7 @@ export class Api<
       params: RequestParams = {},
     ) =>
       this.request<CatalogSearchResponse, GetCatalogSearchError>({
-        path: `/catalog/search`,
+        path: `/api/catalog/search`,
         method: "GET",
         query: query,
         format: "json",
@@ -1363,7 +1384,7 @@ export class Api<
      *
      * @tags Catalog
      * @name GetCatalogTitle
-     * @request GET:/catalog/titles/{id}
+     * @request GET:/api/catalog/titles/{id}
      */
     getCatalogTitle: (
       id: string,
@@ -1377,7 +1398,7 @@ export class Api<
       params: RequestParams = {},
     ) =>
       this.request<TitleDetails, GetCatalogTitleError>({
-        path: `/catalog/titles/${id}`,
+        path: `/api/catalog/titles/${id}`,
         method: "GET",
         query: query,
         format: "json",
@@ -1389,7 +1410,7 @@ export class Api<
      *
      * @tags Catalog
      * @name GetCatalogSeason
-     * @request GET:/catalog/titles/{id}/seasons/{number}
+     * @request GET:/api/catalog/titles/{id}/seasons/{number}
      */
     getCatalogSeason: (
       id: string,
@@ -1404,7 +1425,7 @@ export class Api<
       params: RequestParams = {},
     ) =>
       this.request<SeasonDetails, GetCatalogSeasonError>({
-        path: `/catalog/titles/${id}/seasons/${number}`,
+        path: `/api/catalog/titles/${id}/seasons/${number}`,
         method: "GET",
         query: query,
         format: "json",
@@ -1416,7 +1437,7 @@ export class Api<
      *
      * @tags Catalog
      * @name GetCatalogTitleExtras
-     * @request GET:/catalog/titles/{id}/extras
+     * @request GET:/api/catalog/titles/{id}/extras
      */
     getCatalogTitleExtras: (
       id: string,
@@ -1430,7 +1451,7 @@ export class Api<
       params: RequestParams = {},
     ) =>
       this.request<TitleExtras, GetCatalogTitleExtrasError>({
-        path: `/catalog/titles/${id}/extras`,
+        path: `/api/catalog/titles/${id}/extras`,
         method: "GET",
         query: query,
         format: "json",
@@ -1442,7 +1463,7 @@ export class Api<
      *
      * @tags Catalog
      * @name GetCatalogTrending
-     * @request GET:/catalog/trending
+     * @request GET:/api/catalog/trending
      */
     getCatalogTrending: (
       query?: {
@@ -1455,7 +1476,7 @@ export class Api<
       params: RequestParams = {},
     ) =>
       this.request<CatalogTrendingResponse, GetCatalogTrendingError>({
-        path: `/catalog/trending`,
+        path: `/api/catalog/trending`,
         method: "GET",
         query: query,
         format: "json",
@@ -1468,7 +1489,7 @@ export class Api<
      *
      * @tags Catalog
      * @name GetHome
-     * @request GET:/home
+     * @request GET:/api/home
      */
     getHome: (
       query?: {
@@ -1483,7 +1504,7 @@ export class Api<
       params: RequestParams = {},
     ) =>
       this.request<HomeResponse, GetHomeError>({
-        path: `/home`,
+        path: `/api/home`,
         method: "GET",
         query: query,
         format: "json",
@@ -1496,11 +1517,11 @@ export class Api<
      *
      * @tags Sources
      * @name GetIndexers
-     * @request GET:/indexers
+     * @request GET:/api/indexers
      */
     getIndexers: (params: RequestParams = {}) =>
       this.request<IndexerList, GetIndexersError>({
-        path: `/indexers`,
+        path: `/api/indexers`,
         method: "GET",
         format: "json",
         ...params,
@@ -1511,11 +1532,11 @@ export class Api<
      *
      * @tags Sources
      * @name PostIndexer
-     * @request POST:/indexers
+     * @request POST:/api/indexers
      */
     postIndexer: (data: CreateIndexerInput, params: RequestParams = {}) =>
       this.request<Indexer, PostIndexerError>({
-        path: `/indexers`,
+        path: `/api/indexers`,
         method: "POST",
         body: data,
         type: ContentType.Json,
@@ -1528,7 +1549,7 @@ export class Api<
      *
      * @tags Sources
      * @name PatchIndexer
-     * @request PATCH:/indexers/{id}
+     * @request PATCH:/api/indexers/{id}
      */
     patchIndexer: (
       id: string,
@@ -1536,7 +1557,7 @@ export class Api<
       params: RequestParams = {},
     ) =>
       this.request<Indexer, PatchIndexerError>({
-        path: `/indexers/${id}`,
+        path: `/api/indexers/${id}`,
         method: "PATCH",
         body: data,
         type: ContentType.Json,
@@ -1549,11 +1570,11 @@ export class Api<
      *
      * @tags Sources
      * @name DeleteIndexer
-     * @request DELETE:/indexers/{id}
+     * @request DELETE:/api/indexers/{id}
      */
     deleteIndexer: (id: string, params: RequestParams = {}) =>
       this.request<MessageResponse, DeleteIndexerError>({
-        path: `/indexers/${id}`,
+        path: `/api/indexers/${id}`,
         method: "DELETE",
         format: "json",
         ...params,
@@ -1564,11 +1585,11 @@ export class Api<
      *
      * @tags Sources
      * @name PostIndexerTest
-     * @request POST:/indexers/{id}/test
+     * @request POST:/api/indexers/{id}/test
      */
     postIndexerTest: (id: string, params: RequestParams = {}) =>
       this.request<Indexer, PostIndexerTestError>({
-        path: `/indexers/${id}/test`,
+        path: `/api/indexers/${id}/test`,
         method: "POST",
         format: "json",
         ...params,
@@ -1580,11 +1601,11 @@ export class Api<
      *
      * @tags Sources
      * @name GetIndexerManagers
-     * @request GET:/indexer-managers
+     * @request GET:/api/indexer-managers
      */
     getIndexerManagers: (params: RequestParams = {}) =>
       this.request<IndexerManagerList, GetIndexerManagersError>({
-        path: `/indexer-managers`,
+        path: `/api/indexer-managers`,
         method: "GET",
         format: "json",
         ...params,
@@ -1595,14 +1616,14 @@ export class Api<
      *
      * @tags Sources
      * @name PostIndexerManager
-     * @request POST:/indexer-managers
+     * @request POST:/api/indexer-managers
      */
     postIndexerManager: (
       data: CreateIndexerManagerInput,
       params: RequestParams = {},
     ) =>
       this.request<IndexerManagerSyncResult, PostIndexerManagerError>({
-        path: `/indexer-managers`,
+        path: `/api/indexer-managers`,
         method: "POST",
         body: data,
         type: ContentType.Json,
@@ -1615,11 +1636,11 @@ export class Api<
      *
      * @tags Sources
      * @name PostIndexerManagerSync
-     * @request POST:/indexer-managers/{id}/sync
+     * @request POST:/api/indexer-managers/{id}/sync
      */
     postIndexerManagerSync: (id: string, params: RequestParams = {}) =>
       this.request<IndexerManagerSyncResult, PostIndexerManagerSyncError>({
-        path: `/indexer-managers/${id}/sync`,
+        path: `/api/indexer-managers/${id}/sync`,
         method: "POST",
         format: "json",
         ...params,
@@ -1630,7 +1651,7 @@ export class Api<
      *
      * @tags Sources
      * @name DeleteIndexerManager
-     * @request DELETE:/indexer-managers/{id}
+     * @request DELETE:/api/indexer-managers/{id}
      */
     deleteIndexerManager: (
       id: string,
@@ -1641,7 +1662,7 @@ export class Api<
       params: RequestParams = {},
     ) =>
       this.request<MessageResponse, DeleteIndexerManagerError>({
-        path: `/indexer-managers/${id}`,
+        path: `/api/indexer-managers/${id}`,
         method: "DELETE",
         query: query,
         format: "json",
@@ -1654,11 +1675,11 @@ export class Api<
      *
      * @tags Torrents
      * @name GetTorrents
-     * @request GET:/torrents
+     * @request GET:/api/torrents
      */
     getTorrents: (params: RequestParams = {}) =>
       this.request<TorrentList, GetTorrentsError>({
-        path: `/torrents`,
+        path: `/api/torrents`,
         method: "GET",
         format: "json",
         ...params,
@@ -1669,11 +1690,11 @@ export class Api<
      *
      * @tags Torrents
      * @name PostTorrent
-     * @request POST:/torrents
+     * @request POST:/api/torrents
      */
     postTorrent: (data: CreateTorrentInput, params: RequestParams = {}) =>
       this.request<Torrent, PostTorrentError>({
-        path: `/torrents`,
+        path: `/api/torrents`,
         method: "POST",
         body: data,
         type: ContentType.Json,
@@ -1686,11 +1707,11 @@ export class Api<
      *
      * @tags Torrents
      * @name GetTorrent
-     * @request GET:/torrents/{id}
+     * @request GET:/api/torrents/{id}
      */
     getTorrent: (id: string, params: RequestParams = {}) =>
       this.request<Torrent, GetTorrentError>({
-        path: `/torrents/${id}`,
+        path: `/api/torrents/${id}`,
         method: "GET",
         format: "json",
         ...params,
@@ -1701,11 +1722,11 @@ export class Api<
      *
      * @tags Torrents
      * @name DeleteTorrent
-     * @request DELETE:/torrents/{id}
+     * @request DELETE:/api/torrents/{id}
      */
     deleteTorrent: (id: string, params: RequestParams = {}) =>
       this.request<MessageResponse, DeleteTorrentError>({
-        path: `/torrents/${id}`,
+        path: `/api/torrents/${id}`,
         method: "DELETE",
         format: "json",
         ...params,
@@ -1716,11 +1737,11 @@ export class Api<
      *
      * @tags Torrents
      * @name PostTorrentRetry
-     * @request POST:/torrents/{id}/retry
+     * @request POST:/api/torrents/{id}/retry
      */
     postTorrentRetry: (id: string, params: RequestParams = {}) =>
       this.request<Torrent, PostTorrentRetryError>({
-        path: `/torrents/${id}/retry`,
+        path: `/api/torrents/${id}/retry`,
         method: "POST",
         format: "json",
         ...params,
@@ -1731,7 +1752,7 @@ export class Api<
      *
      * @tags Torrents
      * @name GetTorrentStats
-     * @request GET:/torrents/{id}/stats
+     * @request GET:/api/torrents/{id}/stats
      */
     getTorrentStats: (
       id: string,
@@ -1744,7 +1765,7 @@ export class Api<
       params: RequestParams = {},
     ) =>
       this.request<TorrentStats, GetTorrentStatsError>({
-        path: `/torrents/${id}/stats`,
+        path: `/api/torrents/${id}/stats`,
         method: "GET",
         query: query,
         format: "json",
@@ -1757,11 +1778,11 @@ export class Api<
      *
      * @tags Playback
      * @name PostPlayback
-     * @request POST:/playback
+     * @request POST:/api/playback
      */
     postPlayback: (data: CreatePlaybackInput, params: RequestParams = {}) =>
       this.request<Playback, PostPlaybackError>({
-        path: `/playback`,
+        path: `/api/playback`,
         method: "POST",
         body: data,
         type: ContentType.Json,
@@ -1775,11 +1796,11 @@ export class Api<
      *
      * @tags Playback
      * @name PutWatchState
-     * @request PUT:/watch-state
+     * @request PUT:/api/watch-state
      */
     putWatchState: (data: UpdateWatchStateInput, params: RequestParams = {}) =>
       this.request<WatchState, PutWatchStateError>({
-        path: `/watch-state`,
+        path: `/api/watch-state`,
         method: "PUT",
         body: data,
         type: ContentType.Json,

@@ -45,9 +45,9 @@ afterEach(() => {
   vi.unstubAllEnvs()
 })
 
-describe('get /catalog/search', () => {
+describe('get /api/catalog/search', () => {
   it('отвечает 401 без cookie', async () => {
-    const res = await app.inject({ url: '/catalog/search?query=matrix' })
+    const res = await app.inject({ url: '/api/catalog/search?query=matrix' })
 
     expect(res.statusCode).toBe(401)
   })
@@ -56,7 +56,7 @@ describe('get /catalog/search', () => {
     'отвечает 400 на %s',
     async (search) => {
       const res = await app.inject({
-        url: `/catalog/search${search}`,
+        url: `/api/catalog/search${search}`,
         cookies: authed(),
       })
 
@@ -69,7 +69,7 @@ describe('get /catalog/search', () => {
     fetchMock.mockResolvedValue(json(searchResponse))
 
     const res = await app.inject({
-      url: '/catalog/search?query=matrix&language=ru-RU',
+      url: '/api/catalog/search?query=matrix&language=ru-RU',
       cookies: authed(),
     })
 
@@ -77,7 +77,7 @@ describe('get /catalog/search', () => {
     expect(res.json().items).toHaveLength(3)
     expect(res.json().items[0]).toMatchObject({
       id: 'tmdb:movie:603',
-      poster: '/img/w342/p96dm7sCMn4VYAStA6siNz30G1r.jpg',
+      poster: '/api/img/w342/p96dm7sCMn4VYAStA6siNz30G1r.jpg',
     })
   })
 
@@ -85,7 +85,7 @@ describe('get /catalog/search', () => {
     vi.stubEnv('TMDB_ACCESS_TOKEN', '')
 
     const res = await app.inject({
-      url: '/catalog/search?query=no-token',
+      url: '/api/catalog/search?query=no-token',
       cookies: authed(),
     })
 
@@ -96,7 +96,7 @@ describe('get /catalog/search', () => {
     fetchMock.mockRejectedValue(new TypeError('fetch failed'))
 
     const res = await app.inject({
-      url: '/catalog/search?query=offline',
+      url: '/api/catalog/search?query=offline',
       cookies: authed(),
     })
 
@@ -104,16 +104,16 @@ describe('get /catalog/search', () => {
   })
 })
 
-describe('get /catalog/titles/:id', () => {
+describe('get /api/catalog/titles/:id', () => {
   it('отвечает 401 без cookie', async () => {
-    const res = await app.inject({ url: '/catalog/titles/tmdb:movie:603' })
+    const res = await app.inject({ url: '/api/catalog/titles/tmdb:movie:603' })
 
     expect(res.statusCode).toBe(401)
   })
 
   it('отвечает 404 на неизвестный ID', async () => {
     const res = await app.inject({
-      url: '/catalog/titles/unknown',
+      url: '/api/catalog/titles/unknown',
       cookies: authed(),
     })
 
@@ -125,7 +125,7 @@ describe('get /catalog/titles/:id', () => {
     fetchMock.mockResolvedValue(json({ status_code: 34 }, 404))
 
     const res = await app.inject({
-      url: '/catalog/titles/tmdb:movie:999999',
+      url: '/api/catalog/titles/tmdb:movie:999999',
       cookies: authed(),
     })
 
@@ -136,7 +136,7 @@ describe('get /catalog/titles/:id', () => {
     fetchMock.mockResolvedValue(json(movie))
 
     const res = await app.inject({
-      url: `/catalog/titles/${encodeURIComponent('tmdb:movie:603')}?language=ru-RU`,
+      url: `/api/catalog/titles/${encodeURIComponent('tmdb:movie:603')}?language=ru-RU`,
       cookies: authed(),
     })
 
@@ -150,9 +150,9 @@ describe('get /catalog/titles/:id', () => {
   })
 })
 
-describe('get /catalog/titles/:id/seasons/:number', () => {
+describe('get /api/catalog/titles/:id/seasons/:number', () => {
   const url = (id: string, number: string) =>
-    `/catalog/titles/${encodeURIComponent(id)}/seasons/${number}`
+    `/api/catalog/titles/${encodeURIComponent(id)}/seasons/${number}`
 
   it('отвечает 401 без cookie', async () => {
     const res = await app.inject({ url: url('tmdb:tv:2000', '1') })
@@ -207,10 +207,10 @@ describe('get /catalog/titles/:id/seasons/:number', () => {
   })
 })
 
-describe('get /catalog/titles/:id/extras', () => {
+describe('get /api/catalog/titles/:id/extras', () => {
   it('отвечает 401 без cookie', async () => {
     const res = await app.inject({
-      url: '/catalog/titles/tmdb:movie:603/extras',
+      url: '/api/catalog/titles/tmdb:movie:603/extras',
     })
 
     expect(res.statusCode).toBe(401)
@@ -218,7 +218,7 @@ describe('get /catalog/titles/:id/extras', () => {
 
   it('отвечает 404 на неизвестный ID', async () => {
     const res = await app.inject({
-      url: '/catalog/titles/unknown/extras',
+      url: '/api/catalog/titles/unknown/extras',
       cookies: authed(),
     })
 
@@ -231,7 +231,7 @@ describe('get /catalog/titles/:id/extras', () => {
       .mockResolvedValueOnce(json({ results: [] }))
 
     const res = await app.inject({
-      url: `/catalog/titles/${encodeURIComponent('tmdb:movie:603')}/extras`,
+      url: `/api/catalog/titles/${encodeURIComponent('tmdb:movie:603')}/extras`,
       cookies: authed(),
     })
 
@@ -245,9 +245,9 @@ describe('get /catalog/titles/:id/extras', () => {
   })
 })
 
-describe('get /catalog/trending', () => {
+describe('get /api/catalog/trending', () => {
   it('отвечает 401 без cookie', async () => {
-    const res = await app.inject({ url: '/catalog/trending' })
+    const res = await app.inject({ url: '/api/catalog/trending' })
 
     expect(res.statusCode).toBe(401)
   })
@@ -256,7 +256,7 @@ describe('get /catalog/trending', () => {
     fetchMock.mockResolvedValue(json(trendingAll))
 
     const res = await app.inject({
-      url: '/catalog/trending?language=ru-RU',
+      url: '/api/catalog/trending?language=ru-RU',
       cookies: authed(),
     })
 

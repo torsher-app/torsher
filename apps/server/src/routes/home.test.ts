@@ -35,9 +35,9 @@ afterEach(() => {
   vi.unstubAllEnvs()
 })
 
-describe('get /home', () => {
+describe('get /api/home', () => {
   it('отвечает 401 без cookie', async () => {
-    const res = await app.inject({ url: '/home' })
+    const res = await app.inject({ url: '/api/home' })
 
     expect(res.statusCode).toBe(401)
   })
@@ -46,7 +46,7 @@ describe('get /home', () => {
     'отвечает 400 на %s',
     async (search) => {
       const res = await app.inject({
-        url: `/home${search}`,
+        url: `/api/home${search}`,
         cookies: authed(),
       })
 
@@ -60,7 +60,7 @@ describe('get /home', () => {
     )
 
     const res = await app.inject({
-      url: '/home?mode=movies&language=ru-RU',
+      url: '/api/home?mode=movies&language=ru-RU',
       cookies: authed(),
     })
 
@@ -80,7 +80,7 @@ describe('get /home', () => {
       title: 'Фильм 1',
       originalTitle: 'Movie 1',
       year: 2024,
-      poster: '/img/w342/movie1.jpg',
+      poster: '/api/img/w342/movie1.jpg',
     })
   })
 
@@ -88,7 +88,7 @@ describe('get /home', () => {
     vi.stubEnv('TMDB_ACCESS_TOKEN', '')
 
     const res = await app.inject({
-      url: '/home?language=fr-FR',
+      url: '/api/home?language=fr-FR',
       cookies: authed(),
     })
 
@@ -99,7 +99,7 @@ describe('get /home', () => {
     fetchMock.mockRejectedValue(new TypeError('fetch failed'))
 
     const res = await app.inject({
-      url: '/home?mode=series&language=it-IT',
+      url: '/api/home?mode=series&language=it-IT',
       cookies: authed(),
     })
 

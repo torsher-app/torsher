@@ -14,7 +14,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe('get /img/:size/:file', () => {
+describe('get /api/img/:size/:file', () => {
   it('отдаёт картинку TMDB без авторизации и с кэшем на 180 дней', async () => {
     fetchMock.mockResolvedValue(
       new Response(new Uint8Array([1, 2, 3]), {
@@ -22,7 +22,7 @@ describe('get /img/:size/:file', () => {
       }),
     )
 
-    const res = await app.inject({ url: '/img/w342/abc123.jpg' })
+    const res = await app.inject({ url: '/api/img/w342/abc123.jpg' })
 
     expect(String(fetchMock.mock.calls[0]![0])).toBe(
       'https://image.tmdb.org/t/p/w342/abc123.jpg',
@@ -36,10 +36,10 @@ describe('get /img/:size/:file', () => {
   })
 
   it.each([
-    '/img/w9999/abc123.jpg',
-    '/img/w342/abc123.html',
-    '/img/w342/%2E%2E%2Fabc.jpg',
-    '/img/w342/sub%2Fabc.jpg',
+    '/api/img/w9999/abc123.jpg',
+    '/api/img/w342/abc123.html',
+    '/api/img/w342/%2E%2E%2Fabc.jpg',
+    '/api/img/w342/sub%2Fabc.jpg',
   ])('отвечает 400 на %s', async (url) => {
     const res = await app.inject({ url })
 
@@ -50,7 +50,7 @@ describe('get /img/:size/:file', () => {
   it('отвечает 404, если картинки нет', async () => {
     fetchMock.mockResolvedValue(new Response('', { status: 404 }))
 
-    const res = await app.inject({ url: '/img/w342/missing.jpg' })
+    const res = await app.inject({ url: '/api/img/w342/missing.jpg' })
 
     expect(res.statusCode).toBe(404)
   })
@@ -58,7 +58,7 @@ describe('get /img/:size/:file', () => {
   it('отвечает 502, если TMDB недоступен', async () => {
     fetchMock.mockRejectedValue(new TypeError('fetch failed'))
 
-    const res = await app.inject({ url: '/img/w342/abc123.jpg' })
+    const res = await app.inject({ url: '/api/img/w342/abc123.jpg' })
 
     expect(res.statusCode).toBe(502)
   })
@@ -68,7 +68,7 @@ describe('get /img/:size/:file', () => {
       new Response('<html>', { headers: { 'content-type': 'text/html' } }),
     )
 
-    const res = await app.inject({ url: '/img/w342/abc123.jpg' })
+    const res = await app.inject({ url: '/api/img/w342/abc123.jpg' })
 
     expect(res.statusCode).toBe(502)
   })

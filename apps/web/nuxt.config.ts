@@ -10,6 +10,19 @@ export default defineNuxtConfig({
 
   devtools: { enabled: true },
 
+  // В продакшене панель — статика, которую сервер отдаёт на /panel/
+  // рядом с витриной в корне; в разработке Nuxt работает на своём порту
+  $production: {
+    app: {
+      baseURL: '/panel/',
+    },
+    runtimeConfig: {
+      public: {
+        tvUrl: '/',
+      },
+    },
+  },
+
   // Без стилей vue-sonner тосты рендерятся статично в конце страницы, за экраном
   css: ['~/assets/css/tailwind.css', 'vue-sonner/style.css'],
 
