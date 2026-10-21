@@ -1026,6 +1026,46 @@ export interface PinErrorResponseInput {
   retryAfter: number | null;
 }
 
+export interface WizardStateInput {
+  active: boolean;
+  step: "storage" | "network" | "sources" | "done";
+  skipped: ("storage" | "network" | "sources" | "done")[];
+  completedAt: string | null;
+}
+
+export interface UpdateWizardInput {
+  step: "storage" | "network" | "sources" | "done";
+  /** @maxItems 4 */
+  skipped: ("storage" | "network" | "sources" | "done")[];
+  completed: boolean;
+}
+
+export interface StorageDirCheckInput {
+  path: string;
+  exists: boolean;
+  writable: boolean;
+}
+
+export interface StorageCheckInput {
+  data: StorageDirCheckInput;
+  downloads: StorageDirCheckInput;
+  space: {
+    total: number;
+    free: number;
+    status: "ok" | "low" | "critical";
+  };
+  sameFilesystem: boolean | null;
+}
+
+export interface DiscoveredManagerInput {
+  kind: "prowlarr" | "jackett";
+  url: string;
+}
+
+export interface DiscoverManagersResultInput {
+  items: DiscoveredManagerInput[];
+}
+
 export interface StorageQueueItemInput {
   torrentId: string;
   name: string;
@@ -2110,6 +2150,46 @@ export interface PinErrorResponse {
   retryAfter: number | null;
 }
 
+export interface WizardState {
+  active: boolean;
+  step: "storage" | "network" | "sources" | "done";
+  skipped: ("storage" | "network" | "sources" | "done")[];
+  completedAt: string | null;
+}
+
+export interface UpdateWizard {
+  step: "storage" | "network" | "sources" | "done";
+  /** @maxItems 4 */
+  skipped: ("storage" | "network" | "sources" | "done")[];
+  completed: boolean;
+}
+
+export interface StorageDirCheck {
+  path: string;
+  exists: boolean;
+  writable: boolean;
+}
+
+export interface StorageCheck {
+  data: StorageDirCheck;
+  downloads: StorageDirCheck;
+  space: {
+    total: number;
+    free: number;
+    status: "ok" | "low" | "critical";
+  };
+  sameFilesystem: boolean | null;
+}
+
+export interface DiscoveredManager {
+  kind: "prowlarr" | "jackett";
+  url: string;
+}
+
+export interface DiscoverManagersResult {
+  items: DiscoveredManager[];
+}
+
 export interface StorageQueueItem {
   torrentId: string;
   name: string;
@@ -2281,6 +2361,14 @@ export type GetMetadataSettingsError = MessageResponse;
 export type PutMetadataSettingsError = MessageResponse;
 
 export type PostMetadataCheckError = MessageResponse;
+
+export type GetSetupWizardError = MessageResponse;
+
+export type PutSetupWizardError = MessageResponse;
+
+export type GetSetupStorageCheckError = MessageResponse;
+
+export type PostSetupDiscoverManagersError = MessageResponse;
 
 export type PostPlaybackError =
   MessageResponse | EngineUnavailableResponse | InsufficientStorageResponse;
@@ -3589,6 +3677,69 @@ export class Api<
         method: "POST",
         body: data,
         type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+  };
+  setup = {
+    /**
+     * No description
+     *
+     * @tags Setup
+     * @name GetSetupWizard
+     * @request GET:/api/setup/wizard
+     */
+    getSetupWizard: (params: RequestParams = {}) =>
+      this.request<WizardState, GetSetupWizardError>({
+        path: `/api/setup/wizard`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Setup
+     * @name PutSetupWizard
+     * @request PUT:/api/setup/wizard
+     */
+    putSetupWizard: (data: UpdateWizardInput, params: RequestParams = {}) =>
+      this.request<WizardState, PutSetupWizardError>({
+        path: `/api/setup/wizard`,
+        method: "PUT",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Setup
+     * @name GetSetupStorageCheck
+     * @request GET:/api/setup/storage-check
+     */
+    getSetupStorageCheck: (params: RequestParams = {}) =>
+      this.request<StorageCheck, GetSetupStorageCheckError>({
+        path: `/api/setup/storage-check`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Setup
+     * @name PostSetupDiscoverManagers
+     * @request POST:/api/setup/discover-managers
+     */
+    postSetupDiscoverManagers: (params: RequestParams = {}) =>
+      this.request<DiscoverManagersResult, PostSetupDiscoverManagersError>({
+        path: `/api/setup/discover-managers`,
+        method: "POST",
         format: "json",
         ...params,
       }),

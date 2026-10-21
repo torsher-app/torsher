@@ -1,6 +1,7 @@
 import { eq, sql } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import { profiles, users } from '../../db/schema.ts'
+import { startWizard } from '../setup/wizard.ts'
 
 export interface NewUser {
   name: string
@@ -41,6 +42,9 @@ export function createOwner(values: NewUser) {
         .values({ name: owner.name, color: 'violet', position: 0 })
         .run()
     }
+
+    // После аккаунта панель ведёт владельца по остальным шагам мастера
+    startWizard()
 
     return owner
   })

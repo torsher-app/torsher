@@ -47,6 +47,10 @@ export function createApp(
         { name: 'Auth', description: 'Регистрация, вход, сессия' },
         { name: 'Users', description: 'Аккаунт владельца' },
         {
+          name: 'Setup',
+          description: 'Мастер первого запуска: хранилище, поиск менеджеров',
+        },
+        {
           name: 'Profiles',
           description: 'Профили смотрящих: PIN, язык, ограничения',
         },

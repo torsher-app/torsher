@@ -28,8 +28,8 @@ services:
       - ./data:/data
 
   # Optional: any Torznab indexer works. Prowlarr starts empty: you add
-  # the indexers you are allowed to use, then connect it in Torsher under
-  # Sources with its address (http://prowlarr:9696) and API key
+  # the indexers you are allowed to use. The Torsher setup wizard finds it
+  # at http://prowlarr:9696 and asks only for its API key
   prowlarr:
     image: lscr.io/linuxserver/prowlarr:latest
     container_name: prowlarr

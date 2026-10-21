@@ -434,6 +434,132 @@
         "emailHint": "Only for signing in. The server sends no email.",
         "submit": "Create account and continue",
         "failed": "Couldn't create the account"
+      },
+      "actions": {
+        "next": "Next",
+        "skip": "Skip",
+        "later": "Set up later"
+      },
+      "checks": {
+        "title": "Checks",
+        "retry": "Check again",
+        "howToFix": "How to fix",
+        "retryFix": "The server did not respond. Make sure the Torsher container is running and select Check again.",
+        "status": {
+          "ok": "Ready",
+          "warning": "Warning",
+          "error": "Error",
+          "info": "Info",
+          "pending": "Checking"
+        }
+      },
+      "storage": {
+        "title": "Storage",
+        "text": "Where the server keeps its database and downloads, and how much space the viewing cache may take. Watching downloads into the cache; old items are removed when it is full.",
+        "checking": "Checking folders and disk space…",
+        "failed": "Could not check storage",
+        "data": {
+          "ok": "Data folder is writable",
+          "created": "Data folder will be created on start",
+          "readonly": "Data folder is not writable"
+        },
+        "downloads": {
+          "ok": "Downloads folder is writable",
+          "created": "Downloads folder will be created on the first download",
+          "readonly": "Downloads folder is not writable"
+        },
+        "fixWrite": "The owner of the files on the host must match the container's PUID and PGID (on the host: id -u and id -g). Fix them in docker-compose.yml or grant access to the volume folder, then restart the container.",
+        "space": {
+          "ok": "Enough space: {free} free",
+          "low": "{free} free: the cache limit will not fit",
+          "critical": "{free} free: less than the reserve",
+          "text": "Downloads volume — {total}",
+          "lowFix": "Lower the cache limit below or free up space on the volume. Otherwise the server starts removing old cache items before the limit.",
+          "criticalFix": "Free up space or lower the reserve below. While free space is below the reserve, playback does not start and downloads pause."
+        },
+        "filesystem": {
+          "same": "Data and downloads share one filesystem",
+          "different": "Data and downloads are on different filesystems",
+          "text": "Useful for the library later: on one filesystem files move without copying.",
+          "fix": "Nothing to do now. If you add a library later, keep it on the same volume as downloads."
+        },
+        "continueWithout": "Continue without downloads"
+      },
+      "network": {
+        "title": "Network",
+        "text": "The showcase catalog and images come from TMDB. Let's check that the server reaches it and turn on DoH or your own key if needed.",
+        "hosts": {
+          "tmdb": "TMDB catalog",
+          "tmdb_images": "TMDB images"
+        },
+        "latency": "{ms} ms",
+        "fix": {
+          "dns": "Choose DoH in the Default DNS card below, save it and select Check again.",
+          "doh": "Choose another DoH provider in the Default DNS card below.",
+          "blocked": "Check the server's internet connection. If the address is unreachable from your network, add a proxy route for it in Settings → Network after the wizard."
+        },
+        "key": {
+          "checking": "Checking the TMDB key…",
+          "ok": "TMDB key works",
+          "source": {
+            "custom": "Your key",
+            "app": "App key",
+            "none": "No key"
+          },
+          "rejected": "TMDB rejected the key",
+          "rejectedFix": "Paste your own key in the card below: TMDB issues it in your account settings, API section.",
+          "unavailable": "Key not checked: TMDB is unreachable",
+          "unavailableFix": "Fix access to TMDB above first, then select Check again.",
+          "missing": "No TMDB key",
+          "missingFix": "This build has no app key. Paste your own key in the card below — TMDB issues it in your account settings, API section."
+        },
+        "continueWithout": "Continue without the catalog"
+      },
+      "sources": {
+        "title": "Sources",
+        "text": "The server looks for torrents in Torznab indexers. Connecting an indexer manager is the fastest way: the server has already looked for one nearby.",
+        "discovering": "Looking for Prowlarr and Jackett on the local network…",
+        "foundManager": "{manager} found",
+        "found": "Found",
+        "connected": "{manager} connected",
+        "notFound": "Prowlarr and Jackett not found",
+        "notFoundText": "Checked the prowlarr and jackett services, the Docker host, the container network gateway and this machine on ports 9696 and 9117.",
+        "notFoundFix": "If the manager runs on another address or port, connect it by address below. If you have no manager, start Prowlarr from the install example and select Check again.",
+        "loading": "Loading connected sources…",
+        "loadError": "Could not load sources",
+        "indexers": "{n} indexer connected | {n} indexers connected",
+        "noIndexers": "No sources yet",
+        "noIndexersText": "The showcase finds movies and series, but there is nothing to watch them from.",
+        "continueWithout": "Continue without sources",
+        "connect": {
+          "title": "Connect the manager found",
+          "text": "Torsher adds all its indexers and keeps them in sync. Only the API key is needed.",
+          "hint": "The server found the address, no need to enter it.",
+          "submit": "Connect"
+        },
+        "none": {
+          "importTitle": "Connect by address",
+          "importText": "Prowlarr or Jackett already runs at another address: enter the address and the API key.",
+          "composeTitle": "Start Prowlarr next to it",
+          "composeText": "The install example has Prowlarr under its own profile. Start it in the folder with docker-compose.yml, add indexers in it and check again."
+        }
+      },
+      "done": {
+        "title": "The server is ready",
+        "text": "Anything you skipped can be set up later in the panel. All that's left is to open the showcase on your TV.",
+        "storage": "Folders checked, cache set",
+        "network": "Access to TMDB checked",
+        "noSources": "No sources: nothing to watch yet",
+        "skipped": "Skipped",
+        "ready": "Set up",
+        "later": "Set up later",
+        "change": "Change",
+        "setUp": "Set up",
+        "tvTitle": "Connect a TV",
+        "tvText": "Open this address in the TV browser or in the Torsher app. A six-character code appears on the screen — enter it here.",
+        "people": "Profiles and devices",
+        "openShowcase": "Open showcase",
+        "toPanel": "Go to panel"
       }
     },
     "overview": {
