@@ -8,6 +8,7 @@ import {
   endsAt,
   formatClock,
   formatDuration,
+  formatGigabytes,
   holdScrub,
   pressScrub,
   SCRUB_TICK_MS,
@@ -127,5 +128,12 @@ describe('время', () => {
 
     expect(endsAt(now, 1124).getMinutes()).toBe(21)
     expect(formatClock(endsAt(now, 1124), 'ru_RU')).toBe('18:21')
+  })
+})
+
+describe('место на диске', () => {
+  it('гигабайты с одним знаком по локали', () => {
+    expect(formatGigabytes(2.25 * 1024 ** 3, 'ru_RU')).toBe('2,3')
+    expect(formatGigabytes(0, 'en_US')).toBe('0.0')
   })
 })

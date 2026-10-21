@@ -1,6 +1,6 @@
 <script setup lang="ts">
 definePageMeta({
-  redirect: '/settings/account',
+  redirect: '/settings/storage',
 })
 </script>
 

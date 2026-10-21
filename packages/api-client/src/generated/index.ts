@@ -376,7 +376,14 @@ export interface VoiceOptionInput {
   studio?: string;
   type?: "D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original";
   maxQuality?:
-    "2160p" | "1440p" | "1080p" | "1080i" | "720p" | "576p" | "480p" | "360p";
+    | "2160p"
+    | "1440p"
+    | "1080p"
+    | "1080i"
+    | "720p"
+    | "576p"
+    | "480p"
+    | "360p";
   seeders: number;
   count: number;
   pinned: boolean;
@@ -388,7 +395,14 @@ export interface TitleSourcesInput {
   updatedAt: string;
   profile: {
     qualities: (
-      "2160p" | "1440p" | "1080p" | "1080i" | "720p" | "576p" | "480p" | "360p"
+      | "2160p"
+      | "1440p"
+      | "1080p"
+      | "1080i"
+      | "720p"
+      | "576p"
+      | "480p"
+      | "360p"
     )[];
     voiceTypes: ("D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original")[];
   };
@@ -503,6 +517,13 @@ export interface PlaybackInput {
   startPosition: number | null;
 }
 
+export interface InsufficientStorageResponseInput {
+  message: string;
+  kind: "no_space" | "cache_limit";
+  needed: number;
+  available: number;
+}
+
 export interface UpdateWatchStateInput {
   /**
    * @minLength 1
@@ -545,6 +566,8 @@ export interface TorrentFileInput {
   path: string;
   size: number;
   isVideo: boolean;
+  downloaded: number;
+  selected: boolean;
 }
 
 export interface TorrentInput {
@@ -558,11 +581,54 @@ export interface TorrentInput {
   totalSize: number;
   addedAt: string;
   lastAccessAt: string | null;
+  titleId: string | null;
+  retention: "cache" | "keep";
+  pauseReason: "user" | "storage" | null;
+  state:
+    | "idle"
+    | "partial"
+    | "downloading"
+    | "stalled"
+    | "seeding"
+    | "complete"
+    | "paused";
+  streaming: boolean;
+  progress: {
+    downloaded: number;
+    wanted: number;
+  };
+  sizeOnDisk: number;
+  downloadSpeed: number;
+  uploadSpeed: number;
+  peers: {
+    connected: number;
+    found: number;
+  };
 }
 
 export interface TorrentListInput {
   items: TorrentInput[];
   engine: "ready" | "not_installed" | "starting" | "stopped";
+  totals: {
+    downloadSpeed: number;
+    uploadSpeed: number;
+  };
+  cache: {
+    used: number;
+    limit: number;
+  };
+}
+
+export interface DownloadTorrentInput {
+  /**
+   * @maxItems 10000
+   * @minItems 1
+   */
+  files: number[];
+}
+
+export interface UpdateRetentionInput {
+  retention: "cache" | "keep";
 }
 
 export interface CreateTorrentInput {
@@ -592,6 +658,41 @@ export interface TorrentStatsInput {
     downloaded: number;
     bufferedAhead: number;
   };
+}
+
+export interface StorageQueueItemInput {
+  torrentId: string;
+  name: string;
+  sizeOnDisk: number;
+  lastAccessAt: string | null;
+}
+
+export interface StorageOverviewInput {
+  path: string;
+  total: number;
+  free: number;
+  cacheUsed: number;
+  keptUsed: number;
+  other: number;
+  policy: {
+    cacheLimit: number;
+    minFree: number;
+    custom: boolean;
+  };
+  queue: StorageQueueItemInput[];
+}
+
+export interface UpdateStoragePolicyInput {
+  /**
+   * @min 1073741824
+   * @max 1125899906842624
+   */
+  cacheLimit: number;
+  /**
+   * @min 1073741824
+   * @max 1125899906842624
+   */
+  minFree: number;
 }
 
 export interface UpdateMeInput {
@@ -973,7 +1074,14 @@ export interface VoiceOption {
   studio?: string;
   type?: "D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original";
   maxQuality?:
-    "2160p" | "1440p" | "1080p" | "1080i" | "720p" | "576p" | "480p" | "360p";
+    | "2160p"
+    | "1440p"
+    | "1080p"
+    | "1080i"
+    | "720p"
+    | "576p"
+    | "480p"
+    | "360p";
   seeders: number;
   count: number;
   pinned: boolean;
@@ -985,7 +1093,14 @@ export interface TitleSources {
   updatedAt: string;
   profile: {
     qualities: (
-      "2160p" | "1440p" | "1080p" | "1080i" | "720p" | "576p" | "480p" | "360p"
+      | "2160p"
+      | "1440p"
+      | "1080p"
+      | "1080i"
+      | "720p"
+      | "576p"
+      | "480p"
+      | "360p"
     )[];
     voiceTypes: ("D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original")[];
   };
@@ -1100,6 +1215,13 @@ export interface Playback {
   startPosition: number | null;
 }
 
+export interface InsufficientStorageResponse {
+  message: string;
+  kind: "no_space" | "cache_limit";
+  needed: number;
+  available: number;
+}
+
 export interface UpdateWatchState {
   /**
    * @minLength 1
@@ -1142,6 +1264,8 @@ export interface TorrentFile {
   path: string;
   size: number;
   isVideo: boolean;
+  downloaded: number;
+  selected: boolean;
 }
 
 export interface Torrent {
@@ -1155,11 +1279,54 @@ export interface Torrent {
   totalSize: number;
   addedAt: string;
   lastAccessAt: string | null;
+  titleId: string | null;
+  retention: "cache" | "keep";
+  pauseReason: "user" | "storage" | null;
+  state:
+    | "idle"
+    | "partial"
+    | "downloading"
+    | "stalled"
+    | "seeding"
+    | "complete"
+    | "paused";
+  streaming: boolean;
+  progress: {
+    downloaded: number;
+    wanted: number;
+  };
+  sizeOnDisk: number;
+  downloadSpeed: number;
+  uploadSpeed: number;
+  peers: {
+    connected: number;
+    found: number;
+  };
 }
 
 export interface TorrentList {
   items: Torrent[];
   engine: "ready" | "not_installed" | "starting" | "stopped";
+  totals: {
+    downloadSpeed: number;
+    uploadSpeed: number;
+  };
+  cache: {
+    used: number;
+    limit: number;
+  };
+}
+
+export interface DownloadTorrent {
+  /**
+   * @maxItems 10000
+   * @minItems 1
+   */
+  files: number[];
+}
+
+export interface UpdateRetention {
+  retention: "cache" | "keep";
 }
 
 export interface CreateTorrent {
@@ -1189,6 +1356,41 @@ export interface TorrentStats {
     downloaded: number;
     bufferedAhead: number;
   };
+}
+
+export interface StorageQueueItem {
+  torrentId: string;
+  name: string;
+  sizeOnDisk: number;
+  lastAccessAt: string | null;
+}
+
+export interface StorageOverview {
+  path: string;
+  total: number;
+  free: number;
+  cacheUsed: number;
+  keptUsed: number;
+  other: number;
+  policy: {
+    cacheLimit: number;
+    minFree: number;
+    custom: boolean;
+  };
+  queue: StorageQueueItem[];
+}
+
+export interface UpdateStoragePolicy {
+  /**
+   * @min 1073741824
+   * @max 1125899906842624
+   */
+  cacheLimit: number;
+  /**
+   * @min 1073741824
+   * @max 1125899906842624
+   */
+  minFree: number;
 }
 
 export interface UpdateMe {
@@ -1249,7 +1451,9 @@ export type GetTitleSourcesError = MessageResponse;
 export type PutTitleVoiceError = MessageResponse;
 
 export type PostTitleWatchError =
-  MessageResponse | WatchErrorResponse | EngineUnavailableResponse;
+  | MessageResponse
+  | WatchErrorResponse
+  | EngineUnavailableResponse;
 
 export type GetTitleProgressError = MessageResponse;
 
@@ -1263,9 +1467,30 @@ export type DeleteTorrentError = MessageResponse | EngineUnavailableResponse;
 
 export type PostTorrentRetryError = MessageResponse | EngineUnavailableResponse;
 
+export type PostTorrentDownloadError =
+  | MessageResponse
+  | EngineUnavailableResponse;
+
+export type PostTorrentPauseError = MessageResponse | EngineUnavailableResponse;
+
+export type PostTorrentResumeError =
+  | MessageResponse
+  | EngineUnavailableResponse;
+
+export type PutTorrentRetentionError =
+  | MessageResponse
+  | EngineUnavailableResponse;
+
 export type GetTorrentStatsError = MessageResponse | EngineUnavailableResponse;
 
-export type PostPlaybackError = MessageResponse | EngineUnavailableResponse;
+export type GetStorageError = MessageResponse | EngineUnavailableResponse;
+
+export type PutStoragePolicyError = MessageResponse | EngineUnavailableResponse;
+
+export type PostPlaybackError =
+  | MessageResponse
+  | EngineUnavailableResponse
+  | InsufficientStorageResponse;
 
 export type PutWatchStateError = MessageResponse;
 
@@ -1305,10 +1530,8 @@ export interface ApiConfig<SecurityDataType = unknown> {
   customFetch?: typeof fetch;
 }
 
-export interface HttpResponse<
-  D extends unknown,
-  E extends unknown = unknown,
-> extends Response {
+export interface HttpResponse<D extends unknown, E extends unknown = unknown>
+  extends Response {
   data: D;
   error: E;
 }
@@ -2143,10 +2366,17 @@ export class Api<
      * @name DeleteTorrent
      * @request DELETE:/api/torrents/{id}
      */
-    deleteTorrent: (id: string, params: RequestParams = {}) =>
+    deleteTorrent: (
+      id: string,
+      query?: {
+        files?: "keep" | "delete";
+      },
+      params: RequestParams = {},
+    ) =>
       this.request<MessageResponse, DeleteTorrentError>({
         path: `/api/torrents/${id}`,
         method: "DELETE",
+        query: query,
         format: "json",
         ...params,
       }),
@@ -2162,6 +2392,78 @@ export class Api<
       this.request<Torrent, PostTorrentRetryError>({
         path: `/api/torrents/${id}/retry`,
         method: "POST",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Torrents
+     * @name PostTorrentDownload
+     * @request POST:/api/torrents/{id}/download
+     */
+    postTorrentDownload: (
+      id: string,
+      data: DownloadTorrentInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<Torrent, PostTorrentDownloadError>({
+        path: `/api/torrents/${id}/download`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Torrents
+     * @name PostTorrentPause
+     * @request POST:/api/torrents/{id}/pause
+     */
+    postTorrentPause: (id: string, params: RequestParams = {}) =>
+      this.request<Torrent, PostTorrentPauseError>({
+        path: `/api/torrents/${id}/pause`,
+        method: "POST",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Torrents
+     * @name PostTorrentResume
+     * @request POST:/api/torrents/{id}/resume
+     */
+    postTorrentResume: (id: string, params: RequestParams = {}) =>
+      this.request<Torrent, PostTorrentResumeError>({
+        path: `/api/torrents/${id}/resume`,
+        method: "POST",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Torrents
+     * @name PutTorrentRetention
+     * @request PUT:/api/torrents/{id}/retention
+     */
+    putTorrentRetention: (
+      id: string,
+      data: UpdateRetentionInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<Torrent, PutTorrentRetentionError>({
+        path: `/api/torrents/${id}/retention`,
+        method: "PUT",
+        body: data,
+        type: ContentType.Json,
         format: "json",
         ...params,
       }),
@@ -2187,6 +2489,42 @@ export class Api<
         path: `/api/torrents/${id}/stats`,
         method: "GET",
         query: query,
+        format: "json",
+        ...params,
+      }),
+  };
+  storage = {
+    /**
+     * No description
+     *
+     * @tags Storage
+     * @name GetStorage
+     * @request GET:/api/storage
+     */
+    getStorage: (params: RequestParams = {}) =>
+      this.request<StorageOverview, GetStorageError>({
+        path: `/api/storage`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Storage
+     * @name PutStoragePolicy
+     * @request PUT:/api/storage/policy
+     */
+    putStoragePolicy: (
+      data: UpdateStoragePolicyInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<StorageOverview, PutStoragePolicyError>({
+        path: `/api/storage/policy`,
+        method: "PUT",
+        body: data,
+        type: ContentType.Json,
         format: "json",
         ...params,
       }),

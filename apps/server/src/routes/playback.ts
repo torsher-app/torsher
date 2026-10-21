@@ -2,6 +2,7 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { messageResponse } from '../dto/common.ts'
 import {
   createPlayback,
+  insufficientStorageResponse,
   playback,
   updateWatchState,
   watchState,
@@ -58,6 +59,8 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
           502: messageResponse,
           503: engineUnavailableResponse,
           504: messageResponse,
+          // Места не хватит даже после вытеснения кэша
+          507: insufficientStorageResponse,
         },
       },
     },

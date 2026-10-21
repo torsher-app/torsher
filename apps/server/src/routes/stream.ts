@@ -3,6 +3,7 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { Readable } from 'node:stream'
 import { streamParams, streamQuery } from '../dto/playback.ts'
 import { requireAuth } from '../middleware/auth.ts'
+import { trackStream } from '../services/storage/index.ts'
 import {
   contentTypeOf,
   getTorrent,
@@ -63,8 +64,12 @@ export const streamRoutes: FastifyPluginAsyncZod = async (app) => {
       }
 
       const controller = new AbortController()
+      // Пока поток открыт, раздачу не вытесняют и не ставят на паузу из-за места
+      const release = trackStream(torrent.id)
 
       reply.raw.on('close', () => {
+        release()
+
         if (!reply.raw.writableFinished)
           controller.abort()
       })

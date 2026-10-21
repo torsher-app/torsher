@@ -8,6 +8,7 @@ import {
   addTorrentFile,
   InvalidMagnetError,
   isVideoFile,
+  linkTitle,
 } from '../torrents/index.ts'
 import { downloadTorrent, SourceError } from '../torznab/index.ts'
 import { getTitleSources } from './index.ts'
@@ -213,6 +214,8 @@ export async function watchTitle(
 
     if (!torrent || torrent.status === 'failed')
       continue
+
+    torrent = linkTitle(torrent, titleId)
 
     if (torrent.status === 'resolving') {
       return {

@@ -20,6 +20,7 @@ const { t } = useI18n()
 const route = useRoute()
 const { setOpenMobile } = useSidebar()
 const { attentionCount, ensureLoaded } = useSources()
+const downloads = useTorrents()
 
 // Имени сервера пока нет: подписью служит адрес, по которому открыта панель
 const host = useRequestURL().host
@@ -32,8 +33,18 @@ function isActive(to: string) {
   return route.path === to || route.path.startsWith(`${to}/`)
 }
 
-// Счётчик проблем виден до перехода в раздел
-onMounted(ensureLoaded)
+function attentionOf(label: string) {
+  if (label === 'sources')
+    return attentionCount.value
+
+  return label === 'torrents' ? downloads.attentionCount.value : 0
+}
+
+// Счётчик проблем и точка загрузок видны до перехода в раздел
+onMounted(() => {
+  void ensureLoaded()
+  void downloads.ensureLoaded()
+})
 watch(
   () => route.fullPath,
   () => setOpenMobile(false),
@@ -71,13 +82,22 @@ watch(
               </NuxtLink>
             </SidebarMenuButton>
             <SidebarMenuBadge
-              v-if="item.label === 'sources' && attentionCount > 0"
+              v-if="attentionOf(item.label) > 0"
               class="top-1.25 right-1.5 h-4.5 min-w-4.5 rounded-full bg-destructive px-1.25 text-[11px] font-semibold text-white"
             >
-              <span aria-hidden="true">{{ attentionCount }}</span>
+              <span aria-hidden="true">{{ attentionOf(item.label) }}</span>
               <span class="sr-only">{{
-                t("panel.nav.attention", attentionCount)
+                t("panel.nav.attention", attentionOf(item.label))
               }}</span>
+            </SidebarMenuBadge>
+            <!-- Янтарная точка, пока что-то качается -->
+            <SidebarMenuBadge
+              v-else-if="
+                item.label === 'torrents' && downloads.isDownloading.value
+              "
+              class="top-2.75 right-2.5 size-1.75 min-w-0 rounded-full bg-brand p-0"
+            >
+              <span class="sr-only">{{ t("panel.nav.downloading") }}</span>
             </SidebarMenuBadge>
           </SidebarMenuItem>
         </SidebarMenu>

@@ -1,5 +1,6 @@
 import type {
   EngineUnavailableResponse,
+  InsufficientStorageResponse,
   Playback,
   TorrentStats,
 } from '@torsher/api-client'
@@ -10,18 +11,24 @@ import { api } from '../api.ts'
 
 /**
  * Почему плеер не стартовал: `engine` — движок не установлен или запускается,
- * `notReady` — раздача ещё ждёт список файлов, `unsupported` — этот плеер не
- * открывает формат файла (remux и транскод появятся позже).
+ * `notReady` — раздача ещё ждёт список файлов, `storage` — на сервере не
+ * хватает места под файл, `unsupported` — этот плеер не открывает формат файла
+ * (remux и транскод появятся позже).
  */
 export type PlayerError
   = | 'unauthorized'
     | 'notFound'
     | 'notReady'
     | 'engine'
+    | 'storage'
     | 'unsupported'
     | 'unknown'
 
 export type EngineKind = EngineUnavailableResponse['kind']
+export type StorageShortage = Pick<
+  InsufficientStorageResponse,
+  'kind' | 'needed' | 'available'
+>
 
 async function playerErrorOf(err: unknown) {
   switch (getErrorStatus(err)) {
@@ -35,6 +42,19 @@ async function playerErrorOf(err: unknown) {
       const body = await getErrorBody<Partial<EngineUnavailableResponse>>(err)
 
       return { error: 'engine' as const, engineKind: body?.kind ?? 'starting' }
+    }
+    case 507: {
+      const body
+        = await getErrorBody<Partial<InsufficientStorageResponse>>(err)
+
+      return {
+        error: 'storage' as const,
+        storage: {
+          kind: body?.kind ?? 'no_space',
+          needed: body?.needed ?? 0,
+          available: body?.available ?? 0,
+        },
+      }
     }
     default:
       return { error: 'unknown' as const }
@@ -54,6 +74,7 @@ export function usePlayback(
   const playback = shallowRef<Playback>()
   const error = ref<PlayerError>()
   const engineKind = ref<EngineKind>()
+  const storage = shallowRef<StorageShortage>()
   const stats = shallowRef<TorrentStats>()
 
   let statsTimer: ReturnType<typeof setTimeout> | undefined
@@ -77,6 +98,7 @@ export function usePlayback(
       error.value = outcome.error
       engineKind.value
         = 'engineKind' in outcome ? outcome.engineKind : undefined
+      storage.value = 'storage' in outcome ? outcome.storage : undefined
       status.value = 'error'
     }
   }
@@ -140,6 +162,7 @@ export function usePlayback(
     playback,
     error,
     engineKind,
+    storage,
     stats,
     start,
     fail,

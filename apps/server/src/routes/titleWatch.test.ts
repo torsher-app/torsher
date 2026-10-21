@@ -27,6 +27,11 @@ import { tvIdentity } from '../services/tmdb/fixtures/index.ts'
 import { searchXml } from '../services/torznab/fixtures/index.ts'
 import { signToken } from '../utils/token.ts'
 
+// Место на диске для проверки перед просмотром — с запасом
+vi.mock('../services/storage/disk.ts', () => ({
+  diskUsage: async () => ({ total: 1024 ** 4, free: 512 * 1024 ** 3 }),
+}))
+
 const app = createApp()
 const fetchMock = vi.fn<typeof fetch>()
 const owner = { [ACCESS_TOKEN_COOKIE]: signToken('owner', 'user_access') }
@@ -85,6 +90,10 @@ function routeOf(url: URL, method: string): Route | undefined {
   ) {
     return () => json(packDetails)
   }
+
+  // Список раздач движка читает проверка места перед просмотром
+  if (key === 'GET 127.0.0.1:4000/torrents')
+    return () => json([])
 
   return undefined
 }
@@ -173,7 +182,11 @@ describe('post /api/titles/:id/watch', () => {
 
     expect(res.statusCode).toBe(200)
     expect(body).toMatchObject({ status: 'ready', fileIndex: 5 })
-    expect(torrent).toMatchObject({ id: body.torrentId, status: 'ready' })
+    expect(torrent).toMatchObject({
+      id: body.torrentId,
+      status: 'ready',
+      titleId: TITLE,
+    })
     expect(torrent!.files![5]!.path).toContain('S02E05')
     expect(
       fetchMock.mock.calls.some(([input]) =>

@@ -16,6 +16,7 @@ import (
 
 	"github.com/anacrolix/torrent"
 	"github.com/anacrolix/torrent/metainfo"
+	"github.com/anacrolix/torrent/storage"
 )
 
 // Тело `.torrent` больших паков — единицы мегабайт
@@ -25,28 +26,27 @@ type api struct {
 	client  *torrent.Client
 	session *session
 	logger  *slog.Logger
+	// Каталог загрузок и отметки скачанных кусков: удаление с файлами
+	// убирает и то и другое
+	downloads  string
+	completion storage.PieceCompletion
+	speeds     *speedTracker
 
-	mu      sync.Mutex
-	samples map[metainfo.Hash]speedSample
+	mu sync.Mutex
 	// Выбранные файлы, которые ещё не качаются целиком: докачка включается
 	// после старта просмотра, чтобы куски файла не конкурировали с началом
 	pending map[metainfo.Hash][]int
 }
 
-// Скорость считается по разнице счётчиков между запросами статистики
-type speedSample struct {
-	at         time.Time
-	downloaded int64
-	uploaded   int64
-}
-
-func newAPI(client *torrent.Client, session *session, logger *slog.Logger) *api {
+func newAPI(client *torrent.Client, session *session, store clientStorage, logger *slog.Logger) *api {
 	return &api{
-		client:  client,
-		session: session,
-		logger:  logger,
-		samples: map[metainfo.Hash]speedSample{},
-		pending: map[metainfo.Hash][]int{},
+		client:     client,
+		session:    session,
+		logger:     logger,
+		downloads:  store.downloads,
+		completion: store.completion,
+		speeds:     newSpeedTracker(),
+		pending:    map[metainfo.Hash][]int{},
 	}
 }
 
@@ -58,8 +58,11 @@ func (a *api) routes() http.Handler {
 	})
 	mux.HandleFunc("POST /torrents/inspect", a.inspect)
 	mux.HandleFunc("POST /torrents/resolve", a.resolve)
+	mux.HandleFunc("GET /torrents", a.list)
 	mux.HandleFunc("POST /torrents", a.add)
 	mux.HandleFunc("PUT /torrents/{hash}/files", a.selectFiles)
+	mux.HandleFunc("POST /torrents/{hash}/pause", a.pause)
+	mux.HandleFunc("POST /torrents/{hash}/resume", a.resume)
 	mux.HandleFunc("DELETE /torrents/{hash}", a.forget)
 	mux.HandleFunc("GET /torrents/{hash}/stats", a.stats)
 	mux.HandleFunc("GET /torrents/{hash}/files/{index}/stream", a.stream)
@@ -251,8 +254,31 @@ func (a *api) startBackground(t *torrent.Torrent) {
 		return
 	}
 
-	if err := a.session.saveSelection(t.InfoHash(), savedTorrent{Selected: selected, Background: true}); err != nil {
+	err := a.session.update(t.InfoHash(), func(saved *savedTorrent) {
+		saved.Selected = selected
+		saved.Background = true
+	})
+	if err != nil {
 		a.logger.Warn("save session", "err", err)
+	}
+}
+
+// Выбранные файлы качаются целиком сразу, без ожидания просмотра
+func (a *api) downloadNow(t *torrent.Torrent, selected []int) error {
+	a.mu.Lock()
+	delete(a.pending, t.InfoHash())
+	a.mu.Unlock()
+
+	return setFiles(t, selected)
+}
+
+func setPaused(t *torrent.Torrent, paused bool) {
+	if paused {
+		t.DisallowDataDownload()
+		t.DisallowDataUpload()
+	} else {
+		t.AllowDataDownload()
+		t.AllowDataUpload()
 	}
 }
 
@@ -280,6 +306,8 @@ func (a *api) restore() {
 		if err != nil {
 			a.logger.Warn("restore files", "hash", t.InfoHash().HexString(), "err", err)
 		}
+
+		setPaused(t, item.saved.Paused)
 	}
 
 	a.logger.Info("torrents restored", "count", len(restored))
@@ -313,12 +341,23 @@ func (a *api) add(w http.ResponseWriter, r *http.Request) {
 
 	<-t.GotInfo()
 
-	if err := a.selectLater(t, selected); err != nil {
+	// Раздача уже докачивается целиком (её смотрели или скачивают): новый
+	// выбор тоже качается сразу, иначе скачивание встало бы до нового просмотра
+	saved := a.session.get(t.InfoHash())
+	saved.Selected = selected
+
+	if saved.Background {
+		err = a.downloadNow(t, selected)
+	} else {
+		err = a.selectLater(t, selected)
+	}
+
+	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_files", err)
 		return
 	}
 
-	if err := a.session.save(mi, savedTorrent{Selected: selected}); err != nil {
+	if err := a.session.save(mi, saved); err != nil {
 		writeError(w, http.StatusInternalServerError, "storage", err)
 		return
 	}
@@ -351,6 +390,8 @@ func (a *api) selectFiles(w http.ResponseWriter, r *http.Request) {
 
 	var body struct {
 		Files []int `json:"files"`
+		// Качать выбранные целиком сразу, а не после начала просмотра
+		Now bool `json:"now"`
 	}
 
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
@@ -358,12 +399,26 @@ func (a *api) selectFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := a.selectLater(t, body.Files); err != nil {
+	saved := a.session.get(t.InfoHash())
+	now := body.Now || saved.Background
+
+	var err error
+	if now {
+		err = a.downloadNow(t, body.Files)
+	} else {
+		err = a.selectLater(t, body.Files)
+	}
+
+	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_files", err)
 		return
 	}
 
-	if err := a.session.saveSelection(t.InfoHash(), savedTorrent{Selected: body.Files}); err != nil {
+	err = a.session.update(t.InfoHash(), func(saved *savedTorrent) {
+		saved.Selected = body.Files
+		saved.Background = now
+	})
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, "storage", err)
 		return
 	}
@@ -371,37 +426,165 @@ func (a *api) selectFiles(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// Убирает раздачу из движка; файлы остаются на диске
+func (a *api) pause(w http.ResponseWriter, r *http.Request) {
+	a.setPausedHandler(w, r, true)
+}
+
+func (a *api) resume(w http.ResponseWriter, r *http.Request) {
+	a.setPausedHandler(w, r, false)
+}
+
+func (a *api) setPausedHandler(w http.ResponseWriter, r *http.Request, paused bool) {
+	t, ok := a.torrentOf(w, r)
+	if !ok {
+		return
+	}
+
+	setPaused(t, paused)
+
+	if err := a.session.update(t.InfoHash(), func(saved *savedTorrent) { saved.Paused = paused }); err != nil {
+		writeError(w, http.StatusInternalServerError, "storage", err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+type forgetResponse struct {
+	// Сколько байт освободило удаление файлов
+	DeletedBytes int64 `json:"deletedBytes"`
+}
+
+// Убирает раздачу из движка. С `delete_files=true` удаляет и её файлы вместе
+// с отметками скачанных кусков: иначе повторное добавление сочло бы куски
+// скачанными. Без параметра файлы остаются на диске
 func (a *api) forget(w http.ResponseWriter, r *http.Request) {
 	t, ok := a.torrentOf(w, r)
 	if !ok {
 		return
 	}
 
+	deleteFiles := r.URL.Query().Get("delete_files") == "true"
+	info := t.Info()
+	hash := t.InfoHash()
+
 	t.Drop()
 
-	if err := a.session.remove(t.InfoHash()); err != nil {
+	if err := a.session.remove(hash); err != nil {
 		a.logger.Warn("remove session", "err", err)
 	}
 
 	a.mu.Lock()
-	delete(a.samples, t.InfoHash())
-	delete(a.pending, t.InfoHash())
+	delete(a.pending, hash)
 	a.mu.Unlock()
 
-	w.WriteHeader(http.StatusNoContent)
+	var response forgetResponse
+
+	if deleteFiles {
+		for index := range info.NumPieces() {
+			if err := a.completion.Set(metainfo.PieceKey{InfoHash: hash, Index: index}, false); err != nil {
+				a.logger.Warn("reset piece completion", "hash", hash.HexString(), "err", err)
+				break
+			}
+		}
+
+		deleted, err := deleteTorrentFiles(a.downloads, info)
+		response.DeletedBytes = deleted
+
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "storage", err)
+			return
+		}
+	}
+
+	writeJSON(w, http.StatusOK, response)
 }
 
-type statsResponse struct {
-	Peers struct {
-		Connected int `json:"connected"`
-		Found     int `json:"found"`
-		Seeders   int `json:"seeders"`
-	} `json:"peers"`
-	// Байт в секунду со времени прошлого запроса
+type peersResponse struct {
+	Connected int `json:"connected"`
+	Found     int `json:"found"`
+	Seeders   int `json:"seeders"`
+}
+
+// Общая часть списка и статистики раздачи
+type torrentState struct {
+	InfoHash string `json:"infoHash"`
+	Paused   bool   `json:"paused"`
+	// Выбранные файлы качаются целиком (иначе — только то, что читает поток)
+	Background bool  `json:"background"`
+	Selected   []int `json:"selected"`
+	// Скачано всего: куски, прочитанные потоком вне выбора, тоже на диске
+	BytesCompleted int64 `json:"bytesCompleted"`
+	// Размер выбранных файлов и сколько из них скачано
+	BytesWanted     int64 `json:"bytesWanted"`
+	WantedCompleted int64 `json:"wantedCompleted"`
+	// Раздача отдаёт скачанное пирам
+	Seeding bool          `json:"seeding"`
+	Peers   peersResponse `json:"peers"`
+	// Байт в секунду за последние секунды
 	DownloadSpeed int64   `json:"downloadSpeed"`
 	UploadSpeed   int64   `json:"uploadSpeed"`
 	FileProgress  []int64 `json:"fileProgress"`
+}
+
+func (a *api) stateOf(t *torrent.Torrent) torrentState {
+	hash := t.InfoHash()
+	saved := a.session.get(hash)
+	stats := t.Stats()
+	current := a.speeds.of(hash)
+	files := t.Files()
+
+	state := torrentState{
+		InfoHash:       hash.HexString(),
+		Paused:         saved.Paused,
+		Background:     saved.Background,
+		Selected:       saved.Selected,
+		BytesCompleted: t.BytesCompleted(),
+		Seeding:        t.Seeding() && !saved.Paused,
+		Peers: peersResponse{
+			Connected: stats.ActivePeers,
+			Found:     stats.TotalPeers,
+			Seeders:   stats.ConnectedSeeders,
+		},
+		DownloadSpeed: current.download,
+		UploadSpeed:   current.upload,
+		FileProgress:  []int64{},
+	}
+
+	if state.Selected == nil {
+		state.Selected = []int{}
+	}
+
+	for _, file := range files {
+		state.FileProgress = append(state.FileProgress, file.BytesCompleted())
+	}
+
+	for _, index := range state.Selected {
+		if index < len(files) {
+			state.BytesWanted += files[index].Length()
+			state.WantedCompleted += state.FileProgress[index]
+		}
+	}
+
+	return state
+}
+
+// Все раздачи движка с метаданными — для списка загрузок и учёта места
+func (a *api) list(w http.ResponseWriter, _ *http.Request) {
+	states := []torrentState{}
+
+	for _, t := range a.client.Torrents() {
+		if t.Info() == nil {
+			continue
+		}
+		states = append(states, a.stateOf(t))
+	}
+
+	writeJSON(w, http.StatusOK, states)
+}
+
+type statsResponse struct {
+	torrentState
 	// Скачанные куски: строка из 0 и 1 по порядку кусков
 	Pieces string `json:"pieces"`
 }
@@ -412,29 +595,7 @@ func (a *api) stats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stats := t.Stats()
-	now := time.Now()
-	downloaded := stats.BytesReadData.Int64()
-	uploaded := stats.BytesWrittenData.Int64()
-
-	var response statsResponse
-	response.Peers.Connected = stats.ActivePeers
-	response.Peers.Found = stats.TotalPeers
-	response.Peers.Seeders = stats.ConnectedSeeders
-
-	a.mu.Lock()
-	if prev, ok := a.samples[t.InfoHash()]; ok {
-		if elapsed := now.Sub(prev.at).Seconds(); elapsed > 0 {
-			response.DownloadSpeed = int64(float64(downloaded-prev.downloaded) / elapsed)
-			response.UploadSpeed = int64(float64(uploaded-prev.uploaded) / elapsed)
-		}
-	}
-	a.samples[t.InfoHash()] = speedSample{at: now, downloaded: downloaded, uploaded: uploaded}
-	a.mu.Unlock()
-
-	for _, file := range t.Files() {
-		response.FileProgress = append(response.FileProgress, file.BytesCompleted())
-	}
+	response := statsResponse{torrentState: a.stateOf(t)}
 
 	var pieces strings.Builder
 	for _, run := range t.PieceStateRuns() {

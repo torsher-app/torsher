@@ -4,8 +4,12 @@ import {
   EngineError,
   forgetTorrent,
   inspectTorrent,
+  listEngineTorrents,
   openStream,
+  pauseTorrent,
   resolveMagnet,
+  resumeTorrent,
+  selectFiles,
   setEngineDown,
   setEngineReady,
   torrentStats,
@@ -13,6 +17,7 @@ import {
 import {
   engineError,
   INFO_HASH,
+  liveState,
   liveStats,
   movieDetails,
 } from './fixtures/index.ts'
@@ -60,12 +65,59 @@ describe('клиент движка', () => {
       `http://127.0.0.1:4000/torrents/${INFO_HASH}/stats`,
     )
     expect(stats).toEqual({
+      infoHash: INFO_HASH,
+      paused: false,
+      background: false,
+      selected: [0],
+      bytesCompleted: 3_145_728,
+      bytesWanted: 9_437_184,
+      wantedCompleted: 3_145_728,
+      seeding: true,
       peers: { connected: 7, found: 41 },
       downloadSpeed: 2_621_440,
       uploadSpeed: 262_144,
       fileProgress: [3_145_728, 0, 0],
       pieces: liveStats.pieces,
     })
+  })
+
+  it('список раздач: infohash в нижнем регистре, пустой выбор — пустой массив', async () => {
+    fetchMock.mockResolvedValue(
+      json([
+        { ...liveState, infoHash: INFO_HASH.toUpperCase(), selected: null },
+      ]),
+    )
+
+    const list = await listEngineTorrents()
+
+    expect(String(fetchMock.mock.calls[0]![0])).toBe(
+      'http://127.0.0.1:4000/torrents',
+    )
+    expect(list).toEqual([
+      expect.objectContaining({ infoHash: INFO_HASH, selected: [] }),
+    ])
+  })
+
+  it('выбор файлов, пауза и продолжение', async () => {
+    fetchMock.mockImplementation(
+      async () => new Response(null, { status: 204 }),
+    )
+
+    await selectFiles(INFO_HASH, [0, 2], true)
+    await pauseTorrent(INFO_HASH)
+    await resumeTorrent(INFO_HASH)
+
+    const calls = fetchMock.mock.calls.map(([input, init]) => [
+      init?.method,
+      String(input).replace('http://127.0.0.1:4000', ''),
+      init?.body,
+    ])
+
+    expect(calls).toEqual([
+      ['PUT', `/torrents/${INFO_HASH}/files`, '{"files":[0,2],"now":true}'],
+      ['POST', `/torrents/${INFO_HASH}/pause`, undefined],
+      ['POST', `/torrents/${INFO_HASH}/resume`, undefined],
+    ])
   })
 
   it('раздачи нет в движке — not_found', async () => {
@@ -123,8 +175,9 @@ describe('клиент движка', () => {
     ).rejects.toMatchObject({ kind: 'timeout' })
   })
 
-  it('забыть раздачу — DELETE, отсутствующая — not_found', async () => {
-    fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }))
+  it('забыть раздачу — DELETE, с файлами — сколько освободилось, отсутствующая — not_found', async () => {
+    fetchMock.mockResolvedValueOnce(json({ deletedBytes: 0 }))
+    fetchMock.mockResolvedValueOnce(json({ deletedBytes: 9_437_184 }))
     fetchMock.mockResolvedValueOnce(
       json(
         engineError('torrent_not_found', 'torrent is not in the engine'),
@@ -133,8 +186,12 @@ describe('клиент движка', () => {
     )
 
     await forgetTorrent(INFO_HASH)
+    const freed = await forgetTorrent(INFO_HASH, { deleteFiles: true })
 
     expect(fetchMock.mock.calls[0]![1]!.method).toBe('DELETE')
+    expect(String(fetchMock.mock.calls[0]![0])).not.toContain('delete_files')
+    expect(String(fetchMock.mock.calls[1]![0])).toContain('?delete_files=true')
+    expect(freed).toBe(9_437_184)
     await expect(forgetTorrent(INFO_HASH)).rejects.toMatchObject({
       kind: 'not_found',
     })

@@ -1,13 +1,28 @@
 import type { FastifyReply } from 'fastify'
 import type { Torrent } from '../db/schema.ts'
+import type { EngineTorrentState } from '../services/engine/index.ts'
 import { EngineError } from '../services/engine/index.ts'
-import { isVideoFile } from '../services/torrents/index.ts'
+import { isStreaming } from '../services/storage/index.ts'
+import {
+  downloadStateOf,
+  InsufficientStorageError,
+  isVideoFile,
+} from '../services/torrents/index.ts'
 
 /**
  * Ошибка движка → статус: недоступен — 503 с видом причины для текста клиента,
  * отклонил запрос — 400, не дождались — 504, ответил ошибкой — 502.
  */
 export function sendEngineError(reply: FastifyReply, err: unknown) {
+  if (err instanceof InsufficientStorageError) {
+    return reply.code(507).send({
+      message: err.message,
+      kind: err.kind,
+      needed: err.needed,
+      available: err.available,
+    })
+  }
+
   if (!(err instanceof EngineError))
     throw err
 
@@ -26,11 +41,14 @@ export function sendEngineError(reply: FastifyReply, err: unknown) {
   }
 }
 
-// Наружу — явно собранный объект: `.torrent` и magnet в ответ не попадают
-export function toTorrentResponse(torrent: Torrent) {
+// Наружу — явно собранный объект: `.torrent` и magnet в ответ не попадают.
+// `live` — раздача в движке; нет — данных на диске нет
+export function toTorrentResponse(torrent: Torrent, live?: EngineTorrentState) {
   const files = (torrent.files ?? [])
     .map((file, index) => ({ file, index }))
     .filter(({ file }) => !file.padding)
+  const selected = new Set(live?.selected ?? torrent.selectedFiles ?? [])
+  const streaming = isStreaming(torrent.id)
 
   return {
     id: torrent.id,
@@ -44,9 +62,24 @@ export function toTorrentResponse(torrent: Torrent) {
       path: file.path,
       size: file.size,
       isVideo: isVideoFile(file.path),
+      downloaded: live?.fileProgress[index] ?? 0,
+      selected: selected.has(index),
     })),
     totalSize: files.reduce((sum, { file }) => sum + file.size, 0),
     addedAt: torrent.addedAt.toISOString(),
     lastAccessAt: torrent.lastAccessAt?.toISOString() ?? null,
+    titleId: torrent.titleId,
+    retention: torrent.retention,
+    pauseReason: live?.paused ? (torrent.pauseReason ?? 'user') : null,
+    state: downloadStateOf(live, streaming),
+    streaming,
+    progress: {
+      downloaded: live?.wantedCompleted ?? 0,
+      wanted: live?.bytesWanted ?? 0,
+    },
+    sizeOnDisk: live?.bytesCompleted ?? 0,
+    downloadSpeed: live?.downloadSpeed ?? 0,
+    uploadSpeed: live?.uploadSpeed ?? 0,
+    peers: live?.peers ?? { connected: 0, found: 0 },
   }
 }

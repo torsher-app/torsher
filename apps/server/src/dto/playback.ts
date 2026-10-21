@@ -29,6 +29,18 @@ export const playback = z
   })
   .meta({ id: 'playback' })
 
+/** Просмотр не начнётся: места не хватит даже после вытеснения кэша */
+export const insufficientStorageResponse = z
+  .object({
+    message: z.string(),
+    // `no_space` — на диске меньше запаса, `cache_limit` — файл не влезает в лимит кэша
+    kind: z.enum(['no_space', 'cache_limit']),
+    // Байт: сколько ещё скачает просмотр и сколько можно
+    needed: z.number(),
+    available: z.number(),
+  })
+  .meta({ id: 'insufficientStorageResponse' })
+
 export const updateWatchState = z
   .object({
     torrentId: z.string().min(1).max(100),

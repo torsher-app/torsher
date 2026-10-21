@@ -143,7 +143,7 @@ export function claimNoise(ctx: ParseContext, titleEnd: number) {
         ctx.claim(next, 'noise')
     }
     for (const [first, second] of NOISE_PAIRS) {
-      if (token.norm === first && next?.norm === second)
+      if (next && token.norm === first && next.norm === second)
         ctx.claim([token, next], 'noise')
     }
   }
