@@ -150,56 +150,208 @@
     "dataSource": "Movie and series information and images are provided by TMDB",
     "tmdbNotice": "This product uses the TMDB API but is not endorsed or certified by TMDB.",
     "tmdbLogo": "TMDB logo",
-    "font": "The Onest font is distributed under the SIL Open Font License 1.1"
+    "font": "The Onest font is distributed under the SIL Open Font License 1.1",
+    "tagline": "A media server with your own library and showcase",
+    "description": "Server version, license and data sources.",
+    "licenseLabel": "License"
   },
   "panel": {
     "nav": {
       "label": "Panel sections",
       "sources": "Sources",
-      "about": "About"
+      "settings": "Settings",
+      "server": "Server",
+      "open": "Open menu",
+      "attention": "{n} needs attention | {n} need attention"
     },
-    "header": {
-      "logout": "Sign out",
-      "darkTheme": "Dark theme",
-      "lightTheme": "Light theme"
+    "account": {
+      "menu": "Account menu",
+      "theme": "Theme",
+      "themes": {
+        "light": "Light",
+        "dark": "Dark",
+        "system": "System"
+      },
+      "settings": "Account",
+      "logout": "Sign out"
     },
     "common": {
       "cancel": "Cancel",
-      "retry": "Try again",
-      "delete": "Delete"
+      "retry": "Retry",
+      "delete": "Delete",
+      "close": "Close",
+      "save": "Save",
+      "optional": "optional",
+      "showKey": "Show key",
+      "hideKey": "Hide key"
     },
     "kinds": {
       "prowlarr": "Prowlarr",
       "jackett": "Jackett"
     },
+    "auth": {
+      "loginTitle": "Sign in to the panel",
+      "loginText": "Server settings, sources and devices.",
+      "email": "Email",
+      "password": "Password",
+      "name": "Name",
+      "submit": "Sign in",
+      "showPassword": "Show password",
+      "hidePassword": "Hide password",
+      "rejected": "Wrong email or password",
+      "rejectedText": "Check the keyboard layout and Caps Lock.",
+      "failed": "Couldn't sign in",
+      "backToLogin": "Back to sign in",
+      "validation": {
+        "email": "Enter a valid email",
+        "passwordRequired": "Enter the password",
+        "password": "At least 8 characters",
+        "name": "At least 2 characters"
+      }
+    },
+    "wizard": {
+      "label": "First run",
+      "note": "Everything you set here can be changed later in the panel.",
+      "stepOf": "Step {n} of {total} · {step}",
+      "steps": {
+        "account": {
+          "title": "Account",
+          "text": "Server owner"
+        },
+        "storage": {
+          "title": "Storage",
+          "text": "Space, cache, hardlinks"
+        },
+        "network": {
+          "title": "Network",
+          "text": "TMDB, DNS, proxy"
+        },
+        "sources": {
+          "title": "Sources",
+          "text": "Torznab indexers"
+        },
+        "done": {
+          "title": "Done",
+          "text": "Connect a TV"
+        }
+      },
+      "account": {
+        "title": "Create the owner account",
+        "text": "You use it to sign in to the panel and set up the server. There is one account per server: the household watches through profiles on the TV.",
+        "emailHint": "Only for signing in. The server sends no email.",
+        "submit": "Create account and continue",
+        "failed": "Couldn't create the account"
+      }
+    },
+    "settings": {
+      "nav": {
+        "label": "Settings sections",
+        "account": "Account",
+        "about": "About"
+      },
+      "account": {
+        "description": "The server owner account. A second one can't be created: the household watches through profiles.",
+        "nameTitle": "Name",
+        "nameText": "How the panel calls you, for example in the account menu.",
+        "nameHint": "At least 2 characters.",
+        "saved": "Name saved",
+        "emailTitle": "Email",
+        "emailText": "Email is only used to sign in: the server sends no email.",
+        "single": "There is one account per server — the owner."
+      }
+    },
     "sources": {
       "title": "Sources",
-      "description": "Torznab indexers the server searches for releases",
       "import": "Import from Prowlarr or Jackett",
-      "add": "Add Torznab indexer",
+      "importShort": "Import",
+      "add": "Add manually",
       "loadError": "Couldn't load sources",
+      "loadErrorText": "The server didn't respond. If the panel has been open for a while, reload the page.",
       "empty": {
-        "title": "No sources yet",
-        "text": "Connect any Torznab indexer, for example Prowlarr or Jackett"
+        "title": "Connect your first source",
+        "text": "The server searches for releases in Torznab indexers. Until there are some, the showcase finds movies and series but has nothing to play them from.",
+        "faster": "Faster",
+        "importText": "All indexers of the manager in one step. Torsher keeps them in sync after that.",
+        "manualTitle": "Torznab indexer manually",
+        "manualText": "The address and API key of a single indexer, if you have no manager.",
+        "foot": "Any Torznab indexer works, for example Prowlarr or Jackett. You decide which indexers to enable in it."
+      },
+      "filters": {
+        "label": "Filters",
+        "all": "All",
+        "attention": "Need attention",
+        "disabled": "Disabled",
+        "search": "Find an indexer",
+        "searchPlaceholder": "Find"
+      },
+      "checkAll": {
+        "action": "Check all",
+        "done": "Check finished",
+        "result": "{passed} of {total} work"
+      },
+      "progress": {
+        "title": "Checking indexers · {done} of {total}",
+        "hint": "you can switch to another section"
+      },
+      "groups": {
+        "attention": "Need attention",
+        "manual": "Added manually",
+        "emptyManager": "{manager} has no indexers"
+      },
+      "filterEmpty": {
+        "all": "No indexers",
+        "attention": "All indexers work",
+        "disabled": "Nothing is disabled",
+        "search": "Nothing found for “{q}”",
+        "resetSearch": "Clear search",
+        "showAll": "Show all"
       },
       "status": {
         "ok": "Working",
         "pending": "Not checked",
-        "auth": "API key rejected",
+        "checking": "Checking…",
+        "disabled": "Disabled",
+        "missing": "Gone from {manager}",
+        "auth": "Key rejected",
         "timeout": "No response",
         "unreachable": "Unreachable",
         "bad_response": "Not Torznab",
         "remote": "Indexer error",
         "unsupported": "Not supported"
       },
+      "errorTitles": {
+        "auth": "Key rejected",
+        "timeout": "No response",
+        "unreachable": "Address doesn't respond",
+        "bad_response": "Not Torznab",
+        "remote": "The service returned an error",
+        "unsupported": "Wrong service",
+        "unknown": "That didn't work"
+      },
       "errors": {
         "auth": "The API key was rejected. Check the key and try again.",
         "timeout": "The address didn't respond in time. Check that the service is running and the server can reach it.",
-        "unreachable": "Can't connect to the address. Check it and make sure the server can reach it.",
+        "unreachable": "The Torsher server couldn't reach the address. Check it; if the service runs in a neighbouring container, use its name in the Docker network.",
         "bad_response": "The address answered, but not with Torznab. Check the address.",
         "remote": "The indexer answered with an error. Check it in its own interface or try later.",
         "unsupported": "No manager API at this address. Check the type and the address, or update the manager.",
         "unknown": "Something went wrong. Try again."
+      },
+      "reasons": {
+        "checking": "Checking…",
+        "authManaged": "Key rejected — update it in {manager}",
+        "auth": "Key rejected — enter a new key",
+        "timeout": "Didn't respond in time — search goes on without it",
+        "unreachable": "Unreachable — check the address and network",
+        "bad_response": "The response doesn't look like Torznab — check the address",
+        "remote": "The indexer returned an error",
+        "missing": "Gone from {manager} — Torsher searches it but doesn't update it"
+      },
+      "problems": {
+        "authManaged": "The indexer rejected the API key. Update the key in {manager} — the next sync will pick it up.",
+        "auth": "The indexer rejected the API key. Enter a new key with “Edit”.",
+        "timeout": "The indexer didn't respond in time. Search goes through the others and skips this one until it responds.",
+        "missing": "The indexer is no longer in {manager}. Torsher still searches it but doesn't update it. Delete it if you don't need it."
       },
       "validation": {
         "name": "Enter a name",
@@ -207,51 +359,91 @@
         "apiKey": "Enter the API key"
       },
       "indexers": {
-        "title": "Indexers",
         "manual": "Added manually",
-        "missing": "Gone from {manager}",
-        "enable": "Search {name}",
         "test": "Check",
         "testPassed": "{name}: check passed",
         "testFailed": "{name}: {status}",
-        "checkedAt": "Checked {time}",
-        "moreCategories": "+{n}",
+        "actions": "Actions: {name}",
+        "disable": "Disable search",
+        "enableSearch": "Enable search",
+        "copyUrl": "Copy Torznab address",
+        "copied": "Address copied",
+        "copyFailed": "Couldn't copy the address",
+        "edit": "Edit",
+        "enabledToast": "{name}: search enabled",
+        "disabledToast": "{name}: search disabled",
         "deleteTitle": "Delete {name}?",
         "deleteText": "The server will stop searching this indexer.",
-        "deleteManagedText": "The server will stop searching this indexer. The next sync with {manager} will add it back.",
+        "deleteManagedText": "The server will stop searching this indexer. It came from {manager}, so the next sync will add it again. To keep it out of search, disable it here or delete it in {manager}.",
+        "disableInstead": "Disable",
         "deleted": "{name} deleted"
       },
+      "card": {
+        "status": "Check",
+        "search": "Search",
+        "url": "Torznab address",
+        "source": "Source",
+        "fromManager": "{manager}, synced",
+        "categories": "Categories",
+        "none": "None",
+        "modes": {
+          "label": "Modes",
+          "search": "general",
+          "movieSearch": "movies",
+          "tvSearch": "series"
+        }
+      },
       "managers": {
-        "title": "Indexer managers",
-        "syncedAt": "Synced {time}",
-        "indexerCount": "{n} indexer | {n} indexers",
-        "missingCount": "{n} gone",
-        "sync": "Sync",
+        "syncedAt": "synced {time}",
+        "neverSynced": "not synced yet",
+        "sync": "Sync {manager}",
+        "syncedTitle": "{manager} synced",
         "synced": "Added {added}, updated {updated}, gone from the manager {missing}",
+        "syncFailed": "{manager}: sync failed",
+        "open": "Open {manager}",
+        "imported": "{manager} connected",
+        "importedText": "Added {n} indexer. Checking it — the status will update by itself. | Added {n} indexers. Checking them — statuses will update by themselves.",
         "disconnect": "Disconnect",
         "disconnectTitle": "Disconnect {manager}?",
-        "disconnectText": "The server will stop syncing indexers from {url}. Imported indexers can stay as manual ones.",
-        "keepIndexers": "Keep indexers",
-        "deleteIndexers": "Delete indexers too",
+        "disconnectText": "Torsher will stop syncing indexers with",
+        "outcome": "What to do with the indexers",
+        "keepIndexers": "Keep {n} indexer | Keep {n} indexers",
+        "keepText": "They become manual, search keeps working.",
+        "deleteIndexers": "Delete together with the indexers",
+        "deleteText": "Only manually added ones remain.",
         "disconnected": "{manager} disconnected"
       },
       "importDialog": {
         "title": "Import from Prowlarr or Jackett",
-        "description": "The server adds every indexer configured in the manager and keeps them in sync. The API key is in the manager's settings.",
+        "description": "Torsher adds all indexers of the manager and keeps them in sync.",
         "kind": "Manager",
+        "port": "usually port {port}",
         "url": "Address",
+        "urlHint": "The address at which the Torsher server reaches the manager, not this computer.",
         "apiKey": "API key",
+        "keyHint": {
+          "prowlarr": "In Prowlarr: Settings → General → API Key.",
+          "jackett": "In Jackett: the API Key field at the top of the dashboard."
+        },
         "submit": "Import"
       },
       "addDialog": {
-        "title": "Add Torznab indexer",
+        "title": "Add a Torznab indexer",
         "description": "The server checks the indexer before saving it.",
         "name": "Name",
+        "namePlaceholder": "For example, Movies 4K",
         "url": "Torznab address",
         "apiKey": "API key",
-        "apiKeyHint": "Leave empty if the indexer doesn't need a key",
+        "apiKeyHint": "Leave empty if the indexer needs no key.",
         "submit": "Check and add",
         "added": "{name} added"
+      },
+      "editDialog": {
+        "title": "Edit {name}",
+        "description": "The server checks a new key right after saving.",
+        "apiKey": "New API key",
+        "apiKeyHint": "Leave empty to keep the current key.",
+        "saved": "{name} saved"
       }
     }
   }

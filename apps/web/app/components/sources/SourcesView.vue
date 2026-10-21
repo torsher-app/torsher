@@ -1,108 +1,223 @@
 <script setup lang="ts">
-import { DownloadIcon, PlusIcon, RadarIcon } from '@lucide/vue'
+import type { Indexer } from '@torsher/api-client'
+import {
+  ArrowDownToLineIcon,
+  CircleAlertIcon,
+  PlusIcon,
+  RefreshCwIcon,
+} from '@lucide/vue'
+import { useNow } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import { Button } from '@/components/ui/button'
+import ListGroup from '~/components/ListGroup.vue'
+import PageBar from '~/components/shell/PageBar.vue'
+import { formatRelative, hostOf } from '~/lib/format'
 import AddIndexerDialog from './AddIndexerDialog.vue'
+import CheckProgress from './CheckProgress.vue'
+import DeleteIndexerDialog from './DeleteIndexerDialog.vue'
 import ImportManagerDialog from './ImportManagerDialog.vue'
-import IndexerItem from './IndexerItem.vue'
-import ManagerItem from './ManagerItem.vue'
+import IndexerCard from './IndexerCard.vue'
+import IndexerRow from './IndexerRow.vue'
+import ManagerActions from './ManagerActions.vue'
+import SourcesEmpty from './SourcesEmpty.vue'
+import SourcesFilters from './SourcesFilters.vue'
 import SourcesSkeleton from './SourcesSkeleton.vue'
 
-const { t } = useI18n()
-const { indexers, managers, state, isEmpty, load, stopPolling } = useSources()
+const { t, locale } = useI18n()
+const { indexers, managers, state, checkRun, isEmpty, load, stopPolling }
+  = useSources()
+const { filter, search, groups, resetFilters } = useSourcesList()
+
+// Относительное время в строках обновляется само, без перечитывания списка
+const now = useNow({ interval: 30_000 })
 
 const isImportOpen = ref(false)
 const isAddOpen = ref(false)
+const selectedId = ref<string | null>(null)
+const editTarget = ref<Indexer | null>(null)
+const deleteTarget = ref<Indexer | null>(null)
+
+const selected = computed(
+  () => indexers.value.find(item => item.id === selectedId.value) ?? null,
+)
+const selectedManager = computed(() =>
+  managers.value.find(item => item.id === selected.value?.managerId),
+)
+const isEditOpen = computed({
+  get: () => !!editTarget.value,
+  set: (isOpen) => {
+    if (!isOpen)
+      editTarget.value = null
+  },
+})
+const isDeleteOpen = computed({
+  get: () => !!deleteTarget.value,
+  set: (isOpen) => {
+    if (!isOpen)
+      deleteTarget.value = null
+  },
+})
+const isReady = computed(() => state.value === 'ready' && !isEmpty.value)
+
+function groupTitle(
+  kind: 'attention' | 'manager' | 'manual',
+  managerKind?: string,
+) {
+  if (kind === 'manager')
+    return t(`panel.kinds.${managerKind}`)
+
+  return t(`panel.sources.groups.${kind}`)
+}
+
+// Удалённый индексатор закрывает свою карточку
+watch(selected, (indexer) => {
+  if (!indexer)
+    selectedId.value = null
+})
 
 onMounted(load)
 onBeforeUnmount(stopPolling)
 </script>
 
 <template>
-  <div class="grid gap-6">
-    <header
-      class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"
-    >
-      <div class="grid gap-1">
-        <h1 class="text-xl font-semibold">
-          {{ t("panel.sources.title") }}
-        </h1>
-        <p class="text-sm text-muted-foreground">
-          {{ t("panel.sources.description") }}
-        </p>
-      </div>
-      <div class="flex flex-col gap-2 sm:flex-row">
-        <Button @click="isImportOpen = true">
-          <DownloadIcon aria-hidden="true" />
-          {{ t("panel.sources.import") }}
-        </Button>
-        <Button variant="outline" @click="isAddOpen = true">
-          <PlusIcon aria-hidden="true" />
-          {{ t("panel.sources.add") }}
-        </Button>
-      </div>
-    </header>
+  <PageBar :title="t('panel.sources.title')" :parent="t('panel.nav.server')">
+    <template v-if="isReady" #actions>
+      <Button
+        variant="ghost"
+        size="sm"
+        :aria-label="t('panel.sources.add')"
+        @click="isAddOpen = true"
+      >
+        <PlusIcon aria-hidden="true" />
+        <span class="hidden md:inline">{{ t("panel.sources.add") }}</span>
+      </Button>
+      <Button size="sm" @click="isImportOpen = true">
+        <ArrowDownToLineIcon aria-hidden="true" />
+        {{ t("panel.sources.importShort") }}
+      </Button>
+    </template>
+  </PageBar>
 
-    <SourcesSkeleton v-if="state === 'loading'" />
+  <SourcesSkeleton v-if="state === 'loading' || state === 'idle'" />
 
+  <div v-else-if="state === 'error'" class="min-h-0 flex-1 overflow-y-auto">
     <section
-      v-else-if="state === 'error'"
-      class="grid justify-items-start gap-3 rounded-xl border p-4"
+      class="mx-auto grid max-w-130 justify-items-center gap-3.5 px-4 pt-[12vh] pb-8 text-center"
       role="alert"
     >
-      <p class="text-sm">
+      <div
+        class="grid size-11 place-items-center rounded-xl border bg-muted text-destructive"
+        aria-hidden="true"
+      >
+        <CircleAlertIcon class="size-5" />
+      </div>
+      <h2 class="text-base font-semibold">
         {{ t("panel.sources.loadError") }}
+      </h2>
+      <p class="text-muted-foreground">
+        {{ t("panel.sources.loadErrorText") }}
       </p>
-      <Button variant="outline" size="sm" @click="load">
+      <Button variant="outline" class="mt-1" @click="load">
+        <RefreshCwIcon aria-hidden="true" />
         {{ t("panel.common.retry") }}
       </Button>
     </section>
+  </div>
 
-    <section
-      v-else-if="isEmpty"
-      class="grid justify-items-center gap-3 rounded-xl border border-dashed px-4 py-12 text-center"
-    >
-      <RadarIcon class="size-8 text-muted-foreground" aria-hidden="true" />
-      <h2 class="font-medium">
-        {{ t("panel.sources.empty.title") }}
-      </h2>
-      <p class="max-w-sm text-sm text-muted-foreground">
-        {{ t("panel.sources.empty.text") }}
-      </p>
-      <Button class="mt-2" @click="isImportOpen = true">
-        {{ t("panel.sources.import") }}
-      </Button>
-    </section>
+  <div v-else-if="isEmpty" class="min-h-0 flex-1 overflow-y-auto">
+    <SourcesEmpty @import="isImportOpen = true" @add="isAddOpen = true" />
+  </div>
 
-    <template v-else>
-      <section v-if="managers.length > 0" class="grid gap-3">
-        <h2 class="font-medium">
-          {{ t("panel.sources.managers.title") }}
-        </h2>
-        <ul class="divide-y rounded-xl border">
-          <ManagerItem
-            v-for="manager in managers"
-            :key="manager.id"
-            :manager="manager"
-          />
-        </ul>
-      </section>
+  <template v-else>
+    <SourcesFilters />
+    <CheckProgress v-if="checkRun" :run="checkRun" />
 
-      <section v-if="indexers.length > 0" class="grid gap-3">
-        <h2 class="font-medium">
-          {{ t("panel.sources.indexers.title") }}
-        </h2>
-        <ul class="divide-y rounded-xl border">
-          <IndexerItem
-            v-for="indexer in indexers"
+    <div class="min-h-0 flex-1 overflow-y-auto" data-sources-list>
+      <section
+        v-for="group in groups"
+        :key="group.key"
+        :aria-label="groupTitle(group.kind, group.manager?.kind)"
+      >
+        <ListGroup :title="groupTitle(group.kind, group.manager?.kind)">
+          <template #meta>
+            <template v-if="group.manager">
+              <span class="font-mono text-xs">{{
+                hostOf(group.manager.url)
+              }}</span>
+              ·
+              {{
+                group.manager.syncedAt
+                  ? t("panel.sources.managers.syncedAt", {
+                    time: formatRelative(
+                      group.manager.syncedAt,
+                      locale,
+                      now.getTime(),
+                    ),
+                  })
+                  : t("panel.sources.managers.neverSynced")
+              }}
+            </template>
+            <span v-else class="tabular-nums">{{ group.items.length }}</span>
+          </template>
+          <template v-if="group.manager" #actions>
+            <ManagerActions :manager="group.manager" />
+          </template>
+        </ListGroup>
+        <ul>
+          <IndexerRow
+            v-for="indexer in group.items"
             :key="indexer.id"
             :indexer="indexer"
+            :selected="indexer.id === selectedId"
+            :now="now.getTime()"
+            @open="selectedId = indexer.id"
+            @delete="deleteTarget = indexer"
           />
+          <li
+            v-if="group.manager && group.items.length === 0"
+            class="border-b px-4 py-3 text-[13px] text-muted-foreground"
+          >
+            {{
+              t("panel.sources.groups.emptyManager", {
+                manager: t(`panel.kinds.${group.manager.kind}`),
+              })
+            }}
+          </li>
         </ul>
       </section>
-    </template>
 
-    <ImportManagerDialog v-model:open="isImportOpen" />
-    <AddIndexerDialog v-model:open="isAddOpen" />
-  </div>
+      <!-- Пустой результат фильтра говорит, что именно пусто -->
+      <div
+        v-if="groups.length === 0"
+        class="grid justify-items-center gap-3 px-4 pt-[8vh] pb-8 text-center text-muted-foreground"
+      >
+        <p v-if="search">
+          {{ t("panel.sources.filterEmpty.search", { q: search }) }}
+        </p>
+        <p v-else>
+          {{ t(`panel.sources.filterEmpty.${filter}`) }}
+        </p>
+        <Button variant="outline" size="sm" @click="resetFilters">
+          {{
+            search
+              ? t("panel.sources.filterEmpty.resetSearch")
+              : t("panel.sources.filterEmpty.showAll")
+          }}
+        </Button>
+      </div>
+    </div>
+  </template>
+
+  <IndexerCard
+    :indexer="selected"
+    :manager="selectedManager"
+    :now="now.getTime()"
+    @close="selectedId = null"
+    @edit="editTarget = selected"
+    @delete="deleteTarget = selected"
+  />
+  <ImportManagerDialog v-model:open="isImportOpen" />
+  <AddIndexerDialog v-model:open="isAddOpen" />
+  <AddIndexerDialog v-model:open="isEditOpen" :indexer="editTarget" />
+  <DeleteIndexerDialog v-model:open="isDeleteOpen" :indexer="deleteTarget" />
 </template>

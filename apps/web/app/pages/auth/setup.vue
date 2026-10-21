@@ -1,39 +1,39 @@
 <script setup lang="ts">
+import { ArrowRightIcon, CircleAlertIcon } from '@lucide/vue'
 import { toTypedSchema } from '@vee-validate/zod'
 import { useForm } from 'vee-validate'
+import { useI18n } from 'vue-i18n'
 import * as z from 'zod'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import LoadingButton from '~/components/LoadingButton.vue'
-import BrandMark from '~/components/shell/BrandMark.vue'
+import SecretInput from '~/components/SecretInput.vue'
 import { getErrorMessage } from '~/services/api'
 
 definePageMeta({
+  layout: 'wizard',
+  wizardStep: 1,
   middleware: ['guest-only', 'first-run'],
 })
 
 const { signup } = useAuth()
+const { t } = useI18n()
 
 const formError = ref('')
 
 // Правила совпадают с DTO бэкенда: имя от 2 символов, пароль от 8
 const schema = toTypedSchema(
   z.object({
-    name: z.string().min(2, 'Минимум 2 символа'),
-    email: z.email('Введите корректный email'),
-    password: z.string().min(8, 'Минимум 8 символов'),
+    name: z.string().trim().min(2, t('panel.auth.validation.name')),
+    email: z.email(t('panel.auth.validation.email')),
+    password: z.string().min(8, t('panel.auth.validation.password')),
   }),
 )
 
 const { handleSubmit, defineField, errors, isSubmitting } = useForm({
   validationSchema: schema,
+  initialValues: { name: '', email: '', password: '' },
 })
 
 const [name, nameProps] = defineField('name')
@@ -53,71 +53,92 @@ const onSubmit = handleSubmit(async (values) => {
 </script>
 
 <template>
-  <div class="flex w-full max-w-sm flex-col items-center gap-6">
-    <div class="flex items-center gap-2 text-xl font-semibold">
-      <BrandMark class="size-7" />
-      Torsher
+  <header>
+    <h1 class="text-2xl font-semibold tracking-tight text-balance">
+      {{ t("panel.wizard.account.title") }}
+    </h1>
+    <p class="mt-1.5 max-w-[58ch] text-muted-foreground">
+      {{ t("panel.wizard.account.text") }}
+    </p>
+  </header>
+
+  <form class="grid gap-4" novalidate @submit="onSubmit">
+    <Alert v-if="formError" variant="destructive">
+      <CircleAlertIcon />
+      <AlertTitle>{{ t("panel.wizard.account.failed") }}</AlertTitle>
+      <AlertDescription>{{ formError }}</AlertDescription>
+    </Alert>
+
+    <div class="grid gap-2">
+      <Label for="name">{{ t("panel.auth.name") }}</Label>
+      <Input
+        id="name"
+        v-model="name"
+        v-bind="nameProps"
+        autocomplete="name"
+        :aria-invalid="!!errors.name || undefined"
+      />
+      <p v-if="errors.name" class="text-[12.5px] text-destructive">
+        {{ errors.name }}
+      </p>
     </div>
-    <Card class="w-full max-w-sm">
-      <CardHeader>
-        <CardTitle>Создайте аккаунт</CardTitle>
-        <CardDescription>
-          Аккаунт владельца сервера: с ним вы входите в панель и настраиваете
-          Torsher. Второй аккаунт создать нельзя.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form class="grid gap-4" @submit="onSubmit">
-          <div class="grid gap-2">
-            <Label for="name">Имя</Label>
-            <Input
-              id="name"
-              v-model="name"
-              v-bind="nameProps"
-              autocomplete="name"
-            />
-            <p v-if="errors.name" class="text-sm text-destructive">
-              {{ errors.name }}
-            </p>
-          </div>
 
-          <div class="grid gap-2">
-            <Label for="email">Email</Label>
-            <Input
-              id="email"
-              v-model="email"
-              v-bind="emailProps"
-              type="email"
-              autocomplete="email"
-            />
-            <p v-if="errors.email" class="text-sm text-destructive">
-              {{ errors.email }}
-            </p>
-          </div>
+    <div class="grid gap-2">
+      <Label for="email">{{ t("panel.auth.email") }}</Label>
+      <Input
+        id="email"
+        v-model="email"
+        v-bind="emailProps"
+        type="email"
+        autocomplete="email"
+        aria-describedby="email-hint"
+        :aria-invalid="!!errors.email || undefined"
+      />
+      <p
+        v-if="errors.email"
+        id="email-hint"
+        class="text-[12.5px] text-destructive"
+      >
+        {{ errors.email }}
+      </p>
+      <p v-else id="email-hint" class="text-[12.5px] text-muted-foreground">
+        {{ t("panel.wizard.account.emailHint") }}
+      </p>
+    </div>
 
-          <div class="grid gap-2">
-            <Label for="password">Пароль</Label>
-            <Input
-              id="password"
-              v-model="password"
-              v-bind="passwordProps"
-              type="password"
-              autocomplete="new-password"
-            />
-            <p v-if="errors.password" class="text-sm text-destructive">
-              {{ errors.password }}
-            </p>
-          </div>
+    <div class="grid gap-2">
+      <Label for="password">{{ t("panel.auth.password") }}</Label>
+      <SecretInput
+        id="password"
+        v-model="password"
+        v-bind="passwordProps"
+        autocomplete="new-password"
+        aria-describedby="password-hint"
+        :aria-invalid="!!errors.password || undefined"
+        :show-label="t('panel.auth.showPassword')"
+        :hide-label="t('panel.auth.hidePassword')"
+      />
+      <p
+        v-if="errors.password"
+        id="password-hint"
+        class="text-[12.5px] text-destructive"
+      >
+        {{ errors.password }}
+      </p>
+      <p v-else id="password-hint" class="text-[12.5px] text-muted-foreground">
+        {{ t("panel.auth.validation.password") }}
+      </p>
+    </div>
 
-          <p v-if="formError" class="text-sm text-destructive">
-            {{ formError }}
-          </p>
-
-          <LoadingButton type="submit" :loading="isSubmitting">
-            Создать аккаунт
-          </LoadingButton>
-        </form>
-      </CardContent>
-    </Card>
-  </div>
+    <div class="flex justify-end pt-1.5">
+      <LoadingButton
+        type="submit"
+        class="w-full sm:w-auto"
+        :loading="isSubmitting"
+      >
+        {{ t("panel.wizard.account.submit") }}
+        <ArrowRightIcon aria-hidden="true" />
+      </LoadingButton>
+    </div>
+  </form>
 </template>

@@ -1,7 +1,7 @@
 Third-party components distributed with Torsher
 ===============================================
 
-Onest font (apps/tv, files from the @fontsource/onest package)
+Onest font (apps/tv and apps/web, files from the @fontsource/onest package)
 https://github.com/simpals/onest
 License: SIL Open Font License 1.1
 
