@@ -18,6 +18,9 @@ const RAIL_SECTION = 'rail-about'
     <h1 class="about__app">
       Torsher
     </h1>
+    <p class="about__muted">
+      © 2026 Anton Reshetov
+    </p>
 
     <p v-if="status === 'error'" class="about__muted">
       {{ t("about.serverUnavailable") }}

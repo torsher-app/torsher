@@ -97,6 +97,15 @@ onMounted(async () => {
     <p v-if="about" class="text-[13px] text-muted-foreground">
       {{ t("about.license", { license: about.license }) }}
     </p>
+    <p class="text-[13px] text-muted-foreground">
+      © 2026
+      <a
+        href="https://github.com/antonreshetov"
+        class="underline underline-offset-3"
+        target="_blank"
+        rel="noopener noreferrer"
+      >Anton Reshetov</a>
+    </p>
 
     <!-- Атрибуция TMDB: логотип скромнее названия приложения, цвет и пропорции файла не меняем -->
     <section class="grid gap-2 border-t pt-4.5 text-[13.5px]">
