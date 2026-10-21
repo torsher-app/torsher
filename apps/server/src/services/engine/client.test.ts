@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   addTorrent,
   EngineError,
+  forgetTorrent,
   inspectTorrent,
   openStream,
   resolveMagnet,
@@ -86,6 +87,23 @@ describe('клиент движка', () => {
     )
 
     await expect(torrentStats(INFO_HASH)).rejects.toMatchObject({
+      kind: 'not_found',
+    })
+  })
+
+  it('забыть раздачу, которой уже нет, — not_found, хотя движок отвечает 500', async () => {
+    fetchMock.mockResolvedValue(
+      json(
+        engineError(
+          500,
+          'internal_error',
+          'error forgetting torrent: no such torrent in db',
+        ),
+        500,
+      ),
+    )
+
+    await expect(forgetTorrent(INFO_HASH)).rejects.toMatchObject({
       kind: 'not_found',
     })
   })

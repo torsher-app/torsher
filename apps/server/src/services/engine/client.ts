@@ -143,8 +143,14 @@ async function errorOf(response: Response) {
 
   const message = body.human_readable ?? `Engine responded ${response.status}`
 
-  if (response.status === 404 || body.error_kind === 'torrent_not_found')
+  // `forget` отсутствующей раздачи движок отвечает 500 с этим текстом, а не 404
+  if (
+    response.status === 404
+    || body.error_kind === 'torrent_not_found'
+    || /no such torrent/i.test(message)
+  ) {
     return new EngineError('not_found', 'Torrent is not in the engine')
+  }
 
   if (response.status >= 400 && response.status < 500)
     return new EngineError('rejected', message)
