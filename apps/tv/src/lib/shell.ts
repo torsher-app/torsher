@@ -28,6 +28,8 @@ export function panelSignInUrl(
   location: Pick<Location, 'href' | 'pathname' | 'search' | 'hash'>,
 ) {
   const url = new URL('panel/auth/login', location.href)
+  // Панель увидит, что её открыли с ТВ: тёмная тема и крупные контролы
+  url.searchParams.set('platform', 'tv')
   url.searchParams.set(
     'next',
     `${location.pathname}${location.search}${location.hash}`,

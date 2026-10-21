@@ -45,6 +45,7 @@ describe('panelSignInUrl', () => {
       'http://192.168.1.10:8080/panel/auth/login',
     )
     expect(url.searchParams.get('next')).toBe('/?platform=tv#/movies')
+    expect(url.searchParams.get('platform')).toBe('tv')
   })
 
   it('учитывает подпуть обратного прокси', () => {

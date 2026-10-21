@@ -4,6 +4,14 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/*
+ * Панель на ТВ (вход с витрины): всё в полтора раза крупнее. zoom, а не размер
+ * корня: у панели есть и размеры в px, они тоже должны расти
+ */
+html.tv {
+  zoom: 1.5;
+}
+
 /* Примитивы стиля reka-vega пишут data-open:, data-checked: и т. п., а reka-ui
    отдаёт состояние атрибутом data-state */
 @custom-variant data-open (&:where([data-state="open"]));
