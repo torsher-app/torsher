@@ -1,5 +1,6 @@
 import type { Direction } from './geometry.ts'
 import type { FocusVia, InputMode } from './inputMode.ts'
+import type { KeyAction } from './keys.ts'
 import { findInColumn, findNext } from './geometry.ts'
 import { createInputModeTracker } from './inputMode.ts'
 
@@ -20,6 +21,12 @@ export type FocusListener = (el: HTMLElement, via: FocusVia) => void
 
 /** Экран сам решает, что делает колесо; `true` — обработано, шаг фокуса не нужен. */
 export type WheelHandler = (direction: Direction) => boolean
+
+/**
+ * Экран перехватывает клавишу раньше движка (плеер: перемотка стрелками,
+ * Back в два шага); `true` — обработано. `event.repeat` — клавишу держат.
+ */
+export type KeyHandler = (action: KeyAction, event: KeyboardEvent) => boolean
 
 interface Section {
   name: string
@@ -80,6 +87,7 @@ export function createFocusEngine(options: FocusEngineOptions = {}) {
   const owners = new WeakMap<HTMLElement, string>()
   const listeners = new Set<FocusListener>()
   const wheelHandlers = new Set<WheelHandler>()
+  const keyHandlers = new Set<KeyHandler>()
   const input = createInputModeTracker(options.onModeChange)
   let active: Section | undefined
 
@@ -265,6 +273,24 @@ export function createFocusEngine(options: FocusEngineOptions = {}) {
     }
   }
 
+  /** Клавиша сначала идёт экрану (последний подписавшийся), `true` — дальше не обрабатывать */
+  function intercept(action: KeyAction, event: KeyboardEvent) {
+    for (const handler of [...keyHandlers].reverse()) {
+      if (handler(action, event))
+        return true
+    }
+
+    return false
+  }
+
+  function onKey(handler: KeyHandler) {
+    keyHandlers.add(handler)
+
+    return () => {
+      keyHandlers.delete(handler)
+    }
+  }
+
   function current() {
     return active?.last
   }
@@ -290,6 +316,8 @@ export function createFocusEngine(options: FocusEngineOptions = {}) {
     current,
     onFocus,
     onWheel,
+    onKey,
+    intercept,
     get mode() {
       return input.mode
     },

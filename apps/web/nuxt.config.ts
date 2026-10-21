@@ -16,6 +16,11 @@ export default defineNuxtConfig({
   runtimeConfig: {
     // Адрес backend для прокси. Переопределяется через NUXT_PROXY_URL
     proxyUrl: 'http://localhost:3001',
+    public: {
+      // Витрина для ссылок «Открыть на витрине». В разработке — свой dev-сервер,
+      // когда витрину отдаёт сервер — его корень. NUXT_PUBLIC_TV_URL
+      tvUrl: 'http://localhost:5173/',
+    },
   },
 
   compatibilityDate: '2025-07-15',

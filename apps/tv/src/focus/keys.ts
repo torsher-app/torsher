@@ -16,8 +16,24 @@ const BACK = new Set([
   8, // Backspace в браузере
 ])
 
+// Медиакнопки пульта webOS и пробел в браузере
+const MEDIA: Record<number, MediaKey> = {
+  415: 'play',
+  19: 'pause',
+  413: 'stop',
+  417: 'forward',
+  412: 'rewind',
+  32: 'playPause',
+}
+
+export type MediaKey
+  = 'play' | 'pause' | 'playPause' | 'stop' | 'forward' | 'rewind'
+
 export type KeyAction
-  = { type: 'move', direction: Direction } | { type: 'enter' } | { type: 'back' }
+  = | { type: 'move', direction: Direction }
+    | { type: 'enter' }
+    | { type: 'back' }
+    | { type: 'media', key: MediaKey }
 
 function isTextField(target: EventTarget | null) {
   return (
@@ -42,6 +58,11 @@ export function readKey(event: KeyboardEvent): KeyAction | undefined {
 
   if (BACK.has(event.keyCode) && !(inTextField && event.keyCode === 8))
     return { type: 'back' }
+
+  const media = MEDIA[event.keyCode]
+
+  if (media && !inTextField)
+    return { type: 'media', key: media }
 
   return undefined
 }

@@ -11,6 +11,9 @@ export const TOKEN_TTL = {
   user_refresh: 7 * 24 * 60 * 60,
   email_verify: 15 * 60,
   password_reset: 15 * 60,
+  // Адрес потока для `<video>`: он сам не обновит сессию, а access-cookie
+  // истекает посреди фильма. Срок — с запасом на длинный фильм с паузами
+  stream: 12 * 60 * 60,
 } as const
 
 export type TokenPurpose = keyof typeof TOKEN_TTL

@@ -155,9 +155,78 @@
     "description": "Server version, license and data sources.",
     "licenseLabel": "License"
   },
+  "player": {
+    "timeline": "Position {position}. OK pauses, left and right seek",
+    "peers": "{n} peer | {n} peers",
+    "found": "{n} peer found | {n} peers found",
+    "speed": "{value} MB/s",
+    "bufferSeconds": "buffer {n} s",
+    "bufferMinutes": "buffer {n} min",
+    "remaining": "−{time}",
+    "endsAt": "ends at {time}",
+    "audio": "Audio",
+    "subtitles": "Subtitles",
+    "subtitlesOff": "Off",
+    "track": "Track {n}",
+    "steps": {
+      "connecting": "Connecting to peers",
+      "waitingPeers": "Waiting for peers",
+      "buffering": "Buffering"
+    },
+    "stepNames": {
+      "peers": "Peers",
+      "buffer": "Buffer",
+      "start": "Start"
+    },
+    "waitingHint": "Nobody is sharing this file yet. The torrent may be rare: wait or pick another one.",
+    "retry": "Retry",
+    "back": "Back",
+    "resume": {
+      "text": "You have already started watching this file.",
+      "continue": "Resume from {time}",
+      "restart": "Start over"
+    },
+    "errors": {
+      "unauthorized": {
+        "title": "Sign in required",
+        "text": "Sign in to the control panel on this server and open the file again."
+      },
+      "notFound": {
+        "title": "File not found",
+        "text": "The torrent was deleted or the link is outdated. Open the file from Torrents in the panel."
+      },
+      "notReady": {
+        "title": "The torrent isn't ready yet",
+        "text": "The server is waiting for the file list from peers. Try again in a minute."
+      },
+      "unsupported": {
+        "title": "The player can't open this format",
+        "text": "The player only does direct play, and this file's codec or container is beyond it. This usually happens with MKV, HEVC and AC3 audio in a browser."
+      },
+      "unknown": {
+        "title": "Couldn't play the file",
+        "text": "The stream broke off or the server didn't respond. Try again."
+      },
+      "engine": {
+        "not_installed": {
+          "title": "The torrent engine isn't installed",
+          "text": "Torrents can't be watched without it. Install the engine on the server."
+        },
+        "starting": {
+          "title": "The torrent engine is starting",
+          "text": "Wait a few seconds and try again."
+        },
+        "stopped": {
+          "title": "The torrent engine isn't running",
+          "text": "Restart the server and try again."
+        }
+      }
+    }
+  },
   "panel": {
     "nav": {
       "label": "Panel sections",
+      "torrents": "Torrents",
       "sources": "Sources",
       "settings": "Settings",
       "server": "Server",
@@ -444,6 +513,86 @@
         "apiKey": "New API key",
         "apiKeyHint": "Leave empty to keep the current key.",
         "saved": "{name} saved"
+      }
+    },
+    "torrents": {
+      "title": "Torrents",
+      "add": "Add torrent",
+      "loadError": "Couldn't load torrents",
+      "loadErrorText": "The server didn't respond. If the panel has been open for a while, reload the page.",
+      "empty": {
+        "title": "Add your first torrent",
+        "text": "A magnet link or a .torrent file — and you can watch its videos in the showcase while they download.",
+        "foot": "Free films such as Big Buck Bunny or Sintel are good for a first check."
+      },
+      "engine": {
+        "titles": {
+          "not_installed": "The torrent engine isn't installed",
+          "starting": "The torrent engine is starting",
+          "stopped": "The torrent engine isn't running"
+        },
+        "texts": {
+          "not_installed": "Without it torrents can't be added or watched. Install the engine on the server or point RQBIT_PATH to your own binary.",
+          "starting": "It will be ready in a few seconds. If this message stays, check the server log.",
+          "stopped": "Torrents can't be added or watched. Restart the server."
+        }
+      },
+      "status": {
+        "resolving": "Waiting for the file list from peers…",
+        "timeout": "Peers didn't send the file list",
+        "rejected": "The engine didn't accept the torrent",
+        "failed": "Couldn't get the file list"
+      },
+      "meta": "{size} · {n} file | {size} · {n} files",
+      "fromFile": "from a .torrent file",
+      "open": "Open in showcase",
+      "openFile": "Open “{name}” in the showcase",
+      "actions": "Actions for “{name}”",
+      "retry": "Retry",
+      "noVideo": "This torrent has no video the showcase can open",
+      "addDialog": {
+        "title": "Add torrent",
+        "description": "The torrent appears in the list, and its videos can be opened in the showcase.",
+        "kind": "What to add",
+        "magnetTitle": "Magnet link",
+        "magnetText": "The file list comes from peers, usually within seconds.",
+        "fileTitle": ".torrent file",
+        "fileText": "The file list is available right away.",
+        "magnet": "Magnet link",
+        "magnetHint": "Starts with magnet:?xt=urn:btih:",
+        "file": ".torrent file",
+        "fileHint": "Up to 8 MB",
+        "submit": "Add",
+        "added": "Torrent added",
+        "addedResolving": "Waiting for the file list from peers — it will show up by itself",
+        "addedFiles": "{n} file | {n} files",
+        "exists": "This torrent is already in the list"
+      },
+      "validation": {
+        "magnet": "Paste a magnet link: it starts with magnet:?xt=urn:btih:",
+        "file": "Choose a .torrent file",
+        "fileSize": "The file is larger than 8 MB — that doesn't look like a .torrent"
+      },
+      "errorTitles": {
+        "not_installed": "The torrent engine isn't installed",
+        "starting": "The torrent engine is starting",
+        "stopped": "The torrent engine isn't running",
+        "invalid": "Torrent not accepted",
+        "timeout": "The engine didn't respond",
+        "unknown": "Something went wrong"
+      },
+      "errors": {
+        "not_installed": "Install the engine on the server or point RQBIT_PATH to your own binary.",
+        "starting": "Wait a few seconds and try again.",
+        "stopped": "Restart the server and try again.",
+        "invalid": "Check the magnet link or the .torrent file.",
+        "timeout": "The engine didn't respond in time. Try again.",
+        "unknown": "Something went wrong. Try again."
+      },
+      "deleteDialog": {
+        "title": "Delete “{name}”?",
+        "text": "The torrent disappears from the list and the engine stops downloading it. Downloaded files stay on disk.",
+        "deleted": "Torrent deleted"
       }
     }
   }
