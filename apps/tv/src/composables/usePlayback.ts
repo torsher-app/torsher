@@ -5,6 +5,7 @@ import type {
 } from '@torsher/api-client'
 import { getErrorBody, getErrorStatus } from '@torsher/api-client'
 import { onScopeDispose, ref, shallowRef } from 'vue'
+import type { PlaybackTitle } from '../lib/sources.ts'
 import { api } from '../api.ts'
 
 /**
@@ -44,7 +45,11 @@ async function playerErrorOf(err: unknown) {
  * Запуск файла раздачи, статистика движка для буферизации и OSD и сохранение
  * позиции. Видео и его события живут в экране плеера.
  */
-export function usePlayback(torrentId: string, fileIndex: number) {
+export function usePlayback(
+  torrentId: string,
+  fileIndex: number,
+  title?: PlaybackTitle,
+) {
   const status = ref<'loading' | 'ready' | 'error'>('loading')
   const playback = shallowRef<Playback>()
   const error = ref<PlayerError>()
@@ -62,6 +67,7 @@ export function usePlayback(torrentId: string, fileIndex: number) {
       playback.value = await api.playback.postPlayback({
         torrentId,
         fileIndex,
+        title,
       })
       status.value = 'ready'
     }
@@ -122,6 +128,7 @@ export function usePlayback(torrentId: string, fileIndex: number) {
         position,
         duration:
           Number.isFinite(duration) && duration > 0 ? duration : undefined,
+        title,
       })
       .catch(() => {})
   }

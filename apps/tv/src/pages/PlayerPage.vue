@@ -19,8 +19,16 @@ import {
   clampTime,
   formatDuration,
 } from '../lib/player.ts'
+import { titleRefOf } from '../lib/sources.ts'
 
-const props = defineProps<{ torrentId: string, fileIndex: string }>()
+const props = defineProps<{
+  torrentId: string
+  fileIndex: string
+  // Открыт из карточки тайтла: позиция сохраняется по серии, а не по файлу
+  titleId?: string
+  season?: string
+  episode?: string
+}>()
 
 // Позиция сохраняется по ходу просмотра, а не только на выходе: ТВ могут выключить
 const SAVE_EVERY_S = 10
@@ -28,7 +36,11 @@ const SAVE_EVERY_S = 10
 const { t } = useI18n()
 const router = useRouter()
 const focus = useFocus()
-const player = usePlayback(props.torrentId, Number(props.fileIndex))
+const player = usePlayback(
+  props.torrentId,
+  Number(props.fileIndex),
+  titleRefOf(props.titleId, props.season, props.episode),
+)
 const { playback, stats } = player
 
 const video = ref<HTMLVideoElement>()

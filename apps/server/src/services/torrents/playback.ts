@@ -51,6 +51,15 @@ const RESUME_MIN_SECONDS = 30
 const RESUME_TAIL_SECONDS = 120
 const RESUME_TAIL_SHARE = 0.05
 
+function tailOf(duration: number) {
+  return Math.min(RESUME_TAIL_SECONDS, duration * RESUME_TAIL_SHARE)
+}
+
+/** Досмотрено: позиция в хвосте файла, где продолжать уже нечего */
+export function isWatched(position: number, duration: number | null) {
+  return !!duration && duration - position <= tailOf(duration)
+}
+
 /**
  * Позиция, с которой предложить продолжить. В самом начале продолжать нечего,
  * у самого конца файл считается досмотренным — предлагаем начать сначала.
@@ -59,12 +68,5 @@ export function resumePosition(position: number, duration: number | null) {
   if (position < RESUME_MIN_SECONDS)
     return null
 
-  if (duration) {
-    const tail = Math.min(RESUME_TAIL_SECONDS, duration * RESUME_TAIL_SHARE)
-
-    if (duration - position <= tail)
-      return null
-  }
-
-  return position
+  return isWatched(position, duration) ? null : position
 }

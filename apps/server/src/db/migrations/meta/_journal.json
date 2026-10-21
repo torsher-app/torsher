@@ -43,6 +43,13 @@
       "when": 1792550225694,
       "tag": "0005_bored_warpath",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1792567911897,
+      "tag": "0006_wet_changeling",
+      "breakpoints": true
     }
   ]
 }

@@ -164,3 +164,97 @@ export async function fetchCaps(
 
   return caps
 }
+
+// Тот же предел, что у `.torrent`, загруженного в панели
+export const TORRENT_FILE_MAX_BYTES = 8 * 1024 * 1024
+const MAX_REDIRECTS = 3
+
+export type DownloadedTorrent
+  = { kind: 'file', bytes: Uint8Array } | { kind: 'magnet', magnet: string }
+
+async function readLimited(res: Response) {
+  const length = Number(res.headers.get('content-length'))
+
+  if (length > TORRENT_FILE_MAX_BYTES)
+    throw new SourceError('bad_response', 'Torrent file is too large')
+
+  let bytes: Uint8Array
+
+  try {
+    bytes = new Uint8Array(await res.arrayBuffer())
+  }
+  catch (err) {
+    throw new SourceError(
+      isTimeout(err) ? 'timeout' : 'unreachable',
+      'Source response was interrupted',
+      { cause: err },
+    )
+  }
+
+  if (bytes.byteLength > TORRENT_FILE_MAX_BYTES)
+    throw new SourceError('bad_response', 'Torrent file is too large')
+
+  return bytes
+}
+
+/**
+ * `.torrent` по ссылке индексатора. Индексаторы раздач только с magnet
+ * отвечают на ссылку редиректом на `magnet:` — его и возвращаем.
+ * Редиректы идут вручную: `fetch` не следует по схеме `magnet:`.
+ */
+export async function downloadTorrent(
+  link: string,
+  timeoutMs = SOURCE_TIMEOUT_MS,
+): Promise<DownloadedTorrent> {
+  let url = new URL(link)
+
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    let res: Response
+
+    try {
+      res = await fetch(url, {
+        redirect: 'manual',
+        signal: AbortSignal.timeout(timeoutMs),
+      })
+    }
+    catch (err) {
+      throw new SourceError(
+        isTimeout(err) ? 'timeout' : 'unreachable',
+        isTimeout(err)
+          ? 'Source did not respond in time'
+          : 'Source is unreachable',
+        { cause: err },
+      )
+    }
+
+    const location = res.headers.get('location')
+
+    if (res.status >= 300 && res.status < 400 && location) {
+      if (location.startsWith('magnet:'))
+        return { kind: 'magnet', magnet: location }
+
+      url = new URL(location, url)
+
+      if (url.protocol !== 'http:' && url.protocol !== 'https:')
+        throw new SourceError('bad_response', 'Unexpected redirect')
+
+      continue
+    }
+
+    if (res.status === 401 || res.status === 403)
+      throw new SourceError('auth', 'Source rejected the API key')
+
+    if (!res.ok)
+      throw new SourceError('remote', `Source responded with ${res.status}`)
+
+    const bytes = await readLimited(res)
+
+    // Bencode-словарь начинается с `d`; страница с ошибкой — нет
+    if (bytes[0] !== 0x64)
+      throw new SourceError('bad_response', 'Response is not a torrent file')
+
+    return { kind: 'file', bytes }
+  }
+
+  throw new SourceError('bad_response', 'Too many redirects')
+}

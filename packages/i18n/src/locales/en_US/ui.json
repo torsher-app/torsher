@@ -72,7 +72,88 @@
       "directors": "Directed by",
       "aka": "Also known as",
       "data": "Data"
+    },
+    "continue": "Continue",
+    "continueEpisode": "Continue · S{season}E{episode}",
+    "left": "{n} min left",
+    "voice": "Voice-over",
+    "sourcesCount": "Sources {n}"
+  },
+  "watch": {
+    "searching": "Searching for releases…",
+    "preparing": "Preparing the release…",
+    "waitingFiles": "Waiting for the file list from peers…",
+    "noIndexers": "No indexers connected",
+    "nothing": "No releases found",
+    "searchFailed": "Could not search for releases",
+    "best": "{quality} · {voice} · {seeders}",
+    "errors": {
+      "noSources": "No suitable releases. Open Sources and pick a release yourself.",
+      "notPlayable": "The releases could not be opened: no peers or no such episode. Try another one in Sources.",
+      "gone": "This release is no longer in the search results. Refresh the sources.",
+      "engine": "The torrent engine is unavailable. Check the server in the control panel.",
+      "unauthorized": "Sign in to the control panel on this server and open the title again.",
+      "unknown": "Something went wrong. Please try again."
     }
+  },
+  "sources": {
+    "title": "Sources",
+    "count": "{n} release | {n} releases",
+    "updatedNow": "updated just now",
+    "updated": "updated {n} min ago",
+    "profile": "Profile: {qualities} · Russian voice-over",
+    "failed": "{failed} of {total} indexers did not respond",
+    "all": "All",
+    "showAll": "Show all {n}, including without recognized voice-over",
+    "showTop": "Show the best",
+    "refresh": "Refresh",
+    "seeders": "{n} seeder | {n} seeders",
+    "perEpisode": "{size} per episode",
+    "units": {
+      "gb": "{amount} GB",
+      "mb": "{amount} MB"
+    },
+    "unsure": "May be another title",
+    "noVoice": "Voice-over not recognized",
+    "reasons": {
+      "pinnedVoice": "Same as previous episodes",
+      "profile": "Matches your profile",
+      "bestQuality": "Best quality",
+      "smaller": "Smaller size",
+      "moreSeeders": "More seeders",
+      "originalAudio": "Has the original audio"
+    },
+    "voiceTypes": {
+      "D": "Dubbing",
+      "MVO": "Multi-voice",
+      "DVO": "Two-voice",
+      "VO": "Single-voice",
+      "AVO": "Author's",
+      "L": "Amateur",
+      "Original": "Original"
+    },
+    "empty": {
+      "noIndexers": {
+        "title": "No release sources",
+        "text": "Connect any Torznab indexer, for example Prowlarr or Jackett, in the control panel."
+      },
+      "nothing": {
+        "title": "No releases found",
+        "text": "The indexers found nothing for this title's names. Try searching again later."
+      },
+      "filtered": {
+        "title": "No releases match these filters",
+        "text": "Pick another voice-over or quality."
+      }
+    }
+  },
+  "voice": {
+    "title": "Voice-over",
+    "pinned": "same as previous episodes",
+    "upTo": "up to {quality}",
+    "unpin": "Don't pin",
+    "allSources": "All releases",
+    "empty": "No voice-over recognized in the releases found."
   },
   "countries": {
     "US": "USA",

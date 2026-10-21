@@ -4,6 +4,7 @@ import type {
   IndexerManager,
   IndexerManagerKind,
 } from '../../db/schema.ts'
+import type { TorznabCaps } from '../torznab/index.ts'
 import type { RemoteIndexer } from './managers.ts'
 import { and, eq, inArray, sql } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
@@ -80,6 +81,39 @@ export function listIndexers(): IndexerWithManager[] {
       ...row.indexers,
       managerKind: row.indexer_managers?.kind ?? null,
     }))
+}
+
+/** Индексатор, по которому можно искать раздачи */
+export interface SearchableIndexer {
+  id: string
+  name: string
+  url: string
+  caps: TorznabCaps
+  /** Расшифровывает ключ при запросе: битый ключ ломает только этот индексатор. */
+  apiKey: () => string | undefined
+}
+
+/** Включённые индексаторы с известными caps, которые менеджер ещё отдаёт */
+export function listSearchableIndexers(): SearchableIndexer[] {
+  return getDb()
+    .select()
+    .from(indexers)
+    .where(and(eq(indexers.enabled, true), eq(indexers.missing, false)))
+    .orderBy(indexers.name)
+    .all()
+    .flatMap(({ id, name, url, caps, apiKey }) =>
+      caps
+        ? [
+            {
+              id,
+              name,
+              url,
+              caps,
+              apiKey: () => (apiKey ? readStoredKey(apiKey) : undefined),
+            },
+          ]
+        : [],
+    )
 }
 
 export function getIndexer(id: string): IndexerWithManager | undefined {

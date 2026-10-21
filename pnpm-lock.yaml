@@ -226,6 +226,9 @@ importers:
       '@node-rs/argon2':
         specifier: ^2.2.2
         version: 2.2.2
+      '@torsher/release-parser':
+        specifier: workspace:*
+        version: link:../../packages/release-parser
       better-sqlite3:
         specifier: ^13.0.3
         version: 13.0.3

@@ -350,3 +350,47 @@ export const searchWithPerson = {
     },
   ],
 } as TmdbSearchResponse
+
+// Ответы для поиска раздач: тайтлы вымышленные, ID внешних баз — нули с единицей
+export const tvIdentity = {
+  name: 'Quiet Harbor',
+  original_name: 'Quiet Harbor',
+  original_language: 'en',
+  first_air_date: '2023-03-01',
+  last_air_date: '2025-05-20',
+  status: 'Ended',
+  external_ids: { imdb_id: 'tt0000001', tvdb_id: 202 },
+  alternative_titles: {
+    results: [
+      { iso_3166_1: 'RU', title: 'Тихая гавань: Сезоны' },
+      { iso_3166_1: 'JP', title: '静かな港' },
+      { iso_3166_1: 'US', title: 'quiet harbor' },
+    ],
+  },
+  translations: {
+    translations: [
+      {
+        iso_639_1: 'ru',
+        iso_3166_1: 'RU',
+        data: { name: 'Тихая гавань', overview: 'Длинное описание' },
+      },
+      { iso_639_1: 'en', iso_3166_1: 'US', data: { name: '' } },
+      { iso_639_1: 'de', iso_3166_1: 'DE', data: { name: 'Stiller Hafen' } },
+    ],
+  },
+}
+
+export const movieIdentity = {
+  title: 'The Paper Lantern',
+  original_title: 'Le Lampion',
+  original_language: 'fr',
+  release_date: '2021-06-11',
+  imdb_id: 'tt0000002',
+  external_ids: { imdb_id: 'tt0000002' },
+  alternative_titles: { titles: [] },
+  translations: {
+    translations: [
+      { iso_639_1: 'ru', iso_3166_1: 'RU', data: { title: 'Бумажный фонарь' } },
+    ],
+  },
+}

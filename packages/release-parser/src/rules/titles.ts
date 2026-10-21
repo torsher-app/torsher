@@ -1,45 +1,10 @@
 import type { ParseContext } from '../context.ts'
 import type { Token } from '../tokenize.ts'
 import type { ReleaseTitles } from '../types.ts'
+import { transliterate } from '../normalize.ts'
 
 const CYRILLIC = /\p{Script=Cyrillic}/gu
 const LATIN = /[a-z]/gi
-
-const TRANSLIT: Record<string, string> = {
-  а: 'a',
-  б: 'b',
-  в: 'v',
-  г: 'g',
-  д: 'd',
-  е: 'e',
-  ё: 'e',
-  ж: 'zh',
-  з: 'z',
-  и: 'i',
-  й: 'y',
-  к: 'k',
-  л: 'l',
-  м: 'm',
-  н: 'n',
-  о: 'o',
-  п: 'p',
-  р: 'r',
-  с: 's',
-  т: 't',
-  у: 'u',
-  ф: 'f',
-  х: 'kh',
-  ц: 'ts',
-  ч: 'ch',
-  ш: 'sh',
-  щ: 'shch',
-  ъ: '',
-  ы: 'y',
-  ь: '',
-  э: 'e',
-  ю: 'yu',
-  я: 'ya',
-}
 
 const RUSSIAN_SHORT_WORDS = new Set([
   'v',
@@ -87,10 +52,6 @@ function script(text: string): 'cyrillic' | 'latin' | 'none' {
   if (cyrillic === 0 && latin === 0)
     return 'none'
   return cyrillic >= latin ? 'cyrillic' : 'latin'
-}
-
-function transliterate(text: string) {
-  return [...text.toLowerCase()].map(char => TRANSLIT[char] ?? char).join('')
 }
 
 function letters(text: string) {

@@ -16,11 +16,7 @@ import {
   torrentStats,
 } from '../engine/index.ts'
 import { parseMagnet } from './magnet.ts'
-import {
-  bufferedAheadBytes,
-  fileOffsetOf,
-  resumePosition,
-} from './playback.ts'
+import { bufferedAheadBytes, fileOffsetOf } from './playback.ts'
 
 export { parseMagnet } from './magnet.ts'
 export { contentTypeOf, fileNameOf, isVideoFile } from './media.ts'
@@ -401,8 +397,4 @@ export function saveWatchState(
     })
     .returning()
     .get()
-}
-
-export function startPositionOf(state: WatchState | undefined) {
-  return state ? resumePosition(state.position, state.duration) : null
 }
