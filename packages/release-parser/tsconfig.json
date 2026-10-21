@@ -1,0 +1,9 @@
+{
+  "extends": "@torsher/tsconfig/base.json",
+  "compilerOptions": {
+    "lib": ["ESNext"],
+    "types": ["node"],
+    "erasableSyntaxOnly": true
+  },
+  "include": ["src/**/*.ts", "scripts/**/*.ts"]
+}
