@@ -13,11 +13,8 @@ import {
   isEngineReady,
   openStream,
   resolveMagnet,
-  torrentHaves,
   torrentStats,
-  updateOnlyFiles,
 } from '../engine/index.ts'
-import { readPieceLength } from './bencode.ts'
 import { parseMagnet } from './magnet.ts'
 import {
   bufferedAheadBytes,
@@ -67,10 +64,10 @@ function findByInfoHash(infoHash: string) {
 }
 
 function toFileEntries(details: EngineTorrentDetails): TorrentFileEntry[] {
-  return (details.files ?? []).map(file => ({
-    path: file.components.join('/') || file.name,
+  return details.files.map(file => ({
+    path: file.path,
     size: file.length,
-    padding: file.attributes?.padding ?? false,
+    padding: file.padding,
   }))
 }
 
@@ -78,7 +75,7 @@ function readyFields(bytes: Uint8Array, details: EngineTorrentDetails) {
   return {
     torrentFile: Buffer.from(bytes),
     files: toFileEntries(details),
-    pieceLength: readPieceLength(bytes),
+    pieceLength: details.pieceLength,
     status: 'ready' as const,
     error: null,
   }
@@ -110,7 +107,7 @@ async function runResolve(id: string) {
     )
     const details = await inspectTorrent(bytes)
 
-    if (details.info_hash.toLowerCase() !== torrent.infoHash) {
+    if (details.infoHash.toLowerCase() !== torrent.infoHash) {
       update(id, { status: 'failed', error: 'rejected' })
       return
     }
@@ -218,7 +215,7 @@ export async function retryTorrent(torrent: Torrent) {
 /** Раздача из `.torrent`: файлы известны сразу, движок только проверяет файл */
 export async function addTorrentFile(bytes: Uint8Array): Promise<AddResult> {
   const details = await inspectTorrent(bytes)
-  const infoHash = details.info_hash.toLowerCase()
+  const infoHash = details.infoHash.toLowerCase()
   const existing = findByInfoHash(infoHash)
   const name = details.name || infoHash
 
@@ -270,40 +267,20 @@ export function playableFile(torrent: Torrent, fileIndex: number) {
 
 /**
  * Готовит файл к просмотру: добавляет раздачу в движок (или находит её там)
- * и качает только этот файл — пак сезона не скачивается целиком из-за одной серии.
+ * и выбирает только этот файл — пак сезона не скачивается целиком из-за одной серии.
  */
 export async function prepareStream(torrent: Torrent, fileIndex: number) {
   if (!torrent.torrentFile)
     throw new EngineError('rejected', 'Torrent metadata is not ready')
 
-  const details = await addTorrent(torrent.torrentFile, [fileIndex])
-  const included = (details.files ?? [])
-    .map((file, index) => (file.included ? index : -1))
-    .filter(index => index >= 0)
-
-  // Раздача уже была в движке с другим выбором файлов
-  if (included.length !== 1 || included[0] !== fileIndex) {
-    try {
-      await updateOnlyFiles(torrent.infoHash, [fileIndex])
-    }
-    catch (err) {
-      // Раздача ещё проверяет файлы после перезапуска движка: смотреть
-      // можно и так, движок сам качает куски под позицией чтения
-      if (!(err instanceof EngineError))
-        throw err
-    }
-  }
+  await addTorrent(torrent.torrentFile, [fileIndex])
 
   return update(torrent.id, { inEngine: true, lastAccessAt: new Date() })
 }
 
-// Сколько поток ждёт, пока движок проверяет уже скачанные куски раздачи
-const CHECKING_WAIT_MS = 60_000
-
 /**
- * Открывает поток файла в движке. Раздачу, которую движок забыл, добавляет
- * заново; пока он проверяет скачанные куски (после добавления поверх файлов
- * на диске), ждёт: `<video>` терпеливо ждёт заголовков ответа.
+ * Открывает поток файла в движке. Раздачу, которую движок забыл (новый
+ * каталог данных, сброс состояния), добавляет заново.
  */
 export async function openFileStream(
   torrent: Torrent,
@@ -311,36 +288,16 @@ export async function openFileStream(
   range: string | undefined,
   signal: AbortSignal,
 ) {
-  const deadline = Date.now() + CHECKING_WAIT_MS
-  let prepared = false
-
-  for (;;) {
-    try {
-      return await openStream(torrent.infoHash, fileIndex, range, signal)
-    }
-    catch (err) {
-      if (!(err instanceof EngineError))
-        throw err
-
-      if (err.kind === 'not_found' && !prepared) {
-        prepared = true
-        await prepareStream(torrent, fileIndex)
-        continue
-      }
-
-      // Движок закреплённой версии отвечает на поток проверяемой раздачи
-      // ошибкой с этим текстом, отдельного кода у неё нет
-      const checking
-        = err.kind === 'failed'
-          && /invalid state initializing/i.test(err.message)
-
-      if (checking && Date.now() < deadline && !signal.aborted) {
-        await sleep(500)
-        continue
-      }
-
+  try {
+    return await openStream(torrent.infoHash, fileIndex, range, signal)
+  }
+  catch (err) {
+    if (!(err instanceof EngineError) || err.kind !== 'not_found')
       throw err
-    }
+
+    await prepareStream(torrent, fileIndex)
+
+    return openStream(torrent.infoHash, fileIndex, range, signal)
   }
 }
 
@@ -352,15 +309,8 @@ export function touchTorrent(id: string) {
     .run()
 }
 
-export type TorrentActivity
-  = 'idle' | 'checking' | 'downloading' | 'paused' | 'error'
-
-const ACTIVITY: Record<string, TorrentActivity> = {
-  initializing: 'checking',
-  live: 'downloading',
-  paused: 'paused',
-  error: 'error',
-}
+// `idle` — раздачи нет в движке (файл не начинали смотреть)
+export type TorrentActivity = 'idle' | 'downloading'
 
 export interface StreamStats {
   activity: TorrentActivity
@@ -401,22 +351,18 @@ export async function streamStats(
     throw err
   }
 
-  const haves = torrent.pieceLength
-    ? await torrentHaves(torrent.infoHash)
-    : null
-  const bufferedAhead
-    = haves && torrent.pieceLength
-      ? bufferedAheadBytes({
-          ...haves,
-          pieceLength: torrent.pieceLength,
-          fileOffset: fileOffsetOf(files, fileIndex),
-          fileSize: size,
-          position,
-        })
-      : 0
+  const bufferedAhead = torrent.pieceLength
+    ? bufferedAheadBytes({
+        pieces: stats.pieces,
+        pieceLength: torrent.pieceLength,
+        fileOffset: fileOffsetOf(files, fileIndex),
+        fileSize: size,
+        position,
+      })
+    : 0
 
   return {
-    activity: ACTIVITY[stats.state] ?? 'error',
+    activity: 'downloading',
     peers: stats.peers,
     downloadSpeed: stats.downloadSpeed,
     uploadSpeed: stats.uploadSpeed,

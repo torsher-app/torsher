@@ -49,6 +49,7 @@ Everything except the values below is set in the panel.
 | `SECRET_KEY` | key file in `/data/db` | Key that signs sign-in sessions |
 | `TMDB_ACCESS_TOKEN` | — | TMDB API Read Access Token for the catalog |
 | `API_PORT` | `8080` | Port inside the container |
+| `ENGINE_PEER_PORT` | any free port | Port the torrent engine accepts peer connections on; publish it to be reachable from outside |
 
 ### Data
 
@@ -67,13 +68,13 @@ pnpm typecheck
 pnpm test
 ```
 
-Streaming needs the torrent engine ([rqbit](https://github.com/ikatson/rqbit)). `pnpm dev` downloads the pinned release for your platform into the server data folder on first start and verifies its checksum; offline, the server starts without it. To install it separately:
+Streaming needs the torrent engine in `engine/` (Go, built on [anacrolix/torrent](https://github.com/anacrolix/torrent)). With Go 1.24+ installed, `pnpm dev` builds it into the server data folder on start; without Go, the server starts without it. To build it separately:
 
 ```bash
-pnpm --filter @torsher/server engine:install
+pnpm --filter @torsher/server engine:build
 ```
 
-To use your own binary instead, set `RQBIT_PATH` in `apps/server/.env`.
+To use a prebuilt binary instead, set `ENGINE_PATH` in `apps/server/.env`.
 
 `pnpm dev` starts the server, the panel and the showcase with hot reload. `pnpm build` builds the showcase and the panel, which the server then serves itself: the showcase at `/`, the panel at `/panel/` and the API at `/api`.
 

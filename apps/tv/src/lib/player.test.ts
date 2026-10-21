@@ -19,7 +19,7 @@ const peers = (connected: number) => ({ connected, found: connected * 3 })
 describe('шаги буферизации', () => {
   it('пока движок ищет пиров — «подключаемся»', () => {
     expect(bufferingStep(null, 0)).toBe('connecting')
-    expect(bufferingStep({ activity: 'checking', peers: peers(0) }, 2000)).toBe(
+    expect(bufferingStep({ activity: 'idle', peers: peers(0) }, 2000)).toBe(
       'connecting',
     )
     expect(

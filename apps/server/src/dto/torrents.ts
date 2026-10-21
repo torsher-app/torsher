@@ -92,7 +92,7 @@ export const torrentStatsQuery = z.object({
 export const torrentStats = z
   .object({
     // `idle` — раздача ещё не в движке (файл не начинали смотреть)
-    activity: z.enum(['idle', 'checking', 'downloading', 'paused', 'error']),
+    activity: z.enum(['idle', 'downloading']),
     // Движок не отличает сидов от пиров: `found` — известные, `connected` — подключённые
     peers: z.object({ connected: z.number(), found: z.number() }),
     // Байт в секунду

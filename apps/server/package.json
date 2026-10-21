@@ -4,14 +4,14 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "dev": "node --env-file-if-exists=.env scripts/engineInstall.ts --optional && NODE_ENV=development node --env-file-if-exists=.env --watch src/main.ts",
+    "dev": "node --env-file-if-exists=.env scripts/engineBuild.ts --optional && NODE_ENV=development node --env-file-if-exists=.env --watch src/main.ts",
     "start": "NODE_ENV=production node --env-file-if-exists=.env src/main.ts",
     "openapi": "node scripts/openapi.ts",
     "seed": "NODE_ENV=development node --env-file-if-exists=.env scripts/seed.ts",
     "db:generate": "drizzle-kit generate",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "engine:install": "node --env-file-if-exists=.env scripts/engineInstall.ts"
+    "engine:build": "node --env-file-if-exists=.env scripts/engineBuild.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.3",

@@ -40,7 +40,7 @@ function setup(overrides: { healthy?: () => boolean, exists?: boolean } = {}) {
   let port = 40000
 
   const supervisor = createEngineSupervisor({
-    binaryPath: '/data/engine/rqbit',
+    binaryPath: '/data/engine/torsher-engine',
     args: apiPort => ['--port', String(apiPort)],
     log,
     onReady,
