@@ -11,6 +11,8 @@ declare global {
       DATABASE_PATH?: string
       /** Секрет для подписи JWT. Обязателен. */
       SECRET_KEY?: string
+      /** Ключ шифрования секретов в базе. Без него — файл secret.key рядом с базой. */
+      TORSHER_SECRET?: string
       /** Префикс имён cookie: <prefix>_access_token. По умолчанию torsher. */
       COOKIE_PREFIX?: string
       /** API Read Access Token TMDB (v4). Без него каталог отвечает 503. */

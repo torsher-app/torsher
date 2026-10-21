@@ -193,6 +193,22 @@ export async function getErrorMessage(err: unknown) {
   return FALLBACK_MESSAGE
 }
 
+/**
+ * Тело ошибки запроса как JSON, когда сообщения мало: например, вид ошибки
+ * проверки источника. `undefined` — ответа не было или тело не JSON.
+ */
+export async function getErrorBody<T>(err: unknown): Promise<T | undefined> {
+  if (!(err instanceof HttpError))
+    return undefined
+
+  try {
+    return (await err.response.clone().json()) as T
+  }
+  catch {
+    return undefined
+  }
+}
+
 /** HTTP-статус ошибки запроса; `undefined` — ответа от сервера не было */
 export function getErrorStatus(err: unknown) {
   return err instanceof HttpError ? err.status : undefined

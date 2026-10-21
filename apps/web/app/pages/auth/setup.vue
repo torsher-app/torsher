@@ -2,7 +2,6 @@
 import { toTypedSchema } from '@vee-validate/zod'
 import { useForm } from 'vee-validate'
 import * as z from 'zod'
-import { Button } from '@/components/ui/button'
 import {
   Card,
   CardContent,
@@ -12,10 +11,12 @@ import {
 } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import LoadingButton from '~/components/LoadingButton.vue'
+import BrandMark from '~/components/shell/BrandMark.vue'
 import { getErrorMessage } from '~/services/api'
 
 definePageMeta({
-  middleware: 'guest-only',
+  middleware: ['guest-only', 'first-run'],
 })
 
 const { signup } = useAuth()
@@ -52,11 +53,18 @@ const onSubmit = handleSubmit(async (values) => {
 </script>
 
 <template>
-  <div class="flex min-h-screen items-center justify-center p-4">
+  <div class="flex w-full max-w-sm flex-col items-center gap-6">
+    <div class="flex items-center gap-2 text-xl font-semibold">
+      <BrandMark class="size-7" />
+      Torsher
+    </div>
     <Card class="w-full max-w-sm">
       <CardHeader>
-        <CardTitle>Регистрация</CardTitle>
-        <CardDescription>Создайте аккаунт</CardDescription>
+        <CardTitle>Создайте аккаунт</CardTitle>
+        <CardDescription>
+          Аккаунт владельца сервера: с ним вы входите в панель и настраиваете
+          Torsher. Второй аккаунт создать нельзя.
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <form class="grid gap-4" @submit="onSubmit">
@@ -105,16 +113,9 @@ const onSubmit = handleSubmit(async (values) => {
             {{ formError }}
           </p>
 
-          <Button type="submit" :disabled="isSubmitting">
+          <LoadingButton type="submit" :loading="isSubmitting">
             Создать аккаунт
-          </Button>
-
-          <p class="text-center text-sm text-muted-foreground">
-            Уже есть аккаунт?
-            <NuxtLink to="/auth/login" class="underline">
-              Войти
-            </NuxtLink>
-          </p>
+          </LoadingButton>
         </form>
       </CardContent>
     </Card>

@@ -8,8 +8,13 @@ import {
 } from '../config.ts'
 import { getDb } from '../db/index.ts'
 import { users } from '../db/schema.ts'
-import { signin, signup } from '../dto/auth.ts'
+import { setupResponse, signin, signup } from '../dto/auth.ts'
 import { messageResponse } from '../dto/common.ts'
+import {
+  createOwner,
+  needsSetup,
+  SetupDoneError,
+} from '../services/users/index.ts'
 import { normalizeEmail } from '../utils/email.ts'
 import { hashPassword, verifyPassword } from '../utils/password.ts'
 import { generateSessionTokens, verifyTokenFor } from '../utils/token.ts'
@@ -38,6 +43,22 @@ function clearSession(reply: FastifyReply) {
 }
 
 export const authRoutes: FastifyPluginAsyncZod = async (app) => {
+  // Без авторизации: форма входа по нему решает, показать ли создание аккаунта
+  app.get(
+    '/setup',
+    {
+      schema: {
+        operationId: 'getAuthSetup',
+        tags: ['Auth'],
+        response: {
+          200: setupResponse,
+        },
+      },
+    },
+    async () => ({ needsSetup: needsSetup() }),
+  )
+
+  // Создаёт единственный аккаунт — владельца сервера, только на пустой базе
   app.post(
     '/signup',
     {
@@ -48,24 +69,25 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
         response: {
           201: messageResponse,
           400: messageResponse,
+          403: messageResponse,
           500: messageResponse,
         },
       },
     },
     async (request, reply) => {
       try {
-        getDb()
-          .insert(users)
-          .values({
-            name: request.body.name,
-            email: normalizeEmail(request.body.email),
-            passwordHash: await hashPassword(request.body.password),
-          })
-          .run()
+        createOwner({
+          name: request.body.name,
+          email: normalizeEmail(request.body.email),
+          passwordHash: await hashPassword(request.body.password),
+        })
 
         return reply.code(201).send({ message: 'User created' })
       }
       catch (err) {
+        if (err instanceof SetupDoneError)
+          return reply.code(403).send({ message: 'Registration is closed' })
+
         if (isUniqueViolation(err))
           return reply.code(400).send({ message: 'Email already in use' })
 

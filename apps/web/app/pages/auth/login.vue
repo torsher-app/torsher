@@ -3,7 +3,6 @@ import { toTypedSchema } from '@vee-validate/zod'
 import { useForm } from 'vee-validate'
 import { useI18n } from 'vue-i18n'
 import * as z from 'zod'
-import { Button } from '@/components/ui/button'
 import {
   Card,
   CardContent,
@@ -13,10 +12,12 @@ import {
 } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import LoadingButton from '~/components/LoadingButton.vue'
+import BrandMark from '~/components/shell/BrandMark.vue'
 import { getErrorMessage } from '~/services/api'
 
 definePageMeta({
-  middleware: 'guest-only',
+  middleware: ['guest-only', 'first-run'],
 })
 
 const { signin } = useAuth()
@@ -52,7 +53,11 @@ const onSubmit = handleSubmit(async (values) => {
 </script>
 
 <template>
-  <div class="flex min-h-screen items-center justify-center p-4">
+  <div class="flex w-full max-w-sm flex-col items-center gap-6">
+    <div class="flex items-center gap-2 text-xl font-semibold">
+      <BrandMark class="size-7" />
+      Torsher
+    </div>
     <Card class="w-full max-w-sm">
       <CardHeader>
         <CardTitle>Вход</CardTitle>
@@ -92,16 +97,9 @@ const onSubmit = handleSubmit(async (values) => {
             {{ formError }}
           </p>
 
-          <Button type="submit" :disabled="isSubmitting">
+          <LoadingButton type="submit" :loading="isSubmitting">
             Войти
-          </Button>
-
-          <p class="text-center text-sm text-muted-foreground">
-            Нет аккаунта?
-            <NuxtLink to="/auth/register" class="underline">
-              Зарегистрироваться
-            </NuxtLink>
-          </p>
+          </LoadingButton>
 
           <NuxtLink
             to="/about"

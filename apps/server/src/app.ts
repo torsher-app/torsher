@@ -17,6 +17,8 @@ import { authRoutes } from './routes/auth.ts'
 import { catalogRoutes } from './routes/catalog.ts'
 import { homeRoutes } from './routes/home.ts'
 import { imageRoutes } from './routes/images.ts'
+import { indexerManagerRoutes } from './routes/indexerManagers.ts'
+import { indexerRoutes } from './routes/indexers.ts'
 import { userRoutes } from './routes/users.ts'
 
 /**
@@ -48,6 +50,10 @@ export function createApp(options: FastifyServerOptions = {}) {
           name: 'Catalog',
           description: 'Каталог: главная, поиск и карточки тайтлов',
         },
+        {
+          name: 'Sources',
+          description: 'Torznab-индексаторы и менеджеры индексаторов',
+        },
         { name: 'About', description: 'Версия, лицензия и исходники' },
       ],
     },
@@ -75,6 +81,8 @@ export function createApp(options: FastifyServerOptions = {}) {
   app.register(catalogRoutes, { prefix: '/catalog' })
   app.register(homeRoutes, { prefix: '/home' })
   app.register(imageRoutes, { prefix: '/img' })
+  app.register(indexerRoutes, { prefix: '/indexers' })
+  app.register(indexerManagerRoutes, { prefix: '/indexer-managers' })
 
   return app
 }

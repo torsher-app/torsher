@@ -3,6 +3,7 @@ import { api } from '~/services/api'
 
 export function useAuth() {
   const { fetchMe, reset } = useUser()
+  const { markDone } = useSetup()
 
   async function signin(body: SigninInput) {
     await api.auth.postAuthSignin(body)
@@ -12,6 +13,7 @@ export function useAuth() {
 
   async function signup(body: SignupInput) {
     await api.auth.postAuthSignup(body)
+    markDone()
     await signin({ email: body.email, password: body.password })
   }
 

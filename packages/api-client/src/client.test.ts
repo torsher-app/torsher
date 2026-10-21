@@ -1,6 +1,11 @@
 import type { ApiClientOptions, ErrorMode } from './client.ts'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createApiClient, getErrorMessage, getErrorStatus } from './client.ts'
+import {
+  createApiClient,
+  getErrorBody,
+  getErrorMessage,
+  getErrorStatus,
+} from './client.ts'
 
 const fetchMock = vi.fn<typeof fetch>()
 
@@ -302,5 +307,36 @@ describe('getErrorMessage', () => {
     await expect(
       getErrorMessage(new TypeError('Failed to fetch')),
     ).resolves.toBe('Something went wrong')
+  })
+})
+
+describe('getErrorBody', () => {
+  it('отдаёт тело ошибки и не мешает прочитать сообщение', async () => {
+    fetchMock.mockResolvedValue(
+      json(422, { message: 'Source rejected the API key', kind: 'auth' }),
+    )
+    const { api } = setup()
+
+    const error = await catchError(api.auth.postAuthSignin(signin))
+
+    await expect(getErrorBody(error)).resolves.toEqual({
+      message: 'Source rejected the API key',
+      kind: 'auth',
+    })
+    await expect(getErrorMessage(error)).resolves.toBe(
+      'Source rejected the API key',
+    )
+  })
+
+  it('undefined для тела не в JSON и для ошибок без ответа', async () => {
+    fetchMock.mockResolvedValue(new Response('Bad Gateway', { status: 502 }))
+    const { api } = setup()
+
+    const error = await catchError(api.auth.postAuthSignin(signin))
+
+    await expect(getErrorBody(error)).resolves.toBeUndefined()
+    await expect(
+      getErrorBody(new TypeError('Failed')),
+    ).resolves.toBeUndefined()
   })
 })
