@@ -1,4 +1,5 @@
 import type { SigninInput, SignupInput } from '@torsher/api-client'
+import { returnPath } from '~/lib/redirect'
 import { api } from '~/services/api'
 
 export function useAuth() {
@@ -8,6 +9,16 @@ export function useAuth() {
   async function signin(body: SigninInput) {
     await api.auth.postAuthSignin(body)
     await fetchMe()
+
+    // Вход ради витрины: уходим из панели целиком, роутер туда не ведёт
+    const next = returnPath(
+      new URLSearchParams(window.location.search).get('next'),
+    )
+    if (next) {
+      window.location.assign(next)
+      return
+    }
+
     await navigateTo('/')
   }
 

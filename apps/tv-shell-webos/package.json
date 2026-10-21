@@ -1,0 +1,29 @@
+{
+  "name": "@torsher/tv-shell-webos",
+  "type": "module",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "icons": "rsvg-convert -w 80 -h 80 assets/icon.svg -o public/icon-80.png && rsvg-convert -w 130 -h 130 assets/icon.svg -o public/icon-130.png",
+    "package": "vite build && ares-package --no-minify --outdir build dist",
+    "install:tv": "ares-install --device ${WEBOS_DEVICE:-tv} build/app.torsher.webos_${npm_package_version}_all.ipk",
+    "launch:tv": "ares-launch --device ${WEBOS_DEVICE:-tv} app.torsher.webos",
+    "inspect:tv": "ares-inspect --device ${WEBOS_DEVICE:-tv} --app app.torsher.webos --open"
+  },
+  "dependencies": {
+    "@fontsource/onest": "5.3.1",
+    "@torsher/i18n": "workspace:*",
+    "@torsher/tokens": "workspace:*"
+  },
+  "devDependencies": {
+    "@torsher/tsconfig": "workspace:*",
+    "@torsher/tv": "workspace:*",
+    "typescript": "^5.9.2",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.5"
+  }
+}

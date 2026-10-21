@@ -1,0 +1,64 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Torsher</title>
+  </head>
+  <body>
+    <main class="shell">
+      <div class="brand">
+        <svg
+          class="brand__mark"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+        >
+          <path d="M7.5 3h9l3 7.5h-15z" />
+          <path d="M12 10.5V20M8 21h8" />
+        </svg>
+        Torsher
+      </div>
+      <p id="tagline" class="tagline"></p>
+
+      <section id="address-screen" hidden>
+        <form id="address-form" novalidate>
+          <label id="address-label" class="label" for="address"></label>
+          <input
+            id="address"
+            class="field"
+            type="url"
+            autocomplete="off"
+            autocapitalize="off"
+            spellcheck="false"
+            data-focusable
+          />
+          <p id="address-hint" class="hint"></p>
+          <p id="error" class="error" role="alert" hidden></p>
+          <button
+            id="connect"
+            class="action action--primary"
+            type="submit"
+            data-focusable
+          ></button>
+        </form>
+      </section>
+
+      <section id="connect-screen" class="connect" hidden>
+        <div class="spinner" aria-hidden="true"></div>
+        <p id="connecting" class="connect__text"></p>
+        <button
+          id="change"
+          class="action"
+          type="button"
+          data-focusable
+        ></button>
+      </section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

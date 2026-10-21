@@ -191,13 +191,15 @@
   },
   "state": {
     "retry": "Try again",
+    "signIn": "Sign in",
     "empty": {
       "title": "Nothing found",
       "text": "Try a different title or check the spelling"
     },
     "unauthorized": {
       "title": "Sign in required",
-      "text": "Open the Torsher control panel in this browser, sign in and come back"
+      "text": "Open the Torsher control panel in this browser, sign in and come back",
+      "tvText": "Sign in on this TV through the Torsher control panel: it opens on the same server"
     },
     "notConfigured": {
       "title": "Catalog is not set up",
@@ -234,7 +236,9 @@
     "font": "The Onest font is distributed under the SIL Open Font License 1.1",
     "tagline": "A media server with your own library and showcase",
     "description": "Server version, license and data sources.",
-    "licenseLabel": "License"
+    "licenseLabel": "License",
+    "server": "Server",
+    "changeServer": "Change server"
   },
   "player": {
     "timeline": "Position {position}. OK pauses, left and right seek",
@@ -312,6 +316,20 @@
           "text": "Playback needs {needed} GB more, but the cache has {available} GB left. Raise the cache limit in the panel or keep the torrent."
         }
       }
+    }
+  },
+  "shell": {
+    "tagline": "Connect the TV to your Torsher server",
+    "addressLabel": "Server address",
+    "addressHint": "For example, 192.168.1.10:8080 — the same address where the Torsher control panel opens",
+    "connect": "Connect",
+    "connecting": "Connecting to {address}",
+    "changeAddress": "Change address",
+    "errors": {
+      "invalid": "Enter an address like 192.168.1.10:8080",
+      "timeout": "{address} didn't respond within 5 seconds. Check that the server is running and the TV is on the same network",
+      "unreachable": "Couldn't reach {address}. Check the address and that the server is running",
+      "notTorsher": "{address} responded, but it isn't a Torsher server. Check the address and the port"
     }
   },
   "panel": {

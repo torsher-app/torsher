@@ -1,0 +1,149 @@
+@import '@torsher/tokens/tokens.css';
+@import './fonts.css';
+
+/* Только то, что понимает Chromium 68: без gap у flex, inset, clamp, :focus-visible */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-family);
+  font-size: var(--font-size-m);
+  line-height: var(--line-height);
+}
+
+.shell {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  width: calc(var(--u) * 960);
+  height: 100%;
+  margin: 0 auto;
+  padding: var(--safe-y) 0;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  color: var(--color-accent);
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+}
+
+.brand__mark {
+  width: calc(var(--u) * 64);
+  height: calc(var(--u) * 64);
+  margin-right: var(--space-2);
+}
+
+.tagline {
+  margin: var(--space-2) 0 var(--space-6);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-l);
+}
+
+.label {
+  display: block;
+  margin-bottom: var(--space-2);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-s);
+}
+
+.field {
+  display: block;
+  width: 100%;
+  height: calc(var(--u) * 96);
+  padding: 0 var(--space-4);
+  border: 0;
+  border-radius: var(--radius-l);
+  outline: none;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: var(--font-size-l);
+  transition: box-shadow var(--motion-fast) var(--motion-easing);
+}
+
+.field::placeholder {
+  color: var(--color-text-dim);
+}
+
+.field:focus {
+  box-shadow: 0 0 0 var(--focus-ring-width) var(--color-focus);
+}
+
+.hint {
+  margin: var(--space-2) 0 0;
+  color: var(--color-text-dim);
+  font-size: var(--font-size-s);
+}
+
+.error {
+  margin: var(--space-3) 0 0;
+  color: var(--color-bad);
+}
+
+.action {
+  display: inline-flex;
+  align-items: center;
+  height: calc(var(--u) * 84);
+  margin-top: var(--space-5);
+  padding: 0 calc(var(--u) * 30);
+  border: 0;
+  border-radius: calc(var(--u) * 16);
+  outline: none;
+  background: var(--color-glass);
+  color: var(--color-text);
+  font: inherit;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: transform var(--motion-fast) var(--motion-easing);
+}
+
+.action--primary {
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+}
+
+.action:focus {
+  transform: scale(var(--focus-scale));
+  background: var(--color-focus);
+  color: var(--color-bg);
+}
+
+.connect {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.connect__text {
+  margin: var(--space-4) 0 0;
+  font-size: var(--font-size-l);
+}
+
+.spinner {
+  width: calc(var(--u) * 56);
+  height: calc(var(--u) * 56);
+  border: calc(var(--u) * 6) solid var(--color-glass);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 900ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

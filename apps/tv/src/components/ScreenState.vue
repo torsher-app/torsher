@@ -2,6 +2,8 @@
 import type { LoadError } from '../lib/loadError.ts'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { platform } from '../platform/index.ts'
+import { signInOnTv } from '../platform/shell.ts'
 
 const props = defineProps<{ kind: LoadError | 'empty' | 'homeEmpty' }>()
 
@@ -9,9 +11,14 @@ defineEmits<{ retry: [] }>()
 
 const { t } = useI18n()
 
+// На ТВ браузера с панелью нет: вход открывается здесь же, на том же сервере
+const signIn = computed(
+  () => props.kind === 'unauthorized' && platform === 'tv',
+)
+
 // Повтор не поможет, если ничего не нашлось или тайтла нет
 const canRetry = computed(
-  () => props.kind !== 'empty' && props.kind !== 'notFound',
+  () => props.kind !== 'empty' && props.kind !== 'notFound' && !signIn.value,
 )
 </script>
 
@@ -21,8 +28,17 @@ const canRetry = computed(
       {{ t(`state.${kind}.title`) }}
     </p>
     <p class="state__text">
-      {{ t(`state.${kind}.text`) }}
+      {{ signIn ? t("state.unauthorized.tvText") : t(`state.${kind}.text`) }}
     </p>
+    <button
+      v-if="signIn"
+      v-focusable
+      class="action action--primary"
+      type="button"
+      @click="signInOnTv"
+    >
+      {{ t("state.signIn") }}
+    </button>
     <button
       v-if="canRetry"
       v-focusable

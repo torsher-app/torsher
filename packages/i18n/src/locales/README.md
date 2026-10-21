@@ -25,6 +25,7 @@ search.*   — search screen
 title.*    — title page: actions, kinds, meta line
 state.*    — screen states shared by screens: empty, sign-in required, errors
 panel.*    — control panel: navigation, sections, dialogs
+shell.*    — TV app wrapper: server address screen
 ```
 
 Group keys by screen or entity, keep nesting shallow, and reuse `common.*` instead of duplicating labels.
