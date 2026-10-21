@@ -623,8 +623,8 @@ onBeforeUnmount(() => {
     <div class="title__dim" :class="{ 'title__dim--on': offset > 0 }" />
 
     <!--
-      В браузере кнопка видна всегда и доступна стрелкой вверх; на ТВ — только
-      под указкой: у 5-way есть клавиша Back, скрытую кнопку движок пропускает
+      Видна всегда и доступна стрелкой вверх с кнопок, и на ТВ: кнопка, которая
+      пропадает при переходе на пульт, выглядит сломанной
     -->
     <FocusSection name="title-back" :edges="{ down: order[0] }">
       <button v-focusable class="title__back" type="button" @click="back">
@@ -955,7 +955,7 @@ onBeforeUnmount(() => {
   z-index: 10;
   top: var(--safe-y);
   left: calc(var(--u) * 28);
-  display: none;
+  display: flex;
   align-items: center;
   height: calc(var(--u) * 64);
   padding: 0 calc(var(--u) * 26) 0 calc(var(--u) * 18);
@@ -965,11 +965,6 @@ onBeforeUnmount(() => {
   color: var(--color-text);
   font: inherit;
   font-size: calc(var(--u) * 32);
-}
-
-[data-platform='web'] .title__back,
-[data-input='pointer'] .title__back {
-  display: flex;
 }
 
 .title__back:hover,

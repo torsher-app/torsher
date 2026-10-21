@@ -20,6 +20,8 @@ export interface InputModeTracker {
   pointerMove: (x: number, y: number) => boolean
   /** Стрелка возвращает режим пульта. */
   arrow: () => void
+  /** Курсор спрятался сам (webOS прячет его через несколько секунд покоя). */
+  pointerHidden: () => void
 }
 
 export function createInputModeTracker(
@@ -53,6 +55,13 @@ export function createInputModeTracker(
       return true
     },
     arrow() {
+      set('remote')
+    },
+    pointerHidden() {
+      // Курсор появится там же, где спрятался: первый mousemove после этого —
+      // уже движение, даже с прежними координатами
+      lastX = undefined
+      lastY = undefined
       set('remote')
     },
   }
