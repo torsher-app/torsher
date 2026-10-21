@@ -47,7 +47,8 @@ Everything except the values below is set in the panel.
 | `TZ` | `Etc/UTC` | Time zone |
 | `TORSHER_SECRET` | key file in `/data/db` | Key that encrypts indexer API keys in the database |
 | `SECRET_KEY` | key file in `/data/db` | Key that signs sign-in sessions |
-| `TMDB_ACCESS_TOKEN` | — | TMDB API Read Access Token for the catalog |
+| `TMDB_ACCESS_TOKEN` | — | TMDB API Read Access Token for the catalog; a key set in Settings → Metadata takes precedence |
+| `HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY` | — | Your proxy for outgoing requests until the default route is changed in Settings → Network |
 | `API_PORT` | `8080` | Port inside the container |
 | `ENGINE_PEER_PORT` | any free port | Port the torrent engine accepts peer connections on; publish it to be reachable from outside |
 

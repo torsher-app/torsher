@@ -1,4 +1,5 @@
 import type { TorznabCaps } from './caps.ts'
+import { netFetch } from '../net/index.ts'
 import { parseCaps } from './caps.ts'
 import { child, parseXml, text } from './xml.ts'
 
@@ -43,7 +44,7 @@ export async function sourceGet(
   headers: Record<string, string> = {},
 ) {
   try {
-    return await fetch(url, {
+    return await netFetch(url, {
       headers,
       signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS),
     })
@@ -212,7 +213,7 @@ export async function downloadTorrent(
     let res: Response
 
     try {
-      res = await fetch(url, {
+      res = await netFetch(url, {
         redirect: 'manual',
         signal: AbortSignal.timeout(timeoutMs),
       })

@@ -440,7 +440,9 @@
         "label": "Settings sections",
         "account": "Account",
         "about": "About",
-        "storage": "Storage"
+        "storage": "Storage",
+        "network": "Network",
+        "metadata": "Metadata"
       },
       "account": {
         "description": "The server owner account. A second one can't be created: the household watches through profiles.",
@@ -500,6 +502,174 @@
           "watched": "watched {when}",
           "notWatched": "not watched",
           "open": "All downloads"
+        }
+      },
+      "network": {
+        "description": "How the server reaches TMDB, indexers and managers: directly or through your SOCKS5 or HTTP proxy, with the system DNS or DNS over HTTPS.",
+        "loadError": "Couldn't load network settings",
+        "loadErrorText": "The server didn't respond. Try again.",
+        "hosts": {
+          "title": "Availability",
+          "text": "Hosts the server talks to. They are checked from the server, not from your browser.",
+          "checkAll": "Check all",
+          "check": "Check",
+          "createRoute": "Create a route for this host",
+          "editRoute": "Edit the host route",
+          "actions": "Actions for {host}",
+          "latency": "{ms} ms"
+        },
+        "status": {
+          "ok": "Responds",
+          "pending": "Not checked",
+          "checking": "Checking…",
+          "dns": "Name not resolved",
+          "doh": "DoH not responding",
+          "timeout": "No answer",
+          "refused": "No connection",
+          "tls": "Wrong certificate",
+          "http": "Server error",
+          "spoofedRouted": "Responds, DNS is spoofed"
+        },
+        "reasons": {
+          "dns": "The name doesn't resolve — try DoH",
+          "doh": "The DoH provider doesn't respond — pick another one",
+          "timeout": "No answer in 8 s — check the network or the proxy",
+          "refused": "Connection failed — check the address or the proxy",
+          "tls": "Wrong certificate — the address may be spoofed, try DoH",
+          "http": "The server responded with error {code}",
+          "spoofed": "System DNS is spoofed — turn on DoH for this host",
+          "spoofedRouted": "System DNS is spoofed — works through the route"
+        },
+        "check": {
+          "title": "Checked {done} of {total}",
+          "hint": "on the server, you can leave the page",
+          "doneOk": "All hosts respond: {n}",
+          "doneProblems": "{n} host has a problem | {n} hosts have problems"
+        },
+        "via": {
+          "direct": "Direct",
+          "socks5h": "SOCKS5",
+          "http": "HTTP proxy",
+          "env": "Proxy from the environment (HTTPS_PROXY)"
+        },
+        "viaText": {
+          "direct": "The server connects to the host itself; names are resolved by the chosen DNS.",
+          "socks5h": "Through your SOCKS5 proxy. Host names are resolved by the proxy.",
+          "http": "Through your HTTP proxy (CONNECT). Host names are resolved by the proxy."
+        },
+        "dns": {
+          "system": "System DNS",
+          "quad9": "DoH Quad9",
+          "google": "DoH Google",
+          "cloudflare": "DoH Cloudflare",
+          "custom": "Custom DoH"
+        },
+        "dnsCard": {
+          "title": "Default DNS",
+          "text": "For hosts without their own route. If the provider's DNS returns wrong addresses, pick DNS over HTTPS.",
+          "systemHint": "Names are resolved by the server's operating system.",
+          "proxyNote": "Hosts without their own route go through a proxy: it resolves the names.",
+          "envProxyNote": "Requests now go through the proxy from the environment (HTTPS_PROXY): it resolves the names. Choosing DoH turns it off for hosts without their own route.",
+          "saved": "DNS saved",
+          "savedText": "New requests already use it"
+        },
+        "routes": {
+          "title": "Routes",
+          "text": "Which hosts go through a proxy or a different DNS. A route matches the host exactly or by a mask, not part of the address.",
+          "hint": "An exact host beats a mask, masks apply in order.",
+          "add": "Add route",
+          "default": "All other hosts",
+          "withCredentials": "with sign-in",
+          "edit": "Edit",
+          "moveUp": "Move {match} up",
+          "moveDown": "Move {match} down",
+          "actions": "Actions for {match}"
+        },
+        "routeDialog": {
+          "addTitle": "New route",
+          "editTitle": "Edit route",
+          "description": "Bring your own proxy: Torsher doesn't provide one.",
+          "match": "Host or mask",
+          "matchHint": "indexer.example — this host only, *.indexer.example — all its subdomains.",
+          "matchDefault": "Hosts without their own route. This route can't be deleted.",
+          "via": "How to connect",
+          "proxy": "Proxy address",
+          "proxyHint": "host:port, for example 192.168.1.10:1080.",
+          "username": "Username",
+          "password": "Password",
+          "show": "Show",
+          "hide": "Hide",
+          "credentialsHint": "If the proxy asks for sign-in.",
+          "credentialsSaved": "Username and password are saved. Leave empty to keep them.",
+          "credentialsForget": "The saved username and password will be removed.",
+          "forgetCredentials": "Remove",
+          "keepCredentials": "Keep",
+          "dns": "DNS",
+          "dnsProxy": "Through a proxy, host names are resolved by the proxy: this route has no DNS setting.",
+          "dohUrl": "DoH address",
+          "dohUrlHint": "An RFC 8484 address over https, for example https://doh.example/dns-query.",
+          "submit": "Add route",
+          "added": "Route for {match} added",
+          "saved": "Route saved",
+          "failed": "Couldn't save the route"
+        },
+        "validation": {
+          "match": "Enter a host or a mask like *.indexer.example, without scheme, port and path",
+          "proxy": {
+            "format": "Enter the address as host:port",
+            "scheme": "This scheme doesn't match the chosen connection",
+            "port": "The port must be 1–65535"
+          },
+          "dohUrl": "Enter an https address"
+        },
+        "serverErrors": {
+          "invalid": {
+            "match": "The server didn't accept the host or mask",
+            "proxy": "The server didn't accept the proxy address",
+            "dohUrl": "The server didn't accept the DoH address"
+          },
+          "duplicate": {
+            "match": "A route for this host already exists — edit it instead"
+          },
+          "default_route": {
+            "match": "The default route can't be renamed or deleted"
+          }
+        },
+        "deleteDialog": {
+          "title": "Delete the route for {match}?",
+          "text": "Its hosts will follow the other routes or the default route.",
+          "deleted": "Route for {match} deleted"
+        }
+      },
+      "metadata": {
+        "description": "Where the catalog takes titles, posters and descriptions from.",
+        "loadError": "Couldn't load metadata settings",
+        "tmdbTitle": "TMDB key",
+        "tmdbText": "The showcase catalog comes from TMDB. TMDB may revoke the app key at any time — your own key keeps working.",
+        "app": "App key",
+        "appText": "Built into this server build",
+        "appMissing": "This build has no app key",
+        "custom": "Your key",
+        "customText": "An API key or a read access token from your TMDB account",
+        "key": "Key",
+        "keyHint": "An API key (32 characters) or an API read access token.",
+        "keySaved": "A key is saved. Enter a new one to replace it.",
+        "where": "The key is in your TMDB account settings, API section.",
+        "whereLink": "Open TMDB",
+        "noneTitle": "No TMDB key",
+        "noneText": "Without a key the showcase catalog won't load. Enter your own key.",
+        "savedCustom": "Your TMDB key saved",
+        "savedApp": "The app key is in use",
+        "savedText": "The catalog uses it from the next request",
+        "check": {
+          "action": "Check",
+          "ok": "The key works",
+          "rejected": "TMDB didn't accept the key",
+          "unavailable": "TMDB is unreachable — check the network settings",
+          "missing": "There is no key to check"
+        },
+        "validation": {
+          "key": "Enter the key: at least 16 characters"
         }
       }
     },

@@ -65,6 +65,18 @@ export const config = {
     return process.env.DOWNLOADS_PATH || join(this.dataDir, 'downloads')
   },
 
+  // Прокси из окружения (`HTTPS_PROXY`, `HTTP_PROXY`, исключения — `NO_PROXY`):
+  // им ходит маршрут по умолчанию, пока его не настроили в «Сети»
+  get envProxy() {
+    const env = process.env
+
+    // Строчные важнее заглавных, как у undici
+    return Boolean(
+      (env.https_proxy ?? env.HTTPS_PROXY)
+      || (env.http_proxy ?? env.HTTP_PROXY),
+    )
+  },
+
   // Без токена сервер работает, а каталог отвечает понятной ошибкой
   get tmdbAccessToken() {
     return process.env.TMDB_ACCESS_TOKEN || undefined
