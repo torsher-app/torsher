@@ -53,15 +53,15 @@ afterEach(() => {
 
 describe('доступ', () => {
   it.each([
-    ['GET', '/indexers'],
-    ['POST', '/indexers'],
-    ['PATCH', '/indexers/x'],
-    ['DELETE', '/indexers/x'],
-    ['POST', '/indexers/x/test'],
-    ['GET', '/indexer-managers'],
-    ['POST', '/indexer-managers'],
-    ['POST', '/indexer-managers/x/sync'],
-    ['DELETE', '/indexer-managers/x'],
+    ['GET', '/api/indexers'],
+    ['POST', '/api/indexers'],
+    ['PATCH', '/api/indexers/x'],
+    ['DELETE', '/api/indexers/x'],
+    ['POST', '/api/indexers/x/test'],
+    ['GET', '/api/indexer-managers'],
+    ['POST', '/api/indexer-managers'],
+    ['POST', '/api/indexer-managers/x/sync'],
+    ['DELETE', '/api/indexer-managers/x'],
   ] as const)('%s %s: 401 без входа', async (method, url) => {
     const anonymous = await app.inject({ method, url })
 
@@ -75,7 +75,7 @@ describe('индексаторы', () => {
 
     const created = await app.inject({
       method: 'POST',
-      url: '/indexers',
+      url: '/api/indexers',
       cookies: owner,
       payload: {
         name: 'Indexer A',
@@ -100,7 +100,7 @@ describe('индексаторы', () => {
       searchModes: { search: true, tvSearch: true, movieSearch: false },
     })
 
-    const list = await app.inject({ url: '/indexers', cookies: owner })
+    const list = await app.inject({ url: '/api/indexers', cookies: owner })
 
     expect(list.json().items).toHaveLength(1)
     expect(list.body).not.toContain(SECRET)
@@ -111,7 +111,7 @@ describe('индексаторы', () => {
 
     const res = await app.inject({
       method: 'POST',
-      url: '/indexers',
+      url: '/api/indexers',
       cookies: owner,
       payload: {
         name: 'Indexer A',
@@ -128,7 +128,7 @@ describe('индексаторы', () => {
   it('отвечает 400 на адрес не по http', async () => {
     const res = await app.inject({
       method: 'POST',
-      url: '/indexers',
+      url: '/api/indexers',
       cookies: owner,
       payload: { name: 'Indexer A', url: 'file:///etc/passwd' },
     })
@@ -142,7 +142,7 @@ describe('индексаторы', () => {
     const { id } = (
       await app.inject({
         method: 'POST',
-        url: '/indexers',
+        url: '/api/indexers',
         cookies: owner,
         payload: { name: 'Indexer A', url: 'https://indexer.example' },
       })
@@ -150,7 +150,7 @@ describe('индексаторы', () => {
 
     const patched = await app.inject({
       method: 'PATCH',
-      url: `/indexers/${id}`,
+      url: `/api/indexers/${id}`,
       cookies: owner,
       payload: { enabled: false, name: 'Indexer B', apiKey: SECRET },
     })
@@ -167,7 +167,7 @@ describe('индексаторы', () => {
     fetchMock.mockResolvedValue(new Response('', { status: 401 }))
     const tested = await app.inject({
       method: 'POST',
-      url: `/indexers/${id}/test`,
+      url: `/api/indexers/${id}/test`,
       cookies: owner,
     })
 
@@ -179,7 +179,7 @@ describe('индексаторы', () => {
 
     const deleted = await app.inject({
       method: 'DELETE',
-      url: `/indexers/${id}`,
+      url: `/api/indexers/${id}`,
       cookies: owner,
     })
 
@@ -187,7 +187,7 @@ describe('индексаторы', () => {
 
     const missing = await app.inject({
       method: 'POST',
-      url: `/indexers/${id}/test`,
+      url: `/api/indexers/${id}/test`,
       cookies: owner,
     })
 
@@ -205,7 +205,7 @@ describe('менеджеры', () => {
 
     const imported = await app.inject({
       method: 'POST',
-      url: '/indexer-managers',
+      url: '/api/indexer-managers',
       cookies: owner,
       payload: {
         kind: 'prowlarr',
@@ -226,21 +226,21 @@ describe('менеджеры', () => {
     const { id } = imported.json().manager
     const synced = await app.inject({
       method: 'POST',
-      url: `/indexer-managers/${id}/sync`,
+      url: `/api/indexer-managers/${id}/sync`,
       cookies: owner,
     })
 
     expect(synced.statusCode).toBe(200)
     expect(synced.json()).toMatchObject({ added: 0, updated: 0, missing: 0 })
 
-    for (const url of ['/indexer-managers', '/indexers']) {
+    for (const url of ['/api/indexer-managers', '/api/indexers']) {
       const res = await app.inject({ url, cookies: owner })
 
       expect(res.body).not.toContain(SECRET)
     }
 
     const list = (
-      await app.inject({ url: '/indexers', cookies: owner })
+      await app.inject({ url: '/api/indexers', cookies: owner })
     ).json()
 
     expect(
@@ -255,7 +255,7 @@ describe('менеджеры', () => {
 
     const res = await app.inject({
       method: 'POST',
-      url: '/indexer-managers',
+      url: '/api/indexer-managers',
       cookies: owner,
       payload: {
         kind: 'jackett',
@@ -275,7 +275,7 @@ describe('менеджеры', () => {
       return (
         await app.inject({
           method: 'POST',
-          url: '/indexer-managers',
+          url: '/api/indexer-managers',
           cookies: owner,
           payload: { kind: 'jackett', url, apiKey: 'key' },
         })
@@ -287,17 +287,17 @@ describe('менеджеры', () => {
 
     await app.inject({
       method: 'DELETE',
-      url: `/indexer-managers/${kept}`,
+      url: `/api/indexer-managers/${kept}`,
       cookies: owner,
     })
     await app.inject({
       method: 'DELETE',
-      url: `/indexer-managers/${removed}?indexers=delete`,
+      url: `/api/indexer-managers/${removed}?indexers=delete`,
       cookies: owner,
     })
 
     const list = (
-      await app.inject({ url: '/indexers', cookies: owner })
+      await app.inject({ url: '/api/indexers', cookies: owner })
     ).json()
 
     expect(list.items).toHaveLength(2)
@@ -307,7 +307,7 @@ describe('менеджеры', () => {
 
     const again = await app.inject({
       method: 'DELETE',
-      url: `/indexer-managers/${kept}`,
+      url: `/api/indexer-managers/${kept}`,
       cookies: owner,
     })
 

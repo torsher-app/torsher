@@ -18,7 +18,6 @@ function json(status: number, body: unknown = {}) {
 
 function setup(mode: ErrorMode = 'silent') {
   const options = {
-    baseUrl: '/api',
     getErrorMode: () => mode,
     onSessionExpired: vi.fn(),
     onError: vi.fn(),

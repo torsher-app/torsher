@@ -24,6 +24,9 @@ await generateApi({
   output: join(ROOT, 'src', 'generated'),
   fileName: 'index.ts',
   httpClientType: 'fetch',
+  // Пути начинаются с /api: модули клиента (`api.auth`, `api.catalog`)
+  // называем по следующему сегменту
+  moduleNameIndex: 1,
   unwrapResponseData: true,
   extractResponseError: true,
   silent: true,

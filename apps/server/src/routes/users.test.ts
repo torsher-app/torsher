@@ -12,13 +12,13 @@ beforeAll(() => {
 async function signupAndSignin(email: string) {
   await app.inject({
     method: 'POST',
-    url: '/auth/signup',
+    url: '/api/auth/signup',
     payload: { name: 'User', email, password: 'password123' },
   })
 
   const res = await app.inject({
     method: 'POST',
-    url: '/auth/signin',
+    url: '/api/auth/signin',
     payload: { email, password: 'password123' },
   })
   const cookie = res.cookies.find(item => item.name === ACCESS_TOKEN_COOKIE)
@@ -26,16 +26,16 @@ async function signupAndSignin(email: string) {
   return { [ACCESS_TOKEN_COOKIE]: cookie!.value }
 }
 
-describe('get /users/me', () => {
+describe('get /api/users/me', () => {
   it('отвечает 401 без cookie', async () => {
-    const res = await app.inject({ url: '/users/me' })
+    const res = await app.inject({ url: '/api/users/me' })
 
     expect(res.statusCode).toBe(401)
   })
 
   it('отвечает 401 на подделанный токен', async () => {
     const res = await app.inject({
-      url: '/users/me',
+      url: '/api/users/me',
       cookies: { [ACCESS_TOKEN_COOKIE]: 'not-a-jwt' },
     })
 
@@ -45,21 +45,21 @@ describe('get /users/me', () => {
 
 describe('первый запуск', () => {
   it('создаёт только один аккаунт', async () => {
-    const before = await app.inject({ url: '/auth/setup' })
+    const before = await app.inject({ url: '/api/auth/setup' })
 
     expect(before.json()).toEqual({ needsSetup: true })
 
     const owner = await signupAndSignin('owner@example.com')
-    const me = await app.inject({ url: '/users/me', cookies: owner })
+    const me = await app.inject({ url: '/api/users/me', cookies: owner })
 
     expect(me.json().email).toBe('owner@example.com')
-    expect((await app.inject({ url: '/auth/setup' })).json()).toEqual({
+    expect((await app.inject({ url: '/api/auth/setup' })).json()).toEqual({
       needsSetup: false,
     })
 
     const second = await app.inject({
       method: 'POST',
-      url: '/auth/signup',
+      url: '/api/auth/signup',
       payload: {
         name: 'User',
         email: 'second@example.com',
@@ -71,9 +71,9 @@ describe('первый запуск', () => {
   })
 })
 
-describe('get /health', () => {
+describe('get /api/health', () => {
   it('отвечает ok', async () => {
-    const res = await app.inject({ url: '/health' })
+    const res = await app.inject({ url: '/api/health' })
 
     expect(res.statusCode).toBe(200)
     expect(res.json()).toEqual({ status: 'ok' })

@@ -75,7 +75,7 @@ export function regionOf(language: string) {
 
 // TMDB отдаёт путь с ведущим слешем: /abc.jpg
 function imageUrl(size: string, path: string | null | undefined) {
-  return path ? `/img/${size}${path}` : undefined
+  return path ? `/api/img/${size}${path}` : undefined
 }
 
 function yearOf(date: string | null | undefined) {

@@ -3,7 +3,6 @@ import { toLoadError } from './lib/loadError.ts'
 
 // Ошибки показывает сам экран: тостов и страницы ошибки у витрины нет
 export const api = createApiClient({
-  baseUrl: '/api',
   getErrorMode: () => 'silent',
   onSessionExpired: () => {},
   onError: () => {},

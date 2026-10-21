@@ -33,7 +33,7 @@ export const card = z
     title: z.string(),
     originalTitle: z.string(),
     year: z.number().int().optional(),
-    // Относительный URL прокси картинок: /img/<size>/<file>
+    // Относительный URL прокси картинок: /api/img/<size>/<file>
     poster: z.string().optional(),
   })
   .meta({ id: 'card' })

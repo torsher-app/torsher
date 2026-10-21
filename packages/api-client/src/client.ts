@@ -3,7 +3,10 @@ import { Api } from './generated'
 export type ErrorMode = 'global' | 'toast' | 'silent'
 
 export interface ApiClientOptions {
-  /** Все запросы идут на прокси того же origin */
+  /**
+   * Адрес сервера. По умолчанию — тот же origin: витрину и панель отдаёт сам
+   * сервер, а в разработке их dev-серверы проксируют `/api`
+   */
   baseUrl?: string
   /** Как показывать ошибку текущего запроса */
   getErrorMode: () => ErrorMode
@@ -15,7 +18,7 @@ export interface ApiClientOptions {
   onFatal: (status: number) => void
 }
 
-const REFRESH_PATH = '/auth/refresh'
+const REFRESH_PATH = '/api/auth/refresh'
 const UNAUTHORIZED = 401
 const TIMEOUT_MS = 10_000
 const RETRY_DELAY_MS = 300
@@ -52,7 +55,7 @@ class TimeoutError extends Error {
  * Chromium 68: на нём работает витрина на старых ТВ.
  */
 export function createApiClient(options: ApiClientOptions) {
-  const baseUrl = options.baseUrl ?? '/api'
+  const baseUrl = options.baseUrl ?? ''
 
   let refreshPromise: Promise<void> | null = null
 

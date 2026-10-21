@@ -10,19 +10,11 @@ import {
   serializerCompiler,
   validatorCompiler,
 } from 'fastify-type-provider-zod'
-import { z } from 'zod'
 import { config } from './config.ts'
-import { aboutRoutes } from './routes/about.ts'
-import { authRoutes } from './routes/auth.ts'
-import { catalogRoutes } from './routes/catalog.ts'
-import { homeRoutes } from './routes/home.ts'
-import { imageRoutes } from './routes/images.ts'
-import { indexerManagerRoutes } from './routes/indexerManagers.ts'
-import { indexerRoutes } from './routes/indexers.ts'
+import { apiRoutes } from './routes/api.ts'
 import { playbackRoutes } from './routes/playback.ts'
 import { streamRoutes } from './routes/stream.ts'
 import { torrentRoutes } from './routes/torrents.ts'
-import { userRoutes } from './routes/users.ts'
 
 /**
  * Приложение отделено от `main.ts`, чтобы тесты и выгрузка OpenAPI могли
@@ -72,28 +64,9 @@ export function createApp(options: FastifyServerOptions = {}) {
     transformObject: jsonSchemaTransformObject,
   })
 
-  app.get(
-    '/health',
-    {
-      schema: {
-        operationId: 'getHealth',
-        tags: ['Health'],
-        response: {
-          200: z.object({ status: z.literal('ok') }),
-        },
-      },
-    },
-    () => ({ status: 'ok' as const }),
-  )
-
-  app.register(aboutRoutes, { prefix: '/about' })
-  app.register(authRoutes, { prefix: '/auth' })
-  app.register(userRoutes, { prefix: '/users' })
-  app.register(catalogRoutes, { prefix: '/catalog' })
-  app.register(homeRoutes, { prefix: '/home' })
-  app.register(imageRoutes, { prefix: '/img' })
-  app.register(indexerRoutes, { prefix: '/indexers' })
-  app.register(indexerManagerRoutes, { prefix: '/indexer-managers' })
+  // Весь API — под /api: корень и /panel/ занимают витрина и панель,
+  // которые сервер отдаёт с того же origin
+  app.register(apiRoutes, { prefix: '/api' })
   app.register(torrentRoutes, { prefix: '/torrents' })
   app.register(streamRoutes, { prefix: '/stream' })
   app.register(playbackRoutes)

@@ -1,0 +1,35 @@
+import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
+import { z } from 'zod'
+import { aboutRoutes } from './about.ts'
+import { authRoutes } from './auth.ts'
+import { catalogRoutes } from './catalog.ts'
+import { homeRoutes } from './home.ts'
+import { imageRoutes } from './images.ts'
+import { indexerManagerRoutes } from './indexerManagers.ts'
+import { indexerRoutes } from './indexers.ts'
+import { userRoutes } from './users.ts'
+
+export const apiRoutes: FastifyPluginAsyncZod = async (app) => {
+  app.get(
+    '/health',
+    {
+      schema: {
+        operationId: 'getHealth',
+        tags: ['Health'],
+        response: {
+          200: z.object({ status: z.literal('ok') }),
+        },
+      },
+    },
+    () => ({ status: 'ok' as const }),
+  )
+
+  app.register(aboutRoutes, { prefix: '/about' })
+  app.register(authRoutes, { prefix: '/auth' })
+  app.register(userRoutes, { prefix: '/users' })
+  app.register(catalogRoutes, { prefix: '/catalog' })
+  app.register(homeRoutes, { prefix: '/home' })
+  app.register(imageRoutes, { prefix: '/img' })
+  app.register(indexerRoutes, { prefix: '/indexers' })
+  app.register(indexerManagerRoutes, { prefix: '/indexer-managers' })
+}

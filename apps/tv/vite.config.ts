@@ -16,11 +16,7 @@ export default defineConfig({
     // Тот же origin для API и картинок: cookie сессии, выданные панелью
     // на localhost, доходят до сервера и отсюда
     proxy: {
-      '/api': {
-        target: API_URL,
-        rewrite: path => path.replace(/^\/api/, ''),
-      },
-      '/img': API_URL,
+      '/api': API_URL,
     },
   },
 })

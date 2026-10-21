@@ -52,7 +52,7 @@ describe('searchResultToCard', () => {
       title: 'Матрица',
       originalTitle: 'The Matrix',
       year: 1999,
-      poster: '/img/w342/p96dm7sCMn4VYAStA6siNz30G1r.jpg',
+      poster: '/api/img/w342/p96dm7sCMn4VYAStA6siNz30G1r.jpg',
     })
   })
 
@@ -94,17 +94,17 @@ describe('listResultToCard', () => {
 
 describe('pickLogo', () => {
   it('предпочитает логотип на языке интерфейса с лучшей оценкой, только PNG', () => {
-    expect(pickLogo(logos, 'ru-RU')).toBe('/img/w500/ruLogo.png')
+    expect(pickLogo(logos, 'ru-RU')).toBe('/api/img/w500/ruLogo.png')
   })
 
   it('без перевода берёт логотип без текста, затем английский', () => {
-    expect(pickLogo(logos, 'de-DE')).toBe('/img/w500/neutralLogo.png')
+    expect(pickLogo(logos, 'de-DE')).toBe('/api/img/w500/neutralLogo.png')
     expect(
       pickLogo(
         logos.filter(logo => logo.iso_639_1 !== null),
         'de-DE',
       ),
-    ).toBe('/img/w500/enLogo.png')
+    ).toBe('/api/img/w500/enLogo.png')
   })
 
   it('без логотипов — undefined', () => {
@@ -121,8 +121,8 @@ describe('movieToDetails', () => {
       title: 'Матрица',
       originalTitle: 'The Matrix',
       year: 1999,
-      poster: '/img/w342/p96dm7sCMn4VYAStA6siNz30G1r.jpg',
-      backdrop: '/img/w1280/tlm8UkiQsitc8rSuIAscQDCnP8d.jpg',
+      poster: '/api/img/w342/p96dm7sCMn4VYAStA6siNz30G1r.jpg',
+      backdrop: '/api/img/w1280/tlm8UkiQsitc8rSuIAscQDCnP8d.jpg',
       overview: 'Хакер Нео узнаёт правду о реальности.',
       genres: ['боевик', 'фантастика'],
       runtime: 136,
@@ -156,10 +156,10 @@ describe('movieToDetails', () => {
 describe('логотип в деталях', () => {
   it('выбирается по языку запроса', () => {
     expect(movieToDetails({ ...movie, images: { logos } }, 'ru-RU').logo).toBe(
-      '/img/w500/ruLogo.png',
+      '/api/img/w500/ruLogo.png',
     )
     expect(tvToDetails({ ...tv, images: { logos } }, 'en-US').logo).toBe(
-      '/img/w500/enLogo.png',
+      '/api/img/w500/enLogo.png',
     )
   })
 })
@@ -275,7 +275,7 @@ describe('seasonToDetails', () => {
         overview: 'Экипаж просыпается.',
         airDate: '2026-09-26',
         runtime: 52,
-        still: '/img/w300/still1.jpg',
+        still: '/api/img/w300/still1.jpg',
       },
       {
         number: 2,
@@ -336,7 +336,7 @@ describe('extras', () => {
         id: 'tmdb:person:6384',
         name: 'Keanu Reeves',
         role: 'Neo',
-        photo: '/img/w185/keanu.jpg',
+        photo: '/api/img/w185/keanu.jpg',
       },
       {
         id: 'tmdb:person:2975',
