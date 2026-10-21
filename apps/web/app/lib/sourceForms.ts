@@ -15,3 +15,14 @@ export function httpUrlSchema(message: string) {
       }
     }, message)
 }
+
+/** Поле формы, к которому относится ошибка проверки источника на сервере */
+export function fieldOfSourceError(kind: string): 'url' | 'apiKey' | null {
+  if (kind === 'auth')
+    return 'apiKey'
+
+  if (['timeout', 'unreachable', 'bad_response', 'unsupported'].includes(kind))
+    return 'url'
+
+  return null
+}

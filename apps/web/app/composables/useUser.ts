@@ -23,9 +23,14 @@ export function useUser() {
     return user.value
   }
 
+  async function updateName(name: string) {
+    user.value = await api.users.patchUsersMe({ name })
+  }
+
+  // После выхода гость известен: профиль не перезапрашиваем, вход открывается сразу
   function reset() {
     user.value = null
-    isLoaded.value = false
+    isLoaded.value = true
   }
 
   return {
@@ -33,6 +38,7 @@ export function useUser() {
     isLoaded: readonly(isLoaded),
     isAuthenticated,
     fetchMe,
+    updateName,
     reset,
   }
 }

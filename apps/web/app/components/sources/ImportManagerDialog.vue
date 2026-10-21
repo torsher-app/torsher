@@ -1,10 +1,14 @@
 <script setup lang="ts">
 import type { IndexerManager } from '@torsher/api-client'
+import type { SourceErrorKind } from '~/composables/useSources'
+import { CircleAlertIcon } from '@lucide/vue'
 import { toTypedSchema } from '@vee-validate/zod'
 import { useForm } from 'vee-validate'
 import { toast } from 'vue-sonner'
 import { useI18n } from 'vue-i18n'
 import * as z from 'zod'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -15,30 +19,24 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import LoadingButton from '~/components/LoadingButton.vue'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import SecretInput from '~/components/SecretInput.vue'
 import { sourceErrorKind } from '~/composables/useSources'
-import { httpUrlSchema } from '~/lib/sourceForms'
+import { dialogSheetClass } from '~/lib/dialog'
+import { fieldOfSourceError, httpUrlSchema } from '~/lib/sourceForms'
 
 const open = defineModel<boolean>('open', { required: true })
 
-const KINDS: IndexerManager['kind'][] = ['prowlarr', 'jackett']
-// Порты по умолчанию подсказывают, какой адрес ждём
-const PLACEHOLDERS: Record<IndexerManager['kind'], string> = {
-  prowlarr: 'http://192.168.1.10:9696',
-  jackett: 'http://192.168.1.10:9117',
-}
+const KINDS: { kind: IndexerManager['kind'], port: number }[] = [
+  { kind: 'prowlarr', port: 9696 },
+  { kind: 'jackett', port: 9117 },
+]
 
 const { t } = useI18n()
 const { importManager } = useSources()
 
-const formError = ref('')
+const serverError = ref<SourceErrorKind | null>(null)
 
 const schema = toTypedSchema(
   z.object({
@@ -63,37 +61,48 @@ const [kind, kindProps] = defineField('kind')
 const [url, urlProps] = defineField('url')
 const [apiKey, apiKeyProps] = defineField('apiKey')
 
+const port = computed(
+  () => KINDS.find(item => item.kind === kind.value)?.port ?? 9696,
+)
+const errorField = computed(() =>
+  serverError.value ? fieldOfSourceError(serverError.value) : null,
+)
+
 watch(open, (isOpen) => {
   if (isOpen) {
     resetForm()
-    formError.value = ''
+    serverError.value = null
   }
 })
 
 const onSubmit = handleSubmit(async (values) => {
-  formError.value = ''
+  serverError.value = null
 
   try {
     const result = await importManager(values)
+    const manager = t(`panel.kinds.${values.kind}`)
 
     open.value = false
-    toast.success(
-      t('panel.sources.managers.synced', {
-        added: result.added,
-        updated: result.updated,
-        missing: result.missing,
-      }),
-    )
+    toast.success(t('panel.sources.managers.imported', { manager }), {
+      description:
+        result.added > 0
+          ? t('panel.sources.managers.importedText', result.added)
+          : t('panel.sources.managers.synced', {
+              added: result.added,
+              updated: result.updated,
+              missing: result.missing,
+            }),
+    })
   }
   catch (err) {
-    formError.value = t(`panel.sources.errors.${await sourceErrorKind(err)}`)
+    serverError.value = await sourceErrorKind(err)
   }
 })
 </script>
 
 <template>
   <Dialog v-model:open="open">
-    <DialogContent class="max-h-[calc(100dvh-2rem)] overflow-y-auto">
+    <DialogContent :class="dialogSheetClass">
       <DialogHeader>
         <DialogTitle>{{ t("panel.sources.importDialog.title") }}</DialogTitle>
         <DialogDescription>
@@ -101,21 +110,56 @@ const onSubmit = handleSubmit(async (values) => {
         </DialogDescription>
       </DialogHeader>
 
-      <form id="import-manager" class="grid gap-4" @submit="onSubmit">
+      <form
+        id="import-manager"
+        class="grid gap-4"
+        novalidate
+        @submit="onSubmit"
+      >
+        <Alert v-if="serverError" variant="destructive">
+          <CircleAlertIcon />
+          <AlertTitle>
+            {{
+              t(`panel.sources.errorTitles.${serverError}`)
+            }}
+          </AlertTitle>
+          <AlertDescription>
+            {{ t(`panel.sources.errors.${serverError}`) }}
+          </AlertDescription>
+        </Alert>
+
         <div class="grid gap-2">
-          <Label for="manager-kind">{{
+          <Label id="manager-kind-label">{{
             t("panel.sources.importDialog.kind")
           }}</Label>
-          <Select v-model="kind" v-bind="kindProps">
-            <SelectTrigger id="manager-kind" class="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem v-for="item in KINDS" :key="item" :value="item">
-                {{ t(`panel.kinds.${item}`) }}
-              </SelectItem>
-            </SelectContent>
-          </Select>
+          <RadioGroup
+            v-model="kind"
+            v-bind="kindProps"
+            class="grid-cols-2 gap-2"
+            aria-labelledby="manager-kind-label"
+          >
+            <Label
+              v-for="item in KINDS"
+              :key="item.kind"
+              :for="`manager-kind-${item.kind}`"
+              class="flex cursor-pointer items-start justify-between gap-2 rounded-lg border border-input px-3 py-2.5 font-normal has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:ring-1 has-[[data-state=checked]]:ring-primary"
+            >
+              <span class="grid gap-1">
+                <span class="font-semibold">{{
+                  t(`panel.kinds.${item.kind}`)
+                }}</span>
+                <span class="text-xs text-muted-foreground">
+                  {{
+                    t("panel.sources.importDialog.port", { port: item.port })
+                  }}
+                </span>
+              </span>
+              <RadioGroupItem
+                :id="`manager-kind-${item.kind}`"
+                :value="item.kind"
+              />
+            </Label>
+          </RadioGroup>
         </div>
 
         <div class="grid gap-2">
@@ -129,10 +173,24 @@ const onSubmit = handleSubmit(async (values) => {
             type="url"
             inputmode="url"
             autocomplete="off"
-            :placeholder="PLACEHOLDERS[kind ?? 'prowlarr']"
+            class="font-mono"
+            :placeholder="`http://192.168.1.10:${port}`"
+            :aria-invalid="!!errors.url || errorField === 'url' || undefined"
+            aria-describedby="manager-url-hint"
           />
-          <p v-if="errors.url" class="text-sm text-destructive">
+          <p
+            v-if="errors.url"
+            id="manager-url-hint"
+            class="text-[12.5px] text-destructive"
+          >
             {{ errors.url }}
+          </p>
+          <p
+            v-else
+            id="manager-url-hint"
+            class="text-[12.5px] text-muted-foreground"
+          >
+            {{ t("panel.sources.importDialog.urlHint") }}
           </p>
         </div>
 
@@ -140,28 +198,47 @@ const onSubmit = handleSubmit(async (values) => {
           <Label for="manager-api-key">{{
             t("panel.sources.importDialog.apiKey")
           }}</Label>
-          <Input
+          <SecretInput
             id="manager-api-key"
             v-model="apiKey"
             v-bind="apiKeyProps"
-            type="password"
             autocomplete="off"
+            class="font-mono"
+            :show-label="t('panel.common.showKey')"
+            :hide-label="t('panel.common.hideKey')"
+            :aria-invalid="
+              !!errors.apiKey || errorField === 'apiKey' || undefined
+            "
+            aria-describedby="manager-api-key-hint"
           />
-          <p v-if="errors.apiKey" class="text-sm text-destructive">
+          <p
+            v-if="errors.apiKey"
+            id="manager-api-key-hint"
+            class="text-[12.5px] text-destructive"
+          >
             {{ errors.apiKey }}
           </p>
+          <p
+            v-else
+            id="manager-api-key-hint"
+            class="text-[12.5px] text-muted-foreground"
+          >
+            {{ t(`panel.sources.importDialog.keyHint.${kind ?? "prowlarr"}`) }}
+          </p>
         </div>
-
-        <p v-if="formError" class="text-sm text-destructive" role="alert">
-          {{ formError }}
-        </p>
       </form>
 
       <DialogFooter>
+        <Button
+          variant="outline"
+          :disabled="isSubmitting"
+          @click="open = false"
+        >
+          {{ t("panel.common.cancel") }}
+        </Button>
         <LoadingButton
           type="submit"
           form="import-manager"
-          class="w-full sm:w-auto"
           :loading="isSubmitting"
         >
           {{ t("panel.sources.importDialog.submit") }}

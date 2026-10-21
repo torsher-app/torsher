@@ -1,20 +1,19 @@
 <script setup lang="ts">
+import type { AboutResponse } from '@torsher/api-client'
+import { CircleAlertIcon } from '@lucide/vue'
 import { toTypedSchema } from '@vee-validate/zod'
 import { useForm } from 'vee-validate'
 import { useI18n } from 'vue-i18n'
 import * as z from 'zod'
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import LoadingButton from '~/components/LoadingButton.vue'
+import SecretInput from '~/components/SecretInput.vue'
 import BrandMark from '~/components/shell/BrandMark.vue'
-import { getErrorMessage } from '~/services/api'
+import { getErrorStatus } from '@torsher/api-client'
+import { api, getErrorMessage } from '~/services/api'
 
 definePageMeta({
   middleware: ['guest-only', 'first-run'],
@@ -23,92 +22,127 @@ definePageMeta({
 const { signin } = useAuth()
 const { t } = useI18n()
 
+const isRejected = ref(false)
 const formError = ref('')
+const about = shallowRef<AboutResponse>()
 
 const schema = toTypedSchema(
   z.object({
-    email: z.email('Введите корректный email'),
-    password: z.string().min(1, 'Введите пароль'),
+    email: z.email(t('panel.auth.validation.email')),
+    password: z.string().min(1, t('panel.auth.validation.passwordRequired')),
   }),
 )
 
 const { handleSubmit, defineField, errors, isSubmitting } = useForm({
   validationSchema: schema,
+  initialValues: { email: '', password: '' },
 })
 
 const [email, emailProps] = defineField('email')
 const [password, passwordProps] = defineField('password')
 
-// Ошибку логина показываем в форме, а не тостом: она относится к полям
+// Ошибку входа показываем в форме, а не тостом: она относится к полям
 const onSubmit = handleSubmit(async (values) => {
+  isRejected.value = false
   formError.value = ''
 
   try {
     await withErrorMode('silent', () => signin(values))
   }
   catch (err) {
-    formError.value = await getErrorMessage(err)
+    // 400 — неверная пара email и пароль; остальное — сервер или сеть
+    if (getErrorStatus(err) === 400)
+      isRejected.value = true
+    else formError.value = await getErrorMessage(err)
   }
+})
+
+onMounted(async () => {
+  about.value = await withErrorMode('silent', () => api.about.getAbout()).catch(
+    () => undefined,
+  )
 })
 </script>
 
 <template>
-  <div class="flex w-full max-w-sm flex-col items-center gap-6">
-    <div class="flex items-center gap-2 text-xl font-semibold">
-      <BrandMark class="size-7" />
+  <div class="grid w-full max-w-100 gap-5.5">
+    <div
+      class="flex items-center justify-center gap-2.5 text-xl font-semibold tracking-tight"
+    >
+      <BrandMark class="size-6.5" />
       Torsher
     </div>
-    <Card class="w-full max-w-sm">
-      <CardHeader>
-        <CardTitle>Вход</CardTitle>
-        <CardDescription>Войдите в свой аккаунт</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form class="grid gap-4" @submit="onSubmit">
-          <div class="grid gap-2">
-            <Label for="email">Email</Label>
-            <Input
-              id="email"
-              v-model="email"
-              v-bind="emailProps"
-              type="email"
-              autocomplete="email"
-            />
-            <p v-if="errors.email" class="text-sm text-destructive">
-              {{ errors.email }}
-            </p>
-          </div>
 
-          <div class="grid gap-2">
-            <Label for="password">Пароль</Label>
-            <Input
-              id="password"
-              v-model="password"
-              v-bind="passwordProps"
-              type="password"
-              autocomplete="current-password"
-            />
-            <p v-if="errors.password" class="text-sm text-destructive">
-              {{ errors.password }}
-            </p>
-          </div>
+    <Card class="gap-4.5 p-6">
+      <header>
+        <h1 class="text-xl font-semibold tracking-tight">
+          {{ t("panel.auth.loginTitle") }}
+        </h1>
+        <p class="mt-1 text-[13.5px] text-muted-foreground">
+          {{ t("panel.auth.loginText") }}
+        </p>
+      </header>
 
-          <p v-if="formError" class="text-sm text-destructive">
-            {{ formError }}
+      <form class="grid gap-4" novalidate @submit="onSubmit">
+        <Alert v-if="isRejected" variant="destructive">
+          <CircleAlertIcon />
+          <AlertTitle>{{ t("panel.auth.rejected") }}</AlertTitle>
+          <AlertDescription>
+            {{
+              t("panel.auth.rejectedText")
+            }}
+          </AlertDescription>
+        </Alert>
+        <Alert v-else-if="formError" variant="destructive">
+          <CircleAlertIcon />
+          <AlertTitle>{{ t("panel.auth.failed") }}</AlertTitle>
+          <AlertDescription>{{ formError }}</AlertDescription>
+        </Alert>
+
+        <div class="grid gap-2">
+          <Label for="email">{{ t("panel.auth.email") }}</Label>
+          <Input
+            id="email"
+            v-model="email"
+            v-bind="emailProps"
+            type="email"
+            autocomplete="email"
+            :aria-invalid="!!errors.email || undefined"
+          />
+          <p v-if="errors.email" class="text-[12.5px] text-destructive">
+            {{ errors.email }}
           </p>
+        </div>
 
-          <LoadingButton type="submit" :loading="isSubmitting">
-            Войти
-          </LoadingButton>
+        <div class="grid gap-2">
+          <Label for="password">{{ t("panel.auth.password") }}</Label>
+          <SecretInput
+            id="password"
+            v-model="password"
+            v-bind="passwordProps"
+            autocomplete="current-password"
+            :aria-invalid="!!errors.password || isRejected || undefined"
+            :show-label="t('panel.auth.showPassword')"
+            :hide-label="t('panel.auth.hidePassword')"
+          />
+          <p v-if="errors.password" class="text-[12.5px] text-destructive">
+            {{ errors.password }}
+          </p>
+        </div>
 
-          <NuxtLink
-            to="/about"
-            class="text-center text-sm text-muted-foreground underline"
-          >
-            {{ t("common.about") }}
-          </NuxtLink>
-        </form>
-      </CardContent>
+        <LoadingButton type="submit" class="w-full" :loading="isSubmitting">
+          {{ t("panel.auth.submit") }}
+        </LoadingButton>
+      </form>
     </Card>
+
+    <div
+      class="flex justify-center gap-3.5 text-[12.5px] text-muted-foreground"
+    >
+      <NuxtLink to="/settings/about" class="underline underline-offset-3">
+        {{ t("common.about") }}
+      </NuxtLink>
+      <span v-if="about" class="tabular-nums">Torsher {{ about.version }}</span>
+    </div>
   </div>
 </template>
