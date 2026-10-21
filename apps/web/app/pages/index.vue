@@ -1,10 +1,13 @@
 <script setup lang="ts">
-// Пока других разделов нет, главная панели — «Источники»
+import OverviewView from '~/components/overview/OverviewView.vue'
+
 definePageMeta({
-  redirect: '/sources',
+  middleware: 'required-auth',
 })
 </script>
 
 <template>
-  <div />
+  <div class="flex min-h-0 flex-1 flex-col">
+    <OverviewView />
+  </div>
 </template>

@@ -1,5 +1,5 @@
 import { config } from '../../config.ts'
-import { decryptSecret, encryptSecret } from '../secrets/index.ts'
+import { decryptSecret, encryptSecret, SecretError } from '../secrets/index.ts'
 import { deleteSetting, getSetting, setSetting } from '../settings/index.ts'
 
 const SETTING_KEY = 'tmdb'
@@ -14,6 +14,8 @@ export type TmdbKeySource = 'custom' | 'app' | 'none'
 
 // undefined — ещё не читали из базы
 let stored: string | null | undefined
+// TMDB не принял ключ сервера в последнем запросе с ним
+let rejected = false
 
 function storedCiphertext() {
   if (stored === undefined)
@@ -51,6 +53,36 @@ export function saveTmdbKey(key: string | null) {
   }
 
   stored = undefined
+  rejected = false
+}
+
+/** Итог последнего запроса к TMDB с ключом сервера: его пишет клиент TMDB */
+export function markTmdbKeyRejected(value: boolean) {
+  rejected = value
+}
+
+/**
+ * Можно ли ходить в TMDB с ключом сервера: `missing` — ключа нет,
+ * `unreadable` — ключ владельца не расшифровывается, `rejected` — TMDB
+ * не принял ключ в последнем запросе. Сеть не трогает.
+ */
+export function tmdbKeyStatus(): 'ok' | 'missing' | 'unreadable' | 'rejected' {
+  let key
+
+  try {
+    key = currentTmdbKey()
+  }
+  catch (err) {
+    if (!(err instanceof SecretError))
+      throw err
+
+    return 'unreadable'
+  }
+
+  if (!key)
+    return 'missing'
+
+  return rejected ? 'rejected' : 'ok'
 }
 
 // Ключ API v3 — 32 hex-символа и идёт параметром; токен чтения v4 — Bearer

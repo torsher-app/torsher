@@ -3,6 +3,7 @@ import { createApp } from './app.ts'
 import { config } from './config.ts'
 import { migrateDb } from './db/index.ts'
 import { createEngine, isEngineReady } from './services/engine/index.ts'
+import { startCheck } from './services/net/check.ts'
 import { purgeExpiredAliases } from './services/sources/aliases.ts'
 import { enforceStorage } from './services/storage/index.ts'
 import { purgeExpiredMetaCache } from './services/tmdb/cache.ts'
@@ -11,6 +12,9 @@ import { resumeResolving } from './services/torrents/index.ts'
 const DAY_MS = 24 * 60 * 60 * 1000
 // Кэш растёт, пока смотрят и качают: лимит и запас места проверяются раз в минуту
 const STORAGE_CHECK_MS = 60 * 1000
+// «Обзор» берёт недоступные хосты из последней проверки: без фоновой он
+// после перезапуска ничего не знал бы о сети, пока владелец не открыл «Сеть»
+const HOST_CHECK_MS = 30 * 60 * 1000
 
 migrateDb()
 
@@ -59,6 +63,15 @@ const engine = createEngine(engineLog, () => {
 
 setInterval(checkStorage, STORAGE_CHECK_MS).unref()
 
+function checkHosts() {
+  try {
+    startCheck()
+  }
+  catch (err) {
+    app.log.error({ err }, 'Host check failed')
+  }
+}
+
 // Движок — дочерний процесс: без остановки он пережил бы сервер и держал
 // порт и сессию, а `node --watch` при перезапуске шлёт именно SIGTERM
 async function shutdown() {
@@ -74,3 +87,5 @@ process.once('exit', () => engine.kill())
 await app.listen({ port: config.port, host: config.host })
 
 void engine.start()
+checkHosts()
+setInterval(checkHosts, HOST_CHECK_MS).unref()
