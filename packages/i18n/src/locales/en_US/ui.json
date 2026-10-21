@@ -337,6 +337,7 @@
       "label": "Panel sections",
       "torrents": "Downloads",
       "sources": "Sources",
+      "people": "Profiles & devices",
       "settings": "Settings",
       "server": "Server",
       "open": "Open menu",
@@ -686,6 +687,142 @@
         "apiKey": "New API key",
         "apiKeyHint": "Leave empty to keep the current key.",
         "saved": "{name} saved"
+      }
+    },
+    "people": {
+      "title": "Profiles and devices",
+      "pairTv": "Connect a TV",
+      "pairTvShort": "Connect TV",
+      "loadError": "Couldn't load profiles and devices",
+      "loadErrorText": "The server didn't respond. If the panel has been open for a while, reload the page.",
+      "profiles": {
+        "group": "Profiles",
+        "add": "New profile",
+        "actions": "Actions: {name}",
+        "edit": "Edit",
+        "setPin": "Set PIN",
+        "changePin": "Change PIN",
+        "removePin": "Remove PIN",
+        "pin": "PIN",
+        "noLimits": "no restrictions",
+        "age": "{age}+",
+        "default": "Default",
+        "deviceLanguage": "Device language",
+        "lastProfile": "The only profile can't be deleted",
+        "toasts": {
+          "created": "Profile “{name}” created",
+          "saved": "Profile “{name}” saved",
+          "deleted": "Profile “{name}” deleted",
+          "pinSet": "PIN set for “{name}”",
+          "pinRemoved": "PIN removed from “{name}”"
+        }
+      },
+      "colors": {
+        "violet": "Violet",
+        "green": "Green",
+        "orange": "Orange",
+        "blue": "Blue",
+        "rose": "Rose",
+        "teal": "Teal",
+        "amber": "Amber",
+        "slate": "Slate"
+      },
+      "card": {
+        "color": "Color",
+        "language": "Language",
+        "pin": "PIN",
+        "pinOn": "Set",
+        "pinOff": "Not set",
+        "ageLimit": "Age limit",
+        "devices": "Devices",
+        "noDevices": "None",
+        "defaultHint": "The panel owner and TVs without a selected profile watch as this profile."
+      },
+      "profileDialog": {
+        "createTitle": "New profile",
+        "createText": "A profile keeps its own watch history and showcase language.",
+        "editTitle": "Edit “{name}”",
+        "editText": "Changes apply on the TV the next time it loads the profile.",
+        "name": "Name",
+        "namePlaceholder": "Kids",
+        "color": "Avatar color",
+        "language": "Showcase language",
+        "languageHint": "Interface and descriptions on the TV.",
+        "ageLimit": "Age limit",
+        "noLimits": "No restrictions",
+        "pin": "PIN",
+        "pinHint": "4 digits. The TV asks for it when switching to this profile.",
+        "submit": "Create profile"
+      },
+      "validation": {
+        "name": "Enter a name",
+        "pin": "The PIN is 4 digits",
+        "code": "Enter all 6 characters",
+        "deviceName": "Enter a device name"
+      },
+      "pinDialog": {
+        "title": "PIN for “{name}”",
+        "text": "The TV asks for the PIN when someone switches to this profile. Five wrong attempts lock the profile on that TV for 5 minutes.",
+        "label": "New PIN",
+        "submit": "Save PIN"
+      },
+      "deleteDialog": {
+        "title": "Delete profile “{name}”?",
+        "text": "Devices using it switch to the default profile.",
+        "move": "Move watch history to another profile",
+        "moveText": "Positions and episode progress go to the selected profile.",
+        "target": "Target profile",
+        "drop": "Delete watch history",
+        "dropText": "Positions and episode progress of this profile are lost."
+      },
+      "devices": {
+        "group": "Devices",
+        "empty": "No devices yet. Open Torsher on the TV — it shows a code to enter here.",
+        "watching": "Watching now",
+        "noProfile": "Profile not selected",
+        "types": {
+          "tv": "TV",
+          "browser": "Browser",
+          "other": "Device"
+        },
+        "actions": "Actions: {name}",
+        "rename": "Rename",
+        "revoke": "Disconnect",
+        "renameDialog": {
+          "title": "Rename “{name}”",
+          "label": "Device name"
+        },
+        "revokeDialog": {
+          "title": "Disconnect “{name}”?",
+          "text": "The TV will have to connect again with a code.",
+          "submit": "Disconnect"
+        },
+        "toasts": {
+          "renamed": "Device renamed to “{name}”",
+          "revoked": "“{name}” disconnected"
+        }
+      },
+      "pair": {
+        "title": "Connect a TV",
+        "text": "Open Torsher on the TV — it shows a six-character code.",
+        "code": "Code from the screen",
+        "codeHint": "The code is valid for 10 minutes.",
+        "name": "Device name",
+        "nameDefault": "Living room TV",
+        "nameHint": "This is how the device appears in the list. The profile is chosen on the TV itself.",
+        "submit": "Connect",
+        "errorTitles": {
+          "invalid": "Code not found",
+          "expired": "The code has expired",
+          "unknown": "Couldn't connect"
+        },
+        "errors": {
+          "invalid": "Check the code on the TV screen and enter it again.",
+          "expired": "A code is valid for 10 minutes. Show a new code on the TV and enter it.",
+          "unknown": "Something went wrong. Try again."
+        },
+        "done": "Code accepted",
+        "doneText": "“{name}” appears in the list in a few seconds."
       }
     },
     "torrents": {

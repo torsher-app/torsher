@@ -11,7 +11,7 @@ import {
   updateMe,
   wrongPasswordResponse,
 } from '../dto/users.ts'
-import { requireAuth } from '../middleware/auth.ts'
+import { requireOwner } from '../middleware/auth.ts'
 import {
   findActiveUser,
   updateEmail,
@@ -55,7 +55,7 @@ export const userRoutes: FastifyPluginAsyncZod = async (app) => {
   app.get(
     '/me',
     {
-      preHandler: requireAuth,
+      onRequest: requireOwner,
       schema: {
         operationId: 'getUsersMe',
         tags: ['Users'],
@@ -79,7 +79,7 @@ export const userRoutes: FastifyPluginAsyncZod = async (app) => {
   app.patch(
     '/me',
     {
-      preHandler: requireAuth,
+      onRequest: requireOwner,
       schema: {
         operationId: 'patchUsersMe',
         tags: ['Users'],
@@ -107,7 +107,7 @@ export const userRoutes: FastifyPluginAsyncZod = async (app) => {
   app.put(
     '/me/password',
     {
-      preHandler: requireAuth,
+      onRequest: requireOwner,
       schema: {
         operationId: 'putUsersMePassword',
         tags: ['Users'],
@@ -140,7 +140,7 @@ export const userRoutes: FastifyPluginAsyncZod = async (app) => {
   app.put(
     '/me/email',
     {
-      preHandler: requireAuth,
+      onRequest: requireOwner,
       schema: {
         operationId: 'putUsersMeEmail',
         tags: ['Users'],

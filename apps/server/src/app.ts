@@ -29,6 +29,8 @@ export function createApp(
   app.setValidatorCompiler(validatorCompiler)
   app.setSerializerCompiler(serializerCompiler)
   app.decorateRequest('userId', '')
+  app.decorateRequest('deviceId', null)
+  app.decorateRequest('profileId', '')
 
   app.register(cors, {
     origin: config.clientUrl,
@@ -43,7 +45,12 @@ export function createApp(
       },
       tags: [
         { name: 'Auth', description: 'Регистрация, вход, сессия' },
-        { name: 'Users', description: 'Профиль пользователя' },
+        { name: 'Users', description: 'Аккаунт владельца' },
+        {
+          name: 'Profiles',
+          description: 'Профили смотрящих: PIN, язык, ограничения',
+        },
+        { name: 'Devices', description: 'Устройства и подключение ТВ по коду' },
         {
           name: 'Catalog',
           description: 'Каталог: главная, поиск и карточки тайтлов',

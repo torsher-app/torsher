@@ -5,8 +5,9 @@ import { and, desc, eq, gt } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import { titleProgress } from '../../db/schema.ts'
 
-/** Тайтл и серия; у фильма сезона и серии нет */
+/** Тайтл и серия в прогрессе профиля; у фильма сезона и серии нет */
 export interface TitleRef {
+  profileId: string
   titleId: string
   season?: number
   episode?: number
@@ -20,6 +21,7 @@ function whereRef(ref: TitleRef) {
   const { season, episode } = keyOf(ref)
 
   return and(
+    eq(titleProgress.profileId, ref.profileId),
     eq(titleProgress.titleId, ref.titleId),
     eq(titleProgress.season, season),
     eq(titleProgress.episode, episode),
@@ -42,9 +44,16 @@ export function saveTitleProgress(
 
   return getDb()
     .insert(titleProgress)
-    .values({ titleId: ref.titleId, ...keyOf(ref), ...values, updatedAt })
+    .values({
+      profileId: ref.profileId,
+      titleId: ref.titleId,
+      ...keyOf(ref),
+      ...values,
+      updatedAt,
+    })
     .onConflictDoUpdate({
       target: [
+        titleProgress.profileId,
         titleProgress.titleId,
         titleProgress.season,
         titleProgress.episode,
@@ -72,9 +81,16 @@ export function rememberChoice(
 
   getDb()
     .insert(titleProgress)
-    .values({ titleId: ref.titleId, ...keyOf(ref), position: 0, ...values })
+    .values({
+      profileId: ref.profileId,
+      titleId: ref.titleId,
+      ...keyOf(ref),
+      position: 0,
+      ...values,
+    })
     .onConflictDoUpdate({
       target: [
+        titleProgress.profileId,
         titleProgress.titleId,
         titleProgress.season,
         titleProgress.episode,
@@ -85,12 +101,16 @@ export function rememberChoice(
 }
 
 /** Последняя начатая серия тайтла: для «Продолжить» */
-export function lastTitleProgress(titleId: string) {
+export function lastTitleProgress(profileId: string, titleId: string) {
   return getDb()
     .select()
     .from(titleProgress)
     .where(
-      and(eq(titleProgress.titleId, titleId), gt(titleProgress.position, 0)),
+      and(
+        eq(titleProgress.profileId, profileId),
+        eq(titleProgress.titleId, titleId),
+        gt(titleProgress.position, 0),
+      ),
     )
     .orderBy(desc(titleProgress.updatedAt))
     .get()
@@ -98,6 +118,7 @@ export function lastTitleProgress(titleId: string) {
 
 /** Озвучка последней серии сезона, у которой она известна */
 export function lastVoiceOfSeason(
+  profileId: string,
   titleId: string,
   season: number,
 ): VoiceRef | undefined {
@@ -105,7 +126,11 @@ export function lastVoiceOfSeason(
     .select()
     .from(titleProgress)
     .where(
-      and(eq(titleProgress.titleId, titleId), eq(titleProgress.season, season)),
+      and(
+        eq(titleProgress.profileId, profileId),
+        eq(titleProgress.titleId, titleId),
+        eq(titleProgress.season, season),
+      ),
     )
     .orderBy(desc(titleProgress.updatedAt))
     .all()

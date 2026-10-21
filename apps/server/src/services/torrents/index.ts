@@ -331,7 +331,9 @@ export class NotInEngineError extends Error {
 
 /** Раздача выбрана из карточки тайтла: «Загрузки» показывают его постер и название */
 export function linkTitle(torrent: Torrent, titleId: string) {
-  return torrent.titleId === titleId ? torrent : update(torrent.id, { titleId })
+  return torrent.titleId === titleId
+    ? torrent
+    : update(torrent.id, { titleId })
 }
 
 /**
@@ -535,12 +537,17 @@ export async function streamStats(
   }
 }
 
-export function getWatchState(torrentId: string, fileIndex: number) {
+export function getWatchState(
+  profileId: string,
+  torrentId: string,
+  fileIndex: number,
+) {
   return getDb()
     .select()
     .from(watchStates)
     .where(
       and(
+        eq(watchStates.profileId, profileId),
         eq(watchStates.torrentId, torrentId),
         eq(watchStates.fileIndex, fileIndex),
       ),
@@ -549,7 +556,10 @@ export function getWatchState(torrentId: string, fileIndex: number) {
 }
 
 export function saveWatchState(
-  values: Pick<WatchState, 'torrentId' | 'fileIndex' | 'position' | 'duration'>,
+  values: Pick<
+    WatchState,
+    'profileId' | 'torrentId' | 'fileIndex' | 'position' | 'duration'
+  >,
 ) {
   const updatedAt = new Date()
 
@@ -557,7 +567,11 @@ export function saveWatchState(
     .insert(watchStates)
     .values({ ...values, updatedAt })
     .onConflictDoUpdate({
-      target: [watchStates.torrentId, watchStates.fileIndex],
+      target: [
+        watchStates.profileId,
+        watchStates.torrentId,
+        watchStates.fileIndex,
+      ],
       set: { position: values.position, duration: values.duration, updatedAt },
     })
     .returning()

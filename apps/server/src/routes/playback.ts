@@ -1,3 +1,4 @@
+import type { FastifyRequest } from 'fastify'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { messageResponse } from '../dto/common.ts'
 import {
@@ -8,7 +9,7 @@ import {
   watchState,
 } from '../dto/playback.ts'
 import { engineUnavailableResponse } from '../dto/torrents.ts'
-import { requireAuth } from '../middleware/auth.ts'
+import { requireViewer, streamSubjectOf } from '../middleware/auth.ts'
 import {
   getTitleProgress,
   saveTitleProgress,
@@ -35,16 +36,24 @@ const guardResponses = {
  * Клиенты ходят в API через `/api` своего origin (прокси панели и витрины,
  * в продакшене — сам сервер), поэтому адрес потока для `<video>` — с этим префиксом.
  */
-function streamUrlOf(torrentId: string, fileIndex: number, userId: string) {
+function streamUrlOf(
+  torrentId: string,
+  fileIndex: number,
+  request: FastifyRequest,
+) {
+  // Устройство отзывается удалением строки, у владельца — версия сессий
+  const subject = streamSubjectOf(request)
   const token = encodeURIComponent(
-    signToken(userId, 'stream', sessionVersionOf(userId)),
+    request.deviceId
+      ? signToken(subject, 'stream')
+      : signToken(subject, 'stream', sessionVersionOf(subject)),
   )
 
   return `/api/stream/${torrentId}/${fileIndex}?token=${token}`
 }
 
 export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
-  app.addHook('onRequest', requireAuth)
+  app.addHook('onRequest', requireViewer)
 
   app.post(
     '/playback',
@@ -91,6 +100,7 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
       // Прогресс серии сильнее позиции файла: раздачу могли сменить
       const progress = title
         ? getTitleProgress({
+            profileId: request.profileId,
             titleId: title.id,
             season: title.season,
             episode: title.episode,
@@ -98,10 +108,10 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
         : undefined
       const state = progress?.position
         ? progress
-        : getWatchState(torrentId, fileIndex)
+        : getWatchState(request.profileId, torrentId, fileIndex)
 
       return {
-        streamUrl: streamUrlOf(torrentId, fileIndex, request.userId),
+        streamUrl: streamUrlOf(torrentId, fileIndex, request),
         mode: 'direct' as const,
         title: found.name,
         fileName: fileNameOf(file.path),
@@ -142,12 +152,18 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
 
       if (title) {
         saveTitleProgress(
-          { titleId: title.id, season: title.season, episode: title.episode },
+          {
+            profileId: request.profileId,
+            titleId: title.id,
+            season: title.season,
+            episode: title.episode,
+          },
           { position, duration: duration ?? null, torrentId, fileIndex },
         )
       }
 
       const saved = saveWatchState({
+        profileId: request.profileId,
         torrentId,
         fileIndex,
         position,

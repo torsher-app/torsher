@@ -1,8 +1,7 @@
-import type { FastifyReply, FastifyRequest } from 'fastify'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { Readable } from 'node:stream'
 import { streamParams, streamQuery } from '../dto/playback.ts'
-import { requireAuth } from '../middleware/auth.ts'
+import { requireStream } from '../middleware/auth.ts'
 import { trackStream } from '../services/storage/index.ts'
 import {
   contentTypeOf,
@@ -11,26 +10,10 @@ import {
   playableFile,
   touchTorrent,
 } from '../services/torrents/index.ts'
-import { verifySession } from '../services/users/session.ts'
 import { sendEngineError } from './engineResponses.ts'
 
 // Заголовки ответа движка, которые нужны плееру для перемотки
 const FORWARDED_HEADERS = ['content-length', 'content-range', 'accept-ranges']
-
-/** `<video>` не умеет обновлять сессию: принимаем токен потока из адреса или cookie */
-async function requireStreamAuth(request: FastifyRequest, reply: FastifyReply) {
-  const { token } = request.query as { token?: string }
-
-  if (!token)
-    return requireAuth(request, reply)
-
-  try {
-    request.userId = verifySession(token, 'stream').userId
-  }
-  catch {
-    return reply.code(401).send({ message: 'Unauthorized' })
-  }
-}
 
 /**
  * Поток файла раздачи через ядро: движок слушает только loopback, а здесь —
@@ -41,7 +24,7 @@ export const streamRoutes: FastifyPluginAsyncZod = async (app) => {
   app.get(
     '/:torrentId/:fileIndex',
     {
-      onRequest: requireStreamAuth,
+      onRequest: requireStream,
       schema: {
         // Бинарный ответ: в OpenAPI и generated-клиенте роут не нужен
         hide: true,

@@ -88,6 +88,10 @@ const cookiePrefix = process.env.COOKIE_PREFIX ?? 'torsher'
 
 export const ACCESS_TOKEN_COOKIE = `${cookiePrefix}_access_token`
 export const REFRESH_TOKEN_COOKIE = `${cookiePrefix}_refresh_token`
+// Токен устройства, подключённого по коду: открывает только API витрины
+export const DEVICE_TOKEN_COOKIE = `${cookiePrefix}_device_token`
+// Профиль, выбранный на витрине в сессии владельца (у устройства он в базе)
+export const PROFILE_COOKIE = `${cookiePrefix}_profile`
 
 /**
  * Общие атрибуты сессионных cookie. Токены живут только в httpOnly.
@@ -100,4 +104,14 @@ export const sessionCookieOptions = {
   secure: 'auto',
   sameSite: 'lax',
   path: '/',
+} as const
+
+/**
+ * Cookie устройства живёт дольше сессии: ТВ подключают один раз. Chromium
+ * не хранит cookie дольше 400 дней, поэтому сервер продлевает её, пока
+ * устройством пользуются.
+ */
+export const deviceCookieOptions = {
+  ...sessionCookieOptions,
+  maxAge: 400 * 24 * 60 * 60,
 } as const

@@ -72,7 +72,9 @@ watch(
       </NuxtLink>
     </SidebarHeader>
 
-    <SidebarContent class="px-2 pt-2 md:px-0">
+    <!-- Область прокручивается и обрезает выходящее за край: запас 2 px по
+         бокам под кольцо фокуса, отрицательный отступ держит пункты на месте -->
+    <SidebarContent class="px-2 pt-2 md:-mx-0.5 md:px-0.5">
       <nav :aria-label="t('panel.nav.label')">
         <SidebarMenu class="gap-px">
           <SidebarMenuItem v-for="item in navItems" :key="item.to">

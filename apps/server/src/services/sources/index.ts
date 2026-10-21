@@ -22,6 +22,8 @@ export interface SourcesRequest {
   season?: number
   episode?: number
   refresh?: boolean
+  /** Чей прогресс подсказывает «Как в прошлых сериях» */
+  profileId?: string
 }
 
 /** Озвучка среди найденных раздач: для панели «Озвучка» */
@@ -126,7 +128,9 @@ export async function getTitleSources(
   // Выбор в панели «Озвучка» сильнее студии, которой смотрели прошлые серии
   const pinned
     = getPinnedVoice(titleId, season ?? 0)
-      ?? (season === undefined ? undefined : lastVoiceOfSeason(titleId, season))
+      ?? (season === undefined || !request.profileId
+        ? undefined
+        : lastVoiceOfSeason(request.profileId, titleId, season))
   const ranking = rankReleases(releases, {
     kind: identity.kind,
     profile: DEFAULT_PROFILE,
