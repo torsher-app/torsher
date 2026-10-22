@@ -7,6 +7,8 @@ import { useRouter } from 'vue-router'
 import PlayerBuffering from '../components/player/PlayerBuffering.vue'
 import PlayerOsd from '../components/player/PlayerOsd.vue'
 import PlayerPrompt from '../components/player/PlayerPrompt.vue'
+import PlayerStage from '../components/player/PlayerStage.vue'
+import AppLoader from '../components/AppLoader.vue'
 import AppIcon from '../components/AppIcon.vue'
 import FocusSection from '../components/FocusSection.vue'
 import PlayerTracks from '../components/player/PlayerTracks.vue'
@@ -92,6 +94,36 @@ const artSubtitle = computed(() =>
     : '',
 )
 
+// Название на сцене: тайтл из каталога, пока его нет — имя из ответа сервера
+const stageTitle = computed(
+  () =>
+    art.value?.title
+    ?? playback.value?.title
+    ?? player.pending.value?.title
+    ?? '',
+)
+
+// Где остановились: «23:27 из 52:41» и та же доля на дорожке
+const resumeText = computed(() => {
+  const start = playback.value?.startPosition ?? 0
+  const total = playback.value?.duration
+
+  return total
+    ? t('player.resume.textOf', {
+        time: formatDuration(start),
+        total: formatDuration(total),
+      })
+    : t('player.resume.text', { time: formatDuration(start) })
+})
+
+const resumeShare = computed(() => {
+  const total = playback.value?.duration
+
+  return total
+    ? Math.min(1, (playback.value?.startPosition ?? 0) / total)
+    : undefined
+})
+
 const video = ref<HTMLVideoElement>()
 const hls = useHls(() => player.fail('unknown'))
 
@@ -171,12 +203,12 @@ const tracksHint = computed(() =>
     : undefined,
 )
 
-// «Назад» под указкой: видна вместе с OSD и на экранах до старта
+// «Назад» под указкой: видна вместе с OSD и на экранах до старта. У окна
+// ошибки своя кнопка «Назад» — вторая сверху не нужна
 const backVisible = computed(
   () =>
-    player.status.value === 'error'
-    || phase.value !== 'playing'
-    || osd.visible.value,
+    player.status.value !== 'error'
+    && (phase.value !== 'playing' || osd.visible.value),
 )
 
 const errorKey = computed(() => {
@@ -535,22 +567,29 @@ onBeforeUnmount(() => {
       @error="onError"
     />
 
-    <PlayerPrompt
-      v-if="player.status.value === 'error'"
-      :title="t(`${errorKey}.title`)"
-      :text="t(`${errorKey}.text`, errorParams)"
-      :actions="[
-        { id: 'retry', label: t('player.retry') },
-        { id: 'back', label: t('player.back') },
-      ]"
-      @choose="onPromptChoice"
-    />
-
-    <template v-else-if="playback">
+    <!-- До первого кадра и при ошибке — одна сцена: фон и шапка не перерисовываются между фазами -->
+    <PlayerStage
+      v-if="player.status.value === 'error' || phase !== 'playing'"
+      :title="stageTitle"
+      :backdrop="art?.backdrop"
+      :logo="art?.logo"
+      :subtitle="artSubtitle"
+    >
       <PlayerPrompt
-        v-if="phase === 'resume'"
-        :title="playback.title"
-        :text="t('player.resume.text')"
+        v-if="player.status.value === 'error'"
+        :title="t(`${errorKey}.title`)"
+        :text="t(`${errorKey}.text`, errorParams)"
+        :actions="[
+          { id: 'retry', label: t('player.retry') },
+          { id: 'back', label: t('player.back') },
+        ]"
+        @choose="onPromptChoice"
+      />
+
+      <PlayerPrompt
+        v-else-if="playback && phase === 'resume'"
+        :text="resumeText"
+        :progress="resumeShare"
         :actions="[
           {
             id: 'resume',
@@ -563,65 +602,55 @@ onBeforeUnmount(() => {
         @choose="onPromptChoice"
       />
 
-      <PlayerBuffering
-        v-else-if="phase === 'buffering'"
-        :title="art?.title ?? playback.title"
-        :step="step"
+      <AppLoader v-else />
+
+      <template
+        v-if="player.status.value !== 'error' && phase !== 'resume'"
+        #bottom
+      >
+        <PlayerBuffering :step="step" :stats="stats" />
+      </template>
+    </PlayerStage>
+
+    <template
+      v-if="playback && phase === 'playing' && player.status.value !== 'error'"
+    >
+      <p v-if="stalled" class="player__stall" role="status">
+        <span class="player__spinner" aria-hidden="true" />
+        {{ t("player.steps.buffering")
+        }}<template v-if="stats">
+          · {{ t("player.peers", stats.peers.connected) }}
+        </template>
+      </p>
+
+      <PlayerOsd
+        :visible="osd.visible.value"
+        :title="playback.title"
+        :file-name="playback.fileName"
+        :position="position"
+        :duration="knownDuration"
+        :buffer-end="position + bufferSeconds"
+        :scrub-target="osd.scrub.value?.target ?? null"
+        :paused="paused"
         :stats="stats"
-        :backdrop="art?.backdrop"
-        :logo="art?.logo"
-        :subtitle="artSubtitle"
+        :buffer-seconds="bufferSeconds"
+        :now="now"
+        :audio-label="tracks.audioLabel.value"
+        :subtitles-label="tracks.subtitlesLabel.value"
+        @toggle="toggle"
+        @seek="seekTo($event * knownDuration)"
+        @tracks="openTracks"
       />
 
-      <template v-else-if="phase === 'playing'">
-        <p v-if="stalled" class="player__stall" role="status">
-          <span class="player__spinner" aria-hidden="true" />
-          {{ t("player.steps.buffering")
-          }}<template v-if="stats">
-            · {{ t("player.peers", stats.peers.connected) }}
-          </template>
-        </p>
-
-        <PlayerOsd
-          :visible="osd.visible.value"
-          :title="playback.title"
-          :file-name="playback.fileName"
-          :position="position"
-          :duration="knownDuration"
-          :buffer-end="position + bufferSeconds"
-          :scrub-target="osd.scrub.value?.target ?? null"
-          :paused="paused"
-          :stats="stats"
-          :buffer-seconds="bufferSeconds"
-          :now="now"
-          :audio-label="tracks.audioLabel.value"
-          :subtitles-label="tracks.subtitlesLabel.value"
-          @toggle="toggle"
-          @seek="seekTo($event * knownDuration)"
-          @tracks="openTracks"
-        />
-
-        <PlayerTracks
-          v-if="panel"
-          :kind="panel"
-          :options="trackOptions"
-          :caption="tracks.caption.value"
-          :hint="tracksHint"
-          @select="onTracksSelect"
-        />
-      </template>
+      <PlayerTracks
+        v-if="panel"
+        :kind="panel"
+        :options="trackOptions"
+        :caption="tracks.caption.value"
+        :hint="tracksHint"
+        @select="onTracksSelect"
+      />
     </template>
-
-    <!-- Пока сервер готовит поток и читает файл — экран подготовки, а не чёрный кадр -->
-    <PlayerBuffering
-      v-else-if="player.status.value === 'loading'"
-      :title="art?.title ?? player.pending.value?.title ?? ''"
-      :step="step"
-      :stats="stats"
-      :backdrop="art?.backdrop"
-      :logo="art?.logo"
-      :subtitle="artSubtitle"
-    />
 
     <p
       v-if="phase === 'playing' && tracks.subtitleHtml.value"

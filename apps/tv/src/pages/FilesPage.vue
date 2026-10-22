@@ -342,7 +342,7 @@ onBeforeUnmount(() => {
             class="files__state"
           >
             <p class="files__state-title">
-              {{ t(phase === "ready" ? "files.empty" : "files.timeout") }}
+              {{ t(`files.${phase === "ready" ? "empty" : phase}`) }}
             </p>
             <button v-focusable class="action" type="button" @click="back">
               {{ t("files.toSources") }}

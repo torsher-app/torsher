@@ -176,6 +176,7 @@
     "connecting": "Connecting to the release…",
     "waiting": "Waiting for the file list from peers…",
     "timeout": "Peers did not send the file list. Try another release.",
+    "error": "Could not load the file list. Try again or pick another release.",
     "empty": "The release has no video.",
     "toSources": "Back to sources",
     "autostart": "Starting in {n} s — press any key to cancel",
@@ -294,7 +295,8 @@
     "retry": "Retry",
     "back": "Back",
     "resume": {
-      "text": "You have already started watching this file.",
+      "text": "You stopped at {time}",
+      "textOf": "You stopped at {time} of {total}",
       "continue": "Resume from {time}",
       "restart": "Start over"
     },
