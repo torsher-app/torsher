@@ -187,8 +187,7 @@ onBeforeUnmount(stopFocus)
   width: calc(var(--u) * 340);
 }
 
-.rail__item--current,
-.rail__item:hover {
+.rail__item--current {
   color: var(--color-text);
 }
 
