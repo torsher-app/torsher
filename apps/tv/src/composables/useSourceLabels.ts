@@ -1,4 +1,9 @@
-import type { AudioTrack, SourceCandidate } from '@torsher/api-client'
+import type {
+  AudioTrack,
+  SeasonRelease,
+  SourceCandidate,
+  TitleProgress,
+} from '@torsher/api-client'
 import { useI18n } from 'vue-i18n'
 import { formatSize, sizeOf } from '../lib/sources.ts'
 
@@ -18,6 +23,36 @@ export function useSourceLabels() {
     return voice.type
       ? t(`sources.voiceTypes.${voice.type}`)
       : t('sources.noVoice')
+  }
+
+  /** Дорожка из названия раздачи: студия, тип перевода или код языка («UK») */
+  function trackLabel(track: AudioTrack) {
+    if (track.studio)
+      return track.studio
+
+    if (track.type)
+      return t(`sources.voiceTypes.${track.type}`)
+
+    return track.language ? track.language.toUpperCase() : ''
+  }
+
+  /** Остальные дорожки раздачи, кроме основной: «ещё: Любительский, UK» */
+  function otherTracksLine(candidate: SourceCandidate) {
+    const main = candidate.voice
+    const others = candidate.audio
+      .filter(
+        track =>
+          !main
+          || track.studio !== main.studio
+          || track.type !== main.type
+          || track.language !== main.language,
+      )
+      .map(trackLabel)
+      .filter(Boolean)
+
+    return others.length > 0
+      ? t('sources.alsoVoices', { list: others.join(', ') })
+      : ''
   }
 
   function sizeLabel(bytes: number) {
@@ -42,16 +77,49 @@ export function useSourceLabels() {
     return t('sources.seeders', count)
   }
 
-  /** «1080p · LostFilm · 42 сида» для второй строки главной кнопки */
-  function bestLine(candidate: SourceCandidate) {
-    return [
-      candidate.quality,
-      candidate.voice && voiceLabel(candidate.voice),
-      seedersLabel(candidate.seeders),
-    ]
+  /** Раздача сезона без сидов: «1080p · LostFilm» */
+  function releaseLine(
+    release: Pick<SeasonRelease, 'quality'> & { voice: SeasonRelease['voice'] },
+  ) {
+    return [release.quality, release.voice && voiceLabel(release.voice)]
       .filter(Boolean)
       .join(' · ')
   }
 
-  return { voiceLabel, sizeLabel, candidateSize, seedersLabel, bestLine }
+  /**
+   * Последний просмотр — одна строка на карточке и в «Источниках»:
+   * «S2E1 · 1080p · LostFilm», и раздача, которой смотрели.
+   */
+  function historyOf(progress: TitleProgress | undefined) {
+    const last = progress?.last
+
+    if (!last)
+      return undefined
+
+    const release = progress.seasonReleases.find(
+      item => item.season === (last.season ?? 0),
+    )
+
+    return {
+      line: [
+        last.season && last.episode ? `S${last.season}E${last.episode}` : '',
+        release ? releaseLine(release) : '',
+      ]
+        .filter(Boolean)
+        .join(' · '),
+      torrentId: release?.torrentId,
+      season: last.season,
+      episode: last.episode,
+    }
+  }
+
+  return {
+    voiceLabel,
+    otherTracksLine,
+    sizeLabel,
+    candidateSize,
+    seedersLabel,
+    releaseLine,
+    historyOf,
+  }
 }

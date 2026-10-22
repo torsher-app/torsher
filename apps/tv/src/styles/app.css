@@ -5,6 +5,9 @@ body {
   background: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-family);
+  /* Цифры одной ширины везде: таймеры, скорость, прогресс и счётчики меняются
+     на лету, и в одном разряде ничего не должно смещаться */
+  font-variant-numeric: tabular-nums;
   font-size: var(--font-size-m);
   line-height: var(--line-height);
   overflow: hidden;
@@ -111,6 +114,52 @@ body {
 .chip:focus {
   background: var(--color-focus);
   color: var(--color-bg);
+}
+
+/* Выбранный чип (сезон, фильтр) отмечен и без фокуса; фокус перекрывает отметку */
+.chip--selected:not(:focus) {
+  background: rgba(242, 244, 248, 0.18);
+  color: var(--color-text);
+}
+
+/*
+ * «Назад» в левом верхнем углу полноэкранных экранов (карточка, «Источники»,
+ * «Файлы»): видна всегда, и на ТВ — кнопка, пропадающая при переходе на пульт,
+ * выглядит сломанной
+ */
+.screen-back {
+  position: fixed;
+  z-index: 10;
+  top: var(--safe-y);
+  left: calc(var(--u) * 28);
+  display: flex;
+  align-items: center;
+  height: calc(var(--u) * 64);
+  padding: 0 calc(var(--u) * 26) 0 calc(var(--u) * 18);
+  border: 0;
+  border-radius: calc(var(--u) * 32);
+  background: var(--color-glass);
+  color: var(--color-text);
+  font: inherit;
+  font-size: calc(var(--u) * 32);
+}
+
+.screen-back:hover,
+.screen-back:focus {
+  --bump-scale: var(--focus-scale);
+
+  background: var(--color-focus);
+  color: var(--color-bg);
+}
+
+.screen-back:focus {
+  transform: scale(var(--bump-scale));
+}
+
+.screen-back__label {
+  margin-left: calc(var(--u) * 10);
+  font-size: var(--font-size-s);
+  font-weight: 600;
 }
 
 .field {

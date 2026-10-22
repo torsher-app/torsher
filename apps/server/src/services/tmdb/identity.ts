@@ -5,6 +5,8 @@ import { tmdbGet } from './client.ts'
 import { parseCatalogId } from './mappers.ts'
 
 const IDENTITY_TTL_MS = 7 * 24 * 60 * 60 * 1000
+// Новая версия — когда в урезанный ответ добавляется поле: старые записи его не знают
+const IDENTITY_KEY_VERSION = 'v2'
 // Языки, на которых названия встречаются в именах раздач
 const NAME_LANGUAGES = new Set(['ru', 'en', 'uk'])
 const READABLE_TITLE
@@ -33,6 +35,8 @@ export interface TmdbIdentityResponse {
   // titles у фильма, results у сериала
   alternative_titles?: { titles?: TmdbAltTitle[], results?: TmdbAltTitle[] }
   translations?: { translations?: TmdbTranslation[] }
+  // Только у сериала: сколько серий в сезоне — для размера на серию у пака
+  seasons?: { season_number: number, episode_count: number }[]
 }
 
 export type TitleNameKind = 'official' | 'original' | 'alternative'
@@ -53,6 +57,10 @@ export interface TitleIdentity {
   year?: number
   /** Год последнего эфира завершённого сериала. */
   endYear?: number
+  /** Язык оригинала, ISO 639-1. */
+  originalLanguage?: string
+  /** Число серий по номеру сезона, только у сериала. */
+  episodeCounts?: Record<number, number>
   names: TitleName[]
 }
 
@@ -88,6 +96,10 @@ export function trimIdentity(
     external_ids: response.external_ids,
     alternative_titles: response.alternative_titles,
     translations: { translations },
+    seasons: response.seasons?.map(season => ({
+      season_number: season.season_number,
+      episode_count: season.episode_count,
+    })),
   }
 }
 
@@ -149,6 +161,14 @@ export function identityOf(
       !isMovie && response.status && ENDED_STATUSES.has(response.status)
         ? yearOf(response.last_air_date)
         : undefined,
+    originalLanguage: response.original_language || undefined,
+    episodeCounts:
+      response.seasons
+      && Object.fromEntries(
+        response.seasons
+          .filter(season => season.episode_count > 0)
+          .map(season => [season.season_number, season.episode_count]),
+      ),
     names,
   }
 }
@@ -163,7 +183,7 @@ export async function getTitleIdentity(
     return undefined
 
   const response = await withMetaCache(
-    `tmdb:${ref.type}:${ref.tmdbId}:identity`,
+    `tmdb:${ref.type}:${ref.tmdbId}:identity:${IDENTITY_KEY_VERSION}`,
     IDENTITY_TTL_MS,
     async () =>
       trimIdentity(

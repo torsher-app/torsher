@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   formatAirDate,
+  formatPublishDate,
   formatYears,
   isUpcoming,
   seasonAired,
@@ -53,5 +54,22 @@ describe('formatAirDate', () => {
 
   it('без данных локали — числовая дата', () => {
     expect(formatAirDate('2026-03-05', 'xx-XX')).toBe('05.03')
+  })
+})
+
+describe('formatPublishDate', () => {
+  it('день, месяц и год на языке интерфейса', () => {
+    const label = formatPublishDate('2023-12-21T12:00:00.000Z', 'ru-RU')
+
+    expect(label).toMatch(/21/)
+    expect(label).toMatch(/дек/)
+    expect(label).toMatch(/2023/)
+  })
+
+  it('без данных локали — числовая дата, мусор — пусто', () => {
+    expect(formatPublishDate('2023-03-05T12:00:00.000Z', 'xx-XX')).toBe(
+      '05.03.2023',
+    )
+    expect(formatPublishDate('not a date', 'ru-RU')).toBe('')
   })
 })

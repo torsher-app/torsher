@@ -512,8 +512,41 @@ describe('просмотр и место', () => {
       kind: 'no_space',
       needed: 9_437_184,
       available: 0,
+      free: 20 * GIB,
+      minFree: 20 * GIB,
+      cacheLimit: 200 * GIB,
     })
     expect(engineCalls()).toEqual([])
+  })
+
+  it('файл не влезает в лимит кэша — 507 с лимитом', async () => {
+    const torrent = insertTorrent()
+    engine([])
+    getDb()
+      .insert(storagePolicy)
+      .values({
+        cacheLimitBytes: 4 * 1024 * 1024,
+        minFreeBytes: 20 * GIB,
+        updatedAt: new Date(),
+      })
+      .run()
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/playback',
+      cookies: owner,
+      payload: { torrentId: torrent.id, fileIndex: 0 },
+    })
+
+    expect(response.statusCode).toBe(507)
+    expect(response.json()).toMatchObject({
+      kind: 'cache_limit',
+      needed: 9_437_184,
+      available: 4 * 1024 * 1024,
+      free: 500 * GIB,
+      minFree: 20 * GIB,
+      cacheLimit: 4 * 1024 * 1024,
+    })
   })
 
   it('просмотр добавляет файл к выбранным и снимает паузу', async () => {

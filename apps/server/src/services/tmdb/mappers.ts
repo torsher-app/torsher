@@ -89,7 +89,8 @@ function ratingOf(average: number, count: number) {
 }
 
 function names(items: { name: string }[] | undefined, limit?: number) {
-  const list = (items ?? []).map(item => item.name)
+  // В названиях TMDB встречаются хвостовые пробелы: «NTV , START»
+  const list = (items ?? []).map(item => item.name.trim()).filter(Boolean)
 
   return limit ? list.slice(0, limit) : list
 }

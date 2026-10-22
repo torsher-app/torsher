@@ -30,6 +30,11 @@ const INPUT_ATTRIBUTE = 'data-input'
 
 export interface FocusOptions {
   onBack: () => void
+  /**
+   * Колесо прокручивает нативно, как в браузере, и фокус не шагает (веб-режим);
+   * без него — пошагово, как на ТВ.
+   */
+  nativeWheel?: boolean
 }
 
 function sectionOf(el: HTMLElement) {
@@ -59,6 +64,9 @@ function createDirective(engine: FocusEngine): Directive<HTMLElement> {
   }
 }
 
+/** Колесо над элементом с этим атрибутом прокручивает его нативно, фокус не шагает */
+export const NATIVE_WHEEL_ATTRIBUTE = 'data-native-wheel'
+
 export function createFocus(options: FocusOptions) {
   const root = document.documentElement
   const engine = createFocusEngine({
@@ -87,8 +95,37 @@ export function createFocus(options: FocusOptions) {
       options.onBack()
   }
 
+  // Где курсор в окне: после нативной прокрутки под ним оказывается другой элемент
+  let pointer: { x: number, y: number } | undefined
+  let overFrame: number | undefined
+  // Прокрутку колесом и тачпадом отличаем от программной (экран ставит фокус
+  // через scrollIntoView): только после неё подсветка следует за курсором.
+  // Инерция тачпада продолжает слать wheel, окна в секунду хватает
+  let wheelAt = 0
+  const WHEEL_SCROLL_MS = 1000
+
   function onMousemove(event: MouseEvent) {
+    pointer = { x: event.clientX, y: event.clientY }
     engine.pointerMove(event.screenX, event.screenY, event.target)
+  }
+
+  // Chrome шлёт после прокрутки mousemove с прежними координатами, и движок его
+  // не считает движением: подсветку под курсором ставим сами, раз за кадр
+  function onScroll() {
+    if (
+      !pointer
+      || overFrame !== undefined
+      || Date.now() - wheelAt > WHEEL_SCROLL_MS
+    ) {
+      return
+    }
+
+    overFrame = requestAnimationFrame(() => {
+      overFrame = undefined
+
+      if (pointer)
+        engine.pointerOver(document.elementFromPoint(pointer.x, pointer.y))
+    })
   }
 
   // webOS сообщает, что курсор Magic Remote показался или спрятался
@@ -109,6 +146,17 @@ export function createFocus(options: FocusOptions) {
   }
 
   function onWheel(event: WheelEvent) {
+    wheelAt = Date.now()
+
+    // В вебе и над списком с `data-native-wheel` колесо листает как в браузере
+    if (
+      options.nativeWheel
+      || (event.target instanceof Element
+        && event.target.closest(`[${NATIVE_WHEEL_ATTRIBUTE}]`))
+    ) {
+      return
+    }
+
     event.preventDefault()
 
     const direction = wheelStep(event.deltaY, Date.now())
@@ -126,6 +174,8 @@ export function createFocus(options: FocusOptions) {
       document.addEventListener('cursorStateChange', onCursorStateChange)
       window.addEventListener('mousedown', onMousedown)
       window.addEventListener('wheel', onWheel, { passive: false })
+      // scroll не всплывает: ловим прокрутку любого контейнера на захвате
+      document.addEventListener('scroll', onScroll, true)
     },
   }
 }

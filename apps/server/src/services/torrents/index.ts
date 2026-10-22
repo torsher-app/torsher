@@ -63,6 +63,15 @@ export function getTorrent(id: string) {
   return getDb().select().from(torrents).where(eq(torrents.id, id)).get()
 }
 
+/** Раздачи, которые уже добавляли для тайтла: «Источники» помечают их */
+export function titleTorrents(titleId: string) {
+  return getDb()
+    .select()
+    .from(torrents)
+    .where(eq(torrents.titleId, titleId))
+    .all()
+}
+
 function findByInfoHash(infoHash: string) {
   return getDb()
     .select()

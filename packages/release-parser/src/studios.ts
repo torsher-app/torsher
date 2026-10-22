@@ -30,6 +30,8 @@ export const studios: Studio[] = [
   },
   { name: 'AlexFilm', aliases: ['Alex Film'], type: 'MVO' },
   { name: 'Jaskier', aliases: ['Яскьер'], type: 'MVO' },
+  // Тип перевода не проверен: берётся из названия раздачи
+  { name: 'Pazl Voice' },
   { name: 'BaibaKo', aliases: ['Baibako'], type: 'MVO' },
   {
     name: 'Кураж-Бамбей',

@@ -125,3 +125,37 @@ describe('озвучка в хвосте русской раздачи', () => {
     expect(voices('Amedia (2024) WEB-DL 1080p').audio).toEqual([])
   })
 })
+
+describe('студия, склеенная с тегом', () => {
+  it('`| SDR-Jaskier` — студия, а не непонятый хвост', () => {
+    const parsed = parseRelease(
+      'Название [S01] (2024) WEB-DL 2160p | SDR-Jaskier',
+    )
+
+    expect(parsed.audio).toEqual([{ type: 'MVO', studio: 'Jaskier' }])
+    expect(parsed.unparsed).toEqual([])
+  })
+
+  it('до `|` такое слово не трогаем', () => {
+    expect(voices('Название (2024) WEB-DL 2160p SDR-Jaskier').audio).toEqual([
+      { type: 'MVO', studio: 'Jaskier' },
+    ])
+  })
+})
+
+describe('каналы звука', () => {
+  it.each([
+    ['Название (2020) BDRip 1080p | D, 5.1 | AC3 5.1', '5.1'],
+    ['Title.2021.1080p.WEB-DL.DDP5.1.Atmos.H.264-GRP', '5.1'],
+    ['Название (2021) BDRemux 2160p | D | TrueHD 7.1, AC3 5.1', '7.1'],
+    ['Title.2021.720p.WEB-DL.AAC2.0.H.264-GRP', '2.0'],
+  ])('%s → %s', (title, channels) => {
+    expect(parseRelease(title).channels).toBe(channels)
+  })
+
+  it('число в названии — не каналы', () => {
+    expect(
+      parseRelease('Название 5.1 (2020) WEB-DL 1080p').channels,
+    ).toBeUndefined()
+  })
+})

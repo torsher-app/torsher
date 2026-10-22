@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { TitleDetails } from '@torsher/api-client'
 import type { KeyAction } from '../focus/index.ts'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -6,14 +7,20 @@ import { useRouter } from 'vue-router'
 import PlayerBuffering from '../components/player/PlayerBuffering.vue'
 import PlayerOsd from '../components/player/PlayerOsd.vue'
 import PlayerPrompt from '../components/player/PlayerPrompt.vue'
+import PlayerStage from '../components/player/PlayerStage.vue'
+import AppLoader from '../components/AppLoader.vue'
 import AppIcon from '../components/AppIcon.vue'
 import FocusSection from '../components/FocusSection.vue'
 import PlayerTracks from '../components/player/PlayerTracks.vue'
 import type { PlaybackRestart } from '../composables/usePlayback.ts'
+import { api } from '../api.ts'
+import { useCatalogLanguage } from '../composables/useCatalogLanguage.ts'
 import { useHls } from '../composables/useHls.ts'
 import { usePlayback } from '../composables/usePlayback.ts'
 import { usePlayerTracks } from '../composables/usePlayerTracks.ts'
 import { usePlayerOsd } from '../composables/usePlayerOsd.ts'
+import { useResource } from '../composables/useResource.ts'
+import { loadSeason } from '../composables/useTitleSections.ts'
 import { useFocus } from '../focus/index.ts'
 import {
   backAction,
@@ -23,7 +30,9 @@ import {
   clampTime,
   formatDuration,
   formatGigabytes,
+  videoTimePolicy,
 } from '../lib/player.ts'
+import { goBack } from '../lib/navigation.ts'
 import { titleRefOf } from '../lib/sources.ts'
 
 const props = defineProps<{
@@ -48,6 +57,74 @@ const player = usePlayback(
 )
 const { playback, stats } = player
 
+// Экран подготовки: кадр, логотип и серия тайтла — если плеер открыт из карточки
+const language = useCatalogLanguage()
+const { data: art } = useResource<TitleDetails>(
+  computed(() =>
+    props.titleId ? `${props.titleId}:${language.value}` : undefined,
+  ),
+  (_, signal) =>
+    api.catalog.getCatalogTitle(
+      props.titleId!,
+      { language: language.value },
+      { signal },
+    ),
+)
+const episodeName = ref('')
+
+if (props.titleId && props.season && props.episode) {
+  loadSeason(props.titleId, Number(props.season), language.value)
+    .then((details) => {
+      episodeName.value
+        = details.episodes.find(item => item.number === Number(props.episode))
+          ?.title ?? ''
+    })
+    .catch(() => {
+      // Без названия серии — только номер
+    })
+}
+
+const artSubtitle = computed(() =>
+  props.season && props.episode
+    ? [
+        t('player.episodeOf', { season: props.season, episode: props.episode }),
+        episodeName.value,
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    : '',
+)
+
+// Название на сцене: тайтл из каталога, пока его нет — имя из ответа сервера
+const stageTitle = computed(
+  () =>
+    art.value?.title
+    ?? playback.value?.title
+    ?? player.pending.value?.title
+    ?? '',
+)
+
+// Где остановились: «23:27 из 52:41» и та же доля на дорожке
+const resumeText = computed(() => {
+  const start = playback.value?.startPosition ?? 0
+  const total = playback.value?.duration
+
+  return total
+    ? t('player.resume.textOf', {
+        time: formatDuration(start),
+        total: formatDuration(total),
+      })
+    : t('player.resume.text', { time: formatDuration(start) })
+})
+
+const resumeShare = computed(() => {
+  const total = playback.value?.duration
+
+  return total
+    ? Math.min(1, (playback.value?.startPosition ?? 0) / total)
+    : undefined
+})
+
 const video = ref<HTMLVideoElement>()
 const hls = useHls(() => player.fail('unknown'))
 
@@ -62,6 +139,9 @@ const duration = ref(Number.NaN)
 const panel = ref<'audio' | 'subtitles' | null>(null)
 const now = ref(new Date())
 const bufferingSince = ref(Date.now())
+// Смена дорожки перезапуском: до нового потока на экране сцена с лоадером, а
+// клавиши, кроме Back, не работают — перемотка потерялась бы при старте
+const restarting = ref(false)
 
 let startAt = 0
 let savedAt = 0
@@ -127,12 +207,12 @@ const tracksHint = computed(() =>
     : undefined,
 )
 
-// «Назад» под указкой: видна вместе с OSD и на экранах до старта
+// «Назад» под указкой: видна вместе с OSD и на экранах до старта. У окна
+// ошибки своя кнопка «Назад» — вторая сверху не нужна
 const backVisible = computed(
   () =>
-    player.status.value === 'error'
-    || phase.value !== 'playing'
-    || osd.visible.value,
+    player.status.value !== 'error'
+    && (phase.value !== 'playing' || osd.visible.value),
 )
 
 const errorKey = computed(() => {
@@ -146,16 +226,23 @@ const errorKey = computed(() => {
 })
 
 // Цифры места — в гигабайтах: так их видит панель
-const errorParams = computed(() => ({
-  needed: formatGigabytes(player.storage.value?.needed ?? 0, locale.value),
-  available: formatGigabytes(
-    player.storage.value?.available ?? 0,
-    locale.value,
-  ),
-}))
+const errorParams = computed(() => {
+  const storage = player.storage.value
+  const gigabytes = (bytes = 0) => formatGigabytes(bytes, locale.value)
+
+  return {
+    needed: gigabytes(storage?.needed),
+    available: gigabytes(storage?.available),
+    free: gigabytes(storage?.free),
+    reserve: gigabytes(storage?.minFree),
+    limit: gigabytes(storage?.cacheLimit),
+  }
+})
 
 function save() {
-  if (phase.value === 'playing') {
+  if (
+    videoTimePolicy({ phase: phase.value, restarting: restarting.value }).save
+  ) {
     player.saveWatchState(
       osd.scrub.value?.target ?? position.value,
       knownDuration.value,
@@ -166,9 +253,7 @@ function save() {
 function exit() {
   save()
 
-  if (router.options.history.state.back)
-    router.back()
-  else void router.replace('/')
+  goBack(router, () => void router.replace('/'))
 }
 
 function play() {
@@ -227,7 +312,11 @@ function onMedia(
  * фокус на таймлайне, OK при скрытом OSD — пауза, Back — в два шага.
  */
 function onKey(action: KeyAction, event: KeyboardEvent) {
-  if (phase.value !== 'playing' || player.status.value === 'error') {
+  if (
+    phase.value !== 'playing'
+    || restarting.value
+    || player.status.value === 'error'
+  ) {
     if (action.type !== 'back')
       return false
 
@@ -293,6 +382,7 @@ async function begin(from: number) {
     return
 
   startAt = from
+  restarting.value = false
   phase.value = 'buffering'
   bufferingSince.value = Date.now()
 
@@ -335,7 +425,14 @@ async function restartWith(change: PlaybackRestart) {
   const at = osd.scrub.value?.target ?? position.value
 
   save()
+  // Не снимается при ошибке нового старта: при выходе остаётся позиция,
+  // сохранённая выше, а не 0 от отцепленного видео
+  restarting.value = true
   closePanel()
+  // Прежняя сессия закрывается при перезапуске: hls.js грузил бы её сегменты,
+  // получал 404 и ронял экран посреди смены дорожки
+  hls.detach()
+  video.value?.pause()
   await player.start({ ...change, startPosition: at })
 
   if (player.status.value === 'ready')
@@ -389,6 +486,11 @@ function onPause() {
 
 function onTimeUpdate() {
   const el = video.value!
+
+  if (
+    !videoTimePolicy({ phase: phase.value, restarting: restarting.value }).track
+  )
+    return
 
   position.value = el.currentTime
 
@@ -488,22 +590,31 @@ onBeforeUnmount(() => {
       @error="onError"
     />
 
-    <PlayerPrompt
-      v-if="player.status.value === 'error'"
-      :title="t(`${errorKey}.title`)"
-      :text="t(`${errorKey}.text`, errorParams)"
-      :actions="[
-        { id: 'retry', label: t('player.retry') },
-        { id: 'back', label: t('player.back') },
-      ]"
-      @choose="onPromptChoice"
-    />
-
-    <template v-else-if="playback">
+    <!-- До первого кадра и при ошибке — одна сцена: фон и шапка не перерисовываются между фазами -->
+    <PlayerStage
+      v-if="
+        player.status.value === 'error' || phase !== 'playing' || restarting
+      "
+      :title="stageTitle"
+      :backdrop="art?.backdrop"
+      :logo="art?.logo"
+      :subtitle="artSubtitle"
+    >
       <PlayerPrompt
-        v-if="phase === 'resume'"
-        :title="playback.title"
-        :text="t('player.resume.text')"
+        v-if="player.status.value === 'error'"
+        :title="t(`${errorKey}.title`)"
+        :text="t(`${errorKey}.text`, errorParams)"
+        :actions="[
+          { id: 'retry', label: t('player.retry') },
+          { id: 'back', label: t('player.back') },
+        ]"
+        @choose="onPromptChoice"
+      />
+
+      <PlayerPrompt
+        v-else-if="playback && phase === 'resume'"
+        :text="resumeText"
+        :progress="resumeShare"
         :actions="[
           {
             id: 'resume',
@@ -516,59 +627,60 @@ onBeforeUnmount(() => {
         @choose="onPromptChoice"
       />
 
-      <PlayerBuffering
-        v-else-if="phase === 'buffering'"
-        :title="playback.title"
-        :step="step"
+      <AppLoader v-else />
+
+      <template
+        v-if="player.status.value !== 'error' && phase !== 'resume'"
+        #bottom
+      >
+        <PlayerBuffering :step="step" :stats="stats" />
+      </template>
+    </PlayerStage>
+
+    <template
+      v-if="
+        playback
+          && phase === 'playing'
+          && !restarting
+          && player.status.value !== 'error'
+      "
+    >
+      <p v-if="stalled" class="player__stall" role="status">
+        <span class="player__spinner" aria-hidden="true" />
+        {{ t("player.steps.buffering")
+        }}<template v-if="stats">
+          · {{ t("player.peers", stats.peers.connected) }}
+        </template>
+      </p>
+
+      <PlayerOsd
+        :visible="osd.visible.value"
+        :title="stageTitle"
+        :subtitle="artSubtitle || playback.fileName"
+        :position="position"
+        :duration="knownDuration"
+        :buffer-end="position + bufferSeconds"
+        :scrub-target="osd.scrub.value?.target ?? null"
+        :paused="paused"
         :stats="stats"
+        :buffer-seconds="bufferSeconds"
+        :now="now"
+        :audio-label="tracks.audioLabel.value"
+        :subtitles-label="tracks.subtitlesLabel.value"
+        @toggle="toggle"
+        @seek="seekTo($event * knownDuration)"
+        @tracks="openTracks"
       />
 
-      <template v-else-if="phase === 'playing'">
-        <p v-if="stalled" class="player__stall" role="status">
-          <span class="player__spinner" aria-hidden="true" />
-          {{ t("player.steps.buffering")
-          }}<template v-if="stats">
-            · {{ t("player.peers", stats.peers.connected) }}
-          </template>
-        </p>
-
-        <PlayerOsd
-          :visible="osd.visible.value"
-          :title="playback.title"
-          :file-name="playback.fileName"
-          :position="position"
-          :duration="knownDuration"
-          :buffer-end="position + bufferSeconds"
-          :scrub-target="osd.scrub.value?.target ?? null"
-          :paused="paused"
-          :stats="stats"
-          :buffer-seconds="bufferSeconds"
-          :now="now"
-          :audio-label="tracks.audioLabel.value"
-          :subtitles-label="tracks.subtitlesLabel.value"
-          @toggle="toggle"
-          @seek="seekTo($event * knownDuration)"
-          @tracks="openTracks"
-        />
-
-        <PlayerTracks
-          v-if="panel"
-          :kind="panel"
-          :options="trackOptions"
-          :caption="tracks.caption.value"
-          :hint="tracksHint"
-          @select="onTracksSelect"
-        />
-      </template>
+      <PlayerTracks
+        v-if="panel"
+        :kind="panel"
+        :options="trackOptions"
+        :caption="tracks.caption.value"
+        :hint="tracksHint"
+        @select="onTracksSelect"
+      />
     </template>
-
-    <!-- Пока сервер готовит поток и читает файл — экран подготовки, а не чёрный кадр -->
-    <PlayerBuffering
-      v-else-if="player.status.value === 'loading'"
-      :title="player.pending.value?.title ?? ''"
-      :step="step"
-      :stats="stats"
-    />
 
     <p
       v-if="phase === 'playing' && tracks.subtitleHtml.value"

@@ -3,7 +3,12 @@ import type { RankedRelease, TitleSources } from '../services/sources/index.ts'
 import { messageResponse } from '../dto/common.ts'
 import { engineUnavailableResponse } from '../dto/torrents.ts'
 import {
+  markWatched as markWatchedBody,
+  openTitle,
   pinTitleVoice,
+  titleFiles,
+  titleFilesParams,
+  titleOpen,
   titleParams,
   titleProgress,
   titleSources,
@@ -17,9 +22,21 @@ import {
   DEFAULT_PROFILE,
   getTitleSources,
   pinVoice,
+  voiceKeysOf,
 } from '../services/sources/index.ts'
-import { lastTitleProgress } from '../services/sources/progress.ts'
-import { WatchError, watchTitle } from '../services/sources/watch.ts'
+import { titleFiles as filesOfTorrent } from '../services/sources/files.ts'
+import {
+  episodeProgress,
+  lastTitleProgress,
+  markWatched,
+} from '../services/sources/progress.ts'
+import { seasonReleases } from '../services/sources/seasonRelease.ts'
+import {
+  openCandidate,
+  WatchError,
+  watchTitle,
+} from '../services/sources/watch.ts'
+import { getTorrent } from '../services/torrents/index.ts'
 import { TmdbError } from '../services/tmdb/index.ts'
 import { parseCatalogId } from '../services/tmdb/mappers.ts'
 import { isWatched } from '../services/torrents/playback.ts'
@@ -36,7 +53,7 @@ const tmdbResponses = {
   503: messageResponse,
 }
 
-function toCandidate(release: RankedRelease) {
+function toCandidate(release: RankedRelease, lastWatched: boolean) {
   const { parsed } = release
 
   return {
@@ -52,7 +69,10 @@ function toCandidate(release: RankedRelease) {
     codec: parsed.codec ?? null,
     hdr: parsed.hdr,
     audio: parsed.audio,
+    channels: parsed.channels ?? null,
+    subs: parsed.subs,
     voice: release.voice ?? null,
+    voiceKeys: voiceKeysOf(release),
     seasons: parsed.seasons,
     episodes: parsed.episodes
       ? {
@@ -68,6 +88,7 @@ function toCandidate(release: RankedRelease) {
         : ('medium' as const),
     pickReason: release.reason ?? null,
     publishedAt: release.publishedAt?.toISOString() ?? null,
+    lastWatched,
   }
 }
 
@@ -82,8 +103,11 @@ export function toSourcesResponse(sources: TitleSources) {
       voiceTypes: DEFAULT_PROFILE.voiceTypes,
     },
     pinnedVoice: sources.pinned ?? null,
+    seasonCandidate: sources.seasonCandidate ?? null,
     top: sources.ranking.top,
-    candidates: sources.ranking.ranked.map(toCandidate),
+    candidates: sources.ranking.ranked.map(release =>
+      toCandidate(release, release.id === sources.lastWatchedId),
+    ),
     voices: sources.voices,
     indexers: {
       total: sources.indexerCount,
@@ -112,13 +136,14 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
       },
     },
     async (request, reply) => {
-      const { season, episode, refresh } = request.query
+      const { season, episode, refresh, all } = request.query
 
       try {
         const sources = await getTitleSources(request.params.id, {
           season: season === undefined ? undefined : Number(season),
           episode: episode === undefined ? undefined : Number(episode),
           refresh: refresh === '1',
+          allSeasons: all === '1',
           profileId: request.profileId,
         })
 
@@ -243,7 +268,148 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
               updatedAt: last.updatedAt.toISOString(),
             }
           : null,
+        episodes: episodeProgress(request.profileId, request.params.id).map(
+          row => ({
+            season: row.season,
+            episode: row.episode,
+            position: row.position,
+            duration: row.duration,
+            watched: isWatched(row.position, row.duration),
+          }),
+        ),
+        seasonReleases: seasonReleases(
+          request.profileId,
+          request.params.id,
+        ).map(release => ({
+          season: release.season,
+          torrentId: release.torrent.id,
+          quality: release.quality ?? null,
+          voice: release.voice ?? null,
+          episodes: release.episodes,
+        })),
       }
+    },
+  )
+
+  app.post(
+    '/:id/open',
+    {
+      schema: {
+        operationId: 'postTitleOpen',
+        tags: ['Titles'],
+        params: titleParams,
+        body: openTitle,
+        response: {
+          200: titleOpen,
+          400: messageResponse,
+          ...guardResponses,
+          ...tmdbResponses,
+          422: watchErrorResponse,
+          503: engineUnavailableResponse,
+          504: messageResponse,
+        },
+      },
+    },
+    async (request, reply) => {
+      let result
+
+      try {
+        result = await openCandidate(
+          request.params.id,
+          request.body.candidateId,
+          request.profileId,
+        )
+      }
+      catch (err) {
+        if (err instanceof WatchError)
+          return reply.code(422).send({ message: err.message, kind: err.kind })
+
+        if (err instanceof TmdbError)
+          return sendTmdbError(reply, err)
+
+        return sendEngineError(reply, err)
+      }
+
+      if (!result)
+        return reply.code(404).send({ message: 'Title not found' })
+
+      return result
+    },
+  )
+
+  app.get(
+    '/:id/files/:torrentId',
+    {
+      schema: {
+        operationId: 'getTitleFiles',
+        tags: ['Titles'],
+        params: titleFilesParams,
+        response: {
+          200: titleFiles,
+          404: messageResponse,
+          ...guardResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const ref = parseCatalogId(request.params.id)
+      const torrent = getTorrent(request.params.torrentId)
+
+      // Только раздачи этого тайтла: чужие файлы экран «Файлы» не показывает
+      if (!ref || !torrent || torrent.titleId !== request.params.id)
+        return reply.code(404).send({ message: 'Release not found' })
+
+      if (torrent.status !== 'ready')
+        return { status: 'resolving' as const, name: torrent.name, files: [] }
+
+      return {
+        status: 'ready' as const,
+        name: torrent.name,
+        files: filesOfTorrent(torrent, {
+          profileId: request.profileId,
+          titleId: request.params.id,
+          kind: ref.type === 'movie' ? 'movie' : 'series',
+        }).map(file => ({
+          ...file,
+          season: file.season ?? null,
+          episode: file.episode ?? null,
+        })),
+      }
+    },
+  )
+
+  app.put(
+    '/:id/watched',
+    {
+      schema: {
+        operationId: 'putTitleWatched',
+        tags: ['Titles'],
+        params: titleParams,
+        body: markWatchedBody,
+        response: {
+          200: markWatchedBody,
+          404: messageResponse,
+          ...guardResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (!parseCatalogId(request.params.id))
+        return reply.code(404).send({ message: 'Title not found' })
+
+      const { season, episode, watched } = request.body
+
+      markWatched(
+        {
+          profileId: request.profileId,
+          titleId: request.params.id,
+          season,
+          episode,
+        },
+        watched,
+      )
+
+      return { season, episode, watched }
     },
   )
 }

@@ -165,6 +165,7 @@ html.tv {
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background font-sans text-sm text-foreground antialiased;
+    /* Цифры одной ширины везде: меняющиеся значения не смещаются в разряде */
+    @apply bg-background font-sans text-sm text-foreground antialiased tabular-nums;
   }
 }
