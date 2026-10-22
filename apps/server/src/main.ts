@@ -52,9 +52,17 @@ function checkStorage() {
   if (!isEngineReady())
     return
 
-  enforceStorage().catch(err =>
-    engineLog.error({ err }, 'Storage check failed'),
-  )
+  enforceStorage()
+    .then((result) => {
+      // Вытеснение удаляет файлы раздач: без записи его не отличить от потери данных
+      if (result.evicted.length > 0) {
+        engineLog.warn(
+          { evicted: result.evicted, available: result.available },
+          'Cache evicted',
+        )
+      }
+    })
+    .catch(err => engineLog.error({ err }, 'Storage check failed'))
 }
 
 // Раздачи, которые ждали метаданные до перезапуска, дожидаются их снова
