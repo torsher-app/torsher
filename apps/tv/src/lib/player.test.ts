@@ -324,7 +324,7 @@ describe('streamLive', () => {
     expect(streamLive({ ...live, restarting: true })).toBe(false)
     expect(streamLive({ ...live, failed: true })).toBe(false)
     expect(streamLive({ ...live, phase: 'buffering' })).toBe(false)
-    expect(streamLive({ ...live, phase: 'resume' })).toBe(false)
+    expect(streamLive({ ...live, phase: 'starting' })).toBe(false)
   })
 })
 

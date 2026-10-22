@@ -6,8 +6,6 @@ import FocusSection from '../FocusSection.vue'
 const props = defineProps<{
   title?: string
   text?: string
-  /** Доля просмотренного для полосы под текстом: 0…1 */
-  progress?: number
   /** Первое действие получает фокус и выглядит главным */
   actions: { id: T, label: string }[]
   /** Действие выполняется: кнопка приглушена, окно ещё на экране */
@@ -47,12 +45,6 @@ onBeforeUnmount(() => clearTimeout(shakeTimer))
     <p v-if="text" class="prompt__text">
       {{ text }}
     </p>
-    <span v-if="progress !== undefined" class="prompt__track">
-      <span
-        class="prompt__progress"
-        :style="{ transform: `scaleX(${progress})` }"
-      />
-    </span>
     <FocusSection
       name="player-prompt"
       class="prompt__actions"
@@ -99,22 +91,6 @@ onBeforeUnmount(() => clearTimeout(shakeTimer))
 }
 
 /* Где остановились — та же дорожка, что у серий в карточке и «Файлах» */
-.prompt__track {
-  width: calc(var(--u) * 480);
-  height: calc(var(--u) * 6);
-  margin-top: var(--space-3);
-  overflow: hidden;
-  border-radius: calc(var(--u) * 3);
-  background: rgba(255, 255, 255, 0.25);
-}
-
-.prompt__progress {
-  display: block;
-  height: 100%;
-  background: var(--color-accent);
-  transform-origin: left center;
-}
-
 .prompt__actions {
   display: flex;
   justify-content: center;

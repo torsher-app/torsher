@@ -102,7 +102,7 @@ export const playback = z
     size: z.number(),
     // Длительность из файла или из прошлого просмотра
     duration: z.number().nullable(),
-    // С какой секунды предложить продолжить; null — сначала
+    // С какой секунды продолжить просмотр; null — с начала
     startPosition: z.number().nullable(),
     // null — сервер не смог прочитать файл: дорожки отдаёт сам плеер
     media: mediaInfo.nullable(),

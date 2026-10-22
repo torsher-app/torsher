@@ -74,6 +74,18 @@ describe('backAction', () => {
     })
   })
 
+  it('плеер единственного файла — прямо в «Источники»', () => {
+    const player = route(
+      '/play/:torrentId/:fileIndex',
+      { torrentId: 't1', fileIndex: '0' },
+      { title: ID },
+    )
+
+    expect(backAction(player, `/title/${ID}/sources`)).toEqual({
+      kind: 'history',
+    })
+  })
+
   it('экраны вне флоу — по истории, а без неё — корень', () => {
     expect(backAction(route('/search'), '/')).toEqual({ kind: 'history' })
     expect(backAction(route('/'), undefined)).toEqual({ kind: 'none' })

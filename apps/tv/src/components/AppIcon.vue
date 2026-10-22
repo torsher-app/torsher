@@ -13,6 +13,7 @@ export type IconName
     | 'chevronDown'
     | 'play'
     | 'pause'
+    | 'fromStart'
     | 'recent'
     | 'download'
     | 'audio'
@@ -62,6 +63,7 @@ const PATHS: Record<IconName, (string | IconPart)[]> = {
   ],
   play: ['M7 4.5v15l12.5-7.5z'],
   pause: ['M6.5 4.5h4v15h-4z', 'M13.5 4.5h4v15h-4z'],
+  fromStart: ['M6.5 5v14', { d: 'M18.5 5.5v13L9 12z', fill: true }],
   download: ['M12 4.5v14M6 12.5l6 6 6-6'],
   audio: ['M4 14.5v-5M8 18V6M12 21V3M16 18V6M20 14.5v-5'],
   subtitles: [

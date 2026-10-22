@@ -55,9 +55,12 @@ function parentOf(route: RouteLike) {
 
       const files = `/title/${title}/files/${stringOf(route.params.torrentId)}`
 
+      // Раздачу из одного файла «Файлы» пропускают: плеер встаёт на их место,
+      // и прошлая запись — «Источники»
       return {
         path: files,
-        accepts: (back: string) => pathOf(back) === files,
+        accepts: (back: string) =>
+          pathOf(back) === files || pathOf(back) === `/title/${title}/sources`,
       }
     }
     default:
