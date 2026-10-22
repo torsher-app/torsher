@@ -70,3 +70,23 @@ export function resumePosition(position: number, duration: number | null) {
 
   return isWatched(position, duration) ? null : position
 }
+
+const MIB = 1024 * 1024
+// Запас впереди позиции при просмотре: столько видео докачивается вперёд,
+// пока поток открыт. Без длительности — окно среднего размера
+const STREAM_AHEAD_SECONDS = 180
+const MIN_STREAM_WINDOW = 64 * MIB
+const MAX_STREAM_WINDOW = 1024 * MIB
+const DEFAULT_STREAM_WINDOW = 128 * MIB
+
+/** Окно просмотра в байтах: три минуты видео по среднему битрейту файла */
+export function streamWindowOf(size: number, duration: number | null) {
+  if (!duration || duration <= 0 || size <= 0)
+    return DEFAULT_STREAM_WINDOW
+
+  const window = (size / duration) * STREAM_AHEAD_SECONDS
+
+  return Math.round(
+    Math.min(MAX_STREAM_WINDOW, Math.max(MIN_STREAM_WINDOW, window)),
+  )
+}

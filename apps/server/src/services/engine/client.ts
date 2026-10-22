@@ -80,8 +80,7 @@ const engineTorrentDetails = z.object({
 const engineTorrentState = z.object({
   infoHash: z.string(),
   paused: z.boolean(),
-  // Выбранные файлы качаются целиком, а не только то, что читает поток
-  background: z.boolean(),
+  // Файлы, которые качаются целиком; остальное качают только окна потоков
   selected: z.array(z.number()).nullable(),
   // Скачано всего, включая куски вне выбора, прочитанные потоком
   bytesCompleted: z.number(),
@@ -107,7 +106,6 @@ export type EngineTorrentDetails = z.infer<typeof engineTorrentDetails>
 export interface EngineTorrentState {
   infoHash: string
   paused: boolean
-  background: boolean
   selected: number[]
   bytesCompleted: number
   bytesWanted: number
@@ -127,7 +125,6 @@ function toState(raw: z.infer<typeof engineTorrentState>): EngineTorrentState {
   return {
     infoHash: raw.infoHash.toLowerCase(),
     paused: raw.paused,
-    background: raw.background,
     selected: raw.selected ?? [],
     bytesCompleted: raw.bytesCompleted,
     bytesWanted: raw.bytesWanted,
@@ -286,14 +283,10 @@ async function engineEmpty(path: string, request: EngineRequest) {
  * Меняет выбор файлов. `now` — качать выбранные целиком сразу; без него
  * движок ждёт начала просмотра (у раздачи, которая уже докачивается, — сразу).
  */
-export async function selectFiles(
-  infoHash: string,
-  files: number[],
-  now: boolean,
-) {
+export async function selectFiles(infoHash: string, files: number[]) {
   await engineEmpty(`/torrents/${infoHash}/files`, {
     method: 'PUT',
-    body: JSON.stringify({ files, now }),
+    body: JSON.stringify({ files }),
     headers: { 'Content-Type': 'application/json' },
   })
 }
@@ -344,11 +337,25 @@ export async function torrentStats(infoHash: string): Promise<EngineStats> {
  * Адрес потока файла для ffmpeg и ffprobe: они читают движок сами, с Range,
  * без прокси сервера. Движок слушает только loopback.
  */
-export function engineStreamUrl(infoHash: string, fileIndex: number) {
+function streamPath(infoHash: string, fileIndex: number, window?: number) {
+  const path = `/torrents/${infoHash}/files/${fileIndex}/stream`
+
+  return window ? `${path}?window=${Math.round(window)}` : path
+}
+
+/**
+ * Адрес потока для ffmpeg и ffprobe. `window` — сколько байт впереди позиции
+ * движок качает, пока поток открыт; без него — только срочное у позиции.
+ */
+export function engineStreamUrl(
+  infoHash: string,
+  fileIndex: number,
+  window?: number,
+) {
   if (!baseUrl)
     throw engineUnavailableError()
 
-  return `${baseUrl}/torrents/${infoHash}/files/${fileIndex}/stream`
+  return `${baseUrl}${streamPath(infoHash, fileIndex, window)}`
 }
 
 /**
@@ -360,11 +367,12 @@ export async function openStream(
   fileIndex: number,
   range: string | undefined,
   signal: AbortSignal,
+  window?: number,
 ) {
-  const response = await engineFetch(
-    `/torrents/${infoHash}/files/${fileIndex}/stream`,
-    { headers: range ? { Range: range } : {}, signal },
-  )
+  const response = await engineFetch(streamPath(infoHash, fileIndex, window), {
+    headers: range ? { Range: range } : {},
+    signal,
+  })
 
   if (!response.ok && response.status !== 416)
     throw await errorOf(response)

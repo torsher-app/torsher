@@ -38,7 +38,6 @@ export function piecesDone(count: number) {
 export const liveState = {
   infoHash: INFO_HASH,
   paused: false,
-  background: false,
   selected: [0],
   bytesCompleted: 3_145_728,
   bytesWanted: 9_437_184,

@@ -5,17 +5,15 @@ import (
 	"mime"
 	"net/http"
 	"path"
+	"strconv"
 	"time"
 
 	"github.com/anacrolix/torrent"
 )
 
-// Сколько впереди позиции чтения качать в приоритете. Кусок под позицией
-// библиотека запрашивает срочно, окно — следом
+// Сколько впереди позиции чтения библиотека качает срочно, кусок под
+// позицией — первым. Дальше идёт окно просмотра (`window.go`)
 var streamReadahead int64 = 16 << 20
-
-// Через сколько после начала просмотра выбранный файл докачивается целиком
-const backgroundDelay = 30 * time.Second
 
 func newStreamReader(ctx context.Context, file *torrent.File) torrent.Reader {
 	reader := file.NewReader()
@@ -27,7 +25,9 @@ func newStreamReader(ctx context.Context, file *torrent.File) torrent.Reader {
 }
 
 // Поток файла с Range: 206, 416, `Content-Range` и `Content-Length` отдаёт
-// `http.ServeContent`. Обрыв соединения отменяет контекст ридера
+// `http.ServeContent`. Обрыв соединения отменяет контекст ридера.
+// `window` — сколько байт впереди позиции качать, пока поток открыт; без
+// него качается только readahead
 func (a *api) stream(w http.ResponseWriter, r *http.Request) {
 	t, ok := a.torrentOf(w, r)
 	if !ok {
@@ -39,10 +39,9 @@ func (a *api) stream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Плеер начал читать: через полминуты файл докачивается целиком в фоне
-	time.AfterFunc(backgroundDelay, func() { a.startBackground(t) })
+	window, _ := strconv.ParseInt(r.URL.Query().Get("window"), 10, 64)
 
-	reader := newStreamReader(r.Context(), file)
+	reader := a.windows.open(t, file, newStreamReader(r.Context(), file), window)
 	defer reader.Close()
 
 	name := path.Base(file.Path())

@@ -17,6 +17,7 @@ export {
   sessionCues,
   stopAllSessions,
   stopSession,
+  streamWindowFor,
 } from './sessions.ts'
 export type { PlaybackSession } from './sessions.ts'
 export { cuesInWindow } from './webvtt.ts'

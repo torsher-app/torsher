@@ -2,7 +2,8 @@ import type { EngineTorrentState } from '../engine/index.ts'
 
 /**
  * Что происходит с раздачей: `idle` — данных нет (не смотрели или вытеснена),
- * `partial` — что-то скачано потоком, но целиком не качается, `downloading`,
+ * `partial` — что-то скачано потоком, но целиком ничего не качается,
+ * `downloading` — качаются выбранные файлы или открыт поток,
  * `stalled` — качается, а пиров нет, `seeding` — выбранное скачано и раздаётся,
  * `complete` — скачано и не раздаётся, `paused`.
  */
@@ -28,7 +29,7 @@ export function downloadStateOf(
   if (live.bytesWanted > 0 && live.wantedCompleted >= live.bytesWanted)
     return live.seeding ? 'seeding' : 'complete'
 
-  if (!live.background && !streaming)
+  if (live.bytesWanted === 0 && !streaming)
     return live.bytesCompleted > 0 ? 'partial' : 'idle'
 
   return live.peers.connected === 0 ? 'stalled' : 'downloading'

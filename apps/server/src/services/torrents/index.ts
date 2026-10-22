@@ -24,12 +24,14 @@ import {
 } from '../engine/index.ts'
 import { enforceStorage, ensureSpaceFor } from '../storage/index.ts'
 import { parseMagnet } from './magnet.ts'
+import { isVideoFile } from './media.ts'
 import { bufferedAheadBytes, fileOffsetOf } from './playback.ts'
 
 export { InsufficientStorageError } from '../storage/index.ts'
 
 export { parseMagnet } from './magnet.ts'
 export { contentTypeOf, fileNameOf, isVideoFile } from './media.ts'
+export { streamWindowOf } from './playback.ts'
 export { downloadStateOf } from './state.ts'
 export type { DownloadState } from './state.ts'
 
@@ -316,10 +318,32 @@ async function downloadedOf(torrent: Torrent, fileIndex: number) {
   }
 }
 
-function withFile(selected: number[] | null, fileIndex: number) {
+function withFiles(selected: number[] | null, added: number[]) {
   const files = selected ?? []
 
-  return files.includes(fileIndex) ? files : [...files, fileIndex]
+  return [...files, ...added.filter(index => !files.includes(index))]
+}
+
+/**
+ * Что качается целиком, пока смотрят файл. Раздача из кэша — только явный
+ * выбор: просмотр качает окно впереди позиции. Закреплённая — «моё»: файл,
+ * который начали смотреть, скачивается целиком.
+ */
+function streamSelection(torrent: Torrent, fileIndex: number) {
+  return torrent.retention === 'keep'
+    ? withFiles(torrent.selectedFiles, [fileIndex])
+    : (torrent.selectedFiles ?? [])
+}
+
+/** Раздачу убрали из движка мимо базы: менять выбор не у кого */
+async function ignoreMissing(action: Promise<void>) {
+  try {
+    await action
+  }
+  catch (err) {
+    if (!(err instanceof EngineError) || err.kind !== 'not_found')
+      throw err
+  }
 }
 
 /** Метаданных magnet ещё нет — скачивать и смотреть нечего */
@@ -355,7 +379,6 @@ export async function downloadFiles(torrent: Torrent, files: number[]) {
     throw new NotReadyError()
 
   await addTorrent(torrent.torrentFile, files)
-  await selectFiles(torrent.infoHash, files, true)
 
   if (torrent.pauseReason)
     await resumeTorrent(torrent.infoHash)
@@ -393,17 +416,79 @@ export async function resumeDownload(torrent: Torrent) {
   return getTorrent(torrent.id) ?? torrent
 }
 
-/** «Оставить» выводит раздачу из-под вытеснения; «Не оставлять» возвращает в кэш */
+/** Видеофайлы, которые начали смотреть: на диске уже что-то есть */
+async function startedVideos(torrent: Torrent) {
+  if (!torrent.inEngine)
+    return []
+
+  let progress: number[]
+
+  try {
+    progress = (await torrentStats(torrent.infoHash)).fileProgress
+  }
+  catch (err) {
+    if (err instanceof EngineError && err.kind === 'not_found')
+      return []
+
+    throw err
+  }
+
+  return (torrent.files ?? []).flatMap((file, index) =>
+    !file.padding && isVideoFile(file.path) && (progress[index] ?? 0) > 0
+      ? [index]
+      : [],
+  )
+}
+
+/**
+ * «Оставить» выводит раздачу из-под вытеснения и докачивает начатые
+ * видеофайлы. «Не оставлять» возвращает её в кэш и останавливает полную
+ * закачку: скачанное остаётся в кэше до вытеснения.
+ */
 export async function setRetention(
   torrent: Torrent,
   retention: Torrent['retention'],
 ) {
-  const updated = update(torrent.id, { retention })
+  if (!isEngineReady())
+    return update(torrent.id, { retention })
 
-  if (retention === 'cache' && isEngineReady())
-    await enforceStorage()
+  const selected
+    = retention === 'keep'
+      ? withFiles(torrent.selectedFiles, await startedVideos(torrent))
+      : []
+
+  if (torrent.inEngine)
+    await ignoreMissing(selectFiles(torrent.infoHash, selected))
+
+  const updated = update(torrent.id, {
+    retention,
+    selectedFiles: selected.length ? selected : null,
+  })
+
+  await enforceStorage()
 
   return getTorrent(torrent.id) ?? updated
+}
+
+/**
+ * Выбор, накопленный просмотром до окна просмотра: раньше просмотр добавлял
+ * файл к выбору, и раздачи из кэша докачивались целиком. Снимаем его после
+ * старта движка; повторный запуск ничего не меняет.
+ */
+export async function clearStreamSelections() {
+  const rows = getDb()
+    .select()
+    .from(torrents)
+    .where(eq(torrents.retention, 'cache'))
+    .all()
+    .filter(row => row.selectedFiles?.length)
+
+  for (const row of rows) {
+    if (row.inEngine)
+      await ignoreMissing(selectFiles(row.infoHash, []))
+
+    update(row.id, { selectedFiles: null })
+  }
 }
 
 export function playableFile(torrent: Torrent, fileIndex: number) {
@@ -414,9 +499,9 @@ export function playableFile(torrent: Torrent, fileIndex: number) {
 
 /**
  * Готовит файл к просмотру: освобождает место под остаток файла (или
- * объясняет, почему не может), добавляет раздачу в движок и добавляет файл
- * к выбранным — просмотр серии не отменяет скачивание сезона. Просмотр
- * снимает паузу: смотреть — значит качать.
+ * объясняет, почему не может) и добавляет раздачу в движок. Просмотр раздачи
+ * из кэша качает только окно впереди позиции, закреплённой — файл целиком
+ * (`streamSelection`). Просмотр снимает паузу: смотреть — значит качать.
  */
 export async function prepareStream(torrent: Torrent, fileIndex: number) {
   if (!torrent.torrentFile)
@@ -427,7 +512,7 @@ export async function prepareStream(torrent: Torrent, fileIndex: number) {
 
   await ensureSpaceFor({ torrent, bytes: Math.max(0, size - downloaded) })
 
-  const selected = withFile(torrent.selectedFiles, fileIndex)
+  const selected = streamSelection(torrent, fileIndex)
 
   await addTorrent(torrent.torrentFile, selected)
 
@@ -436,24 +521,26 @@ export async function prepareStream(torrent: Torrent, fileIndex: number) {
 
   return update(torrent.id, {
     inEngine: true,
-    selectedFiles: selected,
+    selectedFiles: selected.length ? selected : null,
     pauseReason: null,
     lastAccessAt: new Date(),
   })
 }
 
 /**
- * Открывает поток файла в движке. Раздачу, которую движок забыл (новый
- * каталог данных, сброс состояния), добавляет заново.
+ * Открывает поток файла в движке; `window` — сколько байт впереди позиции
+ * качать, пока поток открыт. Раздачу, которую движок забыл (новый каталог
+ * данных, сброс состояния), добавляет заново.
  */
 export async function openFileStream(
   torrent: Torrent,
   fileIndex: number,
   range: string | undefined,
   signal: AbortSignal,
+  window?: number,
 ) {
   try {
-    return await openStream(torrent.infoHash, fileIndex, range, signal)
+    return await openStream(torrent.infoHash, fileIndex, range, signal, window)
   }
   catch (err) {
     if (!(err instanceof EngineError) || err.kind !== 'not_found')
@@ -463,13 +550,10 @@ export async function openFileStream(
       throw new EngineError('rejected', 'Torrent metadata is not ready')
 
     // Движок потерял раздачу; место под неё проверялось при старте просмотра
-    await addTorrent(
-      torrent.torrentFile,
-      withFile(torrent.selectedFiles, fileIndex),
-    )
+    await addTorrent(torrent.torrentFile, streamSelection(torrent, fileIndex))
     update(torrent.id, { inEngine: true })
 
-    return openStream(torrent.infoHash, fileIndex, range, signal)
+    return openStream(torrent.infoHash, fileIndex, range, signal, window)
   }
 }
 

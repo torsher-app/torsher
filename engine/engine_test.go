@@ -290,12 +290,45 @@ func TestTorrentsSurviveRestart(t *testing.T) {
 		t.Fatal("torrent was not restored")
 	}
 
-	engine.mu.Lock()
-	pending := engine.pending[hash]
-	engine.mu.Unlock()
+	if state := engine.stateOf(restored); len(state.Selected) != 1 || state.Selected[0] != 0 {
+		t.Fatalf("selection was not restored: %v", state.Selected)
+	}
 
-	if len(pending) != 1 || pending[0] != 0 {
-		t.Fatalf("selection was not restored: %v", pending)
+	if priority := restored.Files()[0].Priority(); priority != torrent.PiecePriorityNormal {
+		t.Fatalf("restored selection does not download: priority %v", priority)
+	}
+}
+
+// Запись прежней версии: выбор без докачки сделал просмотр — целиком его не
+// качаем; выбор с докачкой остаётся. Запись переводится в новый вид
+func TestLegacySessionSelection(t *testing.T) {
+	for _, legacy := range []struct {
+		background bool
+		selected   int
+	}{{false, 0}, {true, 1}} {
+		fx := newFixture(t)
+		dataDir := t.TempDir()
+		sess, err := newSession(filepath.Join(dataDir, "torrents"))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		background := legacy.background
+		if err := sess.save(fx.meta, savedTorrent{Selected: []int{0}, Background: &background}); err != nil {
+			t.Fatal(err)
+		}
+
+		engine, _ := newTestEngine(t, dataDir)
+		engine.restore(context.Background())
+
+		hash := fx.meta.HashInfoBytes()
+		if state := stateOfHash(t, engine, hash); len(state.Selected) != legacy.selected {
+			t.Fatalf("background %v: selection %v", legacy.background, state.Selected)
+		}
+
+		if saved := engine.session.get(hash); saved.Background != nil {
+			t.Fatalf("background %v: legacy field was kept", legacy.background)
+		}
 	}
 }
 
@@ -400,7 +433,7 @@ func downloadFixture(t *testing.T, engine *api, server *httptest.Server, fx fixt
 	hash := fx.meta.HashInfoBytes()
 	post(t, server.URL+"/torrents?files=0", fx.raw).Body.Close()
 
-	response := put(t, server.URL+"/torrents/"+hash.HexString()+"/files", `{"files":[0],"now":true}`)
+	response := put(t, server.URL+"/torrents/"+hash.HexString()+"/files", `{"files":[0]}`)
 	response.Body.Close()
 	if response.StatusCode != http.StatusNoContent {
 		t.Fatalf("select: status %d", response.StatusCode)
@@ -412,7 +445,7 @@ func downloadFixture(t *testing.T, engine *api, server *httptest.Server, fx fixt
 	return hash
 }
 
-func TestDownloadNowFetchesTheWholeFile(t *testing.T) {
+func TestSelectedFileDownloadsWithoutStream(t *testing.T) {
 	fx := newFixture(t)
 	engine, server := newTestEngine(t, t.TempDir())
 	hash := downloadFixture(t, engine, server, fx)
@@ -425,7 +458,7 @@ func TestDownloadNowFetchesTheWholeFile(t *testing.T) {
 	response, _ := http.Get(server.URL + "/torrents")
 	states := decode[[]torrentState](t, response)
 
-	if len(states) != 1 || !states[0].Background || states[0].BytesWanted != int64(len(fx.content)) || states[0].Selected[0] != 0 {
+	if len(states) != 1 || states[0].BytesWanted != int64(len(fx.content)) || states[0].Selected[0] != 0 {
 		t.Fatalf("unexpected list %+v", states)
 	}
 }
@@ -444,7 +477,7 @@ func TestPauseStopsDownloadAndSurvivesRestart(t *testing.T) {
 		t.Fatalf("pause: status %d", paused.StatusCode)
 	}
 
-	put(t, server.URL+"/torrents/"+hash.HexString()+"/files", `{"files":[0],"now":true}`).Body.Close()
+	put(t, server.URL+"/torrents/"+hash.HexString()+"/files", `{"files":[0]}`).Body.Close()
 	added, _ := engine.client.Torrent(hash)
 	added.AddClientPeer(fx.seeder)
 
@@ -460,7 +493,7 @@ func TestPauseStopsDownloadAndSurvivesRestart(t *testing.T) {
 	restarted, _ := newTestEngine(t, restartDir)
 	restarted.restore(context.Background())
 
-	if state := stateOfHash(t, restarted, hash); !state.Paused || !state.Background {
+	if state := stateOfHash(t, restarted, hash); !state.Paused || len(state.Selected) != 1 {
 		t.Fatalf("pause was not restored: %+v", state)
 	}
 
@@ -722,7 +755,7 @@ func TestNeighbourDownloadKeepsFinishedFile(t *testing.T) {
 	path := filepath.Join(dataDir, "downloads", "Show", "E01.mkv")
 
 	post(t, server.URL+"/torrents?files=0", fx.raw).Body.Close()
-	put(t, server.URL+"/torrents/"+hash.HexString()+"/files", `{"files":[0],"now":true}`).Body.Close()
+	put(t, server.URL+"/torrents/"+hash.HexString()+"/files", `{"files":[0]}`).Body.Close()
 	added, _ := engine.client.Torrent(hash)
 	added.AddClientPeer(fx.seeder)
 
@@ -731,7 +764,7 @@ func TestNeighbourDownloadKeepsFinishedFile(t *testing.T) {
 		return err == nil && bytes.Equal(data, first)
 	})
 
-	put(t, server.URL+"/torrents/"+hash.HexString()+"/files", `{"files":[0,1],"now":true}`).Body.Close()
+	put(t, server.URL+"/torrents/"+hash.HexString()+"/files", `{"files":[0,1]}`).Body.Close()
 
 	waitFor(t, 30*time.Second, func() bool {
 		data, err := os.ReadFile(filepath.Join(dataDir, "downloads", "Show", "E02.mkv"))
@@ -773,7 +806,7 @@ func TestRestartKeepsFinishedFileNextToPartFile(t *testing.T) {
 	server := httptest.NewServer(engine.routes())
 
 	post(t, server.URL+"/torrents?files=0", fx.raw).Body.Close()
-	put(t, server.URL+"/torrents/"+hash.HexString()+"/files", `{"files":[0],"now":true}`).Body.Close()
+	put(t, server.URL+"/torrents/"+hash.HexString()+"/files", `{"files":[0]}`).Body.Close()
 	added, _ := engine.client.Torrent(hash)
 	added.AddClientPeer(fx.seeder)
 
@@ -871,5 +904,61 @@ func TestPartFileOfTorrentIsNotAdopted(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "A.mkv")); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("sibling file was created: %v", err)
+	}
+}
+
+// Паника в обработчике не оставляет движок жить с захваченной блокировкой
+func TestHandlerPanicExitsEngine(t *testing.T) {
+	engine, _ := newTestEngine(t, t.TempDir())
+
+	var code int
+	engine.exit = func(c int) { code = c }
+
+	handler := engine.crashOnPanic(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		panic("library failed while holding the client lock")
+	}))
+	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/torrents", nil))
+
+	if code != 2 {
+		t.Fatalf("exit code %d, want 2", code)
+	}
+}
+
+// Раздача на паузе с выбором после перезапуска: снятие выбора не вешает
+// движок (пауза оставляла ожидающие куски несогласованными, и самопроверка
+// библиотеки паниковала внутри `File.SetPriority` под блокировкой клиента)
+func TestRestoredPausedSelectionCanBeCleared(t *testing.T) {
+	fx := newFixture(t)
+	dataDir := t.TempDir()
+	hash := fx.meta.HashInfoBytes()
+
+	{
+		_, server := newTestEngine(t, dataDir)
+		post(t, server.URL+"/torrents?files=0", fx.raw).Body.Close()
+		post(t, server.URL+"/torrents/"+hash.HexString()+"/pause", nil).Body.Close()
+	}
+
+	restartDir := t.TempDir()
+	copyDir(t, filepath.Join(dataDir, "torrents"), filepath.Join(restartDir, "torrents"))
+	engine, server := newTestEngine(t, restartDir)
+	engine.exit = func(int) { t.Error("engine exited after a handler panic") }
+	engine.restore(context.Background())
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	request, _ := http.NewRequest(http.MethodPut, server.URL+"/torrents/"+hash.HexString()+"/files", bytes.NewReader([]byte(`{"files":[]}`)))
+	cleared, err := client.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cleared.Body.Close()
+
+	listed, err := client.Get(server.URL + "/torrents")
+	if err != nil {
+		t.Fatalf("engine hangs after clearing the selection: %v", err)
+	}
+	listed.Body.Close()
+
+	if cleared.StatusCode != http.StatusNoContent || listed.StatusCode != http.StatusOK {
+		t.Fatalf("clear %d, list %d", cleared.StatusCode, listed.StatusCode)
 	}
 }

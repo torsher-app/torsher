@@ -565,12 +565,12 @@ describe('воспроизведение и позиция', () => {
     expect(response.statusCode).toBe(409)
   })
 
-  it('добавляет раздачу в движок только с этим файлом и отдаёт адрес потока', async () => {
+  it('добавляет раздачу в движок без закачки файла целиком и отдаёт адрес потока', async () => {
     const torrent = insertTorrent()
 
     engine({
       'POST /torrents': (url) => {
-        expect(url.searchParams.get('files')).toBe('0')
+        expect(url.searchParams.get('files')).toBe('')
         return json(movieDetails)
       },
     })
@@ -655,8 +655,10 @@ describe('поток', () => {
     const torrent = insertTorrent()
 
     engine({
-      [`GET /torrents/${INFO_HASH}/files/0/stream`]: (_url, init) => {
+      [`GET /torrents/${INFO_HASH}/files/0/stream`]: (url, init) => {
         expect(init.headers).toEqual({ Range: 'bytes=100-104' })
+        // Без сессии с пробой длительность неизвестна — окно по умолчанию
+        expect(url.searchParams.get('window')).toBe(String(128 * 1024 * 1024))
         return new Response('hello', {
           status: 206,
           headers: {
