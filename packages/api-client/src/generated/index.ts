@@ -245,27 +245,6 @@ export interface UpdateDeviceInput {
   name: string;
 }
 
-export interface HomeRowInput {
-  id:
-    | "trending"
-    | "trendingMovies"
-    | "trendingSeries"
-    | "popularMovies"
-    | "popularSeries"
-    | "russianSeries"
-    | "nowPlaying"
-    | "onTheAir"
-    | "topRatedMovies"
-    | "topRatedSeries";
-  kind: "top10" | "posters";
-  title: string;
-  items: CardInput[];
-}
-
-export interface HomeResponseInput {
-  rows: HomeRowInput[];
-}
-
 export interface SourceErrorResponseInput {
   message: string;
   kind:
@@ -394,221 +373,6 @@ export interface IndexerManagerSyncResultInput {
    * @max 9007199254740991
    */
   missing: number;
-}
-
-export interface NetRouteErrorResponseInput {
-  message: string;
-  field: "match" | "proxy" | "dohUrl";
-  kind: "invalid" | "duplicate" | "default_route";
-}
-
-export interface NetRouteInput {
-  id: string;
-  match: string;
-  isDefault: boolean;
-  via: "direct" | "socks5h" | "http";
-  proxy: string | null;
-  envProxy: boolean;
-  hasUsername: boolean;
-  hasPassword: boolean;
-  dns: "system" | "quad9" | "google" | "cloudflare" | "custom";
-  dohUrl: string | null;
-  updatedAt: string;
-}
-
-export interface NetRouteListInput {
-  items: NetRouteInput[];
-}
-
-export interface CreateNetRouteInput {
-  /**
-   * @minLength 1
-   * @maxLength 253
-   */
-  match: string;
-  via: "direct" | "socks5h" | "http";
-  /**
-   * @minLength 1
-   * @maxLength 300
-   */
-  proxy?: string;
-  /** @maxLength 300 */
-  username?: string;
-  /** @maxLength 300 */
-  password?: string;
-  /** @default "system" */
-  dns?: "system" | "quad9" | "google" | "cloudflare" | "custom";
-  /**
-   * @minLength 1
-   * @maxLength 2000
-   */
-  dohUrl?: string;
-}
-
-export interface UpdateNetRouteInput {
-  /**
-   * @minLength 1
-   * @maxLength 253
-   */
-  match?: string;
-  via?: "direct" | "socks5h" | "http";
-  /**
-   * @minLength 1
-   * @maxLength 300
-   */
-  proxy?: string;
-  /** @maxLength 300 */
-  username?: string | null;
-  /** @maxLength 300 */
-  password?: string | null;
-  dns?: "system" | "quad9" | "google" | "cloudflare" | "custom";
-  /**
-   * @minLength 1
-   * @maxLength 2000
-   */
-  dohUrl?: string | null;
-}
-
-export interface NetRouteOrderInput {
-  /** @maxItems 500 */
-  ids: string[];
-}
-
-export interface DnsProviderListInput {
-  items: {
-    id: "system" | "quad9" | "google" | "cloudflare" | "custom";
-    name: string;
-    url: string;
-  }[];
-}
-
-export interface NetHostInput {
-  id: string;
-  host: string;
-  hostname: string;
-  kind: "tmdb" | "tmdb_images" | "manager" | "indexer";
-  label: string;
-  route: {
-    id: string;
-    match: string;
-    via: "direct" | "socks5h" | "http";
-    dns: "system" | "quad9" | "google" | "cloudflare" | "custom";
-    envProxy: boolean;
-  };
-  checking: boolean;
-  status: "ok" | "dns" | "doh" | "timeout" | "refused" | "tls" | "http" | null;
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  httpStatus: number | null;
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  latencyMs: number | null;
-  dnsSpoofed: boolean;
-  checkedAt: string | null;
-}
-
-export interface NetCheckStateInput {
-  running: boolean;
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  done: number;
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  total: number;
-  finishedAt: string | null;
-  hosts: NetHostInput[];
-}
-
-export interface StartNetCheckInput {
-  /**
-   * @minLength 1
-   * @maxLength 2000
-   */
-  host?: string;
-}
-
-export interface MetadataSettingsInput {
-  tmdb: {
-    source: "custom" | "app" | "none";
-    hasAppKey: boolean;
-  };
-}
-
-export interface UpdateMetadataSettingsInput {
-  /**
-   * @minLength 16
-   * @maxLength 1000
-   */
-  tmdbKey: string | null;
-}
-
-export interface CheckMetadataKeyInput {
-  /**
-   * @minLength 16
-   * @maxLength 1000
-   */
-  tmdbKey?: string;
-}
-
-export interface MetadataKeyCheckInput {
-  ok: boolean;
-  kind: "rejected" | "unavailable" | "missing" | null;
-}
-
-export interface AttentionItemInput {
-  kind:
-    | "engine_down"
-    | "storage_low"
-    | "storage_paused"
-    | "indexer_error"
-    | "indexer_missing"
-    | "dns_spoofing"
-    | "host_unreachable"
-    | "tmdb_key_invalid";
-  severity: "error" | "warning";
-  section: "downloads" | "storage" | "sources" | "network" | "metadata";
-  params: {
-    count?: number;
-    name?: string;
-    reason?: string;
-    free?: number;
-    minFree?: number;
-  };
-}
-
-export interface OverviewResponseInput {
-  startedAt: string;
-  version: string;
-  attention: AttentionItemInput[];
-  downloads: {
-    total: number;
-    active: number;
-    downloadSpeed: number;
-    uploadSpeed: number;
-  };
-  storage: {
-    usedByCache: number;
-    cacheLimit: number;
-    free: number;
-    total: number;
-    minFree: number;
-  };
-  sources: {
-    ok: number;
-    total: number;
-  };
-  devices: {
-    total: number;
-    watching: number;
-  };
 }
 
 export interface VoiceRefInput {
@@ -853,6 +617,18 @@ export interface PlaybackTitleInput {
   episode?: number;
 }
 
+export interface DeviceProfileInput {
+  /** @maxItems 10 */
+  containers: ("mp4" | "webm" | "mkv" | "avi" | "ts" | "other")[];
+  /** @maxItems 20 */
+  video: string[];
+  /** @maxItems 20 */
+  audio: string[];
+  audioTracks: boolean;
+  embeddedSubtitles: boolean;
+  hls: boolean;
+}
+
 export interface CreatePlaybackInput {
   /**
    * @minLength 1
@@ -865,16 +641,85 @@ export interface CreatePlaybackInput {
    */
   fileIndex: number;
   title?: PlaybackTitleInput;
+  device?: DeviceProfileInput;
+  language?: "ru_RU" | "en_US";
+  /**
+   * @min 0
+   * @max 9999
+   */
+  audioStream?: number;
+  /** @pattern ^[sf]\d{1,5}$ */
+  subtitle?: string;
+  /**
+   * @min 0
+   * @max 1000000
+   */
+  startPosition?: number;
+}
+
+export interface MediaAudioTrackInput {
+  index: number;
+  language: string | null;
+  title: string | null;
+  codec: string;
+  channels: number | null;
+  bitrate: number | null;
+  default: boolean;
+  studio: string | null;
+  voiceType: string | null;
+}
+
+export interface MediaSubtitleTrackInput {
+  /** @pattern ^[sf]\d{1,5}$ */
+  id: string;
+  language: string | null;
+  title: string | null;
+  codec: string;
+  external: boolean;
+  forced: boolean;
+  default: boolean;
+}
+
+export interface MediaInfoInput {
+  container: "mp4" | "webm" | "mkv" | "avi" | "ts" | "other";
+  video: {
+    codec: string;
+    width: number | null;
+    height: number | null;
+    hdr: boolean;
+  } | null;
+  audio: MediaAudioTrackInput[];
+  subtitles: MediaSubtitleTrackInput[];
 }
 
 export interface PlaybackInput {
-  streamUrl: string;
-  mode: "direct";
+  sessionId: string;
+  status: "probing" | "ready";
+  mode: "direct" | "hls" | null;
+  streamUrl: string | null;
   title: string;
   fileName: string;
   size: number;
   duration: number | null;
   startPosition: number | null;
+  media: MediaInfoInput | null;
+  audioStream: number | null;
+  /** @pattern ^[sf]\d{1,5}$ */
+  subtitle: string | null;
+  audioSwitch: "platform" | "restart";
+  reasons: string[];
+  transcode: {
+    audio: "copy" | "aac";
+  } | null;
+}
+
+export interface SubtitleCuesInput {
+  cues: {
+    start: number;
+    end: number;
+    text: string;
+  }[];
+  done: boolean;
 }
 
 export interface InsufficientStorageResponseInput {
@@ -917,6 +762,242 @@ export interface WatchStateInput {
   position: number;
   duration: number | null;
   updatedAt: string;
+}
+
+export interface HomeRowInput {
+  id:
+    | "trending"
+    | "trendingMovies"
+    | "trendingSeries"
+    | "popularMovies"
+    | "popularSeries"
+    | "russianSeries"
+    | "nowPlaying"
+    | "onTheAir"
+    | "topRatedMovies"
+    | "topRatedSeries";
+  kind: "top10" | "posters";
+  title: string;
+  items: CardInput[];
+}
+
+export interface HomeResponseInput {
+  rows: HomeRowInput[];
+}
+
+export interface NetRouteErrorResponseInput {
+  message: string;
+  field: "match" | "proxy" | "dohUrl";
+  kind: "invalid" | "duplicate" | "default_route";
+}
+
+export interface NetRouteInput {
+  id: string;
+  match: string;
+  isDefault: boolean;
+  via: "direct" | "socks5h" | "http";
+  proxy: string | null;
+  envProxy: boolean;
+  hasUsername: boolean;
+  hasPassword: boolean;
+  dns: "system" | "quad9" | "google" | "cloudflare" | "custom";
+  dohUrl: string | null;
+  updatedAt: string;
+}
+
+export interface NetRouteListInput {
+  items: NetRouteInput[];
+}
+
+export interface CreateNetRouteInput {
+  /**
+   * @minLength 1
+   * @maxLength 253
+   */
+  match: string;
+  via: "direct" | "socks5h" | "http";
+  /**
+   * @minLength 1
+   * @maxLength 300
+   */
+  proxy?: string;
+  /** @maxLength 300 */
+  username?: string;
+  /** @maxLength 300 */
+  password?: string;
+  /** @default "system" */
+  dns?: "system" | "quad9" | "google" | "cloudflare" | "custom";
+  /**
+   * @minLength 1
+   * @maxLength 2000
+   */
+  dohUrl?: string;
+}
+
+export interface UpdateNetRouteInput {
+  /**
+   * @minLength 1
+   * @maxLength 253
+   */
+  match?: string;
+  via?: "direct" | "socks5h" | "http";
+  /**
+   * @minLength 1
+   * @maxLength 300
+   */
+  proxy?: string;
+  /** @maxLength 300 */
+  username?: string | null;
+  /** @maxLength 300 */
+  password?: string | null;
+  dns?: "system" | "quad9" | "google" | "cloudflare" | "custom";
+  /**
+   * @minLength 1
+   * @maxLength 2000
+   */
+  dohUrl?: string | null;
+}
+
+export interface NetRouteOrderInput {
+  /** @maxItems 500 */
+  ids: string[];
+}
+
+export interface DnsProviderListInput {
+  items: {
+    id: "system" | "quad9" | "google" | "cloudflare" | "custom";
+    name: string;
+    url: string;
+  }[];
+}
+
+export interface NetHostInput {
+  id: string;
+  host: string;
+  hostname: string;
+  kind: "tmdb" | "tmdb_images" | "manager" | "indexer";
+  label: string;
+  route: {
+    id: string;
+    match: string;
+    via: "direct" | "socks5h" | "http";
+    dns: "system" | "quad9" | "google" | "cloudflare" | "custom";
+    envProxy: boolean;
+  };
+  checking: boolean;
+  status: "ok" | "dns" | "doh" | "timeout" | "refused" | "tls" | "http" | null;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  httpStatus: number | null;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  latencyMs: number | null;
+  dnsSpoofed: boolean;
+  checkedAt: string | null;
+}
+
+export interface NetCheckStateInput {
+  running: boolean;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  done: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  total: number;
+  finishedAt: string | null;
+  hosts: NetHostInput[];
+}
+
+export interface StartNetCheckInput {
+  /**
+   * @minLength 1
+   * @maxLength 2000
+   */
+  host?: string;
+}
+
+export interface MetadataSettingsInput {
+  tmdb: {
+    source: "custom" | "app" | "none";
+    hasAppKey: boolean;
+  };
+}
+
+export interface UpdateMetadataSettingsInput {
+  /**
+   * @minLength 16
+   * @maxLength 1000
+   */
+  tmdbKey: string | null;
+}
+
+export interface CheckMetadataKeyInput {
+  /**
+   * @minLength 16
+   * @maxLength 1000
+   */
+  tmdbKey?: string;
+}
+
+export interface MetadataKeyCheckInput {
+  ok: boolean;
+  kind: "rejected" | "unavailable" | "missing" | null;
+}
+
+export interface AttentionItemInput {
+  kind:
+    | "engine_down"
+    | "storage_low"
+    | "storage_paused"
+    | "indexer_error"
+    | "indexer_missing"
+    | "dns_spoofing"
+    | "host_unreachable"
+    | "tmdb_key_invalid";
+  severity: "error" | "warning";
+  section: "downloads" | "storage" | "sources" | "network" | "metadata";
+  params: {
+    count?: number;
+    name?: string;
+    reason?: string;
+    free?: number;
+    minFree?: number;
+  };
+}
+
+export interface OverviewResponseInput {
+  startedAt: string;
+  version: string;
+  attention: AttentionItemInput[];
+  downloads: {
+    total: number;
+    active: number;
+    downloadSpeed: number;
+    uploadSpeed: number;
+  };
+  storage: {
+    usedByCache: number;
+    cacheLimit: number;
+    free: number;
+    total: number;
+    minFree: number;
+  };
+  sources: {
+    ok: number;
+    total: number;
+  };
+  devices: {
+    total: number;
+    watching: number;
+  };
 }
 
 export interface EngineUnavailableResponseInput {
@@ -1453,27 +1534,6 @@ export interface UpdateDevice {
   name: string;
 }
 
-export interface HomeRow {
-  id:
-    | "trending"
-    | "trendingMovies"
-    | "trendingSeries"
-    | "popularMovies"
-    | "popularSeries"
-    | "russianSeries"
-    | "nowPlaying"
-    | "onTheAir"
-    | "topRatedMovies"
-    | "topRatedSeries";
-  kind: "top10" | "posters";
-  title: string;
-  items: Card[];
-}
-
-export interface HomeResponse {
-  rows: HomeRow[];
-}
-
 export interface SourceErrorResponse {
   message: string;
   kind:
@@ -1602,221 +1662,6 @@ export interface IndexerManagerSyncResult {
    * @max 9007199254740991
    */
   missing: number;
-}
-
-export interface NetRouteErrorResponse {
-  message: string;
-  field: "match" | "proxy" | "dohUrl";
-  kind: "invalid" | "duplicate" | "default_route";
-}
-
-export interface NetRoute {
-  id: string;
-  match: string;
-  isDefault: boolean;
-  via: "direct" | "socks5h" | "http";
-  proxy: string | null;
-  envProxy: boolean;
-  hasUsername: boolean;
-  hasPassword: boolean;
-  dns: "system" | "quad9" | "google" | "cloudflare" | "custom";
-  dohUrl: string | null;
-  updatedAt: string;
-}
-
-export interface NetRouteList {
-  items: NetRoute[];
-}
-
-export interface CreateNetRoute {
-  /**
-   * @minLength 1
-   * @maxLength 253
-   */
-  match: string;
-  via: "direct" | "socks5h" | "http";
-  /**
-   * @minLength 1
-   * @maxLength 300
-   */
-  proxy?: string;
-  /** @maxLength 300 */
-  username?: string;
-  /** @maxLength 300 */
-  password?: string;
-  /** @default "system" */
-  dns: "system" | "quad9" | "google" | "cloudflare" | "custom";
-  /**
-   * @minLength 1
-   * @maxLength 2000
-   */
-  dohUrl?: string;
-}
-
-export interface UpdateNetRoute {
-  /**
-   * @minLength 1
-   * @maxLength 253
-   */
-  match?: string;
-  via?: "direct" | "socks5h" | "http";
-  /**
-   * @minLength 1
-   * @maxLength 300
-   */
-  proxy?: string;
-  /** @maxLength 300 */
-  username?: string | null;
-  /** @maxLength 300 */
-  password?: string | null;
-  dns?: "system" | "quad9" | "google" | "cloudflare" | "custom";
-  /**
-   * @minLength 1
-   * @maxLength 2000
-   */
-  dohUrl?: string | null;
-}
-
-export interface NetRouteOrder {
-  /** @maxItems 500 */
-  ids: string[];
-}
-
-export interface DnsProviderList {
-  items: {
-    id: "system" | "quad9" | "google" | "cloudflare" | "custom";
-    name: string;
-    url: string;
-  }[];
-}
-
-export interface NetHost {
-  id: string;
-  host: string;
-  hostname: string;
-  kind: "tmdb" | "tmdb_images" | "manager" | "indexer";
-  label: string;
-  route: {
-    id: string;
-    match: string;
-    via: "direct" | "socks5h" | "http";
-    dns: "system" | "quad9" | "google" | "cloudflare" | "custom";
-    envProxy: boolean;
-  };
-  checking: boolean;
-  status: "ok" | "dns" | "doh" | "timeout" | "refused" | "tls" | "http" | null;
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  httpStatus: number | null;
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  latencyMs: number | null;
-  dnsSpoofed: boolean;
-  checkedAt: string | null;
-}
-
-export interface NetCheckState {
-  running: boolean;
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  done: number;
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  total: number;
-  finishedAt: string | null;
-  hosts: NetHost[];
-}
-
-export interface StartNetCheck {
-  /**
-   * @minLength 1
-   * @maxLength 2000
-   */
-  host?: string;
-}
-
-export interface MetadataSettings {
-  tmdb: {
-    source: "custom" | "app" | "none";
-    hasAppKey: boolean;
-  };
-}
-
-export interface UpdateMetadataSettings {
-  /**
-   * @minLength 16
-   * @maxLength 1000
-   */
-  tmdbKey: string | null;
-}
-
-export interface CheckMetadataKey {
-  /**
-   * @minLength 16
-   * @maxLength 1000
-   */
-  tmdbKey?: string;
-}
-
-export interface MetadataKeyCheck {
-  ok: boolean;
-  kind: "rejected" | "unavailable" | "missing" | null;
-}
-
-export interface AttentionItem {
-  kind:
-    | "engine_down"
-    | "storage_low"
-    | "storage_paused"
-    | "indexer_error"
-    | "indexer_missing"
-    | "dns_spoofing"
-    | "host_unreachable"
-    | "tmdb_key_invalid";
-  severity: "error" | "warning";
-  section: "downloads" | "storage" | "sources" | "network" | "metadata";
-  params: {
-    count?: number;
-    name?: string;
-    reason?: string;
-    free?: number;
-    minFree?: number;
-  };
-}
-
-export interface OverviewResponse {
-  startedAt: string;
-  version: string;
-  attention: AttentionItem[];
-  downloads: {
-    total: number;
-    active: number;
-    downloadSpeed: number;
-    uploadSpeed: number;
-  };
-  storage: {
-    usedByCache: number;
-    cacheLimit: number;
-    free: number;
-    total: number;
-    minFree: number;
-  };
-  sources: {
-    ok: number;
-    total: number;
-  };
-  devices: {
-    total: number;
-    watching: number;
-  };
 }
 
 export interface VoiceRef {
@@ -2061,6 +1906,18 @@ export interface PlaybackTitle {
   episode?: number;
 }
 
+export interface DeviceProfile {
+  /** @maxItems 10 */
+  containers: ("mp4" | "webm" | "mkv" | "avi" | "ts" | "other")[];
+  /** @maxItems 20 */
+  video: string[];
+  /** @maxItems 20 */
+  audio: string[];
+  audioTracks: boolean;
+  embeddedSubtitles: boolean;
+  hls: boolean;
+}
+
 export interface CreatePlayback {
   /**
    * @minLength 1
@@ -2073,16 +1930,85 @@ export interface CreatePlayback {
    */
   fileIndex: number;
   title?: PlaybackTitle;
+  device?: DeviceProfile;
+  language?: "ru_RU" | "en_US";
+  /**
+   * @min 0
+   * @max 9999
+   */
+  audioStream?: number;
+  /** @pattern ^[sf]\d{1,5}$ */
+  subtitle?: string;
+  /**
+   * @min 0
+   * @max 1000000
+   */
+  startPosition?: number;
+}
+
+export interface MediaAudioTrack {
+  index: number;
+  language: string | null;
+  title: string | null;
+  codec: string;
+  channels: number | null;
+  bitrate: number | null;
+  default: boolean;
+  studio: string | null;
+  voiceType: string | null;
+}
+
+export interface MediaSubtitleTrack {
+  /** @pattern ^[sf]\d{1,5}$ */
+  id: string;
+  language: string | null;
+  title: string | null;
+  codec: string;
+  external: boolean;
+  forced: boolean;
+  default: boolean;
+}
+
+export interface MediaInfo {
+  container: "mp4" | "webm" | "mkv" | "avi" | "ts" | "other";
+  video: {
+    codec: string;
+    width: number | null;
+    height: number | null;
+    hdr: boolean;
+  } | null;
+  audio: MediaAudioTrack[];
+  subtitles: MediaSubtitleTrack[];
 }
 
 export interface Playback {
-  streamUrl: string;
-  mode: "direct";
+  sessionId: string;
+  status: "probing" | "ready";
+  mode: "direct" | "hls" | null;
+  streamUrl: string | null;
   title: string;
   fileName: string;
   size: number;
   duration: number | null;
   startPosition: number | null;
+  media: MediaInfo | null;
+  audioStream: number | null;
+  /** @pattern ^[sf]\d{1,5}$ */
+  subtitle: string | null;
+  audioSwitch: "platform" | "restart";
+  reasons: string[];
+  transcode: {
+    audio: "copy" | "aac";
+  } | null;
+}
+
+export interface SubtitleCues {
+  cues: {
+    start: number;
+    end: number;
+    text: string;
+  }[];
+  done: boolean;
 }
 
 export interface InsufficientStorageResponse {
@@ -2125,6 +2051,242 @@ export interface WatchState {
   position: number;
   duration: number | null;
   updatedAt: string;
+}
+
+export interface HomeRow {
+  id:
+    | "trending"
+    | "trendingMovies"
+    | "trendingSeries"
+    | "popularMovies"
+    | "popularSeries"
+    | "russianSeries"
+    | "nowPlaying"
+    | "onTheAir"
+    | "topRatedMovies"
+    | "topRatedSeries";
+  kind: "top10" | "posters";
+  title: string;
+  items: Card[];
+}
+
+export interface HomeResponse {
+  rows: HomeRow[];
+}
+
+export interface NetRouteErrorResponse {
+  message: string;
+  field: "match" | "proxy" | "dohUrl";
+  kind: "invalid" | "duplicate" | "default_route";
+}
+
+export interface NetRoute {
+  id: string;
+  match: string;
+  isDefault: boolean;
+  via: "direct" | "socks5h" | "http";
+  proxy: string | null;
+  envProxy: boolean;
+  hasUsername: boolean;
+  hasPassword: boolean;
+  dns: "system" | "quad9" | "google" | "cloudflare" | "custom";
+  dohUrl: string | null;
+  updatedAt: string;
+}
+
+export interface NetRouteList {
+  items: NetRoute[];
+}
+
+export interface CreateNetRoute {
+  /**
+   * @minLength 1
+   * @maxLength 253
+   */
+  match: string;
+  via: "direct" | "socks5h" | "http";
+  /**
+   * @minLength 1
+   * @maxLength 300
+   */
+  proxy?: string;
+  /** @maxLength 300 */
+  username?: string;
+  /** @maxLength 300 */
+  password?: string;
+  /** @default "system" */
+  dns: "system" | "quad9" | "google" | "cloudflare" | "custom";
+  /**
+   * @minLength 1
+   * @maxLength 2000
+   */
+  dohUrl?: string;
+}
+
+export interface UpdateNetRoute {
+  /**
+   * @minLength 1
+   * @maxLength 253
+   */
+  match?: string;
+  via?: "direct" | "socks5h" | "http";
+  /**
+   * @minLength 1
+   * @maxLength 300
+   */
+  proxy?: string;
+  /** @maxLength 300 */
+  username?: string | null;
+  /** @maxLength 300 */
+  password?: string | null;
+  dns?: "system" | "quad9" | "google" | "cloudflare" | "custom";
+  /**
+   * @minLength 1
+   * @maxLength 2000
+   */
+  dohUrl?: string | null;
+}
+
+export interface NetRouteOrder {
+  /** @maxItems 500 */
+  ids: string[];
+}
+
+export interface DnsProviderList {
+  items: {
+    id: "system" | "quad9" | "google" | "cloudflare" | "custom";
+    name: string;
+    url: string;
+  }[];
+}
+
+export interface NetHost {
+  id: string;
+  host: string;
+  hostname: string;
+  kind: "tmdb" | "tmdb_images" | "manager" | "indexer";
+  label: string;
+  route: {
+    id: string;
+    match: string;
+    via: "direct" | "socks5h" | "http";
+    dns: "system" | "quad9" | "google" | "cloudflare" | "custom";
+    envProxy: boolean;
+  };
+  checking: boolean;
+  status: "ok" | "dns" | "doh" | "timeout" | "refused" | "tls" | "http" | null;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  httpStatus: number | null;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  latencyMs: number | null;
+  dnsSpoofed: boolean;
+  checkedAt: string | null;
+}
+
+export interface NetCheckState {
+  running: boolean;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  done: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  total: number;
+  finishedAt: string | null;
+  hosts: NetHost[];
+}
+
+export interface StartNetCheck {
+  /**
+   * @minLength 1
+   * @maxLength 2000
+   */
+  host?: string;
+}
+
+export interface MetadataSettings {
+  tmdb: {
+    source: "custom" | "app" | "none";
+    hasAppKey: boolean;
+  };
+}
+
+export interface UpdateMetadataSettings {
+  /**
+   * @minLength 16
+   * @maxLength 1000
+   */
+  tmdbKey: string | null;
+}
+
+export interface CheckMetadataKey {
+  /**
+   * @minLength 16
+   * @maxLength 1000
+   */
+  tmdbKey?: string;
+}
+
+export interface MetadataKeyCheck {
+  ok: boolean;
+  kind: "rejected" | "unavailable" | "missing" | null;
+}
+
+export interface AttentionItem {
+  kind:
+    | "engine_down"
+    | "storage_low"
+    | "storage_paused"
+    | "indexer_error"
+    | "indexer_missing"
+    | "dns_spoofing"
+    | "host_unreachable"
+    | "tmdb_key_invalid";
+  severity: "error" | "warning";
+  section: "downloads" | "storage" | "sources" | "network" | "metadata";
+  params: {
+    count?: number;
+    name?: string;
+    reason?: string;
+    free?: number;
+    minFree?: number;
+  };
+}
+
+export interface OverviewResponse {
+  startedAt: string;
+  version: string;
+  attention: AttentionItem[];
+  downloads: {
+    total: number;
+    active: number;
+    downloadSpeed: number;
+    uploadSpeed: number;
+  };
+  storage: {
+    usedByCache: number;
+    cacheLimit: number;
+    free: number;
+    total: number;
+    minFree: number;
+  };
+  sources: {
+    ok: number;
+    total: number;
+  };
+  devices: {
+    total: number;
+    watching: number;
+  };
 }
 
 export interface EngineUnavailableResponse {
@@ -2547,6 +2709,12 @@ export type PostSetupDiscoverManagersError = MessageResponse;
 
 export type PostPlaybackError =
   MessageResponse | EngineUnavailableResponse | InsufficientStorageResponse;
+
+export type GetPlaybackError = MessageResponse;
+
+export type DeletePlaybackError = MessageResponse;
+
+export type GetPlaybackSubtitlesError = MessageResponse;
 
 export type PutWatchStateError = MessageResponse;
 
@@ -3995,6 +4163,60 @@ export class Api<
         method: "POST",
         body: data,
         type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Playback
+     * @name GetPlayback
+     * @request GET:/api/playback/{id}
+     */
+    getPlayback: (id: string, params: RequestParams = {}) =>
+      this.request<Playback, GetPlaybackError>({
+        path: `/api/playback/${id}`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Playback
+     * @name DeletePlayback
+     * @request DELETE:/api/playback/{id}
+     */
+    deletePlayback: (id: string, params: RequestParams = {}) =>
+      this.request<MessageResponse, DeletePlaybackError>({
+        path: `/api/playback/${id}`,
+        method: "DELETE",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Playback
+     * @name GetPlaybackSubtitles
+     * @request GET:/api/playback/{id}/subtitles/{trackId}
+     */
+    getPlaybackSubtitles: (
+      id: string,
+      trackId: string,
+      query?: {
+        /** @pattern ^\d{1,7}(?:\.\d+)?$ */
+        from?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<SubtitleCues, GetPlaybackSubtitlesError>({
+        path: `/api/playback/${id}/subtitles/${trackId}`,
+        method: "GET",
+        query: query,
         format: "json",
         ...params,
       }),

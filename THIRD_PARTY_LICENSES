@@ -103,7 +103,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
 Docker image
 ============
 
-The image is based on the official Node.js image (node:<version>-bookworm-slim).
+The image is based on the official Node.js image (node:<version>-trixie-slim).
 Node.js is under the MIT License, with the licenses of its bundled components
 listed in https://github.com/nodejs/node/blob/main/LICENSE. The Debian packages
 of the base image carry their licenses in /usr/share/doc/<package>/copyright.
@@ -123,6 +123,16 @@ at the versions listed in engine/go.mod.
 tini (init process, Debian package)
 https://github.com/krallin/tini
 License: MIT, full text in /usr/share/doc/tini/copyright inside the image
+
+FFmpeg (ffmpeg and ffprobe for remuxing, Debian package ffmpeg)
+https://ffmpeg.org
+License: GNU General Public License version 2 or later, as built by Debian
+without non-free components. Copyright notices and license texts of FFmpeg and
+of the libraries it links are in /usr/share/doc/<package>/copyright inside the
+image. Corresponding source code is available from Debian:
+https://sources.debian.org/src/ffmpeg/ and, for the exact version in a given
+image, https://snapshot.debian.org/package/ffmpeg/. Torsher runs FFmpeg as a
+separate program and does not link it.
 
 Server dependencies are installed into /app/server/node_modules, each package
 with its own license file.

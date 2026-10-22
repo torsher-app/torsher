@@ -1,4 +1,5 @@
 export { matchFiles } from './files.ts'
+export { parseAudioLabel } from './label.ts'
 export { matchTitle } from './match.ts'
 export type {
   MatchConfidence,

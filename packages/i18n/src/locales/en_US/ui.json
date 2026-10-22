@@ -281,6 +281,10 @@
     "subtitles": "Subtitles",
     "subtitlesOff": "Off",
     "track": "Track {n}",
+    "kbps": "{n} kbps",
+    "subtitleFile": "file",
+    "forced": "forced",
+    "restartHint": "The player cannot switch audio by itself: the stream will restart from this point",
     "steps": {
       "connecting": "Connecting to peers",
       "waitingPeers": "Waiting for peers",
@@ -309,7 +313,7 @@
       },
       "unsupported": {
         "title": "The player can't open this format",
-        "text": "The player only does direct play, and this file's codec or container is beyond it. This usually happens with MKV, HEVC and AC3 audio in a browser."
+        "text": "The player cannot play the video in this file, and server-side video transcoding is not supported yet. This usually happens with HEVC and 10-bit video in a browser — try another source."
       },
       "unknown": {
         "title": "Couldn't play the file",
@@ -342,6 +346,26 @@
     },
     "ahead": "{size} ahead",
     "episodeOf": "Season {season} · Episode {episode}"
+  },
+  "languages": {
+    "rus": "Russian",
+    "eng": "English",
+    "ukr": "Ukrainian",
+    "bel": "Belarusian",
+    "kaz": "Kazakh",
+    "jpn": "Japanese",
+    "kor": "Korean",
+    "chi": "Chinese",
+    "zho": "Chinese",
+    "ger": "German",
+    "deu": "German",
+    "fre": "French",
+    "fra": "French",
+    "spa": "Spanish",
+    "ita": "Italian",
+    "por": "Portuguese",
+    "pol": "Polish",
+    "tur": "Turkish"
   },
   "shell": {
     "tagline": "Connect the TV to your Torsher server",

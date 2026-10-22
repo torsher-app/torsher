@@ -1,8 +1,30 @@
 import { z } from 'zod'
+import { profileLanguages } from '../db/schema.ts'
 import { playbackTitle } from './titles.ts'
 
 const fileIndex = z.number().int().min(0).max(99_999)
 const seconds = z.number().min(0).max(1_000_000)
+
+const containers = z.enum(['mp4', 'webm', 'mkv', 'avi', 'ts', 'other'])
+const codec = z.string().min(1).max(20)
+
+/** Что умеет плеер: решает, играть файл напрямую или перепаковать */
+export const deviceProfile = z
+  .object({
+    containers: z.array(containers).max(10),
+    video: z.array(codec).max(20),
+    audio: z.array(codec).max(20),
+    // Плеер переключает аудиодорожку файла сам (`audioTracks`)
+    audioTracks: z.boolean(),
+    // Плеер сам показывает встроенные текстовые субтитры файла
+    embeddedSubtitles: z.boolean(),
+    // hls.js на MSE или нативный HLS
+    hls: z.boolean(),
+  })
+  .meta({ id: 'deviceProfile' })
+
+// Дорожка субтитров: `s<поток>` — встроенная, `f<файл раздачи>` — внешняя
+const subtitleId = z.string().regex(/^[sf]\d{1,5}$/)
 
 export const createPlayback = z
   .object({
@@ -10,24 +32,124 @@ export const createPlayback = z
     fileIndex,
     // Смотрим из карточки: позиция для продолжения — по серии, а не по файлу
     title: playbackTitle.optional(),
+    // Без профиля — прямое воспроизведение, как у старых клиентов
+    device: deviceProfile.optional(),
+    // Язык витрины: озвучка по умолчанию на нём
+    language: z.enum(profileLanguages).optional(),
+    // Смена озвучки или субтитров перезапуском: поток с этой дорожкой и позиции
+    audioStream: z.number().int().min(0).max(9999).optional(),
+    subtitle: subtitleId.optional(),
+    startPosition: seconds.optional(),
   })
   .meta({ id: 'createPlayback' })
 
+const audioTrack = z
+  .object({
+    // Номер потока в файле: его передают в `audioStream`
+    index: z.number(),
+    // ISO 639-2 из файла (`rus`, `eng`)
+    language: z.string().nullable(),
+    title: z.string().nullable(),
+    codec: z.string(),
+    channels: z.number().nullable(),
+    bitrate: z.number().nullable(),
+    default: z.boolean(),
+    // Озвучка, распознанная в названии дорожки
+    studio: z.string().nullable(),
+    voiceType: z.string().nullable(),
+  })
+  .meta({ id: 'mediaAudioTrack' })
+
+const subtitleTrack = z
+  .object({
+    id: subtitleId,
+    language: z.string().nullable(),
+    title: z.string().nullable(),
+    codec: z.string(),
+    external: z.boolean(),
+    forced: z.boolean(),
+    default: z.boolean(),
+  })
+  .meta({ id: 'mediaSubtitleTrack' })
+
+const mediaInfo = z
+  .object({
+    container: containers,
+    video: z
+      .object({
+        codec: z.string(),
+        width: z.number().nullable(),
+        height: z.number().nullable(),
+        hdr: z.boolean(),
+      })
+      .nullable(),
+    audio: z.array(audioTrack),
+    // Только текстовые: графические не показываем
+    subtitles: z.array(subtitleTrack),
+  })
+  .meta({ id: 'mediaInfo' })
+
 export const playback = z
   .object({
-    // Адрес для `<video>` с токеном потока: сам плеер сессию не обновляет
-    streamUrl: z.string(),
-    // Сейчас только прямое воспроизведение; remux и транскод — позже
-    mode: z.literal('direct'),
+    sessionId: z.string(),
+    // `probing` — сервер ещё читает файл: клиент спрашивает `GET /playback/:id`
+    status: z.enum(['probing', 'ready']),
+    mode: z.enum(['direct', 'hls']).nullable(),
+    // Адрес для `<video>` или hls.js с токеном потока: плеер сессию не обновляет
+    streamUrl: z.string().nullable(),
     title: z.string(),
     fileName: z.string(),
     size: z.number(),
-    // Длительность из прошлого просмотра, если он был
+    // Длительность из файла или из прошлого просмотра
     duration: z.number().nullable(),
     // С какой секунды предложить продолжить; null — сначала
     startPosition: z.number().nullable(),
+    // null — сервер не смог прочитать файл: дорожки отдаёт сам плеер
+    media: mediaInfo.nullable(),
+    audioStream: z.number().nullable(),
+    subtitle: subtitleId.nullable(),
+    // `platform` — озвучку меняет плеер, `restart` — новый `POST /playback`
+    audioSwitch: z.enum(['platform', 'restart']),
+    // Почему не напрямую; пусто — играем напрямую
+    reasons: z.array(z.string()),
+    transcode: z.object({ audio: z.enum(['copy', 'aac']) }).nullable(),
   })
   .meta({ id: 'playback' })
+
+export const playbackParams = z.object({
+  id: z.string().min(1).max(100),
+})
+
+export const subtitleParams = z.object({
+  id: z.string().min(1).max(100),
+  trackId: subtitleId,
+})
+
+export const subtitleQuery = z.object({
+  from: z
+    .string()
+    .regex(/^\d{1,7}(?:\.\d+)?$/)
+    .optional(),
+})
+
+export const subtitleCues = z
+  .object({
+    cues: z.array(
+      z.object({ start: z.number(), end: z.number(), text: z.string() }),
+    ),
+    // Реплик больше не будет: внешний файл или дорожка прочитана до конца
+    done: z.boolean(),
+  })
+  .meta({ id: 'subtitleCues' })
+
+export const hlsParams = z.object({
+  id: z.string().min(1).max(100),
+})
+
+export const hlsSegmentParams = z.object({
+  id: z.string().min(1).max(100),
+  segment: z.string().regex(/^\d{1,6}\.ts$/),
+})
 
 /** Просмотр не начнётся: места не хватит даже после вытеснения кэша */
 export const insufficientStorageResponse = z

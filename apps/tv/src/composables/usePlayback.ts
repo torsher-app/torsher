@@ -1,4 +1,5 @@
 import type {
+  CreatePlaybackInput,
   EngineUnavailableResponse,
   InsufficientStorageResponse,
   Playback,
@@ -8,6 +9,26 @@ import { getErrorBody, getErrorStatus } from '@torsher/api-client'
 import { onScopeDispose, ref, shallowRef } from 'vue'
 import type { PlaybackTitle } from '../lib/sources.ts'
 import { api } from '../api.ts'
+import { i18n } from '../i18n.ts'
+import { browserMediaSupport, deviceProfileOf } from '../lib/deviceProfile.ts'
+import { isWebos } from '../platform/webos.ts'
+
+// Пока сервер читает файл, статус сессии спрашивается раз в секунду
+const PROBE_POLL_MS = 1000
+
+/** Смена озвучки или субтитров перезапуском: те же поля, что у `POST /playback` */
+export type PlaybackRestart = Pick<
+  CreatePlaybackInput,
+  'audioStream' | 'subtitle' | 'startPosition'
+>
+
+let profile: CreatePlaybackInput['device'] | undefined
+
+/** Профиль плеера один на запуск витрины: возможности браузера не меняются */
+function deviceProfile() {
+  profile ??= deviceProfileOf(browserMediaSupport(isWebos()))
+  return profile
+}
 
 /**
  * Почему плеер не стартовал: `engine` — движок не установлен или запускается,
@@ -72,6 +93,8 @@ export function usePlayback(
 ) {
   const status = ref<'loading' | 'ready' | 'error'>('loading')
   const playback = shallowRef<Playback>()
+  // Сессия, пока сервер читает файл: экран показывает подготовку с названием
+  const pending = shallowRef<Playback>()
   const error = ref<PlayerError>()
   const engineKind = ref<EngineKind>()
   const storage = shallowRef<StorageShortage>()
@@ -80,19 +103,69 @@ export function usePlayback(
   let statsTimer: ReturnType<typeof setTimeout> | undefined
   let stopped = false
 
-  async function start() {
+  let generation = 0
+
+  /** Закрыть сессию на сервере: перепаковка и её сегменты больше не нужны */
+  function close() {
+    const id = playback.value?.sessionId
+
+    if (id)
+      api.playback.deletePlayback(id).catch(() => {})
+  }
+
+  /** Ждём пробу файла на сервере; `isCurrent` — запуск ещё не отменён */
+  async function waitProbe(current: Playback, isCurrent: () => boolean) {
+    let result = current
+
+    while (result.status === 'probing' && isCurrent()) {
+      pending.value = result
+      await new Promise(resolve => setTimeout(resolve, PROBE_POLL_MS))
+
+      if (!isCurrent())
+        break
+
+      result = await api.playback.getPlayback(result.sessionId)
+    }
+
+    return result
+  }
+
+  /**
+   * Запуск файла. С `restart` — та же раздача с другой озвучкой или
+   * субтитрами с позиции плеера: прежняя сессия закрывается.
+   */
+  async function start(restart?: PlaybackRestart) {
+    const run = ++generation
+
     status.value = 'loading'
     error.value = undefined
 
+    if (restart)
+      close()
+
     try {
-      playback.value = await api.playback.postPlayback({
+      const created = await api.playback.postPlayback({
         torrentId,
         fileIndex,
         title,
+        device: deviceProfile(),
+        language: i18n.global.locale.value as CreatePlaybackInput['language'],
+        ...restart,
       })
+      const ready = await waitProbe(created, () => run === generation)
+
+      if (run !== generation)
+        return
+
+      pending.value = undefined
+      playback.value = ready
       status.value = 'ready'
     }
     catch (err) {
+      if (run !== generation)
+        return
+
+      pending.value = undefined
       const outcome = await playerErrorOf(err)
 
       error.value = outcome.error
@@ -155,16 +228,22 @@ export function usePlayback(
       .catch(() => {})
   }
 
-  onScopeDispose(stopStats)
+  onScopeDispose(() => {
+    generation++
+    stopStats()
+    close()
+  })
 
   return {
     status,
     playback,
+    pending,
     error,
     engineKind,
     storage,
     stats,
     start,
+    close,
     fail,
     pollStats,
     stopStats,

@@ -6,12 +6,18 @@ import FocusSection from '../FocusSection.vue'
 export interface TrackOption {
   id: string
   label: string
+  /** Вторая строка: тип озвучки, кодек, каналы, битрейт */
+  detail?: string
   selected: boolean
 }
 
 defineProps<{
   kind: 'audio' | 'subtitles'
   options: TrackOption[]
+  /** Под заголовком: какой файл играет */
+  caption?: string
+  /** Внизу: смена дорожки перезапустит поток */
+  hint?: string
 }>()
 
 const emit = defineEmits<{ select: [id: string] }>()
@@ -26,6 +32,9 @@ const { t } = useI18n()
       <h2 class="tracks__title">
         {{ t(`player.${kind}`) }}
       </h2>
+      <p v-if="caption" class="tracks__caption">
+        {{ caption }}
+      </p>
       <FocusSection name="player-tracks" autofocus manual-scroll>
         <button
           v-for="option in options"
@@ -39,9 +48,17 @@ const { t } = useI18n()
           <span class="tracks__check">
             <AppIcon v-if="option.selected" name="check" />
           </span>
-          {{ option.label }}
+          <span class="tracks__text">
+            <span class="tracks__label">{{ option.label }}</span>
+            <span v-if="option.detail" class="tracks__detail">{{
+              option.detail
+            }}</span>
+          </span>
         </button>
       </FocusSection>
+      <p v-if="hint" class="tracks__hint">
+        {{ hint }}
+      </p>
     </aside>
   </div>
 </template>
@@ -61,15 +78,27 @@ const { t } = useI18n()
   top: 0;
   right: 0;
   bottom: 0;
+  display: flex;
+  flex-direction: column;
   width: calc(var(--u) * 760);
   padding: var(--safe-y) var(--safe-x) var(--safe-y) calc(var(--u) * 56);
   background: var(--color-surface);
 }
 
 .tracks__title {
-  margin: 0 0 calc(var(--u) * 30);
+  margin: 0 0 calc(var(--u) * 8);
   font-size: var(--font-size-l);
   font-weight: 700;
+}
+
+.tracks__caption {
+  margin: 0 0 calc(var(--u) * 30);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-s);
+}
+
+.tracks__title + :not(.tracks__caption) {
+  margin-top: calc(var(--u) * 22);
 }
 
 /* Строка — фокус-язык строк: белая заливка с тёмным текстом */
@@ -77,14 +106,13 @@ const { t } = useI18n()
   display: flex;
   align-items: center;
   width: 100%;
-  margin-bottom: var(--space-1);
+  margin-bottom: calc(var(--u) * 8);
   padding: calc(var(--u) * 20) calc(var(--u) * 24);
   border: 0;
   border-radius: calc(var(--u) * 16);
   background: none;
   color: var(--color-text);
   font: inherit;
-  font-weight: 600;
   text-align: left;
 }
 
@@ -106,5 +134,36 @@ const { t } = useI18n()
 .tracks__check :deep(.icon) {
   width: 100%;
   height: 100%;
+}
+
+.tracks__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.tracks__label {
+  overflow: hidden;
+  font-size: var(--font-size-m);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tracks__detail {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-s);
+}
+
+.tracks__row:focus .tracks__detail {
+  color: inherit;
+  opacity: 0.7;
+}
+
+.tracks__hint {
+  margin: auto 0 0;
+  padding-top: calc(var(--u) * 24);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-s);
 }
 </style>

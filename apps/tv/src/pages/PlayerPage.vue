@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { goBack } from '../lib/navigation.ts'
 import type { TitleDetails } from '@torsher/api-client'
 import type { KeyAction } from '../focus/index.ts'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
@@ -8,11 +7,15 @@ import { useRouter } from 'vue-router'
 import PlayerBuffering from '../components/player/PlayerBuffering.vue'
 import PlayerOsd from '../components/player/PlayerOsd.vue'
 import PlayerPrompt from '../components/player/PlayerPrompt.vue'
+import AppIcon from '../components/AppIcon.vue'
+import FocusSection from '../components/FocusSection.vue'
 import PlayerTracks from '../components/player/PlayerTracks.vue'
+import type { PlaybackRestart } from '../composables/usePlayback.ts'
 import { api } from '../api.ts'
 import { useCatalogLanguage } from '../composables/useCatalogLanguage.ts'
-import { useMediaTracks } from '../composables/useMediaTracks.ts'
+import { useHls } from '../composables/useHls.ts'
 import { usePlayback } from '../composables/usePlayback.ts'
+import { usePlayerTracks } from '../composables/usePlayerTracks.ts'
 import { usePlayerOsd } from '../composables/usePlayerOsd.ts'
 import { useResource } from '../composables/useResource.ts'
 import { loadSeason } from '../composables/useTitleSections.ts'
@@ -26,6 +29,7 @@ import {
   formatDuration,
   formatGigabytes,
 } from '../lib/player.ts'
+import { goBack } from '../lib/navigation.ts'
 import { titleRefOf } from '../lib/sources.ts'
 
 const props = defineProps<{
@@ -89,7 +93,7 @@ const artSubtitle = computed(() =>
 )
 
 const video = ref<HTMLVideoElement>()
-const tracks = useMediaTracks(video)
+const hls = useHls(() => player.fail('unknown'))
 
 // starting — запрашиваем адрес, resume — спрашиваем, продолжить ли,
 // buffering — ждём первые кадры, playing — видео хоть раз пошло
@@ -97,6 +101,7 @@ const phase = ref<'starting' | 'resume' | 'buffering' | 'playing'>('starting')
 const stalled = ref(false)
 const paused = ref(false)
 const position = ref(0)
+const tracks = usePlayerTracks(playback, video, position, restartWith)
 const duration = ref(Number.NaN)
 const panel = ref<'audio' | 'subtitles' | null>(null)
 const now = ref(new Date())
@@ -157,6 +162,21 @@ const trackOptions = computed(() =>
   panel.value === 'audio'
     ? tracks.audioOptions.value
     : tracks.subtitleOptions.value,
+)
+
+// Смена дорожки, которую плеер не переключит сам, перезапускает поток
+const tracksHint = computed(() =>
+  panel.value === 'audio' && playback.value?.audioSwitch === 'restart'
+    ? t('player.restartHint')
+    : undefined,
+)
+
+// «Назад» под указкой: видна вместе с OSD и на экранах до старта
+const backVisible = computed(
+  () =>
+    player.status.value === 'error'
+    || phase.value !== 'playing'
+    || osd.visible.value,
 )
 
 const errorKey = computed(() => {
@@ -312,16 +332,27 @@ function onKey(action: KeyAction, event: KeyboardEvent) {
   return hidden
 }
 
-function begin(from: number) {
+async function begin(from: number) {
   const el = video.value
+  const current = playback.value
 
-  if (!el || !playback.value)
+  if (!el || !current?.streamUrl)
     return
 
   startAt = from
   phase.value = 'buffering'
   bufferingSince.value = Date.now()
-  el.src = playback.value.streamUrl
+
+  if (current.mode === 'hls') {
+    if (!(await hls.attach(el, current.streamUrl, from))) {
+      player.fail('unsupported')
+      return
+    }
+  }
+  else {
+    hls.detach()
+    el.src = current.streamUrl
+  }
 
   // Без жеста пользователя браузер может не дать играть со звуком:
   // тогда видео ждёт на паузе с OSD, OK запускает
@@ -339,7 +370,23 @@ function onPromptChoice(choice: 'resume' | 'restart' | 'retry' | 'back') {
     exit()
   else if (choice === 'retry')
     void start()
-  else begin(choice === 'resume' ? (playback.value?.startPosition ?? 0) : 0)
+  else
+    void begin(choice === 'resume' ? (playback.value?.startPosition ?? 0) : 0)
+}
+
+/**
+ * Озвучка или субтитры, которые плеер не переключит сам: новый поток с
+ * этой дорожкой с текущего места, без вопроса «Продолжить»
+ */
+async function restartWith(change: PlaybackRestart) {
+  const at = osd.scrub.value?.target ?? position.value
+
+  save()
+  closePanel()
+  await player.start({ ...change, startPosition: at })
+
+  if (player.status.value === 'ready')
+    await begin(at)
 }
 
 function onTracksSelect(id: string) {
@@ -445,7 +492,7 @@ async function start() {
 
   if (playback.value?.startPosition)
     phase.value = 'resume'
-  else begin(0)
+  else void begin(0)
 }
 
 onMounted(() => {
@@ -464,6 +511,8 @@ onBeforeUnmount(() => {
 
   // Без этого браузер держит соединение с потоком, и движок качает дальше под позицией
   const el = video.value
+
+  hls.detach()
 
   if (el) {
     el.removeAttribute('src')
@@ -556,21 +605,46 @@ onBeforeUnmount(() => {
           v-if="panel"
           :kind="panel"
           :options="trackOptions"
+          :caption="tracks.caption.value"
+          :hint="tracksHint"
           @select="onTracksSelect"
         />
       </template>
     </template>
 
-    <!-- Пока сервер готовит поток, тот же экран подготовки, а не чёрный кадр -->
+    <!-- Пока сервер готовит поток и читает файл — экран подготовки, а не чёрный кадр -->
     <PlayerBuffering
-      v-if="!playback && player.status.value === 'loading'"
-      :title="art?.title ?? ''"
-      step="connecting"
-      :stats="undefined"
+      v-else-if="player.status.value === 'loading'"
+      :title="art?.title ?? player.pending.value?.title ?? ''"
+      :step="step"
+      :stats="stats"
       :backdrop="art?.backdrop"
       :logo="art?.logo"
       :subtitle="artSubtitle"
     />
+
+    <p
+      v-if="phase === 'playing' && tracks.subtitleHtml.value"
+      class="player__subtitles"
+      :class="{ 'player__subtitles--lifted': osd.visible.value }"
+    >
+      <!-- Разметку реплики чистит subtitleHtml: остаются только i, b, u -->
+      <!-- eslint-disable-next-line vue/no-v-html -->
+      <span class="player__cue" v-html="tracks.subtitleHtml.value" />
+    </p>
+
+    <FocusSection
+      name="player-back"
+      class="player__back-section"
+      :class="{ 'player__back-section--visible': backVisible && !panel }"
+      :edges="{ down: 'player-timeline' }"
+      manual-scroll
+    >
+      <button v-focusable class="player__back" type="button" @click="exit">
+        <AppIcon name="chevronLeft" />
+        <span class="player__back-label">{{ t("common.back") }}</span>
+      </button>
+    </FocusSection>
   </main>
 </template>
 
@@ -617,6 +691,80 @@ onBeforeUnmount(() => {
   border-top-color: var(--color-accent);
   border-radius: 50%;
   animation: player-spin 900ms linear infinite;
+}
+
+.player__subtitles {
+  position: absolute;
+  right: var(--safe-x);
+  bottom: calc(var(--u) * 110);
+  left: var(--safe-x);
+  margin: 0;
+  text-align: center;
+  pointer-events: none;
+  transition: transform var(--motion-base) var(--motion-easing);
+}
+
+/* С OSD реплика поднимается над таймлайном и кнопками */
+.player__subtitles--lifted {
+  transform: translateY(calc(var(--u) * -230));
+}
+
+.player__cue {
+  padding: calc(var(--u) * 4) calc(var(--u) * 16);
+  border-radius: calc(var(--u) * 8);
+  background: rgba(0, 0, 0, 0.55);
+  font-size: calc(var(--u) * 46);
+  font-weight: 600;
+  line-height: 1.45;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+/* «Назад» появляется и прячется вместе с OSD */
+.player__back-section {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion-base) var(--motion-easing);
+}
+
+.player__back-section--visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.player__back {
+  position: absolute;
+  z-index: 5;
+  top: var(--safe-y);
+  left: calc(var(--u) * 28);
+  display: flex;
+  align-items: center;
+  height: calc(var(--u) * 64);
+  padding: 0 calc(var(--u) * 26) 0 calc(var(--u) * 18);
+  border: 0;
+  border-radius: calc(var(--u) * 32);
+  background: var(--color-glass);
+  color: var(--color-text);
+  font: inherit;
+  font-size: calc(var(--u) * 32);
+}
+
+.player__back:hover,
+.player__back:focus {
+  --bump-scale: var(--focus-scale);
+
+  background: var(--color-focus);
+  color: var(--color-bg);
+}
+
+.player__back:focus {
+  transform: scale(var(--bump-scale));
+}
+
+.player__back-label {
+  margin-left: calc(var(--u) * 10);
+  font-size: var(--font-size-s);
+  font-weight: 600;
 }
 
 @keyframes player-spin {

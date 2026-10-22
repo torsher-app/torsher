@@ -106,6 +106,26 @@ function isGuardedGlobalThis(code: string, index: number) {
     )
 }
 
+// `.reason` — и `AbortSignal.reason`, и обычное поле: результат
+// `Promise.allSettled` (шим предзагрузки чанков Vite) и свои объекты
+// (hls.js пишет `t.reason=…`). Разрешены запись поля и чтение рядом с
+// проверкой `status === 'rejected'`.
+const SETTLED_LOOKBEHIND = 80
+
+function isPlainReason(code: string, index: number) {
+  const after = code.slice(
+    index + '.reason'.length,
+    index + '.reason'.length + 2,
+  )
+
+  if (/^\s*=(?!=)/.test(after))
+    return true
+
+  const before = code.slice(Math.max(0, index - SETTLED_LOOKBEHIND), index)
+
+  return /\.status\s*[!=]==?\s*["'`]rejected["'`]/.test(before)
+}
+
 function methodRule(method: string, since: number): LegacyApiRule {
   return {
     api: method,
@@ -121,7 +141,12 @@ const RULES: LegacyApiRule[] = [
     since: 103,
     pattern: /\bAbortSignal\.timeout\b/g,
   },
-  { api: 'AbortSignal.reason', since: 98, pattern: /\.reason\b/g },
+  {
+    api: 'AbortSignal.reason',
+    since: 98,
+    pattern: /\.reason\b/g,
+    isAllowed: isPlainReason,
+  },
   { api: 'structuredClone', since: 98, pattern: /\bstructuredClone\b/g },
   { api: 'Object.hasOwn', since: 93, pattern: /\bObject\.hasOwn\b/g },
   methodRule('Array.prototype.at', 92),

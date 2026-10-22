@@ -422,6 +422,8 @@ describe('проверка хостов', () => {
   })
 
   it('через прокси DNS не сравнивается', async () => {
+    // Хосты вне маршрута через прокси сравнивают DNS: без заглушки тест ушёл бы в сеть
+    stubDns(['203.0.113.1'], ['203.0.113.1'])
     const systemAddresses = vi.spyOn(checkDeps, 'systemAddresses')
 
     await inject('POST', '/api/net/routes', {
