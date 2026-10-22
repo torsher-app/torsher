@@ -4,6 +4,7 @@ import { isIP } from 'node:net'
 import { performance } from 'node:perf_hooks'
 import { Agent, fetch as undiciFetch } from 'undici'
 import { listIndexers, listManagers } from '../indexers/index.ts'
+import { logFor } from '../logs/index.ts'
 import { TMDB_API_ORIGIN, TMDB_IMAGE_ORIGIN } from '../tmdb/client.ts'
 import { dohUrlOf, usesEnvProxy } from './dispatchers.ts'
 import { DOH_PROVIDERS, dohResolverFor } from './doh.ts'
@@ -294,11 +295,43 @@ export function checkState(): CheckState {
   }
 }
 
+/** Как «Обзор» видит хост: подмена DNS — точнее простой недоступности */
+function problemOf(result: HostResult | undefined) {
+  if (!result || result.status === 'ok')
+    return undefined
+
+  return result.dnsSpoofed ? 'dns_spoofed' : result.status
+}
+
+// Фоновая проверка идёт каждые полчаса: пишется только смена состояния
+function logHostChange(
+  target: CheckTarget,
+  previous: HostResult | undefined,
+  next: HostResult,
+) {
+  const before = problemOf(previous)
+  const after = problemOf(next)
+  const fields = { host: target.hostname, hostKind: target.kind }
+
+  if (after && after !== before) {
+    logFor('network').warn(
+      { ...fields, status: next.status, httpStatus: next.httpStatus },
+      after === 'dns_spoofed' ? 'DNS spoofing detected' : 'Host unreachable',
+    )
+  }
+  else if (!after && before) {
+    logFor('network').info(fields, 'Host is reachable again')
+  }
+}
+
 async function checkOne(target: CheckTarget) {
   checking.add(target.id)
 
   try {
-    results.set(target.id, await checkTarget(target))
+    const result = await checkTarget(target)
+
+    logHostChange(target, results.get(target.id), result)
+    results.set(target.id, result)
   }
   finally {
     checking.delete(target.id)

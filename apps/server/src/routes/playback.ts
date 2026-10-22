@@ -247,10 +247,7 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
           studio,
           locale: language ?? getProfile(request.profileId)?.language,
         },
-        log: {
-          info: message => request.log.info(message),
-          warn: message => request.log.warn(message),
-        },
+        log: request.log.child({ source: 'playback' }),
       })
       // Перезапуск с новой дорожкой продолжает с позиции плеера без вопроса
       const resume: Resume = {
@@ -369,9 +366,11 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
         result = await sessionCues(session, request.params.trackId)
       }
       catch (err) {
-        request.log.warn(
-          `subtitles ${request.params.trackId}: ${(err as Error).message}`,
-        )
+        request.log
+          .child({ source: 'playback' })
+          .warn(
+            `subtitles ${request.params.trackId}: ${(err as Error).message}`,
+          )
         return reply.code(502).send({ message: 'Subtitles are not available' })
       }
 

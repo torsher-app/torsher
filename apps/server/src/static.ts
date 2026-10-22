@@ -48,7 +48,7 @@ function isPageRequest(method: string, url: string) {
 export function registerClients(app: FastifyInstance, dirs: ClientDirs) {
   for (const [name, dir] of Object.entries(dirs)) {
     if (!existsSync(dir))
-      app.log.warn(`${name}: сборка не найдена (${dir}), выполните pnpm build`)
+      app.log.warn(`${name}: build not found (${dir}), run pnpm build`)
   }
 
   if (existsSync(dirs.tv)) {

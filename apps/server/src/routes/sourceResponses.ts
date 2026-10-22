@@ -1,9 +1,10 @@
-import type { FastifyBaseLogger, FastifyReply } from 'fastify'
+import type { FastifyReply } from 'fastify'
 import type {
   IndexerWithManager,
   ManagerWithCounts,
   SyncResult,
 } from '../services/indexers/index.ts'
+import { logFor } from '../services/logs/index.ts'
 import { SourceError } from '../services/torznab/index.ts'
 
 // Наружу — явно собранный объект: шифртекст ключа в ответ не попадает
@@ -61,6 +62,6 @@ export function sendSourceError(reply: FastifyReply, err: unknown) {
   return reply.code(422).send({ message: err.message, kind: err.kind })
 }
 
-export function logCheckError(log: FastifyBaseLogger) {
-  return (err: unknown) => log.error({ err }, 'Indexer check failed')
+export function logCheckError(err: unknown) {
+  logFor('sources').error({ err }, 'Indexer check failed')
 }

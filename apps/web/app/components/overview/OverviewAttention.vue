@@ -17,6 +17,7 @@ const sectionLabels: Record<AttentionItem['section'], string> = {
   sources: 'panel.nav.sources',
   network: 'panel.settings.nav.network',
   metadata: 'panel.settings.nav.metadata',
+  logs: 'panel.nav.logs',
 }
 
 /** Текст причины: у проблемы с одним элементом — его имя, иначе — число */
@@ -28,6 +29,8 @@ function textOf(item: AttentionItem) {
     case 'engine_down':
     case 'tmdb_key_invalid':
       return t(`${key}.${reason}`)
+    case 'engine_crashed':
+      return t(key, { n: count }, count)
     case 'storage_low':
       return t(key, {
         free: formatBytes(free, locale.value),

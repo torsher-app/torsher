@@ -10,6 +10,7 @@ import {
   needsSetup,
   SetupDoneError,
 } from '../services/users/index.ts'
+import { logFor } from '../services/logs/index.ts'
 import { verifySession } from '../services/users/session.ts'
 import { normalizeEmail } from '../utils/email.ts'
 import { hashPassword, verifyPassword } from '../utils/password.ts'
@@ -111,6 +112,7 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
         !user
         || !(await verifyPassword(request.body.password, user.passwordHash))
       ) {
+        logFor('auth').warn({ ip: request.ip }, 'Sign-in failed')
         return reply.code(400).send({ message: 'Invalid email or password' })
       }
 

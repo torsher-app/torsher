@@ -1,3 +1,4 @@
+import pino from 'pino'
 import {
   afterEach,
   beforeAll,
@@ -9,6 +10,7 @@ import {
 } from 'vitest'
 import { getDb, migrateDb } from '../../db/index.ts'
 import { indexerManagers, indexers } from '../../db/schema.ts'
+import { installLogger } from '../logs/index.ts'
 import { decryptSecret, encryptWith, loadSecretKey } from '../secrets/index.ts'
 import {
   capsXml,
@@ -47,6 +49,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  installLogger(pino({ level: 'silent' }))
 })
 
 describe('listManagerIndexers', () => {
@@ -333,7 +336,11 @@ describe('checkIndexers', () => {
         : new Response('', { status: 401 }),
     )
     const onError = vi.fn()
+    const lines: string[] = []
 
+    installLogger(
+      pino({ level: 'trace' }, { write: line => lines.push(line) }),
+    )
     await checkIndexers(
       [...toCheck, listIndexers().find(i => i.name === 'Indexer B')!.id],
       onError,
@@ -343,6 +350,15 @@ describe('checkIndexers', () => {
 
     expect(onError).not.toHaveBeenCalled()
     expect(byName.get('Indexer A')?.checkStatus).toBe('ok')
+    expect(lines.map(line => JSON.parse(line))).toEqual([
+      expect.objectContaining({
+        level: 40,
+        source: 'sources',
+        msg: 'Indexer check failed',
+        indexerId: byName.get('Indexer B')?.id,
+        kind: 'auth',
+      }),
+    ])
     expect(byName.get('Indexer B')?.checkStatus).toBe('auth')
     expect(byName.get('Indexer B')?.checkedAt).toBeInstanceOf(Date)
   })

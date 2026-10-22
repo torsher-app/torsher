@@ -51,10 +51,13 @@ Everything except the values below is set in the panel.
 | `HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY` | — | Your proxy for outgoing requests until the default route is changed in Settings → Network |
 | `API_PORT` | `8080` | Port inside the container |
 | `ENGINE_PEER_PORT` | any free port | Port the torrent engine accepts peer connections on; publish it to be reachable from outside |
+| `LOG_LEVEL` | level chosen in the panel, `info` | Log level: `error`, `warn`, `info` or `debug`. When set, the **Verbose logs** switch in the panel is unavailable |
 
 ### Data
 
 Everything lives in the `/data` volume. `/data/db` holds the database and the key files (`secret.key`, `session.key`): back it up together. Losing `secret.key` makes the saved indexer API keys unreadable, and you will have to enter them again.
+
+`/data/db/logs` holds the server log: up to 25 MB in five rotating files, kept across restarts. Secrets and paths inside the downloads folder are masked before an entry is written. The panel shows recent entries under **Logs**, and **Download logs** there saves the whole log as a text file to attach to a bug report.
 
 The server exposes `GET /api/health`, and the image uses it for the Docker health check.
 

@@ -126,8 +126,13 @@ export interface HlsInput {
 
 export interface HlsLog {
   info: (message: string) => void
-  warn: (message: string) => void
+  warn: {
+    (message: string): void
+    (fields: { details?: string }, message: string): void
+  }
 }
+
+const FAILURE_DETAILS_LINES = 20
 
 export class SegmentTimeoutError extends Error {
   constructor() {
@@ -475,7 +480,18 @@ export class HlsTranscode {
 
       if (code !== 0 && signal !== 'SIGKILL') {
         run.failure = stderr.trim() || `ffmpeg exited with code ${code}`
-        this.log.warn(`hls: ffmpeg run ${id} failed: ${run.failure}`)
+
+        // Вывод ffmpeg — в подробности: в тексте записи он не даёт склеить повторы
+        const details = stderr
+          .trim()
+          .split('\n')
+          .slice(-FAILURE_DETAILS_LINES)
+          .join('\n')
+
+        this.log.warn(
+          details ? { details } : {},
+          `ffmpeg run ${id} failed (exit code ${code})`,
+        )
       }
     })
 

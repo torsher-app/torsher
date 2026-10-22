@@ -65,7 +65,7 @@ export const indexerManagerRoutes: FastifyPluginAsyncZod = async (app) => {
       try {
         const result = await importManager(request.body)
 
-        void checkIndexers(result.toCheck, logCheckError(request.log))
+        void checkIndexers(result.toCheck, logCheckError)
 
         return toSyncResponse(result)
       }
@@ -97,7 +97,7 @@ export const indexerManagerRoutes: FastifyPluginAsyncZod = async (app) => {
         if (!result)
           return reply.code(404).send({ message: 'Indexer manager not found' })
 
-        void checkIndexers(result.toCheck, logCheckError(request.log))
+        void checkIndexers(result.toCheck, logCheckError)
 
         return toSyncResponse(result)
       }

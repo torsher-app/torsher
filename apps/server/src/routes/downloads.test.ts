@@ -1,5 +1,6 @@
 import type { Torrent } from '../db/schema.ts'
 import { Buffer } from 'node:buffer'
+import pino from 'pino'
 import {
   afterEach,
   beforeAll,
@@ -22,6 +23,7 @@ import {
   movieDetails,
   sampleTorrentFile,
 } from '../services/engine/fixtures/index.ts'
+import { installLogger } from '../services/logs/index.ts'
 import { trackStream } from '../services/storage/index.ts'
 import { clearStreamSelections } from '../services/torrents/index.ts'
 import { signToken } from '../utils/token.ts'
@@ -135,6 +137,7 @@ beforeEach(() => {
 afterEach(() => {
   vi.unstubAllGlobals()
   setEngineDown('stopped')
+  installLogger(pino({ level: 'silent' }))
 })
 
 describe('доступ', () => {
@@ -485,10 +488,28 @@ describe('хранилище', () => {
     })
     disk.free = 5 * GIB
 
+    const lines: string[] = []
+
+    installLogger(
+      pino({ level: 'trace' }, { write: line => lines.push(line) }),
+    )
+
+    const records = () => lines.map(line => JSON.parse(line))
     const { enforceStorage } = await import('../services/storage/index.ts')
     await enforceStorage()
 
     expect(rowOf(kept.id)?.pauseReason).toBe('storage')
+    expect(records()).toContainEqual(
+      expect.objectContaining({
+        level: 40,
+        source: 'storage',
+        msg: 'Downloads paused: low disk space',
+        count: 1,
+        torrentIds: [kept.id],
+        free: 5 * GIB,
+        minFree: 20 * GIB,
+      }),
+    )
 
     fetchMock.mockClear()
     engine([{ ...downloading, paused: true }], {
@@ -499,6 +520,14 @@ describe('хранилище', () => {
 
     expect(rowOf(kept.id)?.pauseReason).toBeNull()
     expect(engineCalls()).toEqual([`POST /torrents/${INFO_HASH}/resume`])
+    expect(records()).toContainEqual(
+      expect.objectContaining({
+        level: 30,
+        source: 'storage',
+        msg: 'Downloads resumed: disk space is back',
+        torrentIds: [kept.id],
+      }),
+    )
   })
 
   it('мало места: вытесненная качающая раздача не встаёт на паузу, проверка не падает', async () => {
