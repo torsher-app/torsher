@@ -10,6 +10,9 @@ import { mergeCues, parseWebVtt } from './webvtt.ts'
 
 /** Желаемая длина сегмента: короче — больше запросов, длиннее — дольше старт */
 export const SEGMENT_SECONDS = 6
+// Первый сегмент короче: показ начинается, когда он скачан целиком, а у
+// холодной раздачи 6 с видео — это ещё несколько секунд ожидания кусков
+export const FIRST_SEGMENT_SECONDS = 2
 // Запрос дальше стольких сегментов от того, что пишет ffmpeg, — перемотка:
 // ffmpeg перезапускается с нужного места, а не дописывает всё подряд
 const MAX_AHEAD_SEGMENTS = Math.floor(24 / SEGMENT_SECONDS)
@@ -27,18 +30,19 @@ export const TS_OFFSET_SECONDS = 10
 
 /**
  * Начала сегментов. С точками перемотки MKV разрез — на первой точке не
- * раньше `k × длина`; без них — равные куски.
- * Первое начало — 0.
+ * раньше `first`, дальше — не раньше `first + k × длина`; без них — равные
+ * куски после первого. Первое начало — 0.
  */
 export function segmentStarts(
   duration: number,
   cues: number[] | null,
   length = SEGMENT_SECONDS,
+  first = FIRST_SEGMENT_SECONDS,
 ) {
   const starts = [0]
 
   if (cues && cues.length > 1) {
-    let cut = length
+    let cut = first
 
     for (const time of cues) {
       if (time >= cut && time < duration) {
@@ -50,7 +54,7 @@ export function segmentStarts(
     return starts
   }
 
-  for (let time = length; time < duration; time += length) starts.push(time)
+  for (let time = first; time < duration; time += length) starts.push(time)
 
   return starts
 }

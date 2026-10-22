@@ -99,6 +99,13 @@ async function prepare(session: PlaybackSession, input: SessionInput) {
     return
   }
 
+  // Индекс MKV читаем вместе с пробой, а не после: он нужен перепаковке, а у
+  // холодной раздачи это ещё одно ожидание кусков — с конца файла
+  const earlyCues
+    = device && /\.mkv$/i.test(session.fileName)
+      ? readCueTimes(rangeReader(url)).catch(() => null)
+      : undefined
+
   try {
     session.media = await probeMedia(
       `${torrent.infoHash}:${fileIndex}`,
@@ -154,7 +161,7 @@ async function prepare(session: PlaybackSession, input: SessionInput) {
   if (decision.mode === 'hls' && media.duration && media.video) {
     const cues
       = media.container === 'mkv'
-        ? await readCueTimes(rangeReader(url)).catch(() => null)
+        ? await (earlyCues ?? readCueTimes(rangeReader(url)).catch(() => null))
         : null
 
     session.hls = new HlsTranscode(

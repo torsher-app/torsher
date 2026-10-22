@@ -14,10 +14,16 @@ import {
 import { readCueTimes } from './matroska.ts'
 
 describe('segmentStarts', () => {
-  it('режет на первой точке перемотки не раньше k × 6 с', () => {
-    const cues = [0, 4.7, 9.4, 11.1, 15.8, 20.5, 22.2, 26.9, 31.6]
+  it('первый разрез — не раньше 2 с, дальше не раньше 2 + k × 6 с', () => {
+    const cues = [0, 1.2, 4.7, 9.4, 11.1, 15.8, 20.5, 22.2, 26.9, 31.6]
 
-    expect(segmentStarts(33, cues)).toEqual([0, 9.4, 15.8, 20.5, 26.9, 31.6])
+    expect(segmentStarts(33, cues)).toEqual([0, 4.7, 9.4, 15.8, 20.5, 26.9])
+  })
+
+  it('частые точки — первый сегмент около 2 с', () => {
+    const cues = Array.from({ length: 20 }, (_, i) => i * 1.001)
+
+    expect(segmentStarts(20, cues).slice(0, 3)).toEqual([0, 2.002, 8.008])
   })
 
   it('длинный промежуток между точками — один сегмент', () => {
@@ -25,7 +31,7 @@ describe('segmentStarts', () => {
   })
 
   it('без точек — равные сегменты', () => {
-    expect(segmentStarts(20, null)).toEqual([0, 6, 12, 18])
+    expect(segmentStarts(20, null)).toEqual([0, 2, 8, 14])
   })
 })
 
