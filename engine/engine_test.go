@@ -578,3 +578,49 @@ func TestDownloadedDataIsSeeded(t *testing.T) {
 		t.Fatal("engine must report seeding")
 	}
 }
+
+// Файл под итоговым именем полного размера, но без данных: хранилище считает
+// его куски скачанными, и без проверки дыр поток отдал бы нули
+func TestSparseFileIsNotTrustedAsComplete(t *testing.T) {
+	fx := newFixture(t)
+	dataDir := t.TempDir()
+	downloads := filepath.Join(dataDir, "downloads")
+	path := filepath.Join(downloads, "Sample.Movie.mkv")
+
+	if err := os.MkdirAll(downloads, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Truncate(path, int64(len(fx.content))); err != nil {
+		t.Fatal(err)
+	}
+	if holes, _ := fileHoles(path); len(holes) == 0 {
+		t.Skip("file system has no sparse files")
+	}
+
+	engine, server := newTestEngine(t, dataDir)
+	hash := fx.meta.HashInfoBytes()
+	post(t, server.URL+"/torrents?files=0", fx.raw).Body.Close()
+
+	if state := stateOfHash(t, engine, hash); state.BytesCompleted != 0 {
+		t.Fatalf("pieces over holes are still complete: %+v", state)
+	}
+
+	added, _ := engine.client.Torrent(hash)
+	added.AddClientPeer(fx.seeder)
+
+	request, _ := http.NewRequest(http.MethodGet, server.URL+"/torrents/"+hash.HexString()+"/files/0/stream", nil)
+	request.Header.Set("Range", "bytes=1000000-1000999")
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+
+	body, _ := io.ReadAll(response.Body)
+	if !bytes.Equal(body, fx.content[1000000:1001000]) {
+		t.Fatal("stream served zeros instead of data from peers")
+	}
+}

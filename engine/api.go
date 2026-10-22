@@ -297,6 +297,9 @@ func (a *api) restore() {
 			continue
 		}
 
+		// До ответов API: поток не должен успеть отдать нули вместо данных
+		a.verifyHoles(t)
+
 		if item.saved.Background {
 			err = setFiles(t, item.saved.Selected)
 		} else {
@@ -333,6 +336,8 @@ func (a *api) add(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	_, known := a.client.Torrent(mi.HashInfoBytes())
+
 	t, err := a.client.AddTorrent(mi)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_torrent", err)
@@ -340,6 +345,11 @@ func (a *api) add(w http.ResponseWriter, r *http.Request) {
 	}
 
 	<-t.GotInfo()
+
+	// Раздача только что открыта хранилищем: на диске могли остаться её файлы
+	if !known {
+		a.verifyHoles(t)
+	}
 
 	// Раздача уже докачивается целиком (её смотрели или скачивают): новый
 	// выбор тоже качается сразу, иначе скачивание встало бы до нового просмотра
