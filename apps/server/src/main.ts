@@ -8,7 +8,10 @@ import { startCheck } from './services/net/check.ts'
 import { purgeExpiredAliases } from './services/sources/aliases.ts'
 import { enforceStorage } from './services/storage/index.ts'
 import { purgeExpiredMetaCache } from './services/tmdb/cache.ts'
-import { resumeResolving } from './services/torrents/index.ts'
+import {
+  clearStreamSelections,
+  resumeResolving,
+} from './services/torrents/index.ts'
 import { createShutdown } from './shutdown.ts'
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -68,10 +71,14 @@ function checkStorage() {
     .catch(err => engineLog.error({ err }, 'Storage check failed'))
 }
 
-// Раздачи, которые ждали метаданные до перезапуска, дожидаются их снова
+// Раздачи, которые ждали метаданные до перезапуска, дожидаются их снова.
+// Выбор, накопленный просмотром в прежних версиях, снимается до проверки
+// места: иначе пауза из-за места считала бы его закачкой
 const engine = createEngine(engineLog, () => {
   resumeResolving().catch(err => engineLog.error({ err }, 'Resolve failed'))
-  checkStorage()
+  clearStreamSelections()
+    .catch(err => engineLog.error({ err }, 'Selection cleanup failed'))
+    .finally(checkStorage)
 })
 
 setInterval(checkStorage, STORAGE_CHECK_MS).unref()

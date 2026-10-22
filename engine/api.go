@@ -9,9 +9,10 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
+	"runtime/debug"
 	"strconv"
 	"strings"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -35,11 +36,9 @@ type api struct {
 	// Раздачи прошлого запуска добавлены заново: до этого сервер к движку не
 	// ходит, `/health` отвечает `restoring`
 	restored atomic.Bool
-
-	mu sync.Mutex
-	// Выбранные файлы, которые ещё не качаются целиком: докачка включается
-	// после старта просмотра, чтобы куски файла не конкурировали с началом
-	pending map[metainfo.Hash][]int
+	windows  *windows
+	// Завершение процесса после паники в обработчике; в тестах подменяется
+	exit func(code int)
 }
 
 func newAPI(client *torrent.Client, session *session, store clientStorage, logger *slog.Logger) *api {
@@ -50,7 +49,8 @@ func newAPI(client *torrent.Client, session *session, store clientStorage, logge
 		downloads:  store.downloads,
 		completion: store.completion,
 		speeds:     newSpeedTracker(),
-		pending:    map[metainfo.Hash][]int{},
+		windows:    newWindows(),
+		exit:       os.Exit,
 	}
 }
 
@@ -76,7 +76,32 @@ func (a *api) routes() http.Handler {
 	mux.HandleFunc("GET /torrents/{hash}/stats", a.stats)
 	mux.HandleFunc("GET /torrents/{hash}/files/{index}/stream", a.stream)
 
-	return mux
+	return a.crashOnPanic(mux)
+}
+
+// Паника в обработчике завершает движок, супервизор сервера запустит его
+// заново. `net/http` перехватил бы её и оставил процесс жить, а библиотека
+// могла упасть, держа блокировку клиента (`File.SetPriority` снимает её без
+// defer): `/health` отвечал бы, а все запросы к раздачам висели бы
+func (a *api) crashOnPanic(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			v := recover()
+			if v == nil {
+				return
+			}
+
+			// Так `net/http` сам обрывает ответ — это не сбой
+			if v == http.ErrAbortHandler {
+				panic(v)
+			}
+
+			a.logger.Error("handler panic", "path", r.URL.Path, "panic", fmt.Sprint(v), "stack", string(debug.Stack()))
+			a.exit(2)
+		}()
+
+		next.ServeHTTP(w, r)
+	})
 }
 
 type fileDetails struct {
@@ -204,7 +229,7 @@ func parseFiles(raw string) ([]int, error) {
 	return files, nil
 }
 
-// Качаются только выбранные файлы; куски у позиции ридера срочные в любом случае
+// Выбранные файлы качаются целиком сразу, остальные — только окнами потоков
 func setFiles(t *torrent.Torrent, selected []int) error {
 	files := t.Files()
 	wanted := map[int]bool{}
@@ -227,71 +252,34 @@ func setFiles(t *torrent.Torrent, selected []int) error {
 	return nil
 }
 
-// Запоминает выбор файлов, но пока ничего не качает целиком: до старта
-// просмотра куски запрашивают только ридеры потока
-func (a *api) selectLater(t *torrent.Torrent, selected []int) error {
-	if err := setFiles(t, nil); err != nil {
-		return err
-	}
-
-	for _, index := range selected {
-		if index >= len(t.Files()) {
-			return fmt.Errorf("file index %d out of range", index)
-		}
-	}
-
-	a.mu.Lock()
-	a.pending[t.InfoHash()] = selected
-	a.mu.Unlock()
-
-	return nil
-}
-
-// Включает докачку выбранных файлов целиком, если выбор не сменился
-func (a *api) startBackground(t *torrent.Torrent) {
-	a.mu.Lock()
-	selected, ok := a.pending[t.InfoHash()]
-	delete(a.pending, t.InfoHash())
-	a.mu.Unlock()
-
-	if !ok {
-		return
-	}
-
-	if err := setFiles(t, selected); err != nil {
-		a.logger.Warn("background download", "err", err)
-		return
-	}
-
-	err := a.session.update(t.InfoHash(), func(saved *savedTorrent) {
-		saved.Selected = selected
-		saved.Background = true
-	})
-	if err != nil {
-		a.logger.Warn("save session", "err", err)
-	}
-}
-
-// Выбранные файлы качаются целиком сразу, без ожидания просмотра
-func (a *api) downloadNow(t *torrent.Torrent, selected []int) error {
-	a.mu.Lock()
-	delete(a.pending, t.InfoHash())
-	a.mu.Unlock()
-
-	return setFiles(t, selected)
-}
-
-func setPaused(t *torrent.Torrent, paused bool) {
-	if paused {
-		t.DisallowDataDownload()
-		t.DisallowDataUpload()
-	} else {
+// Пауза: раздача не качает и не раздаёт. Порядок важен из-за anacrolix
+// v1.61: `DisallowDataDownload` убирает куски из порядка запросов, но
+// оставляет их ожидающими, и самопроверка библиотеки (`needData`) паникует
+// при следующем пересчёте приоритетов — посреди него блокировка клиента
+// остаётся захваченной. Поэтому сначала снимаем всё, что раздача хочет
+// качать (выбор и окна), запрещаем закачку и только потом возвращаем выбор:
+// на паузе он не становится ожидающим, а `AllowDataDownload` при продолжении
+// пересчитает его сам. Куски у позиции открытого потока библиотека держит
+// сама; пауза во время просмотра — редкость, а паника перезапустит движок
+func (a *api) setPaused(t *torrent.Torrent, paused bool, selected []int) {
+	if !paused {
 		t.AllowDataDownload()
 		t.AllowDataUpload()
+		return
+	}
+
+	_ = setFiles(t, nil)
+	a.windows.release(t.InfoHash())
+
+	t.DisallowDataDownload()
+	t.DisallowDataUpload()
+
+	if err := setFiles(t, selected); err != nil {
+		a.logger.Warn("pause files", "hash", t.InfoHash().HexString(), "err", err)
 	}
 }
 
-// Раздачи прошлого запуска: выбор файлов и фоновая докачка — как были
+// Раздачи прошлого запуска: выбор файлов и пауза — как были
 func (a *api) restore(ctx context.Context) {
 	restored, errs := a.session.load()
 
@@ -318,17 +306,26 @@ func (a *api) restore(ctx context.Context) {
 		// До `ok` в `/health`: сервер не откроет поток, который отдал бы нули вместо данных
 		a.verifyHoles(t)
 
-		if item.saved.Background {
-			err = setFiles(t, item.saved.Selected)
-		} else {
-			err = a.selectLater(t, item.saved.Selected)
+		saved := item.saved
+
+		// Запись прежней версии: выбор без докачки — файлы, которые выбрал
+		// просмотр, а не скачивание; целиком их не качаем
+		if saved.Background != nil {
+			if !*saved.Background {
+				saved.Selected = nil
+			}
+			saved.Background = nil
+
+			if err := a.session.saveSelection(t.InfoHash(), saved); err != nil {
+				a.logger.Warn("save session", "err", err)
+			}
 		}
 
-		if err != nil {
+		if saved.Paused {
+			a.setPaused(t, true, saved.Selected)
+		} else if err := setFiles(t, saved.Selected); err != nil {
 			a.logger.Warn("restore files", "hash", t.InfoHash().HexString(), "err", err)
 		}
-
-		setPaused(t, item.saved.Paused)
 	}
 
 	a.restored.Store(true)
@@ -374,18 +371,11 @@ func (a *api) add(w http.ResponseWriter, r *http.Request) {
 		a.verifyHoles(t)
 	}
 
-	// Раздача уже докачивается целиком (её смотрели или скачивают): новый
-	// выбор тоже качается сразу, иначе скачивание встало бы до нового просмотра
 	saved := a.session.get(t.InfoHash())
 	saved.Selected = selected
+	saved.Background = nil
 
-	if saved.Background {
-		err = a.downloadNow(t, selected)
-	} else {
-		err = a.selectLater(t, selected)
-	}
-
-	if err != nil {
+	if err := setFiles(t, selected); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_files", err)
 		return
 	}
@@ -423,8 +413,6 @@ func (a *api) selectFiles(w http.ResponseWriter, r *http.Request) {
 
 	var body struct {
 		Files []int `json:"files"`
-		// Качать выбранные целиком сразу, а не после начала просмотра
-		Now bool `json:"now"`
 	}
 
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
@@ -432,24 +420,14 @@ func (a *api) selectFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	saved := a.session.get(t.InfoHash())
-	now := body.Now || saved.Background
-
-	var err error
-	if now {
-		err = a.downloadNow(t, body.Files)
-	} else {
-		err = a.selectLater(t, body.Files)
-	}
-
-	if err != nil {
+	if err := setFiles(t, body.Files); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_files", err)
 		return
 	}
 
-	err = a.session.update(t.InfoHash(), func(saved *savedTorrent) {
+	err := a.session.update(t.InfoHash(), func(saved *savedTorrent) {
 		saved.Selected = body.Files
-		saved.Background = now
+		saved.Background = nil
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "storage", err)
@@ -473,7 +451,7 @@ func (a *api) setPausedHandler(w http.ResponseWriter, r *http.Request, paused bo
 		return
 	}
 
-	setPaused(t, paused)
+	a.setPaused(t, paused, a.session.get(t.InfoHash()).Selected)
 
 	if err := a.session.update(t.InfoHash(), func(saved *savedTorrent) { saved.Paused = paused }); err != nil {
 		writeError(w, http.StatusInternalServerError, "storage", err)
@@ -507,9 +485,7 @@ func (a *api) forget(w http.ResponseWriter, r *http.Request) {
 		a.logger.Warn("remove session", "err", err)
 	}
 
-	a.mu.Lock()
-	delete(a.pending, hash)
-	a.mu.Unlock()
+	a.windows.forget(hash)
 
 	var response forgetResponse
 
@@ -545,9 +521,8 @@ type peersResponse struct {
 type torrentState struct {
 	InfoHash string `json:"infoHash"`
 	Paused   bool   `json:"paused"`
-	// Выбранные файлы качаются целиком (иначе — только то, что читает поток)
-	Background bool  `json:"background"`
-	Selected   []int `json:"selected"`
+	// Файлы, которые качаются целиком; остальное качают только окна потоков
+	Selected []int `json:"selected"`
 	// Скачано всего: куски, прочитанные потоком вне выбора, тоже на диске
 	BytesCompleted int64 `json:"bytesCompleted"`
 	// Размер выбранных файлов и сколько из них скачано
@@ -572,7 +547,6 @@ func (a *api) stateOf(t *torrent.Torrent) torrentState {
 	state := torrentState{
 		InfoHash:       hash.HexString(),
 		Paused:         saved.Paused,
-		Background:     saved.Background,
 		Selected:       saved.Selected,
 		BytesCompleted: t.BytesCompleted(),
 		Seeding:        t.Seeding() && !saved.Paused,

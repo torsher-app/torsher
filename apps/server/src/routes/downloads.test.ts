@@ -23,6 +23,7 @@ import {
   sampleTorrentFile,
 } from '../services/engine/fixtures/index.ts'
 import { trackStream } from '../services/storage/index.ts'
+import { clearStreamSelections } from '../services/torrents/index.ts'
 import { signToken } from '../utils/token.ts'
 
 const GIB = 1024 ** 3
@@ -154,7 +155,7 @@ describe('доступ', () => {
 describe('список загрузок', () => {
   it('живые поля из движка, общая скорость и заполнение кэша', async () => {
     insertTorrent({ inEngine: true, selectedFiles: [0] })
-    engine([{ ...liveState, background: true }])
+    engine([{ ...liveState }])
 
     const response = await app.inject({ url: '/api/torrents', cookies: owner })
     const body = response.json()
@@ -196,7 +197,6 @@ describe('список загрузок', () => {
   it('скачано и раздаётся, на паузе, ждёт пиров', async () => {
     const seeding = {
       ...liveState,
-      background: true,
       wantedCompleted: 9_437_184,
     }
     insertTorrent({ inEngine: true })
@@ -206,10 +206,9 @@ describe('список загрузок', () => {
 
     for (const live of [
       seeding,
-      { ...liveState, background: true, paused: true },
+      { ...liveState, paused: true },
       {
         ...liveState,
-        background: true,
         peers: { connected: 0, found: 3, seeders: 0 },
       },
     ]) {
@@ -229,7 +228,6 @@ describe('действия', () => {
     const torrent = insertTorrent()
     engine([], {
       'POST /torrents': () => json(movieDetails),
-      [`PUT /torrents/${INFO_HASH}/files`]: noContent,
     })
 
     const response = await app.inject({
@@ -240,18 +238,8 @@ describe('действия', () => {
     })
 
     expect(response.statusCode).toBe(200)
-    expect(engineCalls()).toEqual([
-      'POST /torrents?files=0,2',
-      `PUT /torrents/${INFO_HASH}/files`,
-    ])
-    expect(
-      JSON.parse(
-        String(
-          fetchMock.mock.calls.find(([, init]) => init?.method === 'PUT')![1]!
-            .body,
-        ),
-      ),
-    ).toEqual({ files: [0, 2], now: true })
+    // Выбор в движке и есть закачка целиком
+    expect(engineCalls()).toEqual(['POST /torrents?files=0,2'])
     expect(rowOf(torrent.id)).toMatchObject({
       inEngine: true,
       retention: 'keep',
@@ -322,25 +310,62 @@ describe('действия', () => {
     ])
   })
 
-  it('«Оставить» и «Не оставлять»', async () => {
-    const torrent = insertTorrent()
-    engine([])
+  it('«Оставить» докачивает начатые видео, «Не оставлять» останавливает закачку', async () => {
+    const torrent = insertTorrent({ inEngine: true })
+    const bodies: unknown[] = []
+    // Начаты фильм и субтитры, но целиком качается только видео
+    const started = {
+      ...liveStats,
+      selected: [],
+      fileProgress: [1024, 0, 512],
+    }
+    engine([{ ...liveState, selected: [] }], {
+      [`GET /torrents/${INFO_HASH}/stats`]: () => json(started),
+      [`PUT /torrents/${INFO_HASH}/files`]: (_url, init) => {
+        bodies.push(JSON.parse(String(init.body)))
+        return noContent()
+      },
+    })
 
-    const kept = await app.inject({
-      method: 'PUT',
-      url: `/api/torrents/${torrent.id}/retention`,
-      cookies: owner,
-      payload: { retention: 'keep' },
-    })
-    const invalid = await app.inject({
-      method: 'PUT',
-      url: `/api/torrents/${torrent.id}/retention`,
-      cookies: owner,
-      payload: { retention: 'forever' },
-    })
+    const retention = (value: string) =>
+      app.inject({
+        method: 'PUT',
+        url: `/api/torrents/${torrent.id}/retention`,
+        cookies: owner,
+        payload: { retention: value },
+      })
+
+    const kept = await retention('keep')
 
     expect(kept.json().retention).toBe('keep')
-    expect(invalid.statusCode).toBe(400)
+    expect(rowOf(torrent.id)?.selectedFiles).toEqual([0])
+
+    const unkept = await retention('cache')
+
+    expect(unkept.json().retention).toBe('cache')
+    expect(rowOf(torrent.id)?.selectedFiles).toBeNull()
+    expect(bodies).toEqual([{ files: [0] }, { files: [] }])
+    expect((await retention('forever')).statusCode).toBe(400)
+  })
+
+  it('после старта движка выбор, накопленный просмотром, снимается у кэша', async () => {
+    const cached = insertTorrent({ inEngine: true, selectedFiles: [0, 2] })
+    const kept = insertTorrent({
+      infoHash: OTHER_HASH,
+      inEngine: true,
+      retention: 'keep',
+      selectedFiles: [0],
+    })
+    engine([], {
+      [`PUT /torrents/${INFO_HASH}/files`]: noContent,
+    })
+
+    await clearStreamSelections()
+    await clearStreamSelections()
+
+    expect(engineCalls()).toEqual([`PUT /torrents/${INFO_HASH}/files`])
+    expect(rowOf(cached.id)?.selectedFiles).toBeNull()
+    expect(rowOf(kept.id)?.selectedFiles).toEqual([0])
   })
 
   it('удаление с файлами просит движок удалить и их', async () => {
@@ -453,7 +478,7 @@ describe('хранилище', () => {
 
   it('мало места и вытеснять нечего — загрузки на паузе, место вернулось — продолжают', async () => {
     const kept = insertTorrent({ inEngine: true, retention: 'keep' })
-    const downloading = { ...liveState, background: true }
+    const downloading = { ...liveState }
     engine([downloading], {
       [`POST /torrents/${INFO_HASH}/pause`]: noContent,
       [`POST /torrents/${INFO_HASH}/resume`]: noContent,
@@ -481,7 +506,7 @@ describe('хранилище', () => {
       inEngine: true,
       lastAccessAt: new Date('2026-01-01'),
     })
-    engine([{ ...liveState, background: true, bytesCompleted: GIB }], {
+    engine([{ ...liveState, bytesCompleted: GIB }], {
       [`DELETE /torrents/${INFO_HASH}`]: () => json({ deletedBytes: GIB }),
     })
     disk.free = 5 * GIB
@@ -541,7 +566,7 @@ describe('хранилище', () => {
       inEngine: true,
       lastAccessAt: new Date('2026-01-01'),
     })
-    engine([{ ...liveState, background: true, bytesCompleted: 300 * GIB }])
+    engine([{ ...liveState, bytesCompleted: 300 * GIB }])
     disk.free = 5 * GIB
 
     const release = trackStream(watching.id)
@@ -609,34 +634,41 @@ describe('просмотр и место', () => {
     })
   })
 
-  it('просмотр добавляет файл к выбранным и снимает паузу', async () => {
-    const torrent = insertTorrent({
-      inEngine: true,
-      selectedFiles: [2],
-      pauseReason: 'user',
-    })
-    engine([liveState], {
-      [`GET /torrents/${INFO_HASH}/stats`]: () => json(liveStats),
-      'POST /torrents': () => json(movieDetails),
-      [`POST /torrents/${INFO_HASH}/resume`]: noContent,
-    })
+  it.each([
+    ['cache', 'POST /torrents?files=2', [2]],
+    ['keep', 'POST /torrents?files=2,0', [2, 0]],
+  ] as const)(
+    'просмотр раздачи %s: выбор %s, пауза снимается',
+    async (retention, call, selected) => {
+      const torrent = insertTorrent({
+        inEngine: true,
+        retention,
+        selectedFiles: [2],
+        pauseReason: 'user',
+      })
+      engine([liveState], {
+        [`GET /torrents/${INFO_HASH}/stats`]: () => json(liveStats),
+        'POST /torrents': () => json(movieDetails),
+        [`POST /torrents/${INFO_HASH}/resume`]: noContent,
+      })
 
-    const response = await app.inject({
-      method: 'POST',
-      url: '/api/playback',
-      cookies: owner,
-      payload: { torrentId: torrent.id, fileIndex: 0 },
-    })
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/playback',
+        cookies: owner,
+        payload: { torrentId: torrent.id, fileIndex: 0 },
+      })
 
-    expect(response.statusCode).toBe(200)
-    expect(engineCalls()).toEqual([
-      `GET /torrents/${INFO_HASH}/stats`,
-      'POST /torrents?files=2,0',
-      `POST /torrents/${INFO_HASH}/resume`,
-    ])
-    expect(rowOf(torrent.id)).toMatchObject({
-      selectedFiles: [2, 0],
-      pauseReason: null,
-    })
-  })
+      expect(response.statusCode).toBe(200)
+      expect(engineCalls()).toEqual([
+        `GET /torrents/${INFO_HASH}/stats`,
+        call,
+        `POST /torrents/${INFO_HASH}/resume`,
+      ])
+      expect(rowOf(torrent.id)).toMatchObject({
+        selectedFiles: selected,
+        pauseReason: null,
+      })
+    },
+  )
 })

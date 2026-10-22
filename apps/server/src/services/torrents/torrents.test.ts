@@ -5,6 +5,7 @@ import {
   bufferedAheadBytes,
   fileOffsetOf,
   resumePosition,
+  streamWindowOf,
 } from './playback.ts'
 
 const HEX = '0123456789abcdef0123456789abcdef01234567'
@@ -131,5 +132,23 @@ describe('позиция для продолжения', () => {
 
   it('без известной длительности — продолжить', () => {
     expect(resumePosition(600, null)).toBe(600)
+  })
+})
+
+describe('окно просмотра', () => {
+  const MIB = 1024 * 1024
+
+  it('три минуты видео по среднему битрейту', () => {
+    // 4,5 ГиБ на 45 минут — 100 МиБ в минуту
+    expect(streamWindowOf(4500 * MIB, 45 * 60)).toBe(300 * MIB)
+  })
+
+  it('не меньше 64 МиБ и не больше 1 ГиБ', () => {
+    expect(streamWindowOf(300 * MIB, 45 * 60)).toBe(64 * MIB)
+    expect(streamWindowOf(80 * 1024 * MIB, 60 * 60)).toBe(1024 * MIB)
+  })
+
+  it('без длительности — окно по умолчанию', () => {
+    expect(streamWindowOf(4500 * MIB, null)).toBe(128 * MIB)
   })
 })

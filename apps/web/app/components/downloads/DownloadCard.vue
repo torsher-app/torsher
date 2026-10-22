@@ -72,6 +72,9 @@ watch(
 const view = computed(() => (shown.value ? status.viewOf(shown.value) : null))
 const label = computed(() => (view.value ? status.label(view.value) : ''))
 const problem = computed(() => (view.value ? status.problem(view.value) : ''))
+const selected = computed(() =>
+  shown.value ? status.selected(shown.value) : null,
+)
 const release = computed(() =>
   shown.value ? releaseMetaOf(shown.value) : null,
 )
@@ -224,6 +227,16 @@ function onInteractOutside(event: Event) {
                 ]
                   .filter(Boolean)
                   .join(" · ")
+              }}
+            </dd>
+            <dt class="text-muted-foreground">
+              {{ t("panel.torrents.card.wanted") }}
+            </dt>
+            <dd class="tabular-nums">
+              {{
+                selected
+                  ? `${selected.count} · ${status.bytes(selected.size)}`
+                  : t("panel.torrents.card.wantedNone")
               }}
             </dd>
             <dt class="text-muted-foreground">

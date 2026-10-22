@@ -18,12 +18,13 @@ type session struct {
 }
 
 type savedTorrent struct {
+	// Файлы, которые качаются целиком
 	Selected []int `json:"selected"`
-	// Выбранные файлы уже докачиваются целиком (просмотр начинался или
-	// скачивание попросили сразу)
-	Background bool `json:"background"`
 	// Пауза владельца или сервера: раздача не качает и не раздаёт
 	Paused bool `json:"paused"`
+	// Только у записей прежних версий: `false` — выбор сделал просмотр и он
+	// ещё не докачивался. `restore` переводит запись в новый вид
+	Background *bool `json:"background,omitempty"`
 }
 
 type restoredTorrent struct {

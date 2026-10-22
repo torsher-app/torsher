@@ -16,6 +16,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import {
   buildPlaylist,
   HlsTranscode,
+  secondsAhead,
   seekTargetOf,
   segmentStarts,
   TranscodeFailedError,
@@ -79,6 +80,20 @@ describe('seekTargetOf', () => {
     expect(seekTargetOf([0, 9.4, 15.8], 0)).toBe(0)
     expect(seekTargetOf([0, 9.4, 15.8], 1)).toBeCloseTo(9.9)
     expect(seekTargetOf([0, 9.4, 9.6], 1)).toBeCloseTo(9.5)
+  })
+})
+
+describe('secondsAhead', () => {
+  const starts = [0, 2, 8, 14, 20]
+
+  it('от начала запрошенного сегмента до конца записанного', () => {
+    expect(secondsAhead(starts, 24, 3, 1)).toBe(18)
+    expect(secondsAhead(starts, 24, 4, 1)).toBe(22)
+  })
+
+  it('ничего не запрошено или плеер впереди записанного — ноль', () => {
+    expect(secondsAhead(starts, 24, 3, -1)).toBe(0)
+    expect(secondsAhead(starts, 24, 1, 3)).toBe(0)
   })
 })
 
@@ -215,6 +230,42 @@ describe.runIf(hasFfmpeg())('hlsTranscode на ffmpeg', () => {
     return { transcode, starts }
   }
 
+  // Ключевой кадр каждую секунду: разрезы по 1 с совпадают с ними
+  function steadyMkv() {
+    const steady = join(dir, 'steady.mkv')
+
+    if (!existsSync(steady)) {
+      execFileSync('ffmpeg', [
+        '-v',
+        'error',
+        '-y',
+        '-f',
+        'lavfi',
+        '-i',
+        'testsrc2=size=160x90:rate=24',
+        '-t',
+        '40',
+        '-c:v',
+        'libx264',
+        '-preset',
+        'ultrafast',
+        '-pix_fmt',
+        'yuv420p',
+        '-bf',
+        '0',
+        '-g',
+        '24',
+        '-keyint_min',
+        '24',
+        '-sc_threshold',
+        '0',
+        steady,
+      ])
+    }
+
+    return readFileSync(steady)
+  }
+
   // ffprobe и проверкам нужен путь, а сегмент отдаётся открытым файлом
   async function segmentPath(
     transcode: HlsTranscode,
@@ -343,37 +394,7 @@ describe.runIf(hasFfmpeg())('hlsTranscode на ffmpeg', () => {
   }, 60_000)
 
   it('сегмент, удалённый как старый, перезапускает ffmpeg', async () => {
-    const steady = join(dir, 'steady.mkv')
-
-    // Ключевой кадр каждую секунду: разрезы по 1 с совпадают с ними
-    execFileSync('ffmpeg', [
-      '-v',
-      'error',
-      '-y',
-      '-f',
-      'lavfi',
-      '-i',
-      'testsrc2=size=160x90:rate=24',
-      '-t',
-      '40',
-      '-c:v',
-      'libx264',
-      '-preset',
-      'ultrafast',
-      '-pix_fmt',
-      'yuv420p',
-      '-bf',
-      '0',
-      '-g',
-      '24',
-      '-keyint_min',
-      '24',
-      '-sc_threshold',
-      '0',
-      steady,
-    ])
-
-    const body = readFileSync(steady)
+    const body = steadyMkv()
     const stallAt = Math.floor(body.length * 0.9)
     let stalled = false
     // Первое чтение подряд через границу встаёт на ней: первый запуск жив и
@@ -542,5 +563,93 @@ describe.runIf(hasFfmpeg())('hlsTranscode на ffmpeg', () => {
     const path = await segmentPath(transcode, 0)
 
     expect(statSync(path).size).toBeGreaterThan(0)
+  }, 60_000)
+
+  it('ушёл вперёд от плеера — ffmpeg на паузе, плеер догнал — продолжает', async () => {
+    const body = steadyMkv()
+    const chunk = Math.ceil(body.length / 200)
+    // Вход приходит медленно, как из торрента: без паузы ffmpeg дописал бы
+    // все 40 сегментов за пару секунд
+    const server = createServer((request, response) => {
+      const range = /bytes=(\d+)-/.exec(request.headers.range ?? '')
+      const start = range ? Number(range[1]) : 0
+
+      response.statusCode = range ? 206 : 200
+      response.setHeader('Accept-Ranges', 'bytes')
+      response.setHeader('Content-Length', body.length - start)
+
+      if (range) {
+        response.setHeader(
+          'Content-Range',
+          `bytes ${start}-${body.length - 1}/${body.length}`,
+        )
+      }
+
+      let offset = start
+      const timer = setInterval(() => {
+        if (offset >= body.length) {
+          clearInterval(timer)
+          response.end()
+          return
+        }
+
+        response.write(body.subarray(offset, offset + chunk))
+        offset += chunk
+      }, 15)
+
+      response.on('close', () => clearInterval(timer))
+    })
+
+    await new Promise<void>(resolve =>
+      server.listen(0, '127.0.0.1', resolve),
+    )
+
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/steady.mkv`
+    const transcode = new HlsTranscode(
+      join(dir, 'out-throttled'),
+      {
+        url: () => url,
+        videoStream: 0,
+        audioStream: null,
+        audio: 'aac',
+        subtitleStreams: [],
+        starts: segmentStarts(40, null, 1),
+        duration: 40,
+        ahead: { seconds: 5, checkMs: 50 },
+      },
+      { info: () => {}, warn: () => {} },
+    )
+
+    transcodes.push(transcode)
+
+    try {
+      await segmentPath(transcode, 0)
+
+      // Встал на запасе: дальше нескольких сегментов за запасом не пишет
+      await vi.waitFor(
+        () => expect(transcode.readySegments().length).toBeGreaterThan(4),
+        { timeout: 10_000 },
+      )
+      await new Promise(resolve => setTimeout(resolve, 1500))
+
+      const held = Math.max(...transcode.readySegments())
+
+      expect(held).toBeLessThan(12)
+
+      // Плеер запросил следующий сегмент за записанным — ffmpeg продолжает
+      // тот же запуск, а не начинает заново
+      const path = await segmentPath(
+        transcode,
+        held + 1,
+        AbortSignal.timeout(20_000),
+      )
+
+      expect(statSync(path).size).toBeGreaterThan(0)
+    }
+    finally {
+      await transcode.stop()
+      server.closeAllConnections()
+      server.close()
+    }
   }, 60_000)
 })

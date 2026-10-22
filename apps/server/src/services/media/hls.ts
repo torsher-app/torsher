@@ -22,6 +22,12 @@ const MAX_AHEAD_SEGMENTS = Math.floor(24 / SEGMENT_SECONDS)
 const KEEP_BEHIND_SEGMENTS = 20
 const SEGMENT_WAIT_MS = 60_000
 const POLL_MS = 200
+// Перепаковка копией идёт быстрее просмотра и дочитала бы файл до конца, а
+// за ней и закачку. Ушла дальше запаса от запросов плеера — ffmpeg на паузе,
+// плеер догнал — продолжает. Проверка — раз в несколько секунд и на каждом
+// запросе сегмента
+const AHEAD_SECONDS = 180
+const THROTTLE_CHECK_MS = 5000
 // ffmpeg ждёт куски от пиров; совсем мёртвый поток он бросит сам
 const READ_TIMEOUT_US = 120_000_000
 // Сдвиг меток в сегментах: с B-кадрами DTS начала файла отрицательный, и
@@ -110,6 +116,8 @@ export interface HlsInput {
   subtitleStreams: number[]
   starts: number[]
   duration: number
+  /** Запас перепаковки впереди плеера; меньше — только в тестах */
+  ahead?: { seconds: number, checkMs: number }
 }
 
 export interface HlsLog {
@@ -140,6 +148,8 @@ interface Run {
   /** Заменён новым запуском: его список больше не читается */
   superseded: boolean
   exited: boolean
+  /** Остановлен `SIGSTOP`: ушёл далеко вперёд от плеера */
+  paused: boolean
   failure?: string
 }
 
@@ -153,6 +163,22 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 function hasData(path: string) {
   // Одним вызовом: между проверкой и чтением размера каталог может удалить stop()
   return (statSync(path, { throwIfNoEntry: false })?.size ?? 0) > 0
+}
+
+/**
+ * На сколько секунд записанное ffmpeg ушло вперёд от сегмента, который
+ * последним запросил плеер. Ничего не запрошено — ноль.
+ */
+export function secondsAhead(
+  starts: number[],
+  duration: number,
+  head: number,
+  requested: number,
+) {
+  if (requested < 0 || head < requested)
+    return 0
+
+  return (starts[head + 1] ?? duration) - (starts[requested] ?? 0)
 }
 
 /**
@@ -173,6 +199,9 @@ export class HlsTranscode {
   private readonly ready = new Set<number>()
   /** Сегменты, которые ждут запросы: номер → сколько запросов */
   private readonly waiting = new Map<number, number>()
+  /** Последний запрошенный плеером сегмент — позиция просмотра */
+  private requested = -1
+  private throttleTimer: ReturnType<typeof setInterval> | undefined
 
   constructor(dir: string, input: HlsInput, log: HlsLog) {
     this.dir = dir
@@ -198,8 +227,10 @@ export class HlsTranscode {
       throw new RangeError('Segment out of range')
 
     this.waiting.set(index, (this.waiting.get(index) ?? 0) + 1)
+    this.requested = index
 
     try {
+      await this.throttle()
       return await this.waitFor(index, signal)
     }
     finally {
@@ -279,6 +310,7 @@ export class HlsTranscode {
 
   async stop() {
     this.stopped = true
+    clearInterval(this.throttleTimer)
     // Старт мог быть на полпути: после него ffmpeg уже не запустится
     await this.queue
     this.kill()
@@ -319,11 +351,33 @@ export class HlsTranscode {
     await this.start(index)
   }
 
+  // `SIGKILL` убивает и остановленный `SIGSTOP` процесс
   private kill() {
     const run = this.run
 
     if (run && !run.exited)
       run.process.kill('SIGKILL')
+  }
+
+  /** Пауза ffmpeg, когда он ушёл далеко вперёд от плеера, и продолжение */
+  private async throttle() {
+    await this.refreshReady()
+
+    const run = this.run
+
+    if (!run || run.exited || run.superseded || this.stopped)
+      return
+
+    const { starts, duration } = this.input
+    const limit = this.input.ahead?.seconds ?? AHEAD_SECONDS
+    const pause
+      = secondsAhead(starts, duration, run.head, this.requested) > limit
+
+    if (pause === run.paused)
+      return
+
+    run.paused = pause
+    run.process.kill(pause ? 'SIGSTOP' : 'SIGCONT')
   }
 
   private async start(from: number) {
@@ -384,6 +438,7 @@ export class HlsTranscode {
       head: from - 1,
       superseded: false,
       exited: false,
+      paused: false,
     }
     let stderr = ''
 
@@ -405,6 +460,14 @@ export class HlsTranscode {
 
     this.run = run
     this.log.info(`hls: ffmpeg run ${id} from segment ${from}`)
+
+    if (!this.throttleTimer) {
+      this.throttleTimer = setInterval(
+        () => void this.throttle().catch(() => {}),
+        this.input.ahead?.checkMs ?? THROTTLE_CHECK_MS,
+      )
+      this.throttleTimer.unref()
+    }
   }
 
   private argsFor(url: string, from: number, runId: number) {

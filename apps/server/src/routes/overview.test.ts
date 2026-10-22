@@ -201,7 +201,7 @@ describe('обзор', () => {
 
   it('плитки: загрузки, кэш, индексаторы и «смотрит сейчас»', async () => {
     insertTorrent()
-    live = [{ ...liveState, background: true }]
+    live = [{ ...liveState }]
     insertIndexer({ name: 'A', checkStatus: 'ok' })
     insertIndexer({ name: 'B', checkStatus: 'ok', enabled: false })
     insertIndexer({ name: 'C', checkStatus: 'timeout' })

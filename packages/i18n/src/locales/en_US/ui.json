@@ -1404,13 +1404,15 @@
         "never": "Not watched yet",
         "files": "Files",
         "filesHint": "Checked files download in full. The rest downloads only while it's being watched.",
-        "title": "Title"
+        "title": "Title",
+        "wanted": "Full download",
+        "wantedNone": "Nothing — downloads only while watching"
       },
       "toasts": {
         "kept": "Torrent kept",
-        "keptText": "It won't be deleted when the cache is full",
+        "keptText": "Started files will download in full, and the torrent won't be deleted automatically",
         "unkept": "Torrent moved back to the cache",
-        "unkeptText": "It may be deleted automatically when the cache is full",
+        "unkeptText": "Full download stopped. What's downloaded stays in the cache until it fills up",
         "download": "Downloading",
         "downloadText": "{n} file | {n} files",
         "downloadStorage": "Low disk space — the download is paused",
@@ -1427,7 +1429,10 @@
         "keepFilesText": "Downloaded files stay on disk, but Torsher stops counting them and never deletes them automatically.",
         "deleted": "Torrent deleted",
         "deletedFiles": "Files deleted from disk"
-      }
+      },
+      "selectedEpisodes": "{n} episode | {n} episodes",
+      "selectedFiles": "{n} file | {n} files",
+      "onDisk": "{size} on disk"
     }
   }
 }

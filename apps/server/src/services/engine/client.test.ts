@@ -67,7 +67,6 @@ describe('клиент движка', () => {
     expect(stats).toEqual({
       infoHash: INFO_HASH,
       paused: false,
-      background: false,
       selected: [0],
       bytesCompleted: 3_145_728,
       bytesWanted: 9_437_184,
@@ -103,7 +102,7 @@ describe('клиент движка', () => {
       async () => new Response(null, { status: 204 }),
     )
 
-    await selectFiles(INFO_HASH, [0, 2], true)
+    await selectFiles(INFO_HASH, [0, 2])
     await pauseTorrent(INFO_HASH)
     await resumeTorrent(INFO_HASH)
 
@@ -114,7 +113,7 @@ describe('клиент движка', () => {
     ])
 
     expect(calls).toEqual([
-      ['PUT', `/torrents/${INFO_HASH}/files`, '{"files":[0,2],"now":true}'],
+      ['PUT', `/torrents/${INFO_HASH}/files`, '{"files":[0,2]}'],
       ['POST', `/torrents/${INFO_HASH}/pause`, undefined],
       ['POST', `/torrents/${INFO_HASH}/resume`, undefined],
     ])
@@ -219,6 +218,22 @@ describe('клиент движка', () => {
     expect(
       (await openStream(INFO_HASH, 0, 'bytes=99-', controller.signal)).status,
     ).toBe(416)
+  })
+
+  it('поток с окном передаёт его движку', async () => {
+    fetchMock.mockResolvedValueOnce(new Response('abc', { status: 206 }))
+
+    await openStream(
+      INFO_HASH,
+      1,
+      undefined,
+      new AbortController().signal,
+      64 * 1024 * 1024,
+    )
+
+    expect(String(fetchMock.mock.calls[0]![0])).toBe(
+      `http://127.0.0.1:4000/torrents/${INFO_HASH}/files/1/stream?window=67108864`,
+    )
   })
 
   it('движок упал между запросами — unavailable', async () => {

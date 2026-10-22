@@ -14,7 +14,7 @@ import { join } from 'node:path'
 import { config } from '../../config.ts'
 import { engineStreamUrl } from '../engine/index.ts'
 import { trackStream } from '../storage/index.ts'
-import { touchTorrent } from '../torrents/index.ts'
+import { streamWindowOf, touchTorrent } from '../torrents/index.ts'
 import { decidePlayback, pickAudioStream, textSubtitles } from './decide.ts'
 import { HlsTranscode, segmentStarts } from './hls.ts'
 import { readCueTimes } from './matroska.ts'
@@ -86,6 +86,31 @@ function rangeReader(url: string) {
 
     return new Uint8Array(await response.arrayBuffer())
   }
+}
+
+function fileSizeOf(session: PlaybackSession) {
+  return session.torrent.files?.[session.fileIndex]?.size ?? 0
+}
+
+/**
+ * Окно просмотра для прямого потока файла: по длительности из пробы открытой
+ * сессии этого файла, без неё — окно по умолчанию.
+ */
+export function streamWindowFor(torrent: Torrent, fileIndex: number) {
+  let duration: number | null = null
+
+  for (const session of sessions.values()) {
+    if (
+      session.torrent.id === torrent.id
+      && session.fileIndex === fileIndex
+      && session.media?.duration
+    ) {
+      duration = session.media.duration
+      break
+    }
+  }
+
+  return streamWindowOf(torrent.files?.[fileIndex]?.size ?? 0, duration)
 }
 
 // Сессию могли закрыть, пока шла проба: дальше готовить её незачем
@@ -179,11 +204,13 @@ async function prepare(session: PlaybackSession, input: SessionInput) {
     if (!isOpen(session))
       return
 
+    const window = streamWindowOf(fileSizeOf(session), media.duration)
+
     session.hls = new HlsTranscode(
       join(config.transcodesPath, session.id),
       {
         // Порт движка меняется после его перезапуска: адрес берётся на каждый запуск ffmpeg
-        url: () => engineStreamUrl(torrent.infoHash, fileIndex),
+        url: () => engineStreamUrl(torrent.infoHash, fileIndex, window),
         videoStream: media.video.index,
         audioStream: session.audioStream,
         audio: decision.audio ?? 'aac',

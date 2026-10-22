@@ -2,6 +2,7 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { Readable } from 'node:stream'
 import { streamParams, streamQuery } from '../dto/playback.ts'
 import { requireStream } from '../middleware/auth.ts'
+import { streamWindowFor } from '../services/media/index.ts'
 import { trackStream } from '../services/storage/index.ts'
 import {
   contentTypeOf,
@@ -17,8 +18,8 @@ const FORWARDED_HEADERS = ['content-length', 'content-range', 'accept-ranges']
 
 /**
  * Поток файла раздачи через ядро: движок слушает только loopback, а здесь —
- * авторизация, `Content-Type` по расширению и отмена чтения из движка, когда
- * плеер закрыл соединение (перемотка открывает новое).
+ * авторизация, `Content-Type` по расширению, окно просмотра и отмена чтения
+ * из движка, когда плеер закрыл соединение (перемотка открывает новое).
  */
 export const streamRoutes: FastifyPluginAsyncZod = async (app) => {
   app.get(
@@ -65,6 +66,7 @@ export const streamRoutes: FastifyPluginAsyncZod = async (app) => {
           fileIndex,
           request.headers.range,
           controller.signal,
+          streamWindowFor(torrent, fileIndex),
         )
       }
       catch (err) {

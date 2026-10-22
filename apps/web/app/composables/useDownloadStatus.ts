@@ -1,7 +1,12 @@
 import type { Torrent } from '@torsher/api-client'
 import type { DownloadView } from '~/lib/downloadStatus'
 import { useI18n } from 'vue-i18n'
-import { downloadViewOf, etaSeconds, progressOf } from '~/lib/downloadStatus'
+import {
+  downloadViewOf,
+  etaSeconds,
+  progressOf,
+  selectionOf,
+} from '~/lib/downloadStatus'
 import { formatBytes, formatDuration } from '~/lib/format'
 import { releaseMetaOf } from '~/lib/releaseMeta'
 
@@ -40,28 +45,71 @@ export function useDownloadStatus() {
     return ''
   }
 
-  /** Мета под названием: серии, качество, размер и зона хранения */
+  /**
+   * Что качается целиком: «2 серии · 8,3 ГБ». Серии — если все выбранные
+   * файлы разобрались как серии, иначе файлы. Ничего не выбрано — пусто.
+   */
+  function selected(torrent: Torrent) {
+    const { files, size } = selectionOf(torrent)
+
+    if (files.length === 0)
+      return null
+
+    const { fileEpisodes } = releaseMetaOf(torrent)
+    const episodes = files.every(file => fileEpisodes.has(file.index))
+
+    return {
+      count: t(
+        episodes
+          ? 'panel.torrents.selectedEpisodes'
+          : 'panel.torrents.selectedFiles',
+        files.length,
+      ),
+      size,
+    }
+  }
+
+  /**
+   * Мета под названием. Есть выбор — сколько качается целиком из размера
+   * раздачи: «2 серии · 8,3 ГБ из 226,8 ГБ · Кэш»; нет — серии, качество,
+   * размер раздачи и зона хранения.
+   */
   function meta(torrent: Torrent) {
     if (torrent.status === 'resolving')
       return t('panel.torrents.status.resolving')
 
+    const zone = t(`panel.torrents.zones.${torrent.retention}`)
+    const selection = selected(torrent)
+
+    if (selection) {
+      return [
+        selection.count,
+        t('panel.torrents.progressOf', {
+          done: bytes(selection.size),
+          total: bytes(torrent.totalSize),
+        }),
+        zone,
+      ].join(' · ')
+    }
+
     const release = releaseMetaOf(torrent)
 
-    return [
-      release.episodes,
-      release.quality,
-      bytes(torrent.totalSize),
-      t(`panel.torrents.zones.${torrent.retention}`),
-    ]
+    return [release.episodes, release.quality, bytes(torrent.totalSize), zone]
       .filter(Boolean)
       .join(' · ')
   }
 
-  /** «62 % · 8,4 МБ/с · 23 пира · ≈ 2 мин» */
+  /**
+   * «62 % · 8,4 МБ/с · 23 пира · ≈ 2 мин». Без выбора процент от всей
+   * раздачи ничего не говорит — вместо него сколько на диске.
+   */
   function numbers(torrent: Torrent, view: DownloadView) {
-    const percent = t('panel.torrents.percent', {
-      value: Math.floor(progressOf(torrent) * 100),
-    })
+    const percent
+      = torrent.progress.wanted > 0
+        ? t('panel.torrents.percent', {
+            value: Math.floor(progressOf(torrent) * 100),
+          })
+        : t('panel.torrents.onDisk', { size: bytes(torrent.sizeOnDisk) })
 
     if (view.status === 'seeding')
       return [percent, `↑ ${speed(torrent.uploadSpeed)}`].join(' · ')
@@ -85,6 +133,7 @@ export function useDownloadStatus() {
 
   return {
     viewOf: downloadViewOf,
+    selected,
     label,
     reason,
     problem,

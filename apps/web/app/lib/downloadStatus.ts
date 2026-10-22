@@ -45,15 +45,25 @@ export interface DownloadView {
 
 type ViewTorrent = Pick<
   Torrent,
-  'status' | 'state' | 'streaming' | 'pauseReason'
+  'status' | 'state' | 'streaming' | 'pauseReason' | 'progress'
 >
 
 /**
  * Одно место, где состояние раздачи превращается в статус строки, иконку,
  * бейдж и группу. Метаданные важнее движка: без списка файлов раздача
  * ничего не качает. Пауза из-за места — проблема, пауза владельца — нет.
+ * Без выбранных файлов полоса — доля на диске, она приглушена: целиком
+ * ничего не качается.
  */
 export function downloadViewOf(torrent: ViewTorrent): DownloadView {
+  const view = stateViewOf(torrent)
+
+  return torrent.progress.wanted > 0
+    ? view
+    : { ...view, progressTone: 'muted' }
+}
+
+function stateViewOf(torrent: ViewTorrent): DownloadView {
   if (torrent.status === 'resolving')
     return view('resolving', 'info', Loader2Icon, 'info', 'active')
 
@@ -154,6 +164,13 @@ function view(
   progressTone: DownloadView['progressTone'] = 'brand',
 ): DownloadView {
   return { status, tone, icon, badge, group, attention, progressTone }
+}
+
+/** Файлы, которые качаются целиком, и их размер */
+export function selectionOf(torrent: Pick<Torrent, 'files'>) {
+  const files = torrent.files.filter(file => file.selected)
+
+  return { files, size: files.reduce((sum, file) => sum + file.size, 0) }
 }
 
 /** Доля скачанного из выбранного; без выбора — по всему размеру */
