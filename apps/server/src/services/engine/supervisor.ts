@@ -9,6 +9,9 @@ import { createInterface } from 'node:readline'
 export type EngineStatus
   = 'stopped' | 'missing' | 'starting' | 'ready' | 'restarting'
 
+/** `restoring` — процесс жив, но ещё добавляет раздачи прошлого запуска */
+export type EngineHealth = 'ok' | 'restoring' | 'down'
+
 interface EngineLog {
   debug: (msg: string) => void
   info: (msg: string) => void
@@ -25,7 +28,7 @@ export interface EngineSupervisorOptions {
   onDown: (kind: EngineUnavailableKind) => void
   spawnProcess?: (command: string, args: string[]) => ChildProcess
   findFreePort?: () => Promise<number>
-  isHealthy?: (baseUrl: string) => Promise<boolean>
+  checkHealth?: (baseUrl: string) => Promise<EngineHealth>
   binaryExists?: (path: string) => boolean
   /** Паузы перед перезапуском: n-е падение подряд ждёт n-й элемент, дальше — последний */
   restartDelaysMs?: number[]
@@ -67,16 +70,23 @@ export function findFreePort() {
   })
 }
 
-async function defaultIsHealthy(baseUrl: string) {
+async function defaultCheckHealth(baseUrl: string): Promise<EngineHealth> {
   try {
     const response = await fetch(`${baseUrl}/health`, {
       signal: AbortSignal.timeout(1000),
     })
 
-    return response.ok
+    if (response.ok)
+      return 'ok'
+
+    const body = (await response.json().catch(() => null)) as {
+      status?: string
+    } | null
+
+    return body?.status === 'restoring' ? 'restoring' : 'down'
   }
   catch {
-    return false
+    return 'down'
   }
 }
 
@@ -92,7 +102,7 @@ function sleep(ms: number) {
 export function createEngineSupervisor(options: EngineSupervisorOptions) {
   const spawnProcess = options.spawnProcess ?? defaultSpawn
   const pickPort = options.findFreePort ?? findFreePort
-  const isHealthy = options.isHealthy ?? defaultIsHealthy
+  const checkHealth = options.checkHealth ?? defaultCheckHealth
   const binaryExists = options.binaryExists ?? existsSync
   const restartDelays = options.restartDelaysMs ?? DEFAULT_RESTART_DELAYS_MS
   const stableAfterMs = options.stableAfterMs ?? 60_000
@@ -148,13 +158,23 @@ export function createEngineSupervisor(options: EngineSupervisorOptions) {
 
   async function waitHealthy(proc: ChildProcess, baseUrl: string) {
     const deadline = Date.now() + healthTimeoutMs
+    let restoring = false
 
-    while (Date.now() < deadline) {
+    // Срок — только до первого ответа: восстановление сотен раздач с
+    // проверкой файлов идёт дольше, и убивать живой процесс нельзя
+    while (restoring || Date.now() < deadline) {
       if (proc.exitCode !== null || proc.signalCode !== null || stopping)
         return false
 
-      if (await isHealthy(baseUrl))
+      const health = await checkHealth(baseUrl)
+
+      if (health === 'ok')
         return true
+
+      if (health === 'restoring' && !restoring) {
+        restoring = true
+        log.info('Engine is restoring torrents')
+      }
 
       await sleep(healthIntervalMs)
     }

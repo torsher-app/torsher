@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/anacrolix/torrent"
@@ -31,6 +32,9 @@ type api struct {
 	downloads  string
 	completion storage.PieceCompletion
 	speeds     *speedTracker
+	// Раздачи прошлого запуска добавлены заново: до этого сервер к движку не
+	// ходит, `/health` отвечает `restoring`
+	restored atomic.Bool
 
 	mu sync.Mutex
 	// Выбранные файлы, которые ещё не качаются целиком: докачка включается
@@ -54,6 +58,11 @@ func (a *api) routes() http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
+		if !a.restored.Load() {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "restoring"})
+			return
+		}
+
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 	mux.HandleFunc("POST /torrents/inspect", a.inspect)
@@ -283,7 +292,7 @@ func setPaused(t *torrent.Torrent, paused bool) {
 }
 
 // Раздачи прошлого запуска: выбор файлов и фоновая докачка — как были
-func (a *api) restore() {
+func (a *api) restore(ctx context.Context) {
 	restored, errs := a.session.load()
 
 	for _, err := range errs {
@@ -291,11 +300,23 @@ func (a *api) restore() {
 	}
 
 	for _, item := range restored {
+		// Остановка во время восстановления: остальные раздачи — в следующий запуск
+		if ctx.Err() != nil {
+			return
+		}
+
+		if info, err := item.meta.UnmarshalInfo(); err == nil {
+			adoptPartFiles(a.downloads, &info)
+		}
+
 		t, err := a.client.AddTorrent(item.meta)
 		if err != nil {
 			a.logger.Warn("restore torrent", "err", err)
 			continue
 		}
+
+		// До `ok` в `/health`: сервер не откроет поток, который отдал бы нули вместо данных
+		a.verifyHoles(t)
 
 		if item.saved.Background {
 			err = setFiles(t, item.saved.Selected)
@@ -310,6 +331,7 @@ func (a *api) restore() {
 		setPaused(t, item.saved.Paused)
 	}
 
+	a.restored.Store(true)
 	a.logger.Info("torrents restored", "count", len(restored))
 }
 
@@ -333,6 +355,12 @@ func (a *api) add(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	_, known := a.client.Torrent(mi.HashInfoBytes())
+
+	if info, err := mi.UnmarshalInfo(); err == nil && !known {
+		adoptPartFiles(a.downloads, &info)
+	}
+
 	t, err := a.client.AddTorrent(mi)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_torrent", err)
@@ -340,6 +368,11 @@ func (a *api) add(w http.ResponseWriter, r *http.Request) {
 	}
 
 	<-t.GotInfo()
+
+	// Раздача только что открыта хранилищем: на диске могли остаться её файлы
+	if !known {
+		a.verifyHoles(t)
+	}
 
 	// Раздача уже докачивается целиком (её смотрели или скачивают): новый
 	// выбор тоже качается сразу, иначе скачивание встало бы до нового просмотра
@@ -490,6 +523,8 @@ func (a *api) forget(w http.ResponseWriter, r *http.Request) {
 
 		deleted, err := deleteTorrentFiles(a.downloads, info)
 		response.DeletedBytes = deleted
+		// Удаление файлов — единственное место, где движок сам стирает данные
+		a.logger.Warn("torrent files deleted", "hash", hash.HexString(), "bytes", deleted)
 
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "storage", err)

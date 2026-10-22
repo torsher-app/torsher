@@ -81,7 +81,20 @@ export function planEviction(input: EvictionInput): EvictionPlan {
     free += item.size
   }
 
-  if (!fitsDisk()) {
+  return verdict(input, evict, free, cacheUsed)
+}
+
+function verdict(
+  input: EvictionInput,
+  evict: string[],
+  free: number,
+  cacheUsed: number,
+): EvictionPlan {
+  const { cacheLimit, minFree, need } = input
+  const needBytes = need?.bytes ?? 0
+  const needCache = need?.cache ? needBytes : 0
+
+  if (free - needBytes < minFree) {
     return {
       evict,
       free,
@@ -92,7 +105,7 @@ export function planEviction(input: EvictionInput): EvictionPlan {
     }
   }
 
-  if (!fitsCache()) {
+  if (cacheUsed + needCache > cacheLimit) {
     return {
       evict,
       free,
@@ -104,4 +117,28 @@ export function planEviction(input: EvictionInput): EvictionPlan {
   }
 
   return { evict, free, cacheUsed, ok: true, available: free - minFree }
+}
+
+/**
+ * План после вытеснения, часть которого пропущена (по раздаче открылся поток
+ * уже после снимка): их место не освободилось, и вердикт пересчитывается.
+ */
+export function withoutSkipped(
+  input: EvictionInput,
+  plan: EvictionPlan,
+  skipped: ReadonlySet<string>,
+): EvictionPlan {
+  if (!skipped.size)
+    return plan
+
+  const kept = input.torrents
+    .filter(item => skipped.has(item.id))
+    .reduce((sum, item) => sum + item.size, 0)
+
+  return verdict(
+    input,
+    plan.evict.filter(id => !skipped.has(id)),
+    plan.free - kept,
+    plan.cacheUsed + kept,
+  )
 }

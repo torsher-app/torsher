@@ -101,6 +101,37 @@ export function rememberChoice(
 }
 
 /**
+ * Озвучка, выбранная в плеере: по ней серия откроется с той же дорожкой, а
+ * следующие серии сезона — «как в прошлых сериях». Позицию и раздачу не трогает.
+ */
+export function rememberVoice(ref: TitleRef, voice: AudioTrack) {
+  const values = {
+    voiceStudio: voice.studio ?? null,
+    voiceType: voice.type ?? null,
+  }
+
+  getDb()
+    .insert(titleProgress)
+    .values({
+      profileId: ref.profileId,
+      titleId: ref.titleId,
+      ...keyOf(ref),
+      position: 0,
+      ...values,
+    })
+    .onConflictDoUpdate({
+      target: [
+        titleProgress.profileId,
+        titleProgress.titleId,
+        titleProgress.season,
+        titleProgress.episode,
+      ],
+      set: values,
+    })
+    .run()
+}
+
+/**
  * Отметка «просмотрено» с карточки: досмотренная позиция или сброс. Раздачу
  * и озвучку серии не трогает — по ним работает «как в прошлых сериях».
  */

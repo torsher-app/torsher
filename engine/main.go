@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	g "github.com/anacrolix/generics"
 	"github.com/anacrolix/torrent"
 	"github.com/anacrolix/torrent/storage"
 )
@@ -64,6 +65,11 @@ func newClientConfig(downloads, dataDir string, peerPort int, seed bool) (*torre
 		ClientBaseDir:   downloads,
 		FilePathMaker:   filePathOf,
 		PieceCompletion: completion,
+		// Без `.part`: с ними хранилище пишет кусок всегда в `<файл>.part`, даже
+		// когда файл уже готов, а потом переименовывает его поверх готового.
+		// Кусок на стыке двух файлов, с которого открытие раздачи снимает
+		// отметку, так затирал готовую серию разреженным файлом
+		UsePartFiles: g.Some(false),
 	})
 	// Сообщения библиотеки — только предупреждения и ошибки: остальное шумит в журнале сервера
 	cfg.Slogger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
@@ -89,7 +95,6 @@ func run(listen, downloads, dataDir string, peerPort int, seed bool, logger *slo
 	}
 
 	engine := newAPI(client, sess, store, logger)
-	engine.restore()
 
 	ln, err := net.Listen("tcp", listen)
 	if err != nil {
@@ -103,6 +108,19 @@ func run(listen, downloads, dataDir string, peerPort int, seed bool, logger *slo
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	// Восстановление сотен раздач с проверкой файлов идёт долго: API уже
+	// слушает, и супервизор видит живой процесс (`restoring`), а не молчание
+	restoring := make(chan struct{})
+	go func() {
+		defer close(restoring)
+		engine.restore(ctx)
+	}()
+	// Клиент закрывается после восстановления: оно ещё работает с раздачами
+	defer func() {
+		stop()
+		<-restoring
+	}()
 
 	go engine.speeds.run(ctx, client)
 

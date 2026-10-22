@@ -14,7 +14,7 @@ import {
   resumeTorrent,
 } from '../engine/index.ts'
 import { diskUsage } from './disk.ts'
-import { evictionQueue, planEviction } from './eviction.ts'
+import { evictionQueue, planEviction, withoutSkipped } from './eviction.ts'
 import { getPolicy, GIB, savePolicy } from './policy.ts'
 import { isStreaming } from './streams.ts'
 
@@ -110,6 +110,10 @@ function update(id: string, values: Partial<typeof torrents.$inferInsert>) {
 
 /** Убирает раздачу из движка вместе с файлами; строка и позиция просмотра остаются */
 async function evict(row: Torrent) {
+  // План строился по снимку, а поток мог открыться, пока вытеснялись другие
+  if (isStreaming(row.id))
+    return false
+
   try {
     await forgetTorrent(row.infoHash, { deleteFiles: true })
   }
@@ -119,6 +123,20 @@ async function evict(row: Torrent) {
   }
 
   update(row.id, { inEngine: false, selectedFiles: null, pauseReason: null })
+  return true
+}
+
+/** Раздачу могли убрать из движка мимо снимка: для паузы это не ошибка */
+async function ignoreMissing(action: Promise<void>) {
+  try {
+    await action
+    return true
+  }
+  catch (err) {
+    if (err instanceof EngineError && err.kind === 'not_found')
+      return false
+    throw err
+  }
 }
 
 /**
@@ -130,11 +148,12 @@ async function balanceDownloads(
   state: Snapshot,
   free: number,
   minFree: number,
+  evicted: Set<string>,
 ) {
   for (const row of state.rows) {
     const live = state.live.get(row.infoHash)
 
-    if (!live)
+    if (!live || evicted.has(row.id))
       continue
 
     // Просмотру место уже выделено перед стартом: его поток не останавливаем
@@ -144,15 +163,15 @@ async function balanceDownloads(
         && !isStreaming(row.id)
 
     if (free < minFree && downloading) {
-      await pauseTorrent(row.infoHash)
-      update(row.id, { pauseReason: 'storage' })
+      if (await ignoreMissing(pauseTorrent(row.infoHash)))
+        update(row.id, { pauseReason: 'storage' })
     }
     else if (
       free >= minFree + RESUME_MARGIN
       && row.pauseReason === 'storage'
     ) {
-      await resumeTorrent(row.infoHash)
-      update(row.id, { pauseReason: null })
+      if (await ignoreMissing(resumeTorrent(row.infoHash)))
+        update(row.id, { pauseReason: null })
     }
   }
 }
@@ -177,7 +196,7 @@ async function runEnforce(request?: SpaceRequest): Promise<EnforceResult> {
   const state = await snapshot()
   const policy = getPolicy(state.total)
   const now = Date.now()
-  const plan = planEviction({
+  const input = {
     torrents: storedOf(state.rows, state.live, now),
     cacheLimit: policy.cacheLimit,
     minFree: policy.minFree,
@@ -187,22 +206,28 @@ async function runEnforce(request?: SpaceRequest): Promise<EnforceResult> {
       torrentId: request.torrent.id,
       cache: request.torrent.retention === 'cache',
     },
-  })
+  }
+  const planned = planEviction(input)
 
   const byId = new Map(state.rows.map(row => [row.id, row]))
+  const evicted = new Set<string>()
+  const skipped = new Set<string>()
 
-  for (const id of plan.evict) {
+  for (const id of planned.evict) {
     const row = byId.get(id)
 
-    if (row)
-      await evict(row)
+    if (row && (await evict(row)))
+      evicted.add(id)
+    else skipped.add(id)
   }
 
+  const plan = withoutSkipped(input, planned, skipped)
+
   // Пауза из-за места решается по реальному остатку, без будущего просмотра
-  await balanceDownloads(state, plan.free, policy.minFree)
+  await balanceDownloads(state, plan.free, policy.minFree, evicted)
 
   return {
-    evicted: plan.evict,
+    evicted: [...evicted],
     ok: plan.ok,
     shortage: plan.shortage,
     available: plan.available,

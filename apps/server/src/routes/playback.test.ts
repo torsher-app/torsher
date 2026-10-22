@@ -6,6 +6,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { eq } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { createApp } from '../app.ts'
 import { ACCESS_TOKEN_COOKIE } from '../config.ts'
@@ -377,6 +378,26 @@ describe.runIf(hasFfmpeg())('воспроизведение с пробой и �
     expect(body.audioStream).toBe(2)
   })
 
+  it('выбранная в плеере озвучка запоминается для серии и следующих серий', async () => {
+    const title = { id: 'tmdb:tv:7', season: 1, episode: 3 }
+
+    // По умолчанию — дорожка с default (NewStudio), выбор — LostFilm
+    expect((await start({ device: webos, title })).audioStream).toBe(1)
+    expect(
+      (await start({ device: webos, title, audioStream: 2, startPosition: 5 }))
+        .audioStream,
+    ).toBe(2)
+
+    // Запоминание идёт после пробы: ждём, пока сессия ответит готовностью
+    await vi.waitFor(async () => {
+      expect((await start({ device: webos, title })).audioStream).toBe(2)
+    })
+    expect(
+      (await start({ device: webos, title: { ...title, episode: 4 } }))
+        .audioStream,
+    ).toBe(2)
+  })
+
   it('смена озвучки перезапуском продолжает с позиции', async () => {
     const body = await start({
       device: chrome,
@@ -402,6 +423,30 @@ describe.runIf(hasFfmpeg())('воспроизведение с пробой и �
       cues: [{ start: 1, end: 2, text: 'Привет' }],
       done: true,
     })
+  })
+
+  it('статус сессии продлевает использование раздачи', async () => {
+    const body = await start()
+    const stale = new Date(Date.now() - 60 * 60 * 1000)
+
+    getDb()
+      .update(torrents)
+      .set({ lastAccessAt: stale })
+      .where(eq(torrents.id, torrent.id))
+      .run()
+
+    const response = await app.inject({
+      url: `/api/playback/${body.sessionId}`,
+      cookies: owner,
+    })
+    const row = getDb()
+      .select()
+      .from(torrents)
+      .where(eq(torrents.id, torrent.id))
+      .get()
+
+    expect(response.statusCode).toBe(200)
+    expect(row!.lastAccessAt!.getTime()).toBeGreaterThan(stale.getTime())
   })
 
   it('закрытая сессия — 404', async () => {

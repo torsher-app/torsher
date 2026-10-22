@@ -1,7 +1,8 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
-import { createReadStream } from 'node:fs'
+import type { FileHandle } from 'node:fs/promises'
 import { hlsParams, hlsSegmentParams, streamQuery } from '../dto/playback.ts'
 import { requireStream, streamSubjectOf } from '../middleware/auth.ts'
+import { EngineError } from '../services/engine/index.ts'
 import {
   buildPlaylist,
   getSession,
@@ -64,10 +65,10 @@ export const hlsRoutes: FastifyPluginAsyncZod = async (app) => {
 
       reply.raw.on('close', () => controller.abort())
 
-      let path: string
+      let file: FileHandle
 
       try {
-        path = await hls.segment(index, controller.signal)
+        file = await hls.segment(index, controller.signal)
       }
       catch (err) {
         if (controller.signal.aborted)
@@ -75,6 +76,12 @@ export const hlsRoutes: FastifyPluginAsyncZod = async (app) => {
 
         if (err instanceof SegmentTimeoutError)
           return reply.code(504).send({ message: 'Segment is not ready' })
+
+        if (err instanceof EngineError && err.kind === 'unavailable') {
+          return reply
+            .code(503)
+            .send({ message: 'Torrent engine is restarting' })
+        }
 
         if (err instanceof TranscodeFailedError) {
           request.log.warn(`hls ${session.id}: ${err.message}`)
@@ -87,7 +94,7 @@ export const hlsRoutes: FastifyPluginAsyncZod = async (app) => {
       return reply
         .header('Content-Type', 'video/mp2t')
         .header('Cache-Control', 'no-store')
-        .send(createReadStream(path))
+        .send(file.createReadStream())
     },
   )
 }

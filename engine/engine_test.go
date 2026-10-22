@@ -2,10 +2,13 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -280,7 +283,7 @@ func TestTorrentsSurviveRestart(t *testing.T) {
 	copyDir(t, filepath.Join(dataDir, "torrents"), filepath.Join(restartDir, "torrents"))
 
 	engine, _ := newTestEngine(t, restartDir)
-	engine.restore()
+	engine.restore(context.Background())
 
 	restored, ok := engine.client.Torrent(hash)
 	if !ok || restored.Info() == nil {
@@ -293,6 +296,29 @@ func TestTorrentsSurviveRestart(t *testing.T) {
 
 	if len(pending) != 1 || pending[0] != 0 {
 		t.Fatalf("selection was not restored: %v", pending)
+	}
+}
+
+func TestHealthWaitsForRestore(t *testing.T) {
+	engine, server := newTestEngine(t, t.TempDir())
+
+	health := func() (int, string) {
+		response, err := http.Get(server.URL + "/health")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		return response.StatusCode, decode[map[string]string](t, response)["status"]
+	}
+
+	if code, status := health(); code != http.StatusServiceUnavailable || status != "restoring" {
+		t.Fatalf("health before restore = %d %q", code, status)
+	}
+
+	engine.restore(context.Background())
+
+	if code, status := health(); code != http.StatusOK || status != "ok" {
+		t.Fatalf("health after restore = %d %q", code, status)
 	}
 }
 
@@ -432,7 +458,7 @@ func TestPauseStopsDownloadAndSurvivesRestart(t *testing.T) {
 	restartDir := t.TempDir()
 	copyDir(t, filepath.Join(dataDir, "torrents"), filepath.Join(restartDir, "torrents"))
 	restarted, _ := newTestEngine(t, restartDir)
-	restarted.restore()
+	restarted.restore(context.Background())
 
 	if state := stateOfHash(t, restarted, hash); !state.Paused || !state.Background {
 		t.Fatalf("pause was not restored: %+v", state)
@@ -576,5 +602,274 @@ func TestDownloadedDataIsSeeded(t *testing.T) {
 
 	if !stateOfHash(t, engine, hash).Seeding {
 		t.Fatal("engine must report seeding")
+	}
+}
+
+// Файл под итоговым именем полного размера, но без данных: хранилище считает
+// его куски скачанными, и без проверки дыр поток отдал бы нули
+func TestSparseFileIsNotTrustedAsComplete(t *testing.T) {
+	fx := newFixture(t)
+	dataDir := t.TempDir()
+	downloads := filepath.Join(dataDir, "downloads")
+	path := filepath.Join(downloads, "Sample.Movie.mkv")
+
+	if err := os.MkdirAll(downloads, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Truncate(path, int64(len(fx.content))); err != nil {
+		t.Fatal(err)
+	}
+	if holes, _ := fileHoles(path); len(holes) == 0 {
+		t.Skip("file system has no sparse files")
+	}
+
+	engine, server := newTestEngine(t, dataDir)
+	hash := fx.meta.HashInfoBytes()
+	post(t, server.URL+"/torrents?files=0", fx.raw).Body.Close()
+
+	if state := stateOfHash(t, engine, hash); state.BytesCompleted != 0 {
+		t.Fatalf("pieces over holes are still complete: %+v", state)
+	}
+
+	added, _ := engine.client.Torrent(hash)
+	added.AddClientPeer(fx.seeder)
+
+	request, _ := http.NewRequest(http.MethodGet, server.URL+"/torrents/"+hash.HexString()+"/files/0/stream", nil)
+	request.Header.Set("Range", "bytes=1000000-1000999")
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+
+	body, _ := io.ReadAll(response.Body)
+	if !bytes.Equal(body, fx.content[1000000:1001000]) {
+		t.Fatal("stream served zeros instead of data from peers")
+	}
+}
+
+// Раздача из двух файлов: размер первого не кратен куску, поэтому кусок на
+// стыке принадлежит обоим
+func newTwoFileFixture(t *testing.T) (fixture, []byte, []byte) {
+	t.Helper()
+
+	root := t.TempDir()
+	dir := filepath.Join(root, "Show")
+	first := make([]byte, 3*(256<<10)+1000)
+	second := make([]byte, 2*(256<<10)+5000)
+	_, _ = rand.Read(first)
+	_, _ = rand.Read(second)
+
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "E01.mkv"), first, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "E02.mkv"), second, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	info := metainfo.Info{PieceLength: 256 << 10}
+	if err := info.BuildFromFilePath(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	infoBytes, err := bencode.Marshal(info)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	meta := &metainfo.MetaInfo{InfoBytes: infoBytes}
+
+	var raw bytes.Buffer
+	if err := meta.Write(&raw); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := torrent.NewDefaultClientConfig()
+	offline(cfg)
+	cfg.Seed = true
+	cfg.DataDir = root
+
+	seeder, err := torrent.NewClient(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { seeder.Close() })
+
+	st, err := seeder.AddTorrent(meta)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.VerifyData(); err != nil {
+		t.Fatal(err)
+	}
+
+	return fixture{meta: meta, raw: raw.Bytes(), seeder: seeder}, first, second
+}
+
+// Докачанный файл не затирается, когда качают соседний: кусок на стыке пишет
+// и в хвост первого файла
+func TestNeighbourDownloadKeepsFinishedFile(t *testing.T) {
+	fx, first, second := newTwoFileFixture(t)
+	dataDir := t.TempDir()
+	engine, server := newTestEngine(t, dataDir)
+	hash := fx.meta.HashInfoBytes()
+	path := filepath.Join(dataDir, "downloads", "Show", "E01.mkv")
+
+	post(t, server.URL+"/torrents?files=0", fx.raw).Body.Close()
+	put(t, server.URL+"/torrents/"+hash.HexString()+"/files", `{"files":[0],"now":true}`).Body.Close()
+	added, _ := engine.client.Torrent(hash)
+	added.AddClientPeer(fx.seeder)
+
+	waitFor(t, 30*time.Second, func() bool {
+		data, err := os.ReadFile(path)
+		return err == nil && bytes.Equal(data, first)
+	})
+
+	put(t, server.URL+"/torrents/"+hash.HexString()+"/files", `{"files":[0,1],"now":true}`).Body.Close()
+
+	waitFor(t, 30*time.Second, func() bool {
+		data, err := os.ReadFile(filepath.Join(dataDir, "downloads", "Show", "E02.mkv"))
+		return err == nil && bytes.Equal(data, second)
+	})
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, first) {
+		t.Fatal("finished file was overwritten while the neighbour downloaded")
+	}
+}
+
+// Готовый файл рядом с недокачанным `.part` переживает перезапуск: при
+// открытии раздачи хранилище снимает отметку с куска на стыке, и без защиты
+// повторная запись этого куска затирала готовый файл разреженным `.part`
+func TestRestartKeepsFinishedFileNextToPartFile(t *testing.T) {
+	fx, first, _ := newTwoFileFixture(t)
+	dataDir := t.TempDir()
+	hash := fx.meta.HashInfoBytes()
+	path := filepath.Join(dataDir, "downloads", "Show", "E01.mkv")
+
+	cfg, store, err := newClientConfig(filepath.Join(dataDir, "downloads"), dataDir, 0, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	offline(cfg)
+	client, err := torrent.NewClient(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := newSession(filepath.Join(dataDir, "torrents"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine := newAPI(client, sess, store, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	server := httptest.NewServer(engine.routes())
+
+	post(t, server.URL+"/torrents?files=0", fx.raw).Body.Close()
+	put(t, server.URL+"/torrents/"+hash.HexString()+"/files", `{"files":[0],"now":true}`).Body.Close()
+	added, _ := engine.client.Torrent(hash)
+	added.AddClientPeer(fx.seeder)
+
+	waitFor(t, 30*time.Second, func() bool {
+		data, err := os.ReadFile(path)
+		return err == nil && bytes.Equal(data, first)
+	})
+
+	server.Close()
+	client.Close()
+	// Отметки кусков — bolt-файл: второй движок откроет его только после первого
+	store.completion.Close()
+
+	restarted, _ := newTestEngine(t, dataDir)
+	restarted.restore(context.Background())
+	again, _ := restarted.client.Torrent(hash)
+	again.AddClientPeer(fx.seeder)
+
+	// Кусок на стыке докачивается снова: ждём, пока движок снова считает файл готовым
+	waitFor(t, 30*time.Second, func() bool {
+		return restarted.stateOf(again).WantedCompleted == int64(len(first))
+	})
+	time.Sleep(300 * time.Millisecond)
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, first) {
+		t.Fatal("finished file was overwritten after restart")
+	}
+}
+
+// Недокачанный `.part` прежней версии движка становится файлом под итоговым
+// именем, а готовый файл с тем же именем не трогается
+func TestPartFilesAreAdopted(t *testing.T) {
+	fx := newFixture(t)
+	downloads := filepath.Join(t.TempDir(), "downloads")
+	path := filepath.Join(downloads, "Sample.Movie.mkv")
+
+	if err := os.MkdirAll(downloads, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path+partFileSuffix, fx.content, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	info, err := fx.meta.UnmarshalInfo()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	adoptPartFiles(downloads, &info)
+
+	if data, err := os.ReadFile(path); err != nil || !bytes.Equal(data, fx.content) {
+		t.Fatalf("part file was not adopted: %v", err)
+	}
+
+	// Итоговый файл уже есть: второй `.part` его не заменяет
+	if err := os.WriteFile(path+partFileSuffix, []byte("stale"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	adoptPartFiles(downloads, &info)
+
+	if data, _ := os.ReadFile(path); !bytes.Equal(data, fx.content) {
+		t.Fatal("existing file was replaced by a part file")
+	}
+}
+
+// Файл раздачи, чьё имя само оканчивается на `.part`, — настоящий файл, а не
+// недокачанный хвост соседа: под имя соседа он не переименовывается
+func TestPartFileOfTorrentIsNotAdopted(t *testing.T) {
+	downloads := filepath.Join(t.TempDir(), "downloads")
+	dir := filepath.Join(downloads, "Pack")
+	info := metainfo.Info{
+		Name:        "Pack",
+		PieceLength: 16 << 10,
+		Files: []metainfo.FileInfo{
+			{Path: []string{"A.mkv"}, Length: 4},
+			{Path: []string{"A.mkv" + partFileSuffix}, Length: 4},
+		},
+	}
+
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "A.mkv"+partFileSuffix), []byte("part"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	adoptPartFiles(downloads, &info)
+
+	if _, err := os.Stat(filepath.Join(dir, "A.mkv"+partFileSuffix)); err != nil {
+		t.Fatalf("torrent file was renamed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "A.mkv")); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("sibling file was created: %v", err)
 	}
 }

@@ -476,6 +476,66 @@ describe('хранилище', () => {
     expect(engineCalls()).toEqual([`POST /torrents/${INFO_HASH}/resume`])
   })
 
+  it('мало места: вытесненная качающая раздача не встаёт на паузу, проверка не падает', async () => {
+    const cached = insertTorrent({
+      inEngine: true,
+      lastAccessAt: new Date('2026-01-01'),
+    })
+    engine([{ ...liveState, background: true, bytesCompleted: GIB }], {
+      [`DELETE /torrents/${INFO_HASH}`]: () => json({ deletedBytes: GIB }),
+    })
+    disk.free = 5 * GIB
+
+    const { enforceStorage } = await import('../services/storage/index.ts')
+    const result = await enforceStorage()
+
+    expect(result.evicted).toEqual([cached.id])
+    expect(engineCalls()).toEqual([
+      `DELETE /torrents/${INFO_HASH}?delete_files=true`,
+    ])
+    expect(rowOf(cached.id)).toMatchObject({
+      inEngine: false,
+      pauseReason: null,
+    })
+  })
+
+  it('поток открылся во время вытеснения — раздача остаётся', async () => {
+    const first = insertTorrent({
+      inEngine: true,
+      lastAccessAt: new Date('2026-01-01'),
+    })
+    const second = insertTorrent({
+      infoHash: OTHER_HASH,
+      inEngine: true,
+      lastAccessAt: new Date('2026-01-02'),
+    })
+    let release = () => {}
+    engine(
+      [
+        { ...liveState, bytesCompleted: 300 * GIB },
+        { ...liveState, infoHash: OTHER_HASH, bytesCompleted: 300 * GIB },
+      ],
+      {
+        [`DELETE /torrents/${INFO_HASH}`]: () => {
+          release = trackStream(second.id)
+          return json({ deletedBytes: 300 * GIB })
+        },
+        [`DELETE /torrents/${OTHER_HASH}`]: () =>
+          json({ deletedBytes: 300 * GIB }),
+      },
+    )
+    disk.free = 5 * GIB
+
+    const { enforceStorage } = await import('../services/storage/index.ts')
+    const result = await enforceStorage()
+
+    release()
+    expect(result.evicted).toEqual([first.id])
+    expect(rowOf(second.id)?.inEngine).toBe(true)
+    // Место второй раздачи не освободилось: кэш всё ещё больше лимита
+    expect(result).toMatchObject({ ok: false, shortage: 'cache_limit' })
+  })
+
   it('смотрят сейчас — не вытесняется и не встаёт на паузу', async () => {
     const watching = insertTorrent({
       inEngine: true,
