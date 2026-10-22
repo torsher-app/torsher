@@ -3,6 +3,7 @@ import { createApp } from './app.ts'
 import { config } from './config.ts'
 import { migrateDb } from './db/index.ts'
 import { createEngine, isEngineReady } from './services/engine/index.ts'
+import { cleanTranscodes, stopAllSessions } from './services/media/index.ts'
 import { startCheck } from './services/net/check.ts'
 import { purgeExpiredAliases } from './services/sources/aliases.ts'
 import { enforceStorage } from './services/storage/index.ts'
@@ -26,6 +27,7 @@ function purgeTmdbData() {
 
 purgeTmdbData()
 setInterval(purgeTmdbData, DAY_MS).unref()
+await cleanTranscodes()
 
 const app = createApp(
   {
@@ -75,6 +77,8 @@ function checkHosts() {
 // Движок — дочерний процесс: без остановки он пережил бы сервер и держал
 // порт и сессию, а `node --watch` при перезапуске шлёт именно SIGTERM
 async function shutdown() {
+  // ffmpeg перепаковки тоже дочерний: его сегменты после выхода не нужны
+  await stopAllSessions()
   await engine.stop()
   await app.close()
   process.exit(0)

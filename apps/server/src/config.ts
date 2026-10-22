@@ -65,6 +65,20 @@ export const config = {
     return process.env.DOWNLOADS_PATH || join(this.dataDir, 'downloads')
   },
 
+  // ffmpeg и ffprobe: без них воспроизведение остаётся прямым
+  get ffmpegPath() {
+    return process.env.FFMPEG_PATH || 'ffmpeg'
+  },
+
+  get ffprobePath() {
+    return process.env.FFPROBE_PATH || 'ffprobe'
+  },
+
+  // Сегменты перепаковки: временные, каталог чистится при старте
+  get transcodesPath() {
+    return join(this.dataDir, 'transcodes')
+  },
+
   // Прокси из окружения (`HTTPS_PROXY`, `HTTP_PROXY`, исключения — `NO_PROXY`):
   // им ходит маршрут по умолчанию, пока его не настроили в «Сети»
   get envProxy() {

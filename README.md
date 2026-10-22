@@ -93,6 +93,8 @@ pnpm --filter @torsher/server engine:build
 
 To use a prebuilt binary instead, set `ENGINE_PATH` in `apps/server/.env`.
 
+Audio and subtitle tracks, and remuxing files a browser cannot play directly (MKV, AC3), need `ffmpeg` and `ffprobe` in `PATH`, or their paths in `FFMPEG_PATH` and `FFPROBE_PATH`. Without them the player plays files directly. The image ships FFmpeg from Debian.
+
 `pnpm dev` starts the server, the panel and the showcase with hot reload. `pnpm build` builds the showcase and the panel, which the server then serves itself: the showcase at `/`, the panel at `/panel/` and the API at `/api`.
 
 Build the image locally:

@@ -68,12 +68,14 @@ RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
  && rm -rf node_modules/@torsher/release-parser \
  && ln -s ../../../packages/release-parser node_modules/@torsher/release-parser
 
-FROM node:${NODE_VERSION}-bookworm-slim
+# trixie, а не bookworm: ffmpeg из Debian (перепаковка видео и ffprobe) там
+# 7.1, в bookworm — 5.1. Пакет Debian собран без несвободных частей
+FROM node:${NODE_VERSION}-trixie-slim
 
 # ca-certificates — для движка: Node несёт свои корневые сертификаты, а движок
 # на Go берёт системные (HTTPS-трекеры)
 RUN apt-get update \
- && apt-get install -y --no-install-recommends tini ca-certificates \
+ && apt-get install -y --no-install-recommends tini ca-certificates ffmpeg \
  && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production \
@@ -81,6 +83,8 @@ ENV NODE_ENV=production \
     DATABASE_PATH=/data/db/torsher.db \
     DOWNLOADS_PATH=/data/torrents \
     ENGINE_PATH=/usr/local/bin/torsher-engine \
+    FFMPEG_PATH=/usr/bin/ffmpeg \
+    FFPROBE_PATH=/usr/bin/ffprobe \
     PUID=1000 \
     PGID=1000
 

@@ -93,7 +93,11 @@ const statsLine = computed(() => {
     <div class="osd__bottom">
       <FocusSection
         name="player-timeline"
-        :edges="hasButtons ? { down: 'player-buttons' } : {}"
+        :edges="
+          hasButtons
+            ? { up: 'player-back', down: 'player-buttons' }
+            : { up: 'player-back' }
+        "
         manual-scroll
       >
         <PlayerTimeline
@@ -211,6 +215,8 @@ const statsLine = computed(() => {
 .osd__heading {
   min-width: 0;
   margin-right: var(--space-5);
+  /* Слева от названия — кнопка «Назад» экрана плеера */
+  padding-left: calc(var(--u) * 120);
 }
 
 .osd__title {
