@@ -64,8 +64,7 @@ const webos = {
 
 describe.runIf(hasFfmpeg())('воспроизведение с пробой и перепаковкой', () => {
   const app = createApp()
-  const dir = mkdtempSync(join(tmpdir(), 'torsher-playback-'))
-  const movie = join(dir, 'Film.mkv')
+  let dir = ''
   // Внешние русские субтитры в Windows-1251, как в старых раздачах
   const srt = Buffer.from(
     new Uint8Array([
@@ -147,6 +146,10 @@ describe.runIf(hasFfmpeg())('воспроизведение с пробой и �
   let torrent: Torrent
 
   beforeAll(async () => {
+    dir = mkdtempSync(join(tmpdir(), 'torsher-playback-'))
+
+    const movie = join(dir, 'Film.mkv')
+
     execFileSync('ffmpeg', [
       '-v',
       'error',

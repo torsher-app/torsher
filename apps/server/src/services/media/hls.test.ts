@@ -1,8 +1,9 @@
+import { Buffer } from 'node:buffer'
 import { execFileSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import {
   buildPlaylist,
   HlsTranscode,
@@ -101,64 +102,72 @@ function packetTimes(path: string, stream: string) {
 // Настоящий ffmpeg: синтетический MKV с неровными ключевыми кадрами,
 // AC3 5.1 и встроенными SRT-субтитрами
 describe.runIf(hasFfmpeg())('hlsTranscode на ffmpeg', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'torsher-hls-'))
-  const file = join(dir, 'input.mkv')
-  let srt = ''
+  let dir = ''
+  let file = ''
+  let bytes = Buffer.alloc(0)
 
-  for (let i = 0; i < 20; i++) {
-    const at = (s: number) =>
-      `00:00:${String(Math.floor(s)).padStart(2, '0')},${String(Math.round((s % 1) * 1000)).padStart(3, '0')}`
+  // Файл собирается в хуке: тело пропущенного `describe` vitest тоже выполняет
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), 'torsher-hls-'))
+    file = join(dir, 'input.mkv')
 
-    srt += `${i + 1}\n${at(i * 2 + 0.2)} --> ${at(i * 2 + 1.5)}\nРеплика ${i + 1}\n\n`
-  }
+    let srt = ''
 
-  writeFileSync(join(dir, 'subs.srt'), srt)
-  execFileSync('ffmpeg', [
-    '-v',
-    'error',
-    '-y',
-    '-f',
-    'lavfi',
-    '-i',
-    'testsrc2=size=160x90:rate=24',
-    '-f',
-    'lavfi',
-    '-i',
-    'sine=f=440:r=48000',
-    '-i',
-    join(dir, 'subs.srt'),
-    '-t',
-    '40',
-    '-map',
-    '0:v',
-    '-map',
-    '1:a',
-    '-map',
-    '2',
-    '-c:v',
-    'libx264',
-    '-preset',
-    'ultrafast',
-    '-pix_fmt',
-    'yuv420p',
-    '-bf',
-    '2',
-    '-g',
-    '400',
-    '-sc_threshold',
-    '0',
-    '-force_key_frames',
-    'expr:gte(t,n_forced*3.7+mod(n_forced,3))',
-    '-c:a',
-    'ac3',
-    '-ac',
-    '6',
-    '-c:s',
-    'srt',
-    file,
-  ])
+    for (let i = 0; i < 20; i++) {
+      const at = (s: number) =>
+        `00:00:${String(Math.floor(s)).padStart(2, '0')},${String(Math.round((s % 1) * 1000)).padStart(3, '0')}`
 
-  const bytes = readFileSync(file)
+      srt += `${i + 1}\n${at(i * 2 + 0.2)} --> ${at(i * 2 + 1.5)}\nРеплика ${i + 1}\n\n`
+    }
+
+    writeFileSync(join(dir, 'subs.srt'), srt)
+    execFileSync('ffmpeg', [
+      '-v',
+      'error',
+      '-y',
+      '-f',
+      'lavfi',
+      '-i',
+      'testsrc2=size=160x90:rate=24',
+      '-f',
+      'lavfi',
+      '-i',
+      'sine=f=440:r=48000',
+      '-i',
+      join(dir, 'subs.srt'),
+      '-t',
+      '40',
+      '-map',
+      '0:v',
+      '-map',
+      '1:a',
+      '-map',
+      '2',
+      '-c:v',
+      'libx264',
+      '-preset',
+      'ultrafast',
+      '-pix_fmt',
+      'yuv420p',
+      '-bf',
+      '2',
+      '-g',
+      '400',
+      '-sc_threshold',
+      '0',
+      '-force_key_frames',
+      'expr:gte(t,n_forced*3.7+mod(n_forced,3))',
+      '-c:a',
+      'ac3',
+      '-ac',
+      '6',
+      '-c:s',
+      'srt',
+      file,
+    ])
+    bytes = readFileSync(file)
+  })
+
   const transcodes: HlsTranscode[] = []
 
   afterAll(async () => {
