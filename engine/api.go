@@ -572,7 +572,7 @@ func (a *api) forget(w http.ResponseWriter, r *http.Request) {
 		deleted, err := deleteTorrentFiles(a.downloads, info)
 		response.DeletedBytes = deleted
 		// Удаление файлов — единственное место, где движок сам стирает данные
-		a.logger.Warn("torrent files deleted", "hash", hash.HexString(), "bytes", deleted)
+		a.logger.Info("torrent files deleted", "hash", hash.HexString(), "bytes", deleted)
 
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "storage", err)

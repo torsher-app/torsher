@@ -125,7 +125,7 @@ export interface HlsInput {
 }
 
 export interface HlsLog {
-  info: (message: string) => void
+  debug: (message: string) => void
   warn: {
     (message: string): void
     (fields: { details?: string }, message: string): void
@@ -496,7 +496,7 @@ export class HlsTranscode {
     })
 
     this.run = run
-    this.log.info(`hls: ffmpeg run ${id} from segment ${from}`)
+    this.log.debug(`hls: ffmpeg run ${id} from segment ${from}`)
 
     if (!this.throttleTimer) {
       this.throttleTimer = setInterval(

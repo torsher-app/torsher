@@ -51,7 +51,7 @@ export interface SessionInput {
   preference: AudioPreference
   audioStream?: number
   subtitle?: string
-  log: HlsLog
+  log: HlsLog & { info: (message: string) => void }
 }
 
 // Плеер ходит в сессию постоянно (сегменты, субтитры, статус); тишина —

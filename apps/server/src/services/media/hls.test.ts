@@ -224,7 +224,7 @@ describe.runIf(hasFfmpeg())('hlsTranscode на ffmpeg', () => {
         starts,
         duration: 40,
       },
-      { info: () => {}, warn: () => {} },
+      { debug: () => {}, warn: () => {} },
     )
 
     transcodes.push(transcode)
@@ -343,7 +343,7 @@ describe.runIf(hasFfmpeg())('hlsTranscode на ffmpeg', () => {
   }
 
   it('остановка во время старта не запускает ffmpeg', async () => {
-    const info = vi.fn()
+    const debug = vi.fn()
     const transcode = new HlsTranscode(
       join(dir, 'out-stopped'),
       {
@@ -355,7 +355,7 @@ describe.runIf(hasFfmpeg())('hlsTranscode на ffmpeg', () => {
         starts: segmentStarts(40, null),
         duration: 40,
       },
-      { info, warn: () => {} },
+      { debug, warn: () => {} },
     )
 
     transcodes.push(transcode)
@@ -365,7 +365,7 @@ describe.runIf(hasFfmpeg())('hlsTranscode на ffmpeg', () => {
     await transcode.stop()
     await pending
 
-    expect(info).not.toHaveBeenCalledWith(
+    expect(debug).not.toHaveBeenCalledWith(
       expect.stringContaining('ffmpeg run'),
     )
     expect(existsSync(transcode.dir)).toBe(false)
@@ -453,7 +453,7 @@ describe.runIf(hasFfmpeg())('hlsTranscode на ffmpeg', () => {
         duration: 40,
       },
       {
-        info: message => runs.push(message),
+        debug: message => runs.push(message),
         warn: () => {},
       },
     )
@@ -544,7 +544,7 @@ describe.runIf(hasFfmpeg())('hlsTranscode на ffmpeg', () => {
         duration: 40,
         segmentWaitMs: 3000,
       },
-      { info: message => runs.push(message), warn },
+      { debug: message => runs.push(message), warn },
     )
 
     transcodes.push(transcode)
@@ -596,7 +596,7 @@ describe.runIf(hasFfmpeg())('hlsTranscode на ffmpeg', () => {
         starts,
         duration: 40,
       },
-      { info: () => {}, warn: () => {} },
+      { debug: () => {}, warn: () => {} },
     )
 
     transcodes.push(transcode)
@@ -627,7 +627,7 @@ describe.runIf(hasFfmpeg())('hlsTranscode на ffmpeg', () => {
         starts: segmentStarts(40, null),
         duration: 40,
       },
-      { info: () => {}, warn: () => {} },
+      { debug: () => {}, warn: () => {} },
     )
 
     transcodes.push(transcode)
@@ -695,7 +695,7 @@ describe.runIf(hasFfmpeg())('hlsTranscode на ffmpeg', () => {
         duration: 40,
         ahead: { seconds: 5, checkMs: 50 },
       },
-      { info: () => {}, warn: () => {} },
+      { debug: () => {}, warn: () => {} },
     )
 
     transcodes.push(transcode)

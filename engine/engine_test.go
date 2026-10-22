@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -1041,5 +1042,20 @@ func TestRestoredPausedSelectionCanBeCleared(t *testing.T) {
 
 	if cleared.StatusCode != http.StatusNoContent || listed.StatusCode != http.StatusOK {
 		t.Fatalf("clear %d, list %d", cleared.StatusCode, listed.StatusCode)
+	}
+}
+
+func TestLibraryLogDropsCanceledReads(t *testing.T) {
+	var out bytes.Buffer
+	logger := slog.New(withoutCanceled{slog.NewTextHandler(&out, nil)}).With("torrent.ih", "abc")
+
+	logger.Error("initial read failed", "err", context.Canceled)
+	logger.Error("read failed after reader reset", "err", fmt.Errorf("wait: %w", context.Canceled))
+	logger.Error("error reading", "err", io.ErrUnexpectedEOF)
+
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+
+	if len(lines) != 1 || !strings.Contains(lines[0], `msg="error reading"`) {
+		t.Fatalf("journal %q", out.String())
 	}
 }
