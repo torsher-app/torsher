@@ -889,6 +889,42 @@ export interface HomeResponseInput {
   rows: HomeRowInput[];
 }
 
+export interface LogEntryInput {
+  id: number;
+  seq: number;
+  time: string;
+  level: "debug" | "info" | "warn" | "error";
+  source:
+    | "server"
+    | "engine"
+    | "playback"
+    | "storage"
+    | "sources"
+    | "catalog"
+    | "network"
+    | "auth";
+  message: string;
+  details?: string;
+  context?: Record<string, string | number | boolean>;
+  repeat?: number;
+}
+
+export interface LogsResponseInput {
+  entries: LogEntryInput[];
+  level: "debug" | "info" | "warn" | "error";
+  levelLocked: boolean;
+  hasMore: boolean;
+  instance: string;
+}
+
+export interface LogLevelBodyInput {
+  level: "info" | "debug";
+}
+
+export interface LogLevelResponseInput {
+  level: "debug" | "info" | "warn" | "error";
+}
+
 export interface NetRouteErrorResponseInput {
   message: string;
   field: "match" | "proxy" | "dohUrl";
@@ -1059,6 +1095,7 @@ export interface MetadataKeyCheckInput {
 export interface AttentionItemInput {
   kind:
     | "engine_down"
+    | "engine_crashed"
     | "storage_low"
     | "storage_paused"
     | "indexer_error"
@@ -1067,7 +1104,8 @@ export interface AttentionItemInput {
     | "host_unreachable"
     | "tmdb_key_invalid";
   severity: "error" | "warning";
-  section: "downloads" | "storage" | "sources" | "network" | "metadata";
+  section:
+    "downloads" | "storage" | "sources" | "network" | "metadata" | "logs";
   params: {
     count?: number;
     name?: string;
@@ -2178,6 +2216,42 @@ export interface HomeResponse {
   rows: HomeRow[];
 }
 
+export interface LogEntry {
+  id: number;
+  seq: number;
+  time: string;
+  level: "debug" | "info" | "warn" | "error";
+  source:
+    | "server"
+    | "engine"
+    | "playback"
+    | "storage"
+    | "sources"
+    | "catalog"
+    | "network"
+    | "auth";
+  message: string;
+  details?: string;
+  context?: Record<string, string | number | boolean>;
+  repeat?: number;
+}
+
+export interface LogsResponse {
+  entries: LogEntry[];
+  level: "debug" | "info" | "warn" | "error";
+  levelLocked: boolean;
+  hasMore: boolean;
+  instance: string;
+}
+
+export interface LogLevelBody {
+  level: "info" | "debug";
+}
+
+export interface LogLevelResponse {
+  level: "debug" | "info" | "warn" | "error";
+}
+
 export interface NetRouteErrorResponse {
   message: string;
   field: "match" | "proxy" | "dohUrl";
@@ -2348,6 +2422,7 @@ export interface MetadataKeyCheck {
 export interface AttentionItem {
   kind:
     | "engine_down"
+    | "engine_crashed"
     | "storage_low"
     | "storage_paused"
     | "indexer_error"
@@ -2356,7 +2431,8 @@ export interface AttentionItem {
     | "host_unreachable"
     | "tmdb_key_invalid";
   severity: "error" | "warning";
-  section: "downloads" | "storage" | "sources" | "network" | "metadata";
+  section:
+    "downloads" | "storage" | "sources" | "network" | "metadata" | "logs";
   params: {
     count?: number;
     name?: string;
@@ -2746,6 +2822,10 @@ export type PatchDeviceError = MessageResponse;
 export type DeleteDeviceError = MessageResponse;
 
 export type RestartEngineError = MessageResponse | EngineUnavailableResponse;
+
+export type GetLogsError = MessageResponse;
+
+export type PutLogLevelError = MessageResponse;
 
 export type QueryParamsType = Record<string | number, any>;
 export type ResponseFormat = keyof Omit<Body, "body" | "bodyUsed">;
@@ -4494,6 +4574,64 @@ export class Api<
       this.request<MessageResponse, RestartEngineError>({
         path: `/api/engine/restart`,
         method: "POST",
+        format: "json",
+        ...params,
+      }),
+  };
+  logs = {
+    /**
+     * No description
+     *
+     * @tags Logs
+     * @name GetLogs
+     * @request GET:/api/logs
+     */
+    getLogs: (
+      query?: {
+        level?: "debug" | "info" | "warn" | "error";
+        /** @pattern ^(?:server|engine|playback|storage|sources|catalog|network|auth)(?:,(?:server|engine|playback|storage|sources|catalog|network|auth))*$ */
+        source?: string;
+        /** @maxLength 200 */
+        q?: string;
+        /**
+         * @min 0
+         * @max 9007199254740991
+         */
+        before?: number;
+        /**
+         * @min 0
+         * @max 9007199254740991
+         */
+        after?: number;
+        /**
+         * @min 1
+         * @max 500
+         */
+        limit?: number;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<LogsResponse, GetLogsError>({
+        path: `/api/logs`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Logs
+     * @name PutLogLevel
+     * @request PUT:/api/logs/level
+     */
+    putLogLevel: (data: LogLevelBodyInput, params: RequestParams = {}) =>
+      this.request<LogLevelResponse, PutLogLevelError>({
+        path: `/api/logs/level`,
+        method: "PUT",
+        body: data,
+        type: ContentType.Json,
         format: "json",
         ...params,
       }),

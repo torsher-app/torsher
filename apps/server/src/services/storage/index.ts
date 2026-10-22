@@ -13,6 +13,7 @@ import {
   pauseTorrent,
   resumeTorrent,
 } from '../engine/index.ts'
+import { logFor } from '../logs/index.ts'
 import { diskUsage } from './disk.ts'
 import { evictionQueue, planEviction, withoutSkipped } from './eviction.ts'
 import { getPolicy, GIB, savePolicy } from './policy.ts'
@@ -150,6 +151,9 @@ async function balanceDownloads(
   minFree: number,
   evicted: Set<string>,
 ) {
+  const paused: string[] = []
+  const resumed: string[] = []
+
   for (const row of state.rows) {
     const live = state.live.get(row.infoHash)
 
@@ -163,16 +167,34 @@ async function balanceDownloads(
         && !isStreaming(row.id)
 
     if (free < minFree && downloading) {
-      if (await ignoreMissing(pauseTorrent(row.infoHash)))
+      if (await ignoreMissing(pauseTorrent(row.infoHash))) {
         update(row.id, { pauseReason: 'storage' })
+        paused.push(row.id)
+      }
     }
     else if (
       free >= minFree + RESUME_MARGIN
       && row.pauseReason === 'storage'
     ) {
-      if (await ignoreMissing(resumeTorrent(row.infoHash)))
+      if (await ignoreMissing(resumeTorrent(row.infoHash))) {
         update(row.id, { pauseReason: null })
+        resumed.push(row.id)
+      }
     }
+  }
+
+  if (paused.length) {
+    logFor('storage').warn(
+      { count: paused.length, torrentIds: paused, free, minFree },
+      'Downloads paused: low disk space',
+    )
+  }
+
+  if (resumed.length) {
+    logFor('storage').info(
+      { count: resumed.length, torrentIds: resumed, free, minFree },
+      'Downloads resumed: disk space is back',
+    )
   }
 }
 
@@ -222,6 +244,18 @@ async function runEnforce(request?: SpaceRequest): Promise<EnforceResult> {
   }
 
   const plan = withoutSkipped(input, planned, skipped)
+
+  // Вытеснение удаляет файлы раздач: без записи его не отличить от потери данных
+  if (evicted.size) {
+    const freed = input.torrents
+      .filter(item => evicted.has(item.id))
+      .reduce((total, item) => total + item.size, 0)
+
+    logFor('storage').warn(
+      { count: evicted.size, torrentIds: [...evicted], freed, free: plan.free },
+      'Cache evicted',
+    )
+  }
 
   // Пауза из-за места решается по реальному остатку, без будущего просмотра
   await balanceDownloads(state, plan.free, policy.minFree, evicted)
@@ -319,6 +353,7 @@ export async function updatePolicy(values: {
   minFree: number
 }) {
   savePolicy(values)
+  logFor('storage').info(values, 'Storage policy changed')
 
   if (isEngineReady())
     await enforceStorage()

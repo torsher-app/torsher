@@ -1,3 +1,4 @@
+import { logFor } from '../logs/index.ts'
 import { netFetch } from '../net/index.ts'
 import { SecretError } from '../secrets/index.ts'
 import {
@@ -95,8 +96,13 @@ export async function tmdbGet<T>(
   })
 
   // 404 и 5xx о ключе ничего не говорят
-  if (serverKey && (res.ok || res.status === 401))
-    markTmdbKeyRejected(res.status === 401)
+  if (serverKey && (res.ok || res.status === 401)) {
+    const rejected = res.status === 401
+
+    // Только при смене: иначе каждый запрос каталога повторял бы запись
+    if (markTmdbKeyRejected(rejected) && rejected)
+      logFor('catalog').error('TMDB key rejected')
+  }
 
   if (res.status === 401)
     throw new TmdbError('config', 'TMDB rejected the access token')

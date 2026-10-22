@@ -55,3 +55,8 @@ export function createEngine(
 export function restartEngine() {
   return supervisor?.restart() ?? false
 }
+
+/** Падения движка за последний час — для «Обзора» */
+export function engineCrashCount() {
+  return supervisor?.recentCrashes() ?? 0
+}

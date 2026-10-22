@@ -56,9 +56,15 @@ export function saveTmdbKey(key: string | null) {
   rejected = false
 }
 
-/** Итог последнего запроса к TMDB с ключом сервера: его пишет клиент TMDB */
+/**
+ * Итог последнего запроса к TMDB с ключом сервера: его пишет клиент TMDB.
+ * `true` — состояние ключа изменилось
+ */
 export function markTmdbKeyRejected(value: boolean) {
+  const changed = rejected !== value
+
   rejected = value
+  return changed
 }
 
 /**

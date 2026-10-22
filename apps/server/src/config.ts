@@ -1,6 +1,8 @@
 import { dirname, join } from 'node:path'
 import process from 'node:process'
 
+const LOG_LEVELS = ['error', 'warn', 'info', 'debug'] as const
+
 function required(name: 'SECRET_KEY') {
   const value = process.env[name]
 
@@ -59,6 +61,18 @@ export const config = {
   // Порт для входящих соединений пиров; 0 — любой свободный
   get enginePeerPort() {
     return Number(process.env.ENGINE_PEER_PORT || 0)
+  },
+
+  // Файлы журнала с ротацией: переживают перезапуск сервера и контейнера
+  get logsDir() {
+    return join(this.dataDir, 'logs')
+  },
+
+  // Уровень из окружения важнее настройки панели и блокирует её
+  get logLevel() {
+    const value = process.env.LOG_LEVEL?.trim().toLowerCase()
+
+    return LOG_LEVELS.find(level => level === value)
   },
 
   get downloadsPath() {

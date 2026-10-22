@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 export const attentionKinds = [
   'engine_down',
+  'engine_crashed',
   'storage_low',
   'storage_paused',
   'indexer_error',
@@ -17,6 +18,7 @@ export const attentionSections = [
   'sources',
   'network',
   'metadata',
+  'logs',
 ] as const
 
 export const attentionItem = z

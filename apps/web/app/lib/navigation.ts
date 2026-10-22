@@ -4,12 +4,13 @@ import {
   LayoutGridIcon,
   MonitorSmartphoneIcon,
   RadarIcon,
+  ScrollTextIcon,
 } from '@lucide/vue'
 
 export interface NavItem {
   to: string
   /** Ключ строки в `panel.nav` */
-  label: 'overview' | 'torrents' | 'sources' | 'people'
+  label: 'overview' | 'torrents' | 'sources' | 'people' | 'logs'
   icon: Component
 }
 
@@ -20,6 +21,7 @@ export const navItems: NavItem[] = [
   { to: '/downloads', label: 'torrents', icon: ArrowDownToLineIcon },
   { to: '/sources', label: 'sources', icon: RadarIcon },
   { to: '/people', label: 'people', icon: MonitorSmartphoneIcon },
+  { to: '/logs', label: 'logs', icon: ScrollTextIcon },
 ]
 
 export interface SettingsItem {

@@ -394,6 +394,7 @@
       "torrents": "Downloads",
       "sources": "Sources",
       "people": "Profiles & devices",
+      "logs": "Logs",
       "settings": "Settings",
       "server": "Server",
       "open": "Open menu",
@@ -638,6 +639,7 @@
           "starting": "Torrent engine is starting",
           "stopped": "Torrent engine isn't running: torrents can't be added or played"
         },
+        "engine_crashed": "The engine crashed {n} time in the last hour | The engine crashed {n} times in the last hour",
         "storage_low": "{free} free, below the {minFree} reserve: new playback won't start",
         "storage_paused": {
           "one": "“{name}” is paused: not enough space",
@@ -1441,6 +1443,91 @@
       "selectedEpisodes": "{n} episode | {n} episodes",
       "selectedFiles": "{n} file | {n} files",
       "onDisk": "{size} on disk"
+    },
+    "logs": {
+      "title": "Logs",
+      "download": {
+        "action": "Download logs",
+        "error": "Couldn't download the logs",
+        "errorText": "Check the connection to the server and try again"
+      },
+      "more": "More",
+      "verbose": {
+        "label": "Verbose logs",
+        "hint": "Also records requests and internal steps",
+        "locked": "Level is set by the LOG_LEVEL variable",
+        "enabled": "Verbose logs on",
+        "disabled": "Verbose logs off",
+        "enabledText": "New entries include requests and internal steps",
+        "disabledText": "New entries include info, warnings and errors",
+        "error": "Couldn't change the log level",
+        "lockedError": "The level is set by the LOG_LEVEL variable on the server"
+      },
+      "filters": {
+        "label": "Logs filter",
+        "all": "All",
+        "warn": "Warnings",
+        "error": "Errors",
+        "source": "Source",
+        "allSources": "All sources",
+        "search": "Search logs",
+        "searchPlaceholder": "Find in messages",
+        "pause": "Pause",
+        "resume": "Resume",
+        "pauseLabel": "Pause live updates",
+        "resumeLabel": "Resume live updates"
+      },
+      "sources": {
+        "server": "Server",
+        "engine": "Engine",
+        "playback": "Playback",
+        "storage": "Storage",
+        "sources": "Sources",
+        "catalog": "Catalog",
+        "network": "Network",
+        "auth": "Sign-in"
+      },
+      "levels": {
+        "debug": "Debug",
+        "info": "Info",
+        "warn": "Warning",
+        "error": "Error"
+      },
+      "groups": {
+        "today": "Today",
+        "yesterday": "Yesterday"
+      },
+      "newEntries": "{n} new entry | {n} new entries",
+      "repeat": "Repeated {n} time in a row | Repeated {n} times in a row",
+      "hasDetails": "Has details",
+      "showMore": "Show more",
+      "end": "Earlier entries are in the downloaded logs",
+      "loadError": "Couldn't load the logs",
+      "loadErrorText": "The server didn't respond. Check the connection and try again.",
+      "empty": {
+        "title": "No entries yet",
+        "text": "Server, engine and playback events will appear here as they happen."
+      },
+      "nothing": {
+        "error": "No errors",
+        "warn": "No warnings or errors",
+        "all": "No entries",
+        "source": "No entries from “{source}”",
+        "query": "Nothing found for “{query}”",
+        "showAll": "Show all"
+      },
+      "card": {
+        "time": "Time",
+        "source": "Source",
+        "level": "Level",
+        "repeat": "Repeats",
+        "message": "Message",
+        "details": "Details",
+        "context": "Context",
+        "copy": "Copy entry",
+        "copied": "Entry copied",
+        "copyError": "Couldn't copy the entry"
+      }
     }
   }
 }

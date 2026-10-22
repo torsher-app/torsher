@@ -84,7 +84,9 @@ export const hlsRoutes: FastifyPluginAsyncZod = async (app) => {
         }
 
         if (err instanceof TranscodeFailedError) {
-          request.log.warn(`hls ${session.id}: ${err.message}`)
+          request.log
+            .child({ source: 'playback' })
+            .warn(`hls ${session.id}: transcoding failed`)
           return reply.code(502).send({ message: 'Transcoding failed' })
         }
 

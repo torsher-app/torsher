@@ -24,10 +24,22 @@ class FakeProcess extends EventEmitter {
     return true
   }
 
+  /** Как у настоящего процесса: `exit`, затем `close`, когда вывод дочитан */
   crash(code: number | null = 1, signal: NodeJS.Signals | null = null) {
     this.exitCode = code
     this.signalCode = signal
     this.emit('exit', code, signal)
+
+    const ended = (stream: PassThrough) =>
+      new Promise<void>((resolve) => {
+        stream.once('end', resolve)
+        stream.end()
+        stream.resume()
+      })
+
+    return Promise.all([ended(this.stdout), ended(this.stderr)]).then(() => {
+      this.emit('close', code, signal)
+    })
   }
 }
 
@@ -99,7 +111,7 @@ describe('супервизор движка', () => {
     const { supervisor, processes, spawned, onDown } = setup()
 
     await supervisor.start()
-    processes[0]!.crash()
+    await processes[0]!.crash()
 
     expect(supervisor.status).toBe('restarting')
     expect(onDown).toHaveBeenLastCalledWith('starting')
@@ -111,7 +123,7 @@ describe('супервизор движка', () => {
     expect(spawned).toHaveLength(2)
     expect(supervisor.status).toBe('ready')
 
-    processes[1]!.crash()
+    await processes[1]!.crash()
     await vi.advanceTimersByTimeAsync(4999)
     expect(spawned).toHaveLength(2)
 
@@ -125,11 +137,11 @@ describe('супервизор движка', () => {
     const { supervisor, processes, spawned } = setup()
 
     await supervisor.start()
-    processes[0]!.crash()
+    await processes[0]!.crash()
     await vi.advanceTimersByTimeAsync(1000)
 
     await vi.advanceTimersByTimeAsync(60_000)
-    processes[1]!.crash()
+    await processes[1]!.crash()
     await vi.advanceTimersByTimeAsync(1000)
 
     expect(spawned).toHaveLength(3)
@@ -232,6 +244,7 @@ describe('живость готового движка', () => {
     expect(processes[0]!.signals).toEqual([])
 
     await vi.advanceTimersByTimeAsync(10_000)
+    await vi.advanceTimersByTimeAsync(0)
     expect(processes[0]!.signals).toEqual(['SIGKILL'])
     expect(supervisor.status).toBe('restarting')
     // Опрос живости ждёт ответа дольше, чем проверка на старте
@@ -296,13 +309,15 @@ describe('перезапуск по просьбе', () => {
     const { supervisor, processes, spawned } = setup()
 
     await supervisor.start()
-    processes[0]!.crash()
+    await processes[0]!.crash()
     await vi.advanceTimersByTimeAsync(1000)
     expect(spawned).toHaveLength(2)
 
     // После падения следующая пауза была бы 5 с: просьба сбрасывает счётчик
     expect(supervisor.restart()).toBe(true)
     expect(processes[1]!.signals).toEqual(['SIGKILL'])
+    // Перезапуск планируется по `close`, когда вывод процесса дочитан
+    await vi.advanceTimersByTimeAsync(0)
     expect(supervisor.status).toBe('restarting')
 
     await vi.advanceTimersByTimeAsync(999)
@@ -333,5 +348,197 @@ describe('перезапуск по просьбе', () => {
 
     expect(supervisor.restart()).toBe(false)
     expect(spawned).toHaveLength(0)
+  })
+})
+
+describe('журнал движка', () => {
+  function messages(fn: typeof log.error) {
+    return fn.mock.calls.map(call => String(call.at(-1)))
+  }
+
+  it('строка с level=INFO — info с полями записи', async () => {
+    const { supervisor, processes } = setup()
+
+    await supervisor.start()
+    processes[0]!.stderr.write(
+      'time=2026-10-22T10:00:00.000Z level=INFO msg="torrent added" infohash=abc files=3 note="a \\"b\\""\n',
+    )
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(log.info).toHaveBeenCalledWith(
+      { infohash: 'abc', files: '3', note: 'a "b"' },
+      'torrent added',
+    )
+  })
+
+  it('поле err — warn с полем error', async () => {
+    const { supervisor, processes } = setup()
+
+    await supervisor.start()
+    processes[0]!.stderr.write(
+      'time=2026-10-22T10:00:00.000Z level=WARN msg="restore torrent" err="open /x: permission denied"\n',
+    )
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(log.warn).toHaveBeenCalledWith(
+      { error: 'open /x: permission denied' },
+      'restore torrent',
+    )
+  })
+
+  it('паника рантайма и выход с кодом 2 — одна запись error с трейсом', async () => {
+    const { supervisor, processes } = setup()
+
+    await supervisor.start()
+    vi.advanceTimersByTime(192_000)
+    processes[0]!.stderr.write(
+      [
+        'time=2026-10-22T10:00:00.000Z level=WARN msg="slow peer"',
+        'unrelated output',
+        'panic: runtime error: invalid memory address',
+        '',
+        'goroutine 7 [running]:',
+        'github.com/anacrolix/torrent.(*Torrent).foo()',
+        '',
+      ].join('\n'),
+    )
+    await processes[0]!.crash(2)
+
+    const crashes = log.error.mock.calls.filter(call =>
+      String(call[1]).startsWith('Engine crashed'),
+    )
+
+    expect(crashes).toHaveLength(1)
+    expect(crashes[0]).toEqual([
+      {
+        code: 2,
+        uptimeMs: 192_000,
+        details: [
+          'panic: runtime error: invalid memory address',
+          '',
+          'goroutine 7 [running]:',
+          'github.com/anacrolix/torrent.(*Torrent).foo()',
+        ].join('\n'),
+      },
+      'Engine crashed (exit code 2) after 3m 12s',
+    ])
+    expect(log.warn).toHaveBeenCalledWith({}, 'slow peer')
+    expect(log.debug).toHaveBeenCalledWith('unrelated output')
+    expect(messages(log.warn)).toContain(
+      'Restarting engine in 1 s (1st crash in a row)',
+    )
+  })
+
+  it('паника обработчика: поле stack уходит в details', async () => {
+    const { supervisor, processes } = setup()
+
+    await supervisor.start()
+    processes[0]!.stderr.write(
+      'time=2026-10-22T10:00:00.000Z level=ERROR msg="handler panic" path=/torrents stack="goroutine 5 [running]:\\nmain.handler()"\n',
+    )
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(log.error).toHaveBeenCalledWith(
+      { path: '/torrents', details: 'goroutine 5 [running]:\nmain.handler()' },
+      'handler panic',
+    )
+  })
+
+  it('выход с кодом 0 без остановки — warn и перезапуск', async () => {
+    const { supervisor, processes, spawned } = setup()
+
+    await supervisor.start()
+    await processes[0]!.crash(0)
+
+    expect(messages(log.warn)).toContain('Engine exited unexpectedly after 0s')
+    expect(messages(log.error)).toEqual([])
+
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(spawned).toHaveLength(2)
+  })
+
+  it('остановка — без записи о падении', async () => {
+    const { supervisor } = setup()
+
+    await supervisor.start()
+    await supervisor.stop()
+    await vi.advanceTimersByTimeAsync(0)
+
+    const all = [...messages(log.warn), ...messages(log.error)]
+
+    expect(
+      all.filter(message =>
+        /^Engine (?:crashed|exited|killed)/.test(message),
+      ),
+    ).toEqual([])
+    expect(supervisor.recentCrashes()).toBe(0)
+  })
+
+  it('поздний close остановленного процесса не перезапускает новый', async () => {
+    const { supervisor, processes, spawned } = setup()
+
+    await supervisor.start()
+
+    const old = processes[0]!
+
+    // SIGTERM без немедленного выхода: `exit` придёт вручную, `close` — позже
+    old.ignoreTerm = true
+
+    const stopped = supervisor.stop()
+
+    old.exitCode = 0
+    old.emit('exit', 0, null)
+    await stopped
+    await supervisor.start()
+    old.emit('close', 0, null)
+    await vi.advanceTimersByTimeAsync(60_000)
+
+    const all = [...messages(log.warn), ...messages(log.error)]
+
+    expect(spawned).toHaveLength(2)
+    expect(
+      all.filter(message =>
+        /^(?:Engine (?:crashed|exited|killed)|Restarting)/.test(message),
+      ),
+    ).toEqual([])
+    expect(supervisor.status).toBe('ready')
+  })
+
+  it('убийство по живости — warn «killed» и считается падением', async () => {
+    let health: EngineHealth = 'ok'
+    const { supervisor } = setup({ health: () => health })
+
+    await supervisor.start()
+    health = 'stuck'
+    await vi.advanceTimersByTimeAsync(30_000)
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(messages(log.warn)).toContain(
+      'Engine killed by supervisor (liveness) after 30s',
+    )
+    expect(supervisor.recentCrashes()).toBe(1)
+  })
+
+  it('падения считаются за последний час, перезапуск по просьбе — нет', async () => {
+    const { supervisor, processes } = setup()
+
+    await supervisor.start()
+    await processes[0]!.crash()
+    await vi.advanceTimersByTimeAsync(1000)
+    await processes[1]!.crash(null, 'SIGSEGV')
+    await vi.advanceTimersByTimeAsync(5000)
+
+    expect(supervisor.recentCrashes()).toBe(2)
+    expect(messages(log.error)).toContain(
+      'Engine crashed (signal SIGSEGV) after 0s',
+    )
+
+    expect(supervisor.restart()).toBe(true)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(supervisor.recentCrashes()).toBe(2)
+    expect(messages(log.warn)).toContain('Restarting engine in 1 s')
+
+    await vi.advanceTimersByTimeAsync(60 * 60 * 1000)
+    expect(supervisor.recentCrashes()).toBe(0)
   })
 })

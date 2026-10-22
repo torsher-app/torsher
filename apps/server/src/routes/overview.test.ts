@@ -38,6 +38,14 @@ vi.mock('../services/storage/disk.ts', () => ({
   diskUsage: async () => ({ ...disk }),
 }))
 
+// Счётчик падений ведёт супервизор процесса, которого в тестах нет
+const engineCrashes = vi.hoisted(() => ({ count: 0 }))
+
+vi.mock('../services/engine/index.ts', async importOriginal => ({
+  ...(await importOriginal<typeof import('../services/engine/index.ts')>()),
+  engineCrashCount: () => engineCrashes.count,
+}))
+
 const app = createApp()
 const fetchMock = vi.fn<typeof fetch>()
 let owner: Record<string, string>
@@ -147,6 +155,7 @@ beforeEach(() => {
   })
   vi.stubGlobal('fetch', fetchMock)
   setEngineReady(ENGINE)
+  engineCrashes.count = 0
   getDb().delete(torrents).run()
   getDb().delete(indexers).run()
   getDb().delete(storagePolicy).run()
@@ -338,6 +347,43 @@ describe('обзор', () => {
       payload: {},
     })
     expect((await overview()).attention).toEqual([])
+  })
+
+  it('движок не падал — пункта о падениях нет', async () => {
+    expect((await overview()).attention).toEqual([])
+  })
+
+  it('движок падал и поднялся — предупреждение со ссылкой в журнал', async () => {
+    engineCrashes.count = 3
+
+    expect((await overview()).attention).toEqual([
+      {
+        kind: 'engine_crashed',
+        severity: 'warning',
+        section: 'logs',
+        params: { count: 3 },
+      },
+    ])
+  })
+
+  it('движок падал и не поднялся — ошибка рядом с engine_down', async () => {
+    engineCrashes.count = 2
+    setEngineDown('stopped')
+
+    expect((await overview()).attention).toEqual([
+      {
+        kind: 'engine_down',
+        severity: 'error',
+        section: 'downloads',
+        params: { reason: 'stopped' },
+      },
+      {
+        kind: 'engine_crashed',
+        severity: 'error',
+        section: 'logs',
+        params: { count: 2 },
+      },
+    ])
   })
 
   it('порядок: ошибки раньше предупреждений', async () => {

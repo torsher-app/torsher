@@ -12,6 +12,7 @@ import {
   wrongPasswordResponse,
 } from '../dto/users.ts'
 import { requireOwner } from '../middleware/auth.ts'
+import { logFor } from '../services/logs/index.ts'
 import {
   findActiveUser,
   updateEmail,
@@ -132,6 +133,7 @@ export const userRoutes: FastifyPluginAsyncZod = async (app) => {
         reply,
         updatePassword(user.id, await hashPassword(request.body.newPassword)),
       )
+      logFor('auth').info({ userId: user.id }, 'Password changed')
 
       return { message: 'Password changed' }
     },

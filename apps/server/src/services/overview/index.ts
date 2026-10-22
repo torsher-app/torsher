@@ -3,7 +3,7 @@ import type { EngineTorrentState } from '../engine/index.ts'
 import { performance } from 'node:perf_hooks'
 import packageJson from '../../../package.json' with { type: 'json' }
 import { isWatching, listDevices } from '../devices/index.ts'
-import { engineState } from '../engine/index.ts'
+import { engineCrashCount, engineState } from '../engine/index.ts'
 import { listIndexers } from '../indexers/index.ts'
 import { checkState } from '../net/check.ts'
 import { isStreaming, storageSummary } from '../storage/index.ts'
@@ -27,19 +27,30 @@ function counted(names: string[]): Params {
 
 function engineAttention(): AttentionItem[] {
   const state = engineState()
+  const crashes = engineCrashCount()
+  const items: AttentionItem[] = []
 
-  if (state === 'ready')
-    return []
-
-  return [
-    {
+  if (state !== 'ready') {
+    items.push({
       kind: 'engine_down',
       // Запуск после старта или падения проходит сам за секунды
       severity: state === 'starting' ? 'warning' : 'error',
       section: 'downloads',
       params: { reason: state },
-    },
-  ]
+    })
+  }
+
+  // Движок поднимается сам, и падение иначе видно только в журнале
+  if (crashes > 0) {
+    items.push({
+      kind: 'engine_crashed',
+      severity: state === 'ready' ? 'warning' : 'error',
+      section: 'logs',
+      params: { count: crashes },
+    })
+  }
+
+  return items
 }
 
 function indexerAttention(): AttentionItem[] {

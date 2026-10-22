@@ -16,6 +16,7 @@ import {
   SourceError,
 } from '../torznab/index.ts'
 import { listManagerIndexers, normalizeManagerUrl } from './managers.ts'
+import { logFor } from '../logs/index.ts'
 
 export { normalizeManagerUrl } from './managers.ts'
 
@@ -203,7 +204,13 @@ export async function checkIndexer(id: string) {
     values = { caps: await fetchCaps(indexer.url, apiKey), checkStatus: 'ok' }
   }
   catch (err) {
-    values = { checkStatus: checkStatusOf(err) }
+    const kind = checkStatusOf(err)
+
+    values = { checkStatus: kind }
+    logFor('sources').warn(
+      { indexerId: id, kind, err },
+      'Indexer check failed',
+    )
   }
 
   getDb()
