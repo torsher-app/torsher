@@ -26,6 +26,8 @@ import {
 import { getProfile } from '../services/profiles/index.ts'
 import {
   getTitleProgress,
+  lastVoiceOfSeason,
+  rememberVoice,
   saveTitleProgress,
 } from '../services/sources/progress.ts'
 import { getPinnedVoice } from '../services/sources/voices.ts'
@@ -38,6 +40,7 @@ import {
   playableFile,
   prepareStream,
   saveWatchState,
+  touchTorrent,
 } from '../services/torrents/index.ts'
 import { sessionVersionOf } from '../services/users/session.ts'
 import { signToken } from '../utils/token.ts'
@@ -220,9 +223,14 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
       const state = progress?.position
         ? progress
         : getWatchState(request.profileId, torrentId, fileIndex)
-      // Озвучка серии из листа источников, иначе закреплённая за сезоном
+      // Озвучка серии (выбранная в источниках или в плеере), иначе последних
+      // серий сезона, иначе закреплённая за сезоном
+      const lastVoice = title
+        ? lastVoiceOfSeason(request.profileId, title.id, title.season ?? 0)
+        : undefined
       const studio
         = progress?.voiceStudio
+          ?? (lastVoice && 'studio' in lastVoice ? lastVoice.studio : undefined)
           ?? (title
             ? getPinnedVoice(title.id, title.season ?? 0)?.studio
             : undefined)
@@ -253,6 +261,24 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
       }
 
       resumes.set(session, resume)
+
+      // Дорожку выбрали в плеере: запоминаем её озвучку, когда проба покажет,
+      // какая это дорожка
+      if (ref && audioStream !== undefined) {
+        void session.ready
+          .then(() => {
+            const track = session.media?.audio.find(
+              item => item.index === audioStream,
+            )
+            const voice = track && voiceOfTrack(track)
+
+            if (voice?.studio || voice?.type)
+              rememberVoice(ref, voice)
+          })
+          .catch(() => {
+            // Проба не удалась — запоминать нечего, ошибку покажет сама сессия
+          })
+      }
       await Promise.race([
         session.ready,
         new Promise(resolve => setTimeout(resolve, PROBE_WAIT_MS)),
@@ -277,6 +303,10 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
 
       if (!session)
         return reply.code(404).send({ message: 'Playback not found' })
+
+      // Статус — пульс плеера: пока он идёт, раздача считается используемой,
+      // даже если плеер на паузе и потоков не открывает
+      touchTorrent(session.torrent.id)
 
       return toPlaybackResponse(
         session,

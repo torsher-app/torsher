@@ -14,6 +14,7 @@ import { join } from 'node:path'
 import { config } from '../../config.ts'
 import { engineStreamUrl } from '../engine/index.ts'
 import { trackStream } from '../storage/index.ts'
+import { touchTorrent } from '../torrents/index.ts'
 import { decidePlayback, pickAudioStream, textSubtitles } from './decide.ts'
 import { HlsTranscode, segmentStarts } from './hls.ts'
 import { readCueTimes } from './matroska.ts'
@@ -87,10 +88,18 @@ function rangeReader(url: string) {
   }
 }
 
+// Сессию могли закрыть, пока шла проба: дальше готовить её незачем
+function isOpen(session: PlaybackSession) {
+  return sessions.get(session.id) === session
+}
+
 async function prepare(session: PlaybackSession, input: SessionInput) {
   const { torrent, fileIndex, device, log } = input
   const tools = await mediaTools()
   const url = engineStreamUrl(torrent.infoHash, fileIndex)
+
+  if (!isOpen(session))
+    return
 
   session.external = findExternalSubtitles(torrent.files ?? [], fileIndex)
 
@@ -118,6 +127,9 @@ async function prepare(session: PlaybackSession, input: SessionInput) {
     session.decision = { ...DIRECT, reasons: ['ProbeFailed'] }
     return
   }
+
+  if (!isOpen(session))
+    return
 
   const media = session.media
   const requested = media.audio.find(
@@ -164,10 +176,14 @@ async function prepare(session: PlaybackSession, input: SessionInput) {
         ? await (earlyCues ?? readCueTimes(rangeReader(url)).catch(() => null))
         : null
 
+    if (!isOpen(session))
+      return
+
     session.hls = new HlsTranscode(
       join(config.transcodesPath, session.id),
       {
-        url,
+        // Порт движка меняется после его перезапуска: адрес берётся на каждый запуск ffmpeg
+        url: () => engineStreamUrl(torrent.infoHash, fileIndex),
         videoStream: media.video.index,
         audioStream: session.audioStream,
         audio: decision.audio ?? 'aac',
@@ -177,8 +193,6 @@ async function prepare(session: PlaybackSession, input: SessionInput) {
       },
       log,
     )
-    // Пока идёт перепаковка, раздачу не вытесняют и не ставят на паузу
-    releases.set(session.id, trackStream(torrent.id))
   }
 
   session.decision = decision
@@ -238,6 +252,9 @@ export function createSession(input: SessionInput) {
     })
 
   sessions.set(session.id, session)
+  // Пока сессия открыта, раздачу не вытесняют и не ставят на паузу — и до
+  // конца пробы, и в прямом режиме, где плеер переоткрывает поток при перемотке
+  releases.set(session.id, trackStream(input.torrent.id))
   ensureSweeper()
 
   return session
@@ -263,6 +280,9 @@ export async function stopSession(id: string) {
   sessions.delete(id)
   releases.get(id)?.()
   releases.delete(id)
+  // Зритель мог выйти ненадолго (следующая серия, пауза): вытеснение
+  // отсчитывает недавнее использование от закрытия сессии
+  touchTorrent(session.torrent.id)
   await session.hls?.stop()
 }
 

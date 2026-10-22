@@ -1,11 +1,13 @@
 import type { ChildProcess } from 'node:child_process'
+import type { FileHandle } from 'node:fs/promises'
 import type { Cue } from './webvtt.ts'
 import type { Buffer } from 'node:buffer'
 import { spawn } from 'node:child_process'
-import { existsSync, statSync } from 'node:fs'
-import { mkdir, readdir, readFile, rm } from 'node:fs/promises'
+import { existsSync, rmSync, statSync } from 'node:fs'
+import { mkdir, open, readdir, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { config } from '../../config.ts'
+import { EngineError } from '../engine/client.ts'
 import { mergeCues, parseWebVtt } from './webvtt.ts'
 
 /** Желаемая длина сегмента: короче — больше запросов, длиннее — дольше старт */
@@ -99,7 +101,8 @@ export function seekTargetOf(starts: number[], index: number) {
 }
 
 export interface HlsInput {
-  url: string
+  /** Адрес потока на каждый запуск ffmpeg: после перезапуска движка он другой */
+  url: () => string
   videoStream: number
   audioStream: number | null
   audio: 'copy' | 'aac'
@@ -132,6 +135,10 @@ interface Run {
   id: number
   process: ChildProcess
   from: number
+  /** Последний сегмент, который запуск внёс в свой список */
+  head: number
+  /** Заменён новым запуском: его список больше не читается */
+  superseded: boolean
   exited: boolean
   failure?: string
 }
@@ -139,31 +146,33 @@ interface Run {
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
 /**
- * Перепаковка одного файла в сегменты MPEG-TS. Процесс ffmpeg идёт от
- * запрошенного сегмента вперёд; запрос позади или далеко впереди
- * перезапускает его с нового места. Разрезы абсолютные (границы из
- * плейлиста), поэтому готовые сегменты разных запусков совместимы.
- */
-/**
  * Пустой сегмент — не готовый: ffmpeg вносит его в список и тогда, когда входа
  * не прочитал (на месте данных нули). Отдать его — hls.js запросит снова, и так
  * без конца.
  */
 function hasData(path: string) {
-  return existsSync(path) && statSync(path).size > 0
+  // Одним вызовом: между проверкой и чтением размера каталог может удалить stop()
+  return (statSync(path, { throwIfNoEntry: false })?.size ?? 0) > 0
 }
 
+/**
+ * Перепаковка одного файла в сегменты MPEG-TS. Процесс ffmpeg идёт от
+ * запрошенного сегмента вперёд; запрос позади или далеко впереди
+ * перезапускает его с нового места. Разрезы абсолютные (границы из
+ * плейлиста), поэтому готовые сегменты разных запусков совместимы.
+ */
 export class HlsTranscode {
   readonly dir: string
   private readonly input: HlsInput
   private readonly log: HlsLog
   private run: Run | null = null
   private runs = 0
-  private lastRequested = 0
   private stopped = false
   private queue: Promise<unknown> = Promise.resolve()
   /** Готовые сегменты: номер → есть файл */
   private readonly ready = new Set<number>()
+  /** Сегменты, которые ждут запросы: номер → сколько запросов */
+  private readonly waiting = new Map<number, number>()
 
   constructor(dir: string, input: HlsInput, log: HlsLog) {
     this.dir = dir
@@ -179,12 +188,30 @@ export class HlsTranscode {
     return this.input.starts
   }
 
-  /** Путь к готовому сегменту; ждёт ffmpeg или перезапускает его */
-  async segment(index: number, signal?: AbortSignal) {
+  /**
+   * Открытый файл готового сегмента; ждёт ffmpeg или перезапускает его.
+   * Открывается здесь, а не по пути у вызывающего: старые сегменты удаляет
+   * любой параллельный запрос, и удаление после открытия отдаче не мешает.
+   */
+  async segment(index: number, signal?: AbortSignal): Promise<FileHandle> {
     if (index < 0 || index >= this.segmentCount)
       throw new RangeError('Segment out of range')
 
-    this.lastRequested = index
+    this.waiting.set(index, (this.waiting.get(index) ?? 0) + 1)
+
+    try {
+      return await this.waitFor(index, signal)
+    }
+    finally {
+      const left = (this.waiting.get(index) ?? 1) - 1
+
+      if (left > 0)
+        this.waiting.set(index, left)
+      else this.waiting.delete(index)
+    }
+  }
+
+  private async waitFor(index: number, signal?: AbortSignal) {
     await this.serialize(() => this.ensureRunFor(index))
 
     const deadline = Date.now() + SEGMENT_WAIT_MS
@@ -193,8 +220,20 @@ export class HlsTranscode {
       await this.refreshReady()
 
       if (this.ready.has(index)) {
-        void this.dropOld()
-        return this.pathOf(index)
+        // Новый запуск мог снять сегмент с готовности и удалить файл, пока он
+        // открывался: тогда ждём, когда его перепишет этот запуск
+        const file = await open(this.pathOf(index)).catch(
+          (err: NodeJS.ErrnoException) => {
+            if (err.code === 'ENOENT')
+              return null
+            throw err
+          },
+        )
+
+        if (file) {
+          this.dropOld(index)
+          return file
+        }
       }
 
       const run = this.run
@@ -233,8 +272,15 @@ export class HlsTranscode {
     return mergeCues(lists)
   }
 
+  /** Только для тестов */
+  readySegments() {
+    return [...this.ready].sort((a, b) => a - b)
+  }
+
   async stop() {
     this.stopped = true
+    // Старт мог быть на полпути: после него ffmpeg уже не запустится
+    await this.queue
     this.kill()
     await rm(this.dir, { recursive: true, force: true })
   }
@@ -251,19 +297,22 @@ export class HlsTranscode {
   }
 
   private async ensureRunFor(index: number) {
+    if (this.stopped)
+      return
+
     await this.refreshReady()
 
-    if (this.ready.has(index))
+    if (this.stopped || this.ready.has(index))
       return
 
     const run = this.run
 
     if (run && !run.exited && index >= run.from) {
-      let head = run.from - 1
+      // ffmpeg этот сегмент уже прошёл, а файл удалён как старый: заново
+      // он его не запишет
+      const passed = index <= run.head && !hasData(this.pathOf(index))
 
-      while (this.ready.has(head + 1)) head++
-
-      if (index <= head + 1 + MAX_AHEAD_SEGMENTS)
+      if (!passed && index <= run.head + 1 + MAX_AHEAD_SEGMENTS)
         return
     }
 
@@ -278,8 +327,39 @@ export class HlsTranscode {
   }
 
   private async start(from: number) {
+    // Адрес — до любых изменений: если движок недоступен, готовые сегменты
+    // и прошлый запуск остаются как были
+    let url: string
+
+    try {
+      url = this.input.url()
+    }
+    catch (err) {
+      // Движок перезапускается: это временно, ответ 503 даёт клиенту повторить
+      if (err instanceof EngineError && err.kind === 'unavailable')
+        throw err
+
+      throw new TranscodeFailedError((err as Error).message)
+    }
+
+    // Сегменты, которые прошлый запуск успел дописать, остаются готовыми
+    await this.refreshReady()
+
+    if (this.run)
+      this.run.superseded = true
+
+    // С места запуска новый ffmpeg перезапишет файлы: пока он их не внесёт в
+    // свой список, старые не отдаём — их обрезают на ходу
+    for (const index of this.ready) {
+      if (index >= from)
+        this.ready.delete(index)
+    }
+
     this.kill()
     await mkdir(this.dir, { recursive: true })
+
+    if (this.stopped)
+      return
 
     // Незаконченный сегмент прерванного запуска не годится
     for (const name of await readdir(this.dir)) {
@@ -289,12 +369,22 @@ export class HlsTranscode {
         await rm(join(this.dir, name), { force: true })
     }
 
+    if (this.stopped)
+      return
+
     const id = ++this.runs
-    const args = this.argsFor(from, id)
+    const args = this.argsFor(url, from, id)
     const child = spawn(config.ffmpegPath, args, {
       stdio: ['ignore', 'ignore', 'pipe'],
     })
-    const run: Run = { id, process: child, from, exited: false }
+    const run: Run = {
+      id,
+      process: child,
+      from,
+      head: from - 1,
+      superseded: false,
+      exited: false,
+    }
     let stderr = ''
 
     child.stderr?.on('data', (chunk: Buffer) => {
@@ -317,8 +407,8 @@ export class HlsTranscode {
     this.log.info(`hls: ffmpeg run ${id} from segment ${from}`)
   }
 
-  private argsFor(from: number, runId: number) {
-    const { url, starts, videoStream, audioStream, audio } = this.input
+  private argsFor(url: string, from: number, runId: number) {
+    const { starts, videoStream, audioStream, audio } = this.input
     const origin = starts[from] ?? 0
     // Границы относительно первого пакета запуска: так их считает ffmpeg
     const cuts = starts
@@ -388,30 +478,60 @@ export class HlsTranscode {
     return args
   }
 
-  /** Готовые сегменты — те, что ffmpeg записал в список своего запуска */
+  /**
+   * Готовые сегменты — те, что ffmpeg записал в список своего запуска.
+   * Читается только текущий: прошлые заменены, их файлы с места нового
+   * запуска перезаписываются.
+   */
   private async refreshReady() {
-    for (let id = 1; id <= this.runs; id++) {
-      const text = await readFile(
-        join(this.dir, `list-${id}.csv`),
-        'utf8',
-      ).catch(() => '')
+    const run = this.run
 
-      for (const line of text.split('\n')) {
-        const index = Number.parseInt(line, 10)
+    if (!run || run.superseded)
+      return
 
-        if (Number.isInteger(index) && hasData(this.pathOf(index)))
-          this.ready.add(index)
-      }
+    const text = await readFile(
+      join(this.dir, `list-${run.id}.csv`),
+      'utf8',
+    ).catch(() => '')
+
+    if (run.superseded)
+      return
+
+    for (const line of text.split('\n')) {
+      const index = Number.parseInt(line, 10)
+
+      if (!Number.isInteger(index))
+        continue
+
+      run.head = Math.max(run.head, index)
+
+      if (hasData(this.pathOf(index)))
+        this.ready.add(index)
     }
   }
 
-  private async dropOld() {
-    const limit = this.lastRequested - KEEP_BEHIND_SEGMENTS
+  // Синхронно: пока асинхронное удаление в пути, файл ещё виден на диске —
+  // параллельный запрос вернул бы сегмент в готовые или не перезапустил бы
+  // ffmpeg, а файл пропал бы следом
+  private dropOld(served: number) {
+    const limit = served - KEEP_BEHIND_SEGMENTS
 
     for (const index of [...this.ready]) {
-      if (index < limit) {
-        this.ready.delete(index)
-        await rm(this.pathOf(index), { force: true })
+      // Сегмент, который ждёт другой запрос, ffmpeg уже не перепишет: удалить
+      // его — оставить запрос ждать до таймаута
+      if (index >= limit || this.waiting.has(index))
+        continue
+
+      this.ready.delete(index)
+
+      try {
+        rmSync(this.pathOf(index), { force: true })
+      }
+      catch (err) {
+        // Файл с данными вернёт в готовые следующее чтение списка
+        this.log.warn(
+          `hls: cannot remove segment ${index}: ${(err as Error).message}`,
+        )
       }
     }
   }
