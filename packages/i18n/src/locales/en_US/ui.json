@@ -219,15 +219,14 @@
   },
   "state": {
     "retry": "Try again",
-    "signIn": "Sign in",
+    "connect": "Connect",
     "empty": {
       "title": "Nothing found",
       "text": "Try a different title or check the spelling"
     },
     "unauthorized": {
-      "title": "Sign in required",
-      "text": "Open the Torsher control panel in this browser, sign in and come back",
-      "tvText": "Sign in on this TV through the Torsher control panel: it opens on the same server"
+      "title": "Not connected",
+      "text": "Connect this device to the server with a code from the Torsher panel"
     },
     "notConfigured": {
       "title": "Catalog is not set up",
@@ -248,6 +247,31 @@
     "homeEmpty": {
       "title": "Nothing to show yet",
       "text": "The catalog returned no rows. Try again later"
+    }
+  },
+  "connect": {
+    "titleTv": "Connect this TV",
+    "titleWeb": "Connect this browser",
+    "openPanel": "On your phone or computer, open the Torsher panel",
+    "openSection": "Go to Profiles & devices → Connect a TV",
+    "enterCode": "Enter this code",
+    "refreshes": "The code refreshes on its own",
+    "owner": "Sign in as owner",
+    "error": "Couldn’t get a code",
+    "errorText": "The server didn’t respond. Check that it’s running and try again"
+  },
+  "profiles": {
+    "title": "Who’s watching?",
+    "switch": "Switch profile",
+    "locked": "PIN protected",
+    "pin": {
+      "title": "Enter the PIN for {name}",
+      "digits": "{n} of 4 digits entered",
+      "wrong": "Wrong PIN. {n} attempt left | Wrong PIN. {n} attempts left",
+      "locked": "Too many attempts. Try again in {n} min",
+      "error": "Couldn’t check the PIN. Try again",
+      "erase": "Erase",
+      "cancel": "Cancel"
     }
   },
   "about": {
@@ -300,8 +324,8 @@
     "fromStart": "From start",
     "errors": {
       "unauthorized": {
-        "title": "Sign in required",
-        "text": "Sign in to the control panel on this server and open the file again."
+        "title": "Not connected",
+        "text": "Connect this device again with a code from the Torsher panel."
       },
       "notFound": {
         "title": "File not found",

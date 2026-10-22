@@ -24,6 +24,8 @@ declare module 'fastify' {
     deviceId: string | null
     /** Профиль зрителя: его позиции, прогресс и язык */
     profileId: string
+    /** Профиль выбран явно; иначе `profileId` — профиль по умолчанию */
+    profileSelected: boolean
   }
 
   interface FastifyContextConfig {
@@ -54,13 +56,20 @@ function ownerIdOf(request: FastifyRequest) {
   }
 }
 
-function profileIdOf(selectedId: string | null | undefined) {
-  return (selectedId && getProfile(selectedId)?.id) || defaultProfile().id
+// Выбранный профиль могли удалить: тогда зритель снова смотрит профилем по умолчанию
+function setProfile(
+  request: FastifyRequest,
+  selectedId: string | null | undefined,
+) {
+  const selected = selectedId ? getProfile(selectedId) : undefined
+
+  request.profileId = selected?.id ?? defaultProfile().id
+  request.profileSelected = !!selected
 }
 
 function asDevice(request: FastifyRequest, device: Device) {
   request.deviceId = device.id
-  request.profileId = profileIdOf(device.profileId)
+  setProfile(request, device.profileId)
 }
 
 /**
@@ -121,7 +130,7 @@ export async function requireViewer(
     return unauthorized(reply)
 
   request.userId = userId
-  request.profileId = profileIdOf(request.cookies[PROFILE_COOKIE])
+  setProfile(request, request.cookies[PROFILE_COOKIE])
 }
 
 /**

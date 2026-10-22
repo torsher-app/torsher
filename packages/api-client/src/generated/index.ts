@@ -1162,6 +1162,7 @@ export interface ProfileInput {
 export interface ProfileListInput {
   items: ProfileInput[];
   currentId: string;
+  selected: boolean;
 }
 
 export interface CreateProfileInput {
@@ -2489,6 +2490,7 @@ export interface Profile {
 export interface ProfileList {
   items: Profile[];
   currentId: string;
+  selected: boolean;
 }
 
 export interface CreateProfile {

@@ -2,24 +2,28 @@
 import type { LoadError } from '../lib/loadError.ts'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { platform } from '../platform/index.ts'
-import { signInOnTv } from '../platform/shell.ts'
+import { useRouter } from 'vue-router'
+import { expireSession } from '../session.ts'
 
 const props = defineProps<{ kind: LoadError | 'empty' | 'homeEmpty' }>()
 
 defineEmits<{ retry: [] }>()
 
 const { t } = useI18n()
+const router = useRouter()
 
-// На ТВ браузера с панелью нет: вход открывается здесь же, на том же сервере
-const signIn = computed(
-  () => props.kind === 'unauthorized' && platform === 'tv',
-)
+// Без подключения повтор не поможет: устройство подключается заново по коду
+const reconnect = computed(() => props.kind === 'unauthorized')
 
 // Повтор не поможет, если ничего не нашлось или тайтла нет
 const canRetry = computed(
-  () => props.kind !== 'empty' && props.kind !== 'notFound' && !signIn.value,
+  () => props.kind !== 'empty' && props.kind !== 'notFound' && !reconnect.value,
 )
+
+function connect() {
+  expireSession()
+  void router.replace('/connect')
+}
 </script>
 
 <template>
@@ -28,16 +32,16 @@ const canRetry = computed(
       {{ t(`state.${kind}.title`) }}
     </p>
     <p class="state__text">
-      {{ signIn ? t("state.unauthorized.tvText") : t(`state.${kind}.text`) }}
+      {{ t(`state.${kind}.text`) }}
     </p>
     <button
-      v-if="signIn"
+      v-if="reconnect"
       v-focusable
       class="action action--primary"
       type="button"
-      @click="signInOnTv"
+      @click="connect"
     >
-      {{ t("state.signIn") }}
+      {{ t("state.connect") }}
     </button>
     <button
       v-if="canRetry"

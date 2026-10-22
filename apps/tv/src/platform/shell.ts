@@ -1,5 +1,6 @@
 import type { RouterHistory } from 'vue-router'
 import { panelSignInUrl, shellIndex, stepsToShell } from '../lib/shell.ts'
+import { platform } from './index.ts'
 
 const shell = shellIndex(window.location.search)
 
@@ -21,6 +22,7 @@ export function returnToShell(history: RouterHistory) {
     window.history.go(steps)
 }
 
-export function signInOnTv() {
-  window.location.assign(panelSignInUrl(window.location))
+/** «Войти как владелец»: сессия владельца открывает витрину без кода */
+export function signInAsOwner() {
+  window.location.assign(panelSignInUrl(window.location, platform))
 }

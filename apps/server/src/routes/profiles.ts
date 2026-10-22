@@ -70,6 +70,7 @@ export const profileRoutes: FastifyPluginAsyncZod = async (app) => {
     async request => ({
       items: listProfiles().map(toProfileResponse),
       currentId: request.profileId,
+      selected: request.profileSelected,
     }),
   )
 

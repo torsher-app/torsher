@@ -57,6 +57,7 @@ async function listProfiles(cookies = owner) {
   return res.json() as {
     items: { id: string, name: string, hasPin: boolean }[]
     currentId: string
+    selected: boolean
   }
 }
 
@@ -236,8 +237,12 @@ describe('выбор профиля на устройстве', () => {
       pin: '4321',
     })
 
+    expect((await listProfiles(tv)).selected).toBe(false)
     expect((await select(tv, open.id)).statusCode).toBe(200)
-    expect((await listProfiles(tv)).currentId).toBe(open.id)
+    expect(await listProfiles(tv)).toMatchObject({
+      currentId: open.id,
+      selected: true,
+    })
 
     const noPin = await select(tv, locked.id)
 
@@ -275,9 +280,10 @@ describe('выбор профиля на устройстве', () => {
     const cookie = res.cookies.find(item => item.name === PROFILE_COOKIE)
 
     expect(cookie).toMatchObject({ value: mine.id, httpOnly: true })
+    expect((await listProfiles(owner)).selected).toBe(false)
     expect(
-      (await listProfiles({ ...owner, [PROFILE_COOKIE]: mine.id })).currentId,
-    ).toBe(mine.id)
+      await listProfiles({ ...owner, [PROFILE_COOKIE]: mine.id }),
+    ).toMatchObject({ currentId: mine.id, selected: true })
   })
 })
 
@@ -330,6 +336,7 @@ describe('прогресс по профилям', () => {
     const list = await listProfiles(tv)
 
     expect(list.currentId).toBe(list.items[0]!.id)
+    expect(list.selected).toBe(false)
 
     const missing = await app.inject({
       method: 'DELETE',

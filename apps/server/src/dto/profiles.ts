@@ -30,6 +30,9 @@ export const profileList = z
     items: z.array(profile),
     // Профиль этого зрителя: выбранный на устройстве или по умолчанию
     currentId: z.string(),
+    // Профиль выбран на этом устройстве (у владельца — в этом браузере);
+    // иначе `currentId` — профиль по умолчанию, и витрина предлагает выбор
+    selected: z.boolean(),
   })
   .meta({ id: 'profileList' })
 

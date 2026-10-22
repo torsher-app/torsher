@@ -4,8 +4,10 @@ import { computed, onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useFocus } from '../focus/index.ts'
+import { session } from '../session.ts'
 import AppIcon from './AppIcon.vue'
 import FocusSection from './FocusSection.vue'
+import ProfileAvatar from './ProfileAvatar.vue'
 
 export type RailItemId = 'search' | 'home' | 'movies' | 'series' | 'about'
 
@@ -101,6 +103,18 @@ onBeforeUnmount(stopFocus)
         <span class="rail__label">{{ item.label }}</span>
       </button>
       <div class="rail__spacer" />
+      <!-- «Сменить профиль»: аватар и имя зрителя, OK — экран выбора -->
+      <button
+        v-if="session.profile"
+        v-focusable
+        class="rail__item"
+        type="button"
+        :aria-label="t('profiles.switch')"
+        @click="router.push('/profiles')"
+      >
+        <ProfileAvatar :profile="session.profile" class="rail__avatar" />
+        <span class="rail__label">{{ session.profile.name }}</span>
+      </button>
       <button
         v-focusable
         class="rail__item"
@@ -236,5 +250,14 @@ onBeforeUnmount(stopFocus)
 
 .rail__spacer {
   flex-grow: 1;
+}
+
+/* Аватар на месте иконки: квадрат размером с иконку (32 px), буква мельче */
+.rail__avatar {
+  flex-shrink: 0;
+  width: calc(var(--u) * 32);
+  height: calc(var(--u) * 32);
+  border-radius: calc(var(--u) * 8);
+  font-size: calc(var(--u) * 18);
 }
 </style>
