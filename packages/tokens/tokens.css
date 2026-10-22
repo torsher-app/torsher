@@ -15,6 +15,8 @@
   --color-text-dim: #6b7383;
   --color-accent: #e8b84a;
   --color-accent-ink: #231800;
+  /* Тёплый центр света торшера-лоадера, к краям свет уходит в акцент */
+  --color-glow: #ffd98a;
   --color-focus: #ffffff;
   /* Прозрачные слои поверх фона: чипы, подсказки клавиш, разделители */
   --color-glass: rgba(242, 244, 248, 0.1);
@@ -53,6 +55,9 @@
   --motion-fast: 160ms;
   --motion-base: 220ms;
   --motion-easing: cubic-bezier(0.2, 0, 0, 1);
+  /* Лоадер показывается, только если ждём дольше: быстрый ответ не мелькает им.
+     То же значение в JS — LOADER_DELAY_MS витрины (apps/tv/src/lib/loader.ts) */
+  --loader-delay: 400ms;
 
   --poster-width: calc(var(--u) * 240);
 

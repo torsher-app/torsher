@@ -297,8 +297,11 @@ const seedersTone = computed(() => {
 .source:focus .source__badge {
   border-color: rgba(0, 0, 0, 0.3);
 }
-/* Лоадер подключения — поверх колонки справа, раскладка строки не меняется */
+/* Лоадер подключения — поверх колонки справа, раскладка строки не меняется.
+   Подложка появляется вместе с лоадером: быстрое подключение не прячет колонку */
 .source__loading {
+  opacity: 0;
+  animation: source-loading var(--motion-fast) var(--motion-easing) var(--loader-delay) forwards;
   position: absolute;
   top: 0;
   right: 0;
@@ -317,5 +320,11 @@ const seedersTone = computed(() => {
 
 .source:focus .source__loading :deep(.loader__label) {
   color: var(--color-bg);
+}
+
+@keyframes source-loading {
+  to {
+    opacity: 1;
+  }
 }
 </style>

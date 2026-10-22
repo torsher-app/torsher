@@ -1,17 +1,42 @@
 <script setup lang="ts" generic="T extends string">
+import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import FocusSection from '../FocusSection.vue'
 
 // Содержимое сцены плеера (`PlayerStage`): заголовок, текст и действия по центру
-defineProps<{
+const props = defineProps<{
   title?: string
   text?: string
   /** Доля просмотренного для полосы под текстом: 0…1 */
   progress?: number
   /** Первое действие получает фокус и выглядит главным */
   actions: { id: T, label: string }[]
+  /** Действие выполняется: кнопка приглушена, окно ещё на экране */
+  busy?: T
+  /** Растёт, когда действие вернуло тот же исход: кнопка коротко трясётся «не вышло» */
+  rejections?: number
 }>()
 
 const emit = defineEmits<{ choose: [id: T] }>()
+
+const SHAKE_MS = 420
+const shaking = ref(false)
+let shakeTimer = 0
+
+// Повторный отказ во время тряски начинает её заново: класс снимается на кадр
+watch(
+  () => props.rejections,
+  async () => {
+    clearTimeout(shakeTimer)
+    shaking.value = false
+    await nextTick()
+    shaking.value = true
+    shakeTimer = window.setTimeout(() => {
+      shaking.value = false
+    }, SHAKE_MS)
+  },
+)
+
+onBeforeUnmount(() => clearTimeout(shakeTimer))
 </script>
 
 <template>
@@ -39,7 +64,11 @@ const emit = defineEmits<{ choose: [id: T] }>()
         :key="action.id"
         v-focusable
         class="action"
-        :class="{ 'action--primary': index === 0 }"
+        :class="{
+          'action--primary': index === 0,
+          'prompt__action--busy': action.id === busy,
+          'prompt__action--shake': shaking && index === 0,
+        }"
         type="button"
         @click="emit('choose', action.id)"
       >
@@ -90,6 +119,35 @@ const emit = defineEmits<{ choose: [id: T] }>()
   display: flex;
   justify-content: center;
   margin-top: var(--space-4);
+}
+
+/* Окно не уходит, пока действие идёт: так быстрый тот же ответ не мигает экраном */
+.prompt__action--busy {
+  opacity: 0.6;
+  transition: opacity var(--motion-fast) var(--motion-easing);
+}
+
+/* Масштаб фокуса держит --bump-scale, как у толчка на краю */
+.prompt__action--shake {
+  animation: prompt-shake 420ms var(--motion-easing);
+}
+
+@keyframes prompt-shake {
+  20% {
+    transform: translateX(calc(var(--u) * -12)) scale(var(--bump-scale));
+  }
+
+  45% {
+    transform: translateX(calc(var(--u) * 10)) scale(var(--bump-scale));
+  }
+
+  70% {
+    transform: translateX(calc(var(--u) * -6)) scale(var(--bump-scale));
+  }
+
+  90% {
+    transform: translateX(calc(var(--u) * 2)) scale(var(--bump-scale));
+  }
 }
 
 /* Без gap: flex-gap нет в Chromium 68 */

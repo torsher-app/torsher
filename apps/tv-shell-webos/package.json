@@ -8,7 +8,7 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "icons": "rsvg-convert -w 80 -h 80 assets/icon.svg -o public/icon-80.png && rsvg-convert -w 130 -h 130 assets/icon.svg -o public/icon-130.png",
+    "icons": "rsvg-convert -w 80 -h 80 node_modules/@torsher/tokens/assets/app-icon.svg -o public/icon-80.png && rsvg-convert -w 130 -h 130 node_modules/@torsher/tokens/assets/app-icon.svg -o public/icon-130.png",
     "package": "vite build && ares-package --no-minify --outdir build dist",
     "install:tv": "ares-install --device ${WEBOS_DEVICE:-tv} build/app.torsher.webos_${npm_package_version}_all.ipk",
     "launch:tv": "ares-launch --device ${WEBOS_DEVICE:-tv} app.torsher.webos",

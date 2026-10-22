@@ -8,7 +8,8 @@
     "build": "nuxt generate",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
-    "typecheck": "nuxt typecheck"
+    "typecheck": "nuxt typecheck",
+    "icons": "sh node_modules/@torsher/tokens/scripts/icons.sh public"
   },
   "dependencies": {
     "@fontsource/onest": "5.3.1",

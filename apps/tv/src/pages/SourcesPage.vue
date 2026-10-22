@@ -15,6 +15,7 @@ import FocusSection from '../components/FocusSection.vue'
 import OptionsPanel from '../components/OptionsPanel.vue'
 import SourceRow from '../components/SourceRow.vue'
 import { useCatalogTitle } from '../composables/useCatalogTitle.ts'
+import { useHeldLoading } from '../composables/useHeldLoading.ts'
 import { useResource } from '../composables/useResource.ts'
 import { useSourceLabels } from '../composables/useSourceLabels.ts'
 import { useTitleSeason } from '../composables/useTitleSections.ts'
@@ -87,6 +88,12 @@ function setView(patch: Partial<SourceView>) {
 function resetFilters() {
   setView({ season: undefined, voice: undefined, quality: undefined })
 }
+
+// Поиск для экрана: показавшийся лоадер держится минимум, шапка и список
+// приходят вместе с ним одним шагом
+const searching = useHeldLoading(
+  () => status.value === 'loading' || status.value === 'idle',
+)
 
 const candidates = computed(() => sources.value?.candidates ?? [])
 const rows = computed(() =>
@@ -275,7 +282,7 @@ const emptyKind = computed(() => {
 })
 
 const headerMeta = computed(() => {
-  if (!sources.value)
+  if (!sources.value || searching.value)
     return ''
 
   const minutes = minutesSince(sources.value.updatedAt, openedAt)
@@ -392,9 +399,9 @@ function edgesOf(name: string) {
   }
 }
 
-// Пока идёт поиск, фокус стоит на заглушке; ответ пришёл — встаём в список
-watch(status, (value) => {
-  if (value === 'ready' || value === 'error')
+// Пока идёт поиск, фокус стоит на заглушке; список показался — встаём в него
+watch(searching, (value) => {
+  if (!value)
     nextTick(() => focus.activate('sources-list'))
 })
 
@@ -547,7 +554,7 @@ const meta = computed(() => {
         autofocus
       >
         <div
-          v-if="status === 'loading' || status === 'idle'"
+          v-if="searching"
           v-focusable
           class="sources__state sources__state--loading"
           tabindex="-1"

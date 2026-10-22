@@ -2,14 +2,21 @@
 import type { TitleDetails } from '@torsher/api-client'
 import type { KeyAction } from '../focus/index.ts'
 import type { StageStep } from '../lib/player.ts'
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import PlayerBuffering from '../components/player/PlayerBuffering.vue'
+import PlayerLamp from '../components/player/PlayerLamp.vue'
 import PlayerOsd from '../components/player/PlayerOsd.vue'
 import PlayerPrompt from '../components/player/PlayerPrompt.vue'
 import PlayerStage from '../components/player/PlayerStage.vue'
-import AppLoader from '../components/AppLoader.vue'
 import AppIcon from '../components/AppIcon.vue'
 import FocusSection from '../components/FocusSection.vue'
 import PlayerTracks from '../components/player/PlayerTracks.vue'
@@ -44,6 +51,7 @@ import {
   streamLive,
   videoTimePolicy,
 } from '../lib/player.ts'
+import { LOADER_DELAY_MS } from '../lib/loader.ts'
 import { goBack } from '../lib/navigation.ts'
 import { titleRefOf } from '../lib/sources.ts'
 
@@ -261,14 +269,6 @@ const tracksHint = computed(() =>
     : undefined,
 )
 
-// «Назад» под указкой: видна вместе с OSD и на экранах до старта. У окна
-// ошибки своя кнопка «Назад» — вторая сверху не нужна
-const backVisible = computed(
-  () =>
-    player.status.value !== 'error'
-    && (phase.value !== 'playing' || osd.visible.value),
-)
-
 const errorKey = computed(() => {
   if (player.error.value === 'engine')
     return `player.errors.engine.${player.engineKind.value ?? 'starting'}`
@@ -291,6 +291,77 @@ const errorParams = computed(() => {
     reserve: gigabytes(storage?.minFree),
     limit: gigabytes(storage?.cacheLimit),
   }
+})
+
+/**
+ * «Повторить» оставляет ошибку на экране, пока новый запуск идёт дольше
+ * задержки лоадера (`--loader-delay`): если сервер сразу ответит той же
+ * ошибкой, экран не мигнёт сценой подготовки, а фокус останется на кнопке.
+ * Текст снимается заранее: запуск сбрасывает ошибку и её подробности.
+ */
+const heldError = ref<{ title: string, text: string } | null>(null)
+// Ошибку уже продержали всю задержку: торшер и полоса встают без второй паузы
+const instantLoader = ref(false)
+let retryHoldTimer = 0
+
+function holdError() {
+  heldError.value = {
+    title: t(`${errorKey.value}.title`),
+    text: t(`${errorKey.value}.text`, errorParams.value),
+  }
+  clearTimeout(retryHoldTimer)
+  retryHoldTimer = window.setTimeout(() => {
+    if (heldError.value && player.status.value === 'loading')
+      instantLoader.value = true
+
+    heldError.value = null
+  }, LOADER_DELAY_MS)
+}
+
+// Тот же отказ, пока ошибку ещё держали: экран не менялся, и отклик —
+// тряска кнопки «Повторить»
+const retryRejections = ref(0)
+
+watch(
+  () => player.status.value,
+  (status) => {
+    if (status === 'error' && heldError.value)
+      retryRejections.value++
+
+    if (status !== 'loading')
+      heldError.value = null
+  },
+)
+
+const promptError = computed(() =>
+  player.status.value !== 'error' && heldError.value
+    ? heldError.value
+    : {
+        title: t(`${errorKey.value}.title`),
+        text: t(`${errorKey.value}.text`, errorParams.value),
+      },
+)
+
+const showsError = computed(
+  () => player.status.value === 'error' || heldError.value !== null,
+)
+
+// «Назад» под указкой: видна вместе с OSD и на экранах до старта. У окна
+// ошибки своя кнопка «Назад» — вторая сверху не нужна, и пока ошибку держат
+// при повторе, тоже
+const backVisible = computed(
+  () => !showsError.value && (phase.value !== 'playing' || osd.visible.value),
+)
+
+const showsStage = computed(
+  () => showsError.value || phase.value !== 'playing' || restarting.value,
+)
+
+// Задержку снимаем, только пока сцена на экране: сменить её у идущей анимации
+// появления значит снова спрятать торшер. Следующая сцена — снова с задержкой
+watch(showsStage, (shown) => {
+  if (!shown)
+    instantLoader.value = false
 })
 
 function save() {
@@ -366,11 +437,7 @@ function onMedia(
  * фокус на таймлайне, OK при скрытом OSD — пауза, Back — в два шага.
  */
 function onKey(action: KeyAction, event: KeyboardEvent) {
-  if (
-    phase.value !== 'playing'
-    || restarting.value
-    || player.status.value === 'error'
-  ) {
+  if (phase.value !== 'playing' || restarting.value || showsError.value) {
     if (action.type !== 'back')
       return false
 
@@ -491,6 +558,7 @@ function onPromptChoice(choice: 'resume' | 'restart' | 'retry' | 'back') {
     exit()
   }
   else if (choice === 'retry') {
+    holdError()
     budget = freshBudget()
     slow.value = false
     keepPaused = false
@@ -819,11 +887,7 @@ function onEnded() {
 }
 
 function onPointer(event: MouseEvent) {
-  if (
-    phase.value !== 'playing'
-    || restarting.value
-    || player.status.value === 'error'
-  ) {
+  if (phase.value !== 'playing' || restarting.value || showsError.value) {
     return
   }
 
@@ -925,6 +989,7 @@ onBeforeUnmount(() => {
   offKey?.()
   clearInterval(clockTimer)
   clearTimeout(retryTimer)
+  clearTimeout(retryHoldTimer)
   clearTimeout(metadataTimer)
   launch++
   document.removeEventListener('visibilitychange', onVisibility)
@@ -960,18 +1025,21 @@ onBeforeUnmount(() => {
 
     <!-- До первого кадра и при ошибке — одна сцена: фон и шапка не перерисовываются между фазами -->
     <PlayerStage
-      v-if="
-        player.status.value === 'error' || phase !== 'playing' || restarting
-      "
+      v-if="showsStage"
+      :style="instantLoader ? { '--loader-delay': '0ms' } : undefined"
       :title="stageTitle"
       :backdrop="art?.backdrop"
       :logo="art?.logo"
       :subtitle="artSubtitle"
     >
       <PlayerPrompt
-        v-if="player.status.value === 'error'"
-        :title="t(`${errorKey}.title`)"
-        :text="t(`${errorKey}.text`, errorParams)"
+        v-if="showsError"
+        :title="promptError.title"
+        :text="promptError.text"
+        :busy="
+          heldError && player.status.value === 'loading' ? 'retry' : undefined
+        "
+        :rejections="retryRejections"
         :actions="[
           { id: 'retry', label: t('player.retry') },
           { id: 'back', label: t('player.back') },
@@ -995,23 +1063,19 @@ onBeforeUnmount(() => {
         @choose="onPromptChoice"
       />
 
-      <AppLoader v-else />
+      <PlayerLamp
+        v-else
+        :step="step"
+        :connected="stats?.peers.connected ?? 0"
+      />
 
-      <template
-        v-if="player.status.value !== 'error' && phase !== 'resume'"
-        #bottom
-      >
+      <template v-if="!showsError && phase !== 'resume'" #bottom>
         <PlayerBuffering :step="step" :stats="stats" />
       </template>
     </PlayerStage>
 
     <template
-      v-if="
-        playback
-          && phase === 'playing'
-          && !restarting
-          && player.status.value !== 'error'
-      "
+      v-if="playback && phase === 'playing' && !restarting && !showsError"
     >
       <p v-if="stalled" class="player__stall" role="status">
         <span class="player__spinner" aria-hidden="true" />
@@ -1096,7 +1160,11 @@ onBeforeUnmount(() => {
   background: #000000;
 }
 
+/* Короткая подгрузка после перемотки плашкой не мелькает: видна через
+   --loader-delay, как лоадеры; анимируется только opacity — transform центрирует */
 .player__stall {
+  opacity: 0;
+  animation: player-stall-appear var(--motion-fast) var(--motion-easing) var(--loader-delay) forwards;
   position: absolute;
   top: 50%;
   left: 50%;
@@ -1108,6 +1176,12 @@ onBeforeUnmount(() => {
   background: rgba(0, 0, 0, 0.6);
   font-size: var(--font-size-s);
   transform: translate(-50%, -50%);
+}
+
+@keyframes player-stall-appear {
+  to {
+    opacity: 1;
+  }
 }
 
 .player__spinner {

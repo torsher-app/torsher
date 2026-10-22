@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "vue-tsc --noEmit",
+    "icons": "sh node_modules/@torsher/tokens/scripts/icons.sh public",
     "test": "vitest run"
   },
   "dependencies": {

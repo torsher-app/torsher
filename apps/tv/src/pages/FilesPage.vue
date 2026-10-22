@@ -8,6 +8,7 @@ import {
   onMounted,
   ref,
   toRef,
+  watch,
 } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
@@ -17,6 +18,7 @@ import AppLoader from '../components/AppLoader.vue'
 import FocusSection from '../components/FocusSection.vue'
 import { useCatalogLanguage } from '../composables/useCatalogLanguage.ts'
 import { useCatalogTitle } from '../composables/useCatalogTitle.ts'
+import { useHeldLoading } from '../composables/useHeldLoading.ts'
 import { useSourceLabels } from '../composables/useSourceLabels.ts'
 import { useTitleMeta } from '../composables/useTitleMeta.ts'
 import { loadSeason } from '../composables/useTitleSections.ts'
@@ -56,6 +58,11 @@ const { formatRuntime } = useTitleMeta()
 
 const phase = ref<'connecting' | 'waiting' | 'ready' | 'timeout' | 'error'>(
   'connecting',
+)
+// Ожидание для экрана: показавшийся лоадер держится минимум, список и счётчик
+// в шапке приходят вместе с ним одним шагом
+const waitingFiles = useHeldLoading(
+  () => phase.value === 'connecting' || phase.value === 'waiting',
 )
 const files = ref<TitleFile[]>([])
 const releaseName = ref('')
@@ -126,8 +133,6 @@ async function load() {
 
         files.value = result.files
         phase.value = 'ready'
-        await nextTick()
-        focusInitial()
 
         return
       }
@@ -152,6 +157,15 @@ const wanted = computed(() => ({
 function rowAt(index: number) {
   return list.value?.querySelector<HTMLElement>(`[data-file="${index}"]`)
 }
+
+// Список показался — фокус на нужной серии
+watch(waitingFiles, async (value) => {
+  if (value || phase.value !== 'ready')
+    return
+
+  await nextTick()
+  focusInitial()
+})
 
 function focusInitial() {
   const row = rowAt(focusedFile(files.value, wanted.value))
@@ -308,7 +322,7 @@ onBeforeUnmount(() => {
         </p>
         <p class="files__meta">
           {{
-            phase === "ready"
+            phase === "ready" && !waitingFiles
               ? `${t("files.title")} · ${t("files.count", files.length)}`
               : "\u00A0"
           }}
@@ -323,7 +337,7 @@ onBeforeUnmount(() => {
       >
         <div ref="list">
           <div
-            v-if="phase === 'connecting' || phase === 'waiting'"
+            v-if="waitingFiles"
             v-focusable
             class="files__state files__state--loading"
             tabindex="-1"
