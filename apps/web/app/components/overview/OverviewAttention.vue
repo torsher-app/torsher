@@ -59,7 +59,7 @@ function textOf(item: AttentionItem) {
       <li v-for="item in items" :key="item.kind">
         <NuxtLink
           :to="attentionLinks[item.section]"
-          class="grid min-h-11 grid-cols-[16px_minmax(0,1fr)_auto] items-start gap-x-3 px-4 py-3 text-[13.5px] outline-none hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset sm:items-center sm:py-2.5"
+          class="grid min-h-11 grid-cols-[16px_minmax(0,1fr)_auto] items-start gap-x-3 px-4 py-3 text-[13.5px] outline-none hover:bg-muted/50 dark:hover:bg-muted focus-visible:bg-muted/50 dark:focus-visible:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset sm:items-center sm:py-2.5"
         >
           <component
             :is="item.severity === 'error' ? CircleXIcon : CircleAlertIcon"

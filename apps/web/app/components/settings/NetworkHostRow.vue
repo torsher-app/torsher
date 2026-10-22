@@ -41,7 +41,7 @@ const hasOwnRoute = computed(
 
 <template>
   <li
-    class="group/row grid grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 border-b py-2.5 pr-2.5 pl-4 text-[13.5px] last:border-b-0 hover:bg-muted/50 sm:min-h-11 sm:grid-cols-[16px_minmax(0,190px)_minmax(0,1fr)_auto] sm:py-1.5"
+    class="group/row grid grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 border-b py-2.5 pr-2.5 pl-4 text-[13.5px] last:border-b-0 hover:bg-muted/50 dark:hover:bg-muted sm:min-h-11 sm:grid-cols-[16px_minmax(0,190px)_minmax(0,1fr)_auto] sm:py-1.5"
   >
     <span
       :class="

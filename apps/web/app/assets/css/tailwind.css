@@ -168,4 +168,13 @@ html.tv {
     /* Цифры одной ширины везде: меняющиеся значения не смещаются в разряде */
     @apply bg-background font-sans text-sm text-foreground antialiased tabular-nums;
   }
+  /* Tailwind v4 вернул кнопкам курсор браузера. В панели всё кликабельное
+     с рукой, иначе ссылки и кнопки ведут себя по-разному. Чекбоксы,
+     переключатели и триггеры reka-ui — тоже button */
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']),
+  [role^='menuitem']:not([data-disabled]),
+  [role='option']:not([data-disabled]) {
+    cursor: pointer;
+  }
 }

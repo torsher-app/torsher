@@ -70,9 +70,10 @@ const progressClass = {
   <li
     :class="
       cn(
-        'group/row relative grid grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 border-b py-2.5 pr-2.5 pl-4 text-[13.5px] hover:bg-muted/50',
+        'group/row relative grid grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 border-b py-2.5 pr-2.5 pl-4 text-[13.5px] hover:bg-muted/50 dark:hover:bg-muted',
         'md:h-14 md:grid-cols-[28px_minmax(0,1.3fr)_150px_minmax(0,1fr)_72px] md:py-0',
-        selected && 'bg-muted/50 shadow-[inset_2px_0_0_var(--primary)]',
+        selected
+          && 'bg-muted/50 dark:bg-muted shadow-[inset_2px_0_0_var(--primary)]',
       )
     "
   >
