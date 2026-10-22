@@ -46,6 +46,8 @@ export const titleSourcesQuery = z.object({
   season: number(999).optional(),
   episode: number(9999).optional(),
   refresh: z.enum(['1']).optional(),
+  // Раздачи всех сезонов сериала (экран «Источники»): сезон и серия не учитываются
+  all: z.enum(['1']).optional(),
 })
 
 export const voiceRef = z
@@ -71,7 +73,8 @@ export const sourceCandidate = z
     title: z.string(),
     indexers: z.array(z.string()),
     size: z.number().nullable(),
-    // Размер на серию у сериала; у пака без диапазона серий — null
+    // Размер на серию у сериала; у пака без диапазона серий — по числу серий
+    // сезона из TMDB, без него — null
     episodeSize: z.number().nullable(),
     seeders: z.number(),
     peers: z.number().nullable(),
@@ -80,8 +83,14 @@ export const sourceCandidate = z
     codec: z.string().nullable(),
     hdr: z.array(z.string()),
     audio: z.array(audioTrack),
+    // Каналы звука из тегов: `5.1`, `DDP5.1`; null — не указаны
+    channels: z.enum(['2.0', '5.1', '7.1']).nullable(),
+    // Языки субтитров, ISO 639-1; `und` — субтитры есть, язык не указан
+    subs: z.array(z.string()),
     // Основная русская дорожка; null — озвучка не распознана
     voice: audioTrack.nullable(),
+    // Ключи всех русских озвучек раздачи (как `voiceOption.key`): по ним фильтр
+    voiceKeys: z.array(z.string()),
     seasons: z.array(z.number()),
     episodes: z
       .object({
@@ -96,6 +105,8 @@ export const sourceCandidate = z
     // Причина выбора у кандидатов тройки
     pickReason: z.enum(sourceReasons).nullable(),
     publishedAt: z.string().nullable(),
+    // Этой раздачей смотрели тайтл последний раз
+    lastWatched: z.boolean(),
   })
   .meta({ id: 'sourceCandidate' })
 
@@ -121,6 +132,8 @@ export const titleSources = z
       voiceTypes: z.array(z.enum(voiceTypes)),
     }),
     pinnedVoice: voiceRef.nullable(),
+    // Кандидат, который и есть раздача сезона (по infohash); null — такой нет
+    seasonCandidate: z.string().nullable(),
     // ID тройки по порядку показа
     top: z.array(z.string()),
     // Все кандидаты по убыванию счёта
@@ -151,6 +164,8 @@ export const watchTitle = z
     season: z.number().int().min(1).max(999).optional(),
     episode: z.number().int().min(1).max(9999).optional(),
     candidateId: z.string().min(1).max(64).optional(),
+    // Раздача сезона из прогресса: серия из неё без поиска по индексаторам
+    torrentId: z.string().min(1).max(100).optional(),
   })
   .meta({ id: 'watchTitle' })
 
@@ -160,6 +175,7 @@ export const titleWatch = z
     status: z.enum(['ready', 'resolving']),
     torrentId: z.string(),
     fileIndex: z.number().nullable(),
+    // Пусто, когда смотрели раздачу сезона по torrentId
     candidateId: z.string(),
   })
   .meta({ id: 'titleWatch' })
@@ -170,6 +186,75 @@ export const watchErrorResponse = z
     kind: z.enum(['no_sources', 'not_playable', 'candidate_gone']),
   })
   .meta({ id: 'watchErrorResponse' })
+
+export const openTitle = z
+  .object({ candidateId: z.string().min(1).max(64) })
+  .meta({ id: 'openTitle' })
+
+export const titleOpen = z
+  .object({
+    // resolving — раздача ждёт метаданные: файлов ещё нет
+    status: z.enum(['ready', 'resolving']),
+    torrentId: z.string(),
+  })
+  .meta({ id: 'titleOpen' })
+
+export const titleFilesParams = z.object({
+  id: z.string().min(1).max(100),
+  torrentId: z.string().min(1).max(100),
+})
+
+export const titleFile = z
+  .object({
+    fileIndex: z.number(),
+    // Имя файла без папок и расширения
+    name: z.string(),
+    size: z.number(),
+    season: z.number().nullable(),
+    episode: z.number().nullable(),
+    position: z.number(),
+    duration: z.number().nullable(),
+    watched: z.boolean(),
+  })
+  .meta({ id: 'titleFile' })
+
+export const titleFiles = z
+  .object({
+    status: z.enum(['ready', 'resolving']),
+    name: z.string(),
+    // Видео раздачи в естественном порядке; пока нет метаданных — пусто
+    files: z.array(titleFile),
+  })
+  .meta({ id: 'titleFiles' })
+
+export const markWatched = z
+  .object({
+    season: z.number().int().min(1).max(999).optional(),
+    episode: z.number().int().min(1).max(9999).optional(),
+    watched: z.boolean(),
+  })
+  .meta({ id: 'markWatched' })
+
+export const episodeProgress = z
+  .object({
+    season: z.number(),
+    episode: z.number(),
+    position: z.number(),
+    duration: z.number().nullable(),
+    watched: z.boolean(),
+  })
+  .meta({ id: 'episodeProgress' })
+
+export const seasonRelease = z
+  .object({
+    season: z.number(),
+    torrentId: z.string(),
+    quality: z.enum(resolutions).nullable(),
+    voice: voiceRef.nullable(),
+    // Серии сезона, файлы которых есть в раздаче
+    episodes: z.array(z.number()),
+  })
+  .meta({ id: 'seasonRelease' })
 
 export const titleProgress = z
   .object({
@@ -185,6 +270,10 @@ export const titleProgress = z
         updatedAt: z.string(),
       })
       .nullable(),
+    // Раздача сезона — чем последний раз смотрели серию сезона
+    seasonReleases: z.array(seasonRelease),
+    // Прогресс по сериям: полосы и отметки «просмотрено» на карточке
+    episodes: z.array(episodeProgress),
   })
   .meta({ id: 'titleProgress' })
 

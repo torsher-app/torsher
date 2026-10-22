@@ -254,6 +254,23 @@ export function createFocusEngine(options: FocusEngineOptions = {}) {
   }
 
   /**
+   * Контент сдвинулся под неподвижным курсором (нативная прокрутка): подсвечиваем
+   * то, что теперь под ним. Режим ввода не меняется — курсор не двигали.
+   */
+  function pointerOver(target: Element | null) {
+    if (input.mode !== 'pointer' || !target)
+      return
+
+    const el = target.closest<HTMLElement>('[data-focusable]')
+    const name = el && owners.get(el)
+
+    if (!el || !name || el === active?.last)
+      return
+
+    focusElement(section(name), el, 'pointer')
+  }
+
+  /**
    * Курсор спрятался: стрелки листания и задержки указки ему больше не нужны.
    * Фокус остаётся на подсвеченном элементе.
    */
@@ -320,6 +337,7 @@ export function createFocusEngine(options: FocusEngineOptions = {}) {
     move,
     key,
     pointerMove,
+    pointerOver,
     pointerHidden,
     wheel,
     current,

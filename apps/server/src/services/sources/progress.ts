@@ -1,7 +1,7 @@
 import type { AudioTrack, VoiceType } from '@torsher/release-parser'
 import type { TitleProgress } from '../../db/schema.ts'
 import type { VoiceRef } from './profile.ts'
-import { and, desc, eq, gt } from 'drizzle-orm'
+import { and, desc, eq, gt, isNotNull } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import { titleProgress } from '../../db/schema.ts'
 
@@ -131,7 +131,56 @@ export function rememberVoice(ref: TitleRef, voice: AudioTrack) {
     .run()
 }
 
-/** Последняя начатая серия тайтла: для «Продолжить» */
+/**
+ * Отметка «просмотрено» с карточки: досмотренная позиция или сброс. Раздачу
+ * и озвучку серии не трогает — по ним работает «как в прошлых сериях».
+ */
+export function markWatched(ref: TitleRef, watched: boolean) {
+  // Позиция в самом конце: «досмотрено» и следующая серия — цель «Продолжить»
+  const values = watched
+    ? { position: 1, duration: 1 }
+    : { position: 0, duration: null }
+
+  getDb()
+    .insert(titleProgress)
+    .values({
+      profileId: ref.profileId,
+      titleId: ref.titleId,
+      ...keyOf(ref),
+      ...values,
+    })
+    .onConflictDoUpdate({
+      target: [
+        titleProgress.profileId,
+        titleProgress.titleId,
+        titleProgress.season,
+        titleProgress.episode,
+      ],
+      // Время записи — время просмотра: отметка не делает серию «последней»
+      set: values,
+    })
+    .run()
+}
+
+/** Прогресс по сериям тайтла: полосы и отметки на карточке */
+export function episodeProgress(profileId: string, titleId: string) {
+  return getDb()
+    .select()
+    .from(titleProgress)
+    .where(
+      and(
+        eq(titleProgress.profileId, profileId),
+        eq(titleProgress.titleId, titleId),
+        gt(titleProgress.season, 0),
+      ),
+    )
+    .all()
+}
+
+/**
+ * Последняя серия, которую смотрели в плеере: история и «Продолжить». Серии,
+ * только отмеченные с карточки, раздачи не имеют и сюда не попадают.
+ */
 export function lastTitleProgress(profileId: string, titleId: string) {
   return getDb()
     .select()
@@ -141,6 +190,7 @@ export function lastTitleProgress(profileId: string, titleId: string) {
         eq(titleProgress.profileId, profileId),
         eq(titleProgress.titleId, titleId),
         gt(titleProgress.position, 0),
+        isNotNull(titleProgress.torrentId),
       ),
     )
     .orderBy(desc(titleProgress.updatedAt))

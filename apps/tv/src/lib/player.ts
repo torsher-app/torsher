@@ -109,6 +109,87 @@ export function bufferedSeconds(bytes: number, size: number, duration: number) {
   return (bytes / size) * duration
 }
 
+// Запас, с которым нехватка скорости не страшна: пока впереди больше минуты,
+// плашка не пугает зрителя
+const LOW_BUFFER_SECONDS = 60
+
+/**
+ * Что сказать о сети в OSD. `done` — до конца файла всё скачано, скорость и
+ * пиры больше не важны. Иначе `level` 0–4 — палочки, как у сотовой связи:
+ * успевает ли скачивание за видео (скорость против среднего битрейта файла);
+ * `low` — запас кончается, а сеть не успевает.
+ */
+export type NetworkState
+  = { kind: 'done' } | { kind: 'signal', level: 0 | 1 | 2 | 3 | 4, low: boolean }
+
+export function networkState(input: {
+  speed: number
+  size: number
+  downloaded: number
+  duration: number
+  /** Секунд видео впереди позиции, уже скачанных */
+  bufferSeconds: number
+  /** Секунд до конца файла от позиции */
+  remaining: number
+}): NetworkState {
+  const { speed, size, downloaded, duration, bufferSeconds, remaining } = input
+
+  if (
+    (size > 0 && downloaded >= size)
+    || (remaining > 0 && bufferSeconds >= remaining - 1)
+  ) {
+    return { kind: 'done' }
+  }
+
+  const bitrate
+    = size > 0 && Number.isFinite(duration) && duration > 0 ? size / duration : 0
+  const ratio = bitrate > 0 ? speed / bitrate : 0
+  const level
+    = ratio >= 2 ? 4 : ratio >= 1.3 ? 3 : ratio >= 1 ? 2 : ratio > 0 ? 1 : 0
+
+  return {
+    kind: 'signal',
+    level,
+    low: bufferSeconds < LOW_BUFFER_SECONDS && ratio < 1,
+  }
+}
+
+/** Окно, в котором фатальные ошибки медиа hls.js считаются одной серией */
+export const MEDIA_ERROR_WINDOW_MS = 3000
+
+/**
+ * Что делать с фатальной ошибкой медиа hls.js, зная время прежних. Без
+ * предела `recoverMediaError` на битом сегменте зацикливается: первая —
+ * восстановление, вторая подряд — ещё и смена аудиокодека (лечит
+ * несовпадение HE-AAC и AAC), третья подряд — отказ.
+ */
+export function mediaErrorAction(
+  previous: number[],
+  now: number,
+): 'recover' | 'swapAndRecover' | 'fail' {
+  const recent = previous.filter(
+    at => now - at < MEDIA_ERROR_WINDOW_MS,
+  ).length
+
+  return recent === 0 ? 'recover' : recent === 1 ? 'swapAndRecover' : 'fail'
+}
+
+/**
+ * Учитывать ли `currentTime` видео (`track`) и сохранять ли позицию (`save`).
+ * При перезапуске дорожки hls.js отцепляется, и `currentTime` падает в 0: это
+ * не просмотр, позиция остаётся прежней и не сохраняется, пока не пойдёт новый
+ * поток. До первых кадров позицию не сохраняем: просмотра ещё не было.
+ */
+export function videoTimePolicy(state: {
+  phase: 'starting' | 'resume' | 'buffering' | 'playing'
+  restarting: boolean
+}) {
+  return {
+    track: !state.restarting,
+    save: !state.restarting && state.phase === 'playing',
+  }
+}
+
 /** Позиция чтения в байтах — по той же оценке битрейта */
 export function byteOffset(time: number, size: number, duration: number) {
   if (!size || !Number.isFinite(duration) || duration <= 0)

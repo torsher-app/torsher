@@ -3,7 +3,7 @@ import type { FoundRelease, RankContext } from './rank.ts'
 import { parseRelease } from '@torsher/release-parser'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_PROFILE } from './profile.ts'
-import { coversEpisode, rankReleases, russianVoice } from './rank.ts'
+import { coversEpisode, rankReleases, russianVoices, voiceOf } from './rank.ts'
 
 const GB = 1024 ** 3
 const high: TitleMatch = { confidence: 'high', issues: [] }
@@ -103,6 +103,72 @@ describe('rankReleases', () => {
     expect(only.top).toEqual(['eng'])
   })
 
+  it('закреплённая студия второй дорожкой делает её основной', () => {
+    const { ranked, top } = rankReleases(
+      [
+        release(
+          'both',
+          'Гавань / Сезон: 2 / Серии: 1-8 из 8 (2024) WEB-DL 720p | MVO (NewStudio, LostFilm)',
+          20,
+          4 * GB,
+        ),
+        release(
+          'dub',
+          'Гавань / Сезон: 2 / Серии: 1-8 из 8 (2024) WEB-DL 1080p | D',
+          20,
+          8 * GB,
+        ),
+      ],
+      { ...series, pinned: { studio: 'LostFilm' } },
+    )
+
+    expect(top[0]).toBe('both')
+    expect(ranked[0]!.voice).toEqual({ type: 'MVO', studio: 'LostFilm' })
+    expect(ranked[0]!.reason).toBe('pinnedVoice')
+  })
+
+  it('пак сезона без диапазона: размер на серию по числу серий из TMDB', () => {
+    const pack = release(
+      'pack',
+      'Гавань [S01] (2023) WEB-DL 1080p | P',
+      20,
+      8 * GB,
+    )
+    const withCount = rankReleases([pack], { ...series, seasonEpisodes: 8 })
+    const withoutCount = rankReleases([pack], series)
+
+    expect(withCount.ranked[0]!.episodeSize).toBe(GB)
+    expect(withoutCount.ranked[0]!.episodeSize).toBeUndefined()
+  })
+
+  it('русский оригинал: раздача без дорожек в названии — оригинал, а не «без озвучки»', () => {
+    const releases = [
+      release('plain', 'Гавань [S01] (2023) WEB-DL 1080p', 20, 8 * GB),
+      release('ukr', 'Гавань [S01] (2023) WEB-DL 1080p | Ukr', 20, 8 * GB),
+    ]
+    const russian = rankReleases(releases, {
+      ...series,
+      originalLanguage: 'ru',
+    })
+
+    expect(russian.top).toEqual(['plain'])
+    expect(russian.ranked.find(item => item.id === 'plain')!.voice).toEqual({
+      type: 'Original',
+      language: 'ru',
+    })
+    // Указана чужая дорожка — это не русский оригинал
+    expect(
+      russian.ranked.find(item => item.id === 'ukr')!.voice,
+    ).toBeUndefined()
+
+    const foreign = rankReleases(releases, {
+      ...series,
+      originalLanguage: 'en',
+    })
+
+    expect(foreign.ranked.every(item => !item.voice)).toBe(true)
+  })
+
   it('тройка: по профилю, лучшее качество, меньше размер', () => {
     const { ranked, top } = rankReleases(
       [
@@ -189,14 +255,23 @@ describe('rankReleases', () => {
   })
 })
 
-describe('russianVoice', () => {
-  it('выбирает лучший тип из русских дорожек', () => {
-    expect(
-      russianVoice(
-        parseRelease('Фонарь (2021) BDRip 1080p | L, MVO, Original'),
-        DEFAULT_PROFILE,
-      ),
-    ).toMatchObject({ type: 'MVO' })
+describe('russianVoices и voiceOf', () => {
+  const parsed = parseRelease('Фонарь (2021) BDRip 1080p | L, MVO, Original')
+
+  it('все русские дорожки по профилю, без оригинала', () => {
+    expect(russianVoices(parsed, movie)).toEqual([
+      { type: 'MVO' },
+      { type: 'L' },
+    ])
+  })
+
+  it('основная — лучшая по профилю, а закреплённая сильнее', () => {
+    const voices = russianVoices(parsed, movie)
+
+    expect(voiceOf(voices, movie)).toEqual({ type: 'MVO' })
+    expect(voiceOf(voices, { ...movie, pinned: { type: 'L' } })).toEqual({
+      type: 'L',
+    })
   })
 })
 

@@ -1,6 +1,6 @@
 import type { ParseContext } from '../context.ts'
 import type { Token } from '../tokenize.ts'
-import type { AudioTrack, VoiceType } from '../types.ts'
+import type { AudioChannels, AudioTrack, VoiceType } from '../types.ts'
 import { findStudio, studioMaxWords } from '../studios.ts'
 
 export interface AudioResult {
@@ -153,6 +153,21 @@ function studioAt(ctx: ParseContext, token: Token): Item | undefined {
   return undefined
 }
 
+// `| SDR-Jaskier`: студия склеена с тегом через дефис, а релиз-группу после `|` не ищут
+const TAGGED_STUDIO = /^(?:sdr|hdr|hdr10|dv)-(.+)$/
+
+function taggedStudioAt(token: Token): Item | undefined {
+  if (!token.afterPipe || token.kind !== 'word')
+    return undefined
+
+  const glued = TAGGED_STUDIO.exec(token.norm)
+  const studio = glued ? findStudio(glued[1]!) : undefined
+
+  return studio
+    ? { kind: 'studio', name: studio.name, type: studio.type, tokens: [token] }
+    : undefined
+}
+
 function itemAt(ctx: ParseContext, token: Token): Item | undefined {
   if (token.kind === 'punct') {
     if (token.value === '+' || token.value === '|' || token.value === ';')
@@ -162,7 +177,7 @@ function itemAt(ctx: ParseContext, token: Token): Item | undefined {
     return undefined
   }
 
-  const studio = studioAt(ctx, token)
+  const studio = studioAt(ctx, token) ?? taggedStudioAt(token)
   if (studio)
     return studio
 
@@ -327,4 +342,29 @@ export function parseAudio(ctx: ParseContext, from: number): AudioResult {
     ),
     subs: [...new Set(subs)],
   }
+}
+
+// `5.1`, `DDP5.1`, `AAC2.0`: каналы в конце тега
+const CHANNELS = /(?:^|[a-z])([257]\.[01])$/
+const CHANNEL_ORDER: AudioChannels[] = ['2.0', '5.1', '7.1']
+
+/**
+ * Каналы звука из тегов после названия — наибольшие из указанных. Токены не
+ * забирает: `5.1` бывает частью тега, который уже разобрал другой шаг.
+ */
+export function parseChannels(
+  ctx: ParseContext,
+  from: number,
+): AudioChannels | undefined {
+  let best = -1
+
+  for (const token of ctx.tokens.slice(from)) {
+    const found = token.kind === 'word' ? CHANNELS.exec(token.norm) : null
+    const index = found ? CHANNEL_ORDER.indexOf(found[1] as AudioChannels) : -1
+
+    if (index > best)
+      best = index
+  }
+
+  return best >= 0 ? CHANNEL_ORDER[best] : undefined
 }

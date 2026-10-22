@@ -27,6 +27,7 @@ import ScreenState from '../components/ScreenState.vue'
 import TopCard from '../components/TopCard.vue'
 import { useHero } from '../composables/useHero.ts'
 import { useHome } from '../composables/useHome.ts'
+import { useStackScroll } from '../composables/useStackScroll.ts'
 import { useFocus } from '../focus/index.ts'
 import { firstVisibleRow, stackOffset } from '../lib/rowStack.ts'
 
@@ -53,9 +54,15 @@ const railSection = computed(() => `rail-${railItem.value}`)
 
 // Ряд, под который выставлен экран: меняется от пульта и колеса, не от наведения
 const aligned = ref(0)
-const rowsOffset = ref(0)
 const firstVisible = ref(0)
 const rowsElement = ref<HTMLElement>()
+const {
+  native: nativeScroll,
+  offset: rowsOffset,
+  alignTo: scrollRowsTo,
+  onScroll: onRowsScroll,
+  transform: rowsTransform,
+} = useStackScroll(rowsElement)
 const lastSection = ref<string>()
 const rowElements: (HTMLElement | undefined)[] = []
 
@@ -74,9 +81,24 @@ function edgesOf(index: number): SectionEdges {
   }
 }
 
-// Картинки держат только ряды рядом с фокусным: остальные их не грузят
+// В вебе ряды прокручивают колесом мимо выравнивания: картинки — от верхнего видимого
+const topVisibleRow = computed(() => {
+  if (!nativeScroll)
+    return aligned.value
+
+  const tops = rows.value.map((_, index) => rowElements[index]?.offsetTop ?? 0)
+
+  return Math.min(
+    firstVisibleRow(tops, rowsOffset.value),
+    rows.value.length - 1,
+  )
+})
+
+// Картинки держат только ряды рядом с фокусным (в вебе — с видимыми): остальные их не грузят
 function isNear(index: number) {
-  return index >= aligned.value - 1 && index <= aligned.value + 2
+  const anchor = topVisibleRow.value
+
+  return index >= anchor - 1 && index <= anchor + 2
 }
 
 function setRowElement(index: number) {
@@ -97,20 +119,34 @@ function alignRows() {
   const target = rowElements[aligned.value]
 
   if (!container || !target) {
-    rowsOffset.value = 0
+    scrollRowsTo(0)
     firstVisible.value = 0
 
     return
   }
 
-  const tops = rows.value.map((_, index) => rowElements[index]?.offsetTop ?? 0)
+  // В вебе ряды прокручиваются в своём окне под hero и под него не заезжают
+  if (nativeScroll) {
+    scrollRowsTo(
+      stackOffset(
+        target.offsetTop,
+        container.scrollHeight,
+        container.clientHeight,
+      ),
+    )
 
-  rowsOffset.value = stackOffset(
+    return
+  }
+
+  const tops = rows.value.map((_, index) => rowElements[index]?.offsetTop ?? 0)
+  const next = stackOffset(
     target.offsetTop,
     container.offsetHeight,
     window.innerHeight - container.offsetTop,
   )
-  firstVisible.value = firstVisibleRow(tops, rowsOffset.value)
+
+  scrollRowsTo(next)
+  firstVisible.value = firstVisibleRow(tops, next)
 }
 
 function onFocusItem(rowIndex: number, index: number, via: FocusVia) {
@@ -205,7 +241,9 @@ onBeforeUnmount(() => {
       v-else-if="rows.length > 0"
       ref="rowsElement"
       class="home__rows"
-      :style="{ transform: `translateY(${-rowsOffset}px)` }"
+      :class="{ 'home__rows--native': nativeScroll }"
+      :style="{ transform: rowsTransform }"
+      @scroll="onRowsScroll"
     >
       <ContentRow
         v-for="(row, index) in rows"
@@ -292,6 +330,17 @@ onBeforeUnmount(() => {
   right: 0;
   left: 0;
   transition: transform var(--motion-base) var(--motion-easing);
+}
+
+/* Веб: окно рядов под hero прокручивается нативно */
+.home__rows--native {
+  bottom: 0;
+  overflow-y: auto;
+  transition: none;
+}
+
+.home__rows--native::-webkit-scrollbar {
+  display: none;
 }
 
 .home__row--above {

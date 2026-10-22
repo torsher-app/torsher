@@ -9,7 +9,7 @@ export type MatchConfidence = 'high' | 'medium' | 'low'
 
 /**
  * Что не сошлось: `title` — название не совпало ни с одним алиасом,
- * `partialTitle` — совпало начало, `year` — год вне допуска, `kind` — фильм
+ * `partialTitle` — совпало начало (вместе с другим сомнением — чужая раздача), `year` — год вне допуска, `kind` — фильм
  * вместо сериала или наоборот, `season` — нужного сезона в раздаче нет,
  * `noSeason` — сезон в раздаче не указан.
  */
@@ -146,6 +146,11 @@ export function matchTitle(
 
   if (parsed.year !== undefined && !yearFits(parsed.year, target))
     issues.push('year')
+
+  // Похожее начало без сезона или с чужим годом — другой тайтл
+  // («Пациент Зеро (2018)» для «Пациента»), а не продолжение с подзаголовком
+  if (issues.includes('partialTitle') && issues.length > 1)
+    return { confidence: 'low', issues }
 
   return { confidence: issues.length > 0 ? 'medium' : 'high', issues }
 }

@@ -11,6 +11,7 @@ import {
   pageOffset,
   renderWindow,
 } from '../lib/rowTrack.ts'
+import { platform } from '../platform/index.ts'
 import AppIcon from './AppIcon.vue'
 import FocusSection from './FocusSection.vue'
 
@@ -41,7 +42,10 @@ const { t } = useI18n()
 const focus = useFocus()
 
 const root = ref<HTMLElement>()
+const clip = ref<HTMLElement>()
 const view = ref<HTMLElement>()
+// В вебе лента прокручивается нативно (тачпад вбок, Shift + колесо), на ТВ — transform
+const native = platform === 'web'
 // Шаг и ширина карточки — в пикселях экрана, меряются по DOM
 const step = ref(0)
 const itemWidth = ref(0)
@@ -64,10 +68,29 @@ const visible = computed(() =>
 const max = computed(() => maxOffset(metrics.value))
 
 const trackStyle = computed(() => ({
-  transform: `translateX(${-offset.value}px)`,
-  // Карточки до окна рендера не рисуются: место под них держит отступ
+  transform: native ? undefined : `translateX(${-offset.value}px)`,
+  // Карточки вне окна рендера не рисуются: место под них держат отступы,
+  // в вебе и справа — иначе нативной прокрутке некуда ехать
   paddingLeft: `${range.value.start * step.value}px`,
+  paddingRight: native
+    ? `${(props.items.length - range.value.end) * step.value}px`
+    : undefined,
 }))
+
+function setOffset(value: number) {
+  if (!native) {
+    offset.value = value
+
+    return
+  }
+
+  clip.value?.scrollTo({ left: value, behavior: 'smooth' })
+}
+
+function onClipScroll() {
+  if (native && clip.value)
+    offset.value = clip.value.scrollLeft
+}
 
 function measure() {
   const elements = view.value?.querySelectorAll<HTMLElement>('[data-index]')
@@ -82,7 +105,7 @@ function measure() {
       ? elements[1]!.offsetLeft - first.offsetLeft
       : first.offsetWidth
   viewWidth.value = view.value.clientWidth
-  offset.value = ensureVisible(offset.value, focused ?? 0, metrics.value)
+  setOffset(ensureVisible(offset.value, focused ?? 0, metrics.value))
 }
 
 // Карточка под фокусом ушла из окна рендера (ряд пролистали стрелкой): её больше нет в DOM
@@ -92,7 +115,7 @@ watch(range, ({ start, end }) => {
 })
 
 function page(direction: 1 | -1) {
-  offset.value = pageOffset(offset.value, direction, metrics.value)
+  setOffset(pageOffset(offset.value, direction, metrics.value))
 }
 
 const stopFocus = focus.onFocus((el, via) => {
@@ -105,13 +128,10 @@ const stopFocus = focus.onFocus((el, via) => {
   // Фокусируется сама карточка, а позицию в ряду знает её обёртка
   const index = Number(el.closest<HTMLElement>('[data-index]')?.dataset.index)
 
-  offset.value = offsetOnFocus(
-    offset.value,
-    index,
-    via,
-    metrics.value,
-    focused,
-  )
+  const next = offsetOnFocus(offset.value, index, via, metrics.value, focused)
+
+  if (next !== offset.value)
+    setOffset(next)
   focused = index
   emit('focusItem', index, via)
 })
@@ -132,48 +152,58 @@ onBeforeUnmount(() => {
     <h2 v-if="title" class="row__title">
       {{ title }}
     </h2>
-    <div class="row__clip">
-      <div ref="view" class="row__view">
-        <!-- Стрелки листания видны только под указкой; фокус они не забирают -->
-        <button
-          v-if="offset > 0"
-          class="row__page row__page--back"
-          type="button"
-          tabindex="-1"
-          :aria-label="t('home.pageBack')"
-          @mousedown.prevent
-          @click="page(-1)"
-        >
-          <AppIcon name="chevronLeft" />
-        </button>
-        <FocusSection
-          :name="section"
-          :edges="edges"
-          manual-scroll
-          class="row__track"
-          :style="trackStyle"
-        >
-          <div
-            v-for="(item, i) in visible"
-            :key="itemKey(item)"
-            class="row__item"
-            :data-index="range.start + i"
+    <div class="row__frame">
+      <div
+        ref="clip"
+        class="row__clip"
+        :class="{ 'row__clip--native': native }"
+        @scroll="onClipScroll"
+      >
+        <div ref="view" class="row__view">
+          <FocusSection
+            :name="section"
+            :edges="edges"
+            manual-scroll
+            class="row__track"
+            :style="trackStyle"
           >
-            <slot name="item" :item="item" :index="range.start + i" />
-          </div>
-        </FocusSection>
-        <button
-          v-if="offset < max"
-          class="row__page row__page--forward"
-          type="button"
-          tabindex="-1"
-          :aria-label="t('home.pageForward')"
-          @mousedown.prevent
-          @click="page(1)"
-        >
-          <AppIcon name="chevronRight" />
-        </button>
+            <div
+              v-for="(item, i) in visible"
+              :key="itemKey(item)"
+              class="row__item"
+              :data-index="range.start + i"
+            >
+              <slot name="item" :item="item" :index="range.start + i" />
+            </div>
+          </FocusSection>
+        </div>
       </div>
+      <!--
+        Стрелки листания видны только под указкой; фокус они не забирают. Вне
+        ленты: в вебе она прокручивается нативно и увезла бы их с собой
+      -->
+      <button
+        v-if="offset > 0"
+        class="row__page row__page--back"
+        type="button"
+        tabindex="-1"
+        :aria-label="t('home.pageBack')"
+        @mousedown.prevent
+        @click="page(-1)"
+      >
+        <AppIcon name="chevronLeft" />
+      </button>
+      <button
+        v-if="offset < max - 1"
+        class="row__page row__page--forward"
+        type="button"
+        tabindex="-1"
+        :aria-label="t('home.pageForward')"
+        @mousedown.prevent
+        @click="page(1)"
+      >
+        <AppIcon name="chevronRight" />
+      </button>
     </div>
   </section>
 </template>
@@ -208,6 +238,21 @@ onBeforeUnmount(() => {
   margin: calc(var(--u) * -40) 0 calc(var(--u) * -40) calc(var(--u) * -48);
   padding: calc(var(--u) * 40) 0 calc(var(--u) * 40) calc(var(--u) * 48);
   overflow: hidden;
+}
+
+/* Ряд со стрелками: стрелки стоят над лентой, а не в ней */
+.row__frame {
+  position: relative;
+}
+
+/* Веб: лента прокручивается нативно по горизонтали, вертикаль уходит странице */
+.row__clip--native {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.row__clip--native::-webkit-scrollbar {
+  display: none;
 }
 
 /* Видимая часть ряда для расчётов — до safe area справа */
@@ -253,12 +298,12 @@ onBeforeUnmount(() => {
 }
 
 .row__page--forward {
-  right: calc(var(--safe-x) * -1);
+  right: 0;
   width: calc(var(--u) * 120 + var(--safe-x));
   background: linear-gradient(270deg, var(--color-bg) 30%, rgba(11, 13, 18, 0));
 }
 
-[data-input='pointer'] .row__view:hover .row__page {
+[data-input='pointer'] .row__frame:hover .row__page {
   display: flex;
 }
 </style>

@@ -10,9 +10,13 @@ import {
   formatDuration,
   formatGigabytes,
   holdScrub,
+  MEDIA_ERROR_WINDOW_MS,
+  mediaErrorAction,
+  networkState,
   pressScrub,
   SCRUB_TICK_MS,
   seekStep,
+  videoTimePolicy,
 } from './player.ts'
 
 const peers = (connected: number) => ({ connected, found: connected * 3 })
@@ -135,5 +139,92 @@ describe('место на диске', () => {
   it('гигабайты с одним знаком по локали', () => {
     expect(formatGigabytes(2.25 * 1024 ** 3, 'ru_RU')).toBe('2,3')
     expect(formatGigabytes(0, 'en_US')).toBe('0.0')
+  })
+})
+
+describe('networkState', () => {
+  // 1 ГБ на 1000 с — битрейт 1 МБ/с
+  const base = {
+    size: 1e9,
+    downloaded: 1e8,
+    duration: 1000,
+    bufferSeconds: 300,
+    remaining: 800,
+  }
+
+  it('файл скачан или скачан до конца от позиции — сеть не важна', () => {
+    expect(networkState({ ...base, speed: 0, downloaded: 1e9 })).toEqual({
+      kind: 'done',
+    })
+    expect(networkState({ ...base, speed: 0, bufferSeconds: 800 })).toEqual({
+      kind: 'done',
+    })
+  })
+
+  it('палочки — скорость против битрейта', () => {
+    const level = (speed: number) => {
+      const state = networkState({ ...base, speed })
+      return state.kind === 'signal' ? state.level : -1
+    }
+
+    expect([0, 0.5e6, 1e6, 1.5e6, 3e6].map(level)).toEqual([0, 1, 2, 3, 4])
+  })
+
+  it('тревога — только когда запас кончается и сеть не успевает', () => {
+    expect(
+      networkState({ ...base, speed: 0, bufferSeconds: 300 }),
+    ).toMatchObject({ low: false })
+    expect(
+      networkState({ ...base, speed: 0.5e6, bufferSeconds: 40 }),
+    ).toMatchObject({ low: true })
+    expect(
+      networkState({ ...base, speed: 2e6, bufferSeconds: 40 }),
+    ).toMatchObject({ low: false })
+  })
+})
+
+describe('mediaErrorAction', () => {
+  it('сначала восстанавливает', () => {
+    expect(mediaErrorAction([], 10_000)).toBe('recover')
+  })
+
+  it('вторая ошибка в окне — смена аудиокодека и восстановление', () => {
+    expect(mediaErrorAction([10_000], 12_000)).toBe('swapAndRecover')
+  })
+
+  it('третья ошибка в окне — отказ', () => {
+    expect(mediaErrorAction([10_000, 11_000], 12_000)).toBe('fail')
+  })
+
+  it('ошибки реже окна снова восстанавливаются', () => {
+    expect(mediaErrorAction([10_000], 10_000 + MEDIA_ERROR_WINDOW_MS)).toBe(
+      'recover',
+    )
+    expect(
+      mediaErrorAction([1000, 5000], 5000 + MEDIA_ERROR_WINDOW_MS + 1),
+    ).toBe('recover')
+  })
+})
+
+describe('videoTimePolicy', () => {
+  it('во время просмотра позиция идёт и сохраняется', () => {
+    expect(videoTimePolicy({ phase: 'playing', restarting: false })).toEqual({
+      track: true,
+      save: true,
+    })
+  })
+
+  it('до первых кадров позиция идёт, но не сохраняется', () => {
+    expect(videoTimePolicy({ phase: 'buffering', restarting: false })).toEqual({
+      track: true,
+      save: false,
+    })
+  })
+
+  it('перезапуск дорожки: сброс currentTime в 0 не трогает позицию и не сохраняется', () => {
+    expect(videoTimePolicy({ phase: 'playing', restarting: true })).toEqual({
+      track: false,
+      save: false,
+    })
   })
 })

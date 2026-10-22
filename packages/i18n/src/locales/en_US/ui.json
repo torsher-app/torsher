@@ -44,14 +44,12 @@
   },
   "title": {
     "watch": "Watch",
-    "sources": "Sources",
     "movie": "Movie",
     "series": "Series",
     "seasonCount": "{n} season | {n} seasons",
     "runtime": "{hours} h {minutes} min",
     "runtimeMinutes": "{minutes} min",
     "rating": "TMDB {rating}",
-    "watchEpisode": "Watch · S{season}E{episode}",
     "ongoing": "present",
     "peekSeries": "Seasons and episodes · cast · similar",
     "peekMovie": "Cast · similar · about the movie",
@@ -73,20 +71,14 @@
       "aka": "Also known as",
       "data": "Data"
     },
-    "continue": "Continue",
-    "continueEpisode": "Continue · S{season}E{episode}",
     "left": "{n} min left",
-    "voice": "Voice-over",
-    "sourcesCount": "Sources {n}"
+    "history": "You watched: {line}",
+    "okMark": "OK — mark as watched",
+    "okUnmark": "OK — clear watched mark"
   },
   "watch": {
     "searching": "Searching for releases…",
-    "preparing": "Preparing the release…",
-    "waitingFiles": "Waiting for the file list from peers…",
-    "noIndexers": "No indexers connected",
-    "nothing": "No releases found",
     "searchFailed": "Could not search for releases",
-    "best": "{quality} · {voice} · {seeders}",
     "errors": {
       "noSources": "No suitable releases. Open Sources and pick a release yourself.",
       "notPlayable": "The releases could not be opened: no peers or no such episode. Try another one in Sources.",
@@ -101,14 +93,15 @@
     "count": "{n} release | {n} releases",
     "updatedNow": "updated just now",
     "updated": "updated {n} min ago",
-    "profile": "Profile: {qualities} · Russian voice-over",
-    "failed": "{failed} of {total} indexers did not respond",
-    "all": "All",
-    "showAll": "Show all {n}, including without recognized voice-over",
-    "showTop": "Show the best",
+    "failed": "indexers not responding: {failed} of {total}",
     "refresh": "Refresh",
     "seeders": "{n} seeder | {n} seeders",
     "perEpisode": "{size} per episode",
+    "leechers": "{n} leecher | {n} leechers",
+    "bitrate": "≈ {n} Mbps",
+    "subs": "subtitles: {list}",
+    "subsAny": "has subtitles",
+    "alsoVoices": "also: {list}",
     "units": {
       "gb": "{amount} GB",
       "mb": "{amount} MB"
@@ -141,19 +134,55 @@
         "title": "No releases found",
         "text": "The indexers found nothing for this title's names. Try searching again later."
       },
+      "failed": {
+        "title": "Indexers did not respond",
+        "text": "None of the indexers answered the search. Check them in the control panel under Sources, then refresh."
+      },
       "filtered": {
         "title": "No releases match these filters",
         "text": "Pick another voice-over or quality."
       }
+    },
+    "sortBest": "Recommended",
+    "sortSeasons": "By season",
+    "sortSeeders": "By seeders",
+    "sortSize": "By size",
+    "sortDate": "By date",
+    "allSeasons": "All seasons",
+    "seasonN": "Season {n}",
+    "anyVoice": "any",
+    "anyQuality": "any",
+    "lastWatched": "You watched",
+    "history": "You watched: {line}",
+    "historyEmpty": "No watch history",
+    "connecting": "Connecting to the release…",
+    "controlSort": "Sort: {value}",
+    "controlSeason": "Season: {value}",
+    "controlVoice": "Voice-over: {value}",
+    "controlQuality": "Quality: {value}",
+    "anySeason": "all",
+    "allVoices": "Any voice-over",
+    "allQualities": "Any quality",
+    "resetFilters": "Reset filters",
+    "panel": {
+      "sort": "Sort",
+      "season": "Season",
+      "voice": "Voice-over",
+      "quality": "Quality"
     }
   },
-  "voice": {
-    "title": "Voice-over",
-    "pinned": "same as previous episodes",
-    "upTo": "up to {quality}",
-    "unpin": "Don't pin",
-    "allSources": "All releases",
-    "empty": "No voice-over recognized in the releases found."
+  "files": {
+    "title": "Files",
+    "connecting": "Connecting to the release…",
+    "waiting": "Waiting for the file list from peers…",
+    "timeout": "Peers did not send the file list. Try another release.",
+    "error": "Could not load the file list. Try again or pick another release.",
+    "empty": "The release has no video.",
+    "toSources": "Back to sources",
+    "autostart": "Starting in {n} s — press any key to cancel",
+    "season": "Season {n}",
+    "watched": "watched",
+    "count": "{n} file | {n} files"
   },
   "countries": {
     "US": "USA",
@@ -247,6 +276,8 @@
     "speed": "{value} MB/s",
     "bufferSeconds": "buffer {n} s",
     "bufferMinutes": "buffer {n} min",
+    "downloaded": "Downloaded",
+    "signal": "Network: {n} of 4",
     "remaining": "−{time}",
     "endsAt": "ends at {time}",
     "audio": "Audio",
@@ -262,16 +293,12 @@
       "waitingPeers": "Waiting for peers",
       "buffering": "Buffering"
     },
-    "stepNames": {
-      "peers": "Peers",
-      "buffer": "Buffer",
-      "start": "Start"
-    },
     "waitingHint": "Nobody is sharing this file yet. The torrent may be rare: wait or pick another one.",
     "retry": "Retry",
     "back": "Back",
     "resume": {
-      "text": "You have already started watching this file.",
+      "text": "You stopped at {time}",
+      "textOf": "You stopped at {time} of {total}",
       "continue": "Resume from {time}",
       "restart": "Start over"
     },
@@ -313,14 +340,16 @@
       "storage": {
         "no_space": {
           "title": "The server is low on disk space",
-          "text": "Playback needs {needed} GB more, but only {available} GB is free above the reserve. Free up space in the panel: Downloads or Settings → Storage."
+          "text": "Playback needs {needed} GB more. The disk has {free} GB free, but Torsher keeps {reserve} GB in reserve. Free up space or lower the reserve in the panel: Settings → Storage."
         },
         "cache_limit": {
           "title": "The file doesn't fit in the cache",
-          "text": "Playback needs {needed} GB more, but the cache has {available} GB left. Raise the cache limit in the panel or keep the torrent."
+          "text": "Playback needs {needed} GB more, but only {available} GB of the {limit} GB cache is left. Raise the cache limit in the panel: Settings → Storage."
         }
       }
-    }
+    },
+    "ahead": "{size} ahead",
+    "episodeOf": "Season {season} · Episode {episode}"
   },
   "languages": {
     "rus": "Russian",

@@ -18,6 +18,7 @@ export type IconName
     | 'audio'
     | 'subtitles'
     | 'check'
+    | 'close'
 
 const props = defineProps<{ name: IconName }>()
 
@@ -53,6 +54,7 @@ const PATHS: Record<IconName, string[]> = {
     'M10.5 10.2a2.2 2.2 0 1 0 0 3.6M17 10.2a2.2 2.2 0 1 0 0 3.6',
   ],
   check: ['m5 12.5 4.5 4.5L19 7.5'],
+  close: ['M6.5 6.5l11 11', 'M17.5 6.5l-11 11'],
 }
 
 const filled = computed(() => props.name === 'play' || props.name === 'pause')

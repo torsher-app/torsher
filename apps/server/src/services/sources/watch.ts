@@ -1,11 +1,13 @@
 import type { ParsedRelease } from '@torsher/release-parser'
 import type { Torrent } from '../../db/schema.ts'
 import type { RankedRelease } from './rank.ts'
-import { matchFiles } from '@torsher/release-parser'
+import { matchFiles, parseRelease } from '@torsher/release-parser'
 import { EngineError } from '../engine/index.ts'
+import { parseCatalogId } from '../tmdb/mappers.ts'
 import {
   addMagnet,
   addTorrentFile,
+  getTorrent,
   InvalidMagnetError,
   isVideoFile,
   linkTitle,
@@ -13,6 +15,7 @@ import {
 import { downloadTorrent, SourceError } from '../torznab/index.ts'
 import { getTitleSources } from './index.ts'
 import { rememberChoice } from './progress.ts'
+import { seasonReleases } from './seasonRelease.ts'
 
 // Столько кандидатов пробуем за один запрос: каждый стоит загрузки
 // `.torrent` или ожидания метаданных
@@ -45,6 +48,8 @@ export interface WatchRequest {
   episode?: number
   /** Раздача из листа источников; без неё — лучшая по профилю. */
   candidateId?: string
+  /** Раздача сезона, уже в базе: серия из неё без поиска по индексаторам. */
+  torrentId?: string
 }
 
 export type WatchResult
@@ -150,6 +155,100 @@ export function pickFile(
   return single && videos.length === 1 ? videos[0]!.index : undefined
 }
 
+export type OpenResult
+  = | { status: 'ready', torrentId: string }
+    | { status: 'resolving', torrentId: string }
+
+/**
+ * Экран «Источники»: выбранная раздача → база и движок, без выбора файла —
+ * его выбирают в «Файлах». Поиск уже в кэше: список только что показан.
+ */
+export async function openCandidate(
+  titleId: string,
+  candidateId: string,
+  profileId: string,
+): Promise<OpenResult | undefined> {
+  const sources = await getTitleSources(titleId, {
+    allSeasons: true,
+    profileId,
+  })
+
+  if (!sources)
+    return undefined
+
+  const release = sources.ranking.ranked.find(
+    item => item.id === candidateId,
+  )
+
+  if (!release)
+    throw new WatchError('candidate_gone', 'Release is no longer available')
+
+  let torrent: Torrent | undefined
+
+  try {
+    torrent = await acquire(release, () => true)
+  }
+  catch (err) {
+    if (isSkippable(err))
+      throw new WatchError('not_playable', 'The release could not be added')
+
+    throw err
+  }
+
+  if (!torrent || torrent.status === 'failed')
+    throw new WatchError('not_playable', 'The release could not be added')
+
+  const linked = linkTitle(torrent, titleId)
+
+  return {
+    status: linked.status === 'resolving' ? 'resolving' : 'ready',
+    torrentId: linked.id,
+  }
+}
+
+/** Серия из раздачи сезона: раздача уже в базе, файл — по номеру серии */
+function watchTorrent(
+  titleId: string,
+  request: WatchRequest & { torrentId: string },
+  profileId: string,
+): WatchResult | undefined {
+  const ref = parseCatalogId(titleId)
+
+  if (!ref)
+    return undefined
+
+  const found = getTorrent(request.torrentId)
+
+  if (!found || found.status === 'failed')
+    throw new WatchError('candidate_gone', 'Release is no longer available')
+
+  const torrent = linkTitle(found, titleId)
+
+  if (torrent.status === 'resolving')
+    return { status: 'resolving', torrentId: torrent.id, candidateId: '' }
+
+  const target = {
+    kind: ref.type === 'movie' ? ('movie' as const) : ('series' as const),
+    season: request.season,
+    episode: request.episode,
+  }
+  const fileIndex = pickFile(torrent, parseRelease(torrent.name), target)
+
+  if (fileIndex === undefined)
+    throw new WatchError('not_playable', 'The episode is not in this release')
+
+  const voice = seasonReleases(profileId, titleId).find(
+    release => release.season === request.season,
+  )?.voice
+
+  rememberChoice(
+    { profileId, titleId, season: target.season, episode: target.episode },
+    { torrentId: torrent.id, fileIndex, voice },
+  )
+
+  return { status: 'ready', torrentId: torrent.id, fileIndex, candidateId: '' }
+}
+
 /**
  * «Смотреть» из карточки: лучший кандидат (или выбранный в листе) → раздача
  * в базе и движке → файл серии. Не вышло — следующий кандидат тройки.
@@ -160,6 +259,14 @@ export async function watchTitle(
   request: WatchRequest,
   profileId: string,
 ): Promise<WatchResult | undefined> {
+  if (request.torrentId) {
+    return watchTorrent(
+      titleId,
+      { ...request, torrentId: request.torrentId },
+      profileId,
+    )
+  }
+
   // У сериала без серии — первая; у фильма серия не учитывается
   const sources = await getTitleSources(titleId, {
     season: request.season,

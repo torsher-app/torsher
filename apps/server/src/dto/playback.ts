@@ -160,6 +160,11 @@ export const insufficientStorageResponse = z
     // Байт: сколько ещё скачает просмотр и сколько можно
     needed: z.number(),
     available: z.number(),
+    // Байт: свободно на томе после вытеснения кэша, запас и лимит кэша —
+    // чтобы клиент объяснил нехватку словами настроек хранилища
+    free: z.number(),
+    minFree: z.number(),
+    cacheLimit: z.number(),
   })
   .meta({ id: 'insufficientStorageResponse' })
 

@@ -49,6 +49,13 @@ describe('matchTitle', () => {
     ).toEqual({ confidence: 'medium', issues: ['partialTitle'] })
   })
 
+  it.each([
+    'Тихая гавань Зеро / Harbor Zero (2018) BDRip 1080p | P',
+    'Тихая гавань X (2023) WEB-DL 1080p | L1',
+  ])('похожее начало без сезона: %s → low', (title) => {
+    expect(match(title, harbor).confidence).toBe('low')
+  })
+
   it('без сезона и не первый сезон → medium', () => {
     expect(match('Тихая гавань (2023-2025) WEB-DL 1080p', harbor)).toEqual({
       confidence: 'medium',
@@ -83,6 +90,13 @@ describe('matchTitle', () => {
     expect(match('The Paper Lantern (1987) DVDRip', lantern)).toEqual({
       confidence: 'medium',
       issues: ['year'],
+    })
+  })
+
+  it('фильм с похожим началом и чужим годом → low', () => {
+    expect(match('Бумажный фонарь 2 (2024) WEB-DL 1080p', lantern)).toEqual({
+      confidence: 'low',
+      issues: ['partialTitle', 'year'],
     })
   })
 

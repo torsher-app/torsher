@@ -1,7 +1,10 @@
 import type Hls from 'hls.js'
 import { onScopeDispose } from 'vue'
+import { mediaErrorAction } from '../lib/player.ts'
 
 const HLS_NATIVE = 'application/vnd.apple.mpegurl'
+// Так сервер отвечает, когда перепаковка сегмента не удалась
+const TRANSCODE_FAILED = 502
 
 /**
  * Поток перепаковки: hls.js на MSE, а где его нет — нативный HLS. hls.js
@@ -30,6 +33,7 @@ export function useHls(onFatal: () => void) {
       return true
     }
 
+    let mediaErrors: number[] = []
     const player = new HlsPlayer({
       startPosition: start,
       // Сервер отдаёт сегмент, когда ffmpeg его допишет: у свежей раздачи —
@@ -56,12 +60,39 @@ export function useHls(onFatal: () => void) {
     })
 
     player.on(HlsPlayer.Events.ERROR, (_event, data) => {
+      // 502 — ffmpeg не прочитал вход (битые или пустые данные): повторы
+      // дадут то же самое, а зритель минуту смотрел бы на буферизацию
+      if (
+        data.details === HlsPlayer.ErrorDetails.FRAG_LOAD_ERROR
+        && data.response?.code === TRANSCODE_FAILED
+      ) {
+        detach()
+        onFatal()
+        return
+      }
+
       if (!data.fatal)
         return
 
-      if (data.type === HlsPlayer.ErrorTypes.MEDIA_ERROR)
-        player.recoverMediaError()
-      else onFatal()
+      if (data.type !== HlsPlayer.ErrorTypes.MEDIA_ERROR) {
+        onFatal()
+        return
+      }
+
+      const now = Date.now()
+      const action = mediaErrorAction(mediaErrors, now)
+
+      mediaErrors = [...mediaErrors, now].slice(-2)
+
+      if (action === 'fail') {
+        detach()
+        onFatal()
+        return
+      }
+
+      if (action === 'swapAndRecover')
+        player.swapAudioCodec()
+      player.recoverMediaError()
     })
     player.loadSource(url)
     player.attachMedia(video)
