@@ -341,6 +341,17 @@ export async function torrentStats(infoHash: string): Promise<EngineStats> {
 }
 
 /**
+ * Адрес потока файла для ffmpeg и ffprobe: они читают движок сами, с Range,
+ * без прокси сервера. Движок слушает только loopback.
+ */
+export function engineStreamUrl(infoHash: string, fileIndex: number) {
+  if (!baseUrl)
+    throw engineUnavailableError()
+
+  return `${baseUrl}/torrents/${infoHash}/files/${fileIndex}/stream`
+}
+
+/**
  * Поток файла раздачи. Ответ отдаётся как есть, включая 206 и 416: прокси
  * переносит статус и заголовки Range. Отмена — через `signal` вызывающего.
  */

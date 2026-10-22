@@ -19,3 +19,8 @@ export function exitApp() {
   else if (palm)
     window.close()
 }
+
+/** Витрина открыта в приложении webOS: системный плеер играет MKV и AC3 */
+export function isWebos() {
+  return !!window.PalmSystem
+}

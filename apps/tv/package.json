@@ -15,6 +15,7 @@
     "@torsher/api-client": "workspace:*",
     "@torsher/i18n": "workspace:*",
     "@torsher/tokens": "workspace:*",
+    "hls.js": "1.7.2",
     "vue": "^3.5.44",
     "vue-i18n": "^11.4.16",
     "vue-router": "^5.4.0"

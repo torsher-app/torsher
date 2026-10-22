@@ -90,6 +90,18 @@ describe('findLegacyApis', () => {
     ])
   })
 
+  it('пропускает поле `reason` у своих объектов и результатов allSettled', () => {
+    expect(apis('this.retryDate=1/0,t.reason=`offline`;return')).toEqual([])
+    expect(
+      apis('for(let e of t||[])e.status===`rejected`&&i(e.reason);return e()'),
+    ).toEqual([])
+    // Чтение поля сигнала по-прежнему нарушение
+    expect(apis('r(t.reason);t.reason==null')).toEqual([
+      'AbortSignal.reason',
+      'AbortSignal.reason',
+    ])
+  })
+
   it('не путает похожие имена', () => {
     expect(
       apis(
