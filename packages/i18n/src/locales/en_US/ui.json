@@ -276,6 +276,8 @@
     "speed": "{value} MB/s",
     "bufferSeconds": "buffer {n} s",
     "bufferMinutes": "buffer {n} min",
+    "downloaded": "Downloaded",
+    "signal": "Network: {n} of 4",
     "remaining": "−{time}",
     "endsAt": "ends at {time}",
     "audio": "Audio",

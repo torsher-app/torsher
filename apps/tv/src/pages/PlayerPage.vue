@@ -30,6 +30,7 @@ import {
   clampTime,
   formatDuration,
   formatGigabytes,
+  videoTimePolicy,
 } from '../lib/player.ts'
 import { goBack } from '../lib/navigation.ts'
 import { titleRefOf } from '../lib/sources.ts'
@@ -138,6 +139,9 @@ const duration = ref(Number.NaN)
 const panel = ref<'audio' | 'subtitles' | null>(null)
 const now = ref(new Date())
 const bufferingSince = ref(Date.now())
+// Смена дорожки перезапуском: до нового потока на экране сцена с лоадером, а
+// клавиши, кроме Back, не работают — перемотка потерялась бы при старте
+const restarting = ref(false)
 
 let startAt = 0
 let savedAt = 0
@@ -236,7 +240,9 @@ const errorParams = computed(() => {
 })
 
 function save() {
-  if (phase.value === 'playing') {
+  if (
+    videoTimePolicy({ phase: phase.value, restarting: restarting.value }).save
+  ) {
     player.saveWatchState(
       osd.scrub.value?.target ?? position.value,
       knownDuration.value,
@@ -306,7 +312,11 @@ function onMedia(
  * фокус на таймлайне, OK при скрытом OSD — пауза, Back — в два шага.
  */
 function onKey(action: KeyAction, event: KeyboardEvent) {
-  if (phase.value !== 'playing' || player.status.value === 'error') {
+  if (
+    phase.value !== 'playing'
+    || restarting.value
+    || player.status.value === 'error'
+  ) {
     if (action.type !== 'back')
       return false
 
@@ -372,6 +382,7 @@ async function begin(from: number) {
     return
 
   startAt = from
+  restarting.value = false
   phase.value = 'buffering'
   bufferingSince.value = Date.now()
 
@@ -414,7 +425,14 @@ async function restartWith(change: PlaybackRestart) {
   const at = osd.scrub.value?.target ?? position.value
 
   save()
+  // Не снимается при ошибке нового старта: при выходе остаётся позиция,
+  // сохранённая выше, а не 0 от отцепленного видео
+  restarting.value = true
   closePanel()
+  // Прежняя сессия закрывается при перезапуске: hls.js грузил бы её сегменты,
+  // получал 404 и ронял экран посреди смены дорожки
+  hls.detach()
+  video.value?.pause()
   await player.start({ ...change, startPosition: at })
 
   if (player.status.value === 'ready')
@@ -468,6 +486,11 @@ function onPause() {
 
 function onTimeUpdate() {
   const el = video.value!
+
+  if (
+    !videoTimePolicy({ phase: phase.value, restarting: restarting.value }).track
+  )
+    return
 
   position.value = el.currentTime
 
@@ -569,7 +592,9 @@ onBeforeUnmount(() => {
 
     <!-- До первого кадра и при ошибке — одна сцена: фон и шапка не перерисовываются между фазами -->
     <PlayerStage
-      v-if="player.status.value === 'error' || phase !== 'playing'"
+      v-if="
+        player.status.value === 'error' || phase !== 'playing' || restarting
+      "
       :title="stageTitle"
       :backdrop="art?.backdrop"
       :logo="art?.logo"
@@ -613,7 +638,12 @@ onBeforeUnmount(() => {
     </PlayerStage>
 
     <template
-      v-if="playback && phase === 'playing' && player.status.value !== 'error'"
+      v-if="
+        playback
+          && phase === 'playing'
+          && !restarting
+          && player.status.value !== 'error'
+      "
     >
       <p v-if="stalled" class="player__stall" role="status">
         <span class="player__spinner" aria-hidden="true" />
@@ -625,8 +655,8 @@ onBeforeUnmount(() => {
 
       <PlayerOsd
         :visible="osd.visible.value"
-        :title="playback.title"
-        :file-name="playback.fileName"
+        :title="stageTitle"
+        :subtitle="artSubtitle || playback.fileName"
         :position="position"
         :duration="knownDuration"
         :buffer-end="position + bufferSeconds"

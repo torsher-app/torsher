@@ -7,15 +7,18 @@ import {
   formatClock,
   formatDuration,
   formatSpeed,
+  networkState,
 } from '../../lib/player.ts'
 import AppIcon from '../AppIcon.vue'
 import FocusSection from '../FocusSection.vue'
 import PlayerTimeline from './PlayerTimeline.vue'
+import SignalBars from './SignalBars.vue'
 
 const props = defineProps<{
   visible: boolean
   title: string
-  fileName: string
+  /** «Сезон 2 · Серия 1 · Название», без тайтла из каталога — имя файла */
+  subtitle: string
   position: number
   duration: number
   bufferEnd: number
@@ -52,18 +55,37 @@ function bufferText(seconds: number) {
     : t('player.bufferSeconds', { n: Math.floor(seconds) })
 }
 
-// «7 пиров · 2,4 МБ/с · буфер 50 с»: движок не отличает сидов от пиров
-const statsLine = computed(() => {
-  if (!props.stats)
-    return ''
+// Сеть — одним состоянием, а не сырыми цифрами: «0 пиров · 0 МБ/с» у
+// скачанного файла выглядели бы поломкой
+const network = computed(() => {
+  const stats = props.stats
 
-  const { peers, downloadSpeed } = props.stats
+  if (!stats)
+    return undefined
 
-  return [
-    t('player.peers', peers.connected),
-    t('player.speed', { value: formatSpeed(downloadSpeed, locale.value) }),
-    bufferText(props.bufferSeconds),
-  ].join(' · ')
+  return networkState({
+    speed: stats.downloadSpeed,
+    size: stats.file.size,
+    downloaded: stats.file.downloaded,
+    duration: props.duration,
+    bufferSeconds: props.bufferSeconds,
+    remaining: remaining.value,
+  })
+})
+
+// Рядом с палочками — что важно сейчас: тающий запас, запас без сети или скорость
+const networkText = computed(() => {
+  const state = network.value
+
+  if (!state || state.kind === 'done')
+    return t('player.downloaded')
+
+  if (state.low || state.level === 0)
+    return bufferText(props.bufferSeconds)
+
+  return t('player.speed', {
+    value: formatSpeed(props.stats!.downloadSpeed, locale.value),
+  })
 })
 </script>
 
@@ -77,15 +99,32 @@ const statsLine = computed(() => {
         <h1 class="osd__title">
           {{ title }}
         </h1>
-        <p class="osd__file">
-          {{ fileName }}
+        <p v-if="subtitle" class="osd__file">
+          {{ subtitle }}
         </p>
       </div>
       <div class="osd__status">
         <span class="osd__clock">{{ formatClock(now, locale) }}</span>
-        <span v-if="statsLine" class="osd__pill">
-          <AppIcon name="download" class="osd__pill-icon" />
-          {{ statsLine }}
+        <span
+          v-if="network"
+          class="osd__pill"
+          :class="{
+            'osd__pill--quiet': network.kind === 'done',
+            'osd__pill--low': network.kind === 'signal' && network.low,
+          }"
+        >
+          <AppIcon
+            v-if="network.kind === 'done'"
+            name="check"
+            class="osd__pill-icon"
+          />
+          <SignalBars
+            v-else
+            class="osd__pill-icon"
+            :level="network.level"
+            :low="network.low"
+          />
+          <span class="osd__pill-text">{{ networkText }}</span>
         </span>
       </div>
     </header>
@@ -262,6 +301,14 @@ const statsLine = computed(() => {
   white-space: nowrap;
 }
 
+.osd__pill--quiet {
+  color: var(--color-text-muted);
+}
+
+.osd__pill--low {
+  color: var(--color-warn);
+}
+
 .osd__pill-icon {
   width: calc(var(--u) * 22);
   height: calc(var(--u) * 22);
@@ -286,7 +333,6 @@ const statsLine = computed(() => {
 .osd__time {
   display: inline-flex;
   align-items: center;
-  font-variant-numeric: tabular-nums;
 }
 
 .osd__state {

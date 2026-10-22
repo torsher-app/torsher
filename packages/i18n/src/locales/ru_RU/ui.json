@@ -276,6 +276,8 @@
     "speed": "{value} МБ/с",
     "bufferSeconds": "буфер {n} с",
     "bufferMinutes": "буфер {n} мин",
+    "downloaded": "Скачано",
+    "signal": "Сеть: {n} из 4",
     "remaining": "−{time}",
     "endsAt": "закончится в {time}",
     "audio": "Аудио",

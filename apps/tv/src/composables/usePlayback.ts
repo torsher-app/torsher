@@ -15,6 +15,9 @@ import { isWebos } from '../platform/webos.ts'
 
 // Пока сервер читает файл, статус сессии спрашивается раз в секунду
 const PROBE_POLL_MS = 1000
+// Сервер закрывает сессию после 2 мин без обращений; `GET /playback/:id`
+// продлевает её и держит раздачу от вытеснения
+const HEARTBEAT_MS = 60_000
 
 /** Смена озвучки или субтитров перезапуском: те же поля, что у `POST /playback` */
 export type PlaybackRestart = Pick<
@@ -101,16 +104,37 @@ export function usePlayback(
   const stats = shallowRef<TorrentStats>()
 
   let statsTimer: ReturnType<typeof setTimeout> | undefined
-  let stopped = false
+  // Запрос прошлого круга, вернувшийся после перезапуска опроса, не ставит таймер
+  let statsRun = 0
+  let heartbeatTimer: ReturnType<typeof setInterval> | undefined
 
   let generation = 0
 
+  function closeSession(id: string) {
+    api.playback.deletePlayback(id).catch(() => {})
+  }
+
   /** Закрыть сессию на сервере: перепаковка и её сегменты больше не нужны */
   function close() {
-    const id = playback.value?.sessionId
+    stopHeartbeat()
+
+    const id = playback.value?.sessionId ?? pending.value?.sessionId
 
     if (id)
-      api.playback.deletePlayback(id).catch(() => {})
+      closeSession(id)
+  }
+
+  // 404 тут не ошибка экрана: сессию закрыли, а видео доигрывает буфер
+  function startHeartbeat(id: string) {
+    stopHeartbeat()
+    heartbeatTimer = setInterval(() => {
+      api.playback.getPlayback(id).catch(() => {})
+    }, HEARTBEAT_MS)
+  }
+
+  function stopHeartbeat() {
+    clearInterval(heartbeatTimer)
+    heartbeatTimer = undefined
   }
 
   /** Ждём пробу файла на сервере; `isCurrent` — запуск ещё не отменён */
@@ -132,19 +156,20 @@ export function usePlayback(
 
   /**
    * Запуск файла. С `restart` — та же раздача с другой озвучкой или
-   * субтитрами с позиции плеера: прежняя сессия закрывается.
+   * субтитрами с позиции плеера. Прежняя сессия закрывается всегда, и при
+   * повторе после ошибки тоже.
    */
   async function start(restart?: PlaybackRestart) {
     const run = ++generation
 
     status.value = 'loading'
     error.value = undefined
+    close()
 
-    if (restart)
-      close()
+    let created: Playback | undefined
 
     try {
-      const created = await api.playback.postPlayback({
+      created = await api.playback.postPlayback({
         torrentId,
         fileIndex,
         title,
@@ -154,14 +179,21 @@ export function usePlayback(
       })
       const ready = await waitProbe(created, () => run === generation)
 
-      if (run !== generation)
+      if (run !== generation) {
+        closeSession(created.sessionId)
         return
+      }
 
       pending.value = undefined
       playback.value = ready
       status.value = 'ready'
+      startHeartbeat(ready.sessionId)
     }
     catch (err) {
+      // Проба оборвалась: созданная сессия больше ничьей не станет
+      if (created)
+        closeSession(created.sessionId)
+
       if (run !== generation)
         return
 
@@ -177,6 +209,8 @@ export function usePlayback(
   }
 
   function fail(kind: PlayerError) {
+    stopHeartbeat()
+    stopStats()
     error.value = kind
     status.value = 'error'
   }
@@ -184,8 +218,8 @@ export function usePlayback(
   /** Статистика по кругу; интервал и позицию чтения спрашивает у экрана на каждом шаге */
   function pollStats(next: () => { offset: number, intervalMs: number }) {
     stopStats()
-    stopped = false
 
+    const run = statsRun
     const tick = async () => {
       const { offset, intervalMs } = next()
 
@@ -199,7 +233,7 @@ export function usePlayback(
         // Пропущенный шаг не ломает экран: остаются прежние цифры
       }
 
-      if (!stopped)
+      if (run === statsRun)
         statsTimer = setTimeout(tick, intervalMs)
     }
 
@@ -207,7 +241,7 @@ export function usePlayback(
   }
 
   function stopStats() {
-    stopped = true
+    statsRun++
     clearTimeout(statsTimer)
   }
 

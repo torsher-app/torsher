@@ -5,6 +5,9 @@ body {
   background: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-family);
+  /* Цифры одной ширины везде: таймеры, скорость, прогресс и счётчики меняются
+     на лету, и в одном разряде ничего не должно смещаться */
+  font-variant-numeric: tabular-nums;
   font-size: var(--font-size-m);
   line-height: var(--line-height);
   overflow: hidden;

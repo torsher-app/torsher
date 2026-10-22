@@ -135,8 +135,6 @@ const network = computed(() => {
 
 .buffering__network {
   color: var(--color-text-muted);
-  /* Цифры одной ширины: счётчики обновляются каждую секунду и не дёргают строку */
-  font-variant-numeric: tabular-nums;
 }
 
 .buffering__hint {
