@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	g "github.com/anacrolix/generics"
 	"github.com/anacrolix/torrent"
 	"github.com/anacrolix/torrent/storage"
 )
@@ -64,6 +65,11 @@ func newClientConfig(downloads, dataDir string, peerPort int, seed bool) (*torre
 		ClientBaseDir:   downloads,
 		FilePathMaker:   filePathOf,
 		PieceCompletion: completion,
+		// Без `.part`: с ними хранилище пишет кусок всегда в `<файл>.part`, даже
+		// когда файл уже готов, а потом переименовывает его поверх готового.
+		// Кусок на стыке двух файлов, с которого открытие раздачи снимает
+		// отметку, так затирал готовую серию разреженным файлом
+		UsePartFiles: g.Some(false),
 	})
 	// Сообщения библиотеки — только предупреждения и ошибки: остальное шумит в журнале сервера
 	cfg.Slogger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))

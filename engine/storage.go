@@ -13,8 +13,8 @@ import (
 	"github.com/anacrolix/torrent/storage"
 )
 
-// Недокачанный файл хранилище держит рядом с суффиксом `.part` и
-// переименовывает, когда все его куски скачаны
+// Так прежние версии движка называли недокачанный файл: такие файлы
+// подхватываются (`adoptPartFiles`) и удаляются вместе с раздачей
 const partFileSuffix = ".part"
 
 // Путь файла раздачи от каталога загрузок: `<имя раздачи>/<путь>`, у раздачи
@@ -104,4 +104,28 @@ func deleteTorrentFiles(downloads string, info *metainfo.Info) (int64, error) {
 // Каталог с чужими файлами: Linux отвечает ENOTEMPTY, часть систем — EEXIST
 func isNotEmpty(err error) bool {
 	return errors.Is(err, syscall.ENOTEMPTY) || errors.Is(err, syscall.EEXIST)
+}
+
+// Недокачанные `.part` от прежних версий движка становятся файлами под
+// итоговым именем, если такого ещё нет: скачанное не пропадает, а хранилище
+// без `.part` их бы не увидело
+func adoptPartFiles(downloads string, info *metainfo.Info) {
+	base, err := filepath.Abs(downloads)
+	if err != nil {
+		return
+	}
+
+	for _, file := range info.UpvertedFiles() {
+		path := filepath.Join(base, filePathOf(storage.FilePathMakerOpts{Info: info, File: &file}))
+
+		if !isInside(base, path) {
+			continue
+		}
+
+		if _, err := os.Stat(path); !errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+
+		_ = os.Rename(path+partFileSuffix, path)
+	}
 }

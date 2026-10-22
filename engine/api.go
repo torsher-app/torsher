@@ -291,6 +291,10 @@ func (a *api) restore() {
 	}
 
 	for _, item := range restored {
+		if info, err := item.meta.UnmarshalInfo(); err == nil {
+			adoptPartFiles(a.downloads, &info)
+		}
+
 		t, err := a.client.AddTorrent(item.meta)
 		if err != nil {
 			a.logger.Warn("restore torrent", "err", err)
@@ -337,6 +341,10 @@ func (a *api) add(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_, known := a.client.Torrent(mi.HashInfoBytes())
+
+	if info, err := mi.UnmarshalInfo(); err == nil && !known {
+		adoptPartFiles(a.downloads, &info)
+	}
 
 	t, err := a.client.AddTorrent(mi)
 	if err != nil {
@@ -500,6 +508,8 @@ func (a *api) forget(w http.ResponseWriter, r *http.Request) {
 
 		deleted, err := deleteTorrentFiles(a.downloads, info)
 		response.DeletedBytes = deleted
+		// Удаление файлов — единственное место, где движок сам стирает данные
+		a.logger.Warn("torrent files deleted", "hash", hash.HexString(), "bytes", deleted)
 
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "storage", err)
