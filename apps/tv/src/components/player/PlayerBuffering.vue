@@ -77,6 +77,19 @@ const network = computed(() => {
 </template>
 
 <style scoped>
+/* Полоса появляется вместе с торшером через --loader-delay: если запуск сразу
+   кончится ошибкой, «Подключаемся к пирам» не мелькнёт перед ней */
+.buffering {
+  opacity: 0;
+  animation: buffering-appear var(--motion-fast) var(--motion-easing) var(--loader-delay) forwards;
+}
+
+@keyframes buffering-appear {
+  to {
+    opacity: 1;
+  }
+}
+
 @keyframes buffering-sweep {
   from {
     transform: translateX(-100%);

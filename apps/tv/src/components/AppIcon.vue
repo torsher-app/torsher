@@ -22,9 +22,24 @@ export type IconName
 
 const props = defineProps<{ name: IconName }>()
 
+// Путь со своей толщиной линии или залитый, как шнурок и бусина у знака
+interface IconPart {
+  d: string
+  width?: number
+  fill?: boolean
+}
+
 // Контурные иконки 24×24; размер и цвет задаёт родитель (font-size, color)
-const PATHS: Record<IconName, string[]> = {
-  brand: ['M7.5 3h9l3 7.5h-15z', 'M12 10.5V20M8 21h8'],
+const PATHS: Record<IconName, (string | IconPart)[]> = {
+  // Та же геометрия, что у AppLoader. Шнурок первым: его кончик прячется под
+  // кромку абажура. Ножка доходит до середины площадки, иначе на тонкой линии
+  // они расходятся
+  brand: [
+    { d: 'M17 11.4v3.2', width: 1 },
+    { d: 'M17 14.45a1.05 1.05 0 1 0 0 2.1a1.05 1.05 0 1 0 0-2.1z', fill: true },
+    'M7.5 3h9l3 7.5h-15z',
+    'M12 10.5V21M8 21h8',
+  ],
   search: ['M11 4a7 7 0 1 0 0 14 7 7 0 0 0 0-14z', 'M20 20l-3.6-3.6'],
   home: [
     'M3.5 10.5 12 3.5l8.5 7V20a1 1 0 0 1-1 1H15v-6H9v6H4.5a1 1 0 0 1-1-1z',
@@ -58,6 +73,12 @@ const PATHS: Record<IconName, string[]> = {
 }
 
 const filled = computed(() => props.name === 'play' || props.name === 'pause')
+
+const parts = computed<IconPart[]>(() =>
+  PATHS[props.name].map(part =>
+    typeof part === 'string' ? { d: part } : part,
+  ),
+)
 </script>
 
 <template>
@@ -71,7 +92,14 @@ const filled = computed(() => props.name === 'play' || props.name === 'pause')
     stroke-linejoin="round"
     aria-hidden="true"
   >
-    <path v-for="d in PATHS[name]" :key="d" :d="d" />
+    <path
+      v-for="part in parts"
+      :key="part.d"
+      :d="part.d"
+      :stroke-width="part.width"
+      :fill="part.fill ? 'currentColor' : undefined"
+      :stroke="part.fill ? 'none' : undefined"
+    />
   </svg>
 </template>
 

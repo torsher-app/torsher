@@ -1,6 +1,18 @@
 <script setup lang="ts">
 import { Toaster } from '@/components/ui/sonner'
 
+// Ссылки на иконки — от baseURL: в продакшене панель живёт на /panel/,
+// а /favicon.ico в корне отдаёт витрина
+const { baseURL } = useRuntimeConfig().app
+
+useHead({
+  link: [
+    { rel: 'icon', href: `${baseURL}favicon.ico`, sizes: 'any' },
+    { rel: 'icon', href: `${baseURL}favicon.svg`, type: 'image/svg+xml' },
+    { rel: 'apple-touch-icon', href: `${baseURL}apple-touch-icon.png` },
+  ],
+})
+
 // Цвет иконки — по типу тоста, подробности приглушены. Тост выравнивает
 // по верху: иконка 16 px опущена на 2 px к середине строки заголовка (20 px)
 const toastOptions = {
