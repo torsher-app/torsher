@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { TitleDetails } from '@torsher/api-client'
 import type { KeyAction } from '../focus/index.ts'
+import type { StageStep } from '../lib/player.ts'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
@@ -12,7 +13,10 @@ import AppLoader from '../components/AppLoader.vue'
 import AppIcon from '../components/AppIcon.vue'
 import FocusSection from '../components/FocusSection.vue'
 import PlayerTracks from '../components/player/PlayerTracks.vue'
-import type { PlaybackRestart } from '../composables/usePlayback.ts'
+import type {
+  PlaybackRestart,
+  PlayerError,
+} from '../composables/usePlayback.ts'
 import { api } from '../api.ts'
 import { useCatalogLanguage } from '../composables/useCatalogLanguage.ts'
 import { useHls } from '../composables/useHls.ts'
@@ -27,9 +31,17 @@ import {
   bufferedSeconds,
   bufferingStep,
   byteOffset,
+  canRetry,
   clampTime,
+  endedEarly,
   formatDuration,
   formatGigabytes,
+  freshBudget,
+  nextRetry,
+  PAUSED_METADATA_MS,
+  settleBudget,
+  stallAction,
+  streamLive,
   videoTimePolicy,
 } from '../lib/player.ts'
 import { goBack } from '../lib/navigation.ts'
@@ -126,7 +138,12 @@ const resumeShare = computed(() => {
 })
 
 const video = ref<HTMLVideoElement>()
-const hls = useHls(() => player.fail('unknown'))
+// Ошибка сети — повтор; разбор сегментов не удался — формат не по силам плееру
+const hls = useHls((kind) => {
+  if (kind === 'network')
+    recover('unknown')
+  else player.fail(kind === 'media' ? 'unsupported' : 'unknown')
+})
 
 // starting — запрашиваем адрес, resume — спрашиваем, продолжить ли,
 // buffering — ждём первые кадры, playing — видео хоть раз пошло
@@ -142,11 +159,42 @@ const bufferingSince = ref(Date.now())
 // Смена дорожки перезапуском: до нового потока на экране сцена с лоадером, а
 // клавиши, кроме Back, не работают — перемотка потерялась бы при старте
 const restarting = ref(false)
+// Поток оборвался: ждём паузу перед повтором или идёт сам повтор
+const reconnecting = ref(false)
+// Пиры есть, но раздача не успевает, а повторы кончились: ждём с подписью
+const slow = ref(false)
 
 let startAt = 0
 let savedAt = 0
 let clockTimer: ReturnType<typeof setInterval> | undefined
 let offKey: (() => void) | undefined
+// Поток хоть раз ставился в видео: повтор продолжает его с места, а не
+// спрашивает заново «Продолжить»
+let begun = false
+// Запуск перезапуском: устаревший после `await` уходит, не трогая видео
+let launch = 0
+let budget = freshBudget()
+let retryTimer: ReturnType<typeof setTimeout> | undefined
+// Пауза зрителя или свёрнутого приложения, а не остановка потока плеером
+let viewerPaused = false
+// Поток оборвался на паузе зрителя: новый ждёт на той же паузе
+let keepPaused = false
+// Новый поток ждёт на паузе: на экран плеера он выходит с метаданными, когда
+// видео уже на нужной позиции. По возврату в приложение снимается только пауза
+// от сворачивания (`hidden`), пауза зрителя (`viewer`) остаётся
+let startPausedBy: 'viewer' | 'hidden' | null = null
+let metadataTimer: ReturnType<typeof setTimeout> | undefined
+// Дорожки, с которыми запрошен перезапуск: если он сорвался, повтор берёт их,
+// а не прежние из сессии
+let requested: PlaybackRestart | undefined
+
+// Сторож прогресса: состояние с прошлого тика
+let armed = false
+let armedAt = 0
+let lastTime = 0
+let progressAt = 0
+let peersSince = 0
+let playingSince: number | null = null
 
 const knownDuration = computed(() =>
   Number.isFinite(duration.value)
@@ -163,12 +211,18 @@ const osd = usePlayerOsd({
   onSeek: seekTo,
 })
 
-const step = computed(() =>
-  bufferingStep(
+const step = computed<StageStep>(() => {
+  if (reconnecting.value)
+    return 'reconnecting'
+
+  if (slow.value)
+    return 'slow'
+
+  return bufferingStep(
     stats.value ?? null,
     now.value.getTime() - bufferingSince.value,
-  ),
-)
+  )
+})
 
 // Буфер впереди — большее из скачанного движком подряд и того, что уже у браузера
 const bufferSeconds = computed(() => {
@@ -381,9 +435,26 @@ async function begin(from: number) {
   if (!el || !current?.streamUrl)
     return
 
+  // Свёрнутое приложение ставит паузу и на остановленном видео, без события
+  // `pause`: поток не должен стартовать в фоне
+  const stayPaused = keepPaused || document.hidden
+
+  begun = true
+  startPausedBy = keepPaused ? 'viewer' : document.hidden ? 'hidden' : null
+  keepPaused = false
+  clearTimeout(metadataTimer)
+
+  if (stayPaused)
+    metadataTimer = setTimeout(onMetadataTimeout, PAUSED_METADATA_MS)
+
   startAt = from
   restarting.value = false
+  reconnecting.value = false
+  // Пауза от остановки прежнего потока снимается: новый играет, и сторож его
+  // видит. Зритель был на паузе — новый поток ждёт на ней, как обычная пауза
+  paused.value = stayPaused
   phase.value = 'buffering'
+  position.value = from
   bufferingSince.value = Date.now()
 
   if (current.mode === 'hls') {
@@ -397,6 +468,13 @@ async function begin(from: number) {
     el.src = current.streamUrl
   }
 
+  // Приложение могли свернуть, пока подключался hls.js
+  if (stayPaused || document.hidden)
+    return
+
+  // Свернули и вернули за время подключения: пауза по метаданным устарела
+  startPausedBy = null
+
   // Без жеста пользователя браузер может не дать играть со звуком:
   // тогда видео ждёт на паузе с OSD, OK запускает
   el.play().catch((err: unknown) => {
@@ -409,34 +487,200 @@ async function begin(from: number) {
 }
 
 function onPromptChoice(choice: 'resume' | 'restart' | 'retry' | 'back') {
-  if (choice === 'back')
+  if (choice === 'back') {
     exit()
-  else if (choice === 'retry')
-    void start()
-  else
+  }
+  else if (choice === 'retry') {
+    budget = freshBudget()
+    slow.value = false
+    keepPaused = false
+    relaunch()
+  }
+  else {
     void begin(choice === 'resume' ? (playback.value?.startPosition ?? 0) : 0)
+  }
 }
 
-/**
- * Озвучка или субтитры, которые плеер не переключит сам: новый поток с
- * этой дорожкой с текущего места, без вопроса «Продолжить»
- */
-async function restartWith(change: PlaybackRestart) {
-  const at = osd.scrub.value?.target ?? position.value
+// Откуда продолжать: до первых кадров позиция ещё не пришла от видео
+function resumeAt() {
+  return (
+    osd.scrub.value?.target
+    ?? (phase.value === 'playing' ? position.value : startAt)
+  )
+}
 
+// Тот же файл с теми же дорожками с места остановки; до первого потока —
+// обычный запуск с вопросом «Продолжить»
+function relaunch() {
+  if (begun)
+    void restartWith(requested ?? tracks.selection())
+  else void start()
+}
+
+/** Остановить поток до нового: позиция сохраняется до отключения hls.js */
+function holdStream() {
   save()
   // Не снимается при ошибке нового старта: при выходе остаётся позиция,
   // сохранённая выше, а не 0 от отцепленного видео
   restarting.value = true
-  closePanel()
+
+  if (panel.value)
+    closePanel()
+
+  clearTimeout(metadataTimer)
+
   // Прежняя сессия закрывается при перезапуске: hls.js грузил бы её сегменты,
   // получал 404 и ронял экран посреди смены дорожки
   hls.detach()
   video.value?.pause()
-  await player.start({ ...change, startPosition: at })
+}
 
-  if (player.status.value === 'ready')
+/**
+ * Озвучка или субтитры, которые плеер не переключит сам, и повтор после
+ * сбоя: новый поток с этими дорожками с текущего места, без вопроса
+ * «Продолжить»
+ */
+async function restartWith(change: PlaybackRestart) {
+  const run = ++launch
+  const at = resumeAt()
+
+  requested = change
+  holdStream()
+  const outcome = await player.start({ ...change, startPosition: at })
+
+  if (run !== launch)
+    return
+
+  if (outcome === 'ready') {
+    requested = undefined
+    startStats()
     await begin(at)
+  }
+  else if (outcome === 'retry') {
+    recover()
+  }
+}
+
+/**
+ * Сбой на нашей стороне: повтор из бюджета после паузы, а когда бюджет
+ * исчерпан — ошибка экрана (`cause`; без неё — ошибка последнего запуска)
+ */
+function recover(cause?: PlayerError) {
+  if (retryTimer !== undefined || player.status.value === 'error')
+    return
+
+  const next = nextRetry(budget, Date.now())
+
+  if (!next) {
+    reconnecting.value = false
+    player.fail(cause)
+    return
+  }
+
+  budget = next.budget
+
+  // Во время перезапуска видео стоит из-за него, а пауза зрителя уже запомнена
+  if (!restarting.value)
+    keepPaused = viewerPaused
+
+  holdStream()
+  reconnecting.value = true
+  retryTimer = setTimeout(() => {
+    retryTimer = undefined
+    relaunch()
+  }, next.delayMs)
+}
+
+/**
+ * Поток на паузе так и не дал метаданные: сторож на паузе выключен, поэтому
+ * это сбой. В свёрнутом приложении проверка откладывается: повтор в фоне
+ * тратил бы бюджет, и зритель вернулся бы к ошибке
+ */
+function onMetadataTimeout() {
+  const el = video.value
+
+  if (document.hidden) {
+    metadataTimer = setTimeout(onMetadataTimeout, PAUSED_METADATA_MS)
+    return
+  }
+
+  metadataTimer = undefined
+
+  if (
+    el
+    && el.readyState < el.HAVE_METADATA
+    && phase.value === 'buffering'
+    && !restarting.value
+  ) {
+    recover('unknown')
+  }
+}
+
+/**
+ * Раз в секунду, пока плеер хочет играть: растёт ли `currentTime`, жива ли
+ * статистика движка, есть ли пиры. Решение — `stallAction`.
+ */
+function watchProgress() {
+  const el = video.value
+  const at = Date.now()
+  const active
+    = !!el
+      && player.status.value === 'ready'
+      && (phase.value === 'buffering' || phase.value === 'playing')
+      && !paused.value
+      && !restarting.value
+      && !osd.scrub.value
+      && retryTimer === undefined
+
+  if (!el || !active) {
+    armed = false
+    playingSince = null
+    return
+  }
+
+  if (!armed) {
+    armed = true
+    armedAt = progressAt = peersSince = at
+    lastTime = el.currentTime
+    return
+  }
+
+  if (el.currentTime !== lastTime) {
+    lastTime = el.currentTime
+    progressAt = at
+    playingSince ??= at
+    slow.value = false
+  }
+  else {
+    playingSince = null
+  }
+
+  budget = settleBudget(budget, playingSince, at)
+
+  const current = stats.value
+  const peers = current ? current.peers.connected : null
+
+  if (!peers)
+    peersSince = at
+
+  const action = stallAction({
+    now: at,
+    statsAt: Math.max(player.statsReceivedAt(), armedAt),
+    peers,
+    aheadSeconds: bufferedSeconds(
+      current?.file.bufferedAhead ?? 0,
+      playback.value?.size ?? 0,
+      knownDuration.value,
+    ),
+    stuckMs: at - progressAt,
+    peersMs: at - peersSince,
+    budgetLeft: canRetry(budget, at),
+  })
+
+  if (action === 'retry')
+    recover('unknown')
+  else if (action === 'slow')
+    slow.value = true
 }
 
 function onTracksSelect(id: string) {
@@ -455,11 +699,46 @@ function openTracks(kind: 'audio' | 'subtitles') {
 function onLoadedMetadata() {
   const el = video.value!
 
+  clearTimeout(metadataTimer)
   duration.value = el.duration
   tracks.refresh()
 
   if (startAt > 0)
     el.currentTime = clampTime(startAt, el.duration)
+
+  if (startPausedBy)
+    showPaused()
+}
+
+/** Новый поток ждёт на паузе: экран плеера с OSD вместо сцены */
+function showPaused() {
+  clearTimeout(metadataTimer)
+  startPausedBy = null
+  paused.value = true
+  phase.value = 'playing'
+  osd.show()
+}
+
+// Действие зрителя на живом потоке: прошлые сбои забыты
+function onViewerAction() {
+  if (
+    streamLive({
+      phase: phase.value,
+      restarting: restarting.value,
+      failed: player.status.value === 'error',
+    })
+  ) {
+    budget = freshBudget()
+  }
+}
+
+function onPlay() {
+  onViewerAction()
+
+  // `playing` при пустом буфере может не прийти: сторож должен видеть и
+  // такой запуск
+  paused.value = false
+  viewerPaused = false
 }
 
 function onPlaying() {
@@ -470,6 +749,7 @@ function onPlaying() {
 
   stalled.value = false
   paused.value = false
+  viewerPaused = false
   osd.scheduleHide()
 }
 
@@ -479,6 +759,15 @@ function onWaiting() {
 }
 
 function onPause() {
+  // Паузу при перезапуске ставит сам плеер, а конец файла ставит её перед
+  // `ended` — ранний `ended` это обрыв, а не пауза зрителя
+  if (!restarting.value) {
+    viewerPaused = !video.value?.ended
+
+    if (viewerPaused)
+      onViewerAction()
+  }
+
   paused.value = true
   osd.show()
   save()
@@ -487,10 +776,13 @@ function onPause() {
 function onTimeUpdate() {
   const el = video.value!
 
+  // До метаданных `currentTime` нового потока — 0, а не позиция
   if (
-    !videoTimePolicy({ phase: phase.value, restarting: restarting.value }).track
-  )
+    el.readyState < el.HAVE_METADATA
+    || !videoTimePolicy({ phase: phase.value, restarting: restarting.value }).track
+  ) {
     return
+  }
 
   position.value = el.currentTime
 
@@ -500,16 +792,40 @@ function onTimeUpdate() {
   }
 }
 
-// Код 2 — сеть (движок упал, поток оборвался), остальное — формат не по силам плееру
+// Код 2 — сеть (движок упал, поток оборвался), остальное — формат не по
+// силам плееру. При перезапуске прежний поток обрывается намеренно
 function onError() {
-  const code = video.value?.error?.code
+  if (restarting.value)
+    return
 
-  player.fail(code === 2 ? 'unknown' : 'unsupported')
+  clearTimeout(metadataTimer)
+
+  if (video.value?.error?.code === 2)
+    recover('unknown')
+  else player.fail('unsupported')
+}
+
+// Старые ТВ на обрыв прямого потока отвечают не ошибкой, а концом файла
+function onEnded() {
+  const el = video.value
+
+  if (
+    !restarting.value
+    && el
+    && endedEarly(el.currentTime, el.duration, knownDuration.value)
+  ) {
+    recover('unknown')
+  }
 }
 
 function onPointer(event: MouseEvent) {
-  if (phase.value !== 'playing' || player.status.value === 'error')
+  if (
+    phase.value !== 'playing'
+    || restarting.value
+    || player.status.value === 'error'
+  ) {
     return
+  }
 
   osd.show()
 
@@ -525,17 +841,43 @@ function onPointer(event: MouseEvent) {
 }
 
 function onVisibility() {
-  if (document.hidden)
-    video.value?.pause()
+  const el = video.value
+
+  if (!document.hidden) {
+    // Свернули до метаданных: на паузе они могли так и не прийти, и сцена с
+    // лоадером осталась бы навсегда. Поток стартует заново, сторож его видит.
+    // Пауза зрителя остаётся: её стережёт таймер метаданных
+    if (
+      el
+      && phase.value === 'buffering'
+      && !restarting.value
+      && startPausedBy === 'hidden'
+      && el.readyState < el.HAVE_METADATA
+    ) {
+      clearTimeout(metadataTimer)
+      startPausedBy = null
+      paused.value = false
+      play()
+    }
+
+    return
+  }
+
+  onViewerAction()
+  el?.pause()
+
+  // На паузе `playing` не придёт: без этого после возврата осталась бы сцена
+  // с лоадером. Метаданные уже есть — сразу пауза с OSD, нет — по ним
+  if (phase.value === 'buffering' && !restarting.value) {
+    startPausedBy ??= 'hidden'
+    paused.value = true
+
+    if (el && el.readyState >= el.HAVE_METADATA)
+      showPaused()
+  }
 }
 
-async function start() {
-  phase.value = 'starting'
-  await player.start()
-
-  if (player.status.value !== 'ready')
-    return
-
+function startStats() {
   player.pollStats(() => ({
     offset: byteOffset(
       phase.value === 'playing' ? position.value : startAt,
@@ -544,6 +886,24 @@ async function start() {
     ),
     intervalMs: phase.value === 'playing' && !stalled.value ? 2000 : 1000,
   }))
+}
+
+async function start() {
+  const run = ++launch
+
+  phase.value = 'starting'
+  const outcome = await player.start()
+
+  if (run !== launch)
+    return
+
+  if (outcome === 'retry')
+    recover()
+
+  if (outcome !== 'ready')
+    return
+
+  startStats()
 
   if (playback.value?.startPosition)
     phase.value = 'resume'
@@ -552,7 +912,10 @@ async function start() {
 
 onMounted(() => {
   offKey = focus.onKey(onKey)
-  clockTimer = setInterval(() => (now.value = new Date()), 1000)
+  clockTimer = setInterval(() => {
+    now.value = new Date()
+    watchProgress()
+  }, 1000)
   document.addEventListener('visibilitychange', onVisibility)
   void start()
 })
@@ -561,6 +924,9 @@ onBeforeUnmount(() => {
   save()
   offKey?.()
   clearInterval(clockTimer)
+  clearTimeout(retryTimer)
+  clearTimeout(metadataTimer)
+  launch++
   document.removeEventListener('visibilitychange', onVisibility)
   player.stopStats()
 
@@ -583,11 +949,13 @@ onBeforeUnmount(() => {
       class="player__video"
       preload="auto"
       @loadedmetadata="onLoadedMetadata"
+      @play="onPlay"
       @playing="onPlaying"
       @waiting="onWaiting"
       @pause="onPause"
       @timeupdate="onTimeUpdate"
       @error="onError"
+      @ended="onEnded"
     />
 
     <!-- До первого кадра и при ошибке — одна сцена: фон и шапка не перерисовываются между фазами -->
@@ -647,7 +1015,7 @@ onBeforeUnmount(() => {
     >
       <p v-if="stalled" class="player__stall" role="status">
         <span class="player__spinner" aria-hidden="true" />
-        {{ t("player.steps.buffering")
+        {{ t(slow ? "player.steps.slow" : "player.steps.buffering")
         }}<template v-if="stats">
           · {{ t("player.peers", stats.peers.connected) }}
         </template>

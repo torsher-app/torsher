@@ -19,6 +19,7 @@ import {
   secondsAhead,
   seekTargetOf,
   segmentStarts,
+  SegmentTimeoutError,
   TranscodeFailedError,
   TS_OFFSET_SECONDS,
 } from './hls.ts'
@@ -488,6 +489,83 @@ describe.runIf(hasFfmpeg())('hlsTranscode на ffmpeg', () => {
       ])
       expect(path).toBeTypeOf('string')
       expect(statSync(path as string).size).toBeGreaterThan(0)
+    }
+    finally {
+      await transcode.stop()
+      server.closeAllConnections()
+      server.close()
+    }
+  }, 60_000)
+
+  it('ffmpeg без сегмента к дедлайну убит, следующий запрос запускает новый', async () => {
+    const body = steadyMkv()
+    const stallAt = Math.floor(body.length * 0.3)
+    let stalling = true
+    // Зависший движок: отдаёт начало файла и держит соединение без байтов
+    const server = createServer((request, response) => {
+      const range = /bytes=(\d+)-/.exec(request.headers.range ?? '')
+      const start = range ? Number(range[1]) : 0
+
+      response.statusCode = range ? 206 : 200
+      response.setHeader('Accept-Ranges', 'bytes')
+      response.setHeader('Content-Length', body.length - start)
+
+      if (range) {
+        response.setHeader(
+          'Content-Range',
+          `bytes ${start}-${body.length - 1}/${body.length}`,
+        )
+      }
+
+      if (stalling) {
+        response.write(body.subarray(start, Math.max(start, stallAt)))
+        return
+      }
+
+      response.end(body.subarray(start))
+    })
+
+    await new Promise<void>(resolve =>
+      server.listen(0, '127.0.0.1', resolve),
+    )
+
+    const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/steady.mkv`
+    const runs: string[] = []
+    const warn = vi.fn()
+    const transcode = new HlsTranscode(
+      join(dir, 'out-stalled'),
+      {
+        url: () => url,
+        videoStream: 0,
+        audioStream: null,
+        audio: 'aac',
+        subtitleStreams: [],
+        starts: segmentStarts(40, null, 1),
+        duration: 40,
+        segmentWaitMs: 3000,
+      },
+      { info: message => runs.push(message), warn },
+    )
+
+    transcodes.push(transcode)
+
+    try {
+      await expect(transcode.segment(20)).rejects.toBeInstanceOf(
+        SegmentTimeoutError,
+      )
+      expect(warn).toHaveBeenCalledWith(
+        'hls: ffmpeg run 1 stalled before segment 20, killed',
+      )
+
+      stalling = false
+
+      const path = await segmentPath(transcode, 20)
+
+      expect(runs).toEqual([
+        'hls: ffmpeg run 1 from segment 20',
+        'hls: ffmpeg run 2 from segment 20',
+      ])
+      expect(statSync(path).size).toBeGreaterThan(0)
     }
     finally {
       await transcode.stop()

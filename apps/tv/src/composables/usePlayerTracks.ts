@@ -173,6 +173,24 @@ export function usePlayerTracks(
     return true
   }
 
+  function canSwitchInPlace() {
+    const current = playback.value
+
+    return current?.mode === 'direct' && current.audioSwitch === 'platform'
+  }
+
+  /**
+   * После `loadedmetadata`. Новый `src` включает дорожку по умолчанию, а
+   * выбрана может быть другая: запомненная сервером или переключённая на
+   * месте до повтора.
+   */
+  function refresh() {
+    platform.refresh()
+
+    if (media.value && audioStream.value !== null && canSwitchInPlace())
+      switchInPlace(audioStream.value)
+  }
+
   function selectAudio(id: string) {
     const current = playback.value
 
@@ -184,11 +202,7 @@ export function usePlayerTracks(
     if (index === audioStream.value)
       return
 
-    if (
-      current.mode === 'direct'
-      && current.audioSwitch === 'platform'
-      && switchInPlace(index)
-    ) {
+    if (canSwitchInPlace() && switchInPlace(index)) {
       audioStream.value = index
       return
     }
@@ -239,8 +253,17 @@ export function usePlayerTracks(
       : ''
   })
 
+  /** Выбранные сейчас дорожки — для нового потока с того же места */
+  function selection(): PlaybackRestart {
+    return {
+      audioStream: audioStream.value ?? undefined,
+      subtitle: subtitle.value ?? undefined,
+    }
+  }
+
   return {
-    refresh: platform.refresh,
+    refresh,
+    selection,
     audioOptions,
     subtitleOptions,
     audioLabel,

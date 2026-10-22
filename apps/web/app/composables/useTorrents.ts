@@ -176,6 +176,15 @@ async function setKept(id: string, kept: boolean) {
   return updated
 }
 
+/**
+ * Перезапуск движка: сервер отвечает сразу, а процесс поднимается сам —
+ * состояние «запускается» ставим тут же, дальше его уточняет опрос
+ */
+async function restartEngine() {
+  await api.engine.restartEngine()
+  engine.value = 'starting'
+}
+
 export function useTorrents() {
   return {
     torrents: computed(() => torrents.value),
@@ -202,6 +211,7 @@ export function useTorrents() {
     downloadFiles,
     setPaused,
     setKept,
+    restartEngine,
     stopPolling,
   }
 }

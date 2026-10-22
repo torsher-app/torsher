@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"runtime/debug"
+	"runtime/pprof"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -23,6 +24,13 @@ import (
 
 // Тело `.torrent` больших паков — единицы мегабайт
 const maxTorrentFileBytes = 16 << 20
+
+// Честно дольше всех блокировку клиента держит `AddTorrent` огромной раздачи
+// на холодном диске — это секунды; дедлок же вечен, и запас порога не важен
+const (
+	watchdogInterval = 5 * time.Second
+	watchdogTimeout  = 60 * time.Second
+)
 
 type api struct {
 	client  *torrent.Client
@@ -39,6 +47,11 @@ type api struct {
 	windows  *windows
 	// Завершение процесса после паники в обработчике; в тестах подменяется
 	exit func(code int)
+	// Время последней пробы блокировки клиента (unix nano, 0 — сторож не
+	// запущен) и пороги сторожа; в тестах пороги подменяются
+	lockAlive     atomic.Int64
+	watchEvery    time.Duration
+	lockStuckFrom time.Duration
 }
 
 func newAPI(client *torrent.Client, session *session, store clientStorage, logger *slog.Logger) *api {
@@ -51,6 +64,9 @@ func newAPI(client *torrent.Client, session *session, store clientStorage, logge
 		speeds:     newSpeedTracker(),
 		windows:    newWindows(),
 		exit:       os.Exit,
+
+		watchEvery:    watchdogInterval,
+		lockStuckFrom: watchdogTimeout,
 	}
 }
 
@@ -58,6 +74,11 @@ func (a *api) routes() http.Handler {
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
+		if a.lockStuck() {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "stuck"})
+			return
+		}
+
 		if !a.restored.Load() {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "restoring"})
 			return
@@ -102,6 +123,57 @@ func (a *api) crashOnPanic(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r)
 	})
+}
+
+// Сторож блокировки клиента. Паника библиотеки под блокировкой вне
+// обработчика или дедлок оставляют её захваченной навсегда: процесс жив,
+// `/health` отвечал бы, а всё остальное висело бы. `probe` берёт блокировку;
+// не вернулась за порог — дамп горутин и выход, супервизор запустит движок
+// заново. `client.Close()` перед выходом не зовём: он ждал бы ту же блокировку
+func (a *api) watchdog(ctx context.Context, probe func()) {
+	a.lockAlive.Store(time.Now().UnixNano())
+
+	ticker := time.NewTicker(a.watchEvery)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			probe()
+		}()
+
+		deadline := time.NewTimer(a.lockStuckFrom)
+
+		select {
+		case <-ctx.Done():
+			deadline.Stop()
+			return
+		case <-done:
+			deadline.Stop()
+			a.lockAlive.Store(time.Now().UnixNano())
+		case <-deadline.C:
+			var goroutines bytes.Buffer
+			_ = pprof.Lookup("goroutine").WriteTo(&goroutines, 2)
+			a.logger.Error("client lock stuck", "after", a.lockStuckFrom.String(), "goroutines", goroutines.String())
+			a.exit(2)
+			return
+		}
+	}
+}
+
+// Последняя проба блокировки старше порога: супервизор видит застрявший
+// движок и в промежутке до выхода
+func (a *api) lockStuck() bool {
+	alive := a.lockAlive.Load()
+
+	return alive != 0 && time.Since(time.Unix(0, alive)) > a.lockStuckFrom
 }
 
 type fileDetails struct {

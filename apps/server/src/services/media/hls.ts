@@ -20,6 +20,8 @@ export const FIRST_SEGMENT_SECONDS = 2
 const MAX_AHEAD_SEGMENTS = Math.floor(24 / SEGMENT_SECONDS)
 // Сегменты далеко позади просмотра удаляются: на длинном фильме их гигабайты
 const KEEP_BEHIND_SEGMENTS = 20
+// Не дождался сегмента — ffmpeg, который до него так и не дошёл, убивается:
+// следующий запрос запустит новый с актуальным адресом движка
 const SEGMENT_WAIT_MS = 60_000
 const POLL_MS = 200
 // Перепаковка копией идёт быстрее просмотра и дочитала бы файл до конца, а
@@ -118,6 +120,8 @@ export interface HlsInput {
   duration: number
   /** Запас перепаковки впереди плеера; меньше — только в тестах */
   ahead?: { seconds: number, checkMs: number }
+  /** Ожидание сегмента; меньше — только в тестах */
+  segmentWaitMs?: number
 }
 
 export interface HlsLog {
@@ -150,6 +154,8 @@ interface Run {
   exited: boolean
   /** Остановлен `SIGSTOP`: ушёл далеко вперёд от плеера */
   paused: boolean
+  /** Убит на дедлайне сегмента: заменяется, даже пока `exit` не пришёл */
+  stalled: boolean
   failure?: string
 }
 
@@ -245,7 +251,9 @@ export class HlsTranscode {
   private async waitFor(index: number, signal?: AbortSignal) {
     await this.serialize(() => this.ensureRunFor(index))
 
-    const deadline = Date.now() + SEGMENT_WAIT_MS
+    // Свой запуск: заменивший его — чужая перемотка, его не трогаем
+    const own = this.run
+    const deadline = Date.now() + (this.input.segmentWaitMs ?? SEGMENT_WAIT_MS)
 
     while (!this.stopped && !signal?.aborted) {
       await this.refreshReady()
@@ -269,14 +277,26 @@ export class HlsTranscode {
 
       const run = this.run
 
+      if (run?.stalled)
+        throw new SegmentTimeoutError()
+
       if (run?.exited && !this.ready.has(index)) {
         throw new TranscodeFailedError(
           run.failure ?? 'ffmpeg stopped before the segment',
         )
       }
 
-      if (Date.now() > deadline)
+      if (Date.now() > deadline) {
+        if (own && own === run && !own.superseded && own.head < index) {
+          own.stalled = true
+          this.log.warn(
+            `hls: ffmpeg run ${own.id} stalled before segment ${index}, killed`,
+          )
+          this.kill()
+        }
+
         throw new SegmentTimeoutError()
+      }
 
       await delay(POLL_MS)
     }
@@ -339,7 +359,7 @@ export class HlsTranscode {
 
     const run = this.run
 
-    if (run && !run.exited && index >= run.from) {
+    if (run && !run.exited && !run.stalled && index >= run.from) {
       // ffmpeg этот сегмент уже прошёл, а файл удалён как старый: заново
       // он его не запишет
       const passed = index <= run.head && !hasData(this.pathOf(index))
@@ -439,6 +459,7 @@ export class HlsTranscode {
       superseded: false,
       exited: false,
       paused: false,
+      stalled: false,
     }
     let stderr = ''
 
@@ -463,7 +484,10 @@ export class HlsTranscode {
 
     if (!this.throttleTimer) {
       this.throttleTimer = setInterval(
-        () => void this.throttle().catch(() => {}),
+        () =>
+          void this.throttle().catch((err: Error) =>
+            this.log.warn(`hls: throttle check failed: ${err.message}`),
+          ),
         this.input.ahead?.checkMs ?? THROTTLE_CHECK_MS,
       )
       this.throttleTimer.unref()

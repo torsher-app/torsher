@@ -11,6 +11,7 @@ import type { PlaybackTitle } from '../lib/sources.ts'
 import { api } from '../api.ts'
 import { i18n } from '../i18n.ts'
 import { browserMediaSupport, deviceProfileOf } from '../lib/deviceProfile.ts'
+import { startErrorAction } from '../lib/player.ts'
 import { isWebos } from '../platform/webos.ts'
 
 // Пока сервер читает файл, статус сессии спрашивается раз в секунду
@@ -18,6 +19,16 @@ const PROBE_POLL_MS = 1000
 // Сервер закрывает сессию после 2 мин без обращений; `GET /playback/:id`
 // продлевает её и держит раздачу от вытеснения
 const HEARTBEAT_MS = 60_000
+// Столько сбоев опроса пробы подряд терпим: GET сам повторяет только раз
+const PROBE_FAILURES = 3
+// Проба дольше — сервер завис на файле, сессию начинаем заново
+const PROBE_LIMIT_MS = 180_000
+
+/**
+ * Чем кончился запуск: `retry` — сбой, который пройдёт сам (решает экран,
+ * повторять ли), `error` — ошибка экрана, `stale` — запуск отменён новым.
+ */
+export type StartOutcome = 'ready' | 'retry' | 'error' | 'stale'
 
 /** Смена озвучки или субтитров перезапуском: те же поля, что у `POST /playback` */
 export type PlaybackRestart = Pick<
@@ -107,10 +118,18 @@ export function usePlayback(
   // Запрос прошлого круга, вернувшийся после перезапуска опроса, не ставит таймер
   let statsRun = 0
   let heartbeatTimer: ReturnType<typeof setInterval> | undefined
+  let statsAt = 0
 
   let generation = 0
+  // `playback` держит закрытую сессию: экран читает из неё адрес и позицию
+  // до нового запуска, а повторный DELETE не нужен
+  const closed = new Set<string>()
 
   function closeSession(id: string) {
+    if (closed.has(id))
+      return
+
+    closed.add(id)
     api.playback.deletePlayback(id).catch(() => {})
   }
 
@@ -118,10 +137,10 @@ export function usePlayback(
   function close() {
     stopHeartbeat()
 
-    const id = playback.value?.sessionId ?? pending.value?.sessionId
-
-    if (id)
-      closeSession(id)
+    for (const id of [playback.value?.sessionId, pending.value?.sessionId]) {
+      if (id)
+        closeSession(id)
+    }
   }
 
   // 404 тут не ошибка экрана: сессию закрыли, а видео доигрывает буфер
@@ -137,18 +156,40 @@ export function usePlayback(
     heartbeatTimer = undefined
   }
 
-  /** Ждём пробу файла на сервере; `isCurrent` — запуск ещё не отменён */
-  async function waitProbe(current: Playback, isCurrent: () => boolean) {
+  /**
+   * Ждём пробу файла на сервере; `isCurrent` — запуск ещё не отменён.
+   * `lost` — сессия пропала (сервер перезапустился) или проба не кончилась
+   * за отведённое время.
+   */
+  async function waitProbe(
+    current: Playback,
+    isCurrent: () => boolean,
+  ): Promise<Playback | 'lost'> {
+    const startedAt = Date.now()
     let result = current
+    let failures = 0
 
     while (result.status === 'probing' && isCurrent()) {
+      if (Date.now() - startedAt >= PROBE_LIMIT_MS)
+        return 'lost'
+
       pending.value = result
       await new Promise(resolve => setTimeout(resolve, PROBE_POLL_MS))
 
       if (!isCurrent())
         break
 
-      result = await api.playback.getPlayback(result.sessionId)
+      try {
+        result = await api.playback.getPlayback(result.sessionId)
+        failures = 0
+      }
+      catch (err) {
+        if (getErrorStatus(err) === 404)
+          return 'lost'
+
+        if (++failures > PROBE_FAILURES)
+          throw err
+      }
     }
 
     return result
@@ -159,7 +200,7 @@ export function usePlayback(
    * субтитрами с позиции плеера. Прежняя сессия закрывается всегда, и при
    * повторе после ошибки тоже.
    */
-  async function start(restart?: PlaybackRestart) {
+  async function start(restart?: PlaybackRestart): Promise<StartOutcome> {
     const run = ++generation
 
     status.value = 'loading'
@@ -181,13 +222,21 @@ export function usePlayback(
 
       if (run !== generation) {
         closeSession(created.sessionId)
-        return
+        return 'stale'
+      }
+
+      if (ready === 'lost') {
+        closeSession(created.sessionId)
+        pending.value = undefined
+        error.value = 'unknown'
+        return 'retry'
       }
 
       pending.value = undefined
       playback.value = ready
       status.value = 'ready'
       startHeartbeat(ready.sessionId)
+      return 'ready'
     }
     catch (err) {
       // Проба оборвалась: созданная сессия больше ничьей не станет
@@ -195,23 +244,39 @@ export function usePlayback(
         closeSession(created.sessionId)
 
       if (run !== generation)
-        return
+        return 'stale'
 
       pending.value = undefined
       const outcome = await playerErrorOf(err)
+
+      if (run !== generation)
+        return 'stale'
 
       error.value = outcome.error
       engineKind.value
         = 'engineKind' in outcome ? outcome.engineKind : undefined
       storage.value = 'storage' in outcome ? outcome.storage : undefined
+
+      // Ошибка запомнена: её покажет `fail()`, если повторы не помогут
+      const action = startErrorAction({
+        status: getErrorStatus(err),
+        name: err instanceof Error ? err.name : undefined,
+        engineKind: engineKind.value,
+      })
+
+      if (action === 'retry')
+        return 'retry'
+
       status.value = 'error'
+      return 'error'
     }
   }
 
-  function fail(kind: PlayerError) {
-    stopHeartbeat()
+  /** Ошибка экрана; без `kind` — та, что запомнил последний запуск */
+  function fail(kind?: PlayerError) {
     stopStats()
-    error.value = kind
+    close()
+    error.value = kind ?? error.value ?? 'unknown'
     status.value = 'error'
   }
 
@@ -228,6 +293,7 @@ export function usePlayback(
           fileIndex: String(fileIndex),
           offset: String(Math.floor(offset)),
         })
+        statsAt = Date.now()
       }
       catch {
         // Пропущенный шаг не ломает экран: остаются прежние цифры
@@ -281,6 +347,8 @@ export function usePlayback(
     fail,
     pollStats,
     stopStats,
+    /** Когда статистика пришла в последний раз: молчит — сервер или движок не отвечают */
+    statsReceivedAt: () => statsAt,
     saveWatchState,
   }
 }

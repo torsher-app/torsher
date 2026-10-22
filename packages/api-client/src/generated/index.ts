@@ -245,6 +245,110 @@ export interface UpdateDeviceInput {
   name: string;
 }
 
+export interface EngineUnavailableResponseInput {
+  message: string;
+  kind: "not_installed" | "starting" | "stopped";
+}
+
+export interface TorrentFileInput {
+  index: number;
+  path: string;
+  size: number;
+  isVideo: boolean;
+  downloaded: number;
+  selected: boolean;
+}
+
+export interface TorrentInput {
+  id: string;
+  infoHash: string;
+  name: string;
+  source: "magnet" | "file";
+  status: "resolving" | "ready" | "failed";
+  error: "timeout" | "rejected" | "failed" | null;
+  files: TorrentFileInput[];
+  totalSize: number;
+  addedAt: string;
+  lastAccessAt: string | null;
+  titleId: string | null;
+  retention: "cache" | "keep";
+  pauseReason: "user" | "storage" | null;
+  state:
+    | "idle"
+    | "partial"
+    | "downloading"
+    | "stalled"
+    | "seeding"
+    | "complete"
+    | "paused";
+  streaming: boolean;
+  progress: {
+    downloaded: number;
+    wanted: number;
+  };
+  sizeOnDisk: number;
+  downloadSpeed: number;
+  uploadSpeed: number;
+  peers: {
+    connected: number;
+    found: number;
+  };
+}
+
+export interface TorrentListInput {
+  items: TorrentInput[];
+  engine: "ready" | "not_installed" | "starting" | "stopped";
+  totals: {
+    downloadSpeed: number;
+    uploadSpeed: number;
+  };
+  cache: {
+    used: number;
+    limit: number;
+  };
+}
+
+export interface DownloadTorrentInput {
+  /**
+   * @maxItems 10000
+   * @minItems 1
+   */
+  files: number[];
+}
+
+export interface UpdateRetentionInput {
+  retention: "cache" | "keep";
+}
+
+export interface CreateTorrentInput {
+  /**
+   * @maxLength 20000
+   * @pattern ^magnet:\?
+   */
+  magnet?: string;
+  /**
+   * @format base64
+   * @maxLength 11184812
+   * @pattern ^$|^(?:[0-9a-zA-Z+/]{4})*(?:(?:[0-9a-zA-Z+/]{2}==)|(?:[0-9a-zA-Z+/]{3}=))?$
+   */
+  torrentFile?: string;
+}
+
+export interface TorrentStatsInput {
+  activity: "idle" | "downloading";
+  peers: {
+    connected: number;
+    found: number;
+  };
+  downloadSpeed: number;
+  uploadSpeed: number;
+  file: {
+    size: number;
+    downloaded: number;
+    bufferedAhead: number;
+  };
+}
+
 export interface SourceErrorResponseInput {
   message: string;
   kind:
@@ -1000,110 +1104,6 @@ export interface OverviewResponseInput {
   };
 }
 
-export interface EngineUnavailableResponseInput {
-  message: string;
-  kind: "not_installed" | "starting" | "stopped";
-}
-
-export interface TorrentFileInput {
-  index: number;
-  path: string;
-  size: number;
-  isVideo: boolean;
-  downloaded: number;
-  selected: boolean;
-}
-
-export interface TorrentInput {
-  id: string;
-  infoHash: string;
-  name: string;
-  source: "magnet" | "file";
-  status: "resolving" | "ready" | "failed";
-  error: "timeout" | "rejected" | "failed" | null;
-  files: TorrentFileInput[];
-  totalSize: number;
-  addedAt: string;
-  lastAccessAt: string | null;
-  titleId: string | null;
-  retention: "cache" | "keep";
-  pauseReason: "user" | "storage" | null;
-  state:
-    | "idle"
-    | "partial"
-    | "downloading"
-    | "stalled"
-    | "seeding"
-    | "complete"
-    | "paused";
-  streaming: boolean;
-  progress: {
-    downloaded: number;
-    wanted: number;
-  };
-  sizeOnDisk: number;
-  downloadSpeed: number;
-  uploadSpeed: number;
-  peers: {
-    connected: number;
-    found: number;
-  };
-}
-
-export interface TorrentListInput {
-  items: TorrentInput[];
-  engine: "ready" | "not_installed" | "starting" | "stopped";
-  totals: {
-    downloadSpeed: number;
-    uploadSpeed: number;
-  };
-  cache: {
-    used: number;
-    limit: number;
-  };
-}
-
-export interface DownloadTorrentInput {
-  /**
-   * @maxItems 10000
-   * @minItems 1
-   */
-  files: number[];
-}
-
-export interface UpdateRetentionInput {
-  retention: "cache" | "keep";
-}
-
-export interface CreateTorrentInput {
-  /**
-   * @maxLength 20000
-   * @pattern ^magnet:\?
-   */
-  magnet?: string;
-  /**
-   * @format base64
-   * @maxLength 11184812
-   * @pattern ^$|^(?:[0-9a-zA-Z+/]{4})*(?:(?:[0-9a-zA-Z+/]{2}==)|(?:[0-9a-zA-Z+/]{3}=))?$
-   */
-  torrentFile?: string;
-}
-
-export interface TorrentStatsInput {
-  activity: "idle" | "downloading";
-  peers: {
-    connected: number;
-    found: number;
-  };
-  downloadSpeed: number;
-  uploadSpeed: number;
-  file: {
-    size: number;
-    downloaded: number;
-    bufferedAhead: number;
-  };
-}
-
 export interface ProfileInput {
   id: string;
   name: string;
@@ -1532,6 +1532,110 @@ export interface UpdateDevice {
    * @maxLength 60
    */
   name: string;
+}
+
+export interface EngineUnavailableResponse {
+  message: string;
+  kind: "not_installed" | "starting" | "stopped";
+}
+
+export interface TorrentFile {
+  index: number;
+  path: string;
+  size: number;
+  isVideo: boolean;
+  downloaded: number;
+  selected: boolean;
+}
+
+export interface Torrent {
+  id: string;
+  infoHash: string;
+  name: string;
+  source: "magnet" | "file";
+  status: "resolving" | "ready" | "failed";
+  error: "timeout" | "rejected" | "failed" | null;
+  files: TorrentFile[];
+  totalSize: number;
+  addedAt: string;
+  lastAccessAt: string | null;
+  titleId: string | null;
+  retention: "cache" | "keep";
+  pauseReason: "user" | "storage" | null;
+  state:
+    | "idle"
+    | "partial"
+    | "downloading"
+    | "stalled"
+    | "seeding"
+    | "complete"
+    | "paused";
+  streaming: boolean;
+  progress: {
+    downloaded: number;
+    wanted: number;
+  };
+  sizeOnDisk: number;
+  downloadSpeed: number;
+  uploadSpeed: number;
+  peers: {
+    connected: number;
+    found: number;
+  };
+}
+
+export interface TorrentList {
+  items: Torrent[];
+  engine: "ready" | "not_installed" | "starting" | "stopped";
+  totals: {
+    downloadSpeed: number;
+    uploadSpeed: number;
+  };
+  cache: {
+    used: number;
+    limit: number;
+  };
+}
+
+export interface DownloadTorrent {
+  /**
+   * @maxItems 10000
+   * @minItems 1
+   */
+  files: number[];
+}
+
+export interface UpdateRetention {
+  retention: "cache" | "keep";
+}
+
+export interface CreateTorrent {
+  /**
+   * @maxLength 20000
+   * @pattern ^magnet:\?
+   */
+  magnet?: string;
+  /**
+   * @format base64
+   * @maxLength 11184812
+   * @pattern ^$|^(?:[0-9a-zA-Z+/]{4})*(?:(?:[0-9a-zA-Z+/]{2}==)|(?:[0-9a-zA-Z+/]{3}=))?$
+   */
+  torrentFile?: string;
+}
+
+export interface TorrentStats {
+  activity: "idle" | "downloading";
+  peers: {
+    connected: number;
+    found: number;
+  };
+  downloadSpeed: number;
+  uploadSpeed: number;
+  file: {
+    size: number;
+    downloaded: number;
+    bufferedAhead: number;
+  };
 }
 
 export interface SourceErrorResponse {
@@ -2289,110 +2393,6 @@ export interface OverviewResponse {
   };
 }
 
-export interface EngineUnavailableResponse {
-  message: string;
-  kind: "not_installed" | "starting" | "stopped";
-}
-
-export interface TorrentFile {
-  index: number;
-  path: string;
-  size: number;
-  isVideo: boolean;
-  downloaded: number;
-  selected: boolean;
-}
-
-export interface Torrent {
-  id: string;
-  infoHash: string;
-  name: string;
-  source: "magnet" | "file";
-  status: "resolving" | "ready" | "failed";
-  error: "timeout" | "rejected" | "failed" | null;
-  files: TorrentFile[];
-  totalSize: number;
-  addedAt: string;
-  lastAccessAt: string | null;
-  titleId: string | null;
-  retention: "cache" | "keep";
-  pauseReason: "user" | "storage" | null;
-  state:
-    | "idle"
-    | "partial"
-    | "downloading"
-    | "stalled"
-    | "seeding"
-    | "complete"
-    | "paused";
-  streaming: boolean;
-  progress: {
-    downloaded: number;
-    wanted: number;
-  };
-  sizeOnDisk: number;
-  downloadSpeed: number;
-  uploadSpeed: number;
-  peers: {
-    connected: number;
-    found: number;
-  };
-}
-
-export interface TorrentList {
-  items: Torrent[];
-  engine: "ready" | "not_installed" | "starting" | "stopped";
-  totals: {
-    downloadSpeed: number;
-    uploadSpeed: number;
-  };
-  cache: {
-    used: number;
-    limit: number;
-  };
-}
-
-export interface DownloadTorrent {
-  /**
-   * @maxItems 10000
-   * @minItems 1
-   */
-  files: number[];
-}
-
-export interface UpdateRetention {
-  retention: "cache" | "keep";
-}
-
-export interface CreateTorrent {
-  /**
-   * @maxLength 20000
-   * @pattern ^magnet:\?
-   */
-  magnet?: string;
-  /**
-   * @format base64
-   * @maxLength 11184812
-   * @pattern ^$|^(?:[0-9a-zA-Z+/]{4})*(?:(?:[0-9a-zA-Z+/]{2}==)|(?:[0-9a-zA-Z+/]{3}=))?$
-   */
-  torrentFile?: string;
-}
-
-export interface TorrentStats {
-  activity: "idle" | "downloading";
-  peers: {
-    connected: number;
-    found: number;
-  };
-  downloadSpeed: number;
-  uploadSpeed: number;
-  file: {
-    size: number;
-    downloaded: number;
-    bufferedAhead: number;
-  };
-}
-
 export interface Profile {
   id: string;
   name: string;
@@ -2744,6 +2744,8 @@ export type GetDevicesError = MessageResponse;
 export type PatchDeviceError = MessageResponse;
 
 export type DeleteDeviceError = MessageResponse;
+
+export type RestartEngineError = MessageResponse | EngineUnavailableResponse;
 
 export type QueryParamsType = Record<string | number, any>;
 export type ResponseFormat = keyof Omit<Body, "body" | "bodyUsed">;
@@ -4476,6 +4478,22 @@ export class Api<
       this.request<MessageResponse, DeleteDeviceError>({
         path: `/api/devices/${id}`,
         method: "DELETE",
+        format: "json",
+        ...params,
+      }),
+  };
+  engine = {
+    /**
+     * No description
+     *
+     * @tags Torrents
+     * @name RestartEngine
+     * @request POST:/api/engine/restart
+     */
+    restartEngine: (params: RequestParams = {}) =>
+      this.request<MessageResponse, RestartEngineError>({
+        path: `/api/engine/restart`,
+        method: "POST",
         format: "json",
         ...params,
       }),

@@ -924,6 +924,87 @@ func TestHandlerPanicExitsEngine(t *testing.T) {
 	}
 }
 
+// Сторож с частой пробой и порогом `stuckFrom`; остановка ждёт его выхода,
+// чтобы горутина не пережила тест
+func startWatchdog(t *testing.T, engine *api, stuckFrom time.Duration, probe func()) {
+	t.Helper()
+
+	engine.watchEvery = 10 * time.Millisecond
+	engine.lockStuckFrom = stuckFrom
+
+	ctx, cancel := context.WithCancel(context.Background())
+	stopped := make(chan struct{})
+	go func() {
+		defer close(stopped)
+		engine.watchdog(ctx, probe)
+	}()
+
+	t.Cleanup(func() {
+		cancel()
+		<-stopped
+	})
+}
+
+func healthStatus(t *testing.T, url string) (int, string) {
+	t.Helper()
+
+	response, err := http.Get(url + "/health")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+
+	var body struct{ Status string }
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+
+	return response.StatusCode, body.Status
+}
+
+// Захваченная блокировка клиента: проба не возвращается — движок выходит, а
+// `/health` до выхода честно говорит `stuck`
+func TestStuckClientLockExitsEngine(t *testing.T) {
+	engine, server := newTestEngine(t, t.TempDir())
+	engine.restored.Store(true)
+
+	exited := make(chan int, 1)
+	engine.exit = func(code int) { exited <- code }
+
+	held := make(chan struct{})
+	t.Cleanup(func() { close(held) })
+	startWatchdog(t, engine, 100*time.Millisecond, func() { <-held })
+
+	select {
+	case code := <-exited:
+		if code != 2 {
+			t.Fatalf("exit code %d, want 2", code)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("engine did not exit with the client lock held")
+	}
+
+	if status, body := healthStatus(t, server.URL); status != http.StatusServiceUnavailable || body != "stuck" {
+		t.Fatalf("health %d %q, want 503 stuck", status, body)
+	}
+}
+
+func TestFreeClientLockKeepsEngine(t *testing.T) {
+	engine, server := newTestEngine(t, t.TempDir())
+	engine.restored.Store(true)
+	engine.exit = func(int) { t.Error("engine exited with a free client lock") }
+
+	// Порог с запасом: под -race на нагруженной машине проба свободной
+	// блокировки может занять заметно больше интервала
+	startWatchdog(t, engine, time.Second, func() { engine.client.Torrents() })
+	// Дольше порога: `/health` видит, что проба обновляется, а не одну первую
+	time.Sleep(1200 * time.Millisecond)
+
+	if status, body := healthStatus(t, server.URL); status != http.StatusOK || body != "ok" {
+		t.Fatalf("health %d %q, want 200 ok", status, body)
+	}
+}
+
 // Раздача на паузе с выбором после перезапуска: снятие выбора не вешает
 // движок (пауза оставляла ожидающие куски несогласованными, и самопроверка
 // библиотеки паниковала внутри `File.SetPriority` под блокировкой клиента)

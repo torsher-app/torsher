@@ -11,8 +11,9 @@ import type { Cue } from './webvtt.ts'
 import { randomUUID } from 'node:crypto'
 import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
+import { setTimeout as sleep } from 'node:timers/promises'
 import { config } from '../../config.ts'
-import { engineStreamUrl } from '../engine/index.ts'
+import { EngineError, engineStreamUrl } from '../engine/index.ts'
 import { trackStream } from '../storage/index.ts'
 import { streamWindowOf, touchTorrent } from '../torrents/index.ts'
 import { decidePlayback, pickAudioStream, textSubtitles } from './decide.ts'
@@ -58,9 +59,19 @@ export interface SessionInput {
 const IDLE_MS = 2 * 60 * 1000
 const SWEEP_MS = 30 * 1000
 const EXTERNAL_CACHE_SIZE = 50
+// Перезапуск движка обрывает пробу на полпути: повтор берёт новый адрес
+const PROBE_RETRIES = 2
+const PROBE_RETRY_MS = 3000
+
+/** Пауза перед повтором пробы: тесты подменяют её через `vi.spyOn` */
+export const probeDeps = {
+  pause: (signal: AbortSignal) => sleep(PROBE_RETRY_MS, undefined, { signal }),
+}
 
 const sessions = new Map<string, PlaybackSession>()
 const releases = new Map<string, () => void>()
+/** Закрытие сессии обрывает её фоновые чтения потока */
+const closers = new Map<string, AbortController>()
 const externalCues = new Map<string, Promise<Cue[]>>()
 let sweeper: ReturnType<typeof setInterval> | undefined
 
@@ -71,11 +82,11 @@ const DIRECT: PlaybackDecision = {
   audioSwitch: 'restart',
 }
 
-function rangeReader(url: string) {
+function rangeReader(url: string, signal: AbortSignal) {
   return async (start: number, end: number) => {
     const response = await fetch(url, {
       headers: { Range: `bytes=${start}-${end - 1}` },
-      signal: AbortSignal.timeout(120_000),
+      signal: AbortSignal.any([signal, AbortSignal.timeout(120_000)]),
     })
 
     if (response.status === 416)
@@ -118,10 +129,39 @@ function isOpen(session: PlaybackSession) {
   return sessions.get(session.id) === session
 }
 
-async function prepare(session: PlaybackSession, input: SessionInput) {
+/**
+ * Сбой движка или сети, а не файла: ffprobe упал на чтении потока или движок
+ * недоступен. Таймаут пробы не повторяем — куски не пришли за две минуты, а
+ * не-медиа файл не прочитается и со второго раза.
+ */
+function isRetryableProbeError(err: unknown) {
+  if (err instanceof EngineError)
+    return err.kind === 'unavailable' || err.kind === 'timeout'
+
+  const failure = err as NodeJS.ErrnoException & {
+    killed?: boolean
+    signal?: NodeJS.Signals | null
+  }
+
+  if (failure.code === 'ECONNRESET' || failure.code === 'ECONNREFUSED')
+    return true
+
+  if (failure.killed)
+    return false
+
+  return (
+    (typeof failure.code === 'number' || !!failure.signal)
+    && !/Invalid data found/i.test(failure.message)
+  )
+}
+
+async function prepare(
+  session: PlaybackSession,
+  input: SessionInput,
+  signal: AbortSignal,
+) {
   const { torrent, fileIndex, device, log } = input
   const tools = await mediaTools()
-  const url = engineStreamUrl(torrent.infoHash, fileIndex)
 
   if (!isOpen(session))
     return
@@ -133,24 +173,46 @@ async function prepare(session: PlaybackSession, input: SessionInput) {
     return
   }
 
-  // Индекс MKV читаем вместе с пробой, а не после: он нужен перепаковке, а у
-  // холодной раздачи это ещё одно ожидание кусков — с конца файла
-  const earlyCues
-    = device && /\.mkv$/i.test(session.fileName)
-      ? readCueTimes(rangeReader(url)).catch(() => null)
-      : undefined
+  let url = ''
+  let earlyCues: Promise<number[] | null> | undefined
 
-  try {
-    session.media = await probeMedia(
-      `${torrent.infoHash}:${fileIndex}`,
-      url,
-      session.fileName,
-    )
-  }
-  catch (err) {
-    log.warn(`playback ${session.id}: probe failed: ${(err as Error).message}`)
-    session.decision = { ...DIRECT, reasons: ['ProbeFailed'] }
-    return
+  for (let attempt = 0; ; attempt++) {
+    try {
+      url = engineStreamUrl(torrent.infoHash, fileIndex)
+      // Индекс MKV читаем вместе с пробой, а не после: он нужен перепаковке, а
+      // у холодной раздачи это ещё одно ожидание кусков — с конца файла
+      earlyCues
+        = device && /\.mkv$/i.test(session.fileName)
+          ? readCueTimes(rangeReader(url, signal)).catch(() => null)
+          : undefined
+      session.media = await probeMedia(
+        `${torrent.infoHash}:${fileIndex}`,
+        url,
+        session.fileName,
+      )
+      break
+    }
+    catch (err) {
+      const message = (err as Error).message
+
+      if (attempt >= PROBE_RETRIES || !isRetryableProbeError(err)) {
+        log.warn(`playback ${session.id}: probe failed: ${message}`)
+        session.decision = { ...DIRECT, reasons: ['ProbeFailed'] }
+        return
+      }
+
+      log.warn(`playback ${session.id}: probe failed, retrying: ${message}`)
+
+      try {
+        await probeDeps.pause(signal)
+      }
+      catch {
+        return
+      }
+
+      if (!isOpen(session))
+        return
+    }
   }
 
   if (!isOpen(session))
@@ -198,7 +260,8 @@ async function prepare(session: PlaybackSession, input: SessionInput) {
   if (decision.mode === 'hls' && media.duration && media.video) {
     const cues
       = media.container === 'mkv'
-        ? await (earlyCues ?? readCueTimes(rangeReader(url)).catch(() => null))
+        ? await (earlyCues
+          ?? readCueTimes(rangeReader(url, signal)).catch(() => null))
         : null
 
     if (!isOpen(session))
@@ -259,7 +322,9 @@ export function createSession(input: SessionInput) {
     touchedAt: Date.now(),
   }
 
-  session.ready = prepare(session, input)
+  const closer = new AbortController()
+
+  session.ready = prepare(session, input, closer.signal)
     .catch((err: Error) => {
       input.log.warn(`playback ${session.id}: ${err.message}`)
       session.decision = { ...DIRECT, reasons: ['ProbeFailed'] }
@@ -279,6 +344,7 @@ export function createSession(input: SessionInput) {
     })
 
   sessions.set(session.id, session)
+  closers.set(session.id, closer)
   // Пока сессия открыта, раздачу не вытесняют и не ставят на паузу — и до
   // конца пробы, и в прямом режиме, где плеер переоткрывает поток при перемотке
   releases.set(session.id, trackStream(input.torrent.id))
@@ -305,6 +371,9 @@ export async function stopSession(id: string) {
     return
 
   sessions.delete(id)
+  // Пробу не отменяем: она общая в кэше для всех сессий этого файла
+  closers.get(id)?.abort()
+  closers.delete(id)
   releases.get(id)?.()
   releases.delete(id)
   // Зритель мог выйти ненадолго (следующая серия, пауза): вытеснение

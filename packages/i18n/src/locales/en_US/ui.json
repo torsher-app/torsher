@@ -291,7 +291,9 @@
     "steps": {
       "connecting": "Connecting to peers",
       "waitingPeers": "Waiting for peers",
-      "buffering": "Buffering"
+      "buffering": "Buffering",
+      "reconnecting": "Reconnecting…",
+      "slow": "Slow torrent"
     },
     "waitingHint": "Nobody is sharing this file yet. The torrent may be rare: wait or pick another one.",
     "retry": "Retry",
@@ -1429,6 +1431,12 @@
         "keepFilesText": "Downloaded files stay on disk, but Torsher stops counting them and never deletes them automatically.",
         "deleted": "Torrent deleted",
         "deletedFiles": "Files deleted from disk"
+      },
+      "restartEngine": "Restart engine",
+      "restartDialog": {
+        "title": "Restart the torrent engine?",
+        "text": "Active playback will pause for a few seconds and then pick up on its own.",
+        "submit": "Restart"
       },
       "selectedEpisodes": "{n} episode | {n} episodes",
       "selectedFiles": "{n} file | {n} files",
