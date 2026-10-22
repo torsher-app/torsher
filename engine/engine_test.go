@@ -2,10 +2,13 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -280,7 +283,7 @@ func TestTorrentsSurviveRestart(t *testing.T) {
 	copyDir(t, filepath.Join(dataDir, "torrents"), filepath.Join(restartDir, "torrents"))
 
 	engine, _ := newTestEngine(t, restartDir)
-	engine.restore()
+	engine.restore(context.Background())
 
 	restored, ok := engine.client.Torrent(hash)
 	if !ok || restored.Info() == nil {
@@ -293,6 +296,29 @@ func TestTorrentsSurviveRestart(t *testing.T) {
 
 	if len(pending) != 1 || pending[0] != 0 {
 		t.Fatalf("selection was not restored: %v", pending)
+	}
+}
+
+func TestHealthWaitsForRestore(t *testing.T) {
+	engine, server := newTestEngine(t, t.TempDir())
+
+	health := func() (int, string) {
+		response, err := http.Get(server.URL + "/health")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		return response.StatusCode, decode[map[string]string](t, response)["status"]
+	}
+
+	if code, status := health(); code != http.StatusServiceUnavailable || status != "restoring" {
+		t.Fatalf("health before restore = %d %q", code, status)
+	}
+
+	engine.restore(context.Background())
+
+	if code, status := health(); code != http.StatusOK || status != "ok" {
+		t.Fatalf("health after restore = %d %q", code, status)
 	}
 }
 
@@ -432,7 +458,7 @@ func TestPauseStopsDownloadAndSurvivesRestart(t *testing.T) {
 	restartDir := t.TempDir()
 	copyDir(t, filepath.Join(dataDir, "torrents"), filepath.Join(restartDir, "torrents"))
 	restarted, _ := newTestEngine(t, restartDir)
-	restarted.restore()
+	restarted.restore(context.Background())
 
 	if state := stateOfHash(t, restarted, hash); !state.Paused || !state.Background {
 		t.Fatalf("pause was not restored: %+v", state)
@@ -762,7 +788,7 @@ func TestRestartKeepsFinishedFileNextToPartFile(t *testing.T) {
 	store.completion.Close()
 
 	restarted, _ := newTestEngine(t, dataDir)
-	restarted.restore()
+	restarted.restore(context.Background())
 	again, _ := restarted.client.Torrent(hash)
 	again.AddClientPeer(fx.seeder)
 
@@ -814,5 +840,36 @@ func TestPartFilesAreAdopted(t *testing.T) {
 
 	if data, _ := os.ReadFile(path); !bytes.Equal(data, fx.content) {
 		t.Fatal("existing file was replaced by a part file")
+	}
+}
+
+// Файл раздачи, чьё имя само оканчивается на `.part`, — настоящий файл, а не
+// недокачанный хвост соседа: под имя соседа он не переименовывается
+func TestPartFileOfTorrentIsNotAdopted(t *testing.T) {
+	downloads := filepath.Join(t.TempDir(), "downloads")
+	dir := filepath.Join(downloads, "Pack")
+	info := metainfo.Info{
+		Name:        "Pack",
+		PieceLength: 16 << 10,
+		Files: []metainfo.FileInfo{
+			{Path: []string{"A.mkv"}, Length: 4},
+			{Path: []string{"A.mkv" + partFileSuffix}, Length: 4},
+		},
+	}
+
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "A.mkv"+partFileSuffix), []byte("part"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	adoptPartFiles(downloads, &info)
+
+	if _, err := os.Stat(filepath.Join(dir, "A.mkv"+partFileSuffix)); err != nil {
+		t.Fatalf("torrent file was renamed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "A.mkv")); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("sibling file was created: %v", err)
 	}
 }

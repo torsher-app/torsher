@@ -95,7 +95,6 @@ func run(listen, downloads, dataDir string, peerPort int, seed bool, logger *slo
 	}
 
 	engine := newAPI(client, sess, store, logger)
-	engine.restore()
 
 	ln, err := net.Listen("tcp", listen)
 	if err != nil {
@@ -109,6 +108,19 @@ func run(listen, downloads, dataDir string, peerPort int, seed bool, logger *slo
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	// Восстановление сотен раздач с проверкой файлов идёт долго: API уже
+	// слушает, и супервизор видит живой процесс (`restoring`), а не молчание
+	restoring := make(chan struct{})
+	go func() {
+		defer close(restoring)
+		engine.restore(ctx)
+	}()
+	// Клиент закрывается после восстановления: оно ещё работает с раздачами
+	defer func() {
+		stop()
+		<-restoring
+	}()
 
 	go engine.speeds.run(ctx, client)
 

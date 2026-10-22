@@ -1,4 +1,5 @@
 import type { ChildProcess } from 'node:child_process'
+import type { EngineHealth } from './supervisor.ts'
 import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -32,7 +33,9 @@ class FakeProcess extends EventEmitter {
 
 const log = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }
 
-function setup(overrides: { healthy?: () => boolean, exists?: boolean } = {}) {
+function setup(
+  overrides: { health?: () => EngineHealth, exists?: boolean } = {},
+) {
   const processes: FakeProcess[] = []
   const spawned: string[][] = []
   const onReady = vi.fn()
@@ -53,7 +56,7 @@ function setup(overrides: { healthy?: () => boolean, exists?: boolean } = {}) {
       return proc as unknown as ChildProcess
     },
     findFreePort: async () => ++port,
-    isHealthy: async () => overrides.healthy?.() ?? true,
+    checkHealth: async () => overrides.health?.() ?? 'ok',
     binaryExists: () => overrides.exists ?? true,
     restartDelaysMs: [1000, 5000],
     stableAfterMs: 60_000,
@@ -128,9 +131,9 @@ describe('супервизор движка', () => {
   })
 
   it('убивает процесс, если API не ответил вовремя, и перезапускает его', async () => {
-    let healthy = false
+    let health: EngineHealth = 'down'
     const { supervisor, processes, spawned, onReady } = setup({
-      healthy: () => healthy,
+      health: () => health,
     })
 
     const started = supervisor.start()
@@ -141,10 +144,33 @@ describe('супервизор движка', () => {
     expect(processes[0]!.signals).toEqual(['SIGKILL'])
     expect(onReady).not.toHaveBeenCalled()
 
-    healthy = true
+    health = 'ok'
     await vi.advanceTimersByTimeAsync(1000)
 
     expect(spawned).toHaveLength(2)
+    expect(supervisor.status).toBe('ready')
+  })
+
+  it('движок восстанавливает раздачи дольше срока — ждёт его без SIGKILL', async () => {
+    let health: EngineHealth = 'restoring'
+    const { supervisor, processes, onReady } = setup({
+      health: () => health,
+    })
+
+    const started = supervisor.start()
+
+    await vi.advanceTimersByTimeAsync(25_000)
+
+    expect(processes[0]!.signals).toEqual([])
+    expect(onReady).not.toHaveBeenCalled()
+    expect(supervisor.status).toBe('starting')
+
+    health = 'ok'
+    await vi.advanceTimersByTimeAsync(100)
+    await started
+
+    expect(processes).toHaveLength(1)
+    expect(onReady).toHaveBeenCalledWith('http://127.0.0.1:40001')
     expect(supervisor.status).toBe('ready')
   })
 

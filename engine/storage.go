@@ -115,10 +115,23 @@ func adoptPartFiles(downloads string, info *metainfo.Info) {
 		return
 	}
 
-	for _, file := range info.UpvertedFiles() {
-		path := filepath.Join(base, filePathOf(storage.FilePathMakerOpts{Info: info, File: &file}))
+	files := info.UpvertedFiles()
+	paths := make([]string, 0, len(files))
+	own := make(map[string]bool, len(files))
 
+	for _, file := range files {
+		path := filepath.Join(base, filePathOf(storage.FilePathMakerOpts{Info: info, File: &file}))
+		paths = append(paths, path)
+		own[path] = true
+	}
+
+	for _, path := range paths {
 		if !isInside(base, path) {
+			continue
+		}
+
+		// `X.part` сам файл раздачи: это не недокачанный `X`
+		if own[path+partFileSuffix] {
 			continue
 		}
 
