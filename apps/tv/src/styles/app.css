@@ -144,7 +144,6 @@ body {
   font-size: calc(var(--u) * 32);
 }
 
-.screen-back:hover,
 .screen-back:focus {
   --bump-scale: var(--focus-scale);
 

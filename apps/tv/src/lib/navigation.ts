@@ -105,3 +105,12 @@ export function goBack(router: Router, onRoot?: () => void) {
     void router.replace({ path: action.path, state: { back: null } })
   else onRoot?.()
 }
+
+/**
+ * Экран открыт шагом вперёд, а не возвратом с дочернего: у записи истории нет
+ * «вперёд» (на неё не вернулись `router.back()`) и есть «назад» (её не подставил
+ * `goBack` на место дочерней). `state` — `history.state` записи vue-router.
+ */
+export function openedForward(state: { back?: unknown, forward?: unknown }) {
+  return Boolean(stringOf(state.back)) && !stringOf(state.forward)
+}

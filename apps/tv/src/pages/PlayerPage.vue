@@ -1250,7 +1250,6 @@ onBeforeUnmount(() => {
   font-size: calc(var(--u) * 32);
 }
 
-.player__back:hover,
 .player__back:focus {
   --bump-scale: var(--focus-scale);
 

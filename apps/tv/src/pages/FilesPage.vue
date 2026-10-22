@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { goBack } from '../lib/navigation.ts'
+import { goBack, openedForward } from '../lib/navigation.ts'
 import type { Episode, TitleFile } from '@torsher/api-client'
 import {
   computed,
@@ -49,6 +49,9 @@ const AUTOSTART_MS = 10_000
 
 const { t } = useI18n()
 const router = useRouter()
+// Автозапуск — только когда раздачу выбрали в «Источниках»: после «Назад» из
+// плеера экран монтируется заново, и отсчёт вернул бы зрителя в плеер
+const autostartAllowed = openedForward(router.options.history.state)
 const focus = useFocus()
 const language = useCatalogLanguage()
 const id = toRef(props, 'id')
@@ -179,7 +182,7 @@ function focusInitial() {
     focus.activate('files-list')
   }
 
-  if (files.value.length === 1)
+  if (files.value.length === 1 && autostartAllowed)
     startAutostart()
 }
 

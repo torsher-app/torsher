@@ -45,7 +45,7 @@ const seenAt = computed(
 
 <template>
   <li
-    class="group/row relative grid grid-cols-[20px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 border-b py-2.5 pr-2.5 pl-4 text-[13.5px] hover:bg-muted/50 sm:h-11 sm:grid-cols-[20px_minmax(0,190px)_minmax(0,1fr)_150px] sm:py-0 xl:grid-cols-[20px_190px_minmax(0,1fr)_150px_150px]"
+    class="group/row relative grid grid-cols-[20px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 border-b py-2.5 pr-2.5 pl-4 text-[13.5px] hover:bg-muted/50 dark:hover:bg-muted sm:h-11 sm:grid-cols-[20px_minmax(0,190px)_minmax(0,1fr)_150px] sm:py-0 xl:grid-cols-[20px_190px_minmax(0,1fr)_150px_150px]"
   >
     <span
       class="row-span-2 mt-1 grid size-5 place-items-center self-start text-muted-foreground sm:row-span-1 sm:mt-0 sm:self-center"

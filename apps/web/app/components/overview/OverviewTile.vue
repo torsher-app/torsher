@@ -16,8 +16,9 @@ defineProps<{
     :to="to"
     class="group/tile block rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring"
   >
+    <!-- Наведение — тот же фон и без анимации, как у строки списка -->
     <Card
-      class="h-full gap-0 py-0 transition-colors group-hover/tile:bg-muted/30"
+      class="h-full gap-0 py-0 group-hover/tile:bg-muted/50 dark:group-hover/tile:bg-muted"
     >
       <div class="grid flex-1 content-start gap-2 p-5">
         <span

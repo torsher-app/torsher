@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { backAction } from './navigation.ts'
+import { backAction, openedForward } from './navigation.ts'
 
 const ID = 'tmdb:tv:1399'
 
@@ -77,5 +77,27 @@ describe('backAction', () => {
   it('экраны вне флоу — по истории, а без неё — корень', () => {
     expect(backAction(route('/search'), '/')).toEqual({ kind: 'history' })
     expect(backAction(route('/'), undefined)).toEqual({ kind: 'none' })
+  })
+})
+
+describe('openedForward', () => {
+  it('шаг вперёд с другого экрана', () => {
+    expect(openedForward({ back: `/title/${ID}/sources`, forward: null })).toBe(
+      true,
+    )
+  })
+
+  it('возврат `router.back()` с дочернего экрана', () => {
+    expect(
+      openedForward({
+        back: `/title/${ID}/sources`,
+        forward: '/play/t1/0?title=tmdb:tv:1399',
+      }),
+    ).toBe(false)
+  })
+
+  it('запись подставил goBack или экран открыт по ссылке', () => {
+    expect(openedForward({ back: null, forward: null })).toBe(false)
+    expect(openedForward({})).toBe(false)
   })
 })

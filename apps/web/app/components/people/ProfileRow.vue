@@ -46,9 +46,10 @@ const language = computed(() => meta.languageOf(props.profile))
   <li
     :class="
       cn(
-        'group/row relative grid grid-cols-[20px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 border-b py-2.5 pr-2.5 pl-4 text-[13.5px] hover:bg-muted/50',
+        'group/row relative grid grid-cols-[20px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 border-b py-2.5 pr-2.5 pl-4 text-[13.5px] hover:bg-muted/50 dark:hover:bg-muted',
         'sm:h-11 sm:grid-cols-[20px_minmax(0,190px)_minmax(0,1fr)_auto] sm:py-0',
-        selected && 'bg-muted/50 shadow-[inset_2px_0_0_var(--primary)]',
+        selected
+          && 'bg-muted/50 dark:bg-muted shadow-[inset_2px_0_0_var(--primary)]',
       )
     "
   >

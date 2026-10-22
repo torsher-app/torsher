@@ -29,9 +29,10 @@ const repeat = computed(() => props.entry.repeat ?? 1)
   <li
     :class="
       cn(
-        'relative grid grid-cols-[auto_16px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-0.5 border-b py-2 pr-3 pl-4 text-[13.5px] leading-5 hover:bg-muted/50',
+        'relative grid grid-cols-[auto_16px_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-0.5 border-b py-2 pr-3 pl-4 text-[13.5px] leading-5 hover:bg-muted/50 dark:hover:bg-muted',
         'sm:h-9 sm:grid-cols-[60px_16px_104px_minmax(0,1fr)_auto] sm:py-0',
-        selected && 'bg-muted/50 shadow-[inset_2px_0_0_var(--primary)]',
+        selected
+          && 'bg-muted/50 dark:bg-muted shadow-[inset_2px_0_0_var(--primary)]',
       )
     "
   >
