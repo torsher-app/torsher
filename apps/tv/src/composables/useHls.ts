@@ -7,12 +7,18 @@ const HLS_NATIVE = 'application/vnd.apple.mpegurl'
 const TRANSCODE_FAILED = 502
 
 /**
+ * Почему поток встал: `network` — сеть, сервер или перепаковка, пройдёт
+ * повтором; `media` — сегменты не разбираются; `other` — прочее.
+ */
+export type HlsFailure = 'network' | 'media' | 'other'
+
+/**
  * Поток перепаковки: hls.js на MSE, а где его нет — нативный HLS. hls.js
  * грузится отдельным чанком только для перепаковки: прямое воспроизведение
  * его не тянет. Свежий Chrome отвечает на HLS «maybe», но играет не всё —
  * поэтому сначала hls.js.
  */
-export function useHls(onFatal: () => void) {
+export function useHls(onFatal: (kind: HlsFailure) => void) {
   let hls: Hls | undefined
 
   function detach() {
@@ -60,14 +66,14 @@ export function useHls(onFatal: () => void) {
     })
 
     player.on(HlsPlayer.Events.ERROR, (_event, data) => {
-      // 502 — ffmpeg не прочитал вход (битые или пустые данные): повторы
-      // дадут то же самое, а зритель минуту смотрел бы на буферизацию
+      // 502 — ffmpeg упал или не прочитал вход: повторы hls.js в той же
+      // сессии дадут то же самое, а новая сессия запустит новый ffmpeg
       if (
         data.details === HlsPlayer.ErrorDetails.FRAG_LOAD_ERROR
         && data.response?.code === TRANSCODE_FAILED
       ) {
         detach()
-        onFatal()
+        onFatal('network')
         return
       }
 
@@ -75,7 +81,11 @@ export function useHls(onFatal: () => void) {
         return
 
       if (data.type !== HlsPlayer.ErrorTypes.MEDIA_ERROR) {
-        onFatal()
+        onFatal(
+          data.type === HlsPlayer.ErrorTypes.NETWORK_ERROR
+            ? 'network'
+            : 'other',
+        )
         return
       }
 
@@ -86,7 +96,7 @@ export function useHls(onFatal: () => void) {
 
       if (action === 'fail') {
         detach()
-        onFatal()
+        onFatal('media')
         return
       }
 

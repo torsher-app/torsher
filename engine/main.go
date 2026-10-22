@@ -122,6 +122,9 @@ func run(listen, downloads, dataDir string, peerPort int, seed bool, logger *slo
 		<-restoring
 	}()
 
+	// Сразу, а не после восстановления: `restore` тоже берёт блокировку и
+	// может застрять под ней
+	go engine.watchdog(ctx, func() { client.Torrents() })
 	go engine.speeds.run(ctx, client)
 
 	go func() {

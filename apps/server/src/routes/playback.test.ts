@@ -18,6 +18,8 @@ import {
   sampleTorrentFile,
 } from '../services/engine/fixtures/index.ts'
 import { stopAllSessions } from '../services/media/index.ts'
+import { clearProbeCache } from '../services/media/probe.ts'
+import { probeDeps } from '../services/media/sessions.ts'
 import { resetMediaTools } from '../services/media/tools.ts'
 import { rememberChoice } from '../services/sources/progress.ts'
 import { signToken } from '../utils/token.ts'
@@ -81,6 +83,11 @@ describe.runIf(hasFfmpeg())('воспроизведение с пробой и �
   )
   let mkv = Buffer.alloc(0)
   let files: { path: string, size: number, padding: boolean }[] = []
+  // Сколько следующих запросов ffprobe к фильму оборвать, как при падении движка
+  let probeResets = 0
+  // Чтения индекса MKV с конца файла висят, пока движок ждёт куски
+  let holdTail = false
+  let tailClosed = false
   const engine = createServer((request, response) => {
     const url = new URL(request.url ?? '/', 'http://engine')
 
@@ -117,6 +124,14 @@ describe.runIf(hasFfmpeg())('воспроизведение с пробой и �
       return
     }
 
+    const fromFfprobe = request.headers['user-agent']?.startsWith('Lavf')
+
+    if (body === mkv && fromFfprobe && probeResets > 0) {
+      probeResets--
+      request.socket.destroy()
+      return
+    }
+
     // Поток с Range, как у движка
     const range = /bytes=(\d+)-(\d*)/.exec(request.headers.range ?? '')
     const start = range ? Number(range[1]) : 0
@@ -127,6 +142,13 @@ describe.runIf(hasFfmpeg())('воспроизведение с пробой и �
     if (start >= body.length) {
       response.statusCode = 416
       response.end()
+      return
+    }
+
+    if (body === mkv && !fromFfprobe && holdTail && start > 0) {
+      response.on('close', () => {
+        tailClosed = true
+      })
       return
     }
 
@@ -353,6 +375,80 @@ describe.runIf(hasFfmpeg())('воспроизведение с пробой и �
     expect(segment.rawPayload.length).toBeGreaterThan(1000)
     // Пакеты MPEG-TS начинаются с синхробайта
     expect(segment.rawPayload[0]).toBe(0x47)
+  })
+
+  it('проба, сорванная движком, повторяется', async () => {
+    const pause = vi.spyOn(probeDeps, 'pause').mockResolvedValue(undefined)
+
+    try {
+      clearProbeCache()
+      probeResets = 2
+
+      expect(await start({ device: chrome })).toMatchObject({ mode: 'hls' })
+      expect(probeResets).toBe(0)
+      expect(pause).toHaveBeenCalledTimes(2)
+    }
+    finally {
+      probeResets = 0
+      pause.mockRestore()
+    }
+  })
+
+  it('проба падает и на повторах — прямой поток с `ProbeFailed`', async () => {
+    const pause = vi.spyOn(probeDeps, 'pause').mockResolvedValue(undefined)
+
+    try {
+      clearProbeCache()
+      probeResets = Number.POSITIVE_INFINITY
+
+      expect(await start({ device: chrome })).toMatchObject({
+        mode: 'direct',
+        reasons: ['ProbeFailed'],
+      })
+      expect(pause).toHaveBeenCalledTimes(2)
+    }
+    finally {
+      probeResets = 0
+      pause.mockRestore()
+    }
+  })
+
+  it('закрытие сессии обрывает чтение индекса MKV', async () => {
+    clearProbeCache()
+    holdTail = true
+    tailClosed = false
+
+    try {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/playback',
+        cookies: owner,
+        payload: { torrentId: torrent.id, fileIndex: 0, device: chrome },
+      })
+      const { sessionId } = response.json()
+
+      // Проба прошла, перепаковка ждёт индекс с конца файла
+      await vi.waitFor(async () => {
+        const status = await app.inject({
+          url: `/api/playback/${sessionId}`,
+          cookies: owner,
+        })
+
+        expect(status.json()).toMatchObject({ status: 'probing' })
+        expect(status.json().media).toBeTruthy()
+      })
+      expect(tailClosed).toBe(false)
+
+      await app.inject({
+        method: 'DELETE',
+        url: `/api/playback/${sessionId}`,
+        cookies: owner,
+      })
+      await vi.waitFor(() => expect(tailClosed).toBe(true))
+    }
+    finally {
+      holdTail = false
+    }
   })
 
   it('озвучка по умолчанию — студия, выбранная для серии', async () => {

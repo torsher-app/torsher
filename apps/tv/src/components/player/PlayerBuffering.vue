@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { TorrentStats } from '@torsher/api-client'
-import type { BufferingStep } from '../../lib/player.ts'
+import type { StageStep } from '../../lib/player.ts'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSourceLabels } from '../../composables/useSourceLabels.ts'
@@ -8,7 +8,7 @@ import { formatSpeed } from '../../lib/player.ts'
 
 // Низ экрана подготовки (`PlayerStage`): полоса, шаг и сеть
 const props = defineProps<{
-  step: BufferingStep
+  step: StageStep
   stats: TorrentStats | undefined
 }>()
 

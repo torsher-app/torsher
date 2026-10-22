@@ -40,6 +40,7 @@ function setup(
   const spawned: string[][] = []
   const onReady = vi.fn()
   const onDown = vi.fn()
+  const healthTimeouts: number[] = []
   let port = 40000
 
   const supervisor = createEngineSupervisor({
@@ -56,17 +57,21 @@ function setup(
       return proc as unknown as ChildProcess
     },
     findFreePort: async () => ++port,
-    checkHealth: async () => overrides.health?.() ?? 'ok',
+    checkHealth: async (_baseUrl, timeoutMs) => {
+      healthTimeouts.push(timeoutMs)
+      return overrides.health?.() ?? 'ok'
+    },
     binaryExists: () => overrides.exists ?? true,
     restartDelaysMs: [1000, 5000],
     stableAfterMs: 60_000,
     healthTimeoutMs: 3000,
     healthIntervalMs: 100,
+    liveness: { intervalMs: 10_000, timeoutMs: 3000, failures: 3 },
     stopTimeoutMs: 2000,
     missingRecheckMs: 10_000,
   })
 
-  return { supervisor, processes, spawned, onReady, onDown }
+  return { supervisor, processes, spawned, onReady, onDown, healthTimeouts }
 }
 
 beforeEach(() => {
@@ -210,5 +215,123 @@ describe('супервизор движка', () => {
     expect(spawned).toHaveLength(0)
     expect(supervisor.status).toBe('missing')
     expect(onDown).toHaveBeenCalledWith('not_installed')
+  })
+})
+
+describe('живость готового движка', () => {
+  it('после трёх сбоев подряд убивает процесс и запускает новый', async () => {
+    let health: EngineHealth = 'ok'
+    const { supervisor, processes, spawned, healthTimeouts } = setup({
+      health: () => health,
+    })
+
+    await supervisor.start()
+    health = 'stuck'
+
+    await vi.advanceTimersByTimeAsync(20_000)
+    expect(processes[0]!.signals).toEqual([])
+
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(processes[0]!.signals).toEqual(['SIGKILL'])
+    expect(supervisor.status).toBe('restarting')
+    // Опрос живости ждёт ответа дольше, чем проверка на старте
+    expect(healthTimeouts.at(-1)).toBe(3000)
+
+    health = 'ok'
+    await vi.advanceTimersByTimeAsync(1000)
+
+    expect(spawned).toHaveLength(2)
+    expect(supervisor.status).toBe('ready')
+  })
+
+  it('успешный ответ сбрасывает счётчик сбоев', async () => {
+    // Первый ответ — стартовой проверке
+    const answers: EngineHealth[] = [
+      'ok',
+      'down',
+      'stuck',
+      'ok',
+      'down',
+      'down',
+    ]
+    const { supervisor, processes } = setup({
+      health: () => answers.shift() ?? 'ok',
+    })
+
+    await supervisor.start()
+    await vi.advanceTimersByTimeAsync(60_000)
+
+    expect(processes).toHaveLength(1)
+    expect(processes[0]!.signals).toEqual([])
+    expect(supervisor.status).toBe('ready')
+  })
+
+  it('восстановление раздач — не сбой, сколько бы ни длилось', async () => {
+    let health: EngineHealth = 'ok'
+    const { supervisor, processes } = setup({ health: () => health })
+
+    await supervisor.start()
+    health = 'restoring'
+    await vi.advanceTimersByTimeAsync(120_000)
+
+    expect(processes).toHaveLength(1)
+    expect(processes[0]!.signals).toEqual([])
+  })
+
+  it('остановка гасит опрос', async () => {
+    const { supervisor, healthTimeouts } = setup()
+
+    await supervisor.start()
+    await supervisor.stop()
+
+    const checks = healthTimeouts.length
+
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(healthTimeouts).toHaveLength(checks)
+  })
+})
+
+describe('перезапуск по просьбе', () => {
+  it('убивает процесс и запускает новый с первой паузой', async () => {
+    const { supervisor, processes, spawned } = setup()
+
+    await supervisor.start()
+    processes[0]!.crash()
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(spawned).toHaveLength(2)
+
+    // После падения следующая пауза была бы 5 с: просьба сбрасывает счётчик
+    expect(supervisor.restart()).toBe(true)
+    expect(processes[1]!.signals).toEqual(['SIGKILL'])
+    expect(supervisor.status).toBe('restarting')
+
+    await vi.advanceTimersByTimeAsync(999)
+    expect(spawned).toHaveLength(2)
+
+    await vi.advanceTimersByTimeAsync(1)
+    expect(spawned).toHaveLength(3)
+    expect(supervisor.status).toBe('ready')
+  })
+
+  it('движок, который уже перезапускается, второй раз не запускает', async () => {
+    const { supervisor, processes, spawned } = setup()
+
+    await supervisor.start()
+    expect(supervisor.restart()).toBe(true)
+    expect(supervisor.restart()).toBe(false)
+
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(spawned).toHaveLength(2)
+    expect(processes[1]!.signals).toEqual([])
+
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(spawned).toHaveLength(2)
+  })
+
+  it('не запущенный движок не трогает', () => {
+    const { supervisor, spawned } = setup()
+
+    expect(supervisor.restart()).toBe(false)
+    expect(spawned).toHaveLength(0)
   })
 })

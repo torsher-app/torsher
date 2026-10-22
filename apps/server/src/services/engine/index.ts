@@ -1,4 +1,7 @@
-import type { EngineSupervisorOptions } from './supervisor.ts'
+import type {
+  EngineSupervisor,
+  EngineSupervisorOptions,
+} from './supervisor.ts'
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { config } from '../../config.ts'
@@ -26,13 +29,15 @@ export function engineArgs(apiPort: number) {
   ]
 }
 
+let supervisor: EngineSupervisor | undefined
+
 export function createEngine(
   log: EngineSupervisorOptions['log'],
   onReady?: () => void,
 ) {
   mkdirSync(config.downloadsPath, { recursive: true })
 
-  return createEngineSupervisor({
+  supervisor = createEngineSupervisor({
     binaryPath: engineBinaryPath(),
     args: engineArgs,
     log,
@@ -42,4 +47,11 @@ export function createEngine(
     },
     onDown: setEngineDown,
   })
+
+  return supervisor
+}
+
+/** Перезапуск движка из панели; `false` — движок не запущен или уже перезапускается */
+export function restartEngine() {
+  return supervisor?.restart() ?? false
 }

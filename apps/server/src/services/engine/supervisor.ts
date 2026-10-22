@@ -9,8 +9,11 @@ import { createInterface } from 'node:readline'
 export type EngineStatus
   = 'stopped' | 'missing' | 'starting' | 'ready' | 'restarting'
 
-/** `restoring` — процесс жив, но ещё добавляет раздачи прошлого запуска */
-export type EngineHealth = 'ok' | 'restoring' | 'down'
+/**
+ * `restoring` — процесс жив, но ещё добавляет раздачи прошлого запуска;
+ * `stuck` — процесс отвечает, но блокировка торрент-клиента захвачена
+ */
+export type EngineHealth = 'ok' | 'restoring' | 'stuck' | 'down'
 
 interface EngineLog {
   debug: (msg: string) => void
@@ -28,7 +31,7 @@ export interface EngineSupervisorOptions {
   onDown: (kind: EngineUnavailableKind) => void
   spawnProcess?: (command: string, args: string[]) => ChildProcess
   findFreePort?: () => Promise<number>
-  checkHealth?: (baseUrl: string) => Promise<EngineHealth>
+  checkHealth?: (baseUrl: string, timeoutMs: number) => Promise<EngineHealth>
   binaryExists?: (path: string) => boolean
   /** Паузы перед перезапуском: n-е падение подряд ждёт n-й элемент, дальше — последний */
   restartDelaysMs?: number[]
@@ -36,12 +39,17 @@ export interface EngineSupervisorOptions {
   stableAfterMs?: number
   healthTimeoutMs?: number
   healthIntervalMs?: number
+  /** Опрос живости готового движка: после `failures` сбоев подряд — SIGKILL */
+  liveness?: { intervalMs: number, timeoutMs: number, failures: number }
   stopTimeoutMs?: number
   /** Как часто проверять, не появился ли бинарник после `engine:build` */
   missingRecheckMs?: number
 }
 
 const DEFAULT_RESTART_DELAYS_MS = [1000, 2000, 5000, 10_000, 30_000]
+const START_HEALTH_TIMEOUT_MS = 1000
+// На NAS под нагрузкой секунды на ответ мало; три сбоя подряд — около 30 с
+const DEFAULT_LIVENESS = { intervalMs: 10_000, timeoutMs: 3000, failures: 3 }
 
 // Логи движка идут в журнал сервера: без цветовых escape-кодов
 function defaultSpawn(command: string, args: string[]) {
@@ -70,10 +78,13 @@ export function findFreePort() {
   })
 }
 
-async function defaultCheckHealth(baseUrl: string): Promise<EngineHealth> {
+async function defaultCheckHealth(
+  baseUrl: string,
+  timeoutMs: number,
+): Promise<EngineHealth> {
   try {
     const response = await fetch(`${baseUrl}/health`, {
-      signal: AbortSignal.timeout(1000),
+      signal: AbortSignal.timeout(timeoutMs),
     })
 
     if (response.ok)
@@ -83,7 +94,9 @@ async function defaultCheckHealth(baseUrl: string): Promise<EngineHealth> {
       status?: string
     } | null
 
-    return body?.status === 'restoring' ? 'restoring' : 'down'
+    const status = body?.status
+
+    return status === 'restoring' || status === 'stuck' ? status : 'down'
   }
   catch {
     return 'down'
@@ -108,6 +121,7 @@ export function createEngineSupervisor(options: EngineSupervisorOptions) {
   const stableAfterMs = options.stableAfterMs ?? 60_000
   const healthTimeoutMs = options.healthTimeoutMs ?? 20_000
   const healthIntervalMs = options.healthIntervalMs ?? 250
+  const liveness = options.liveness ?? DEFAULT_LIVENESS
   const stopTimeoutMs = options.stopTimeoutMs ?? 5000
   const missingRecheckMs = options.missingRecheckMs ?? 10_000
   const { log } = options
@@ -115,6 +129,7 @@ export function createEngineSupervisor(options: EngineSupervisorOptions) {
   let status: EngineStatus = 'stopped'
   let child: ChildProcess | undefined
   let timer: ReturnType<typeof setTimeout> | undefined
+  let livenessTimer: ReturnType<typeof setTimeout> | undefined
   let failures = 0
   let readyAt = 0
   let stopping = false
@@ -166,7 +181,7 @@ export function createEngineSupervisor(options: EngineSupervisorOptions) {
       if (proc.exitCode !== null || proc.signalCode !== null || stopping)
         return false
 
-      const health = await checkHealth(baseUrl)
+      const health = await checkHealth(baseUrl, START_HEALTH_TIMEOUT_MS)
 
       if (health === 'ok')
         return true
@@ -180,6 +195,43 @@ export function createEngineSupervisor(options: EngineSupervisorOptions) {
     }
 
     return false
+  }
+
+  // Процесс жив, а API молчит или клиент торрентов застрял: без опроса
+  // перезапуск пришёл бы только по выходу процесса, которого не будет
+  function watchLiveness(proc: ChildProcess, baseUrl: string) {
+    let misses = 0
+
+    async function check() {
+      livenessTimer = undefined
+
+      if (child !== proc || stopping)
+        return
+
+      const health = await checkHealth(baseUrl, liveness.timeoutMs)
+
+      if (child !== proc || stopping)
+        return
+
+      if (health === 'ok' || health === 'restoring') {
+        misses = 0
+      }
+      else {
+        misses += 1
+
+        if (misses >= liveness.failures) {
+          log.error(`Engine is not alive (${health}), killing it`)
+          proc.kill('SIGKILL')
+          return
+        }
+
+        log.warn(`Engine health check failed (${health})`)
+      }
+
+      livenessTimer = setTimeout(() => void check(), liveness.intervalMs)
+    }
+
+    livenessTimer = setTimeout(() => void check(), liveness.intervalMs)
   }
 
   async function launch() {
@@ -219,8 +271,11 @@ export function createEngineSupervisor(options: EngineSupervisorOptions) {
       log.error(`Engine process error: ${err.message}`)
     })
     proc.on('exit', () => {
-      if (child === proc)
+      if (child === proc) {
         child = undefined
+        clearTimeout(livenessTimer)
+        livenessTimer = undefined
+      }
 
       if (!stopping)
         scheduleRestart()
@@ -234,6 +289,7 @@ export function createEngineSupervisor(options: EngineSupervisorOptions) {
       readyAt = Date.now()
       log.info(`Engine is ready on ${baseUrl}`)
       options.onReady(baseUrl)
+      watchLiveness(proc, baseUrl)
       return
     }
 
@@ -276,6 +332,8 @@ export function createEngineSupervisor(options: EngineSupervisorOptions) {
       stopping = true
       clearTimeout(timer)
       timer = undefined
+      clearTimeout(livenessTimer)
+      livenessTimer = undefined
 
       const proc = child
 
@@ -286,6 +344,24 @@ export function createEngineSupervisor(options: EngineSupervisorOptions) {
 
       child = undefined
       setDown('stopped')
+    },
+
+    /**
+     * Перезапуск по просьбе владельца: процесс убивается, дальше — обычный
+     * перезапуск с первой паузой. Движок, который и так запускается, не трогаем:
+     * второй процесс не нужен. `false` — перезапуск не начат
+     */
+    restart() {
+      const proc = child
+
+      if (status !== 'ready' || !proc || stopping)
+        return false
+
+      failures = 0
+      readyAt = 0
+      log.warn('Engine restart requested')
+      proc.kill('SIGKILL')
+      return true
     },
 
     /** Синхронная остановка на выходе процесса, когда ждать уже нельзя */

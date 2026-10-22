@@ -4,18 +4,30 @@ import {
   bufferedSeconds,
   bufferingStep,
   byteOffset,
+  canRetry,
   clampTime,
+  endedEarly,
   endsAt,
   formatClock,
   formatDuration,
   formatGigabytes,
+  freshBudget,
   holdScrub,
   MEDIA_ERROR_WINDOW_MS,
   mediaErrorAction,
   networkState,
+  nextRetry,
   pressScrub,
+  RETRY_RESET_MS,
+  RETRY_WINDOW_MS,
+  retryDelay,
   SCRUB_TICK_MS,
   seekStep,
+  settleBudget,
+  stallAction,
+  startErrorAction,
+  STATS_STALE_MS,
+  streamLive,
   videoTimePolicy,
 } from './player.ts'
 
@@ -226,5 +238,201 @@ describe('videoTimePolicy', () => {
       track: false,
       save: false,
     })
+  })
+})
+
+describe('паузы между повторами', () => {
+  it.each([
+    [0, 2000],
+    [1, 5000],
+    [2, 10_000],
+    [3, 20_000],
+    [4, 30_000],
+    [5, 30_000],
+    [12, 30_000],
+  ])('попытка %i — через %i мс', (attempt, delay) => {
+    expect(retryDelay(attempt)).toBe(delay)
+  })
+})
+
+describe('бюджет повторов', () => {
+  it('первый сбой открывает серию, паузы растут', () => {
+    const first = nextRetry(freshBudget(), 1000)!
+
+    expect(first).toEqual({
+      budget: { firstFailureAt: 1000, attempts: 1 },
+      delayMs: 2000,
+    })
+    expect(nextRetry(first.budget, 5000)).toEqual({
+      budget: { firstFailureAt: 1000, attempts: 2 },
+      delayMs: 5000,
+    })
+  })
+
+  it('повторы идут 3 минуты с первого сбоя серии, дальше — ошибка', () => {
+    const budget = { firstFailureAt: 0, attempts: 9 }
+
+    expect(canRetry(budget, RETRY_WINDOW_MS - 1)).toBe(true)
+    expect(nextRetry(budget, RETRY_WINDOW_MS - 1)?.delayMs).toBe(30_000)
+    expect(canRetry(budget, RETRY_WINDOW_MS)).toBe(false)
+    expect(nextRetry(budget, RETRY_WINDOW_MS)).toBeNull()
+    expect(canRetry(freshBudget(), 10 * RETRY_WINDOW_MS)).toBe(true)
+  })
+
+  it('минута воспроизведения без остановки сбрасывает серию', () => {
+    const budget = { firstFailureAt: 0, attempts: 3 }
+
+    expect(settleBudget(budget, 1000, 1000 + RETRY_RESET_MS)).toEqual(
+      freshBudget(),
+    )
+    expect(settleBudget(budget, 1000, RETRY_RESET_MS)).toBe(budget)
+    expect(settleBudget(budget, null, 10 * RETRY_RESET_MS)).toBe(budget)
+  })
+
+  it('сбои подряд без действий зрителя исчерпывают окно за 3 минуты', () => {
+    let budget = freshBudget()
+    let at = 1000
+    let attempts = 0
+
+    for (;;) {
+      const next = nextRetry(budget, at)
+
+      if (!next)
+        break
+
+      budget = next.budget
+      attempts++
+      at += next.delayMs
+    }
+
+    expect(budget.firstFailureAt).toBe(1000)
+    expect(at - 1000).toBeGreaterThanOrEqual(RETRY_WINDOW_MS)
+    expect(at - 1000).toBeLessThan(RETRY_WINDOW_MS + 30_000)
+    expect(attempts).toBe(budget.attempts)
+  })
+})
+
+describe('streamLive', () => {
+  it('пауза и «играть» зрителя считаются только на идущем потоке', () => {
+    const live = {
+      phase: 'playing',
+      restarting: false,
+      failed: false,
+    } as const
+
+    expect(streamLive(live)).toBe(true)
+    expect(streamLive({ ...live, restarting: true })).toBe(false)
+    expect(streamLive({ ...live, failed: true })).toBe(false)
+    expect(streamLive({ ...live, phase: 'buffering' })).toBe(false)
+    expect(streamLive({ ...live, phase: 'resume' })).toBe(false)
+  })
+})
+
+describe('сторож прогресса', () => {
+  const base = {
+    now: 100_000,
+    statsAt: 99_000,
+    peers: 5,
+    aheadSeconds: 0,
+    stuckMs: 0,
+    peersMs: 200_000,
+    budgetLeft: true,
+  }
+
+  it.each([
+    ['видео идёт', {}, 'ok'],
+    ['стоит недолго при пирах', { stuckMs: 30_000 }, 'wait'],
+    [
+      'статистика молчит дольше 15 с, видео идёт',
+      { statsAt: base.now - STATS_STALE_MS - 1 },
+      'ok',
+    ],
+    [
+      'статистика молчит, видео стоит меньше 20 с',
+      { statsAt: base.now - STATS_STALE_MS - 1, stuckMs: 19_000 },
+      'wait',
+    ],
+    [
+      'статистика молчит, видео стоит 20 с',
+      { statsAt: base.now - STATS_STALE_MS - 1, stuckMs: 20_000 },
+      'retry',
+    ],
+    [
+      'статистика молчит ровно 15 с, видео стоит 20 с при пирах',
+      { statsAt: base.now - STATS_STALE_MS, stuckMs: 20_000 },
+      'wait',
+    ],
+    [
+      'статистика молчит ровно 15 с',
+      { statsAt: base.now - STATS_STALE_MS },
+      'ok',
+    ],
+    ['пиров нет — ждём без лимита', { peers: 0, stuckMs: 600_000 }, 'wait'],
+    ['статистики ещё не было', { peers: null, stuckMs: 60_000 }, 'wait'],
+    [
+      'данные впереди, видео стоит 20 с',
+      { aheadSeconds: 30, stuckMs: 20_000 },
+      'retry',
+    ],
+    [
+      'данные впереди и без пиров: файл скачан, стоит конвейер',
+      { peers: 0, aheadSeconds: 45, stuckMs: 20_000 },
+      'retry',
+    ],
+    [
+      'данные впереди, видео стоит меньше 20 с',
+      { aheadSeconds: 30, stuckMs: 19_000 },
+      'wait',
+    ],
+    ['данных впереди мало', { aheadSeconds: 29, stuckMs: 60_000 }, 'wait'],
+    ['пиры есть, стоит 2 минуты', { stuckMs: 120_000 }, 'retry'],
+    [
+      'пиры есть, стоит 2 минуты, повторы кончились',
+      { stuckMs: 120_000, budgetLeft: false },
+      'slow',
+    ],
+    [
+      'пиры подключились недавно после простоя',
+      { stuckMs: 300_000, peersMs: 30_000 },
+      'wait',
+    ],
+  ] as const)('%s → %s', (_, change, action) => {
+    expect(stallAction({ ...base, ...change })).toBe(action)
+  })
+})
+
+describe('ранний конец файла', () => {
+  it.each([
+    ['конец файла', 100, 100, 100, false],
+    ['за 2 с до конца', 98, 100, 100, false],
+    ['обрыв посреди файла', 50, 100, 100, true],
+    ['длительность уточнилась у видео', 98, 200, 100, true],
+    ['видео не знает длительность — по сессии', 50, Number.NaN, 100, true],
+    ['поток без длительности', 50, Infinity, Number.NaN, false],
+    ['длительности нет совсем', 50, Number.NaN, Number.NaN, false],
+  ] as const)('%s', (_, time, media, known, early) => {
+    expect(endedEarly(time, media, known)).toBe(early)
+  })
+})
+
+describe('сбой запуска', () => {
+  it.each([
+    [{ status: 502 }, 'retry'],
+    [{ status: 503, engineKind: 'starting' }, 'retry'],
+    [{ status: 503, engineKind: 'stopped' }, 'retry'],
+    [{ status: 503 }, 'retry'],
+    [{ status: 503, engineKind: 'not_installed' }, 'fail'],
+    [{ status: 504 }, 'retry'],
+    [{ status: undefined, name: 'TypeError' }, 'retry'],
+    [{ status: undefined, name: 'TimeoutError' }, 'retry'],
+    [{ status: 401 }, 'fail'],
+    [{ status: 404 }, 'fail'],
+    [{ status: 409 }, 'fail'],
+    [{ status: 507 }, 'fail'],
+    [{ status: 500 }, 'fail'],
+    [{ status: undefined, name: 'SyntaxError' }, 'fail'],
+    [{ status: undefined }, 'fail'],
+  ] as const)('%o → %s', (error, action) => {
+    expect(startErrorAction(error)).toBe(action)
   })
 })

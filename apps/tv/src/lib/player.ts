@@ -7,6 +7,9 @@ import type { TorrentStats } from '@torsher/api-client'
  */
 export type BufferingStep = 'connecting' | 'waitingPeers' | 'buffering'
 
+/** Шаг на сцене подготовки: ещё повтор после сбоя и медленная раздача */
+export type StageStep = BufferingStep | 'reconnecting' | 'slow'
+
 // Столько ищем пиров молча, дальше говорим, что ждём
 export const WAITING_PEERS_AFTER_MS = 15_000
 
@@ -188,6 +191,172 @@ export function videoTimePolicy(state: {
     track: !state.restarting,
     save: !state.restarting && state.phase === 'playing',
   }
+}
+
+// Паузы перед повторами серии, секунд: дальше — последняя
+const RETRY_DELAYS_S = [2, 5, 10, 20, 30]
+// Столько с первого сбоя серии плеер повторяет сам: перекрывает худший
+// перезапуск движка вместе с восстановлением раздач
+export const RETRY_WINDOW_MS = 180_000
+// Столько непрерывного воспроизведения — и прошлые сбои забыты
+export const RETRY_RESET_MS = 60_000
+// Поток стартовал на паузе: сторож выключен, и без метаданных за это время
+// он считается сбоем
+export const PAUSED_METADATA_MS = 20_000
+
+/** Пауза перед повтором номер `attempt` (с нуля) */
+export function retryDelay(attempt: number) {
+  return RETRY_DELAYS_S[Math.min(attempt, RETRY_DELAYS_S.length - 1)]! * 1000
+}
+
+/** Бюджет повторов: серия сбоев с первого и число попыток в ней */
+export interface RetryBudget {
+  firstFailureAt: number | null
+  attempts: number
+}
+
+export function freshBudget(): RetryBudget {
+  return { firstFailureAt: null, attempts: 0 }
+}
+
+export function canRetry(budget: RetryBudget, now: number) {
+  return (
+    budget.firstFailureAt === null
+    || now - budget.firstFailureAt < RETRY_WINDOW_MS
+  )
+}
+
+/** Сбой: следующая попытка и пауза перед ней; `null` — бюджет исчерпан */
+export function nextRetry(budget: RetryBudget, now: number) {
+  if (!canRetry(budget, now))
+    return null
+
+  return {
+    budget: {
+      firstFailureAt: budget.firstFailureAt ?? now,
+      attempts: budget.attempts + 1,
+    },
+    delayMs: retryDelay(budget.attempts),
+  }
+}
+
+/**
+ * Поток живой: видео хоть раз пошло, а плеер не перезапускает его, не ждёт
+ * повтора и не показывает ошибку. Пауза или «играть» зрителя на таком потоке
+ * начинают новую серию повторов; сбои на паузе считаются по обычным часам
+ */
+export function streamLive(state: {
+  phase: 'starting' | 'resume' | 'buffering' | 'playing'
+  restarting: boolean
+  failed: boolean
+}) {
+  return state.phase === 'playing' && !state.restarting && !state.failed
+}
+
+/** `playingSince` — с какого момента `currentTime` растёт без остановки */
+export function settleBudget(
+  budget: RetryBudget,
+  playingSince: number | null,
+  now: number,
+) {
+  return playingSince !== null && now - playingSince >= RETRY_RESET_MS
+    ? freshBudget()
+    : budget
+}
+
+// Статистика молчит дольше — не отвечает сервер или движок
+export const STATS_STALE_MS = 15_000
+// Столько данных впереди у движка значат, что стоит не раздача, а конвейер
+const AHEAD_ENOUGH_S = 30
+const STUCK_WITH_DATA_MS = 20_000
+// Столько стоим при живых пирах, прежде чем начать поток заново
+const STUCK_WITH_PEERS_MS = 120_000
+
+/**
+ * Сторож прогресса, раз в секунду, пока плеер хочет играть. `retry` — сбой
+ * на нашей стороне, поток начинается заново; `wait` — ждём (пиров нет или
+ * ещё рано судить); `slow` — пиры есть, но раздача не успевает, а повторы
+ * кончились: ждём дальше с честной подписью, это не ошибка.
+ */
+export function stallAction(input: {
+  now: number
+  /** Когда статистика движка пришла в последний раз */
+  statsAt: number
+  /** Подключённые пиры; `null` — статистики ещё не было */
+  peers: number | null
+  /** Секунд видео впереди позиции, скачанных движком подряд */
+  aheadSeconds: number
+  /** Сколько `currentTime` не растёт */
+  stuckMs: number
+  /** Сколько пиры подключены без перерыва */
+  peersMs: number
+  budgetLeft: boolean
+}): 'ok' | 'wait' | 'retry' | 'slow' {
+  const { now, statsAt, peers, aheadSeconds, stuckMs, peersMs, budgetLeft }
+    = input
+
+  // Молчит только статистика, а видео идёт — просмотр не трогаем
+  if (now - statsAt > STATS_STALE_MS) {
+    if (stuckMs >= STUCK_WITH_DATA_MS)
+      return 'retry'
+
+    return stuckMs > 0 ? 'wait' : 'ok'
+  }
+
+  // Данные есть, а видео стоит — даже без пиров: файл мог скачаться целиком
+  if (aheadSeconds >= AHEAD_ENOUGH_S && stuckMs >= STUCK_WITH_DATA_MS)
+    return 'retry'
+
+  if (!peers)
+    return 'wait'
+
+  // Пиры только что подключились после простоя: даём им то же время
+  if (Math.min(stuckMs, peersMs) >= STUCK_WITH_PEERS_MS)
+    return budgetLeft ? 'retry' : 'slow'
+
+  return stuckMs > 0 ? 'wait' : 'ok'
+}
+
+/**
+ * Что делать со сбоем запуска: `retry` — сбой сети, сервера или движка,
+ * который пройдёт сам; `fail` — причина не наша (нет входа, раздачи,
+ * метаданных, места), повтор даст то же.
+ */
+export function startErrorAction(error: {
+  /** HTTP-статус; `undefined` — ответа не было */
+  status: number | undefined
+  /** Имя ошибки без ответа: `TypeError` — сеть, `TimeoutError` — таймаут */
+  name?: string
+  /** `kind` ответа 503 */
+  engineKind?: string
+}): 'retry' | 'fail' {
+  const { status, name, engineKind } = error
+
+  if (status === 503)
+    return engineKind === 'not_installed' ? 'fail' : 'retry'
+
+  if (status === 502 || status === 504)
+    return 'retry'
+
+  if (status !== undefined)
+    return 'fail'
+
+  return name === 'TypeError' || name === 'TimeoutError' ? 'retry' : 'fail'
+}
+
+/**
+ * Конец файла раньше времени: так старые ТВ отвечают на обрыв прямого потока.
+ * Длительность — текущая у видео, если он её знает: она могла уточниться
+ * после `loadedmetadata`.
+ */
+export function endedEarly(
+  currentTime: number,
+  mediaDuration: number,
+  knownDuration: number,
+) {
+  const total = Number.isFinite(mediaDuration) ? mediaDuration : knownDuration
+
+  return Number.isFinite(total) && currentTime < total - 2
 }
 
 /** Позиция чтения в байтах — по той же оценке битрейта */

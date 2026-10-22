@@ -5,6 +5,7 @@ import {
   MagnetIcon,
   PlusIcon,
   RefreshCwIcon,
+  RotateCwIcon,
 } from '@lucide/vue'
 import { useNow } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
@@ -18,6 +19,7 @@ import DeleteDownloadDialog from './DeleteDownloadDialog.vue'
 import DownloadCard from './DownloadCard.vue'
 import DownloadRow from './DownloadRow.vue'
 import DownloadsFilters from './DownloadsFilters.vue'
+import RestartEngineDialog from './RestartEngineDialog.vue'
 
 const { t } = useI18n()
 const { torrents, engine, state, isEmpty, load, stopPolling } = useTorrents()
@@ -28,6 +30,7 @@ const actions = useDownloadActions()
 const now = useNow({ interval: 30_000 })
 
 const isAddOpen = ref(false)
+const isRestartOpen = ref(false)
 const selectedId = ref<string | null>(null)
 const deleteTarget = ref<Torrent | null>(null)
 
@@ -54,8 +57,22 @@ onBeforeUnmount(stopPolling)
 
 <template>
   <PageBar :title="t('panel.torrents.title')" :parent="t('panel.nav.server')">
-    <template v-if="state === 'ready' && !isEmpty" #actions>
-      <Button size="sm" @click="isAddOpen = true">
+    <template v-if="state === 'ready'" #actions>
+      <!-- Запасной путь, если движок завис, а сам сервер этого не распознал.
+           Пока движок запускается, перезапуск ничего не даст -->
+      <Button
+        variant="ghost"
+        size="sm"
+        :disabled="engine !== 'ready'"
+        :aria-label="t('panel.torrents.restartEngine')"
+        @click="isRestartOpen = true"
+      >
+        <RotateCwIcon aria-hidden="true" />
+        <span class="hidden md:inline">{{
+          t("panel.torrents.restartEngine")
+        }}</span>
+      </Button>
+      <Button v-if="!isEmpty" size="sm" @click="isAddOpen = true">
         <PlusIcon aria-hidden="true" />
         {{ t("panel.torrents.add") }}
       </Button>
@@ -210,5 +227,6 @@ onBeforeUnmount(stopPolling)
     @delete="deleteTarget = selected"
   />
   <AddTorrentDialog v-model:open="isAddOpen" />
+  <RestartEngineDialog v-model:open="isRestartOpen" />
   <DeleteDownloadDialog v-model:open="isDeleteOpen" :torrent="deleteTarget" />
 </template>
