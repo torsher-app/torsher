@@ -58,7 +58,7 @@ const chrome: DeviceProfile = {
   hls: true,
 }
 
-const log = { info: () => {}, warn: () => {} }
+const log = { info: () => {}, debug: () => {}, warn: () => {} }
 
 function torrentOf(id: string) {
   return {

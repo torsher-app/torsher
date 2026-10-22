@@ -38,6 +38,35 @@ func main() {
 	}
 }
 
+// Журнал библиотеки без записей об отменённом чтении. Плеер закрывает поток
+// на каждой перемотке и остановке, а ридер библиотеки пишет такую отмену
+// тремя записями ERROR — по одной на каждую попытку чтения
+type withoutCanceled struct{ slog.Handler }
+
+func (h withoutCanceled) Handle(ctx context.Context, record slog.Record) error {
+	canceled := false
+
+	record.Attrs(func(attr slog.Attr) bool {
+		err, ok := attr.Value.Any().(error)
+		canceled = ok && errors.Is(err, context.Canceled)
+		return !canceled
+	})
+
+	if canceled {
+		return nil
+	}
+
+	return h.Handler.Handle(ctx, record)
+}
+
+func (h withoutCanceled) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return withoutCanceled{h.Handler.WithAttrs(attrs)}
+}
+
+func (h withoutCanceled) WithGroup(name string) slog.Handler {
+	return withoutCanceled{h.Handler.WithGroup(name)}
+}
+
 // Хранилище клиента: каталог загрузок и отметки скачанных кусков
 type clientStorage struct {
 	downloads  string
@@ -72,7 +101,7 @@ func newClientConfig(downloads, dataDir string, peerPort int, seed bool) (*torre
 		UsePartFiles: g.Some(false),
 	})
 	// Сообщения библиотеки — только предупреждения и ошибки: остальное шумит в журнале сервера
-	cfg.Slogger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	cfg.Slogger = slog.New(withoutCanceled{slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn})})
 
 	return cfg, clientStorage{downloads: downloads, completion: completion}, nil
 }
@@ -133,8 +162,6 @@ func run(listen, downloads, dataDir string, peerPort int, seed bool, logger *slo
 		defer cancel()
 		_ = server.Shutdown(shutdown)
 	}()
-
-	logger.Info("engine listening", "addr", ln.Addr().String())
 
 	if err := server.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err

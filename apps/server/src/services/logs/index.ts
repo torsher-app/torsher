@@ -13,6 +13,7 @@ export { LOG_LEVELS, LOG_SOURCES } from './ring.ts'
 export type { LogEntry, LogLevel, LogQuery, LogSource } from './ring.ts'
 
 const RING_CAPACITY = 5000
+const FASTIFY_LISTENING = 'Server listening at '
 
 // Второй слой после текстовой очистки: известные поля с секретами
 const REDACT_PATHS = [
@@ -70,7 +71,23 @@ export function createLogger(options: {
     {
       level: options.level,
       redact: { paths: REDACT_PATHS, censor: '[redacted]' },
-      hooks: { streamWrite: scrubText },
+      hooks: {
+        streamWrite: scrubText,
+        // Fastify пишет адрес на каждом сетевом интерфейсе отдельной записью
+        // info и не даёт это выключить; порт уже есть в «Server started»
+        logMethod(args, method, level) {
+          if (
+            level === pino.levels.values.info
+            && typeof args[0] === 'string'
+            && args[0].startsWith(FASTIFY_LISTENING)
+          ) {
+            this.debug(...args)
+            return
+          }
+
+          method.apply(this, args)
+        },
+      },
     },
     // Без явного уровня multistream пропускает только info и выше
     pino.multistream([

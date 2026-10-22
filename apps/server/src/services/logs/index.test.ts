@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import Fastify from 'fastify'
 import pino from 'pino'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
@@ -66,6 +67,34 @@ describe('логгер журнала', () => {
     expect(entries[0]!.context).toEqual({
       url: 'http://x/api?apikey=[redacted]',
     })
+  })
+
+  it('адреса Fastify при запуске уходят на debug', async () => {
+    const logger = createLogger({
+      level: 'info',
+      logsDir: tempDir(),
+      stdout: quiet,
+    })
+
+    installLogger(logger)
+
+    async function listen() {
+      const app = Fastify({ loggerInstance: logger })
+
+      await app.listen({ port: 0, host: '127.0.0.1' })
+      await app.close()
+    }
+
+    await listen()
+
+    expect(queryLogs({}).entries).toEqual([])
+
+    setLogLevel('debug')
+    await listen()
+
+    expect(
+      queryLogs({}).entries.map(entry => [entry.level, entry.message]),
+    ).toEqual([['debug', expect.stringMatching(/^Server listening at /)]])
   })
 
   it('известные поля с секретами вырезаются', () => {
