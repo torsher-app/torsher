@@ -249,7 +249,7 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
         },
         log: request.log.child({ source: 'playback' }),
       })
-      // Перезапуск с новой дорожкой продолжает с позиции плеера без вопроса
+      // Перезапуск с новой дорожкой продолжает с позиции плеера
       const resume: Resume = {
         duration: state?.duration ?? null,
         startPosition:

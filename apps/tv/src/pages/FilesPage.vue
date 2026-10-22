@@ -31,7 +31,8 @@ defineOptions({ name: 'FilesPage' })
 /**
  * «Файлы» выбранной раздачи: подключаемся, ждём список файлов от пиров и
  * показываем видео по порядку — у сериала с сериями TMDB и прогрессом. Выбор
- * файла запускает плеер; из плеера Back возвращает сюда.
+ * файла запускает плеер; из плеера Back возвращает сюда. Единственный файл
+ * открывается в плеере сразу, на месте этого экрана.
  */
 const props = defineProps<{
   id: string
@@ -44,14 +45,13 @@ const props = defineProps<{
 // Пиры присылают метаданные не сразу: спрашиваем раз в 2 с, не дольше 90 с
 const POLL_INTERVAL_MS = 2000
 const POLL_LIMIT_MS = 90_000
-// Один файл запускается сам через 10 с, если ничего не нажали
-const AUTOSTART_MS = 10_000
 
 const { t } = useI18n()
 const router = useRouter()
-// Автозапуск — только когда раздачу выбрали в «Источниках»: после «Назад» из
-// плеера экран монтируется заново, и отсчёт вернул бы зрителя в плеер
-const autostartAllowed = openedForward(router.options.history.state)
+// Сразу в плеер — только когда раздачу выбрали в «Источниках»: экран,
+// открытый ссылкой или подставленный Back из плеера, показывает список, иначе
+// Back из плеера снова вёл бы в плеер
+const skipAllowed = openedForward(router.options.history.state)
 const focus = useFocus()
 const language = useCatalogLanguage()
 const id = toRef(props, 'id')
@@ -128,6 +128,14 @@ async function load() {
       releaseName.value = result.name
 
       if (result.status === 'ready') {
+        // Выбирать не из чего: плеер встаёт на место экрана, и Back из него
+        // ведёт в «Источники». До перехода остаётся лоадер
+        if (result.files.length === 1 && skipAllowed) {
+          play(result.files[0]!, true)
+
+          return
+        }
+
         // Серии TMDB до показа списка: иначе строки перерисуются с имён файлов
         await loadEpisodes(result.files)
 
@@ -181,9 +189,6 @@ function focusInitial() {
   else {
     focus.activate('files-list')
   }
-
-  if (files.value.length === 1 && autostartAllowed)
-    startAutostart()
 }
 
 // Заголовки сезонов — только если в раздаче их несколько
@@ -239,60 +244,31 @@ function imageOf(file: TitleFile) {
   )
 }
 
-function play(file: TitleFile) {
-  stopAutostart()
-  router.push({
+function play(file: TitleFile, replace = false) {
+  const to = {
     path: `/play/${props.torrentId}/${file.fileIndex}`,
     query: {
       title: props.id,
       season: file.season === null ? undefined : String(file.season),
       episode: file.episode === null ? undefined : String(file.episode),
     },
-  })
+  }
+
+  if (replace)
+    void router.replace(to)
+  else void router.push(to)
 }
-
-// Автозапуск единственного файла: отсчёт виден, любая клавиша или движение мыши отменяют
-const autostartLeft = ref(0)
-let autostartTimer: ReturnType<typeof setInterval> | undefined
-
-function startAutostart() {
-  const startedAt = Date.now()
-
-  autostartLeft.value = AUTOSTART_MS
-  autostartTimer = setInterval(() => {
-    autostartLeft.value = Math.max(0, AUTOSTART_MS - (Date.now() - startedAt))
-
-    if (autostartLeft.value === 0 && files.value[0])
-      play(files.value[0])
-  }, 100)
-}
-
-function stopAutostart() {
-  clearInterval(autostartTimer)
-  autostartTimer = undefined
-  autostartLeft.value = 0
-}
-
-const stopKey = focus.onKey(() => {
-  stopAutostart()
-
-  return false
-})
 
 function back() {
   goBack(router)
 }
 
 onMounted(() => {
-  window.addEventListener('mousemove', stopAutostart)
   void load()
 })
 
 onBeforeUnmount(() => {
   stopped = true
-  stopKey()
-  stopAutostart()
-  window.removeEventListener('mousemove', stopAutostart)
 })
 </script>
 
@@ -407,14 +383,6 @@ onBeforeUnmount(() => {
                 <span class="file__title">{{ titleOf(file) }}</span>
                 <span class="file__detail">{{ detailOf(file) }}</span>
                 <span class="file__name">{{ file.name }}</span>
-                <span
-                  v-if="autostartLeft > 0 && index === 0"
-                  class="file__autostart"
-                >
-                  {{
-                    t("files.autostart", { n: Math.ceil(autostartLeft / 1000) })
-                  }}
-                </span>
               </span>
               <span class="file__size">{{ sizeLabel(file.size) }}</span>
             </button>
@@ -623,13 +591,6 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
-.file__autostart {
-  margin-top: calc(var(--u) * 8);
-  color: var(--color-info);
-  font-size: var(--font-size-s);
-  font-weight: 600;
-}
-
 .file__size {
   flex-shrink: 0;
   margin-left: calc(var(--u) * 24);
@@ -643,8 +604,7 @@ onBeforeUnmount(() => {
 
 .file:focus .file__detail,
 .file:focus .file__name,
-.file:focus .file__size,
-.file:focus .file__autostart {
+.file:focus .file__size {
   color: var(--color-bg);
 }
 </style>

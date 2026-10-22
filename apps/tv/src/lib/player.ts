@@ -184,7 +184,7 @@ export function mediaErrorAction(
  * поток. До первых кадров позицию не сохраняем: просмотра ещё не было.
  */
 export function videoTimePolicy(state: {
-  phase: 'starting' | 'resume' | 'buffering' | 'playing'
+  phase: 'starting' | 'buffering' | 'playing'
   restarting: boolean
 }) {
   return {
@@ -246,7 +246,7 @@ export function nextRetry(budget: RetryBudget, now: number) {
  * начинают новую серию повторов; сбои на паузе считаются по обычным часам
  */
 export function streamLive(state: {
-  phase: 'starting' | 'resume' | 'buffering' | 'playing'
+  phase: 'starting' | 'buffering' | 'playing'
   restarting: boolean
   failed: boolean
 }) {

@@ -61,8 +61,8 @@ export function isWatched(position: number, duration: number | null) {
 }
 
 /**
- * Позиция, с которой предложить продолжить. В самом начале продолжать нечего,
- * у самого конца файл считается досмотренным — предлагаем начать сначала.
+ * Позиция, с которой плеер продолжает сам. В самом начале продолжать нечего,
+ * у самого конца файл считается досмотренным — играем с начала.
  */
 export function resumePosition(position: number, duration: number | null) {
   if (position < RESUME_MIN_SECONDS)

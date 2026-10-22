@@ -31,18 +31,24 @@ const props = defineProps<{
   /** Подписи кнопок дорожек; кнопки нет, если платформа дорожки не отдаёт */
   audioLabel: string | null
   subtitlesLabel: string | null
+  /** Просмотр продолжен с сохранённого места: первой кнопкой — «С начала» */
+  fromStart: boolean
 }>()
 
 const emit = defineEmits<{
   toggle: []
   seek: [fraction: number]
   tracks: [kind: 'audio' | 'subtitles']
+  fromStart: []
 }>()
 
 const { t, locale } = useI18n()
 
 const hasButtons = computed(
-  () => props.audioLabel !== null || props.subtitlesLabel !== null,
+  () =>
+    props.fromStart
+    || props.audioLabel !== null
+    || props.subtitlesLabel !== null,
 )
 const shown = computed(() => props.scrubTarget ?? props.position)
 const remaining = computed(() =>
@@ -174,6 +180,18 @@ const networkText = computed(() => {
         manual-scroll
       >
         <div class="osd__buttons">
+          <!-- Выделена, но фокус остаётся на таймлайне: OK там — пауза, а
+               сюда переходят ↓, если правда нужно с начала -->
+          <button
+            v-if="fromStart"
+            v-focusable
+            class="action action--primary osd__button"
+            type="button"
+            @click="emit('fromStart')"
+          >
+            <AppIcon name="fromStart" class="osd__button-icon" />
+            {{ t("player.fromStart") }}
+          </button>
           <button
             v-if="audioLabel !== null"
             v-focusable

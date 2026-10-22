@@ -179,7 +179,6 @@
     "error": "Could not load the file list. Try again or pick another release.",
     "empty": "The release has no video.",
     "toSources": "Back to sources",
-    "autostart": "Starting in {n} s — press any key to cancel",
     "season": "Season {n}",
     "watched": "watched",
     "count": "{n} file | {n} files"
@@ -298,12 +297,7 @@
     "waitingHint": "Nobody is sharing this file yet. The torrent may be rare: wait or pick another one.",
     "retry": "Retry",
     "back": "Back",
-    "resume": {
-      "text": "You stopped at {time}",
-      "textOf": "You stopped at {time} of {total}",
-      "continue": "Resume from {time}",
-      "restart": "Start over"
-    },
+    "fromStart": "From start",
     "errors": {
       "unauthorized": {
         "title": "Sign in required",

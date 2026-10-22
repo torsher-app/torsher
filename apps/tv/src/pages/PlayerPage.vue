@@ -41,7 +41,6 @@ import {
   canRetry,
   clampTime,
   endedEarly,
-  formatDuration,
   formatGigabytes,
   freshBudget,
   nextRetry,
@@ -124,27 +123,6 @@ const stageTitle = computed(
     ?? '',
 )
 
-// Где остановились: «23:27 из 52:41» и та же доля на дорожке
-const resumeText = computed(() => {
-  const start = playback.value?.startPosition ?? 0
-  const total = playback.value?.duration
-
-  return total
-    ? t('player.resume.textOf', {
-        time: formatDuration(start),
-        total: formatDuration(total),
-      })
-    : t('player.resume.text', { time: formatDuration(start) })
-})
-
-const resumeShare = computed(() => {
-  const total = playback.value?.duration
-
-  return total
-    ? Math.min(1, (playback.value?.startPosition ?? 0) / total)
-    : undefined
-})
-
 const video = ref<HTMLVideoElement>()
 // Ошибка сети — повтор; разбор сегментов не удался — формат не по силам плееру
 const hls = useHls((kind) => {
@@ -153,9 +131,12 @@ const hls = useHls((kind) => {
   else player.fail(kind === 'media' ? 'unsupported' : 'unknown')
 })
 
-// starting — запрашиваем адрес, resume — спрашиваем, продолжить ли,
-// buffering — ждём первые кадры, playing — видео хоть раз пошло
-const phase = ref<'starting' | 'resume' | 'buffering' | 'playing'>('starting')
+// starting — запрашиваем адрес, buffering — ждём первые кадры, playing —
+// видео хоть раз пошло
+const phase = ref<'starting' | 'buffering' | 'playing'>('starting')
+// Продолжили с сохранённого места без вопроса: в OSD кнопка «С начала», пока
+// зритель сам не выбрал позицию
+const fromStart = ref(false)
 const stalled = ref(false)
 const paused = ref(false)
 const position = ref(0)
@@ -176,8 +157,8 @@ let startAt = 0
 let savedAt = 0
 let clockTimer: ReturnType<typeof setInterval> | undefined
 let offKey: (() => void) | undefined
-// Поток хоть раз ставился в видео: повтор продолжает его с места, а не
-// спрашивает заново «Продолжить»
+// Поток хоть раз ставился в видео: повтор продолжает его с места зрителя, а
+// не с сохранённого на сервере
 let begun = false
 // Запуск перезапуском: устаревший после `await` уходит, не трогая видео
 let launch = 0
@@ -408,7 +389,14 @@ function seekTo(seconds: number) {
 
   el.currentTime = target
   position.value = target
+  fromStart.value = false
   save()
+}
+
+// Кнопка пропадает из-под фокуса: он уходит на таймлайн
+function playFromStart() {
+  seekTo(0)
+  void nextTick(() => focus.activate('player-timeline'))
 }
 
 function closePanel() {
@@ -553,19 +541,16 @@ async function begin(from: number) {
   })
 }
 
-function onPromptChoice(choice: 'resume' | 'restart' | 'retry' | 'back') {
+function onPromptChoice(choice: 'retry' | 'back') {
   if (choice === 'back') {
     exit()
   }
-  else if (choice === 'retry') {
+  else {
     holdError()
     budget = freshBudget()
     slow.value = false
     keepPaused = false
     relaunch()
-  }
-  else {
-    void begin(choice === 'resume' ? (playback.value?.startPosition ?? 0) : 0)
   }
 }
 
@@ -578,7 +563,7 @@ function resumeAt() {
 }
 
 // Тот же файл с теми же дорожками с места остановки; до первого потока —
-// обычный запуск с вопросом «Продолжить»
+// обычный запуск с сохранённого места
 function relaunch() {
   if (begun)
     void restartWith(requested ?? tracks.selection())
@@ -605,8 +590,7 @@ function holdStream() {
 
 /**
  * Озвучка или субтитры, которые плеер не переключит сам, и повтор после
- * сбоя: новый поток с этими дорожками с текущего места, без вопроса
- * «Продолжить»
+ * сбоя: новый поток с этими дорожками с текущего места
  */
 async function restartWith(change: PlaybackRestart) {
   const run = ++launch
@@ -969,9 +953,11 @@ async function start() {
 
   startStats()
 
-  if (playback.value?.startPosition)
-    phase.value = 'resume'
-  else void begin(0)
+  // Сервер не даёт позицию в самом начале и в хвосте файла: там с начала
+  const from = playback.value?.startPosition ?? 0
+
+  fromStart.value = from > 0
+  void begin(from)
 }
 
 onMounted(() => {
@@ -1047,29 +1033,13 @@ onBeforeUnmount(() => {
         @choose="onPromptChoice"
       />
 
-      <PlayerPrompt
-        v-else-if="playback && phase === 'resume'"
-        :text="resumeText"
-        :progress="resumeShare"
-        :actions="[
-          {
-            id: 'resume',
-            label: t('player.resume.continue', {
-              time: formatDuration(playback.startPosition ?? 0),
-            }),
-          },
-          { id: 'restart', label: t('player.resume.restart') },
-        ]"
-        @choose="onPromptChoice"
-      />
-
       <PlayerLamp
         v-else
         :step="step"
         :connected="stats?.peers.connected ?? 0"
       />
 
-      <template v-if="!showsError && phase !== 'resume'" #bottom>
+      <template v-if="!showsError" #bottom>
         <PlayerBuffering :step="step" :stats="stats" />
       </template>
     </PlayerStage>
@@ -1099,9 +1069,11 @@ onBeforeUnmount(() => {
         :now="now"
         :audio-label="tracks.audioLabel.value"
         :subtitles-label="tracks.subtitlesLabel.value"
+        :from-start="fromStart"
         @toggle="toggle"
         @seek="seekTo($event * knownDuration)"
         @tracks="openTracks"
+        @from-start="playFromStart"
       />
 
       <PlayerTracks
