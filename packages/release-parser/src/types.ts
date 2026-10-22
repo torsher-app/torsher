@@ -43,6 +43,8 @@ export type Codec
 
 export type Hdr = 'HDR10' | 'HDR10+' | 'DV' | 'HLG'
 
+export type AudioChannels = '2.0' | '5.1' | '7.1'
+
 /**
  * Тип перевода. `D` — дубляж, `MVO`/`DVO`/`VO` — профессиональный закадровый
  * многоголосый/двухголосый/одноголосый, `AVO` — авторский, `L` — любительский,
@@ -93,6 +95,8 @@ export interface ParsedRelease {
   codec?: Codec
   hdr: Hdr[]
   audio: AudioTrack[]
+  /** Каналы звука — наибольшие из указанных в тегах: `5.1`, `DDP5.1`, `AC3 7.1`. */
+  channels?: AudioChannels
   /** Языки субтитров (ISO 639-1); `und` — субтитры есть, язык не указан. */
   subs: string[]
   /** Релиз-группа scene-имени или фансаб-группа в начале названия. */

@@ -27,6 +27,18 @@ describe('matchFiles', () => {
     ])
   })
 
+  it('номер с # или № в начале имени файла', () => {
+    expect(
+      episodes(
+        ['Show [S02]/#01 Север помнит.mkv', 'Show [S02]/№10 Финал.mkv'],
+        'Show [S02] (2012)',
+      ),
+    ).toEqual([
+      { season: 2, episode: 1, episodeTo: undefined, absolute: undefined },
+      { season: 2, episode: 10, episodeTo: undefined, absolute: undefined },
+    ])
+  })
+
   it('несколько серий в одном файле', () => {
     expect(episodes(['Show.S01E01E02.mkv'])[0]).toMatchObject({
       season: 1,

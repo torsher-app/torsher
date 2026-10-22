@@ -25,10 +25,7 @@ export type PlayerError
     | 'unknown'
 
 export type EngineKind = EngineUnavailableResponse['kind']
-export type StorageShortage = Pick<
-  InsufficientStorageResponse,
-  'kind' | 'needed' | 'available'
->
+export type StorageShortage = Omit<InsufficientStorageResponse, 'message'>
 
 async function playerErrorOf(err: unknown) {
   switch (getErrorStatus(err)) {
@@ -53,6 +50,9 @@ async function playerErrorOf(err: unknown) {
           kind: body?.kind ?? 'no_space',
           needed: body?.needed ?? 0,
           available: body?.available ?? 0,
+          free: body?.free ?? 0,
+          minFree: body?.minFree ?? 0,
+          cacheLimit: body?.cacheLimit ?? 0,
         },
       }
     }

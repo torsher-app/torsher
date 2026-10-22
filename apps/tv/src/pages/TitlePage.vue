@@ -1,14 +1,7 @@
 <script setup lang="ts">
-import type {
-  Card,
-  Episode,
-  Person,
-  TitleSeason,
-  VoiceOption,
-} from '@torsher/api-client'
-import type { EpisodeRef } from '../composables/useTitleWatch.ts'
+import { goBack } from '../lib/navigation.ts'
+import type { Card, Episode, Person, TitleSeason } from '@torsher/api-client'
 import type { SectionEdges } from '../focus/index.ts'
-import type { WatchTarget } from '../lib/sources.ts'
 import {
   computed,
   nextTick,
@@ -26,8 +19,6 @@ import FocusSection from '../components/FocusSection.vue'
 import PersonCard from '../components/PersonCard.vue'
 import PosterCard from '../components/PosterCard.vue'
 import ScreenState from '../components/ScreenState.vue'
-import SourcesSheet from '../components/SourcesSheet.vue'
-import VoicePanel from '../components/VoicePanel.vue'
 import { useCatalogLanguage } from '../composables/useCatalogLanguage.ts'
 import { useCatalogTitle } from '../composables/useCatalogTitle.ts'
 import { useTitleMeta } from '../composables/useTitleMeta.ts'
@@ -37,17 +28,14 @@ import {
   useTitleExtras,
   useTitleSeason,
 } from '../composables/useTitleSections.ts'
-import {
-  useTitleProgress,
-  useTitleSources,
-} from '../composables/useTitleSources.ts'
-import { useTitleWatch } from '../composables/useTitleWatch.ts'
+import { useStackScroll } from '../composables/useStackScroll.ts'
+import { useTitleProgress } from '../composables/useTitleProgress.ts'
 import { useFocus } from '../focus/index.ts'
 import { stackOffset } from '../lib/rowStack.ts'
 import { revealOffset } from '../lib/rowTrack.ts'
-import { bestCandidate, watchTarget } from '../lib/sources.ts'
 import {
   formatAirDate,
+  formatPublishDate,
   formatYears,
   isUpcoming,
   seasonAired,
@@ -178,167 +166,89 @@ const meta = computed(() => {
 })
 
 // Что запустит главная кнопка: ждём прогресс, чтобы не искать раздачи дважды
-const { progress, status: progressStatus } = useTitleProgress(id)
-const target = computed<WatchTarget | undefined>(() => {
-  const value = title.value
+const { progress } = useTitleProgress(id)
+const { historyOf } = useSourceLabels()
 
-  if (
-    !value
-    || progressStatus.value === 'idle'
-    || progressStatus.value === 'loading'
-  ) {
-    return undefined
-  }
+// Отметки «просмотрено», поставленные сейчас: сразу видны, без перезапроса прогресса
+const marks = ref(new Map<string, boolean>())
 
-  return watchTarget(value.kind, seasons.value, progress.value?.last ?? null)
-})
+function progressKey(season: number | undefined, episode: number) {
+  return `${season ?? 0}:${episode}`
+}
 
-const {
-  sources,
-  status: sourcesStatus,
-  refresh: refreshSources,
-  reload: reloadSources,
-  startNow: searchNow,
-} = useTitleSources(id, target)
-const watcher = useTitleWatch(id)
-const { phase: watchPhase, error: watchError } = watcher
-const { bestLine } = useSourceLabels()
+const episodeProgress = computed(() => {
+  const map = new Map<string, { watched: boolean, share: number }>()
 
-const primaryLabel = computed(() => {
-  const value = target.value
-  const resume = !!value?.resume
-
-  if (value?.season && value.episode) {
-    return t(resume ? 'title.continueEpisode' : 'title.watchEpisode', {
-      season: value.season,
-      episode: value.episode,
+  for (const item of progress.value?.episodes ?? []) {
+    map.set(progressKey(item.season, item.episode), {
+      watched: item.watched,
+      share: item.watched
+        ? 1
+        : item.duration
+          ? Math.min(1, item.position / item.duration)
+          : 0,
     })
   }
 
-  if (isSeries.value && seasons.value[0]) {
-    return t('title.watchEpisode', {
-      season: seasons.value[0].number,
-      episode: 1,
-    })
-  }
+  for (const [key, watched] of marks.value)
+    map.set(key, { watched, share: watched ? 1 : 0 })
 
-  return t(resume ? 'title.continue' : 'title.watch')
+  return map
 })
 
-// Вторая строка главной кнопки: что вы получите или что сейчас происходит
+function progressOfEpisode(item: Episode) {
+  return episodeProgress.value.get(
+    progressKey(selectedSeason.value, item.number),
+  )
+}
+
+// Вторая строка «Смотреть» — что смотрели последний раз; та же строка открывает «Источники»
 const primaryHint = computed(() => {
-  const phase = watchPhase.value
+  const line = historyOf(progress.value)?.line
 
-  if (phase === 'searching')
-    return t('watch.searching')
+  return line ? t('title.history', { line }) : ''
+})
 
-  if (phase === 'preparing' || phase === 'waitingFiles')
-    return t(`watch.${phase}`)
+function openSources() {
+  router.push(`/title/${props.id}/sources`)
+}
 
-  if (sourcesStatus.value === 'loading')
-    return t('watch.searching')
+// OK на серии ставит или снимает «просмотрено»: смотреть — через «Смотреть»
+const okHint = computed(() => {
+  const item = episode.value
 
-  if (sourcesStatus.value === 'error')
-    return t('watch.searchFailed')
-
-  const value = sources.value
-
-  if (!value)
+  if (!item || isUpcoming(item.airDate))
     return ''
 
-  if (value.indexers.total === 0)
-    return t('watch.noIndexers')
-
-  const best = bestCandidate(value)
-
-  if (!best)
-    return t('watch.nothing')
-
-  const remaining = target.value?.resume ? target.value.remaining : undefined
-
-  return remaining
-    ? `${t('title.left', { n: Math.ceil(remaining / 60) })} · ${bestLine(best)}`
-    : bestLine(best)
+  return progressOfEpisode(item)?.watched
+    ? t('title.okUnmark')
+    : t('title.okMark')
 })
 
-const sourcesLabel = computed(() =>
-  sources.value && sources.value.candidates.length > 0
-    ? t('title.sourcesCount', { n: sources.value.candidates.length })
-    : t('title.sources'),
-)
-const voices = computed(() => sources.value?.voices ?? [])
-const sheetContext = computed(() =>
-  target.value?.season && target.value.episode
-    ? `S${target.value.season}E${target.value.episode}`
-    : '',
-)
+async function toggleWatched(item: Episode) {
+  const number = selectedSeason.value
 
-// Открытый лист или панель забирают фокус; при закрытии он возвращается на кнопку
-const overlay = ref<'sources' | 'voices'>()
-let overlayOpener: HTMLElement | undefined
-
-function openOverlay(kind: 'sources' | 'voices') {
-  overlayOpener = focus.current() ?? undefined
-  searchNow()
-  overlay.value = kind
-}
-
-function closeOverlay() {
-  overlay.value = undefined
-
-  nextTick(() => {
-    if (overlayOpener?.isConnected)
-      focus.focusOn(overlayOpener)
-    else focus.activate('title-actions')
-  })
-}
-
-function play(ref: EpisodeRef, candidateId?: string) {
-  void watcher.start(ref, candidateId)
-}
-
-function playTarget() {
-  if (target.value)
-    play({ season: target.value.season, episode: target.value.episode })
-}
-
-function playEpisode(item: Episode) {
-  if (isUpcoming(item.airDate) || selectedSeason.value === undefined)
+  if (number === undefined || isUpcoming(item.airDate))
     return
 
-  play({ season: selectedSeason.value, episode: item.number })
-}
-
-function playCandidate(candidateId: string) {
-  closeOverlay()
-
-  if (target.value) {
-    play(
-      { season: target.value.season, episode: target.value.episode },
-      candidateId,
-    )
-  }
-}
-
-async function pinVoice(option: VoiceOption | null) {
-  closeOverlay()
+  const watched = !progressOfEpisode(item)?.watched
 
   try {
-    await api.titles.putTitleVoice(props.id, {
-      season: target.value?.season ?? 0,
-      voice: option ? { studio: option.studio, type: option.type } : null,
+    await api.titles.putTitleWatched(props.id, {
+      season: number,
+      episode: item.number,
+      watched,
     })
   }
   catch {
-    // Не закрепилось — кнопка останется с прежней озвучкой
+    // Не сохранилось — отметка остаётся прежней
     return
   }
 
-  reloadSources()
-}
-
-function openSourcesFromVoices() {
-  overlay.value = 'sources'
+  marks.value = new Map(marks.value).set(
+    progressKey(number, item.number),
+    watched,
+  )
 }
 
 function countryName(code: string) {
@@ -395,8 +305,14 @@ function episodeDetail(item: Episode) {
   if (item.runtime)
     parts.push(formatRuntime(item.runtime))
 
-  if (item.airDate)
-    parts.push(formatAirDate(item.airDate, language.value))
+  // Вышедшая — дата с годом, как в «Файлах»; будущая — с днём недели
+  if (item.airDate) {
+    parts.push(
+      isUpcoming(item.airDate)
+        ? formatAirDate(item.airDate, language.value)
+        : formatPublishDate(item.airDate, language.value),
+    )
+  }
 
   return parts.join(' · ')
 }
@@ -469,8 +385,17 @@ function edgesOf(name: string): SectionEdges {
 // Вертикальная прокрутка экрана: фокусная секция встаёт под верхний край
 const stack = ref<HTMLElement>()
 const screen = ref<HTMLElement>()
-const offset = ref(0)
+const {
+  native: nativeScroll,
+  offset,
+  alignTo: scrollStackTo,
+  onScroll: onScreenScroll,
+  transform: stackTransform,
+} = useStackScroll(screen)
 const alignedSection = ref<string>()
+// На ТВ блоки, начатые выше выровненного, гаснут, как ряды главной под hero:
+// их хвост лез бы под кнопку «Назад». В вебе страница прокручивается свободно
+const blocksAbove = ref<string[]>([])
 
 function alignTo(el: HTMLElement) {
   const block = el.closest<HTMLElement>('[data-block]')
@@ -481,11 +406,25 @@ function alignTo(el: HTMLElement) {
   const gap = (window.innerWidth / 1920) * BLOCK_GAP
   const top = block.offsetTop === 0 ? 0 : block.offsetTop - gap
 
-  offset.value = stackOffset(
+  const next = stackOffset(
     top,
     stack.value.offsetHeight,
     screen.value.clientHeight,
   )
+
+  scrollStackTo(next)
+
+  if (nativeScroll)
+    return
+
+  const line = next + gap - 1
+
+  blocksAbove.value
+    = next > 0
+      ? Array.from(stack.value.querySelectorAll<HTMLElement>('[data-block]'))
+          .filter(item => item.offsetTop < line)
+          .map(item => item.dataset.block ?? '')
+      : []
 }
 
 function sectionName(el: HTMLElement) {
@@ -518,8 +457,7 @@ function revealChip(chip: HTMLElement) {
 let previousSection: string | undefined
 
 const stopFocus = focus.onFocus((el, via) => {
-  // Лист и панель лежат поверх экрана: экран под ними не двигается
-  if (overlay.value || !screen.value?.contains(el))
+  if (!screen.value?.contains(el))
     return
 
   const name = sectionName(el) ?? undefined
@@ -553,10 +491,6 @@ const stopFocus = focus.onFocus((el, via) => {
 
 // Колесо листает секции на одну от выровненной, элемент — в той же колонке
 const stopWheel = focus.onWheel((direction) => {
-  // Колесо над листом шагает по его строкам
-  if (overlay.value)
-    return false
-
   if (direction !== 'up' && direction !== 'down')
     return true
 
@@ -586,11 +520,8 @@ function openTitle(card: Card) {
   router.push(`/title/${card.id}`)
 }
 
-// Открыли карточку по прямой ссылке — назад некуда, ведём на главную
 function back() {
-  if (router.options.history.state.back)
-    router.back()
-  else router.push('/')
+  goBack(router)
 }
 
 function onResize() {
@@ -611,7 +542,12 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main ref="screen" class="title">
+  <main
+    ref="screen"
+    class="title"
+    :class="{ 'title--native': nativeScroll }"
+    @scroll="onScreenScroll"
+  >
     <img
       v-if="title?.backdrop"
       class="title__backdrop"
@@ -627,9 +563,9 @@ onBeforeUnmount(() => {
       пропадает при переходе на пульт, выглядит сломанной
     -->
     <FocusSection name="title-back" :edges="{ down: order[0] }">
-      <button v-focusable class="title__back" type="button" @click="back">
+      <button v-focusable class="screen-back" type="button" @click="back">
         <AppIcon name="chevronLeft" />
-        <span class="title__back-label">{{ t("common.back") }}</span>
+        <span class="screen-back__label">{{ t("common.back") }}</span>
       </button>
     </FocusSection>
 
@@ -647,9 +583,13 @@ onBeforeUnmount(() => {
       v-else-if="title"
       ref="stack"
       class="title__stack"
-      :style="{ transform: `translateY(${-offset}px)` }"
+      :style="{ transform: stackTransform }"
     >
-      <section class="title__head" data-block="head">
+      <section
+        class="title__head"
+        :class="{ 'block--above': blocksAbove.includes('head') }"
+        data-block="head"
+      >
         <div class="title__info">
           <h1 class="title__name">
             <img
@@ -693,51 +633,31 @@ onBeforeUnmount(() => {
             v-focusable
             class="action action--primary title__primary"
             type="button"
-            @click="playTarget"
+            @click="openSources"
           >
             <AppIcon name="play" class="title__action-icon" />
             <span class="title__primary-text">
-              {{ primaryLabel }}
+              {{ t("title.watch") }}
               <small v-if="primaryHint" class="title__primary-hint">
                 {{ primaryHint }}
               </small>
             </span>
           </button>
-          <button
-            v-if="voices.length > 0"
-            v-focusable
-            class="action"
-            type="button"
-            @click="openOverlay('voices')"
-          >
-            <AppIcon name="audio" class="title__action-icon" />
-            {{ t("title.voice") }}
-          </button>
-          <button
-            v-focusable
-            class="action"
-            type="button"
-            @click="openOverlay('sources')"
-          >
-            {{ sourcesLabel }}
-          </button>
         </FocusSection>
 
-        <p
-          v-if="watchPhase === 'error' && watchError"
-          class="title__status"
-          role="status"
-        >
-          {{ t(`watch.errors.${watchError}`) }}
-        </p>
-
-        <p class="title__peek">
+        <!-- Подсказка о том, что ниже, нужна только у верхнего края -->
+        <p class="title__peek" :class="{ 'title__peek--hidden': offset > 0 }">
           <AppIcon name="chevronDown" class="title__peek-icon" />
           {{ t(isSeries ? "title.peekSeries" : "title.peekMovie") }}
         </p>
       </section>
 
-      <section v-if="seasons.length > 0" class="block" data-block="episodes">
+      <section
+        v-if="seasons.length > 0"
+        class="block"
+        :class="{ 'block--above': blocksAbove.includes('episodes') }"
+        data-block="episodes"
+      >
         <div class="block__inner">
           <h2 class="block__title">
             {{ t("title.episodes") }}
@@ -750,7 +670,6 @@ onBeforeUnmount(() => {
               }}
             </small>
           </h2>
-
           <div ref="chipsView" class="title__chips-view">
             <FocusSection
               name="title-seasons"
@@ -799,7 +718,9 @@ onBeforeUnmount(() => {
               <EpisodeCard
                 :episode="item"
                 :meta="episodeMeta(item)"
-                @select="playEpisode(item)"
+                :progress="progressOfEpisode(item)?.share ?? 0"
+                :watched="!!progressOfEpisode(item)?.watched"
+                @select="toggleWatched(item)"
               />
             </template>
           </ContentRow>
@@ -808,14 +729,20 @@ onBeforeUnmount(() => {
             <div class="episode-detail__text">
               <h3 class="episode-detail__title">
                 S{{ selectedSeason }}E{{ episode.number }} · {{ episode.title }}
+                <span
+                  v-if="episodeDetail(episode)"
+                  class="episode-detail__meta"
+                >
+                  {{ episodeDetail(episode) }}
+                </span>
               </h3>
+              <p v-if="okHint" class="episode-detail__hint">
+                {{ okHint }}
+              </p>
               <p v-if="episode.overview" class="episode-detail__overview">
                 {{ episode.overview }}
               </p>
             </div>
-            <p class="episode-detail__side">
-              {{ episodeDetail(episode) }}
-            </p>
           </div>
         </template>
 
@@ -831,6 +758,7 @@ onBeforeUnmount(() => {
       <section
         v-if="extrasStatus === 'error' && extrasError"
         class="block"
+        :class="{ 'block--above': blocksAbove.includes('extras') }"
         data-block="extras"
       >
         <FocusSection
@@ -844,7 +772,12 @@ onBeforeUnmount(() => {
       </section>
 
       <template v-else-if="extras">
-        <section v-if="cast.length > 0" class="block" data-block="cast">
+        <section
+          v-if="cast.length > 0"
+          class="block"
+          :class="{ 'block--above': blocksAbove.includes('cast') }"
+          data-block="cast"
+        >
           <ContentRow
             section="title-cast"
             :title="t('title.cast')"
@@ -858,7 +791,12 @@ onBeforeUnmount(() => {
           </ContentRow>
         </section>
 
-        <section v-if="similar.length > 0" class="block" data-block="similar">
+        <section
+          v-if="similar.length > 0"
+          class="block"
+          :class="{ 'block--above': blocksAbove.includes('similar') }"
+          data-block="similar"
+        >
           <ContentRow
             section="title-similar"
             :title="t('title.similar')"
@@ -881,7 +819,12 @@ onBeforeUnmount(() => {
         />
       </div>
 
-      <section v-if="facts.length > 0" class="block" data-block="facts">
+      <section
+        v-if="facts.length > 0"
+        class="block"
+        :class="{ 'block--above': blocksAbove.includes('facts') }"
+        data-block="facts"
+      >
         <div class="block__inner">
           <h2 class="block__title">
             {{ t(isSeries ? "title.aboutSeries" : "title.aboutMovie") }}
@@ -919,23 +862,6 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </div>
-
-    <SourcesSheet
-      v-if="overlay === 'sources'"
-      :sources="sources"
-      :status="sourcesStatus"
-      :context="sheetContext"
-      @select="playCandidate"
-      @refresh="refreshSources"
-      @close="closeOverlay"
-    />
-    <VoicePanel
-      v-else-if="overlay === 'voices'"
-      :voices="voices"
-      @pin="pinVoice"
-      @sources="openSourcesFromVoices"
-      @close="closeOverlay"
-    />
   </main>
 </template>
 
@@ -950,45 +876,11 @@ onBeforeUnmount(() => {
   overflow: hidden;
 }
 
-.title__back {
-  position: fixed;
-  z-index: 10;
-  top: var(--safe-y);
-  left: calc(var(--u) * 28);
-  display: flex;
-  align-items: center;
-  height: calc(var(--u) * 64);
-  padding: 0 calc(var(--u) * 26) 0 calc(var(--u) * 18);
-  border: 0;
-  border-radius: calc(var(--u) * 32);
-  background: var(--color-glass);
-  color: var(--color-text);
-  font: inherit;
-  font-size: calc(var(--u) * 32);
-}
-
-.title__back:hover,
-.title__back:focus {
-  --bump-scale: var(--focus-scale);
-
-  background: var(--color-focus);
-  color: var(--color-bg);
-}
-
-.title__back:focus {
-  transform: scale(var(--bump-scale));
-}
-
-.title__back-label {
-  margin-left: calc(var(--u) * 10);
-  font-size: var(--font-size-s);
-  font-weight: 600;
-}
-
 .title__backdrop,
 .title__shade,
 .title__dim {
-  position: absolute;
+  /* fixed, а не absolute: в вебе экран прокручивается, а фон стоит */
+  position: fixed;
   top: 0;
   left: 0;
   width: 100%;
@@ -1033,6 +925,15 @@ onBeforeUnmount(() => {
   padding: calc(var(--u) * 132) var(--safe-x) 0 var(--content-x);
 }
 
+/* Веб: экран прокручивается нативно, полоса прокрутки не нужна */
+.title--native {
+  overflow-y: auto;
+}
+
+.title--native::-webkit-scrollbar {
+  display: none;
+}
+
 .title__stack {
   position: absolute;
   top: 0;
@@ -1045,6 +946,17 @@ onBeforeUnmount(() => {
 .title__head {
   position: relative;
   height: calc(var(--u) * 1080);
+}
+
+.title__head,
+.block {
+  transition: opacity var(--motion-base) var(--motion-easing);
+  will-change: opacity;
+}
+
+.block--above {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .title__info {
@@ -1115,7 +1027,15 @@ onBeforeUnmount(() => {
   top: calc(var(--u) * 742);
   left: var(--content-x);
   display: flex;
+  /* Кнопки ряда — одной высоты с двухстрочной главной */
+  align-items: stretch;
+}
+
+.title__actions .action {
+  display: flex;
   align-items: center;
+  height: auto;
+  min-height: calc(var(--u) * 84);
 }
 
 .title__action-icon {
@@ -1145,16 +1065,6 @@ onBeforeUnmount(() => {
   opacity: 0.75;
 }
 
-.title__status {
-  position: absolute;
-  top: calc(var(--u) * 870);
-  left: var(--content-x);
-  max-width: calc(var(--u) * 1100);
-  margin: 0;
-  color: var(--color-warn);
-  font-size: var(--font-size-s);
-}
-
 .title__peek {
   position: absolute;
   top: calc(var(--u) * 978);
@@ -1164,6 +1074,11 @@ onBeforeUnmount(() => {
   margin: 0;
   color: var(--color-text-dim);
   font-size: var(--font-size-s);
+  transition: opacity var(--motion-fast) var(--motion-easing);
+}
+
+.title__peek--hidden {
+  opacity: 0;
 }
 
 .title__peek-icon {
@@ -1211,12 +1126,6 @@ onBeforeUnmount(() => {
   transition: transform var(--motion-base) var(--motion-easing);
 }
 
-/* Выбранный сезон отмечен и без фокуса; фокус перекрывает отметку белой заливкой */
-.chip--selected:not(:focus) {
-  background: rgba(242, 244, 248, 0.18);
-  color: var(--color-text);
-}
-
 .chip__count {
   margin-left: calc(var(--u) * 12);
   color: var(--color-text-dim);
@@ -1242,7 +1151,6 @@ onBeforeUnmount(() => {
 .episode-detail__text {
   flex: 1;
   min-width: 0;
-  margin-right: calc(var(--u) * 40);
 }
 
 .episode-detail__title {
@@ -1251,6 +1159,15 @@ onBeforeUnmount(() => {
   font-weight: 600;
 }
 
+/* Подсказка, что сделает OK: заранее, до нажатия */
+.episode-detail__hint {
+  margin: 0 0 var(--space-1);
+  color: var(--color-info);
+  font-size: var(--font-size-s);
+  font-weight: 500;
+}
+
+/* Две строки: блок постоянной высоты делят заголовок, подсказка OK и описание */
 .episode-detail__overview {
   display: -webkit-box;
   margin: 0;
@@ -1258,15 +1175,16 @@ onBeforeUnmount(() => {
   color: var(--color-text-muted);
   font-size: var(--font-size-s);
   line-height: 1.45;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
 }
 
-.episode-detail__side {
-  margin: 0;
+/* Длительность и дата — в строке заголовка, тише него */
+.episode-detail__meta {
+  margin-left: calc(var(--u) * 16);
   color: var(--color-text-muted);
   font-size: var(--font-size-s);
-  white-space: nowrap;
+  font-weight: 400;
 }
 
 .facts {

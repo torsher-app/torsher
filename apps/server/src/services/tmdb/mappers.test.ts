@@ -251,6 +251,19 @@ describe('tvToDetails', () => {
     expect(tvToDetails(tvOngoing, 'de-DE').certification).toBe('16')
   })
 
+  it('срезает пробелы в названиях каналов и пропускает пустые', () => {
+    const tv = {
+      ...tvOngoing,
+      networks: [
+        { id: 1, name: 'NTV ' },
+        { id: 2, name: ' ' },
+        { id: 3, name: 'START' },
+      ],
+    }
+
+    expect(tvToDetails(tv).studios).toEqual(['NTV', 'START'])
+  })
+
   it('не показывает рейтинг без голосов и бэкдроп без картинки', () => {
     expect(details.rating).toBeUndefined()
     expect(details.backdrop).toBeUndefined()

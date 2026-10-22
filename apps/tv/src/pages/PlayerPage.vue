@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { goBack } from '../lib/navigation.ts'
+import type { TitleDetails } from '@torsher/api-client'
 import type { KeyAction } from '../focus/index.ts'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -7,9 +9,13 @@ import PlayerBuffering from '../components/player/PlayerBuffering.vue'
 import PlayerOsd from '../components/player/PlayerOsd.vue'
 import PlayerPrompt from '../components/player/PlayerPrompt.vue'
 import PlayerTracks from '../components/player/PlayerTracks.vue'
+import { api } from '../api.ts'
+import { useCatalogLanguage } from '../composables/useCatalogLanguage.ts'
 import { useMediaTracks } from '../composables/useMediaTracks.ts'
 import { usePlayback } from '../composables/usePlayback.ts'
 import { usePlayerOsd } from '../composables/usePlayerOsd.ts'
+import { useResource } from '../composables/useResource.ts'
+import { loadSeason } from '../composables/useTitleSections.ts'
 import { useFocus } from '../focus/index.ts'
 import {
   backAction,
@@ -43,6 +49,44 @@ const player = usePlayback(
   titleRefOf(props.titleId, props.season, props.episode),
 )
 const { playback, stats } = player
+
+// Экран подготовки: кадр, логотип и серия тайтла — если плеер открыт из карточки
+const language = useCatalogLanguage()
+const { data: art } = useResource<TitleDetails>(
+  computed(() =>
+    props.titleId ? `${props.titleId}:${language.value}` : undefined,
+  ),
+  (_, signal) =>
+    api.catalog.getCatalogTitle(
+      props.titleId!,
+      { language: language.value },
+      { signal },
+    ),
+)
+const episodeName = ref('')
+
+if (props.titleId && props.season && props.episode) {
+  loadSeason(props.titleId, Number(props.season), language.value)
+    .then((details) => {
+      episodeName.value
+        = details.episodes.find(item => item.number === Number(props.episode))
+          ?.title ?? ''
+    })
+    .catch(() => {
+      // Без названия серии — только номер
+    })
+}
+
+const artSubtitle = computed(() =>
+  props.season && props.episode
+    ? [
+        t('player.episodeOf', { season: props.season, episode: props.episode }),
+        episodeName.value,
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    : '',
+)
 
 const video = ref<HTMLVideoElement>()
 const tracks = useMediaTracks(video)
@@ -126,13 +170,18 @@ const errorKey = computed(() => {
 })
 
 // Цифры места — в гигабайтах: так их видит панель
-const errorParams = computed(() => ({
-  needed: formatGigabytes(player.storage.value?.needed ?? 0, locale.value),
-  available: formatGigabytes(
-    player.storage.value?.available ?? 0,
-    locale.value,
-  ),
-}))
+const errorParams = computed(() => {
+  const storage = player.storage.value
+  const gigabytes = (bytes = 0) => formatGigabytes(bytes, locale.value)
+
+  return {
+    needed: gigabytes(storage?.needed),
+    available: gigabytes(storage?.available),
+    free: gigabytes(storage?.free),
+    reserve: gigabytes(storage?.minFree),
+    limit: gigabytes(storage?.cacheLimit),
+  }
+})
 
 function save() {
   if (phase.value === 'playing') {
@@ -146,9 +195,7 @@ function save() {
 function exit() {
   save()
 
-  if (router.options.history.state.back)
-    router.back()
-  else void router.replace('/')
+  goBack(router, () => void router.replace('/'))
 }
 
 function play() {
@@ -469,9 +516,12 @@ onBeforeUnmount(() => {
 
       <PlayerBuffering
         v-else-if="phase === 'buffering'"
-        :title="playback.title"
+        :title="art?.title ?? playback.title"
         :step="step"
         :stats="stats"
+        :backdrop="art?.backdrop"
+        :logo="art?.logo"
+        :subtitle="artSubtitle"
       />
 
       <template v-else-if="phase === 'playing'">
@@ -510,6 +560,17 @@ onBeforeUnmount(() => {
         />
       </template>
     </template>
+
+    <!-- Пока сервер готовит поток, тот же экран подготовки, а не чёрный кадр -->
+    <PlayerBuffering
+      v-if="!playback && player.status.value === 'loading'"
+      :title="art?.title ?? ''"
+      step="connecting"
+      :stats="undefined"
+      :backdrop="art?.backdrop"
+      :logo="art?.logo"
+      :subtitle="artSubtitle"
+    />
   </main>
 </template>
 

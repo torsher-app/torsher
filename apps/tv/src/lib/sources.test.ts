@@ -1,25 +1,28 @@
-import type {
-  SourceCandidate,
-  TitleSeason,
-  TitleSources,
-} from '@torsher/api-client'
+import type { SourceCandidate, TitleSources } from '@torsher/api-client'
 import { describe, expect, it } from 'vitest'
 import {
-  bestCandidate,
-  filteredCount,
+  allIndexersFailed,
+  arrangeCandidates,
+  bitrateOf,
+  coverageLabel,
+  formatBitrate,
   formatSize,
+  leechersOf,
   minutesSince,
   qualityOptions,
+  seasonOptions,
   titleRefOf,
-  visibleCandidates,
-  voiceKeyOf,
-  watchTarget,
 } from './sources.ts'
 
 function candidate(
   id: string,
   extra: Partial<SourceCandidate> = {},
 ): SourceCandidate {
+  const voice
+    = extra.voice === undefined
+      ? { studio: 'LostFilm', type: 'MVO' as const }
+      : extra.voice
+
   return {
     id,
     title: `Release ${id}`,
@@ -33,13 +36,20 @@ function candidate(
     codec: null,
     hdr: [],
     audio: [],
-    voice: { studio: 'LostFilm', type: 'MVO' },
+    channels: null,
+    subs: [],
+    voice,
+    // Как на сервере: основная дорожка среди ключей озвучек раздачи
+    voiceKeys: voice
+      ? [voice.studio ? `studio:${voice.studio}` : `type:${voice.type}`]
+      : [],
     seasons: [1],
     episodes: null,
     isPack: true,
     confidence: 'high',
     pickReason: null,
     publishedAt: null,
+    lastWatched: false,
     ...extra,
   }
 }
@@ -50,6 +60,7 @@ const sources: TitleSources = {
   updatedAt: '2026-10-21T10:00:00Z',
   profile: { qualities: ['1080p', '2160p', '720p'], voiceTypes: ['D'] },
   pinnedVoice: null,
+  seasonCandidate: null,
   top: ['b', 'a'],
   candidates: [
     candidate('a', { pickReason: 'bestQuality', quality: '2160p' }),
@@ -63,43 +74,90 @@ const sources: TitleSources = {
   indexers: { total: 1, failed: [] },
 }
 
-describe('visibleCandidates', () => {
-  it('без фильтров — тройка сервера по порядку', () => {
-    expect(
-      visibleCandidates(sources, {}, false).map(item => item.id),
-    ).toEqual(['b', 'a'])
-  })
+describe('arrangeCandidates', () => {
+  const ids = (list: SourceCandidate[]) => list.map(item => item.id)
 
-  it('с фильтром — уверенные с сидами, не больше трёх', () => {
+  it('порядок сервера и фильтры озвучки и качества', () => {
     expect(
-      visibleCandidates(sources, { voice: 'type:D' }, false).map(
-        item => item.id,
+      ids(arrangeCandidates(sources.candidates, { sort: 'best' })),
+    ).toEqual(['a', 'b', 'c', 'd', 'e', 'f'])
+    expect(
+      ids(
+        arrangeCandidates(sources.candidates, {
+          sort: 'best',
+          voice: 'type:D',
+        }),
       ),
-    ).toEqual(['c'])
+    ).toEqual(['c', 'e', 'f'])
     expect(
-      visibleCandidates(sources, { quality: '720p' }, false).map(
-        item => item.id,
+      ids(
+        arrangeCandidates(sources.candidates, {
+          sort: 'best',
+          quality: '720p',
+        }),
       ),
     ).toEqual(['c', 'd'])
   })
 
-  it('«Показать все» — всё с учётом фильтров', () => {
-    expect(visibleCandidates(sources, {}, true)).toHaveLength(6)
+  it('по сезонам: свежий сезон и больше серий выше, дальше по сидам', () => {
+    const list = [
+      candidate('s1', { seasons: [1], seeders: 90 }),
+      candidate('s2part', {
+        seasons: [2],
+        episodes: { from: 1, to: 4 },
+        seeders: 5,
+      }),
+      candidate('s2full', {
+        seasons: [2],
+        episodes: { from: 1, to: 8 },
+        seeders: 1,
+      }),
+    ]
+
+    expect(ids(arrangeCandidates(list, { sort: 'seasons' }))).toEqual([
+      's2full',
+      's2part',
+      's1',
+    ])
     expect(
-      visibleCandidates(sources, { voice: 'type:D' }, true).map(
-        item => item.id,
+      ids(arrangeCandidates(list, { sort: 'seasons', season: 1 })),
+    ).toEqual(['s1'])
+    expect(seasonOptions(list)).toEqual([1, 2])
+  })
+
+  it('раздача последнего просмотра — первой', () => {
+    const list = [
+      candidate('x', { seeders: 50 }),
+      candidate('y', { seeders: 5, lastWatched: true }),
+      candidate('z', { seeders: 9 }),
+    ]
+
+    expect(ids(arrangeCandidates(list, { sort: 'seeders' }))).toEqual([
+      'y',
+      'x',
+      'z',
+    ])
+  })
+
+  it('раздача с несколькими озвучками есть в фильтре каждой', () => {
+    const multi = candidate('m', {
+      voice: { type: 'D' },
+      voiceKeys: ['type:D', 'type:L'],
+    })
+
+    expect(
+      ids(
+        arrangeCandidates([...sources.candidates, multi], {
+          sort: 'best',
+          voice: 'type:L',
+        }),
       ),
-    ).toEqual(['c', 'e', 'f'])
-    expect(filteredCount(sources, { voice: 'type:D' })).toBe(3)
+    ).toEqual(['m'])
   })
 })
 
 describe('подписи', () => {
-  it('ключ озвучки и качества по убыванию', () => {
-    expect(voiceKeyOf({ studio: 'LostFilm', type: 'MVO' })).toBe(
-      'studio:LostFilm',
-    )
-    expect(voiceKeyOf({ type: 'D' })).toBe('type:D')
+  it('качества по убыванию', () => {
     expect(qualityOptions(sources.candidates)).toEqual([
       '2160p',
       '1080p',
@@ -125,88 +183,25 @@ describe('подписи', () => {
     expect(minutesSince('bad', new Date())).toBe(0)
   })
 
-  it('лучший кандидат — первый в тройке', () => {
-    expect(bestCandidate(sources)?.id).toBe('b')
-    expect(bestCandidate(undefined)).toBeUndefined()
-  })
-})
+  it('все индексаторы не ответили — отдельный случай пустого списка', () => {
+    const failed = { name: 'Indexer A', kind: 'timeout' as const }
 
-describe('watchTarget', () => {
-  const seasons: TitleSeason[] = [
-    { number: 1, name: 'Сезон 1', episodeCount: 8, airedEpisodeCount: 8 },
-    { number: 2, name: 'Сезон 2', episodeCount: 8, airedEpisodeCount: 3 },
-    { number: 3, name: 'Сезон 3', episodeCount: 8, airedEpisodeCount: 0 },
-  ]
-
-  function last(
-    season: number,
-    episode: number,
-    position: number,
-    watched = false,
-  ) {
-    return {
-      season,
-      episode,
-      position,
-      duration: 2700,
-      watched,
-      updatedAt: '',
-    }
-  }
-
-  it('без прогресса — первая серия', () => {
-    expect(watchTarget('series', seasons, null)).toEqual({
-      season: 1,
-      episode: 1,
-      resume: false,
-    })
-  })
-
-  it('начатая серия — продолжить', () => {
-    expect(watchTarget('series', seasons, last(1, 4, 600))).toEqual({
-      season: 1,
-      episode: 4,
-      resume: true,
-      remaining: 2100,
-    })
-  })
-
-  it('досмотренная — следующая, в конце сезона — следующий вышедший', () => {
+    expect(allIndexersFailed(sources)).toBe(false)
     expect(
-      watchTarget('series', seasons, last(1, 4, 2690, true)),
-    ).toMatchObject({ season: 1, episode: 5 })
-    expect(
-      watchTarget('series', seasons, last(1, 8, 2690, true)),
-    ).toMatchObject({ season: 2, episode: 1 })
-    expect(
-      watchTarget('series', seasons, last(2, 3, 2690, true)),
-    ).toMatchObject({
-      season: 2,
-      episode: 3,
-      resume: false,
-    })
-  })
-
-  it('фильм: продолжить только начатый', () => {
-    expect(
-      watchTarget('movie', [], {
-        ...last(0, 0, 900),
-        season: null,
-        episode: null,
+      allIndexersFailed({
+        ...sources,
+        indexers: { total: 1, failed: [failed] },
       }),
-    ).toEqual({
-      resume: true,
-      remaining: 1800,
-    })
+    ).toBe(true)
     expect(
-      watchTarget('movie', [], {
-        ...last(0, 0, 10),
-        season: null,
-        episode: null,
+      allIndexersFailed({
+        ...sources,
+        indexers: { total: 2, failed: [failed] },
       }),
-    ).toEqual({
-      resume: false,
-    })
+    ).toBe(false)
+    expect(
+      allIndexersFailed({ ...sources, indexers: { total: 0, failed: [] } }),
+    ).toBe(false)
   })
 })
 
@@ -223,5 +218,37 @@ describe('titleRefOf', () => {
       episode: undefined,
     })
     expect(titleRefOf(undefined, '1', '1')).toBeUndefined()
+  })
+})
+
+describe('строка раздачи', () => {
+  it('покрытие: диапазон, одна серия, пак без диапазона, несколько сезонов, фильм', () => {
+    expect(coverageLabel({ seasons: [1], episodes: { from: 1, to: 8 } })).toBe(
+      'S1 · 1–8',
+    )
+    expect(coverageLabel({ seasons: [2], episodes: { from: 5, to: 5 } })).toBe(
+      'S2 · E5',
+    )
+    expect(coverageLabel({ seasons: [1], episodes: null })).toBe('S1')
+    expect(coverageLabel({ seasons: [3, 1, 2], episodes: null })).toBe('S1–3')
+    expect(coverageLabel({ seasons: [], episodes: null })).toBe('')
+  })
+
+  it('битрейт по размеру на серию и длительности', () => {
+    // 1,8 ГБ за 52 мин ≈ 5 Мбит/с
+    expect(bitrateOf({ episodeSize: 1.8 * 1024 ** 3 }, 52)).toBeCloseTo(
+      4.96,
+      1,
+    )
+    expect(bitrateOf({ episodeSize: null }, 52)).toBeUndefined()
+    expect(bitrateOf({ episodeSize: 1024 ** 3 }, undefined)).toBeUndefined()
+    expect(formatBitrate(4.96, 'ru_RU')).toBe('5,0')
+    expect(formatBitrate(37.25, 'ru_RU')).toBe('37')
+  })
+
+  it('качают: пиры без сидов, без пиров или с перекосом — ничего', () => {
+    expect(leechersOf({ peers: 70, seeders: 58 })).toBe(12)
+    expect(leechersOf({ peers: null, seeders: 58 })).toBeUndefined()
+    expect(leechersOf({ peers: 10, seeders: 58 })).toBeUndefined()
   })
 })

@@ -12,6 +12,12 @@ const SEASON_CACHE_LIMIT = 30
 const seasonCache = createPromiseCache<SeasonDetails>(SEASON_CACHE_LIMIT)
 
 /** Серии сезона; `number` пуст у фильма и пока сезон не выбран. */
+/** Сезон из клиентского кэша: «Файлы» берут из него названия и кадры серий */
+export function loadSeason(id: string, number: number, language: string) {
+  return seasonCache.get(`${id}:${number}:${language}`, () =>
+    api.catalog.getCatalogSeason(id, String(number), { language }))
+}
+
 export function useTitleSeason(
   id: Ref<string>,
   number: Ref<number | undefined>,
@@ -22,14 +28,9 @@ export function useTitleSeason(
       ? undefined
       : `${id.value}:${number.value}:${language.value}`,
   )
-  const { data, ...rest } = useResource(key, (cacheKey) => {
-    const lang = language.value
-    const season = String(number.value)
-
-    // Без signal: запрос, начатый пролётом по чипам, долетает и ложится в кэш
-    return seasonCache.get(cacheKey, () =>
-      api.catalog.getCatalogSeason(id.value, season, { language: lang }))
-  })
+  // Без signal: запрос, начатый пролётом по чипам, долетает и ложится в кэш
+  const { data, ...rest } = useResource(key, () =>
+    loadSeason(id.value, number.value!, language.value))
 
   return { season: data, ...rest }
 }

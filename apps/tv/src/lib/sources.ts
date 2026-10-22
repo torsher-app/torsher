@@ -1,9 +1,4 @@
-import type {
-  SourceCandidate,
-  TitleProgress,
-  TitleSeason,
-  TitleSources,
-} from '@torsher/api-client'
+import type { SourceCandidate, TitleSources } from '@torsher/api-client'
 
 export type Quality = NonNullable<SourceCandidate['quality']>
 
@@ -18,18 +13,19 @@ const QUALITY_ORDER: Quality[] = [
   '360p',
 ]
 
-export const TOP_SIZE = 3
-// Тот же порог, что у сервера: раньше продолжать нечего
-const RESUME_MIN_SECONDS = 30
 const GB = 1024 ** 3
 const MB = 1024 ** 2
 
-/** Ключ озвучки, как у сервера: студия, а без неё — тип перевода */
-export function voiceKeyOf(voice: { studio?: string, type?: string }) {
-  return voice.studio ? `studio:${voice.studio}` : `type:${voice.type ?? 'ru'}`
-}
+/**
+ * Как показать «Источники»: сортировка и фильтры. `seasons` — для сериала:
+ * свежий сезон и больше серий выше, дальше по сидам; `best` — порядок сервера
+ * по профилю.
+ */
+export type SourceSort = 'seasons' | 'best' | 'seeders' | 'size' | 'date'
 
-export interface SourceFilter {
+export interface SourceView {
+  sort: SourceSort
+  season?: number
   voice?: string
   quality?: Quality
 }
@@ -41,52 +37,69 @@ export function qualityOptions(candidates: SourceCandidate[]) {
   return QUALITY_ORDER.filter(quality => found.has(quality))
 }
 
-function matchesFilter(candidate: SourceCandidate, filter: SourceFilter) {
-  if (filter.quality && candidate.quality !== filter.quality)
+/** Сезоны среди раздач по возрастанию */
+export function seasonOptions(candidates: SourceCandidate[]) {
+  const found = new Set<number>()
+
+  for (const item of candidates) {
+    for (const season of item.seasons) found.add(season)
+  }
+
+  return Array.from(found).sort((a, b) => a - b)
+}
+
+function matchesView(candidate: SourceCandidate, view: SourceView) {
+  if (view.quality && candidate.quality !== view.quality)
     return false
 
-  return (
-    !filter.voice
-    || (!!candidate.voice && voiceKeyOf(candidate.voice) === filter.voice)
-  )
+  if (view.season !== undefined && !candidate.seasons.includes(view.season))
+    return false
+
+  // Раздача с несколькими озвучками есть в фильтре каждой из них
+  return !view.voice || candidate.voiceKeys.includes(view.voice)
+}
+
+function lastOf(values: number[]) {
+  return values.length > 0 ? Math.max(...values) : 0
+}
+
+function compareBy(sort: SourceSort, order: Map<string, number>) {
+  return (a: SourceCandidate, b: SourceCandidate) => {
+    switch (sort) {
+      case 'seasons':
+        return (
+          lastOf(b.seasons) - lastOf(a.seasons)
+          || (b.episodes?.to ?? 0) - (a.episodes?.to ?? 0)
+          || b.seeders - a.seeders
+        )
+      case 'seeders':
+        return b.seeders - a.seeders
+      case 'size':
+        return (sizeOf(b) ?? 0) - (sizeOf(a) ?? 0)
+      case 'date':
+        return (b.publishedAt ?? '').localeCompare(a.publishedAt ?? '')
+      default:
+        return order.get(a.id)! - order.get(b.id)!
+    }
+  }
 }
 
 /**
- * Строки листа: без фильтров — тройка сервера, с фильтрами — лучшие три
- * уверенных совпадения с сидами, «Показать все» — всё по убыванию счёта.
+ * Строки «Источников»: фильтр и сортировка, а раздачи, которые уже открывали
+ * для тайтла, — наверху по сидам: к ним чаще всего возвращаются.
  */
-export function visibleCandidates(
-  sources: TitleSources,
-  filter: SourceFilter,
-  showAll: boolean,
+export function arrangeCandidates(
+  candidates: SourceCandidate[],
+  view: SourceView,
 ): SourceCandidate[] {
-  const filtered = sources.candidates.filter(item =>
-    matchesFilter(item, filter),
-  )
-
-  if (showAll)
-    return filtered
-
-  if (!filter.voice && !filter.quality) {
-    const byId = new Map(sources.candidates.map(item => [item.id, item]))
-
-    // Без flatMap: его нет в Chromium 68
-    return sources.top.reduce<SourceCandidate[]>((list, id) => {
-      const found = byId.get(id)
-
-      return found ? [...list, found] : list
-    }, [])
-  }
-
-  return filtered
-    .filter(item => item.confidence === 'high' && item.seeders > 0)
-    .slice(0, TOP_SIZE)
-}
-
-/** Сколько раздач покажет «Показать все» с текущими фильтрами */
-export function filteredCount(sources: TitleSources, filter: SourceFilter) {
-  return sources.candidates.filter(item => matchesFilter(item, filter))
-    .length
+  const order = new Map(candidates.map((item, index) => [item.id, index]))
+  const shown = candidates
+    .filter(item => matchesView(item, view))
+    .sort(compareBy(view.sort, order))
+  // Раздача последнего просмотра — первой: её ищут, чтобы смотреть дальше
+  return shown
+    .filter(item => item.lastWatched)
+    .concat(shown.filter(item => !item.lastWatched))
 }
 
 /** Размер на серию, а без него — весь размер раздачи */
@@ -120,6 +133,60 @@ export function formatSize(bytes: number, locale: string) {
       }
 }
 
+/** Покрытие раздачи: «S1 · 1–8», «S1 · E5», пак без диапазона — «S1», несколько сезонов — «S1–3» */
+export function coverageLabel(
+  candidate: Pick<SourceCandidate, 'seasons' | 'episodes'>,
+) {
+  const { seasons, episodes } = candidate
+
+  if (seasons.length === 0)
+    return ''
+
+  const first = Math.min(...seasons)
+  const last = Math.max(...seasons)
+
+  if (first !== last)
+    return `S${first}–${last}`
+
+  if (!episodes)
+    return `S${first}`
+
+  return episodes.from === episodes.to
+    ? `S${first} · E${episodes.from}`
+    : `S${first} · ${episodes.from}–${episodes.to}`
+}
+
+/**
+ * Средний битрейт в Мбит/с: размер на серию (у фильма — весь) за длительность.
+ * У пака без диапазона серий размер на серию неизвестен — битрейта нет.
+ */
+export function bitrateOf(
+  candidate: Pick<SourceCandidate, 'episodeSize'>,
+  runtimeMinutes: number | undefined,
+) {
+  if (!candidate.episodeSize || !runtimeMinutes)
+    return undefined
+
+  return (candidate.episodeSize * 8) / (runtimeMinutes * 60) / 1_000_000
+}
+
+/** «4,2» до 10 Мбит/с, дальше целыми: десятые у крупных чисел — шум */
+export function formatBitrate(mbps: number, locale: string) {
+  return formatNumber(mbps, mbps < 10 ? 1 : 0, locale)
+}
+
+/** Качают: в Torznab `peers` — все пиры вместе с сидами */
+export function leechersOf(
+  candidate: Pick<SourceCandidate, 'peers' | 'seeders'>,
+) {
+  if (candidate.peers === null)
+    return undefined
+
+  const count = candidate.peers - candidate.seeders
+
+  return count > 0 ? count : undefined
+}
+
 /** Минуты с момента поиска для «обновлено N мин назад» */
 export function minutesSince(iso: string, now: Date) {
   const time = new Date(iso).getTime()
@@ -129,80 +196,11 @@ export function minutesSince(iso: string, now: Date) {
     : Math.max(0, Math.floor((now.getTime() - time) / 60_000))
 }
 
-export interface WatchTarget {
-  season?: number
-  episode?: number
-  /** Продолжить начатую серию или фильм. */
-  resume: boolean
-  /** Сколько секунд осталось у продолжаемого. */
-  remaining?: number
-}
+/** Индексаторы есть, но ни один не ответил: пустой список — не «ничего не нашлось» */
+export function allIndexersFailed(sources: TitleSources) {
+  const { total, failed } = sources.indexers
 
-type Progress = TitleProgress['last']
-
-function canResume(last: NonNullable<Progress>) {
-  return !last.watched && last.position >= RESUME_MIN_SECONDS
-}
-
-function remainingOf(last: NonNullable<Progress>) {
-  return last.duration ? Math.max(0, last.duration - last.position) : undefined
-}
-
-function firstAired(seasons: TitleSeason[]) {
-  return seasons.find(item => item.airedEpisodeCount > 0) ?? seasons[0]
-}
-
-/**
- * Что запустит главная кнопка: начатая серия — продолжить, досмотренная —
- * следующая вышедшая, иначе первая серия первого вышедшего сезона.
- */
-export function watchTarget(
-  kind: 'movie' | 'series',
-  seasons: TitleSeason[],
-  last: Progress,
-): WatchTarget {
-  if (kind === 'movie') {
-    return last && canResume(last)
-      ? { resume: true, remaining: remainingOf(last) }
-      : { resume: false }
-  }
-
-  if (last?.season && last.episode) {
-    if (canResume(last)) {
-      return {
-        season: last.season,
-        episode: last.episode,
-        resume: true,
-        remaining: remainingOf(last),
-      }
-    }
-
-    const index = seasons.findIndex(item => item.number === last.season)
-    const current = seasons[index]
-
-    if (last.watched && current && last.episode < current.airedEpisodeCount)
-      return { season: last.season, episode: last.episode + 1, resume: false }
-
-    const next = seasons
-      .slice(index + 1)
-      .find(item => item.airedEpisodeCount > 0)
-
-    if (last.watched && index !== -1 && next)
-      return { season: next.number, episode: 1, resume: false }
-
-    return { season: last.season, episode: last.episode, resume: false }
-  }
-
-  const first = firstAired(seasons)
-
-  return { season: first?.number ?? 1, episode: 1, resume: false }
-}
-
-/** Лучший кандидат для подписи главной кнопки */
-export function bestCandidate(sources: TitleSources | undefined) {
-  const id = sources?.top[0]
-
-  return id ? sources!.candidates.find(item => item.id === id) : undefined
+  return total > 0 && failed.length >= total
 }
 
 export interface PlaybackTitle {

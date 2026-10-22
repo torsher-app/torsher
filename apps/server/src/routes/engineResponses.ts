@@ -15,12 +15,7 @@ import {
  */
 export function sendEngineError(reply: FastifyReply, err: unknown) {
   if (err instanceof InsufficientStorageError) {
-    return reply.code(507).send({
-      message: err.message,
-      kind: err.kind,
-      needed: err.needed,
-      available: err.available,
-    })
+    return reply.code(507).send({ message: err.message, ...err.shortage })
   }
 
   if (!(err instanceof EngineError))

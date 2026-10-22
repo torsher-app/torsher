@@ -1,7 +1,7 @@
 import type { Claim } from './context.ts'
 import type { ParsedRelease, ReleaseKind } from './types.ts'
 import { ParseContext } from './context.ts'
-import { parseAudio } from './rules/audio.ts'
+import { parseAudio, parseChannels } from './rules/audio.ts'
 import { parseEpisodes } from './rules/episodes.ts'
 import {
   claimInfoBrackets,
@@ -94,13 +94,17 @@ export function parseRelease(title: string): ParsedRelease {
   const titleEnd = findTitleEnd(ctx)
   claimNoise(ctx, titleEnd)
   const { audio, subs } = parseAudio(ctx, titleEnd)
+  const channels = parseChannels(ctx, titleEnd)
   claimInfoBrackets(ctx)
   const kindHint = parseKindHint(ctx, titleEnd)
   const titles = parseTitles(ctx, titleEnd)
 
   // Релиз-группа, которая сама студия озвучки: `...WEB-DL.1080p-LostFilm`
   const groupStudio = group ? findStudio(group) : undefined
-  if (groupStudio && !audio.some(track => track.studio === groupStudio.name)) {
+  if (
+    groupStudio
+    && !audio.some(track => track.studio === groupStudio.name)
+  ) {
     audio.push(
       groupStudio.type
         ? { type: groupStudio.type, studio: groupStudio.name }
@@ -145,6 +149,7 @@ export function parseRelease(title: string): ParsedRelease {
     codec: quality.codec,
     hdr: quality.hdr,
     audio,
+    channels,
     subs,
     group,
     isPack,

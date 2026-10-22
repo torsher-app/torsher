@@ -17,6 +17,7 @@ import PosterCard from '../components/PosterCard.vue'
 import PosterSkeleton from '../components/PosterSkeleton.vue'
 import ScreenState from '../components/ScreenState.vue'
 import { useCatalogSearch } from '../composables/useCatalogSearch.ts'
+import { useStackScroll } from '../composables/useStackScroll.ts'
 import { useTrending } from '../composables/useTrending.ts'
 import { useFocus } from '../focus/index.ts'
 import { addRecent, loadRecent, saveRecent } from '../lib/recentSearches.ts'
@@ -75,10 +76,16 @@ const resultsEdges = computed(() => ({
   left: recent.value.length > 0 ? 'search-recent' : 'search-input',
 }))
 
-// Правая колонка едет transform: строка с фокусом встаёт под верх колонки
+// Правая колонка: строка с фокусом встаёт под верх колонки (на ТВ — transform,
+// в вебе колонка прокручивается нативно)
 const screen = ref<HTMLElement>()
 const column = ref<HTMLElement>()
-const offset = ref(0)
+const {
+  native: nativeScroll,
+  alignTo: scrollColumnTo,
+  onScroll: onColumnScroll,
+  transform: columnTransform,
+} = useStackScroll(column)
 
 function alignTo(el: HTMLElement) {
   if (!column.value || !screen.value)
@@ -86,11 +93,16 @@ function alignTo(el: HTMLElement) {
 
   const gap = (window.innerWidth / 1920) * ROW_GAP
   const card = el.closest<HTMLElement>('.poster-card') ?? el
+  const top = Math.max(0, card.offsetTop - gap)
 
-  offset.value = stackOffset(
-    Math.max(0, card.offsetTop - gap),
-    column.value.offsetHeight,
-    screen.value.clientHeight - column.value.offsetTop,
+  scrollColumnTo(
+    nativeScroll
+      ? stackOffset(top, column.value.scrollHeight, column.value.clientHeight)
+      : stackOffset(
+          top,
+          column.value.offsetHeight,
+          screen.value.clientHeight - column.value.offsetTop,
+        ),
   )
 }
 
@@ -103,7 +115,7 @@ const stopFocus = focus.onFocus((el, via) => {
 
 // Новые результаты: колонка возвращается к началу
 watch(shown, () => {
-  offset.value = 0
+  scrollColumnTo(0)
 })
 
 // Запрос из недавних: после ответа фокус встаёт на первый результат
@@ -194,7 +206,9 @@ onBeforeUnmount(stopFocus)
     <div
       ref="column"
       class="search__right"
-      :style="{ transform: `translateY(${-offset}px)` }"
+      :class="{ 'search__right--native': nativeScroll }"
+      :style="{ transform: columnTransform }"
+      @scroll="onColumnScroll"
     >
       <FocusSection name="search-results" :edges="resultsEdges" manual-scroll>
         <ScreenState
@@ -335,6 +349,17 @@ onBeforeUnmount(stopFocus)
   left: calc(var(--u) * 840);
   padding-bottom: calc(var(--u) * 160);
   transition: transform var(--motion-base) var(--motion-easing);
+}
+
+/* Веб: колонка результатов прокручивается нативно */
+.search__right--native {
+  bottom: 0;
+  overflow-y: auto;
+  transition: none;
+}
+
+.search__right--native::-webkit-scrollbar {
+  display: none;
 }
 
 .search__empty {

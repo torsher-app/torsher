@@ -154,6 +154,9 @@ describe('get /api/titles/:id/sources', () => {
       indexers: ['Indexer A'],
       pickReason: 'profile',
       confidence: 'high',
+      subs: [],
+      channels: null,
+      voiceKeys: ['studio:LostFilm'],
     })
     expect(body.candidates[1]).toMatchObject({ quality: '2160p', voice: null })
     expect(body.voices).toEqual([

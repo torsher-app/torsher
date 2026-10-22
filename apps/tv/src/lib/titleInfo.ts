@@ -67,3 +67,29 @@ export function formatAirDate(airDate: string, locale: string) {
 
   return `${pad(date.getDate())}.${pad(date.getMonth() + 1)}`
 }
+
+/** Дата публикации раздачи: «21 дек. 2023 г.», без данных локали — «21.12.2023». */
+export function formatPublishDate(iso: string, locale: string) {
+  // Дата без времени (выход серии) — местный день, а не полночь UTC
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(iso)
+    ? parseAirDate(iso)
+    : new Date(iso)
+
+  if (Number.isNaN(date.getTime()))
+    return ''
+
+  try {
+    if (Intl.DateTimeFormat.supportedLocalesOf([locale]).length > 0) {
+      return new Intl.DateTimeFormat(locale, {
+        day: 'numeric',
+        month: 'short',
+        year: 'numeric',
+      }).format(date)
+    }
+  }
+  catch {
+    // Ниже — формат без Intl
+  }
+
+  return `${pad(date.getDate())}.${pad(date.getMonth() + 1)}.${date.getFullYear()}`
+}

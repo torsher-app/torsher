@@ -40,8 +40,10 @@ export type SourceReason
 
 export interface RankedRelease extends FoundRelease {
   score: number
-  /** Основная русская дорожка. */
+  /** Основная русская дорожка или русский оригинал (`voiceOf`). */
   voice?: AudioTrack
+  /** Все русские дорожки (`russianVoices`): основная среди них. */
+  voices: AudioTrack[]
   /** Размер на серию у сериала; у фильма — весь размер. */
   episodeSize?: number
   /** Годится в тройку: уверенный матч, есть сиды, не экранная копия. */
@@ -53,6 +55,10 @@ export interface RankContext {
   kind: 'movie' | 'series'
   profile: RankingProfile
   pinned?: VoiceRef
+  /** Язык оригинала тайтла, ISO 639-1. */
+  originalLanguage?: string
+  /** Серий в искомом сезоне по TMDB: размер на серию у пака без диапазона. */
+  seasonEpisodes?: number
 }
 
 export const TOP_SIZE = 3
@@ -125,10 +131,29 @@ function voiceRank(track: AudioTrack, profile: RankingProfile) {
   return index === -1 ? profile.voiceTypes.length : index
 }
 
-export function russianVoice(parsed: ParsedRelease, profile: RankingProfile) {
+// Русский оригинал в названиях раздач не пишут: дорожка не указана — значит, она одна
+const RUSSIAN_ORIGINAL: AudioTrack = { type: 'Original', language: 'ru' }
+
+/**
+ * Все русские дорожки раздачи по профилю, а у тайтла с русским оригиналом без
+ * дорожек в названии — оригинал. По ним раздача попадает в фильтры озвучки.
+ */
+export function russianVoices(parsed: ParsedRelease, ctx: RankContext) {
+  if (parsed.audio.length === 0 && ctx.originalLanguage === 'ru')
+    return [RUSSIAN_ORIGINAL]
+
   return parsed.audio
     .filter(isRussian)
-    .sort((a, b) => voiceRank(a, profile) - voiceRank(b, profile))[0]
+    .sort((a, b) => voiceRank(a, ctx.profile) - voiceRank(b, ctx.profile))
+}
+
+/** Основная дорожка: закреплённая, если она в раздаче есть, иначе лучшая по профилю */
+export function voiceOf(voices: AudioTrack[], ctx: RankContext) {
+  const pinned = ctx.pinned
+    ? voices.find(track => voiceMatches(track, ctx.pinned!))
+    : undefined
+
+  return pinned ?? voices[0]
 }
 
 function hasOriginalAudio(parsed: ParsedRelease) {
@@ -149,24 +174,32 @@ export function voiceMatches(track: AudioTrack | undefined, pinned: VoiceRef) {
   return !!pinned.type && !track.studio && track.type === pinned.type
 }
 
-/** Сколько серий в раздаче, если это можно понять из названия */
-function episodeCountOf(parsed: ParsedRelease) {
-  const { episodes } = parsed
+/**
+ * Сколько серий в раздаче: диапазон из названия, а у пака одного сезона без
+ * диапазона (`[S01]`) — серии сезона по TMDB. У идущего сезона TMDB знает и
+ * невышедшие серии, поэтому размер на серию будет занижен: это ориентир.
+ */
+function episodeCountOf(parsed: ParsedRelease, seasonEpisodes?: number) {
+  const { episodes, seasons } = parsed
 
-  if (!episodes)
-    return undefined
+  if (episodes)
+    return episodes.to - episodes.from + 1
 
-  return episodes.to - episodes.from + 1
+  return parsed.isPack && seasons.length === 1 ? seasonEpisodes : undefined
 }
 
-export function episodeSizeOf(release: FoundRelease, kind: 'movie' | 'series') {
+export function episodeSizeOf(
+  release: FoundRelease,
+  kind: 'movie' | 'series',
+  seasonEpisodes?: number,
+) {
   if (release.size === undefined)
     return undefined
 
   if (kind === 'movie')
     return release.size
 
-  const count = episodeCountOf(release.parsed)
+  const count = episodeCountOf(release.parsed, seasonEpisodes)
 
   return count ? Math.round(release.size / count) : undefined
 }
@@ -353,14 +386,16 @@ export function rankReleases(
 ): Ranking {
   const ranked = releases
     .map((release) => {
-      const voice = russianVoice(release.parsed, ctx.profile)
-      const episodeSize = episodeSizeOf(release, ctx.kind)
+      const voices = russianVoices(release.parsed, ctx)
+      const voice = voiceOf(voices, ctx)
+      const episodeSize = episodeSizeOf(release, ctx.kind, ctx.seasonEpisodes)
       const screenCopy
         = !!release.parsed.source && SCREEN_COPIES.has(release.parsed.source)
 
       return {
         ...release,
         voice,
+        voices,
         episodeSize,
         score: scoreOf(release, voice, episodeSize, ctx),
         eligible:

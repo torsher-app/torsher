@@ -29,22 +29,30 @@ const RECENT_USE_MS = 10 * 60 * 1000
 const RESUME_MARGIN = GIB
 const QUEUE_PREVIEW = 10
 
+export interface StorageShortage {
+  kind: ShortageKind
+  /** Сколько ещё скачает просмотр */
+  needed: number
+  /** Сколько можно скачать, не нарушив ограничение из `kind` */
+  available: number
+  /** Свободно на томе после вытеснения кэша */
+  free: number
+  minFree: number
+  cacheLimit: number
+}
+
 /** Просмотр не начнётся: места не хватит даже после вытеснения кэша */
 export class InsufficientStorageError extends Error {
-  readonly kind: ShortageKind
-  readonly needed: number
-  readonly available: number
+  readonly shortage: StorageShortage
 
-  constructor(kind: ShortageKind, needed: number, available: number) {
+  constructor(shortage: StorageShortage) {
     super(
-      kind === 'no_space'
+      shortage.kind === 'no_space'
         ? 'Not enough free disk space'
         : 'Cache limit is too small for this file',
     )
     this.name = 'InsufficientStorageError'
-    this.kind = kind
-    this.needed = needed
-    this.available = available
+    this.shortage = shortage
   }
 }
 
@@ -160,6 +168,9 @@ export interface EnforceResult {
   ok: boolean
   shortage?: ShortageKind
   available: number
+  free: number
+  minFree: number
+  cacheLimit: number
 }
 
 async function runEnforce(request?: SpaceRequest): Promise<EnforceResult> {
@@ -195,6 +206,9 @@ async function runEnforce(request?: SpaceRequest): Promise<EnforceResult> {
     ok: plan.ok,
     shortage: plan.shortage,
     available: plan.available,
+    free: plan.free,
+    minFree: policy.minFree,
+    cacheLimit: policy.cacheLimit,
   }
 }
 
@@ -219,11 +233,14 @@ export async function ensureSpaceFor(request: SpaceRequest) {
   const result = await enforceStorage(request)
 
   if (!result.ok) {
-    throw new InsufficientStorageError(
-      result.shortage ?? 'no_space',
-      request.bytes,
-      result.available,
-    )
+    throw new InsufficientStorageError({
+      kind: result.shortage ?? 'no_space',
+      needed: request.bytes,
+      available: result.available,
+      free: result.free,
+      minFree: result.minFree,
+      cacheLimit: result.cacheLimit,
+    })
   }
 }
 

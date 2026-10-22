@@ -48,7 +48,7 @@ const SAMPLE = /(?:^|[\s.\-_[(])(?:sample|семпл|сэмпл)(?:$|[\s.\-_\])]
 const EXTRA_DIRS
   = /^(?:extras?|featurettes?|bonus(?:es)?|бонусы|доп\.?\s*материалы|дополнительные\s*материалы|trailers?|трейлеры|behind\s*the\s*scenes|deleted\s*scenes)$/i
 const EXTRA_NAME = /trailer|трейлер|featurette/i
-const LEADING_NUMBER = /^(\d{1,4})(?=$|[\s.\-_)\]])/
+const LEADING_NUMBER = /^[#№]?(\d{1,4})(?=$|[\s.\-_)\]])/
 // Число отдельным словом, но не часть `5.1` или `2.0`
 const LONE_NUMBER
   = /(?:^|[\s\-_[(]|(?<!\d)\.)(\d{1,3})(?=$|[\s\-_\])]|\.(?!\d))/g

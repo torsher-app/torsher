@@ -280,6 +280,7 @@ const statsLine = computed(() => {
 .osd__time {
   display: inline-flex;
   align-items: center;
+  font-variant-numeric: tabular-nums;
 }
 
 .osd__state {

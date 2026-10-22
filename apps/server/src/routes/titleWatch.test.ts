@@ -218,6 +218,65 @@ describe('post /api/titles/:id/watch', () => {
     expect(res.json().candidates[0].pickReason).toBe('pinnedVoice')
   })
 
+  it('раздача сезона: в прогрессе с сериями, в источниках — помеченный кандидат', async () => {
+    const first = (await watch({ season: 2, episode: 5 })).json()
+
+    const progress = await app.inject({
+      url: `/api/titles/${TITLE}/progress`,
+      cookies: owner,
+    })
+
+    expect(progress.json().seasonReleases).toEqual([
+      {
+        season: 2,
+        torrentId: first.torrentId,
+        quality: '1080p',
+        voice: expect.objectContaining({ studio: 'LostFilm' }),
+        episodes: [1, 2, 3, 4, 5, 6, 7, 8],
+      },
+    ])
+
+    const sources = await app.inject({
+      url: `/api/titles/${TITLE}/sources?season=2&episode=6`,
+      cookies: owner,
+    })
+
+    expect(sources.json().seasonCandidate).toBe(first.candidateId)
+  })
+
+  it('серия из раздачи сезона по torrentId — без поиска по индексаторам', async () => {
+    const first = (await watch({ season: 2, episode: 5 })).json()
+
+    fetchMock.mockClear()
+
+    const next = await watch({
+      season: 2,
+      episode: 6,
+      torrentId: first.torrentId,
+    })
+
+    expect(next.statusCode).toBe(200)
+    expect(next.json()).toMatchObject({
+      status: 'ready',
+      torrentId: first.torrentId,
+      fileIndex: 6,
+    })
+    expect(
+      fetchMock.mock.calls.some(([input]) =>
+        String(input).startsWith('https://indexer.example'),
+      ),
+    ).toBe(false)
+
+    const missing = await watch({
+      season: 2,
+      episode: 9,
+      torrentId: first.torrentId,
+    })
+
+    expect(missing.statusCode).toBe(422)
+    expect(missing.json().kind).toBe('not_playable')
+  })
+
   it('серии нет ни в одной раздаче — 422 no_sources', async () => {
     const res = await watch({ season: 2, episode: 9 })
 
@@ -286,6 +345,128 @@ describe('post /api/titles/:id/watch', () => {
 
     expect(res.statusCode).toBe(503)
     expect(res.json().kind).toBe('not_installed')
+  })
+})
+
+describe('экран «Источники» и «Файлы»', () => {
+  it('все сезоны, open без выбора файла, файлы серий и метка последнего просмотра', async () => {
+    const list = await app.inject({
+      url: `/api/titles/${TITLE}/sources?all=1`,
+      cookies: owner,
+    })
+
+    expect(list.statusCode).toBe(200)
+    expect(list.json().season).toBeNull()
+
+    const pack = list
+      .json()
+      .candidates
+      .find((item: { seasons: number[] }) =>
+        item.seasons.includes(2),
+      )
+
+    expect(pack.lastWatched).toBe(false)
+
+    const open = await app.inject({
+      method: 'POST',
+      url: `/api/titles/${TITLE}/open`,
+      cookies: owner,
+      payload: { candidateId: pack.id },
+    })
+
+    expect(open.statusCode).toBe(200)
+    expect(open.json().status).toBe('ready')
+
+    const files = await app.inject({
+      url: `/api/titles/${TITLE}/files/${open.json().torrentId}`,
+      cookies: owner,
+    })
+
+    expect(files.statusCode).toBe(200)
+    // Сэмпл не серия: в «Файлах» только восемь серий по порядку
+    expect(
+      files
+        .json()
+        .files.map((file: { season: number, episode: number }) => [
+          file.season,
+          file.episode,
+        ]),
+    ).toEqual(Array.from({ length: 8 }, (_, i) => [2, i + 1]))
+
+    const lastWatchedOf = async () =>
+      (
+        await app.inject({
+          url: `/api/titles/${TITLE}/sources?all=1`,
+          cookies: owner,
+        })
+      )
+        .json()
+        .candidates
+        .find((item: { id: string }) => item.id === pack.id)
+        .lastWatched
+
+    // Только открыли — ещё не смотрели
+    expect(await lastWatchedOf()).toBe(false)
+
+    await app.inject({
+      method: 'PUT',
+      url: '/api/watch-state',
+      cookies: owner,
+      payload: {
+        torrentId: open.json().torrentId,
+        fileIndex: files.json().files[0].fileIndex,
+        position: 600,
+        duration: 2700,
+        title: { id: TITLE, season: 2, episode: 1 },
+      },
+    })
+
+    expect(await lastWatchedOf()).toBe(true)
+  })
+
+  it('файлы чужой раздачи — 404', async () => {
+    const res = await app.inject({
+      url: `/api/titles/${TITLE}/files/unknown`,
+      cookies: owner,
+    })
+
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('отметка «просмотрено» с карточки видна в прогрессе по сериям', async () => {
+    const mark = (watched: boolean) =>
+      app.inject({
+        method: 'PUT',
+        url: `/api/titles/${TITLE}/watched`,
+        cookies: owner,
+        payload: { season: 2, episode: 3, watched },
+      })
+
+    expect((await mark(true)).statusCode).toBe(200)
+
+    const progress = await app.inject({
+      url: `/api/titles/${TITLE}/progress`,
+      cookies: owner,
+    })
+
+    expect(progress.json().episodes).toContainEqual(
+      expect.objectContaining({ season: 2, episode: 3, watched: true }),
+    )
+    // История — только то, что смотрели в плеере
+    expect(progress.json().last).not.toEqual(
+      expect.objectContaining({ season: 2, episode: 3 }),
+    )
+
+    await mark(false)
+
+    const cleared = await app.inject({
+      url: `/api/titles/${TITLE}/progress`,
+      cookies: owner,
+    })
+
+    expect(cleared.json().episodes).toContainEqual(
+      expect.objectContaining({ season: 2, episode: 3, watched: false }),
+    )
   })
 })
 
@@ -362,7 +543,11 @@ describe('позиция по серии', () => {
       cookies: owner,
     })
 
-    expect(empty.json()).toEqual({ last: null })
+    expect(empty.json()).toEqual({
+      last: null,
+      seasonReleases: [],
+      episodes: [],
+    })
     expect(unknown.statusCode).toBe(404)
   })
 })

@@ -13,12 +13,28 @@ describe('identityOf', () => {
       tvdbId: 202,
       year: 2023,
       endYear: 2025,
+      originalLanguage: 'en',
       names: [
         { value: 'Тихая гавань', lang: 'ru', kind: 'official' },
         { value: 'Quiet Harbor', lang: 'en', kind: 'original' },
         { value: 'Тихая гавань: Сезоны', lang: null, kind: 'alternative' },
       ],
     })
+  })
+
+  it('сериал: число серий по сезонам, пустые сезоны пропускает', () => {
+    const response = trimIdentity({
+      ...tvIdentity,
+      seasons: [
+        { season_number: 0, episode_count: 0 },
+        { season_number: 1, episode_count: 8 },
+        { season_number: 2, episode_count: 10 },
+      ],
+    })
+
+    expect(
+      identityOf(response, { type: 'tv', tmdbId: 101 }).episodeCounts,
+    ).toEqual({ 1: 8, 2: 10 })
   })
 
   it('фильм: оригинальное и английское названия, год выхода', () => {
@@ -31,6 +47,7 @@ describe('identityOf', () => {
       tvdbId: undefined,
       year: 2021,
       endYear: undefined,
+      originalLanguage: 'fr',
       names: [
         { value: 'Бумажный фонарь', lang: 'ru', kind: 'official' },
         { value: 'Le Lampion', lang: 'fr', kind: 'original' },
