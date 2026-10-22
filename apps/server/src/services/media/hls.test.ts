@@ -9,6 +9,7 @@ import {
   HlsTranscode,
   seekTargetOf,
   segmentStarts,
+  TranscodeFailedError,
   TS_OFFSET_SECONDS,
 } from './hls.ts'
 import { readCueTimes } from './matroska.ts'
@@ -175,7 +176,7 @@ describe.runIf(hasFfmpeg())('hlsTranscode на ffmpeg', () => {
     rmSync(dir, { recursive: true, force: true })
   })
 
-  async function job() {
+  async function job(url = file) {
     const cues = await readCueTimes(async (start, end) =>
       bytes.subarray(start, Math.min(end, bytes.length)),
     )
@@ -183,7 +184,7 @@ describe.runIf(hasFfmpeg())('hlsTranscode на ffmpeg', () => {
     const transcode = new HlsTranscode(
       join(dir, `out-${transcodes.length}`),
       {
-        url: file,
+        url,
         videoStream: 0,
         audioStream: 1,
         audio: 'aac',
@@ -219,6 +220,25 @@ describe.runIf(hasFfmpeg())('hlsTranscode на ffmpeg', () => {
     }
 
     expect(Math.max(...offsets) - Math.min(...offsets)).toBeLessThan(0.01)
+  }, 60_000)
+
+  it('на месте данных нули — ошибка, а не пустой сегмент', async () => {
+    // Так выглядит недокачанный кусок, который движок считает готовым
+    const broken = Buffer.from(bytes)
+    const zeros = join(dir, 'zeros.mkv')
+
+    broken.fill(
+      0,
+      Math.floor(bytes.length * 0.3),
+      Math.floor(bytes.length * 0.95),
+    )
+    writeFileSync(zeros, broken)
+
+    const { transcode, starts } = await job(zeros)
+
+    await expect(
+      transcode.segment(Math.floor(starts.length / 2)),
+    ).rejects.toBeInstanceOf(TranscodeFailedError)
   }, 60_000)
 
   it('встроенные субтитры копятся тем же процессом', async () => {

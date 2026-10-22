@@ -2,7 +2,7 @@ import type { ChildProcess } from 'node:child_process'
 import type { Cue } from './webvtt.ts'
 import type { Buffer } from 'node:buffer'
 import { spawn } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, statSync } from 'node:fs'
 import { mkdir, readdir, readFile, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { config } from '../../config.ts'
@@ -140,6 +140,15 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
  * перезапускает его с нового места. Разрезы абсолютные (границы из
  * плейлиста), поэтому готовые сегменты разных запусков совместимы.
  */
+/**
+ * Пустой сегмент — не готовый: ffmpeg вносит его в список и тогда, когда входа
+ * не прочитал (на месте данных нули). Отдать его — hls.js запросит снова, и так
+ * без конца.
+ */
+function hasData(path: string) {
+  return existsSync(path) && statSync(path).size > 0
+}
+
 export class HlsTranscode {
   readonly dir: string
   private readonly input: HlsInput
@@ -386,7 +395,7 @@ export class HlsTranscode {
       for (const line of text.split('\n')) {
         const index = Number.parseInt(line, 10)
 
-        if (Number.isInteger(index) && existsSync(this.pathOf(index)))
+        if (Number.isInteger(index) && hasData(this.pathOf(index)))
           this.ready.add(index)
       }
     }
