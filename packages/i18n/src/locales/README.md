@@ -23,7 +23,9 @@ Add `messages.json` (dialogs, errors, notifications) or `preferences.json` (sett
 common.*   — shared labels (back, close, ...)
 search.*   — search screen
 title.*    — title page: actions, kinds, meta line
-state.*    — screen states shared by screens: empty, sign-in required, errors
+state.*    — screen states shared by screens: empty, not connected, errors
+connect.*  — showcase: connecting a device with a code
+profiles.* — showcase: who's watching, profile PIN
 panel.*    — control panel: navigation, sections, dialogs
 shell.*    — TV app wrapper: server address screen
 ```

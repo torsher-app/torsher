@@ -31,6 +31,7 @@ export function createApp(
   app.decorateRequest('userId', '')
   app.decorateRequest('deviceId', null)
   app.decorateRequest('profileId', '')
+  app.decorateRequest('profileSelected', false)
 
   app.register(cors, {
     origin: config.clientUrl,

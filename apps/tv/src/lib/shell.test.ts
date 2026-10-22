@@ -38,7 +38,7 @@ describe('panelSignInUrl', () => {
 
   it('ведёт в панель того же сервера и возвращает на текущий экран', () => {
     const url = new URL(
-      panelSignInUrl(at('http://192.168.1.10:8080/?platform=tv#/movies')),
+      panelSignInUrl(at('http://192.168.1.10:8080/?platform=tv#/movies'), 'tv'),
     )
 
     expect(url.origin + url.pathname).toBe(
@@ -50,10 +50,19 @@ describe('panelSignInUrl', () => {
 
   it('учитывает подпуть обратного прокси', () => {
     const url = new URL(
-      panelSignInUrl(at('https://media.example/torsher/?platform=tv#/')),
+      panelSignInUrl(at('https://media.example/torsher/?platform=tv#/'), 'tv'),
     )
 
     expect(url.pathname).toBe('/torsher/panel/auth/login')
     expect(url.searchParams.get('next')).toBe('/torsher/?platform=tv#/')
+  })
+
+  it('из браузера панель открывается в обычном виде', () => {
+    const url = new URL(
+      panelSignInUrl(at('http://localhost:8080/#/connect'), 'web'),
+    )
+
+    expect(url.searchParams.get('platform')).toBeNull()
+    expect(url.searchParams.get('next')).toBe('/#/connect')
   })
 })

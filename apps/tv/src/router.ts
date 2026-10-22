@@ -1,12 +1,16 @@
 import type { LocationQueryValue } from 'vue-router'
 import { createRouter, createWebHashHistory } from 'vue-router'
+import { gateTarget } from './lib/session.ts'
 import AboutPage from './pages/AboutPage.vue'
+import ConnectPage from './pages/ConnectPage.vue'
 import FilesPage from './pages/FilesPage.vue'
 import HomePage from './pages/HomePage.vue'
 import PlayerPage from './pages/PlayerPage.vue'
+import ProfilesPage from './pages/ProfilesPage.vue'
 import SearchPage from './pages/SearchPage.vue'
 import SourcesPage from './pages/SourcesPage.vue'
 import TitlePage from './pages/TitlePage.vue'
+import { resolveSession, session } from './session.ts'
 
 function queryOf(value: LocationQueryValue | LocationQueryValue[] | undefined) {
   return typeof value === 'string' ? value : undefined
@@ -35,6 +39,9 @@ export const router = createRouter({
       }),
     },
     { path: '/about', component: AboutPage },
+    // Подключение по коду и «Кто смотрит?»: сюда ведёт гейт ниже
+    { path: '/connect', component: ConnectPage },
+    { path: '/profiles', component: ProfilesPage },
     {
       path: '/play/:torrentId/:fileIndex',
       component: PlayerPage,
@@ -48,4 +55,13 @@ export const router = createRouter({
       }),
     },
   ],
+})
+
+// Без подключения и выбранного профиля витрина ведёт на экран кода или выбора.
+// На первом переходе ждёт ответа сервера: экран не мигает главной
+router.beforeEach(async (to) => {
+  if (session.status === 'unknown')
+    await resolveSession()
+
+  return gateTarget(session.status, to) ?? true
 })

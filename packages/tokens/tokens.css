@@ -25,6 +25,15 @@
   --color-info: #8db6ff;
   --color-warn: #ffb35c;
   --color-bad: #ff7a7a;
+  /* Аватары профилей: насыщенные, чтобы белая буква читалась; набор цветов — как на сервере */
+  --color-profile-violet: #7c3aed;
+  --color-profile-green: #047857;
+  --color-profile-orange: #ea580c;
+  --color-profile-blue: #2563eb;
+  --color-profile-rose: #e11d48;
+  --color-profile-teal: #0f766e;
+  --color-profile-amber: #b45309;
+  --color-profile-slate: #475569;
 
   /* Onest раздаёт сама витрина: system-ui на разных ТВ — разные шрифты */
   --font-family: 'Onest', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;

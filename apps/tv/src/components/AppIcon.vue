@@ -20,6 +20,7 @@ export type IconName
     | 'subtitles'
     | 'check'
     | 'close'
+    | 'lock'
 
 const props = defineProps<{ name: IconName }>()
 
@@ -72,6 +73,10 @@ const PATHS: Record<IconName, (string | IconPart)[]> = {
   ],
   check: ['m5 12.5 4.5 4.5L19 7.5'],
   close: ['M6.5 6.5l11 11', 'M17.5 6.5l-11 11'],
+  lock: [
+    'M6 11h12a1.5 1.5 0 0 1 1.5 1.5v7A1.5 1.5 0 0 1 18 21H6a1.5 1.5 0 0 1-1.5-1.5v-7A1.5 1.5 0 0 1 6 11z',
+    'M8 11V7.5a4 4 0 0 1 8 0V11',
+  ],
 }
 
 const filled = computed(() => props.name === 'play' || props.name === 'pause')

@@ -29,11 +29,26 @@ const MEDIA: Record<number, MediaKey> = {
 export type MediaKey
   = 'play' | 'pause' | 'playPause' | 'stop' | 'forward' | 'rewind'
 
+// Цифры: верхний ряд клавиатуры и пульта — 48–57, цифровой блок — 96–105
+const DIGIT_0 = 48
+const NUMPAD_0 = 96
+
 export type KeyAction
   = | { type: 'move', direction: Direction }
     | { type: 'enter' }
     | { type: 'back' }
     | { type: 'media', key: MediaKey }
+    | { type: 'digit', digit: number }
+
+function digitOf(keyCode: number) {
+  if (keyCode >= DIGIT_0 && keyCode <= DIGIT_0 + 9)
+    return keyCode - DIGIT_0
+
+  if (keyCode >= NUMPAD_0 && keyCode <= NUMPAD_0 + 9)
+    return keyCode - NUMPAD_0
+
+  return undefined
+}
 
 function isTextField(target: EventTarget | null) {
   return (
@@ -63,6 +78,12 @@ export function readKey(event: KeyboardEvent): KeyAction | undefined {
 
   if (media && !inTextField)
     return { type: 'media', key: media }
+
+  const digit = digitOf(event.keyCode)
+
+  // Цифры без экрана, который их ждёт (PIN), ничего не делают
+  if (digit !== undefined && !inTextField && !event.shiftKey)
+    return { type: 'digit', digit }
 
   return undefined
 }
