@@ -49,11 +49,14 @@ const { voiceLabel, historyOf } = useSourceLabels()
 
 const isSeries = computed(() => title.value?.kind === 'series')
 
+const view = ref<Partial<SourceView>>(loadSourceView(props.id))
+const query = computed(() => view.value.query)
+
 // Обновить — мимо кэша сервера; ключ меняется, и запрос уходит заново
 const nonce = ref(0)
 let forceRefresh = false
 const { data: sources, status } = useResource<TitleSources>(
-  computed(() => `${id.value}:${nonce.value}`),
+  computed(() => `${id.value}:${nonce.value}:${query.value ?? ''}`),
   (_, signal) => {
     const refresh = forceRefresh
 
@@ -61,7 +64,7 @@ const { data: sources, status } = useResource<TitleSources>(
 
     return api.titles.getTitleSources(
       id.value,
-      { all: '1', refresh: refresh ? '1' : undefined },
+      { all: '1', refresh: refresh ? '1' : undefined, query: query.value },
       { signal },
     )
   },
@@ -75,7 +78,6 @@ function refresh() {
 // Время для «обновлено N мин назад» берём при открытии экрана
 const openedAt = new Date()
 
-const view = ref<Partial<SourceView>>(loadSourceView(props.id))
 const sort = computed<SourceSort>(
   () => view.value.sort ?? (isSeries.value ? 'seasons' : 'best'),
 )
@@ -120,7 +122,7 @@ const SORT_LABEL: Record<SourceSort, string> = {
 
 // Сортировка и фильтры — одной строкой кнопок, выбор — в правой панели: список
 // остаётся на весь экран
-type Control = 'sort' | 'season' | 'voice' | 'quality'
+type Control = 'query' | 'sort' | 'season' | 'voice' | 'quality'
 
 const panel = ref<Control>()
 let panelOpener: HTMLElement | undefined
@@ -131,13 +133,25 @@ const voiceName = computed(() => {
   return option ? voiceLabel(option) : ''
 })
 
+// «Запрос» есть всегда, и пока идёт поиск, и без раздач: это запасной путь,
+// когда по названиям из TMDB ничего не нашлось
 const controls = computed(() => {
   const list: { id: Control, label: string }[] = [
     {
-      id: 'sort',
-      label: t('sources.controlSort', { value: t(SORT_LABEL[sort.value]) }),
+      id: 'query',
+      label: t('sources.controlQuery', {
+        value: query.value ?? t('sources.query.autoValue'),
+      }),
     },
   ]
+
+  if (candidates.value.length === 0)
+    return list
+
+  list.push({
+    id: 'sort',
+    label: t('sources.controlSort', { value: t(SORT_LABEL[sort.value]) }),
+  })
 
   if (seasons.value.length > 1) {
     list.push({
@@ -173,8 +187,43 @@ const panelTitle = computed(() =>
   panel.value ? t(`sources.panel.${panel.value}`) : '',
 )
 
+// Готовые строки сервера; своя строка зрителя, которой среди них нет, — тоже пункт
+const queryOptions = computed<PanelOption[]>(() => {
+  const current = query.value
+  const suggestions = sources.value?.query.suggestions ?? []
+  const values
+    = current && !suggestions.includes(current)
+      ? [current, ...suggestions]
+      : suggestions
+
+  return [
+    {
+      id: 'auto',
+      label: t('sources.query.auto'),
+      hint: t('sources.query.autoHint'),
+      selected: !current,
+    },
+    ...values.map(value => ({
+      id: `q:${value}`,
+      label: value,
+      selected: current === value,
+    })),
+  ]
+})
+
+const queryDraft = ref('')
+
+function submitDraft() {
+  const value = queryDraft.value.trim()
+
+  if (value)
+    choose(`q:${value}`)
+}
+
 const panelOptions = computed<PanelOption[]>(() => {
   switch (panel.value) {
+    case 'query':
+      return queryOptions.value
     case 'sort':
       return sorts.value.map(item => ({
         id: item,
@@ -227,6 +276,7 @@ const panelOptions = computed<PanelOption[]>(() => {
 
 function openPanel(id: Control) {
   panelOpener = focus.current() ?? undefined
+  queryDraft.value = query.value ?? ''
   panel.value = id
 }
 
@@ -244,6 +294,9 @@ function choose(id: string) {
   const all = id === 'all'
 
   switch (panel.value) {
+    case 'query':
+      setView({ query: all || id === 'auto' ? undefined : id.slice(2) })
+      break
     case 'sort':
       setView({ sort: id as SourceSort })
       break
@@ -278,8 +331,19 @@ const emptyKind = computed(() => {
   if (hasFilter.value)
     return 'filtered'
 
-  return allIndexersFailed(sources.value) ? 'failed' : 'nothing'
+  if (allIndexersFailed(sources.value))
+    return 'failed'
+
+  return query.value ? 'nothingQuery' : 'nothing'
 })
+
+// Поиск ничего не дал: следующий шаг — уточнить, что искать
+const canRefine = computed(
+  () =>
+    emptyKind.value === 'nothing'
+    || emptyKind.value === 'nothingQuery'
+    || emptyKind.value === 'failed',
+)
 
 const headerMeta = computed(() => {
   if (!sources.value || searching.value)
@@ -354,7 +418,10 @@ async function open(candidateId: string) {
   openError.value = ''
 
   try {
-    const result = await api.titles.postTitleOpen(props.id, { candidateId })
+    const result = await api.titles.postTitleOpen(props.id, {
+      candidateId,
+      query: query.value,
+    })
 
     // Выбран сезон — «Файлы» встают на его первую серию
     router.push({
@@ -382,10 +449,7 @@ const order = computed(() => {
   if (history.value?.torrentId)
     list.push('sources-history')
 
-  if (candidates.value.length > 0)
-    list.push('sources-controls')
-
-  list.push('sources-list')
+  list.push('sources-controls', 'sources-list')
 
   return list
 })
@@ -518,7 +582,6 @@ const meta = computed(() => {
       </p>
 
       <FocusSection
-        v-if="candidates.length > 0"
         name="sources-controls"
         class="sources__controls"
         :edges="edgesOf('sources-controls')"
@@ -577,8 +640,17 @@ const meta = computed(() => {
               {{ t(`sources.empty.${emptyKind}.title`) }}
             </p>
             <p class="sources__state-text">
-              {{ t(`sources.empty.${emptyKind}.text`) }}
+              {{ t(`sources.empty.${emptyKind}.text`, { query }) }}
             </p>
+            <button
+              v-if="canRefine"
+              v-focusable
+              class="action"
+              type="button"
+              @click="openPanel('query')"
+            >
+              {{ t("sources.query.action") }}
+            </button>
           </div>
 
           <SourceRow
@@ -607,7 +679,23 @@ const meta = computed(() => {
       :options="panelOptions"
       @select="choose"
       @close="closePanel"
-    />
+    >
+      <template v-if="panel === 'query'" #top>
+        <input
+          v-model="queryDraft"
+          v-focusable
+          class="field sources__query-input"
+          type="search"
+          enterkeyhint="search"
+          :aria-label="t('sources.query.placeholder')"
+          :placeholder="t('sources.query.placeholder')"
+          @keydown.enter="submitDraft"
+        >
+        <p class="sources__query-note">
+          {{ t("sources.query.note") }}
+        </p>
+      </template>
+    </OptionsPanel>
   </main>
 </template>
 
@@ -759,6 +847,20 @@ const meta = computed(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.sources__query-input {
+  width: 100%;
+  height: calc(var(--u) * 88);
+  padding: 0 calc(var(--u) * 28);
+  font-size: var(--font-size-m);
+  font-weight: 600;
+}
+
+.sources__query-note {
+  margin: calc(var(--u) * 14) 0 calc(var(--u) * 24);
+  color: var(--color-text-dim);
+  font-size: calc(var(--u) * 22);
 }
 
 .sources__reset {

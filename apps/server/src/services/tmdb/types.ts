@@ -10,6 +10,7 @@ export interface TmdbMultiResult {
   original_name?: string
   first_air_date?: string
   poster_path?: string | null
+  backdrop_path?: string | null
   // Только у персон: их известные фильмы и сериалы, с media_type
   known_for?: TmdbMultiResult[]
 }

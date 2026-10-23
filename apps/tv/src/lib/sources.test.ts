@@ -61,6 +61,7 @@ const sources: TitleSources = {
   profile: { qualities: ['1080p', '2160p', '720p'], voiceTypes: ['D'] },
   pinnedVoice: null,
   seasonCandidate: null,
+  query: { current: null, suggestions: [] },
   top: ['b', 'a'],
   candidates: [
     candidate('a', { pickReason: 'bestQuality', quality: '2160p' }),

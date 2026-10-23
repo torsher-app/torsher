@@ -152,3 +152,56 @@ export function textQueriesOf(aliases: TitleAlias[], max = MAX_TEXT_QUERIES) {
 
   return queries
 }
+
+/**
+ * Готовые строки для «Уточнить запрос»: русское и оригинальное название
+ * по отдельности и вместе, с годом и без, — без повторов после нормализации.
+ * Русского нет — берётся первое официальное. Оригинала нет (у аниме он
+ * японский, а в алиасы попадают только латиница и кириллица) — английское.
+ */
+export function queryCombos(aliases: TitleAlias[], year?: number) {
+  const russian
+    = aliases.find(alias => alias.kind === 'official' && alias.lang === 'ru')
+      ?? aliases.find(alias => alias.kind === 'official')
+  const found
+    = aliases.find(alias => alias.kind === 'original')
+      ?? aliases.find(
+        alias =>
+          alias.kind === 'official' && alias.lang === 'en' && alias !== russian,
+      )
+  const original
+    = found
+      && normalizeTitle(found.value) !== normalizeTitle(russian?.value ?? '')
+      ? found
+      : undefined
+  const bases: string[] = []
+
+  if (russian)
+    bases.push(russian.value)
+
+  if (russian && original)
+    bases.push(`${russian.value} ${original.value}`)
+
+  if (original)
+    bases.push(original.value)
+
+  if (russian && original)
+    bases.push(`${original.value} ${russian.value}`)
+
+  const combos: string[] = []
+  const seen = new Set<string>()
+
+  for (const value of bases.flatMap(base =>
+    year ? [base, `${base} ${year}`] : [base],
+  )) {
+    const key = normalizeTitle(value)
+
+    if (!key || seen.has(key))
+      continue
+
+    seen.add(key)
+    combos.push(value)
+  }
+
+  return combos
+}

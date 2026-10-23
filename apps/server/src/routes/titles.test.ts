@@ -203,6 +203,44 @@ describe('get /api/titles/:id/sources', () => {
     ).toEqual(['1080p'])
   })
 
+  it('строка зрителя ищется одна, текстом, и приходит в ответе', async () => {
+    const res = await app.inject({
+      url: `/api/titles/tmdb:tv:101/sources?all=1&query=${encodeURIComponent('Гавань 2023')}`,
+      cookies: authed(),
+    })
+    const body = res.json()
+    const toA = requested.filter(url => url.hostname === 'a.indexer.example')
+
+    expect(res.statusCode).toBe(200)
+    expect(
+      toA.map(url => [url.searchParams.get('t'), url.searchParams.get('q')]),
+    ).toEqual([['search', 'Гавань 2023']])
+    expect(body.candidates).toHaveLength(2)
+    expect(body.query.current).toBe('Гавань 2023')
+    expect(body.query.suggestions).toContain('Тихая гавань')
+    expect(body.query.suggestions).toContain('Quiet Harbor')
+  })
+
+  it('без строки зрителя запрос в ответе пуст, а её поиск кэшируется отдельно', async () => {
+    const url = '/api/titles/tmdb:tv:101/sources?all=1'
+    const auto = await app.inject({ url, cookies: authed() })
+    const searches = requested.length
+
+    expect(auto.json().query.current).toBeNull()
+
+    await app.inject({ url: `${url}&query=Harbor`, cookies: authed() })
+    expect(requested.length).toBeGreaterThan(searches)
+  })
+
+  it('400 на пустую строку зрителя', async () => {
+    const res = await app.inject({
+      url: '/api/titles/tmdb:tv:101/sources?all=1&query=%20',
+      cookies: authed(),
+    })
+
+    expect(res.statusCode).toBe(400)
+  })
+
   it('400 на неверный сезон', async () => {
     const res = await app.inject({
       url: '/api/titles/tmdb:tv:101/sources?season=0',

@@ -28,6 +28,8 @@ export interface SourceView {
   season?: number
   voice?: string
   quality?: Quality
+  /** Строка «Уточнить запрос»; без неё — автоматический поиск */
+  query?: string
 }
 
 /** Качества среди раздач, от лучшего к худшему */

@@ -21,6 +21,8 @@ export type IconName
     | 'check'
     | 'close'
     | 'lock'
+    | 'list'
+    | 'settings'
 
 const props = defineProps<{ name: IconName }>()
 
@@ -76,6 +78,17 @@ const PATHS: Record<IconName, (string | IconPart)[]> = {
   lock: [
     'M6 11h12a1.5 1.5 0 0 1 1.5 1.5v7A1.5 1.5 0 0 1 18 21H6a1.5 1.5 0 0 1-1.5-1.5v-7A1.5 1.5 0 0 1 6 11z',
     'M8 11V7.5a4 4 0 0 1 8 0V11',
+  ],
+  list: ['M9 6.5h11M9 12h11M9 17.5h11', 'M4.5 6.5h.01M4.5 12h.01M4.5 17.5h.01'],
+  // Шестерёнка: кольцо, восемь зубцов и отверстие
+  settings: [
+    'M12 5.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13z',
+    'M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z',
+    { d: 'M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3', width: 3 },
+    {
+      d: 'M5.28 5.28l2.12 2.12M16.6 16.6l2.12 2.12M5.28 18.72l2.12-2.12M16.6 7.4l2.12-2.12',
+      width: 3,
+    },
   ],
 }
 

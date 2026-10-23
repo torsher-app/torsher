@@ -90,7 +90,7 @@ export function createFocus(options: FocusOptions) {
     if (action.type === 'move')
       engine.key(action.direction)
     else if (action.type === 'enter')
-      engine.current()?.click()
+      engine.enter()
     else if (action.type === 'back')
       options.onBack()
   }

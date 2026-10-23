@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createInputModeTracker, createWheelStepper } from './inputMode.ts'
+import {
+  createInputModeTracker,
+  createWheelStepper,
+  isQuietFocus,
+} from './inputMode.ts'
 
 describe('createInputModeTracker', () => {
   it('стартует в режиме пульта', () => {
@@ -78,5 +82,21 @@ describe('createWheelStepper', () => {
 
   it('горизонтальная прокрутка не двигает фокус', () => {
     expect(createWheelStepper()(0, 0)).toBeUndefined()
+  })
+})
+
+describe('isQuietFocus', () => {
+  it('под указкой фокус не от человека тихий, наведение и колесо — нет', () => {
+    expect(isQuietFocus('pointer', 'nav')).toBe(true)
+    expect(isQuietFocus('pointer', 'pointer')).toBe(false)
+    expect(isQuietFocus('pointer', 'wheel')).toBe(false)
+  })
+
+  it('поле ввода получает фокус и под указкой: иначе нет каретки', () => {
+    expect(isQuietFocus('pointer', 'nav', true)).toBe(false)
+  })
+
+  it('под пультом фокус всегда виден', () => {
+    expect(isQuietFocus('remote', 'nav')).toBe(false)
   })
 })
