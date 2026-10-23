@@ -2,6 +2,7 @@ import type { TorznabCaps } from '../services/torznab/caps.ts'
 import { randomUUID } from 'node:crypto'
 import {
   blob,
+  customType,
   index,
   integer,
   primaryKey,
@@ -80,8 +81,24 @@ export const profileColors = [
   'slate',
 ] as const
 export const profileLanguages = ['ru_RU', 'en_US'] as const
-// Какая оценка видна на постерах витрины: своя, TMDB или IMDb
-export const posterRatingSources = ['none', 'own', 'tmdb', 'imdb'] as const
+// Сервисы, чьи оценки видны на постерах витрины; своя оценка видна всегда
+export const posterRatingSources = ['tmdb', 'imdb'] as const
+
+export type PosterRatingSource = (typeof posterRatingSources)[number]
+
+// Набор сервисов в тексте через запятую: столбец остаётся текстовым, и смена
+// формата не требует пересоздавать таблицу. Пустая строка — ни одного
+const posterRatingSet = customType<{
+  data: PosterRatingSource[]
+  driverData: string
+}>({
+  dataType: () => 'text',
+  // Без повторов и в порядке поставщиков, как бы ни прислал клиент
+  toDriver: value =>
+    posterRatingSources.filter(source => value.includes(source)).join(','),
+  fromDriver: value =>
+    posterRatingSources.filter(source => value.split(',').includes(source)),
+})
 
 // Профиль смотрящего: свой прогресс, язык витрины и ограничения. Профиль по
 // умолчанию — первый по `position`, его получают сессия владельца и ТВ,
@@ -98,9 +115,12 @@ export const profiles = sqliteTable('profiles', {
   pinHash: text('pin_hash'),
   // Возраст, с которого тайтлы скрываются на витрине; null — без ограничений
   ageLimit: integer('age_limit'),
-  posterRating: text('poster_rating', { enum: posterRatingSources })
+  // Значение по умолчанию ставит приложение: сменить DEFAULT в SQLite можно
+  // только пересозданием таблицы, а её удаление в транзакции миграций каскадом
+  // стёрло бы прогресс и списки профилей
+  posterRatings: posterRatingSet('poster_rating')
     .notNull()
-    .default('own'),
+    .$defaultFn(() => ['tmdb']),
   position: integer('position').notNull().default(0),
   createdAt: integer('created_at', { mode: 'timestamp_ms' })
     .notNull()

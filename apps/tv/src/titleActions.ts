@@ -1,6 +1,5 @@
-import type { Card, PosterRating, TitleMine } from '@torsher/api-client'
+import type { Card, TitleMine } from '@torsher/api-client'
 import { reactive, readonly } from 'vue'
-import { session } from './session.ts'
 
 /** Тайтл, для которого открыто меню действий */
 export interface ActionTarget {
@@ -52,14 +51,11 @@ export function noteTitleMine(id: string, mine: TitleMine) {
 }
 
 /**
- * Оценка на постере: своя, поставленная только что, важнее той, что пришла
- * с карточкой, — если профиль показывает свои оценки.
+ * Своя оценка на постере: поставленная только что важнее той, что пришла
+ * с карточкой. Видна всегда, настройка профиля выбирает только сервис.
  */
-export function posterRatingOf(card: Card): PosterRating | undefined {
+export function ownRatingOf(card: Card): number | undefined {
   const known = knownTitleMine(card.id)
 
-  if (!known || (session.profile?.posterRating ?? 'own') !== 'own')
-    return card.posterRating
-
-  return known.rating ? { source: 'own', value: known.rating } : undefined
+  return known ? (known.rating ?? undefined) : card.ownRating
 }

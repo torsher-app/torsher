@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { posterRatingSources } from '../db/schema.ts'
 
 // Язык в формате TMDB: en-US, ru-RU
 export const tmdbLanguage = z
@@ -39,8 +40,8 @@ export const titleRating = z
   .meta({ id: 'titleRating' })
 export const posterRating = z
   .object({
-    source: z.enum(['own', 'tmdb', 'imdb']),
-    // Своя — 1–10 целым, внешние — с одним знаком
+    source: z.enum(posterRatingSources),
+    // С одним знаком после запятой
     value: z.number(),
   })
   .meta({ id: 'posterRating' })
@@ -57,8 +58,11 @@ export const card = z
     poster: z.string().optional(),
     // В порядке поставщиков; IMDb — если IMDb ID тайтла уже известен
     ratings: z.array(titleRating).optional(),
-    // Одна оценка для значка на постере — по настройке профиля; нет — постер чистый
-    posterRating: posterRating.optional(),
+    // Оценки сервисов для плашки на постере — по настройке профиля, в порядке
+    // поставщиков
+    posterRatings: z.array(posterRating).optional(),
+    // Своя оценка профиля, 1–10; на постере видна всегда
+    ownRating: z.number().int().optional(),
   })
   .meta({ id: 'card' })
 

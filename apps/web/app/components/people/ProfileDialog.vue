@@ -8,6 +8,7 @@ import { toast } from 'vue-sonner'
 import { useI18n } from 'vue-i18n'
 import * as z from 'zod'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -57,7 +58,7 @@ const isEdit = computed(() => !!shown.value)
 const DEVICE_LANGUAGE = 'device'
 const NO_LIMIT = 'none'
 const languageOptions = Object.keys(language) as (keyof typeof language)[]
-const POSTER_RATINGS = ['own', 'tmdb', 'imdb', 'none'] as const
+const POSTER_RATINGS = ['tmdb', 'imdb'] as const
 
 const schema = computed(() =>
   toTypedSchema(
@@ -66,7 +67,7 @@ const schema = computed(() =>
       color: z.enum(PROFILE_COLORS),
       language: z.string(),
       ageLimit: z.string(),
-      posterRating: z.enum(POSTER_RATINGS),
+      posterRatings: z.array(z.enum(POSTER_RATINGS)),
       // PIN задаётся при создании; при правке — отдельным действием
       pin: z
         .string()
@@ -86,7 +87,7 @@ const { handleSubmit, defineField, errors, isSubmitting, resetForm, values }
       color: 'violet',
       language: DEVICE_LANGUAGE,
       ageLimit: NO_LIMIT,
-      posterRating: 'own',
+      posterRatings: ['tmdb'],
       pin: '',
     },
   })
@@ -95,7 +96,15 @@ const [name, nameProps] = defineField('name')
 const [color] = defineField('color')
 const [lang] = defineField('language')
 const [ageLimit] = defineField('ageLimit')
-const [posterRating] = defineField('posterRating')
+const [posterRatings] = defineField('posterRatings')
+
+function setPosterRating(source: (typeof POSTER_RATINGS)[number], on: boolean) {
+  const current = posterRatings.value ?? []
+
+  posterRatings.value = on
+    ? POSTER_RATINGS.filter(item => item === source || current.includes(item))
+    : current.filter(item => item !== source)
+}
 const [pin] = defineField('pin')
 
 // PinInput хранит символы массивом, форма — строкой
@@ -125,7 +134,7 @@ watch(open, (isOpen) => {
       color: current?.color ?? freeColor(),
       language: current?.language ?? DEVICE_LANGUAGE,
       ageLimit: current?.ageLimit ? String(current.ageLimit) : NO_LIMIT,
-      posterRating: current?.posterRating ?? 'own',
+      posterRatings: current?.posterRatings ?? ['tmdb'],
       pin: '',
     },
   })
@@ -143,7 +152,7 @@ const onSubmit = handleSubmit(async (form) => {
       form.ageLimit === NO_LIMIT
         ? null
         : (Number(form.ageLimit) as (typeof PROFILE_AGE_LIMITS)[number]),
-    posterRating: form.posterRating,
+    posterRatings: form.posterRatings,
   }
 
   if (props.profile) {
@@ -306,32 +315,35 @@ const onSubmit = handleSubmit(async (form) => {
           </div>
         </div>
 
-        <div class="grid gap-2">
-          <Label for="profile-poster-rating">{{
-            t("panel.people.profileDialog.posterRating")
-          }}</Label>
-          <Select v-model="posterRating">
-            <SelectTrigger id="profile-poster-rating" class="w-full sm:w-1/2">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem
-                v-for="item in POSTER_RATINGS"
-                :key="item"
-                :value="item"
-              >
-                {{ t(`panel.people.posterRatings.${item}`) }}
-              </SelectItem>
-            </SelectContent>
-          </Select>
+        <fieldset class="grid gap-2">
+          <legend class="mb-2 text-sm font-medium">
+            {{ t("panel.people.profileDialog.posterRating") }}
+          </legend>
+          <div class="flex flex-wrap gap-x-5 gap-y-2">
+            <label
+              v-for="item in POSTER_RATINGS"
+              :key="item"
+              class="flex cursor-pointer items-center gap-2.5 text-[13.5px]"
+            >
+              <Checkbox
+                :model-value="(posterRatings ?? []).includes(item)"
+                @update:model-value="
+                  (checked) => setPosterRating(item, checked === true)
+                "
+              />
+              {{ t(`panel.people.posterRatings.${item}`) }}
+            </label>
+          </div>
           <p class="text-[12.5px] text-muted-foreground">
-            {{
-              posterRating === "imdb"
-                ? t("panel.people.profileDialog.posterRatingImdb")
-                : t("panel.people.profileDialog.posterRatingHint")
-            }}
+            {{ t("panel.people.profileDialog.posterRatingHint") }}
           </p>
-        </div>
+          <p
+            v-if="(posterRatings ?? []).includes('imdb')"
+            class="text-[12.5px] text-muted-foreground"
+          >
+            {{ t("panel.people.profileDialog.posterRatingImdb") }}
+          </p>
+        </fieldset>
 
         <div v-if="!isEdit" class="grid gap-2">
           <div class="flex items-baseline justify-between gap-3">

@@ -1001,7 +1001,8 @@
           "off": "Off",
           "empty": "The dataset hasn't been downloaded yet",
           "updating": "Downloading the dataset…",
-          "ready": "Dataset from {date} · {count} ratings",
+          "ready": "Dataset from {date} · {count}",
+          "count": "{n} rating | {n} ratings",
           "lastCheckFailed": "the last update failed",
           "refresh": "Update now",
           "error": {
@@ -1261,9 +1262,9 @@
         "pin": "PIN",
         "pinHint": "4 digits. The TV asks for it when switching to this profile.",
         "submit": "Create profile",
-        "posterRating": "Rating on posters",
-        "posterRatingHint": "What the TV shows in the poster corner. Posters without a rating stay clean.",
-        "posterRatingImdb": "IMDb ratings appear once the server starts fetching them. Until then posters stay clean."
+        "posterRating": "Service ratings on posters",
+        "posterRatingHint": "Checked ratings appear at the bottom of the poster on the TV. The profile's own rating is always shown at the top right.",
+        "posterRatingImdb": "IMDb ratings appear if the owner turned them on in Settings → Metadata."
       },
       "validation": {
         "name": "Enter a name",
@@ -1336,10 +1337,8 @@
         "doneText": "“{name}” appears in the list in a few seconds."
       },
       "posterRatings": {
-        "own": "Own rating",
         "tmdb": "TMDB",
-        "imdb": "IMDb",
-        "none": "Nothing"
+        "imdb": "IMDb"
       }
     },
     "torrents": {

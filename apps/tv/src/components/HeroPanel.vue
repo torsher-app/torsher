@@ -59,15 +59,19 @@ const meta = computed(() => {
         >
         <span v-else class="hero__title">{{ hero.card.title }}</span>
       </h1>
+      <!-- Оценки первыми, строка всегда одна: длинные жанры уходят в многоточие,
+           и высота hero не меняется от тайтла к тайтлу -->
       <div class="hero__meta">
-        <span v-for="part in meta" :key="part" class="hero__part">{{
-          part
-        }}</span>
         <RatingList
           v-if="ratings.length > 0"
           class="hero__rating"
           :ratings="ratings"
         />
+        <span class="hero__parts">
+          <span v-for="part in meta" :key="part" class="hero__part">{{
+            part
+          }}</span>
+        </span>
       </div>
       <p v-if="hero.details?.overview" class="hero__overview">
         {{ hero.details.overview }}
@@ -128,14 +132,28 @@ const meta = computed(() => {
 
 .hero__meta {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
+  max-width: calc(var(--u) * 900);
   margin-bottom: calc(var(--u) * 16);
   color: var(--color-text-muted);
   font-size: var(--font-size-s);
+  white-space: nowrap;
+}
+
+.hero__rating {
+  flex: none;
+}
+
+/* Сжимается только мета: оценки видны всегда */
+.hero__parts {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Точка-разделитель через margin: gap у flexbox нет в Chromium 68 */
+.hero__rating + .hero__parts::before,
 .hero__part + .hero__part::before {
   content: '';
   display: inline-block;
@@ -145,10 +163,6 @@ const meta = computed(() => {
   border-radius: 50%;
   background: var(--color-text-dim);
   vertical-align: middle;
-}
-
-.hero__rating {
-  margin-left: calc(var(--u) * 28);
 }
 
 .hero__overview {

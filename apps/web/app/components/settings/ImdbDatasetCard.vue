@@ -34,7 +34,13 @@ const summary = computed(() => {
 
   return t('panel.settings.metadata.imdb.ready', {
     date: formatDate(updatedAt, locale.value),
-    count: new Intl.NumberFormat(locale.value.replace('_', '-')).format(count),
+    count: t(
+      'panel.settings.metadata.imdb.count',
+      {
+        n: new Intl.NumberFormat(locale.value.replace('_', '-')).format(count),
+      },
+      count,
+    ),
   })
 })
 

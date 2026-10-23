@@ -60,7 +60,7 @@ export interface TitleRatingInput {
 }
 
 export interface PosterRatingInput {
-  source: "own" | "tmdb" | "imdb";
+  source: "tmdb" | "imdb";
   value: number;
 }
 
@@ -76,7 +76,12 @@ export interface CardInput {
   year?: number;
   poster?: string;
   ratings?: TitleRatingInput[];
-  posterRating?: PosterRatingInput;
+  posterRatings?: PosterRatingInput[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  ownRating?: number;
 }
 
 export interface TitleSeasonInput {
@@ -115,7 +120,12 @@ export interface TitleDetailsInput {
   year?: number;
   poster?: string;
   ratings: TitleRatingInput[];
-  posterRating?: PosterRatingInput;
+  posterRatings?: PosterRatingInput[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  ownRating?: number;
   overview: string;
   genres: string[];
   /**
@@ -1384,7 +1394,7 @@ export interface ProfileInput {
   language: "ru_RU" | "en_US" | null;
   hasPin: boolean;
   ageLimit: 6 | 12 | 16 | 18 | null;
-  posterRating: "none" | "own" | "tmdb" | "imdb";
+  posterRatings: ("tmdb" | "imdb")[];
 }
 
 export interface ProfileListInput {
@@ -1410,7 +1420,8 @@ export interface CreateProfileInput {
     | "slate";
   language?: "ru_RU" | "en_US" | null;
   ageLimit?: 6 | 12 | 16 | 18 | null;
-  posterRating?: "none" | "own" | "tmdb" | "imdb";
+  /** @maxItems 10 */
+  posterRatings?: ("tmdb" | "imdb")[];
   /** @pattern ^\d{4}$ */
   pin?: string;
 }
@@ -1432,7 +1443,8 @@ export interface UpdateProfileInput {
     | "slate";
   language?: "ru_RU" | "en_US" | null;
   ageLimit?: 6 | 12 | 16 | 18 | null;
-  posterRating?: "none" | "own" | "tmdb" | "imdb";
+  /** @maxItems 10 */
+  posterRatings?: ("tmdb" | "imdb")[];
 }
 
 export interface SetProfilePinInput {
@@ -1618,7 +1630,7 @@ export interface TitleRating {
 }
 
 export interface PosterRating {
-  source: "own" | "tmdb" | "imdb";
+  source: "tmdb" | "imdb";
   value: number;
 }
 
@@ -1634,7 +1646,12 @@ export interface Card {
   year?: number;
   poster?: string;
   ratings?: TitleRating[];
-  posterRating?: PosterRating;
+  posterRatings?: PosterRating[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  ownRating?: number;
 }
 
 export interface TitleSeason {
@@ -1673,7 +1690,12 @@ export interface TitleDetails {
   year?: number;
   poster?: string;
   ratings: TitleRating[];
-  posterRating?: PosterRating;
+  posterRatings?: PosterRating[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  ownRating?: number;
   overview: string;
   genres: string[];
   /**
@@ -2942,7 +2964,7 @@ export interface Profile {
   language: "ru_RU" | "en_US" | null;
   hasPin: boolean;
   ageLimit: 6 | 12 | 16 | 18 | null;
-  posterRating: "none" | "own" | "tmdb" | "imdb";
+  posterRatings: ("tmdb" | "imdb")[];
 }
 
 export interface ProfileList {
@@ -2968,7 +2990,8 @@ export interface CreateProfile {
     | "slate";
   language?: "ru_RU" | "en_US" | null;
   ageLimit?: 6 | 12 | 16 | 18 | null;
-  posterRating?: "none" | "own" | "tmdb" | "imdb";
+  /** @maxItems 10 */
+  posterRatings?: ("tmdb" | "imdb")[];
   /** @pattern ^\d{4}$ */
   pin?: string;
 }
@@ -2990,7 +3013,8 @@ export interface UpdateProfile {
     | "slate";
   language?: "ru_RU" | "en_US" | null;
   ageLimit?: 6 | 12 | 16 | 18 | null;
-  posterRating?: "none" | "own" | "tmdb" | "imdb";
+  /** @maxItems 10 */
+  posterRatings?: ("tmdb" | "imdb")[];
 }
 
 export interface SetProfilePin {

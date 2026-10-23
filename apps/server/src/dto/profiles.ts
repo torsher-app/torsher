@@ -26,8 +26,9 @@ export const profile = z
     language: z.enum(profileLanguages).nullable(),
     hasPin: z.boolean(),
     ageLimit: ageLimit.nullable(),
-    // Какая оценка видна на постерах витрины
-    posterRating: z.enum(posterRatingSources),
+    // Сервисы, чьи оценки видны на постерах витрины, в порядке поставщиков;
+    // пустой — ни одного. Своя оценка видна всегда
+    posterRatings: z.array(z.enum(posterRatingSources)),
   })
   .meta({ id: 'profile' })
 
@@ -44,13 +45,16 @@ export const profileList = z
 
 const profileName = z.string().trim().min(1).max(40)
 
+// Повторы и порядок клиента не важны: база хранит набор в порядке поставщиков
+const posterRatingsInput = z.array(z.enum(posterRatingSources)).max(10)
+
 export const createProfile = z
   .object({
     name: profileName,
     color: z.enum(profileColors),
     language: z.enum(profileLanguages).nullable().optional(),
     ageLimit: ageLimit.nullable().optional(),
-    posterRating: z.enum(posterRatingSources).optional(),
+    posterRatings: posterRatingsInput.optional(),
     pin: profilePin.optional(),
   })
   .meta({ id: 'createProfile' })
@@ -61,7 +65,7 @@ export const updateProfile = z
     color: z.enum(profileColors).optional(),
     language: z.enum(profileLanguages).nullable().optional(),
     ageLimit: ageLimit.nullable().optional(),
-    posterRating: z.enum(posterRatingSources).optional(),
+    posterRatings: posterRatingsInput.optional(),
   })
   .meta({ id: 'updateProfile' })
 

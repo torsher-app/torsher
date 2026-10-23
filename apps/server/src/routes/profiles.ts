@@ -53,7 +53,7 @@ export function toProfileResponse(row: Profile) {
     language: row.language,
     hasPin: !!row.pinHash,
     ageLimit: row.ageLimit as 6 | 12 | 16 | 18 | null,
-    posterRating: row.posterRating,
+    posterRatings: row.posterRatings,
   }
 }
 
@@ -97,7 +97,7 @@ export const profileRoutes: FastifyPluginAsyncZod = async (app) => {
         color: input.color,
         language: input.language ?? null,
         ageLimit: input.ageLimit ?? null,
-        posterRating: input.posterRating,
+        posterRatings: input.posterRatings,
         pinHash: pin ? await hashPassword(pin) : undefined,
       })
 
