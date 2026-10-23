@@ -29,6 +29,28 @@ export const resolutions = [
   '360p',
 ] as const
 
+// Класс разрешения для показа и выбора: `1440p` и `1080i` — это `1080p`, ниже 720p — `SD`
+export const videoClasses = ['2160p', '1080p', '720p', 'SD'] as const
+
+export const resolutionBases = [
+  'probe',
+  'file',
+  'title',
+  'source',
+  'codec',
+] as const
+
+export const videoResolution = z
+  .object({
+    value: z.enum(videoClasses),
+    // probe — ffprobe файла, file — имя видеофайла, title — число или кадр в
+    // названии, source — тип рипа, codec — кодек эпохи SD
+    basis: z.enum(resolutionBases),
+    // false — вывод, а не факт: показывается с «≈»
+    sure: z.boolean(),
+  })
+  .meta({ id: 'videoResolution' })
+
 export const sourceReasons = [
   'pinnedVoice',
   'profile',
@@ -81,7 +103,10 @@ export const sourceCandidate = z
     episodeSize: z.number().nullable(),
     seeders: z.number(),
     peers: z.number().nullable(),
+    // Разрешение из названия как написано; для показа и выбора — `resolution`
     quality: z.enum(resolutions).nullable(),
+    // Проба или файлы добавленной раздачи, иначе по названию; null — не узнать
+    resolution: videoResolution.nullable(),
     source: z.string().nullable(),
     codec: z.string().nullable(),
     hdr: z.array(z.string()),
@@ -118,7 +143,7 @@ export const voiceOption = z
     key: z.string(),
     studio: z.string().optional(),
     type: z.enum(voiceTypes).optional(),
-    maxQuality: z.enum(resolutions).optional(),
+    maxQuality: z.enum(videoClasses).optional(),
     seeders: z.number(),
     count: z.number(),
     pinned: z.boolean(),
@@ -131,7 +156,7 @@ export const titleSources = z
     episode: z.number().nullable(),
     updatedAt: z.string(),
     profile: z.object({
-      qualities: z.array(z.enum(resolutions)),
+      qualities: z.array(z.enum(videoClasses)),
       voiceTypes: z.array(z.enum(voiceTypes)),
     }),
     pinnedVoice: voiceRef.nullable(),
@@ -262,7 +287,8 @@ export const seasonRelease = z
   .object({
     season: z.number(),
     torrentId: z.string(),
-    quality: z.enum(resolutions).nullable(),
+    // Проба или имена файлов раздачи; null — не узнать
+    quality: z.enum(videoClasses).nullable(),
     voice: voiceRef.nullable(),
     // Серии сезона, файлы которых есть в раздаче
     episodes: z.array(z.number()),

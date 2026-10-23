@@ -1,6 +1,7 @@
 import type { ParseContext } from '../context.ts'
 import type { Token } from '../tokenize.ts'
 import type { Codec, Hdr, Resolution, Source } from '../types.ts'
+import { frameResolution } from '../resolution.ts'
 
 export interface QualityResult {
   quality?: Resolution
@@ -25,16 +26,6 @@ const RESOLUTIONS: Record<string, Resolution> = {
   '480i': '480p',
   '360p': '360p',
 }
-
-// Ширина кадра из `1920x1080` в класс разрешения
-const FRAME_HEIGHTS: [number, Resolution][] = [
-  [2000, '2160p'],
-  [1400, '1440p'],
-  [1000, '1080p'],
-  [700, '720p'],
-  [560, '576p'],
-  [460, '480p'],
-]
 
 const SOURCES: Record<string, Source> = {
   'web-dl': 'WEB-DL',
@@ -112,6 +103,7 @@ const HDRS: Record<string, Hdr> = {
   'hdr10plus': 'HDR10+',
   'dv': 'DV',
   'dovi': 'DV',
+  'dolbyvision': 'DV',
   'hlg': 'HLG',
 }
 
@@ -149,12 +141,11 @@ function variants(token: Token) {
   return result
 }
 
-function frameResolution(norm: string): Resolution | undefined {
-  const match = /^\d{3,4}x(\d{3,4})$/.exec(norm)
+function parseFrame(norm: string): Resolution | undefined {
+  const match = /^(\d{3,4})x(\d{3,4})$/.exec(norm)
   if (!match)
     return undefined
-  const height = Number(match[1])
-  return FRAME_HEIGHTS.find(([min]) => height >= min)?.[1]
+  return frameResolution(Number(match[1]), Number(match[2]))
 }
 
 export function parseQuality(ctx: ParseContext): QualityResult {
@@ -174,7 +165,7 @@ export function parseQuality(ctx: ParseContext): QualityResult {
     let matched = false
 
     for (const word of variants(token)) {
-      const resolution = RESOLUTIONS[word] ?? frameResolution(word)
+      const resolution = RESOLUTIONS[word] ?? parseFrame(word)
       if (resolution && !(leading && RISKY.has(word))) {
         if (!result.quality) {
           result.quality = resolution

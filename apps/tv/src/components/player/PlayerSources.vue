@@ -7,7 +7,7 @@ import { useHeldLoading } from '../../composables/useHeldLoading.ts'
 import { useSourceLabels } from '../../composables/useSourceLabels.ts'
 import { NATIVE_WHEEL_ATTRIBUTE, useFocus } from '../../focus/index.ts'
 import { coversEpisode } from '../../lib/episodes.ts'
-import { coverageLabel } from '../../lib/sources.ts'
+import { coverageLabel, resolutionBadge } from '../../lib/sources.ts'
 import AppLoader from '../AppLoader.vue'
 import FocusSection from '../FocusSection.vue'
 import PanelRow from './PanelRow.vue'
@@ -59,7 +59,10 @@ function detailOf(candidate: SourceCandidate) {
 }
 
 function labelOf(candidate: SourceCandidate) {
-  return [candidate.quality, voiceLabel(candidate.voice)]
+  return [
+    candidate.resolution && resolutionBadge(candidate.resolution),
+    voiceLabel(candidate.voice),
+  ]
     .filter(Boolean)
     .join(' · ')
 }

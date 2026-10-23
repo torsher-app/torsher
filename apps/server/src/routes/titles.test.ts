@@ -149,6 +149,7 @@ describe('get /api/titles/:id/sources', () => {
     expect(body.top).toEqual([body.candidates[0].id])
     expect(body.candidates[0]).toMatchObject({
       quality: '1080p',
+      resolution: { value: '1080p', basis: 'title', sure: true },
       voice: { studio: 'LostFilm', type: 'MVO' },
       seeders: 42,
       indexers: ['Indexer A'],

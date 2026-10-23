@@ -1,9 +1,9 @@
-import type { Resolution, VoiceType } from '@torsher/release-parser'
+import type { VideoClass, VoiceType } from '@torsher/release-parser'
 
 /** Как ранжировать раздачи. Профиль пока один на сервер; настройка — позже. */
 export interface RankingProfile {
   /** Лестница качества с откатом: первое — лучшее. */
-  qualities: Resolution[]
+  qualities: VideoClass[]
   /** Типы русской озвучки по убыванию предпочтения. */
   voiceTypes: VoiceType[]
 }

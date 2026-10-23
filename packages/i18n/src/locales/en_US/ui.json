@@ -199,8 +199,7 @@
     "refresh": "Refresh",
     "seeders": "{n} seeder | {n} seeders",
     "perEpisode": "{size} per episode",
-    "leechers": "{n} leecher | {n} leechers",
-    "bitrate": "≈ {n} Mbps",
+    "bitrate": "{n} Mbps",
     "subs": "subtitles: {list}",
     "subsAny": "has subtitles",
     "alsoVoices": "also: {list}",
@@ -209,15 +208,19 @@
       "mb": "{amount} MB"
     },
     "unsure": "May be another title",
-    "noVoice": "Voice-over not recognized",
-    "reasons": {
-      "pinnedVoice": "Same as previous episodes",
-      "profile": "Matches your profile",
-      "bestQuality": "Best quality",
-      "smaller": "Smaller size",
-      "moreSeeders": "More seeders",
-      "originalAudio": "Has the original audio"
+    "unknownQuality": "unknown",
+    "unknownQualityOption": "Unknown",
+    "sourceKinds": {
+      "remux": "Remux",
+      "bluray": "Blu-ray",
+      "web": "Web",
+      "tv": "TV",
+      "dvd": "DVD",
+      "cam": "Cam"
     },
+    "noVoice": "Voice-over not recognized",
+    "byProfile": "By profile",
+    "profile": "Profile: {qualities} · {voices}",
     "voiceTypes": {
       "D": "Dubbing",
       "MVO": "Multi-voice",
