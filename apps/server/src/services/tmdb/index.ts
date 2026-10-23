@@ -24,6 +24,7 @@ import {
   seasonToDetails,
   similarCards,
   trimExtras,
+  tvAiring,
   tvToDetails,
 } from './mappers.ts'
 
@@ -85,6 +86,10 @@ function detailsParams(ref: TmdbRef, language: string) {
 }
 
 async function loadDetails(ref: TmdbRef, language: string) {
+  return (await loadTitle(ref, language)).details
+}
+
+async function loadTitle(ref: TmdbRef, language: string) {
   const key = `tmdb:${ref.type}:${ref.tmdbId}:${language}:${DETAILS_KEY_VERSION}`
   const params = detailsParams(ref, language)
 
@@ -92,13 +97,24 @@ async function loadDetails(ref: TmdbRef, language: string) {
     const movie = await withMetaCache(key, DETAILS_TTL_MS, () =>
       tmdbGet<TmdbMovie>(`/movie/${ref.tmdbId}`, params))
 
-    return movieToDetails(movie, language)
+    return { details: movieToDetails(movie, language) }
   }
 
   const tv = await withMetaCache(key, DETAILS_TTL_MS, () =>
     tmdbGet<TmdbTv>(`/tv/${ref.tmdbId}`, params))
 
-  return tvToDetails(tv, language)
+  return { details: tvToDetails(tv, language), airing: tvAiring(tv) }
+}
+
+/**
+ * Детали и, у сериала, последняя вышедшая и следующая серии — из той же записи
+ * кэша, что и карточка. Описание на запасном языке не добирается: это для
+ * списков и статуса, не для первого экрана.
+ */
+export async function getTitleSummary(id: string, language: string) {
+  const ref = parseCatalogId(id)
+
+  return ref ? loadTitle(ref, language) : undefined
 }
 
 /** `undefined` — ID не из каталога; отсутствие тайтла в TMDB — `TmdbError`. */

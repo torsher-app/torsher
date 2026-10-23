@@ -20,6 +20,7 @@ function profile(id: string, hasPin = false): Profile {
     language: null,
     hasPin,
     ageLimit: null,
+    posterRating: 'own',
   }
 }
 

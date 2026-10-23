@@ -25,6 +25,14 @@ export const catalogSeasonParams = z.object({
   number: z.string().regex(/^[1-9]\d{0,2}$/),
 })
 
+export const posterRating = z
+  .object({
+    source: z.enum(['own', 'tmdb', 'imdb']),
+    // Своя — 1–10 целым, внешние — с одним знаком
+    value: z.number(),
+  })
+  .meta({ id: 'posterRating' })
+
 export const card = z
   .object({
     // Непрозрачный для клиентов ID каталога: клиент его не разбирает
@@ -35,6 +43,8 @@ export const card = z
     year: z.number().int().optional(),
     // Относительный URL прокси картинок: /api/img/<size>/<file>
     poster: z.string().optional(),
+    // Одна оценка для значка на постере — по настройке профиля; нет — постер чистый
+    posterRating: posterRating.optional(),
   })
   .meta({ id: 'card' })
 

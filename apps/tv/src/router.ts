@@ -7,6 +7,7 @@ import FilesPage from './pages/FilesPage.vue'
 import HomePage from './pages/HomePage.vue'
 import PlayerPage from './pages/PlayerPage.vue'
 import ProfilesPage from './pages/ProfilesPage.vue'
+import MinePage from './pages/MinePage.vue'
 import SearchPage from './pages/SearchPage.vue'
 import SourcesPage from './pages/SourcesPage.vue'
 import TitlePage from './pages/TitlePage.vue'
@@ -24,6 +25,7 @@ export const router = createRouter({
     { path: '/movies', component: HomePage, props: { mode: 'movies' } },
     { path: '/series', component: HomePage, props: { mode: 'series' } },
     { path: '/search', component: SearchPage },
+    { path: '/mine', component: MinePage },
     { path: '/title/:id', component: TitlePage, props: true },
     // «Смотреть» на карточке → все раздачи тайтла → файлы выбранной → плеер
     { path: '/title/:id/sources', component: SourcesPage, props: true },

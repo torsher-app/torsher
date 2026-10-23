@@ -1,6 +1,14 @@
 <script setup lang="ts">
 import type { Device, Profile } from '@torsher/api-client'
-import { InfoIcon, KeyRoundIcon, PencilIcon, XIcon } from '@lucide/vue'
+import {
+  ChevronRightIcon,
+  InfoIcon,
+  KeyRoundIcon,
+  PencilIcon,
+  RefreshCwIcon,
+  XIcon,
+} from '@lucide/vue'
+import { useNow } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -11,6 +19,8 @@ import {
   SheetDescription,
   SheetTitle,
 } from '@/components/ui/sheet'
+import { Skeleton } from '@/components/ui/skeleton'
+import HistoryRow from '~/components/history/HistoryRow.vue'
 import ProfileAvatar from './ProfileAvatar.vue'
 
 const props = defineProps<{
@@ -32,6 +42,13 @@ const { t } = useI18n()
 const meta = useProfileMeta()
 
 const shown = useLastValue(() => props.profile)
+
+// Последнее, что смотрел профиль: владельцу видно, чем заняты домашние
+const RECENT_LIMIT = 5
+const now = useNow({ interval: 30_000 })
+const recent = useProfileHistory(() => shown.value?.id, {
+  limit: RECENT_LIMIT,
+})
 
 const profileDevices = computed(() =>
   props.devices.filter(item => item.profile?.id === shown.value?.id),
@@ -140,6 +157,64 @@ function onInteractOutside(event: Event) {
               }}
             </dd>
           </dl>
+
+          <section class="grid gap-2" :aria-label="t('panel.history.recent')">
+            <div class="flex items-baseline justify-between gap-3">
+              <h3 class="text-[13.5px] font-medium">
+                {{ t("panel.history.recent") }}
+              </h3>
+              <NuxtLink
+                v-if="recent.state.value === 'ready' && recent.total.value > 0"
+                :to="`/people/${shown.id}/history`"
+                class="inline-flex items-center gap-0.5 text-[12.5px] text-muted-foreground hover:text-foreground"
+              >
+                {{ t("panel.history.all", { n: recent.total.value }) }}
+                <ChevronRightIcon class="size-3.5" aria-hidden="true" />
+              </NuxtLink>
+            </div>
+            <ul
+              v-if="recent.state.value === 'loading'"
+              class="-mx-4 border-t"
+              aria-busy="true"
+            >
+              <li
+                v-for="row in 3"
+                :key="row"
+                class="flex h-14 items-center gap-3 border-b pr-3 pl-4"
+              >
+                <Skeleton class="h-10 w-7 rounded-sm" />
+                <div class="grid flex-1 gap-1.5">
+                  <Skeleton class="h-3.5 w-2/5" />
+                  <Skeleton class="h-3 w-1/4" />
+                </div>
+              </li>
+            </ul>
+            <div
+              v-else-if="recent.state.value === 'error'"
+              class="flex flex-wrap items-center gap-x-3 gap-y-2 text-[13px] text-muted-foreground"
+              role="alert"
+            >
+              {{ t("panel.history.loadError") }}
+              <Button variant="outline" size="xs" @click="recent.load">
+                <RefreshCwIcon aria-hidden="true" />
+                {{ t("panel.common.retry") }}
+              </Button>
+            </div>
+            <p
+              v-else-if="recent.items.value.length === 0"
+              class="text-[13px] text-muted-foreground"
+            >
+              {{ t("panel.history.empty") }}
+            </p>
+            <ul v-else class="-mx-4 border-t">
+              <HistoryRow
+                v-for="entry in recent.items.value"
+                :key="entry.title.id"
+                :entry="entry"
+                :now="now.getTime()"
+              />
+            </ul>
+          </section>
         </div>
 
         <footer class="flex shrink-0 flex-wrap gap-2 border-t p-3">

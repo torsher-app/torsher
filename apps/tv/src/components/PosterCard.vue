@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import type { Card } from '@torsher/api-client'
+import { openTitleActions } from '../titleActions.ts'
+import PosterRatingBadge from './PosterRatingBadge.vue'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -15,6 +17,14 @@ const props = withDefaults(
 )
 
 defineEmits<{ select: [] }>()
+
+function openActions() {
+  openTitleActions({
+    id: props.card.id,
+    title: props.card.title,
+    kind: props.card.kind,
+  })
+}
 
 const { t } = useI18n()
 
@@ -33,7 +43,9 @@ const meta = computed(() => {
     v-focusable
     class="card poster-card"
     type="button"
+    data-long-press
     @click="$emit('select')"
+    @longpress="openActions"
   >
     <span class="poster-card__frame">
       <img
@@ -46,6 +58,7 @@ const meta = computed(() => {
       <span v-else-if="!card.poster" class="poster-card__placeholder">
         {{ card.title }}
       </span>
+      <PosterRatingBadge :card="card" />
       <span class="card__ring" />
     </span>
     <template v-if="caption">

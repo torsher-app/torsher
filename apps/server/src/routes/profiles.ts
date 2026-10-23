@@ -13,7 +13,12 @@ import {
   setProfilePin,
   updateProfile as updateProfileBody,
 } from '../dto/profiles.ts'
+import {
+  profileHistoryQuery,
+  profileHistory as profileHistoryResponse,
+} from '../dto/mine.ts'
 import { requireByRoute } from '../middleware/auth.ts'
+import { profileHistory } from '../services/mine/history.ts'
 import { selectDeviceProfile } from '../services/devices/index.ts'
 import {
   checkPinAttempt,
@@ -48,6 +53,7 @@ export function toProfileResponse(row: Profile) {
     language: row.language,
     hasPin: !!row.pinHash,
     ageLimit: row.ageLimit as 6 | 12 | 16 | 18 | null,
+    posterRating: row.posterRating,
   }
 }
 
@@ -91,6 +97,7 @@ export const profileRoutes: FastifyPluginAsyncZod = async (app) => {
         color: input.color,
         language: input.language ?? null,
         ageLimit: input.ageLimit ?? null,
+        posterRating: input.posterRating,
         pinHash: pin ? await hashPassword(pin) : undefined,
       })
 
@@ -125,6 +132,31 @@ export const profileRoutes: FastifyPluginAsyncZod = async (app) => {
         : getProfile(request.params.id)
 
       return toProfileResponse(updated!)
+    },
+  )
+
+  // История профиля — только владельцу: витрина видит свои разделы «Моё»
+  app.get(
+    '/:id/history',
+    {
+      schema: {
+        operationId: 'getProfileHistory',
+        tags: ['Profiles'],
+        params: profileIdParams,
+        querystring: profileHistoryQuery,
+        response: {
+          200: profileHistoryResponse,
+          400: messageResponse,
+          404: messageResponse,
+          ...guardResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (!getProfile(request.params.id))
+        return reply.code(404).send(notFound)
+
+      return profileHistory(request.params.id, request.query)
     },
   )
 

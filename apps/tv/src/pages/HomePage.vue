@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Card, HomeRow } from '@torsher/api-client'
+import type { Card, EpisodeCard, HomeRow } from '@torsher/api-client'
 import type { ComponentPublicInstance } from 'vue'
 import type { RailItemId } from '../components/AppRail.vue'
 import type { HomeMode } from '../composables/useHome.ts'
@@ -21,6 +21,7 @@ import BackdropLayer from '../components/BackdropLayer.vue'
 import ContentRow from '../components/ContentRow.vue'
 import FocusSection from '../components/FocusSection.vue'
 import HeroPanel from '../components/HeroPanel.vue'
+import NewEpisodeCard from '../components/NewEpisodeCard.vue'
 import PosterCard from '../components/PosterCard.vue'
 import PosterSkeleton from '../components/PosterSkeleton.vue'
 import ScreenState from '../components/ScreenState.vue'
@@ -29,6 +30,7 @@ import { useHero } from '../composables/useHero.ts'
 import { useHome } from '../composables/useHome.ts'
 import { useStackScroll } from '../composables/useStackScroll.ts'
 import { useFocus } from '../focus/index.ts'
+import { titleActions } from '../titleActions.ts'
 import { firstVisibleRow, stackOffset } from '../lib/rowStack.ts'
 
 defineOptions({ name: 'HomePage' })
@@ -46,7 +48,9 @@ const SKELETON_CARDS = 7
 const { t } = useI18n()
 const router = useRouter()
 const focus = useFocus()
-const { status, rows, error, retry } = useHome(computed(() => props.mode))
+const { status, rows, error, retry, refresh } = useHome(
+  computed(() => props.mode),
+)
 const { hero, show } = useHero()
 
 const railItem = computed(() => RAIL_ITEM[props.mode])
@@ -66,8 +70,40 @@ const {
 const lastSection = ref<string>()
 const rowElements: (HTMLElement | undefined)[] = []
 
+// У рядов подборок один id: секцию и ключ различает подборка
+function rowKey(row: HomeRow) {
+  return row.ref ? `${row.id}-${row.ref}` : row.id
+}
+
 function sectionOf(row: HomeRow) {
-  return `home-${props.mode}-${row.id}`
+  return `home-${props.mode}-${rowKey(row)}`
+}
+
+function rowTitle(row: HomeRow) {
+  return row.name ?? t(row.title)
+}
+
+// Ряд серий 16:9 держит карточки серий, остальные — постеры
+type RowItem = Card | EpisodeCard
+
+function itemsOf(row: HomeRow): RowItem[] {
+  return row.kind === 'episodes' ? (row.episodes ?? []) : row.items
+}
+
+function isEpisode(item: RowItem): item is EpisodeCard {
+  return 'titleId' in item
+}
+
+// Hero серии — её сериал
+function heroCardOf(item: RowItem): Card {
+  return isEpisode(item)
+    ? {
+        id: item.titleId,
+        kind: 'series',
+        title: item.title,
+        originalTitle: item.title,
+      }
+    : item
 }
 
 function edgesOf(index: number): SectionEdges {
@@ -158,15 +194,17 @@ function onFocusItem(rowIndex: number, index: number, via: FocusVia) {
   if (via !== 'pointer')
     aligned.value = rowIndex
 
-  show(row.items[index]!, via)
+  show(heroCardOf(itemsOf(row)[index]!), via)
 }
 
-function cardKey(card: Card) {
-  return card.id
+function itemKey(item: RowItem) {
+  return isEpisode(item)
+    ? `${item.titleId}:${item.season}:${item.episode}`
+    : item.id
 }
 
-function open(card: Card) {
-  router.push(`/title/${card.id}`)
+function open(item: RowItem) {
+  router.push(`/title/${isEpisode(item) ? item.titleId : item.id}`)
 }
 
 // Экран в KeepAlive: ряды могут прийти, когда пользователь уже ушёл на другой экран
@@ -179,19 +217,39 @@ function restoreFocus() {
 
 watch(aligned, alignRows)
 
+// Ряды перечитаны после правки списков: экран остаётся на том же ряду
+let keepPosition = false
+
 // Новые ряды: экран встаёт на первый, фокус — в первый ряд
-watch(rows, async () => {
-  aligned.value = 0
-  lastSection.value = undefined
+watch(rows, async (next) => {
+  const kept = keepPosition
+    ? next.findIndex(row => sectionOf(row) === lastSection.value)
+    : -1
+
+  keepPosition = false
+  aligned.value = Math.max(kept, 0)
+
+  if (kept < 0)
+    lastSection.value = undefined
+
   await nextTick()
   alignRows()
   restoreFocus()
 })
 
+// Правки «Позже» и подборок из меню видны на главной после возврата на неё
+let seenVersion = titleActions.version
+
 // Возврат из карточки: фокус на ту карточку, с которой ушли
 onActivated(() => {
   isActive = true
   restoreFocus()
+
+  if (seenVersion !== titleActions.version) {
+    seenVersion = titleActions.version
+    keepPosition = true
+    void refresh()
+  }
 })
 
 onDeactivated(() => {
@@ -247,19 +305,25 @@ onBeforeUnmount(() => {
     >
       <ContentRow
         v-for="(row, index) in rows"
-        :key="row.id"
+        :key="rowKey(row)"
         :ref="setRowElement(index)"
         :class="{ 'home__row--above': index < firstVisible }"
         :section="sectionOf(row)"
-        :title="t(row.title)"
-        :items="row.items"
-        :item-key="cardKey"
+        :title="rowTitle(row)"
+        :items="itemsOf(row)"
+        :item-key="itemKey"
         :edges="edgesOf(index)"
         @focus-item="(item, via) => onFocusItem(index, item, via)"
       >
         <template #item="{ item, index: position }">
+          <NewEpisodeCard
+            v-if="isEpisode(item)"
+            :episode="item"
+            :load-image="isNear(index)"
+            @select="open(item)"
+          />
           <TopCard
-            v-if="row.kind === 'top10'"
+            v-else-if="row.kind === 'top10'"
             :card="item"
             :rank="position + 1"
             :load-image="isNear(index)"

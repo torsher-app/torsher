@@ -1,4 +1,4 @@
-import type { HomeMode, HomeRow, HomeRowId } from '../../dto/home.ts'
+import type { HomeMode, HomeRow, TmdbHomeRowId } from '../../dto/home.ts'
 import type { TmdbMediaType } from './mappers.ts'
 import type { TmdbListResponse } from './types.ts'
 import { withMetaCache } from './cache.ts'
@@ -23,7 +23,7 @@ interface RowSpec {
 }
 
 // Тренды TMDB не принимают регион: «Топ-10» — общий тренд дня на языке профиля
-const ROWS: Record<HomeRowId, RowSpec> = {
+const ROWS: Record<TmdbHomeRowId, RowSpec> = {
   trending: { kind: 'top10', path: '/trending/all/day' },
   trendingMovies: { kind: 'top10', path: '/trending/movie/day', type: 'movie' },
   trendingSeries: { kind: 'top10', path: '/trending/tv/day', type: 'tv' },
@@ -58,7 +58,7 @@ const ROWS: Record<HomeRowId, RowSpec> = {
 }
 
 // «Фильмы» и «Сериалы» — подмножества главной
-const LAYOUT: Record<HomeMode, HomeRowId[]> = {
+const LAYOUT: Record<HomeMode, TmdbHomeRowId[]> = {
   all: [
     'trending',
     'popularMovies',
@@ -106,7 +106,7 @@ async function loadList(spec: RowSpec, language: string) {
 }
 
 async function loadRow(
-  id: HomeRowId,
+  id: TmdbHomeRowId,
   spec: RowSpec,
   language: string,
 ): Promise<HomeRow> {

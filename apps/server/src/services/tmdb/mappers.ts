@@ -9,6 +9,7 @@ import type {
 import type {
   TmdbAltTitle,
   TmdbCastMember,
+  TmdbEpisodeRef,
   TmdbExtras,
   TmdbImage,
   TmdbListResult,
@@ -35,6 +36,8 @@ const PROFILE_SIZE = 'w185'
 const LOGO_FILE = /\.png$/
 
 const MAX_STUDIOS = 3
+// Оценка по паре голосов на постере только вводит в заблуждение
+const MIN_POSTER_VOTES = 20
 const MAX_CAST = 20
 const MAX_SIMILAR = 20
 const MAX_AKA = 6
@@ -88,6 +91,16 @@ function ratingOf(average: number, count: number) {
   return count > 0 ? Math.round(average * 10) / 10 : undefined
 }
 
+/** Оценка TMDB для значка на постере; профиль может заменить её своей */
+function tmdbPosterRating(
+  average: number | undefined,
+  count: number | undefined,
+) {
+  return average && count && count >= MIN_POSTER_VOTES
+    ? { source: 'tmdb' as const, value: Math.round(average * 10) / 10 }
+    : undefined
+}
+
 function names(items: { name: string }[] | undefined, limit?: number) {
   // В названиях TMDB встречаются хвостовые пробелы: «NTV , START»
   const list = (items ?? []).map(item => item.name.trim()).filter(Boolean)
@@ -105,6 +118,7 @@ export function searchResultToCard(result: TmdbMultiResult): Card | undefined {
       originalTitle: result.original_title ?? result.title ?? '',
       year: yearOf(result.release_date),
       poster: imageUrl(POSTER_SIZE, result.poster_path),
+      posterRating: tmdbPosterRating(result.vote_average, result.vote_count),
     }
   }
 
@@ -116,6 +130,7 @@ export function searchResultToCard(result: TmdbMultiResult): Card | undefined {
       originalTitle: result.original_name ?? result.name ?? '',
       year: yearOf(result.first_air_date),
       poster: imageUrl(POSTER_SIZE, result.poster_path),
+      posterRating: tmdbPosterRating(result.vote_average, result.vote_count),
     }
   }
 
@@ -219,6 +234,7 @@ export function movieToDetails(
     originalTitle: movie.original_title,
     year: yearOf(movie.release_date),
     poster: imageUrl(POSTER_SIZE, movie.poster_path),
+    posterRating: tmdbPosterRating(movie.vote_average, movie.vote_count),
     backdrop: imageUrl(BACKDROP_SIZE, movie.backdrop_path),
     logo: pickLogo(movie.images?.logos, language),
     overview: movie.overview,
@@ -288,6 +304,7 @@ export function tvToDetails(
     originalTitle: tv.original_name,
     year: yearOf(tv.first_air_date),
     poster: imageUrl(POSTER_SIZE, tv.poster_path),
+    posterRating: tmdbPosterRating(tv.vote_average, tv.vote_count),
     backdrop: imageUrl(BACKDROP_SIZE, tv.backdrop_path),
     logo: pickLogo(tv.images?.logos, language),
     overview: tv.overview,
@@ -307,6 +324,38 @@ export function tvToDetails(
     seasons: tv.seasons
       .filter(season => season.season_number > 0)
       .map(season => toSeason(season, tv, now)),
+  }
+}
+
+export interface AiredEpisode {
+  season: number
+  episode: number
+  title?: string
+  // YYYY-MM-DD
+  airDate?: string
+  still?: string
+}
+
+function airedEpisodeOf(
+  ref: TmdbEpisodeRef | null | undefined,
+): AiredEpisode | undefined {
+  if (!ref)
+    return undefined
+
+  return {
+    season: ref.season_number,
+    episode: ref.episode_number,
+    title: ref.name || undefined,
+    airDate: ref.air_date || undefined,
+    still: imageUrl(STILL_SIZE, ref.still_path),
+  }
+}
+
+/** Последняя вышедшая и следующая анонсированная серии: статус и «Новые серии» */
+export function tvAiring(tv: TmdbTv) {
+  return {
+    last: airedEpisodeOf(tv.last_episode_to_air),
+    next: airedEpisodeOf(tv.next_episode_to_air),
   }
 }
 

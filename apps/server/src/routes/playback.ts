@@ -23,6 +23,7 @@ import {
   stopSession,
   voiceOfTrack,
 } from '../services/media/index.ts'
+import { clearMovieWatchlist } from '../services/mine/index.ts'
 import { getProfile } from '../services/profiles/index.ts'
 import {
   getTitleProgress,
@@ -32,7 +33,7 @@ import {
 } from '../services/sources/progress.ts'
 import { getPinnedVoice } from '../services/sources/voices.ts'
 import { parseCatalogId } from '../services/tmdb/mappers.ts'
-import { resumePosition } from '../services/torrents/playback.ts'
+import { isWatched, resumePosition } from '../services/torrents/playback.ts'
 import {
   fileNameOf,
   getTorrent,
@@ -422,6 +423,9 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
           },
           { position, duration: duration ?? null, torrentId, fileIndex },
         )
+
+        if (title.season === undefined && isWatched(position, duration ?? null))
+          clearMovieWatchlist(request.profileId, title.id)
       }
 
       const saved = saveWatchState({

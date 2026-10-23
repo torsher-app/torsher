@@ -18,8 +18,9 @@ export function useHome(mode: Ref<HomeMode>) {
   const error = ref<LoadError>()
   const latest = createLatest()
 
-  async function load() {
-    status.value = 'loading'
+  async function load(quiet = false) {
+    if (!quiet)
+      status.value = 'loading'
 
     const outcome = await latest.run(signal =>
       api.home.getHome(
@@ -32,8 +33,11 @@ export function useHome(mode: Ref<HomeMode>) {
       return
 
     if (outcome.status === 'failed') {
-      error.value = loadErrorOf(outcome.error)
-      status.value = 'error'
+      // Тихое перечитывание оставляет прежние ряды
+      if (!quiet) {
+        error.value = loadErrorOf(outcome.error)
+        status.value = 'error'
+      }
 
       return
     }
@@ -42,9 +46,15 @@ export function useHome(mode: Ref<HomeMode>) {
     status.value = 'ready'
   }
 
-  watch([mode, language], load, { immediate: true })
+  watch([mode, language], () => load(), { immediate: true })
 
   onScopeDispose(latest.cancel)
 
-  return { status, rows, error, retry: load }
+  return {
+    status,
+    rows,
+    error,
+    retry: () => load(),
+    refresh: () => load(true),
+  }
 }

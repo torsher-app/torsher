@@ -4,6 +4,11 @@ import { inject } from 'vue'
 import { createFocusEngine } from './engine.ts'
 import { createWheelStepper } from './inputMode.ts'
 import { readKey } from './keys.ts'
+import {
+  createLongPress,
+  LONG_PRESS_ATTRIBUTE,
+  LONG_PRESS_EVENT,
+} from './longPress.ts'
 
 export type {
   FocusListener,
@@ -15,6 +20,7 @@ export type {
 export type { Direction } from './geometry.ts'
 export type { FocusVia, InputMode } from './inputMode.ts'
 export type { KeyAction, MediaKey } from './keys.ts'
+export { LONG_PRESS_ATTRIBUTE, LONG_PRESS_EVENT } from './longPress.ts'
 
 declare module 'vue' {
   interface GlobalDirectives {
@@ -76,6 +82,15 @@ export function createFocus(options: FocusOptions) {
 
   root.setAttribute(INPUT_ATTRIBUTE, engine.mode)
 
+  function longPress(el: HTMLElement) {
+    el.dispatchEvent(new CustomEvent(LONG_PRESS_EVENT, { bubbles: true }))
+  }
+
+  const press = createLongPress<HTMLElement>({
+    click: el => el.click(),
+    long: longPress,
+  })
+
   function onKeydown(event: KeyboardEvent) {
     const action = readKey(event)
 
@@ -84,15 +99,48 @@ export function createFocus(options: FocusOptions) {
 
     event.preventDefault()
 
+    if (action.type !== 'enter')
+      press.cancel()
+
     if (engine.intercept(action, event))
       return
 
-    if (action.type === 'move')
+    if (action.type === 'move') {
       engine.key(action.direction)
-    else if (action.type === 'enter')
-      engine.current()?.click()
-    else if (action.type === 'back')
+    }
+    else if (action.type === 'enter') {
+      const el = engine.current()
+
+      press.down(el, !!el?.hasAttribute(LONG_PRESS_ATTRIBUTE), event.repeat)
+    }
+    else if (action.type === 'menu') {
+      const el = engine.current()
+
+      if (el?.hasAttribute(LONG_PRESS_ATTRIBUTE))
+        longPress(el)
+    }
+    else if (action.type === 'back') {
       options.onBack()
+    }
+  }
+
+  function onKeyup(event: KeyboardEvent) {
+    if (readKey(event)?.type === 'enter')
+      press.up()
+  }
+
+  // Правая кнопка мыши и долгий тап — то же меню, что долгий OK
+  function onContextmenu(event: MouseEvent) {
+    const target
+      = event.target instanceof Element
+        ? event.target.closest<HTMLElement>(`[${LONG_PRESS_ATTRIBUTE}]`)
+        : null
+
+    if (!target)
+      return
+
+    event.preventDefault()
+    longPress(target)
   }
 
   // Где курсор в окне: после нативной прокрутки под ним оказывается другой элемент
@@ -170,6 +218,8 @@ export function createFocus(options: FocusOptions) {
       app.provide(focusKey, engine)
       app.directive('focusable', createDirective(engine))
       window.addEventListener('keydown', onKeydown)
+      window.addEventListener('keyup', onKeyup)
+      window.addEventListener('contextmenu', onContextmenu)
       window.addEventListener('mousemove', onMousemove)
       document.addEventListener('cursorStateChange', onCursorStateChange)
       window.addEventListener('mousedown', onMousedown)

@@ -2,6 +2,7 @@ import type { Component } from 'vue'
 import {
   ArrowDownToLineIcon,
   LayoutGridIcon,
+  LibraryIcon,
   MonitorSmartphoneIcon,
   RadarIcon,
   ScrollTextIcon,
@@ -10,7 +11,8 @@ import {
 export interface NavItem {
   to: string
   /** Ключ строки в `panel.nav` */
-  label: 'overview' | 'torrents' | 'sources' | 'people' | 'logs'
+  label:
+    'overview' | 'torrents' | 'sources' | 'collections' | 'people' | 'logs'
   icon: Component
 }
 
@@ -20,6 +22,7 @@ export const navItems: NavItem[] = [
   { to: '/', label: 'overview', icon: LayoutGridIcon },
   { to: '/downloads', label: 'torrents', icon: ArrowDownToLineIcon },
   { to: '/sources', label: 'sources', icon: RadarIcon },
+  { to: '/collections', label: 'collections', icon: LibraryIcon },
   { to: '/people', label: 'people', icon: MonitorSmartphoneIcon },
   { to: '/logs', label: 'logs', icon: ScrollTextIcon },
 ]

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watchEffect } from 'vue'
 import { useRoute } from 'vue-router'
+import TitleActions from './components/TitleActions.vue'
 import { session } from './session.ts'
 
 const currentRoute = useRoute()
@@ -24,9 +25,11 @@ watchEffect(() => {
   <RouterView v-slot="{ Component, route }">
     <KeepAlive
       :key="cacheKey"
-      :include="['HomePage', 'SearchPage', 'SourcesPage']"
+      :include="['HomePage', 'SearchPage', 'SourcesPage', 'MinePage']"
     >
       <component :is="Component" :key="route.path" />
     </KeepAlive>
   </RouterView>
+  <!-- Меню действий тайтла — поверх любого экрана: его открывает постер где угодно -->
+  <TitleActions />
 </template>

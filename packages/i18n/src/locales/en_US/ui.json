@@ -8,7 +8,8 @@
     "home": "Home",
     "search": "Search",
     "movies": "Movies",
-    "series": "Series"
+    "series": "Series",
+    "mine": "Mine"
   },
   "search": {
     "title": "Search",
@@ -22,6 +23,70 @@
     "movie": "movie",
     "series": "series"
   },
+  "mine": {
+    "sections": {
+      "continue": "Continue",
+      "watchlist": "Watch later",
+      "favorites": "Favorites",
+      "watched": "Watched",
+      "dropped": "Dropped"
+    },
+    "collections": "Collections",
+    "sort": {
+      "added": "Newest first",
+      "rating": "By my rating"
+    },
+    "kind": {
+      "all": "All types",
+      "movie": "Movies",
+      "series": "Series"
+    },
+    "rating": {
+      "any": "Any rating",
+      "rated": "Rated",
+      "unrated": "Not rated",
+      "r9to10": "Rated 9–10",
+      "r7to8": "Rated 7–8",
+      "r5to6": "Rated 5–6",
+      "r1to4": "Rated 1–4"
+    },
+    "panel": {
+      "sort": "Sort",
+      "kind": "Type",
+      "rating": "My rating"
+    },
+    "resetFilters": "Reset filters",
+    "empty": {
+      "continue": {
+        "title": "Nothing in progress",
+        "text": "Movies and series you start watching show up here"
+      },
+      "watchlist": {
+        "title": "Watch later is empty",
+        "text": "Hold OK on a poster and pick “Watch later”, or press “Watch later” on a title page"
+      },
+      "favorites": {
+        "title": "No favorites yet",
+        "text": "Hold OK on a poster and pick “Favorite”"
+      },
+      "collection": {
+        "title": "This collection is empty",
+        "text": "Hold OK on a poster and pick “Add to collection”"
+      },
+      "watched": {
+        "title": "Nothing watched yet",
+        "text": "Finished, marked and rated titles show up here"
+      },
+      "dropped": {
+        "title": "Nothing dropped",
+        "text": "“Dropped” hides a title from Continue. Watching it again clears the mark"
+      }
+    },
+    "emptyFiltered": {
+      "title": "Nothing matches the filters",
+      "text": "Change the type or rating, or reset the filters"
+    }
+  },
   "home": {
     "rows": {
       "trending": "Top 10 today",
@@ -33,14 +98,21 @@
       "nowPlaying": "In theaters",
       "onTheAir": "On the air",
       "topRatedMovies": "Top rated movies",
-      "topRatedSeries": "Top rated series"
+      "topRatedSeries": "Top rated series",
+      "newEpisodes": "New episodes",
+      "watchlist": "Watch later"
     },
     "hint": {
       "details": "Details",
-      "watch": "Watch"
+      "watch": "Watch",
+      "actions": "hold for actions"
     },
     "pageBack": "Scroll back",
-    "pageForward": "Scroll forward"
+    "pageForward": "Scroll forward",
+    "newEpisodes": {
+      "count": "{n} new episode | {n} new episodes",
+      "aired": "out {date}"
+    }
   },
   "title": {
     "watch": "Watch",
@@ -75,6 +147,37 @@
     "history": "You watched: {line}",
     "okMark": "OK — mark as watched",
     "okUnmark": "OK — clear watched mark"
+  },
+  "actions": {
+    "watchlist": "Watch later",
+    "favorite": "Favorite",
+    "rate": "Rate",
+    "collections": "Add to collection",
+    "dropped": "Dropped",
+    "markWatched": "Mark as watched",
+    "unmarkWatched": "Mark as unwatched",
+    "more": "More",
+    "noCollections": "No collections yet. Create them in the Torsher panel under “Collections”",
+    "steps": {
+      "rating": "Your rating",
+      "collections": "Add to collection"
+    },
+    "errors": {
+      "load": "Couldn’t load the title state",
+      "save": "Couldn’t save. Try again"
+    }
+  },
+  "rating": {
+    "own": "★ {n}",
+    "hint": "Remote digits rate right away, 0 means 10",
+    "hintRated": "OK on the current rating clears it. Remote digits: 0 means 10",
+    "clear": "Clear rating"
+  },
+  "status": {
+    "watching": "Watching",
+    "waiting": "Waiting for a new season",
+    "watched": "Watched",
+    "dropped": "Dropped"
   },
   "watch": {
     "searching": "Searching for releases…",
@@ -411,6 +514,7 @@
       "overview": "Overview",
       "torrents": "Downloads",
       "sources": "Sources",
+      "collections": "Collections",
       "people": "Profiles & devices",
       "logs": "Logs",
       "settings": "Settings",
@@ -1137,6 +1241,56 @@
         "saved": "{name} saved"
       }
     },
+    "collections": {
+      "title": "Collections",
+      "add": "New collection",
+      "actions": "Actions: {name}",
+      "edit": "Rename",
+      "titles": "{n} title | {n} titles",
+      "onHome": "On home",
+      "visibleToAll": "visible to all profiles",
+      "hiddenFrom": "hidden from: {names}",
+      "loadError": "Couldn’t load collections",
+      "loadErrorText": "The server didn’t respond. If the panel has been open for a while, reload the page.",
+      "emptyTitle": "No collections yet",
+      "emptyText": "A collection is your own list, like “Holidays” or “With kids”. Create it here and add titles from the TV: hold OK on a poster and pick “Add to collection”.",
+      "titlesError": "Couldn’t load the collection’s titles.",
+      "titlesEmpty": "This collection is empty. Titles are added from the TV: hold OK on a poster and pick “Add to collection”.",
+      "removeTitle": "Remove",
+      "kinds": {
+        "movie": "movie",
+        "series": "series"
+      },
+      "dialog": {
+        "createTitle": "New collection",
+        "editTitle": "Collection “{name}”",
+        "text": "A collection is shared by all profiles on the server. Titles are added from the TV.",
+        "name": "Name",
+        "namePlaceholder": "Holidays",
+        "showOnHome": "Show on home",
+        "showOnHomeHint": "A row on the showcase home screen when the collection has titles.",
+        "visibleTo": "Visible to",
+        "visibleToHint": "An unchecked profile won’t see the collection on home or in Mine.",
+        "submit": "Create collection"
+      },
+      "validation": {
+        "name": "Enter a name",
+        "nameLength": "60 characters at most",
+        "duplicate": "A collection with this name already exists"
+      },
+      "deleteDialog": {
+        "title": "Delete collection “{name}”?",
+        "text": "The collection has {n} title: it stays in the catalog and in profile lists. | The collection has {n} titles: they stay in the catalog and in profile lists.",
+        "textEmpty": "The collection has no titles."
+      },
+      "toasts": {
+        "created": "Collection “{name}” created",
+        "saved": "Collection “{name}” saved",
+        "deleted": "Collection “{name}” deleted",
+        "saveFailed": "Couldn’t save the collection",
+        "removeFailed": "Couldn’t remove the title from the collection"
+      }
+    },
     "people": {
       "title": "Profiles and devices",
       "pairTv": "Connect a TV",
@@ -1175,6 +1329,12 @@
         "amber": "Amber",
         "slate": "Slate"
       },
+      "posterRatings": {
+        "own": "Own rating",
+        "tmdb": "TMDB",
+        "imdb": "IMDb",
+        "none": "Nothing"
+      },
       "card": {
         "color": "Color",
         "language": "Language",
@@ -1198,6 +1358,9 @@
         "languageHint": "Interface and descriptions on the TV.",
         "ageLimit": "Age limit",
         "noLimits": "No restrictions",
+        "posterRating": "Rating on posters",
+        "posterRatingHint": "What the TV shows in the poster corner. Posters without a rating stay clean.",
+        "posterRatingImdb": "IMDb ratings appear once the server starts fetching them. Until then posters stay clean.",
         "pin": "PIN",
         "pinHint": "4 digits. The TV asks for it when switching to this profile.",
         "submit": "Create profile"
@@ -1272,6 +1435,26 @@
         "done": "Code accepted",
         "doneText": "“{name}” appears in the list in a few seconds."
       }
+    },
+    "history": {
+      "recent": "Recently watched",
+      "all": "Full history · {n}",
+      "empty": "This profile hasn’t watched anything yet.",
+      "loadError": "Couldn’t load the history",
+      "loadErrorText": "The server didn’t respond. If the panel has been open for a while, reload the page.",
+      "title": "History of “{name}”",
+      "titleShort": "Watch history",
+      "group": "Latest views",
+      "emptyTitle": "No history yet",
+      "emptyText": "Movies and series watched on this profile show up here: the last episode and when it was watched.",
+      "watched": "finished",
+      "left": "{n} min left",
+      "kinds": {
+        "movie": "Movie",
+        "series": "Series"
+      },
+      "showMore": "Show more",
+      "moreError": "Couldn’t load more history"
     },
     "torrents": {
       "title": "Downloads",

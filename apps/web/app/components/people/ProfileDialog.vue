@@ -57,6 +57,7 @@ const isEdit = computed(() => !!shown.value)
 const DEVICE_LANGUAGE = 'device'
 const NO_LIMIT = 'none'
 const languageOptions = Object.keys(language) as (keyof typeof language)[]
+const POSTER_RATINGS = ['own', 'tmdb', 'imdb', 'none'] as const
 
 const schema = computed(() =>
   toTypedSchema(
@@ -65,6 +66,7 @@ const schema = computed(() =>
       color: z.enum(PROFILE_COLORS),
       language: z.string(),
       ageLimit: z.string(),
+      posterRating: z.enum(POSTER_RATINGS),
       // PIN задаётся при создании; при правке — отдельным действием
       pin: z
         .string()
@@ -84,6 +86,7 @@ const { handleSubmit, defineField, errors, isSubmitting, resetForm, values }
       color: 'violet',
       language: DEVICE_LANGUAGE,
       ageLimit: NO_LIMIT,
+      posterRating: 'own',
       pin: '',
     },
   })
@@ -92,6 +95,7 @@ const [name, nameProps] = defineField('name')
 const [color] = defineField('color')
 const [lang] = defineField('language')
 const [ageLimit] = defineField('ageLimit')
+const [posterRating] = defineField('posterRating')
 const [pin] = defineField('pin')
 
 // PinInput хранит символы массивом, форма — строкой
@@ -121,6 +125,7 @@ watch(open, (isOpen) => {
       color: current?.color ?? freeColor(),
       language: current?.language ?? DEVICE_LANGUAGE,
       ageLimit: current?.ageLimit ? String(current.ageLimit) : NO_LIMIT,
+      posterRating: current?.posterRating ?? 'own',
       pin: '',
     },
   })
@@ -138,6 +143,7 @@ const onSubmit = handleSubmit(async (form) => {
       form.ageLimit === NO_LIMIT
         ? null
         : (Number(form.ageLimit) as (typeof PROFILE_AGE_LIMITS)[number]),
+    posterRating: form.posterRating,
   }
 
   if (props.profile) {
@@ -298,6 +304,33 @@ const onSubmit = handleSubmit(async (form) => {
               </SelectContent>
             </Select>
           </div>
+        </div>
+
+        <div class="grid gap-2">
+          <Label for="profile-poster-rating">{{
+            t("panel.people.profileDialog.posterRating")
+          }}</Label>
+          <Select v-model="posterRating">
+            <SelectTrigger id="profile-poster-rating" class="w-full sm:w-1/2">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem
+                v-for="item in POSTER_RATINGS"
+                :key="item"
+                :value="item"
+              >
+                {{ t(`panel.people.posterRatings.${item}`) }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          <p class="text-[12.5px] text-muted-foreground">
+            {{
+              posterRating === "imdb"
+                ? t("panel.people.profileDialog.posterRatingImdb")
+                : t("panel.people.profileDialog.posterRatingHint")
+            }}
+          </p>
         </div>
 
         <div v-if="!isEdit" class="grid gap-2">

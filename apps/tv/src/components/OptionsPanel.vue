@@ -8,15 +8,19 @@ export interface PanelOption {
   id: string
   label: string
   selected: boolean
+  // Значение справа: своя оценка, «›» у шага дальше
+  detail?: string
 }
 
 /**
- * Правая панель выбора одного варианта: сортировка и фильтры «Источников».
- * Выбор применяется и закрывает панель; Back и клик по скриму — закрывают.
+ * Правая панель выбора: сортировка и фильтры «Источников», меню действий
+ * тайтла. Что делает выбор, решает родитель; Back и клик по скриму — `close`.
+ * Слот заменяет список своим содержимым в той же секции фокуса.
  */
 defineProps<{
   title: string
-  options: PanelOption[]
+  subtitle?: string
+  options?: PanelOption[]
 }>()
 
 const emit = defineEmits<{
@@ -46,24 +50,32 @@ onBeforeUnmount(stopKey)
       :aria-label="title"
       :[NATIVE_WHEEL_ATTRIBUTE]="true"
     >
-      <h2 class="options__title">
+      <h2 class="options__title" :class="{ 'options__title--sub': subtitle }">
         {{ title }}
       </h2>
+      <p v-if="subtitle" class="options__subtitle">
+        {{ subtitle }}
+      </p>
       <FocusSection name="options-panel" class="options__list" autofocus>
-        <button
-          v-for="option in options"
-          :key="option.id"
-          v-focusable
-          class="options__row"
-          type="button"
-          :aria-pressed="option.selected"
-          @click="emit('select', option.id)"
-        >
-          <span class="options__check">
-            <AppIcon v-if="option.selected" name="check" />
-          </span>
-          {{ option.label }}
-        </button>
+        <slot>
+          <button
+            v-for="option in options"
+            :key="option.id"
+            v-focusable
+            class="options__row"
+            type="button"
+            :aria-pressed="option.selected"
+            @click="emit('select', option.id)"
+          >
+            <span class="options__check">
+              <AppIcon v-if="option.selected" name="check" />
+            </span>
+            <span class="options__label">{{ option.label }}</span>
+            <span v-if="option.detail" class="options__detail">
+              {{ option.detail }}
+            </span>
+          </button>
+        </slot>
       </FocusSection>
     </aside>
   </div>
@@ -107,6 +119,16 @@ onBeforeUnmount(stopKey)
 }
 
 /* Список прокручивается нативно: у озвучек бывает десяток студий */
+.options__title--sub {
+  margin-bottom: calc(var(--u) * 8);
+}
+
+.options__subtitle {
+  margin: 0 0 calc(var(--u) * 30);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-s);
+}
+
 .options__list {
   flex: 1;
   margin: 0 calc(var(--u) * -16);
@@ -148,6 +170,22 @@ onBeforeUnmount(stopKey)
   width: calc(var(--u) * 32);
   height: calc(var(--u) * 32);
   margin-right: calc(var(--u) * 18);
+}
+
+.options__label {
+  flex: 1;
+  min-width: 0;
+}
+
+.options__detail {
+  flex-shrink: 0;
+  margin-left: calc(var(--u) * 18);
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.options__row:focus .options__detail {
+  color: inherit;
 }
 
 .options__check :deep(.icon) {
