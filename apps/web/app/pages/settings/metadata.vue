@@ -3,6 +3,7 @@ import { CircleAlertIcon, RefreshCwIcon } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import ImdbDatasetCard from '~/components/settings/ImdbDatasetCard.vue'
 import MetadataKeyCard from '~/components/settings/MetadataKeyCard.vue'
 
 definePageMeta({
@@ -10,9 +11,10 @@ definePageMeta({
 })
 
 const { t } = useI18n()
-const { settings, state, load } = useMetadataSettings()
+const { settings, state, load, stopImdbPolling } = useMetadataSettings()
 
 onMounted(load)
+onBeforeUnmount(stopImdbPolling)
 </script>
 
 <template>
@@ -26,11 +28,15 @@ onMounted(load)
       </p>
     </header>
 
-    <Skeleton
+    <!-- Скелетоны в размер обеих карточек: ничего не прыгает после загрузки -->
+    <div
       v-if="state === 'loading' || state === 'idle'"
-      class="h-56 rounded-xl"
+      class="grid gap-5"
       aria-busy="true"
-    />
+    >
+      <Skeleton class="h-56 rounded-xl" />
+      <Skeleton class="h-56 rounded-xl" />
+    </div>
 
     <section
       v-else-if="state === 'error' || !settings"
@@ -55,6 +61,9 @@ onMounted(load)
       </Button>
     </section>
 
-    <MetadataKeyCard v-else :settings="settings" />
+    <template v-else>
+      <MetadataKeyCard :settings="settings" />
+      <ImdbDatasetCard :status="settings.imdb" />
+    </template>
   </div>
 </template>

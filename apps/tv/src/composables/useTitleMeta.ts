@@ -4,8 +4,8 @@ import { useI18n } from 'vue-i18n'
 const MAX_GENRES = 3
 
 /**
- * Части строки меты тайтла: год · тип · длительность или сезоны · рейтинг · жанры.
- * Hero показывает рейтинг отдельно, поэтому он по запросу.
+ * Части строки меты тайтла: год · тип · длительность или сезоны · жанры.
+ * Оценки рисует `RatingList` рядом со строкой.
  */
 export function useTitleMeta() {
   const { t } = useI18n()
@@ -19,11 +19,7 @@ export function useTitleMeta() {
       : t('title.runtimeMinutes', { minutes: rest })
   }
 
-  function formatRating(rating: number) {
-    return t('title.rating', { rating: rating.toFixed(1) })
-  }
-
-  function metaParts(value: TitleDetails, options: { rating?: boolean } = {}) {
+  function metaParts(value: TitleDetails) {
     const parts: string[] = []
 
     if (value.year)
@@ -37,14 +33,11 @@ export function useTitleMeta() {
     if (value.seasons?.length)
       parts.push(t('title.seasonCount', value.seasons.length))
 
-    if (options.rating && value.rating)
-      parts.push(formatRating(value.rating))
-
     if (value.genres.length > 0)
       parts.push(value.genres.slice(0, MAX_GENRES).join(', '))
 
     return parts
   }
 
-  return { metaParts, formatRating, formatRuntime }
+  return { metaParts, formatRuntime }
 }

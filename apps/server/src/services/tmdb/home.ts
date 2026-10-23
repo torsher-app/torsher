@@ -1,6 +1,7 @@
 import type { HomeMode, HomeRow, TmdbHomeRowId } from '../../dto/home.ts'
 import type { TmdbMediaType } from './mappers.ts'
 import type { TmdbListResponse } from './types.ts'
+import { withRatings } from '../ratings/index.ts'
 import { withMetaCache } from './cache.ts'
 import { TmdbError, tmdbGet } from './client.ts'
 import { listResultToBackdrop, listResultToCard, regionOf } from './mappers.ts'
@@ -172,5 +173,10 @@ export async function getHomeRows(
   if (rows.length === 0 && errors.length > 0)
     throw errors[0]
 
-  return rows.filter(row => row.items.length > 0)
+  const filled = rows.filter(row => row.items.length > 0)
+
+  // Одной пачкой: поставщики оценок получают все тайтлы главной сразу
+  await withRatings(filled.flatMap(row => row.items))
+
+  return filled
 }

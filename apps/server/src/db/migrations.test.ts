@@ -28,8 +28,8 @@ const profilesIdx = journal.entries.findIndex(entry =>
 )
 const tempDirs: string[] = []
 
-/** Каталог миграций до профилей: база в том виде, в каком её застаёт обновление */
-function migrationsBeforeProfiles() {
+/** Каталог первых `count` миграций: база в том виде, в каком её застаёт обновление */
+function migrationsBefore(count: number) {
   const dir = mkdtempSync(join(tmpdir(), 'torsher-migrations-'))
 
   tempDirs.push(dir)
@@ -38,11 +38,15 @@ function migrationsBeforeProfiles() {
     join(dir, 'meta/_journal.json'),
     JSON.stringify({
       ...journal,
-      entries: journal.entries.slice(0, profilesIdx),
+      entries: journal.entries.slice(0, count),
     }),
   )
 
   return dir
+}
+
+function migrationsBeforeProfiles() {
+  return migrationsBefore(profilesIdx)
 }
 
 afterAll(() => {
@@ -128,5 +132,55 @@ describe('миграция профилей', () => {
     expect(sqlite.prepare('SELECT count(*) AS n FROM profiles').get()).toEqual({
       n: 0,
     })
+  })
+})
+
+describe('миграция оценки на постере', () => {
+  const posterIdx = journal.entries.findIndex(entry =>
+    readFileSync(join(MIGRATIONS_DIR, `${entry.tag}.sql`), 'utf8').includes(
+      'SET `poster_rating` = \'tmdb\'',
+    ),
+  )
+
+  it('переводит настройку в набор сервисов и не трогает данные профиля', () => {
+    const sqlite = new Database(':memory:')
+
+    sqlite.pragma('foreign_keys = ON')
+
+    const db = drizzle(sqlite)
+
+    migrate(db, { migrationsFolder: migrationsBefore(posterIdx) })
+
+    const now = Date.now()
+
+    sqlite
+      .prepare(
+        'INSERT INTO profiles (id, name, color, poster_rating, position, created_at) VALUES (?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?)',
+      )
+      .run(
+        ...['p1', 'Один', 'violet', 'own', 0, now],
+        ...['p2', 'Два', 'green', 'imdb', 1, now],
+        ...['p3', 'Три', 'blue', 'none', 2, now],
+      )
+    sqlite
+      .prepare(
+        'INSERT INTO profile_titles (profile_id, title_id, rating, rated_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+      )
+      .run('p1', 'tmdb:movie:1', 8, now, now)
+
+    migrate(db, { migrationsFolder: MIGRATIONS_DIR })
+
+    expect(
+      sqlite
+        .prepare('SELECT id, poster_rating FROM profiles ORDER BY id')
+        .all(),
+    ).toEqual([
+      { id: 'p1', poster_rating: 'tmdb' },
+      { id: 'p2', poster_rating: 'imdb' },
+      { id: 'p3', poster_rating: '' },
+    ])
+    expect(
+      sqlite.prepare('SELECT count(*) AS n FROM profile_titles').get(),
+    ).toEqual({ n: 1 })
   })
 })

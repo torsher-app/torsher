@@ -143,6 +143,36 @@ export const startNetCheck = z
 
 export const tmdbKeySources = ['custom', 'app', 'none'] as const
 
+export const imdbDatasetStates = [
+  'off',
+  'empty',
+  'updating',
+  'ready',
+  'error',
+] as const
+export const imdbDatasetErrorKinds = ['unavailable', 'invalid'] as const
+
+// Выгрузка оценок IMDb на этом сервере
+export const imdbDatasetStatus = z
+  .object({
+    enabled: z.boolean(),
+    // off — выключено; empty — включено, выгрузки ещё нет; error — не скачалась
+    // ни разу; при ошибке поверх прежней выгрузки state — ready, а error заполнен
+    state: z.enum(imdbDatasetStates),
+    // Дата выгрузки у IMDb (ISO)
+    updatedAt: z.string().optional(),
+    // Последний ответ IMDb без ошибки (ISO)
+    checkedAt: z.string().optional(),
+    count: z.number().int().optional(),
+    error: z
+      .object({
+        kind: z.enum(imdbDatasetErrorKinds),
+        at: z.string(),
+      })
+      .optional(),
+  })
+  .meta({ id: 'imdbDatasetStatus' })
+
 export const metadataSettings = z
   .object({
     tmdb: z.object({
@@ -151,8 +181,15 @@ export const metadataSettings = z
       // Сервер собран с ключом приложения: свой ключ можно убрать
       hasAppKey: z.boolean(),
     }),
+    imdb: imdbDatasetStatus,
   })
   .meta({ id: 'metadataSettings' })
+
+export const updateImdbSettings = z
+  .object({
+    enabled: z.boolean(),
+  })
+  .meta({ id: 'updateImdbSettings' })
 
 // Ключ API v3 или токен чтения v4; только на вход
 const tmdbKey = z.string().trim().min(16).max(1000)

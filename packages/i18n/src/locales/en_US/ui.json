@@ -58,7 +58,7 @@
     "seasonCount": "{n} season | {n} seasons",
     "runtime": "{hours} h {minutes} min",
     "runtimeMinutes": "{minutes} min",
-    "rating": "TMDB {rating}",
+    "ratingValue": "{label} {value}",
     "ongoing": "present",
     "peekSeries": "Seasons and episodes · cast · similar",
     "peekMovie": "Cast · similar · about the movie",
@@ -316,6 +316,7 @@
     "dataSource": "Movie and series information and images are provided by TMDB",
     "tmdbNotice": "This product uses the TMDB API but is not endorsed or certified by TMDB.",
     "tmdbLogo": "TMDB logo",
+    "imdbNotice": "Information courtesy of IMDb (https://www.imdb.com). Used with permission.",
     "font": "The Onest font is distributed under the SIL Open Font License 1.1",
     "tagline": "A media server with your own library and showcase",
     "description": "Server version, license and data sources.",
@@ -990,6 +991,24 @@
         },
         "validation": {
           "key": "Enter the key: at least 16 characters"
+        },
+        "imdb": {
+          "title": "IMDb ratings",
+          "text": "Once a day the server downloads the official IMDb ratings dataset and keeps it locally. The showcase shows the IMDb rating next to TMDB, with no keys or limits.",
+          "toggle": "Show IMDb ratings",
+          "terms": "The IMDb dataset is for personal and non-commercial use. By turning it on you accept the IMDb terms.",
+          "termsLink": "IMDb terms",
+          "off": "Off",
+          "empty": "The dataset hasn't been downloaded yet",
+          "updating": "Downloading the dataset…",
+          "ready": "Dataset from {date} · {count}",
+          "count": "{n} rating | {n} ratings",
+          "lastCheckFailed": "the last update failed",
+          "refresh": "Update now",
+          "error": {
+            "unavailable": "Download failed: IMDb is unreachable — check the network settings",
+            "invalid": "Download failed: the dataset file is damaged"
+          }
         }
       }
     },
@@ -1243,9 +1262,9 @@
         "pin": "PIN",
         "pinHint": "4 digits. The TV asks for it when switching to this profile.",
         "submit": "Create profile",
-        "posterRating": "Rating on posters",
-        "posterRatingHint": "What the TV shows in the poster corner. Posters without a rating stay clean.",
-        "posterRatingImdb": "IMDb ratings appear once the server starts fetching them. Until then posters stay clean."
+        "posterRating": "Service ratings on posters",
+        "posterRatingHint": "Checked ratings appear at the bottom of the poster on the TV. The profile's own rating is always shown at the top right.",
+        "posterRatingImdb": "IMDb ratings appear if the owner turned them on in Settings → Metadata."
       },
       "validation": {
         "name": "Enter a name",
@@ -1318,10 +1337,8 @@
         "doneText": "“{name}” appears in the list in a few seconds."
       },
       "posterRatings": {
-        "own": "Own rating",
         "tmdb": "TMDB",
-        "imdb": "IMDb",
-        "none": "Nothing"
+        "imdb": "IMDb"
       }
     },
     "torrents": {

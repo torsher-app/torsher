@@ -9,6 +9,8 @@ import {
   vi,
 } from 'vitest'
 import { createApp } from '../app.ts'
+import { setImdbEnabled } from '../services/ratings/imdb/state.ts'
+import * as imdbStore from '../services/ratings/imdb/store.ts'
 import { ACCESS_TOKEN_COOKIE } from '../config.ts'
 import { getDb, migrateDb } from '../db/index.ts'
 import { profileTitles, titleProgress, users } from '../db/schema.ts'
@@ -50,7 +52,7 @@ function tmdbResponse(url: string) {
   const { pathname } = new URL(url)
 
   if (pathname === '/3/movie/603')
-    return movie
+    return { ...movie, imdb_id: 'tt0000603' }
   if (pathname === '/3/tv/2000')
     return ongoing
   if (pathname === '/3/tv/2000/season/2')
@@ -232,10 +234,7 @@ describe('/api/mine', () => {
       SERIES,
       MOVIE,
     ])
-    expect(res.json().items[0].posterRating).toEqual({
-      source: 'own',
-      value: 9,
-    })
+    expect(res.json().items[0].ownRating).toBe(9)
 
     res = await items('section=favorites&kind=movie')
 
@@ -246,31 +245,51 @@ describe('/api/mine', () => {
     expect(res.json()).toMatchObject({ total: 1, items: [{ id: SERIES }] })
   })
 
-  it('оценка на постере следует настройке профиля', async () => {
+  it('своя оценка видна всегда, сервисы — по настройке профиля', async () => {
     await patchMine(MOVIE, { favorite: true, rating: 6 })
 
-    const setRating = (posterRating: string) =>
+    const setRatings = (posterRatings: string[]) =>
       app.inject({
         method: 'PATCH',
         url: `/api/profiles/${profileId}`,
         cookies: authed(),
-        payload: { posterRating },
+        payload: { posterRatings },
       })
+    const first = async () =>
+      (await items('section=favorites')).json().items[0]
 
-    await setRating('tmdb')
-    expect(
-      (await items('section=favorites')).json().items[0].posterRating,
-    ).toEqual({
-      source: 'tmdb',
-      value: 8.2,
+    // По умолчанию — TMDB, и своя оценка не вытесняет её
+    expect(await first()).toMatchObject({
+      posterRatings: [{ source: 'tmdb', value: 8.2 }],
+      ownRating: 6,
     })
 
-    await setRating('imdb')
-    expect(
-      (await items('section=favorites')).json().items[0].posterRating,
-    ).toBeUndefined()
+    await setRatings([])
 
-    await setRating('own')
+    const clean = await first()
+
+    expect(clean.posterRatings).toBeUndefined()
+    expect(clean.ownRating).toBe(6)
+
+    // IMDb выключен на сервере — остаётся только TMDB
+    const saved = await setRatings(['imdb', 'tmdb', 'imdb'])
+
+    expect(saved.json().posterRatings).toEqual(['tmdb', 'imdb'])
+    expect((await first()).posterRatings).toEqual([
+      { source: 'tmdb', value: 8.2 },
+    ])
+
+    setImdbEnabled(true)
+    vi.spyOn(imdbStore, 'lookupImdbRatings').mockReturnValue(
+      new Map([['tt0000603', { value: 7.4, votes: 900 }]]),
+    )
+    expect((await first()).posterRatings).toEqual([
+      { source: 'tmdb', value: 8.2 },
+      { source: 'imdb', value: 7.4 },
+    ])
+
+    setImdbEnabled(false)
+    await setRatings(['tmdb'])
   })
 })
 

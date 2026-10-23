@@ -20,6 +20,7 @@ import EpisodeListCard from '../components/EpisodeListCard.vue'
 import FocusSection from '../components/FocusSection.vue'
 import PersonCard from '../components/PersonCard.vue'
 import PosterCard from '../components/PosterCard.vue'
+import RatingList from '../components/RatingList.vue'
 import AppToast from '../components/AppToast.vue'
 import ScreenState from '../components/ScreenState.vue'
 import { useCatalogLanguage } from '../composables/useCatalogLanguage.ts'
@@ -62,7 +63,7 @@ const { t, te } = useI18n()
 const router = useRouter()
 const focus = useFocus()
 const language = useCatalogLanguage()
-const { formatRating, formatRuntime } = useTitleMeta()
+const { formatRuntime } = useTitleMeta()
 
 const id = computed(() => props.id)
 const { status, title, error, retry } = useCatalogTitle(id)
@@ -790,16 +791,17 @@ onBeforeUnmount(() => {
             </template>
           </h1>
 
+          <!-- Оценки первыми, строка всегда одна: длинные жанры уходят в многоточие -->
           <div class="title__meta-row">
-            <p class="title__meta">
-              {{ meta.join(" · ") }}
-              <span v-if="title.certification" class="title__age">
-                {{ title.certification }}
-              </span>
-            </p>
-            <p v-if="title.rating" class="title__rating">
-              {{ formatRating(title.rating) }}
-            </p>
+            <RatingList
+              v-if="title.ratings.length > 0"
+              class="title__rating"
+              :ratings="title.ratings"
+            />
+            <span class="title__meta">{{ meta.join(" · ") }}</span>
+            <span v-if="title.certification" class="title__age">
+              {{ title.certification }}
+            </span>
           </div>
 
           <p v-if="title.overview" class="title__overview">
@@ -1241,18 +1243,32 @@ onBeforeUnmount(() => {
 .title__meta-row {
   display: flex;
   align-items: center;
+  max-width: calc(var(--u) * 900);
   margin-bottom: calc(var(--u) * 24);
   font-size: var(--font-size-s);
+  white-space: nowrap;
 }
 
+.title__rating {
+  flex: none;
+}
+
+/* Сжимается только мета: оценки и возраст видны всегда */
 .title__meta {
-  display: flex;
-  align-items: center;
-  margin: 0 calc(var(--u) * 30) 0 0;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
   color: var(--color-text-muted);
+  text-overflow: ellipsis;
+}
+
+.title__rating + .title__meta::before {
+  content: '·';
+  margin: 0 calc(var(--u) * 12);
 }
 
 .title__age {
+  flex: none;
   margin-left: calc(var(--u) * 14);
   padding: 0 calc(var(--u) * 8);
   border: calc(var(--u) * 2) solid var(--color-text-dim);
@@ -1260,11 +1276,6 @@ onBeforeUnmount(() => {
   font-size: calc(var(--u) * 20);
   font-weight: 600;
   line-height: calc(var(--u) * 28);
-}
-
-.title__rating {
-  margin: 0;
-  font-weight: 600;
 }
 
 /* -webkit-line-clamp работает и в Chromium 68 */

@@ -1,6 +1,7 @@
 import type { Card, TitleDetails } from '../../dto/catalog.ts'
 import { mapLimit } from '../../utils/mapLimit.ts'
 import { logFor } from '../logs/index.ts'
+import { withRatings } from '../ratings/index.ts'
 import { getTitleSummary } from '../tmdb/index.ts'
 
 // Одновременных запросов деталей к TMDB, когда их нет в кэше
@@ -37,7 +38,7 @@ export function cardOf(details: TitleDetails): Card {
     originalTitle: details.originalTitle,
     year: details.year,
     poster: details.poster,
-    posterRating: details.posterRating,
+    ratings: details.ratings.length > 0 ? details.ratings : undefined,
   }
 }
 
@@ -45,7 +46,7 @@ export function cardOf(details: TitleDetails): Card {
 export async function cardsOf(ids: string[], language: string) {
   const summaries = await summariesOf(ids, language)
 
-  return summaries.flatMap(summary =>
-    summary ? [cardOf(summary.details)] : [],
+  return withRatings(
+    summaries.flatMap(summary => (summary ? [cardOf(summary.details)] : [])),
   )
 }

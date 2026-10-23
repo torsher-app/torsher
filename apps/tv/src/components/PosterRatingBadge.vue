@@ -1,29 +1,36 @@
 <script setup lang="ts">
 import type { Card } from '@torsher/api-client'
 import { computed } from 'vue'
-import { posterRatingOf } from '../titleActions.ts'
+import { ownRatingOf } from '../titleActions.ts'
 
-/** Значок оценки в углу постера; без оценки ничего не рисует, постер чистый */
+/**
+ * Значки оценок на постере: своя — в правом верхнем углу, оценки сервисов —
+ * одной плашкой в левом нижнем. Без оценок ничего не рисует, постер чистый.
+ */
 const props = defineProps<{ card: Card }>()
 
-const rating = computed(() => posterRatingOf(props.card))
+const own = computed(() => ownRatingOf(props.card))
+const services = computed(() => props.card.posterRatings ?? [])
 
 const SOURCE_LABELS = { tmdb: 'TMDB', imdb: 'IMDb' } as const
 </script>
 
 <template>
+  <span v-if="own" class="poster-rating poster-rating--own">★ {{ own }}</span>
   <span
-    v-if="rating"
-    class="poster-rating"
-    :class="`poster-rating--${rating.source}`"
+    v-if="services.length > 0"
+    class="poster-rating poster-rating--services"
   >
-    <template v-if="rating.source === 'own'">★ {{ rating.value }}</template>
-    <template v-else>
+    <span
+      v-for="rating in services"
+      :key="rating.source"
+      class="poster-rating__item"
+    >
       <span class="poster-rating__source">{{
         SOURCE_LABELS[rating.source]
       }}</span>
       {{ rating.value.toFixed(1) }}
-    </template>
+    </span>
   </span>
 </template>
 
@@ -31,8 +38,6 @@ const SOURCE_LABELS = { tmdb: 'TMDB', imdb: 'IMDb' } as const
 /* Поверх картинки, своим слоем: появление значка не сдвигает постер */
 .poster-rating {
   position: absolute;
-  bottom: calc(var(--u) * 12);
-  left: calc(var(--u) * 12);
   z-index: 1;
   display: flex;
   align-items: center;
@@ -49,7 +54,19 @@ const SOURCE_LABELS = { tmdb: 'TMDB', imdb: 'IMDb' } as const
 }
 
 .poster-rating--own {
+  top: calc(var(--u) * 12);
+  right: calc(var(--u) * 12);
   color: var(--color-warn);
+}
+
+.poster-rating--services {
+  bottom: calc(var(--u) * 12);
+  left: calc(var(--u) * 12);
+}
+
+/* Отступ через margin: gap у flexbox нет в Chromium 68 */
+.poster-rating__item + .poster-rating__item {
+  margin-left: calc(var(--u) * 12);
 }
 
 .poster-rating__source {

@@ -8,10 +8,11 @@ import {
   vi,
 } from 'vitest'
 import { createApp } from '../app.ts'
-import { ACCESS_TOKEN_COOKIE } from '../config.ts'
+import { ACCESS_TOKEN_COOKIE, config } from '../config.ts'
 import { getDb, migrateDb } from '../db/index.ts'
 import { indexers, netRoutes, serverSettings } from '../db/schema.ts'
 import { checkDeps, waitForCheck } from '../services/net/check.ts'
+import { refreshImdbRatings } from '../services/ratings/imdb/index.ts'
 import { routesChanged } from '../services/net/index.ts'
 import { createOwner } from '../services/users/index.ts'
 import { signToken } from '../utils/token.ts'
@@ -78,6 +79,8 @@ describe('доступ', () => {
     ['GET', '/api/settings/metadata'],
     ['PUT', '/api/settings/metadata'],
     ['POST', '/api/settings/metadata/check'],
+    ['PUT', '/api/settings/metadata/imdb'],
+    ['POST', '/api/settings/metadata/imdb/refresh'],
   ] as const)('%s %s: 401 без входа', async (method, url) => {
     const anonymous = await app.inject({ method, url, payload: {} })
 
@@ -472,7 +475,10 @@ describe('ключ TMDB', () => {
 
     const res = await inject('GET', '/api/settings/metadata')
 
-    expect(res.json()).toEqual({ tmdb: { source: 'app', hasAppKey: true } })
+    expect(res.json()).toEqual({
+      tmdb: { source: 'app', hasAppKey: true },
+      imdb: { enabled: false, state: 'off' },
+    })
   })
 
   it('сохраняет свой ключ шифрованно и ходит с ним в TMDB', async () => {
@@ -484,6 +490,7 @@ describe('ключ TMDB', () => {
 
     expect(saved.json()).toEqual({
       tmdb: { source: 'custom', hasAppKey: true },
+      imdb: { enabled: false, state: 'off' },
     })
     expect(saved.body).not.toContain(KEY)
 
@@ -544,5 +551,62 @@ describe('ключ TMDB', () => {
 
     expect(res.json()).toEqual({ ok: false, kind: 'missing' })
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('оценки IMDb', () => {
+  beforeEach(() => {
+    // Файл выгрузки не должен попасть в каталог данных разработчика
+    vi.spyOn(config, 'imdbRatingsPath', 'get').mockReturnValue(
+      '/nonexistent/torsher-imdb.db',
+    )
+    fetchMock.mockImplementation(
+      async () => new Response('fail', { status: 503 }),
+    )
+  })
+
+  it('обновление выключенного — 409, без запроса к IMDb', async () => {
+    const res = await inject('POST', '/api/settings/metadata/imdb/refresh')
+
+    expect(res.statusCode).toBe(409)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('включение запускает загрузку, ошибка видна в состоянии', async () => {
+    const enabled = await inject('PUT', '/api/settings/metadata/imdb', {
+      enabled: true,
+    })
+
+    expect(enabled.statusCode).toBe(200)
+    expect(enabled.json()).toMatchObject({ enabled: true, state: 'updating' })
+
+    await refreshImdbRatings()
+
+    expect(String(fetchMock.mock.calls[0]![0])).toBe(
+      'https://datasets.imdbws.com/title.ratings.tsv.gz',
+    )
+
+    const status = (await inject('GET', '/api/settings/metadata')).json().imdb
+
+    expect(status).toMatchObject({
+      enabled: true,
+      state: 'error',
+      error: { kind: 'unavailable' },
+    })
+
+    const about = await app.inject({ url: '/api/about' })
+
+    expect(about.json().imdbAttribution).toBe(true)
+
+    const refresh = await inject('POST', '/api/settings/metadata/imdb/refresh')
+
+    expect(refresh.statusCode).toBe(202)
+    await refreshImdbRatings()
+
+    const disabled = await inject('PUT', '/api/settings/metadata/imdb', {
+      enabled: false,
+    })
+
+    expect(disabled.json()).toEqual({ enabled: false, state: 'off' })
   })
 })

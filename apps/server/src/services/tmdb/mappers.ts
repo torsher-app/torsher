@@ -20,6 +20,7 @@ import type {
   TmdbTv,
   TmdbTvSeason,
 } from './types.ts'
+import { tmdbRating } from '../ratings/tmdb.ts'
 
 export type TmdbMediaType = 'movie' | 'tv'
 
@@ -37,8 +38,6 @@ const PROFILE_SIZE = 'w185'
 const LOGO_FILE = /\.png$/
 
 const MAX_STUDIOS = 3
-// Оценка по паре голосов на постере только вводит в заблуждение
-const MIN_POSTER_VOTES = 20
 const MAX_CAST = 20
 const MAX_SIMILAR = 20
 const MAX_AKA = 6
@@ -88,18 +87,11 @@ function yearOf(date: string | null | undefined) {
   return Number.isFinite(year) ? year : undefined
 }
 
-function ratingOf(average: number, count: number) {
-  return count > 0 ? Math.round(average * 10) / 10 : undefined
-}
+// Остальные оценки добавляет реестр поставщиков
+function ratingsOf(item: { vote_average?: number, vote_count?: number }) {
+  const tmdb = tmdbRating(item.vote_average, item.vote_count)
 
-/** Оценка TMDB для значка на постере; профиль может заменить её своей */
-function tmdbPosterRating(
-  average: number | undefined,
-  count: number | undefined,
-) {
-  return average && count && count >= MIN_POSTER_VOTES
-    ? { source: 'tmdb' as const, value: Math.round(average * 10) / 10 }
-    : undefined
+  return tmdb ? [tmdb] : []
 }
 
 function names(items: { name: string }[] | undefined, limit?: number) {
@@ -107,6 +99,12 @@ function names(items: { name: string }[] | undefined, limit?: number) {
   const list = (items ?? []).map(item => item.name.trim()).filter(Boolean)
 
   return limit ? list.slice(0, limit) : list
+}
+
+function cardRatings(result: TmdbMultiResult) {
+  const ratings = ratingsOf(result)
+
+  return ratings.length > 0 ? { ratings } : {}
 }
 
 /** Персоны из мультипоиска не попадают в каталог. */
@@ -119,7 +117,7 @@ export function searchResultToCard(result: TmdbMultiResult): Card | undefined {
       originalTitle: result.original_title ?? result.title ?? '',
       year: yearOf(result.release_date),
       poster: imageUrl(POSTER_SIZE, result.poster_path),
-      posterRating: tmdbPosterRating(result.vote_average, result.vote_count),
+      ...cardRatings(result),
     }
   }
 
@@ -131,7 +129,7 @@ export function searchResultToCard(result: TmdbMultiResult): Card | undefined {
       originalTitle: result.original_name ?? result.name ?? '',
       year: yearOf(result.first_air_date),
       poster: imageUrl(POSTER_SIZE, result.poster_path),
-      posterRating: tmdbPosterRating(result.vote_average, result.vote_count),
+      ...cardRatings(result),
     }
   }
 
@@ -248,13 +246,12 @@ export function movieToDetails(
     originalTitle: movie.original_title,
     year: yearOf(movie.release_date),
     poster: imageUrl(POSTER_SIZE, movie.poster_path),
-    posterRating: tmdbPosterRating(movie.vote_average, movie.vote_count),
     backdrop: imageUrl(BACKDROP_SIZE, movie.backdrop_path),
     logo: pickLogo(movie.images?.logos, language),
     overview: movie.overview,
     genres: movie.genres.map(genre => genre.name),
     runtime: movie.runtime || undefined,
-    rating: ratingOf(movie.vote_average, movie.vote_count),
+    ratings: ratingsOf(movie),
     certification: pickByRegion(
       movie.release_dates?.results,
       language,
@@ -318,12 +315,11 @@ export function tvToDetails(
     originalTitle: tv.original_name,
     year: yearOf(tv.first_air_date),
     poster: imageUrl(POSTER_SIZE, tv.poster_path),
-    posterRating: tmdbPosterRating(tv.vote_average, tv.vote_count),
     backdrop: imageUrl(BACKDROP_SIZE, tv.backdrop_path),
     logo: pickLogo(tv.images?.logos, language),
     overview: tv.overview,
     genres: tv.genres.map(genre => genre.name),
-    rating: ratingOf(tv.vote_average, tv.vote_count),
+    ratings: ratingsOf(tv),
     ongoing,
     endYear: ongoing ? undefined : yearOf(tv.last_air_date),
     certification: pickByRegion(

@@ -20,7 +20,7 @@ export interface ProfileInput {
   color: ProfileColor
   language: ProfileLanguage | null
   ageLimit: number | null
-  posterRating?: Profile['posterRating']
+  posterRatings?: Profile['posterRatings']
 }
 
 /** Последний профиль удалить нельзя: витрине и сессии владельца нужен профиль */

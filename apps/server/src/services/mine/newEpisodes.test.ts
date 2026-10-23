@@ -38,6 +38,7 @@ function state(
         originalTitle: 'Show',
         overview: '',
         genres: [],
+        ratings: [],
         countries: [],
         studios: [],
         creators: [],

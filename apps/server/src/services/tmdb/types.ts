@@ -61,6 +61,7 @@ export interface TmdbMovie extends TmdbDetailsBase {
   original_title: string
   release_date: string
   runtime: number | null
+  imdb_id?: string | null
   // append_to_response=release_dates
   release_dates?: {
     results: {
@@ -98,6 +99,8 @@ export interface TmdbTv extends TmdbDetailsBase {
   last_episode_to_air?: TmdbEpisodeRef | null
   next_episode_to_air?: TmdbEpisodeRef | null
   seasons: TmdbTvSeason[]
+  // append_to_response=external_ids
+  external_ids?: { imdb_id?: string | null }
   // append_to_response=content_ratings
   content_ratings?: { results: { iso_3166_1: string, rating: string }[] }
 }

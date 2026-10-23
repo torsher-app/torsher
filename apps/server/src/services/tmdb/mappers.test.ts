@@ -126,8 +126,7 @@ describe('movieToDetails', () => {
       overview: 'Хакер Нео узнаёт правду о реальности.',
       genres: ['боевик', 'фантастика'],
       runtime: 136,
-      rating: 8.2,
-      posterRating: { source: 'tmdb', value: 8.2 },
+      ratings: [{ provider: 'tmdb', label: 'TMDB', value: 8.2, votes: 26000 }],
       certification: undefined,
       countries: [],
       studios: [],
@@ -266,7 +265,7 @@ describe('tvToDetails', () => {
   })
 
   it('не показывает рейтинг без голосов и бэкдроп без картинки', () => {
-    expect(details.rating).toBeUndefined()
+    expect(details.ratings).toEqual([])
     expect(details.backdrop).toBeUndefined()
     expect(details.runtime).toBeUndefined()
   })

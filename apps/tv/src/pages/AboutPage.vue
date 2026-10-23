@@ -101,6 +101,11 @@ const server = window.location.host
       </button>
     </FocusSection>
 
+    <!-- Атрибуция IMDb по их условиям, пока оценки включены. Ниже кнопок: строка
+         появляется после ответа сервера и ничего не сдвигает -->
+    <p v-if="about?.imdbAttribution" class="about__note about__muted">
+      {{ t("about.imdbNotice") }}
+    </p>
     <AppRail current="about" :section="RAIL_SECTION" content="about-actions" />
   </main>
 </template>
@@ -148,6 +153,11 @@ const server = window.location.host
 
 .tmdb {
   margin-bottom: var(--space-5);
+}
+
+.about__note {
+  margin: var(--space-5) 0 0;
+  font-size: var(--font-size-s);
 }
 
 /* Задаём только высоту: ширина следует за пропорциями файла */
