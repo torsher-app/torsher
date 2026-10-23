@@ -33,23 +33,26 @@ const props = defineProps<{
   subtitlesLabel: string | null
   /** Просмотр продолжен с сохранённого места: первой кнопкой — «С начала» */
   fromStart: boolean
+  /** Плеер открыт из тайтла: кнопка «Источник», у сериала ещё «Серии» */
+  titled: boolean
+  series: boolean
+  /** Вторая строка «Источника»: качество и кодек файла */
+  sourceLabel: string
+  /** Есть следующая вышедшая серия */
+  hasNext: boolean
 }>()
 
 const emit = defineEmits<{
   toggle: []
   seek: [fraction: number]
   tracks: [kind: 'audio' | 'subtitles']
+  panel: [kind: 'episodes' | 'source' | 'settings']
+  next: []
   fromStart: []
 }>()
 
 const { t, locale } = useI18n()
 
-const hasButtons = computed(
-  () =>
-    props.fromStart
-    || props.audioLabel !== null
-    || props.subtitlesLabel !== null,
-)
 const shown = computed(() => props.scrubTarget ?? props.position)
 const remaining = computed(() =>
   Number.isFinite(props.duration) ? props.duration - shown.value : 0,
@@ -138,11 +141,7 @@ const networkText = computed(() => {
     <div class="osd__bottom">
       <FocusSection
         name="player-timeline"
-        :edges="
-          hasButtons
-            ? { up: 'player-back', down: 'player-buttons' }
-            : { up: 'player-back' }
-        "
+        :edges="{ up: 'player-back', down: 'player-buttons' }"
         manual-scroll
       >
         <PlayerTimeline
@@ -174,7 +173,6 @@ const networkText = computed(() => {
       </div>
 
       <FocusSection
-        v-if="hasButtons"
         name="player-buttons"
         :edges="{ up: 'player-timeline' }"
         manual-scroll
@@ -217,6 +215,51 @@ const networkText = computed(() => {
               {{ t("player.subtitles") }}
               <span class="osd__button-value">{{ subtitlesLabel }}</span>
             </span>
+          </button>
+          <button
+            v-if="series"
+            v-focusable
+            class="action osd__button"
+            type="button"
+            @click="emit('panel', 'episodes')"
+          >
+            <AppIcon name="list" class="osd__button-icon" />
+            {{ t("player.episodes.button") }}
+          </button>
+          <button
+            v-if="titled"
+            v-focusable
+            class="action osd__button"
+            type="button"
+            @click="emit('panel', 'source')"
+          >
+            <AppIcon name="source" class="osd__button-icon" />
+            <span class="osd__button-text">
+              {{ t("player.source.button") }}
+              <span v-if="sourceLabel" class="osd__button-value">{{
+                sourceLabel
+              }}</span>
+            </span>
+          </button>
+          <button
+            v-if="hasNext"
+            v-focusable
+            class="action osd__button"
+            type="button"
+            @click="emit('next')"
+          >
+            <AppIcon name="next" class="osd__button-icon" />
+            {{ t("player.next") }}
+          </button>
+          <!-- Настройки — значком у правого края: ряд кнопок не переносится -->
+          <button
+            v-focusable
+            class="action osd__button osd__button--round"
+            type="button"
+            :aria-label="t('player.settings.button')"
+            @click="emit('panel', 'settings')"
+          >
+            <AppIcon name="settings" class="osd__button-icon" />
           </button>
         </div>
       </FocusSection>
@@ -375,6 +418,19 @@ const networkText = computed(() => {
   padding: 0 calc(var(--u) * 26);
   margin-right: calc(var(--u) * 18);
   font-size: var(--font-size-s);
+}
+
+.osd__button--round {
+  justify-content: center;
+  width: calc(var(--u) * 76);
+  margin-right: 0;
+  margin-left: auto;
+  padding: 0;
+  border-radius: 50%;
+}
+
+.osd__button--round .osd__button-icon {
+  margin-right: 0;
 }
 
 .osd__button-icon {

@@ -86,6 +86,26 @@ describe('backAction', () => {
     })
   })
 
+  it('плеер из «Продолжить» — туда, откуда открыли', () => {
+    const player = route(
+      '/play/:torrentId/:fileIndex',
+      { torrentId: 't2', fileIndex: '1' },
+      { title: ID },
+    )
+
+    expect(backAction(player, '/')).toEqual({ kind: 'history' })
+    expect(backAction(player, `/title/${ID}`)).toEqual({ kind: 'history' })
+    // Серию сменили в плеере: прошлая запись — «Файлы» другой раздачи
+    expect(backAction(player, `/title/${ID}/files/t1`)).toEqual({
+      kind: 'replace',
+      path: `/title/${ID}/files/t2`,
+    })
+    expect(backAction(player, '/play/t1/0?title=x')).toEqual({
+      kind: 'replace',
+      path: `/title/${ID}/files/t2`,
+    })
+  })
+
   it('раздел рейла — на главную', () => {
     for (const section of [
       '/movies',

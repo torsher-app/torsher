@@ -10,6 +10,8 @@ import { formatSpeed } from '../../lib/player.ts'
 const props = defineProps<{
   step: StageStep
   stats: TorrentStats | undefined
+  /** Своя подпись шага: экран подготовки ищет серию до потока */
+  label?: string
 }>()
 
 // Столько буфера впереди считаем «почти готово»: полоса не стоит на месте
@@ -67,7 +69,9 @@ const network = computed(() => {
       <span class="buffering__sweep" />
     </div>
     <div class="buffering__meta">
-      <span class="buffering__step">{{ t(`player.steps.${step}`) }}</span>
+      <span class="buffering__step">{{
+        label ?? t(`player.steps.${step}`)
+      }}</span>
       <span class="buffering__network">{{ network }}</span>
     </div>
     <p v-if="step === 'waitingPeers'" class="buffering__hint">

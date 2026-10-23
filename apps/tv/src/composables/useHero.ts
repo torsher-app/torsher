@@ -24,7 +24,8 @@ export function useHero() {
   let latest: Card | undefined
 
   async function apply(card: Card) {
-    if (hero.value?.card.id === card.id)
+    // Тот же тайтл из другого ряда — другая карточка: у «Продолжить» своя подсказка
+    if (hero.value?.card === card)
       return
 
     latest = card

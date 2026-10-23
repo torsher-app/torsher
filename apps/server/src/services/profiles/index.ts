@@ -1,4 +1,4 @@
-import type { Profile } from '../../db/schema.ts'
+import type { PlayerSettings, Profile } from '../../db/schema.ts'
 import { asc, desc, eq, lt, sql } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import {
@@ -96,6 +96,33 @@ export function createProfile(input: ProfileInput & { pinHash?: string }) {
     .values({ ...input, position: (last?.position ?? -1) + 1 })
     .returning()
     .get()
+}
+
+export const DEFAULT_PLAYER_SETTINGS: PlayerSettings = {
+  autoNext: true,
+  subtitleSize: 'm',
+  subtitleBackground: 'box',
+}
+
+export function playerSettingsOf(row: Pick<Profile, 'player'>): PlayerSettings {
+  return { ...DEFAULT_PLAYER_SETTINGS, ...row.player }
+}
+
+/** Меняет только переданные настройки, остальные остаются как были */
+export function updatePlayerSettings(
+  id: string,
+  patch: Partial<PlayerSettings>,
+) {
+  const row = getProfile(id)
+
+  if (!row)
+    return undefined
+
+  const player = { ...row.player, ...patch }
+
+  getDb().update(profiles).set({ player }).where(eq(profiles.id, id)).run()
+
+  return playerSettingsOf({ player })
 }
 
 export function updateProfile(id: string, input: Partial<ProfileInput>) {

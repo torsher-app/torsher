@@ -33,6 +33,7 @@ import {
   useTitleSeason,
 } from '../composables/useTitleSections.ts'
 import { useStackScroll } from '../composables/useStackScroll.ts'
+import { useResumeLabels } from '../composables/useResumeLabels.ts'
 import { useTitleProgress } from '../composables/useTitleProgress.ts'
 import { useFocus } from '../focus/index.ts'
 import {
@@ -41,6 +42,7 @@ import {
   openTitleActions,
   rememberTitleMine,
 } from '../titleActions.ts'
+import { resumeRoute } from '../lib/continue.ts'
 import { stackOffset } from '../lib/rowStack.ts'
 import { revealOffset } from '../lib/rowTrack.ts'
 import {
@@ -186,8 +188,14 @@ const meta = computed(() => {
 })
 
 // Что запустит главная кнопка: ждём прогресс, чтобы не искать раздачи дважды
-const { progress } = useTitleProgress(id)
+const { progress, status: progressStatus } = useTitleProgress(id)
 const { historyOf } = useSourceLabels()
+const { resumeLine } = useResumeLabels()
+
+// Кнопки появляются, когда прогресс пришёл: «Смотреть» не сменится на
+// «Продолжить» под взглядом и ширина кнопки не прыгнет
+const actionsPending = computed(() => progressStatus.value === 'loading')
+const resume = computed(() => progress.value?.resume ?? null)
 
 // Отметки «просмотрено», поставленные сейчас: сразу видны, без перезапроса прогресса
 const marks = ref(new Map<string, boolean>())
@@ -222,8 +230,11 @@ function progressOfEpisode(item: Episode) {
   )
 }
 
-// Вторая строка «Смотреть» — что смотрели последний раз; та же строка открывает «Источники»
+// Вторая строка главной кнопки: что продолжим или что смотрели последний раз
 const primaryHint = computed(() => {
+  if (resume.value)
+    return resumeLine(resume.value)
+
   const line = historyOf(progress.value)?.line
 
   return line ? t('title.history', { line }) : ''
@@ -288,6 +299,13 @@ function openActions(step?: 'rating') {
       step,
     )
   }
+}
+
+// «Продолжить» запускает просмотр сразу; выбрать раздачу — кнопкой «Источники»
+function onPrimary() {
+  if (resume.value)
+    router.push(resumeRoute(props.id, resume.value))
+  else openSources()
 }
 
 // OK на серии ставит или снимает «просмотрено»: смотреть — через «Смотреть»
@@ -813,6 +831,7 @@ onBeforeUnmount(() => {
           name="title-actions"
           manual-scroll
           class="title__actions"
+          :class="{ 'title__actions--pending': actionsPending }"
           :edges="edgesOf('title-actions')"
           autofocus
         >
@@ -820,15 +839,25 @@ onBeforeUnmount(() => {
             v-focusable
             class="action action--primary title__primary"
             type="button"
-            @click="openSources"
+            @click="onPrimary"
           >
             <AppIcon name="play" class="title__action-icon" />
             <span class="title__primary-text">
-              {{ t("title.watch") }}
+              {{ t(resume ? "title.resume" : "title.watch") }}
               <small v-if="primaryHint" class="title__primary-hint">
                 {{ primaryHint }}
               </small>
             </span>
+          </button>
+          <button
+            v-if="resume"
+            v-focusable
+            class="action title__secondary"
+            type="button"
+            @click="openSources"
+          >
+            <AppIcon name="source" class="title__action-icon" />
+            {{ t("title.sources") }}
           </button>
           <button
             v-focusable
@@ -1293,6 +1322,7 @@ onBeforeUnmount(() => {
 
 .title__actions {
   position: absolute;
+  transition: opacity var(--motion-base) var(--motion-easing);
   top: calc(var(--u) * 742);
   left: var(--content-x);
   display: flex;
@@ -1323,6 +1353,10 @@ onBeforeUnmount(() => {
 }
 
 /* Главная кнопка говорит, что вы получите: вторая строка — качество и озвучка */
+.title__actions--pending {
+  opacity: 0;
+}
+
 .title__primary {
   height: auto;
   min-height: calc(var(--u) * 84);

@@ -81,6 +81,11 @@ function imageUrl(size: string, path: string | null | undefined) {
   return path ? `/api/img/${size}${path}` : undefined
 }
 
+/** Та же картинка прокси другой ширины: бэкдроп на карточке 16:9 — `w780` */
+export function withImageSize(url: string, size: string) {
+  return url.replace(/^\/api\/img\/[^/]+\//, `/api/img/${size}/`)
+}
+
 function yearOf(date: string | null | undefined) {
   const year = Number.parseInt(date?.slice(0, 4) ?? '', 10)
 

@@ -1,4 +1,4 @@
-import type { Profile, ProfileList } from '@torsher/api-client'
+import type { PlayerSettings, Profile, ProfileList } from '@torsher/api-client'
 import type { SessionStatus } from './lib/session.ts'
 import { getErrorStatus } from '@torsher/api-client'
 import { reactive, readonly } from 'vue'
@@ -91,4 +91,27 @@ export function expireSession() {
   state.status = 'unpaired'
   state.profile = undefined
   applyLanguage(null)
+}
+
+/**
+ * Настройки плеера текущего профиля: применяются сразу, а сервер запоминает их
+ * для профиля. Сервер не принял — возвращаются прежние.
+ */
+export async function updatePlayerSettings(patch: Partial<PlayerSettings>) {
+  const profile = state.profile
+
+  if (!profile)
+    return
+
+  const previous = profile.player
+
+  profile.player = { ...previous, ...patch }
+
+  try {
+    profile.player = await api.profiles.putCurrentPlayerSettings(patch)
+  }
+  catch {
+    if (state.profile === profile)
+      profile.player = previous
+  }
 }

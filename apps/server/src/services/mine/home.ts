@@ -1,4 +1,4 @@
-import type { HomeRow } from '../../dto/home.ts'
+import type { CatalogRow } from '../../dto/home.ts'
 import { visibleCollections } from '../collections/index.ts'
 import { logFor } from '../logs/index.ts'
 import { collectionCards, profileStates, watchlistCards } from './index.ts'
@@ -13,11 +13,11 @@ const ROW_LIMIT = 20
 export async function personalHomeRows(
   profileId: string,
   language: string,
-): Promise<HomeRow[]> {
+): Promise<CatalogRow[]> {
   const collections = visibleCollections(profileId).filter(
     item => item.showOnHome && item.count > 0,
   )
-  const loads: Promise<HomeRow>[] = [
+  const loads: Promise<CatalogRow>[] = [
     profileStates(profileId, language)
       .then(states => newEpisodeCards(states, language, ROW_LIMIT))
       .then(episodes => ({

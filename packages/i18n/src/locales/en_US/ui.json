@@ -26,6 +26,7 @@
   },
   "home": {
     "rows": {
+      "continue": "Continue watching",
       "trending": "Top 10 today",
       "trendingMovies": "Top 10 movies today",
       "trendingSeries": "Top 10 series today",
@@ -42,7 +43,8 @@
     "hint": {
       "details": "Details",
       "watch": "Watch",
-      "actions": "hold for actions"
+      "actions": "hold for actions",
+      "resume": "Continue"
     },
     "pageBack": "Scroll back",
     "pageForward": "Scroll forward",
@@ -91,7 +93,9 @@
       "okOpen": "OK — open the episode list",
       "pickSeason": "Other season",
       "seasonPanel": "Season"
-    }
+    },
+    "resume": "Continue",
+    "sources": "Sources"
   },
   "watch": {
     "searching": "Searching for releases…",
@@ -411,7 +415,51 @@
     },
     "ahead": "{size} ahead",
     "episodeOf": "Season {season} · Episode {episode}",
-    "youAreWatching": "You're watching"
+    "youAreWatching": "You're watching",
+    "upNext": {
+      "title": "Next episode · {code}",
+      "in": "Next episode in {n} s",
+      "now": "OK to play now",
+      "cancel": "Cancel"
+    },
+    "next": "Next episode",
+    "episodes": {
+      "button": "Episodes",
+      "season": "Season {n}",
+      "watched": "watched",
+      "inTorrent": "in this torrent",
+      "current": "Now playing"
+    },
+    "source": {
+      "button": "Source",
+      "keepsPosition": "Switching keeps your position",
+      "current": "Now playing",
+      "empty": "No other torrents with this episode",
+      "failed": "Could not switch the torrent"
+    },
+    "settings": {
+      "button": "Settings",
+      "speed": "Speed",
+      "speedNormal": "Normal",
+      "subtitleSize": "Subtitle size",
+      "sizes": {
+        "s": "Small",
+        "m": "Normal",
+        "l": "Large"
+      },
+      "subtitleBackground": "Subtitle background",
+      "backgrounds": {
+        "none": "None",
+        "shadow": "Shadow",
+        "box": "Box"
+      },
+      "autoNext": "Autoplay next",
+      "on": "On",
+      "off": "Off",
+      "link": "Video link",
+      "linkHint": "Open it in VLC or Infuse. The link works for 12 h",
+      "copied": "Copied"
+    }
   },
   "languages": {
     "rus": "Russian",
@@ -1780,5 +1828,22 @@
     "waiting": "Waiting for a new season",
     "watched": "Watched",
     "dropped": "Dropped"
+  },
+  "continue": {
+    "remaining": "{time} left",
+    "next": "next episode"
+  },
+  "resolve": {
+    "searching": "Looking for the episode",
+    "connecting": "Connecting to the torrent",
+    "notFound": {
+      "title": "Episode not found",
+      "text": "None of the found torrents has this episode. Pick one yourself in Sources."
+    },
+    "failed": {
+      "title": "The torrent did not open",
+      "text": "Peers did not send the file list, or the torrent lacks this episode. Pick another one in Sources."
+    },
+    "toSources": "To sources"
   }
 }

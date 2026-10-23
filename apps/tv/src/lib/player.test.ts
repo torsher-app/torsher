@@ -7,6 +7,7 @@ import {
   canDimPause,
   canRetry,
   clampTime,
+  countdownOf,
   endedEarly,
   endsAt,
   formatClock,
@@ -29,6 +30,7 @@ import {
   startErrorAction,
   STATS_STALE_MS,
   streamLive,
+  upNextVisible,
   videoTimePolicy,
 } from './player.ts'
 
@@ -457,5 +459,28 @@ describe('canDimPause', () => {
     expect(canDimPause({ ...pause, restarting: true })).toBe(false)
     expect(canDimPause({ ...pause, panelOpen: true })).toBe(false)
     expect(canDimPause({ ...pause, error: true })).toBe(false)
+  })
+})
+
+describe('следующая серия', () => {
+  const base = { available: true, dismissed: false, ended: false }
+
+  it('за 30 с до конца и в конце, если не отменили', () => {
+    expect(upNextVisible({ ...base, remaining: 31 })).toBe(false)
+    expect(upNextVisible({ ...base, remaining: 30 })).toBe(true)
+    expect(upNextVisible({ ...base, remaining: 600, ended: true })).toBe(true)
+    expect(upNextVisible({ ...base, remaining: 10, dismissed: true })).toBe(
+      false,
+    )
+    expect(upNextVisible({ ...base, remaining: 10, available: false })).toBe(
+      false,
+    )
+    expect(upNextVisible({ ...base, remaining: Number.NaN })).toBe(false)
+  })
+
+  it('отсчёт — остаток целыми вверх', () => {
+    expect(countdownOf(12.2)).toBe(13)
+    expect(countdownOf(-1)).toBe(0)
+    expect(countdownOf(Number.NaN)).toBe(0)
   })
 })
