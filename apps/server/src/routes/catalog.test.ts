@@ -275,3 +275,38 @@ describe('get /api/catalog/trending', () => {
     expect(res.json().items).toHaveLength(2)
   })
 })
+
+describe('get /api/catalog/backdrops', () => {
+  it('отвечает 401 без cookie', async () => {
+    const res = await app.inject({ url: '/api/catalog/backdrops' })
+
+    expect(res.statusCode).toBe(401)
+  })
+
+  it('отдаёт кадры тренда дня, тайтлы без бэкдропа пропускает', async () => {
+    const [first, ...rest] = trendingAll.results
+
+    fetchMock.mockResolvedValue(
+      json({
+        ...trendingAll,
+        results: [{ ...first, backdrop_path: '/matrix.jpg' }, ...rest],
+      }),
+    )
+
+    // Язык не как в тесте трендов: у того же списка в кэше нет бэкдропов
+    const res = await app.inject({
+      url: '/api/catalog/backdrops?language=en-US',
+      cookies: authed(),
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json().items).toEqual([
+      {
+        id: 'tmdb:movie:603',
+        title: 'Матрица',
+        year: 1999,
+        backdrop: '/api/img/w1280/matrix.jpg',
+      },
+    ])
+  })
+})

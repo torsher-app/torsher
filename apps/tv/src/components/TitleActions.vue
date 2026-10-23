@@ -285,6 +285,7 @@ onBeforeUnmount(() => {
     :title="step === 'main' ? target.title : t(`actions.steps.${step}`)"
     :subtitle="step === 'main' ? statusLine : target.title"
     :options="step === 'collections' ? collectionOptions : mainOptions"
+    :focus-selected="false"
     @select="select"
     @close="back"
   >

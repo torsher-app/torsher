@@ -4,6 +4,7 @@ import {
   bufferedSeconds,
   bufferingStep,
   byteOffset,
+  canDimPause,
   canRetry,
   clampTime,
   endedEarly,
@@ -434,5 +435,27 @@ describe('сбой запуска', () => {
     [{ status: undefined }, 'fail'],
   ] as const)('%o → %s', (error, action) => {
     expect(startErrorAction(error)).toBe(action)
+  })
+})
+
+describe('canDimPause', () => {
+  const pause = {
+    phase: 'playing',
+    paused: true,
+    restarting: false,
+    panelOpen: false,
+    error: false,
+  }
+
+  it('затемняет только паузу зрителя', () => {
+    expect(canDimPause(pause)).toBe(true)
+    expect(canDimPause({ ...pause, paused: false })).toBe(false)
+    expect(canDimPause({ ...pause, phase: 'buffering' })).toBe(false)
+  })
+
+  it('не затемняет перезапуск, открытую панель и ошибку', () => {
+    expect(canDimPause({ ...pause, restarting: true })).toBe(false)
+    expect(canDimPause({ ...pause, panelOpen: true })).toBe(false)
+    expect(canDimPause({ ...pause, error: true })).toBe(false)
   })
 })

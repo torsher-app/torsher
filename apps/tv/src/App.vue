@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { ref, watchEffect } from 'vue'
 import { useRoute } from 'vue-router'
+import AppScreensaver from './components/AppScreensaver.vue'
 import TitleActions from './components/TitleActions.vue'
+import { useScreensaver } from './composables/useScreensaver.ts'
 import { session } from './session.ts'
 
 const currentRoute = useRoute()
@@ -13,6 +15,11 @@ watchEffect(() => {
   if (currentRoute.path !== '/profiles')
     cacheKey.value = session.profile?.id
 })
+
+// В плеере заставки нет: ни при просмотре, ни на паузе — там своё затемнение
+const { active: screensaverActive } = useScreensaver(
+  () => !currentRoute.path.startsWith('/play/'),
+)
 </script>
 
 <template>
@@ -32,4 +39,24 @@ watchEffect(() => {
   </RouterView>
   <!-- Меню действий тайтла — поверх любого экрана: его открывает постер где угодно -->
   <TitleActions />
+
+  <Transition name="screensaver">
+    <AppScreensaver v-if="screensaverActive" />
+  </Transition>
 </template>
+
+<style>
+/* Заставка проявляется медленно и гаснет быстро: проснувшийся экран не ждёт */
+.screensaver-enter-active {
+  transition: opacity 1.5s var(--motion-easing);
+}
+
+.screensaver-leave-active {
+  transition: opacity var(--motion-base) var(--motion-easing);
+}
+
+.screensaver-enter-from,
+.screensaver-leave-to {
+  opacity: 0;
+}
+</style>

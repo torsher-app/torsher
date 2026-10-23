@@ -1,6 +1,7 @@
 import type { FastifyReply } from 'fastify'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import {
+  catalogBackdropsResponse,
   catalogSearchQuery,
   catalogSearchResponse,
   catalogSeasonParams,
@@ -19,6 +20,7 @@ import {
   getTitle,
   getTitleExtras,
   getTrending,
+  getTrendingBackdrops,
   searchTitles,
   TmdbError,
 } from '../services/tmdb/index.ts'
@@ -207,6 +209,31 @@ export const catalogRoutes: FastifyPluginAsyncZod = async (app) => {
             request.profileId,
           ),
         }
+      }
+      catch (err) {
+        return sendTmdbError(reply, err)
+      }
+    },
+  )
+
+  app.get(
+    '/backdrops',
+    {
+      onRequest: requireViewer,
+      schema: {
+        operationId: 'getCatalogBackdrops',
+        tags: ['Catalog'],
+        querystring: catalogTitleQuery,
+        response: {
+          200: catalogBackdropsResponse,
+          400: messageResponse,
+          ...errorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return { items: await getTrendingBackdrops(request.query.language) }
       }
       catch (err) {
         return sendTmdbError(reply, err)

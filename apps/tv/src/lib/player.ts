@@ -385,6 +385,26 @@ export function formatDuration(totalSeconds: number) {
  * Время на часах: «18:21». `Intl.DateTimeFormat` — только если ТВ знает локаль:
  * данные ICU на старых ТВ не проверены, иначе 24-часовой формат.
  */
+// Пауза без нажатий дольше этого гасит OSD и затемняет кадр (у Netflix — около 10 с)
+export const PAUSE_DIM_MS = 10_000
+
+/** Затемнять можно только паузу зрителя: не перезапуск, не панель, не ошибку */
+export function canDimPause(state: {
+  phase: string
+  paused: boolean
+  restarting: boolean
+  panelOpen: boolean
+  error: boolean
+}) {
+  return (
+    state.phase === 'playing'
+    && state.paused
+    && !state.restarting
+    && !state.panelOpen
+    && !state.error
+  )
+}
+
 export function formatClock(date: Date, locale: string) {
   const tag = locale.replace('_', '-')
 

@@ -136,7 +136,24 @@ export const catalogTrendingResponse = z
   })
   .meta({ id: 'catalogTrendingResponse' })
 
+// Кадр тайтла для заставки витрины
+export const backdrop = z
+  .object({
+    id: z.string(),
+    title: z.string(),
+    year: z.number().int().optional(),
+    backdrop: z.string(),
+  })
+  .meta({ id: 'backdrop' })
+
+export const catalogBackdropsResponse = z
+  .object({
+    items: z.array(backdrop),
+  })
+  .meta({ id: 'catalogBackdropsResponse' })
+
 export type Card = z.output<typeof card>
+export type Backdrop = z.output<typeof backdrop>
 export type TitleDetails = z.output<typeof titleDetails>
 export type TitleSeason = z.output<typeof titleSeason>
 export type Episode = z.output<typeof episode>

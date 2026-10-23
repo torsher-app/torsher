@@ -10,6 +10,7 @@ export interface TmdbMultiResult {
   original_name?: string
   first_air_date?: string
   poster_path?: string | null
+  backdrop_path?: string | null
   vote_average?: number
   vote_count?: number
   // Только у персон: их известные фильмы и сериалы, с media_type

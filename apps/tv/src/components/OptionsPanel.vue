@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, useSlots } from 'vue'
 import { NATIVE_WHEEL_ATTRIBUTE, useFocus } from '../focus/index.ts'
 import AppIcon from './AppIcon.vue'
 import FocusSection from './FocusSection.vue'
@@ -7,6 +7,8 @@ import FocusSection from './FocusSection.vue'
 export interface PanelOption {
   id: string
   label: string
+  /** Вторая строка пункта, приглушённая */
+  hint?: string
   selected: boolean
   // Значение справа: своя оценка, «›» у шага дальше
   detail?: string
@@ -15,13 +17,19 @@ export interface PanelOption {
 /**
  * Правая панель выбора: сортировка и фильтры «Источников», меню действий
  * тайтла. Что делает выбор, решает родитель; Back и клик по скриму — `close`.
- * Слот заменяет список своим содержимым в той же секции фокуса.
+ * Слот по умолчанию заменяет список своим содержимым в той же секции фокуса,
+ * слот `top` — своя секция над списком.
  */
-defineProps<{
-  title: string
-  subtitle?: string
-  options?: PanelOption[]
-}>()
+const props = withDefaults(
+  defineProps<{
+    title: string
+    subtitle?: string
+    options?: PanelOption[]
+    // Выбор одного значения открывается на выбранном; меню действий — сверху
+    focusSelected?: boolean
+  }>(),
+  { focusSelected: true },
+)
 
 const emit = defineEmits<{
   select: [id: string]
@@ -29,6 +37,23 @@ const emit = defineEmits<{
 }>()
 
 const focus = useFocus()
+const slots = useSlots()
+const panel = ref<HTMLElement>()
+
+// Панель открывается на выбранном пункте: шаг вниз от него — соседнее значение
+onMounted(() => {
+  if (!props.focusSelected)
+    return
+
+  nextTick(() => {
+    const selected = panel.value?.querySelector<HTMLElement>(
+      '.options__row[aria-pressed="true"]',
+    )
+
+    if (selected)
+      focus.focusOn(selected)
+  })
+})
 
 const stopKey = focus.onKey((action) => {
   if (action.type !== 'back')
@@ -46,6 +71,7 @@ onBeforeUnmount(stopKey)
   <div class="options">
     <div class="options__scrim" @click="emit('close')" />
     <aside
+      ref="panel"
       class="options__panel"
       :aria-label="title"
       :[NATIVE_WHEEL_ATTRIBUTE]="true"
@@ -56,7 +82,20 @@ onBeforeUnmount(stopKey)
       <p v-if="subtitle" class="options__subtitle">
         {{ subtitle }}
       </p>
-      <FocusSection name="options-panel" class="options__list" autofocus>
+      <!-- Над списком — своя секция (поле ввода): вверх из списка — в неё -->
+      <FocusSection
+        v-if="slots.top"
+        name="options-top"
+        :edges="{ down: 'options-panel' }"
+      >
+        <slot name="top" />
+      </FocusSection>
+      <FocusSection
+        name="options-panel"
+        class="options__list"
+        :edges="slots.top ? { up: 'options-top' } : undefined"
+        autofocus
+      >
         <slot>
           <button
             v-for="option in options"
@@ -70,7 +109,12 @@ onBeforeUnmount(stopKey)
             <span class="options__check">
               <AppIcon v-if="option.selected" name="check" />
             </span>
-            <span class="options__label">{{ option.label }}</span>
+            <span class="options__text">
+              {{ option.label }}
+              <span v-if="option.hint" class="options__hint">{{
+                option.hint
+              }}</span>
+            </span>
             <span v-if="option.detail" class="options__detail">
               {{ option.detail }}
             </span>
@@ -172,9 +216,17 @@ onBeforeUnmount(stopKey)
   margin-right: calc(var(--u) * 18);
 }
 
-.options__label {
+.options__text {
   flex: 1;
   min-width: 0;
+}
+
+.options__hint {
+  display: block;
+  margin-top: calc(var(--u) * 4);
+  font-size: calc(var(--u) * 22);
+  font-weight: 400;
+  opacity: 0.7;
 }
 
 .options__detail {

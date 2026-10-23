@@ -28,6 +28,7 @@ const VIEWER = new Set([
   'GET /api/home',
   'GET /api/catalog/search',
   'GET /api/catalog/trending',
+  'GET /api/catalog/backdrops',
   'GET /api/catalog/titles/:id',
   'GET /api/catalog/titles/:id/extras',
   'GET /api/catalog/titles/:id/seasons/:number',

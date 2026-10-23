@@ -29,7 +29,7 @@ import {
 } from './mappers.ts'
 
 export { fetchTmdbImage, TmdbError } from './client.ts'
-export { getHomeRows } from './home.ts'
+export { getHomeRows, getTrendingBackdrops } from './home.ts'
 export { getTitleIdentity } from './identity.ts'
 export type { TitleIdentity, TitleName, TitleNameKind } from './identity.ts'
 

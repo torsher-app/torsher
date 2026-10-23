@@ -174,6 +174,21 @@ export interface CatalogTrendingResponseInput {
   items: CardInput[];
 }
 
+export interface BackdropInput {
+  id: string;
+  title: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  year?: number;
+  backdrop: string;
+}
+
+export interface CatalogBackdropsResponseInput {
+  items: BackdropInput[];
+}
+
 export interface CollectionInput {
   id: string;
   name: string;
@@ -616,6 +631,10 @@ export interface TitleSourcesInput {
   top: string[];
   candidates: SourceCandidateInput[];
   voices: VoiceOptionInput[];
+  query: {
+    current: string | null;
+    suggestions: string[];
+  };
   indexers: {
     total: number;
     failed: {
@@ -681,6 +700,11 @@ export interface OpenTitleInput {
    * @maxLength 64
    */
   candidateId: string;
+  /**
+   * @minLength 1
+   * @maxLength 200
+   */
+  query?: string;
 }
 
 export interface TitleOpenInput {
@@ -1674,6 +1698,21 @@ export interface CatalogTrendingResponse {
   items: Card[];
 }
 
+export interface Backdrop {
+  id: string;
+  title: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  year?: number;
+  backdrop: string;
+}
+
+export interface CatalogBackdropsResponse {
+  items: Backdrop[];
+}
+
 export interface Collection {
   id: string;
   name: string;
@@ -2116,6 +2155,10 @@ export interface TitleSources {
   top: string[];
   candidates: SourceCandidate[];
   voices: VoiceOption[];
+  query: {
+    current: string | null;
+    suggestions: string[];
+  };
   indexers: {
     total: number;
     failed: {
@@ -2181,6 +2224,11 @@ export interface OpenTitle {
    * @maxLength 64
    */
   candidateId: string;
+  /**
+   * @minLength 1
+   * @maxLength 200
+   */
+  query?: string;
 }
 
 export interface TitleOpen {
@@ -3036,6 +3084,8 @@ export type GetCatalogTitleExtrasError = MessageResponse;
 
 export type GetCatalogTrendingError = MessageResponse;
 
+export type GetCatalogBackdropsError = MessageResponse;
+
 export type GetHomeError = MessageResponse;
 
 export type GetIndexersError = MessageResponse;
@@ -3798,6 +3848,31 @@ export class Api<
         format: "json",
         ...params,
       }),
+
+    /**
+     * No description
+     *
+     * @tags Catalog
+     * @name GetCatalogBackdrops
+     * @request GET:/api/catalog/backdrops
+     */
+    getCatalogBackdrops: (
+      query?: {
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<CatalogBackdropsResponse, GetCatalogBackdropsError>({
+        path: `/api/catalog/backdrops`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
   };
   home = {
     /**
@@ -4002,6 +4077,11 @@ export class Api<
         episode?: string;
         refresh?: "1";
         all?: "1";
+        /**
+         * @minLength 1
+         * @maxLength 200
+         */
+        query?: string;
       },
       params: RequestParams = {},
     ) =>

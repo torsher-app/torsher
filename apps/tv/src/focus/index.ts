@@ -86,8 +86,9 @@ export function createFocus(options: FocusOptions) {
     el.dispatchEvent(new CustomEvent(LONG_PRESS_EVENT, { bubbles: true }))
   }
 
+  // Короткое нажатие — то же, что OK движка: тихий фокус сначала показывается
   const press = createLongPress<HTMLElement>({
-    click: el => el.click(),
+    click: () => engine.enter(),
     long: longPress,
   })
 

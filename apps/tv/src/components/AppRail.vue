@@ -10,7 +10,7 @@ import FocusSection from './FocusSection.vue'
 import ProfileAvatar from './ProfileAvatar.vue'
 
 export type RailItemId
-  = 'search' | 'home' | 'movies' | 'series' | 'mine' | 'about'
+  = 'search' | 'home' | 'movies' | 'series' | 'mine' | 'settings' | 'about'
 
 const props = defineProps<{
   current: RailItemId
@@ -41,12 +41,16 @@ const main = computed<RailItem[]>(() => [
   { id: 'mine', icon: 'mine', label: t('nav.mine'), path: '/mine' },
 ])
 
-const about = computed<RailItem>(() => ({
-  id: 'about',
-  icon: 'about',
-  label: t('common.about'),
-  path: '/about',
-}))
+// Внизу, под профилем: настройки этого устройства и «О программе»
+const bottom = computed<RailItem[]>(() => [
+  {
+    id: 'settings',
+    icon: 'settings',
+    label: t('nav.settings'),
+    path: '/settings',
+  },
+  { id: 'about', icon: 'about', label: t('common.about'), path: '/about' },
+])
 
 function select(item: RailItem) {
   if (item.id !== props.current)
@@ -55,10 +59,28 @@ function select(item: RailItem) {
     focus.activate(props.content)
 }
 
+// Фокус уже в рейле: шаги внутри него — не вход
+let inside = false
+
 // Раскрывается только от пульта и клавиатуры: под указкой раскрытый рейл
 // перекрыл бы контент и расширил зону под курсором, и закрыть его было бы нельзя
 const stopFocus = focus.onFocus((el, via) => {
-  open.value = via === 'nav' && !!root.value?.contains(el)
+  const within = !!root.value?.contains(el)
+  const entered = within && !inside
+
+  inside = within
+  open.value = via === 'nav' && within
+
+  // Вход в рейл с пульта — на текущий раздел, как в Google TV и Netflix,
+  // а не на запомненный или первый пункт
+  if (entered && via === 'nav') {
+    const current = root.value?.querySelector<HTMLElement>(
+      '.rail__item--current',
+    )
+
+    if (current && current !== el)
+      focus.focusOn(current, via)
+  }
 })
 
 // DOM-фокус ушёл мимо движка (клик в поле ввода)
@@ -118,14 +140,16 @@ onBeforeUnmount(stopFocus)
         <span class="rail__label">{{ session.profile.name }}</span>
       </button>
       <button
+        v-for="item in bottom"
+        :key="item.id"
         v-focusable
         class="rail__item"
-        :class="{ 'rail__item--current': about.id === current }"
+        :class="{ 'rail__item--current': item.id === current }"
         type="button"
-        @click="select(about)"
+        @click="select(item)"
       >
-        <AppIcon :name="about.icon" />
-        <span class="rail__label">{{ about.label }}</span>
+        <AppIcon :name="item.icon" />
+        <span class="rail__label">{{ item.label }}</span>
       </button>
     </FocusSection>
   </nav>

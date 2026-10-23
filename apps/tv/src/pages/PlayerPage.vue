@@ -15,6 +15,7 @@ import { useRouter } from 'vue-router'
 import PlayerBuffering from '../components/player/PlayerBuffering.vue'
 import PlayerLamp from '../components/player/PlayerLamp.vue'
 import PlayerOsd from '../components/player/PlayerOsd.vue'
+import PlayerPauseScreen from '../components/player/PlayerPauseScreen.vue'
 import PlayerPrompt from '../components/player/PlayerPrompt.vue'
 import PlayerStage from '../components/player/PlayerStage.vue'
 import AppIcon from '../components/AppIcon.vue'
@@ -38,6 +39,7 @@ import {
   bufferedSeconds,
   bufferingStep,
   byteOffset,
+  canDimPause,
   canRetry,
   clampTime,
   endedEarly,
@@ -90,13 +92,17 @@ const { data: art } = useResource<TitleDetails>(
     ),
 )
 const episodeName = ref('')
+const episodeOverview = ref('')
 
 if (props.titleId && props.season && props.episode) {
   loadSeason(props.titleId, Number(props.season), language.value)
     .then((details) => {
-      episodeName.value
-        = details.episodes.find(item => item.number === Number(props.episode))
-          ?.title ?? ''
+      const found = details.episodes.find(
+        item => item.number === Number(props.episode),
+      )
+
+      episodeName.value = found?.title ?? ''
+      episodeOverview.value = found?.overview ?? ''
     })
     .catch(() => {
       // Без названия серии — только номер
@@ -193,6 +199,15 @@ const knownDuration = computed(() =>
 
 const osd = usePlayerOsd({
   canAutoHide: () => !paused.value && !panel.value,
+  canDim: () =>
+    canDimPause({
+      phase: phase.value,
+      paused: paused.value,
+      restarting: restarting.value,
+      panelOpen: !!panel.value,
+      // Удержанную при повторе ошибку отсекают `restarting` и фаза старта
+      error: player.status.value === 'error',
+    }),
   position: () => position.value,
   duration: () => knownDuration.value,
   // OSD мог появиться вместе с переходом в `playing`: таймлайн ещё не в DOM
@@ -430,6 +445,13 @@ function onKey(action: KeyAction, event: KeyboardEvent) {
       return false
 
     exit()
+    return true
+  }
+
+  // Затемнённая пауза: первое нажатие только возвращает OSD с прежним фокусом.
+  // Медиакнопки — явное действие и работают сразу
+  if (osd.dimmed.value && action.type !== 'media') {
+    osd.wake()
     return true
   }
 
@@ -875,6 +897,12 @@ function onPointer(event: MouseEvent) {
     return
   }
 
+  // Клик по затемнённой паузе, как и клавиша, только возвращает OSD
+  if (osd.dimmed.value) {
+    osd.wake()
+    return
+  }
+
   osd.show()
 
   const target = event.target as Element | null
@@ -1095,6 +1123,15 @@ onBeforeUnmount(() => {
       <!-- eslint-disable-next-line vue/no-v-html -->
       <span class="player__cue" v-html="tracks.subtitleHtml.value" />
     </p>
+
+    <PlayerPauseScreen
+      v-if="playback && phase === 'playing' && !showsError"
+      :visible="osd.dimmed.value"
+      :title="stageTitle"
+      :logo="art?.logo"
+      :subtitle="artSubtitle"
+      :overview="episodeOverview || art?.overview || ''"
+    />
 
     <FocusSection
       name="player-back"
