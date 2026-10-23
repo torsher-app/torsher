@@ -290,6 +290,9 @@ importers:
       '@torsher/i18n':
         specifier: workspace:*
         version: link:../../packages/i18n
+      '@torsher/release-parser':
+        specifier: workspace:*
+        version: link:../../packages/release-parser
       '@torsher/tokens':
         specifier: workspace:*
         version: link:../../packages/tokens

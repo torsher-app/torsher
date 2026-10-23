@@ -18,6 +18,15 @@ body {
   box-sizing: border-box;
 }
 
+/*
+ * В стилях браузера до Chromium 133 у кнопки align-items: flex-start: строки
+ * кнопки-колонки сжимаются по тексту, и прижатое вправо оказывается посередине.
+ * В свежих браузерах — stretch, его и держим на ТВ
+ */
+button {
+  align-items: stretch;
+}
+
 #app {
   height: 100%;
   overflow-y: auto;
