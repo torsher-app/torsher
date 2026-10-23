@@ -167,10 +167,13 @@ export async function openCandidate(
   titleId: string,
   candidateId: string,
   profileId: string,
+  query?: string,
 ): Promise<OpenResult | undefined> {
+  // Список мог прийти по строке зрителя: кандидат — в её поиске
   const sources = await getTitleSources(titleId, {
     allSeasons: true,
     profileId,
+    query,
   })
 
   if (!sources)

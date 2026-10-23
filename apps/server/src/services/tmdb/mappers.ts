@@ -1,4 +1,5 @@
 import type {
+  Backdrop,
   Card,
   Person,
   SeasonDetails,
@@ -120,6 +121,19 @@ export function searchResultToCard(result: TmdbMultiResult): Card | undefined {
   }
 
   return undefined
+}
+
+/** Кадр тайтла из списка TMDB для заставки витрины; без бэкдропа — нет. */
+export function listResultToBackdrop(
+  result: TmdbListResult,
+  type?: TmdbMediaType,
+): Backdrop | undefined {
+  const card = listResultToCard(result, type)
+  const backdrop = imageUrl(BACKDROP_SIZE, result.backdrop_path)
+
+  return card && backdrop
+    ? { id: card.id, title: card.title, year: card.year, backdrop }
+    : undefined
 }
 
 /**

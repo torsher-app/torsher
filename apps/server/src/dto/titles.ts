@@ -48,6 +48,8 @@ export const titleSourcesQuery = z.object({
   refresh: z.enum(['1']).optional(),
   // Раздачи всех сезонов сериала (экран «Источники»): сезон и серия не учитываются
   all: z.enum(['1']).optional(),
+  // «Уточнить запрос»: искать эту строку вместо названий из TMDB
+  query: z.string().trim().min(1).max(200).optional(),
 })
 
 export const voiceRef = z
@@ -139,6 +141,12 @@ export const titleSources = z
     // Все кандидаты по убыванию счёта
     candidates: z.array(sourceCandidate),
     voices: z.array(voiceOption),
+    query: z.object({
+      // Строка зрителя, по которой искали; null — автоматический поиск
+      current: z.string().nullable(),
+      // Готовые строки: русское и оригинальное название, с годом и без
+      suggestions: z.array(z.string()),
+    }),
     indexers: z.object({
       total: z.number(),
       failed: z.array(
@@ -188,7 +196,11 @@ export const watchErrorResponse = z
   .meta({ id: 'watchErrorResponse' })
 
 export const openTitle = z
-  .object({ candidateId: z.string().min(1).max(64) })
+  .object({
+    candidateId: z.string().min(1).max(64),
+    // Строка, по которой показан список: кандидат ищется в её поиске
+    query: z.string().trim().min(1).max(200).optional(),
+  })
   .meta({ id: 'openTitle' })
 
 export const titleOpen = z

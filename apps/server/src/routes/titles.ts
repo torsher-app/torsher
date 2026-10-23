@@ -109,6 +109,10 @@ export function toSourcesResponse(sources: TitleSources) {
       toCandidate(release, release.id === sources.lastWatchedId),
     ),
     voices: sources.voices,
+    query: {
+      current: sources.query ?? null,
+      suggestions: sources.querySuggestions,
+    },
     indexers: {
       total: sources.indexerCount,
       failed: sources.failed.map(({ name, kind }) => ({ name, kind })),
@@ -136,7 +140,7 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
       },
     },
     async (request, reply) => {
-      const { season, episode, refresh, all } = request.query
+      const { season, episode, refresh, all, query } = request.query
 
       try {
         const sources = await getTitleSources(request.params.id, {
@@ -145,6 +149,7 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
           refresh: refresh === '1',
           allSeasons: all === '1',
           profileId: request.profileId,
+          query,
         })
 
         if (!sources)
@@ -318,6 +323,7 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
           request.params.id,
           request.body.candidateId,
           request.profileId,
+          request.body.query,
         )
       }
       catch (err) {

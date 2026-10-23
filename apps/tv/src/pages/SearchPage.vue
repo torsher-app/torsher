@@ -20,6 +20,7 @@ import { useCatalogSearch } from '../composables/useCatalogSearch.ts'
 import { useStackScroll } from '../composables/useStackScroll.ts'
 import { useTrending } from '../composables/useTrending.ts'
 import { useFocus } from '../focus/index.ts'
+import { openedForward } from '../lib/navigation.ts'
 import { addRecent, loadRecent, saveRecent } from '../lib/recentSearches.ts'
 import { stackOffset } from '../lib/rowStack.ts'
 
@@ -146,8 +147,15 @@ function open(card: Card) {
   router.push(`/title/${card.id}`)
 }
 
-// Возврат из карточки: фокус на ту карточку, с которой ушли
+// Открыли поиск заново (рейл) — фокус в поле, как в первый раз; вернулись из
+// карточки по Back — на ту карточку, с которой ушли
 onActivated(() => {
+  if (openedForward(router.options.history.state)) {
+    focus.activate('search-input')
+
+    return
+  }
+
   if (!focus.activate('search-results'))
     focus.activate('search-input')
 })

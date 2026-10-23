@@ -382,7 +382,10 @@ onBeforeUnmount(() => {
               <span class="file__body">
                 <span class="file__title">{{ titleOf(file) }}</span>
                 <span class="file__detail">{{ detailOf(file) }}</span>
-                <span class="file__name">{{ file.name }}</span>
+                <!-- Без серии TMDB имя файла уже в заголовке: второй раз не пишем, строка держит высоту -->
+                <span class="file__name">{{
+                  titleOf(file) === file.name ? "\u00A0" : file.name
+                }}</span>
               </span>
               <span class="file__size">{{ sizeLabel(file.size) }}</span>
             </button>

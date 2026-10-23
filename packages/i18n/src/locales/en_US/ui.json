@@ -8,7 +8,8 @@
     "home": "Home",
     "search": "Search",
     "movies": "Movies",
-    "series": "Series"
+    "series": "Series",
+    "settings": "Settings"
   },
   "search": {
     "title": "Search",
@@ -74,7 +75,15 @@
     "left": "{n} min left",
     "history": "You watched: {line}",
     "okMark": "OK — mark as watched",
-    "okUnmark": "OK — clear watched mark"
+    "okUnmark": "OK — clear watched mark",
+    "episodeList": {
+      "open": "All episodes",
+      "count": "{n} episode | {n} episodes",
+      "detail": "All episodes of the season as a list",
+      "okOpen": "OK — open the episode list",
+      "pickSeason": "Other season",
+      "seasonPanel": "Season"
+    }
   },
   "watch": {
     "searching": "Searching for releases…",
@@ -132,7 +141,7 @@
       },
       "nothing": {
         "title": "No releases found",
-        "text": "The indexers found nothing for this title's names. Try searching again later."
+        "text": "The indexers found nothing for this title's names. Refine the query or try searching again later."
       },
       "failed": {
         "title": "Indexers did not respond",
@@ -141,6 +150,10 @@
       "filtered": {
         "title": "No releases match these filters",
         "text": "Pick another voice-over or quality."
+      },
+      "nothingQuery": {
+        "title": "Nothing found for this query",
+        "text": "The indexers found nothing for “{query}”. Try another title or go back to automatic search."
       }
     },
     "sortBest": "Recommended",
@@ -156,6 +169,7 @@
     "history": "You watched: {line}",
     "historyEmpty": "No watch history",
     "connecting": "Connecting to the release…",
+    "controlQuery": "Query: {value}",
     "controlSort": "Sort: {value}",
     "controlSeason": "Season: {value}",
     "controlVoice": "Voice-over: {value}",
@@ -165,10 +179,19 @@
     "allQualities": "Any quality",
     "resetFilters": "Reset filters",
     "panel": {
+      "query": "Refine query",
       "sort": "Sort",
       "season": "Season",
       "voice": "Voice-over",
       "quality": "Quality"
+    },
+    "query": {
+      "action": "Refine query",
+      "auto": "Automatic",
+      "autoHint": "By titles from TMDB: localized, original and others",
+      "autoValue": "auto",
+      "placeholder": "Enter a title",
+      "note": "Type your own title and press OK, or pick an option below"
     }
   },
   "files": {
@@ -292,6 +315,15 @@
     "server": "Server",
     "changeServer": "Change server"
   },
+  "settings": {
+    "title": "Settings",
+    "device": "This device",
+    "deviceNote": "Stored on this TV and the same for every profile",
+    "screensaver": "Screensaver",
+    "screensaverHint": "Movie stills and a clock when idle, so OLED screens don’t burn in",
+    "screensaverOff": "Off",
+    "screensaverAfter": "After {n} min"
+  },
   "player": {
     "timeline": "Position {position}. OK pauses, left and right seek",
     "peers": "{n} peer | {n} peers",
@@ -369,7 +401,8 @@
       }
     },
     "ahead": "{size} ahead",
-    "episodeOf": "Season {season} · Episode {episode}"
+    "episodeOf": "Season {season} · Episode {episode}",
+    "youAreWatching": "You're watching"
   },
   "languages": {
     "rus": "Russian",

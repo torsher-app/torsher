@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, useSlots } from 'vue'
 import { NATIVE_WHEEL_ATTRIBUTE, useFocus } from '../focus/index.ts'
 import AppIcon from './AppIcon.vue'
 import FocusSection from './FocusSection.vue'
@@ -7,6 +7,8 @@ import FocusSection from './FocusSection.vue'
 export interface PanelOption {
   id: string
   label: string
+  /** Вторая строка пункта, приглушённая */
+  hint?: string
   selected: boolean
 }
 
@@ -25,6 +27,20 @@ const emit = defineEmits<{
 }>()
 
 const focus = useFocus()
+const slots = useSlots()
+const panel = ref<HTMLElement>()
+
+// Панель открывается на выбранном пункте: шаг вниз от него — соседнее значение
+onMounted(() => {
+  nextTick(() => {
+    const selected = panel.value?.querySelector<HTMLElement>(
+      '.options__row[aria-pressed="true"]',
+    )
+
+    if (selected)
+      focus.focusOn(selected)
+  })
+})
 
 const stopKey = focus.onKey((action) => {
   if (action.type !== 'back')
@@ -42,6 +58,7 @@ onBeforeUnmount(stopKey)
   <div class="options">
     <div class="options__scrim" @click="emit('close')" />
     <aside
+      ref="panel"
       class="options__panel"
       :aria-label="title"
       :[NATIVE_WHEEL_ATTRIBUTE]="true"
@@ -49,7 +66,20 @@ onBeforeUnmount(stopKey)
       <h2 class="options__title">
         {{ title }}
       </h2>
-      <FocusSection name="options-panel" class="options__list" autofocus>
+      <!-- Над списком — своя секция (поле ввода): вверх из списка — в неё -->
+      <FocusSection
+        v-if="slots.top"
+        name="options-top"
+        :edges="{ down: 'options-panel' }"
+      >
+        <slot name="top" />
+      </FocusSection>
+      <FocusSection
+        name="options-panel"
+        class="options__list"
+        :edges="slots.top ? { up: 'options-top' } : undefined"
+        autofocus
+      >
         <button
           v-for="option in options"
           :key="option.id"
@@ -62,7 +92,12 @@ onBeforeUnmount(stopKey)
           <span class="options__check">
             <AppIcon v-if="option.selected" name="check" />
           </span>
-          {{ option.label }}
+          <span class="options__text">
+            {{ option.label }}
+            <span v-if="option.hint" class="options__hint">{{
+              option.hint
+            }}</span>
+          </span>
         </button>
       </FocusSection>
     </aside>
@@ -148,6 +183,18 @@ onBeforeUnmount(stopKey)
   width: calc(var(--u) * 32);
   height: calc(var(--u) * 32);
   margin-right: calc(var(--u) * 18);
+}
+
+.options__text {
+  min-width: 0;
+}
+
+.options__hint {
+  display: block;
+  margin-top: calc(var(--u) * 4);
+  font-size: calc(var(--u) * 22);
+  font-weight: 400;
+  opacity: 0.7;
 }
 
 .options__check :deep(.icon) {

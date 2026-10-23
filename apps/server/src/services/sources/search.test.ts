@@ -93,6 +93,54 @@ describe('searchReleases', () => {
     ])
     expect(fetchMock).not.toHaveBeenCalled()
   })
+
+  it('строка зрителя: один текстовый запрос, раздача под этим названием не отсекается', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(`<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:torznab="http://torznab.com/schemas/2015/feed">
+  <channel>
+    <item>
+      <title>Harbour Tales S02 1080p WEB-DL</title>
+      <torznab:attr name="seeders" value="3" />
+      <torznab:attr name="infohash" value="${'4'.repeat(40)}" />
+    </item>
+  </channel>
+</rss>`),
+    )
+
+    const withIds = {
+      ...indexer('a', 'a.indexer.example'),
+      caps: {
+        ...indexer('a', 'a.indexer.example').caps,
+        tvSearch: { available: true, params: ['q', 'tmdbid'] },
+      },
+    }
+    const outcome = await searchReleases(
+      { identity, aliases, season: 2, query: ' Harbour Tales 2023 ' },
+      [withIds],
+    )
+    const urls = fetchMock.mock.calls.map(([input]) => new URL(String(input)))
+
+    expect(
+      urls.map(url => [url.searchParams.get('t'), url.searchParams.get('q')]),
+    ).toEqual([['search', 'Harbour Tales 2023']])
+    expect(outcome.releases.map(release => release.title)).toEqual([
+      'Harbour Tales S02 1080p WEB-DL',
+    ])
+  })
+
+  it('без строки зрителя чужое название отсекается', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(`<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel><item><title>Harbour Tales S02 1080p WEB-DL</title></item></channel></rss>`),
+    )
+
+    const outcome = await searchReleases({ identity, aliases, season: 2 }, [
+      indexer('a', 'a.indexer.example'),
+    ])
+
+    expect(outcome.releases).toEqual([])
+  })
 })
 
 describe('mergeHits', () => {

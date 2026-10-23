@@ -2,7 +2,7 @@ import type { Direction } from './geometry.ts'
 import type { FocusVia, InputMode } from './inputMode.ts'
 import type { KeyAction } from './keys.ts'
 import { findInColumn, findNext } from './geometry.ts'
-import { createInputModeTracker } from './inputMode.ts'
+import { createInputModeTracker, isQuietFocus } from './inputMode.ts'
 
 export type SectionEdges = Partial<Record<Direction, string>>
 
@@ -90,6 +90,8 @@ export function createFocusEngine(options: FocusEngineOptions = {}) {
   const keyHandlers = new Set<KeyHandler>()
   const input = createInputModeTracker(options.onModeChange)
   let active: Section | undefined
+  // Элемент выбран, но DOM-фокуса и подсветки нет (`isQuietFocus`)
+  let quiet = false
 
   function section(name: string) {
     let found = sections.get(name)
@@ -109,7 +111,16 @@ export function createFocusEngine(options: FocusEngineOptions = {}) {
   function focusElement(target: Section, el: HTMLElement, via: FocusVia) {
     active = target
     target.last = el
-    el.focus({ preventScroll: true })
+    quiet = isQuietFocus(
+      input.mode,
+      via,
+      el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement,
+    )
+
+    if (!quiet)
+      el.focus({ preventScroll: true })
+    else if (document.activeElement instanceof HTMLElement)
+      document.activeElement.blur()
 
     if (via !== 'pointer' && !target.manualScroll)
       el.scrollIntoView({ block: 'nearest', inline: 'nearest' })
@@ -233,7 +244,33 @@ export function createFocusEngine(options: FocusEngineOptions = {}) {
    */
   function key(direction: Direction) {
     input.arrow()
+
+    // Первая стрелка после тихого фокуса показывает его, а не шагает: что
+    // выбрано, зритель ещё не видел
+    if (quiet && active?.last) {
+      focusElement(active, active.last, 'nav')
+
+      return
+    }
+
     move(direction)
+  }
+
+  /** OK с пульта или Enter: тихий фокус сначала показывается, а не нажимается. */
+  function enter() {
+    const current = active?.last
+
+    if (!current)
+      return
+
+    if (quiet) {
+      input.arrow()
+      focusElement(active!, current, 'nav')
+
+      return
+    }
+
+    current.click()
   }
 
   /**
@@ -247,7 +284,7 @@ export function createFocusEngine(options: FocusEngineOptions = {}) {
     const el = target.closest<HTMLElement>('[data-focusable]')
     const name = el && owners.get(el)
 
-    if (!el || !name || el === active?.last)
+    if (!el || !name || (el === active?.last && !quiet))
       return
 
     focusElement(section(name), el, 'pointer')
@@ -264,7 +301,7 @@ export function createFocusEngine(options: FocusEngineOptions = {}) {
     const el = target.closest<HTMLElement>('[data-focusable]')
     const name = el && owners.get(el)
 
-    if (!el || !name || el === active?.last)
+    if (!el || !name || (el === active?.last && !quiet))
       return
 
     focusElement(section(name), el, 'pointer')
@@ -336,6 +373,7 @@ export function createFocusEngine(options: FocusEngineOptions = {}) {
     focusOn,
     move,
     key,
+    enter,
     pointerMove,
     pointerOver,
     pointerHidden,
