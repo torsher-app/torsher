@@ -1277,6 +1277,7 @@ export interface MediaSubtitleTrackInput {
   external: boolean;
   forced: boolean;
   default: boolean;
+  burnIn: boolean;
 }
 
 export interface MediaInfoInput {
@@ -1310,6 +1311,12 @@ export interface PlaybackInput {
   reasons: string[];
   transcode: {
     audio: "copy" | "aac";
+    video: {
+      encoder: "software" | "vaapi" | "nvenc";
+      width: number;
+      height: number;
+      toneMapping: "gpu" | "software" | null;
+    } | null;
   } | null;
 }
 
@@ -2063,6 +2070,32 @@ export interface PinErrorResponseInput {
    * @max 9007199254740991
    */
   retryAfter: number | null;
+}
+
+export interface GpuEncoderInput {
+  encoder: "vaapi" | "nvenc";
+  device: string | null;
+  name: string | null;
+  lowPower: boolean;
+  decode: string[];
+}
+
+export interface PlaybackSettingsInput {
+  accel: "auto" | "software";
+  encoder: "software" | "vaapi" | "nvenc" | null;
+  gpus: GpuEncoderInput[];
+  software: boolean;
+  softwareFps: number | null;
+  softwareMaxHeight: number;
+  gpuToneMapping: boolean;
+  softwareToneMapping: boolean;
+  toneMappingFps: number | null;
+  toneMappingMaxHeight: number;
+  checkedAt: string;
+}
+
+export interface UpdatePlaybackSettingsInput {
+  accel: "auto" | "software";
 }
 
 export interface WizardStateInput {
@@ -3447,6 +3480,7 @@ export interface MediaSubtitleTrack {
   external: boolean;
   forced: boolean;
   default: boolean;
+  burnIn: boolean;
 }
 
 export interface MediaInfo {
@@ -3480,6 +3514,12 @@ export interface Playback {
   reasons: string[];
   transcode: {
     audio: "copy" | "aac";
+    video: {
+      encoder: "software" | "vaapi" | "nvenc";
+      width: number;
+      height: number;
+      toneMapping: "gpu" | "software" | null;
+    } | null;
   } | null;
 }
 
@@ -4235,6 +4275,32 @@ export interface PinErrorResponse {
   retryAfter: number | null;
 }
 
+export interface GpuEncoder {
+  encoder: "vaapi" | "nvenc";
+  device: string | null;
+  name: string | null;
+  lowPower: boolean;
+  decode: string[];
+}
+
+export interface PlaybackSettings {
+  accel: "auto" | "software";
+  encoder: "software" | "vaapi" | "nvenc" | null;
+  gpus: GpuEncoder[];
+  software: boolean;
+  softwareFps: number | null;
+  softwareMaxHeight: number;
+  gpuToneMapping: boolean;
+  softwareToneMapping: boolean;
+  toneMappingFps: number | null;
+  toneMappingMaxHeight: number;
+  checkedAt: string;
+}
+
+export interface UpdatePlaybackSettings {
+  accel: "auto" | "software";
+}
+
 export interface WizardState {
   active: boolean;
   step: "storage" | "network" | "sources" | "done";
@@ -4550,6 +4616,12 @@ export type PostMetadataCheckError = MessageResponse;
 export type PutImdbSettingsError = MessageResponse;
 
 export type PostImdbRefreshError = MessageResponse;
+
+export type GetPlaybackSettingsError = MessageResponse;
+
+export type PutPlaybackSettingsError = MessageResponse;
+
+export type PostPlaybackCheckError = MessageResponse;
 
 export type GetSetupWizardError = MessageResponse;
 
@@ -6903,6 +6975,56 @@ export class Api<
     postImdbRefresh: (params: RequestParams = {}) =>
       this.request<ImdbDatasetStatus, PostImdbRefreshError>({
         path: `/api/settings/metadata/imdb/refresh`,
+        method: "POST",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Settings
+     * @name GetPlaybackSettings
+     * @request GET:/api/settings/playback
+     */
+    getPlaybackSettings: (params: RequestParams = {}) =>
+      this.request<PlaybackSettings, GetPlaybackSettingsError>({
+        path: `/api/settings/playback`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Settings
+     * @name PutPlaybackSettings
+     * @request PUT:/api/settings/playback
+     */
+    putPlaybackSettings: (
+      data: UpdatePlaybackSettingsInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<PlaybackSettings, PutPlaybackSettingsError>({
+        path: `/api/settings/playback`,
+        method: "PUT",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Settings
+     * @name PostPlaybackCheck
+     * @request POST:/api/settings/playback/check
+     */
+    postPlaybackCheck: (params: RequestParams = {}) =>
+      this.request<PlaybackSettings, PostPlaybackCheckError>({
+        path: `/api/settings/playback/check`,
         method: "POST",
         format: "json",
         ...params,

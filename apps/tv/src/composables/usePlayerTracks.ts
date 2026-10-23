@@ -46,13 +46,24 @@ export function usePlayerTracks(
   const subtitle = ref<string | null>(null)
   const media = computed(() => playback.value?.media ?? null)
 
+  // Графические субтитры уже в кадре: реплик для слоя у них нет
+  const burnedIn = (id: string | null) =>
+    !!id && !!media.value?.subtitles.find(track => track.id === id)?.burnIn
+
   watch(playback, (value) => {
     audioStream.value = value?.audioStream ?? null
     subtitle.value = value?.subtitle ?? null
 
-    if (value?.status === 'ready' && value.subtitle)
+    if (
+      value?.status === 'ready'
+      && value.subtitle
+      && !burnedIn(value.subtitle)
+    ) {
       subtitles.show(value.sessionId, value.subtitle)
-    else subtitles.hide()
+    }
+    else {
+      subtitles.hide()
+    }
   })
 
   function languageName(code: string | null) {
@@ -96,6 +107,7 @@ export function usePlayerTracks(
   function subtitleDetail(track: MediaSubtitleTrack) {
     return [
       track.external ? t('player.subtitleFile') : null,
+      track.burnIn ? t('player.subtitleBurnIn') : null,
       track.forced ? t('player.forced') : null,
       codecLabel(track.codec),
     ]
@@ -216,16 +228,25 @@ export function usePlayerTracks(
     if (!media.value || !current)
       return platform.selectSubtitles(id)
 
-    if (id === OFF) {
+    const track = media.value.subtitles.find(item => item.id === id)
+
+    if ((id !== OFF && !track) || id === (subtitle.value ?? OFF))
+      return
+
+    // Прожиг в кадр включает и снимает только новый поток
+    if (burnedIn(subtitle.value) || track?.burnIn) {
+      restart({
+        audioStream: audioStream.value ?? undefined,
+        subtitle: id === OFF ? undefined : id,
+      })
+      return
+    }
+
+    if (id === OFF || !track) {
       subtitles.hide()
       subtitle.value = null
       return
     }
-
-    const track = media.value.subtitles.find(item => item.id === id)
-
-    if (!track || id === subtitle.value)
-      return
 
     // Встроенные субтитры при прямом воспроизведении вынимает только
     // перепаковка: поток перезапускается с ними
@@ -261,9 +282,15 @@ export function usePlayerTracks(
     }
   }
 
+  /** Есть графические субтитры: их выбор перезапускает поток */
+  const hasBurnIn = computed(
+    () => !!media.value?.subtitles.some(track => track.burnIn),
+  )
+
   return {
     refresh,
     selection,
+    hasBurnIn,
     audioOptions,
     subtitleOptions,
     audioLabel,

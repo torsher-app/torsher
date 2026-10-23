@@ -53,6 +53,16 @@ Everything except the values below is set in the panel.
 | `ENGINE_PEER_PORT` | any free port | Port the torrent engine accepts peer connections on; publish it to be reachable from outside |
 | `LOG_LEVEL` | level chosen in the panel, `info` | Log level: `error`, `warn`, `info` or `debug`. When set, the **Verbose logs** switch in the panel is unavailable |
 
+### Hardware transcoding
+
+When a player can't decode a video (old Xvid/DivX AVI files, HEVC or 10-bit video in a browser, HDR, image subtitles), the server transcodes it to H.264 on the fly. It uses a GPU when the container can see one and the CPU otherwise. **Settings → Playback** in the panel shows what was found.
+
+- **Intel and AMD (VAAPI).** Uncomment `devices: /dev/dri` in the compose file. Intel graphics from Tiger Lake onwards (including N100 and N150) encode in low-power mode only; this needs the GuC/HuC firmware on the host (`firmware-intel-graphics` on Debian, `linux-firmware` elsewhere) and, on Alder Lake-N, Linux 6.2 or later.
+- **NVIDIA (NVENC).** Install the NVIDIA driver and the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) on the host and uncomment the NVIDIA block in the compose file.
+- **CPU.** Always available. The server measures the CPU on start and scales larger video down to 1080p, 720p or 576p to keep up with playback.
+
+Docker Desktop on macOS and Windows does not pass a GPU into Linux containers: transcoding runs on the CPU there.
+
 ### Data
 
 Everything lives in the `/data` volume. `/data/torrents` holds downloads, `/data/library` holds the files you keep, laid out by title (`movies/Title (2010) [tmdbid-27205]/…`, `shows/Title (2008) [tmdbid-1396]/Season 01/…`) so Jellyfin, Plex and Kodi can read it too. A kept file is hard-linked from downloads, so it keeps seeding without taking extra space; this needs both folders in one volume. Otherwise the file is copied, and the panel warns about it. `/data/db` holds the database and the key files (`secret.key`, `session.key`): back it up together. Losing `secret.key` makes the saved indexer API keys unreadable, and you will have to enter them again.

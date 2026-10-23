@@ -73,9 +73,18 @@ RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
 FROM node:${NODE_VERSION}-trixie-slim
 
 # ca-certificates — для движка: Node несёт свои корневые сертификаты, а движок
-# на Go берёт системные (HTTPS-трекеры)
+# на Go берёт системные (HTTPS-трекеры).
+# Драйверы видеокарт для перекодирования — свободные, из main: VAAPI Intel
+# (сборка Free Kernel, есть только под amd64) и AMD (mesa), Vulkan для HDR → SDR
+# в libplacebo. Программный Vulkan (lavapipe) убран: на нём libplacebo
+# считал бы процессором, а детект принял бы его за видеокарту. Драйвер NVIDIA
+# в контейнер монтирует NVIDIA Container Toolkit хоста
+ARG TARGETARCH
 RUN apt-get update \
  && apt-get install -y --no-install-recommends tini ca-certificates ffmpeg \
+      mesa-va-drivers mesa-vulkan-drivers \
+      $([ "$TARGETARCH" = amd64 ] && echo intel-media-va-driver) \
+ && rm -f /usr/share/vulkan/icd.d/lvp_icd*.json \
  && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production \
@@ -86,6 +95,8 @@ ENV NODE_ENV=production \
     ENGINE_PATH=/usr/local/bin/torsher-engine \
     FFMPEG_PATH=/usr/bin/ffmpeg \
     FFPROBE_PATH=/usr/bin/ffprobe \
+    NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=compute,video,utility,graphics \
     PUID=1000 \
     PGID=1000
 

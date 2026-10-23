@@ -27,7 +27,11 @@ import { queueMatch, queueUnmatched } from './services/library/match.ts'
 import { onFolderScanned, scanAllFolders } from './services/library/scan.ts'
 import { watchFolder } from './services/library/watch.ts'
 import { RequestLogController } from './services/logs/requestLog.ts'
-import { cleanTranscodes, stopAllSessions } from './services/media/index.ts'
+import {
+  cleanTranscodes,
+  mediaAccel,
+  stopAllSessions,
+} from './services/media/index.ts'
 import { startCheck } from './services/net/check.ts'
 import { startImdbSchedule } from './services/ratings/imdb/index.ts'
 import { purgeExpiredExternalIds } from './services/ratings/index.ts'
@@ -107,6 +111,12 @@ onFolderScanned((folder, library, result) => {
 })
 void scanAllFolders().then(queueUnmatched)
 setInterval(() => void scanAllFolders(), FOLDER_SCAN_MS).unref()
+
+// Пробы видеокарты и замер процессора — в фоне: первому перекодированию они
+// уже готовы, а прямой просмотр их не ждёт
+mediaAccel().catch(err =>
+  logFor('playback').warn({ err }, 'Acceleration check failed'),
+)
 startImdbSchedule()
 
 const app = createApp(

@@ -272,11 +272,15 @@ const trackOptions = computed(() =>
 )
 
 // Смена дорожки, которую плеер не переключит сам, перезапускает поток
-const tracksHint = computed(() =>
-  panel.value === 'audio' && playback.value?.audioSwitch === 'restart'
-    ? t('player.restartHint')
-    : undefined,
-)
+const tracksHint = computed(() => {
+  if (panel.value === 'audio' && playback.value?.audioSwitch === 'restart')
+    return t('player.restartHint')
+
+  if (panel.value === 'subtitles' && tracks.hasBurnIn.value)
+    return t('player.burnInHint')
+
+  return undefined
+})
 
 // Настройки профиля — вид субтитров и автопереход; скорость живёт до
 // перезапуска витрины и переходит на следующую серию

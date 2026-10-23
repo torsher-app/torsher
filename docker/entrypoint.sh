@@ -26,7 +26,18 @@ if [ "$(id -u)" = 0 ]; then
   # права на chown — тогда решает проверка записи ниже
   chown "$PUID:$PGID" "$data_dir" "$downloads_dir" "$library_dir" 2>/dev/null || true
   chown -R "$PUID:$PGID" "$db_dir" 2>/dev/null || true
-  run_as="setpriv --reuid=$PUID --regid=$PGID --clear-groups"
+  # Устройства видеокарты принадлежат группе хоста (render, video): без неё
+  # перекодирование их не откроет. Группу root не передаём
+  gpu_groups=$(stat -c %g /dev/dri/renderD* /dev/dri/card* 2>/dev/null \
+    | sort -un | grep -vx 0 | paste -sd, - || true)
+
+  if [ -n "$gpu_groups" ]; then
+    groups="--groups=$gpu_groups"
+  else
+    groups="--clear-groups"
+  fi
+
+  run_as="setpriv --reuid=$PUID --regid=$PGID $groups"
   user="$PUID:$PGID"
 else
   run_as=""

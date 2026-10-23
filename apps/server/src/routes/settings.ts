@@ -9,7 +9,13 @@ import {
   updateImdbSettings,
   updateMetadataSettings,
 } from '../dto/net.ts'
+import { playbackSettings, updatePlaybackSettings } from '../dto/media.ts'
 import { requireOwner } from '../middleware/auth.ts'
+import {
+  mediaAccel,
+  recheckAccel,
+  setAccelMode,
+} from '../services/media/index.ts'
 import {
   imdbStatus,
   refreshImdbNow,
@@ -30,6 +36,12 @@ function toMetadataResponse() {
 
 const guardResponses = {
   401: messageResponse,
+}
+
+function toPlaybackResponse(state: Awaited<ReturnType<typeof mediaAccel>>) {
+  const { mode, ...rest } = state
+
+  return { accel: mode, ...rest }
 }
 
 /** Настройки сервера: только сессия аккаунта. Ключи в ответы не попадают */
@@ -129,5 +141,48 @@ export const settingsRoutes: FastifyPluginAsyncZod = async (app) => {
 
       return reply.code(202).send(imdbStatus())
     },
+  )
+
+  app.get(
+    '/playback',
+    {
+      schema: {
+        operationId: 'getPlaybackSettings',
+        tags: ['Settings'],
+        response: { 200: playbackSettings, ...guardResponses },
+      },
+    },
+    async () => toPlaybackResponse(await mediaAccel()),
+  )
+
+  app.put(
+    '/playback',
+    {
+      schema: {
+        operationId: 'putPlaybackSettings',
+        tags: ['Settings'],
+        body: updatePlaybackSettings,
+        response: {
+          200: playbackSettings,
+          400: messageResponse,
+          ...guardResponses,
+        },
+      },
+    },
+    async request =>
+      toPlaybackResponse(await setAccelMode(request.body.accel)),
+  )
+
+  // Новые пробы видеокарты и замер процессора: после смены железа или драйвера
+  app.post(
+    '/playback/check',
+    {
+      schema: {
+        operationId: 'postPlaybackCheck',
+        tags: ['Settings'],
+        response: { 200: playbackSettings, ...guardResponses },
+      },
+    },
+    async () => toPlaybackResponse(await recheckAccel()),
   )
 }
