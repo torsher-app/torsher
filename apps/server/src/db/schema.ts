@@ -80,6 +80,8 @@ export const profileColors = [
   'slate',
 ] as const
 export const profileLanguages = ['ru_RU', 'en_US'] as const
+// Какая оценка видна на постерах витрины: своя, TMDB или IMDb
+export const posterRatingSources = ['none', 'own', 'tmdb', 'imdb'] as const
 
 // Профиль смотрящего: свой прогресс, язык витрины и ограничения. Профиль по
 // умолчанию — первый по `position`, его получают сессия владельца и ТВ,
@@ -96,6 +98,9 @@ export const profiles = sqliteTable('profiles', {
   pinHash: text('pin_hash'),
   // Возраст, с которого тайтлы скрываются на витрине; null — без ограничений
   ageLimit: integer('age_limit'),
+  posterRating: text('poster_rating', { enum: posterRatingSources })
+    .notNull()
+    .default('own'),
   position: integer('position').notNull().default(0),
   createdAt: integer('created_at', { mode: 'timestamp_ms' })
     .notNull()
@@ -416,6 +421,100 @@ export const titleProgress = sqliteTable(
 )
 
 export type TitleProgress = typeof titleProgress.$inferSelect
+
+// Личное о тайтле у профиля: списки, своя оценка и «Брошено». Статус
+// «смотрю / просмотрено / ждём» не хранится — его считают по `title_progress`.
+// Строка без единого признака удаляется
+export const profileTitles = sqliteTable(
+  'profile_titles',
+  {
+    profileId: text('profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    titleId: text('title_id').notNull(),
+    watchlistAt: integer('watchlist_at', { mode: 'timestamp_ms' }),
+    favoriteAt: integer('favorite_at', { mode: 'timestamp_ms' }),
+    // 1–10
+    rating: integer('rating'),
+    ratedAt: integer('rated_at', { mode: 'timestamp_ms' }),
+    // Действует, пока после него нет нового просмотра тайтла
+    droppedAt: integer('dropped_at', { mode: 'timestamp_ms' }),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  table => [
+    primaryKey({ columns: [table.profileId, table.titleId] }),
+    index('profile_titles_watchlist_idx').on(
+      table.profileId,
+      table.watchlistAt,
+    ),
+    index('profile_titles_favorite_idx').on(table.profileId, table.favoriteAt),
+    index('profile_titles_rated_idx').on(table.profileId, table.ratedAt),
+  ],
+)
+
+export type ProfileTitle = typeof profileTitles.$inferSelect
+
+// Подборка — свой список тайтлов, общий на сервер. Видят её все профили,
+// кроме скрытых в `collection_hidden_profiles`
+export const collections = sqliteTable(
+  'collections',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => randomUUID()),
+    name: text('name').notNull(),
+    // Без учёта регистра: «Новогоднее» и «новогоднее» — одна подборка
+    nameKey: text('name_key').notNull(),
+    showOnHome: integer('show_on_home', { mode: 'boolean' })
+      .notNull()
+      .default(true),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  table => [uniqueIndex('collections_name_key_idx').on(table.nameKey)],
+)
+
+export type Collection = typeof collections.$inferSelect
+
+export const collectionTitles = sqliteTable(
+  'collection_titles',
+  {
+    collectionId: text('collection_id')
+      .notNull()
+      .references(() => collections.id, { onDelete: 'cascade' }),
+    titleId: text('title_id').notNull(),
+    addedAt: integer('added_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    addedByProfileId: text('added_by_profile_id').references(
+      () => profiles.id,
+      { onDelete: 'set null' },
+    ),
+  },
+  table => [
+    primaryKey({ columns: [table.collectionId, table.titleId] }),
+    index('collection_titles_added_idx').on(table.collectionId, table.addedAt),
+  ],
+)
+
+export const collectionHiddenProfiles = sqliteTable(
+  'collection_hidden_profiles',
+  {
+    collectionId: text('collection_id')
+      .notNull()
+      .references(() => collections.id, { onDelete: 'cascade' }),
+    profileId: text('profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+  },
+  table => [primaryKey({ columns: [table.collectionId, table.profileId] })],
+)
 
 // `socks5h` — имя хоста разрешает прокси; `http` — CONNECT по имени хоста
 export const netRouteVias = ['direct', 'socks5h', 'http'] as const

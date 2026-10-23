@@ -1,5 +1,9 @@
 import { z } from 'zod'
-import { profileColors, profileLanguages } from '../db/schema.ts'
+import {
+  posterRatingSources,
+  profileColors,
+  profileLanguages,
+} from '../db/schema.ts'
 
 // Возраст, с которого тайтлы скрываются на витрине; сертификации регионов
 // TMDB сводятся к нему (12+, PG-13, FSK 12 → 12, 13, 12)
@@ -22,6 +26,8 @@ export const profile = z
     language: z.enum(profileLanguages).nullable(),
     hasPin: z.boolean(),
     ageLimit: ageLimit.nullable(),
+    // Какая оценка видна на постерах витрины
+    posterRating: z.enum(posterRatingSources),
   })
   .meta({ id: 'profile' })
 
@@ -44,6 +50,7 @@ export const createProfile = z
     color: z.enum(profileColors),
     language: z.enum(profileLanguages).nullable().optional(),
     ageLimit: ageLimit.nullable().optional(),
+    posterRating: z.enum(posterRatingSources).optional(),
     pin: profilePin.optional(),
   })
   .meta({ id: 'createProfile' })
@@ -54,6 +61,7 @@ export const updateProfile = z
     color: z.enum(profileColors).optional(),
     language: z.enum(profileLanguages).nullable().optional(),
     ageLimit: ageLimit.nullable().optional(),
+    posterRating: z.enum(posterRatingSources).optional(),
   })
   .meta({ id: 'updateProfile' })
 

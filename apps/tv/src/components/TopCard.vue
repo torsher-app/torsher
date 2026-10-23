@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import type { Card } from '@torsher/api-client'
+import { openTitleActions } from '../titleActions.ts'
+import PosterRatingBadge from './PosterRatingBadge.vue'
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     card: Card
     rank: number
@@ -11,6 +13,14 @@ withDefaults(
 )
 
 defineEmits<{ select: [] }>()
+
+function openActions() {
+  openTitleActions({
+    id: props.card.id,
+    title: props.card.title,
+    kind: props.card.kind,
+  })
+}
 </script>
 
 <template>
@@ -18,7 +28,9 @@ defineEmits<{ select: [] }>()
     v-focusable
     class="card top-card"
     type="button"
+    data-long-press
     @click="$emit('select')"
+    @longpress="openActions"
   >
     <span class="top-card__rank" aria-hidden="true">{{ rank }}</span>
     <span class="top-card__frame">
@@ -32,6 +44,7 @@ defineEmits<{ select: [] }>()
       <span v-else-if="!card.poster" class="top-card__placeholder">
         {{ card.title }}
       </span>
+      <PosterRatingBadge :card="card" />
       <span class="card__ring" />
     </span>
   </button>

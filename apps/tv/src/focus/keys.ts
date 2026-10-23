@@ -9,6 +9,8 @@ const DIRECTIONS: Record<number, Direction> = {
 }
 
 const ENTER = 13
+// Клавиша контекстного меню в браузере
+const CONTEXT_MENU = 93
 const BACK = new Set([
   461, // webOS
   10009, // Tizen
@@ -39,6 +41,7 @@ export type KeyAction
     | { type: 'back' }
     | { type: 'media', key: MediaKey }
     | { type: 'digit', digit: number }
+    | { type: 'menu' }
 
 function digitOf(keyCode: number) {
   if (keyCode >= DIGIT_0 && keyCode <= DIGIT_0 + 9)
@@ -70,6 +73,9 @@ export function readKey(event: KeyboardEvent): KeyAction | undefined {
 
   if (event.keyCode === ENTER && !inTextField)
     return { type: 'enter' }
+
+  if (event.keyCode === CONTEXT_MENU && !inTextField)
+    return { type: 'menu' }
 
   if (BACK.has(event.keyCode) && !(inTextField && event.keyCode === 8))
     return { type: 'back' }

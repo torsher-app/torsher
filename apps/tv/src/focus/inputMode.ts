@@ -14,6 +14,16 @@ export type InputMode = 'remote' | 'pointer'
  */
 export type FocusVia = 'nav' | 'pointer' | 'wheel'
 
+/**
+ * Фокус, поставленный не человеком (открытие экрана, возврат по Back, панель),
+ * под указкой «тихий»: движок помнит элемент, но DOM-фокус не ставит. Иначе
+ * мышь открывает экран, а на кнопке, к которой не подходили, уже подсветка.
+ * Поле ввода — исключение: без DOM-фокуса нет каретки, и печатать нельзя.
+ */
+export function isQuietFocus(mode: InputMode, via: FocusVia, editable = false) {
+  return mode === 'pointer' && via === 'nav' && !editable
+}
+
 export interface InputModeTracker {
   readonly mode: InputMode
   /** `true`, если курсор действительно сдвинулся и режим теперь `pointer`. */

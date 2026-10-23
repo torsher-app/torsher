@@ -30,11 +30,12 @@ import {
   seasonToDetails,
   similarCards,
   trimExtras,
+  tvAiring,
   tvToDetails,
 } from './mappers.ts'
 
 export { fetchTmdbImage, TmdbError } from './client.ts'
-export { getHomeRows } from './home.ts'
+export { getHomeRows, getTrendingBackdrops } from './home.ts'
 export { getTitleIdentity } from './identity.ts'
 export type { TitleIdentity, TitleName, TitleNameKind } from './identity.ts'
 
@@ -94,7 +95,14 @@ function detailsParams(ref: TmdbRef, language: string) {
   }
 }
 
-async function loadDetails(ref: TmdbRef, language: string) {
+interface LoadedTitle {
+  details: TitleDetails
+  // Только у сериала
+  airing?: ReturnType<typeof tvAiring>
+  imdbId?: string | null
+}
+
+async function loadTitle(ref: TmdbRef, language: string): Promise<LoadedTitle> {
   const key = `tmdb:${ref.type}:${ref.tmdbId}:${language}:${DETAILS_KEY_VERSION}`
   const params = detailsParams(ref, language)
 
@@ -102,16 +110,32 @@ async function loadDetails(ref: TmdbRef, language: string) {
     const movie = await withMetaCache(key, DETAILS_TTL_MS, () =>
       tmdbGet<TmdbMovie>(`/movie/${ref.tmdbId}`, params))
 
+    rememberImdbIdIfChanged(ref, movie.imdb_id)
+
     return { details: movieToDetails(movie, language), imdbId: movie.imdb_id }
   }
 
   const tv = await withMetaCache(key, DETAILS_TTL_MS, () =>
     tmdbGet<TmdbTv>(`/tv/${ref.tmdbId}`, params))
 
+  rememberImdbIdIfChanged(ref, tv.external_ids?.imdb_id)
+
   return {
     details: tvToDetails(tv, language),
+    airing: tvAiring(tv),
     imdbId: tv.external_ids?.imdb_id,
   }
+}
+
+/**
+ * Детали и, у сериала, последняя вышедшая и следующая серии — из той же записи
+ * кэша, что и карточка. Описание на запасном языке не добирается: это для
+ * списков и статуса, не для первого экрана.
+ */
+export async function getTitleSummary(id: string, language: string) {
+  const ref = parseCatalogId(id)
+
+  return ref ? loadTitle(ref, language) : undefined
 }
 
 /** `undefined` — ID не из каталога; отсутствие тайтла в TMDB — `TmdbError`. */
@@ -124,20 +148,18 @@ export async function getTitle(
   if (!ref)
     return undefined
 
-  const { details, imdbId } = await loadDetails(ref, language)
+  const { details, imdbId } = await loadTitle(ref, language)
 
   if (!details.overview && language !== FALLBACK_LANGUAGE) {
     try {
       details.overview = (
-        await loadDetails(ref, FALLBACK_LANGUAGE)
+        await loadTitle(ref, FALLBACK_LANGUAGE)
       ).details.overview
     }
     catch {
       // Без описания карточка всё равно полезна
     }
   }
-
-  rememberImdbIdIfChanged(ref, imdbId)
 
   const tmdb = details.ratings.find(
     rating => rating.provider === TMDB_PROVIDER,

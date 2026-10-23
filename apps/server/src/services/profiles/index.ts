@@ -3,6 +3,7 @@ import { asc, desc, eq, lt, sql } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import {
   profiles,
+  profileTitles,
   titleProgress,
   users,
   watchStates,
@@ -19,6 +20,7 @@ export interface ProfileInput {
   color: ProfileColor
   language: ProfileLanguage | null
   ageLimit: number | null
+  posterRating?: Profile['posterRating']
 }
 
 /** Последний профиль удалить нельзя: витрине и сессии владельца нужен профиль */
@@ -174,6 +176,28 @@ export function deleteProfile(id: string, moveTo?: string) {
             ],
             set: { ...row, profileId: moveTo },
             setWhere: lt(watchStates.updatedAt, row.updatedAt),
+          })
+          .run()
+      }
+
+      // Списки объединяются, оценка остаётся более свежая
+      for (const row of tx
+        .select()
+        .from(profileTitles)
+        .where(eq(profileTitles.profileId, id))
+        .all()) {
+        tx.insert(profileTitles)
+          .values({ ...row, profileId: moveTo })
+          .onConflictDoUpdate({
+            target: [profileTitles.profileId, profileTitles.titleId],
+            set: {
+              watchlistAt: sql`coalesce(${profileTitles.watchlistAt}, excluded.watchlist_at)`,
+              favoriteAt: sql`coalesce(${profileTitles.favoriteAt}, excluded.favorite_at)`,
+              droppedAt: sql`coalesce(${profileTitles.droppedAt}, excluded.dropped_at)`,
+              rating: sql`case when excluded.rated_at > coalesce(${profileTitles.ratedAt}, 0) then excluded.rating else ${profileTitles.rating} end`,
+              ratedAt: sql`case when excluded.rated_at > coalesce(${profileTitles.ratedAt}, 0) then excluded.rated_at else ${profileTitles.ratedAt} end`,
+              updatedAt: row.updatedAt,
+            },
           })
           .run()
       }

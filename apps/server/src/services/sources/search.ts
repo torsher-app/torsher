@@ -34,6 +34,11 @@ export interface SearchTarget {
   aliases: TitleAlias[]
   /** Сезон сериала; у фильма не задаётся. */
   season?: number
+  /**
+   * Строка, которую выбрал зритель («Уточнить запрос»): ищется только она,
+   * текстом, без запросов по ID и алиасам.
+   */
+  query?: string
 }
 
 export interface IndexerFailure {
@@ -58,6 +63,10 @@ interface IndexerState {
   ok: boolean
   error?: SourceErrorKind
 }
+
+// Год в конце строки зрителя («Дюна 2021») матчеру не нужен: он сверяет
+// год раздачи с годом тайтла сам
+const TRAILING_YEAR = /\s+(?:19|20)\d{2}$/
 
 function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms).unref?.())
@@ -147,17 +156,20 @@ export async function searchReleases(
   deadlineMs = SEARCH_DEADLINE_MS,
 ): Promise<SearchOutcome> {
   const { identity, aliases, season } = target
-  const query = {
-    kind: identity.kind,
-    ids: {
-      imdb: identity.imdbId,
-      tmdb: identity.tmdbId,
-      tvdb: identity.tvdbId,
-    },
-    titles: textQueriesOf(aliases),
-    year: identity.year,
-    season,
-  }
+  const manual = target.query?.trim()
+  const query = manual
+    ? { kind: identity.kind, ids: {}, titles: [manual], season }
+    : {
+        kind: identity.kind,
+        ids: {
+          imdb: identity.imdbId,
+          tmdb: identity.tmdbId,
+          tvdb: identity.tvdbId,
+        },
+        titles: textQueriesOf(aliases),
+        year: identity.year,
+        season,
+      }
   const tasks = indexers.flatMap(indexer =>
     buildSearchRequests(indexer.caps, query).map(params => ({
       indexer,
@@ -227,7 +239,14 @@ export async function searchReleases(
   })
   const titleTarget = {
     kind: identity.kind,
-    aliases: aliases.map(alias => alias.value),
+    // Строка зрителя — тоже название тайтла: иначе раздачи под названием,
+    // которого нет среди алиасов, матчер отбросил бы как чужие
+    aliases: manual
+      ? [
+          ...aliases.map(alias => alias.value),
+          manual.replace(TRAILING_YEAR, ''),
+        ]
+      : aliases.map(alias => alias.value),
     year: identity.year,
     endYear: identity.endYear,
     season,

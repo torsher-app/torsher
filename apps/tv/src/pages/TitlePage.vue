@@ -15,10 +15,13 @@ import { useRouter } from 'vue-router'
 import AppIcon from '../components/AppIcon.vue'
 import ContentRow from '../components/ContentRow.vue'
 import EpisodeCard from '../components/EpisodeCard.vue'
+import EpisodeList from '../components/EpisodeList.vue'
+import EpisodeListCard from '../components/EpisodeListCard.vue'
 import FocusSection from '../components/FocusSection.vue'
 import PersonCard from '../components/PersonCard.vue'
 import PosterCard from '../components/PosterCard.vue'
 import RatingList from '../components/RatingList.vue'
+import AppToast from '../components/AppToast.vue'
 import ScreenState from '../components/ScreenState.vue'
 import { useCatalogLanguage } from '../composables/useCatalogLanguage.ts'
 import { useCatalogTitle } from '../composables/useCatalogTitle.ts'
@@ -32,6 +35,12 @@ import {
 import { useStackScroll } from '../composables/useStackScroll.ts'
 import { useTitleProgress } from '../composables/useTitleProgress.ts'
 import { useFocus } from '../focus/index.ts'
+import {
+  knownTitleMine,
+  noteTitleMine,
+  openTitleActions,
+  rememberTitleMine,
+} from '../titleActions.ts'
 import { stackOffset } from '../lib/rowStack.ts'
 import { revealOffset } from '../lib/rowTrack.ts'
 import {
@@ -83,6 +92,7 @@ const {
   retry: retryExtras,
 } = useTitleExtras(extrasId)
 
+// Индекс фокусной серии; -1 — плитка «Все серии» перед ними
 const focusedEpisode = ref(0)
 
 // Логотип не загрузился — пишем название текстом
@@ -140,6 +150,15 @@ const currentSeason = computed(() =>
   seasons.value.find(item => item.number === selectedSeason.value),
 )
 const episode = computed(() => episodes.value[focusedEpisode.value])
+
+// Ряд серий начинается с плитки полного списка, как «Еще» у Лампы
+const LIST_TILE = 'all' as const
+const episodeItems = computed<(Episode | typeof LIST_TILE)[]>(() => [
+  LIST_TILE,
+  ...episodes.value,
+])
+const listTileFocused = computed(() => focusedEpisode.value < 0)
+const showEpisodeList = ref(false)
 
 const cast = computed(() => extras.value?.cast ?? [])
 const similar = computed(() => extras.value?.similar ?? [])
@@ -212,6 +231,63 @@ const primaryHint = computed(() => {
 
 function openSources() {
   router.push(`/title/${props.id}/sources`)
+}
+
+// Списки и своя оценка: меню действий правит то же состояние
+const mine = computed(() => knownTitleMine(props.id))
+const mineError = ref('')
+
+watch(
+  [id, language],
+  async ([current]) => {
+    try {
+      const fresh = await api.titles.getTitleMine(current, {
+        language: language.value,
+      })
+
+      if (current === props.id)
+        rememberTitleMine(current, fresh)
+    }
+    catch {
+      // Без состояния кнопки работают через меню, когда оно загрузится
+    }
+  },
+  { immediate: true },
+)
+
+async function toggleWatchlist() {
+  const current = mine.value
+
+  if (!current)
+    return
+
+  const watchlist = !current.watchlist
+
+  noteTitleMine(props.id, { ...current, watchlist })
+
+  try {
+    noteTitleMine(
+      props.id,
+      await api.titles.patchTitleMine(
+        props.id,
+        { watchlist },
+        { language: language.value },
+      ),
+    )
+  }
+  catch {
+    noteTitleMine(props.id, current)
+    mineError.value = t('actions.errors.save')
+  }
+}
+
+function openActions(step?: 'rating') {
+  if (title.value) {
+    openTitleActions(
+      { id: props.id, title: title.value.title, kind: title.value.kind },
+      step,
+    )
+  }
 }
 
 // OK на серии ставит или снимает «просмотрено»: смотреть — через «Смотреть»
@@ -318,8 +394,77 @@ function episodeDetail(item: Episode) {
   return parts.join(' · ')
 }
 
-function episodeKey(item: Episode) {
-  return item.number
+function episodeKey(item: Episode | typeof LIST_TILE) {
+  return item === LIST_TILE ? LIST_TILE : item.number
+}
+
+// Полный список: та же карта отметок и тот же выбранный сезон, что у ряда
+const seasonOptions = computed(() =>
+  seasons.value.map(item => ({
+    id: String(item.number),
+    label: item.name,
+    selected: item.number === selectedSeason.value,
+  })),
+)
+
+const seasonLine = computed(() => {
+  const value = currentSeason.value
+
+  if (!value)
+    return ''
+
+  return [t('title.episodeList.count', value.episodeCount), value.year]
+    .filter(Boolean)
+    .join(' · ')
+})
+
+// Открыть список на серии из ряда, а с плитки — на первой непросмотренной
+const listFocusNumber = computed(() => {
+  if (episode.value)
+    return episode.value.number
+
+  return (
+    episodes.value.find(
+      item => !isUpcoming(item.airDate) && !progressOfEpisode(item)?.watched,
+    ) ?? episodes.value[0]
+  )?.number
+})
+
+function listDetail(item: Episode) {
+  if (isUpcoming(item.airDate) && item.airDate) {
+    return [
+      item.runtime ? formatRuntime(item.runtime) : '',
+      t('title.airs', { date: formatAirDate(item.airDate, language.value) }),
+    ]
+      .filter(Boolean)
+      .join(' · ')
+  }
+
+  return episodeDetail(item)
+}
+
+function listStatus(item: Episode) {
+  const progress = progressOfEpisode(item)
+
+  if (progress?.watched)
+    return t('files.watched')
+
+  if (progress && progress.share > 0 && item.runtime) {
+    return t('title.left', {
+      n: Math.max(1, Math.round(item.runtime * (1 - progress.share))),
+    })
+  }
+
+  return ''
+}
+
+function listHint(item: Episode) {
+  if (isUpcoming(item.airDate))
+    return ''
+
+  return progressOfEpisode(item)?.watched
+    ? t('title.okUnmark')
+    : t('title.okMark')
 }
 
 function personKey(item: Person) {
@@ -483,6 +628,23 @@ const stopFocus = focus.onFocus((el, via) => {
       selectSeason(number, false)
   }
 
+  // В ряд серий входим на первую серию, а не на плитку списка перед ней:
+  // шагнувший вниз хочет серию, плитка — шаг влево
+  if (
+    name === 'title-episodes'
+    && entered
+    && via !== 'pointer'
+    && el.classList.contains('episode-list-card')
+  ) {
+    const first = el
+      .closest('.row__item')
+      ?.nextElementSibling
+      ?.querySelector<HTMLElement>('[data-focusable]')
+
+    if (first && focus.focusOn(first, via))
+      return
+  }
+
   if (via === 'pointer')
     return
 
@@ -492,7 +654,8 @@ const stopFocus = focus.onFocus((el, via) => {
 
 // Колесо листает секции на одну от выровненной, элемент — в той же колонке
 const stopWheel = focus.onWheel((direction) => {
-  if (direction !== 'up' && direction !== 'down')
+  // Колесо над открытым списком серий не листает карточку под ним
+  if (showEpisodeList.value || (direction !== 'up' && direction !== 'down'))
     return true
 
   const index = order.value.indexOf(alignedSection.value ?? 'title-actions')
@@ -513,8 +676,30 @@ function onSeasonClick(number: number) {
   }
 }
 
+function openEpisodeList() {
+  showEpisodeList.value = true
+}
+
+function closeEpisodeList() {
+  showEpisodeList.value = false
+
+  nextTick(() => {
+    const tile = screen.value?.querySelector<HTMLElement>('.episode-list-card')
+
+    if (tile)
+      focus.focusOn(tile)
+  })
+}
+
 function onEpisodeFocus(index: number) {
-  focusedEpisode.value = index
+  // Вход в ряд переводит фокус с плитки на серию прямо в обработчике фокуса,
+  // и событие плитки приходит после события серии: верен фокус в DOM
+  const current = focus
+    .current()
+    ?.closest<HTMLElement>('.row__item')
+    ?.getAttribute('data-index')
+
+  focusedEpisode.value = (current ? Number(current) : index) - 1
 }
 
 function openTitle(card: Card) {
@@ -646,6 +831,38 @@ onBeforeUnmount(() => {
               </small>
             </span>
           </button>
+          <button
+            v-focusable
+            class="action title__secondary"
+            type="button"
+            :aria-pressed="!!mine?.watchlist"
+            @click="toggleWatchlist"
+          >
+            <AppIcon
+              :name="mine?.watchlist ? 'check' : 'plus'"
+              class="title__action-icon"
+            />
+            {{ t("actions.watchlist") }}
+          </button>
+          <button
+            v-focusable
+            class="action title__secondary"
+            type="button"
+            @click="openActions('rating')"
+          >
+            <AppIcon name="star" class="title__action-icon" />
+            <!-- Звезда уже нарисована иконкой: рядом только число -->
+            {{ mine?.rating ?? t("actions.rate") }}
+          </button>
+          <button
+            v-focusable
+            class="action title__secondary title__more"
+            type="button"
+            :aria-label="t('actions.more')"
+            @click="openActions()"
+          >
+            <AppIcon name="more" />
+          </button>
         </FocusSection>
 
         <!-- Подсказка о том, что ниже, нужна только у верхнего края -->
@@ -712,13 +929,19 @@ onBeforeUnmount(() => {
           <ContentRow
             :key="selectedSeason"
             section="title-episodes"
-            :items="episodes"
+            :items="episodeItems"
             :item-key="episodeKey"
             :edges="edgesOf('title-episodes')"
             @focus-item="onEpisodeFocus"
           >
             <template #item="{ item }">
+              <EpisodeListCard
+                v-if="item === LIST_TILE"
+                :meta="t('title.episodeList.count', episodes.length)"
+                @select="openEpisodeList"
+              />
               <EpisodeCard
+                v-else
                 :episode="item"
                 :meta="episodeMeta(item)"
                 :progress="progressOfEpisode(item)?.share ?? 0"
@@ -728,7 +951,17 @@ onBeforeUnmount(() => {
             </template>
           </ContentRow>
 
-          <div v-if="episode" class="block__inner episode-detail">
+          <div v-if="listTileFocused" class="block__inner episode-detail">
+            <div class="episode-detail__text">
+              <h3 class="episode-detail__title">
+                {{ t("title.episodeList.detail") }}
+              </h3>
+              <p class="episode-detail__hint">
+                {{ t("title.episodeList.okOpen") }}
+              </p>
+            </div>
+          </div>
+          <div v-else-if="episode" class="block__inner episode-detail">
             <div class="episode-detail__text">
               <h3 class="episode-detail__title">
                 S{{ selectedSeason }}E{{ episode.number }} · {{ episode.title }}
@@ -865,6 +1098,31 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </div>
+    <AppToast :message="mineError" @hide="mineError = ''" />
+
+    <!-- Вне стека карточки: у него transform, и fixed внутри встал бы относительно него -->
+    <Teleport to="body">
+      <EpisodeList
+        v-if="showEpisodeList && title"
+        :name="title.title"
+        :poster="title.poster"
+        :meta="meta.join(' · ')"
+        :season-label="currentSeason?.name ?? ''"
+        :season-line="seasonLine"
+        :season-options="seasonOptions"
+        :episodes="episodes"
+        :loading="episodesLoading"
+        :focus-number="listFocusNumber"
+        :detail-of="listDetail"
+        :status-of="listStatus"
+        :progress-of="(item) => progressOfEpisode(item)?.share ?? 0"
+        :watched-of="(item) => !!progressOfEpisode(item)?.watched"
+        :hint-of="listHint"
+        @toggle="toggleWatched"
+        @season="(number) => selectSeason(number, true)"
+        @close="closeEpisodeList"
+      />
+    </Teleport>
   </main>
 </template>
 
@@ -1038,6 +1296,17 @@ onBeforeUnmount(() => {
 
 .title__action-icon {
   margin-right: calc(var(--u) * 14);
+}
+
+.title__secondary {
+  margin-left: calc(var(--u) * 18);
+}
+
+/* «Ещё» — только значок: квадратная кнопка высотой ряда */
+.title__more {
+  justify-content: center;
+  min-width: calc(var(--u) * 84);
+  padding: 0;
 }
 
 /* Главная кнопка говорит, что вы получите: вторая строка — качество и озвучка */

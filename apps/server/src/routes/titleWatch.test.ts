@@ -349,6 +349,29 @@ describe('post /api/titles/:id/watch', () => {
 })
 
 describe('экран «Источники» и «Файлы»', () => {
+  it('open находит кандидата в поиске по строке зрителя', async () => {
+    const query = encodeURIComponent('Quiet Harbor')
+    const list = await app.inject({
+      url: `/api/titles/${TITLE}/sources?all=1&query=${query}`,
+      cookies: owner,
+    })
+
+    expect(list.statusCode).toBe(200)
+    expect(list.json().query.current).toBe('Quiet Harbor')
+
+    const open = await app.inject({
+      method: 'POST',
+      url: `/api/titles/${TITLE}/open`,
+      cookies: owner,
+      payload: {
+        candidateId: list.json().candidates[0].id,
+        query: 'Quiet Harbor',
+      },
+    })
+
+    expect(open.statusCode).toBe(200)
+  })
+
   it('все сезоны, open без выбора файла, файлы серий и метка последнего просмотра', async () => {
     const list = await app.inject({
       url: `/api/titles/${TITLE}/sources?all=1`,

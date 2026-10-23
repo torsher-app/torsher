@@ -1,6 +1,11 @@
 import type { Scrub } from '../lib/player.ts'
-import { onScopeDispose, ref, shallowRef } from 'vue'
-import { holdScrub, pressScrub, SCRUB_COMMIT_MS } from '../lib/player.ts'
+import { onScopeDispose, ref, shallowRef, watch } from 'vue'
+import {
+  holdScrub,
+  PAUSE_DIM_MS,
+  pressScrub,
+  SCRUB_COMMIT_MS,
+} from '../lib/player.ts'
 
 // OSD прячется сам, пока видео идёт; на паузе и при открытой панели остаётся
 const OSD_HIDE_MS = 4000
@@ -8,6 +13,8 @@ const OSD_HIDE_MS = 4000
 interface PlayerOsdOptions {
   /** Можно ли сейчас спрятать OSD по таймеру */
   canAutoHide: () => boolean
+  /** Можно ли затемнить кадр: пауза зрителя без панели и ошибки */
+  canDim: () => boolean
   /** Позиция и длительность для расчёта цели перемотки */
   position: () => number
   duration: () => number
@@ -17,24 +24,66 @@ interface PlayerOsdOptions {
   onSeek: (target: number) => void
 }
 
-/** Видимость OSD с автоскрытием и перемотка стрелками с ускорением при удержании */
+/**
+ * Видимость OSD с автоскрытием и перемотка стрелками с ускорением при удержании.
+ * На паузе без нажатий OSD гаснет и кадр затемняется (`dimmed`), как у Netflix.
+ */
 export function usePlayerOsd(options: PlayerOsdOptions) {
   const visible = ref(false)
+  const dimmed = ref(false)
   const scrub = shallowRef<Scrub | null>(null)
 
   let hideTimer: ReturnType<typeof setTimeout> | undefined
   let commitTimer: ReturnType<typeof setTimeout> | undefined
+  let dimTimer: ReturnType<typeof setTimeout> | undefined
+
+  function scheduleDim() {
+    clearTimeout(dimTimer)
+
+    if (!options.canDim())
+      return
+
+    dimTimer = setTimeout(() => {
+      if (!options.canDim() || scrub.value)
+        return
+
+      visible.value = false
+      dimmed.value = true
+    }, PAUSE_DIM_MS)
+  }
 
   function scheduleHide() {
     clearTimeout(hideTimer)
 
     if (options.canAutoHide() && !scrub.value)
       hideTimer = setTimeout(() => (visible.value = false), OSD_HIDE_MS)
+
+    scheduleDim()
+  }
+
+  // Пауза снята, открыта панель или ошибка — затемнения нет; пауза началась —
+  // отсчёт пошёл: событие `pause` приходит уже после show()
+  watch(options.canDim, (can) => {
+    if (can) {
+      scheduleDim()
+    }
+    else {
+      clearTimeout(dimTimer)
+      dimmed.value = false
+    }
+  })
+
+  /** Первое нажатие на затемнённой паузе: OSD возвращается с прежним фокусом */
+  function wake() {
+    dimmed.value = false
+    visible.value = true
+    scheduleHide()
   }
 
   function show() {
     const wasHidden = !visible.value
 
+    dimmed.value = false
     visible.value = true
 
     if (wasHidden)
@@ -79,9 +128,10 @@ export function usePlayerOsd(options: PlayerOsdOptions) {
   function dispose() {
     clearTimeout(hideTimer)
     clearTimeout(commitTimer)
+    clearTimeout(dimTimer)
   }
 
   onScopeDispose(dispose)
 
-  return { visible, scrub, show, hide, hold, scheduleHide, step }
+  return { visible, dimmed, scrub, show, wake, hide, hold, scheduleHide, step }
 }

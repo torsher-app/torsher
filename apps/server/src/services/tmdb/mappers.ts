@@ -1,4 +1,5 @@
 import type {
+  Backdrop,
   Card,
   Person,
   SeasonDetails,
@@ -9,6 +10,7 @@ import type {
 import type {
   TmdbAltTitle,
   TmdbCastMember,
+  TmdbEpisodeRef,
   TmdbExtras,
   TmdbImage,
   TmdbListResult,
@@ -132,6 +134,19 @@ export function searchResultToCard(result: TmdbMultiResult): Card | undefined {
   }
 
   return undefined
+}
+
+/** Кадр тайтла из списка TMDB для заставки витрины; без бэкдропа — нет. */
+export function listResultToBackdrop(
+  result: TmdbListResult,
+  type?: TmdbMediaType,
+): Backdrop | undefined {
+  const card = listResultToCard(result, type)
+  const backdrop = imageUrl(BACKDROP_SIZE, result.backdrop_path)
+
+  return card && backdrop
+    ? { id: card.id, title: card.title, year: card.year, backdrop }
+    : undefined
 }
 
 /**
@@ -319,6 +334,38 @@ export function tvToDetails(
     seasons: tv.seasons
       .filter(season => season.season_number > 0)
       .map(season => toSeason(season, tv, now)),
+  }
+}
+
+export interface AiredEpisode {
+  season: number
+  episode: number
+  title?: string
+  // YYYY-MM-DD
+  airDate?: string
+  still?: string
+}
+
+function airedEpisodeOf(
+  ref: TmdbEpisodeRef | null | undefined,
+): AiredEpisode | undefined {
+  if (!ref)
+    return undefined
+
+  return {
+    season: ref.season_number,
+    episode: ref.episode_number,
+    title: ref.name || undefined,
+    airDate: ref.air_date || undefined,
+    still: imageUrl(STILL_SIZE, ref.still_path),
+  }
+}
+
+/** Последняя вышедшая и следующая анонсированная серии: статус и «Новые серии» */
+export function tvAiring(tv: TmdbTv) {
+  return {
+    last: airedEpisodeOf(tv.last_episode_to_air),
+    next: airedEpisodeOf(tv.next_episode_to_air),
   }
 }
 

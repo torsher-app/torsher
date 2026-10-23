@@ -59,6 +59,11 @@ export interface TitleRatingInput {
   votes?: number;
 }
 
+export interface PosterRatingInput {
+  source: "own" | "tmdb" | "imdb";
+  value: number;
+}
+
 export interface CardInput {
   id: string;
   kind: "movie" | "series";
@@ -71,6 +76,7 @@ export interface CardInput {
   year?: number;
   poster?: string;
   ratings?: TitleRatingInput[];
+  posterRating?: PosterRatingInput;
 }
 
 export interface TitleSeasonInput {
@@ -109,6 +115,7 @@ export interface TitleDetailsInput {
   year?: number;
   poster?: string;
   ratings: TitleRatingInput[];
+  posterRating?: PosterRatingInput;
   overview: string;
   genres: string[];
   /**
@@ -178,6 +185,68 @@ export interface CatalogSearchResponseInput {
 
 export interface CatalogTrendingResponseInput {
   items: CardInput[];
+}
+
+export interface BackdropInput {
+  id: string;
+  title: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  year?: number;
+  backdrop: string;
+}
+
+export interface CatalogBackdropsResponseInput {
+  items: BackdropInput[];
+}
+
+export interface CollectionInput {
+  id: string;
+  name: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  count: number;
+  showOnHome: boolean;
+  hiddenFrom: string[];
+}
+
+export interface CollectionListInput {
+  items: CollectionInput[];
+}
+
+export interface CreateCollectionInput {
+  /**
+   * @minLength 1
+   * @maxLength 60
+   */
+  name: string;
+  showOnHome?: boolean;
+  /** @maxItems 100 */
+  hiddenFrom?: string[];
+}
+
+export interface UpdateCollectionInput {
+  /**
+   * @minLength 1
+   * @maxLength 60
+   */
+  name?: string;
+  showOnHome?: boolean;
+  /** @maxItems 100 */
+  hiddenFrom?: string[];
+}
+
+export interface CollectionTitlesInput {
+  items: CardInput[];
+}
+
+export interface CollectionErrorResponseInput {
+  message: string;
+  kind: "duplicate";
 }
 
 export interface StartPairingInput {
@@ -575,6 +644,10 @@ export interface TitleSourcesInput {
   top: string[];
   candidates: SourceCandidateInput[];
   voices: VoiceOptionInput[];
+  query: {
+    current: string | null;
+    suggestions: string[];
+  };
   indexers: {
     total: number;
     failed: {
@@ -640,6 +713,11 @@ export interface OpenTitleInput {
    * @maxLength 64
    */
   candidateId: string;
+  /**
+   * @minLength 1
+   * @maxLength 200
+   */
+  query?: string;
 }
 
 export interface TitleOpenInput {
@@ -881,6 +959,29 @@ export interface WatchStateInput {
   updatedAt: string;
 }
 
+export interface EpisodeCardInput {
+  titleId: string;
+  title: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  season: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  episode: number;
+  episodeTitle?: string;
+  image?: string;
+  airDate?: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  newCount: number;
+}
+
 export interface HomeRowInput {
   id:
     | "trending"
@@ -892,10 +993,16 @@ export interface HomeRowInput {
     | "nowPlaying"
     | "onTheAir"
     | "topRatedMovies"
-    | "topRatedSeries";
-  kind: "top10" | "posters";
+    | "topRatedSeries"
+    | "newEpisodes"
+    | "watchlist"
+    | "collection";
+  kind: "top10" | "posters" | "episodes";
   title: string;
+  ref?: string;
+  name?: string;
   items: CardInput[];
+  episodes?: EpisodeCardInput[];
 }
 
 export interface HomeResponseInput {
@@ -936,6 +1043,92 @@ export interface LogLevelBodyInput {
 
 export interface LogLevelResponseInput {
   level: "debug" | "info" | "warn" | "error";
+}
+
+export interface TitleCollectionRefInput {
+  id: string;
+  name: string;
+  contains: boolean;
+}
+
+export interface TitleMineInput {
+  watchlist: boolean;
+  favorite: boolean;
+  /**
+   * @min 1
+   * @max 10
+   */
+  rating: number | null;
+  status: "watching" | "waiting" | "watched" | "dropped" | null;
+  collections: TitleCollectionRefInput[];
+}
+
+export interface UpdateTitleMineInput {
+  watchlist?: boolean;
+  favorite?: boolean;
+  /**
+   * @min 1
+   * @max 10
+   */
+  rating?: number | null;
+  dropped?: boolean;
+}
+
+export interface MineSectionInput {
+  id:
+    | "continue"
+    | "watchlist"
+    | "favorites"
+    | "collection"
+    | "watched"
+    | "dropped";
+  collectionId?: string;
+  name?: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  count: number;
+}
+
+export interface MineResponseInput {
+  sections: MineSectionInput[];
+}
+
+export interface MineItemsInput {
+  items: CardInput[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  total: number;
+}
+
+export interface HistoryEntryInput {
+  title: CardInput;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  season: number | null;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  episode: number | null;
+  position: number;
+  duration: number | null;
+  watched: boolean;
+  watchedAt: string;
+}
+
+export interface ProfileHistoryInput {
+  items: HistoryEntryInput[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  total: number;
 }
 
 export interface NetRouteErrorResponseInput {
@@ -1191,6 +1384,7 @@ export interface ProfileInput {
   language: "ru_RU" | "en_US" | null;
   hasPin: boolean;
   ageLimit: 6 | 12 | 16 | 18 | null;
+  posterRating: "none" | "own" | "tmdb" | "imdb";
 }
 
 export interface ProfileListInput {
@@ -1216,6 +1410,7 @@ export interface CreateProfileInput {
     | "slate";
   language?: "ru_RU" | "en_US" | null;
   ageLimit?: 6 | 12 | 16 | 18 | null;
+  posterRating?: "none" | "own" | "tmdb" | "imdb";
   /** @pattern ^\d{4}$ */
   pin?: string;
 }
@@ -1237,6 +1432,7 @@ export interface UpdateProfileInput {
     | "slate";
   language?: "ru_RU" | "en_US" | null;
   ageLimit?: 6 | 12 | 16 | 18 | null;
+  posterRating?: "none" | "own" | "tmdb" | "imdb";
 }
 
 export interface SetProfilePinInput {
@@ -1421,6 +1617,11 @@ export interface TitleRating {
   votes?: number;
 }
 
+export interface PosterRating {
+  source: "own" | "tmdb" | "imdb";
+  value: number;
+}
+
 export interface Card {
   id: string;
   kind: "movie" | "series";
@@ -1433,6 +1634,7 @@ export interface Card {
   year?: number;
   poster?: string;
   ratings?: TitleRating[];
+  posterRating?: PosterRating;
 }
 
 export interface TitleSeason {
@@ -1471,6 +1673,7 @@ export interface TitleDetails {
   year?: number;
   poster?: string;
   ratings: TitleRating[];
+  posterRating?: PosterRating;
   overview: string;
   genres: string[];
   /**
@@ -1540,6 +1743,68 @@ export interface CatalogSearchResponse {
 
 export interface CatalogTrendingResponse {
   items: Card[];
+}
+
+export interface Backdrop {
+  id: string;
+  title: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  year?: number;
+  backdrop: string;
+}
+
+export interface CatalogBackdropsResponse {
+  items: Backdrop[];
+}
+
+export interface Collection {
+  id: string;
+  name: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  count: number;
+  showOnHome: boolean;
+  hiddenFrom: string[];
+}
+
+export interface CollectionList {
+  items: Collection[];
+}
+
+export interface CreateCollection {
+  /**
+   * @minLength 1
+   * @maxLength 60
+   */
+  name: string;
+  showOnHome?: boolean;
+  /** @maxItems 100 */
+  hiddenFrom?: string[];
+}
+
+export interface UpdateCollection {
+  /**
+   * @minLength 1
+   * @maxLength 60
+   */
+  name?: string;
+  showOnHome?: boolean;
+  /** @maxItems 100 */
+  hiddenFrom?: string[];
+}
+
+export interface CollectionTitles {
+  items: Card[];
+}
+
+export interface CollectionErrorResponse {
+  message: string;
+  kind: "duplicate";
 }
 
 export interface StartPairing {
@@ -1937,6 +2202,10 @@ export interface TitleSources {
   top: string[];
   candidates: SourceCandidate[];
   voices: VoiceOption[];
+  query: {
+    current: string | null;
+    suggestions: string[];
+  };
   indexers: {
     total: number;
     failed: {
@@ -2002,6 +2271,11 @@ export interface OpenTitle {
    * @maxLength 64
    */
   candidateId: string;
+  /**
+   * @minLength 1
+   * @maxLength 200
+   */
+  query?: string;
 }
 
 export interface TitleOpen {
@@ -2243,6 +2517,29 @@ export interface WatchState {
   updatedAt: string;
 }
 
+export interface EpisodeCard {
+  titleId: string;
+  title: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  season: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  episode: number;
+  episodeTitle?: string;
+  image?: string;
+  airDate?: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  newCount: number;
+}
+
 export interface HomeRow {
   id:
     | "trending"
@@ -2254,10 +2551,16 @@ export interface HomeRow {
     | "nowPlaying"
     | "onTheAir"
     | "topRatedMovies"
-    | "topRatedSeries";
-  kind: "top10" | "posters";
+    | "topRatedSeries"
+    | "newEpisodes"
+    | "watchlist"
+    | "collection";
+  kind: "top10" | "posters" | "episodes";
   title: string;
+  ref?: string;
+  name?: string;
   items: Card[];
+  episodes?: EpisodeCard[];
 }
 
 export interface HomeResponse {
@@ -2298,6 +2601,92 @@ export interface LogLevelBody {
 
 export interface LogLevelResponse {
   level: "debug" | "info" | "warn" | "error";
+}
+
+export interface TitleCollectionRef {
+  id: string;
+  name: string;
+  contains: boolean;
+}
+
+export interface TitleMine {
+  watchlist: boolean;
+  favorite: boolean;
+  /**
+   * @min 1
+   * @max 10
+   */
+  rating: number | null;
+  status: "watching" | "waiting" | "watched" | "dropped" | null;
+  collections: TitleCollectionRef[];
+}
+
+export interface UpdateTitleMine {
+  watchlist?: boolean;
+  favorite?: boolean;
+  /**
+   * @min 1
+   * @max 10
+   */
+  rating?: number | null;
+  dropped?: boolean;
+}
+
+export interface MineSection {
+  id:
+    | "continue"
+    | "watchlist"
+    | "favorites"
+    | "collection"
+    | "watched"
+    | "dropped";
+  collectionId?: string;
+  name?: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  count: number;
+}
+
+export interface MineResponse {
+  sections: MineSection[];
+}
+
+export interface MineItems {
+  items: Card[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  total: number;
+}
+
+export interface HistoryEntry {
+  title: Card;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  season: number | null;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  episode: number | null;
+  position: number;
+  duration: number | null;
+  watched: boolean;
+  watchedAt: string;
+}
+
+export interface ProfileHistory {
+  items: HistoryEntry[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  total: number;
 }
 
 export interface NetRouteErrorResponse {
@@ -2553,6 +2942,7 @@ export interface Profile {
   language: "ru_RU" | "en_US" | null;
   hasPin: boolean;
   ageLimit: 6 | 12 | 16 | 18 | null;
+  posterRating: "none" | "own" | "tmdb" | "imdb";
 }
 
 export interface ProfileList {
@@ -2578,6 +2968,7 @@ export interface CreateProfile {
     | "slate";
   language?: "ru_RU" | "en_US" | null;
   ageLimit?: 6 | 12 | 16 | 18 | null;
+  posterRating?: "none" | "own" | "tmdb" | "imdb";
   /** @pattern ^\d{4}$ */
   pin?: string;
 }
@@ -2599,6 +2990,7 @@ export interface UpdateProfile {
     | "slate";
   language?: "ru_RU" | "en_US" | null;
   ageLimit?: 6 | 12 | 16 | 18 | null;
+  posterRating?: "none" | "own" | "tmdb" | "imdb";
 }
 
 export interface SetProfilePin {
@@ -2760,6 +3152,8 @@ export type GetCatalogTitleExtrasError = MessageResponse;
 
 export type GetCatalogTrendingError = MessageResponse;
 
+export type GetCatalogBackdropsError = MessageResponse;
+
 export type GetHomeError = MessageResponse;
 
 export type GetIndexersError = MessageResponse;
@@ -2795,6 +3189,28 @@ export type PostTitleOpenError =
 export type GetTitleFilesError = MessageResponse;
 
 export type PutTitleWatchedError = MessageResponse;
+
+export type GetTitleMineError = MessageResponse;
+
+export type PatchTitleMineError = MessageResponse;
+
+export type GetMineError = MessageResponse;
+
+export type GetMineItemsError = MessageResponse;
+
+export type GetCollectionsError = MessageResponse;
+
+export type PostCollectionError = MessageResponse | CollectionErrorResponse;
+
+export type PatchCollectionError = MessageResponse | CollectionErrorResponse;
+
+export type DeleteCollectionError = MessageResponse;
+
+export type GetCollectionTitlesError = MessageResponse;
+
+export type PutCollectionTitleError = MessageResponse;
+
+export type DeleteCollectionTitleError = MessageResponse;
 
 export type GetTorrentsError = MessageResponse;
 
@@ -2875,6 +3291,8 @@ export type PostProfileError = MessageResponse;
 export type PatchProfileError = MessageResponse;
 
 export type DeleteProfileError = MessageResponse;
+
+export type GetProfileHistoryError = MessageResponse;
 
 export type PutProfilePinError = MessageResponse;
 
@@ -3502,6 +3920,31 @@ export class Api<
         format: "json",
         ...params,
       }),
+
+    /**
+     * No description
+     *
+     * @tags Catalog
+     * @name GetCatalogBackdrops
+     * @request GET:/api/catalog/backdrops
+     */
+    getCatalogBackdrops: (
+      query?: {
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<CatalogBackdropsResponse, GetCatalogBackdropsError>({
+        path: `/api/catalog/backdrops`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
   };
   home = {
     /**
@@ -3706,6 +4149,11 @@ export class Api<
         episode?: string;
         refresh?: "1";
         all?: "1";
+        /**
+         * @minLength 1
+         * @maxLength 200
+         */
+        query?: string;
       },
       params: RequestParams = {},
     ) =>
@@ -3824,13 +4272,287 @@ export class Api<
     putTitleWatched: (
       id: string,
       data: MarkWatchedInput,
+      query?: {
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+      },
       params: RequestParams = {},
     ) =>
       this.request<MarkWatched, PutTitleWatchedError>({
         path: `/api/titles/${id}/watched`,
         method: "PUT",
+        query: query,
         body: data,
         type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Titles
+     * @name GetTitleMine
+     * @request GET:/api/titles/{id}/mine
+     */
+    getTitleMine: (
+      id: string,
+      query?: {
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<TitleMine, GetTitleMineError>({
+        path: `/api/titles/${id}/mine`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Titles
+     * @name PatchTitleMine
+     * @request PATCH:/api/titles/{id}/mine
+     */
+    patchTitleMine: (
+      id: string,
+      data: UpdateTitleMineInput,
+      query?: {
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<TitleMine, PatchTitleMineError>({
+        path: `/api/titles/${id}/mine`,
+        method: "PATCH",
+        query: query,
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+  };
+  mine = {
+    /**
+     * No description
+     *
+     * @tags Mine
+     * @name GetMine
+     * @request GET:/api/mine
+     */
+    getMine: (
+      query?: {
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<MineResponse, GetMineError>({
+        path: `/api/mine`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Mine
+     * @name GetMineItems
+     * @request GET:/api/mine/items
+     */
+    getMineItems: (
+      query: {
+        section:
+          | "continue"
+          | "watchlist"
+          | "favorites"
+          | "collection"
+          | "watched"
+          | "dropped";
+        /** @maxLength 100 */
+        collection?: string;
+        /** @default "added" */
+        sort?: "added" | "rating";
+        /** @default "all" */
+        kind?: "all" | "movie" | "series";
+        /** @default "any" */
+        rating?: "any" | "rated" | "unrated" | "9-10" | "7-8" | "5-6" | "1-4";
+        /**
+         * @min 0
+         * @max 9007199254740991
+         * @default 0
+         */
+        offset?: number;
+        /**
+         * @min 1
+         * @max 40
+         * @default 40
+         */
+        limit?: number;
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<MineItems, GetMineItemsError>({
+        path: `/api/mine/items`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+  };
+  collections = {
+    /**
+     * No description
+     *
+     * @tags Collections
+     * @name GetCollections
+     * @request GET:/api/collections
+     */
+    getCollections: (params: RequestParams = {}) =>
+      this.request<CollectionList, GetCollectionsError>({
+        path: `/api/collections`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Collections
+     * @name PostCollection
+     * @request POST:/api/collections
+     */
+    postCollection: (data: CreateCollectionInput, params: RequestParams = {}) =>
+      this.request<Collection, PostCollectionError>({
+        path: `/api/collections`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Collections
+     * @name PatchCollection
+     * @request PATCH:/api/collections/{id}
+     */
+    patchCollection: (
+      id: string,
+      data: UpdateCollectionInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<Collection, PatchCollectionError>({
+        path: `/api/collections/${id}`,
+        method: "PATCH",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Collections
+     * @name DeleteCollection
+     * @request DELETE:/api/collections/{id}
+     */
+    deleteCollection: (id: string, params: RequestParams = {}) =>
+      this.request<MessageResponse, DeleteCollectionError>({
+        path: `/api/collections/${id}`,
+        method: "DELETE",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Collections
+     * @name GetCollectionTitles
+     * @request GET:/api/collections/{id}/titles
+     */
+    getCollectionTitles: (
+      id: string,
+      query?: {
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<CollectionTitles, GetCollectionTitlesError>({
+        path: `/api/collections/${id}/titles`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Collections
+     * @name PutCollectionTitle
+     * @request PUT:/api/collections/{id}/titles/{titleId}
+     */
+    putCollectionTitle: (
+      id: string,
+      titleId: string,
+      params: RequestParams = {},
+    ) =>
+      this.request<MessageResponse, PutCollectionTitleError>({
+        path: `/api/collections/${id}/titles/${titleId}`,
+        method: "PUT",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Collections
+     * @name DeleteCollectionTitle
+     * @request DELETE:/api/collections/{id}/titles/{titleId}
+     */
+    deleteCollectionTitle: (
+      id: string,
+      titleId: string,
+      params: RequestParams = {},
+    ) =>
+      this.request<MessageResponse, DeleteCollectionTitleError>({
+        path: `/api/collections/${id}/titles/${titleId}`,
+        method: "DELETE",
         format: "json",
         ...params,
       }),
@@ -4505,6 +5227,44 @@ export class Api<
       this.request<MessageResponse, DeleteProfileError>({
         path: `/api/profiles/${id}`,
         method: "DELETE",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Profiles
+     * @name GetProfileHistory
+     * @request GET:/api/profiles/{id}/history
+     */
+    getProfileHistory: (
+      id: string,
+      query?: {
+        /**
+         * @min 0
+         * @max 9007199254740991
+         * @default 0
+         */
+        offset?: number;
+        /**
+         * @min 1
+         * @max 50
+         * @default 50
+         */
+        limit?: number;
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<ProfileHistory, GetProfileHistoryError>({
+        path: `/api/profiles/${id}/history`,
+        method: "GET",
         query: query,
         format: "json",
         ...params,

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, useSlots } from 'vue'
 import { NATIVE_WHEEL_ATTRIBUTE, useFocus } from '../focus/index.ts'
 import AppIcon from './AppIcon.vue'
 import FocusSection from './FocusSection.vue'
@@ -7,17 +7,29 @@ import FocusSection from './FocusSection.vue'
 export interface PanelOption {
   id: string
   label: string
+  /** Вторая строка пункта, приглушённая */
+  hint?: string
   selected: boolean
+  // Значение справа: своя оценка, «›» у шага дальше
+  detail?: string
 }
 
 /**
- * Правая панель выбора одного варианта: сортировка и фильтры «Источников».
- * Выбор применяется и закрывает панель; Back и клик по скриму — закрывают.
+ * Правая панель выбора: сортировка и фильтры «Источников», меню действий
+ * тайтла. Что делает выбор, решает родитель; Back и клик по скриму — `close`.
+ * Слот по умолчанию заменяет список своим содержимым в той же секции фокуса,
+ * слот `top` — своя секция над списком.
  */
-defineProps<{
-  title: string
-  options: PanelOption[]
-}>()
+const props = withDefaults(
+  defineProps<{
+    title: string
+    subtitle?: string
+    options?: PanelOption[]
+    // Выбор одного значения открывается на выбранном; меню действий — сверху
+    focusSelected?: boolean
+  }>(),
+  { focusSelected: true },
+)
 
 const emit = defineEmits<{
   select: [id: string]
@@ -25,6 +37,23 @@ const emit = defineEmits<{
 }>()
 
 const focus = useFocus()
+const slots = useSlots()
+const panel = ref<HTMLElement>()
+
+// Панель открывается на выбранном пункте: шаг вниз от него — соседнее значение
+onMounted(() => {
+  if (!props.focusSelected)
+    return
+
+  nextTick(() => {
+    const selected = panel.value?.querySelector<HTMLElement>(
+      '.options__row[aria-pressed="true"]',
+    )
+
+    if (selected)
+      focus.focusOn(selected)
+  })
+})
 
 const stopKey = focus.onKey((action) => {
   if (action.type !== 'back')
@@ -42,28 +71,55 @@ onBeforeUnmount(stopKey)
   <div class="options">
     <div class="options__scrim" @click="emit('close')" />
     <aside
+      ref="panel"
       class="options__panel"
       :aria-label="title"
       :[NATIVE_WHEEL_ATTRIBUTE]="true"
     >
-      <h2 class="options__title">
+      <h2 class="options__title" :class="{ 'options__title--sub': subtitle }">
         {{ title }}
       </h2>
-      <FocusSection name="options-panel" class="options__list" autofocus>
-        <button
-          v-for="option in options"
-          :key="option.id"
-          v-focusable
-          class="options__row"
-          type="button"
-          :aria-pressed="option.selected"
-          @click="emit('select', option.id)"
-        >
-          <span class="options__check">
-            <AppIcon v-if="option.selected" name="check" />
-          </span>
-          {{ option.label }}
-        </button>
+      <p v-if="subtitle" class="options__subtitle">
+        {{ subtitle }}
+      </p>
+      <!-- Над списком — своя секция (поле ввода): вверх из списка — в неё -->
+      <FocusSection
+        v-if="slots.top"
+        name="options-top"
+        :edges="{ down: 'options-panel' }"
+      >
+        <slot name="top" />
+      </FocusSection>
+      <FocusSection
+        name="options-panel"
+        class="options__list"
+        :edges="slots.top ? { up: 'options-top' } : undefined"
+        autofocus
+      >
+        <slot>
+          <button
+            v-for="option in options"
+            :key="option.id"
+            v-focusable
+            class="options__row"
+            type="button"
+            :aria-pressed="option.selected"
+            @click="emit('select', option.id)"
+          >
+            <span class="options__check">
+              <AppIcon v-if="option.selected" name="check" />
+            </span>
+            <span class="options__text">
+              {{ option.label }}
+              <span v-if="option.hint" class="options__hint">{{
+                option.hint
+              }}</span>
+            </span>
+            <span v-if="option.detail" class="options__detail">
+              {{ option.detail }}
+            </span>
+          </button>
+        </slot>
       </FocusSection>
     </aside>
   </div>
@@ -107,6 +163,16 @@ onBeforeUnmount(stopKey)
 }
 
 /* Список прокручивается нативно: у озвучек бывает десяток студий */
+.options__title--sub {
+  margin-bottom: calc(var(--u) * 8);
+}
+
+.options__subtitle {
+  margin: 0 0 calc(var(--u) * 30);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-s);
+}
+
 .options__list {
   flex: 1;
   margin: 0 calc(var(--u) * -16);
@@ -148,6 +214,30 @@ onBeforeUnmount(stopKey)
   width: calc(var(--u) * 32);
   height: calc(var(--u) * 32);
   margin-right: calc(var(--u) * 18);
+}
+
+.options__text {
+  flex: 1;
+  min-width: 0;
+}
+
+.options__hint {
+  display: block;
+  margin-top: calc(var(--u) * 4);
+  font-size: calc(var(--u) * 22);
+  font-weight: 400;
+  opacity: 0.7;
+}
+
+.options__detail {
+  flex-shrink: 0;
+  margin-left: calc(var(--u) * 18);
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.options__row:focus .options__detail {
+  color: inherit;
 }
 
 .options__check :deep(.icon) {

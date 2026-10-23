@@ -1,6 +1,7 @@
 import type { FastifyReply } from 'fastify'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import {
+  catalogBackdropsResponse,
   catalogSearchQuery,
   catalogSearchResponse,
   catalogSeasonParams,
@@ -13,11 +14,13 @@ import {
 } from '../dto/catalog.ts'
 import { messageResponse } from '../dto/common.ts'
 import { requireViewer } from '../middleware/auth.ts'
+import { withPosterRatings } from '../services/mine/index.ts'
 import {
   getSeason,
   getTitle,
   getTitleExtras,
   getTrending,
+  getTrendingBackdrops,
   searchTitles,
   TmdbError,
 } from '../services/tmdb/index.ts'
@@ -61,7 +64,12 @@ export const catalogRoutes: FastifyPluginAsyncZod = async (app) => {
       const { query, language } = request.query
 
       try {
-        return { items: await searchTitles(query, language) }
+        return {
+          items: withPosterRatings(
+            await searchTitles(query, language),
+            request.profileId,
+          ),
+        }
       }
       catch (err) {
         return sendTmdbError(reply, err)
@@ -167,7 +175,10 @@ export const catalogRoutes: FastifyPluginAsyncZod = async (app) => {
         if (!extras)
           return reply.code(404).send({ message: 'Title not found' })
 
-        return extras
+        return {
+          ...extras,
+          similar: withPosterRatings(extras.similar, request.profileId),
+        }
       }
       catch (err) {
         return sendTmdbError(reply, err)
@@ -192,7 +203,37 @@ export const catalogRoutes: FastifyPluginAsyncZod = async (app) => {
     },
     async (request, reply) => {
       try {
-        return { items: await getTrending(request.query.language) }
+        return {
+          items: withPosterRatings(
+            await getTrending(request.query.language),
+            request.profileId,
+          ),
+        }
+      }
+      catch (err) {
+        return sendTmdbError(reply, err)
+      }
+    },
+  )
+
+  app.get(
+    '/backdrops',
+    {
+      onRequest: requireViewer,
+      schema: {
+        operationId: 'getCatalogBackdrops',
+        tags: ['Catalog'],
+        querystring: catalogTitleQuery,
+        response: {
+          200: catalogBackdropsResponse,
+          400: messageResponse,
+          ...errorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return { items: await getTrendingBackdrops(request.query.language) }
       }
       catch (err) {
         return sendTmdbError(reply, err)

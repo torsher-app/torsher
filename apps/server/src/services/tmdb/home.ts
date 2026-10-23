@@ -1,10 +1,10 @@
-import { withRatings } from '../ratings/index.ts'
-import type { HomeMode, HomeRow, HomeRowId } from '../../dto/home.ts'
+import type { HomeMode, HomeRow, TmdbHomeRowId } from '../../dto/home.ts'
 import type { TmdbMediaType } from './mappers.ts'
 import type { TmdbListResponse } from './types.ts'
+import { withRatings } from '../ratings/index.ts'
 import { withMetaCache } from './cache.ts'
 import { TmdbError, tmdbGet } from './client.ts'
-import { listResultToCard, regionOf } from './mappers.ts'
+import { listResultToBackdrop, listResultToCard, regionOf } from './mappers.ts'
 
 const LIST_TTL_MS = 24 * 60 * 60 * 1000
 const TOP_COUNT = 10
@@ -24,7 +24,7 @@ interface RowSpec {
 }
 
 // Тренды TMDB не принимают регион: «Топ-10» — общий тренд дня на языке профиля
-const ROWS: Record<HomeRowId, RowSpec> = {
+const ROWS: Record<TmdbHomeRowId, RowSpec> = {
   trending: { kind: 'top10', path: '/trending/all/day' },
   trendingMovies: { kind: 'top10', path: '/trending/movie/day', type: 'movie' },
   trendingSeries: { kind: 'top10', path: '/trending/tv/day', type: 'tv' },
@@ -59,7 +59,7 @@ const ROWS: Record<HomeRowId, RowSpec> = {
 }
 
 // «Фильмы» и «Сериалы» — подмножества главной
-const LAYOUT: Record<HomeMode, HomeRowId[]> = {
+const LAYOUT: Record<HomeMode, TmdbHomeRowId[]> = {
   all: [
     'trending',
     'popularMovies',
@@ -80,8 +80,7 @@ const LAYOUT: Record<HomeMode, HomeRowId[]> = {
   ],
 }
 
-/** Карточки списка TMDB с постером: без постера тайтл в ряду выглядит дырой. */
-async function loadList(spec: RowSpec, language: string) {
+async function loadResults(spec: RowSpec, language: string) {
   const params: Record<string, string> = {
     language,
     include_adult: 'false',
@@ -102,12 +101,17 @@ async function loadList(spec: RowSpec, language: string) {
   )
 
   return response.results
+}
+
+/** Карточки списка TMDB с постером: без постера тайтл в ряду выглядит дырой. */
+async function loadList(spec: RowSpec, language: string) {
+  return (await loadResults(spec, language))
     .flatMap(result => listResultToCard(result, spec.type) ?? [])
     .filter(item => item.poster)
 }
 
 async function loadRow(
-  id: HomeRowId,
+  id: TmdbHomeRowId,
   spec: RowSpec,
   language: string,
 ): Promise<HomeRow> {
@@ -122,6 +126,13 @@ async function loadRow(
 /** Тренд дня — тот же список и та же запись кэша, что у «Топ-10» главной. */
 export function getTrendingCards(language: string) {
   return loadList(ROWS.trending, language)
+}
+
+/** Кадры тренда дня для заставки: тот же список и та же запись кэша. */
+export async function getTrendingBackdrops(language: string) {
+  return (await loadResults(ROWS.trending, language)).flatMap(
+    result => listResultToBackdrop(result, ROWS.trending.type) ?? [],
+  )
 }
 
 /**

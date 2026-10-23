@@ -7,6 +7,7 @@ import { TMDB_MAX_CACHE_AGE_MS } from '../tmdb/cache.ts'
 import {
   aliasesOf,
   purgeExpiredAliases,
+  queryCombos,
   syncTitleAliases,
   textQueriesOf,
 } from './aliases.ts'
@@ -119,5 +120,80 @@ describe('textQueriesOf', () => {
       'Quiet Harbor',
       'tikhaya gavan',
     ])
+  })
+})
+
+describe('queryCombos', () => {
+  const rows = aliasesOf('tmdb:tv:101', identity, new Date(0))
+
+  it('русское и оригинальное, вместе и по отдельности, с годом и без', () => {
+    expect(queryCombos(rows, 2023)).toEqual([
+      'Тихая гавань',
+      'Тихая гавань 2023',
+      'Тихая гавань Quiet Harbor',
+      'Тихая гавань Quiet Harbor 2023',
+      'Quiet Harbor',
+      'Quiet Harbor 2023',
+      'Quiet Harbor Тихая гавань',
+      'Quiet Harbor Тихая гавань 2023',
+    ])
+  })
+
+  it('без года и без русского — первое официальное', () => {
+    const english = aliasesOf(
+      'tmdb:tv:102',
+      {
+        ...identity,
+        names: [
+          { value: 'Quiet Harbor', lang: 'en', kind: 'official' },
+          { value: 'Stiller Hafen', lang: 'de', kind: 'original' },
+        ],
+      },
+      new Date(0),
+    )
+
+    expect(queryCombos(english)).toEqual([
+      'Quiet Harbor',
+      'Quiet Harbor Stiller Hafen',
+      'Stiller Hafen',
+      'Stiller Hafen Quiet Harbor',
+    ])
+  })
+
+  it('без оригинала вместо него — английское название', () => {
+    const anime = aliasesOf(
+      'tmdb:tv:104',
+      {
+        ...identity,
+        names: [
+          { value: 'Монолог фармацевта', lang: 'ru', kind: 'official' },
+          { value: 'The Apothecary Diaries', lang: 'en', kind: 'official' },
+        ],
+      },
+      new Date(0),
+    )
+
+    expect(queryCombos(anime)).toEqual([
+      'Монолог фармацевта',
+      'Монолог фармацевта The Apothecary Diaries',
+      'The Apothecary Diaries',
+      'The Apothecary Diaries Монолог фармацевта',
+    ])
+  })
+
+  it('оригинал, совпавший с русским, не повторяется', () => {
+    const same = aliasesOf(
+      'tmdb:tv:103',
+      {
+        ...identity,
+        names: [
+          { value: 'Гавань', lang: 'ru', kind: 'official' },
+          { value: 'Гавань', lang: 'ru', kind: 'original' },
+        ],
+      },
+      new Date(0),
+    )
+
+    expect(queryCombos(same, 2020)).toEqual(['Гавань', 'Гавань 2020'])
   })
 })

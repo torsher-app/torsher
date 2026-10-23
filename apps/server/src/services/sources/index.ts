@@ -5,7 +5,8 @@ import type { RankedRelease, Ranking } from './rank.ts'
 import type { IndexerFailure } from './search.ts'
 import { listSearchableIndexers } from '../indexers/index.ts'
 import { getTitleIdentity } from '../tmdb/index.ts'
-import { syncTitleAliases } from './aliases.ts'
+import { normalizeTitle } from '@torsher/release-parser'
+import { queryCombos, syncTitleAliases } from './aliases.ts'
 import { cachedSearch } from './cache.ts'
 import { DEFAULT_PROFILE } from './profile.ts'
 import { coversEpisode, rankReleases, RESOLUTION_RANK } from './rank.ts'
@@ -28,6 +29,8 @@ export interface SourcesRequest {
   refresh?: boolean
   /** Чей прогресс подсказывает «Как в прошлых сериях» */
   profileId?: string
+  /** Строка зрителя вместо автоматического поиска («Уточнить запрос») */
+  query?: string
 }
 
 /** Озвучка среди найденных раздач: для панели «Озвучка» */
@@ -54,6 +57,10 @@ export interface TitleSources {
   /** Кандидаты, раздачу которых уже добавляли для этого тайтла */
   /** Кандидат, раздачей которого смотрели последний раз. */
   lastWatchedId?: string
+  /** Строка зрителя, по которой искали; без неё — автоматический поиск */
+  query?: string
+  /** Готовые строки для «Уточнить запрос» */
+  querySuggestions: string[]
   indexerCount: number
   failed: IndexerFailure[]
 }
@@ -133,10 +140,15 @@ export async function getTitleSources(
     : seasonOf(identity, request.season)
   const episode = season === undefined ? undefined : request.episode
   const aliases = syncTitleAliases(titleId, identity)
+  const query = request.query?.trim() || undefined
+  const scope = `${titleId}:${request.allSeasons ? 'all' : (season ?? 0)}`
   const search = await cachedSearch(
-    `${titleId}:${request.allSeasons ? 'all' : (season ?? 0)}`,
+    query ? `${scope}:q:${normalizeTitle(query) || query}` : scope,
     () =>
-      searchReleases({ identity, aliases, season }, listSearchableIndexers()),
+      searchReleases(
+        { identity, aliases, season, query },
+        listSearchableIndexers(),
+      ),
     { refresh: request.refresh },
   )
   const releases
@@ -194,6 +206,8 @@ export async function getTitleSources(
     ranking,
     seasonCandidate,
     lastWatchedId,
+    query,
+    querySuggestions: queryCombos(aliases, identity.year),
     voices: voiceOptions(ranking.ranked, pinned),
     pinned,
     indexerCount: search.outcome.indexerCount,

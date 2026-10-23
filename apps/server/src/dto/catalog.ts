@@ -37,6 +37,13 @@ export const titleRating = z
     votes: z.number().int().optional(),
   })
   .meta({ id: 'titleRating' })
+export const posterRating = z
+  .object({
+    source: z.enum(['own', 'tmdb', 'imdb']),
+    // Своя — 1–10 целым, внешние — с одним знаком
+    value: z.number(),
+  })
+  .meta({ id: 'posterRating' })
 
 export const card = z
   .object({
@@ -50,6 +57,8 @@ export const card = z
     poster: z.string().optional(),
     // В порядке поставщиков; IMDb — если IMDb ID тайтла уже известен
     ratings: z.array(titleRating).optional(),
+    // Одна оценка для значка на постере — по настройке профиля; нет — постер чистый
+    posterRating: posterRating.optional(),
   })
   .meta({ id: 'card' })
 
@@ -142,8 +151,25 @@ export const catalogTrendingResponse = z
   })
   .meta({ id: 'catalogTrendingResponse' })
 
+// Кадр тайтла для заставки витрины
+export const backdrop = z
+  .object({
+    id: z.string(),
+    title: z.string(),
+    year: z.number().int().optional(),
+    backdrop: z.string(),
+  })
+  .meta({ id: 'backdrop' })
+
+export const catalogBackdropsResponse = z
+  .object({
+    items: z.array(backdrop),
+  })
+  .meta({ id: 'catalogBackdropsResponse' })
+
 export type TitleRating = z.output<typeof titleRating>
 export type Card = z.output<typeof card>
+export type Backdrop = z.output<typeof backdrop>
 export type TitleDetails = z.output<typeof titleDetails>
 export type TitleSeason = z.output<typeof titleSeason>
 export type Episode = z.output<typeof episode>
