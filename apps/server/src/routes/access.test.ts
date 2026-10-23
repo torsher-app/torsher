@@ -30,6 +30,8 @@ const VIEWER = new Set([
   'GET /api/catalog/search',
   'GET /api/catalog/trending',
   'GET /api/catalog/backdrops',
+  'GET /api/catalog/discover',
+  'GET /api/catalog/genres',
   'GET /api/catalog/titles/:id',
   'GET /api/catalog/titles/:id/extras',
   'GET /api/catalog/titles/:id/seasons/:number',

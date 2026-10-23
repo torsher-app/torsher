@@ -5,7 +5,9 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { expireSession } from '../session.ts'
 
-const props = defineProps<{ kind: LoadError | 'empty' | 'homeEmpty' }>()
+const props = defineProps<{
+  kind: LoadError | 'empty' | 'homeEmpty' | 'catalogEmpty'
+}>()
 
 defineEmits<{ retry: [] }>()
 
@@ -15,9 +17,14 @@ const router = useRouter()
 // Без подключения повтор не поможет: устройство подключается заново по коду
 const reconnect = computed(() => props.kind === 'unauthorized')
 
-// Повтор не поможет, если ничего не нашлось или тайтла нет
+// Повтор не поможет, если ничего не нашлось или тайтла нет; действие пустого
+// каталога («Сбросить фильтры») передаёт экран в слоте
 const canRetry = computed(
-  () => props.kind !== 'empty' && props.kind !== 'notFound' && !reconnect.value,
+  () =>
+    props.kind !== 'empty'
+    && props.kind !== 'catalogEmpty'
+    && props.kind !== 'notFound'
+    && !reconnect.value,
 )
 
 function connect() {
@@ -52,6 +59,7 @@ function connect() {
     >
       {{ t("state.retry") }}
     </button>
+    <slot />
   </div>
 </template>
 

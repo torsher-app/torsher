@@ -22,6 +22,7 @@ import type {
   TmdbListResult,
   TmdbMovie,
   TmdbMultiResult,
+  TmdbNamed,
   TmdbPerson,
   TmdbPersonCredit,
   TmdbSeason,
@@ -48,6 +49,9 @@ const PERSON_PHOTO_SIZE = 'w342'
 const LOGO_FILE = /\.png$/
 
 const MAX_STUDIOS = 3
+// Чипы карточки: студий у фильма бывает десяток, keywords — до сотни
+const MAX_TAG_STUDIOS = 6
+const MAX_KEYWORDS = 20
 const MAX_CAST = 20
 const MAX_SIMILAR = 20
 const MAX_AKA = 6
@@ -511,6 +515,46 @@ export function trimExtras(extras: TmdbExtras): TmdbExtras {
     },
     recommendations: extras.recommendations,
     alternative_titles: extras.alternative_titles,
+    genres: extras.genres,
+    production_companies: extras.production_companies?.slice(
+      0,
+      MAX_TAG_STUDIOS,
+    ),
+    networks: extras.networks?.slice(0, MAX_TAG_STUDIOS),
+    keywords: {
+      keywords: extras.keywords?.keywords?.slice(0, MAX_KEYWORDS),
+      results: extras.keywords?.results?.slice(0, MAX_KEYWORDS),
+    },
+  }
+}
+
+// Русские жанры TMDB пишет со строчной: «боевик», «драма»
+export function capitalized(text: string) {
+  return text.charAt(0).toUpperCase() + text.slice(1)
+}
+
+function tagsOf(items: TmdbNamed[] | undefined, prefix = '') {
+  return (items ?? []).flatMap((item) => {
+    const name = item.name.trim()
+
+    return name ? [{ id: `${prefix}${item.id}`, name: capitalized(name) }] : []
+  })
+}
+
+/**
+ * Чипы карточки. Значения — фильтры каталога: жанр и keyword — ID TMDB,
+ * студия фильма — `company:<id>`, канал сериала — `network:<id>`.
+ */
+function extrasTags(extras: TmdbExtras, ref: TmdbRef) {
+  return {
+    genres: tagsOf(extras.genres),
+    studios:
+      ref.type === 'movie'
+        ? tagsOf(extras.production_companies, 'company:')
+        : tagsOf(extras.networks, 'network:'),
+    keywords: tagsOf(
+      extras.keywords?.keywords ?? extras.keywords?.results,
+    ).slice(0, MAX_KEYWORDS),
   }
 }
 
@@ -667,6 +711,7 @@ export function extrasToDto(
       language,
     ),
     directors: ref.type === 'movie' ? [...directors] : [],
+    tags: extrasTags(extras, ref),
   }
 }
 

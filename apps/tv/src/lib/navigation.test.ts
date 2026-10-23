@@ -141,6 +141,26 @@ describe('backAction', () => {
     }
   })
 
+  it('каталог — в карточку или персону, откуда открыли, иначе на главную', () => {
+    for (const section of ['/catalog']) {
+      expect(backAction(route(section), `/title/${ID}`)).toEqual({
+        kind: 'history',
+      })
+      expect(backAction(route(section), '/person/tmdb:person:1')).toEqual({
+        kind: 'history',
+      })
+      expect(backAction(route(section), '/?x=1')).toEqual({ kind: 'history' })
+      expect(backAction(route(section), `/title/${ID}/sources`)).toEqual({
+        kind: 'replace',
+        path: '/',
+      })
+      expect(backAction(route(section), '/movies')).toEqual({
+        kind: 'replace',
+        path: '/',
+      })
+    }
+  })
+
   it('главная — корень при любой истории', () => {
     expect(backAction(route('/'), undefined)).toEqual({ kind: 'none' })
     expect(backAction(route('/'), '/series')).toEqual({ kind: 'none' })

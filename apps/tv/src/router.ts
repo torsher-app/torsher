@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { createRouter, createWebHashHistory } from 'vue-router'
 import { gateTarget } from './lib/session.ts'
 import AboutPage from './pages/AboutPage.vue'
+import CatalogPage from './pages/CatalogPage.vue'
 import ConnectPage from './pages/ConnectPage.vue'
 import FilesPage from './pages/FilesPage.vue'
 import { createScreenKeys } from './lib/screenKeys.ts'
@@ -31,6 +32,8 @@ export const router = createRouter({
     { path: '/series', component: HomePage, props: { mode: 'series' } },
     { path: '/search', component: SearchPage },
     { path: '/mine', component: MinePage },
+    // Фильтр каталога — в query
+    { path: '/catalog', component: CatalogPage },
     // Карточка и персона — стек экранов: по цепочке «актёр → фильм → режиссёр»
     // Back возвращает каждый экран с его фокусом (App.vue)
     {

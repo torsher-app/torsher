@@ -1,8 +1,10 @@
 import type {
   TmdbExtras,
+  TmdbGenresResponse,
   TmdbImage,
   TmdbListResponse,
   TmdbMovie,
+  TmdbPageResponse,
   TmdbPerson,
   TmdbSearchResponse,
   TmdbSeason,
@@ -317,11 +319,34 @@ export const tvExtras = {
       { iso_3166_1: 'RU', title: '  ' },
     ],
   },
+  genres: [
+    { id: 18, name: 'драма' },
+    { id: 10765, name: 'НФ и Фэнтези' },
+  ],
+  production_companies: [{ id: 11073, name: 'Sony Pictures Television' }],
+  networks: [{ id: 49, name: 'HBO ' }],
+  keywords: {
+    results: [
+      { id: 9882, name: 'space' },
+      { id: 1, name: '  ' },
+    ],
+  },
 } as unknown as TmdbExtras
 
 export const movieExtras = {
   title: 'Матрица',
   original_title: 'The Matrix',
+  genres: [{ id: 878, name: 'фантастика' }],
+  production_companies: Array.from({ length: 8 }, (_, index) => ({
+    id: 100 + index,
+    name: `Студия ${index + 1}`,
+  })),
+  keywords: {
+    keywords: Array.from({ length: 25 }, (_, index) => ({
+      id: 1000 + index,
+      name: `keyword ${index + 1}`,
+    })),
+  },
   credits: {
     cast: [
       {
@@ -564,3 +589,29 @@ export const person = {
     ],
   },
 } as unknown as TmdbPerson
+
+export const discoverPage = {
+  page: 2,
+  results: [
+    {
+      id: 603,
+      title: 'Матрица',
+      original_title: 'The Matrix',
+      release_date: '1999-03-31',
+      poster_path: '/p96dm7sCMn4VYAStA6siNz30G1r.jpg',
+      vote_average: 8.2,
+      vote_count: 26000,
+    },
+    { id: 604, title: 'Без постера', poster_path: null },
+  ],
+  total_pages: 1200,
+  total_results: 24000,
+} as TmdbPageResponse
+
+export const movieGenres = {
+  genres: [
+    { id: 28, name: 'боевик' },
+    { id: 16, name: 'мультфильм' },
+    { id: 35, name: 'комедия' },
+  ],
+} as TmdbGenresResponse

@@ -153,6 +153,15 @@ export const crewMember = z
   })
   .meta({ id: 'crewMember' })
 
+// Жанр, студия или тег тайтла: чип карточки ведёт в каталог с этим фильтром
+export const catalogTag = z
+  .object({
+    // Непрозрачное значение фильтра каталога: клиент передаёт его как есть
+    id: z.string(),
+    name: z.string(),
+  })
+  .meta({ id: 'catalogTag' })
+
 export const titleExtras = z
   .object({
     cast: z.array(person),
@@ -162,6 +171,12 @@ export const titleExtras = z
     // Другие названия тайтла: по ним его узнают и ищут раздачи
     aka: z.array(z.string()),
     directors: z.array(z.string()),
+    // Чипы карточки: жанры, студии фильма или каналы сериала, keywords TMDB
+    tags: z.object({
+      genres: z.array(catalogTag),
+      studios: z.array(catalogTag),
+      keywords: z.array(catalogTag),
+    }),
   })
   .meta({ id: 'titleExtras' })
 
@@ -178,6 +193,84 @@ export const catalogTrendingResponse = z
     items: z.array(card),
   })
   .meta({ id: 'catalogTrendingResponse' })
+
+// Тип каталога — набор параметров TMDB discover; жанр добавляется к нему через И
+export const catalogTypes = [
+  'movies',
+  'series',
+  'cartoons',
+  'cartoonSeries',
+  'anime',
+] as const
+
+export const catalogSorts = ['popularity', 'rating', 'date'] as const
+
+export const catalogDiscoverQuery = z
+  .object({
+    type: z.enum(catalogTypes).default('movies'),
+    // ID жанра из /catalog/genres
+    genre: z
+      .string()
+      .regex(/^\d{1,9}$/)
+      .optional(),
+    year: z.coerce.number().int().min(1900).max(2100).optional(),
+    // Первый год десятилетия: 1990 — 1990–1999
+    decade: z.coerce
+      .number()
+      .int()
+      .min(1900)
+      .max(2090)
+      .multipleOf(10)
+      .optional(),
+    // Оценка TMDB от N
+    rating: z.coerce.number().int().min(1).max(9).optional(),
+    // ISO 639-1
+    originalLanguage: z
+      .string()
+      .regex(/^[a-z]{2}$/)
+      .optional(),
+    // ISO 3166-1
+    country: z
+      .string()
+      .regex(/^[A-Z]{2}$/)
+      .optional(),
+    keyword: z
+      .string()
+      .regex(/^\d{1,9}$/)
+      .optional(),
+    // Значение из тегов тайтла: company:<id> или network:<id>
+    studio: z
+      .string()
+      .regex(/^(?:company|network):\d{1,9}$/)
+      .optional(),
+    sort: z.enum(catalogSorts).default('popularity'),
+    page: z.coerce.number().int().min(1).max(500).default(1),
+    language: tmdbLanguage,
+  })
+  .refine(query => query.year === undefined || query.decade === undefined, {
+    message: 'year and decade are mutually exclusive',
+  })
+
+export const catalogDiscoverResponse = z
+  .object({
+    items: z.array(card),
+    page: z.number().int(),
+    // Не больше 500: дальше TMDB страницы не отдаёт
+    totalPages: z.number().int(),
+    total: z.number().int(),
+  })
+  .meta({ id: 'catalogDiscoverResponse' })
+
+export const catalogGenresQuery = z.object({
+  type: z.enum(catalogTypes).default('movies'),
+  language: tmdbLanguage,
+})
+
+export const catalogGenresResponse = z
+  .object({
+    items: z.array(catalogTag),
+  })
+  .meta({ id: 'catalogGenresResponse' })
 
 // Кадр тайтла для заставки витрины
 export const backdrop = z
@@ -252,6 +345,10 @@ export type Episode = z.output<typeof episode>
 export type SeasonDetails = z.output<typeof seasonDetails>
 export type Person = z.output<typeof person>
 export type TitleExtras = z.output<typeof titleExtras>
+export type CatalogTag = z.output<typeof catalogTag>
+export type CatalogType = (typeof catalogTypes)[number]
+export type CatalogSort = (typeof catalogSorts)[number]
+export type CatalogDiscoverQuery = z.output<typeof catalogDiscoverQuery>
 export type CrewJob = z.output<typeof crewJob>
 export type CrewMember = z.output<typeof crewMember>
 export type PersonRole = z.output<typeof personRole>

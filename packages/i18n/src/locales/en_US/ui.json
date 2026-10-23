@@ -10,7 +10,8 @@
     "movies": "Movies",
     "series": "Series",
     "settings": "Settings",
-    "mine": "Mine"
+    "mine": "Mine",
+    "catalog": "Catalog"
   },
   "search": {
     "title": "Search",
@@ -24,6 +25,69 @@
     "movie": "movie",
     "series": "series",
     "people": "People"
+  },
+  "catalog": {
+    "count": "{n} title | {n} titles",
+    "countMany": "{n}+ titles",
+    "types": {
+      "movies": "Movies",
+      "series": "Series",
+      "cartoons": "Cartoons",
+      "cartoonSeries": "Cartoon series",
+      "anime": "Anime"
+    },
+    "sorts": {
+      "popularity": "popularity",
+      "rating": "rating",
+      "date": "newest first"
+    },
+    "sortOptions": {
+      "popularity": "Popularity",
+      "rating": "Rating",
+      "date": "Newest first"
+    },
+    "control": {
+      "type": "Type: {value}",
+      "genre": "Genre: {value}",
+      "year": "Year: {value}",
+      "rating": "{source} rating: {value}",
+      "language": "Language: {value}",
+      "country": "Country: {value}",
+      "studio": "Studio: {value}",
+      "keyword": "Tag: {value}",
+      "sort": "Sort: {value}"
+    },
+    "anyShort": {
+      "genre": "any",
+      "year": "any",
+      "rating": "any",
+      "language": "any",
+      "country": "any"
+    },
+    "any": {
+      "genre": "Any genre",
+      "year": "Any year",
+      "rating": "Any rating",
+      "language": "Any language",
+      "country": "Any country",
+      "studio": "Any studio",
+      "keyword": "Any tag"
+    },
+    "panel": {
+      "type": "Type",
+      "genre": "Genre",
+      "year": "Release year",
+      "rating": "{source} rating",
+      "language": "Original language",
+      "country": "Country",
+      "studio": "Studio",
+      "keyword": "Tag",
+      "sort": "Sort"
+    },
+    "decade": "{decade}s",
+    "ratingFrom": "{n}+",
+    "reset": "Reset filters",
+    "moreFailed": "Could not load more"
   },
   "home": {
     "rows": {
@@ -39,7 +103,15 @@
       "topRatedMovies": "Top rated movies",
       "topRatedSeries": "Top rated series",
       "newEpisodes": "New episodes",
-      "watchlist": "Watch later"
+      "watchlist": "Watch later",
+      "themeSpace": "Space",
+      "themeZombies": "Zombies",
+      "themeVampires": "Vampires",
+      "themeDetectives": "Detectives",
+      "themeSpies": "Spies",
+      "themeDisasters": "Disasters",
+      "themeWar": "War",
+      "themeWesterns": "Westerns"
     },
     "hint": {
       "details": "Details",
@@ -97,7 +169,14 @@
     },
     "resume": "Continue",
     "sources": "Sources",
-    "crew": "Crew"
+    "crew": "Crew",
+    "tags": {
+      "genres": "Genres",
+      "studios": "Studios",
+      "networks": "Networks",
+      "keywords": "Tags",
+      "hint": "Opens the catalog with this filter"
+    }
   },
   "watch": {
     "searching": "Searching for releases…",
@@ -284,6 +363,10 @@
     "homeEmpty": {
       "title": "Nothing to show yet",
       "text": "The catalog returned no rows. Try again later"
+    },
+    "catalogEmpty": {
+      "title": "Nothing found",
+      "text": "No titles match these filters. Remove some filters or pick other values"
     }
   },
   "connect": {
@@ -481,7 +564,9 @@
     "ita": "Italian",
     "por": "Portuguese",
     "pol": "Polish",
-    "tur": "Turkish"
+    "tur": "Turkish",
+    "hin": "Hindi",
+    "tha": "Thai"
   },
   "shell": {
     "tagline": "Connect the TV to your Torsher server",

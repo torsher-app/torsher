@@ -2,6 +2,10 @@ import type { FastifyReply } from 'fastify'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import {
   catalogBackdropsResponse,
+  catalogDiscoverQuery,
+  catalogDiscoverResponse,
+  catalogGenresQuery,
+  catalogGenresResponse,
   catalogPersonParams,
   catalogSearchQuery,
   catalogSearchResponse,
@@ -19,6 +23,8 @@ import { requireViewer } from '../middleware/auth.ts'
 import { withPosterRatings } from '../services/mine/index.ts'
 import { watchedTitles } from '../services/sources/progress.ts'
 import {
+  discoverTitles,
+  getGenres,
   getPerson,
   getSeason,
   getTitle,
@@ -225,6 +231,69 @@ export const catalogRoutes: FastifyPluginAsyncZod = async (app) => {
             ...group,
             items: withPosterRatings(group.items, profileId),
           })),
+        }
+      }
+      catch (err) {
+        return sendTmdbError(reply, err)
+      }
+    },
+  )
+
+  app.get(
+    '/discover',
+    {
+      onRequest: requireViewer,
+      schema: {
+        operationId: 'getCatalogDiscover',
+        tags: ['Catalog'],
+        querystring: catalogDiscoverQuery,
+        response: {
+          200: catalogDiscoverResponse,
+          400: messageResponse,
+          ...errorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const page = await discoverTitles(request.query)
+
+        if (!page) {
+          return reply
+            .code(400)
+            .send({ message: 'Networks apply only to series' })
+        }
+
+        return {
+          ...page,
+          items: withPosterRatings(page.items, request.profileId),
+        }
+      }
+      catch (err) {
+        return sendTmdbError(reply, err)
+      }
+    },
+  )
+
+  app.get(
+    '/genres',
+    {
+      onRequest: requireViewer,
+      schema: {
+        operationId: 'getCatalogGenres',
+        tags: ['Catalog'],
+        querystring: catalogGenresQuery,
+        response: {
+          200: catalogGenresResponse,
+          400: messageResponse,
+          ...errorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return {
+          items: await getGenres(request.query.type, request.query.language),
         }
       }
       catch (err) {

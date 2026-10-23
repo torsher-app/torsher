@@ -32,6 +32,12 @@ const SECTIONS = new Set([
 ])
 
 /**
+ * Каталог — раздел рейла, но его открывают и чипы карточки тайтла: тогда
+ * назад — в карточку (или персону), откуда пришли
+ */
+const CATALOG = '/catalog'
+
+/**
  * Экран уровнем выше и какая прошлая запись истории им считается. Флоу
  * просмотра — иерархия: плеер → «Файлы» → «Источники» → карточка → откуда
  * пришли на карточку. Персона, как и карточка, возвращается туда, откуда её
@@ -44,6 +50,21 @@ function parentOf(route: RouteLike) {
     return {
       path: HOME,
       accepts: (back: string) => pathOf(back) === HOME,
+    }
+  }
+
+  if (route.pattern === CATALOG) {
+    return {
+      path: HOME,
+      accepts: (back: string) => {
+        const path = pathOf(back)
+
+        return (
+          path === HOME
+          || /^\/title\/[^/]+$/.test(path)
+          || path.startsWith('/person/')
+        )
+      },
     }
   }
 

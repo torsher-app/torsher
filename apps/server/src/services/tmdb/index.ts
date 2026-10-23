@@ -42,6 +42,7 @@ import {
 } from './mappers.ts'
 
 export { fetchTmdbImage, TmdbError } from './client.ts'
+export { discoverTitles, getGenres } from './discover.ts'
 export { getHomeRows, getTrendingBackdrops } from './home.ts'
 export { getTitleIdentity } from './identity.ts'
 export type { TitleIdentity, TitleName, TitleNameKind } from './identity.ts'
@@ -58,8 +59,8 @@ const TRENDING_LIMIT = 12
  * меняется, иначе до конца TTL отдавались бы ответы без новых полей.
  */
 const DETAILS_KEY_VERSION = 'v3'
-// v2: съёмочная группа сериала и создатели
-const EXTRAS_KEY_VERSION = 'v2'
+// v2: съёмочная группа сериала и создатели; v3: жанры, студии и keywords
+const EXTRAS_KEY_VERSION = 'v3'
 const PERSON_KEY_VERSION = 'v1'
 
 // У части тайтлов нет перевода описания: его берём с английской версии
@@ -259,7 +260,7 @@ export async function getTitleExtras(
       trimExtras(
         await tmdbGet<TmdbExtras>(`/${ref.type}/${ref.tmdbId}`, {
           language,
-          append_to_response: `${credits},recommendations,alternative_titles`,
+          append_to_response: `${credits},recommendations,alternative_titles,keywords`,
         }),
       ),
   )

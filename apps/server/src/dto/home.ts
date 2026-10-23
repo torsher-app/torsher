@@ -17,6 +17,18 @@ export const tmdbHomeRowIds = [
   'topRatedSeries',
 ] as const
 
+// Тематические ряды главной: два в день по очереди
+export const themeHomeRowIds = [
+  'themeSpace',
+  'themeZombies',
+  'themeVampires',
+  'themeDetectives',
+  'themeSpies',
+  'themeDisasters',
+  'themeWar',
+  'themeWesterns',
+] as const
+
 // Личные ряды профиля: собираются из его списков и просмотров
 export const personalHomeRowIds = [
   'newEpisodes',
@@ -24,7 +36,11 @@ export const personalHomeRowIds = [
   'collection',
 ] as const
 
-export const homeRowIds = [...tmdbHomeRowIds, ...personalHomeRowIds] as const
+export const homeRowIds = [
+  ...tmdbHomeRowIds,
+  ...themeHomeRowIds,
+  ...personalHomeRowIds,
+] as const
 
 export const homeQuery = z.object({
   mode: z.enum(homeModes).default('all'),
@@ -105,6 +121,7 @@ export const homeResponse = z
 export type HomeMode = (typeof homeModes)[number]
 export type HomeRowId = (typeof homeRowIds)[number]
 export type TmdbHomeRowId = (typeof tmdbHomeRowIds)[number]
+export type ThemeHomeRowId = (typeof themeHomeRowIds)[number]
 export type HomeRow = z.output<typeof homeRow>
 export type CatalogRow = z.output<typeof catalogRow>
 export type EpisodeCard = z.output<typeof episodeCard>
