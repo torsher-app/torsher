@@ -2,6 +2,7 @@ import type { AudioTrack, ParsedRelease } from '../src/types.ts'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { parseRelease } from '../src/parse.ts'
+import { videoResolution } from '../src/resolution.ts'
 
 export interface CorpusCase {
   title: string
@@ -30,6 +31,7 @@ export const EXTRA_FIELDS = [
   'source',
   'absolute',
   'isOngoing',
+  'resolution',
 ] as const
 export const TARGET = 0.9
 
@@ -62,6 +64,8 @@ export function actualValue(parsed: ParsedRelease, field: string): unknown {
     case 'year':
     case 'source':
       return parsed[field] ?? null
+    case 'resolution':
+      return videoResolution(parsed) ?? null
     default:
       return parsed[field as keyof ParsedRelease]
   }

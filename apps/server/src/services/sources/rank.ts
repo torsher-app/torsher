@@ -1,10 +1,12 @@
 import type {
   AudioTrack,
   ParsedRelease,
-  Resolution,
   TitleMatch,
+  VideoClass,
+  VideoResolution,
 } from '@torsher/release-parser'
 import type { RankingProfile, VoiceRef } from './profile.ts'
+import { videoResolution } from '@torsher/release-parser'
 
 /** Раздача после поиска, склейки повторов и матчера; `low` сюда не попадает */
 export interface FoundRelease {
@@ -44,6 +46,8 @@ export interface RankedRelease extends FoundRelease {
   voice?: AudioTrack
   /** Все русские дорожки (`russianVoices`): основная среди них. */
   voices: AudioTrack[]
+  /** Разрешение: проба или файлы добавленной раздачи, иначе по названию. */
+  resolution?: VideoResolution
   /** Размер на серию у сериала; у фильма — весь размер. */
   episodeSize?: number
   /** Годится в тройку: уверенный матч, есть сиды, не экранная копия. */
@@ -57,8 +61,10 @@ export interface RankContext {
   pinned?: VoiceRef
   /** Язык оригинала тайтла, ISO 639-1. */
   originalLanguage?: string
-  /** Серий в искомом сезоне по TMDB: размер на серию у пака без диапазона. */
-  seasonEpisodes?: number
+  /** Серий в сезонах по TMDB: размер на серию у пака без диапазона. */
+  episodeCounts?: Record<number, number>
+  /** Точные разрешения раздач, которые уже добавляли (`knownResolutions`), по ID. */
+  known?: Map<string, VideoResolution>
 }
 
 export const TOP_SIZE = 3
@@ -66,21 +72,17 @@ export const TOP_SIZE = 3
 const GB = 1024 ** 3
 
 // Чем выше разрешение, тем больше число: для «Лучшее качество»
-export const RESOLUTION_RANK: Record<Resolution, number> = {
-  '2160p': 8,
-  '1440p': 7,
-  '1080p': 6,
-  '1080i': 5,
-  '720p': 4,
-  '576p': 3,
-  '480p': 2,
-  '360p': 1,
+export const RESOLUTION_RANK: Record<VideoClass, number> = {
+  '2160p': 4,
+  '1080p': 3,
+  '720p': 2,
+  'SD': 1,
 }
 
 // Разумный размер на фильм и на серию: всё, что вне, — подозрительно
 const SIZE_CORRIDOR: Record<
   'movie' | 'series',
-  Partial<Record<Resolution, [number, number]>>
+  Partial<Record<VideoClass, [number, number]>>
 > = {
   movie: {
     '720p': [0.7 * GB, 8 * GB],
@@ -101,6 +103,8 @@ export const WEIGHTS = {
   qualityLadder: [40, 30, 20],
   qualityOther: 8,
   qualityUnknown: 5,
+  // Разрешение выведено, а не написано: при прочих равных точное выше
+  qualityInferred: -5,
   screenCopy: -60,
   // Закреплённая студия перевешивает и лучший тип перевода, и ступень качества
   pinnedVoice: 80,
@@ -175,23 +179,34 @@ export function voiceMatches(track: AudioTrack | undefined, pinned: VoiceRef) {
 }
 
 /**
- * Сколько серий в раздаче: диапазон из названия, а у пака одного сезона без
- * диапазона (`[S01]`) — серии сезона по TMDB. У идущего сезона TMDB знает и
- * невышедшие серии, поэтому размер на серию будет занижен: это ориентир.
+ * Сколько серий в раздаче: диапазон из названия, а у пака без диапазона
+ * (`[S01]`, `[S01-05]`) — серии его сезонов по TMDB, если TMDB знает их все.
+ * У идущего сезона TMDB знает и невышедшие серии, поэтому размер на серию
+ * будет занижен: это ориентир.
  */
-function episodeCountOf(parsed: ParsedRelease, seasonEpisodes?: number) {
+function episodeCountOf(
+  parsed: ParsedRelease,
+  episodeCounts?: Record<number, number>,
+) {
   const { episodes, seasons } = parsed
 
   if (episodes)
     return episodes.to - episodes.from + 1
 
-  return parsed.isPack && seasons.length === 1 ? seasonEpisodes : undefined
+  if (!parsed.isPack || seasons.length === 0 || !episodeCounts)
+    return undefined
+
+  const counts = seasons.map(season => episodeCounts[season])
+
+  return counts.every(count => !!count)
+    ? counts.reduce((sum, count) => sum + count, 0)
+    : undefined
 }
 
 export function episodeSizeOf(
   release: FoundRelease,
   kind: 'movie' | 'series',
-  seasonEpisodes?: number,
+  episodeCounts?: Record<number, number>,
 ) {
   if (release.size === undefined)
     return undefined
@@ -199,7 +214,7 @@ export function episodeSizeOf(
   if (kind === 'movie')
     return release.size
 
-  const count = episodeCountOf(release.parsed, seasonEpisodes)
+  const count = episodeCountOf(release.parsed, episodeCounts)
 
   return count ? Math.round(release.size / count) : undefined
 }
@@ -218,18 +233,24 @@ export function coversEpisode(parsed: ParsedRelease, episode: number) {
   return episode >= range.from && episode <= range.to
 }
 
-function qualityScore(parsed: ParsedRelease, profile: RankingProfile) {
+function qualityScore(
+  parsed: ParsedRelease,
+  resolution: VideoResolution | undefined,
+  profile: RankingProfile,
+) {
   if (parsed.source && SCREEN_COPIES.has(parsed.source))
     return WEIGHTS.screenCopy
 
-  if (!parsed.quality)
+  if (!resolution)
     return WEIGHTS.qualityUnknown
 
-  const index = profile.qualities.indexOf(parsed.quality)
+  const index = profile.qualities.indexOf(resolution.value)
+  const score
+    = index === -1
+      ? WEIGHTS.qualityOther
+      : (WEIGHTS.qualityLadder[index] ?? WEIGHTS.qualityOther)
 
-  return index === -1
-    ? WEIGHTS.qualityOther
-    : (WEIGHTS.qualityLadder[index] ?? WEIGHTS.qualityOther)
+  return resolution.sure ? score : score + WEIGHTS.qualityInferred
 }
 
 function voiceScore(voice: AudioTrack | undefined, ctx: RankContext) {
@@ -257,11 +278,11 @@ function seedersScore(seeders: number) {
 }
 
 function sizeScore(
-  parsed: ParsedRelease,
+  resolution: VideoResolution | undefined,
   episodeSize: number | undefined,
   kind: 'movie' | 'series',
 ) {
-  const corridor = parsed.quality && SIZE_CORRIDOR[kind][parsed.quality]
+  const corridor = resolution && SIZE_CORRIDOR[kind][resolution.value]
 
   if (!corridor || episodeSize === undefined)
     return 0
@@ -276,21 +297,23 @@ function scoreOf(
   release: FoundRelease,
   voice: AudioTrack | undefined,
   episodeSize: number | undefined,
+  resolution: VideoResolution | undefined,
   ctx: RankContext,
 ) {
   return (
-    qualityScore(release.parsed, ctx.profile)
+    qualityScore(release.parsed, resolution, ctx.profile)
     + voiceScore(voice, ctx)
     + seedersScore(release.seeders)
-    + sizeScore(release.parsed, episodeSize, ctx.kind)
+    + sizeScore(resolution, episodeSize, ctx.kind)
     + (release.match.confidence === 'medium' ? WEIGHTS.mediumMatch : 0)
     + (release.link ? WEIGHTS.torrentFile : 0)
   )
 }
 
 function resolutionRank(release: RankedRelease) {
-  const base = release.parsed.quality
-    ? RESOLUTION_RANK[release.parsed.quality]
+  // Выведенное разрешение — не повод советовать раздачу как лучшую по качеству
+  const base = release.resolution?.sure
+    ? RESOLUTION_RANK[release.resolution.value]
     : 0
 
   // HDR и DV при том же разрешении — тоже лучше
@@ -388,7 +411,9 @@ export function rankReleases(
     .map((release) => {
       const voices = russianVoices(release.parsed, ctx)
       const voice = voiceOf(voices, ctx)
-      const episodeSize = episodeSizeOf(release, ctx.kind, ctx.seasonEpisodes)
+      const episodeSize = episodeSizeOf(release, ctx.kind, ctx.episodeCounts)
+      const resolution
+        = ctx.known?.get(release.id) ?? videoResolution(release.parsed)
       const screenCopy
         = !!release.parsed.source && SCREEN_COPIES.has(release.parsed.source)
 
@@ -397,7 +422,8 @@ export function rankReleases(
         voice,
         voices,
         episodeSize,
-        score: scoreOf(release, voice, episodeSize, ctx),
+        resolution,
+        score: scoreOf(release, voice, episodeSize, resolution, ctx),
         eligible:
           release.match.confidence === 'high'
           && release.seeders > 0

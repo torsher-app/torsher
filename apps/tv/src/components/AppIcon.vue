@@ -30,6 +30,9 @@ export type IconName
     | 'more'
     | 'source'
     | 'next'
+    | 'arrowUp'
+    | 'arrowDown'
+    | 'gauge'
 
 const props = defineProps<{ name: IconName }>()
 
@@ -104,6 +107,10 @@ const PATHS: Record<IconName, (string | IconPart)[]> = {
   ],
   source: ['M4 8h14l-3.5-3.5', 'M20 16H6l3.5 3.5'],
   next: [{ d: 'M5 5v14l10-7z', fill: true }, 'M19 5v14'],
+  arrowUp: ['M12 19.5v-14M6 11.5l6-6 6 6'],
+  arrowDown: ['M12 4.5v14M6 12.5l6 6 6-6'],
+  // Спидометр: дуга шкалы и стрелка
+  gauge: ['M4.2 17.5a8.5 8.5 0 1 1 15.6 0', 'M12 14.5l4-5'],
   list: ['M9 6.5h11M9 12h11M9 17.5h11', 'M4.5 6.5h.01M4.5 12h.01M4.5 17.5h.01'],
   // Шестерёнка: кольцо, восемь зубцов и отверстие
   settings: [

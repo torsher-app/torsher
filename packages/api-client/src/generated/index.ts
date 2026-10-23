@@ -442,6 +442,12 @@ export interface IndexerManagerSyncResultInput {
   missing: number;
 }
 
+export interface VideoResolutionInput {
+  value: "2160p" | "1080p" | "720p" | "SD";
+  basis: "probe" | "file" | "title" | "source" | "codec";
+  sure: boolean;
+}
+
 export interface VoiceRefInput {
   studio?: string;
   type?: "D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original";
@@ -471,6 +477,7 @@ export interface SourceCandidateInput {
     | "480p"
     | "360p"
     | null;
+  resolution: VideoResolutionInput | null;
   source: string | null;
   codec: string | null;
   hdr: string[];
@@ -503,8 +510,7 @@ export interface VoiceOptionInput {
   key: string;
   studio?: string;
   type?: "D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original";
-  maxQuality?:
-    "2160p" | "1440p" | "1080p" | "1080i" | "720p" | "576p" | "480p" | "360p";
+  maxQuality?: "2160p" | "1080p" | "720p" | "SD";
   seeders: number;
   count: number;
   pinned: boolean;
@@ -515,9 +521,7 @@ export interface TitleSourcesInput {
   episode: number | null;
   updatedAt: string;
   profile: {
-    qualities: (
-      "2160p" | "1440p" | "1080p" | "1080i" | "720p" | "576p" | "480p" | "360p"
-    )[];
+    qualities: ("2160p" | "1080p" | "720p" | "SD")[];
     voiceTypes: ("D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original")[];
   };
   pinnedVoice: VoiceRefInput | null;
@@ -648,16 +652,7 @@ export interface EpisodeProgressInput {
 export interface SeasonReleaseInput {
   season: number;
   torrentId: string;
-  quality:
-    | "2160p"
-    | "1440p"
-    | "1080p"
-    | "1080i"
-    | "720p"
-    | "576p"
-    | "480p"
-    | "360p"
-    | null;
+  quality: "2160p" | "1080p" | "720p" | "SD" | null;
   voice: VoiceRefInput | null;
   episodes: number[];
 }
@@ -2196,6 +2191,12 @@ export interface IndexerManagerSyncResult {
   missing: number;
 }
 
+export interface VideoResolution {
+  value: "2160p" | "1080p" | "720p" | "SD";
+  basis: "probe" | "file" | "title" | "source" | "codec";
+  sure: boolean;
+}
+
 export interface VoiceRef {
   studio?: string;
   type?: "D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original";
@@ -2225,6 +2226,7 @@ export interface SourceCandidate {
     | "480p"
     | "360p"
     | null;
+  resolution: VideoResolution | null;
   source: string | null;
   codec: string | null;
   hdr: string[];
@@ -2257,8 +2259,7 @@ export interface VoiceOption {
   key: string;
   studio?: string;
   type?: "D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original";
-  maxQuality?:
-    "2160p" | "1440p" | "1080p" | "1080i" | "720p" | "576p" | "480p" | "360p";
+  maxQuality?: "2160p" | "1080p" | "720p" | "SD";
   seeders: number;
   count: number;
   pinned: boolean;
@@ -2269,9 +2270,7 @@ export interface TitleSources {
   episode: number | null;
   updatedAt: string;
   profile: {
-    qualities: (
-      "2160p" | "1440p" | "1080p" | "1080i" | "720p" | "576p" | "480p" | "360p"
-    )[];
+    qualities: ("2160p" | "1080p" | "720p" | "SD")[];
     voiceTypes: ("D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original")[];
   };
   pinnedVoice: VoiceRef | null;
@@ -2402,16 +2401,7 @@ export interface EpisodeProgress {
 export interface SeasonRelease {
   season: number;
   torrentId: string;
-  quality:
-    | "2160p"
-    | "1440p"
-    | "1080p"
-    | "1080i"
-    | "720p"
-    | "576p"
-    | "480p"
-    | "360p"
-    | null;
+  quality: "2160p" | "1080p" | "720p" | "SD" | null;
   voice: VoiceRef | null;
   episodes: number[];
 }

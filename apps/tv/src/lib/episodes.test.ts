@@ -15,6 +15,7 @@ function candidate(
     seeders: 10,
     peers: null,
     quality: '1080p',
+    resolution: { value: '1080p', basis: 'title', sure: true },
     source: null,
     codec: null,
     hdr: [],

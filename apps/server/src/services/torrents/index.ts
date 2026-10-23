@@ -4,7 +4,7 @@ import type {
   EngineTorrentState,
 } from '../engine/index.ts'
 import { Buffer } from 'node:buffer'
-import { and, desc, eq } from 'drizzle-orm'
+import { and, desc, eq, inArray } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import { torrents, watchStates } from '../../db/schema.ts'
 import {
@@ -563,6 +563,32 @@ export function touchTorrent(id: string) {
     .set({ lastAccessAt: new Date() })
     .where(eq(torrents.id, id))
     .run()
+}
+
+/** Кадр видео из пробы: раздача показывает точное разрешение в «Источниках» */
+export function rememberVideoSize(
+  torrent: Torrent,
+  width: number,
+  height: number,
+) {
+  if (torrent.videoWidth === width && torrent.videoHeight === height)
+    return
+
+  update(torrent.id, { videoWidth: width, videoHeight: height })
+}
+
+/** Уже добавленные раздачи по infohash (в нижнем регистре, как в базе) */
+export function torrentsByInfoHash(infoHashes: string[]) {
+  if (infoHashes.length === 0)
+    return new Map<string, Torrent>()
+
+  const rows = getDb()
+    .select()
+    .from(torrents)
+    .where(inArray(torrents.infoHash, infoHashes))
+    .all()
+
+  return new Map(rows.map(row => [row.infoHash, row]))
 }
 
 // `idle` — раздачи нет в движке (файл не начинали смотреть)

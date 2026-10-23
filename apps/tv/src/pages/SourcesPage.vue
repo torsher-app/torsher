@@ -3,7 +3,16 @@ import { goBack } from '../lib/navigation.ts'
 import type { TitleSources } from '@torsher/api-client'
 import type { Quality, SourceSort, SourceView } from '../lib/sources.ts'
 import { getErrorBody, getErrorStatus } from '@torsher/api-client'
-import { computed, nextTick, onActivated, ref, toRef, watch } from 'vue'
+import {
+  computed,
+  nextTick,
+  onActivated,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  toRef,
+  watch,
+} from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { api } from '../api.ts'
@@ -24,9 +33,11 @@ import { NATIVE_WHEEL_ATTRIBUTE, useFocus } from '../focus/index.ts'
 import {
   allIndexersFailed,
   arrangeCandidates,
+  isQuality,
   minutesSince,
   qualityOptions,
   seasonOptions,
+  videoClassLabel,
 } from '../lib/sources.ts'
 import { loadSourceView, saveSourceView } from '../lib/sourceView.ts'
 import { formatYears } from '../lib/titleInfo.ts'
@@ -49,7 +60,12 @@ const { voiceLabel, historyOf } = useSourceLabels()
 
 const isSeries = computed(() => title.value?.kind === 'series')
 
-const view = ref<Partial<SourceView>>(loadSourceView(props.id))
+const storedView = loadSourceView(props.id)
+// Вид, сохранённый до классов разрешения (`1080i`, `480p`), — на «любое»
+const view = ref<Partial<SourceView>>({
+  ...storedView,
+  quality: isQuality(storedView.quality) ? storedView.quality : undefined,
+})
 const query = computed(() => view.value.query)
 
 // Обновить — мимо кэша сервера; ключ меняется, и запрос уходит заново
@@ -105,6 +121,12 @@ const seasons = computed(() =>
   isSeries.value ? seasonOptions(candidates.value) : [],
 )
 const qualities = computed<Quality[]>(() => qualityOptions(candidates.value))
+
+function qualityLabel(quality: Quality) {
+  return quality === 'unknown'
+    ? t('sources.unknownQuality')
+    : videoClassLabel(quality)
+}
 const voices = computed(() => sources.value?.voices ?? [])
 
 const sorts = computed<SourceSort[]>(() =>
@@ -175,7 +197,9 @@ const controls = computed(() => {
     list.push({
       id: 'quality',
       label: t('sources.controlQuality', {
-        value: view.value.quality ?? t('sources.anyQuality'),
+        value: view.value.quality
+          ? qualityLabel(view.value.quality)
+          : t('sources.anyQuality'),
       }),
     })
   }
@@ -265,7 +289,10 @@ const panelOptions = computed<PanelOption[]>(() => {
         },
         ...qualities.value.map(item => ({
           id: item,
-          label: item,
+          label:
+            item === 'unknown'
+              ? t('sources.unknownQualityOption')
+              : videoClassLabel(item),
           selected: view.value.quality === item,
         })),
       ]
@@ -471,8 +498,47 @@ watch(searching, (value) => {
 
 // Возврат из «Файлов»: экран в KeepAlive, фокус — на той же раздаче
 onActivated(() => {
-  nextTick(() => focus.activate('sources-list'))
+  nextTick(() => {
+    focus.activate('sources-list')
+    snapRowPitch()
+  })
 })
+
+const listSection = ref<InstanceType<typeof FocusSection>>()
+
+/**
+ * Строки раздач — с целым шагом в пикселях. Размеры в `u` дробные, и каждая
+ * строка иначе стояла бы на своей доле пикселя: текст браузер прижимает к
+ * пикселю, а значки — нет, и они плавали бы по вертикали от строки к строке.
+ * Строки одной структуры и одной высоты, поэтому хватает одной мерки.
+ */
+function snapRowPitch() {
+  const el = listSection.value?.$el as HTMLElement | undefined
+
+  if (!el)
+    return
+
+  el.style.removeProperty('--source-row-height')
+  el.style.removeProperty('--source-row-gap')
+
+  // Строка в фокусе увеличена transform: меряем любую другую
+  const rowsEls = Array.from(el.querySelectorAll<HTMLElement>('.source'))
+  const row
+    = rowsEls.find(item => item !== document.activeElement) ?? rowsEls[0]
+
+  if (!row)
+    return
+
+  const height = Math.ceil(row.getBoundingClientRect().height)
+  const gap = Math.round(Number.parseFloat(getComputedStyle(row).marginBottom))
+
+  el.style.setProperty('--source-row-height', `${height}px`)
+  el.style.setProperty('--source-row-gap', `${gap}px`)
+}
+
+watch(rows, () => nextTick(snapRowPitch))
+onMounted(() => window.addEventListener('resize', snapRowPitch))
+onBeforeUnmount(() => window.removeEventListener('resize', snapRowPitch))
 
 function back() {
   goBack(router)
@@ -611,6 +677,7 @@ const meta = computed(() => {
       </FocusSection>
 
       <FocusSection
+        ref="listSection"
         name="sources-list"
         class="sources__list"
         :edges="edgesOf('sources-list')"

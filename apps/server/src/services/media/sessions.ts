@@ -15,7 +15,11 @@ import { setTimeout as sleep } from 'node:timers/promises'
 import { config } from '../../config.ts'
 import { EngineError, engineStreamUrl } from '../engine/index.ts'
 import { trackStream } from '../storage/index.ts'
-import { streamWindowOf, touchTorrent } from '../torrents/index.ts'
+import {
+  rememberVideoSize,
+  streamWindowOf,
+  touchTorrent,
+} from '../torrents/index.ts'
 import { decidePlayback, pickAudioStream, textSubtitles } from './decide.ts'
 import { HlsTranscode, segmentStarts } from './hls.ts'
 import { readCueTimes } from './matroska.ts'
@@ -219,6 +223,9 @@ async function prepare(
     return
 
   const media = session.media
+
+  if (media.video?.width && media.video.height)
+    rememberVideoSize(torrent, media.video.width, media.video.height)
   const requested = media.audio.find(
     track => track.index === input.audioStream,
   )
