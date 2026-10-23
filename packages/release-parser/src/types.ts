@@ -19,6 +19,22 @@ export interface AbsoluteRange {
 export type Resolution
   = '2160p' | '1440p' | '1080p' | '1080i' | '720p' | '576p' | '480p' | '360p'
 
+/** Класс разрешения для показа и выбора: `1440p` и `1080i` — это `1080p`, ниже 720p — `SD` */
+export type VideoClass = '2160p' | '1080p' | '720p' | 'SD'
+
+/**
+ * Откуда разрешение: `probe` — ffprobe файла, `file` — имя видеофайла,
+ * `title` — число или кадр в названии, `source` — тип рипа, `codec` — кодек.
+ */
+export type ResolutionBasis = 'probe' | 'file' | 'title' | 'source' | 'codec'
+
+export interface VideoResolution {
+  value: VideoClass
+  basis: ResolutionBasis
+  /** `false` — вывод, а не факт: показывается с `≈` */
+  sure: boolean
+}
+
 export type Source
   = | 'WEB-DL'
     | 'WEB-DLRip'

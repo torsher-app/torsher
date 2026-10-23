@@ -5,7 +5,7 @@ import type {
   TitleProgress,
 } from '@torsher/api-client'
 import { useI18n } from 'vue-i18n'
-import { formatSize, sizeOf } from '../lib/sources.ts'
+import { formatSize, sizeOf, videoClassLabel } from '../lib/sources.ts'
 
 /** Подписи раздач и озвучки: общие для кнопки карточки, листа и панели */
 export function useSourceLabels() {
@@ -81,7 +81,10 @@ export function useSourceLabels() {
   function releaseLine(
     release: Pick<SeasonRelease, 'quality'> & { voice: SeasonRelease['voice'] },
   ) {
-    return [release.quality, release.voice && voiceLabel(release.voice)]
+    return [
+      release.quality && videoClassLabel(release.quality),
+      release.voice && voiceLabel(release.voice),
+    ]
       .filter(Boolean)
       .join(' · ')
   }

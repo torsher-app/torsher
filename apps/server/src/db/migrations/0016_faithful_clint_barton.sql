@@ -1,1 +1,0 @@
-ALTER TABLE `title_progress` ADD `media_file_id` text;

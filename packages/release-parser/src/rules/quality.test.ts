@@ -69,6 +69,14 @@ describe('качество и источник', () => {
       'Movie 2024 2160p Dolby Vision WEB-DL',
       { quality: '2160p', source: 'WEB-DL', codec: undefined, hdr: ['DV'] },
     ],
+    [
+      'Movie.2024.2160p.WEB-DL.DolbyVision.H.265',
+      { quality: '2160p', source: 'WEB-DL', codec: 'H.265', hdr: ['DV'] },
+    ],
+    [
+      'Movie 2019 BDRip 1920x800 AVC',
+      { quality: '1080p', source: 'BDRip', codec: 'H.264', hdr: [] },
+    ],
   ] as const)('%s', (title, expected) => {
     expect(video(title)).toEqual(expected)
   })

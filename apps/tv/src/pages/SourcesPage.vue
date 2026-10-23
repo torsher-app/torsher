@@ -3,7 +3,16 @@ import { goBack } from '../lib/navigation.ts'
 import type { TitleSources } from '@torsher/api-client'
 import type { Quality, SourceSort, SourceView } from '../lib/sources.ts'
 import { getErrorBody, getErrorStatus } from '@torsher/api-client'
-import { computed, nextTick, onActivated, ref, toRef, watch } from 'vue'
+import {
+  computed,
+  nextTick,
+  onActivated,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  toRef,
+  watch,
+} from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { api } from '../api.ts'
@@ -26,9 +35,12 @@ import { NATIVE_WHEEL_ATTRIBUTE, useFocus } from '../focus/index.ts'
 import {
   allIndexersFailed,
   arrangeCandidates,
+  isQuality,
   minutesSince,
+  profileParts,
   qualityOptions,
   seasonOptions,
+  videoClassLabel,
 } from '../lib/sources.ts'
 import { libraryRoute } from '../lib/continue.ts'
 import { libraryTarget } from '../lib/library.ts'
@@ -58,7 +70,12 @@ const { voiceLabel, historyOf } = useSourceLabels()
 
 const isSeries = computed(() => title.value?.kind === 'series')
 
-const view = ref<Partial<SourceView>>(loadSourceView(props.id))
+const storedView = loadSourceView(props.id)
+// Вид, сохранённый до классов разрешения (`1080i`, `480p`), — на «любое»
+const view = ref<Partial<SourceView>>({
+  ...storedView,
+  quality: isQuality(storedView.quality) ? storedView.quality : undefined,
+})
 const query = computed(() => view.value.query)
 
 // Обновить — мимо кэша сервера; ключ меняется, и запрос уходит заново
@@ -124,6 +141,12 @@ const seasons = computed(() =>
   isSeries.value ? seasonOptions(candidates.value) : [],
 )
 const qualities = computed<Quality[]>(() => qualityOptions(candidates.value))
+
+function qualityLabel(quality: Quality) {
+  return quality === 'unknown'
+    ? t('sources.unknownQuality')
+    : videoClassLabel(quality)
+}
 const voices = computed(() => sources.value?.voices ?? [])
 
 const sorts = computed<SourceSort[]>(() =>
@@ -194,7 +217,9 @@ const controls = computed(() => {
     list.push({
       id: 'quality',
       label: t('sources.controlQuality', {
-        value: view.value.quality ?? t('sources.anyQuality'),
+        value: view.value.quality
+          ? qualityLabel(view.value.quality)
+          : t('sources.anyQuality'),
       }),
     })
   }
@@ -284,7 +309,10 @@ const panelOptions = computed<PanelOption[]>(() => {
         },
         ...qualities.value.map(item => ({
           id: item,
-          label: item,
+          label:
+            item === 'unknown'
+              ? t('sources.unknownQualityOption')
+              : videoClassLabel(item),
           selected: view.value.quality === item,
         })),
       ]
@@ -376,6 +404,22 @@ const headerMeta = computed(() => {
       ? t('sources.updatedNow')
       : t('sources.updated', { n: minutes }),
   ].join(' · ')
+})
+
+// По этому правилу выбрана раздача с меткой «По профилю»
+const profileLine = computed(() => {
+  if (!sources.value || searching.value)
+    return ''
+
+  const { qualities, voiceTypes, moreVoices } = profileParts(
+    sources.value.profile,
+  )
+  const voices = voiceTypes.map(type => t(`sources.voiceTypes.${type}`))
+
+  return t('sources.profile', {
+    qualities: qualities.join(' → '),
+    voices: [...voices, ...(moreVoices ? ['…'] : [])].join(' → '),
+  })
 })
 
 // История: что и какой раздачей смотрели последний раз; OK — её «Файлы» на этой серии
@@ -531,8 +575,47 @@ watch(searching, (value) => {
 
 // Возврат из «Файлов»: экран в KeepAlive, фокус — на той же раздаче
 onActivated(() => {
-  nextTick(() => focus.activate('sources-list'))
+  nextTick(() => {
+    focus.activate('sources-list')
+    snapRowPitch()
+  })
 })
+
+const listSection = ref<InstanceType<typeof FocusSection>>()
+
+/**
+ * Строки раздач — с целым шагом в пикселях. Размеры в `u` дробные, и каждая
+ * строка иначе стояла бы на своей доле пикселя: текст браузер прижимает к
+ * пикселю, а значки — нет, и они плавали бы по вертикали от строки к строке.
+ * Строки одной структуры и одной высоты, поэтому хватает одной мерки.
+ */
+function snapRowPitch() {
+  const el = listSection.value?.$el as HTMLElement | undefined
+
+  if (!el)
+    return
+
+  el.style.removeProperty('--source-row-height')
+  el.style.removeProperty('--source-row-gap')
+
+  // Строка в фокусе увеличена transform: меряем любую другую
+  const rowsEls = Array.from(el.querySelectorAll<HTMLElement>('.source'))
+  const row
+    = rowsEls.find(item => item !== document.activeElement) ?? rowsEls[0]
+
+  if (!row)
+    return
+
+  const height = Math.ceil(row.getBoundingClientRect().height)
+  const gap = Math.round(Number.parseFloat(getComputedStyle(row).marginBottom))
+
+  el.style.setProperty('--source-row-height', `${height}px`)
+  el.style.setProperty('--source-row-gap', `${gap}px`)
+}
+
+watch(rows, () => nextTick(snapRowPitch))
+onMounted(() => window.addEventListener('resize', snapRowPitch))
+onBeforeUnmount(() => window.removeEventListener('resize', snapRowPitch))
 
 function back() {
   goBack(router)
@@ -612,6 +695,9 @@ const meta = computed(() => {
             }}
           </span>
         </p>
+        <p class="sources__head-meta sources__profile">
+          {{ profileLine || "\u00A0" }}
+        </p>
       </header>
 
       <FocusSection
@@ -667,6 +753,7 @@ const meta = computed(() => {
       </FocusSection>
 
       <FocusSection
+        ref="listSection"
         name="sources-list"
         class="sources__list"
         :edges="edgesOf('sources-list')"
@@ -853,6 +940,11 @@ const meta = computed(() => {
   margin: calc(var(--u) * 8) 0 0;
   color: var(--color-text-muted);
   font-size: var(--font-size-s);
+}
+
+.sources__profile {
+  margin-top: calc(var(--u) * 4);
+  color: var(--color-text-dim);
 }
 
 .sources__warn {

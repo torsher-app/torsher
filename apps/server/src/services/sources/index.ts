@@ -1,4 +1,4 @@
-import type { Resolution, VoiceType } from '@torsher/release-parser'
+import type { VideoClass, VoiceType } from '@torsher/release-parser'
 import type { TitleIdentity } from '../tmdb/index.ts'
 import type { VoiceRef } from './profile.ts'
 import type { RankedRelease, Ranking } from './rank.ts'
@@ -10,6 +10,7 @@ import { queryCombos, syncTitleAliases } from './aliases.ts'
 import { cachedSearch } from './cache.ts'
 import { DEFAULT_PROFILE } from './profile.ts'
 import { coversEpisode, rankReleases, RESOLUTION_RANK } from './rank.ts'
+import { knownResolutions } from './resolution.ts'
 import { searchReleases } from './search.ts'
 import { lastTitleProgress, lastVoiceOfSeason } from './progress.ts'
 import { getPinnedVoice } from './voices.ts'
@@ -38,7 +39,7 @@ export interface VoiceOption {
   key: string
   studio?: string
   type?: VoiceType
-  maxQuality?: Resolution
+  maxQuality?: VideoClass
   seeders: number
   count: number
   pinned: boolean
@@ -87,7 +88,10 @@ function voiceOptions(ranked: RankedRelease[], pinned: VoiceRef | undefined) {
     if (release.match.confidence !== 'high')
       continue
 
-    const quality = release.parsed.quality
+    // «Лучшее качество» озвучки — только точное разрешение, без вывода
+    const quality = release.resolution?.sure
+      ? release.resolution.value
+      : undefined
 
     // Раздача с несколькими озвучками есть в каждой из них
     for (const key of voiceKeysOf(release)) {
@@ -157,19 +161,29 @@ export async function getTitleSources(
       : search.outcome.releases.filter(release =>
           coversEpisode(release.parsed, episode),
         )
+  // Раздачи всех сезонов: советуем для сезона, который смотрят, без
+  // просмотра — для первого
+  const focusSeason
+    = request.allSeasons && identity.kind === 'series'
+      ? ((request.profileId
+          ? lastTitleProgress(request.profileId, titleId)?.season
+          : undefined) ?? 1)
+      : undefined
+  const voiceSeason = season ?? focusSeason
   // Выбор в панели «Озвучка» сильнее студии, которой смотрели прошлые серии
   const pinned
-    = getPinnedVoice(titleId, season ?? 0)
-      ?? (season === undefined || !request.profileId
+    = getPinnedVoice(titleId, voiceSeason ?? 0)
+      ?? (voiceSeason === undefined || !request.profileId
         ? undefined
-        : lastVoiceOfSeason(request.profileId, titleId, season))
+        : lastVoiceOfSeason(request.profileId, titleId, voiceSeason))
   const ranking = rankReleases(releases, {
     kind: identity.kind,
     originalLanguage: identity.originalLanguage,
-    seasonEpisodes:
-      season === undefined ? undefined : identity.episodeCounts?.[season],
+    episodeCounts: identity.episodeCounts,
     profile: DEFAULT_PROFILE,
     pinned,
+    known: knownResolutions(releases),
+    focusSeason,
   })
 
   const seasonTorrent

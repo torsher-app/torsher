@@ -134,11 +134,34 @@ describe('rankReleases', () => {
       20,
       8 * GB,
     )
-    const withCount = rankReleases([pack], { ...series, seasonEpisodes: 8 })
+    const withCount = rankReleases([pack], {
+      ...series,
+      episodeCounts: { 1: 8 },
+    })
     const withoutCount = rankReleases([pack], series)
 
     expect(withCount.ranked[0]!.episodeSize).toBe(GB)
     expect(withoutCount.ranked[0]!.episodeSize).toBeUndefined()
+  })
+
+  it('пак нескольких сезонов: серии всех его сезонов, а без одного из них — не узнать', () => {
+    const pack = release(
+      'pack',
+      'Гавань [S01-03] (2023) WEB-DL 1080p | P',
+      20,
+      30 * GB,
+    )
+    const counts = rankReleases([pack], {
+      ...series,
+      episodeCounts: { 1: 8, 2: 10, 3: 12 },
+    })
+    const partial = rankReleases([pack], {
+      ...series,
+      episodeCounts: { 1: 8, 2: 10 },
+    })
+
+    expect(counts.ranked[0]!.episodeSize).toBe(GB)
+    expect(partial.ranked[0]!.episodeSize).toBeUndefined()
   })
 
   it('русский оригинал: раздача без дорожек в названии — оригинал, а не «без озвучки»', () => {
@@ -252,6 +275,93 @@ describe('rankReleases', () => {
     )
 
     expect(top[0]).toBe('file')
+  })
+})
+
+describe('rankReleases: сезон, который смотрят', () => {
+  it('тройка — из раздач с этим сезоном, без них — из всех', () => {
+    const releases = [
+      release('s3', 'Гавань [S03] (2023) WEB-DL 1080p | D', 90, 8 * GB),
+      release('s1', 'Гавань [S01] (2023) WEB-DL 720p | MVO', 20, 4 * GB),
+      release('all', 'Гавань [S01-03] (2023) WEB-DL 1080p | MVO', 10, 24 * GB),
+    ]
+    const focused = rankReleases(releases, { ...series, focusSeason: 1 })
+    const missing = rankReleases(releases, { ...series, focusSeason: 5 })
+
+    expect(focused.top).not.toContain('s3')
+    expect(focused.ranked.find(item => item.id === 'all')!.reason).toBe(
+      'profile',
+    )
+    expect(missing.top[0]).toBe('s3')
+  })
+})
+
+describe('rankReleases: разрешение', () => {
+  it('выведенное разрешение ниже точного той же ступени', () => {
+    const { ranked } = rankReleases(
+      [
+        release('disc', 'Фонарь (2021) Blu-ray | D', 40, 20 * GB),
+        release('rip', 'Фонарь (2021) BDRip 1080p | D', 40, 20 * GB),
+      ],
+      movie,
+    )
+
+    expect(ranked.map(item => item.id)).toEqual(['rip', 'disc'])
+    expect(ranked[1]!.resolution).toEqual({
+      value: '1080p',
+      basis: 'source',
+      sure: false,
+    })
+  })
+
+  it('рип без числа — SD с оговоркой, ниже точного SD и неизвестного', () => {
+    const { ranked } = rankReleases(
+      [
+        release('rip', 'Фонарь (2021) BDRip | D', 40, 2 * GB),
+        release('web', 'Фонарь (2021) WEB-DL | D', 40, 2 * GB),
+        release('dvd', 'Фонарь (2021) DVDRip | D', 40, 2 * GB),
+      ],
+      movie,
+    )
+
+    expect(ranked.map(item => item.id)).toEqual(['dvd', 'web', 'rip'])
+    expect(
+      ranked.find(item => item.id === 'web')!.resolution,
+    ).toBeUndefined()
+  })
+
+  it('точное разрешение добавленной раздачи сильнее названия', () => {
+    const { ranked } = rankReleases(
+      [
+        release('rip', 'Фонарь (2021) BDRip | D', 40, 2 * GB),
+        release('hd', 'Фонарь (2021) WEB-DL 720p | D', 40, 2 * GB),
+      ],
+      {
+        ...movie,
+        known: new Map([
+          ['rip', { value: '1080p', basis: 'probe', sure: true }],
+        ]),
+      },
+    )
+
+    expect(ranked[0]).toMatchObject({
+      id: 'rip',
+      resolution: { value: '1080p', basis: 'probe' },
+    })
+  })
+
+  it('выведенное разрешение не даёт «Лучшее качество»', () => {
+    const { ranked } = rankReleases(
+      [
+        release('hd', 'Фонарь (2021) WEB-DL 720p | D', 90, 3 * GB),
+        release('disc', 'Фонарь (2021) BDRemux | D', 5, 30 * GB),
+      ],
+      movie,
+    )
+
+    expect(ranked.find(item => item.id === 'disc')!.reason).not.toBe(
+      'bestQuality',
+    )
   })
 })
 

@@ -1,8 +1,10 @@
 import type { Torrent } from '../../db/schema.ts'
 import type { DeviceProfile } from './decide.ts'
 import type { MediaInfo } from './probe.ts'
+import { eq } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import { migrateDb } from '../../db/index.ts'
+import { getDb, migrateDb } from '../../db/index.ts'
+import { torrents } from '../../db/schema.ts'
 import { setEngineDown, setEngineReady } from '../engine/index.ts'
 import { isStreaming } from '../storage/index.ts'
 import { createSession, stopAllSessions, stopSession } from './sessions.ts'
@@ -109,6 +111,37 @@ describe('сессии воспроизведения', () => {
 
     await stopSession(session.id)
     expect(isStreaming(torrent.id)).toBe(false)
+  })
+
+  it('кадр видео из пробы запоминается у раздачи', async () => {
+    const torrent = getDb()
+      .insert(torrents)
+      .values({
+        infoHash: 'f'.repeat(40),
+        name: 'Film',
+        source: 'magnet',
+        status: 'ready',
+        files: [{ path: 'Film.mkv', size: 1000, padding: false }],
+      })
+      .returning()
+      .get()
+    const session = createSession({
+      subject: 'owner',
+      torrent,
+      fileIndex: 0,
+      fileName: 'Film.mkv',
+      preference: {},
+      log,
+    });
+
+    (await probeStarted())(media)
+    await session.ready
+
+    expect(
+      getDb().select().from(torrents).where(eq(torrents.id, torrent.id)).get(),
+    ).toMatchObject({ videoWidth: 160, videoHeight: 90 })
+
+    await stopSession(session.id)
   })
 
   it('сессия, закрытая во время пробы, не держит раздачу и не запускает перепаковку', async () => {

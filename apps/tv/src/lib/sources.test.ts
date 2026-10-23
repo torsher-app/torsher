@@ -7,10 +7,16 @@ import {
   coverageLabel,
   formatBitrate,
   formatSize,
+  hdrLabels,
+  isProfilePick,
+  isQuality,
   leechersOf,
   minutesSince,
+  profileParts,
   qualityOptions,
+  resolutionBadge,
   seasonOptions,
+  sourceKindOf,
   titleRefOf,
 } from './sources.ts'
 
@@ -22,6 +28,7 @@ function candidate(
     = extra.voice === undefined
       ? { studio: 'LostFilm', type: 'MVO' as const }
       : extra.voice
+  const quality = extra.quality === undefined ? '1080p' : extra.quality
 
   return {
     id,
@@ -31,7 +38,15 @@ function candidate(
     episodeSize: null,
     seeders: 10,
     peers: null,
-    quality: '1080p',
+    quality,
+    // Как на сервере для разрешения из названия
+    resolution: quality
+      ? {
+          value: quality === '2160p' || quality === '720p' ? quality : '1080p',
+          basis: 'title',
+          sure: true,
+        }
+      : null,
     source: 'WEB-DL',
     codec: null,
     hdr: [],
@@ -79,9 +94,10 @@ describe('arrangeCandidates', () => {
   const ids = (list: SourceCandidate[]) => list.map(item => item.id)
 
   it('порядок сервера и фильтры озвучки и качества', () => {
+    // Лучшая по профилю — первой, даже если сервер поставил её второй
     expect(
       ids(arrangeCandidates(sources.candidates, { sort: 'best' })),
-    ).toEqual(['a', 'b', 'c', 'd', 'e', 'f'])
+    ).toEqual(['b', 'a', 'c', 'd', 'e', 'f'])
     expect(
       ids(
         arrangeCandidates(sources.candidates, {
@@ -126,6 +142,32 @@ describe('arrangeCandidates', () => {
     expect(seasonOptions(list)).toEqual([1, 2])
   })
 
+  it('за раздачей последнего просмотра — лучшая по профилю', () => {
+    const list = [
+      candidate('x', { seeders: 50, seasons: [5] }),
+      candidate('pick', { seeders: 5, seasons: [1], pickReason: 'profile' }),
+      candidate('last', { seeders: 1, seasons: [1], lastWatched: true }),
+    ]
+
+    expect(ids(arrangeCandidates(list, { sort: 'seasons' }))).toEqual([
+      'last',
+      'pick',
+      'x',
+    ])
+  })
+
+  it('по размеру — весь размер раздачи, как на плашке', () => {
+    const list = [
+      candidate('season', { size: 10 * 1024 ** 3, episodeSize: 1024 ** 3 }),
+      candidate('movie', { size: 4 * 1024 ** 3, episodeSize: null }),
+    ]
+
+    expect(ids(arrangeCandidates(list, { sort: 'size' }))).toEqual([
+      'season',
+      'movie',
+    ])
+  })
+
   it('раздача последнего просмотра — первой', () => {
     const list = [
       candidate('x', { seeders: 50 }),
@@ -164,6 +206,86 @@ describe('подписи', () => {
       '1080p',
       '720p',
     ])
+  })
+
+  it('выведенное разрешение — в своём классе, неизвестное — «не указано»', () => {
+    const list = [
+      candidate('rip', {
+        quality: null,
+        source: 'BDRip',
+        resolution: { value: 'SD', basis: 'source', sure: false },
+      }),
+      candidate('web', { quality: null, resolution: null }),
+      candidate('hd'),
+    ]
+
+    expect(qualityOptions(list)).toEqual(['1080p', 'SD', 'unknown'])
+    expect(
+      arrangeCandidates(list, { sort: 'best', quality: 'SD' }).map(
+        item => item.id,
+      ),
+    ).toEqual(['rip'])
+    expect(
+      arrangeCandidates(list, { sort: 'best', quality: 'unknown' }).map(
+        item => item.id,
+      ),
+    ).toEqual(['web'])
+  })
+
+  it('старое значение фильтра из хранилища — не качество', () => {
+    expect(isQuality('SD')).toBe(true)
+    expect(isQuality('unknown')).toBe(true)
+    expect(isQuality('1080i')).toBe(false)
+    expect(isQuality('480p')).toBe(false)
+  })
+
+  it('«По профилю» — только у лучшей по профилю', () => {
+    expect(isProfilePick({ pickReason: 'profile' })).toBe(true)
+    expect(isProfilePick({ pickReason: 'pinnedVoice' })).toBe(true)
+    expect(isProfilePick({ pickReason: 'smaller' })).toBe(false)
+    expect(isProfilePick({ pickReason: 'bestQuality' })).toBe(false)
+    expect(isProfilePick({ pickReason: null })).toBe(false)
+  })
+
+  it('профиль для шапки: лестница качества и первые типы озвучки', () => {
+    expect(
+      profileParts({
+        qualities: ['1080p', '2160p', '720p'],
+        voiceTypes: ['D', 'MVO', 'DVO', 'AVO', 'VO', 'L'],
+      }),
+    ).toEqual({
+      qualities: ['1080p', '4K', '720p'],
+      voiceTypes: ['D', 'MVO', 'DVO'],
+      moreVoices: true,
+    })
+    expect(
+      profileParts({ qualities: ['1080p'], voiceTypes: ['D'] }).moreVoices,
+    ).toBe(false)
+  })
+
+  it('бейдж разрешения', () => {
+    expect(
+      resolutionBadge({ value: '2160p', basis: 'title', sure: true }),
+    ).toBe('4K')
+    expect(resolutionBadge({ value: 'SD', basis: 'source', sure: false })).toBe(
+      'SD?',
+    )
+    expect(resolutionBadge(null)).toBe('?')
+  })
+
+  it('источник понятным словом, HDRip без бейджа', () => {
+    expect(sourceKindOf('BDRemux')).toBe('remux')
+    expect(sourceKindOf('BDRip')).toBe('bluray')
+    expect(sourceKindOf('WEB-DLRip')).toBe('web')
+    expect(sourceKindOf('SATRip')).toBe('tv')
+    expect(sourceKindOf('TS')).toBe('cam')
+    expect(sourceKindOf('HDRip')).toBeUndefined()
+    expect(sourceKindOf(null)).toBeUndefined()
+  })
+
+  it('dolby Vision первым и полным названием', () => {
+    expect(hdrLabels(['HDR10', 'DV'])).toEqual(['Dolby Vision', 'HDR'])
+    expect(hdrLabels(['HDR10+', 'HLG'])).toEqual(['HDR10+', 'HLG'])
   })
 
   it('размер в гигабайтах и мегабайтах', () => {

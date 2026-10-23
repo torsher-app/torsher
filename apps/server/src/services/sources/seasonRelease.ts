@@ -1,10 +1,11 @@
-import type { Resolution, VoiceType } from '@torsher/release-parser'
+import type { VideoClass, VoiceType } from '@torsher/release-parser'
 import type { Torrent } from '../../db/schema.ts'
 import { matchFiles, parseRelease } from '@torsher/release-parser'
 import { and, desc, eq, isNotNull } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import { titleProgress } from '../../db/schema.ts'
 import { getTorrent, isVideoFile } from '../torrents/index.ts'
+import { torrentResolution } from './resolution.ts'
 
 /**
  * Раздача сезона — та, которой смотрели серию этого сезона последний раз; у
@@ -14,7 +15,7 @@ import { getTorrent, isVideoFile } from '../torrents/index.ts'
 export interface SeasonRelease {
   season: number
   torrent: Torrent
-  quality?: Resolution
+  quality?: VideoClass
   voice?: { studio?: string, type?: VoiceType }
   /** Серии сезона, файлы которых есть в раздаче */
   episodes: number[]
@@ -60,22 +61,6 @@ export function episodesInTorrent(torrent: Torrent, season: number) {
   return [...found].sort((a, b) => a - b)
 }
 
-// В имени раздачи («Game of Thrones») качества бывает нет — тогда оно в имени
-// видеофайла или его папки («Show.S01.BDRip.1080p/Show.S01E02.mkv»)
-function qualityOf(torrent: Torrent) {
-  const video = (torrent.files ?? []).find(file => isVideoFile(file.path))
-  const names = [torrent.name, ...(video?.path.split('/').reverse() ?? [])]
-
-  for (const name of names) {
-    const quality = parseRelease(name).quality
-
-    if (quality)
-      return quality
-  }
-
-  return undefined
-}
-
 export function seasonReleases(
   profileId: string,
   titleId: string,
@@ -109,7 +94,7 @@ export function seasonReleases(
     releases.push({
       season: row.season,
       torrent,
-      quality: qualityOf(torrent),
+      quality: torrentResolution(torrent)?.value,
       voice:
         row.voiceStudio || row.voiceType
           ? {

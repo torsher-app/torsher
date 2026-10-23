@@ -336,6 +336,9 @@ export const torrents = sqliteTable('torrents', {
   // Файлы, которые качаются целиком; остальные — только то, что читает поток
   selectedFiles: text('selected_files', { mode: 'json' }).$type<number[]>(),
   pauseReason: text('pause_reason', { enum: torrentPauseReasons }),
+  // Кадр видео из ffprobe при просмотре: точное разрешение раздачи в «Источниках»
+  videoWidth: integer('video_width'),
+  videoHeight: integer('video_height'),
   addedAt: integer('added_at', { mode: 'timestamp_ms' })
     .notNull()
     .$defaultFn(() => new Date()),

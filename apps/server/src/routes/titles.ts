@@ -135,6 +135,7 @@ function toCandidate(release: RankedRelease, lastWatched: boolean) {
     seeders: release.seeders,
     peers: release.peers ?? null,
     quality: parsed.quality ?? null,
+    resolution: release.resolution ?? null,
     source: parsed.source ?? null,
     codec: parsed.codec ?? null,
     hdr: parsed.hdr,

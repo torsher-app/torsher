@@ -210,8 +210,7 @@
     "refresh": "Обновить",
     "seeders": "{n} сид | {n} сида | {n} сидов",
     "perEpisode": "{size} за серию",
-    "leechers": "{n} качает | {n} качают | {n} качают",
-    "bitrate": "≈ {n} Мбит/с",
+    "bitrate": "{n} Мбит/с",
     "subs": "субтитры: {list}",
     "subsAny": "есть субтитры",
     "alsoVoices": "ещё: {list}",
@@ -220,15 +219,19 @@
       "mb": "{amount} МБ"
     },
     "unsure": "Возможно, другой тайтл",
-    "noVoice": "Озвучка не распознана",
-    "reasons": {
-      "pinnedVoice": "Как в прошлых сериях",
-      "profile": "По профилю",
-      "bestQuality": "Лучшее качество",
-      "smaller": "Меньше размер",
-      "moreSeeders": "Больше сидов",
-      "originalAudio": "Есть оригинальная дорожка"
+    "unknownQuality": "не указано",
+    "unknownQualityOption": "Не указано",
+    "sourceKinds": {
+      "remux": "Remux",
+      "bluray": "Blu-ray",
+      "web": "Веб",
+      "tv": "ТВ",
+      "dvd": "DVD",
+      "cam": "Экранка"
     },
+    "noVoice": "Озвучка не распознана",
+    "byProfile": "По профилю",
+    "profile": "Профиль: {qualities} · {voices}",
     "voiceTypes": {
       "D": "Дубляж",
       "MVO": "Многоголосый",

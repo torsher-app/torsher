@@ -1,17 +1,19 @@
 import type { SourceCandidate, TitleSources } from '@torsher/api-client'
 
-export type Quality = NonNullable<SourceCandidate['quality']>
+export type Resolution = NonNullable<SourceCandidate['resolution']>
+export type VideoClass = Resolution['value']
 
-const QUALITY_ORDER: Quality[] = [
-  '2160p',
-  '1440p',
-  '1080p',
-  '1080i',
-  '720p',
-  '576p',
-  '480p',
-  '360p',
-]
+/** Значение фильтра «Качество»: класс разрешения или `unknown` — не узнать */
+export type Quality = VideoClass | 'unknown'
+
+const QUALITY_ORDER: Quality[] = ['2160p', '1080p', '720p', 'SD', 'unknown']
+
+const CLASS_LABELS: Record<VideoClass, string> = {
+  '2160p': '4K',
+  '1080p': '1080p',
+  '720p': '720p',
+  'SD': 'SD',
+}
 
 const GB = 1024 ** 3
 const MB = 1024 ** 2
@@ -32,11 +34,101 @@ export interface SourceView {
   query?: string
 }
 
-/** Качества среди раздач, от лучшего к худшему */
+export function isQuality(value: unknown): value is Quality {
+  return QUALITY_ORDER.includes(value as Quality)
+}
+
+/** Выведенное разрешение попадает в свой класс: `SD?` — это SD */
+export function qualityOf(candidate: Pick<SourceCandidate, 'resolution'>) {
+  return candidate.resolution?.value ?? 'unknown'
+}
+
+/** Качества среди раздач, от лучшего к худшему; «не указано» — последним */
 export function qualityOptions(candidates: SourceCandidate[]) {
-  const found = new Set(candidates.map(item => item.quality))
+  const found = new Set(candidates.map(qualityOf))
 
   return QUALITY_ORDER.filter(quality => found.has(quality))
+}
+
+/** `4K`, `1080p`, `720p`, `SD` */
+export function videoClassLabel(value: VideoClass) {
+  return CLASS_LABELS[value]
+}
+
+/**
+ * Бейдж разрешения: точное — `1080p`, вывод — `SD?`, не узнать — `?`.
+ * Тильда в мелком бейдже не читается, вопрос — сразу
+ */
+export function resolutionBadge(resolution: Resolution | null) {
+  if (!resolution)
+    return '?'
+
+  const label = CLASS_LABELS[resolution.value]
+
+  return resolution.sure ? label : `${label}?`
+}
+
+/** Лучшая раздача по профилю — первая в тройке сервера */
+export function isProfilePick(candidate: Pick<SourceCandidate, 'pickReason'>) {
+  return (
+    candidate.pickReason === 'profile' || candidate.pickReason === 'pinnedVoice'
+  )
+}
+
+// Типов озвучки в профиле шесть: в шапке хватает первых, остальное — многоточием
+const PROFILE_VOICES = 3
+
+/**
+ * Профиль ранжирования для шапки «Источников»: лестница качества и первые
+ * типы озвучки — по нему выбрана раздача «По профилю».
+ */
+export function profileParts(profile: TitleSources['profile']) {
+  return {
+    qualities: profile.qualities.map(videoClassLabel),
+    voiceTypes: profile.voiceTypes.slice(0, PROFILE_VOICES),
+    moreVoices: profile.voiceTypes.length > PROFILE_VOICES,
+  }
+}
+
+export type SourceKind = 'remux' | 'bluray' | 'web' | 'tv' | 'dvd' | 'cam'
+
+const SOURCE_KINDS: Record<string, SourceKind> = {
+  'BDRemux': 'remux',
+  'Blu-ray': 'bluray',
+  'BDRip': 'bluray',
+  'WEB-DL': 'web',
+  'WEBRip': 'web',
+  'WEB-DLRip': 'web',
+  'HDTV': 'tv',
+  'HDTVRip': 'tv',
+  'SATRip': 'tv',
+  'TVRip': 'tv',
+  'DVB': 'tv',
+  'IPTV': 'tv',
+  'DVD': 'dvd',
+  'DVDRip': 'dvd',
+  'CAMRip': 'cam',
+  'TS': 'cam',
+}
+
+/**
+ * Откуда видео — понятным словом вместо тега рипа. `HDRip` источник не
+ * называет: бейджа нет. Сам тег остаётся в исходном имени раздачи.
+ */
+export function sourceKindOf(source: string | null) {
+  return source ? SOURCE_KINDS[source] : undefined
+}
+
+const HDR_LABELS: Record<string, string> = {
+  DV: 'Dolby Vision',
+  HDR10: 'HDR',
+}
+
+/** Dolby Vision первым: он и есть то, ради чего выбирают такую раздачу */
+export function hdrLabels(hdr: string[]) {
+  return [...hdr]
+    .sort((a, b) => Number(b === 'DV') - Number(a === 'DV'))
+    .map(item => HDR_LABELS[item] ?? item)
 }
 
 /** Сезоны среди раздач по возрастанию */
@@ -51,7 +143,7 @@ export function seasonOptions(candidates: SourceCandidate[]) {
 }
 
 function matchesView(candidate: SourceCandidate, view: SourceView) {
-  if (view.quality && candidate.quality !== view.quality)
+  if (view.quality && qualityOf(candidate) !== view.quality)
     return false
 
   if (view.season !== undefined && !candidate.seasons.includes(view.season))
@@ -77,7 +169,7 @@ function compareBy(sort: SourceSort, order: Map<string, number>) {
       case 'seeders':
         return b.seeders - a.seeders
       case 'size':
-        return (sizeOf(b) ?? 0) - (sizeOf(a) ?? 0)
+        return (b.size ?? 0) - (a.size ?? 0)
       case 'date':
         return (b.publishedAt ?? '').localeCompare(a.publishedAt ?? '')
       default:
@@ -87,8 +179,8 @@ function compareBy(sort: SourceSort, order: Map<string, number>) {
 }
 
 /**
- * Строки «Источников»: фильтр и сортировка, а раздачи, которые уже открывали
- * для тайтла, — наверху по сидам: к ним чаще всего возвращаются.
+ * Строки «Источников»: фильтр и сортировка, а наверху — раздача последнего
+ * просмотра и за ней лучшая по профилю: где остановился и что советуем.
  */
 export function arrangeCandidates(
   candidates: SourceCandidate[],
@@ -99,9 +191,13 @@ export function arrangeCandidates(
     .filter(item => matchesView(item, view))
     .sort(compareBy(view.sort, order))
   // Раздача последнего просмотра — первой: её ищут, чтобы смотреть дальше
+  // Склейка фильтров, а не sort: в Chromium 68 sort нестабилен
+  const pick = shown.filter(item => !item.lastWatched && isProfilePick(item))
+
   return shown
     .filter(item => item.lastWatched)
-    .concat(shown.filter(item => !item.lastWatched))
+    .concat(pick)
+    .concat(shown.filter(item => !item.lastWatched && !pick.includes(item)))
 }
 
 /** Размер на серию, а без него — весь размер раздачи */

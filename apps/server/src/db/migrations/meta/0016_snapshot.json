@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "df701fcd-8f5e-4644-998f-6adc580be353",
-  "prevId": "aa996435-d1f7-4da8-be67-b0d503b9a859",
+  "id": "c0f418f3-58a0-451c-9018-5a5a7f3f8c5b",
+  "prevId": "c98b6c95-22c2-4b4e-a325-72c3b7c6a6e6",
   "tables": {
     "collection_hidden_profiles": {
       "name": "collection_hidden_profiles",
@@ -755,6 +755,65 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
+    "library_hidden_profiles": {
+      "name": "library_hidden_profiles",
+      "columns": {
+        "library_id": {
+          "name": "library_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "profile_id": {
+          "name": "profile_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "library_hidden_profiles_library_id_libraries_id_fk": {
+          "name": "library_hidden_profiles_library_id_libraries_id_fk",
+          "tableFrom": "library_hidden_profiles",
+          "tableTo": "libraries",
+          "columnsFrom": [
+            "library_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "library_hidden_profiles_profile_id_profiles_id_fk": {
+          "name": "library_hidden_profiles_profile_id_profiles_id_fk",
+          "tableFrom": "library_hidden_profiles",
+          "tableTo": "profiles",
+          "columnsFrom": [
+            "profile_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "library_hidden_profiles_library_id_profile_id_pk": {
+          "columns": [
+            "library_id",
+            "profile_id"
+          ],
+          "name": "library_hidden_profiles_library_id_profile_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
     "media_files": {
       "name": "media_files",
       "columns": {
@@ -901,6 +960,13 @@
         },
         "match_status": {
           "name": "match_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "match_suggestion": {
+          "name": "match_suggestion",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -1834,6 +1900,20 @@
           "notNull": false,
           "autoincrement": false
         },
+        "match_status": {
+          "name": "match_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "match_suggestion": {
+          "name": "match_suggestion",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "retention": {
           "name": "retention",
           "type": "text",
@@ -1852,6 +1932,20 @@
         "pause_reason": {
           "name": "pause_reason",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "video_width": {
+          "name": "video_width",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "video_height": {
+          "name": "video_height",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
