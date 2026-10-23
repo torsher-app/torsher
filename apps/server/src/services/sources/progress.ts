@@ -1,7 +1,7 @@
 import type { AudioTrack, VoiceType } from '@torsher/release-parser'
 import type { TitleProgress } from '../../db/schema.ts'
 import type { VoiceRef } from './profile.ts'
-import { and, desc, eq, gt, isNotNull } from 'drizzle-orm'
+import { and, desc, eq, gt, inArray, isNotNull } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import { titleProgress } from '../../db/schema.ts'
 
@@ -160,6 +160,29 @@ export function markWatched(ref: TitleRef, watched: boolean) {
       set: values,
     })
     .run()
+}
+
+/**
+ * Тайтлы из списка, которые профиль смотрел или отметил: начатая позиция
+ * или отметка «просмотрено» любой серии. Отметки на постерах фильмографии.
+ */
+export function watchedTitles(profileId: string, titleIds: string[]) {
+  if (titleIds.length === 0)
+    return new Set<string>()
+
+  const rows = getDb()
+    .selectDistinct({ titleId: titleProgress.titleId })
+    .from(titleProgress)
+    .where(
+      and(
+        eq(titleProgress.profileId, profileId),
+        inArray(titleProgress.titleId, titleIds),
+        gt(titleProgress.position, 0),
+      ),
+    )
+    .all()
+
+  return new Set(rows.map(row => row.titleId))
 }
 
 /** Прогресс по сериям тайтла: полосы и отметки на карточке */

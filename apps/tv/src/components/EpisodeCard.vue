@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Episode } from '@torsher/api-client'
-import AppIcon from './AppIcon.vue'
 import ProgressTrack from './ProgressTrack.vue'
+import WatchedMark from './WatchedMark.vue'
 
 withDefaults(
   defineProps<{
@@ -37,9 +37,7 @@ defineEmits<{ select: [] }>()
       <span class="episode-card__number" aria-hidden="true">
         {{ episode.number }}
       </span>
-      <span v-if="watched" class="episode-card__watched">
-        <AppIcon name="check" />
-      </span>
+      <WatchedMark v-if="watched" />
       <ProgressTrack v-if="progress > 0" :value="progress" />
       <span class="card__ring" />
     </span>
@@ -113,19 +111,5 @@ defineEmits<{ select: [] }>()
   min-height: calc(var(--font-size-s) * var(--line-height));
   color: var(--color-text-muted);
   font-size: var(--font-size-s);
-}
-.episode-card__watched {
-  position: absolute;
-  top: calc(var(--u) * 12);
-  right: calc(var(--u) * 12);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: calc(var(--u) * 44);
-  height: calc(var(--u) * 44);
-  border-radius: 50%;
-  background: var(--color-ok);
-  color: var(--color-bg);
-  font-size: calc(var(--u) * 26);
 }
 </style>

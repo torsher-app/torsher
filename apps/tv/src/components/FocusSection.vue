@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { SectionEdges } from '../focus/index.ts'
-import { onMounted, watchEffect } from 'vue'
+import { onActivated, onMounted, watchEffect } from 'vue'
 import { SECTION_ATTRIBUTE, useFocus } from '../focus/index.ts'
 
 const props = defineProps<{
@@ -15,13 +15,19 @@ const props = defineProps<{
 
 const focus = useFocus()
 
-watchEffect(() =>
+function configure() {
   focus.configure(props.name, {
     edges: props.edges,
     manualScroll: props.manualScroll,
     wheelTarget: props.wheelTarget,
-  }),
-)
+  })
+}
+
+watchEffect(configure)
+
+// Секции с этим именем бывают у нескольких экранов в KeepAlive (карточки
+// разных тайтлов): вернувшийся экран снова задаёт свои переходы
+onActivated(configure)
 
 // Дочерние v-focusable регистрируются раньше: их mounted срабатывает до mounted секции
 onMounted(() => {

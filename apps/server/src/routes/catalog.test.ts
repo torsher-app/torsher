@@ -10,10 +10,12 @@ import {
 import { createApp } from '../app.ts'
 import { ACCESS_TOKEN_COOKIE } from '../config.ts'
 import { getDb, migrateDb } from '../db/index.ts'
-import { users } from '../db/schema.ts'
+import { titleProgress, users } from '../db/schema.ts'
+import { defaultProfile } from '../services/profiles/index.ts'
 import {
   movie,
   movieExtras,
+  person,
   searchResponse,
   season,
   trendingAll,
@@ -86,6 +88,7 @@ describe('get /api/catalog/search', () => {
 
     expect(res.statusCode).toBe(200)
     expect(res.json().items).toHaveLength(3)
+    expect(res.json().people).toEqual([])
     expect(res.json().items[0]).toMatchObject({
       id: 'tmdb:movie:603',
       poster: '/api/img/w342/p96dm7sCMn4VYAStA6siNz30G1r.jpg',
@@ -253,6 +256,55 @@ describe('get /api/catalog/titles/:id/extras', () => {
       directors: ['Lilly Wachowski', 'Lana Wachowski'],
     })
     expect(res.json().cast).toHaveLength(2)
+  })
+})
+
+describe('get /api/catalog/people/:id', () => {
+  it('отвечает 404 на ID не персоны', async () => {
+    const res = await app.inject({
+      url: `/api/catalog/people/${encodeURIComponent('tmdb:movie:603')}`,
+      cookies: authed(),
+    })
+
+    expect(res.statusCode).toBe(404)
+  })
+
+  it('отмечает тайтлы, которые профиль смотрел', async () => {
+    getDb()
+      .insert(titleProgress)
+      .values({
+        profileId: defaultProfile().id,
+        titleId: 'tmdb:movie:157336',
+        season: 0,
+        episode: 0,
+        position: 600,
+      })
+      .run()
+    fetchMock.mockResolvedValue(json({ ...person, biography: 'Режиссёр.' }))
+
+    const res = await app.inject({
+      url: `/api/catalog/people/${encodeURIComponent('tmdb:person:525')}?language=ru-RU`,
+      cookies: authed(),
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toMatchObject({
+      name: 'Кристофер Нолан',
+      biography: 'Режиссёр.',
+      credits: [
+        {
+          role: 'directing',
+          total: 2,
+          items: [
+            { id: 'tmdb:movie:157336', watched: true },
+            { id: 'tmdb:movie:27205', watched: false },
+          ],
+        },
+        { role: 'writing' },
+        { role: 'acting' },
+        { role: 'production' },
+      ],
+    })
   })
 })
 

@@ -1,7 +1,14 @@
 <script setup lang="ts" generic="T">
 import type { FocusVia, SectionEdges } from '../focus/index.ts'
 import type { TrackMetrics } from '../lib/rowTrack.ts'
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import {
+  computed,
+  onActivated,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useFocus } from '../focus/index.ts'
 import {
@@ -139,6 +146,12 @@ const stopFocus = focus.onFocus((el, via) => {
 onMounted(() => {
   measure()
   window.addEventListener('resize', measure)
+})
+
+// Вернувшийся из KeepAlive экран: нативная прокрутка ленты сбросилась
+onActivated(() => {
+  if (native && clip.value)
+    clip.value.scrollLeft = offset.value
 })
 
 onBeforeUnmount(() => {

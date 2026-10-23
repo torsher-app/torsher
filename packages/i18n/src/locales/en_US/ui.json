@@ -22,7 +22,8 @@
     "nothing": "Nothing found",
     "nothingText": "TMDB has nothing for “{query}”. Try the original title or a different spelling",
     "movie": "movie",
-    "series": "series"
+    "series": "series",
+    "people": "People"
   },
   "home": {
     "rows": {
@@ -68,7 +69,7 @@
     "airedOf": "{aired} of {total} aired",
     "seasonAired": "{aired} of {total}",
     "airs": "airs {date}",
-    "cast": "Cast & crew",
+    "cast": "Cast",
     "similar": "More like this",
     "aboutSeries": "About the series",
     "aboutMovie": "About the movie",
@@ -95,7 +96,8 @@
       "seasonPanel": "Season"
     },
     "resume": "Continue",
-    "sources": "Sources"
+    "sources": "Sources",
+    "crew": "Crew"
   },
   "watch": {
     "searching": "Searching for releases…",
@@ -1845,5 +1847,33 @@
       "text": "Peers did not send the file list, or the torrent lacks this episode. Pick another one in Sources."
     },
     "toSources": "To sources"
+  },
+  "crew": {
+    "jobs": {
+      "director": "Director",
+      "creator": "Creator",
+      "writer": "Writer",
+      "camera": "Cinematographer",
+      "music": "Composer",
+      "producer": "Producer"
+    }
+  },
+  "person": {
+    "roles": {
+      "acting": "Actor",
+      "directing": "Director",
+      "creator": "Creator",
+      "writing": "Writer",
+      "production": "Producer",
+      "camera": "Cinematographer",
+      "music": "Composer",
+      "editing": "Editor"
+    },
+    "age": "{n} year | {n} years",
+    "lifespan": "{born} — {died}",
+    "biography": "Biography",
+    "roleTitle": "{role} · {n}",
+    "watched": "Watched",
+    "empty": "TMDB has no movies or series for this person"
   }
 }

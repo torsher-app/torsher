@@ -12,6 +12,7 @@ import { knownImdbIds } from '../ratings/externalIds.ts'
 import {
   movie,
   movieExtras,
+  person,
   searchResponse,
   season,
   seasonEnglish,
@@ -20,11 +21,12 @@ import {
   tvExtras,
 } from './fixtures/index.ts'
 import {
+  getPerson,
   getSeason,
   getTitle,
   getTitleExtras,
   getTrending,
-  searchTitles,
+  searchCatalog,
   TmdbError,
 } from './index.ts'
 
@@ -49,11 +51,11 @@ afterEach(() => {
   vi.unstubAllEnvs()
 })
 
-describe('searchTitles', () => {
+describe('searchCatalog', () => {
   it('ходит в search/multi с токеном и языком', async () => {
     fetchMock.mockResolvedValue(json(searchResponse))
 
-    const items = await searchTitles('Matrix', 'ru-RU')
+    const { items, people } = await searchCatalog('Matrix', 'ru-RU')
 
     const [url, init] = fetchMock.mock.calls[0]!
     const requested = new URL(String(url))
@@ -69,13 +71,15 @@ describe('searchTitles', () => {
       'tmdb:tv:1396',
       'tmdb:movie:1000001',
     ])
+    // У персоны в ответе нет фото: в ряд «Люди» она не попадает
+    expect(people).toEqual([])
   })
 
   it('повторный запрос отдаёт из кэша без сети', async () => {
     fetchMock.mockResolvedValue(json(searchResponse))
 
-    await searchTitles('Cached query', 'en-US')
-    await searchTitles('cached query ', 'en-US')
+    await searchCatalog('Cached query', 'en-US')
+    await searchCatalog('cached query ', 'en-US')
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
   })
@@ -83,7 +87,7 @@ describe('searchTitles', () => {
   it('без токена отвечает ошибкой конфигурации', async () => {
     vi.stubEnv('TMDB_ACCESS_TOKEN', '')
 
-    await expect(searchTitles('no token', 'en-US')).rejects.toMatchObject({
+    await expect(searchCatalog('no token', 'en-US')).rejects.toMatchObject({
       kind: 'config',
     })
     expect(fetchMock).not.toHaveBeenCalled()
@@ -92,7 +96,7 @@ describe('searchTitles', () => {
   it('сетевая ошибка без кэша — unavailable', async () => {
     fetchMock.mockRejectedValue(new TypeError('fetch failed'))
 
-    const error = await searchTitles('offline', 'en-US').catch(err => err)
+    const error = await searchCatalog('offline', 'en-US').catch(err => err)
 
     expect(error).toBeInstanceOf(TmdbError)
     expect(error.kind).toBe('unavailable')
@@ -232,6 +236,52 @@ describe('getTitleExtras', () => {
       '/3/movie/603/similar',
     )
     expect(extras?.similar.map(card => card.id)).toEqual(['tmdb:tv:1396'])
+  })
+})
+
+describe('getPerson', () => {
+  it('один запрос с фильмографией, пустая биография — с en-US, отметки — от вызывающего', async () => {
+    fetchMock.mockImplementation(async (url) => {
+      const requested = new URL(String(url))
+
+      return requested.searchParams.get('language') === 'en-US'
+        ? json({ ...person, biography: ' Director. ' })
+        : json(person)
+    })
+
+    const watched = vi.fn(() => new Set(['tmdb:movie:27205']))
+    const dto = await getPerson('tmdb:person:525', 'ru-RU', watched)
+    const first = new URL(String(fetchMock.mock.calls[0]![0]))
+
+    expect(first.pathname).toBe('/3/person/525')
+    expect(first.searchParams.get('append_to_response')).toBe(
+      'combined_credits',
+    )
+    expect(
+      new URL(String(fetchMock.mock.calls[1]![0])).searchParams.has(
+        'append_to_response',
+      ),
+    ).toBe(false)
+    expect(dto?.biography).toBe('Director.')
+    expect(watched).toHaveBeenCalledWith(
+      expect.arrayContaining(['tmdb:movie:27205', 'tmdb:tv:60625']),
+    )
+    expect(
+      dto?.credits[0]?.items.map(item => [item.title, item.watched]),
+    ).toEqual([
+      ['Интерстеллар', false],
+      ['Начало', true],
+    ])
+
+    await getPerson('tmdb:person:525', 'ru-RU', watched)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('не персона — undefined без запроса', async () => {
+    expect(
+      await getPerson('tmdb:movie:603', 'ru-RU', () => new Set()),
+    ).toBeUndefined()
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })
 

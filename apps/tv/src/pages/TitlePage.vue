@@ -1,15 +1,14 @@
 <script setup lang="ts">
 import { goBack } from '../lib/navigation.ts'
-import type { Card, Episode, Person, TitleSeason } from '@torsher/api-client'
+import type {
+  Card,
+  CrewMember,
+  Episode,
+  Person,
+  TitleSeason,
+} from '@torsher/api-client'
 import type { SectionEdges } from '../focus/index.ts'
-import {
-  computed,
-  nextTick,
-  onBeforeUnmount,
-  onMounted,
-  ref,
-  watch,
-} from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import AppIcon from '../components/AppIcon.vue'
@@ -32,8 +31,9 @@ import {
   useTitleExtras,
   useTitleSeason,
 } from '../composables/useTitleSections.ts'
-import { useStackScroll } from '../composables/useStackScroll.ts'
+import { sectionName, useBlockStack } from '../composables/useBlockStack.ts'
 import { useResumeLabels } from '../composables/useResumeLabels.ts'
+import { useStackedScreen } from '../composables/useStackedScreen.ts'
 import { useTitleProgress } from '../composables/useTitleProgress.ts'
 import { useFocus } from '../focus/index.ts'
 import {
@@ -43,7 +43,7 @@ import {
   rememberTitleMine,
 } from '../titleActions.ts'
 import { resumeRoute } from '../lib/continue.ts'
-import { stackOffset } from '../lib/rowStack.ts'
+import { crewCaption } from '../lib/people.ts'
 import { revealOffset } from '../lib/rowTrack.ts'
 import {
   formatAirDate,
@@ -58,8 +58,6 @@ const props = defineProps<{ id: string }>()
 const MAX_GENRES = 3
 // Пролёт пультом по чипам не запрашивает каждый сезон: ждём, пока фокус остановится
 const SEASON_DELAY_MS = 200
-// Секция встаёт под верхний край экрана с этим отступом (пиксели макета)
-const BLOCK_GAP = 110
 
 const { t, te } = useI18n()
 const router = useRouter()
@@ -163,6 +161,7 @@ const listTileFocused = computed(() => focusedEpisode.value < 0)
 const showEpisodeList = ref(false)
 
 const cast = computed(() => extras.value?.cast ?? [])
+const crew = computed(() => extras.value?.crew ?? [])
 const similar = computed(() => extras.value?.similar ?? [])
 
 const meta = computed(() => {
@@ -188,7 +187,11 @@ const meta = computed(() => {
 })
 
 // Что запустит главная кнопка: ждём прогресс, чтобы не искать раздачи дважды
-const { progress, status: progressStatus } = useTitleProgress(id)
+const {
+  progress,
+  status: progressStatus,
+  refresh: refreshProgress,
+} = useTitleProgress(id)
 const { historyOf } = useSourceLabels()
 const { resumeLine } = useResumeLabels()
 
@@ -485,8 +488,12 @@ function listHint(item: Episode) {
     : t('title.okMark')
 }
 
-function personKey(item: Person) {
+function personKey(item: Person | CrewMember) {
   return item.id
+}
+
+function openPerson(item: Person | CrewMember) {
+  router.push(`/person/${item.id}`)
 }
 
 function cardKey(item: Card) {
@@ -527,6 +534,9 @@ const order = computed(() => {
     if (cast.value.length > 0)
       list.push('title-cast')
 
+    if (crew.value.length > 0)
+      list.push('title-crew')
+
     if (similar.value.length > 0)
       list.push('title-similar')
   }
@@ -546,56 +556,30 @@ function edgesOf(name: string): SectionEdges {
   }
 }
 
-// Вертикальная прокрутка экрана: фокусная секция встаёт под верхний край
+// Вертикальная прокрутка экрана: фокусная секция встаёт под верхний край.
+// Экран в стеке KeepAlive: по Back из персоны, «Похожего» или «Источников»
+// фокус и позиция те же, а прогресс после плеера — свежий
 const stack = ref<HTMLElement>()
 const screen = ref<HTMLElement>()
+const { active } = useStackedScreen(screen, {
+  fallback: () => order.value[0],
+  onReturn: refreshProgress,
+})
 const {
   native: nativeScroll,
   offset,
-  alignTo: scrollStackTo,
-  onScroll: onScreenScroll,
   transform: stackTransform,
-} = useStackScroll(screen)
-const alignedSection = ref<string>()
-// На ТВ блоки, начатые выше выровненного, гаснут, как ряды главной под hero:
-// их хвост лез бы под кнопку «Назад». В вебе страница прокручивается свободно
-const blocksAbove = ref<string[]>([])
-
-function alignTo(el: HTMLElement) {
-  const block = el.closest<HTMLElement>('[data-block]')
-
-  if (!block || !stack.value || !screen.value)
-    return
-
-  const gap = (window.innerWidth / 1920) * BLOCK_GAP
-  const top = block.offsetTop === 0 ? 0 : block.offsetTop - gap
-
-  const next = stackOffset(
-    top,
-    stack.value.offsetHeight,
-    screen.value.clientHeight,
-  )
-
-  scrollStackTo(next)
-
-  if (nativeScroll)
-    return
-
-  const line = next + gap - 1
-
-  blocksAbove.value
-    = next > 0
-      ? Array.from(stack.value.querySelectorAll<HTMLElement>('[data-block]'))
-          .filter(item => item.offsetTop < line)
-          .map(item => item.dataset.block ?? '')
-      : []
-}
-
-function sectionName(el: HTMLElement) {
-  return el
-    .closest<HTMLElement>('[data-focus-section]')
-    ?.getAttribute('data-focus-section')
-}
+  onScroll: onScreenScroll,
+  blocksAbove,
+  align,
+} = useBlockStack({
+  screen,
+  stack,
+  order,
+  active,
+  // Колесо над открытым списком серий не листает карточку под ним
+  wheelHeld: () => showEpisodeList.value,
+})
 
 // Лента чипов: у долгих сериалов десятки сезонов, фокусный чип держим в окне
 const chipsView = ref<HTMLElement>()
@@ -666,23 +650,7 @@ const stopFocus = focus.onFocus((el, via) => {
   if (via === 'pointer')
     return
 
-  alignedSection.value = name ?? undefined
-  alignTo(el)
-})
-
-// Колесо листает секции на одну от выровненной, элемент — в той же колонке
-const stopWheel = focus.onWheel((direction) => {
-  // Колесо над открытым списком серий не листает карточку под ним
-  if (showEpisodeList.value || (direction !== 'up' && direction !== 'down'))
-    return true
-
-  const index = order.value.indexOf(alignedSection.value ?? 'title-actions')
-  const next = order.value[index + (direction === 'down' ? 1 : -1)]
-
-  if (next)
-    focus.activate(next, 'wheel', focus.current())
-
-  return true
+  align(el, name)
 })
 
 function onSeasonClick(number: number) {
@@ -728,20 +696,9 @@ function back() {
   goBack(router)
 }
 
-function onResize() {
-  const current = focus.current()
-
-  if (current && screen.value?.contains(current))
-    alignTo(current)
-}
-
-onMounted(() => window.addEventListener('resize', onResize))
-
 onBeforeUnmount(() => {
   stopFocus()
-  stopWheel()
   clearTimeout(seasonTimer)
-  window.removeEventListener('resize', onResize)
 })
 </script>
 
@@ -1050,7 +1007,30 @@ onBeforeUnmount(() => {
             :edges="edgesOf('title-cast')"
           >
             <template #item="{ item }">
-              <PersonCard :person="item" />
+              <PersonCard :person="item" @select="openPerson(item)" />
+            </template>
+          </ContentRow>
+        </section>
+
+        <section
+          v-if="crew.length > 0"
+          class="block"
+          :class="{ 'block--above': blocksAbove.includes('crew') }"
+          data-block="crew"
+        >
+          <ContentRow
+            section="title-crew"
+            :title="t('title.crew')"
+            :items="crew"
+            :item-key="personKey"
+            :edges="edgesOf('title-crew')"
+          >
+            <template #item="{ item }">
+              <PersonCard
+                :person="item"
+                :caption="crewCaption(item.jobs, t)"
+                @select="openPerson(item)"
+              />
             </template>
           </ContentRow>
         </section>
@@ -1209,11 +1189,6 @@ onBeforeUnmount(() => {
   opacity: 0.86;
 }
 
-.title__state {
-  position: relative;
-  padding: calc(var(--u) * 132) var(--safe-x) 0 var(--content-x);
-}
-
 /* Веб: экран прокручивается нативно, полоса прокрутки не нужна */
 .title--native {
   overflow-y: auto;
@@ -1221,6 +1196,11 @@ onBeforeUnmount(() => {
 
 .title--native::-webkit-scrollbar {
   display: none;
+}
+
+.title__state {
+  position: relative;
+  padding: calc(var(--u) * 132) var(--safe-x) 0 var(--content-x);
 }
 
 .title__stack {

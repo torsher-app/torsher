@@ -182,8 +182,16 @@ export interface PersonInput {
   photo?: string;
 }
 
+export interface CrewMemberInput {
+  id: string;
+  name: string;
+  photo?: string;
+  jobs: ("director" | "creator" | "writer" | "camera" | "music" | "producer")[];
+}
+
 export interface TitleExtrasInput {
   cast: PersonInput[];
+  crew: CrewMemberInput[];
   similar: CardInput[];
   aka: string[];
   directors: string[];
@@ -191,6 +199,7 @@ export interface TitleExtrasInput {
 
 export interface CatalogSearchResponseInput {
   items: CardInput[];
+  people: PersonInput[];
 }
 
 export interface CatalogTrendingResponseInput {
@@ -210,6 +219,64 @@ export interface BackdropInput {
 
 export interface CatalogBackdropsResponseInput {
   items: BackdropInput[];
+}
+
+export interface PersonCreditInput {
+  id: string;
+  kind: "movie" | "series";
+  title: string;
+  originalTitle: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  year?: number;
+  poster?: string;
+  ratings?: TitleRatingInput[];
+  posterRatings?: PosterRatingInput[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  ownRating?: number;
+  detail?: string;
+  watched: boolean;
+}
+
+export interface PersonDetailsInput {
+  id: string;
+  name: string;
+  photo?: string;
+  knownFor?:
+    | "acting"
+    | "directing"
+    | "creator"
+    | "writing"
+    | "production"
+    | "camera"
+    | "music"
+    | "editing";
+  birthday?: string;
+  deathday?: string;
+  placeOfBirth?: string;
+  biography: string;
+  credits: {
+    role:
+      | "acting"
+      | "directing"
+      | "creator"
+      | "writing"
+      | "production"
+      | "camera"
+      | "music"
+      | "editing";
+    items: PersonCreditInput[];
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    total: number;
+  }[];
 }
 
 export interface CollectionInput {
@@ -633,14 +700,7 @@ export interface VoiceOptionInput {
   studio?: string;
   type?: "D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original";
   maxQuality?:
-    | "2160p"
-    | "1440p"
-    | "1080p"
-    | "1080i"
-    | "720p"
-    | "576p"
-    | "480p"
-    | "360p";
+    "2160p" | "1440p" | "1080p" | "1080i" | "720p" | "576p" | "480p" | "360p";
   seeders: number;
   count: number;
   pinned: boolean;
@@ -652,14 +712,7 @@ export interface TitleSourcesInput {
   updatedAt: string;
   profile: {
     qualities: (
-      | "2160p"
-      | "1440p"
-      | "1080p"
-      | "1080i"
-      | "720p"
-      | "576p"
-      | "480p"
-      | "360p"
+      "2160p" | "1440p" | "1080p" | "1080i" | "720p" | "576p" | "480p" | "360p"
     )[];
     voiceTypes: ("D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original")[];
   };
@@ -1419,12 +1472,7 @@ export interface AttentionItemInput {
     | "tmdb_key_invalid";
   severity: "error" | "warning";
   section:
-    | "downloads"
-    | "storage"
-    | "sources"
-    | "network"
-    | "metadata"
-    | "logs";
+    "downloads" | "storage" | "sources" | "network" | "metadata" | "logs";
   params: {
     count?: number;
     name?: string;
@@ -1847,8 +1895,16 @@ export interface Person {
   photo?: string;
 }
 
+export interface CrewMember {
+  id: string;
+  name: string;
+  photo?: string;
+  jobs: ("director" | "creator" | "writer" | "camera" | "music" | "producer")[];
+}
+
 export interface TitleExtras {
   cast: Person[];
+  crew: CrewMember[];
   similar: Card[];
   aka: string[];
   directors: string[];
@@ -1856,6 +1912,7 @@ export interface TitleExtras {
 
 export interface CatalogSearchResponse {
   items: Card[];
+  people: Person[];
 }
 
 export interface CatalogTrendingResponse {
@@ -1875,6 +1932,64 @@ export interface Backdrop {
 
 export interface CatalogBackdropsResponse {
   items: Backdrop[];
+}
+
+export interface PersonCredit {
+  id: string;
+  kind: "movie" | "series";
+  title: string;
+  originalTitle: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  year?: number;
+  poster?: string;
+  ratings?: TitleRating[];
+  posterRatings?: PosterRating[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  ownRating?: number;
+  detail?: string;
+  watched: boolean;
+}
+
+export interface PersonDetails {
+  id: string;
+  name: string;
+  photo?: string;
+  knownFor?:
+    | "acting"
+    | "directing"
+    | "creator"
+    | "writing"
+    | "production"
+    | "camera"
+    | "music"
+    | "editing";
+  birthday?: string;
+  deathday?: string;
+  placeOfBirth?: string;
+  biography: string;
+  credits: {
+    role:
+      | "acting"
+      | "directing"
+      | "creator"
+      | "writing"
+      | "production"
+      | "camera"
+      | "music"
+      | "editing";
+    items: PersonCredit[];
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    total: number;
+  }[];
 }
 
 export interface Collection {
@@ -2298,14 +2413,7 @@ export interface VoiceOption {
   studio?: string;
   type?: "D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original";
   maxQuality?:
-    | "2160p"
-    | "1440p"
-    | "1080p"
-    | "1080i"
-    | "720p"
-    | "576p"
-    | "480p"
-    | "360p";
+    "2160p" | "1440p" | "1080p" | "1080i" | "720p" | "576p" | "480p" | "360p";
   seeders: number;
   count: number;
   pinned: boolean;
@@ -2317,14 +2425,7 @@ export interface TitleSources {
   updatedAt: string;
   profile: {
     qualities: (
-      | "2160p"
-      | "1440p"
-      | "1080p"
-      | "1080i"
-      | "720p"
-      | "576p"
-      | "480p"
-      | "360p"
+      "2160p" | "1440p" | "1080p" | "1080i" | "720p" | "576p" | "480p" | "360p"
     )[];
     voiceTypes: ("D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original")[];
   };
@@ -3084,12 +3185,7 @@ export interface AttentionItem {
     | "tmdb_key_invalid";
   severity: "error" | "warning";
   section:
-    | "downloads"
-    | "storage"
-    | "sources"
-    | "network"
-    | "metadata"
-    | "logs";
+    "downloads" | "storage" | "sources" | "network" | "metadata" | "logs";
   params: {
     count?: number;
     name?: string;
@@ -3364,6 +3460,8 @@ export type GetCatalogSeasonError = MessageResponse;
 
 export type GetCatalogTitleExtrasError = MessageResponse;
 
+export type GetCatalogPersonError = MessageResponse;
+
 export type GetCatalogTrendingError = MessageResponse;
 
 export type GetCatalogBackdropsError = MessageResponse;
@@ -3395,18 +3493,14 @@ export type GetTitleSourcesError = MessageResponse;
 export type PutTitleVoiceError = MessageResponse;
 
 export type PostTitleWatchError =
-  | MessageResponse
-  | WatchErrorResponse
-  | EngineUnavailableResponse;
+  MessageResponse | WatchErrorResponse | EngineUnavailableResponse;
 
 export type GetTitleProgressError = MessageResponse;
 
 export type GetTitleUpNextError = MessageResponse;
 
 export type PostTitleOpenError =
-  | MessageResponse
-  | WatchErrorResponse
-  | EngineUnavailableResponse;
+  MessageResponse | WatchErrorResponse | EngineUnavailableResponse;
 
 export type GetTitleFilesError = MessageResponse;
 
@@ -3445,18 +3539,15 @@ export type DeleteTorrentError = MessageResponse | EngineUnavailableResponse;
 export type PostTorrentRetryError = MessageResponse | EngineUnavailableResponse;
 
 export type PostTorrentDownloadError =
-  | MessageResponse
-  | EngineUnavailableResponse;
+  MessageResponse | EngineUnavailableResponse;
 
 export type PostTorrentPauseError = MessageResponse | EngineUnavailableResponse;
 
 export type PostTorrentResumeError =
-  | MessageResponse
-  | EngineUnavailableResponse;
+  MessageResponse | EngineUnavailableResponse;
 
 export type PutTorrentRetentionError =
-  | MessageResponse
-  | EngineUnavailableResponse;
+  MessageResponse | EngineUnavailableResponse;
 
 export type GetTorrentStatsError = MessageResponse | EngineUnavailableResponse;
 
@@ -3499,9 +3590,7 @@ export type GetSetupStorageCheckError = MessageResponse;
 export type PostSetupDiscoverManagersError = MessageResponse;
 
 export type PostPlaybackError =
-  | MessageResponse
-  | EngineUnavailableResponse
-  | InsufficientStorageResponse;
+  MessageResponse | EngineUnavailableResponse | InsufficientStorageResponse;
 
 export type GetPlaybackError = MessageResponse;
 
@@ -3534,8 +3623,7 @@ export type PostDevicePairingError = MessageResponse;
 export type GetDevicePairingError = MessageResponse;
 
 export type PostDevicePairingConfirmError =
-  | MessageResponse
-  | PairingErrorResponse;
+  MessageResponse | PairingErrorResponse;
 
 export type GetDevicesError = MessageResponse;
 
@@ -3585,8 +3673,10 @@ export interface ApiConfig<SecurityDataType = unknown> {
   customFetch?: typeof fetch;
 }
 
-export interface HttpResponse<D extends unknown, E extends unknown = unknown>
-  extends Response {
+export interface HttpResponse<
+  D extends unknown,
+  E extends unknown = unknown,
+> extends Response {
   data: D;
   error: E;
 }
@@ -4118,6 +4208,32 @@ export class Api<
     ) =>
       this.request<TitleExtras, GetCatalogTitleExtrasError>({
         path: `/api/catalog/titles/${id}/extras`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Catalog
+     * @name GetCatalogPerson
+     * @request GET:/api/catalog/people/{id}
+     */
+    getCatalogPerson: (
+      id: string,
+      query?: {
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<PersonDetails, GetCatalogPersonError>({
+        path: `/api/catalog/people/${id}`,
         method: "GET",
         query: query,
         format: "json",

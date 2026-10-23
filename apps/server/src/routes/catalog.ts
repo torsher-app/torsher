@@ -2,12 +2,14 @@ import type { FastifyReply } from 'fastify'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import {
   catalogBackdropsResponse,
+  catalogPersonParams,
   catalogSearchQuery,
   catalogSearchResponse,
   catalogSeasonParams,
   catalogTitleParams,
   catalogTitleQuery,
   catalogTrendingResponse,
+  personDetails,
   seasonDetails,
   titleDetails,
   titleExtras,
@@ -15,13 +17,15 @@ import {
 import { messageResponse } from '../dto/common.ts'
 import { requireViewer } from '../middleware/auth.ts'
 import { withPosterRatings } from '../services/mine/index.ts'
+import { watchedTitles } from '../services/sources/progress.ts'
 import {
+  getPerson,
   getSeason,
   getTitle,
   getTitleExtras,
   getTrending,
   getTrendingBackdrops,
-  searchTitles,
+  searchCatalog,
   TmdbError,
 } from '../services/tmdb/index.ts'
 
@@ -64,11 +68,11 @@ export const catalogRoutes: FastifyPluginAsyncZod = async (app) => {
       const { query, language } = request.query
 
       try {
+        const result = await searchCatalog(query, language)
+
         return {
-          items: withPosterRatings(
-            await searchTitles(query, language),
-            request.profileId,
-          ),
+          ...result,
+          items: withPosterRatings(result.items, request.profileId),
         }
       }
       catch (err) {
@@ -178,6 +182,49 @@ export const catalogRoutes: FastifyPluginAsyncZod = async (app) => {
         return {
           ...extras,
           similar: withPosterRatings(extras.similar, request.profileId),
+        }
+      }
+      catch (err) {
+        return sendTmdbError(reply, err)
+      }
+    },
+  )
+
+  app.get(
+    '/people/:id',
+    {
+      onRequest: requireViewer,
+      schema: {
+        operationId: 'getCatalogPerson',
+        tags: ['Catalog'],
+        params: catalogPersonParams,
+        querystring: catalogTitleQuery,
+        response: {
+          200: personDetails,
+          404: messageResponse,
+          ...errorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { profileId } = request
+
+      try {
+        const person = await getPerson(
+          request.params.id,
+          request.query.language,
+          ids => watchedTitles(profileId, ids),
+        )
+
+        if (!person)
+          return reply.code(404).send({ message: 'Person not found' })
+
+        return {
+          ...person,
+          credits: person.credits.map(group => ({
+            ...group,
+            items: withPosterRatings(group.items, profileId),
+          })),
         }
       }
       catch (err) {

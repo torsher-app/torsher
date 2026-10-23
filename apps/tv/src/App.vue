@@ -4,7 +4,11 @@ import { useRoute } from 'vue-router'
 import AppScreensaver from './components/AppScreensaver.vue'
 import TitleActions from './components/TitleActions.vue'
 import { useScreensaver } from './composables/useScreensaver.ts'
+import { isStacked, screenKey } from './router.ts'
 import { session } from './session.ts'
+
+// Глубже стек не помнит: экран, вытесненный из кэша, откроется с начала
+const STACK_DEPTH = 10
 
 const currentRoute = useRoute()
 const cacheKey = ref(session.profile?.id)
@@ -24,17 +28,28 @@ const { active: screensaverActive } = useScreensaver(
 
 <template>
   <!--
-    Главная, поиск и «Источники» переживают переход дальше: по Back возвращаемся к
+    Главная, поиск, «Моё» и «Источники» переживают переход дальше: по Back возвращаемся к
     тем же рядам, результатам и раздаче. Ключ по пути: «Главная», «Фильмы» и
     «Сериалы» — отдельные экраны, «Источники» — свои у каждого тайтла.
     Смена профиля сбрасывает их: ряды, прогресс и язык — уже другого зрителя.
+
+    Карточки тайтлов и персоны — отдельный стек по записям истории: по цепочке
+    «актёр → фильм → режиссёр» Back возвращает каждый экран с его фокусом.
+    Свой кэш с пределом: длинная цепочка не вытесняет главную и поиск.
   -->
   <RouterView v-slot="{ Component, route }">
     <KeepAlive
-      :key="cacheKey"
+      :key="`screens-${cacheKey}`"
       :include="['HomePage', 'SearchPage', 'SourcesPage', 'MinePage']"
     >
-      <component :is="Component" :key="route.path" />
+      <component :is="Component" v-if="!isStacked(route)" :key="route.path" />
+    </KeepAlive>
+    <KeepAlive
+      :key="`stack-${cacheKey}`"
+      :include="['TitlePage', 'PersonPage']"
+      :max="STACK_DEPTH"
+    >
+      <component :is="Component" v-if="isStacked(route)" :key="screenKey" />
     </KeepAlive>
   </RouterView>
   <!-- Меню действий тайтла — поверх любого экрана: его открывает постер где угодно -->

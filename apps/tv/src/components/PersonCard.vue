@@ -4,11 +4,15 @@ import { computed } from 'vue'
 
 const props = withDefaults(
   defineProps<{
-    person: Person
+    person: Pick<Person, 'name' | 'photo' | 'role'>
+    // Вторая строка вместо роли: должности в съёмочной группе
+    caption?: string
     loadImage?: boolean
   }>(),
-  { loadImage: true },
+  { caption: undefined, loadImage: true },
 )
+
+defineEmits<{ select: [] }>()
 
 // Без фото — инициалы: первые буквы первых двух слов имени
 const initials = computed(() =>
@@ -22,7 +26,12 @@ const initials = computed(() =>
 </script>
 
 <template>
-  <button v-focusable class="card person-card" type="button">
+  <button
+    v-focusable
+    class="card person-card"
+    type="button"
+    @click="$emit('select')"
+  >
     <span class="person-card__face">
       <img
         v-if="person.photo && loadImage"
@@ -37,7 +46,7 @@ const initials = computed(() =>
       <span class="card__ring person-card__ring" />
     </span>
     <span class="person-card__name">{{ person.name }}</span>
-    <span class="person-card__role">{{ person.role }}</span>
+    <span class="person-card__role">{{ caption ?? person.role }}</span>
   </button>
 </template>
 

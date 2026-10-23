@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Card } from '@torsher/api-client'
+import type { Card, Person } from '@torsher/api-client'
 import {
   computed,
   nextTick,
@@ -13,6 +13,7 @@ import { useRouter } from 'vue-router'
 import AppIcon from '../components/AppIcon.vue'
 import AppRail from '../components/AppRail.vue'
 import FocusSection from '../components/FocusSection.vue'
+import PersonCard from '../components/PersonCard.vue'
 import PosterCard from '../components/PosterCard.vue'
 import PosterSkeleton from '../components/PosterSkeleton.vue'
 import ScreenState from '../components/ScreenState.vue'
@@ -38,13 +39,19 @@ const focus = useFocus()
 const query = ref('')
 const recent = ref(loadRecent())
 
-const { status, items, error, retry } = useCatalogSearch(query)
+const { status, items, people, error, retry } = useCatalogSearch(query)
 const { trending } = useTrending()
 
 const hasQuery = computed(() => query.value.trim().length > 0)
 const isEmpty = computed(
-  () => hasQuery.value && status.value === 'ready' && items.value.length === 0,
+  () =>
+    hasQuery.value
+    && status.value === 'ready'
+    && items.value.length === 0
+    && people.value.length === 0,
 )
+// Люди из того же поиска — строкой над тайтлами
+const shownPeople = computed(() => (hasQuery.value ? people.value : []))
 // Без запроса и при пустом результате сетка показывает популярное
 const shown = computed<Card[]>(() =>
   hasQuery.value && !isEmpty.value ? items.value : (trending.value ?? []),
@@ -93,7 +100,7 @@ function alignTo(el: HTMLElement) {
     return
 
   const gap = (window.innerWidth / 1920) * ROW_GAP
-  const card = el.closest<HTMLElement>('.poster-card') ?? el
+  const card = el.closest<HTMLElement>('.poster-card, .person-card') ?? el
   const top = Math.max(0, card.offsetTop - gap)
 
   scrollColumnTo(
@@ -138,13 +145,22 @@ function pickRecent(text: string) {
   query.value = text
 }
 
-function open(card: Card) {
+// Запрос попадает в недавние, когда из его результатов что-то открыли
+function rememberQuery() {
   if (hasQuery.value && !isEmpty.value) {
     recent.value = addRecent(recent.value, query.value)
     saveRecent(recent.value)
   }
+}
 
+function open(card: Card) {
+  rememberQuery()
   router.push(`/title/${card.id}`)
+}
+
+function openPerson(person: Person) {
+  rememberQuery()
+  router.push(`/person/${person.id}`)
 }
 
 // Открыли поиск заново (рейл) — фокус в поле, как в первый раз; вернулись из
@@ -226,6 +242,20 @@ onBeforeUnmount(stopFocus)
           @retry="retry"
         />
         <template v-else>
+          <template v-if="shownPeople.length > 0">
+            <h2 class="search__label search__label--results">
+              {{ t("search.people") }}
+            </h2>
+            <!-- Те же четыре колонки, что у постеров: шаг вниз — в ту же колонку -->
+            <div class="grid search__people">
+              <PersonCard
+                v-for="person in shownPeople"
+                :key="person.id"
+                :person="person"
+                @select="openPerson(person)"
+              />
+            </div>
+          </template>
           <h2 v-if="heading" class="search__label search__label--results">
             {{ heading }}
           </h2>
@@ -382,5 +412,10 @@ onBeforeUnmount(stopFocus)
   display: grid;
   grid-template-columns: repeat(4, var(--poster-width));
   grid-gap: calc(var(--u) * 36) calc(var(--u) * 34);
+}
+
+.search__people {
+  margin-bottom: calc(var(--u) * 48);
+  justify-items: center;
 }
 </style>

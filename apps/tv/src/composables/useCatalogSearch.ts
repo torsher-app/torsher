@@ -1,4 +1,4 @@
-import type { Card } from '@torsher/api-client'
+import type { Card, Person } from '@torsher/api-client'
 import type { Ref } from 'vue'
 import type { LoadError } from '../lib/loadError.ts'
 import { onScopeDispose, ref, shallowRef, watch } from 'vue'
@@ -16,6 +16,7 @@ export function useCatalogSearch(query: Ref<string>) {
   const language = useCatalogLanguage()
   const status = ref<SearchStatus>('idle')
   const items = shallowRef<Card[]>([])
+  const people = shallowRef<Person[]>([])
   const error = ref<LoadError>()
   const latest = createLatest()
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -29,6 +30,7 @@ export function useCatalogSearch(query: Ref<string>) {
       latest.cancel()
       status.value = 'idle'
       items.value = []
+      people.value = []
 
       return
     }
@@ -53,6 +55,7 @@ export function useCatalogSearch(query: Ref<string>) {
     }
 
     items.value = outcome.value.items
+    people.value = outcome.value.people
     status.value = 'ready'
   }
 
@@ -74,5 +77,5 @@ export function useCatalogSearch(query: Ref<string>) {
     latest.cancel()
   })
 
-  return { status, items, error, retry: search }
+  return { status, items, people, error, retry: search }
 }
