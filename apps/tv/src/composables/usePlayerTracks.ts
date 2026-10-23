@@ -6,6 +6,7 @@ import type {
 import type { Ref, ShallowRef } from 'vue'
 import type { TrackOption } from '../components/player/PlayerTracks.vue'
 import type { PlaybackRestart } from './usePlayback.ts'
+import { frameResolution } from '@torsher/release-parser/resolution'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
@@ -265,7 +266,10 @@ export function usePlayerTracks(
 
     return info
       ? [
-          info.height ? `${info.height}p` : null,
+          // Класс кадра, а не высота: широкоэкранный 1920×800 — это 1080p
+          info.width && info.height
+            ? frameResolution(info.width, info.height)
+            : null,
           codecLabel(info.codec),
           info.hdr ? 'HDR' : null,
         ]

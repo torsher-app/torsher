@@ -15,6 +15,7 @@
     "@fontsource/onest": "5.3.1",
     "@torsher/api-client": "workspace:*",
     "@torsher/i18n": "workspace:*",
+    "@torsher/release-parser": "workspace:*",
     "@torsher/tokens": "workspace:*",
     "hls.js": "1.7.2",
     "vue": "^3.5.44",
