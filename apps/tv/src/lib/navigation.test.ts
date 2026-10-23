@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { backAction, openedForward } from './navigation.ts'
+import { backAction, openedForward, returnedBack } from './navigation.ts'
 
 const ID = 'tmdb:tv:1399'
 
@@ -86,9 +86,55 @@ describe('backAction', () => {
     })
   })
 
-  it('экраны вне флоу — по истории, а без неё — корень', () => {
-    expect(backAction(route('/search'), '/')).toEqual({ kind: 'history' })
+  it('раздел рейла — на главную', () => {
+    for (const section of [
+      '/movies',
+      '/series',
+      '/search',
+      '/mine',
+      '/settings',
+      '/about',
+    ]) {
+      expect(backAction(route(section), '/')).toEqual({ kind: 'history' })
+      expect(backAction(route(section), null)).toEqual({
+        kind: 'replace',
+        path: '/',
+      })
+      // Не по кругу через прошлые разделы и не в карточку перед разделом
+      expect(backAction(route(section), '/movies')).toEqual({
+        kind: 'replace',
+        path: '/',
+      })
+      expect(backAction(route(section), `/title/${ID}`)).toEqual({
+        kind: 'replace',
+        path: '/',
+      })
+    }
+  })
+
+  it('главная — корень при любой истории', () => {
     expect(backAction(route('/'), undefined)).toEqual({ kind: 'none' })
+    expect(backAction(route('/'), '/series')).toEqual({ kind: 'none' })
+    expect(backAction(route('/'), `/title/${ID}`)).toEqual({ kind: 'none' })
+    expect(backAction(route('/'), '/play/t1/3?title=x')).toEqual({
+      kind: 'none',
+    })
+  })
+
+  it('прочие экраны — по истории, а без неё — корень', () => {
+    expect(backAction(route('/profiles'), '/')).toEqual({ kind: 'history' })
+    expect(backAction(route('/profiles'), null)).toEqual({ kind: 'none' })
+  })
+})
+
+describe('returnedBack', () => {
+  it('вернулись `router.back()` с экрана впереди', () => {
+    expect(returnedBack({ forward: `/title/${ID}` })).toBe(true)
+  })
+
+  it('открыт шагом вперёд, рейлом на месте раздела или по ссылке', () => {
+    expect(returnedBack({ forward: null })).toBe(false)
+    expect(returnedBack({})).toBe(false)
   })
 })
 

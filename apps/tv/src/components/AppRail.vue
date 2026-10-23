@@ -52,9 +52,12 @@ const bottom = computed<RailItem[]>(() => [
   { id: 'about', icon: 'about', label: t('common.about'), path: '/about' },
 ])
 
+// Разделы переключаются заменой записи, как вкладки: история не копится, и
+// Back с любого раздела ведёт на главную, а не по кругу через прошлые разделы.
+// «Вперёд» от прежнего раздела к новому не относится
 function select(item: RailItem) {
   if (item.id !== props.current)
-    router.push(item.path)
+    void router.replace({ path: item.path, state: { forward: null } })
   else if (props.content)
     focus.activate(props.content)
 }

@@ -19,13 +19,33 @@ function stringOf(value: unknown) {
   return typeof value === 'string' ? value : undefined
 }
 
+const HOME = '/'
+
+/** Разделы рейла, кроме главной: их родитель — главная */
+const SECTIONS = new Set([
+  '/movies',
+  '/series',
+  '/search',
+  '/mine',
+  '/settings',
+  '/about',
+])
+
 /**
  * Экран уровнем выше и какая прошлая запись истории им считается. Флоу
  * просмотра — иерархия: плеер → «Файлы» → «Источники» → карточка → откуда
- * пришли на карточку. Остальные экраны родителя не знают.
+ * пришли на карточку. Разделы рейла — на главную. Остальные экраны родителя
+ * не знают.
  */
 function parentOf(route: RouteLike) {
   const id = stringOf(route.params.id)
+
+  if (SECTIONS.has(route.pattern)) {
+    return {
+      path: HOME,
+      accepts: (back: string) => pathOf(back) === HOME,
+    }
+  }
 
   switch (route.pattern) {
     case '/title/:id/files/:torrentId':
@@ -42,7 +62,7 @@ function parentOf(route: RouteLike) {
       // Назад — туда, откуда открыли карточку (главная, поиск, другая карточка),
       // но не в её же экраны просмотра
       return {
-        path: '/',
+        path: HOME,
         accepts: (back: string) =>
           !pathOf(back).startsWith(`/title/${id}/`)
           && !back.startsWith('/play/'),
@@ -75,6 +95,11 @@ function parentOf(route: RouteLike) {
  * указывал бы на дочерний экран, и следующий Back вернул бы в него.
  */
 export function backAction(route: RouteLike, back: unknown): BackAction {
+  // Главная — корень: Back с неё — `onRoot`, даже если в истории до неё есть
+  // записи (прошлый раздел, карточка или плеер, открытые ссылкой)
+  if (route.pattern === HOME)
+    return { kind: 'none' }
+
   const previous = stringOf(back)
   const parent = parentOf(route)
 
@@ -110,10 +135,18 @@ export function goBack(router: Router, onRoot?: () => void) {
 }
 
 /**
- * Экран открыт шагом вперёд, а не возвратом с дочернего: у записи истории нет
- * «вперёд» (на неё не вернулись `router.back()`) и есть «назад» (её не подставил
- * `goBack` на место дочерней). `state` — `history.state` записи vue-router.
+ * На запись истории вернулись `router.back()` с экрана впереди: у неё есть
+ * «вперёд». `state` — `history.state` записи vue-router.
+ */
+export function returnedBack(state: { forward?: unknown }) {
+  return Boolean(stringOf(state.forward))
+}
+
+/**
+ * Экран открыт шагом вперёд, а не возвратом с дочернего: на запись не
+ * вернулись (`returnedBack`) и у неё есть «назад» (её не подставил `goBack` на
+ * место дочерней).
  */
 export function openedForward(state: { back?: unknown, forward?: unknown }) {
-  return Boolean(stringOf(state.back)) && !stringOf(state.forward)
+  return Boolean(stringOf(state.back)) && !returnedBack(state)
 }
