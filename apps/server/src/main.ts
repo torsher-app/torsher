@@ -16,6 +16,8 @@ import {
 import { RequestLogController } from './services/logs/requestLog.ts'
 import { cleanTranscodes, stopAllSessions } from './services/media/index.ts'
 import { startCheck } from './services/net/check.ts'
+import { startImdbSchedule } from './services/ratings/imdb/index.ts'
+import { purgeExpiredExternalIds } from './services/ratings/index.ts'
 import { purgeExpiredAliases } from './services/sources/aliases.ts'
 import { enforceStorage } from './services/storage/index.ts'
 import { getSetting } from './services/settings/index.ts'
@@ -50,11 +52,13 @@ installLogger(logger)
 function purgeTmdbData() {
   purgeExpiredMetaCache()
   purgeExpiredAliases()
+  purgeExpiredExternalIds()
 }
 
 purgeTmdbData()
 setInterval(purgeTmdbData, DAY_MS).unref()
 await cleanTranscodes()
+startImdbSchedule()
 
 const app = createApp(
   {

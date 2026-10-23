@@ -1,7 +1,12 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { createApp } from '../app.ts'
+import { migrateDb } from '../db/index.ts'
 
 const app = createApp()
+
+beforeAll(() => {
+  migrateDb()
+})
 
 afterEach(() => {
   vi.unstubAllEnvs()
@@ -19,6 +24,7 @@ describe('get /api/about', () => {
       commit: 'abc1234',
       license: 'AGPL-3.0-only',
       sourceUrl: 'https://github.com/torsher-app/torsher',
+      imdbAttribution: false,
     })
   })
 

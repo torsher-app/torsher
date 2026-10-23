@@ -3,11 +3,18 @@ import { config } from '../config.ts'
 import { messageResponse } from '../dto/common.ts'
 import {
   checkMetadataKey,
+  imdbDatasetStatus,
   metadataKeyCheck,
   metadataSettings,
+  updateImdbSettings,
   updateMetadataSettings,
 } from '../dto/net.ts'
 import { requireOwner } from '../middleware/auth.ts'
+import {
+  imdbStatus,
+  refreshImdbNow,
+  setImdbRatingsEnabled,
+} from '../services/ratings/imdb/index.ts'
 import { checkTmdbKey } from '../services/tmdb/client.ts'
 import { saveTmdbKey, tmdbKeySource } from '../services/tmdb/credentials.ts'
 
@@ -17,6 +24,7 @@ function toMetadataResponse() {
       source: tmdbKeySource(),
       hasAppKey: Boolean(config.tmdbAccessToken),
     },
+    imdb: imdbStatus(),
   }
 }
 
@@ -77,5 +85,49 @@ export const settingsRoutes: FastifyPluginAsyncZod = async (app) => {
       },
     },
     async request => checkTmdbKey(request.body.tmdbKey),
+  )
+  app.put(
+    '/metadata/imdb',
+    {
+      schema: {
+        operationId: 'putImdbSettings',
+        tags: ['Settings'],
+        body: updateImdbSettings,
+        response: {
+          200: imdbDatasetStatus,
+          400: messageResponse,
+          ...guardResponses,
+        },
+      },
+    },
+    async (request) => {
+      await setImdbRatingsEnabled(request.body.enabled)
+
+      return imdbStatus()
+    },
+  )
+
+  // Загрузка идёт в фоне: ответ — состояние сразу после запуска
+  app.post(
+    '/metadata/imdb/refresh',
+    {
+      schema: {
+        operationId: 'postImdbRefresh',
+        tags: ['Settings'],
+        response: {
+          202: imdbDatasetStatus,
+          409: messageResponse,
+          ...guardResponses,
+        },
+      },
+    },
+    async (_request, reply) => {
+      if (!imdbStatus().enabled)
+        return reply.code(409).send({ message: 'IMDb ratings are off' })
+
+      refreshImdbNow()
+
+      return reply.code(202).send(imdbStatus())
+    },
   )
 }

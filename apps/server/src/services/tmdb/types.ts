@@ -10,6 +10,8 @@ export interface TmdbMultiResult {
   original_name?: string
   first_air_date?: string
   poster_path?: string | null
+  vote_average?: number
+  vote_count?: number
   // Только у персон: их известные фильмы и сериалы, с media_type
   known_for?: TmdbMultiResult[]
 }
@@ -58,6 +60,7 @@ export interface TmdbMovie extends TmdbDetailsBase {
   original_title: string
   release_date: string
   runtime: number | null
+  imdb_id?: string | null
   // append_to_response=release_dates
   release_dates?: {
     results: {
@@ -89,6 +92,8 @@ export interface TmdbTv extends TmdbDetailsBase {
     episode_number: number
   } | null
   seasons: TmdbTvSeason[]
+  // append_to_response=external_ids
+  external_ids?: { imdb_id?: string | null }
   // append_to_response=content_ratings
   content_ratings?: { results: { iso_3166_1: string, rating: string }[] }
 }

@@ -8,6 +8,7 @@ import {
   vi,
 } from 'vitest'
 import { migrateDb } from '../../db/index.ts'
+import { knownImdbIds } from '../ratings/externalIds.ts'
 import {
   movie,
   movieExtras,
@@ -119,6 +120,31 @@ describe('getTitle', () => {
       'ru,null,en',
     )
     expect(details?.title).toBe('Матрица')
+  })
+
+  it('у сериала просит IMDb ID вместе с деталями и запоминает его', async () => {
+    fetchMock.mockResolvedValue(
+      json({
+        ...tv,
+        id: 1397,
+        vote_average: 8.86,
+        vote_count: 100,
+        external_ids: { imdb_id: 'tt0000303' },
+      }),
+    )
+
+    const details = await getTitle('tmdb:tv:1397', 'en-US')
+    const requested = new URL(String(fetchMock.mock.calls[0]![0]))
+
+    expect(requested.searchParams.get('append_to_response')).toBe(
+      'images,content_ratings,external_ids',
+    )
+    expect(knownImdbIds([{ type: 'tv', tmdbId: 1397 }]).get('tv:1397')).toBe(
+      'tt0000303',
+    )
+    expect(details?.ratings).toEqual([
+      { provider: 'tmdb', label: 'TMDB', value: 8.9, votes: 100 },
+    ])
   })
 
   it('берёт описание с en-US, если перевода нет', async () => {

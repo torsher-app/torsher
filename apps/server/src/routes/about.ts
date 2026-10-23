@@ -2,6 +2,7 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import packageJson from '../../package.json' with { type: 'json' }
 import { config } from '../config.ts'
 import { aboutResponse } from '../dto/about.ts'
+import { isImdbEnabled } from '../services/ratings/imdb/state.ts'
 
 const LICENSE = 'AGPL-3.0-only'
 
@@ -26,6 +27,7 @@ export const aboutRoutes: FastifyPluginAsyncZod = async (app) => {
       commit: config.commit,
       license: LICENSE,
       sourceUrl: config.sourceUrl,
+      imdbAttribution: isImdbEnabled(),
     }),
   )
 }

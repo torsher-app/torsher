@@ -52,6 +52,23 @@ export const metaCache = sqliteTable(
   table => [index('meta_cache_fetched_at_idx').on(table.fetchedAt)],
 )
 
+// IMDb ID тайтла TMDB: в списках TMDB его нет, а оценки ищутся по нему.
+// `imdb_id` null — у TMDB его нет, повторно до срока не спрашиваем. Это данные
+// TMDB: хранятся не дольше их предела
+export const titleExternalIds = sqliteTable(
+  'title_external_ids',
+  {
+    type: text('type', { enum: ['movie', 'tv'] }).notNull(),
+    tmdbId: integer('tmdb_id').notNull(),
+    imdbId: text('imdb_id'),
+    fetchedAt: integer('fetched_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  table => [
+    primaryKey({ columns: [table.type, table.tmdbId] }),
+    index('title_external_ids_fetched_at_idx').on(table.fetchedAt),
+  ],
+)
+
 export const profileColors = [
   'violet',
   'green',

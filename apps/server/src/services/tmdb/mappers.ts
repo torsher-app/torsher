@@ -18,6 +18,7 @@ import type {
   TmdbTv,
   TmdbTvSeason,
 } from './types.ts'
+import { tmdbRating } from '../ratings/tmdb.ts'
 
 export type TmdbMediaType = 'movie' | 'tv'
 
@@ -84,8 +85,11 @@ function yearOf(date: string | null | undefined) {
   return Number.isFinite(year) ? year : undefined
 }
 
-function ratingOf(average: number, count: number) {
-  return count > 0 ? Math.round(average * 10) / 10 : undefined
+// Остальные оценки добавляет реестр поставщиков
+function ratingsOf(item: { vote_average?: number, vote_count?: number }) {
+  const tmdb = tmdbRating(item.vote_average, item.vote_count)
+
+  return tmdb ? [tmdb] : []
 }
 
 function names(items: { name: string }[] | undefined, limit?: number) {
@@ -93,6 +97,12 @@ function names(items: { name: string }[] | undefined, limit?: number) {
   const list = (items ?? []).map(item => item.name.trim()).filter(Boolean)
 
   return limit ? list.slice(0, limit) : list
+}
+
+function cardRatings(result: TmdbMultiResult) {
+  const ratings = ratingsOf(result)
+
+  return ratings.length > 0 ? { ratings } : {}
 }
 
 /** Персоны из мультипоиска не попадают в каталог. */
@@ -105,6 +115,7 @@ export function searchResultToCard(result: TmdbMultiResult): Card | undefined {
       originalTitle: result.original_title ?? result.title ?? '',
       year: yearOf(result.release_date),
       poster: imageUrl(POSTER_SIZE, result.poster_path),
+      ...cardRatings(result),
     }
   }
 
@@ -116,6 +127,7 @@ export function searchResultToCard(result: TmdbMultiResult): Card | undefined {
       originalTitle: result.original_name ?? result.name ?? '',
       year: yearOf(result.first_air_date),
       poster: imageUrl(POSTER_SIZE, result.poster_path),
+      ...cardRatings(result),
     }
   }
 
@@ -224,7 +236,7 @@ export function movieToDetails(
     overview: movie.overview,
     genres: movie.genres.map(genre => genre.name),
     runtime: movie.runtime || undefined,
-    rating: ratingOf(movie.vote_average, movie.vote_count),
+    ratings: ratingsOf(movie),
     certification: pickByRegion(
       movie.release_dates?.results,
       language,
@@ -292,7 +304,7 @@ export function tvToDetails(
     logo: pickLogo(tv.images?.logos, language),
     overview: tv.overview,
     genres: tv.genres.map(genre => genre.name),
-    rating: ratingOf(tv.vote_average, tv.vote_count),
+    ratings: ratingsOf(tv),
     ongoing,
     endYear: ongoing ? undefined : yearOf(tv.last_air_date),
     certification: pickByRegion(

@@ -13,6 +13,12 @@ import type {
   TmdbSeason,
   TmdbTv,
 } from './types.ts'
+import {
+  ratingsOf,
+  rememberImdbIdIfChanged,
+  withRatings,
+} from '../ratings/index.ts'
+import { TMDB_PROVIDER } from '../ratings/tmdb.ts'
 import { withMetaCache } from './cache.ts'
 import { tmdbGet } from './client.ts'
 import { getTrendingCards } from './home.ts'
@@ -43,7 +49,7 @@ const TRENDING_LIMIT = 12
  * В кэше лежит сырой ответ: при смене набора append_to_response версия
  * меняется, иначе до конца TTL отдавались бы ответы без новых полей.
  */
-const DETAILS_KEY_VERSION = 'v2'
+const DETAILS_KEY_VERSION = 'v3'
 
 // У части тайтлов нет перевода описания: его берём с английской версии
 const FALLBACK_LANGUAGE = 'en-US'
@@ -64,22 +70,26 @@ export async function searchTitles(
       }),
   )
 
-  return searchResultsToCards(response.results)
+  return withRatings(searchResultsToCards(response.results))
 }
 
 export async function getTrending(language: string): Promise<Card[]> {
-  return (await getTrendingCards(language)).slice(0, TRENDING_LIMIT)
+  return withRatings(
+    (await getTrendingCards(language)).slice(0, TRENDING_LIMIT),
+  )
 }
 
-// Логотипы и возрастной рейтинг приходят вместе с деталями одним запросом
+// Логотипы, возрастной рейтинг и IMDb ID приходят вместе с деталями одним
+// запросом; у фильма IMDb ID есть в самих деталях
 function detailsParams(ref: TmdbRef, language: string) {
   const iso = language.slice(0, 2)
   const imageLanguages = iso === 'en' ? 'en,null' : `${iso},null,en`
-  const ratings = ref.type === 'movie' ? 'release_dates' : 'content_ratings'
+  const append
+    = ref.type === 'movie' ? 'release_dates' : 'content_ratings,external_ids'
 
   return {
     language,
-    append_to_response: `images,${ratings}`,
+    append_to_response: `images,${append}`,
     include_image_language: imageLanguages,
   }
 }
@@ -92,13 +102,16 @@ async function loadDetails(ref: TmdbRef, language: string) {
     const movie = await withMetaCache(key, DETAILS_TTL_MS, () =>
       tmdbGet<TmdbMovie>(`/movie/${ref.tmdbId}`, params))
 
-    return movieToDetails(movie, language)
+    return { details: movieToDetails(movie, language), imdbId: movie.imdb_id }
   }
 
   const tv = await withMetaCache(key, DETAILS_TTL_MS, () =>
     tmdbGet<TmdbTv>(`/tv/${ref.tmdbId}`, params))
 
-  return tvToDetails(tv, language)
+  return {
+    details: tvToDetails(tv, language),
+    imdbId: tv.external_ids?.imdb_id,
+  }
 }
 
 /** `undefined` — ID не из каталога; отсутствие тайтла в TMDB — `TmdbError`. */
@@ -111,16 +124,35 @@ export async function getTitle(
   if (!ref)
     return undefined
 
-  const details = await loadDetails(ref, language)
+  const { details, imdbId } = await loadDetails(ref, language)
 
   if (!details.overview && language !== FALLBACK_LANGUAGE) {
     try {
-      details.overview = (await loadDetails(ref, FALLBACK_LANGUAGE)).overview
+      details.overview = (
+        await loadDetails(ref, FALLBACK_LANGUAGE)
+      ).details.overview
     }
     catch {
       // Без описания карточка всё равно полезна
     }
   }
+
+  rememberImdbIdIfChanged(ref, imdbId)
+
+  const tmdb = details.ratings.find(
+    rating => rating.provider === TMDB_PROVIDER,
+  )
+
+  details.ratings = await ratingsOf({
+    key: details.id,
+    kind: details.kind,
+    tmdbId: ref.tmdbId,
+    imdbId: imdbId || undefined,
+    title: details.title,
+    originalTitle: details.originalTitle,
+    year: details.year,
+    tmdbVote: tmdb && { value: tmdb.value, votes: tmdb.votes },
+  })
 
   return details
 }
@@ -210,6 +242,8 @@ export async function getTitleExtras(
       // Без «Похожего» карточка всё равно полезна
     }
   }
+
+  await withRatings(dto.similar)
 
   return dto
 }

@@ -18,6 +18,7 @@ import EpisodeCard from '../components/EpisodeCard.vue'
 import FocusSection from '../components/FocusSection.vue'
 import PersonCard from '../components/PersonCard.vue'
 import PosterCard from '../components/PosterCard.vue'
+import RatingList from '../components/RatingList.vue'
 import ScreenState from '../components/ScreenState.vue'
 import { useCatalogLanguage } from '../composables/useCatalogLanguage.ts'
 import { useCatalogTitle } from '../composables/useCatalogTitle.ts'
@@ -53,7 +54,7 @@ const { t, te } = useI18n()
 const router = useRouter()
 const focus = useFocus()
 const language = useCatalogLanguage()
-const { formatRating, formatRuntime } = useTitleMeta()
+const { formatRuntime } = useTitleMeta()
 
 const id = computed(() => props.id)
 const { status, title, error, retry } = useCatalogTitle(id)
@@ -612,9 +613,11 @@ onBeforeUnmount(() => {
                 {{ title.certification }}
               </span>
             </p>
-            <p v-if="title.rating" class="title__rating">
-              {{ formatRating(title.rating) }}
-            </p>
+            <RatingList
+              v-if="title.ratings.length > 0"
+              class="title__rating"
+              :ratings="title.ratings"
+            />
           </div>
 
           <p v-if="title.overview" class="title__overview">
@@ -1002,11 +1005,6 @@ onBeforeUnmount(() => {
   font-size: calc(var(--u) * 20);
   font-weight: 600;
   line-height: calc(var(--u) * 28);
-}
-
-.title__rating {
-  margin: 0;
-  font-weight: 600;
 }
 
 /* -webkit-line-clamp работает и в Chromium 68 */

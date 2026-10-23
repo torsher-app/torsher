@@ -16,6 +16,12 @@ export function formatDateTime(iso: string, locale: string) {
   }).format(new Date(iso))
 }
 
+export function formatDate(iso: string, locale: string) {
+  return new Intl.DateTimeFormat(locale.replace('_', '-'), {
+    dateStyle: 'medium',
+  }).format(new Date(iso))
+}
+
 const RELATIVE_STEPS: [Intl.RelativeTimeFormatUnit, number][] = [
   ['second', 60],
   ['minute', 60],

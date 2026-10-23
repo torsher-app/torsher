@@ -25,6 +25,19 @@ export const catalogSeasonParams = z.object({
   number: z.string().regex(/^[1-9]\d{0,2}$/),
 })
 
+// Оценка одного поставщика: клиент рисует список, не зная поставщиков
+export const titleRating = z
+  .object({
+    // tmdb, imdb или id плагина
+    provider: z.string(),
+    // Название бренда: TMDB, IMDb — не переводится
+    label: z.string(),
+    // Шкала 0–10, один знак после запятой
+    value: z.number(),
+    votes: z.number().int().optional(),
+  })
+  .meta({ id: 'titleRating' })
+
 export const card = z
   .object({
     // Непрозрачный для клиентов ID каталога: клиент его не разбирает
@@ -35,6 +48,8 @@ export const card = z
     year: z.number().int().optional(),
     // Относительный URL прокси картинок: /api/img/<size>/<file>
     poster: z.string().optional(),
+    // В порядке поставщиков; IMDb — если IMDb ID тайтла уже известен
+    ratings: z.array(titleRating).optional(),
   })
   .meta({ id: 'card' })
 
@@ -55,7 +70,8 @@ export const titleDetails = card
     genres: z.array(z.string()),
     // Минуты; только у фильмов
     runtime: z.number().int().optional(),
-    rating: z.number().optional(),
+    // В порядке поставщиков: TMDB, IMDb, плагины
+    ratings: z.array(titleRating),
     backdrop: z.string().optional(),
     // PNG логотипа с названием; без него клиент пишет название текстом
     logo: z.string().optional(),
@@ -126,6 +142,7 @@ export const catalogTrendingResponse = z
   })
   .meta({ id: 'catalogTrendingResponse' })
 
+export type TitleRating = z.output<typeof titleRating>
 export type Card = z.output<typeof card>
 export type TitleDetails = z.output<typeof titleDetails>
 export type TitleSeason = z.output<typeof titleSeason>

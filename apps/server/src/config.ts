@@ -75,6 +75,12 @@ export const config = {
     return LOG_LEVELS.find(level => level === value)
   },
 
+  // Выгрузка оценок IMDb — отдельный файл: её можно скачать заново, бэкап
+  // базы на ней не растёт
+  get imdbRatingsPath() {
+    return join(this.dataDir, 'imdb-ratings.db')
+  },
+
   get downloadsPath() {
     return process.env.DOWNLOADS_PATH || join(this.dataDir, 'downloads')
   },

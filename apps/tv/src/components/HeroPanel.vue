@@ -4,11 +4,12 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useTitleMeta } from '../composables/useTitleMeta.ts'
 import AppIcon from './AppIcon.vue'
+import RatingList from './RatingList.vue'
 
 const props = defineProps<{ hero: Hero }>()
 
 const { t } = useI18n()
-const { metaParts, formatRating } = useTitleMeta()
+const { metaParts } = useTitleMeta()
 
 // Логотип не загрузился — пишем название текстом
 const logoFailed = ref(false)
@@ -22,6 +23,11 @@ watch(
 
 const logo = computed(() =>
   logoFailed.value ? undefined : props.hero.details?.logo,
+)
+
+// Оценки ряда видны сразу, детали их только дополняют
+const ratings = computed(
+  () => props.hero.details?.ratings ?? props.hero.card.ratings ?? [],
 )
 
 const meta = computed(() => {
@@ -57,9 +63,11 @@ const meta = computed(() => {
         <span v-for="part in meta" :key="part" class="hero__part">{{
           part
         }}</span>
-        <span v-if="hero.details?.rating" class="hero__rating">
-          {{ formatRating(hero.details.rating) }}
-        </span>
+        <RatingList
+          v-if="ratings.length > 0"
+          class="hero__rating"
+          :ratings="ratings"
+        />
       </div>
       <p v-if="hero.details?.overview" class="hero__overview">
         {{ hero.details.overview }}
@@ -138,8 +146,6 @@ const meta = computed(() => {
 
 .hero__rating {
   margin-left: calc(var(--u) * 28);
-  color: var(--color-text);
-  font-weight: 600;
 }
 
 .hero__overview {

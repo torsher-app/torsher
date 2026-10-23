@@ -1,10 +1,19 @@
-import type { MetadataKeyCheck, MetadataSettings } from '@torsher/api-client'
+import type {
+  ImdbDatasetStatus,
+  MetadataKeyCheck,
+  MetadataSettings,
+} from '@torsher/api-client'
 import { api } from '~/services/api'
 
 type LoadState = 'idle' | 'loading' | 'error' | 'ready'
 
+// Загрузка выгрузки IMDb идёт в фоне: пока она идёт, состояние перечитывается
+const IMDB_POLL_MS = 2000
+
 const settings = shallowRef<MetadataSettings | null>(null)
 const state = ref<LoadState>('idle')
+
+let imdbTimer: ReturnType<typeof setTimeout> | undefined
 
 async function load() {
   state.value = 'loading'
@@ -13,6 +22,7 @@ async function load() {
     settings.value = await withErrorMode('silent', () =>
       api.settings.getMetadataSettings())
     state.value = 'ready'
+    applyImdb(settings.value.imdb)
   }
   catch {
     state.value = 'error'
@@ -33,6 +43,41 @@ function checkTmdbKey(tmdbKey?: string): Promise<MetadataKeyCheck> {
   return api.settings.postMetadataCheck({ tmdbKey })
 }
 
+function applyImdb(imdb: ImdbDatasetStatus) {
+  if (settings.value)
+    settings.value = { ...settings.value, imdb }
+
+  clearTimeout(imdbTimer)
+  imdbTimer
+    = imdb.state === 'updating' ? setTimeout(pollImdb, IMDB_POLL_MS) : undefined
+}
+
+async function pollImdb() {
+  try {
+    const fresh = await withErrorMode('silent', () =>
+      api.settings.getMetadataSettings())
+
+    applyImdb(fresh.imdb)
+  }
+  catch {
+    imdbTimer = setTimeout(pollImdb, IMDB_POLL_MS)
+  }
+}
+
+async function setImdbEnabled(enabled: boolean) {
+  applyImdb(await api.settings.putImdbSettings({ enabled }))
+}
+
+async function refreshImdb() {
+  applyImdb(await api.settings.postImdbRefresh())
+}
+
+/** Уход со страницы: опрос не нужен */
+function stopImdbPolling() {
+  clearTimeout(imdbTimer)
+  imdbTimer = undefined
+}
+
 export function useMetadataSettings() {
   return {
     settings: computed(() => settings.value),
@@ -40,5 +85,8 @@ export function useMetadataSettings() {
     load,
     saveTmdbKey,
     checkTmdbKey,
+    setImdbEnabled,
+    refreshImdb,
+    stopImdbPolling,
   }
 }

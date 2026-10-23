@@ -16,6 +16,7 @@ export interface AboutResponseInput {
   license: string;
   /** @format uri */
   sourceUrl: string;
+  imdbAttribution: boolean;
 }
 
 export interface SignupInput {
@@ -47,6 +48,17 @@ export interface MessageResponseInput {
   message: string;
 }
 
+export interface TitleRatingInput {
+  provider: string;
+  label: string;
+  value: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  votes?: number;
+}
+
 export interface CardInput {
   id: string;
   kind: "movie" | "series";
@@ -58,6 +70,7 @@ export interface CardInput {
    */
   year?: number;
   poster?: string;
+  ratings?: TitleRatingInput[];
 }
 
 export interface TitleSeasonInput {
@@ -95,6 +108,7 @@ export interface TitleDetailsInput {
    */
   year?: number;
   poster?: string;
+  ratings: TitleRatingInput[];
   overview: string;
   genres: string[];
   /**
@@ -102,7 +116,6 @@ export interface TitleDetailsInput {
    * @max 9007199254740991
    */
   runtime?: number;
-  rating?: number;
   backdrop?: string;
   logo?: string;
   ongoing?: boolean;
@@ -1064,11 +1077,32 @@ export interface StartNetCheckInput {
   host?: string;
 }
 
+export interface ImdbDatasetStatusInput {
+  enabled: boolean;
+  state: "off" | "empty" | "updating" | "ready" | "error";
+  updatedAt?: string;
+  checkedAt?: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  count?: number;
+  error?: {
+    kind: "unavailable" | "invalid";
+    at: string;
+  };
+}
+
 export interface MetadataSettingsInput {
   tmdb: {
     source: "custom" | "app" | "none";
     hasAppKey: boolean;
   };
+  imdb: ImdbDatasetStatusInput;
+}
+
+export interface UpdateImdbSettingsInput {
+  enabled: boolean;
 }
 
 export interface UpdateMetadataSettingsInput {
@@ -1344,6 +1378,7 @@ export interface AboutResponse {
   license: string;
   /** @format uri */
   sourceUrl: string;
+  imdbAttribution: boolean;
 }
 
 export interface Signup {
@@ -1375,6 +1410,17 @@ export interface MessageResponse {
   message: string;
 }
 
+export interface TitleRating {
+  provider: string;
+  label: string;
+  value: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  votes?: number;
+}
+
 export interface Card {
   id: string;
   kind: "movie" | "series";
@@ -1386,6 +1432,7 @@ export interface Card {
    */
   year?: number;
   poster?: string;
+  ratings?: TitleRating[];
 }
 
 export interface TitleSeason {
@@ -1423,6 +1470,7 @@ export interface TitleDetails {
    */
   year?: number;
   poster?: string;
+  ratings: TitleRating[];
   overview: string;
   genres: string[];
   /**
@@ -1430,7 +1478,6 @@ export interface TitleDetails {
    * @max 9007199254740991
    */
   runtime?: number;
-  rating?: number;
   backdrop?: string;
   logo?: string;
   ongoing?: boolean;
@@ -2392,11 +2439,32 @@ export interface StartNetCheck {
   host?: string;
 }
 
+export interface ImdbDatasetStatus {
+  enabled: boolean;
+  state: "off" | "empty" | "updating" | "ready" | "error";
+  updatedAt?: string;
+  checkedAt?: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  count?: number;
+  error?: {
+    kind: "unavailable" | "invalid";
+    at: string;
+  };
+}
+
 export interface MetadataSettings {
   tmdb: {
     source: "custom" | "app" | "none";
     hasAppKey: boolean;
   };
+  imdb: ImdbDatasetStatus;
+}
+
+export interface UpdateImdbSettings {
+  enabled: boolean;
 }
 
 export interface UpdateMetadataSettings {
@@ -2776,6 +2844,10 @@ export type GetMetadataSettingsError = MessageResponse;
 export type PutMetadataSettingsError = MessageResponse;
 
 export type PostMetadataCheckError = MessageResponse;
+
+export type PutImdbSettingsError = MessageResponse;
+
+export type PostImdbRefreshError = MessageResponse;
 
 export type GetSetupWizardError = MessageResponse;
 
@@ -4166,6 +4238,41 @@ export class Api<
         method: "POST",
         body: data,
         type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Settings
+     * @name PutImdbSettings
+     * @request PUT:/api/settings/metadata/imdb
+     */
+    putImdbSettings: (
+      data: UpdateImdbSettingsInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<ImdbDatasetStatus, PutImdbSettingsError>({
+        path: `/api/settings/metadata/imdb`,
+        method: "PUT",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Settings
+     * @name PostImdbRefresh
+     * @request POST:/api/settings/metadata/imdb/refresh
+     */
+    postImdbRefresh: (params: RequestParams = {}) =>
+      this.request<ImdbDatasetStatus, PostImdbRefreshError>({
+        path: `/api/settings/metadata/imdb/refresh`,
+        method: "POST",
         format: "json",
         ...params,
       }),

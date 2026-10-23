@@ -118,6 +118,10 @@ onMounted(async () => {
       <p class="text-muted-foreground">
         {{ t("about.tmdbNotice") }}
       </p>
+      <!-- Атрибуция IMDb по их условиям, пока оценки включены -->
+      <p v-if="about?.imdbAttribution" class="text-muted-foreground">
+        {{ t("about.imdbNotice") }}
+      </p>
     </section>
   </Card>
 </template>

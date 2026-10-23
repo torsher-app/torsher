@@ -1,5 +1,6 @@
 import type { TmdbRef } from './mappers.ts'
 import type { TmdbAltTitle } from './types.ts'
+import { rememberImdbIdIfChanged } from '../ratings/externalIds.ts'
 import { withMetaCache } from './cache.ts'
 import { tmdbGet } from './client.ts'
 import { parseCatalogId } from './mappers.ts'
@@ -194,5 +195,9 @@ export async function getTitleIdentity(
       ),
   )
 
-  return identityOf(response, ref)
+  const identity = identityOf(response, ref)
+
+  rememberImdbIdIfChanged(ref, identity.imdbId)
+
+  return identity
 }
