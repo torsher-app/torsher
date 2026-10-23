@@ -127,7 +127,7 @@ function toPlaybackResponse(
       }),
       subtitles: [
         ...media.subtitles
-          .filter(track => track.text)
+          .filter(track => track.text || track.image)
           .map(track => ({
             id: `s${track.index}`,
             language: track.language,
@@ -136,6 +136,7 @@ function toPlaybackResponse(
             external: false,
             forced: track.forced,
             default: track.default,
+            burnIn: track.image,
           })),
         ...session.external.map(track => ({
           id: `f${track.fileIndex}`,
@@ -145,6 +146,7 @@ function toPlaybackResponse(
           external: true,
           forced: track.forced,
           default: false,
+          burnIn: false,
         })),
       ],
     },
@@ -154,9 +156,22 @@ function toPlaybackResponse(
     reasons: decision.reasons,
     transcode:
       decision.mode === 'hls' && decision.audio
-        ? { audio: decision.audio }
+        ? { audio: decision.audio, video: videoTranscodeOf(session) }
         : null,
   }
+}
+
+function videoTranscodeOf(session: PlaybackSession) {
+  const plan = session.hls?.encode
+
+  return plan
+    ? {
+        encoder: plan.encoder,
+        width: plan.width,
+        height: plan.height,
+        toneMapping: plan.toneMapping,
+      }
+    : null
 }
 
 // Позиция для продолжения не меняется, пока сессия жива: запоминаем её

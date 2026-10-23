@@ -23,6 +23,10 @@ const CODECS: Record<string, string> = {
   ssa: 'SSA',
   webvtt: 'WebVTT',
   mov_text: 'MOV',
+  hdmv_pgs_subtitle: 'PGS',
+  dvd_subtitle: 'VobSub',
+  dvb_subtitle: 'DVB',
+  xsub: 'XSUB',
 }
 
 /** Кодек так, как его пишут в раздачах: AC3, E-AC3, DTS */

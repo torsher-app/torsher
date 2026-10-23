@@ -20,7 +20,9 @@ import {
   streamWindowOf,
   touchTorrent,
 } from '../torrents/index.ts'
+import { encoderCapsOf, mediaAccel } from './accel.ts'
 import { decidePlayback, pickAudioStream, textSubtitles } from './decide.ts'
+import { describePlan, planEncode } from './encode.ts'
 import { HlsTranscode, segmentStarts } from './hls.ts'
 import { readCueTimes } from './matroska.ts'
 import { probeMedia } from './probe.ts'
@@ -82,6 +84,7 @@ let sweeper: ReturnType<typeof setInterval> | undefined
 const DIRECT: PlaybackDecision = {
   mode: 'direct',
   reasons: [],
+  video: null,
   audio: null,
   audioSwitch: 'restart',
 }
@@ -236,24 +239,52 @@ async function prepare(
   const embedded = media.subtitles.find(
     track => track.text && `s${track.index}` === input.subtitle,
   )
+  const burned = media.subtitles.find(
+    track => track.image && `s${track.index}` === input.subtitle,
+  )
   const external = session.external.find(
     track => `f${track.fileIndex}` === input.subtitle,
   )
 
-  session.subtitle = embedded || external ? input.subtitle! : null
+  session.subtitle = embedded || burned || external ? input.subtitle! : null
 
   if (!device) {
     session.decision = DIRECT
     return
   }
 
-  let decision = decidePlayback({
-    media,
-    device,
-    audioStream: session.audioStream,
-    embeddedSubtitle: !!embedded,
-    toolsReady: true,
-  })
+  const decide = (canEncode: boolean) =>
+    decidePlayback({
+      media,
+      device,
+      audioStream: session.audioStream,
+      embeddedSubtitle: !!embedded,
+      burnSubtitle: !!burned,
+      toolsReady: true,
+      canEncode,
+    })
+
+  let decision = decide(true)
+  // Детект ускорения нужен только перекодированию: прямой поток и копия его не ждут
+  const accel
+    = decision.video === 'encode'
+      ? await mediaAccel().catch((err: Error) => {
+          log.warn(
+            `playback ${session.id}: acceleration check failed: ${err.message}`,
+          )
+          return null
+        })
+      : null
+
+  if (!isOpen(session))
+    return
+
+  const { caps, software } = accel
+    ? encoderCapsOf(accel)
+    : { caps: null, software: null }
+
+  if (decision.video === 'encode' && !caps)
+    decision = decide(false)
 
   // Плейлист HLS строится заранее: без длительности и видео его нет
   if (decision.mode === 'hls' && (!media.duration || !media.video)) {
@@ -265,8 +296,13 @@ async function prepare(
   }
 
   if (decision.mode === 'hls' && media.duration && media.video) {
+    const encode
+      = decision.video === 'encode' && caps
+        ? planEncode(media.video, caps, burned?.index ?? null, software)
+        : null
+    // Ключевые кадры перекодирования ставит кодировщик: точки `Cues` не нужны
     const cues
-      = media.container === 'mkv'
+      = media.container === 'mkv' && !encode
         ? await (earlyCues
           ?? readCueTimes(rangeReader(url, signal)).catch(() => null))
         : null
@@ -287,9 +323,16 @@ async function prepare(
         subtitleStreams: textSubtitles(media).map(track => track.index),
         starts: segmentStarts(media.duration, cues),
         duration: media.duration,
+        encode,
       },
       log,
     )
+
+    if (encode?.hdrUntouched) {
+      log.warn(
+        `playback ${session.id}: HDR video without tone mapping, colors will look washed out`,
+      )
+    }
   }
 
   session.decision = decision
@@ -340,13 +383,16 @@ export function createSession(input: SessionInput) {
       session.status = 'ready'
 
       const { decision } = session
+      const encode = session.hls?.encode
 
       input.log.info(
         `playback ${session.id}: ${decision.mode}${
           decision.reasons.length
             ? `, reasons=[${decision.reasons.join(', ')}]`
             : ''
-        }${decision.audio ? `, audio=${decision.audio}` : ''}`,
+        }${decision.audio ? `, audio=${decision.audio}` : ''}${
+          encode ? `, video=encode(${describePlan(encode)})` : ''
+        }`,
       )
     })
 

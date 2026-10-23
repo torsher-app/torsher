@@ -36,6 +36,10 @@ const media: MediaInfo = {
     height: 90,
     highBitDepth: false,
     hdr: false,
+    frameRate: 24,
+    interlaced: false,
+    bitrate: null,
+    pixelAspect: 1,
   },
   audio: [
     {

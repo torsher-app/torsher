@@ -14,7 +14,11 @@ import {
   logFor,
 } from './services/logs/index.ts'
 import { RequestLogController } from './services/logs/requestLog.ts'
-import { cleanTranscodes, stopAllSessions } from './services/media/index.ts'
+import {
+  cleanTranscodes,
+  mediaAccel,
+  stopAllSessions,
+} from './services/media/index.ts'
 import { startCheck } from './services/net/check.ts'
 import { startImdbSchedule } from './services/ratings/imdb/index.ts'
 import { purgeExpiredExternalIds } from './services/ratings/index.ts'
@@ -58,6 +62,11 @@ function purgeTmdbData() {
 purgeTmdbData()
 setInterval(purgeTmdbData, DAY_MS).unref()
 await cleanTranscodes()
+// Пробы видеокарты и замер процессора — в фоне: первому перекодированию они
+// уже готовы, а прямой просмотр их не ждёт
+mediaAccel().catch(err =>
+  logFor('playback').warn({ err }, 'Acceleration check failed'),
+)
 startImdbSchedule()
 
 const app = createApp(

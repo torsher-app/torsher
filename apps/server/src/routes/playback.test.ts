@@ -2,7 +2,7 @@ import type { AddressInfo } from 'node:net'
 import type { Torrent } from '../db/schema.ts'
 import { Buffer } from 'node:buffer'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -82,6 +82,8 @@ describe.runIf(hasFfmpeg())('воспроизведение с пробой и �
     ]),
   )
   let mkv = Buffer.alloc(0)
+  // Xvid в AVI с AC3: браузер не играет ни контейнер, ни видео, ни звук
+  let avi = Buffer.alloc(0)
   let files: { path: string, size: number, padding: boolean }[] = []
   // Сколько следующих запросов ffprobe к фильму оборвать, как при падении движка
   let probeResets = 0
@@ -116,7 +118,7 @@ describe.runIf(hasFfmpeg())('воспроизведение с пробой и �
     }
 
     const match = /\/files\/(\d+)\/stream$/.exec(url.pathname)
-    const body = match ? (match[1] === '0' ? mkv : srt) : undefined
+    const body = match ? [mkv, srt, avi][Number(match[1])] : undefined
 
     if (!body) {
       response.statusCode = 404
@@ -224,6 +226,34 @@ describe.runIf(hasFfmpeg())('воспроизведение с пробой и �
       movie,
     ])
     mkv = readFileSync(movie)
+
+    const old = join(dir, 'Old.avi')
+
+    execFileSync('ffmpeg', [
+      '-v',
+      'error',
+      '-y',
+      '-f',
+      'lavfi',
+      '-i',
+      'testsrc2=size=160x90:rate=25',
+      '-f',
+      'lavfi',
+      '-i',
+      'sine=f=440:r=48000',
+      '-t',
+      '20',
+      '-c:v',
+      'mpeg4',
+      '-vtag',
+      'XVID',
+      '-bf',
+      '2',
+      '-c:a',
+      'ac3',
+      old,
+    ])
+    avi = readFileSync(old)
     files = [
       { path: 'Film (2024)/Film.2024.mkv', size: mkv.length, padding: false },
       {
@@ -231,6 +261,7 @@ describe.runIf(hasFfmpeg())('воспроизведение с пробой и �
         size: srt.length,
         padding: false,
       },
+      { path: 'Film (2024)/Old.avi', size: avi.length, padding: false },
     ]
 
     await new Promise<void>(resolve =>
@@ -377,6 +408,49 @@ describe.runIf(hasFfmpeg())('воспроизведение с пробой и �
     expect(segment.rawPayload.length).toBeGreaterThan(1000)
     // Пакеты MPEG-TS начинаются с синхробайта
     expect(segment.rawPayload[0]).toBe(0x47)
+  })
+
+  it('chrome: Xvid в AVI — перекодирование видео в H.264', async () => {
+    const body = await start({ device: chrome, fileIndex: 2 })
+
+    expect(body).toMatchObject({
+      mode: 'hls',
+      reasons: [
+        'ContainerNotSupported',
+        'AudioCodecNotSupported',
+        'VideoCodecNotSupported',
+      ],
+      transcode: {
+        audio: 'aac',
+        video: { width: 160, height: 90, toneMapping: null },
+      },
+    })
+
+    const segment = await app.inject({
+      url: `/api/hls/${body.sessionId}/0.ts?${body.streamUrl.split('?')[1]}`,
+    })
+
+    expect(segment.statusCode).toBe(200)
+    expect(segment.rawPayload[0]).toBe(0x47)
+
+    const path = join(dir, 'segment.ts')
+
+    writeFileSync(path, segment.rawPayload)
+    expect(
+      execFileSync('ffprobe', [
+        '-v',
+        'error',
+        '-select_streams',
+        'v',
+        '-show_entries',
+        'stream=codec_name',
+        '-of',
+        'csv=p=0',
+        path,
+      ])
+        .toString()
+        .split('\n')[0],
+    ).toBe('h264')
   })
 
   it('проба, сорванная движком, повторяется', async () => {

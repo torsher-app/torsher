@@ -12,6 +12,14 @@ export interface VideoStreamInfo {
   /** 10 бит и выше: браузеры не играют H.264 High 10 */
   highBitDepth: boolean
   hdr: boolean
+  /** Кадров в секунду; неизвестно — null */
+  frameRate: number | null
+  /** Чересстрочное: при перекодировании нужен деинтерлейс */
+  interlaced: boolean
+  /** бит/с видеопотока, без него — всего файла; неизвестно — null */
+  bitrate: number | null
+  /** Пропорции пикселя (SAR): у DVD и анаморфных рипов не 1 */
+  pixelAspect: number
 }
 
 export interface AudioStreamInfo {
@@ -35,6 +43,8 @@ export interface SubtitleStreamInfo {
   default: boolean
   /** Текстовые переводятся в WebVTT, графические (PGS, VobSub) — нет */
   text: boolean
+  /** Графические: показываются только прожигом в кадр при перекодировании */
+  image: boolean
 }
 
 export interface MediaInfo {
@@ -56,6 +66,13 @@ const TEXT_SUBTITLES = new Set([
   'text',
 ])
 
+const IMAGE_SUBTITLES = new Set([
+  'hdmv_pgs_subtitle',
+  'dvd_subtitle',
+  'dvb_subtitle',
+  'xsub',
+])
+
 const HDR_TRANSFERS = new Set(['smpte2084', 'arib-std-b67'])
 
 interface ProbeStream {
@@ -68,6 +85,10 @@ interface ProbeStream {
   pix_fmt?: string
   bits_per_raw_sample?: string
   color_transfer?: string
+  avg_frame_rate?: string
+  r_frame_rate?: string
+  field_order?: string
+  sample_aspect_ratio?: string
   channels?: number
   bit_rate?: string
   disposition?: Record<string, number>
@@ -76,7 +97,7 @@ interface ProbeStream {
 
 export interface ProbeOutput {
   streams?: ProbeStream[]
-  format?: { format_name?: string, duration?: string }
+  format?: { format_name?: string, duration?: string, bit_rate?: string }
 }
 
 function tag(stream: ProbeStream, name: string) {
@@ -142,6 +163,16 @@ function isHighBitDepth(stream: ProbeStream) {
   )
 }
 
+// `25/1`, `30000/1001`; `0/0` у потоков без частоты
+function ratioOf(value: string | undefined) {
+  const [num, den] = (value ?? '').split(/[/:]/).map(Number)
+
+  return num && den ? num / den : null
+}
+
+// Прогрессивное и неизвестное не трогаем: `progressive`, `unknown`
+const INTERLACED_ORDERS = new Set(['tt', 'bb', 'tb', 'bt'])
+
 /** Вывод `ffprobe -show_format -show_streams` → то, что нужно решению и меню */
 export function parseProbe(output: ProbeOutput, fileName: string): MediaInfo {
   const streams = output.streams ?? []
@@ -163,6 +194,11 @@ export function parseProbe(output: ProbeOutput, fileName: string): MediaInfo {
           height: video.height ?? null,
           highBitDepth: isHighBitDepth(video),
           hdr: HDR_TRANSFERS.has(video.color_transfer ?? ''),
+          frameRate:
+            ratioOf(video.avg_frame_rate) ?? ratioOf(video.r_frame_rate),
+          interlaced: INTERLACED_ORDERS.has(video.field_order ?? ''),
+          bitrate: bitrateOf(video) ?? numberOf(output.format?.bit_rate),
+          pixelAspect: ratioOf(video.sample_aspect_ratio) ?? 1,
         }
       : null,
     audio: streams
@@ -186,6 +222,7 @@ export function parseProbe(output: ProbeOutput, fileName: string): MediaInfo {
         forced: stream.disposition?.forced === 1,
         default: stream.disposition?.default === 1,
         text: TEXT_SUBTITLES.has(stream.codec_name ?? ''),
+        image: IMAGE_SUBTITLES.has(stream.codec_name ?? ''),
       })),
   }
 }

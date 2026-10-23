@@ -69,6 +69,8 @@ const subtitleTrack = z
     external: z.boolean(),
     forced: z.boolean(),
     default: z.boolean(),
+    // Графические (PGS, VobSub): выбор перезапускает поток с прожигом в кадр
+    burnIn: z.boolean(),
   })
   .meta({ id: 'mediaSubtitleTrack' })
 
@@ -84,7 +86,7 @@ const mediaInfo = z
       })
       .nullable(),
     audio: z.array(audioTrack),
-    // Только текстовые: графические не показываем
+    // Текстовые — слоем плеера, графические — прожигом в кадр
     subtitles: z.array(subtitleTrack),
   })
   .meta({ id: 'mediaInfo' })
@@ -114,7 +116,20 @@ export const playback = z
     audioSwitch: z.enum(['platform', 'restart']),
     // Почему не напрямую; пусто — играем напрямую
     reasons: z.array(z.string()),
-    transcode: z.object({ audio: z.enum(['copy', 'aac']) }).nullable(),
+    transcode: z
+      .object({
+        audio: z.enum(['copy', 'aac']),
+        // Перекодирование видео; null — видео копией
+        video: z
+          .object({
+            encoder: z.enum(['software', 'vaapi', 'nvenc']),
+            width: z.number(),
+            height: z.number(),
+            toneMapping: z.enum(['gpu', 'software']).nullable(),
+          })
+          .nullable(),
+      })
+      .nullable(),
   })
   .meta({ id: 'playback' })
 
