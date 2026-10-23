@@ -1,4 +1,5 @@
 import type { TorznabCaps } from '../services/torznab/caps.ts'
+import type { MediaInfo } from '../services/media/probe.ts'
 import { randomUUID } from 'node:crypto'
 import {
   blob,
@@ -285,6 +286,17 @@ export const torrentErrors = ['timeout', 'rejected', 'failed'] as const
 export const torrentRetentions = ['cache', 'keep'] as const
 // Кто поставил паузу: владелец или сервер, когда кончилось место
 export const torrentPauseReasons = ['user', 'storage'] as const
+// Распознавание раздачи без тайтла (добавленной в панели) по имени:
+// `matched` — узнали сами, `unsure` — похоже на `match_suggestion`, ждём
+// подтверждения, `unmatched` — не узнали, `ignored` — владелец сказал «не
+// фильм и не сериал», `user` — тайтл выбрал владелец
+export const torrentMatchStatuses = [
+  'matched',
+  'unsure',
+  'unmatched',
+  'ignored',
+  'user',
+] as const
 
 export interface TorrentFileEntry {
   path: string
@@ -314,6 +326,10 @@ export const torrents = sqliteTable('torrents', {
   inEngine: integer('in_engine', { mode: 'boolean' }).notNull().default(false),
   // Каталожный ID тайтла (`tmdb:tv:1396`), если раздачу выбрали из карточки
   titleId: text('title_id'),
+  // Распознавание по имени; null — раздачу выбрали из карточки или ещё не
+  // распознавали
+  matchStatus: text('match_status', { enum: torrentMatchStatuses }),
+  matchSuggestion: text('match_suggestion'),
   retention: text('retention', { enum: torrentRetentions })
     .notNull()
     .default('cache'),
@@ -434,6 +450,10 @@ export const titleProgress = sqliteTable(
       onDelete: 'set null',
     }),
     fileIndex: integer('file_index'),
+    // Смотрели файл библиотеки: позиция из плеера, как и с раздачей. Без
+    // внешнего ключа: `ADD COLUMN` в SQLite не пересоздаёт таблицу, а убранный
+    // из библиотеки файл просто не найдётся
+    mediaFileId: text('media_file_id'),
     voiceStudio: text('voice_studio'),
     voiceType: text('voice_type'),
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
@@ -594,3 +614,173 @@ export const serverSettings = sqliteTable('server_settings', {
     .notNull()
     .$defaultFn(() => new Date()),
 })
+
+// `video` — фильмы и сериалы, сопоставляются с каталогом; `home` — домашнее
+// видео без каталога
+export const libraryKinds = ['video', 'home'] as const
+// Подсказка папки «Фильмы и сериалы»: только сужает поиск в каталоге
+export const libraryFolderHints = ['auto', 'movies', 'shows'] as const
+// `empty` — папка читается, медиа в ней нет и не было: это норма.
+// `offline` — пути нет, диск отвалился или папка опустела после скана с файлами
+export const libraryFolderStatuses = [
+  'ok',
+  'empty',
+  'offline',
+  'denied',
+  'scanning',
+] as const
+
+export const libraries = sqliteTable('libraries', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => randomUUID()),
+  kind: text('kind', { enum: libraryKinds }).notNull(),
+  name: text('name').notNull(),
+  // Своя раскладка: в неё пишет только Torsher, она одна и не удаляется
+  managed: integer('managed', { mode: 'boolean' }).notNull().default(false),
+  // glob по относительному пути
+  exclude: text('exclude', { mode: 'json' })
+    .$type<string[]>()
+    .notNull()
+    .$defaultFn(() => []),
+  watch: integer('watch', { mode: 'boolean' }).notNull().default(true),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' })
+    .notNull()
+    .$defaultFn(() => new Date()),
+})
+
+export type Library = typeof libraries.$inferSelect
+
+export const libraryFolders = sqliteTable('library_folders', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => randomUUID()),
+  libraryId: text('library_id')
+    .notNull()
+    .references(() => libraries.id, { onDelete: 'cascade' }),
+  // Путь, как его видит сервер (в образе — внутри контейнера)
+  path: text('path').notNull(),
+  hint: text('hint', { enum: libraryFolderHints }).notNull().default('auto'),
+  status: text('status', { enum: libraryFolderStatuses })
+    .notNull()
+    .default('ok'),
+  // `st_dev` корня при последнем удачном скане: сменился на родительский —
+  // диск отмонтирован, а точка монтирования осталась
+  device: integer('device'),
+  // Медиафайлов на последнем скане: папка опустела после N > 0 — `offline`
+  fileCount: integer('file_count').notNull().default(0),
+  scannedAt: integer('scanned_at', { mode: 'timestamp_ms' }),
+  error: text('error'),
+})
+
+export type LibraryFolder = typeof libraryFolders.$inferSelect
+
+// От кого библиотека скрыта на витрине; по умолчанию её видят все профили
+export const libraryHiddenProfiles = sqliteTable(
+  'library_hidden_profiles',
+  {
+    libraryId: text('library_id')
+      .notNull()
+      .references(() => libraries.id, { onDelete: 'cascade' }),
+    profileId: text('profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+  },
+  table => [primaryKey({ columns: [table.libraryId, table.profileId] })],
+)
+
+export const mediaFileStates = ['present', 'missing'] as const
+// Как файл раздачи попал в свою раскладку; у подключённых папок — null
+export const mediaLinkModes = ['hardlink', 'reflink', 'copy'] as const
+export const mediaMatchStatuses = [
+  'matched',
+  'unsure',
+  'unmatched',
+  'ignored',
+] as const
+export const mediaMatchSources = [
+  'torrent',
+  'name_id',
+  'nfo',
+  'parser',
+  'user',
+] as const
+export const mediaCapturedSources = ['tags', 'name', 'file', 'user'] as const
+
+export type MediaLinkMode = (typeof mediaLinkModes)[number]
+
+// Файл в папке библиотеки. Файлы раздач в кэше сюда не попадают: они
+// недокачаны и живут в `torrents.files`
+export const mediaFiles = sqliteTable(
+  'media_files',
+  {
+    // Стабилен: на него ссылаются прогресс домашнего видео и внешние клиенты
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => randomUUID()),
+    folderId: text('folder_id')
+      .notNull()
+      .references(() => libraryFolders.id, { onDelete: 'cascade' }),
+    // От корня папки, NFC, через `/`
+    relPath: text('rel_path').notNull(),
+    size: integer('size').notNull(),
+    mtime: integer('mtime', { mode: 'timestamp_ms' }).notNull(),
+    // Узнаёт переименование и общий с раздачей хардлинк
+    inode: integer('inode'),
+    state: text('state', { enum: mediaFileStates })
+      .notNull()
+      .default('present'),
+    missingSince: integer('missing_since', { mode: 'timestamp_ms' }),
+    // Откуда файл: раздача и её файл. Раздачу удалили — файл остаётся
+    torrentId: text('torrent_id').references(() => torrents.id, {
+      onDelete: 'set null',
+    }),
+    fileIndex: integer('file_index'),
+    linkMode: text('link_mode', { enum: mediaLinkModes }),
+    probe: text('probe', { mode: 'json' }).$type<MediaInfo>(),
+    duration: real('duration'),
+    probedAt: integer('probed_at', { mode: 'timestamp_ms' }),
+    // Размер и время изменения на момент пробы: файл изменился — пробуем заново
+    probeKey: text('probe_key'),
+    // Каталожный ID (`tmdb:movie:27205`); у фильма сезон и серия — 0
+    titleId: text('title_id'),
+    season: integer('season'),
+    episode: integer('episode'),
+    // Последняя серия файла с несколькими сериями (`S01E01-E02`)
+    episodeTo: integer('episode_to'),
+    // Вторая версия того же фильма или серии: `2160p`, `Director's Cut`
+    version: text('version'),
+    matchStatus: text('match_status', { enum: mediaMatchStatuses }),
+    // Кандидат при `unsure`: владелец подтверждает его в панели
+    matchSuggestion: text('match_suggestion'),
+    matchSource: text('match_source', { enum: mediaMatchSources }),
+    // Папка-«релиз», внутри которой файлы сопоставлялись вместе
+    matchGroup: text('match_group'),
+    capturedAt: integer('captured_at', { mode: 'timestamp_ms' }),
+    capturedAtSource: text('captured_at_source', {
+      enum: mediaCapturedSources,
+    }),
+    // Альбом домашнего видео — относительный путь папки, '' — без альбома
+    album: text('album'),
+    thumb: text('thumb'),
+    addedAt: integer('added_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  table => [
+    uniqueIndex('media_files_folder_path_idx').on(
+      table.folderId,
+      table.relPath,
+    ),
+    index('media_files_title_idx').on(
+      table.titleId,
+      table.season,
+      table.episode,
+    ),
+    index('media_files_torrent_idx').on(table.torrentId, table.fileIndex),
+    index('media_files_added_at_idx').on(table.addedAt),
+    index('media_files_album_idx').on(table.album, table.capturedAt),
+  ],
+)
+
+export type MediaFile = typeof mediaFiles.$inferSelect

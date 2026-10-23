@@ -1,5 +1,5 @@
 import type { TitleProgress } from '../../db/schema.ts'
-import { and, desc, eq, gt, isNotNull, max } from 'drizzle-orm'
+import { and, desc, eq, gt, isNotNull, max, or } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import { titleProgress } from '../../db/schema.ts'
 import { droppedSince } from '../mine/index.ts'
@@ -190,7 +190,10 @@ export function watchedTitles(profileId: string, limit: number) {
       and(
         eq(titleProgress.profileId, profileId),
         gt(titleProgress.position, 0),
-        isNotNull(titleProgress.torrentId),
+        or(
+          isNotNull(titleProgress.torrentId),
+          isNotNull(titleProgress.mediaFileId),
+        ),
       ),
     )
     .groupBy(titleProgress.titleId)

@@ -1,4 +1,4 @@
-import { chmod, mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, readdir, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import process from 'node:process'
@@ -163,11 +163,15 @@ describe('storage check', () => {
     const result = await checkStorage({
       dataDir: data,
       downloadsDir: join(root, 'torrents', 'nested'),
+      libraryDir: join(root, 'library'),
     })
 
     expect(result.data).toEqual({ path: data, exists: true, writable: true })
     expect(result.downloads).toMatchObject({ exists: false, writable: true })
-    expect(result.sameFilesystem).toBe(true)
+    expect(result.library).toMatchObject({ exists: false, writable: true })
+    // Проба не создаёт каталоги: их создаст сервер
+    expect(result.linkMode).toBe('hardlink')
+    expect(await readdir(root)).toEqual(['db'])
     expect(result.space).toEqual({
       total: 1000 * GIB,
       free: 800 * GIB,
@@ -187,6 +191,7 @@ describe('storage check', () => {
         const result = await checkStorage({
           dataDir: root,
           downloadsDir: locked,
+          libraryDir: root,
         })
 
         expect(result.downloads).toEqual({
@@ -195,6 +200,7 @@ describe('storage check', () => {
           writable: false,
         })
         expect(result.data.writable).toBe(true)
+        expect(result.linkMode).toBeNull()
       }
       finally {
         await chmod(locked, 0o700)
@@ -203,7 +209,7 @@ describe('storage check', () => {
   )
 
   it('warns when the cache does not fit and fails below the reserve', async () => {
-    const paths = { dataDir: root, downloadsDir: root }
+    const paths = { dataDir: root, downloadsDir: root, libraryDir: root }
 
     // По умолчанию на 1000 ГБ: кэш 200 ГБ, запас 20 ГБ
     disk.free = 150 * GIB

@@ -22,6 +22,7 @@ import {
   selectFiles,
   torrentStats,
 } from '../engine/index.ts'
+import { findSidecars } from '../media/subtitles.ts'
 import { enforceStorage, ensureSpaceFor } from '../storage/index.ts'
 import { parseMagnet } from './magnet.ts'
 import { isVideoFile } from './media.ts'
@@ -56,6 +57,21 @@ export interface AddResult {
 }
 
 const resolving = new Map<string, Promise<void>>()
+const readyListeners = new Set<(torrent: Torrent) => void>()
+
+/**
+ * Раздача получила список файлов (magnet дождался пиров или добавлен
+ * `.torrent`). Подписчик — распознавание тайтла по имени для раздач без него.
+ */
+export function onTorrentReady(listener: (torrent: Torrent) => void) {
+  readyListeners.add(listener)
+
+  return () => readyListeners.delete(listener)
+}
+
+function notifyReady(torrent: Torrent) {
+  for (const listener of readyListeners) listener(torrent)
+}
 
 export function listTorrents() {
   return getDb().select().from(torrents).orderBy(desc(torrents.addedAt)).all()
@@ -131,10 +147,12 @@ async function runResolve(id: string) {
       return
     }
 
-    update(id, {
-      ...readyFields(bytes, details),
-      name: details.name || torrent.name,
-    })
+    notifyReady(
+      update(id, {
+        ...readyFields(bytes, details),
+        name: details.name || torrent.name,
+      }),
+    )
   }
   catch (err) {
     if (!(err instanceof EngineError))
@@ -243,10 +261,10 @@ export async function addTorrentFile(bytes: Uint8Array): Promise<AddResult> {
       return { torrent: existing, created: false }
 
     // Magnet так и не дождался пиров — файл даёт то же самое сразу
-    return {
-      torrent: update(existing.id, { ...readyFields(bytes, details), name }),
-      created: false,
-    }
+    const ready = update(existing.id, { ...readyFields(bytes, details), name })
+
+    notifyReady(ready)
+    return { torrent: ready, created: false }
   }
 
   const torrent = getDb()
@@ -260,6 +278,7 @@ export async function addTorrentFile(bytes: Uint8Array): Promise<AddResult> {
     .returning()
     .get()
 
+  notifyReady(torrent)
   return { torrent, created: true }
 }
 
@@ -284,6 +303,17 @@ export async function deleteTorrent(
   getDb().delete(torrents).where(eq(torrents.id, torrent.id)).run()
 }
 
+let lastLive = new Map<string, EngineTorrentState>()
+
+/**
+ * Последний известный список раздач движка: им пользуются значки на постерах,
+ * чтобы списки карточек не ходили в движок. Обновляется каждым `liveTorrents`,
+ * а связыватель библиотеки зовёт его раз в минуту.
+ */
+export function lastLiveTorrents() {
+  return lastLive
+}
+
 /** Раздачи движка по infohash; без движка или при его ошибке — пусто */
 export async function liveTorrents() {
   if (!isEngineReady())
@@ -292,7 +322,8 @@ export async function liveTorrents() {
   try {
     const list = await listEngineTorrents()
 
-    return new Map(list.map(item => [item.infoHash, item]))
+    lastLive = new Map(list.map(item => [item.infoHash, item]))
+    return lastLive
   }
   catch (err) {
     if (err instanceof EngineError)
@@ -322,6 +353,24 @@ function withFiles(selected: number[] | null, added: number[]) {
   const files = selected ?? []
 
   return [...files, ...added.filter(index => !files.includes(index))]
+}
+
+/**
+ * Выбор плюс внешние субтитры выбранных видео: они весят килобайты, а в
+ * библиотеке ложатся рядом с серией. Дорожки не добавляются — их выбирают
+ * руками: у раздачи их бывает на десятки гигабайт.
+ */
+function withSubtitles(torrent: Torrent, files: number[]) {
+  const all = torrent.files ?? []
+  const subtitles = files.flatMap(index =>
+    isVideoFile(all[index]?.path ?? '')
+      ? findSidecars(all, index)
+          .filter(sidecar => sidecar.kind === 'subtitle')
+          .map(sidecar => sidecar.fileIndex)
+      : [],
+  )
+
+  return withFiles(files, subtitles)
 }
 
 /**
@@ -374,9 +423,11 @@ export function linkTitle(torrent: Torrent, titleId: string) {
  * («Оставить»): само оно не удалится. Места мало — сервер сразу ставит
  * загрузку на паузу, и раздача попадает в «Требуют внимания».
  */
-export async function downloadFiles(torrent: Torrent, files: number[]) {
+export async function downloadFiles(torrent: Torrent, chosen: number[]) {
   if (!torrent.torrentFile)
     throw new NotReadyError()
+
+  const files = withSubtitles(torrent, chosen)
 
   await addTorrent(torrent.torrentFile, files)
 
@@ -454,7 +505,10 @@ export async function setRetention(
 
   const selected
     = retention === 'keep'
-      ? withFiles(torrent.selectedFiles, await startedVideos(torrent))
+      ? withSubtitles(
+          torrent,
+          withFiles(torrent.selectedFiles, await startedVideos(torrent)),
+        )
       : []
 
   if (torrent.inEngine)

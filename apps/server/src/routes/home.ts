@@ -1,7 +1,12 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { messageResponse } from '../dto/common.ts'
 import { continueRow, homeQuery, homeResponse } from '../dto/home.ts'
-import { requireViewer } from '../middleware/auth.ts'
+import { canManageLibrary, requireViewer } from '../middleware/auth.ts'
+import {
+  libraryFileRows,
+  libraryHomeRows,
+  unmatchedHomeRow,
+} from '../services/library/home.ts'
 import { withPosterRatings } from '../services/mine/index.ts'
 import { personalHomeRows } from '../services/mine/home.ts'
 import { getContinueRow } from '../services/sources/continue.ts'
@@ -31,18 +36,29 @@ export const homeRoutes: FastifyPluginAsyncZod = async (app) => {
       const { profileId } = request
       // «Продолжить» и личные ряды (только на главной) собираются вместе с TMDB
       // и стоят перед ним; упавший свой ряд главную не роняет
-      const [catalog, resume, personal] = await Promise.allSettled([
-        getHomeRows(mode, language),
-        getContinueRow(profileId, mode, language),
-        mode === 'all' ? personalHomeRows(profileId, language) : [],
-      ])
+      const [catalog, resume, unmatched, library, personal]
+        = await Promise.allSettled([
+          mode === 'library' ? [] : getHomeRows(mode, language),
+          getContinueRow(profileId, mode, language),
+          unmatchedHomeRow(mode, language, canManageLibrary(request)),
+          libraryHomeRows(mode, language, profileId),
+          mode === 'all' ? personalHomeRows(profileId, language) : [],
+        ])
+      // «Моя библиотека» — сразу после «Продолжить»: своё важнее каталога
       const own = [
         ...(resume.status === 'fulfilled' && resume.value.items.length > 0
           ? [resume.value]
           : []),
-        ...(personal.status === 'fulfilled' ? personal.value : []).map(
-          row => ({ ...row, items: withPosterRatings(row.items, profileId) }),
-        ),
+        ...(unmatched.status === 'fulfilled' ? unmatched.value : []),
+        ...[
+          ...(library.status === 'fulfilled' ? library.value : []),
+          ...(personal.status === 'fulfilled' ? personal.value : []),
+        ].map(row => ({
+          ...row,
+          items: withPosterRatings(row.items, profileId),
+        })),
+        // Домашнее видео и «Без описания» — после тайтлов библиотеки
+        ...libraryFileRows(mode, profileId),
       ]
 
       if (catalog.status === 'fulfilled') {

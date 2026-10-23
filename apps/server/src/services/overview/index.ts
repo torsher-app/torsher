@@ -6,6 +6,7 @@ import { isWatching, listDevices } from '../devices/index.ts'
 import { engineCrashCount, engineState } from '../engine/index.ts'
 import { listIndexers } from '../indexers/index.ts'
 import { checkState } from '../net/check.ts'
+import { currentLinkMode } from '../library/link.ts'
 import { isStreaming, storageSummary } from '../storage/index.ts'
 import { tmdbKeyStatus } from '../tmdb/credentials.ts'
 import {
@@ -13,6 +14,8 @@ import {
   listTorrents,
   liveTorrents,
 } from '../torrents/index.ts'
+import { listLibraries } from '../library/folders.ts'
+import { unmatchedGroups } from '../library/match.ts'
 
 type Params = AttentionItem['params']
 
@@ -117,6 +120,53 @@ function networkAttention(): AttentionItem[] {
   return items
 }
 
+/**
+ * Подключённые папки: недоступные (диск отвалился, нет прав), релизы без
+ * тайтла и наблюдатель, который не встал
+ */
+function libraryAttention(): AttentionItem[] {
+  const items: AttentionItem[] = []
+  const folders = listLibraries()
+    .filter(library => !library.managed)
+    .flatMap(library => library.folders)
+  const offline = folders.filter(
+    folder => folder.status === 'offline' || folder.status === 'denied',
+  )
+
+  if (offline.length) {
+    items.push({
+      kind: 'library_offline',
+      severity: 'error',
+      section: 'library',
+      params: counted(offline.map(folder => folder.path)),
+    })
+  }
+
+  const unmatched = unmatchedGroups()
+
+  if (unmatched.length) {
+    items.push({
+      kind: 'library_unmatched',
+      severity: 'warning',
+      section: 'library',
+      params: counted(unmatched.map(group => group.name)),
+    })
+  }
+
+  const watchers = folders.filter(folder => folder.watcher === 'failed')
+
+  if (watchers.length) {
+    items.push({
+      kind: 'library_watcher',
+      severity: 'warning',
+      section: 'library',
+      params: counted(watchers.map(folder => folder.path)),
+    })
+  }
+
+  return items
+}
+
 function tmdbAttention(): AttentionItem[] {
   const status = tmdbKeyStatus()
 
@@ -154,6 +204,17 @@ function storageAttention(
       severity: 'warning',
       section: 'storage',
       params: counted(pausedNames),
+    })
+  }
+
+  // Хардлинка нет: «Оставить» копирует файл, и раздача занимает место
+  // в кэше, пока её не вытеснят
+  if (currentLinkMode() === 'copy') {
+    items.push({
+      kind: 'library_copies',
+      severity: 'warning',
+      section: 'storage',
+      params: {},
     })
   }
 
@@ -202,6 +263,7 @@ export async function getOverview() {
   const attention = [
     ...engineAttention(),
     ...storageAttention(storage, downloads.pausedForStorage),
+    ...libraryAttention(),
     ...indexerAttention(),
     ...networkAttention(),
     ...tmdbAttention(),

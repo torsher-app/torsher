@@ -4,6 +4,7 @@ import { messageResponse } from '../dto/common.ts'
 import { storageOverview, updateStoragePolicy } from '../dto/storage.ts'
 import { engineUnavailableResponse } from '../dto/torrents.ts'
 import { requireOwner } from '../middleware/auth.ts'
+import { currentLinkMode } from '../services/library/index.ts'
 import { getStorageOverview, updatePolicy } from '../services/storage/index.ts'
 import { sendEngineError } from './engineResponses.ts'
 
@@ -14,6 +15,7 @@ function toOverviewResponse(overview: StorageOverview) {
     free: overview.free,
     cacheUsed: overview.cacheUsed,
     keptUsed: overview.keptUsed,
+    library: { ...overview.library, linkMode: currentLinkMode() ?? null },
     other: overview.other,
     policy: overview.policy,
     queue: overview.queue.map(({ torrent, size }) => ({

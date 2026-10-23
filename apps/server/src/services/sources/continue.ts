@@ -2,6 +2,7 @@ import type { ContinueCard, ContinueRow, HomeMode } from '../../dto/home.ts'
 import { getSeason, getTitle } from '../tmdb/index.ts'
 import { parseCatalogId, withImageSize } from '../tmdb/mappers.ts'
 import { excludedFromContinue, resumeTarget, watchedTitles } from './resume.ts'
+import { libraryTitleSet } from '../library/home.ts'
 
 const ROW_LIMIT = 20
 // С запасом: часть тайтлов отсеется — досмотрены, брошены или без метаданных
@@ -12,6 +13,7 @@ const MODE_TYPE: Record<HomeMode, 'movie' | 'tv' | undefined> = {
   all: undefined,
   movies: 'movie',
   series: 'tv',
+  library: undefined,
 }
 
 async function continueCard(
@@ -74,10 +76,17 @@ export async function getContinueRow(
 ): Promise<ContinueRow> {
   const excluded = excludedFromContinue(profileId)
   const type = MODE_TYPE[mode]
+  // В разделе «Библиотека» — только тайтлы с файлами в библиотеке
+  const library = mode === 'library' ? libraryTitleSet(profileId) : undefined
   const ids = watchedTitles(profileId, CANDIDATE_LIMIT).filter((id) => {
     const ref = parseCatalogId(id)
 
-    return !!ref && !excluded.has(id) && (!type || ref.type === type)
+    return (
+      !!ref
+      && !excluded.has(id)
+      && (!type || ref.type === type)
+      && (!library || library.has(id))
+    )
   })
   const results = await Promise.allSettled(
     ids.map(id => continueCard(profileId, id, language)),

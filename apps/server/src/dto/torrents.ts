@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import {
   torrentErrors,
+  torrentMatchStatuses,
   torrentPauseReasons,
   torrentRetentions,
   torrentSources,
@@ -48,6 +49,8 @@ export const torrentFile = z
     downloaded: z.number(),
     // Качается целиком (выбран для скачивания или его смотрели)
     selected: z.boolean(),
+    // Лежит в своей раскладке библиотеки
+    inLibrary: z.boolean(),
   })
   .meta({ id: 'torrentFile' })
 
@@ -66,9 +69,16 @@ export const torrent = z
     totalSize: z.number(),
     addedAt: z.string(),
     lastAccessAt: z.string().nullable(),
-    // Каталожный ID тайтла, если раздачу выбрали из карточки
+    // Каталожный ID тайтла: раздачу выбрали из карточки, её узнали по имени
+    // или тайтл выбрал владелец
     titleId: z.string().nullable(),
+    // Распознавание по имени; null — тайтл из карточки или ещё распознаётся
+    matchStatus: z.enum(torrentMatchStatuses).nullable(),
+    // `unsure`: на какой тайтл похоже, подтвердить его — владелец
+    matchSuggestion: z.string().nullable(),
     retention: z.enum(torrentRetentions),
+    // Файлы раздачи лежат в библиотеке, и выбранное видео — всё
+    inLibrary: z.boolean(),
     pauseReason: z.enum(torrentPauseReasons).nullable(),
     state: z.enum(downloadStates),
     // Файл раздачи сейчас смотрят
@@ -105,6 +115,16 @@ export const downloadTorrent = z
     files: z.array(z.number().int().min(0).max(99_999)).min(1).max(10_000),
   })
   .meta({ id: 'downloadTorrent' })
+
+export const updateTorrentTitle = z
+  .object({
+    // null — «не фильм и не сериал»: раздача остаётся без тайтла
+    titleId: z
+      .string()
+      .regex(/^tmdb:(?:movie|tv):\d{1,10}$/)
+      .nullable(),
+  })
+  .meta({ id: 'updateTorrentTitle' })
 
 export const updateRetention = z
   .object({ retention: z.enum(torrentRetentions) })

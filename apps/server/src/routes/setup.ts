@@ -65,6 +65,7 @@ export const setupRoutes: FastifyPluginAsyncZod = async (app) => {
       checkStorage({
         dataDir: config.dataDir,
         downloadsDir: config.downloadsPath,
+        libraryDir: config.libraryPath,
       }),
   )
 

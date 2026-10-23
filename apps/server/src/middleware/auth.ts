@@ -143,6 +143,17 @@ export function requireByRoute(request: FastifyRequest, reply: FastifyReply) {
     : requireOwner(request, reply)
 }
 
+/**
+ * Может ли запрос перекладывать общую библиотеку (тайтл раздачи): сессия
+ * владельца — всегда, устройство — только с профилем без возрастного порога.
+ */
+export function canManageLibrary(request: FastifyRequest) {
+  if (request.userId)
+    return true
+
+  return getProfile(request.profileId)?.ageLimit === null
+}
+
 /** Подпись токена потока: устройство или владелец */
 export function streamSubjectOf(request: FastifyRequest) {
   return request.deviceId

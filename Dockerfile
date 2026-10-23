@@ -82,6 +82,7 @@ ENV NODE_ENV=production \
     API_PORT=8080 \
     DATABASE_PATH=/data/db/torsher.db \
     DOWNLOADS_PATH=/data/torrents \
+    LIBRARY_PATH=/data/library \
     ENGINE_PATH=/usr/local/bin/torsher-engine \
     FFMPEG_PATH=/usr/bin/ffmpeg \
     FFPROBE_PATH=/usr/bin/ffprobe \

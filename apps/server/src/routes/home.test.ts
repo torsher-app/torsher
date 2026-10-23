@@ -53,7 +53,7 @@ describe('get /api/home', () => {
     expect(res.statusCode).toBe(401)
   })
 
-  it.each(['?mode=library', '?language=russian'])(
+  it.each(['?mode=shelf', '?language=russian'])(
     'отвечает 400 на %s',
     async (search) => {
       const res = await app.inject({

@@ -13,6 +13,8 @@ import {
   pauseTorrent,
   resumeTorrent,
 } from '../engine/index.ts'
+import { libraryUsage, linkedBytesByTorrent } from '../library/files.ts'
+import { librarySharesVolume } from '../library/link.ts'
 import { logFor } from '../logs/index.ts'
 import { diskUsage } from './disk.ts'
 import { evictionQueue, planEviction, withoutSkipped } from './eviction.ts'
@@ -78,12 +80,17 @@ async function snapshot(): Promise<Snapshot> {
   }
 }
 
+/**
+ * Раздачи на диске. Размер — без байт, на которые есть хардлинк или reflink
+ * из библиотеки: удаление раздачи их не освободит.
+ */
 function storedOf(
   rows: Torrent[],
   live: Map<string, EngineTorrentState>,
   now: number,
 ) {
   const stored: StoredTorrent[] = []
+  const linked = linkedBytesByTorrent()
 
   for (const row of rows) {
     const state = live.get(row.infoHash)
@@ -96,7 +103,7 @@ function storedOf(
     stored.push({
       id: row.id,
       retention: row.retention,
-      size: state.bytesCompleted,
+      size: Math.max(0, state.bytesCompleted - (linked.get(row.id) ?? 0)),
       lastUsedAt,
       protected: isStreaming(row.id) || now - lastUsedAt < RECENT_USE_MS,
     })
@@ -309,6 +316,8 @@ export interface StorageOverview {
   free: number
   cacheUsed: number
   keptUsed: number
+  /** Своя раскладка библиотеки; `shared` — общие с раздачами байты */
+  library: { path: string, used: number, shared: number, own: number }
   /** Занято на томе не загрузками Torsher (или файлами, которые он не знает) */
   other: number
   policy: { cacheLimit: number, minFree: number, custom: boolean }
@@ -329,6 +338,9 @@ export async function getStorageOverview(): Promise<StorageOverview> {
       .reduce((total, item) => total + item.size, 0)
   const cacheUsed = sum('cache')
   const keptUsed = sum('keep')
+  const library = libraryUsage()
+  // Библиотека на другом томе место загрузок не занимает
+  const libraryOwn = librarySharesVolume() ? library.used - library.shared : 0
 
   return {
     path: config.downloadsPath,
@@ -336,7 +348,11 @@ export async function getStorageOverview(): Promise<StorageOverview> {
     free: disk.free,
     cacheUsed,
     keptUsed,
-    other: Math.max(0, disk.total - disk.free - cacheUsed - keptUsed),
+    library: { path: config.libraryPath, ...library, own: libraryOwn },
+    other: Math.max(
+      0,
+      disk.total - disk.free - cacheUsed - keptUsed - libraryOwn,
+    ),
     policy: getPolicy(disk.total),
     queue: evictionQueue(stored)
       .slice(0, QUEUE_PREVIEW)

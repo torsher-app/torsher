@@ -1,6 +1,8 @@
 import type { Card } from '../../dto/catalog.ts'
 import { and, eq, inArray, isNotNull } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
+import { titleDownloads } from '../library/status.ts'
+import { lastLiveTorrents } from '../torrents/index.ts'
 import {
   posterRatingSources,
   profiles,
@@ -33,7 +35,7 @@ export function ratingsOf(profileId: string, titleIds: string[]) {
 /**
  * Значки на постере: своя оценка профиля — всегда, оценки сервисов — по
  * настройке профиля из `card.ratings` (их собирают поставщики оценок до вызова)
- * в порядке поставщиков.
+ * в порядке поставщиков, загрузка тайтла — по последнему снимку движка.
  */
 export function withPosterRatings<T extends Card>(
   cards: T[],
@@ -49,6 +51,10 @@ export function withPosterRatings<T extends Card>(
     profileId,
     cards.map(card => card.id),
   )
+  const downloads = titleDownloads(
+    cards.map(card => card.id),
+    lastLiveTorrents(),
+  )
 
   return cards.map((card) => {
     const shown = (card.ratings ?? []).flatMap((rating) => {
@@ -61,10 +67,15 @@ export function withPosterRatings<T extends Card>(
         : []
     })
 
+    const download = downloads.get(card.id)
+
     return {
       ...card,
       posterRatings: shown.length > 0 ? shown : undefined,
       ownRating: own.get(card.id),
+      availability: download?.state ?? undefined,
+      downloadProgress:
+        download?.state === 'downloading' ? download.progress : undefined,
     }
   })
 }

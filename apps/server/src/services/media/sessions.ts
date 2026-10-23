@@ -9,8 +9,8 @@ import type { MediaInfo } from './probe.ts'
 import type { ExternalSubtitle } from './subtitles.ts'
 import type { Cue } from './webvtt.ts'
 import { randomUUID } from 'node:crypto'
-import { rm } from 'node:fs/promises'
-import { join } from 'node:path'
+import { open, readdir, rm } from 'node:fs/promises'
+import { basename, dirname, join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { config } from '../../config.ts'
 import { EngineError, engineStreamUrl } from '../engine/index.ts'
@@ -20,14 +20,29 @@ import { decidePlayback, pickAudioStream, textSubtitles } from './decide.ts'
 import { HlsTranscode, segmentStarts } from './hls.ts'
 import { readCueTimes } from './matroska.ts'
 import { probeMedia } from './probe.ts'
-import { findExternalSubtitles, loadExternalSubtitle } from './subtitles.ts'
+import {
+  findExternalSubtitles,
+  librarySubtitles,
+  loadExternalSubtitle,
+  loadSubtitleFile,
+} from './subtitles.ts'
 import { mediaTools } from './tools.ts'
+
+/** Файл библиотеки: играется с диска, без движка */
+export interface LibrarySource {
+  /** `media_files.id` */
+  id: string
+  path: string
+  size: number
+}
 
 export interface PlaybackSession {
   id: string
   /** Чей поток: устройство или владелец, как у токена потока */
   subject: string
-  torrent: Torrent
+  /** Источник — файл раздачи (`torrent` + `fileIndex`) или файл библиотеки */
+  torrent: Torrent | null
+  library: LibrarySource | null
   fileIndex: number
   fileName: string
   status: 'probing' | 'ready'
@@ -44,7 +59,8 @@ export interface PlaybackSession {
 
 export interface SessionInput {
   subject: string
-  torrent: Torrent
+  torrent?: Torrent
+  library?: LibrarySource
   fileIndex: number
   fileName: string
   device?: DeviceProfile
@@ -99,8 +115,29 @@ function rangeReader(url: string, signal: AbortSignal) {
   }
 }
 
+/** Чтение диапазонов файла библиотеки — для индекса MKV, как поток движка */
+function fileRangeReader(path: string) {
+  return async (start: number, end: number) => {
+    const handle = await open(path, 'r')
+
+    try {
+      const buffer = new Uint8Array(Math.max(0, end - start))
+      const { bytesRead } = await handle.read(buffer, 0, buffer.length, start)
+
+      return buffer.subarray(0, bytesRead)
+    }
+    finally {
+      await handle.close()
+    }
+  }
+}
+
 function fileSizeOf(session: PlaybackSession) {
-  return session.torrent.files?.[session.fileIndex]?.size ?? 0
+  return (
+    session.library?.size
+    ?? session.torrent?.files?.[session.fileIndex]?.size
+    ?? 0
+  )
 }
 
 /**
@@ -112,7 +149,7 @@ export function streamWindowFor(torrent: Torrent, fileIndex: number) {
 
   for (const session of sessions.values()) {
     if (
-      session.torrent.id === torrent.id
+      session.torrent?.id === torrent.id
       && session.fileIndex === fileIndex
       && session.media?.duration
     ) {
@@ -160,13 +197,20 @@ async function prepare(
   input: SessionInput,
   signal: AbortSignal,
 ) {
-  const { torrent, fileIndex, device, log } = input
+  const { torrent, library, fileIndex, device, log } = input
   const tools = await mediaTools()
 
   if (!isOpen(session))
     return
 
-  session.external = findExternalSubtitles(torrent.files ?? [], fileIndex)
+  if (library) {
+    const names = await readdir(dirname(library.path)).catch(() => [])
+
+    session.external = librarySubtitles(basename(library.path), names)
+  }
+  else if (torrent) {
+    session.external = findExternalSubtitles(torrent.files ?? [], fileIndex)
+  }
 
   if (tools.status !== 'ok') {
     session.decision = { ...DIRECT, reasons: ['ToolsMissing'] }
@@ -176,17 +220,23 @@ async function prepare(
   let url = ''
   let earlyCues: Promise<number[] | null> | undefined
 
+  // Файл библиотеки читается с диска: и ffprobe, и ffmpeg берут путь
+  const readerOf = (from: string) =>
+    library ? fileRangeReader(from) : rangeReader(from, signal)
+
   for (let attempt = 0; ; attempt++) {
     try {
-      url = engineStreamUrl(torrent.infoHash, fileIndex)
+      url = library
+        ? library.path
+        : engineStreamUrl(torrent!.infoHash, fileIndex)
       // Индекс MKV читаем вместе с пробой, а не после: он нужен перепаковке, а
       // у холодной раздачи это ещё одно ожидание кусков — с конца файла
       earlyCues
         = device && /\.mkv$/i.test(session.fileName)
-          ? readCueTimes(rangeReader(url, signal)).catch(() => null)
+          ? readCueTimes(readerOf(url)).catch(() => null)
           : undefined
       session.media = await probeMedia(
-        `${torrent.infoHash}:${fileIndex}`,
+        library ? `library:${library.id}` : `${torrent!.infoHash}:${fileIndex}`,
         url,
         session.fileName,
       )
@@ -260,8 +310,7 @@ async function prepare(
   if (decision.mode === 'hls' && media.duration && media.video) {
     const cues
       = media.container === 'mkv'
-        ? await (earlyCues
-          ?? readCueTimes(rangeReader(url, signal)).catch(() => null))
+        ? await (earlyCues ?? readCueTimes(readerOf(url)).catch(() => null))
         : null
 
     if (!isOpen(session))
@@ -273,7 +322,10 @@ async function prepare(
       join(config.transcodesPath, session.id),
       {
         // Порт движка меняется после его перезапуска: адрес берётся на каждый запуск ffmpeg
-        url: () => engineStreamUrl(torrent.infoHash, fileIndex, window),
+        url: () =>
+          library
+            ? library.path
+            : engineStreamUrl(torrent!.infoHash, fileIndex, window),
         videoStream: media.video.index,
         audioStream: session.audioStream,
         audio: decision.audio ?? 'aac',
@@ -308,7 +360,8 @@ export function createSession(input: SessionInput) {
   const session: PlaybackSession = {
     id: randomUUID(),
     subject: input.subject,
-    torrent: input.torrent,
+    torrent: input.torrent ?? null,
+    library: input.library ?? null,
     fileIndex: input.fileIndex,
     fileName: input.fileName,
     status: 'probing',
@@ -347,7 +400,8 @@ export function createSession(input: SessionInput) {
   closers.set(session.id, closer)
   // Пока сессия открыта, раздачу не вытесняют и не ставят на паузу — и до
   // конца пробы, и в прямом режиме, где плеер переоткрывает поток при перемотке
-  releases.set(session.id, trackStream(input.torrent.id))
+  if (input.torrent)
+    releases.set(session.id, trackStream(input.torrent.id))
   ensureSweeper()
 
   return session
@@ -378,7 +432,8 @@ export async function stopSession(id: string) {
   releases.delete(id)
   // Зритель мог выйти ненадолго (следующая серия, пауза): вытеснение
   // отсчитывает недавнее использование от закрытия сессии
-  touchTorrent(session.torrent.id)
+  if (session.torrent)
+    touchTorrent(session.torrent.id)
   await session.hls?.stop()
 }
 
@@ -409,14 +464,19 @@ export async function sessionCues(
     if (!subtitle)
       return undefined
 
-    const key = `${session.torrent.infoHash}:${index}`
+    const { library, torrent } = session
+    const key = library
+      ? `library:${library.id}:${subtitle.path}`
+      : `${torrent!.infoHash}:${index}`
     let cues = externalCues.get(key)
 
     if (!cues) {
-      cues = loadExternalSubtitle(
-        engineStreamUrl(session.torrent.infoHash, index),
-        subtitle,
-      )
+      cues = library
+        ? loadSubtitleFile(join(dirname(library.path), subtitle.path), subtitle)
+        : loadExternalSubtitle(
+            engineStreamUrl(torrent!.infoHash, index),
+            subtitle,
+          )
       externalCues.set(key, cues)
       cues.catch(() => externalCues.delete(key))
 

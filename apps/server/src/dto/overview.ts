@@ -5,6 +5,10 @@ export const attentionKinds = [
   'engine_crashed',
   'storage_low',
   'storage_paused',
+  'library_copies',
+  'library_offline',
+  'library_unmatched',
+  'library_watcher',
   'indexer_error',
   'indexer_missing',
   'dns_spoofing',
@@ -14,6 +18,7 @@ export const attentionKinds = [
 
 export const attentionSections = [
   'downloads',
+  'library',
   'storage',
   'sources',
   'network',

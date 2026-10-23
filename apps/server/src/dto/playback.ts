@@ -26,10 +26,28 @@ export const deviceProfile = z
 // Дорожка субтитров: `s<поток>` — встроенная, `f<файл раздачи>` — внешняя
 const subtitleId = z.string().regex(/^[sf]\d{1,5}$/)
 
+// Источник — файл раздачи (`torrentId` и `fileIndex`) или файл библиотеки
+function oneSource(body: {
+  torrentId?: string
+  fileIndex?: number
+  mediaFileId?: string
+}) {
+  const torrent = body.torrentId !== undefined && body.fileIndex !== undefined
+  const library = body.mediaFileId !== undefined
+
+  return torrent !== library
+}
+
+const sourceMessage = {
+  message: 'Pass either torrentId with fileIndex or mediaFileId',
+}
+
 export const createPlayback = z
   .object({
-    torrentId: z.string().min(1).max(100),
-    fileIndex,
+    torrentId: z.string().min(1).max(100).optional(),
+    fileIndex: fileIndex.optional(),
+    // Файл библиотеки: играется с диска, без движка
+    mediaFileId: z.string().min(1).max(100).optional(),
     // Смотрим из карточки: позиция для продолжения — по серии, а не по файлу
     title: playbackTitle.optional(),
     // Без профиля — прямое воспроизведение, как у старых клиентов
@@ -41,6 +59,7 @@ export const createPlayback = z
     subtitle: subtitleId.optional(),
     startPosition: seconds.optional(),
   })
+  .refine(oneSource, sourceMessage)
   .meta({ id: 'createPlayback' })
 
 const audioTrack = z
@@ -172,18 +191,22 @@ export const insufficientStorageResponse = z
 
 export const updateWatchState = z
   .object({
-    torrentId: z.string().min(1).max(100),
-    fileIndex,
+    torrentId: z.string().min(1).max(100).optional(),
+    fileIndex: fileIndex.optional(),
+    mediaFileId: z.string().min(1).max(100).optional(),
     position: seconds,
     duration: seconds.optional(),
     title: playbackTitle.optional(),
   })
+  .refine(oneSource, sourceMessage)
   .meta({ id: 'updateWatchState' })
 
 export const watchState = z
   .object({
-    torrentId: z.string(),
-    fileIndex: z.number(),
+    // У файла библиотеки раздачи нет: позиция — только по серии тайтла
+    torrentId: z.string().nullable(),
+    fileIndex: z.number().nullable(),
+    mediaFileId: z.string().nullable(),
     position: z.number(),
     duration: z.number().nullable(),
     updatedAt: z.string(),
@@ -193,6 +216,10 @@ export const watchState = z
 export const streamParams = z.object({
   torrentId: z.string().min(1).max(100),
   fileIndex: z.string().regex(/^\d{1,5}$/),
+})
+
+export const libraryStreamParams = z.object({
+  id: z.string().min(1).max(100),
 })
 
 export const streamQuery = z.object({

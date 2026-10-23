@@ -33,18 +33,23 @@ export const storageDirCheck = z
 
 export const spaceStatuses = ['ok', 'low', 'critical'] as const
 
+// Как «Оставить» кладёт файл из загрузок в библиотеку: хардлинк и reflink
+// места не занимают, копия занимает его, пока раздачу не вытеснят из кэша
+export const libraryLinkModes = ['hardlink', 'reflink', 'copy'] as const
+
 export const storageCheck = z
   .object({
     data: storageDirCheck,
     downloads: storageDirCheck,
+    library: storageDirCheck,
+    // null — каталоги недоступны для записи
+    linkMode: z.enum(libraryLinkModes).nullable(),
     space: z.object({
       total: z.number(),
       free: z.number(),
       // low — лимит кэша не поместится над запасом, critical — свободно меньше запаса
       status: z.enum(spaceStatuses),
     }),
-    // Данные и загрузки на одной файловой системе; null — не удалось узнать
-    sameFilesystem: z.boolean().nullable(),
   })
   .meta({ id: 'storageCheck' })
 

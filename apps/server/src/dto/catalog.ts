@@ -1,6 +1,13 @@
 import { z } from 'zod'
 import { posterRatingSources } from '../db/schema.ts'
 
+// Скачивание тайтла на сервере: «Скачать» и «Оставить» на витрине
+export const titleDownloadStates = [
+  'downloading',
+  'downloaded',
+  'library',
+] as const
+
 // Язык в формате TMDB: en-US, ru-RU
 export const tmdbLanguage = z
   .string()
@@ -63,6 +70,11 @@ export const card = z
     posterRatings: z.array(posterRating).optional(),
     // Своя оценка профиля, 1–10; на постере видна всегда
     ownRating: z.number().int().optional(),
+    // Значок загрузки на постере: качается, скачано, лежит в библиотеке.
+    // Процент — по последнему снимку движка, может отставать до минуты
+    availability: z.enum(titleDownloadStates).optional(),
+    // Доля скачанного, 0–1, только у `downloading`
+    downloadProgress: z.number().optional(),
   })
   .meta({ id: 'card' })
 

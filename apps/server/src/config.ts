@@ -85,6 +85,12 @@ export const config = {
     return process.env.DOWNLOADS_PATH || join(this.dataDir, 'downloads')
   },
 
+  // Своя раскладка библиотеки. Хардлинки из загрузок проходят, только если
+  // оба каталога на одном томе: образ кладёт их рядом в `/data`
+  get libraryPath() {
+    return process.env.LIBRARY_PATH || join(this.dataDir, 'library')
+  },
+
   // ffmpeg и ffprobe: без них воспроизведение остаётся прямым
   get ffmpegPath() {
     return process.env.FFMPEG_PATH || 'ffmpeg'

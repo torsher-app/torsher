@@ -1,6 +1,7 @@
 import type { FastifyRequest } from 'fastify'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import type { PlaybackSession } from '../services/media/index.ts'
+import type { SessionInput } from '../services/media/sessions.ts'
 import { messageResponse } from '../dto/common.ts'
 import {
   createPlayback,
@@ -23,6 +24,7 @@ import {
   stopSession,
   voiceOfTrack,
 } from '../services/media/index.ts'
+import { fileProgressId, getMediaFile } from '../services/library/index.ts'
 import { clearMovieWatchlist } from '../services/mine/index.ts'
 import { getProfile } from '../services/profiles/index.ts'
 import {
@@ -77,9 +79,12 @@ function streamUrlOf(
   token: string,
   mode = session.decision.mode,
 ) {
-  return mode === 'hls'
-    ? `/api/hls/${session.id}/main.m3u8?token=${token}`
-    : `/api/stream/${session.torrent.id}/${session.fileIndex}?token=${token}`
+  if (mode === 'hls')
+    return `/api/hls/${session.id}/main.m3u8?token=${token}`
+
+  return session.library
+    ? `/api/library/files/${session.library.id}/stream?token=${token}`
+    : `/api/stream/${session.torrent!.id}/${session.fileIndex}?token=${token}`
 }
 
 interface Resume {
@@ -103,9 +108,12 @@ function toPlaybackResponse(
     streamUrl: ready ? streamUrlOf(session, token) : null,
     // Внешний плеер читает файл сам: перепаковка закрывается вместе с плеером
     externalUrl: streamUrlOf(session, token, 'direct'),
-    title: session.torrent.name,
+    title: session.torrent?.name ?? session.fileName,
     fileName: session.fileName,
-    size: session.torrent.files?.[session.fileIndex]?.size ?? 0,
+    size:
+      session.library?.size
+      ?? session.torrent?.files?.[session.fileIndex]?.size
+      ?? 0,
     duration: media?.duration ?? resume.duration,
     startPosition: resume.startPosition,
     media: media && {
@@ -190,32 +198,65 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
       const {
         torrentId,
         fileIndex,
-        title,
+        mediaFileId,
         device,
         language,
         audioStream,
         subtitle,
         startPosition,
       } = request.body
-      const found = getTorrent(torrentId)
-      const file = found && playableFile(found, fileIndex)
+      let { title } = request.body
+      let source: Pick<SessionInput, 'torrent' | 'library' | 'fileIndex'>
+      let fileName: string
 
-      if (!found || !file || (title && !parseCatalogId(title.id)))
-        return reply.code(404).send({ message: 'File not found' })
+      if (mediaFileId) {
+        const found = getMediaFile(mediaFileId)
 
-      if (found.status !== 'ready') {
-        return reply
-          .code(409)
-          .send({ message: 'Torrent metadata is not ready' })
+        if (!found || (title && !parseCatalogId(title.id)))
+          return reply.code(404).send({ message: 'File not found' })
+
+        // Серия файла библиотеки известна из сопоставления
+        title ??= found.file.titleId
+          ? {
+              id: found.file.titleId,
+              season: found.file.season || undefined,
+              episode: found.file.episode || undefined,
+            }
+          : undefined
+        source = {
+          library: {
+            id: found.file.id,
+            path: found.path,
+            size: found.file.size,
+          },
+          fileIndex: 0,
+        }
+        fileName = fileNameOf(found.file.relPath)
       }
+      else {
+        const found = getTorrent(torrentId!)
+        const file = found && playableFile(found, fileIndex!)
 
-      let prepared
+        if (!found || !file || (title && !parseCatalogId(title.id)))
+          return reply.code(404).send({ message: 'File not found' })
 
-      try {
-        prepared = await prepareStream(found, fileIndex)
-      }
-      catch (err) {
-        return sendEngineError(reply, err)
+        if (found.status !== 'ready') {
+          return reply
+            .code(409)
+            .send({ message: 'Torrent metadata is not ready' })
+        }
+
+        try {
+          source = {
+            torrent: (await prepareStream(found, fileIndex!)) ?? found,
+            fileIndex: fileIndex!,
+          }
+        }
+        catch (err) {
+          return sendEngineError(reply, err)
+        }
+
+        fileName = fileNameOf(file.path)
       }
 
       const ref = title && {
@@ -224,11 +265,23 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
         season: title.season,
         episode: title.episode,
       }
+      // Файл библиотеки без тайтла помнит позицию под своим ключом
+      const fileRef
+        = !title && mediaFileId
+          ? {
+              profileId: request.profileId,
+              titleId: fileProgressId(mediaFileId),
+            }
+          : undefined
       // Прогресс серии сильнее позиции файла: раздачу могли сменить
-      const progress = ref ? getTitleProgress(ref) : undefined
+      const progress = ref
+        ? getTitleProgress(ref)
+        : fileRef && getTitleProgress(fileRef)
       const state = progress?.position
         ? progress
-        : getWatchState(request.profileId, torrentId, fileIndex)
+        : torrentId
+          ? getWatchState(request.profileId, torrentId, fileIndex!)
+          : undefined
       // Озвучка серии (выбранная в источниках или в плеере), иначе последних
       // серий сезона, иначе закреплённая за сезоном
       const lastVoice = title
@@ -243,9 +296,8 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
 
       const session = createSession({
         subject: streamSubjectOf(request)!,
-        torrent: prepared ?? found,
-        fileIndex,
-        fileName: fileNameOf(file.path),
+        ...source,
+        fileName,
         device,
         audioStream,
         subtitle,
@@ -309,7 +361,8 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
 
       // Статус — пульс плеера: пока он идёт, раздача считается используемой,
       // даже если плеер на паузе и потоков не открывает
-      touchTorrent(session.torrent.id)
+      if (session.torrent)
+        touchTorrent(session.torrent.id)
 
       return toPlaybackResponse(
         session,
@@ -407,15 +460,27 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
       },
     },
     async (request, reply) => {
-      const { torrentId, fileIndex, position, duration, title } = request.body
-      const found = getTorrent(torrentId)
+      const { torrentId, fileIndex, mediaFileId, position, duration }
+        = request.body
+      let { title } = request.body
+      const torrent = torrentId ? getTorrent(torrentId) : undefined
+      const library = mediaFileId ? getMediaFile(mediaFileId) : undefined
 
       if (
-        !found
-        || !playableFile(found, fileIndex)
+        (torrentId && (!torrent || !playableFile(torrent, fileIndex!)))
+        || (mediaFileId && !library)
         || (title && !parseCatalogId(title.id))
       ) {
         return reply.code(404).send({ message: 'File not found' })
+      }
+
+      // У файла библиотеки позиция — по его серии тайтла
+      if (library && !title && library.file.titleId) {
+        title = {
+          id: library.file.titleId,
+          season: library.file.season || undefined,
+          episode: library.file.episode || undefined,
+        }
       }
 
       if (title) {
@@ -426,17 +491,50 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
             season: title.season,
             episode: title.episode,
           },
-          { position, duration: duration ?? null, torrentId, fileIndex },
+          {
+            position,
+            duration: duration ?? null,
+            // Файл библиотеки из раздачи помнит её: «Вы смотрели» и раздачи сезонов
+            torrentId: torrentId ?? library?.file.torrentId ?? null,
+            fileIndex: fileIndex ?? library?.file.fileIndex ?? null,
+            mediaFileId: mediaFileId ?? null,
+          },
         )
 
         if (title.season === undefined && isWatched(position, duration ?? null))
           clearMovieWatchlist(request.profileId, title.id)
       }
+      else if (library) {
+        saveTitleProgress(
+          {
+            profileId: request.profileId,
+            titleId: fileProgressId(library.file.id),
+          },
+          {
+            position,
+            duration: duration ?? null,
+            torrentId: library.file.torrentId,
+            fileIndex: library.file.fileIndex,
+            mediaFileId: library.file.id,
+          },
+        )
+      }
+
+      if (!torrentId) {
+        return {
+          torrentId: null,
+          fileIndex: null,
+          mediaFileId: mediaFileId ?? null,
+          position,
+          duration: duration ?? null,
+          updatedAt: new Date().toISOString(),
+        }
+      }
 
       const saved = saveWatchState({
         profileId: request.profileId,
         torrentId,
-        fileIndex,
+        fileIndex: fileIndex!,
         position,
         duration: duration ?? null,
       })
@@ -444,6 +542,7 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
       return {
         torrentId: saved.torrentId,
         fileIndex: saved.fileIndex,
+        mediaFileId: null,
         position: saved.position,
         duration: saved.duration,
         updatedAt: saved.updatedAt.toISOString(),
