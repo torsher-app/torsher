@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { TitleDetails } from '@torsher/api-client'
+import type { SourceCandidate, UpNext } from '@torsher/api-client'
 import type { KeyAction } from '../focus/index.ts'
 import type { StageStep } from '../lib/player.ts'
 import {
@@ -20,7 +20,11 @@ import PlayerPrompt from '../components/player/PlayerPrompt.vue'
 import PlayerStage from '../components/player/PlayerStage.vue'
 import AppIcon from '../components/AppIcon.vue'
 import FocusSection from '../components/FocusSection.vue'
+import PlayerEpisodes from '../components/player/PlayerEpisodes.vue'
+import PlayerSettings from '../components/player/PlayerSettings.vue'
+import PlayerSources from '../components/player/PlayerSources.vue'
 import PlayerTracks from '../components/player/PlayerTracks.vue'
+import PlayerUpNext from '../components/player/PlayerUpNext.vue'
 import type {
   PlaybackRestart,
   PlayerError,
@@ -31,8 +35,8 @@ import { useHls } from '../composables/useHls.ts'
 import { usePlayback } from '../composables/usePlayback.ts'
 import { usePlayerTracks } from '../composables/usePlayerTracks.ts'
 import { usePlayerOsd } from '../composables/usePlayerOsd.ts'
-import { useResource } from '../composables/useResource.ts'
-import { loadSeason } from '../composables/useTitleSections.ts'
+import { usePlaybackSpeed } from '../composables/usePlaybackSpeed.ts'
+import { usePlayerArt } from '../composables/usePlayerArt.ts'
 import { useFocus } from '../focus/index.ts'
 import {
   backAction,
@@ -42,6 +46,7 @@ import {
   canDimPause,
   canRetry,
   clampTime,
+  countdownOf,
   endedEarly,
   formatGigabytes,
   freshBudget,
@@ -50,11 +55,15 @@ import {
   settleBudget,
   stallAction,
   streamLive,
+  UP_NEXT_SECONDS,
+  upNextVisible,
   videoTimePolicy,
 } from '../lib/player.ts'
+import { episodeCode, playerRoute, resolveRoute } from '../lib/continue.ts'
 import { LOADER_DELAY_MS } from '../lib/loader.ts'
 import { goBack } from '../lib/navigation.ts'
 import { titleRefOf } from '../lib/sources.ts'
+import { session, updatePlayerSettings } from '../session.ts'
 
 const props = defineProps<{
   torrentId: string
@@ -79,46 +88,13 @@ const player = usePlayback(
 const { playback, stats } = player
 
 // Экран подготовки: кадр, логотип и серия тайтла — если плеер открыт из карточки
-const language = useCatalogLanguage()
-const { data: art } = useResource<TitleDetails>(
-  computed(() =>
-    props.titleId ? `${props.titleId}:${language.value}` : undefined,
-  ),
-  (_, signal) =>
-    api.catalog.getCatalogTitle(
-      props.titleId!,
-      { language: language.value },
-      { signal },
-    ),
-)
-const episodeName = ref('')
-const episodeOverview = ref('')
-
-if (props.titleId && props.season && props.episode) {
-  loadSeason(props.titleId, Number(props.season), language.value)
-    .then((details) => {
-      const found = details.episodes.find(
-        item => item.number === Number(props.episode),
-      )
-
-      episodeName.value = found?.title ?? ''
-      episodeOverview.value = found?.overview ?? ''
-    })
-    .catch(() => {
-      // Без названия серии — только номер
-    })
-}
-
-const artSubtitle = computed(() =>
-  props.season && props.episode
-    ? [
-        t('player.episodeOf', { season: props.season, episode: props.episode }),
-        episodeName.value,
-      ]
-        .filter(Boolean)
-        .join(' · ')
-    : '',
-)
+const season = props.season ? Number(props.season) : undefined
+const episode = props.episode ? Number(props.episode) : undefined
+const {
+  art,
+  episodeOverview,
+  subtitle: artSubtitle,
+} = usePlayerArt(props.titleId, season, episode)
 
 // Название на сцене: тайтл из каталога, пока его нет — имя из ответа сервера
 const stageTitle = computed(
@@ -148,7 +124,10 @@ const paused = ref(false)
 const position = ref(0)
 const tracks = usePlayerTracks(playback, video, position, restartWith)
 const duration = ref(Number.NaN)
-const panel = ref<'audio' | 'subtitles' | null>(null)
+type Panel = 'audio' | 'subtitles' | 'episodes' | 'source' | 'settings'
+
+const panel = ref<Panel | null>(null)
+const settingsPanel = ref<InstanceType<typeof PlayerSettings>>()
 const now = ref(new Date())
 const bufferingSince = ref(Date.now())
 // Смена дорожки перезапуском: до нового потока на экране сцена с лоадером, а
@@ -265,6 +244,55 @@ const tracksHint = computed(() =>
     : undefined,
 )
 
+// Настройки профиля — вид субтитров и автопереход; скорость живёт до
+// перезапуска витрины и переходит на следующую серию
+const speed = usePlaybackSpeed()
+const playerSettings = computed(
+  () =>
+    session.profile?.player ?? {
+      autoNext: true,
+      subtitleSize: 'm' as const,
+      subtitleBackground: 'box' as const,
+    },
+)
+const language = useCatalogLanguage()
+
+watch(speed, (value) => {
+  if (video.value)
+    video.value.playbackRate = value
+})
+
+// Прямой адрес файла для VLC и Infuse — с origin витрины
+const externalLink = computed(() =>
+  playback.value ? new URL(playback.value.externalUrl, location.href).href : '',
+)
+
+// Следующая вышедшая серия и её файл в этой раздаче: спрашиваем при старте
+const upNext = ref<UpNext['next']>(null)
+// Видео дошло до конца само, а не оборвалось
+const ended = ref(false)
+const upNextDismissed = ref(false)
+// Уходим к другой серии или раздаче: второй переход не начинаем
+let leaving = false
+
+if (props.titleId && season && episode) {
+  api.titles
+    .getTitleUpNext(props.titleId, {
+      season: String(season),
+      episode: String(episode),
+      torrentId: props.torrentId,
+      language: language.value,
+    })
+    .then((result) => {
+      upNext.value = result.next
+    })
+    .catch(() => {
+      // Без ответа плашки нет: серию можно выбрать в «Сериях»
+    })
+}
+
+const remaining = computed(() => knownDuration.value - position.value)
+
 const errorKey = computed(() => {
   if (player.error.value === 'engine')
     return `player.errors.engine.${player.engineKind.value ?? 'starting'}`
@@ -349,6 +377,39 @@ const backVisible = computed(
   () => !showsError.value && (phase.value !== 'playing' || osd.visible.value),
 )
 
+const showsUpNext = computed(
+  () =>
+    phase.value === 'playing'
+    && !restarting.value
+    && !showsError.value
+    && !panel.value
+    && upNextVisible({
+      available: !!upNext.value,
+      dismissed: upNextDismissed.value,
+      ended: ended.value,
+      remaining: remaining.value,
+    }),
+)
+
+// Без автоперехода отсчёта нет: плашка ждёт OK
+const upNextCountdown = computed(() => {
+  if (!playerSettings.value.autoNext)
+    return null
+
+  return ended.value ? 0 : countdownOf(remaining.value)
+})
+
+const upNextElapsed = computed(() =>
+  Math.min(1, Math.max(0, 1 - remaining.value / UP_NEXT_SECONDS)),
+)
+
+// Отсчёт дошёл до нуля — переход, даже если `ended` не придёт: старые ТВ на
+// прямом потоке кончают файл не всегда
+watch(upNextCountdown, (value) => {
+  if (value === 0 && showsUpNext.value && !paused.value)
+    void playNext()
+})
+
 const showsStage = computed(
   () => showsError.value || phase.value !== 'playing' || restarting.value,
 )
@@ -364,11 +425,81 @@ function save() {
   if (
     videoTimePolicy({ phase: phase.value, restarting: restarting.value }).save
   ) {
-    player.saveWatchState(
+    return player.saveWatchState(
       osd.scrub.value?.target ?? position.value,
       knownDuration.value,
     )
   }
+
+  return Promise.resolve()
+}
+
+/**
+ * Другая серия, не выходя из плеера: позиция этой сохраняется до перехода,
+ * иначе новый запуск прочитал бы старую. Файл в этой раздаче — сразу плеер,
+ * иначе экран подготовки ищет раздачу с той же озвучкой
+ */
+async function switchTo(target: {
+  season: number
+  episode: number
+  fileIndex?: number
+}) {
+  if (leaving || !props.titleId)
+    return
+
+  leaving = true
+  await save()
+
+  const title = {
+    id: props.titleId,
+    season: target.season,
+    episode: target.episode,
+  }
+  const next = upNext.value
+  const file
+    = target.fileIndex !== undefined
+      ? { torrentId: props.torrentId, fileIndex: target.fileIndex }
+      : next?.season === target.season && next.episode === target.episode
+        ? next.file
+        : null
+
+  void router.replace(
+    file
+      ? playerRoute(file, title)
+      : resolveRoute(
+          props.titleId,
+          target.season,
+          target.episode,
+          props.torrentId,
+        ),
+  )
+}
+
+function playNext() {
+  if (upNext.value)
+    return switchTo(upNext.value)
+}
+
+// Другая раздача той же серии: позиция серии сохранится и продолжится в ней
+async function switchSource(candidate: SourceCandidate) {
+  if (candidate.lastWatched) {
+    closePanel()
+    return
+  }
+
+  if (leaving || !props.titleId)
+    return
+
+  leaving = true
+  await save()
+  void router.replace({
+    path: `/title/${props.titleId}/play`,
+    query: {
+      season: props.season,
+      episode: props.episode,
+      candidate: candidate.id,
+    },
+  })
 }
 
 function exit() {
@@ -405,6 +536,9 @@ function seekTo(seconds: number) {
   el.currentTime = target
   position.value = target
   fromStart.value = false
+
+  if (target < knownDuration.value - 1)
+    ended.value = false
   save()
 }
 
@@ -412,6 +546,16 @@ function seekTo(seconds: number) {
 function playFromStart() {
   seekTo(0)
   void nextTick(() => focus.activate('player-timeline'))
+}
+
+// Левее в панели есть куда шагнуть только по чипам сезонов в «Сериях»
+function hasLeftInPanel() {
+  const el = focus.current()
+
+  return (
+    !!el?.closest('[data-focus-section="player-seasons"]')
+    && !!el.previousElementSibling
+  )
 }
 
 function closePanel() {
@@ -456,6 +600,15 @@ function onKey(action: KeyAction, event: KeyboardEvent) {
   }
 
   if (action.type === 'back') {
+    // Из выбора настройки — к списку, а не из панели
+    if (panel.value === 'settings' && settingsPanel.value?.back())
+      return true
+
+    if (showsUpNext.value && !osd.visible.value) {
+      upNextDismissed.value = true
+      return true
+    }
+
     const next = backAction({
       panelOpen: !!panel.value,
       osdVisible: osd.visible.value,
@@ -470,6 +623,20 @@ function onKey(action: KeyAction, event: KeyboardEvent) {
     return true
   }
 
+  // Влево из панели, где левее ничего нет, — к фильму: панель закрывается
+  if (
+    panel.value
+    && action.type === 'move'
+    && action.direction === 'left'
+    && !hasLeftInPanel()
+  ) {
+    // Из шага настройки — сначала к списку, как Back
+    if (!(panel.value === 'settings' && settingsPanel.value?.back()))
+      closePanel()
+
+    return true
+  }
+
   if (panel.value)
     return false
 
@@ -480,9 +647,10 @@ function onKey(action: KeyAction, event: KeyboardEvent) {
   }
 
   const hidden = !osd.visible.value
-  const onTimeline = !!document.activeElement?.closest(
-    '[data-focus-section="player-timeline"]',
-  )
+  // Фокус движка, а не DOM: под указкой фокус экрана «тихий», без DOM-фокуса
+  const onTimeline = !!focus
+    .current()
+    ?.closest('[data-focus-section="player-timeline"]')
 
   if (
     action.type === 'move'
@@ -494,8 +662,12 @@ function onKey(action: KeyAction, event: KeyboardEvent) {
     }
   }
 
+  // Плашка «Следующая серия»: OK — сразу к ней
   if (hidden && action.type === 'enter') {
-    toggle()
+    if (showsUpNext.value)
+      void playNext()
+    else toggle()
+
     return true
   }
 
@@ -765,7 +937,7 @@ function onTracksSelect(id: string) {
   closePanel()
 }
 
-function openTracks(kind: 'audio' | 'subtitles') {
+function openPanel(kind: Panel) {
   panel.value = kind
   osd.hold()
 }
@@ -775,6 +947,8 @@ function onLoadedMetadata() {
 
   clearTimeout(metadataTimer)
   duration.value = el.duration
+  el.defaultPlaybackRate = speed.value
+  el.playbackRate = speed.value
   tracks.refresh()
 
   if (startAt > 0)
@@ -808,6 +982,7 @@ function onViewerAction() {
 
 function onPlay() {
   onViewerAction()
+  ended.value = false
 
   // `playing` при пустом буфере может не прийти: сторож должен видеть и
   // такой запуск
@@ -879,17 +1054,24 @@ function onError() {
   else player.fail('unsupported')
 }
 
-// Старые ТВ на обрыв прямого потока отвечают не ошибкой, а концом файла
+// Старые ТВ на обрыв прямого потока отвечают не ошибкой, а концом файла.
+// Настоящий конец серии — переход к следующей или пауза с OSD и плашкой
 function onEnded() {
   const el = video.value
 
-  if (
-    !restarting.value
-    && el
-    && endedEarly(el.currentTime, el.duration, knownDuration.value)
-  ) {
+  if (restarting.value || !el)
+    return
+
+  if (endedEarly(el.currentTime, el.duration, knownDuration.value)) {
     recover('unknown')
+    return
   }
+
+  ended.value = true
+
+  if (upNext.value && playerSettings.value.autoNext && !upNextDismissed.value)
+    void playNext()
+  else osd.show()
 }
 
 function onPointer(event: MouseEvent) {
@@ -1098,26 +1280,76 @@ onBeforeUnmount(() => {
         :audio-label="tracks.audioLabel.value"
         :subtitles-label="tracks.subtitlesLabel.value"
         :from-start="fromStart"
+        :titled="!!titleId"
+        :series="!!(titleId && season && episode)"
+        :source-label="tracks.caption.value ?? ''"
+        :has-next="!!upNext"
         @toggle="toggle"
         @seek="seekTo($event * knownDuration)"
-        @tracks="openTracks"
+        @tracks="openPanel"
+        @panel="openPanel"
+        @next="playNext"
         @from-start="playFromStart"
       />
 
+      <PlayerUpNext
+        v-if="showsUpNext && upNext"
+        :code="episodeCode(upNext.season, upNext.episode)"
+        :title="upNext.title"
+        :still="upNext.still"
+        :countdown="upNextCountdown"
+        :elapsed="upNextElapsed"
+        @play="playNext"
+        @cancel="upNextDismissed = true"
+      />
+
       <PlayerTracks
-        v-if="panel"
+        v-if="panel === 'audio' || panel === 'subtitles'"
         :kind="panel"
         :options="trackOptions"
         :caption="tracks.caption.value"
         :hint="tracksHint"
         @select="onTracksSelect"
+        @close="closePanel"
+      />
+      <PlayerEpisodes
+        v-else-if="panel === 'episodes' && titleId && season && episode"
+        :title-id="titleId"
+        :seasons="art?.seasons ?? []"
+        :season="season"
+        :episode="episode"
+        :torrent-id="torrentId"
+        @select="switchTo"
+        @close="closePanel"
+      />
+      <PlayerSources
+        v-else-if="panel === 'source' && titleId"
+        :title-id="titleId"
+        :season="season"
+        :episode="episode"
+        @select="switchSource"
+        @close="closePanel"
+      />
+      <PlayerSettings
+        v-else-if="panel === 'settings'"
+        ref="settingsPanel"
+        :speed="speed"
+        :settings="playerSettings"
+        :link="externalLink"
+        @speed="speed = $event"
+        @update="updatePlayerSettings"
+        @close="closePanel"
       />
     </template>
 
     <p
       v-if="phase === 'playing' && tracks.subtitleHtml.value"
       class="player__subtitles"
-      :class="{ 'player__subtitles--lifted': osd.visible.value }"
+      :class="[
+        `player__subtitles--${playerSettings.subtitleSize}`,
+        `player__subtitles--${playerSettings.subtitleBackground}`,
+        { 'player__subtitles--lifted': osd.visible.value },
+      ]"
     >
       <!-- Разметку реплики чистит subtitleHtml: остаются только i, b, u -->
       <!-- eslint-disable-next-line vue/no-v-html -->
@@ -1222,12 +1454,30 @@ onBeforeUnmount(() => {
 .player__cue {
   padding: calc(var(--u) * 4) calc(var(--u) * 16);
   border-radius: calc(var(--u) * 8);
-  background: rgba(0, 0, 0, 0.55);
   font-size: calc(var(--u) * 46);
   font-weight: 600;
   line-height: 1.45;
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
+}
+
+/* Размер и подложка субтитров — из настроек профиля */
+.player__subtitles--s .player__cue {
+  font-size: calc(var(--u) * 38);
+}
+
+.player__subtitles--l .player__cue {
+  font-size: calc(var(--u) * 58);
+}
+
+.player__subtitles--box .player__cue {
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.player__subtitles--shadow .player__cue {
+  text-shadow:
+    0 0 calc(var(--u) * 4) #000000,
+    0 calc(var(--u) * 2) calc(var(--u) * 6) rgba(0, 0, 0, 0.9);
 }
 
 /* «Назад» появляется и прячется вместе с OSD */

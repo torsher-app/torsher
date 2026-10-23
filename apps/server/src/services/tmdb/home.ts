@@ -1,4 +1,4 @@
-import type { HomeMode, HomeRow, TmdbHomeRowId } from '../../dto/home.ts'
+import type { CatalogRow, HomeMode, TmdbHomeRowId } from '../../dto/home.ts'
 import type { TmdbMediaType } from './mappers.ts'
 import type { TmdbListResponse } from './types.ts'
 import { withRatings } from '../ratings/index.ts'
@@ -12,7 +12,7 @@ const TOP_COUNT = 10
 const ROW_LIMIT = 20
 
 interface RowSpec {
-  kind: HomeRow['kind']
+  kind: CatalogRow['kind']
   path: string
   // Списки фильмов и сериалов не пишут media_type у элементов
   type?: TmdbMediaType
@@ -114,7 +114,7 @@ async function loadRow(
   id: TmdbHomeRowId,
   spec: RowSpec,
   language: string,
-): Promise<HomeRow> {
+): Promise<CatalogRow> {
   const items = (await loadList(spec, language)).slice(
     0,
     spec.kind === 'top10' ? TOP_COUNT : ROW_LIMIT,
@@ -142,7 +142,7 @@ export async function getTrendingBackdrops(language: string) {
 export async function getHomeRows(
   mode: HomeMode,
   language: string,
-): Promise<HomeRow[]> {
+): Promise<CatalogRow[]> {
   const ids = LAYOUT[mode].filter((id) => {
     const only = ROWS[id].language
 
@@ -153,7 +153,7 @@ export async function getHomeRows(
     ids.map(id => loadRow(id, ROWS[id], language)),
   )
 
-  const rows: HomeRow[] = []
+  const rows: CatalogRow[] = []
   const errors: unknown[] = []
 
   for (const result of results) {

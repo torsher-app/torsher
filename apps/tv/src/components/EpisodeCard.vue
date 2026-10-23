@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Episode } from '@torsher/api-client'
 import AppIcon from './AppIcon.vue'
+import ProgressTrack from './ProgressTrack.vue'
 
 withDefaults(
   defineProps<{
@@ -39,12 +40,7 @@ defineEmits<{ select: [] }>()
       <span v-if="watched" class="episode-card__watched">
         <AppIcon name="check" />
       </span>
-      <span v-if="progress > 0" class="episode-card__track">
-        <span
-          class="episode-card__progress"
-          :style="{ transform: `scaleX(${progress})` }"
-        />
-      </span>
+      <ProgressTrack v-if="progress > 0" :value="progress" />
       <span class="card__ring" />
     </span>
     <span class="episode-card__title">
@@ -131,24 +127,5 @@ defineEmits<{ select: [] }>()
   background: var(--color-ok);
   color: var(--color-bg);
   font-size: calc(var(--u) * 26);
-}
-
-/* Полоса просмотренного по низу кадра на дорожке: ширина — transform, без перерисовки */
-.episode-card__track {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  height: calc(var(--u) * 6);
-  overflow: hidden;
-  border-radius: 0 0 var(--radius-m) var(--radius-m);
-  background: rgba(255, 255, 255, 0.25);
-}
-
-.episode-card__progress {
-  display: block;
-  height: 100%;
-  background: var(--color-accent);
-  transform-origin: left center;
 }
 </style>

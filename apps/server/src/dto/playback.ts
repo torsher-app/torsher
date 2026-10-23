@@ -97,6 +97,8 @@ export const playback = z
     mode: z.enum(['direct', 'hls']).nullable(),
     // Адрес для `<video>` или hls.js с токеном потока: плеер сессию не обновляет
     streamUrl: z.string().nullable(),
+    // Прямой поток файла с токеном (12 ч) для VLC и Infuse, в любом режиме
+    externalUrl: z.string(),
     title: z.string(),
     fileName: z.string(),
     size: z.number(),

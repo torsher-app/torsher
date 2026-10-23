@@ -3,6 +3,8 @@ import {
   posterRatingSources,
   profileColors,
   profileLanguages,
+  subtitleBackgrounds,
+  subtitleSizes,
 } from '../db/schema.ts'
 
 // Возраст, с которого тайтлы скрываются на витрине; сертификации регионов
@@ -17,6 +19,19 @@ export const profileIdParams = z.object({
   id: z.string().min(1).max(100),
 })
 
+export const playerSettings = z
+  .object({
+    // Следующая серия запускается сама после отсчёта
+    autoNext: z.boolean(),
+    subtitleSize: z.enum(subtitleSizes),
+    subtitleBackground: z.enum(subtitleBackgrounds),
+  })
+  .meta({ id: 'playerSettings' })
+
+export const updatePlayerSettings = playerSettings
+  .partial()
+  .meta({ id: 'updatePlayerSettings' })
+
 export const profile = z
   .object({
     id: z.string(),
@@ -29,6 +44,7 @@ export const profile = z
     // Сервисы, чьи оценки видны на постерах витрины, в порядке поставщиков;
     // пустой — ни одного. Своя оценка видна всегда
     posterRatings: z.array(z.enum(posterRatingSources)),
+    player: playerSettings,
   })
   .meta({ id: 'profile' })
 

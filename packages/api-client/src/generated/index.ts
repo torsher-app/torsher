@@ -633,7 +633,14 @@ export interface VoiceOptionInput {
   studio?: string;
   type?: "D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original";
   maxQuality?:
-    "2160p" | "1440p" | "1080p" | "1080i" | "720p" | "576p" | "480p" | "360p";
+    | "2160p"
+    | "1440p"
+    | "1080p"
+    | "1080i"
+    | "720p"
+    | "576p"
+    | "480p"
+    | "360p";
   seeders: number;
   count: number;
   pinned: boolean;
@@ -645,7 +652,14 @@ export interface TitleSourcesInput {
   updatedAt: string;
   profile: {
     qualities: (
-      "2160p" | "1440p" | "1080p" | "1080i" | "720p" | "576p" | "480p" | "360p"
+      | "2160p"
+      | "1440p"
+      | "1080p"
+      | "1080i"
+      | "720p"
+      | "576p"
+      | "480p"
+      | "360p"
     )[];
     voiceTypes: ("D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original")[];
   };
@@ -791,7 +805,22 @@ export interface SeasonReleaseInput {
   episodes: number[];
 }
 
+export interface EpisodeFileInput {
+  torrentId: string;
+  fileIndex: number;
+}
+
+export interface ResumeTargetInput {
+  season: number | null;
+  episode: number | null;
+  position: number;
+  duration: number | null;
+  next: boolean;
+  file: EpisodeFileInput | null;
+}
+
 export interface TitleProgressInput {
+  resume: ResumeTargetInput | null;
   last: {
     season: number | null;
     episode: number | null;
@@ -802,6 +831,16 @@ export interface TitleProgressInput {
   } | null;
   seasonReleases: SeasonReleaseInput[];
   episodes: EpisodeProgressInput[];
+}
+
+export interface UpNextInput {
+  next: {
+    season: number;
+    episode: number;
+    title: string;
+    still?: string;
+    file: EpisodeFileInput | null;
+  } | null;
 }
 
 export interface PlaybackTitleInput {
@@ -902,6 +941,7 @@ export interface PlaybackInput {
   status: "probing" | "ready";
   mode: "direct" | "hls" | null;
   streamUrl: string | null;
+  externalUrl: string;
   title: string;
   fileName: string;
   size: number;
@@ -992,7 +1032,7 @@ export interface EpisodeCardInput {
   newCount: number;
 }
 
-export interface HomeRowInput {
+export interface CatalogRowInput {
   id:
     | "trending"
     | "trendingMovies"
@@ -1014,6 +1054,43 @@ export interface HomeRowInput {
   items: CardInput[];
   episodes?: EpisodeCardInput[];
 }
+
+export interface ContinueCardInput {
+  id: string;
+  kind: "movie" | "series";
+  title: string;
+  originalTitle: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  year?: number;
+  poster?: string;
+  ratings?: TitleRatingInput[];
+  posterRatings?: PosterRatingInput[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  ownRating?: number;
+  image?: string;
+  season: number | null;
+  episode: number | null;
+  episodeTitle?: string;
+  position: number;
+  duration: number | null;
+  next: boolean;
+  file: EpisodeFileInput | null;
+}
+
+export interface ContinueRowInput {
+  id: "continue";
+  kind: "continue";
+  title: string;
+  items: ContinueCardInput[];
+}
+
+export type HomeRowInput = ContinueRowInput | CatalogRowInput;
 
 export interface HomeResponseInput {
   rows: HomeRowInput[];
@@ -1342,7 +1419,12 @@ export interface AttentionItemInput {
     | "tmdb_key_invalid";
   severity: "error" | "warning";
   section:
-    "downloads" | "storage" | "sources" | "network" | "metadata" | "logs";
+    | "downloads"
+    | "storage"
+    | "sources"
+    | "network"
+    | "metadata"
+    | "logs";
   params: {
     count?: number;
     name?: string;
@@ -1379,6 +1461,18 @@ export interface OverviewResponseInput {
   };
 }
 
+export interface PlayerSettingsInput {
+  autoNext: boolean;
+  subtitleSize: "s" | "m" | "l";
+  subtitleBackground: "none" | "shadow" | "box";
+}
+
+export interface UpdatePlayerSettingsInput {
+  autoNext?: boolean;
+  subtitleSize?: "s" | "m" | "l";
+  subtitleBackground?: "none" | "shadow" | "box";
+}
+
 export interface ProfileInput {
   id: string;
   name: string;
@@ -1395,6 +1489,7 @@ export interface ProfileInput {
   hasPin: boolean;
   ageLimit: 6 | 12 | 16 | 18 | null;
   posterRatings: ("tmdb" | "imdb")[];
+  player: PlayerSettingsInput;
 }
 
 export interface ProfileListInput {
@@ -2203,7 +2298,14 @@ export interface VoiceOption {
   studio?: string;
   type?: "D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original";
   maxQuality?:
-    "2160p" | "1440p" | "1080p" | "1080i" | "720p" | "576p" | "480p" | "360p";
+    | "2160p"
+    | "1440p"
+    | "1080p"
+    | "1080i"
+    | "720p"
+    | "576p"
+    | "480p"
+    | "360p";
   seeders: number;
   count: number;
   pinned: boolean;
@@ -2215,7 +2317,14 @@ export interface TitleSources {
   updatedAt: string;
   profile: {
     qualities: (
-      "2160p" | "1440p" | "1080p" | "1080i" | "720p" | "576p" | "480p" | "360p"
+      | "2160p"
+      | "1440p"
+      | "1080p"
+      | "1080i"
+      | "720p"
+      | "576p"
+      | "480p"
+      | "360p"
     )[];
     voiceTypes: ("D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original")[];
   };
@@ -2361,7 +2470,22 @@ export interface SeasonRelease {
   episodes: number[];
 }
 
+export interface EpisodeFile {
+  torrentId: string;
+  fileIndex: number;
+}
+
+export interface ResumeTarget {
+  season: number | null;
+  episode: number | null;
+  position: number;
+  duration: number | null;
+  next: boolean;
+  file: EpisodeFile | null;
+}
+
 export interface TitleProgress {
+  resume: ResumeTarget | null;
   last: {
     season: number | null;
     episode: number | null;
@@ -2372,6 +2496,16 @@ export interface TitleProgress {
   } | null;
   seasonReleases: SeasonRelease[];
   episodes: EpisodeProgress[];
+}
+
+export interface UpNext {
+  next: {
+    season: number;
+    episode: number;
+    title: string;
+    still?: string;
+    file: EpisodeFile | null;
+  } | null;
 }
 
 export interface PlaybackTitle {
@@ -2472,6 +2606,7 @@ export interface Playback {
   status: "probing" | "ready";
   mode: "direct" | "hls" | null;
   streamUrl: string | null;
+  externalUrl: string;
   title: string;
   fileName: string;
   size: number;
@@ -2562,7 +2697,7 @@ export interface EpisodeCard {
   newCount: number;
 }
 
-export interface HomeRow {
+export interface CatalogRow {
   id:
     | "trending"
     | "trendingMovies"
@@ -2584,6 +2719,43 @@ export interface HomeRow {
   items: Card[];
   episodes?: EpisodeCard[];
 }
+
+export interface ContinueCard {
+  id: string;
+  kind: "movie" | "series";
+  title: string;
+  originalTitle: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  year?: number;
+  poster?: string;
+  ratings?: TitleRating[];
+  posterRatings?: PosterRating[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  ownRating?: number;
+  image?: string;
+  season: number | null;
+  episode: number | null;
+  episodeTitle?: string;
+  position: number;
+  duration: number | null;
+  next: boolean;
+  file: EpisodeFile | null;
+}
+
+export interface ContinueRow {
+  id: "continue";
+  kind: "continue";
+  title: string;
+  items: ContinueCard[];
+}
+
+export type HomeRow = ContinueRow | CatalogRow;
 
 export interface HomeResponse {
   rows: HomeRow[];
@@ -2912,7 +3084,12 @@ export interface AttentionItem {
     | "tmdb_key_invalid";
   severity: "error" | "warning";
   section:
-    "downloads" | "storage" | "sources" | "network" | "metadata" | "logs";
+    | "downloads"
+    | "storage"
+    | "sources"
+    | "network"
+    | "metadata"
+    | "logs";
   params: {
     count?: number;
     name?: string;
@@ -2949,6 +3126,18 @@ export interface OverviewResponse {
   };
 }
 
+export interface PlayerSettings {
+  autoNext: boolean;
+  subtitleSize: "s" | "m" | "l";
+  subtitleBackground: "none" | "shadow" | "box";
+}
+
+export interface UpdatePlayerSettings {
+  autoNext?: boolean;
+  subtitleSize?: "s" | "m" | "l";
+  subtitleBackground?: "none" | "shadow" | "box";
+}
+
 export interface Profile {
   id: string;
   name: string;
@@ -2965,6 +3154,7 @@ export interface Profile {
   hasPin: boolean;
   ageLimit: 6 | 12 | 16 | 18 | null;
   posterRatings: ("tmdb" | "imdb")[];
+  player: PlayerSettings;
 }
 
 export interface ProfileList {
@@ -3180,6 +3370,8 @@ export type GetCatalogBackdropsError = MessageResponse;
 
 export type GetHomeError = MessageResponse;
 
+export type GetHomeContinueError = MessageResponse;
+
 export type GetIndexersError = MessageResponse;
 
 export type PostIndexerError = MessageResponse | SourceErrorResponse;
@@ -3203,12 +3395,18 @@ export type GetTitleSourcesError = MessageResponse;
 export type PutTitleVoiceError = MessageResponse;
 
 export type PostTitleWatchError =
-  MessageResponse | WatchErrorResponse | EngineUnavailableResponse;
+  | MessageResponse
+  | WatchErrorResponse
+  | EngineUnavailableResponse;
 
 export type GetTitleProgressError = MessageResponse;
 
+export type GetTitleUpNextError = MessageResponse;
+
 export type PostTitleOpenError =
-  MessageResponse | WatchErrorResponse | EngineUnavailableResponse;
+  | MessageResponse
+  | WatchErrorResponse
+  | EngineUnavailableResponse;
 
 export type GetTitleFilesError = MessageResponse;
 
@@ -3247,15 +3445,18 @@ export type DeleteTorrentError = MessageResponse | EngineUnavailableResponse;
 export type PostTorrentRetryError = MessageResponse | EngineUnavailableResponse;
 
 export type PostTorrentDownloadError =
-  MessageResponse | EngineUnavailableResponse;
+  | MessageResponse
+  | EngineUnavailableResponse;
 
 export type PostTorrentPauseError = MessageResponse | EngineUnavailableResponse;
 
 export type PostTorrentResumeError =
-  MessageResponse | EngineUnavailableResponse;
+  | MessageResponse
+  | EngineUnavailableResponse;
 
 export type PutTorrentRetentionError =
-  MessageResponse | EngineUnavailableResponse;
+  | MessageResponse
+  | EngineUnavailableResponse;
 
 export type GetTorrentStatsError = MessageResponse | EngineUnavailableResponse;
 
@@ -3298,7 +3499,9 @@ export type GetSetupStorageCheckError = MessageResponse;
 export type PostSetupDiscoverManagersError = MessageResponse;
 
 export type PostPlaybackError =
-  MessageResponse | EngineUnavailableResponse | InsufficientStorageResponse;
+  | MessageResponse
+  | EngineUnavailableResponse
+  | InsufficientStorageResponse;
 
 export type GetPlaybackError = MessageResponse;
 
@@ -3311,6 +3514,8 @@ export type PutWatchStateError = MessageResponse;
 export type GetProfilesError = MessageResponse;
 
 export type PostProfileError = MessageResponse;
+
+export type PutCurrentPlayerSettingsError = MessageResponse;
 
 export type PatchProfileError = MessageResponse;
 
@@ -3329,7 +3534,8 @@ export type PostDevicePairingError = MessageResponse;
 export type GetDevicePairingError = MessageResponse;
 
 export type PostDevicePairingConfirmError =
-  MessageResponse | PairingErrorResponse;
+  | MessageResponse
+  | PairingErrorResponse;
 
 export type GetDevicesError = MessageResponse;
 
@@ -3379,10 +3585,8 @@ export interface ApiConfig<SecurityDataType = unknown> {
   customFetch?: typeof fetch;
 }
 
-export interface HttpResponse<
-  D extends unknown,
-  E extends unknown = unknown,
-> extends Response {
+export interface HttpResponse<D extends unknown, E extends unknown = unknown>
+  extends Response {
   data: D;
   error: E;
 }
@@ -3997,6 +4201,33 @@ export class Api<
         format: "json",
         ...params,
       }),
+
+    /**
+     * No description
+     *
+     * @tags Catalog
+     * @name GetHomeContinue
+     * @request GET:/api/home/continue
+     */
+    getHomeContinue: (
+      query?: {
+        /** @default "all" */
+        mode?: "all" | "movies" | "series";
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<ContinueRow, GetHomeContinueError>({
+        path: `/api/home/continue`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
   };
   indexers = {
     /**
@@ -4238,10 +4469,56 @@ export class Api<
      * @name GetTitleProgress
      * @request GET:/api/titles/{id}/progress
      */
-    getTitleProgress: (id: string, params: RequestParams = {}) =>
+    getTitleProgress: (
+      id: string,
+      query?: {
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+      },
+      params: RequestParams = {},
+    ) =>
       this.request<TitleProgress, GetTitleProgressError>({
         path: `/api/titles/${id}/progress`,
         method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Titles
+     * @name GetTitleUpNext
+     * @request GET:/api/titles/{id}/up-next
+     */
+    getTitleUpNext: (
+      id: string,
+      query: {
+        /** @pattern ^[1-9]\d{0,2}$ */
+        season: string;
+        /** @pattern ^[1-9]\d{0,3}$ */
+        episode: string;
+        /**
+         * @minLength 1
+         * @maxLength 100
+         */
+        torrentId?: string;
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<UpNext, GetTitleUpNextError>({
+        path: `/api/titles/${id}/up-next`,
+        method: "GET",
+        query: query,
         format: "json",
         ...params,
       }),
@@ -5203,6 +5480,26 @@ export class Api<
       this.request<Profile, PostProfileError>({
         path: `/api/profiles`,
         method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Profiles
+     * @name PutCurrentPlayerSettings
+     * @request PUT:/api/profiles/current/player
+     */
+    putCurrentPlayerSettings: (
+      data: UpdatePlayerSettingsInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<PlayerSettings, PutCurrentPlayerSettingsError>({
+        path: `/api/profiles/current/player`,
+        method: "PUT",
         body: data,
         type: ContentType.Json,
         format: "json",

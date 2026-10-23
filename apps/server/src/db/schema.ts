@@ -100,6 +100,17 @@ const posterRatingSet = customType<{
     posterRatingSources.filter(source => value.split(',').includes(source)),
 })
 
+export const subtitleSizes = ['s', 'm', 'l'] as const
+export const subtitleBackgrounds = ['none', 'shadow', 'box'] as const
+
+/** Настройки плеера профиля; чего нет в записи — умолчания сервиса профилей */
+export interface PlayerSettings {
+  /** Следующая серия запускается сама после отсчёта */
+  autoNext: boolean
+  subtitleSize: (typeof subtitleSizes)[number]
+  subtitleBackground: (typeof subtitleBackgrounds)[number]
+}
+
 // Профиль смотрящего: свой прогресс, язык витрины и ограничения. Профиль по
 // умолчанию — первый по `position`, его получают сессия владельца и ТВ,
 // на котором профиль ещё не выбран
@@ -121,6 +132,7 @@ export const profiles = sqliteTable('profiles', {
   posterRatings: posterRatingSet('poster_rating')
     .notNull()
     .$defaultFn(() => ['tmdb']),
+  player: text('player', { mode: 'json' }).$type<Partial<PlayerSettings>>(),
   position: integer('position').notNull().default(0),
   createdAt: integer('created_at', { mode: 'timestamp_ms' })
     .notNull()

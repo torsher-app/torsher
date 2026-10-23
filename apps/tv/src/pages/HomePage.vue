@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import type { Card, EpisodeCard, HomeRow } from '@torsher/api-client'
+import type {
+  Card,
+  ContinueCard as ContinueItem,
+  EpisodeCard,
+  HomeRow,
+} from '@torsher/api-client'
 import type { ComponentPublicInstance } from 'vue'
 import type { RailItemId } from '../components/AppRail.vue'
 import type { HomeMode } from '../composables/useHome.ts'
@@ -19,6 +24,7 @@ import { useRouter } from 'vue-router'
 import AppRail from '../components/AppRail.vue'
 import BackdropLayer from '../components/BackdropLayer.vue'
 import ContentRow from '../components/ContentRow.vue'
+import ContinueCard from '../components/ContinueCard.vue'
 import FocusSection from '../components/FocusSection.vue'
 import HeroPanel from '../components/HeroPanel.vue'
 import NewEpisodeCard from '../components/NewEpisodeCard.vue'
@@ -30,6 +36,7 @@ import { useHero } from '../composables/useHero.ts'
 import { useHome } from '../composables/useHome.ts'
 import { useStackScroll } from '../composables/useStackScroll.ts'
 import { useFocus } from '../focus/index.ts'
+import { continueOrder, resumeRoute } from '../lib/continue.ts'
 import { titleActions } from '../titleActions.ts'
 import { firstVisibleRow, stackOffset } from '../lib/rowStack.ts'
 
@@ -48,7 +55,7 @@ const SKELETON_CARDS = 7
 const { t } = useI18n()
 const router = useRouter()
 const focus = useFocus()
-const { status, rows, error, retry, refresh } = useHome(
+const { status, rows, loads, error, retry, refresh, refreshContinue } = useHome(
   computed(() => props.mode),
 )
 const { hero, show } = useHero()
@@ -72,7 +79,7 @@ const rowElements: (HTMLElement | undefined)[] = []
 
 // У рядов подборок один id: секцию и ключ различает подборка
 function rowKey(row: HomeRow) {
-  return row.ref ? `${row.id}-${row.ref}` : row.id
+  return row.kind !== 'continue' && row.ref ? `${row.id}-${row.ref}` : row.id
 }
 
 function sectionOf(row: HomeRow) {
@@ -80,13 +87,17 @@ function sectionOf(row: HomeRow) {
 }
 
 function rowTitle(row: HomeRow) {
-  return row.name ?? t(row.title)
+  return (row.kind !== 'continue' && row.name) || t(row.title)
 }
 
-// Ряд серий 16:9 держит карточки серий, остальные — постеры
-type RowItem = Card | EpisodeCard
+// Ряд серий 16:9 держит карточки серий, «Продолжить» — свои карточки 16:9,
+// остальные — постеры
+type RowItem = Card | ContinueItem | EpisodeCard
 
 function itemsOf(row: HomeRow): RowItem[] {
+  if (row.kind === 'continue')
+    return row.items
+
   return row.kind === 'episodes' ? (row.episodes ?? []) : row.items
 }
 
@@ -104,6 +115,14 @@ function heroCardOf(item: RowItem): Card {
         originalTitle: item.title,
       }
     : item
+}
+
+// «Продолжить» с новым порядком тайтлов пересоздаётся: просмотренный тайтл
+// встаёт первым, без съезжающих карточек. Секция ряда остаётся той же
+function renderKey(row: HomeRow) {
+  return row.kind === 'continue'
+    ? `continue:${continueOrder(rows.value)}`
+    : rowKey(row)
 }
 
 function edgesOf(index: number): SectionEdges {
@@ -207,6 +226,13 @@ function open(item: RowItem) {
   router.push(`/title/${isEpisode(item) ? item.titleId : item.id}`)
 }
 
+// «Продолжить» запускает просмотр сразу, без карточки тайтла
+function resume(item: ContinueItem) {
+  router.push(resumeRoute(item.id, item))
+}
+
+const heroResume = computed(() => !!hero.value && 'next' in hero.value.card)
+
 // Экран в KeepAlive: ряды могут прийти, когда пользователь уже ушёл на другой экран
 let isActive = false
 
@@ -217,16 +243,15 @@ function restoreFocus() {
 
 watch(aligned, alignRows)
 
-// Ряды перечитаны после правки списков: экран остаётся на том же ряду
-let keepPosition = false
+// Новые ряды: экран встаёт на первый, фокус — в первый ряд. Тихое
+// обновление (правка списков, «Продолжить» после плеера) оставляет экран на
+// том же ряду, даже если ряды выше появились или пропали
+watch([rows, loads], async ([next, count], [, prevCount]) => {
+  const kept
+    = count === prevCount
+      ? next.findIndex(row => sectionOf(row) === lastSection.value)
+      : -1
 
-// Новые ряды: экран встаёт на первый, фокус — в первый ряд
-watch(rows, async (next) => {
-  const kept = keepPosition
-    ? next.findIndex(row => sectionOf(row) === lastSection.value)
-    : -1
-
-  keepPosition = false
   aligned.value = Math.max(kept, 0)
 
   if (kept < 0)
@@ -240,15 +265,18 @@ watch(rows, async (next) => {
 // Правки «Позже» и подборок из меню видны на главной после возврата на неё
 let seenVersion = titleActions.version
 
-// Возврат из карточки: фокус на ту карточку, с которой ушли
+// Возврат из карточки и плеера: фокус на ту карточку, с которой ушли;
+// «Продолжить» подтягивает свежий прогресс, правки списков — все ряды
 onActivated(() => {
   isActive = true
   restoreFocus()
 
   if (seenVersion !== titleActions.version) {
     seenVersion = titleActions.version
-    keepPosition = true
     void refresh()
+  }
+  else {
+    void refreshContinue()
   }
 })
 
@@ -286,7 +314,7 @@ onBeforeUnmount(() => {
     <BackdropLayer :src="hero?.details?.backdrop" />
 
     <div class="home__hero">
-      <HeroPanel v-if="hero" :hero="hero" />
+      <HeroPanel v-if="hero" :hero="hero" :resume="heroResume" />
     </div>
 
     <div v-if="status === 'error' && error" class="home__state">
@@ -305,7 +333,7 @@ onBeforeUnmount(() => {
     >
       <ContentRow
         v-for="(row, index) in rows"
-        :key="rowKey(row)"
+        :key="renderKey(row)"
         :ref="setRowElement(index)"
         :class="{ 'home__row--above': index < firstVisible }"
         :section="sectionOf(row)"
@@ -316,8 +344,14 @@ onBeforeUnmount(() => {
         @focus-item="(item, via) => onFocusItem(index, item, via)"
       >
         <template #item="{ item, index: position }">
+          <ContinueCard
+            v-if="row.kind === 'continue'"
+            :item="item as ContinueItem"
+            :load-image="isNear(index)"
+            @select="resume(item as ContinueItem)"
+          />
           <NewEpisodeCard
-            v-if="isEpisode(item)"
+            v-else-if="isEpisode(item)"
             :episode="item"
             :load-image="isNear(index)"
             @select="open(item)"

@@ -6,11 +6,13 @@ import {
   createProfile as createProfileBody,
   deleteProfileQuery,
   pinErrorResponse,
+  playerSettings,
   profile,
   profileIdParams,
   profileList,
   selectProfile,
   setProfilePin,
+  updatePlayerSettings as updatePlayerSettingsBody,
   updateProfile as updateProfileBody,
 } from '../dto/profiles.ts'
 import {
@@ -28,7 +30,9 @@ import {
   LastProfileError,
   listProfiles,
   PinLockedError,
+  playerSettingsOf,
   setPin,
+  updatePlayerSettings,
   updateProfile,
   verifyPin,
 } from '../services/profiles/index.ts'
@@ -54,6 +58,7 @@ export function toProfileResponse(row: Profile) {
     hasPin: !!row.pinHash,
     ageLimit: row.ageLimit as 6 | 12 | 16 | 18 | null,
     posterRatings: row.posterRatings,
+    player: playerSettingsOf(row),
   }
 }
 
@@ -78,6 +83,30 @@ export const profileRoutes: FastifyPluginAsyncZod = async (app) => {
       currentId: request.profileId,
       selected: request.profileSelected,
     }),
+  )
+
+  // Настройки плеера меняет сам зритель из плеера: только у своего профиля
+  app.put(
+    '/current/player',
+    {
+      config: { viewer: true },
+      schema: {
+        operationId: 'putCurrentPlayerSettings',
+        tags: ['Profiles'],
+        body: updatePlayerSettingsBody,
+        response: {
+          200: playerSettings,
+          400: messageResponse,
+          404: messageResponse,
+          ...guardResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const settings = updatePlayerSettings(request.profileId, request.body)
+
+      return settings ?? reply.code(404).send(notFound)
+    },
   )
 
   app.post(

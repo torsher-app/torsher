@@ -11,9 +11,12 @@ import {
   titleOpen,
   titleParams,
   titleProgress,
+  titleProgressQuery,
   titleSources,
   titleSourcesQuery,
   titleWatch,
+  upNext,
+  upNextQuery,
   watchErrorResponse,
   watchTitle as watchTitleBody,
 } from '../dto/titles.ts'
@@ -37,6 +40,11 @@ import {
   lastTitleProgress,
   markWatched,
 } from '../services/sources/progress.ts'
+import {
+  episodeFileIn,
+  nextEpisodeFor,
+  resumeTarget,
+} from '../services/sources/resume.ts'
 import { seasonReleases } from '../services/sources/seasonRelease.ts'
 import {
   openCandidate,
@@ -44,7 +52,7 @@ import {
   watchTitle,
 } from '../services/sources/watch.ts'
 import { getTorrent } from '../services/torrents/index.ts'
-import { TmdbError } from '../services/tmdb/index.ts'
+import { getSeason, getTitle, TmdbError } from '../services/tmdb/index.ts'
 import { parseCatalogId } from '../services/tmdb/mappers.ts'
 import { isWatched } from '../services/torrents/playback.ts'
 import { sendTmdbError } from './catalog.ts'
@@ -58,6 +66,16 @@ const tmdbResponses = {
   404: messageResponse,
   502: messageResponse,
   503: messageResponse,
+}
+
+/** Сезоны сериала с числом вышедших серий; у фильма и без TMDB — undefined */
+async function airedSeasons(titleId: string, language: string) {
+  const details = await getTitle(titleId, language)
+
+  return details?.seasons?.map(season => ({
+    number: season.number,
+    airedEpisodeCount: season.airedEpisodeCount,
+  }))
 }
 
 function toCandidate(release: RankedRelease, lastWatched: boolean) {
@@ -256,6 +274,7 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
         operationId: 'getTitleProgress',
         tags: ['Titles'],
         params: titleParams,
+        querystring: titleProgressQuery,
         response: {
           200: titleProgress,
           404: messageResponse,
@@ -267,9 +286,23 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
       if (!parseCatalogId(request.params.id))
         return reply.code(404).send({ message: 'Title not found' })
 
-      const last = lastTitleProgress(request.profileId, request.params.id)
+      const { id } = request.params
+      const last = lastTitleProgress(request.profileId, id)
+      // Без TMDB следующей серии не найти: кнопка остаётся «Смотреть»
+      const resume = await resumeTarget(request.profileId, id, () =>
+        airedSeasons(id, request.query.language).catch(() => undefined))
 
       return {
+        resume: resume
+          ? {
+              season: resume.season,
+              episode: resume.episode,
+              position: resume.position,
+              duration: resume.duration,
+              next: resume.next,
+              file: resume.file,
+            }
+          : null,
         last: last
           ? {
               season: last.season || null,
@@ -299,6 +332,64 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
           voice: release.voice ?? null,
           episodes: release.episodes,
         })),
+      }
+    },
+  )
+
+  app.get(
+    '/:id/up-next',
+    {
+      schema: {
+        operationId: 'getTitleUpNext',
+        tags: ['Titles'],
+        params: titleParams,
+        querystring: upNextQuery,
+        response: {
+          200: upNext,
+          400: messageResponse,
+          ...tmdbResponses,
+          ...guardResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { id } = request.params
+      const { language, torrentId } = request.query
+
+      if (parseCatalogId(id)?.type !== 'tv')
+        return reply.code(404).send({ message: 'Series not found' })
+
+      try {
+        const seasons = await airedSeasons(id, language)
+        const next = nextEpisodeFor(request.profileId, id, seasons ?? [], {
+          season: Number(request.query.season),
+          episode: Number(request.query.episode),
+        })
+
+        if (!next)
+          return { next: null }
+
+        const episode = (
+          await getSeason(id, next.season, language).catch(() => undefined)
+        )?.episodes.find(item => item.number === next.episode)
+
+        return {
+          next: {
+            ...next,
+            title: episode?.title ?? '',
+            still: episode?.still,
+            file: torrentId
+              ? episodeFileIn(torrentId, {
+                  profileId: request.profileId,
+                  titleId: id,
+                  ...next,
+                })
+              : null,
+          },
+        }
+      }
+      catch (err) {
+        return sendTmdbError(reply, err)
       }
     },
   )
