@@ -11,7 +11,8 @@
     "series": "Series",
     "settings": "Settings",
     "mine": "Mine",
-    "catalog": "Catalog"
+    "catalog": "Catalog",
+    "library": "Library"
   },
   "search": {
     "title": "Search",
@@ -111,13 +112,21 @@
       "themeSpies": "Spies",
       "themeDisasters": "Disasters",
       "themeWar": "War",
-      "themeWesterns": "Westerns"
+      "themeWesterns": "Westerns",
+      "library": "My library",
+      "libraryRecent": "Recently added",
+      "libraryMovies": "Movies",
+      "librarySeries": "Series",
+      "libraryUnmatched": "Needs a title",
+      "libraryHomeVideo": "Home videos",
+      "libraryUntitled": "No description"
     },
     "hint": {
       "details": "Details",
       "watch": "Watch",
       "actions": "hold for actions",
-      "resume": "Continue"
+      "resume": "Continue",
+      "release": "Set the title"
     },
     "pageBack": "Scroll back",
     "pageForward": "Scroll forward",
@@ -176,7 +185,9 @@
       "networks": "Networks",
       "keywords": "Tags",
       "hint": "Opens the catalog with this filter"
-    }
+    },
+    "fromLibrary": "From library",
+    "fromLibraryShort": "from library"
   },
   "watch": {
     "searching": "Searching for releases…",
@@ -285,7 +296,9 @@
       "autoValue": "auto",
       "placeholder": "Enter a title",
       "note": "Type your own title and press OK, or pick an option below"
-    }
+    },
+    "libraryHint": "From the server disk, no peers",
+    "libraryPlay": "Watch"
   },
   "files": {
     "title": "Files",
@@ -297,7 +310,14 @@
     "toSources": "Back to sources",
     "season": "Season {n}",
     "watched": "watched",
-    "count": "{n} file | {n} files"
+    "count": "{n} file | {n} files",
+    "select": "Download…",
+    "downloadSelected": "Download selected",
+    "selectedNone": "Select files",
+    "selectAll": "Select all",
+    "clearAll": "Clear all",
+    "cancel": "Cancel",
+    "selectHint": "OK — select a file · Back — cancel"
   },
   "countries": {
     "US": "USA",
@@ -367,6 +387,10 @@
     "catalogEmpty": {
       "title": "Nothing found",
       "text": "No titles match these filters. Remove some filters or pick other values"
+    },
+    "libraryEmpty": {
+      "title": "Your library is empty",
+      "text": "What you download or keep lands here: Download on a title card or Keep in the actions menu"
     }
   },
   "connect": {
@@ -598,7 +622,8 @@
       "links": "Links",
       "showcase": "Open showcase",
       "newTab": "opens in a new tab",
-      "collections": "Collections"
+      "collections": "Collections",
+      "library": "Library"
     },
     "account": {
       "menu": "Account menu",
@@ -729,13 +754,21 @@
           "lowFix": "Lower the cache limit below or free up space on the volume. Otherwise the server starts removing old cache items before the limit.",
           "criticalFix": "Free up space or lower the reserve below. While free space is below the reserve, playback does not start and downloads pause."
         },
-        "filesystem": {
-          "same": "Data and downloads share one filesystem",
-          "different": "Data and downloads are on different filesystems",
-          "text": "Useful for the library later: on one filesystem files move without copying.",
-          "fix": "Nothing to do now. If you add a library later, keep it on the same volume as downloads."
+        "continueWithout": "Continue without downloads",
+        "library": {
+          "ok": "Library folder is writable",
+          "created": "Library folder will be created on start",
+          "readonly": "Library folder is not writable"
         },
-        "continueWithout": "Continue without downloads"
+        "links": {
+          "hardlink": "Kept files go to the library without extra space",
+          "hardlinkText": "Downloads and the library share one volume: a file is hard-linked and keeps seeding.",
+          "reflink": "No hard links, reflink works",
+          "reflinkText": "Files are copied without extra space: the filesystem shares the same blocks.",
+          "copy": "Downloads and the library are on different volumes: files will be copied",
+          "copyText": "A kept file takes space twice until the torrent is evicted from the cache.",
+          "copyFix": "Mount downloads and the library as one /data volume, as in docker-compose.example.yml. Two volumes, even on one disk, block hard links."
+        }
       },
       "network": {
         "title": "Network",
@@ -841,6 +874,7 @@
           "one": "“{name}” is paused: not enough space",
           "many": "{n} torrent is paused: not enough space | {n} torrents are paused: not enough space"
         },
+        "library_copies": "Downloads and the library are on different volumes: kept files will be copied",
         "indexer_error": {
           "one": "Indexer “{name}” doesn't respond or rejects requests",
           "many": "{n} indexer doesn't respond or rejects requests | {n} indexers don't respond or reject requests"
@@ -861,6 +895,18 @@
           "missing": "No TMDB key: the catalog and showcase are empty",
           "rejected": "TMDB rejects the key: the catalog and showcase are empty",
           "unreadable": "The saved TMDB key can't be decrypted: enter it again"
+        },
+        "library_offline": {
+          "one": "Library folder unavailable: {name}",
+          "many": "Library folders unavailable: {n}"
+        },
+        "library_unmatched": {
+          "one": "Release not recognized: {name}",
+          "many": "Releases not recognized: {n}"
+        },
+        "library_watcher": {
+          "one": "Watcher didn’t start: {name}",
+          "many": "Watcher didn’t start in {n} folders"
         }
       },
       "tiles": {
@@ -930,11 +976,12 @@
         "loadErrorText": "The server didn't respond. Try again.",
         "disk": {
           "freeOf": "{free} free of {total}",
-          "label": "Kept {kept}, cache {cache}, other {other}, free {free}",
+          "label": "Kept {kept}, cache {cache}, library {library}, other {other}, free {free}",
           "kept": "Kept {size}",
           "cache": "Cache {size}",
           "other": "Other {size}",
-          "free": "Free {size}"
+          "free": "Free {size}",
+          "library": "Library {size}"
         },
         "cacheTitle": "Cache limit",
         "cacheText": "What you watch without “Keep” stays in the cache. When it's full, the oldest is deleted automatically.",
@@ -958,6 +1005,20 @@
           "watched": "watched {when}",
           "notWatched": "not watched",
           "open": "All downloads"
+        },
+        "library": {
+          "title": "Library",
+          "path": "Torsher layout",
+          "used": "Used",
+          "usedValue": "{used}, {shared} of it shared with torrents",
+          "usedEmpty": "Empty so far",
+          "links": "How files are placed",
+          "hardlink": "Hard link — the torrent keeps seeding without extra space",
+          "reflink": "Reflink — a copy without extra space",
+          "copy": "Copy — the file takes space twice until the torrent is evicted from the cache",
+          "unknown": "Not checked",
+          "copyTitle": "Downloads and the library are on different volumes",
+          "copyText": "Files will be copied. Mount downloads and the library as one /data volume, as in docker-compose.example.yml."
         }
       },
       "network": {
@@ -1623,7 +1684,7 @@
         "peersValue": "{connected} connected of {found}",
         "storage": "Storage",
         "storageCache": "Deleted automatically when the cache is full",
-        "storageKeep": "Kept — never deleted automatically",
+        "storageKeep": "Kept — downloaded files go to the library",
         "added": "Added",
         "watched": "Last watched",
         "never": "Not watched yet",
@@ -1631,7 +1692,8 @@
         "filesHint": "Checked files download in full. The rest downloads only while it's being watched.",
         "title": "Title",
         "wanted": "Full download",
-        "wantedNone": "Nothing — downloads only while watching"
+        "wantedNone": "Nothing — downloads only while watching",
+        "storageLibrary": "In library — the torrent keeps seeding"
       },
       "toasts": {
         "kept": "Torrent kept",
@@ -1653,7 +1715,8 @@
         "keepFiles": "Remove from the list, keep files",
         "keepFilesText": "Downloaded files stay on disk, but Torsher stops counting them and never deletes them automatically.",
         "deleted": "Torrent deleted",
-        "deletedFiles": "Files deleted from disk"
+        "deletedFiles": "Files deleted from disk",
+        "library": "Files in the library stay. Space is freed only when you remove them from the library."
       },
       "restartEngine": "Restart engine",
       "restartDialog": {
@@ -1663,7 +1726,36 @@
       },
       "selectedEpisodes": "{n} episode | {n} episodes",
       "selectedFiles": "{n} file | {n} files",
-      "onDisk": "{size} on disk"
+      "onDisk": "{size} on disk",
+      "inLibrary": "In library",
+      "removeLibrary": "Remove from library",
+      "removeDialog": {
+        "title": "Remove “{name}” from the library?",
+        "text": "The files are removed from the library. The torrent goes back to the cache and is removed when the cache fills up.",
+        "lastCopy": "The torrent is no longer on disk: the library files are the only copy and will be deleted for good.",
+        "done": "Removed from library"
+      },
+      "match": {
+        "title": "Fix match",
+        "search": "Catalog title",
+        "searchFailed": "The catalog did not respond. Try again",
+        "empty": "Nothing found — adjust the title or year",
+        "movie": "movie",
+        "series": "series",
+        "notTitle": "Not a movie or a series",
+        "saved": "Title saved",
+        "pending": "Recognizing by name…",
+        "waiting": "Will be recognized once the file list arrives",
+        "unsure": "Looks like “{title}”",
+        "unmatched": "Not recognized — files will not go to the library",
+        "confirm": "Yes, that one",
+        "fix": "Set title",
+        "change": "Change",
+        "short": "title not recognized",
+        "shortUnsure": "check the title",
+        "ignoredToast": "The torrent stays without a title",
+        "ignored": "No title: not a movie or a series"
+      }
     },
     "logs": {
       "title": "Logs",
@@ -1819,6 +1911,151 @@
       },
       "showMore": "Show more",
       "moreError": "Couldn’t load more history"
+    },
+    "library": {
+      "managed": "Torsher layout",
+      "managedText": "“Download” and “Keep” put torrent files here",
+      "actions": "Library actions",
+      "loadFailed": "Couldn’t load libraries",
+      "loadFailedText": "The server didn’t respond. Try again.",
+      "emptyHint": "Connect a folder with movies, shows or home videos: Torsher indexes it in place, read-only — nothing is moved or renamed.",
+      "kinds": {
+        "video": "Movies and shows",
+        "videoText": "Matched with the catalog: posters, overviews, episodes",
+        "home": "Home videos",
+        "homeText": "No catalog: capture date, albums from folders"
+      },
+      "hints": {
+        "auto": "Movies and shows mixed",
+        "movies": "Movies only",
+        "shows": "Shows only"
+      },
+      "add": {
+        "title": "Add library",
+        "description": "The server folder is indexed in place and only read.",
+        "kind": "What’s in the folder",
+        "name": "Name",
+        "path": "Server folder",
+        "pathHint": "The path as the server sees it: in Docker, the path inside the container. Mount the folder read-only (:ro) if you can.",
+        "hint": "Search hint",
+        "hintText": "Only narrows the catalog search: the server decides movie or show per release.",
+        "submit": "Add"
+      },
+      "addFolder": {
+        "title": "Add folder",
+        "submit": "Add"
+      },
+      "picker": {
+        "browse": "Browse",
+        "up": "Parent folder",
+        "choose": "Choose this folder",
+        "failed": "Can’t open the folder: no access or it doesn’t exist",
+        "empty": "No subfolders"
+      },
+      "pathErrors": {
+        "title": "Can’t connect the folder",
+        "not_absolute": "Use a full path from the root: /media/video.",
+        "missing": "There is no such folder on the server. In Docker, mount it as a volume in compose.",
+        "not_directory": "This is a file, not a folder.",
+        "denied": "The server can’t read this folder.",
+        "inside_data": "This is Torsher’s data folder (downloads or its own layout). Connect your collection folder.",
+        "duplicate": "This folder is already connected.",
+        "unknown": "The server rejected the folder. Try again."
+      },
+      "validation": {
+        "name": "Enter a name",
+        "path": "Choose a folder"
+      },
+      "status": {
+        "ok": "Ready",
+        "empty": "Empty",
+        "offline": "Unavailable",
+        "denied": "No access",
+        "scanning": "Scanning"
+      },
+      "statusText": {
+        "offline": "The folder is gone or the disk is disconnected: files are hidden on the showcase but not deleted — they come back with the folder.",
+        "denied": "The server can’t read the folder: files are hidden but not deleted."
+      },
+      "folder": {
+        "files": "{n} video | {n} videos",
+        "scanned": "scanned {when}",
+        "missing": "Missing: {n}",
+        "unsure": "Waiting for confirmation: {n}",
+        "unmatched": "Not recognized: {n}",
+        "watcherNetwork": "Network volume: the periodic scan picks up changes",
+        "watcherFailed": "The watcher didn’t start: the periodic scan picks up changes",
+        "scan": "Scan",
+        "remove": "Disconnect",
+        "pending": "Recognizing: {n}"
+      },
+      "settings": {
+        "title": "Library settings",
+        "exclude": "Exclusions",
+        "excludeHint": "Path masks from the folder root, one per line: Trash/** or **/*.sample.*",
+        "watch": "Watch for changes",
+        "watchHint": "New files show up within a minute. Network volumes rely on the periodic scan.",
+        "visible": "Who sees it on the showcase",
+        "visibleHint": "Uncheck a profile to hide the library from it."
+      },
+      "files": {
+        "title": "Videos and dates",
+        "empty": "No videos yet",
+        "noDate": "No date",
+        "edit": "Edit date",
+        "auto": "From the file",
+        "saved": "Date saved",
+        "more": "Show {n} more",
+        "sources": {
+          "tags": "from the file",
+          "name": "from the name",
+          "file": "from file time",
+          "user": "manual"
+        }
+      },
+      "unmatched": {
+        "title": "Not recognized",
+        "text": "These releases weren’t found in the catalog: on the showcase they’re under “No description”. Pick the title and the files will appear under the movie or show.",
+        "saved": "Title saved",
+        "ignored": "The files stay under “No description”",
+        "status": "Not recognized — under “No description” on the showcase"
+      },
+      "remove": {
+        "action": "Delete library",
+        "title": {
+          "library": "Delete the library?",
+          "folder": "Disconnect the folder?"
+        },
+        "text": {
+          "library": "The library leaves Torsher along with progress of its home videos. Files on disk stay.",
+          "folder": "The folder leaves the library. Files on disk stay."
+        },
+        "submit": {
+          "library": "Delete",
+          "folder": "Disconnect"
+        },
+        "done": {
+          "library": "Library deleted",
+          "folder": "Folder disconnected"
+        }
+      },
+      "toasts": {
+        "added": "Library added",
+        "addedText": "Scanning in the background: files appear as they’re indexed",
+        "folderAdded": "Folder added",
+        "saved": "Settings saved",
+        "scanning": "Scan started"
+      },
+      "episodes": {
+        "text": "This is how the files map to episodes. Fix the season or episode; an empty episode means the file isn’t an episode and stays under “No description”.",
+        "file": "File",
+        "season": "Season",
+        "episode": "Episode",
+        "seasonOf": "Season: {name}",
+        "episodeOf": "Episode: {name}",
+        "next": "Next",
+        "back": "Back"
+      }
     }
   },
   "mine": {
@@ -1960,5 +2197,77 @@
     "roleTitle": "{role} · {n}",
     "watched": "Watched",
     "empty": "TMDB has no movies or series for this person"
+  },
+  "download": {
+    "movie": "Download movie",
+    "season": "Download season {n}",
+    "state": {
+      "downloading": "Downloading {n}%",
+      "downloaded": "Downloaded",
+      "library": "In library",
+      "stalled": "Waiting for peers · {n}%"
+    },
+    "started": "Downloading: {files} · {size}. It goes to the library when done",
+    "startedDone": "Already downloaded — the files are going to the library",
+    "files": "{n} file | {n} files",
+    "keep": "Keep",
+    "keepHint": "Finish what you started and save it to the library",
+    "kept": "Kept",
+    "keptHint": "What you started will finish and go to the library",
+    "keptToast": "Kept: what you started will finish and go to the library",
+    "errors": {
+      "noSources": "No suitable release. Open Sources and pick one yourself.",
+      "notPlayable": "Could not open the releases: no peers or no such season. Pick another one in Sources.",
+      "gone": "This release is no longer in the search results. Try again.",
+      "engine": "The torrent engine is unavailable. Check the server in the control panel.",
+      "unauthorized": "Sign in to the control panel on this server and try again.",
+      "timeout": "Peers did not send the file list. Try later or pick a release in Sources.",
+      "nothingToKeep": "Nothing to keep: this title has not been watched yet.",
+      "unknown": "Something went wrong. Try again.",
+      "storage": {
+        "no_space": "Low disk space on the server: the download needs {needed} GB more, {free} GB is free with a {reserve} GB reserve. Free up space or lower the reserve in the panel: Settings → Storage.",
+        "cache_limit": "Not enough cache space: {needed} GB more is needed, {available} GB of {limit} GB is free. Raise the limit in the panel: Settings → Storage."
+      },
+      "nothingToCancel": "Nothing to cancel: the download has already finished."
+    },
+    "other": "Download another release",
+    "cancel": "Cancel download",
+    "cancelHint": "What is downloaded stays in the cache until it fills up",
+    "cancelled": "Download cancelled. What is downloaded stays in the cache",
+    "noPeers": "no peers yet",
+    "sourcesTitle": "Release to download",
+    "connectingLine": "Connecting to the release…",
+    "waitingLine": "Waiting for peers to send the file list…",
+    "seasonInLibrary": "In library: {n} of {total}",
+    "placing": "Sorting files…",
+    "unmatched": "Files not recognized",
+    "unmatchedHint": "No episode numbers — watch from “Files”",
+    "episodes": "{n} episode | {n} episodes",
+    "otherSeason": "Another release of season {n}"
+  },
+  "release": {
+    "unsure": "Looks like “{title}”",
+    "unmatched": "Title not recognized",
+    "episodes": "{n} episode | {n} episodes",
+    "files": "{n} file | {n} files",
+    "confirm": "It’s “{title}”",
+    "search": "Find the title",
+    "ignore": "Not a movie or a show",
+    "ignoreHint": "The files stay in downloads and won’t go to the library",
+    "saved": "Title saved",
+    "savedHint": "The files will go to the library",
+    "ignored": "Removed from the row",
+    "restricted": "This profile can’t change the library",
+    "failed": "Couldn’t save the title",
+    "pickTitle": "Title for “{name}”"
+  },
+  "homeVideo": {
+    "dates": "By date",
+    "albums": "Albums",
+    "noAlbum": "No album",
+    "noDate": "No date",
+    "count": "{n} video | {n} videos",
+    "empty": "Nothing here yet",
+    "all": "All home videos"
   }
 }
