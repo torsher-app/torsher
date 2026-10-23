@@ -1,4 +1,5 @@
 import type { PairingStatus } from '@torsher/api-client'
+import { panelUrl } from './panel.ts'
 
 // Сервер пускает 60 опросов в минуту с адреса: раз в 3 с остаётся запас
 export const POLL_MS = 3000
@@ -12,12 +13,9 @@ export function formatCode(code: string) {
   return `${code.slice(0, half)} ${code.slice(half)}`
 }
 
-/**
- * Адрес панели того же сервера без протокола: `192.168.1.10:8080/panel`.
- * Считается от витрины, так он верен и за обратным прокси с подпутём.
- */
-export function panelAddress(location: Pick<Location, 'href'>) {
-  const url = new URL('panel/', location.href)
+/** Адрес панели того же сервера без протокола: `192.168.1.10:8080/panel` */
+export function panelAddress(location: Pick<Location, 'href'>, base?: string) {
+  const url = panelUrl('', location.href, base)
 
   return `${url.host}${url.pathname.replace(/\/$/, '')}`
 }

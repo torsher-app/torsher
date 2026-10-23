@@ -16,14 +16,29 @@ describe('formatCode', () => {
 describe('panelAddress', () => {
   it('адрес панели рядом с витриной, без протокола и хэша', () => {
     expect(
-      panelAddress({ href: 'http://192.168.1.10:8080/?platform=tv#/connect' }),
+      panelAddress(
+        { href: 'http://192.168.1.10:8080/?platform=tv#/connect' },
+        './',
+      ),
+    ).toBe('192.168.1.10:8080/panel')
+    expect(
+      panelAddress({ href: 'http://192.168.1.10:8080/index.html#/' }, './'),
     ).toBe('192.168.1.10:8080/panel')
   })
 
   it('за прокси с подпутём', () => {
-    expect(panelAddress({ href: 'https://media.example.com/torsher/#/' })).toBe(
-      'media.example.com/torsher/panel',
-    )
+    expect(
+      panelAddress({ href: 'https://media.example.com/torsher/#/' }, './'),
+    ).toBe('media.example.com/torsher/panel')
+  })
+
+  it('витрина открыта на чужом пути — адрес от её базы', () => {
+    expect(
+      panelAddress(
+        { href: 'http://localhost:5173/panel/auth/login?next=%2F#/connect' },
+        '/',
+      ),
+    ).toBe('localhost:5173/panel')
   })
 })
 
