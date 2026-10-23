@@ -7,6 +7,7 @@ import type {
   Person,
   TitleSeason,
 } from '@torsher/api-client'
+import type { PanelOption } from '../components/OptionsPanel.vue'
 import type { SectionEdges } from '../focus/index.ts'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -17,6 +18,7 @@ import EpisodeCard from '../components/EpisodeCard.vue'
 import EpisodeList from '../components/EpisodeList.vue'
 import EpisodeListCard from '../components/EpisodeListCard.vue'
 import FocusSection from '../components/FocusSection.vue'
+import OptionsPanel from '../components/OptionsPanel.vue'
 import PersonCard from '../components/PersonCard.vue'
 import PosterCard from '../components/PosterCard.vue'
 import RatingList from '../components/RatingList.vue'
@@ -42,6 +44,7 @@ import {
   openTitleActions,
   rememberTitleMine,
 } from '../titleActions.ts'
+import { queryOf as catalogQueryOf } from '../lib/catalogFilter.ts'
 import { resumeRoute } from '../lib/continue.ts'
 import { crewCaption } from '../lib/people.ts'
 import { revealOffset } from '../lib/rowTrack.ts'
@@ -355,6 +358,91 @@ function countryName(code: string) {
   return te(key) ? t(key) : code
 }
 
+// Чипы «Жанры», «Студии» и «Теги»: выбор в панели открывает каталог с этим фильтром
+type TagGroupId = 'genres' | 'studios' | 'keywords'
+
+const tagGroups = computed(() => {
+  const tags = extras.value?.tags
+
+  if (!tags)
+    return []
+
+  const groups = [
+    {
+      id: 'genres' as const,
+      label: t('title.tags.genres'),
+      items: tags.genres,
+    },
+    {
+      id: 'studios' as const,
+      label: t(isSeries.value ? 'title.tags.networks' : 'title.tags.studios'),
+      items: tags.studios,
+    },
+    {
+      id: 'keywords' as const,
+      label: t('title.tags.keywords'),
+      items: tags.keywords,
+    },
+  ]
+
+  return groups.filter(group => group.items.length > 0)
+})
+
+const tagPanel = ref<TagGroupId>()
+let tagOpener: HTMLElement | undefined
+
+const tagGroup = computed(() =>
+  tagGroups.value.find(group => group.id === tagPanel.value),
+)
+
+const tagOptions = computed<PanelOption[]>(
+  () =>
+    tagGroup.value?.items.map(item => ({
+      id: item.id,
+      label: item.name,
+      selected: false,
+      detail: '›',
+    })) ?? [],
+)
+
+function openTags(group: TagGroupId) {
+  tagOpener = focus.current() ?? undefined
+  tagPanel.value = group
+}
+
+function closeTags() {
+  tagPanel.value = undefined
+
+  nextTick(() => {
+    if (tagOpener?.isConnected)
+      focus.focusOn(tagOpener)
+  })
+}
+
+// Каталог того же типа, что тайтл: жанры фильмов и сериалов у TMDB разные
+function openCatalog(id: string) {
+  const group = tagPanel.value
+  const item = tagGroup.value?.items.find(tag => tag.id === id)
+
+  tagPanel.value = undefined
+
+  if (!group || !item)
+    return
+
+  const field = { genres: 'genre', studios: 'studio', keywords: 'keyword' }[
+    group
+  ]
+
+  router.push({
+    path: '/catalog',
+    query: catalogQueryOf({
+      type: isSeries.value ? 'series' : 'movies',
+      sort: 'popularity',
+      [field]: item,
+    }),
+  })
+}
+
 const facts = computed(() => {
   const value = title.value
 
@@ -541,8 +629,12 @@ const order = computed(() => {
       list.push('title-similar')
   }
 
-  if (facts.value.length > 0)
+  if (facts.value.length > 0) {
+    if (tagGroups.value.length > 0)
+      list.push('title-tags')
+
     list.push('title-facts')
+  }
 
   return list
 })
@@ -1074,6 +1166,25 @@ onBeforeUnmount(() => {
             {{ t(isSeries ? "title.aboutSeries" : "title.aboutMovie") }}
           </h2>
           <FocusSection
+            v-if="tagGroups.length > 0"
+            name="title-tags"
+            manual-scroll
+            class="title__tags"
+            :edges="edgesOf('title-tags')"
+          >
+            <button
+              v-for="group in tagGroups"
+              :key="group.id"
+              v-focusable
+              class="chip"
+              type="button"
+              @click="openTags(group.id)"
+            >
+              {{ group.label }}
+              <span class="chip__count">{{ group.items.length }}</span>
+            </button>
+          </FocusSection>
+          <FocusSection
             name="title-facts"
             manual-scroll
             :edges="edgesOf('title-facts')"
@@ -1107,6 +1218,16 @@ onBeforeUnmount(() => {
       </div>
     </div>
     <AppToast :message="mineError" @hide="mineError = ''" />
+
+    <OptionsPanel
+      v-if="tagGroup && active"
+      :title="tagGroup.label"
+      :subtitle="t('title.tags.hint')"
+      :options="tagOptions"
+      :focus-selected="false"
+      @select="openCatalog"
+      @close="closeTags"
+    />
 
     <!-- Вне стека карточки: у него transform, и fixed внутри встал бы относительно него -->
     <Teleport to="body">
@@ -1479,6 +1600,11 @@ onBeforeUnmount(() => {
   color: var(--color-text-muted);
   font-size: var(--font-size-s);
   font-weight: 400;
+}
+
+.title__tags {
+  display: flex;
+  margin-bottom: calc(var(--u) * 28);
 }
 
 .facts {

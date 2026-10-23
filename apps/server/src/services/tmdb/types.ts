@@ -31,6 +31,13 @@ export interface TmdbListResponse {
   results: TmdbListResult[]
 }
 
+/** Страница discover: сколько всего страниц и тайтлов под фильтром */
+export interface TmdbPageResponse extends TmdbListResponse {
+  page: number
+  total_pages: number
+  total_results: number
+}
+
 export interface TmdbImage {
   file_path: string
   // null — картинка без текста, годится для любого языка
@@ -38,9 +45,13 @@ export interface TmdbImage {
   vote_average: number
 }
 
-interface TmdbNamed {
+export interface TmdbNamed {
   id: number
   name: string
+}
+
+export interface TmdbGenresResponse {
+  genres: TmdbNamed[]
 }
 
 interface TmdbDetailsBase {
@@ -164,6 +175,12 @@ export interface TmdbExtras {
   recommendations?: TmdbListResponse
   // titles у фильма, results у сериала
   alternative_titles?: { titles?: TmdbAltTitle[], results?: TmdbAltTitle[] }
+  // Поля самих деталей: чипы карточки
+  genres?: TmdbNamed[]
+  production_companies?: TmdbNamed[]
+  networks?: TmdbNamed[]
+  // append_to_response=keywords: keywords у фильма, results у сериала
+  keywords?: { keywords?: TmdbNamed[], results?: TmdbNamed[] }
 }
 
 /** Тайтл в фильмографии персоны: combined_credits, с media_type */

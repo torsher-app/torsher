@@ -24,6 +24,7 @@ export type IconName
     | 'list'
     | 'settings'
     | 'mine'
+    | 'catalog'
     | 'plus'
     | 'star'
     | 'more'
@@ -82,6 +83,12 @@ const PATHS: Record<IconName, (string | IconPart)[]> = {
   check: ['m5 12.5 4.5 4.5L19 7.5'],
   close: ['M6.5 6.5l11 11', 'M17.5 6.5l-11 11'],
   mine: ['M7 3.5h10a1 1 0 0 1 1 1V21l-6-4-6 4V4.5a1 1 0 0 1 1-1z'],
+  catalog: [
+    'M5 4h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z',
+    'M15 4h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z',
+    'M5 14h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1z',
+    'M15 14h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1z',
+  ],
   plus: ['M12 5v14M5 12h14'],
   star: [
     'm12 3.5 2.6 5.4 5.9.8-4.3 4.1 1 5.8L12 16.8l-5.2 2.8 1-5.8-4.3-4.1 5.9-.8z',

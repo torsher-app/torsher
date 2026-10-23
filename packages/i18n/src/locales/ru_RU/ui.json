@@ -10,7 +10,8 @@
     "movies": "Фильмы",
     "series": "Сериалы",
     "settings": "Настройки",
-    "mine": "Моё"
+    "mine": "Моё",
+    "catalog": "Каталог"
   },
   "search": {
     "title": "Поиск",
@@ -24,6 +25,69 @@
     "movie": "фильм",
     "series": "сериал",
     "people": "Люди"
+  },
+  "catalog": {
+    "count": "{n} тайтл | {n} тайтла | {n} тайтлов",
+    "countMany": "больше {n} тайтлов",
+    "types": {
+      "movies": "Фильмы",
+      "series": "Сериалы",
+      "cartoons": "Мультфильмы",
+      "cartoonSeries": "Мультсериалы",
+      "anime": "Аниме"
+    },
+    "sorts": {
+      "popularity": "по популярности",
+      "rating": "по рейтингу",
+      "date": "сначала новые"
+    },
+    "sortOptions": {
+      "popularity": "По популярности",
+      "rating": "По рейтингу",
+      "date": "Сначала новые"
+    },
+    "control": {
+      "type": "Тип: {value}",
+      "genre": "Жанр: {value}",
+      "year": "Год: {value}",
+      "rating": "Рейтинг {source}: {value}",
+      "language": "Язык: {value}",
+      "country": "Страна: {value}",
+      "studio": "Студия: {value}",
+      "keyword": "Тег: {value}",
+      "sort": "Сортировка: {value}"
+    },
+    "anyShort": {
+      "genre": "любой",
+      "year": "любой",
+      "rating": "любой",
+      "language": "любой",
+      "country": "любая"
+    },
+    "any": {
+      "genre": "Любой жанр",
+      "year": "Любой год",
+      "rating": "Любой рейтинг",
+      "language": "Любой язык",
+      "country": "Любая страна",
+      "studio": "Любая студия",
+      "keyword": "Любой тег"
+    },
+    "panel": {
+      "type": "Тип",
+      "genre": "Жанр",
+      "year": "Год выхода",
+      "rating": "Рейтинг {source}",
+      "language": "Язык оригинала",
+      "country": "Страна",
+      "studio": "Студия",
+      "keyword": "Тег",
+      "sort": "Сортировка"
+    },
+    "decade": "{decade}-е",
+    "ratingFrom": "от {n}",
+    "reset": "Сбросить фильтры",
+    "moreFailed": "Не удалось загрузить ещё"
   },
   "home": {
     "rows": {
@@ -39,7 +103,15 @@
       "topRatedMovies": "Лучшие фильмы",
       "topRatedSeries": "Лучшие сериалы",
       "newEpisodes": "Новые серии",
-      "watchlist": "Позже"
+      "watchlist": "Позже",
+      "themeSpace": "Про космос",
+      "themeZombies": "Зомби",
+      "themeVampires": "Вампиры",
+      "themeDetectives": "Детективы",
+      "themeSpies": "Шпионы",
+      "themeDisasters": "Катастрофы",
+      "themeWar": "Про войну",
+      "themeWesterns": "Вестерны"
     },
     "hint": {
       "details": "Подробнее",
@@ -97,7 +169,14 @@
     },
     "resume": "Продолжить",
     "sources": "Источники",
-    "crew": "Съёмочная группа"
+    "crew": "Съёмочная группа",
+    "tags": {
+      "genres": "Жанры",
+      "studios": "Студии",
+      "networks": "Каналы",
+      "keywords": "Теги",
+      "hint": "Откроется каталог с этим фильтром"
+    }
   },
   "watch": {
     "searching": "Ищем раздачи…",
@@ -284,6 +363,10 @@
     "homeEmpty": {
       "title": "Пока нечего показать",
       "text": "Каталог не вернул ни одного ряда. Попробуйте позже"
+    },
+    "catalogEmpty": {
+      "title": "Ничего не нашлось",
+      "text": "Под эти фильтры тайтлов нет. Уберите часть фильтров или выберите другие значения"
     }
   },
   "connect": {
@@ -481,7 +564,9 @@
     "ita": "Итальянский",
     "por": "Португальский",
     "pol": "Польский",
-    "tur": "Турецкий"
+    "tur": "Турецкий",
+    "hin": "Хинди",
+    "tha": "Тайский"
   },
   "shell": {
     "tagline": "Подключите телевизор к своему серверу Torsher",

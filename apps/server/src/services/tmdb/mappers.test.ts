@@ -419,6 +419,29 @@ describe('extras', () => {
     expect(dto.aka).toEqual(['Matrix'])
   })
 
+  it('теги фильма: студии — company, не больше 6, keywords — до 20', () => {
+    const { tags } = extrasToDto(trimExtras(movieExtras), movieRef, 'en-US')
+
+    expect(tags.genres).toEqual([{ id: '878', name: 'Фантастика' }])
+    expect(tags.studios).toHaveLength(6)
+    expect(tags.studios[0]).toEqual({ id: 'company:100', name: 'Студия 1' })
+    expect(tags.keywords).toHaveLength(20)
+    expect(tags.keywords[0]).toEqual({ id: '1000', name: 'Keyword 1' })
+  })
+
+  it('теги сериала: каналы — network, пустые названия пропускаются', () => {
+    const { tags } = extrasToDto(trimExtras(tvExtras), tvRef, 'ru-RU')
+
+    expect(tags).toEqual({
+      genres: [
+        { id: '18', name: 'Драма' },
+        { id: '10765', name: 'НФ и Фэнтези' },
+      ],
+      studios: [{ id: 'network:49', name: 'HBO' }],
+      keywords: [{ id: '9882', name: 'Space' }],
+    })
+  })
+
   it('другие названия — только латиницей и кириллицей', () => {
     const dto = extrasToDto(
       {

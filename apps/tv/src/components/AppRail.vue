@@ -10,7 +10,14 @@ import FocusSection from './FocusSection.vue'
 import ProfileAvatar from './ProfileAvatar.vue'
 
 export type RailItemId
-  = 'search' | 'home' | 'movies' | 'series' | 'mine' | 'settings' | 'about'
+  = | 'search'
+    | 'home'
+    | 'movies'
+    | 'series'
+    | 'catalog'
+    | 'mine'
+    | 'settings'
+    | 'about'
 
 const props = defineProps<{
   current: RailItemId
@@ -38,6 +45,7 @@ const main = computed<RailItem[]>(() => [
   { id: 'home', icon: 'home', label: t('nav.home'), path: '/' },
   { id: 'movies', icon: 'movies', label: t('nav.movies'), path: '/movies' },
   { id: 'series', icon: 'series', label: t('nav.series'), path: '/series' },
+  { id: 'catalog', icon: 'catalog', label: t('nav.catalog'), path: '/catalog' },
   { id: 'mine', icon: 'mine', label: t('nav.mine'), path: '/mine' },
 ])
 

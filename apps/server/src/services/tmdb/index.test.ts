@@ -218,7 +218,7 @@ describe('getTitleExtras', () => {
 
     expect(requested.pathname).toBe('/3/tv/2000')
     expect(requested.searchParams.get('append_to_response')).toBe(
-      'aggregate_credits,recommendations,alternative_titles',
+      'aggregate_credits,recommendations,alternative_titles,keywords',
     )
     expect(fetchMock).toHaveBeenCalledTimes(1)
     expect(extras?.cast).toHaveLength(20)

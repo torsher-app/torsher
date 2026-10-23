@@ -13,8 +13,10 @@ import { getDb, migrateDb } from '../db/index.ts'
 import { titleProgress, users } from '../db/schema.ts'
 import { defaultProfile } from '../services/profiles/index.ts'
 import {
+  discoverPage,
   movie,
   movieExtras,
+  movieGenres,
   person,
   searchResponse,
   season,
@@ -305,6 +307,80 @@ describe('get /api/catalog/people/:id', () => {
         { role: 'production' },
       ],
     })
+  })
+})
+
+describe('get /api/catalog/discover', () => {
+  it('отвечает 401 без cookie', async () => {
+    const res = await app.inject({ url: '/api/catalog/discover' })
+
+    expect(res.statusCode).toBe(401)
+  })
+
+  it.each([
+    '?type=documentaries',
+    '?year=2020&decade=2020',
+    '?rating=10',
+    '?studio=49',
+    '?type=movies&studio=network:49',
+  ])('отвечает 400 на %s', async (search) => {
+    const res = await app.inject({
+      url: `/api/catalog/discover${search}`,
+      cookies: authed(),
+    })
+
+    expect(res.statusCode).toBe(400)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('отдаёт страницу каталога', async () => {
+    fetchMock.mockResolvedValue(json(discoverPage))
+
+    const res = await app.inject({
+      url: '/api/catalog/discover?type=series&studio=network:49&page=2&language=ru-RU',
+      cookies: authed(),
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toMatchObject({
+      page: 2,
+      totalPages: 500,
+      total: 24000,
+    })
+    expect(res.json().items[0]).toMatchObject({ id: 'tmdb:tv:603' })
+    expect(
+      new URL(String(fetchMock.mock.calls[0]![0])).searchParams.get(
+        'with_networks',
+      ),
+    ).toBe('49')
+  })
+
+  it('отвечает 502, если TMDB недоступен', async () => {
+    fetchMock.mockRejectedValue(new TypeError('fetch failed'))
+
+    const res = await app.inject({
+      url: '/api/catalog/discover?country=IS',
+      cookies: authed(),
+    })
+
+    expect(res.statusCode).toBe(502)
+  })
+})
+
+describe('get /api/catalog/genres', () => {
+  it('отдаёт жанры типа', async () => {
+    fetchMock.mockResolvedValue(json(movieGenres))
+
+    const res = await app.inject({
+      url: '/api/catalog/genres?type=cartoons&language=ru-RU',
+      cookies: authed(),
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json().items.map((item: { id: string }) => item.id)).toEqual([
+      '28',
+      '35',
+    ])
   })
 })
 

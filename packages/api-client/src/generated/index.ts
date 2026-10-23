@@ -189,12 +189,22 @@ export interface CrewMemberInput {
   jobs: ("director" | "creator" | "writer" | "camera" | "music" | "producer")[];
 }
 
+export interface CatalogTagInput {
+  id: string;
+  name: string;
+}
+
 export interface TitleExtrasInput {
   cast: PersonInput[];
   crew: CrewMemberInput[];
   similar: CardInput[];
   aka: string[];
   directors: string[];
+  tags: {
+    genres: CatalogTagInput[];
+    studios: CatalogTagInput[];
+    keywords: CatalogTagInput[];
+  };
 }
 
 export interface CatalogSearchResponseInput {
@@ -204,6 +214,29 @@ export interface CatalogSearchResponseInput {
 
 export interface CatalogTrendingResponseInput {
   items: CardInput[];
+}
+
+export interface CatalogDiscoverResponseInput {
+  items: CardInput[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  page: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  totalPages: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  total: number;
+}
+
+export interface CatalogGenresResponseInput {
+  items: CatalogTagInput[];
 }
 
 export interface BackdropInput {
@@ -277,235 +310,6 @@ export interface PersonDetailsInput {
      */
     total: number;
   }[];
-}
-
-export interface CollectionInput {
-  id: string;
-  name: string;
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  count: number;
-  showOnHome: boolean;
-  hiddenFrom: string[];
-}
-
-export interface CollectionListInput {
-  items: CollectionInput[];
-}
-
-export interface CreateCollectionInput {
-  /**
-   * @minLength 1
-   * @maxLength 60
-   */
-  name: string;
-  showOnHome?: boolean;
-  /** @maxItems 100 */
-  hiddenFrom?: string[];
-}
-
-export interface UpdateCollectionInput {
-  /**
-   * @minLength 1
-   * @maxLength 60
-   */
-  name?: string;
-  showOnHome?: boolean;
-  /** @maxItems 100 */
-  hiddenFrom?: string[];
-}
-
-export interface CollectionTitlesInput {
-  items: CardInput[];
-}
-
-export interface CollectionErrorResponseInput {
-  message: string;
-  kind: "duplicate";
-}
-
-export interface StartPairingInput {
-  type?: "tv" | "browser" | "other";
-}
-
-export interface PairingInput {
-  secret: string;
-  code: string;
-  expiresAt: string;
-}
-
-export interface PairingStatusInput {
-  status: "pending" | "approved" | "expired";
-  expiresAt: string;
-  device: {
-    id: string;
-    name: string;
-  } | null;
-}
-
-export interface ConfirmPairingInput {
-  /**
-   * @minLength 1
-   * @maxLength 20
-   */
-  code: string;
-  /**
-   * @minLength 1
-   * @maxLength 60
-   */
-  name: string;
-}
-
-export interface ConfirmedPairingInput {
-  name: string;
-  type: "tv" | "browser" | "other";
-}
-
-export interface PairingErrorResponseInput {
-  message: string;
-  kind: "invalid" | "expired";
-}
-
-export interface DeviceInput {
-  id: string;
-  name: string;
-  type: "tv" | "browser" | "other";
-  profile: {
-    id: string;
-    name: string;
-    color:
-      | "violet"
-      | "green"
-      | "orange"
-      | "blue"
-      | "rose"
-      | "teal"
-      | "amber"
-      | "slate";
-  } | null;
-  address: string | null;
-  userAgent: string | null;
-  createdAt: string;
-  lastSeenAt: string | null;
-  watching: boolean;
-}
-
-export interface DeviceListInput {
-  items: DeviceInput[];
-}
-
-export interface UpdateDeviceInput {
-  /**
-   * @minLength 1
-   * @maxLength 60
-   */
-  name: string;
-}
-
-export interface EngineUnavailableResponseInput {
-  message: string;
-  kind: "not_installed" | "starting" | "stopped";
-}
-
-export interface TorrentFileInput {
-  index: number;
-  path: string;
-  size: number;
-  isVideo: boolean;
-  downloaded: number;
-  selected: boolean;
-}
-
-export interface TorrentInput {
-  id: string;
-  infoHash: string;
-  name: string;
-  source: "magnet" | "file";
-  status: "resolving" | "ready" | "failed";
-  error: "timeout" | "rejected" | "failed" | null;
-  files: TorrentFileInput[];
-  totalSize: number;
-  addedAt: string;
-  lastAccessAt: string | null;
-  titleId: string | null;
-  retention: "cache" | "keep";
-  pauseReason: "user" | "storage" | null;
-  state:
-    | "idle"
-    | "partial"
-    | "downloading"
-    | "stalled"
-    | "seeding"
-    | "complete"
-    | "paused";
-  streaming: boolean;
-  progress: {
-    downloaded: number;
-    wanted: number;
-  };
-  sizeOnDisk: number;
-  downloadSpeed: number;
-  uploadSpeed: number;
-  peers: {
-    connected: number;
-    found: number;
-  };
-}
-
-export interface TorrentListInput {
-  items: TorrentInput[];
-  engine: "ready" | "not_installed" | "starting" | "stopped";
-  totals: {
-    downloadSpeed: number;
-    uploadSpeed: number;
-  };
-  cache: {
-    used: number;
-    limit: number;
-  };
-}
-
-export interface DownloadTorrentInput {
-  /**
-   * @maxItems 10000
-   * @minItems 1
-   */
-  files: number[];
-}
-
-export interface UpdateRetentionInput {
-  retention: "cache" | "keep";
-}
-
-export interface CreateTorrentInput {
-  /**
-   * @maxLength 20000
-   * @pattern ^magnet:\?
-   */
-  magnet?: string;
-  /**
-   * @format base64
-   * @maxLength 11184812
-   * @pattern ^$|^(?:[0-9a-zA-Z+/]{4})*(?:(?:[0-9a-zA-Z+/]{2}==)|(?:[0-9a-zA-Z+/]{3}=))?$
-   */
-  torrentFile?: string;
-}
-
-export interface TorrentStatsInput {
-  activity: "idle" | "downloading";
-  peers: {
-    connected: number;
-    found: number;
-  };
-  downloadSpeed: number;
-  uploadSpeed: number;
-  file: {
-    size: number;
-    downloaded: number;
-    bufferedAhead: number;
-  };
 }
 
 export interface SourceErrorResponseInput {
@@ -914,6 +718,330 @@ export interface PlaybackTitleInput {
   episode?: number;
 }
 
+export interface EpisodeCardInput {
+  titleId: string;
+  title: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  season: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  episode: number;
+  episodeTitle?: string;
+  image?: string;
+  airDate?: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  newCount: number;
+}
+
+export interface CatalogRowInput {
+  id:
+    | "trending"
+    | "trendingMovies"
+    | "trendingSeries"
+    | "popularMovies"
+    | "popularSeries"
+    | "russianSeries"
+    | "nowPlaying"
+    | "onTheAir"
+    | "topRatedMovies"
+    | "topRatedSeries"
+    | "themeSpace"
+    | "themeZombies"
+    | "themeVampires"
+    | "themeDetectives"
+    | "themeSpies"
+    | "themeDisasters"
+    | "themeWar"
+    | "themeWesterns"
+    | "newEpisodes"
+    | "watchlist"
+    | "collection";
+  kind: "top10" | "posters" | "episodes";
+  title: string;
+  ref?: string;
+  name?: string;
+  items: CardInput[];
+  episodes?: EpisodeCardInput[];
+}
+
+export interface ContinueCardInput {
+  id: string;
+  kind: "movie" | "series";
+  title: string;
+  originalTitle: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  year?: number;
+  poster?: string;
+  ratings?: TitleRatingInput[];
+  posterRatings?: PosterRatingInput[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  ownRating?: number;
+  image?: string;
+  season: number | null;
+  episode: number | null;
+  episodeTitle?: string;
+  position: number;
+  duration: number | null;
+  next: boolean;
+  file: EpisodeFileInput | null;
+}
+
+export interface ContinueRowInput {
+  id: "continue";
+  kind: "continue";
+  title: string;
+  items: ContinueCardInput[];
+}
+
+export type HomeRowInput = ContinueRowInput | CatalogRowInput;
+
+export interface HomeResponseInput {
+  rows: HomeRowInput[];
+}
+
+export interface CollectionInput {
+  id: string;
+  name: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  count: number;
+  showOnHome: boolean;
+  hiddenFrom: string[];
+}
+
+export interface CollectionListInput {
+  items: CollectionInput[];
+}
+
+export interface CreateCollectionInput {
+  /**
+   * @minLength 1
+   * @maxLength 60
+   */
+  name: string;
+  showOnHome?: boolean;
+  /** @maxItems 100 */
+  hiddenFrom?: string[];
+}
+
+export interface UpdateCollectionInput {
+  /**
+   * @minLength 1
+   * @maxLength 60
+   */
+  name?: string;
+  showOnHome?: boolean;
+  /** @maxItems 100 */
+  hiddenFrom?: string[];
+}
+
+export interface CollectionTitlesInput {
+  items: CardInput[];
+}
+
+export interface CollectionErrorResponseInput {
+  message: string;
+  kind: "duplicate";
+}
+
+export interface StartPairingInput {
+  type?: "tv" | "browser" | "other";
+}
+
+export interface PairingInput {
+  secret: string;
+  code: string;
+  expiresAt: string;
+}
+
+export interface PairingStatusInput {
+  status: "pending" | "approved" | "expired";
+  expiresAt: string;
+  device: {
+    id: string;
+    name: string;
+  } | null;
+}
+
+export interface ConfirmPairingInput {
+  /**
+   * @minLength 1
+   * @maxLength 20
+   */
+  code: string;
+  /**
+   * @minLength 1
+   * @maxLength 60
+   */
+  name: string;
+}
+
+export interface ConfirmedPairingInput {
+  name: string;
+  type: "tv" | "browser" | "other";
+}
+
+export interface PairingErrorResponseInput {
+  message: string;
+  kind: "invalid" | "expired";
+}
+
+export interface DeviceInput {
+  id: string;
+  name: string;
+  type: "tv" | "browser" | "other";
+  profile: {
+    id: string;
+    name: string;
+    color:
+      | "violet"
+      | "green"
+      | "orange"
+      | "blue"
+      | "rose"
+      | "teal"
+      | "amber"
+      | "slate";
+  } | null;
+  address: string | null;
+  userAgent: string | null;
+  createdAt: string;
+  lastSeenAt: string | null;
+  watching: boolean;
+}
+
+export interface DeviceListInput {
+  items: DeviceInput[];
+}
+
+export interface UpdateDeviceInput {
+  /**
+   * @minLength 1
+   * @maxLength 60
+   */
+  name: string;
+}
+
+export interface EngineUnavailableResponseInput {
+  message: string;
+  kind: "not_installed" | "starting" | "stopped";
+}
+
+export interface TorrentFileInput {
+  index: number;
+  path: string;
+  size: number;
+  isVideo: boolean;
+  downloaded: number;
+  selected: boolean;
+}
+
+export interface TorrentInput {
+  id: string;
+  infoHash: string;
+  name: string;
+  source: "magnet" | "file";
+  status: "resolving" | "ready" | "failed";
+  error: "timeout" | "rejected" | "failed" | null;
+  files: TorrentFileInput[];
+  totalSize: number;
+  addedAt: string;
+  lastAccessAt: string | null;
+  titleId: string | null;
+  retention: "cache" | "keep";
+  pauseReason: "user" | "storage" | null;
+  state:
+    | "idle"
+    | "partial"
+    | "downloading"
+    | "stalled"
+    | "seeding"
+    | "complete"
+    | "paused";
+  streaming: boolean;
+  progress: {
+    downloaded: number;
+    wanted: number;
+  };
+  sizeOnDisk: number;
+  downloadSpeed: number;
+  uploadSpeed: number;
+  peers: {
+    connected: number;
+    found: number;
+  };
+}
+
+export interface TorrentListInput {
+  items: TorrentInput[];
+  engine: "ready" | "not_installed" | "starting" | "stopped";
+  totals: {
+    downloadSpeed: number;
+    uploadSpeed: number;
+  };
+  cache: {
+    used: number;
+    limit: number;
+  };
+}
+
+export interface DownloadTorrentInput {
+  /**
+   * @maxItems 10000
+   * @minItems 1
+   */
+  files: number[];
+}
+
+export interface UpdateRetentionInput {
+  retention: "cache" | "keep";
+}
+
+export interface CreateTorrentInput {
+  /**
+   * @maxLength 20000
+   * @pattern ^magnet:\?
+   */
+  magnet?: string;
+  /**
+   * @format base64
+   * @maxLength 11184812
+   * @pattern ^$|^(?:[0-9a-zA-Z+/]{4})*(?:(?:[0-9a-zA-Z+/]{2}==)|(?:[0-9a-zA-Z+/]{3}=))?$
+   */
+  torrentFile?: string;
+}
+
+export interface TorrentStatsInput {
+  activity: "idle" | "downloading";
+  peers: {
+    connected: number;
+    found: number;
+  };
+  downloadSpeed: number;
+  uploadSpeed: number;
+  file: {
+    size: number;
+    downloaded: number;
+    bufferedAhead: number;
+  };
+}
+
 export interface DeviceProfileInput {
   /** @maxItems 10 */
   containers: ("mp4" | "webm" | "mkv" | "avi" | "ts" | "other")[];
@@ -1060,93 +1188,6 @@ export interface WatchStateInput {
   position: number;
   duration: number | null;
   updatedAt: string;
-}
-
-export interface EpisodeCardInput {
-  titleId: string;
-  title: string;
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  season: number;
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  episode: number;
-  episodeTitle?: string;
-  image?: string;
-  airDate?: string;
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  newCount: number;
-}
-
-export interface CatalogRowInput {
-  id:
-    | "trending"
-    | "trendingMovies"
-    | "trendingSeries"
-    | "popularMovies"
-    | "popularSeries"
-    | "russianSeries"
-    | "nowPlaying"
-    | "onTheAir"
-    | "topRatedMovies"
-    | "topRatedSeries"
-    | "newEpisodes"
-    | "watchlist"
-    | "collection";
-  kind: "top10" | "posters" | "episodes";
-  title: string;
-  ref?: string;
-  name?: string;
-  items: CardInput[];
-  episodes?: EpisodeCardInput[];
-}
-
-export interface ContinueCardInput {
-  id: string;
-  kind: "movie" | "series";
-  title: string;
-  originalTitle: string;
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  year?: number;
-  poster?: string;
-  ratings?: TitleRatingInput[];
-  posterRatings?: PosterRatingInput[];
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  ownRating?: number;
-  image?: string;
-  season: number | null;
-  episode: number | null;
-  episodeTitle?: string;
-  position: number;
-  duration: number | null;
-  next: boolean;
-  file: EpisodeFileInput | null;
-}
-
-export interface ContinueRowInput {
-  id: "continue";
-  kind: "continue";
-  title: string;
-  items: ContinueCardInput[];
-}
-
-export type HomeRowInput = ContinueRowInput | CatalogRowInput;
-
-export interface HomeResponseInput {
-  rows: HomeRowInput[];
 }
 
 export interface LogEntryInput {
@@ -1902,12 +1943,22 @@ export interface CrewMember {
   jobs: ("director" | "creator" | "writer" | "camera" | "music" | "producer")[];
 }
 
+export interface CatalogTag {
+  id: string;
+  name: string;
+}
+
 export interface TitleExtras {
   cast: Person[];
   crew: CrewMember[];
   similar: Card[];
   aka: string[];
   directors: string[];
+  tags: {
+    genres: CatalogTag[];
+    studios: CatalogTag[];
+    keywords: CatalogTag[];
+  };
 }
 
 export interface CatalogSearchResponse {
@@ -1917,6 +1968,29 @@ export interface CatalogSearchResponse {
 
 export interface CatalogTrendingResponse {
   items: Card[];
+}
+
+export interface CatalogDiscoverResponse {
+  items: Card[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  page: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  totalPages: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  total: number;
+}
+
+export interface CatalogGenresResponse {
+  items: CatalogTag[];
 }
 
 export interface Backdrop {
@@ -1990,235 +2064,6 @@ export interface PersonDetails {
      */
     total: number;
   }[];
-}
-
-export interface Collection {
-  id: string;
-  name: string;
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  count: number;
-  showOnHome: boolean;
-  hiddenFrom: string[];
-}
-
-export interface CollectionList {
-  items: Collection[];
-}
-
-export interface CreateCollection {
-  /**
-   * @minLength 1
-   * @maxLength 60
-   */
-  name: string;
-  showOnHome?: boolean;
-  /** @maxItems 100 */
-  hiddenFrom?: string[];
-}
-
-export interface UpdateCollection {
-  /**
-   * @minLength 1
-   * @maxLength 60
-   */
-  name?: string;
-  showOnHome?: boolean;
-  /** @maxItems 100 */
-  hiddenFrom?: string[];
-}
-
-export interface CollectionTitles {
-  items: Card[];
-}
-
-export interface CollectionErrorResponse {
-  message: string;
-  kind: "duplicate";
-}
-
-export interface StartPairing {
-  type?: "tv" | "browser" | "other";
-}
-
-export interface Pairing {
-  secret: string;
-  code: string;
-  expiresAt: string;
-}
-
-export interface PairingStatus {
-  status: "pending" | "approved" | "expired";
-  expiresAt: string;
-  device: {
-    id: string;
-    name: string;
-  } | null;
-}
-
-export interface ConfirmPairing {
-  /**
-   * @minLength 1
-   * @maxLength 20
-   */
-  code: string;
-  /**
-   * @minLength 1
-   * @maxLength 60
-   */
-  name: string;
-}
-
-export interface ConfirmedPairing {
-  name: string;
-  type: "tv" | "browser" | "other";
-}
-
-export interface PairingErrorResponse {
-  message: string;
-  kind: "invalid" | "expired";
-}
-
-export interface Device {
-  id: string;
-  name: string;
-  type: "tv" | "browser" | "other";
-  profile: {
-    id: string;
-    name: string;
-    color:
-      | "violet"
-      | "green"
-      | "orange"
-      | "blue"
-      | "rose"
-      | "teal"
-      | "amber"
-      | "slate";
-  } | null;
-  address: string | null;
-  userAgent: string | null;
-  createdAt: string;
-  lastSeenAt: string | null;
-  watching: boolean;
-}
-
-export interface DeviceList {
-  items: Device[];
-}
-
-export interface UpdateDevice {
-  /**
-   * @minLength 1
-   * @maxLength 60
-   */
-  name: string;
-}
-
-export interface EngineUnavailableResponse {
-  message: string;
-  kind: "not_installed" | "starting" | "stopped";
-}
-
-export interface TorrentFile {
-  index: number;
-  path: string;
-  size: number;
-  isVideo: boolean;
-  downloaded: number;
-  selected: boolean;
-}
-
-export interface Torrent {
-  id: string;
-  infoHash: string;
-  name: string;
-  source: "magnet" | "file";
-  status: "resolving" | "ready" | "failed";
-  error: "timeout" | "rejected" | "failed" | null;
-  files: TorrentFile[];
-  totalSize: number;
-  addedAt: string;
-  lastAccessAt: string | null;
-  titleId: string | null;
-  retention: "cache" | "keep";
-  pauseReason: "user" | "storage" | null;
-  state:
-    | "idle"
-    | "partial"
-    | "downloading"
-    | "stalled"
-    | "seeding"
-    | "complete"
-    | "paused";
-  streaming: boolean;
-  progress: {
-    downloaded: number;
-    wanted: number;
-  };
-  sizeOnDisk: number;
-  downloadSpeed: number;
-  uploadSpeed: number;
-  peers: {
-    connected: number;
-    found: number;
-  };
-}
-
-export interface TorrentList {
-  items: Torrent[];
-  engine: "ready" | "not_installed" | "starting" | "stopped";
-  totals: {
-    downloadSpeed: number;
-    uploadSpeed: number;
-  };
-  cache: {
-    used: number;
-    limit: number;
-  };
-}
-
-export interface DownloadTorrent {
-  /**
-   * @maxItems 10000
-   * @minItems 1
-   */
-  files: number[];
-}
-
-export interface UpdateRetention {
-  retention: "cache" | "keep";
-}
-
-export interface CreateTorrent {
-  /**
-   * @maxLength 20000
-   * @pattern ^magnet:\?
-   */
-  magnet?: string;
-  /**
-   * @format base64
-   * @maxLength 11184812
-   * @pattern ^$|^(?:[0-9a-zA-Z+/]{4})*(?:(?:[0-9a-zA-Z+/]{2}==)|(?:[0-9a-zA-Z+/]{3}=))?$
-   */
-  torrentFile?: string;
-}
-
-export interface TorrentStats {
-  activity: "idle" | "downloading";
-  peers: {
-    connected: number;
-    found: number;
-  };
-  downloadSpeed: number;
-  uploadSpeed: number;
-  file: {
-    size: number;
-    downloaded: number;
-    bufferedAhead: number;
-  };
 }
 
 export interface SourceErrorResponse {
@@ -2627,6 +2472,330 @@ export interface PlaybackTitle {
   episode?: number;
 }
 
+export interface EpisodeCard {
+  titleId: string;
+  title: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  season: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  episode: number;
+  episodeTitle?: string;
+  image?: string;
+  airDate?: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  newCount: number;
+}
+
+export interface CatalogRow {
+  id:
+    | "trending"
+    | "trendingMovies"
+    | "trendingSeries"
+    | "popularMovies"
+    | "popularSeries"
+    | "russianSeries"
+    | "nowPlaying"
+    | "onTheAir"
+    | "topRatedMovies"
+    | "topRatedSeries"
+    | "themeSpace"
+    | "themeZombies"
+    | "themeVampires"
+    | "themeDetectives"
+    | "themeSpies"
+    | "themeDisasters"
+    | "themeWar"
+    | "themeWesterns"
+    | "newEpisodes"
+    | "watchlist"
+    | "collection";
+  kind: "top10" | "posters" | "episodes";
+  title: string;
+  ref?: string;
+  name?: string;
+  items: Card[];
+  episodes?: EpisodeCard[];
+}
+
+export interface ContinueCard {
+  id: string;
+  kind: "movie" | "series";
+  title: string;
+  originalTitle: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  year?: number;
+  poster?: string;
+  ratings?: TitleRating[];
+  posterRatings?: PosterRating[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  ownRating?: number;
+  image?: string;
+  season: number | null;
+  episode: number | null;
+  episodeTitle?: string;
+  position: number;
+  duration: number | null;
+  next: boolean;
+  file: EpisodeFile | null;
+}
+
+export interface ContinueRow {
+  id: "continue";
+  kind: "continue";
+  title: string;
+  items: ContinueCard[];
+}
+
+export type HomeRow = ContinueRow | CatalogRow;
+
+export interface HomeResponse {
+  rows: HomeRow[];
+}
+
+export interface Collection {
+  id: string;
+  name: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  count: number;
+  showOnHome: boolean;
+  hiddenFrom: string[];
+}
+
+export interface CollectionList {
+  items: Collection[];
+}
+
+export interface CreateCollection {
+  /**
+   * @minLength 1
+   * @maxLength 60
+   */
+  name: string;
+  showOnHome?: boolean;
+  /** @maxItems 100 */
+  hiddenFrom?: string[];
+}
+
+export interface UpdateCollection {
+  /**
+   * @minLength 1
+   * @maxLength 60
+   */
+  name?: string;
+  showOnHome?: boolean;
+  /** @maxItems 100 */
+  hiddenFrom?: string[];
+}
+
+export interface CollectionTitles {
+  items: Card[];
+}
+
+export interface CollectionErrorResponse {
+  message: string;
+  kind: "duplicate";
+}
+
+export interface StartPairing {
+  type?: "tv" | "browser" | "other";
+}
+
+export interface Pairing {
+  secret: string;
+  code: string;
+  expiresAt: string;
+}
+
+export interface PairingStatus {
+  status: "pending" | "approved" | "expired";
+  expiresAt: string;
+  device: {
+    id: string;
+    name: string;
+  } | null;
+}
+
+export interface ConfirmPairing {
+  /**
+   * @minLength 1
+   * @maxLength 20
+   */
+  code: string;
+  /**
+   * @minLength 1
+   * @maxLength 60
+   */
+  name: string;
+}
+
+export interface ConfirmedPairing {
+  name: string;
+  type: "tv" | "browser" | "other";
+}
+
+export interface PairingErrorResponse {
+  message: string;
+  kind: "invalid" | "expired";
+}
+
+export interface Device {
+  id: string;
+  name: string;
+  type: "tv" | "browser" | "other";
+  profile: {
+    id: string;
+    name: string;
+    color:
+      | "violet"
+      | "green"
+      | "orange"
+      | "blue"
+      | "rose"
+      | "teal"
+      | "amber"
+      | "slate";
+  } | null;
+  address: string | null;
+  userAgent: string | null;
+  createdAt: string;
+  lastSeenAt: string | null;
+  watching: boolean;
+}
+
+export interface DeviceList {
+  items: Device[];
+}
+
+export interface UpdateDevice {
+  /**
+   * @minLength 1
+   * @maxLength 60
+   */
+  name: string;
+}
+
+export interface EngineUnavailableResponse {
+  message: string;
+  kind: "not_installed" | "starting" | "stopped";
+}
+
+export interface TorrentFile {
+  index: number;
+  path: string;
+  size: number;
+  isVideo: boolean;
+  downloaded: number;
+  selected: boolean;
+}
+
+export interface Torrent {
+  id: string;
+  infoHash: string;
+  name: string;
+  source: "magnet" | "file";
+  status: "resolving" | "ready" | "failed";
+  error: "timeout" | "rejected" | "failed" | null;
+  files: TorrentFile[];
+  totalSize: number;
+  addedAt: string;
+  lastAccessAt: string | null;
+  titleId: string | null;
+  retention: "cache" | "keep";
+  pauseReason: "user" | "storage" | null;
+  state:
+    | "idle"
+    | "partial"
+    | "downloading"
+    | "stalled"
+    | "seeding"
+    | "complete"
+    | "paused";
+  streaming: boolean;
+  progress: {
+    downloaded: number;
+    wanted: number;
+  };
+  sizeOnDisk: number;
+  downloadSpeed: number;
+  uploadSpeed: number;
+  peers: {
+    connected: number;
+    found: number;
+  };
+}
+
+export interface TorrentList {
+  items: Torrent[];
+  engine: "ready" | "not_installed" | "starting" | "stopped";
+  totals: {
+    downloadSpeed: number;
+    uploadSpeed: number;
+  };
+  cache: {
+    used: number;
+    limit: number;
+  };
+}
+
+export interface DownloadTorrent {
+  /**
+   * @maxItems 10000
+   * @minItems 1
+   */
+  files: number[];
+}
+
+export interface UpdateRetention {
+  retention: "cache" | "keep";
+}
+
+export interface CreateTorrent {
+  /**
+   * @maxLength 20000
+   * @pattern ^magnet:\?
+   */
+  magnet?: string;
+  /**
+   * @format base64
+   * @maxLength 11184812
+   * @pattern ^$|^(?:[0-9a-zA-Z+/]{4})*(?:(?:[0-9a-zA-Z+/]{2}==)|(?:[0-9a-zA-Z+/]{3}=))?$
+   */
+  torrentFile?: string;
+}
+
+export interface TorrentStats {
+  activity: "idle" | "downloading";
+  peers: {
+    connected: number;
+    found: number;
+  };
+  downloadSpeed: number;
+  uploadSpeed: number;
+  file: {
+    size: number;
+    downloaded: number;
+    bufferedAhead: number;
+  };
+}
+
 export interface DeviceProfile {
   /** @maxItems 10 */
   containers: ("mp4" | "webm" | "mkv" | "avi" | "ts" | "other")[];
@@ -2773,93 +2942,6 @@ export interface WatchState {
   position: number;
   duration: number | null;
   updatedAt: string;
-}
-
-export interface EpisodeCard {
-  titleId: string;
-  title: string;
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  season: number;
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  episode: number;
-  episodeTitle?: string;
-  image?: string;
-  airDate?: string;
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  newCount: number;
-}
-
-export interface CatalogRow {
-  id:
-    | "trending"
-    | "trendingMovies"
-    | "trendingSeries"
-    | "popularMovies"
-    | "popularSeries"
-    | "russianSeries"
-    | "nowPlaying"
-    | "onTheAir"
-    | "topRatedMovies"
-    | "topRatedSeries"
-    | "newEpisodes"
-    | "watchlist"
-    | "collection";
-  kind: "top10" | "posters" | "episodes";
-  title: string;
-  ref?: string;
-  name?: string;
-  items: Card[];
-  episodes?: EpisodeCard[];
-}
-
-export interface ContinueCard {
-  id: string;
-  kind: "movie" | "series";
-  title: string;
-  originalTitle: string;
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  year?: number;
-  poster?: string;
-  ratings?: TitleRating[];
-  posterRatings?: PosterRating[];
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  ownRating?: number;
-  image?: string;
-  season: number | null;
-  episode: number | null;
-  episodeTitle?: string;
-  position: number;
-  duration: number | null;
-  next: boolean;
-  file: EpisodeFile | null;
-}
-
-export interface ContinueRow {
-  id: "continue";
-  kind: "continue";
-  title: string;
-  items: ContinueCard[];
-}
-
-export type HomeRow = ContinueRow | CatalogRow;
-
-export interface HomeResponse {
-  rows: HomeRow[];
 }
 
 export interface LogEntry {
@@ -3461,6 +3543,10 @@ export type GetCatalogSeasonError = MessageResponse;
 export type GetCatalogTitleExtrasError = MessageResponse;
 
 export type GetCatalogPersonError = MessageResponse;
+
+export type GetCatalogDiscoverError = MessageResponse;
+
+export type GetCatalogGenresError = MessageResponse;
 
 export type GetCatalogTrendingError = MessageResponse;
 
@@ -4234,6 +4320,94 @@ export class Api<
     ) =>
       this.request<PersonDetails, GetCatalogPersonError>({
         path: `/api/catalog/people/${id}`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Catalog
+     * @name GetCatalogDiscover
+     * @request GET:/api/catalog/discover
+     */
+    getCatalogDiscover: (
+      query?: {
+        /** @default "movies" */
+        type?: "movies" | "series" | "cartoons" | "cartoonSeries" | "anime";
+        /** @pattern ^\d{1,9}$ */
+        genre?: string;
+        /**
+         * @min 1900
+         * @max 2100
+         */
+        year?: number;
+        /**
+         * @min 1900
+         * @multipleOf 10
+         * @max 2090
+         */
+        decade?: number;
+        /**
+         * @min 1
+         * @max 9
+         */
+        rating?: number;
+        /** @pattern ^[a-z]{2}$ */
+        originalLanguage?: string;
+        /** @pattern ^[A-Z]{2}$ */
+        country?: string;
+        /** @pattern ^\d{1,9}$ */
+        keyword?: string;
+        /** @pattern ^(?:company|network):\d{1,9}$ */
+        studio?: string;
+        /** @default "popularity" */
+        sort?: "popularity" | "rating" | "date";
+        /**
+         * @min 1
+         * @max 500
+         * @default 1
+         */
+        page?: number;
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<CatalogDiscoverResponse, GetCatalogDiscoverError>({
+        path: `/api/catalog/discover`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Catalog
+     * @name GetCatalogGenres
+     * @request GET:/api/catalog/genres
+     */
+    getCatalogGenres: (
+      query?: {
+        /** @default "movies" */
+        type?: "movies" | "series" | "cartoons" | "cartoonSeries" | "anime";
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<CatalogGenresResponse, GetCatalogGenresError>({
+        path: `/api/catalog/genres`,
         method: "GET",
         query: query,
         format: "json",

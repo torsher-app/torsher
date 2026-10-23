@@ -9,7 +9,7 @@ import {
 } from 'vitest'
 import { migrateDb } from '../../db/index.ts'
 import { emptyList, movieList, trendingAll, tvList } from './fixtures/index.ts'
-import { getHomeRows } from './home.ts'
+import { getHomeRows, themesOf } from './home.ts'
 
 const fetchMock = vi.fn<typeof fetch>()
 
@@ -199,5 +199,51 @@ describe('getHomeRows', () => {
     await getHomeRows('movies', language)
 
     expect(fetchMock).toHaveBeenCalledTimes(calls)
+  })
+
+  it('тематические ряды — в конце главной, по теме дня', async () => {
+    respondByPath({ ...allLists, '/discover/movie': movieList })
+
+    // День 0 эпохи: первая пара тем
+    const rows = await getHomeRows('all', freshLanguage(), new Date(0))
+    const discover = requested().filter(
+      url => url.pathname === '/3/discover/movie',
+    )
+
+    expect(rows.slice(-2).map(row => row.id)).toEqual([
+      'themeSpace',
+      'themeZombies',
+    ])
+    expect(rows.at(-1)).toMatchObject({ title: 'home.rows.themeZombies' })
+    expect(
+      discover.map(url => url.searchParams.get('with_keywords')),
+    ).toEqual(['9882', '12377'])
+    expect(discover[0]?.searchParams.get('vote_count.gte')).toBe('100')
+  })
+
+  it('без тем в «Фильмах» и «Сериалах»', async () => {
+    respondByPath({ ...allLists, '/discover/movie': movieList })
+
+    await getHomeRows('movies', freshLanguage())
+
+    expect(
+      requested().some(url => url.pathname === '/3/discover/movie'),
+    ).toBe(false)
+  })
+})
+
+describe('themesOf', () => {
+  const DAY_MS = 24 * 60 * 60 * 1000
+
+  it('каждый день — следующая пара, через четыре дня по кругу', () => {
+    expect(themesOf(new Date(DAY_MS))).toEqual([
+      'themeVampires',
+      'themeDetectives',
+    ])
+    expect(themesOf(new Date(3 * DAY_MS + 1000))).toEqual([
+      'themeWar',
+      'themeWesterns',
+    ])
+    expect(themesOf(new Date(4 * DAY_MS))).toEqual(themesOf(new Date(0)))
   })
 })

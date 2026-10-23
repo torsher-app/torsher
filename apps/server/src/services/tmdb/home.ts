@@ -1,12 +1,23 @@
-import type { CatalogRow, HomeMode, TmdbHomeRowId } from '../../dto/home.ts'
+import type {
+  CatalogRow,
+  HomeMode,
+  ThemeHomeRowId,
+  TmdbHomeRowId,
+} from '../../dto/home.ts'
+import type { DiscoverFilter } from './discover.ts'
 import type { TmdbMediaType } from './mappers.ts'
 import type { TmdbListResponse } from './types.ts'
+import { themeHomeRowIds } from '../../dto/home.ts'
 import { withRatings } from '../ratings/index.ts'
 import { withMetaCache } from './cache.ts'
 import { TmdbError, tmdbGet } from './client.ts'
+import { discoverRequest, MIN_VOTES } from './discover.ts'
 import { listResultToBackdrop, listResultToCard, regionOf } from './mappers.ts'
 
-const LIST_TTL_MS = 24 * 60 * 60 * 1000
+const DAY_MS = 24 * 60 * 60 * 1000
+const LIST_TTL_MS = DAY_MS
+// Тематических рядов на главной в день: остальные темы ждут своей очереди
+const THEMES_PER_DAY = 2
 const TOP_COUNT = 10
 // Одна страница TMDB
 const ROW_LIMIT = 20
@@ -56,6 +67,48 @@ const ROWS: Record<TmdbHomeRowId, RowSpec> = {
     regional: true,
   },
   topRatedSeries: { kind: 'posters', path: '/tv/top_rated', type: 'tv' },
+}
+
+// Популярные фильмы по keyword или жанру TMDB; ID keyword — как у Лампы
+const THEMES: Record<ThemeHomeRowId, DiscoverFilter> = {
+  themeSpace: { type: 'movies', keyword: '9882' },
+  themeZombies: { type: 'movies', keyword: '12377' },
+  themeVampires: { type: 'movies', keyword: '3133' },
+  themeDetectives: { type: 'movies', keyword: '703' },
+  themeSpies: { type: 'movies', keyword: '470' },
+  themeDisasters: { type: 'movies', keyword: '10617' },
+  themeWar: { type: 'movies', genre: '10752' },
+  themeWesterns: { type: 'movies', genre: '37' },
+}
+
+function themeSpec(filter: DiscoverFilter): RowSpec {
+  // Темы без дат и каналов: запрос есть всегда
+  const request = discoverRequest(filter, '')!
+
+  return {
+    kind: 'posters',
+    path: request.path,
+    type: request.media,
+    params: { ...request.params, 'vote_count.gte': String(MIN_VOTES) },
+  }
+}
+
+/** Темы дня: каждый день следующая пара, по кругу. */
+export function themesOf(now: Date): ThemeHomeRowId[] {
+  const day = Math.floor(now.getTime() / DAY_MS)
+
+  return Array.from(
+    { length: THEMES_PER_DAY },
+    (_, index) =>
+      themeHomeRowIds[(day * THEMES_PER_DAY + index) % themeHomeRowIds.length]!,
+  )
+}
+
+const SPECS: Record<TmdbHomeRowId | ThemeHomeRowId, RowSpec> = {
+  ...ROWS,
+  ...(Object.fromEntries(
+    themeHomeRowIds.map(id => [id, themeSpec(THEMES[id])]),
+  ) as Record<ThemeHomeRowId, RowSpec>),
 }
 
 // «Фильмы» и «Сериалы» — подмножества главной
@@ -111,7 +164,7 @@ async function loadList(spec: RowSpec, language: string) {
 }
 
 async function loadRow(
-  id: TmdbHomeRowId,
+  id: TmdbHomeRowId | ThemeHomeRowId,
   spec: RowSpec,
   language: string,
 ): Promise<CatalogRow> {
@@ -142,15 +195,20 @@ export async function getTrendingBackdrops(language: string) {
 export async function getHomeRows(
   mode: HomeMode,
   language: string,
+  now = new Date(),
 ): Promise<CatalogRow[]> {
-  const ids = LAYOUT[mode].filter((id) => {
-    const only = ROWS[id].language
+  const ids = [
+    ...LAYOUT[mode].filter((id) => {
+      const only = ROWS[id].language
 
-    return !only || only === language
-  })
+      return !only || only === language
+    }),
+    // Тематические ряды — в конце главной; «Фильмы» и «Сериалы» без них
+    ...(mode === 'all' ? themesOf(now) : []),
+  ]
 
   const results = await Promise.allSettled(
-    ids.map(id => loadRow(id, ROWS[id], language)),
+    ids.map(id => loadRow(id, SPECS[id], language)),
   )
 
   const rows: CatalogRow[] = []

@@ -28,9 +28,10 @@ const { active: screensaverActive } = useScreensaver(
 
 <template>
   <!--
-    Главная, поиск, «Моё» и «Источники» переживают переход дальше: по Back возвращаемся к
-    тем же рядам, результатам и раздаче. Ключ по пути: «Главная», «Фильмы» и
-    «Сериалы» — отдельные экраны, «Источники» — свои у каждого тайтла.
+    Главная, поиск, «Моё», каталог и «Источники» переживают переход дальше: по Back
+    возвращаемся к тем же рядам, результатам и раздаче. Ключ по пути: «Главная»,
+    «Фильмы» и «Сериалы» — отдельные экраны, как и «Каталог», «Мультфильмы» и
+    «Аниме», «Источники» — свои у каждого тайтла.
     Смена профиля сбрасывает их: ряды, прогресс и язык — уже другого зрителя.
 
     Карточки тайтлов и персоны — отдельный стек по записям истории: по цепочке
@@ -40,7 +41,13 @@ const { active: screensaverActive } = useScreensaver(
   <RouterView v-slot="{ Component, route }">
     <KeepAlive
       :key="`screens-${cacheKey}`"
-      :include="['HomePage', 'SearchPage', 'SourcesPage', 'MinePage']"
+      :include="[
+        'HomePage',
+        'SearchPage',
+        'SourcesPage',
+        'MinePage',
+        'CatalogPage',
+      ]"
     >
       <component :is="Component" v-if="!isStacked(route)" :key="route.path" />
     </KeepAlive>
