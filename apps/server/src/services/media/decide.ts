@@ -35,6 +35,8 @@ export type PlaybackReason
 export interface PlaybackDecision {
   mode: 'direct' | 'hls'
   reasons: PlaybackReason[]
+  /** В HLS: видео копией или перекодированием в H.264 */
+  video: 'copy' | 'encode' | null
   /** В HLS: аудио копией или в AAC */
   audio: 'copy' | 'aac' | null
   /** Как менять озвучку: плеером на месте или перезапуском потока */
@@ -46,9 +48,13 @@ export interface DecisionInput {
   device: DeviceProfile
   /** Индекс потока выбранной озвучки; null — в файле нет звука */
   audioStream: number | null
-  /** Выбраны встроенные субтитры: их надо показать */
+  /** Выбраны встроенные текстовые субтитры: их надо показать */
   embeddedSubtitle: boolean
+  /** Выбраны графические субтитры (PGS, VobSub): их прожигает перекодирование */
+  burnSubtitle: boolean
   toolsReady: boolean
+  /** Сервер может перекодировать видео: есть кодировщик H.264 */
+  canEncode: boolean
 }
 
 // Что hls.js переносит из MPEG-TS без перекодирования; остальное — в AAC
@@ -60,9 +66,10 @@ function naturalAudio(media: MediaInfo) {
 }
 
 /**
- * Прямое воспроизведение или перепаковка в HLS: напрямую, если плеер играет
- * контейнер, видео и выбранную озвучку и может её включить. Видео не перекодируем: если плеер его не играет, перепаковка
- * не поможет — пробуем напрямую и пишем причину.
+ * Прямое воспроизведение, перепаковка или перекодирование в HLS, как
+ * `StreamBuilder` Jellyfin: напрямую, если плеер играет контейнер, видео и
+ * выбранную озвучку и может её включить; видео, которое плеер не играет, и
+ * графические субтитры — перекодирование в H.264; остальное — перепаковка.
  */
 export function decidePlayback(input: DecisionInput): PlaybackDecision {
   const { media, device, audioStream, embeddedSubtitle, toolsReady } = input
@@ -80,23 +87,25 @@ export function decidePlayback(input: DecisionInput): PlaybackDecision {
   if (audio && audio.index !== naturalAudio(media) && !device.audioTracks)
     reasons.push('AudioTrackSwitchNotSupported')
 
-  if (embeddedSubtitle && !device.embeddedSubtitles)
+  if ((embeddedSubtitle && !device.embeddedSubtitles) || input.burnSubtitle) {
     reasons.push('SubtitleCodecNotSupported')
-
-  const videoReasons: PlaybackReason[] = []
+  }
 
   if (video && !device.video.includes(video.codec))
-    videoReasons.push('VideoCodecNotSupported')
+    reasons.push('VideoCodecNotSupported')
   else if (video?.codec === 'h264' && video.highBitDepth)
-    videoReasons.push('VideoBitDepthNotSupported')
+    reasons.push('VideoBitDepthNotSupported')
 
   if (reasons.length === 0)
-    return { mode: 'direct', reasons: videoReasons, audio: null, audioSwitch }
+    return { mode: 'direct', reasons, video: null, audio: null, audioSwitch }
 
-  // Перепаковка видео не меняет: что не играет напрямую, не заиграет и так
-  const blockers: PlaybackReason[] = [...videoReasons]
+  const encode
+    = reasons.includes('VideoCodecNotSupported')
+      || reasons.includes('VideoBitDepthNotSupported')
+      || input.burnSubtitle
+  const blockers: PlaybackReason[] = []
 
-  if (!toolsReady)
+  if (!toolsReady || (encode && !input.canEncode))
     blockers.push('ToolsMissing')
 
   if (!device.hls)
@@ -106,6 +115,7 @@ export function decidePlayback(input: DecisionInput): PlaybackDecision {
     return {
       mode: 'direct',
       reasons: [...reasons, ...blockers],
+      video: null,
       audio: null,
       audioSwitch,
     }
@@ -114,6 +124,7 @@ export function decidePlayback(input: DecisionInput): PlaybackDecision {
   return {
     mode: 'hls',
     reasons,
+    video: encode ? 'encode' : 'copy',
     audio:
       !audio
       || (HLS_COPY_AUDIO.has(audio.codec) && device.audio.includes(audio.codec))
@@ -191,4 +202,9 @@ export function pickAudioStream(
 /** Субтитры, которые можно показать: текстовые встроенные */
 export function textSubtitles(media: MediaInfo): SubtitleStreamInfo[] {
   return media.subtitles.filter(track => track.text)
+}
+
+/** Графические встроенные субтитры: показываются только прожигом в кадр */
+export function imageSubtitles(media: MediaInfo): SubtitleStreamInfo[] {
+  return media.subtitles.filter(track => track.image)
 }

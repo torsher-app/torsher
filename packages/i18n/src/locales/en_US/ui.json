@@ -443,7 +443,9 @@
     "kbps": "{n} kbps",
     "subtitleFile": "file",
     "forced": "forced",
+    "subtitleBurnIn": "in picture",
     "restartHint": "The player cannot switch audio by itself: the stream will restart from this point",
+    "burnInHint": "The server burns “in picture” subtitles into the video: the stream will restart from this point",
     "steps": {
       "connecting": "Connecting to peers",
       "waitingPeers": "Waiting for peers",
@@ -470,7 +472,7 @@
       },
       "unsupported": {
         "title": "The player can't open this format",
-        "text": "The player cannot play the video in this file, and server-side video transcoding is not supported yet. This usually happens with HEVC and 10-bit video in a browser — try another source."
+        "text": "The player cannot play the video in this file, and the server could not transcode it. Transcoding needs ffmpeg on the server: check the log in the panel or try another source."
       },
       "unknown": {
         "title": "Couldn't play the file",
@@ -901,7 +903,8 @@
         "about": "About",
         "storage": "Storage",
         "network": "Network",
-        "metadata": "Metadata"
+        "metadata": "Metadata",
+        "playback": "Playback"
       },
       "account": {
         "description": "The server owner account. A second one can't be created: the household watches through profiles.",
@@ -1147,6 +1150,50 @@
             "unavailable": "Download failed: IMDb is unreachable — check the network settings",
             "invalid": "Download failed: the dataset file is damaged"
           }
+        }
+      },
+      "playback": {
+        "description": "How the server transcodes video the player can't play: old AVI files, HEVC and 10-bit video in a browser, HDR, image subtitles.",
+        "loadError": "Couldn't load playback settings",
+        "accel": {
+          "title": "Hardware acceleration",
+          "text": "A GPU transcodes video many times faster than the CPU and barely loads it. The server checks it with a test encode on startup."
+        },
+        "encoder": {
+          "vaapi": "VAAPI",
+          "nvenc": "NVENC",
+          "software": "CPU",
+          "none": "nothing"
+        },
+        "lowPower": "low-power",
+        "decodes": "decodes {codecs}",
+        "decodesNothing": "CPU decodes",
+        "deep": "{codec} 10-bit",
+        "noGpu": "No GPU found",
+        "noGpuHint": "The CPU transcodes. To let the container see a GPU, pass through /dev/dri (Intel, AMD) or set up the NVIDIA Container Toolkit — see the README.",
+        "useGpu": "Transcode on the GPU",
+        "useGpuHint": "Turn off if the GPU produces artifacts: the CPU will encode instead.",
+        "current": "Encoding with: {encoder} · checked {date}",
+        "check": "Check again",
+        "transcode": {
+          "title": "CPU and HDR",
+          "text": "Without a GPU the CPU encodes. The server picked the frame size limit from a speed test: larger video is scaled down.",
+          "hint": "A GPU encodes up to 1080p"
+        },
+        "ceiling": "CPU limit",
+        "bench": "x264 at 1080p: {fps} fps",
+        "noBench": "Speed not measured",
+        "noSoftware": "no x264",
+        "toneMapping": "HDR to SDR",
+        "toneMappingHint": {
+          "gpu": "HDR colors are converted for a regular screen on the GPU",
+          "software": "Without a GPU the CPU converts them — this is slow",
+          "none": "The server's ffmpeg lacks the filters: HDR will look washed out"
+        },
+        "toneMappingValue": {
+          "gpu": "GPU",
+          "software": "CPU",
+          "none": "none"
         }
       }
     },

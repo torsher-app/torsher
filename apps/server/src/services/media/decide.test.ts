@@ -34,7 +34,9 @@ function decide(
   overrides: {
     audioStream?: number | null
     embeddedSubtitle?: boolean
+    burnSubtitle?: boolean
     toolsReady?: boolean
+    canEncode?: boolean
   } = {},
 ) {
   return decidePlayback({
@@ -42,8 +44,41 @@ function decide(
     device,
     audioStream: overrides.audioStream ?? media.audio[0]?.index ?? null,
     embeddedSubtitle: overrides.embeddedSubtitle ?? false,
+    burnSubtitle: overrides.burnSubtitle ?? false,
     toolsReady: overrides.toolsReady ?? true,
+    canEncode: overrides.canEncode ?? true,
   })
+}
+
+// Xvid в AVI с AC3, как старые рипы
+const avi: MediaInfo = {
+  container: 'avi',
+  duration: 8118,
+  video: {
+    index: 0,
+    codec: 'mpeg4',
+    profile: 'Advanced Simple Profile',
+    width: 720,
+    height: 400,
+    highBitDepth: false,
+    hdr: false,
+    frameRate: 25,
+    interlaced: false,
+    bitrate: 1_700_000,
+    pixelAspect: 1,
+  },
+  audio: [
+    {
+      index: 1,
+      language: null,
+      title: null,
+      codec: 'ac3',
+      channels: 2,
+      bitrate: 192_000,
+      default: false,
+    },
+  ],
+  subtitles: [],
 }
 
 describe('parseProbe', () => {
@@ -98,6 +133,7 @@ describe('decidePlayback', () => {
     expect(decide(mkv, chrome)).toEqual({
       mode: 'hls',
       reasons: ['ContainerNotSupported', 'AudioCodecNotSupported'],
+      video: 'copy',
       audio: 'aac',
       audioSwitch: 'restart',
     })
@@ -111,6 +147,7 @@ describe('decidePlayback', () => {
     expect(decide(mkv, webos, { audioStream: 2 })).toEqual({
       mode: 'direct',
       reasons: [],
+      video: null,
       audio: null,
       audioSwitch: 'platform',
     })
@@ -147,16 +184,65 @@ describe('decidePlayback', () => {
     })
   })
 
-  it('видео, которое плеер не играет, перепаковка не спасёт', () => {
-    const hevc = { ...mkv, video: { ...mkv.video!, codec: 'hevc' } }
-
-    expect(decide(hevc, chrome)).toMatchObject({
-      mode: 'direct',
+  it('xvid в AVI с AC3 — перекодирование видео, звук в AAC', () => {
+    expect(decide(avi, chrome)).toEqual({
+      mode: 'hls',
       reasons: [
         'ContainerNotSupported',
         'AudioCodecNotSupported',
         'VideoCodecNotSupported',
       ],
+      video: 'encode',
+      audio: 'aac',
+      audioSwitch: 'restart',
+    })
+  })
+
+  it('hEVC в MP4 без декодера — перекодирование, AAC копией', () => {
+    const hevc = { ...mp4, video: { ...mp4.video!, codec: 'hevc' } }
+
+    expect(decide(hevc, chrome)).toMatchObject({
+      mode: 'hls',
+      reasons: ['VideoCodecNotSupported'],
+      video: 'encode',
+      audio: 'copy',
+    })
+  })
+
+  it('h.264 High 10 — перекодирование', () => {
+    const high10 = { ...mp4, video: { ...mp4.video!, highBitDepth: true } }
+
+    expect(decide(high10, chrome)).toMatchObject({
+      reasons: ['VideoBitDepthNotSupported'],
+      video: 'encode',
+    })
+  })
+
+  it('графические субтитры — перекодирование с прожигом', () => {
+    expect(decide(mkv, webos, { burnSubtitle: true })).toMatchObject({
+      mode: 'hls',
+      reasons: ['SubtitleCodecNotSupported'],
+      video: 'encode',
+      audio: 'copy',
+    })
+  })
+
+  it('без кодировщика H.264 — напрямую с причиной', () => {
+    expect(decide(avi, chrome, { canEncode: false })).toMatchObject({
+      mode: 'direct',
+      reasons: [
+        'ContainerNotSupported',
+        'AudioCodecNotSupported',
+        'VideoCodecNotSupported',
+        'ToolsMissing',
+      ],
+    })
+  })
+
+  it('без HLS у плеера — напрямую с причиной', () => {
+    expect(decide(avi, { ...chrome, hls: false })).toMatchObject({
+      mode: 'direct',
+      reasons: expect.arrayContaining(['HlsNotSupported']),
     })
   })
 

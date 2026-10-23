@@ -1,13 +1,21 @@
 import type { ChildProcess } from 'node:child_process'
 import type { FileHandle } from 'node:fs/promises'
+import type { EncodePlan } from './encode.ts'
 import type { Cue } from './webvtt.ts'
 import type { Buffer } from 'node:buffer'
 import { spawn } from 'node:child_process'
 import { existsSync, rmSync, statSync } from 'node:fs'
 import { mkdir, open, readdir, readFile, rm } from 'node:fs/promises'
+import { setPriority } from 'node:os'
 import { join } from 'node:path'
 import { config } from '../../config.ts'
 import { EngineError } from '../engine/client.ts'
+import {
+  describePlan,
+  encodeFilterGraph,
+  encodeInputArgs,
+  encodeOutputArgs,
+} from './encode.ts'
 import { mergeCues, parseWebVtt } from './webvtt.ts'
 
 /** Желаемая длина сегмента: короче — больше запросов, длиннее — дольше старт */
@@ -37,6 +45,17 @@ const READ_TIMEOUT_US = 120_000_000
 // сводит время по первому загруженному сегменту, поэтому общий сдвиг ему
 // не мешает
 export const TS_OFFSET_SECONDS = 10
+// Перекодирование ставит ключевой кадр на границу, а сегмент-муксер режет
+// по первому ключевому кадру не раньше границы от первого пакета запуска.
+// Первый кадр бывает на 1–2 кадра позже нуля (B-кадры Xvid), и ровная граница
+// оказывается чуть позже своего кадра — муксер её пропускает. Допуск меньше
+// кадра: других ключевых кадров рядом нет
+const ENCODE_CUT_TOLERANCE = 0.1
+// Перекодирование не мешает серверу, движку и перепаковке других зрителей
+const ENCODE_NICE = 10
+const PROGRESS_SECONDS = 5
+// Столько замеров подряд медленнее просмотра — предупреждение в журнал
+const SLOW_REPORTS = 2
 
 /**
  * Начала сегментов. С точками перемотки MKV разрез — на первой точке не
@@ -118,6 +137,8 @@ export interface HlsInput {
   subtitleStreams: number[]
   starts: number[]
   duration: number
+  /** Перекодирование видео; без него — видео копией */
+  encode?: EncodePlan | null
   /** Запас перепаковки впереди плеера; меньше — только в тестах */
   ahead?: { seconds: number, checkMs: number }
   /** Ожидание сегмента; меньше — только в тестах */
@@ -162,6 +183,14 @@ interface Run {
   /** Убит на дедлайне сегмента: заменяется, даже пока `exit` не пришёл */
   stalled: boolean
   failure?: string
+  /** Вывод ffmpeg при сбое — в подробности записи журнала */
+  details?: string
+  /** После сбоя уже перешли на запасной вариант кодирования */
+  fellBack: boolean
+  /** Прошлый замер скорости: позиция выхода (с) и время; null — после паузы */
+  progress: { out: number, at: number } | null
+  slowReports: number
+  warnedSlow: boolean
 }
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
@@ -213,11 +242,19 @@ export class HlsTranscode {
   /** Последний запрошенный плеером сегмент — позиция просмотра */
   private requested = -1
   private throttleTimer: ReturnType<typeof setInterval> | undefined
+  /** Текущий вариант перекодирования: после сбоя — запасной */
+  private plan: EncodePlan | null
 
   constructor(dir: string, input: HlsInput, log: HlsLog) {
     this.dir = dir
     this.input = input
     this.log = log
+    this.plan = input.encode ?? null
+  }
+
+  /** Как сейчас перекодируется видео; null — копией */
+  get encode() {
+    return this.plan
   }
 
   get segmentCount() {
@@ -257,8 +294,8 @@ export class HlsTranscode {
     await this.serialize(() => this.ensureRunFor(index))
 
     // Свой запуск: заменивший его — чужая перемотка, его не трогаем
-    const own = this.run
-    const deadline = Date.now() + (this.input.segmentWaitMs ?? SEGMENT_WAIT_MS)
+    let own = this.run
+    let deadline = Date.now() + (this.input.segmentWaitMs ?? SEGMENT_WAIT_MS)
 
     while (!this.stopped && !signal?.aborted) {
       await this.refreshReady()
@@ -286,6 +323,13 @@ export class HlsTranscode {
         throw new SegmentTimeoutError()
 
       if (run?.exited && !this.ready.has(index)) {
+        if (run.failure && this.fallBack(run)) {
+          await this.serialize(() => this.ensureRunFor(index))
+          own = this.run
+          deadline = Date.now() + (this.input.segmentWaitMs ?? SEGMENT_WAIT_MS)
+          continue
+        }
+
         throw new TranscodeFailedError(
           run.failure ?? 'ffmpeg stopped before the segment',
         )
@@ -307,6 +351,30 @@ export class HlsTranscode {
     }
 
     throw new SegmentTimeoutError()
+  }
+
+  /**
+   * Запуск перекодирования упал, ничего не записав, — обычно видеокарта не
+   * открыла декодер или кодировщик: дальше пробуем запасной вариант, вплоть до
+   * процессора. Упавший посреди файла запуск — скорее вход, а не видеокарта.
+   */
+  private fallBack(run: Run) {
+    if (run.fellBack)
+      return true
+
+    const current = this.plan
+    const next = current?.fallback
+
+    if (!current || !next || run !== this.run || run.head >= run.from)
+      return false
+
+    run.fellBack = true
+    this.plan = next
+    this.log.warn(
+      run.details ? { details: run.details } : {},
+      `hls: transcoding with ${describePlan(current)} failed, retrying with ${describePlan(next)}`,
+    )
+    return true
   }
 
   /** Реплики встроенной дорожки, собранные всеми запусками */
@@ -402,7 +470,40 @@ export class HlsTranscode {
       return
 
     run.paused = pause
+    // Пауза — не медленное кодирование: скорость считается заново
+    run.progress = null
     run.process.kill(pause ? 'SIGSTOP' : 'SIGCONT')
+  }
+
+  /**
+   * Замер скорости перекодирования по выводу `-progress`: сколько секунд
+   * видео записано за секунду. `speed` самого ffmpeg — среднее с начала
+   * запуска, в него попали бы паузы троттлинга.
+   */
+  private onProgress(run: Run, block: Map<string, string>) {
+    const out = Number(block.get('out_time_us')) / 1_000_000
+    const now = Date.now()
+
+    if (!Number.isFinite(out) || run.paused)
+      return
+
+    const last = run.progress
+
+    run.progress = { out, at: now }
+
+    if (!last || now <= last.at)
+      return
+
+    const speed = (out - last.out) / ((now - last.at) / 1000)
+
+    run.slowReports = speed < 1 ? run.slowReports + 1 : 0
+
+    if (run.slowReports >= SLOW_REPORTS && !run.warnedSlow && this.plan) {
+      run.warnedSlow = true
+      this.log.warn(
+        `hls: transcoding is slower than playback (${speed.toFixed(2)}x, ${describePlan(this.plan)})`,
+      )
+    }
   }
 
   private async start(from: number) {
@@ -452,9 +553,10 @@ export class HlsTranscode {
       return
 
     const id = ++this.runs
+    const plan = this.plan
     const args = this.argsFor(url, from, id)
     const child = spawn(config.ffmpegPath, args, {
-      stdio: ['ignore', 'ignore', 'pipe'],
+      stdio: ['ignore', plan ? 'pipe' : 'ignore', 'pipe'],
     })
     const run: Run = {
       id,
@@ -465,8 +567,46 @@ export class HlsTranscode {
       exited: false,
       paused: false,
       stalled: false,
+      fellBack: false,
+      progress: null,
+      slowReports: 0,
+      warnedSlow: false,
     }
     let stderr = ''
+
+    if (plan && child.pid) {
+      try {
+        setPriority(child.pid, ENCODE_NICE)
+      }
+      catch (err) {
+        this.log.warn(
+          `hls: cannot lower ffmpeg priority: ${(err as Error).message}`,
+        )
+      }
+    }
+
+    let progress = ''
+    let block = new Map<string, string>()
+
+    child.stdout?.on('data', (chunk: Buffer) => {
+      const lines = (progress + chunk.toString()).split('\n')
+
+      progress = lines.pop() ?? ''
+
+      for (const line of lines) {
+        const [key, value] = line.trim().split('=')
+
+        if (!key || value === undefined)
+          continue
+
+        block.set(key, value)
+
+        if (key === 'progress') {
+          this.onProgress(run, block)
+          block = new Map()
+        }
+      }
+    })
 
     child.stderr?.on('data', (chunk: Buffer) => {
       stderr = (stderr + chunk.toString()).slice(-2000)
@@ -488,6 +628,7 @@ export class HlsTranscode {
           .slice(-FAILURE_DETAILS_LINES)
           .join('\n')
 
+        run.details = details || undefined
         this.log.warn(
           details ? { details } : {},
           `ffmpeg run ${id} failed (exit code ${code})`,
@@ -496,7 +637,9 @@ export class HlsTranscode {
     })
 
     this.run = run
-    this.log.debug(`hls: ffmpeg run ${id} from segment ${from}`)
+    this.log.debug(
+      `hls: ffmpeg run ${id} from segment ${from}${plan ? ` (${describePlan(plan)})` : ''}`,
+    )
 
     if (!this.throttleTimer) {
       this.throttleTimer = setInterval(
@@ -512,23 +655,50 @@ export class HlsTranscode {
 
   private argsFor(url: string, from: number, runId: number) {
     const { starts, videoStream, audioStream, audio } = this.input
+    const plan = this.plan
     const origin = starts[from] ?? 0
+    const tolerance = plan ? ENCODE_CUT_TOLERANCE : 0
     // Границы относительно первого пакета запуска: так их считает ffmpeg
     const cuts = starts
       .slice(from + 1)
-      .map(start => (start - origin).toFixed(3))
+      .map(start => (start - origin - tolerance).toFixed(3))
     const args = ['-hide_banner', '-loglevel', 'error', '-nostdin']
 
+    if (plan) {
+      args.push(
+        '-progress',
+        'pipe:1',
+        '-stats_period',
+        String(PROGRESS_SECONDS),
+        ...encodeInputArgs(plan),
+      )
+    }
+
+    // Перекодирование встаёт точно на начало сегмента (декодер отбрасывает
+    // кадры до него), копия — на ключевой кадр, поэтому чуть позже начала
     if (from > 0)
-      args.push('-ss', seekTargetOf(starts, from).toFixed(3))
+      args.push('-ss', (plan ? origin : seekTargetOf(starts, from)).toFixed(3))
 
     args.push('-rw_timeout', String(READ_TIMEOUT_US), '-i', url)
-    args.push('-map', `0:${videoStream}`)
+
+    if (plan) {
+      args.push(
+        '-filter_complex',
+        encodeFilterGraph(plan, videoStream),
+        '-map',
+        '[v]',
+      )
+    }
+    else {
+      args.push('-map', `0:${videoStream}`)
+    }
 
     if (audioStream !== null)
       args.push('-map', `0:${audioStream}`)
 
-    args.push('-c:v', 'copy')
+    args.push(
+      ...(plan ? encodeOutputArgs(plan, starts.slice(from)) : ['-c:v', 'copy']),
+    )
 
     if (audioStream !== null) {
       args.push(
@@ -536,6 +706,11 @@ export class HlsTranscode {
           ? ['-c:a', 'copy']
           : ['-c:a', 'aac', '-ac', '2', '-b:a', '192k']),
       )
+
+      // Копия звука начинается с пакета до точки перемотки, а перекодированное
+      // видео — точно с неё: лишнее отбрасывается, как у Jellyfin
+      if (plan && audio === 'copy' && from > 0)
+        args.push('-bsf:a', `noise=drop='lt(pts*tb\\,${origin.toFixed(3)})'`)
     }
 
     args.push(

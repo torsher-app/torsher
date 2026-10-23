@@ -134,5 +134,17 @@ https://sources.debian.org/src/ffmpeg/ and, for the exact version in a given
 image, https://snapshot.debian.org/package/ffmpeg/. Torsher runs FFmpeg as a
 separate program and does not link it.
 
+Mesa (VAAPI and Vulkan drivers for AMD and Intel graphics, Debian packages
+mesa-va-drivers and mesa-vulkan-drivers)
+https://mesa3d.org
+License: MIT, full texts in /usr/share/doc/mesa-va-drivers/copyright and
+/usr/share/doc/mesa-vulkan-drivers/copyright inside the image
+
+Intel Media Driver for VAAPI (amd64 image only, Debian package
+intel-media-va-driver, Free Kernel build)
+https://github.com/intel/media-driver
+License: MIT and BSD-3-Clause, full texts in
+/usr/share/doc/intel-media-va-driver/copyright inside the image
+
 Server dependencies are installed into /app/server/node_modules, each package
 with its own license file.

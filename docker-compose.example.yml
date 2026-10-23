@@ -26,6 +26,19 @@ services:
       # Database, keys and downloads. Keep downloads and the library
       # on the same filesystem
       - ./data:/data
+    # Optional: hardware transcoding on Intel or AMD graphics (VAAPI)
+    # devices:
+    #   - /dev/dri:/dev/dri
+    # Optional: hardware transcoding on an NVIDIA GPU (NVENC). Needs the
+    # NVIDIA driver and the NVIDIA Container Toolkit on the host
+    # runtime: nvidia
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
 
   # Optional: any Torznab indexer works. Prowlarr starts empty: you add
   # the indexers you are allowed to use. The Torsher setup wizard finds it
