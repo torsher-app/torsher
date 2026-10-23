@@ -71,6 +71,9 @@ const meta = computed(() => {
         <span class="hero__key">
           <span class="hero__button"><AppIcon name="play" /></span>{{ t("home.hint.watch") }}
         </span>
+        <span class="hero__key">
+          <span class="hero__button">OK</span>{{ t("home.hint.actions") }}
+        </span>
       </div>
     </div>
   </Transition>

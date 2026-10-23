@@ -14,6 +14,7 @@ import {
 } from '../dto/catalog.ts'
 import { messageResponse } from '../dto/common.ts'
 import { requireViewer } from '../middleware/auth.ts'
+import { withPosterRatings } from '../services/mine/index.ts'
 import {
   getSeason,
   getTitle,
@@ -63,7 +64,12 @@ export const catalogRoutes: FastifyPluginAsyncZod = async (app) => {
       const { query, language } = request.query
 
       try {
-        return { items: await searchTitles(query, language) }
+        return {
+          items: withPosterRatings(
+            await searchTitles(query, language),
+            request.profileId,
+          ),
+        }
       }
       catch (err) {
         return sendTmdbError(reply, err)
@@ -169,7 +175,10 @@ export const catalogRoutes: FastifyPluginAsyncZod = async (app) => {
         if (!extras)
           return reply.code(404).send({ message: 'Title not found' })
 
-        return extras
+        return {
+          ...extras,
+          similar: withPosterRatings(extras.similar, request.profileId),
+        }
       }
       catch (err) {
         return sendTmdbError(reply, err)
@@ -194,7 +203,12 @@ export const catalogRoutes: FastifyPluginAsyncZod = async (app) => {
     },
     async (request, reply) => {
       try {
-        return { items: await getTrending(request.query.language) }
+        return {
+          items: withPosterRatings(
+            await getTrending(request.query.language),
+            request.profileId,
+          ),
+        }
       }
       catch (err) {
         return sendTmdbError(reply, err)

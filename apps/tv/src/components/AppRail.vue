@@ -10,7 +10,7 @@ import FocusSection from './FocusSection.vue'
 import ProfileAvatar from './ProfileAvatar.vue'
 
 export type RailItemId
-  = 'search' | 'home' | 'movies' | 'series' | 'settings' | 'about'
+  = 'search' | 'home' | 'movies' | 'series' | 'mine' | 'settings' | 'about'
 
 const props = defineProps<{
   current: RailItemId
@@ -38,6 +38,7 @@ const main = computed<RailItem[]>(() => [
   { id: 'home', icon: 'home', label: t('nav.home'), path: '/' },
   { id: 'movies', icon: 'movies', label: t('nav.movies'), path: '/movies' },
   { id: 'series', icon: 'series', label: t('nav.series'), path: '/series' },
+  { id: 'mine', icon: 'mine', label: t('nav.mine'), path: '/mine' },
 ])
 
 // Внизу, под профилем: настройки этого устройства и «О программе»

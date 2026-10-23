@@ -20,6 +20,7 @@ import EpisodeListCard from '../components/EpisodeListCard.vue'
 import FocusSection from '../components/FocusSection.vue'
 import PersonCard from '../components/PersonCard.vue'
 import PosterCard from '../components/PosterCard.vue'
+import AppToast from '../components/AppToast.vue'
 import ScreenState from '../components/ScreenState.vue'
 import { useCatalogLanguage } from '../composables/useCatalogLanguage.ts'
 import { useCatalogTitle } from '../composables/useCatalogTitle.ts'
@@ -33,6 +34,12 @@ import {
 import { useStackScroll } from '../composables/useStackScroll.ts'
 import { useTitleProgress } from '../composables/useTitleProgress.ts'
 import { useFocus } from '../focus/index.ts'
+import {
+  knownTitleMine,
+  noteTitleMine,
+  openTitleActions,
+  rememberTitleMine,
+} from '../titleActions.ts'
 import { stackOffset } from '../lib/rowStack.ts'
 import { revealOffset } from '../lib/rowTrack.ts'
 import {
@@ -223,6 +230,63 @@ const primaryHint = computed(() => {
 
 function openSources() {
   router.push(`/title/${props.id}/sources`)
+}
+
+// Списки и своя оценка: меню действий правит то же состояние
+const mine = computed(() => knownTitleMine(props.id))
+const mineError = ref('')
+
+watch(
+  [id, language],
+  async ([current]) => {
+    try {
+      const fresh = await api.titles.getTitleMine(current, {
+        language: language.value,
+      })
+
+      if (current === props.id)
+        rememberTitleMine(current, fresh)
+    }
+    catch {
+      // Без состояния кнопки работают через меню, когда оно загрузится
+    }
+  },
+  { immediate: true },
+)
+
+async function toggleWatchlist() {
+  const current = mine.value
+
+  if (!current)
+    return
+
+  const watchlist = !current.watchlist
+
+  noteTitleMine(props.id, { ...current, watchlist })
+
+  try {
+    noteTitleMine(
+      props.id,
+      await api.titles.patchTitleMine(
+        props.id,
+        { watchlist },
+        { language: language.value },
+      ),
+    )
+  }
+  catch {
+    noteTitleMine(props.id, current)
+    mineError.value = t('actions.errors.save')
+  }
+}
+
+function openActions(step?: 'rating') {
+  if (title.value) {
+    openTitleActions(
+      { id: props.id, title: title.value.title, kind: title.value.kind },
+      step,
+    )
+  }
 }
 
 // OK на серии ставит или снимает «просмотрено»: смотреть — через «Смотреть»
@@ -764,6 +828,38 @@ onBeforeUnmount(() => {
               </small>
             </span>
           </button>
+          <button
+            v-focusable
+            class="action title__secondary"
+            type="button"
+            :aria-pressed="!!mine?.watchlist"
+            @click="toggleWatchlist"
+          >
+            <AppIcon
+              :name="mine?.watchlist ? 'check' : 'plus'"
+              class="title__action-icon"
+            />
+            {{ t("actions.watchlist") }}
+          </button>
+          <button
+            v-focusable
+            class="action title__secondary"
+            type="button"
+            @click="openActions('rating')"
+          >
+            <AppIcon name="star" class="title__action-icon" />
+            <!-- Звезда уже нарисована иконкой: рядом только число -->
+            {{ mine?.rating ?? t("actions.rate") }}
+          </button>
+          <button
+            v-focusable
+            class="action title__secondary title__more"
+            type="button"
+            :aria-label="t('actions.more')"
+            @click="openActions()"
+          >
+            <AppIcon name="more" />
+          </button>
         </FocusSection>
 
         <!-- Подсказка о том, что ниже, нужна только у верхнего края -->
@@ -999,6 +1095,7 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </div>
+    <AppToast :message="mineError" @hide="mineError = ''" />
 
     <!-- Вне стека карточки: у него transform, и fixed внутри встал бы относительно него -->
     <Teleport to="body">
@@ -1201,6 +1298,17 @@ onBeforeUnmount(() => {
 
 .title__action-icon {
   margin-right: calc(var(--u) * 14);
+}
+
+.title__secondary {
+  margin-left: calc(var(--u) * 18);
+}
+
+/* «Ещё» — только значок: квадратная кнопка высотой ряда */
+.title__more {
+  justify-content: center;
+  min-width: calc(var(--u) * 84);
+  padding: 0;
 }
 
 /* Главная кнопка говорит, что вы получите: вторая строка — качество и озвучка */

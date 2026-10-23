@@ -23,6 +23,10 @@ export type IconName
     | 'lock'
     | 'list'
     | 'settings'
+    | 'mine'
+    | 'plus'
+    | 'star'
+    | 'more'
 
 const props = defineProps<{ name: IconName }>()
 
@@ -75,6 +79,16 @@ const PATHS: Record<IconName, (string | IconPart)[]> = {
   ],
   check: ['m5 12.5 4.5 4.5L19 7.5'],
   close: ['M6.5 6.5l11 11', 'M17.5 6.5l-11 11'],
+  mine: ['M7 3.5h10a1 1 0 0 1 1 1V21l-6-4-6 4V4.5a1 1 0 0 1 1-1z'],
+  plus: ['M12 5v14M5 12h14'],
+  star: [
+    'm12 3.5 2.6 5.4 5.9.8-4.3 4.1 1 5.8L12 16.8l-5.2 2.8 1-5.8-4.3-4.1 5.9-.8z',
+  ],
+  more: [
+    { d: 'M6 12h.01', width: 3.2 },
+    { d: 'M12 12h.01', width: 3.2 },
+    { d: 'M18 12h.01', width: 3.2 },
+  ],
   lock: [
     'M6 11h12a1.5 1.5 0 0 1 1.5 1.5v7A1.5 1.5 0 0 1 18 21H6a1.5 1.5 0 0 1-1.5-1.5v-7A1.5 1.5 0 0 1 6 11z',
     'M8 11V7.5a4 4 0 0 1 8 0V11',

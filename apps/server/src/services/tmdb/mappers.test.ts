@@ -127,6 +127,7 @@ describe('movieToDetails', () => {
       genres: ['боевик', 'фантастика'],
       runtime: 136,
       rating: 8.2,
+      posterRating: { source: 'tmdb', value: 8.2 },
       certification: undefined,
       countries: [],
       studios: [],

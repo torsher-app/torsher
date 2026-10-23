@@ -17,7 +17,14 @@ import {
   watchErrorResponse,
   watchTitle as watchTitleBody,
 } from '../dto/titles.ts'
+import { titleMine, titleMineQuery, updateTitleMine } from '../dto/mine.ts'
 import { requireViewer } from '../middleware/auth.ts'
+import {
+  getTitleMine,
+  markTitleWatched,
+  MineNotFoundError,
+  updateMine,
+} from '../services/mine/index.ts'
 import {
   DEFAULT_PROFILE,
   getTitleSources,
@@ -391,6 +398,7 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
         operationId: 'putTitleWatched',
         tags: ['Titles'],
         params: titleParams,
+        querystring: titleMineQuery,
         body: markWatchedBody,
         response: {
           200: markWatchedBody,
@@ -404,18 +412,83 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
         return reply.code(404).send({ message: 'Title not found' })
 
       const { season, episode, watched } = request.body
+      const titleId = request.params.id
+
+      // Без серии у сериала — все вышедшие серии
+      if (season === undefined || episode === undefined) {
+        try {
+          await markTitleWatched(
+            request.profileId,
+            titleId,
+            watched,
+            request.query.language,
+          )
+        }
+        catch (err) {
+          if (err instanceof MineNotFoundError)
+            return reply.code(404).send({ message: err.message })
+
+          throw err
+        }
+
+        return { season, episode, watched }
+      }
 
       markWatched(
-        {
-          profileId: request.profileId,
-          titleId: request.params.id,
-          season,
-          episode,
-        },
+        { profileId: request.profileId, titleId, season, episode },
         watched,
       )
 
       return { season, episode, watched }
+    },
+  )
+
+  app.get(
+    '/:id/mine',
+    {
+      schema: {
+        operationId: 'getTitleMine',
+        tags: ['Titles'],
+        params: titleParams,
+        querystring: titleMineQuery,
+        response: { 200: titleMine, 404: messageResponse, ...guardResponses },
+      },
+    },
+    async (request, reply) => {
+      if (!parseCatalogId(request.params.id))
+        return reply.code(404).send({ message: 'Title not found' })
+
+      return getTitleMine(
+        request.profileId,
+        request.params.id,
+        request.query.language,
+      )
+    },
+  )
+
+  app.patch(
+    '/:id/mine',
+    {
+      schema: {
+        operationId: 'patchTitleMine',
+        tags: ['Titles'],
+        params: titleParams,
+        querystring: titleMineQuery,
+        body: updateTitleMine,
+        response: { 200: titleMine, 404: messageResponse, ...guardResponses },
+      },
+    },
+    async (request, reply) => {
+      if (!parseCatalogId(request.params.id))
+        return reply.code(404).send({ message: 'Title not found' })
+
+      updateMine(request.profileId, request.params.id, request.body)
+
+      return getTitleMine(
+        request.profileId,
+        request.params.id,
+        request.query.language,
+      )
     },
   )
 }

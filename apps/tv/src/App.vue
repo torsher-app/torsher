@@ -2,6 +2,7 @@
 import { ref, watchEffect } from 'vue'
 import { useRoute } from 'vue-router'
 import AppScreensaver from './components/AppScreensaver.vue'
+import TitleActions from './components/TitleActions.vue'
 import { useScreensaver } from './composables/useScreensaver.ts'
 import { session } from './session.ts'
 
@@ -31,11 +32,13 @@ const { active: screensaverActive } = useScreensaver(
   <RouterView v-slot="{ Component, route }">
     <KeepAlive
       :key="cacheKey"
-      :include="['HomePage', 'SearchPage', 'SourcesPage']"
+      :include="['HomePage', 'SearchPage', 'SourcesPage', 'MinePage']"
     >
       <component :is="Component" :key="route.path" />
     </KeepAlive>
   </RouterView>
+  <!-- Меню действий тайтла — поверх любого экрана: его открывает постер где угодно -->
+  <TitleActions />
 
   <Transition name="screensaver">
     <AppScreensaver v-if="screensaverActive" />
