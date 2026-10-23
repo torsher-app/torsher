@@ -354,6 +354,8 @@ describe.runIf(hasFfmpeg())('воспроизведение с пробой и �
     expect(body.streamUrl).toMatch(
       new RegExp(`^/api/hls/${body.sessionId}/main\\.m3u8\\?token=.+`),
     )
+    // Внешнему плееру — прямой поток файла, а не перепаковка этой сессии
+    expect(body.externalUrl).toMatch(/^\/api\/stream\/.+\?token=.+/)
 
     const playlist = await app.inject({ url: body.streamUrl })
 

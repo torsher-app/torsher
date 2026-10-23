@@ -312,11 +312,12 @@ export function usePlayback(
   }
 
   /** Позиция не критична: не сохранилась — сохранится в следующий раз */
+  /** Ошибка сохранения молча пропускается; промис — чтобы дождаться записи */
   function saveWatchState(position: number, duration: number) {
     if (!Number.isFinite(position))
-      return
+      return Promise.resolve()
 
-    api.watchState
+    return api.watchState
       .putWatchState({
         torrentId,
         fileIndex,
@@ -325,7 +326,10 @@ export function usePlayback(
           Number.isFinite(duration) && duration > 0 ? duration : undefined,
         title,
       })
-      .catch(() => {})
+      .then(
+        () => {},
+        () => {},
+      )
   }
 
   onScopeDispose(() => {

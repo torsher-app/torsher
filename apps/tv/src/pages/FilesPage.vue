@@ -23,7 +23,13 @@ import { useSourceLabels } from '../composables/useSourceLabels.ts'
 import { useTitleMeta } from '../composables/useTitleMeta.ts'
 import { loadSeason } from '../composables/useTitleSections.ts'
 import { NATIVE_WHEEL_ATTRIBUTE, useFocus } from '../focus/index.ts'
-import { focusedFile, progressOf } from '../lib/files.ts'
+import { playerRoute } from '../lib/continue.ts'
+import {
+  FILES_POLL_INTERVAL_MS,
+  FILES_POLL_LIMIT_MS,
+  focusedFile,
+  progressOf,
+} from '../lib/files.ts'
 import { formatPublishDate } from '../lib/titleInfo.ts'
 
 defineOptions({ name: 'FilesPage' })
@@ -43,8 +49,6 @@ const props = defineProps<{
 }>()
 
 // Пиры присылают метаданные не сразу: спрашиваем раз в 2 с, не дольше 90 с
-const POLL_INTERVAL_MS = 2000
-const POLL_LIMIT_MS = 90_000
 
 const { t } = useI18n()
 const router = useRouter()
@@ -107,7 +111,7 @@ async function loadEpisodes(items: TitleFile[]) {
 }
 
 async function load() {
-  const until = Date.now() + POLL_LIMIT_MS
+  const until = Date.now() + FILES_POLL_LIMIT_MS
 
   for (;;) {
     if (stopped)
@@ -156,7 +160,7 @@ async function load() {
       return
     }
 
-    await sleep(POLL_INTERVAL_MS)
+    await sleep(FILES_POLL_INTERVAL_MS)
   }
 }
 
@@ -245,14 +249,10 @@ function imageOf(file: TitleFile) {
 }
 
 function play(file: TitleFile, replace = false) {
-  const to = {
-    path: `/play/${props.torrentId}/${file.fileIndex}`,
-    query: {
-      title: props.id,
-      season: file.season === null ? undefined : String(file.season),
-      episode: file.episode === null ? undefined : String(file.episode),
-    },
-  }
+  const to = playerRoute(
+    { torrentId: props.torrentId, fileIndex: file.fileIndex },
+    { id: props.id, season: file.season, episode: file.episode },
+  )
 
   if (replace)
     void router.replace(to)

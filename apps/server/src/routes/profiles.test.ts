@@ -71,7 +71,12 @@ async function createProfile(payload: Record<string, unknown>) {
 
   expect(res.statusCode).toBe(201)
 
-  return res.json() as { id: string, name: string, hasPin: boolean }
+  return res.json() as {
+    id: string
+    name: string
+    hasPin: boolean
+    player: object
+  }
 }
 
 async function pairDevice() {
@@ -284,6 +289,56 @@ describe('выбор профиля на устройстве', () => {
     expect(
       await listProfiles({ ...owner, [PROFILE_COOKIE]: mine.id }),
     ).toMatchObject({ currentId: mine.id, selected: true })
+  })
+})
+
+describe('настройки плеера', () => {
+  function putPlayer(cookies: Record<string, string>, payload: object) {
+    return app.inject({
+      method: 'PUT',
+      url: '/api/profiles/current/player',
+      cookies,
+      payload,
+    })
+  }
+
+  it('умолчания у нового профиля', async () => {
+    const fresh = await createProfile({ name: 'Fresh', color: 'teal' })
+
+    expect(fresh.player).toEqual({
+      autoNext: true,
+      subtitleSize: 'm',
+      subtitleBackground: 'box',
+    })
+  })
+
+  it('устройство меняет настройки только своего профиля', async () => {
+    const tv = await pairDevice()
+    const viewer = await createProfile({ name: 'Viewer', color: 'violet' })
+
+    await select(tv, viewer.id)
+
+    const first = await putPlayer(tv, { autoNext: false })
+    const second = await putPlayer(tv, { subtitleSize: 'l' })
+
+    expect(first.statusCode).toBe(200)
+    expect(second.json()).toEqual({
+      autoNext: false,
+      subtitleSize: 'l',
+      subtitleBackground: 'box',
+    })
+
+    const { items } = (
+      await app.inject({ url: '/api/profiles', cookies: tv })
+    ).json() as { items: { id: string, player: object }[] }
+
+    expect(items.find(item => item.id === viewer.id)?.player).toMatchObject({
+      autoNext: false,
+    })
+    expect(
+      items.filter(item => item.id !== viewer.id).map(item => item.player),
+    ).not.toContainEqual(expect.objectContaining({ autoNext: false }))
+    expect((await putPlayer(tv, { subtitleSize: 'xl' })).statusCode).toBe(400)
   })
 })
 

@@ -8,6 +8,7 @@ import HomePage from './pages/HomePage.vue'
 import PlayerPage from './pages/PlayerPage.vue'
 import ProfilesPage from './pages/ProfilesPage.vue'
 import MinePage from './pages/MinePage.vue'
+import ResolvePage from './pages/ResolvePage.vue'
 import SearchPage from './pages/SearchPage.vue'
 import SettingsPage from './pages/SettingsPage.vue'
 import SourcesPage from './pages/SourcesPage.vue'
@@ -42,6 +43,19 @@ export const router = createRouter({
       }),
     },
     { path: '/settings', component: SettingsPage },
+    // «Продолжить», следующая серия без известного файла и другая раздача из
+    // плеера: поиск файла серии → плеер
+    {
+      path: '/title/:id/play',
+      component: ResolvePage,
+      props: route => ({
+        id: route.params.id,
+        season: queryOf(route.query.season),
+        episode: queryOf(route.query.episode),
+        torrent: queryOf(route.query.torrent),
+        candidate: queryOf(route.query.candidate),
+      }),
+    },
     { path: '/about', component: AboutPage },
     // Подключение по коду и «Кто смотрит?»: сюда ведёт гейт ниже
     { path: '/connect', component: ConnectPage },

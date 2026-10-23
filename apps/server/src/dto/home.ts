@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { card, tmdbLanguage } from './catalog.ts'
+import { episodeFile } from './titles.ts'
 
 export const homeModes = ['all', 'movies', 'series'] as const
 
@@ -46,7 +47,7 @@ export const episodeCard = z
   })
   .meta({ id: 'episodeCard' })
 
-export const homeRow = z
+export const catalogRow = z
   .object({
     id: z.enum(homeRowIds),
     // top10 — постеры с крупными цифрами, posters — обычные постеры,
@@ -61,6 +62,38 @@ export const homeRow = z
     items: z.array(card),
     episodes: z.array(episodeCard).optional(),
   })
+  .meta({ id: 'catalogRow' })
+
+/** Тайтл с незаконченным просмотром: что продолжать и с какого места */
+export const continueCard = card
+  .extend({
+    // Кадр серии, у фильма и без кадра — бэкдроп
+    image: z.string().optional(),
+    // У фильма сезона и серии нет
+    season: z.number().nullable(),
+    episode: z.number().nullable(),
+    episodeTitle: z.string().optional(),
+    position: z.number(),
+    // Секунды: из прошлого просмотра, иначе из TMDB; null — неизвестно
+    duration: z.number().nullable(),
+    // Следующая серия после досмотренной, ещё не начатая
+    next: z.boolean(),
+    // Файл серии в известной раздаче; null — раздачу ещё искать
+    file: episodeFile.nullable(),
+  })
+  .meta({ id: 'continueCard' })
+
+export const continueRow = z
+  .object({
+    id: z.literal('continue'),
+    kind: z.literal('continue'),
+    title: z.string(),
+    items: z.array(continueCard),
+  })
+  .meta({ id: 'continueRow' })
+
+export const homeRow = z
+  .union([continueRow, catalogRow])
   .meta({ id: 'homeRow' })
 
 export const homeResponse = z
@@ -73,4 +106,7 @@ export type HomeMode = (typeof homeModes)[number]
 export type HomeRowId = (typeof homeRowIds)[number]
 export type TmdbHomeRowId = (typeof tmdbHomeRowIds)[number]
 export type HomeRow = z.output<typeof homeRow>
+export type CatalogRow = z.output<typeof catalogRow>
 export type EpisodeCard = z.output<typeof episodeCard>
+export type ContinueCard = z.output<typeof continueCard>
+export type ContinueRow = z.output<typeof continueRow>

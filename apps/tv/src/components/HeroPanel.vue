@@ -6,7 +6,11 @@ import { useTitleMeta } from '../composables/useTitleMeta.ts'
 import AppIcon from './AppIcon.vue'
 import RatingList from './RatingList.vue'
 
-const props = defineProps<{ hero: Hero }>()
+const props = defineProps<{
+  hero: Hero
+  // Карточка «Продолжить»: OK сразу запускает просмотр
+  resume?: boolean
+}>()
 
 const { t } = useI18n()
 const { metaParts } = useTitleMeta()
@@ -76,7 +80,12 @@ const meta = computed(() => {
       <p v-if="hero.details?.overview" class="hero__overview">
         {{ hero.details.overview }}
       </p>
-      <div class="hero__keys">
+      <div v-if="resume" class="hero__keys">
+        <span class="hero__key">
+          <span class="hero__button">OK</span>{{ t("home.hint.resume") }}
+        </span>
+      </div>
+      <div v-else class="hero__keys">
         <span class="hero__key">
           <span class="hero__button">OK</span>{{ t("home.hint.details") }}
         </span>

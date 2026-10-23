@@ -567,6 +567,7 @@ describe('позиция по серии', () => {
     })
 
     expect(empty.json()).toEqual({
+      resume: null,
       last: null,
       seasonReleases: [],
       episodes: [],

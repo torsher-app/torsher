@@ -1,10 +1,11 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { messageResponse } from '../dto/common.ts'
-import { homeQuery, homeResponse } from '../dto/home.ts'
+import { continueRow, homeQuery, homeResponse } from '../dto/home.ts'
 import { requireViewer } from '../middleware/auth.ts'
 import { withPosterRatings } from '../services/mine/index.ts'
 import { personalHomeRows } from '../services/mine/home.ts'
-import { getHomeRows } from '../services/tmdb/index.ts'
+import { getContinueRow } from '../services/sources/continue.ts'
+import { getHomeRows, TmdbError } from '../services/tmdb/index.ts'
 import { sendTmdbError } from './catalog.ts'
 
 export const homeRoutes: FastifyPluginAsyncZod = async (app) => {
@@ -27,24 +28,66 @@ export const homeRoutes: FastifyPluginAsyncZod = async (app) => {
     },
     async (request, reply) => {
       const { mode, language } = request.query
+      const { profileId } = request
+      // «Продолжить» и личные ряды (только на главной) собираются вместе с TMDB
+      // и стоят перед ним; упавший свой ряд главную не роняет
+      const [catalog, resume, personal] = await Promise.allSettled([
+        getHomeRows(mode, language),
+        getContinueRow(profileId, mode, language),
+        mode === 'all' ? personalHomeRows(profileId, language) : [],
+      ])
+      const own = [
+        ...(resume.status === 'fulfilled' && resume.value.items.length > 0
+          ? [resume.value]
+          : []),
+        ...(personal.status === 'fulfilled' ? personal.value : []).map(
+          row => ({ ...row, items: withPosterRatings(row.items, profileId) }),
+        ),
+      ]
 
-      try {
-        // Личные ряды — только на главной, перед рядами TMDB
-        const [personal, rows] = await Promise.all([
-          mode === 'all' ? personalHomeRows(request.profileId, language) : [],
-          getHomeRows(mode, language),
-        ])
-
+      if (catalog.status === 'fulfilled') {
         return {
-          rows: [...personal, ...rows].map(row => ({
-            ...row,
-            items: withPosterRatings(row.items, request.profileId),
-          })),
+          rows: [
+            ...own,
+            ...catalog.value.map(row => ({
+              ...row,
+              items: withPosterRatings(row.items, profileId),
+            })),
+          ],
         }
       }
-      catch (err) {
-        return sendTmdbError(reply, err)
-      }
+
+      // Без сети главная показывает хотя бы свои ряды из кэша; без ключа
+      // TMDB каталога нет совсем — это настройка, а не сбой
+      const err: unknown = catalog.reason
+      const config = err instanceof TmdbError && err.kind === 'config'
+
+      if (own.length > 0 && !config)
+        return { rows: own }
+
+      return sendTmdbError(reply, err)
+    },
+  )
+
+  app.get(
+    '/continue',
+    {
+      onRequest: requireViewer,
+      schema: {
+        operationId: 'getHomeContinue',
+        tags: ['Catalog'],
+        querystring: homeQuery,
+        response: {
+          200: continueRow,
+          400: messageResponse,
+          401: messageResponse,
+        },
+      },
+    },
+    async (request) => {
+      const { mode, language } = request.query
+
+      return getContinueRow(request.profileId, mode, language)
     },
   )
 }

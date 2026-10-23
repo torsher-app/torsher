@@ -26,6 +26,7 @@ const PUBLIC = new Set([
 
 const VIEWER = new Set([
   'GET /api/home',
+  'GET /api/home/continue',
   'GET /api/catalog/search',
   'GET /api/catalog/trending',
   'GET /api/catalog/backdrops',
@@ -36,6 +37,7 @@ const VIEWER = new Set([
   'PUT /api/titles/:id/voice',
   'POST /api/titles/:id/watch',
   'GET /api/titles/:id/progress',
+  'GET /api/titles/:id/up-next',
   'POST /api/titles/:id/open',
   'GET /api/titles/:id/files/:torrentId',
   'PUT /api/titles/:id/watched',
@@ -57,6 +59,7 @@ const VIEWER = new Set([
   'GET /api/torrents/:id/stats',
   'GET /api/profiles',
   'POST /api/profiles/:id/select',
+  'PUT /api/profiles/current/player',
 ])
 
 const app = createApp()

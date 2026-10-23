@@ -72,10 +72,12 @@ function streamTokenOf(request: FastifyRequest) {
  * Клиенты ходят в API через `/api` своего origin (прокси панели и витрины,
  * в продакшене — сам сервер), поэтому адреса для плеера — с этим префиксом.
  */
-function streamUrlOf(session: PlaybackSession, request: FastifyRequest) {
-  const token = streamTokenOf(request)
-
-  return session.decision.mode === 'hls'
+function streamUrlOf(
+  session: PlaybackSession,
+  token: string,
+  mode = session.decision.mode,
+) {
+  return mode === 'hls'
     ? `/api/hls/${session.id}/main.m3u8?token=${token}`
     : `/api/stream/${session.torrent.id}/${session.fileIndex}?token=${token}`
 }
@@ -92,12 +94,15 @@ function toPlaybackResponse(
 ) {
   const ready = session.status === 'ready'
   const { media, decision } = session
+  const token = streamTokenOf(request)
 
   return {
     sessionId: session.id,
     status: session.status,
     mode: ready ? decision.mode : null,
-    streamUrl: ready ? streamUrlOf(session, request) : null,
+    streamUrl: ready ? streamUrlOf(session, token) : null,
+    // Внешний плеер читает файл сам: перепаковка закрывается вместе с плеером
+    externalUrl: streamUrlOf(session, token, 'direct'),
     title: session.torrent.name,
     fileName: session.fileName,
     size: session.torrent.files?.[session.fileIndex]?.size ?? 0,

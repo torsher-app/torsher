@@ -21,6 +21,7 @@ function profile(id: string, hasPin = false): Profile {
     hasPin,
     ageLimit: null,
     posterRatings: ['tmdb'],
+    player: { autoNext: true, subtitleSize: 'm', subtitleBackground: 'box' },
   }
 }
 

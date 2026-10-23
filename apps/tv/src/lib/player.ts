@@ -452,3 +452,30 @@ function formatOneDecimal(value: number, locale: string) {
 
   return value.toFixed(1)
 }
+
+export const PLAYBACK_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const
+
+// Плашка «Следующая серия» — за столько секунд до конца серии
+export const UP_NEXT_SECONDS = 30
+
+/**
+ * Показывать ли плашку «Следующая серия»: следующая есть, зритель её не
+ * отменил, а до конца ≤ 30 с или видео кончилось. Перемотка назад прячет её
+ * сама, без отмены.
+ */
+export function upNextVisible(input: {
+  available: boolean
+  dismissed: boolean
+  ended: boolean
+  remaining: number
+}) {
+  if (!input.available || input.dismissed)
+    return false
+
+  return input.ended || input.remaining <= UP_NEXT_SECONDS
+}
+
+/** Секунды отсчёта до следующей серии — остаток до конца, целыми вверх */
+export function countdownOf(remaining: number) {
+  return Number.isFinite(remaining) ? Math.max(0, Math.ceil(remaining)) : 0
+}

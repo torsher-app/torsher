@@ -54,13 +54,23 @@ function parentOf(route: RouteLike) {
         return undefined
 
       const files = `/title/${title}/files/${stringOf(route.params.torrentId)}`
+      const flow = `/title/${title}/`
 
       // Раздачу из одного файла «Файлы» пропускают: плеер встаёт на их место,
-      // и прошлая запись — «Источники»
+      // и прошлая запись — «Источники». «Продолжить» открывает плеер с главной
+      // и с карточки — туда и назад. «Файлы» другой раздачи (серию сменили в
+      // плеере) не годятся: родитель — «Файлы» той, что смотрят
       return {
         path: files,
-        accepts: (back: string) =>
-          pathOf(back) === files || pathOf(back) === `/title/${title}/sources`,
+        accepts: (back: string) => {
+          const path = pathOf(back)
+
+          return (
+            path === files
+            || path === `${flow}sources`
+            || (!path.startsWith(flow) && !path.startsWith('/play/'))
+          )
+        },
       }
     }
     default:

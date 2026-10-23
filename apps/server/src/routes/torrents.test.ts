@@ -595,6 +595,7 @@ describe('воспроизведение и позиция', () => {
     expect(body.streamUrl).toMatch(
       new RegExp(`^/api/stream/${torrent.id}/0\\?token=.+`),
     )
+    expect(body.externalUrl).toBe(body.streamUrl)
     expect(engineCalls()).toEqual(['POST /torrents'])
     expect(getDb().select().from(torrents).get()?.inEngine).toBe(true)
   })

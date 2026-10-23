@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { tmdbLanguage } from './catalog.ts'
 import { sourceErrorKinds } from './sources.ts'
 
 function number(max: number) {
@@ -268,8 +269,36 @@ export const seasonRelease = z
   })
   .meta({ id: 'seasonRelease' })
 
+export const episodeFile = z
+  .object({
+    torrentId: z.string(),
+    fileIndex: z.number(),
+  })
+  .meta({ id: 'episodeFile' })
+
+export const titleProgressQuery = z.object({
+  // Язык деталей TMDB: по ним ищется следующая вышедшая серия, кэш общий с карточкой
+  language: tmdbLanguage,
+})
+
+export const resumeTarget = z
+  .object({
+    // У фильма сезона и серии нет
+    season: z.number().nullable(),
+    episode: z.number().nullable(),
+    position: z.number(),
+    duration: z.number().nullable(),
+    // Следующая серия после досмотренной
+    next: z.boolean(),
+    // Файл серии в известной раздаче; null — раздачу ещё искать
+    file: episodeFile.nullable(),
+  })
+  .meta({ id: 'resumeTarget' })
+
 export const titleProgress = z
   .object({
+    // Что продолжать: начатая серия или следующая; null — продолжать нечего
+    resume: resumeTarget.nullable(),
     // Последняя начатая серия; у фильма сезон и серия — null
     last: z
       .object({
@@ -288,6 +317,30 @@ export const titleProgress = z
     episodes: z.array(episodeProgress),
   })
   .meta({ id: 'titleProgress' })
+
+export const upNextQuery = z.object({
+  season: number(999),
+  episode: number(9999),
+  // Раздача, которую смотрят: в ней ищется файл следующей серии
+  torrentId: z.string().min(1).max(100).optional(),
+  language: tmdbLanguage,
+})
+
+export const upNext = z
+  .object({
+    // null — следующей вышедшей серии нет
+    next: z
+      .object({
+        season: z.number(),
+        episode: z.number(),
+        title: z.string(),
+        still: z.string().optional(),
+        // Файл серии в той же раздаче; null — её нет в раздаче
+        file: episodeFile.nullable(),
+      })
+      .nullable(),
+  })
+  .meta({ id: 'upNext' })
 
 // Контекст тайтла у позиции просмотра: прогресс серии не зависит от раздачи
 export const playbackTitle = z
