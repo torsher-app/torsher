@@ -18,10 +18,16 @@ function share(value: number) {
     : '0%'
 }
 
-// Порядок полосы: оставленное, кэш, чужое; свободное — фон дорожки
+// Порядок полосы: оставленное, кэш, библиотека сверх общего с раздачами,
+// чужое; свободное — фон дорожки
 const segments = computed(() => [
   { key: 'kept', size: props.overview.keptUsed, class: 'bg-foreground' },
   { key: 'cache', size: props.overview.cacheUsed, class: 'bg-brand' },
+  {
+    key: 'library',
+    size: props.overview.library.own,
+    class: 'bg-success',
+  },
   { key: 'other', size: props.overview.other, class: 'bg-muted-foreground/40' },
 ])
 </script>
@@ -51,6 +57,7 @@ const segments = computed(() => [
         t('panel.settings.storage.disk.label', {
           kept: bytes(overview.keptUsed),
           cache: bytes(overview.cacheUsed),
+          library: bytes(overview.library.own),
           other: bytes(overview.other),
           free: bytes(overview.free),
         })

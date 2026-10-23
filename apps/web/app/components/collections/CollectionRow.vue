@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import type { Collection } from '@torsher/api-client'
-import { EllipsisIcon, LibraryIcon, PencilIcon, Trash2Icon } from '@lucide/vue'
+import {
+  BookmarkIcon,
+  EllipsisIcon,
+  PencilIcon,
+  Trash2Icon,
+} from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -47,7 +52,7 @@ const visibility = computed(() =>
       )
     "
   >
-    <LibraryIcon
+    <BookmarkIcon
       class="row-span-2 mt-0.5 size-4 self-start justify-self-center text-muted-foreground sm:row-span-1 sm:mt-0 sm:self-center"
       aria-hidden="true"
     />

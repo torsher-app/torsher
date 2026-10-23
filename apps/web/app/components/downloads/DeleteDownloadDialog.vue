@@ -43,6 +43,10 @@ watch(open, (isOpen) => {
   }
 })
 
+const hasLibraryFiles = computed(
+  () => !!props.torrent?.files.some(file => file.inLibrary),
+)
+
 const size = computed(() =>
   formatBytes(props.torrent?.sizeOnDisk ?? 0, locale.value),
 )
@@ -85,6 +89,9 @@ async function onDelete() {
         </AlertDialogTitle>
         <AlertDialogDescription>
           {{ t("panel.torrents.deleteDialog.text") }}
+          <template v-if="hasLibraryFiles">
+            {{ t("panel.torrents.deleteDialog.library") }}
+          </template>
         </AlertDialogDescription>
       </AlertDialogHeader>
 

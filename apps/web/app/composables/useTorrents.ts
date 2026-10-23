@@ -176,6 +176,26 @@ async function setKept(id: string, kept: boolean) {
   return updated
 }
 
+/** «Исправить совпадение»: ошибку показывает диалог, запрос в `silent` */
+async function setTitle(id: string, titleId: string | null) {
+  const updated = await withErrorMode('silent', () =>
+    api.torrents.putTorrentTitle(id, { titleId }))
+
+  replaceTorrent(updated)
+
+  return updated
+}
+
+/** Ошибку показывает диалог: запрос в `silent` */
+async function removeFromLibrary(id: string) {
+  const updated = await withErrorMode('silent', () =>
+    api.torrents.deleteTorrentLibrary(id))
+
+  replaceTorrent(updated)
+
+  return updated
+}
+
 /**
  * Перезапуск движка: сервер отвечает сразу, а процесс поднимается сам —
  * состояние «запускается» ставим тут же, дальше его уточняет опрос
@@ -211,6 +231,8 @@ export function useTorrents() {
     downloadFiles,
     setPaused,
     setKept,
+    removeFromLibrary,
+    setTitle,
     restartEngine,
     stopPolling,
   }

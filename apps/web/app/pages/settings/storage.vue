@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import StorageDiskCard from '~/components/settings/StorageDiskCard.vue'
+import StorageLibraryCard from '~/components/settings/StorageLibraryCard.vue'
 import StorageQueueCard from '~/components/settings/StorageQueueCard.vue'
 import StoragePolicyCards from '~/components/settings/StoragePolicyCards.vue'
 
@@ -35,6 +36,7 @@ onMounted(load)
       aria-busy="true"
     >
       <Skeleton class="h-36 rounded-xl" />
+      <Skeleton class="h-40 rounded-xl" />
       <Skeleton class="h-48 rounded-xl" />
       <Skeleton class="h-48 rounded-xl" />
     </div>
@@ -64,6 +66,8 @@ onMounted(load)
 
     <template v-else>
       <StorageDiskCard :overview="overview" />
+
+      <StorageLibraryCard :library="overview.library" />
 
       <StoragePolicyCards :overview="overview" />
 

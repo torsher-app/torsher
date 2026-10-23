@@ -7,6 +7,7 @@ export const attentionLinks: Record<
   RouteLocationRaw
 > = {
   downloads: '/downloads',
+  library: '/library',
   storage: '/settings/storage',
   sources: { path: '/sources', query: { filter: 'attention' } },
   network: '/settings/network',

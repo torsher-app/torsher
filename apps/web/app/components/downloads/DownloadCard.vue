@@ -5,6 +5,7 @@ import {
   CircleXIcon,
   FileIcon,
   FilmIcon,
+  LibraryIcon,
   MonitorPlayIcon,
   PinIcon,
   PinOffIcon,
@@ -12,6 +13,7 @@ import {
   XIcon,
 } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
+import { toast } from 'vue-sonner'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -25,12 +27,16 @@ import {
 import LoadingButton from '~/components/LoadingButton.vue'
 import { formatDateTime, formatRelative } from '~/lib/format'
 import { releaseMetaOf } from '~/lib/releaseMeta'
-import { playerUrl } from '~/lib/torrents'
+import { playerUrl, videoIndexes } from '~/lib/torrents'
 import DownloadStatusIcon from './DownloadStatusIcon.vue'
+import FixMatchDialog from '~/components/library/FixMatchDialog.vue'
+import RemoveLibraryDialog from './RemoveLibraryDialog.vue'
 
 const props = defineProps<{
   torrent: Torrent | null
   now: number
+  // Открыта после добавления: видео отмечены заранее, «Скачать выбранные» — один клик
+  preselect?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -50,8 +56,12 @@ const title = useTitleInfo(() => shown.value?.titleId ?? null)
 const selection = ref(new Set<number>())
 
 function resetSelection(torrent: Torrent) {
+  const chosen = torrent.files
+    .filter(file => file.selected)
+    .map(file => file.index)
+
   selection.value = new Set(
-    torrent.files.filter(file => file.selected).map(file => file.index),
+    chosen.length === 0 && props.preselect ? videoIndexes(torrent) : chosen,
   )
 }
 
@@ -63,8 +73,15 @@ watch(
 
     shown.value = torrent
 
-    if (torrent.id !== previous?.id)
+    // У magnet список файлов приходит позже: отметки — когда он появился
+    if (
+      torrent.id !== previous?.id
+      || (props.preselect
+        && previous?.files.length === 0
+        && torrent.files.length > 0)
+    ) {
       resetSelection(torrent)
+    }
   },
   { immediate: true },
 )
@@ -79,6 +96,67 @@ const release = computed(() =>
   shown.value ? releaseMetaOf(shown.value) : null,
 )
 const isBusy = computed(() => !!shown.value && actions.isBusy(shown.value.id))
+const hasLibraryFiles = computed(
+  () => !!shown.value?.files.some(file => file.inLibrary),
+)
+const isRemoveOpen = ref(false)
+const isMatchOpen = ref(false)
+const torrentsStore = useTorrents()
+
+async function saveTitle(titleId: string | null) {
+  const torrent = shown.value
+
+  if (!torrent)
+    return
+
+  await torrentsStore.setTitle(torrent.id, titleId)
+  toast.success(
+    t(
+      titleId
+        ? 'panel.torrents.match.saved'
+        : 'panel.torrents.match.ignoredToast',
+    ),
+    { description: torrent.name },
+  )
+}
+const suggestion = useTitleInfo(() => shown.value?.matchSuggestion ?? null)
+
+// Без тайтла: распознаётся, похоже на подсказку, не узнан или «не фильм»
+const matchText = computed(() => {
+  const torrent = shown.value
+
+  if (!torrent || torrent.titleId)
+    return ''
+
+  if (torrent.matchStatus === 'unsure') {
+    return suggestion.value
+      ? t('panel.torrents.match.unsure', {
+          title: [suggestion.value.title, suggestion.value.year]
+            .filter(Boolean)
+            .join(', '),
+        })
+      : t('panel.torrents.match.pending')
+  }
+
+  if (torrent.matchStatus === 'unmatched' || torrent.matchStatus === 'ignored')
+    return t(`panel.torrents.match.${torrent.matchStatus}`)
+
+  return t(
+    torrent.status === 'ready'
+      ? 'panel.torrents.match.pending'
+      : 'panel.torrents.match.waiting',
+  )
+})
+const storageText = computed(() => {
+  if (shown.value?.inLibrary)
+    return t('panel.torrents.card.storageLibrary')
+
+  return t(
+    shown.value?.retention === 'keep'
+      ? 'panel.torrents.card.storageKeep'
+      : 'panel.torrents.card.storageCache',
+  )
+})
 
 const isSelectionChanged = computed(() => {
   const torrent = shown.value
@@ -207,14 +285,53 @@ function onInteractOutside(event: Event) {
                 {{ status.numbers(shown, view) }}
               </span>
             </dd>
-            <template v-if="title">
-              <dt class="text-muted-foreground">
-                {{ t("panel.torrents.card.title") }}
-              </dt>
-              <dd>
-                {{ [title.title, title.year].filter(Boolean).join(", ") }}
-              </dd>
-            </template>
+            <dt class="self-start text-muted-foreground">
+              {{ t("panel.torrents.card.title") }}
+            </dt>
+            <dd class="grid justify-items-start gap-1">
+              <span v-if="shown.titleId">
+                {{
+                  title
+                    ? [title.title, title.year].filter(Boolean).join(", ")
+                    : "\u00A0"
+                }}
+              </span>
+              <span
+                v-else
+                :class="{
+                  'text-muted-foreground': shown.matchStatus !== 'unsure',
+                }"
+              >{{ matchText }}</span>
+              <span
+                v-if="shown.status === 'ready'"
+                class="flex flex-wrap gap-x-3 gap-y-1"
+              >
+                <LoadingButton
+                  v-if="!shown.titleId && shown.matchStatus === 'unsure'"
+                  variant="link"
+                  size="sm"
+                  class="h-auto p-0"
+                  :loading="isBusy"
+                  @click="actions.confirmMatch(shown)"
+                >
+                  {{ t("panel.torrents.match.confirm") }}
+                </LoadingButton>
+                <Button
+                  variant="link"
+                  size="sm"
+                  class="h-auto p-0"
+                  @click="isMatchOpen = true"
+                >
+                  {{
+                    t(
+                      shown.titleId
+                        ? "panel.torrents.match.change"
+                        : "panel.torrents.match.fix",
+                    )
+                  }}
+                </Button>
+              </span>
+            </dd>
             <dt class="text-muted-foreground">
               {{ t("panel.torrents.card.size") }}
             </dt>
@@ -264,13 +381,7 @@ function onInteractOutside(event: Event) {
               {{ t("panel.torrents.card.storage") }}
             </dt>
             <dd>
-              {{
-                t(
-                  shown.retention === "keep"
-                    ? "panel.torrents.card.storageKeep"
-                    : "panel.torrents.card.storageCache",
-                )
-              }}
+              {{ storageText }}
             </dd>
             <dt class="text-muted-foreground">
               {{ t("panel.torrents.card.added") }}
@@ -366,6 +477,14 @@ function onInteractOutside(event: Event) {
                       })
                     }}
                   </template>
+                  <template v-if="file.inLibrary">
+                    ·
+                    <LibraryIcon
+                      class="inline size-3 align-[-2px] text-success"
+                      aria-hidden="true"
+                    />
+                    {{ t("panel.torrents.inLibrary") }}
+                  </template>
                 </span>
               </li>
             </ul>
@@ -403,6 +522,16 @@ function onInteractOutside(event: Event) {
             }}
           </Button>
           <Button
+            v-if="hasLibraryFiles"
+            variant="outline"
+            size="sm"
+            :disabled="isBusy"
+            @click="isRemoveOpen = true"
+          >
+            <LibraryIcon aria-hidden="true" />
+            {{ t("panel.torrents.removeLibrary") }}
+          </Button>
+          <Button
             variant="destructive"
             size="sm"
             class="ml-auto"
@@ -414,4 +543,11 @@ function onInteractOutside(event: Event) {
       </template>
     </SheetContent>
   </Sheet>
+  <RemoveLibraryDialog v-model:open="isRemoveOpen" :torrent="shown" />
+  <FixMatchDialog
+    v-model:open="isMatchOpen"
+    :name="shown?.name ?? null"
+    :current="shown?.titleId ?? shown?.matchSuggestion ?? null"
+    :save="saveTitle"
+  />
 </template>

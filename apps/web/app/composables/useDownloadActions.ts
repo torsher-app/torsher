@@ -91,6 +91,19 @@ export function useDownloadActions() {
     })
   }
 
+  // «Да, это он»: подсказку распознавания подтверждает владелец
+  function confirmMatch(torrent: Torrent) {
+    return run(torrent, async () => {
+      if (!torrent.matchSuggestion)
+        return
+
+      await torrents.setTitle(torrent.id, torrent.matchSuggestion)
+      toast.success(t('panel.torrents.match.saved'), {
+        description: torrent.name,
+      })
+    })
+  }
+
   function retry(torrent: Torrent) {
     return run(torrent, () => torrents.retryTorrent(torrent.id))
   }
@@ -100,6 +113,7 @@ export function useDownloadActions() {
     togglePause,
     toggleKeep,
     download,
+    confirmMatch,
     retry,
   }
 }

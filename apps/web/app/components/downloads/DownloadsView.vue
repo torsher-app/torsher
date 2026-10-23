@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { isSingleVideo, videoIndexes } from '~/lib/torrents'
 import type { Torrent } from '@torsher/api-client'
 import {
   CircleAlertIcon,
@@ -32,6 +33,20 @@ const now = useNow({ interval: 30_000 })
 const isAddOpen = ref(false)
 const isRestartOpen = ref(false)
 const selectedId = ref<string | null>(null)
+// Карточка, открытая после добавления: видео в ней отмечены заранее
+const preselectId = ref<string | null>(null)
+
+// Фильм качается сразу; сериал и magnet без списка файлов — карточка с выбором
+function onAdded(torrent: Torrent, existed: boolean) {
+  if (!existed && isSingleVideo(torrent)) {
+    void actions.download(torrent, videoIndexes(torrent))
+    return
+  }
+
+  preselectId.value = existed ? null : torrent.id
+  selectedId.value = torrent.id
+}
+
 const deleteTarget = ref<Torrent | null>(null)
 
 const selected = computed(
@@ -223,10 +238,11 @@ onBeforeUnmount(stopPolling)
   <DownloadCard
     :torrent="selected"
     :now="now.getTime()"
+    :preselect="!!selected && selected.id === preselectId"
     @close="selectedId = null"
     @delete="deleteTarget = selected"
   />
-  <AddTorrentDialog v-model:open="isAddOpen" />
+  <AddTorrentDialog v-model:open="isAddOpen" @added="onAdded" />
   <RestartEngineDialog v-model:open="isRestartOpen" />
   <DeleteDownloadDialog v-model:open="isDeleteOpen" :torrent="deleteTarget" />
 </template>

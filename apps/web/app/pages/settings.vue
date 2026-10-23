@@ -29,9 +29,11 @@ const current = computed(() =>
       <div
         class="mx-auto grid w-full max-w-5xl gap-5 px-4 py-5 md:grid-cols-[200px_minmax(0,1fr)] md:gap-10 lg:px-8 lg:py-7"
       >
+        <!-- Прилипает на высоте верхнего отступа сетки (py-5 / lg:py-7): при
+             прокрутке подменю стоит на месте, а не подъезжает к краю -->
         <nav
           :aria-label="t('panel.settings.nav.label')"
-          class="no-scrollbar flex gap-0.5 overflow-x-auto border-b pb-2 md:sticky md:top-0 md:flex-col md:self-start md:border-b-0 md:pb-0"
+          class="no-scrollbar flex gap-0.5 overflow-x-auto border-b pb-2 md:sticky md:top-5 md:flex-col md:self-start md:border-b-0 md:pb-0 lg:top-7"
         >
           <NuxtLink
             v-for="item in settingsItems"
