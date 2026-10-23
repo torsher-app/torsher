@@ -1,5 +1,7 @@
 import type {
   Card,
+  Person,
+  PersonDetails,
   SeasonDetails,
   TitleDetails,
   TitleExtras,
@@ -9,6 +11,7 @@ import type {
   TmdbExtras,
   TmdbListResponse,
   TmdbMovie,
+  TmdbPerson,
   TmdbSearchResponse,
   TmdbSeason,
   TmdbTv,
@@ -26,10 +29,14 @@ import {
   extrasToDto,
   movieToDetails,
   parseCatalogId,
+  parsePersonId,
+  personToDto,
   searchResultsToCards,
+  searchResultsToPeople,
   seasonToDetails,
   similarCards,
   trimExtras,
+  trimPerson,
   tvAiring,
   tvToDetails,
 } from './mappers.ts'
@@ -51,14 +58,22 @@ const TRENDING_LIMIT = 12
  * меняется, иначе до конца TTL отдавались бы ответы без новых полей.
  */
 const DETAILS_KEY_VERSION = 'v3'
+// v2: съёмочная группа сериала и создатели
+const EXTRAS_KEY_VERSION = 'v2'
+const PERSON_KEY_VERSION = 'v1'
 
 // У части тайтлов нет перевода описания: его берём с английской версии
 const FALLBACK_LANGUAGE = 'en-US'
 
-export async function searchTitles(
+export interface CatalogSearch {
+  items: Card[]
+  people: Person[]
+}
+
+export async function searchCatalog(
   query: string,
   language: string,
-): Promise<Card[]> {
+): Promise<CatalogSearch> {
   const normalized = query.trim().toLowerCase()
   const response = await withMetaCache(
     `tmdb:search:${language}:${normalized}`,
@@ -71,7 +86,10 @@ export async function searchTitles(
       }),
   )
 
-  return withRatings(searchResultsToCards(response.results))
+  return {
+    items: await withRatings(searchResultsToCards(response.results)),
+    people: searchResultsToPeople(response.results),
+  }
 }
 
 export async function getTrending(language: string): Promise<Card[]> {
@@ -235,7 +253,7 @@ export async function getTitleExtras(
 
   const credits = ref.type === 'movie' ? 'credits' : 'aggregate_credits'
   const extras = await withMetaCache(
-    `tmdb:${ref.type}:${ref.tmdbId}:${language}:extras`,
+    `tmdb:${ref.type}:${ref.tmdbId}:${language}:extras:${EXTRAS_KEY_VERSION}`,
     DETAILS_TTL_MS,
     async () =>
       trimExtras(
@@ -268,4 +286,59 @@ export async function getTitleExtras(
   await withRatings(dto.similar)
 
   return dto
+}
+
+function loadPerson(tmdbId: number, language: string, withCredits: boolean) {
+  const kind = withCredits ? 'credits' : 'bio'
+
+  return withMetaCache(
+    `tmdb:person:${tmdbId}:${language}:${kind}:${PERSON_KEY_VERSION}`,
+    DETAILS_TTL_MS,
+    async () =>
+      trimPerson(
+        await tmdbGet<TmdbPerson>(`/person/${tmdbId}`, {
+          language,
+          ...(withCredits && { append_to_response: 'combined_credits' }),
+        }),
+      ),
+  )
+}
+
+/**
+ * Персона и фильмография по ролям. `watched` — тайтлы, по которым у профиля
+ * есть прогресс. `undefined` — ID не персоны TMDB; нет персоны — `TmdbError`.
+ */
+export async function getPerson(
+  id: string,
+  language: string,
+  watched: (titleIds: string[]) => Set<string>,
+): Promise<PersonDetails | undefined> {
+  const tmdbId = parsePersonId(id)
+
+  if (tmdbId === undefined)
+    return undefined
+
+  const person = personToDto(await loadPerson(tmdbId, language, true))
+
+  if (!person.biography && language !== FALLBACK_LANGUAGE) {
+    try {
+      person.biography = (
+        await loadPerson(tmdbId, FALLBACK_LANGUAGE, false)
+      ).biography.trim()
+    }
+    catch {
+      // Без биографии страница персоны всё равно полезна
+    }
+  }
+
+  const items = person.credits.flatMap(group => group.items)
+  const seen = watched(items.map(item => item.id))
+
+  await withRatings(items)
+
+  for (const group of person.credits) {
+    for (const item of group.items) item.watched = seen.has(item.id)
+  }
+
+  return person
 }

@@ -35,7 +35,10 @@ export function ratingsOf(profileId: string, titleIds: string[]) {
  * настройке профиля из `card.ratings` (их собирают поставщики оценок до вызова)
  * в порядке поставщиков.
  */
-export function withPosterRatings(cards: Card[], profileId: string): Card[] {
+export function withPosterRatings<T extends Card>(
+  cards: T[],
+  profileId: string,
+): T[] {
   const sources: string[] = getDb()
     .select({ posterRatings: profiles.posterRatings })
     .from(profiles)

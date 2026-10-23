@@ -27,6 +27,15 @@ describe('backAction', () => {
     })
   })
 
+  it('персона — назад туда, откуда открыли, без истории — на главную', () => {
+    const person = route('/person/:id', { id: 'tmdb:person:525' })
+
+    expect(backAction(person, '/title/tmdb:movie:27205')).toEqual({
+      kind: 'history',
+    })
+    expect(backAction(person, null)).toEqual({ kind: 'replace', path: '/' })
+  })
+
   it('без истории — родитель вместо текущей записи', () => {
     expect(backAction(files, undefined)).toEqual({
       kind: 'replace',

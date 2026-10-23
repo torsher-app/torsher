@@ -34,8 +34,8 @@ const SECTIONS = new Set([
 /**
  * Экран уровнем выше и какая прошлая запись истории им считается. Флоу
  * просмотра — иерархия: плеер → «Файлы» → «Источники» → карточка → откуда
- * пришли на карточку. Разделы рейла — на главную. Остальные экраны родителя
- * не знают.
+ * пришли на карточку. Персона, как и карточка, возвращается туда, откуда её
+ * открыли. Разделы рейла — на главную. Остальные экраны родителя не знают.
  */
 function parentOf(route: RouteLike) {
   const id = stringOf(route.params.id)
@@ -67,6 +67,9 @@ function parentOf(route: RouteLike) {
           !pathOf(back).startsWith(`/title/${id}/`)
           && !back.startsWith('/play/'),
       }
+    case '/person/:id':
+      // Персону открывают из карточки, поиска или другой персоны: назад — туда
+      return { path: '/', accepts: () => true }
     case '/play/:torrentId/:fileIndex': {
       const title = stringOf(route.query.title)
 

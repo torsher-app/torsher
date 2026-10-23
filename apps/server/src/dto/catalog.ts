@@ -133,9 +133,31 @@ export const person = z
   })
   .meta({ id: 'person' })
 
+// Должности съёмочной группы на карточке тайтла: текст по ключу пишет клиент
+export const crewJob = z.enum([
+  'director',
+  'creator',
+  'writer',
+  'camera',
+  'music',
+  'producer',
+])
+
+export const crewMember = z
+  .object({
+    // Непрозрачный ID персоны, как у актёра
+    id: z.string(),
+    name: z.string(),
+    photo: z.string().optional(),
+    jobs: z.array(crewJob),
+  })
+  .meta({ id: 'crewMember' })
+
 export const titleExtras = z
   .object({
     cast: z.array(person),
+    // Режиссёр (у сериала — создатели), сценарий, оператор, композитор, продюсеры
+    crew: z.array(crewMember),
     similar: z.array(card),
     // Другие названия тайтла: по ним его узнают и ищут раздачи
     aka: z.array(z.string()),
@@ -146,6 +168,8 @@ export const titleExtras = z
 export const catalogSearchResponse = z
   .object({
     items: z.array(card),
+    // Люди с фото из того же поиска: ряд «Люди» над тайтлами
+    people: z.array(person),
   })
   .meta({ id: 'catalogSearchResponse' })
 
@@ -172,6 +196,54 @@ export const catalogBackdropsResponse = z
   .meta({ id: 'catalogBackdropsResponse' })
 
 export type TitleRating = z.output<typeof titleRating>
+export const catalogPersonParams = z.object({
+  id: z.string().min(1).max(100),
+})
+
+// Роль в фильмографии персоны: ряд на странице персоны
+export const personRole = z.enum([
+  'acting',
+  'directing',
+  'creator',
+  'writing',
+  'production',
+  'camera',
+  'music',
+  'editing',
+])
+
+export const personCredit = card
+  .extend({
+    // Персонаж у актёра
+    detail: z.string().optional(),
+    // У профиля есть прогресс по тайтлу
+    watched: z.boolean(),
+  })
+  .meta({ id: 'personCredit' })
+
+export const personDetails = z
+  .object({
+    id: z.string(),
+    name: z.string(),
+    photo: z.string().optional(),
+    // Чем персона известна: эта роль идёт первой
+    knownFor: personRole.optional(),
+    // Даты — YYYY-MM-DD
+    birthday: z.string().optional(),
+    deathday: z.string().optional(),
+    placeOfBirth: z.string().optional(),
+    biography: z.string(),
+    credits: z.array(
+      z.object({
+        role: personRole,
+        items: z.array(personCredit),
+        // Тайтлов в роли всего: в items — только самые популярные
+        total: z.number().int(),
+      }),
+    ),
+  })
+  .meta({ id: 'personDetails' })
+
 export type Card = z.output<typeof card>
 export type Backdrop = z.output<typeof backdrop>
 export type TitleDetails = z.output<typeof titleDetails>
@@ -180,3 +252,8 @@ export type Episode = z.output<typeof episode>
 export type SeasonDetails = z.output<typeof seasonDetails>
 export type Person = z.output<typeof person>
 export type TitleExtras = z.output<typeof titleExtras>
+export type CrewJob = z.output<typeof crewJob>
+export type CrewMember = z.output<typeof crewMember>
+export type PersonRole = z.output<typeof personRole>
+export type PersonCredit = z.output<typeof personCredit>
+export type PersonDetails = z.output<typeof personDetails>

@@ -4,6 +4,7 @@ import {
   movie,
   movieExtras,
   movieList,
+  person,
   searchResponse,
   searchWithPerson,
   season,
@@ -17,12 +18,17 @@ import {
   listResultToCard,
   movieToDetails,
   parseCatalogId,
+  parsePersonId,
+  personToDto,
   pickLogo,
   searchResultsToCards,
+  searchResultsToPeople,
   searchResultToCard,
   seasonToDetails,
   toCatalogId,
+  toPersonId,
   trimExtras,
+  trimPerson,
   tvToDetails,
 } from './mappers.ts'
 
@@ -312,7 +318,22 @@ describe('extras', () => {
     expect(trimmed.aggregate_credits?.cast).toHaveLength(20)
     expect(trimmed.aggregate_credits?.cast[0]?.name).toBe('Актёр 25')
     expect(trimmed).not.toHaveProperty('overview')
-    expect(trimmed.aggregate_credits).not.toHaveProperty('crew')
+    expect(
+      trimmed.aggregate_credits?.crew?.map(member => [
+        member.id,
+        member.jobs?.map(item => item.job),
+      ]),
+    ).toEqual([
+      [901, ['Writer']],
+      [902, ['Writer']],
+      [904, ['Executive Producer']],
+    ])
+  })
+
+  it('у фильма оставляет только должности съёмочной группы', () => {
+    expect(
+      trimExtras(movieExtras).credits?.crew.map(member => member.job),
+    ).not.toContain('Key Grip')
   })
 
   it('у сериала роль — персонаж с наибольшим числом серий', () => {
@@ -326,6 +347,42 @@ describe('extras', () => {
     })
     expect(dto.cast.at(-1)?.photo).toBeUndefined()
     expect(dto.directors).toEqual([])
+  })
+
+  it('у сериала в группе — создатели вместо режиссёров, по числу серий', () => {
+    const dto = extrasToDto(trimExtras(tvExtras), tvRef, 'ru-RU')
+
+    expect(dto.crew).toEqual([
+      {
+        id: 'tmdb:person:904',
+        name: 'Создатель',
+        photo: '/api/img/w185/creator.jpg',
+        jobs: ['creator', 'producer'],
+      },
+      {
+        id: 'tmdb:person:902',
+        name: 'Главный сценарист',
+        photo: undefined,
+        jobs: ['writer'],
+      },
+      {
+        id: 'tmdb:person:901',
+        name: 'Сценарист',
+        photo: undefined,
+        jobs: ['writer'],
+      },
+    ])
+  })
+
+  it('у фильма группа по должностям: одна карточка на человека, без фото — только если с фото никого', () => {
+    const dto = extrasToDto(trimExtras(movieExtras), movieRef, 'en-US')
+
+    expect(dto.crew.map(member => [member.name, member.jobs])).toEqual([
+      ['Lilly Wachowski', ['director', 'writer']],
+      ['Lana Wachowski', ['director']],
+      ['Composer', ['music']],
+      ['Producer D', ['producer']],
+    ])
   })
 
   it('похожее — с постером и без самого тайтла', () => {
@@ -380,5 +437,123 @@ describe('extras', () => {
     )
 
     expect(dto.aka).toEqual(['Матрица: Перезагрузка 1', 'Matrix (1999)'])
+  })
+})
+
+describe('персона', () => {
+  it('iD разбирается обратно и не путается с тайтлом', () => {
+    expect(parsePersonId(toPersonId(525))).toBe(525)
+    expect(parsePersonId('tmdb:movie:525')).toBeUndefined()
+  })
+
+  it('люди из поиска — только с фото', () => {
+    expect(
+      searchResultsToPeople([
+        {
+          id: 525,
+          media_type: 'person',
+          name: 'Нолан',
+          profile_path: '/n.jpg',
+        },
+        { id: 1, media_type: 'person', name: 'Без фото', profile_path: null },
+        { id: 603, media_type: 'movie', title: 'Матрица' },
+      ]),
+    ).toEqual([
+      { id: 'tmdb:person:525', name: 'Нолан', photo: '/api/img/w185/n.jpg' },
+    ])
+  })
+
+  it('фильмография по ролям: сначала роль, которой известна персона, внутри — по популярности', () => {
+    const dto = personToDto(trimPerson(person))
+
+    expect(
+      dto.credits.map(group => [
+        group.role,
+        group.total,
+        group.items.map(item => item.title),
+      ]),
+    ).toEqual([
+      ['directing', 2, ['Интерстеллар', 'Начало']],
+      [
+        'writing',
+        3,
+        ['Интерстеллар', 'Начало', 'Тёмный рыцарь: Возрождение легенды'],
+      ],
+      ['acting', 1, ['Преследование']],
+      ['production', 1, ['Мир Дикого Запада']],
+    ])
+    expect(dto.credits[2]?.items[0]).toEqual({
+      id: 'tmdb:movie:11660',
+      kind: 'movie',
+      title: 'Преследование',
+      originalTitle: 'Following',
+      year: 1998,
+      poster: '/api/img/w342/following.jpg',
+      detail: 'Прохожий',
+      watched: false,
+    })
+  })
+
+  it('гостевые серии сериала — после остальных тайтлов роли', () => {
+    const dto = personToDto({
+      ...person,
+      combined_credits: {
+        cast: [],
+        crew: [
+          {
+            id: 1431,
+            media_type: 'tv',
+            name: 'Место преступления',
+            poster_path: '/csi.jpg',
+            department: 'Directing',
+            job: 'Director',
+            episode_count: 2,
+            popularity: 90,
+          },
+          {
+            id: 680,
+            media_type: 'movie',
+            title: 'Криминальное чтиво',
+            poster_path: '/pulp.jpg',
+            department: 'Directing',
+            job: 'Director',
+            popularity: 30,
+          },
+        ],
+      },
+    })
+
+    expect(dto.credits[0]?.items.map(item => item.title)).toEqual([
+      'Криминальное чтиво',
+      'Место преступления',
+    ])
+  })
+
+  it('без гостевых появлений, тайтлов без постера и чужих должностей', () => {
+    const trimmed = trimPerson(person)
+    const ids = [
+      ...(trimmed.combined_credits?.cast ?? []),
+      ...(trimmed.combined_credits?.crew ?? []),
+    ].map(credit => credit.id)
+
+    expect(ids).not.toContain(29751)
+    expect(ids).not.toContain(7000)
+    expect(ids).not.toContain(1000)
+    expect(ids).not.toContain(1001)
+  })
+
+  it('собирает шапку: фото крупнее, пустые поля — undefined', () => {
+    const dto = personToDto(trimPerson(person))
+
+    expect(dto).toMatchObject({
+      id: 'tmdb:person:525',
+      name: 'Кристофер Нолан',
+      photo: '/api/img/w342/nolan.jpg',
+      knownFor: 'directing',
+      birthday: '1970-07-30',
+      deathday: undefined,
+      placeOfBirth: 'London, England, UK',
+      biography: '',
+    })
   })
 })

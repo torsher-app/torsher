@@ -4,6 +4,7 @@ import { openTitleActions } from '../titleActions.ts'
 import PosterRatingBadge from './PosterRatingBadge.vue'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import WatchedMark from './WatchedMark.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -12,8 +13,10 @@ const props = withDefaults(
     caption?: boolean
     // Далёкие от фокуса ряды не держат картинки в памяти ТВ
     loadImage?: boolean
+    // Профиль смотрел этот тайтл
+    watched?: boolean
   }>(),
-  { caption: false, loadImage: true },
+  { caption: false, loadImage: true, watched: false },
 )
 
 defineEmits<{ select: [] }>()
@@ -59,6 +62,7 @@ const meta = computed(() => {
         {{ card.title }}
       </span>
       <PosterRatingBadge :card="card" />
+      <WatchedMark v-if="watched" class="poster-card__watched" />
       <span class="card__ring" />
     </span>
     <template v-if="caption">
@@ -104,6 +108,12 @@ const meta = computed(() => {
 
 .poster-card__image {
   object-fit: cover;
+}
+
+/* Правый верхний угол занимает своя оценка профиля: отметка — слева */
+.poster-card__frame .poster-card__watched {
+  right: auto;
+  left: calc(var(--u) * 12);
 }
 
 .poster-card__placeholder {

@@ -1,5 +1,5 @@
 import type { Ref } from 'vue'
-import { computed, ref } from 'vue'
+import { computed, onActivated, ref } from 'vue'
 import { platform } from '../platform/index.ts'
 
 /**
@@ -26,6 +26,13 @@ export function useStackScroll(container: Ref<HTMLElement | undefined>) {
     if (native && container.value)
       offset.value = container.value.scrollTop
   }
+
+  // KeepAlive уносит DOM из документа, и нативная прокрутка сбрасывается:
+  // вернувшийся экран встаёт на прежнее место без анимации
+  onActivated(() => {
+    if (native && container.value)
+      container.value.scrollTop = offset.value
+  })
 
   const transform = computed(() =>
     native ? undefined : `translateY(${-offset.value}px)`,

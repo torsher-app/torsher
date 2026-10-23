@@ -123,9 +123,13 @@ body {
 }
 
 /*
- * «Назад» в левом верхнем углу полноэкранных экранов (карточка, «Источники»,
- * «Файлы»): видна всегда, и на ТВ — кнопка, пропадающая при переходе на пульт,
- * выглядит сломанной
+ * «Назад» в левом верхнем углу полноэкранных экранов (карточка, персона,
+ * «Источники», «Файлы»): видна всегда, и на ТВ — кнопка, пропадающая при
+ * переходе на пульт, выглядит сломанной. В покое и под указкой — круг со
+ * стрелкой: он левее колонки контента, и прокрученные ряды проезжают рядом с ним,
+ * а не под ним. В фокусе с пульта круг раскрывается в плашку с подписью, как рейл:
+ * подпись — свой слой поверх контента (opacity и transform), ширина кнопки и
+ * вёрстка не меняются
  */
 .screen-back {
   position: fixed;
@@ -134,10 +138,12 @@ body {
   left: calc(var(--u) * 28);
   display: flex;
   align-items: center;
+  justify-content: center;
+  width: calc(var(--u) * 64);
   height: calc(var(--u) * 64);
-  padding: 0 calc(var(--u) * 26) 0 calc(var(--u) * 18);
+  padding: 0;
   border: 0;
-  border-radius: calc(var(--u) * 32);
+  border-radius: 50%;
   background: var(--color-glass);
   color: var(--color-text);
   font: inherit;
@@ -155,10 +161,36 @@ body {
   transform: scale(var(--bump-scale));
 }
 
+.screen-back .icon {
+  position: relative;
+  z-index: 1;
+}
+
 .screen-back__label {
-  margin-left: calc(var(--u) * 10);
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  height: 100%;
+  padding: 0 calc(var(--u) * 26) 0 calc(var(--u) * 60);
+  border-radius: calc(var(--u) * 32);
+  background: var(--color-focus);
+  color: var(--color-bg);
   font-size: var(--font-size-s);
   font-weight: 600;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateX(calc(var(--u) * -12));
+  transition:
+    opacity var(--motion-fast) var(--motion-easing),
+    transform var(--motion-fast) var(--motion-easing);
+  pointer-events: none;
+}
+
+[data-input='remote'] .screen-back:focus .screen-back__label {
+  opacity: 1;
+  transform: none;
 }
 
 .field {

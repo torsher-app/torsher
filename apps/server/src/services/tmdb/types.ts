@@ -13,7 +13,8 @@ export interface TmdbMultiResult {
   backdrop_path?: string | null
   vote_average?: number
   vote_count?: number
-  // Только у персон: их известные фильмы и сериалы, с media_type
+  // Только у персон: фото и известные фильмы и сериалы, с media_type
+  profile_path?: string | null
   known_for?: TmdbMultiResult[]
 }
 
@@ -134,7 +135,11 @@ export interface TmdbCastMember {
 export interface TmdbCrewMember {
   id: number
   name: string
+  profile_path?: string | null
+  // У фильма (credits) — одна должность
   job?: string
+  // У сериала (aggregate_credits) — должности за все сезоны
+  jobs?: { job: string, episode_count: number }[]
 }
 
 export interface TmdbAltTitle {
@@ -153,8 +158,39 @@ export interface TmdbExtras {
   original_name?: string
   // credits у фильма, aggregate_credits у сериала
   credits?: { cast: TmdbCastMember[], crew: TmdbCrewMember[] }
-  aggregate_credits?: { cast: TmdbCastMember[] }
+  aggregate_credits?: { cast: TmdbCastMember[], crew?: TmdbCrewMember[] }
+  // Создатели сериала: поле самих деталей
+  created_by?: TmdbCrewMember[]
   recommendations?: TmdbListResponse
   // titles у фильма, results у сериала
   alternative_titles?: { titles?: TmdbAltTitle[], results?: TmdbAltTitle[] }
+}
+
+/** Тайтл в фильмографии персоны: combined_credits, с media_type */
+export interface TmdbPersonCredit extends TmdbMultiResult {
+  popularity?: number
+  genre_ids?: number[]
+  // У роли в касте
+  character?: string
+  // У сериала — в скольких сериях
+  episode_count?: number
+  // У должности в группе
+  department?: string
+  job?: string
+}
+
+/** Персона с append_to_response=combined_credits, урезанная до читаемых полей */
+export interface TmdbPerson {
+  id: number
+  name: string
+  profile_path: string | null
+  known_for_department?: string | null
+  birthday?: string | null
+  deathday?: string | null
+  place_of_birth?: string | null
+  biography: string
+  combined_credits?: {
+    cast: TmdbPersonCredit[]
+    crew: TmdbPersonCredit[]
+  }
 }

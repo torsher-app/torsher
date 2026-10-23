@@ -1,10 +1,13 @@
-import type { LocationQueryValue } from 'vue-router'
+import type { LocationQueryValue, RouteLocationNormalized } from 'vue-router'
+import { ref } from 'vue'
 import { createRouter, createWebHashHistory } from 'vue-router'
 import { gateTarget } from './lib/session.ts'
 import AboutPage from './pages/AboutPage.vue'
 import ConnectPage from './pages/ConnectPage.vue'
 import FilesPage from './pages/FilesPage.vue'
+import { createScreenKeys } from './lib/screenKeys.ts'
 import HomePage from './pages/HomePage.vue'
+import PersonPage from './pages/PersonPage.vue'
 import PlayerPage from './pages/PlayerPage.vue'
 import ProfilesPage from './pages/ProfilesPage.vue'
 import MinePage from './pages/MinePage.vue'
@@ -28,7 +31,20 @@ export const router = createRouter({
     { path: '/series', component: HomePage, props: { mode: 'series' } },
     { path: '/search', component: SearchPage },
     { path: '/mine', component: MinePage },
-    { path: '/title/:id', component: TitlePage, props: true },
+    // Карточка и персона — стек экранов: по цепочке «актёр → фильм → режиссёр»
+    // Back возвращает каждый экран с его фокусом (App.vue)
+    {
+      path: '/title/:id',
+      component: TitlePage,
+      props: true,
+      meta: { stack: true },
+    },
+    {
+      path: '/person/:id',
+      component: PersonPage,
+      props: true,
+      meta: { stack: true },
+    },
     // «Смотреть» на карточке → все раздачи тайтла → файлы выбранной → плеер
     { path: '/title/:id/sources', component: SourcesPage, props: true },
     {
@@ -82,4 +98,35 @@ router.beforeEach(async (to) => {
     await resolveSession()
 
   return gateTarget(session.status, to) ?? true
+})
+
+/** Экран живёт в стеке KeepAlive по записи истории, а не по пути */
+export function isStacked(route: RouteLocationNormalized) {
+  return route.meta.stack === true
+}
+
+const keyOf = createScreenKeys()
+let popped = false
+
+/** Ключ экрана стека для текущей записи истории */
+export const screenKey = ref('')
+
+// Слушатели истории vue-router вызываются только на popstate: шаг по истории
+router.options.history.listen(() => {
+  popped = true
+})
+
+// afterEach идёт до отрисовки нового маршрута: ключ готов к рендеру RouterView
+router.afterEach((to, _from, failure) => {
+  if (!failure) {
+    const position = router.options.history.state.position
+
+    screenKey.value = keyOf(
+      typeof position === 'number' ? position : 0,
+      to.path,
+      popped,
+    )
+  }
+
+  popped = false
 })

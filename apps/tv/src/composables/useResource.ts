@@ -9,6 +9,8 @@ export type ResourceStatus = 'idle' | 'loading' | 'ready' | 'error'
 /**
  * Данные по ключу: новый ключ отменяет прежний запрос, без ключа — пусто.
  * Ключ включает всё, от чего зависит ответ (ID, номер сезона, язык).
+ * `refresh` перезапрашивает тихо: прежние данные остаются на экране до ответа,
+ * а ошибка их не стирает.
  */
 export function useResource<T>(
   key: Ref<string | undefined>,
@@ -19,10 +21,11 @@ export function useResource<T>(
   const error = ref<LoadError>()
   const latest = createLatest()
 
-  async function run() {
+  async function run(quiet = false) {
     const current = key.value
 
-    data.value = undefined
+    if (!quiet)
+      data.value = undefined
 
     if (!current) {
       latest.cancel()
@@ -31,7 +34,8 @@ export function useResource<T>(
       return
     }
 
-    status.value = 'loading'
+    if (!quiet)
+      status.value = 'loading'
 
     const outcome = await latest.run(signal => load(current, signal))
 
@@ -39,6 +43,9 @@ export function useResource<T>(
       return
 
     if (outcome.status === 'failed') {
+      if (quiet)
+        return
+
       error.value = loadErrorOf(outcome.error)
       status.value = 'error'
 
@@ -49,9 +56,15 @@ export function useResource<T>(
     status.value = 'ready'
   }
 
-  watch(key, run, { immediate: true })
+  watch(key, () => run(), { immediate: true })
 
   onScopeDispose(latest.cancel)
 
-  return { status, data, error, retry: run }
+  return {
+    status,
+    data,
+    error,
+    retry: () => run(),
+    refresh: () => run(true),
+  }
 }

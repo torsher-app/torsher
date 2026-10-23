@@ -33,6 +33,7 @@ const VIEWER = new Set([
   'GET /api/catalog/titles/:id',
   'GET /api/catalog/titles/:id/extras',
   'GET /api/catalog/titles/:id/seasons/:number',
+  'GET /api/catalog/people/:id',
   'GET /api/titles/:id/sources',
   'PUT /api/titles/:id/voice',
   'POST /api/titles/:id/watch',
