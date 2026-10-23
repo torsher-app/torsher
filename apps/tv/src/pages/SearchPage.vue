@@ -20,7 +20,7 @@ import { useCatalogSearch } from '../composables/useCatalogSearch.ts'
 import { useStackScroll } from '../composables/useStackScroll.ts'
 import { useTrending } from '../composables/useTrending.ts'
 import { useFocus } from '../focus/index.ts'
-import { openedForward } from '../lib/navigation.ts'
+import { returnedBack } from '../lib/navigation.ts'
 import { addRecent, loadRecent, saveRecent } from '../lib/recentSearches.ts'
 import { stackOffset } from '../lib/rowStack.ts'
 
@@ -148,9 +148,10 @@ function open(card: Card) {
 }
 
 // Открыли поиск заново (рейл) — фокус в поле, как в первый раз; вернулись из
-// карточки по Back — на ту карточку, с которой ушли
+// карточки по Back — на ту карточку, с которой ушли. «Назад» у записи может и
+// не быть: рейл подменяет запись раздела, а не добавляет новую
 onActivated(() => {
-  if (openedForward(router.options.history.state)) {
+  if (!returnedBack(router.options.history.state)) {
     focus.activate('search-input')
 
     return

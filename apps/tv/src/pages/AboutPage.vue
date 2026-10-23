@@ -5,6 +5,7 @@ import { useRouter } from 'vue-router'
 import AppRail from '../components/AppRail.vue'
 import FocusSection from '../components/FocusSection.vue'
 import { useAbout } from '../composables/useAbout.ts'
+import { goBack } from '../lib/navigation.ts'
 import { platform } from '../platform/index.ts'
 import { canReturnToShell, returnToShell } from '../platform/shell.ts'
 
@@ -87,7 +88,7 @@ const server = window.location.host
       :edges="{ left: RAIL_SECTION }"
       autofocus
     >
-      <button v-focusable class="action" type="button" @click="router.back()">
+      <button v-focusable class="action" type="button" @click="goBack(router)">
         {{ t("common.back") }}
       </button>
       <button
