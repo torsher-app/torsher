@@ -6,6 +6,7 @@ export function useAuth() {
   const { fetchMe, reset } = useUser()
   const { markDone } = useSetup()
   const wizard = useWizard()
+  const { tvUrl } = useRuntimeConfig().public
 
   async function signin(body: SigninInput) {
     await api.auth.postAuthSignin(body)
@@ -16,7 +17,10 @@ export function useAuth() {
       new URLSearchParams(window.location.search).get('next'),
     )
     if (next) {
-      window.location.assign(next)
+      // Путь — на origin витрины: в разработке у неё свой dev-сервер
+      window.location.assign(
+        new URL(next, new URL(tvUrl, window.location.href)),
+      )
       return
     }
 

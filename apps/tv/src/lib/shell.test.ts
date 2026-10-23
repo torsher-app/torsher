@@ -38,7 +38,11 @@ describe('panelSignInUrl', () => {
 
   it('ведёт в панель того же сервера и возвращает на текущий экран', () => {
     const url = new URL(
-      panelSignInUrl(at('http://192.168.1.10:8080/?platform=tv#/movies'), 'tv'),
+      panelSignInUrl(
+        at('http://192.168.1.10:8080/?platform=tv#/movies'),
+        'tv',
+        './',
+      ),
     )
 
     expect(url.origin + url.pathname).toBe(
@@ -50,7 +54,11 @@ describe('panelSignInUrl', () => {
 
   it('учитывает подпуть обратного прокси', () => {
     const url = new URL(
-      panelSignInUrl(at('https://media.example/torsher/?platform=tv#/'), 'tv'),
+      panelSignInUrl(
+        at('https://media.example/torsher/?platform=tv#/'),
+        'tv',
+        './',
+      ),
     )
 
     expect(url.pathname).toBe('/torsher/panel/auth/login')
@@ -59,10 +67,22 @@ describe('panelSignInUrl', () => {
 
   it('из браузера панель открывается в обычном виде', () => {
     const url = new URL(
-      panelSignInUrl(at('http://localhost:8080/#/connect'), 'web'),
+      panelSignInUrl(at('http://localhost:8080/#/connect'), 'web', './'),
     )
 
     expect(url.searchParams.get('platform')).toBeNull()
     expect(url.searchParams.get('next')).toBe('/#/connect')
+  })
+
+  it('повторный вход с чужого пути не уходит вглубь', () => {
+    // Витрина осталась на адресе входа, куда её привело прошлое нажатие
+    const first = panelSignInUrl(
+      at('http://localhost:5173/#/connect'),
+      'web',
+      '/',
+    )
+    const again = new URL(panelSignInUrl(at(`${first}#/connect`), 'web', '/'))
+
+    expect(again.pathname).toBe('/panel/auth/login')
   })
 })
