@@ -278,6 +278,24 @@ describe('rankReleases', () => {
   })
 })
 
+describe('rankReleases: сезон, который смотрят', () => {
+  it('тройка — из раздач с этим сезоном, без них — из всех', () => {
+    const releases = [
+      release('s3', 'Гавань [S03] (2023) WEB-DL 1080p | D', 90, 8 * GB),
+      release('s1', 'Гавань [S01] (2023) WEB-DL 720p | MVO', 20, 4 * GB),
+      release('all', 'Гавань [S01-03] (2023) WEB-DL 1080p | MVO', 10, 24 * GB),
+    ]
+    const focused = rankReleases(releases, { ...series, focusSeason: 1 })
+    const missing = rankReleases(releases, { ...series, focusSeason: 5 })
+
+    expect(focused.top).not.toContain('s3')
+    expect(focused.ranked.find(item => item.id === 'all')!.reason).toBe(
+      'profile',
+    )
+    expect(missing.top[0]).toBe('s3')
+  })
+})
+
 describe('rankReleases: разрешение', () => {
   it('выведенное разрешение ниже точного той же ступени', () => {
     const { ranked } = rankReleases(

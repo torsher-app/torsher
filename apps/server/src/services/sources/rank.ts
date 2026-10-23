@@ -65,6 +65,12 @@ export interface RankContext {
   episodeCounts?: Record<number, number>
   /** Точные разрешения раздач, которые уже добавляли (`knownResolutions`), по ID. */
   known?: Map<string, VideoResolution>
+  /**
+   * Сезон, который смотрят, при раздачах всех сезонов: тройка — из раздач с
+   * ним, а без таких — из всех. Пак одного третьего сезона зрителю первого не
+   * советуем.
+   */
+  focusSeason?: number
 }
 
 export const TOP_SIZE = 3
@@ -432,7 +438,13 @@ export function rankReleases(
     })
     .sort(compareRanked)
 
-  const eligible = ranked.filter(item => item.eligible)
+  const focus = ctx.focusSeason
+  const allEligible = ranked.filter(item => item.eligible)
+  const inSeason
+    = focus === undefined
+      ? allEligible
+      : allEligible.filter(item => item.parsed.seasons.includes(focus))
+  const eligible = inSeason.length > 0 ? inSeason : allEligible
   const voiced = eligible.filter(item => item.voice)
   const top = pickTop(voiced.length > 0 ? voiced : eligible, ctx)
   const reasons = new Map(top.map(item => [item.id, item.reason]))

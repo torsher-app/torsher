@@ -219,14 +219,8 @@
       "cam": "Cam"
     },
     "noVoice": "Voice-over not recognized",
-    "reasons": {
-      "pinnedVoice": "Same as previous episodes",
-      "profile": "Matches your profile",
-      "bestQuality": "Best quality",
-      "smaller": "Smaller size",
-      "moreSeeders": "More seeders",
-      "originalAudio": "Has the original audio"
-    },
+    "byProfile": "By profile",
+    "profile": "Profile: {qualities} · {voices}",
     "voiceTypes": {
       "D": "Dubbing",
       "MVO": "Multi-voice",

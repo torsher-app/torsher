@@ -8,6 +8,7 @@ import {
   coverageLabel,
   formatBitrate,
   hdrLabels,
+  isProfilePick,
   leechersOf,
   resolutionBadge,
   sourceKindOf,
@@ -33,14 +34,14 @@ const emit = defineEmits<{ select: [] }>()
 const { t, locale } = useI18n()
 const { voiceLabel, otherTracksLine, sizeLabel } = useSourceLabels()
 
-// Раздача последнего просмотра — главное, что нужно знать о строке; иначе причина выбора
+// Раздача последнего просмотра — главное, что нужно знать о строке; иначе —
+// лучшая по профилю (сам профиль — в шапке экрана). Остальные причины тройки в
+// общем списке не объясняют выбор
 const reason = computed(() => {
   if (props.candidate.lastWatched)
     return t('sources.lastWatched')
 
-  return props.candidate.pickReason
-    ? t(`sources.reasons.${props.candidate.pickReason}`)
-    : ''
+  return isProfilePick(props.candidate) ? t('sources.byProfile') : ''
 })
 
 // Разрешение — первым бейджем: он есть у каждой строки, колонка ровная.

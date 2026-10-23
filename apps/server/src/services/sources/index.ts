@@ -161,12 +161,21 @@ export async function getTitleSources(
       : search.outcome.releases.filter(release =>
           coversEpisode(release.parsed, episode),
         )
+  // Раздачи всех сезонов: советуем для сезона, который смотрят, без
+  // просмотра — для первого
+  const focusSeason
+    = request.allSeasons && identity.kind === 'series'
+      ? ((request.profileId
+          ? lastTitleProgress(request.profileId, titleId)?.season
+          : undefined) ?? 1)
+      : undefined
+  const voiceSeason = season ?? focusSeason
   // Выбор в панели «Озвучка» сильнее студии, которой смотрели прошлые серии
   const pinned
-    = getPinnedVoice(titleId, season ?? 0)
-      ?? (season === undefined || !request.profileId
+    = getPinnedVoice(titleId, voiceSeason ?? 0)
+      ?? (voiceSeason === undefined || !request.profileId
         ? undefined
-        : lastVoiceOfSeason(request.profileId, titleId, season))
+        : lastVoiceOfSeason(request.profileId, titleId, voiceSeason))
   const ranking = rankReleases(releases, {
     kind: identity.kind,
     originalLanguage: identity.originalLanguage,
@@ -174,6 +183,7 @@ export async function getTitleSources(
     profile: DEFAULT_PROFILE,
     pinned,
     known: knownResolutions(releases),
+    focusSeason,
   })
 
   const seasonTorrent

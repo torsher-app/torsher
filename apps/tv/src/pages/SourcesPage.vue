@@ -35,6 +35,7 @@ import {
   arrangeCandidates,
   isQuality,
   minutesSince,
+  profileParts,
   qualityOptions,
   seasonOptions,
   videoClassLabel,
@@ -386,6 +387,22 @@ const headerMeta = computed(() => {
   ].join(' · ')
 })
 
+// По этому правилу выбрана раздача с меткой «По профилю»
+const profileLine = computed(() => {
+  if (!sources.value || searching.value)
+    return ''
+
+  const { qualities, voiceTypes, moreVoices } = profileParts(
+    sources.value.profile,
+  )
+  const voices = voiceTypes.map(type => t(`sources.voiceTypes.${type}`))
+
+  return t('sources.profile', {
+    qualities: qualities.join(' → '),
+    voices: [...voices, ...(moreVoices ? ['…'] : [])].join(' → '),
+  })
+})
+
 // История: что и какой раздачей смотрели последний раз; OK — её «Файлы» на этой серии
 const history = computed(() => historyOf(progress.value))
 
@@ -617,6 +634,9 @@ const meta = computed(() => {
               })
             }}
           </span>
+        </p>
+        <p class="sources__head-meta sources__profile">
+          {{ profileLine || "\u00A0" }}
         </p>
       </header>
 
@@ -855,6 +875,11 @@ const meta = computed(() => {
   margin: calc(var(--u) * 8) 0 0;
   color: var(--color-text-muted);
   font-size: var(--font-size-s);
+}
+
+.sources__profile {
+  margin-top: calc(var(--u) * 4);
+  color: var(--color-text-dim);
 }
 
 .sources__warn {

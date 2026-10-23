@@ -68,6 +68,28 @@ export function resolutionBadge(resolution: Resolution | null) {
   return resolution.sure ? label : `${label}?`
 }
 
+/** Лучшая раздача по профилю — первая в тройке сервера */
+export function isProfilePick(candidate: Pick<SourceCandidate, 'pickReason'>) {
+  return (
+    candidate.pickReason === 'profile' || candidate.pickReason === 'pinnedVoice'
+  )
+}
+
+// Типов озвучки в профиле шесть: в шапке хватает первых, остальное — многоточием
+const PROFILE_VOICES = 3
+
+/**
+ * Профиль ранжирования для шапки «Источников»: лестница качества и первые
+ * типы озвучки — по нему выбрана раздача «По профилю».
+ */
+export function profileParts(profile: TitleSources['profile']) {
+  return {
+    qualities: profile.qualities.map(videoClassLabel),
+    voiceTypes: profile.voiceTypes.slice(0, PROFILE_VOICES),
+    moreVoices: profile.voiceTypes.length > PROFILE_VOICES,
+  }
+}
+
 export type SourceKind = 'remux' | 'bluray' | 'web' | 'tv' | 'dvd' | 'cam'
 
 const SOURCE_KINDS: Record<string, SourceKind> = {
@@ -157,8 +179,8 @@ function compareBy(sort: SourceSort, order: Map<string, number>) {
 }
 
 /**
- * Строки «Источников»: фильтр и сортировка, а раздачи, которые уже открывали
- * для тайтла, — наверху по сидам: к ним чаще всего возвращаются.
+ * Строки «Источников»: фильтр и сортировка, а наверху — раздача последнего
+ * просмотра и за ней лучшая по профилю: где остановился и что советуем.
  */
 export function arrangeCandidates(
   candidates: SourceCandidate[],
@@ -169,9 +191,13 @@ export function arrangeCandidates(
     .filter(item => matchesView(item, view))
     .sort(compareBy(view.sort, order))
   // Раздача последнего просмотра — первой: её ищут, чтобы смотреть дальше
+  // Склейка фильтров, а не sort: в Chromium 68 sort нестабилен
+  const pick = shown.filter(item => !item.lastWatched && isProfilePick(item))
+
   return shown
     .filter(item => item.lastWatched)
-    .concat(shown.filter(item => !item.lastWatched))
+    .concat(pick)
+    .concat(shown.filter(item => !item.lastWatched && !pick.includes(item)))
 }
 
 /** Размер на серию, а без него — весь размер раздачи */

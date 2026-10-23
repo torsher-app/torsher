@@ -219,14 +219,8 @@
       "cam": "Экранка"
     },
     "noVoice": "Озвучка не распознана",
-    "reasons": {
-      "pinnedVoice": "Как в прошлых сериях",
-      "profile": "По профилю",
-      "bestQuality": "Лучшее качество",
-      "smaller": "Меньше размер",
-      "moreSeeders": "Больше сидов",
-      "originalAudio": "Есть оригинальная дорожка"
-    },
+    "byProfile": "По профилю",
+    "profile": "Профиль: {qualities} · {voices}",
     "voiceTypes": {
       "D": "Дубляж",
       "MVO": "Многоголосый",

@@ -8,9 +8,11 @@ import {
   formatBitrate,
   formatSize,
   hdrLabels,
+  isProfilePick,
   isQuality,
   leechersOf,
   minutesSince,
+  profileParts,
   qualityOptions,
   resolutionBadge,
   seasonOptions,
@@ -92,9 +94,10 @@ describe('arrangeCandidates', () => {
   const ids = (list: SourceCandidate[]) => list.map(item => item.id)
 
   it('порядок сервера и фильтры озвучки и качества', () => {
+    // Лучшая по профилю — первой, даже если сервер поставил её второй
     expect(
       ids(arrangeCandidates(sources.candidates, { sort: 'best' })),
-    ).toEqual(['a', 'b', 'c', 'd', 'e', 'f'])
+    ).toEqual(['b', 'a', 'c', 'd', 'e', 'f'])
     expect(
       ids(
         arrangeCandidates(sources.candidates, {
@@ -137,6 +140,20 @@ describe('arrangeCandidates', () => {
       ids(arrangeCandidates(list, { sort: 'seasons', season: 1 })),
     ).toEqual(['s1'])
     expect(seasonOptions(list)).toEqual([1, 2])
+  })
+
+  it('за раздачей последнего просмотра — лучшая по профилю', () => {
+    const list = [
+      candidate('x', { seeders: 50, seasons: [5] }),
+      candidate('pick', { seeders: 5, seasons: [1], pickReason: 'profile' }),
+      candidate('last', { seeders: 1, seasons: [1], lastWatched: true }),
+    ]
+
+    expect(ids(arrangeCandidates(list, { sort: 'seasons' }))).toEqual([
+      'last',
+      'pick',
+      'x',
+    ])
   })
 
   it('по размеру — весь размер раздачи, как на плашке', () => {
@@ -220,6 +237,30 @@ describe('подписи', () => {
     expect(isQuality('unknown')).toBe(true)
     expect(isQuality('1080i')).toBe(false)
     expect(isQuality('480p')).toBe(false)
+  })
+
+  it('«По профилю» — только у лучшей по профилю', () => {
+    expect(isProfilePick({ pickReason: 'profile' })).toBe(true)
+    expect(isProfilePick({ pickReason: 'pinnedVoice' })).toBe(true)
+    expect(isProfilePick({ pickReason: 'smaller' })).toBe(false)
+    expect(isProfilePick({ pickReason: 'bestQuality' })).toBe(false)
+    expect(isProfilePick({ pickReason: null })).toBe(false)
+  })
+
+  it('профиль для шапки: лестница качества и первые типы озвучки', () => {
+    expect(
+      profileParts({
+        qualities: ['1080p', '2160p', '720p'],
+        voiceTypes: ['D', 'MVO', 'DVO', 'AVO', 'VO', 'L'],
+      }),
+    ).toEqual({
+      qualities: ['1080p', '4K', '720p'],
+      voiceTypes: ['D', 'MVO', 'DVO'],
+      moreVoices: true,
+    })
+    expect(
+      profileParts({ qualities: ['1080p'], voiceTypes: ['D'] }).moreVoices,
+    ).toBe(false)
   })
 
   it('бейдж разрешения', () => {
