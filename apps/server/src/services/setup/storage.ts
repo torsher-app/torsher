@@ -1,6 +1,8 @@
 import { randomBytes } from 'node:crypto'
 import { stat, unlink, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import type { MediaLinkMode } from '../../db/schema.ts'
+import { checkLinkMode } from '../library/link.ts'
 import { diskUsage } from '../storage/disk.ts'
 import { getPolicy } from '../storage/policy.ts'
 
@@ -13,8 +15,9 @@ export interface DirCheck {
 export interface StorageCheck {
   data: DirCheck
   downloads: DirCheck
+  library: DirCheck
+  linkMode: MediaLinkMode | null
   space: { total: number, free: number, status: 'ok' | 'low' | 'critical' }
-  sameFilesystem: boolean | null
 }
 
 /** Ближайший существующий каталог: сам путь или родитель, где его создадут */
@@ -23,9 +26,9 @@ async function existingDir(path: string) {
 
   for (;;) {
     try {
-      const stats = await stat(current)
+      await stat(current)
 
-      return { path: current, dev: stats.dev }
+      return current
     }
     catch (err) {
       const parent = dirname(current)
@@ -62,28 +65,31 @@ async function checkDir(path: string) {
   const existing = await existingDir(path)
 
   return {
-    check: {
-      path,
-      exists: existing?.path === path,
-      writable: existing ? await canWrite(existing.path) : false,
-    },
-    dev: existing?.dev,
+    path,
+    exists: existing === path,
+    writable: existing ? await canWrite(existing) : false,
   }
 }
 
 /**
- * Проверка хранилища для мастера: каталоги данных и загрузок пишутся, места
- * хватает на кэш и запас. Одна файловая система — только информация: она
- * понадобится библиотеке для хардлинков вместо копий.
+ * Проверка хранилища для мастера: каталоги данных, загрузок и библиотеки
+ * пишутся, места хватает на кэш и запас, хардлинк из загрузок в библиотеку
+ * проходит (иначе «Оставить» копирует файлы).
  */
 export async function checkStorage(paths: {
   dataDir: string
   downloadsDir: string
+  libraryDir: string
 }): Promise<StorageCheck> {
-  const [data, downloads] = await Promise.all([
+  const [data, downloads, library] = await Promise.all([
     checkDir(paths.dataDir),
     checkDir(paths.downloadsDir),
+    checkDir(paths.libraryDir),
   ])
+  const linkMode
+    = downloads.writable && library.writable
+      ? await checkLinkMode(paths.downloadsDir, paths.libraryDir)
+      : null
   const disk = await diskUsage(paths.downloadsDir)
   const policy = getPolicy(disk.total)
   const status
@@ -94,12 +100,10 @@ export async function checkStorage(paths: {
         : 'ok'
 
   return {
-    data: data.check,
-    downloads: downloads.check,
+    data,
+    downloads,
+    library,
+    linkMode,
     space: { total: disk.total, free: disk.free, status },
-    sameFilesystem:
-      data.dev === undefined || downloads.dev === undefined
-        ? null
-        : data.dev === downloads.dev,
   }
 }

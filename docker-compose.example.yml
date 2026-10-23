@@ -23,9 +23,13 @@ services:
       # Optional: your own TMDB API Read Access Token for the catalog
       # TMDB_ACCESS_TOKEN:
     volumes:
-      # Database, keys and downloads. Keep downloads and the library
-      # on the same filesystem
+      # Database, keys, downloads (/data/torrents) and the library
+      # (/data/library). Keep them in one volume: files you keep are
+      # hard-linked from downloads to the library and take no extra space.
+      # Two volumes, even on one disk, turn hard links into copies
       - ./data:/data
+      # Optional: your existing media folders, read-only
+      # - /path/to/movies:/media/movies:ro
     # Optional: hardware transcoding on Intel or AMD graphics (VAAPI)
     # devices:
     #   - /dev/dri:/dev/dri

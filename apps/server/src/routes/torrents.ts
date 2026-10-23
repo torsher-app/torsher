@@ -14,9 +14,16 @@ import {
   torrentStats,
   torrentStatsQuery,
   updateRetention,
+  updateTorrentTitle,
 } from '../dto/torrents.ts'
-import { requireByRoute } from '../middleware/auth.ts'
+import { canManageLibrary, requireByRoute } from '../middleware/auth.ts'
 import { engineState } from '../services/engine/index.ts'
+import {
+  placedFilesByTorrent,
+  removeFromLibrary,
+  setTorrentTitle,
+  syncLibrary,
+} from '../services/library/index.ts'
 import { cacheSummary } from '../services/storage/index.ts'
 import {
   addMagnet,
@@ -42,7 +49,11 @@ import { sendEngineError, toTorrentResponse } from './engineResponses.ts'
 async function respond(found: Torrent) {
   const live = await liveTorrents()
 
-  return toTorrentResponse(found, live.get(found.infoHash))
+  return toTorrentResponse(
+    found,
+    live.get(found.infoHash),
+    placedFilesByTorrent([found.id]).get(found.id),
+  )
 }
 
 const guardResponses = {
@@ -71,8 +82,10 @@ export const torrentRoutes: FastifyPluginAsyncZod = async (app) => {
     },
     async () => {
       const live = await liveTorrents()
-      const items = listTorrents().map(row =>
-        toTorrentResponse(row, live.get(row.infoHash)),
+      const rows = listTorrents()
+      const placed = placedFilesByTorrent(rows.map(row => row.id))
+      const items = rows.map(row =>
+        toTorrentResponse(row, live.get(row.infoHash), placed.get(row.id)),
       )
 
       return {
@@ -255,7 +268,11 @@ export const torrentRoutes: FastifyPluginAsyncZod = async (app) => {
         return reply.code(400).send({ message: 'Unknown file index' })
 
       try {
-        return await respond(await downloadFiles(found, files))
+        const updated = await downloadFiles(found, files)
+
+        // Уже скачанные целиком файлы ложатся в библиотеку сразу
+        void syncLibrary()
+        return await respond(updated)
       }
       catch (err) {
         if (err instanceof NotReadyError)
@@ -332,7 +349,76 @@ export const torrentRoutes: FastifyPluginAsyncZod = async (app) => {
         return reply.code(404).send({ message: 'Torrent not found' })
 
       try {
-        return await respond(await setRetention(found, request.body.retention))
+        const updated = await setRetention(found, request.body.retention)
+
+        if (updated.retention === 'keep')
+          void syncLibrary()
+
+        return await respond(updated)
+      }
+      catch (err) {
+        return sendEngineError(reply, err)
+      }
+    },
+  )
+
+  // «Исправить совпадение»: тайтл раздачи выбрали в панели или на витрине.
+  // Библиотека общая для профилей: детский её не перекладывает
+  app.put(
+    '/:id/title',
+    {
+      config: { viewer: true },
+      schema: {
+        operationId: 'putTorrentTitle',
+        tags: ['Torrents'],
+        params: torrentIdParams,
+        body: updateTorrentTitle,
+        response: {
+          200: torrent,
+          400: messageResponse,
+          403: messageResponse,
+          404: messageResponse,
+          ...guardResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (!canManageLibrary(request))
+        return reply.code(403).send({ message: 'Profile is restricted' })
+
+      const found = getTorrent(request.params.id)
+
+      if (!found)
+        return reply.code(404).send({ message: 'Torrent not found' })
+
+      return respond(await setTorrentTitle(found, request.body.titleId))
+    },
+  )
+
+  // Убирает файлы раздачи из библиотеки; раздача возвращается в кэш
+  app.delete(
+    '/:id/library',
+    {
+      schema: {
+        operationId: 'deleteTorrentLibrary',
+        tags: ['Torrents'],
+        params: torrentIdParams,
+        response: {
+          200: torrent,
+          404: messageResponse,
+          ...guardResponses,
+          ...engineResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const found = getTorrent(request.params.id)
+
+      if (!found)
+        return reply.code(404).send({ message: 'Torrent not found' })
+
+      try {
+        return await respond(await removeFromLibrary(found))
       }
       catch (err) {
         return sendEngineError(reply, err)

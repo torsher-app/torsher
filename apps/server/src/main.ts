@@ -6,6 +6,15 @@ import { config } from './config.ts'
 import { migrateDb } from './db/index.ts'
 import { createEngine, isEngineReady } from './services/engine/index.ts'
 import {
+  checkLinkMode,
+  checkManagedFiles,
+  managedFolder,
+  queueRecognition,
+  queueUnprobed,
+  startRecognition,
+  syncLibrary,
+} from './services/library/index.ts'
+import {
   closeLogFiles,
   createLogger,
   getLogLevel,
@@ -13,6 +22,10 @@ import {
   LOG_LEVELS,
   logFor,
 } from './services/logs/index.ts'
+import { applyHomeVideoFields } from './services/library/homeVideo.ts'
+import { queueMatch, queueUnmatched } from './services/library/match.ts'
+import { onFolderScanned, scanAllFolders } from './services/library/scan.ts'
+import { watchFolder } from './services/library/watch.ts'
 import { RequestLogController } from './services/logs/requestLog.ts'
 import {
   cleanTranscodes,
@@ -28,6 +41,7 @@ import { getSetting } from './services/settings/index.ts'
 import { purgeExpiredMetaCache } from './services/tmdb/cache.ts'
 import {
   clearStreamSelections,
+  onTorrentReady,
   resumeResolving,
 } from './services/torrents/index.ts'
 import { createShutdown } from './shutdown.ts'
@@ -62,6 +76,42 @@ function purgeTmdbData() {
 purgeTmdbData()
 setInterval(purgeTmdbData, DAY_MS).unref()
 await cleanTranscodes()
+
+// Своя раскладка: строка библиотеки, проверка хардлинков и сверка с диском
+managedFolder()
+await checkLinkMode()
+
+const FOLDER_SCAN_MS = 12 * 60 * 60 * 1000
+
+function checkLibrary() {
+  checkManagedFiles()
+    .then(queueUnprobed)
+    .catch(err => logFor('storage').error({ err }, 'Library check failed'))
+}
+
+checkLibrary()
+setInterval(checkLibrary, DAY_MS).unref()
+
+// Раздачи без тайтла (добавленные в панели) узнаются по имени: новые — когда
+// пришёл список файлов, прежние — сейчас; узнанные ложатся в библиотеку
+onTorrentReady((torrent) => {
+  if (!torrent.titleId)
+    void queueRecognition(torrent.id)
+})
+startRecognition(() => void syncLibrary())
+
+// Подключённые папки: скан при старте и раз в 12 ч — страховка к
+// наблюдателю; новые файлы «Фильмов и сериалов» идут на сопоставление
+onFolderScanned((folder, library, result) => {
+  if (library.kind === 'video')
+    void queueMatch(folder.id, result.added)
+  else applyHomeVideoFields([...result.added, ...result.changed])
+
+  void watchFolder(folder, library)
+})
+void scanAllFolders().then(queueUnmatched)
+setInterval(() => void scanAllFolders(), FOLDER_SCAN_MS).unref()
+
 // Пробы видеокарты и замер процессора — в фоне: первому перекодированию они
 // уже готовы, а прямой просмотр их не ждёт
 mediaAccel().catch(err =>
@@ -79,13 +129,14 @@ const app = createApp(
   config.clients,
 )
 
+// Заодно раскладывает докачанное в библиотеку: тот же список раздач движка
 function checkStorage() {
   if (!isEngineReady())
     return
 
-  enforceStorage().catch(err =>
-    logFor('storage').error({ err }, 'Storage check failed'),
-  )
+  enforceStorage()
+    .catch(err => logFor('storage').error({ err }, 'Storage check failed'))
+    .finally(syncLibrary)
 }
 
 // Раздачи, которые ждали метаданные до перезапуска, дожидаются их снова.

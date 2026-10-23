@@ -78,7 +78,19 @@ export function useDownloadStatus() {
     if (torrent.status === 'resolving')
       return t('panel.torrents.status.resolving')
 
-    const zone = t(`panel.torrents.zones.${torrent.retention}`)
+    const retention = t(`panel.torrents.zones.${torrent.retention}`)
+    const matchNote = torrent.titleId
+      ? undefined
+      : torrent.matchStatus === 'unmatched'
+        ? t('panel.torrents.match.short')
+        : torrent.matchStatus === 'unsure'
+          ? t('panel.torrents.match.shortUnsure')
+          : undefined
+    const zone = torrent.inLibrary
+      ? t('panel.torrents.inLibrary')
+      : matchNote
+        ? `${retention} · ${matchNote}`
+        : retention
     const selection = selected(torrent)
 
     if (selection) {

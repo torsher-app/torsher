@@ -575,3 +575,65 @@ describe('позиция по серии', () => {
     expect(unknown.statusCode).toBe(404)
   })
 })
+
+describe('«Скачать сезон» с карточки', () => {
+  function download(payload: object) {
+    return app.inject({
+      method: 'POST',
+      url: `/api/titles/${TITLE}/download`,
+      cookies: owner,
+      payload,
+    })
+  }
+
+  it('лучшая раздача сезона: качаются серии сезона без сэмпла, раздача закреплена', async () => {
+    const res = await download({ season: 2 })
+    const torrent = getDb().select().from(torrents).get()
+    const added = fetchMock.mock.calls
+      .map(([input, init]) => `${init?.method ?? 'GET'} ${String(input)}`)
+      .find(call => call.startsWith('POST http://127.0.0.1:4000/torrents?'))
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toMatchObject({
+      status: 'started',
+      torrentId: torrent?.id,
+      files: 8,
+      bytes: 16 * GB,
+    })
+    expect(added).toBe(
+      'POST http://127.0.0.1:4000/torrents?files=1,2,3,4,5,6,7,8',
+    )
+    expect(torrent).toMatchObject({
+      titleId: TITLE,
+      retention: 'keep',
+      selectedFiles: [1, 2, 3, 4, 5, 6, 7, 8],
+    })
+  })
+
+  it('сезона нет ни в одной раздаче — 422 no_sources', async () => {
+    const res = await download({ season: 9 })
+
+    expect(res.statusCode).toBe(422)
+    expect(res.json()).toMatchObject({ kind: 'no_sources' })
+  })
+
+  it('выбранные файлы чужой раздачи — 404, без файлов — 400', async () => {
+    const other = getDb()
+      .insert(torrents)
+      .values({
+        infoHash: '2'.repeat(40),
+        name: 'Other',
+        source: 'file',
+        files: [{ path: 'a.mkv', size: GB, padding: false }],
+        status: 'ready',
+        titleId: 'tmdb:tv:999',
+      })
+      .returning()
+      .get()
+
+    expect(
+      (await download({ torrentId: other.id, files: [0] })).statusCode,
+    ).toBe(404)
+    expect((await download({ torrentId: other.id })).statusCode).toBe(400)
+  })
+})

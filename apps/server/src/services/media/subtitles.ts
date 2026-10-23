@@ -1,6 +1,7 @@
 import type { TorrentFileEntry } from '../../db/schema.ts'
 import type { Cue } from './webvtt.ts'
 import { Buffer } from 'node:buffer'
+import { open } from 'node:fs/promises'
 import { spawn } from 'node:child_process'
 import { matchFiles } from '@torsher/release-parser'
 import { config } from '../../config.ts'
@@ -92,14 +93,25 @@ function describe(rest: string[], dir: string) {
   return { language, forced, title: title || null }
 }
 
+/** Внешний файл раздачи при видео: субтитры или звуковая дорожка */
+export interface Sidecar {
+  fileIndex: number
+  path: string
+  kind: 'subtitle' | 'audio'
+  extension: string
+  language: string | null
+  title: string | null
+  forced: boolean
+}
+
 /**
- * Субтитры к видео: то же имя с суффиксом (`Film.rus.srt`) или файлы в
- * каталоге субтитров рядом. В паке сезона — только той же серии.
+ * Субтитры и дорожки к видео: то же имя с суффиксом (`Film.rus.srt`) или
+ * файлы в каталоге рядом. В паке сезона — только той же серии.
  */
-export function findExternalSubtitles(
+export function findSidecars(
   files: TorrentFileEntry[],
   videoIndex: number,
-): ExternalSubtitle[] {
+): Sidecar[] {
   const video = files[videoIndex]
 
   if (!video)
@@ -119,16 +131,15 @@ export function findExternalSubtitles(
     = videoMatch?.kind === 'video'
       && matches.filter(match => match.kind === 'video').length === 1
   const own = splitPath(video.path)
-  const found: ExternalSubtitle[] = []
+  const found: Sidecar[] = []
 
   visible.forEach(({ file, index }, i) => {
     const match = matches[i]!
-    const parts = splitPath(file.path)
-    const format = FORMATS[parts.ext]
 
-    if (!format || match.kind !== 'subtitle')
+    if (match.kind !== 'subtitle' && match.kind !== 'audio')
       return
 
+    const parts = splitPath(file.path)
     const sameName = parts.stem
       .toLowerCase()
       .startsWith(own.stem.toLowerCase())
@@ -155,10 +166,41 @@ export function findExternalSubtitles(
       parts.dir === own.dir ? '' : parts.dir,
     )
 
-    found.push({ fileIndex: index, path: file.path, format, ...meta })
+    found.push({
+      fileIndex: index,
+      path: file.path,
+      kind: match.kind,
+      extension: parts.ext,
+      ...meta,
+    })
   })
 
   return found
+}
+
+/**
+ * Субтитры к видео в форматах, которые плеер покажет после перевода в WebVTT
+ */
+export function findExternalSubtitles(
+  files: TorrentFileEntry[],
+  videoIndex: number,
+): ExternalSubtitle[] {
+  return findSidecars(files, videoIndex).flatMap((sidecar) => {
+    const format = FORMATS[sidecar.extension]
+
+    return sidecar.kind === 'subtitle' && format
+      ? [
+          {
+            fileIndex: sidecar.fileIndex,
+            path: sidecar.path,
+            language: sidecar.language,
+            title: sidecar.title,
+            format,
+            forced: sidecar.forced,
+          },
+        ]
+      : []
+  })
 }
 
 /**
@@ -235,4 +277,48 @@ export async function loadExternalSubtitle(
   const bytes = new Uint8Array(await response.arrayBuffer())
 
   return convertSubtitle(decodeSubtitleText(bytes), subtitle.format)
+}
+
+/** Субтитры файла библиотеки: читаются с диска, не больше того же предела */
+export async function loadSubtitleFile(
+  path: string,
+  subtitle: ExternalSubtitle,
+) {
+  const handle = await open(path, 'r')
+
+  try {
+    const buffer = Buffer.alloc(MAX_SUBTITLE_BYTES)
+    const { bytesRead } = await handle.read(buffer, 0, MAX_SUBTITLE_BYTES, 0)
+
+    return convertSubtitle(
+      decodeSubtitleText(new Uint8Array(buffer.subarray(0, bytesRead))),
+      subtitle.format,
+    )
+  }
+  finally {
+    await handle.close()
+  }
+}
+
+/**
+ * Внешние субтитры видео в папке библиотеки: файлы рядом с тем же базовым
+ * именем (`Фильм.rus.forced.srt`). Индекс — порядок в каталоге, путь — рядом.
+ */
+export function librarySubtitles(videoName: string, names: string[]) {
+  const stem = videoName.slice(0, videoName.lastIndexOf('.'))
+  const found: Array<ExternalSubtitle & { name: string }> = []
+
+  names.forEach((name, index) => {
+    const parts = splitPath(name)
+    const format = FORMATS[parts.ext]
+
+    if (!format || !parts.stem.startsWith(`${stem}.`))
+      return
+
+    const meta = describe(restOf(parts.stem, stem), '')
+
+    found.push({ fileIndex: index, path: name, name, format, ...meta })
+  })
+
+  return found
 }

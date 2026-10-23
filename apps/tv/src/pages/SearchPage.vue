@@ -12,20 +12,34 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import AppIcon from '../components/AppIcon.vue'
 import AppRail from '../components/AppRail.vue'
+import AppToast from '../components/AppToast.vue'
 import FocusSection from '../components/FocusSection.vue'
 import PersonCard from '../components/PersonCard.vue'
 import PosterCard from '../components/PosterCard.vue'
 import PosterSkeleton from '../components/PosterSkeleton.vue'
 import ScreenState from '../components/ScreenState.vue'
 import { useCatalogSearch } from '../composables/useCatalogSearch.ts'
+import { useReleaseTexts } from '../composables/useReleaseTexts.ts'
 import { useStackScroll } from '../composables/useStackScroll.ts'
 import { useTrending } from '../composables/useTrending.ts'
 import { useFocus } from '../focus/index.ts'
 import { returnedBack } from '../lib/navigation.ts'
 import { addRecent, loadRecent, saveRecent } from '../lib/recentSearches.ts'
 import { stackOffset } from '../lib/rowStack.ts'
+import { noteReleaseOutcome, setReleaseTitle } from '../releaseMatch.ts'
 
 defineOptions({ name: 'SearchPage' })
+
+/**
+ * С `pick` — выбор тайтла для раздачи без тайтла из «Библиотеки»: поле
+ * заполнено названием из имени раздачи, OK по постеру сохраняет тайтл и
+ * возвращает назад. Люди, недавние запросы и меню действий не нужны.
+ */
+const props = defineProps<{
+  pick?: string
+  initialQuery?: string
+  pickName?: string
+}>()
 
 // Две строки сетки: столько видно на экране без прокрутки
 const SKELETON_COUNT = 8
@@ -38,6 +52,10 @@ const router = useRouter()
 const focus = useFocus()
 const query = ref('')
 const recent = ref(loadRecent())
+const isPick = computed(() => !!props.pick)
+const releaseTexts = useReleaseTexts()
+const pickToast = ref('')
+const shownRecent = computed(() => (isPick.value ? [] : recent.value))
 
 const { status, items, people, error, retry } = useCatalogSearch(query)
 const { trending } = useTrending()
@@ -51,7 +69,9 @@ const isEmpty = computed(
     && people.value.length === 0,
 )
 // Люди из того же поиска — строкой над тайтлами
-const shownPeople = computed(() => (hasQuery.value ? people.value : []))
+const shownPeople = computed(() =>
+  hasQuery.value && !isPick.value ? people.value : [],
+)
 // Без запроса и при пустом результате сетка показывает популярное
 const shown = computed<Card[]>(() =>
   hasQuery.value && !isEmpty.value ? items.value : (trending.value ?? []),
@@ -76,12 +96,12 @@ const heading = computed(() => {
 // Влево и вправо в поле двигают курсор: из поля к сетке ведут вниз (через недавние)
 const inputEdges = computed(() => ({
   left: RAIL_SECTION,
-  down: recent.value.length > 0 ? 'search-recent' : 'search-results',
+  down: shownRecent.value.length > 0 ? 'search-recent' : 'search-results',
 }))
 
 const resultsEdges = computed(() => ({
   up: 'search-input',
-  left: recent.value.length > 0 ? 'search-recent' : 'search-input',
+  left: shownRecent.value.length > 0 ? 'search-recent' : 'search-input',
 }))
 
 // Правая колонка: строка с фокусом встаёт под верх колонки (на ТВ — transform,
@@ -147,15 +167,33 @@ function pickRecent(text: string) {
 
 // Запрос попадает в недавние, когда из его результатов что-то открыли
 function rememberQuery() {
-  if (hasQuery.value && !isEmpty.value) {
+  if (hasQuery.value && !isEmpty.value && !isPick.value) {
     recent.value = addRecent(recent.value, query.value)
     saveRecent(recent.value)
   }
 }
 
-function open(card: Card) {
+async function open(card: Card) {
+  if (props.pick) {
+    await choose(props.pick, card)
+    return
+  }
+
   rememberQuery()
   router.push(`/title/${card.id}`)
+}
+
+// Тайтл для раздачи: итог показывает «Библиотека», ошибка остаётся здесь
+async function choose(torrentId: string, card: Card) {
+  const outcome = await setReleaseTitle(torrentId, card.id)
+
+  if (outcome !== 'saved') {
+    pickToast.value = releaseTexts.outcomeOf(outcome)
+    return
+  }
+
+  noteReleaseOutcome(outcome)
+  router.back()
 }
 
 function openPerson(person: Person) {
@@ -167,6 +205,23 @@ function openPerson(person: Person) {
 // карточки по Back — на ту карточку, с которой ушли. «Назад» у записи может и
 // не быть: рейл подменяет запись раздела, а не добавляет новую
 onActivated(() => {
+  // Выбор тайтла для раздачи: поиск по её названию, фокус — на результаты
+  if (isPick.value && !returnedBack(router.options.history.state)) {
+    const next = props.initialQuery ?? ''
+
+    focus.activate('search-input')
+
+    if (query.value !== next) {
+      focusResults = true
+      query.value = next
+    }
+    else if (shown.value.length > 0) {
+      focus.activate('search-results')
+    }
+
+    return
+  }
+
   if (!returnedBack(router.options.history.state)) {
     focus.activate('search-input')
 
@@ -197,11 +252,15 @@ onBeforeUnmount(stopFocus)
         </label>
       </FocusSection>
 
-      <p class="search__note">
-        {{ t("search.note") }}
+      <p class="search__note" :class="{ 'search__note--pick': isPick }">
+        {{
+          isPick
+            ? t("release.pickTitle", { name: pickName ?? "" })
+            : t("search.note")
+        }}
       </p>
 
-      <template v-if="recent.length > 0">
+      <template v-if="shownRecent.length > 0">
         <h2 class="search__label">
           {{ t("search.recent") }}
         </h2>
@@ -214,7 +273,7 @@ onBeforeUnmount(stopFocus)
           }"
         >
           <button
-            v-for="text in recent"
+            v-for="text in shownRecent"
             :key="text"
             v-focusable
             class="recent"
@@ -273,6 +332,7 @@ onBeforeUnmount(stopFocus)
               :key="item.id"
               :card="item"
               caption
+              :actions="!isPick"
               @select="open(item)"
             />
           </div>
@@ -283,7 +343,12 @@ onBeforeUnmount(stopFocus)
       </FocusSection>
     </div>
 
-    <AppRail current="search" :section="RAIL_SECTION" content="search-input" />
+    <AppRail
+      :current="isPick ? 'library' : 'search'"
+      :section="RAIL_SECTION"
+      content="search-input"
+    />
+    <AppToast :message="pickToast" @hide="pickToast = ''" />
   </main>
 </template>
 
@@ -332,6 +397,13 @@ onBeforeUnmount(stopFocus)
   color: var(--color-text-dim);
   font-size: calc(var(--u) * 22);
   line-height: 1.45;
+}
+
+/* Имя раздачи как есть — моноширинным, как в «Источниках» */
+.search__note--pick {
+  color: var(--color-text-muted);
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  word-break: break-word;
 }
 
 .search__label {

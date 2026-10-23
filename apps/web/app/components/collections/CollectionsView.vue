@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type { Collection } from '@torsher/api-client'
 import {
+  BookmarkIcon,
   CircleAlertIcon,
-  LibraryIcon,
   PlusIcon,
   RefreshCwIcon,
 } from '@lucide/vue'
@@ -134,7 +134,7 @@ onMounted(() => {
         class="grid size-11 place-items-center rounded-xl border bg-muted text-muted-foreground"
         aria-hidden="true"
       >
-        <LibraryIcon class="size-5" />
+        <BookmarkIcon class="size-5" />
       </div>
       <h2 class="text-base font-semibold">
         {{ t("panel.collections.emptyTitle") }}

@@ -1,7 +1,7 @@
 import type { AudioTrack, VoiceType } from '@torsher/release-parser'
 import type { TitleProgress } from '../../db/schema.ts'
 import type { VoiceRef } from './profile.ts'
-import { and, desc, eq, gt, inArray, isNotNull } from 'drizzle-orm'
+import { and, desc, eq, gt, inArray, isNotNull, or } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import { titleProgress } from '../../db/schema.ts'
 
@@ -38,7 +38,7 @@ export function saveTitleProgress(
   values: Pick<
     TitleProgress,
     'position' | 'duration' | 'torrentId' | 'fileIndex'
-  >,
+  > & { mediaFileId?: string | null },
 ) {
   const updatedAt = new Date()
 
@@ -213,7 +213,11 @@ export function lastTitleProgress(profileId: string, titleId: string) {
         eq(titleProgress.profileId, profileId),
         eq(titleProgress.titleId, titleId),
         gt(titleProgress.position, 0),
-        isNotNull(titleProgress.torrentId),
+        // Смотрели в плеере: раздачу или файл библиотеки, а не отметили с карточки
+        or(
+          isNotNull(titleProgress.torrentId),
+          isNotNull(titleProgress.mediaFileId),
+        ),
       ),
     )
     .orderBy(desc(titleProgress.updatedAt))

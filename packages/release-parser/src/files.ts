@@ -146,6 +146,14 @@ function numbering(
   return { episode: bare.value, confidence: bare.confidence }
 }
 
+/** Вид файла только по расширению: видео, субтитры, дорожка, картинка или прочее */
+export function extensionKind(path: string): FileKind {
+  const name = path.slice(path.lastIndexOf('/') + 1)
+  const dot = name.lastIndexOf('.')
+
+  return (dot > 0 && EXTENSIONS[name.slice(dot + 1).toLowerCase()]) || 'other'
+}
+
 function kindOf(
   file: ReleaseFile,
   dirs: string[],

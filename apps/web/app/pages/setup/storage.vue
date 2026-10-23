@@ -25,7 +25,10 @@ const failed = ref(false)
 
 const bytes = (value: number) => formatBytes(value, locale.value)
 
-function dirCheck(id: 'data' | 'downloads', dir: StorageDirCheck): WizardCheck {
+function dirCheck(
+  id: 'data' | 'downloads' | 'library',
+  dir: StorageDirCheck,
+): WizardCheck {
   const base = `panel.wizard.storage.${id}`
 
   if (!dir.writable) {
@@ -79,6 +82,7 @@ const checks = computed<WizardCheck[]>(() => {
   const items = [
     dirCheck('data', value.data),
     dirCheck('downloads', value.downloads),
+    dirCheck('library', value.library),
     {
       id: 'space',
       status:
@@ -96,19 +100,18 @@ const checks = computed<WizardCheck[]>(() => {
     } satisfies WizardCheck,
   ]
 
-  if (value.sameFilesystem !== null) {
+  // Хардлинк — норма; reflink — сведение; копия — предупреждение с советом
+  if (value.linkMode) {
+    const mode = value.linkMode
+
     items.push({
-      id: 'filesystem',
-      status: 'info',
-      title: t(
-        value.sameFilesystem
-          ? 'panel.wizard.storage.filesystem.same'
-          : 'panel.wizard.storage.filesystem.different',
-      ),
-      text: t('panel.wizard.storage.filesystem.text'),
-      fix: value.sameFilesystem
-        ? undefined
-        : t('panel.wizard.storage.filesystem.fix'),
+      id: 'links',
+      status:
+        mode === 'hardlink' ? 'ok' : mode === 'reflink' ? 'info' : 'warning',
+      title: t(`panel.wizard.storage.links.${mode}`),
+      text: t(`panel.wizard.storage.links.${mode}Text`),
+      fix:
+        mode === 'copy' ? t('panel.wizard.storage.links.copyFix') : undefined,
     })
   }
 

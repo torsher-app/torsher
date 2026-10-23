@@ -1,4 +1,4 @@
-import type { Card, TitleMine } from '@torsher/api-client'
+import type { Card, TitleDownload, TitleMine } from '@torsher/api-client'
 import { reactive, readonly } from 'vue'
 
 /** Тайтл, для которого открыто меню действий */
@@ -6,6 +6,9 @@ export interface ActionTarget {
   id: string
   title: string
   kind: Card['kind']
+  // С карточки, где всё уже в библиотеке: пункт «Скачать другую раздачу»
+  // (у сериала — выбранного сезона)
+  redownload?: { season?: number }
 }
 
 export type ActionStep = 'main' | 'rating' | 'collections'
@@ -17,6 +20,8 @@ const state = reactive({
   // Последнее известное состояние тайтлов: карточка тайтла и значки постеров
   // видят правку сразу, не дожидаясь перезагрузки экрана
   known: new Map<string, TitleMine>(),
+  // Загрузка тайтла после «Скачать» и «Оставить»: значок постера — сразу
+  downloads: new Map<string, TitleDownload>(),
   // Растёт с каждой правкой: экраны со списками перечитывают их при возврате
   version: 0,
 })
@@ -58,4 +63,29 @@ export function ownRatingOf(card: Card): number | undefined {
   const known = knownTitleMine(card.id)
 
   return known ? (known.rating ?? undefined) : card.ownRating
+}
+
+/** «Скачать» или «Оставить»: запомнить и сообщить экранам со списками */
+export function noteTitleDownload(id: string, download: TitleDownload) {
+  state.downloads.set(id, download)
+  state.version++
+}
+
+export function knownTitleDownload(id: string): TitleDownload | undefined {
+  return state.downloads.get(id)
+}
+
+/**
+ * Значок загрузки на постере: из карточки, а если в ней его нет — известное
+ * после «Скачать» или «Оставить» на витрине (карточки экрана пришли раньше).
+ */
+export function downloadOf(card: Card) {
+  if (card.availability)
+    return { state: card.availability, progress: card.downloadProgress ?? 0 }
+
+  const known = knownTitleDownload(card.id)
+
+  return known?.state
+    ? { state: known.state, progress: known.progress }
+    : undefined
 }

@@ -1,13 +1,20 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
+import type { EngineTorrentState } from '../services/engine/index.ts'
 import type { RankedRelease, TitleSources } from '../services/sources/index.ts'
 import { messageResponse } from '../dto/common.ts'
+import { insufficientStorageResponse } from '../dto/playback.ts'
 import { engineUnavailableResponse } from '../dto/torrents.ts'
 import {
+  cancelTitleDownloadQuery,
+  downloadTitle as downloadTitleBody,
   markWatched as markWatchedBody,
   openTitle,
   pinTitleVoice,
+  titleDownload,
+  titleDownloadStart,
   titleFiles,
   titleFilesParams,
+  titleLibrary,
   titleOpen,
   titleParams,
   titleProgress,
@@ -23,6 +30,14 @@ import {
 import { titleMine, titleMineQuery, updateTitleMine } from '../dto/mine.ts'
 import { requireViewer } from '../middleware/auth.ts'
 import {
+  placedFilesByTorrent,
+  qualityOf,
+  syncLibrary,
+  titleLibraryFiles,
+} from '../services/library/index.ts'
+import { visibleFolderIds } from '../services/library/folders.ts'
+import { titleDownload as titleDownloadOf } from '../services/library/status.ts'
+import {
   getTitleMine,
   markTitleWatched,
   MineNotFoundError,
@@ -34,6 +49,14 @@ import {
   pinVoice,
   voiceKeysOf,
 } from '../services/sources/index.ts'
+import {
+  cancelTitleDownload,
+  DownloadNotFoundError,
+  downloadTitle,
+  keepTitle,
+  NothingToCancelError,
+  NothingToKeepError,
+} from '../services/sources/download.ts'
 import { titleFiles as filesOfTorrent } from '../services/sources/files.ts'
 import {
   episodeProgress,
@@ -51,7 +74,7 @@ import {
   WatchError,
   watchTitle,
 } from '../services/sources/watch.ts'
-import { getTorrent } from '../services/torrents/index.ts'
+import { getTorrent, liveTorrents } from '../services/torrents/index.ts'
 import { getSeason, getTitle, TmdbError } from '../services/tmdb/index.ts'
 import { parseCatalogId } from '../services/tmdb/mappers.ts'
 import { isWatched } from '../services/torrents/playback.ts'
@@ -60,6 +83,28 @@ import { sendEngineError } from './engineResponses.ts'
 
 const guardResponses = {
   401: messageResponse,
+}
+
+/** Значок файла на «Файлах»: в библиотеке, скачан целиком или качается */
+function fileDownloadOf(
+  index: number,
+  size: number,
+  live: EngineTorrentState | undefined,
+  placed: Set<number> | undefined,
+) {
+  if (placed?.has(index))
+    return { state: 'library' as const, progress: 1 }
+
+  if (!live?.selected.includes(index))
+    return null
+
+  const progress
+    = size > 0 ? Math.min(1, (live.fileProgress[index] ?? 0) / size) : 0
+
+  return {
+    state: progress >= 1 ? ('downloaded' as const) : ('downloading' as const),
+    progress,
+  }
 }
 
 const tmdbResponses = {
@@ -467,6 +512,9 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
       if (torrent.status !== 'ready')
         return { status: 'resolving' as const, name: torrent.name, files: [] }
 
+      const live = (await liveTorrents()).get(torrent.infoHash)
+      const placed = placedFilesByTorrent([torrent.id]).get(torrent.id)
+
       return {
         status: 'ready' as const,
         name: torrent.name,
@@ -478,8 +526,203 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
           ...file,
           season: file.season ?? null,
           episode: file.episode ?? null,
+          download: fileDownloadOf(file.fileIndex, file.size, live, placed),
         })),
       }
+    },
+  )
+
+  // Файлы тайтла в библиотеке: «Смотреть» играет их сразу, без поиска раздач
+  app.get(
+    '/:id/library',
+    {
+      schema: {
+        operationId: 'getTitleLibrary',
+        tags: ['Titles'],
+        params: titleParams,
+        response: {
+          200: titleLibrary,
+          404: messageResponse,
+          ...guardResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (!parseCatalogId(request.params.id))
+        return reply.code(404).send({ message: 'Title not found' })
+
+      return {
+        // Файлы из библиотек, скрытых от профиля, не показываем
+        files: titleLibraryFiles(
+          request.params.id,
+          visibleFolderIds(request.profileId),
+        ).map(file => ({
+          id: file.id,
+          season: file.season || null,
+          episode: file.episode || null,
+          episodeTo: file.episodeTo,
+          quality: qualityOf(file.probe),
+          size: file.size,
+          duration: file.duration,
+        })),
+      }
+    },
+  )
+
+  // Состояние загрузки тайтла для карточки: живые данные движка
+  app.get(
+    '/:id/download',
+    {
+      schema: {
+        operationId: 'getTitleDownload',
+        tags: ['Titles'],
+        params: titleParams,
+        response: {
+          200: titleDownload,
+          404: messageResponse,
+          ...guardResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (!parseCatalogId(request.params.id))
+        return reply.code(404).send({ message: 'Title not found' })
+
+      return titleDownloadOf(request.params.id, await liveTorrents())
+    },
+  )
+
+  // «Скачать фильм / сезон» и «Скачать выбранное»: закачка целиком, в библиотеку
+  app.post(
+    '/:id/download',
+    {
+      schema: {
+        operationId: 'postTitleDownload',
+        tags: ['Titles'],
+        params: titleParams,
+        body: downloadTitleBody,
+        response: {
+          200: titleDownloadStart,
+          202: titleDownloadStart,
+          400: messageResponse,
+          ...guardResponses,
+          ...tmdbResponses,
+          422: watchErrorResponse,
+          503: engineUnavailableResponse,
+          504: messageResponse,
+          507: insufficientStorageResponse,
+        },
+      },
+    },
+    async (request, reply) => {
+      let result
+
+      try {
+        result = await downloadTitle(
+          request.params.id,
+          request.body,
+          request.profileId,
+        )
+      }
+      catch (err) {
+        if (err instanceof DownloadNotFoundError)
+          return reply.code(404).send({ message: err.message })
+
+        if (err instanceof WatchError)
+          return reply.code(422).send({ message: err.message, kind: err.kind })
+
+        if (err instanceof TmdbError)
+          return sendTmdbError(reply, err)
+
+        return sendEngineError(reply, err)
+      }
+
+      if (!result)
+        return reply.code(404).send({ message: 'Title not found' })
+
+      if (result.status === 'resolving')
+        return reply.code(202).send({ ...result, files: 0, bytes: 0 })
+
+      // Уже скачанные целиком файлы ложатся в библиотеку сразу
+      void syncLibrary()
+      return { ...result, candidateId: '' }
+    },
+  )
+
+  // «Отменить загрузку»: полная закачка встаёт, скачанное остаётся в кэше
+  app.delete(
+    '/:id/download',
+    {
+      schema: {
+        operationId: 'deleteTitleDownload',
+        tags: ['Titles'],
+        params: titleParams,
+        querystring: cancelTitleDownloadQuery,
+        response: {
+          200: titleDownload,
+          404: messageResponse,
+          409: messageResponse,
+          ...guardResponses,
+          502: messageResponse,
+          503: engineUnavailableResponse,
+          504: messageResponse,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (!parseCatalogId(request.params.id))
+        return reply.code(404).send({ message: 'Title not found' })
+
+      try {
+        await cancelTitleDownload(request.params.id, request.query.torrentId)
+      }
+      catch (err) {
+        if (err instanceof NothingToCancelError)
+          return reply.code(409).send({ message: err.message })
+
+        return sendEngineError(reply, err)
+      }
+
+      return titleDownloadOf(request.params.id, await liveTorrents())
+    },
+  )
+
+  // «Оставить»: просмотренное из кэша докачивается и ложится в библиотеку
+  app.post(
+    '/:id/keep',
+    {
+      schema: {
+        operationId: 'postTitleKeep',
+        tags: ['Titles'],
+        params: titleParams,
+        response: {
+          200: titleDownload,
+          404: messageResponse,
+          409: messageResponse,
+          ...guardResponses,
+          502: messageResponse,
+          503: engineUnavailableResponse,
+          504: messageResponse,
+          507: insufficientStorageResponse,
+        },
+      },
+    },
+    async (request, reply) => {
+      if (!parseCatalogId(request.params.id))
+        return reply.code(404).send({ message: 'Title not found' })
+
+      try {
+        await keepTitle(request.params.id)
+      }
+      catch (err) {
+        if (err instanceof NothingToKeepError)
+          return reply.code(409).send({ message: err.message })
+
+        return sendEngineError(reply, err)
+      }
+
+      void syncLibrary()
+      return titleDownloadOf(request.params.id, await liveTorrents())
     },
   )
 

@@ -54,6 +54,11 @@ export interface MediaInfo {
   video: VideoStreamInfo | null
   audio: AudioStreamInfo[]
   subtitles: SubtitleStreamInfo[]
+  /**
+   * Дата съёмки из тегов контейнера как есть: сначала QuickTime с зоной
+   * (iPhone), затем `creation_time`, затем `date`. Нужна домашнему видео
+   */
+  created?: string | null
 }
 
 const TEXT_SUBTITLES = new Set([
@@ -97,7 +102,31 @@ interface ProbeStream {
 
 export interface ProbeOutput {
   streams?: ProbeStream[]
-  format?: { format_name?: string, duration?: string, bit_rate?: string }
+  format?: {
+    format_name?: string
+    duration?: string
+    bit_rate?: string
+    tags?: Record<string, string | undefined>
+  }
+}
+
+const CREATED_TAGS = [
+  'com.apple.quicktime.creationdate',
+  'creation_time',
+  'date',
+]
+
+function createdOf(output: ProbeOutput) {
+  const tags = output.format?.tags ?? {}
+
+  for (const name of CREATED_TAGS) {
+    const value = tags[name] ?? tags[name.toUpperCase()]
+
+    if (value)
+      return value
+  }
+
+  return null
 }
 
 function tag(stream: ProbeStream, name: string) {
@@ -185,6 +214,7 @@ export function parseProbe(output: ProbeOutput, fileName: string): MediaInfo {
   return {
     container: containerOf(output.format?.format_name ?? '', fileName),
     duration: numberOf(output.format?.duration),
+    created: createdOf(output),
     video: video
       ? {
           index: video.index,

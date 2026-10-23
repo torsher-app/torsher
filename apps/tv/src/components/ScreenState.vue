@@ -6,7 +6,7 @@ import { useRouter } from 'vue-router'
 import { expireSession } from '../session.ts'
 
 const props = defineProps<{
-  kind: LoadError | 'empty' | 'homeEmpty' | 'catalogEmpty'
+  kind: LoadError | 'empty' | 'homeEmpty' | 'catalogEmpty' | 'libraryEmpty'
 }>()
 
 defineEmits<{ retry: [] }>()
@@ -23,6 +23,7 @@ const canRetry = computed(
   () =>
     props.kind !== 'empty'
     && props.kind !== 'catalogEmpty'
+    && props.kind !== 'libraryEmpty'
     && props.kind !== 'notFound'
     && !reconnect.value,
 )

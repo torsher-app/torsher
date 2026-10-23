@@ -23,7 +23,7 @@ export const MAX_WATCH_ATTEMPTS = 3
 // API-клиент витрины ждёт ответ 10 с: новую попытку начинаем только в первые
 // 4 с, а сама попытка длится не дольше 5 с (загрузка `.torrent` или 4 с
 // ожидания метаданных magnet)
-const WATCH_BUDGET_MS = 4000
+export const WATCH_BUDGET_MS = 4000
 const DOWNLOAD_TIMEOUT_MS = 5000
 
 /**
@@ -62,7 +62,7 @@ export type WatchResult
   /** Magnet ждёт метаданные: клиент ждёт раздачу и повторяет с `candidateId`. */
   | { status: 'resolving', torrentId: string, candidateId: string }
 
-function isSkippable(err: unknown) {
+export function isSkippable(err: unknown) {
   if (err instanceof SourceError || err instanceof InvalidMagnetError)
     return true
 
@@ -80,7 +80,7 @@ function magnetOf(release: RankedRelease) {
 }
 
 /** Раздача в базе: по `.torrent` от индексатора, а без него — по magnet */
-async function acquire(
+export async function acquire(
   release: RankedRelease,
   hasTime: () => boolean,
 ): Promise<Torrent | undefined> {
@@ -106,7 +106,10 @@ async function acquire(
   return magnet ? (await addMagnet(magnet)).torrent : undefined
 }
 
-function seasonOfFile(fileSeason: number | undefined, parsed: ParsedRelease) {
+export function seasonOfFile(
+  fileSeason: number | undefined,
+  parsed: ParsedRelease,
+) {
   if (fileSeason !== undefined)
     return fileSeason
 

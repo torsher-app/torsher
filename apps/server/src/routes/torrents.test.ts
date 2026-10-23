@@ -250,6 +250,7 @@ describe('добавление раздачи', () => {
         isVideo: true,
         downloaded: 0,
         selected: false,
+        inLibrary: false,
       },
       {
         index: 2,
@@ -258,6 +259,7 @@ describe('добавление раздачи', () => {
         isVideo: false,
         downloaded: 0,
         selected: false,
+        inLibrary: false,
       },
     ])
     // Ни .torrent, ни magnet в ответ не попадают

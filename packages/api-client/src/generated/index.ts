@@ -82,6 +82,8 @@ export interface CardInput {
    * @max 9007199254740991
    */
   ownRating?: number;
+  availability?: "downloading" | "downloaded" | "library";
+  downloadProgress?: number;
 }
 
 export interface TitleSeasonInput {
@@ -126,6 +128,8 @@ export interface TitleDetailsInput {
    * @max 9007199254740991
    */
   ownRating?: number;
+  availability?: "downloading" | "downloaded" | "library";
+  downloadProgress?: number;
   overview: string;
   genres: string[];
   /**
@@ -272,6 +276,8 @@ export interface PersonCreditInput {
    * @max 9007199254740991
    */
   ownRating?: number;
+  availability?: "downloading" | "downloaded" | "library";
+  downloadProgress?: number;
   detail?: string;
   watched: boolean;
 }
@@ -610,6 +616,11 @@ export interface TitleOpenInput {
   torrentId: string;
 }
 
+export interface FileDownloadInput {
+  state: "downloading" | "downloaded" | "library";
+  progress: number;
+}
+
 export interface TitleFileInput {
   fileIndex: number;
   name: string;
@@ -619,6 +630,84 @@ export interface TitleFileInput {
   position: number;
   duration: number | null;
   watched: boolean;
+  download: FileDownloadInput | null;
+}
+
+export interface DownloadTitleInput {
+  /**
+   * @min 1
+   * @max 999
+   */
+  season?: number;
+  /**
+   * @minLength 1
+   * @maxLength 64
+   */
+  candidateId?: string;
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  torrentId?: string;
+  /**
+   * @maxItems 10000
+   * @minItems 1
+   */
+  files?: number[];
+}
+
+export interface TitleDownloadStartInput {
+  status: "started" | "resolving";
+  torrentId: string;
+  candidateId: string;
+  files: number;
+  bytes: number;
+}
+
+export interface LibraryFileInput {
+  id: string;
+  season: number | null;
+  episode: number | null;
+  episodeTo: number | null;
+  quality: string | null;
+  size: number;
+  duration: number | null;
+}
+
+export interface TitleLibraryInput {
+  files: LibraryFileInput[];
+}
+
+export interface TitleDownloadInput {
+  state: "downloading" | "downloaded" | "library" | null;
+  progress: number;
+  canKeep: boolean;
+  release: {
+    quality: string | null;
+    voice: VoiceRefInput | null;
+  } | null;
+  peers: {
+    connected: number;
+    found: number;
+  };
+  speed: number;
+  stalled: boolean;
+  downloads: {
+    torrentId: string;
+    phase: "downloading" | "placing" | "unmatched";
+    seasons: number[];
+    progress: number;
+    release: {
+      quality: string | null;
+      voice: VoiceRefInput | null;
+    } | null;
+    peers: {
+      connected: number;
+      found: number;
+    };
+    speed: number;
+    stalled: boolean;
+  }[];
 }
 
 export interface TitleFilesInput {
@@ -758,13 +847,86 @@ export interface CatalogRowInput {
     | "themeWesterns"
     | "newEpisodes"
     | "watchlist"
-    | "collection";
+    | "collection"
+    | "library"
+    | "libraryRecent"
+    | "libraryMovies"
+    | "librarySeries"
+    | "libraryUnmatched"
+    | "libraryHomeVideo"
+    | "libraryUntitled";
   kind: "top10" | "posters" | "episodes";
   title: string;
   ref?: string;
   name?: string;
   items: CardInput[];
   episodes?: EpisodeCardInput[];
+}
+
+export interface ReleaseCardInput {
+  torrentId: string;
+  name: string;
+  matchStatus: "unsure" | "unmatched";
+  suggestion: CardInput | null;
+  image?: string;
+  query: string;
+  seasons: number[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  videos: number;
+  size: number;
+}
+
+export interface ReleasesRowInput {
+  id: "libraryUnmatched";
+  kind: "releases";
+  title: string;
+  items: ReleaseCardInput[];
+}
+
+export interface FileCardInput {
+  id: string;
+  name: string;
+  album: string | null;
+  capturedAt: string | null;
+  duration: number | null;
+  share: number;
+  thumb: string;
+}
+
+export interface FilesRowInput {
+  id: "libraryHomeVideo" | "libraryUntitled";
+  kind: "files";
+  title: string;
+  items: FileCardInput[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  total: number;
+}
+
+export interface HomeAlbumInput {
+  libraryId: string;
+  album: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  count: number;
+  from: string | null;
+  to: string | null;
+  coverId: string;
+}
+
+export interface HomeVideoSectionInput {
+  albums: HomeAlbumInput[];
+}
+
+export interface HomeVideoListInput {
+  items: FileCardInput[];
 }
 
 export interface ContinueCardInput {
@@ -785,6 +947,8 @@ export interface ContinueCardInput {
    * @max 9007199254740991
    */
   ownRating?: number;
+  availability?: "downloading" | "downloaded" | "library";
+  downloadProgress?: number;
   image?: string;
   season: number | null;
   episode: number | null;
@@ -802,7 +966,8 @@ export interface ContinueRowInput {
   items: ContinueCardInput[];
 }
 
-export type HomeRowInput = ContinueRowInput | CatalogRowInput;
+export type HomeRowInput =
+  ContinueRowInput | ReleasesRowInput | FilesRowInput | CatalogRowInput;
 
 export interface HomeResponseInput {
   rows: HomeRowInput[];
@@ -945,6 +1110,7 @@ export interface TorrentFileInput {
   isVideo: boolean;
   downloaded: number;
   selected: boolean;
+  inLibrary: boolean;
 }
 
 export interface TorrentInput {
@@ -959,7 +1125,10 @@ export interface TorrentInput {
   addedAt: string;
   lastAccessAt: string | null;
   titleId: string | null;
+  matchStatus: "matched" | "unsure" | "unmatched" | "ignored" | "user" | null;
+  matchSuggestion: string | null;
   retention: "cache" | "keep";
+  inLibrary: boolean;
   pauseReason: "user" | "storage" | null;
   state:
     | "idle"
@@ -1002,6 +1171,11 @@ export interface DownloadTorrentInput {
    * @minItems 1
    */
   files: number[];
+}
+
+export interface UpdateTorrentTitleInput {
+  /** @pattern ^tmdb:(?:movie|tv):\d{1,10}$ */
+  titleId: string | null;
 }
 
 export interface UpdateRetentionInput {
@@ -1054,12 +1228,17 @@ export interface CreatePlaybackInput {
    * @minLength 1
    * @maxLength 100
    */
-  torrentId: string;
+  torrentId?: string;
   /**
    * @min 0
    * @max 99999
    */
-  fileIndex: number;
+  fileIndex?: number;
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  mediaFileId?: string;
   title?: PlaybackTitleInput;
   device?: DeviceProfileInput;
   language?: "ru_RU" | "en_US";
@@ -1165,12 +1344,17 @@ export interface UpdateWatchStateInput {
    * @minLength 1
    * @maxLength 100
    */
-  torrentId: string;
+  torrentId?: string;
   /**
    * @min 0
    * @max 99999
    */
-  fileIndex: number;
+  fileIndex?: number;
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  mediaFileId?: string;
   /**
    * @min 0
    * @max 1000000
@@ -1185,11 +1369,231 @@ export interface UpdateWatchStateInput {
 }
 
 export interface WatchStateInput {
-  torrentId: string;
-  fileIndex: number;
+  torrentId: string | null;
+  fileIndex: number | null;
+  mediaFileId: string | null;
   position: number;
   duration: number | null;
   updatedAt: string;
+}
+
+export interface LibraryFolderInput {
+  id: string;
+  path: string;
+  hint: "auto" | "movies" | "shows";
+  status: "ok" | "empty" | "offline" | "denied" | "scanning";
+  watcher: "on" | "network" | "failed" | "off" | null;
+  error: string | null;
+  scannedAt: string | null;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  files: number;
+  size: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  missing: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  unsure: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  unmatched: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  pending: number;
+}
+
+export interface LibraryInput {
+  id: string;
+  kind: "video" | "home";
+  name: string;
+  managed: boolean;
+  /** @maxItems 50 */
+  exclude: string[];
+  watch: boolean;
+  hiddenProfiles: string[];
+  folders: LibraryFolderInput[];
+}
+
+export interface LibraryListInput {
+  items: LibraryInput[];
+}
+
+export interface CreateLibraryInput {
+  kind: "video" | "home";
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  name: string;
+  /**
+   * @minLength 1
+   * @maxLength 4096
+   */
+  path: string;
+  hint?: "auto" | "movies" | "shows";
+}
+
+export interface UpdateLibraryInput {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  name?: string;
+  /** @maxItems 50 */
+  exclude?: string[];
+  watch?: boolean;
+  /** @maxItems 50 */
+  hiddenProfiles?: string[];
+}
+
+export interface AddLibraryFolderInput {
+  /**
+   * @minLength 1
+   * @maxLength 4096
+   */
+  path: string;
+  hint?: "auto" | "movies" | "shows";
+}
+
+export interface FolderPathErrorResponseInput {
+  message: string;
+  kind:
+    | "not_absolute"
+    | "missing"
+    | "not_directory"
+    | "denied"
+    | "inside_data"
+    | "duplicate";
+}
+
+export interface FolderBrowseInput {
+  path: string;
+  parent: string | null;
+  entries: {
+    name: string;
+    path: string;
+  }[];
+}
+
+export interface UnmatchedGroupInput {
+  folderId: string;
+  libraryName: string;
+  group: string;
+  name: string;
+  status: "unsure" | "unmatched";
+  suggestion: string | null;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  files: number;
+  size: number;
+}
+
+export interface UnmatchedGroupListInput {
+  items: UnmatchedGroupInput[];
+}
+
+export interface LibraryFileItemInput {
+  id: string;
+  folderId: string;
+  relPath: string;
+  size: number;
+  duration: number | null;
+  state: "present" | "missing";
+  titleId: string | null;
+  matchStatus: "matched" | "unsure" | "unmatched" | "ignored" | null;
+  capturedAt: string | null;
+  capturedAtSource: "tags" | "name" | "file" | "user" | null;
+}
+
+export interface LibraryFileListInput {
+  items: LibraryFileItemInput[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  total: number;
+}
+
+export interface UpdateLibraryFileInput {
+  /**
+   * @format date-time
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+   */
+  capturedAt: string | null;
+}
+
+export interface SetGroupTitleInput {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  folderId: string;
+  /**
+   * @minLength 1
+   * @maxLength 4096
+   */
+  group: string;
+  /** @pattern ^tmdb:(?:movie|tv):\d{1,10}$ */
+  titleId: string | null;
+  /** @maxItems 5000 */
+  episodes?: {
+    /**
+     * @minLength 1
+     * @maxLength 100
+     */
+    id: string;
+    /**
+     * @min 0
+     * @max 999
+     */
+    season: number;
+    /**
+     * @min 1
+     * @max 9999
+     */
+    episode: number | null;
+    /**
+     * @min 1
+     * @max 9999
+     */
+    episodeTo?: number | null;
+  }[];
+}
+
+export interface GroupPreviewInput {
+  items: {
+    id: string;
+    relPath: string;
+    video: boolean;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    season: number | null;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    episode: number | null;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    episodeTo: number | null;
+  }[];
 }
 
 export interface LogEntryInput {
@@ -1508,6 +1912,10 @@ export interface AttentionItemInput {
     | "engine_crashed"
     | "storage_low"
     | "storage_paused"
+    | "library_copies"
+    | "library_offline"
+    | "library_unmatched"
+    | "library_watcher"
     | "indexer_error"
     | "indexer_missing"
     | "dns_spoofing"
@@ -1515,7 +1923,13 @@ export interface AttentionItemInput {
     | "tmdb_key_invalid";
   severity: "error" | "warning";
   section:
-    "downloads" | "storage" | "sources" | "network" | "metadata" | "logs";
+    | "downloads"
+    | "library"
+    | "storage"
+    | "sources"
+    | "network"
+    | "metadata"
+    | "logs";
   params: {
     count?: number;
     name?: string;
@@ -1707,12 +2121,13 @@ export interface StorageDirCheckInput {
 export interface StorageCheckInput {
   data: StorageDirCheckInput;
   downloads: StorageDirCheckInput;
+  library: StorageDirCheckInput;
+  linkMode: "hardlink" | "reflink" | "copy" | null;
   space: {
     total: number;
     free: number;
     status: "ok" | "low" | "critical";
   };
-  sameFilesystem: boolean | null;
 }
 
 export interface DiscoveredManagerInput {
@@ -1737,6 +2152,13 @@ export interface StorageOverviewInput {
   free: number;
   cacheUsed: number;
   keptUsed: number;
+  library: {
+    path: string;
+    used: number;
+    shared: number;
+    own: number;
+    linkMode: "hardlink" | "reflink" | "copy" | null;
+  };
   other: number;
   policy: {
     cacheLimit: number;
@@ -1864,6 +2286,8 @@ export interface Card {
    * @max 9007199254740991
    */
   ownRating?: number;
+  availability?: "downloading" | "downloaded" | "library";
+  downloadProgress?: number;
 }
 
 export interface TitleSeason {
@@ -1908,6 +2332,8 @@ export interface TitleDetails {
    * @max 9007199254740991
    */
   ownRating?: number;
+  availability?: "downloading" | "downloaded" | "library";
+  downloadProgress?: number;
   overview: string;
   genres: string[];
   /**
@@ -2054,6 +2480,8 @@ export interface PersonCredit {
    * @max 9007199254740991
    */
   ownRating?: number;
+  availability?: "downloading" | "downloaded" | "library";
+  downloadProgress?: number;
   detail?: string;
   watched: boolean;
 }
@@ -2392,6 +2820,11 @@ export interface TitleOpen {
   torrentId: string;
 }
 
+export interface FileDownload {
+  state: "downloading" | "downloaded" | "library";
+  progress: number;
+}
+
 export interface TitleFile {
   fileIndex: number;
   name: string;
@@ -2401,6 +2834,84 @@ export interface TitleFile {
   position: number;
   duration: number | null;
   watched: boolean;
+  download: FileDownload | null;
+}
+
+export interface DownloadTitle {
+  /**
+   * @min 1
+   * @max 999
+   */
+  season?: number;
+  /**
+   * @minLength 1
+   * @maxLength 64
+   */
+  candidateId?: string;
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  torrentId?: string;
+  /**
+   * @maxItems 10000
+   * @minItems 1
+   */
+  files?: number[];
+}
+
+export interface TitleDownloadStart {
+  status: "started" | "resolving";
+  torrentId: string;
+  candidateId: string;
+  files: number;
+  bytes: number;
+}
+
+export interface LibraryFile {
+  id: string;
+  season: number | null;
+  episode: number | null;
+  episodeTo: number | null;
+  quality: string | null;
+  size: number;
+  duration: number | null;
+}
+
+export interface TitleLibrary {
+  files: LibraryFile[];
+}
+
+export interface TitleDownload {
+  state: "downloading" | "downloaded" | "library" | null;
+  progress: number;
+  canKeep: boolean;
+  release: {
+    quality: string | null;
+    voice: VoiceRef | null;
+  } | null;
+  peers: {
+    connected: number;
+    found: number;
+  };
+  speed: number;
+  stalled: boolean;
+  downloads: {
+    torrentId: string;
+    phase: "downloading" | "placing" | "unmatched";
+    seasons: number[];
+    progress: number;
+    release: {
+      quality: string | null;
+      voice: VoiceRef | null;
+    } | null;
+    peers: {
+      connected: number;
+      found: number;
+    };
+    speed: number;
+    stalled: boolean;
+  }[];
 }
 
 export interface TitleFiles {
@@ -2540,13 +3051,86 @@ export interface CatalogRow {
     | "themeWesterns"
     | "newEpisodes"
     | "watchlist"
-    | "collection";
+    | "collection"
+    | "library"
+    | "libraryRecent"
+    | "libraryMovies"
+    | "librarySeries"
+    | "libraryUnmatched"
+    | "libraryHomeVideo"
+    | "libraryUntitled";
   kind: "top10" | "posters" | "episodes";
   title: string;
   ref?: string;
   name?: string;
   items: Card[];
   episodes?: EpisodeCard[];
+}
+
+export interface ReleaseCard {
+  torrentId: string;
+  name: string;
+  matchStatus: "unsure" | "unmatched";
+  suggestion: Card | null;
+  image?: string;
+  query: string;
+  seasons: number[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  videos: number;
+  size: number;
+}
+
+export interface ReleasesRow {
+  id: "libraryUnmatched";
+  kind: "releases";
+  title: string;
+  items: ReleaseCard[];
+}
+
+export interface FileCard {
+  id: string;
+  name: string;
+  album: string | null;
+  capturedAt: string | null;
+  duration: number | null;
+  share: number;
+  thumb: string;
+}
+
+export interface FilesRow {
+  id: "libraryHomeVideo" | "libraryUntitled";
+  kind: "files";
+  title: string;
+  items: FileCard[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  total: number;
+}
+
+export interface HomeAlbum {
+  libraryId: string;
+  album: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  count: number;
+  from: string | null;
+  to: string | null;
+  coverId: string;
+}
+
+export interface HomeVideoSection {
+  albums: HomeAlbum[];
+}
+
+export interface HomeVideoList {
+  items: FileCard[];
 }
 
 export interface ContinueCard {
@@ -2567,6 +3151,8 @@ export interface ContinueCard {
    * @max 9007199254740991
    */
   ownRating?: number;
+  availability?: "downloading" | "downloaded" | "library";
+  downloadProgress?: number;
   image?: string;
   season: number | null;
   episode: number | null;
@@ -2584,7 +3170,7 @@ export interface ContinueRow {
   items: ContinueCard[];
 }
 
-export type HomeRow = ContinueRow | CatalogRow;
+export type HomeRow = ContinueRow | ReleasesRow | FilesRow | CatalogRow;
 
 export interface HomeResponse {
   rows: HomeRow[];
@@ -2727,6 +3313,7 @@ export interface TorrentFile {
   isVideo: boolean;
   downloaded: number;
   selected: boolean;
+  inLibrary: boolean;
 }
 
 export interface Torrent {
@@ -2741,7 +3328,10 @@ export interface Torrent {
   addedAt: string;
   lastAccessAt: string | null;
   titleId: string | null;
+  matchStatus: "matched" | "unsure" | "unmatched" | "ignored" | "user" | null;
+  matchSuggestion: string | null;
   retention: "cache" | "keep";
+  inLibrary: boolean;
   pauseReason: "user" | "storage" | null;
   state:
     | "idle"
@@ -2784,6 +3374,11 @@ export interface DownloadTorrent {
    * @minItems 1
    */
   files: number[];
+}
+
+export interface UpdateTorrentTitle {
+  /** @pattern ^tmdb:(?:movie|tv):\d{1,10}$ */
+  titleId: string | null;
 }
 
 export interface UpdateRetention {
@@ -2836,12 +3431,17 @@ export interface CreatePlayback {
    * @minLength 1
    * @maxLength 100
    */
-  torrentId: string;
+  torrentId?: string;
   /**
    * @min 0
    * @max 99999
    */
-  fileIndex: number;
+  fileIndex?: number;
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  mediaFileId?: string;
   title?: PlaybackTitle;
   device?: DeviceProfile;
   language?: "ru_RU" | "en_US";
@@ -2947,12 +3547,17 @@ export interface UpdateWatchState {
    * @minLength 1
    * @maxLength 100
    */
-  torrentId: string;
+  torrentId?: string;
   /**
    * @min 0
    * @max 99999
    */
-  fileIndex: number;
+  fileIndex?: number;
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  mediaFileId?: string;
   /**
    * @min 0
    * @max 1000000
@@ -2967,11 +3572,231 @@ export interface UpdateWatchState {
 }
 
 export interface WatchState {
-  torrentId: string;
-  fileIndex: number;
+  torrentId: string | null;
+  fileIndex: number | null;
+  mediaFileId: string | null;
   position: number;
   duration: number | null;
   updatedAt: string;
+}
+
+export interface LibraryFolder {
+  id: string;
+  path: string;
+  hint: "auto" | "movies" | "shows";
+  status: "ok" | "empty" | "offline" | "denied" | "scanning";
+  watcher: "on" | "network" | "failed" | "off" | null;
+  error: string | null;
+  scannedAt: string | null;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  files: number;
+  size: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  missing: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  unsure: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  unmatched: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  pending: number;
+}
+
+export interface Library {
+  id: string;
+  kind: "video" | "home";
+  name: string;
+  managed: boolean;
+  /** @maxItems 50 */
+  exclude: string[];
+  watch: boolean;
+  hiddenProfiles: string[];
+  folders: LibraryFolder[];
+}
+
+export interface LibraryList {
+  items: Library[];
+}
+
+export interface CreateLibrary {
+  kind: "video" | "home";
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  name: string;
+  /**
+   * @minLength 1
+   * @maxLength 4096
+   */
+  path: string;
+  hint?: "auto" | "movies" | "shows";
+}
+
+export interface UpdateLibrary {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  name?: string;
+  /** @maxItems 50 */
+  exclude?: string[];
+  watch?: boolean;
+  /** @maxItems 50 */
+  hiddenProfiles?: string[];
+}
+
+export interface AddLibraryFolder {
+  /**
+   * @minLength 1
+   * @maxLength 4096
+   */
+  path: string;
+  hint?: "auto" | "movies" | "shows";
+}
+
+export interface FolderPathErrorResponse {
+  message: string;
+  kind:
+    | "not_absolute"
+    | "missing"
+    | "not_directory"
+    | "denied"
+    | "inside_data"
+    | "duplicate";
+}
+
+export interface FolderBrowse {
+  path: string;
+  parent: string | null;
+  entries: {
+    name: string;
+    path: string;
+  }[];
+}
+
+export interface UnmatchedGroup {
+  folderId: string;
+  libraryName: string;
+  group: string;
+  name: string;
+  status: "unsure" | "unmatched";
+  suggestion: string | null;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  files: number;
+  size: number;
+}
+
+export interface UnmatchedGroupList {
+  items: UnmatchedGroup[];
+}
+
+export interface LibraryFileItem {
+  id: string;
+  folderId: string;
+  relPath: string;
+  size: number;
+  duration: number | null;
+  state: "present" | "missing";
+  titleId: string | null;
+  matchStatus: "matched" | "unsure" | "unmatched" | "ignored" | null;
+  capturedAt: string | null;
+  capturedAtSource: "tags" | "name" | "file" | "user" | null;
+}
+
+export interface LibraryFileList {
+  items: LibraryFileItem[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  total: number;
+}
+
+export interface UpdateLibraryFile {
+  /**
+   * @format date-time
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+   */
+  capturedAt: string | null;
+}
+
+export interface SetGroupTitle {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  folderId: string;
+  /**
+   * @minLength 1
+   * @maxLength 4096
+   */
+  group: string;
+  /** @pattern ^tmdb:(?:movie|tv):\d{1,10}$ */
+  titleId: string | null;
+  /** @maxItems 5000 */
+  episodes?: {
+    /**
+     * @minLength 1
+     * @maxLength 100
+     */
+    id: string;
+    /**
+     * @min 0
+     * @max 999
+     */
+    season: number;
+    /**
+     * @min 1
+     * @max 9999
+     */
+    episode: number | null;
+    /**
+     * @min 1
+     * @max 9999
+     */
+    episodeTo?: number | null;
+  }[];
+}
+
+export interface GroupPreview {
+  items: {
+    id: string;
+    relPath: string;
+    video: boolean;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    season: number | null;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    episode: number | null;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    episodeTo: number | null;
+  }[];
 }
 
 export interface LogEntry {
@@ -3290,6 +4115,10 @@ export interface AttentionItem {
     | "engine_crashed"
     | "storage_low"
     | "storage_paused"
+    | "library_copies"
+    | "library_offline"
+    | "library_unmatched"
+    | "library_watcher"
     | "indexer_error"
     | "indexer_missing"
     | "dns_spoofing"
@@ -3297,7 +4126,13 @@ export interface AttentionItem {
     | "tmdb_key_invalid";
   severity: "error" | "warning";
   section:
-    "downloads" | "storage" | "sources" | "network" | "metadata" | "logs";
+    | "downloads"
+    | "library"
+    | "storage"
+    | "sources"
+    | "network"
+    | "metadata"
+    | "logs";
   params: {
     count?: number;
     name?: string;
@@ -3489,12 +4324,13 @@ export interface StorageDirCheck {
 export interface StorageCheck {
   data: StorageDirCheck;
   downloads: StorageDirCheck;
+  library: StorageDirCheck;
+  linkMode: "hardlink" | "reflink" | "copy" | null;
   space: {
     total: number;
     free: number;
     status: "ok" | "low" | "critical";
   };
-  sameFilesystem: boolean | null;
 }
 
 export interface DiscoveredManager {
@@ -3519,6 +4355,13 @@ export interface StorageOverview {
   free: number;
   cacheUsed: number;
   keptUsed: number;
+  library: {
+    path: string;
+    used: number;
+    shared: number;
+    own: number;
+    linkMode: "hardlink" | "reflink" | "copy" | null;
+  };
   other: number;
   policy: {
     cacheLimit: number;
@@ -3646,6 +4489,22 @@ export type PostTitleOpenError =
 
 export type GetTitleFilesError = MessageResponse;
 
+export type GetTitleLibraryError = MessageResponse;
+
+export type GetTitleDownloadError = MessageResponse;
+
+export type PostTitleDownloadError =
+  | MessageResponse
+  | WatchErrorResponse
+  | EngineUnavailableResponse
+  | InsufficientStorageResponse;
+
+export type DeleteTitleDownloadError =
+  MessageResponse | EngineUnavailableResponse;
+
+export type PostTitleKeepError =
+  MessageResponse | EngineUnavailableResponse | InsufficientStorageResponse;
+
 export type PutTitleWatchedError = MessageResponse;
 
 export type GetTitleMineError = MessageResponse;
@@ -3691,7 +4550,42 @@ export type PostTorrentResumeError =
 export type PutTorrentRetentionError =
   MessageResponse | EngineUnavailableResponse;
 
+export type PutTorrentTitleError = MessageResponse;
+
+export type DeleteTorrentLibraryError =
+  MessageResponse | EngineUnavailableResponse;
+
 export type GetTorrentStatsError = MessageResponse | EngineUnavailableResponse;
+
+export type GetHomeVideoError = MessageResponse;
+
+export type GetHomeVideosError = MessageResponse;
+
+export type GetLibrariesError = MessageResponse;
+
+export type PostLibraryError = MessageResponse | FolderPathErrorResponse;
+
+export type PatchLibraryError = MessageResponse;
+
+export type DeleteLibraryError = MessageResponse;
+
+export type PostLibraryFolderError = MessageResponse | FolderPathErrorResponse;
+
+export type DeleteLibraryFolderError = MessageResponse;
+
+export type PostLibraryFolderScanError = MessageResponse;
+
+export type GetLibraryBrowseError = MessageResponse;
+
+export type GetLibraryUnmatchedError = MessageResponse;
+
+export type PutLibraryGroupTitleError = MessageResponse;
+
+export type GetLibraryGroupPreviewError = MessageResponse;
+
+export type GetLibraryFilesError = MessageResponse;
+
+export type PatchLibraryFileError = MessageResponse;
 
 export type GetStorageError = MessageResponse | EngineUnavailableResponse;
 
@@ -4537,7 +5431,7 @@ export class Api<
     getHome: (
       query?: {
         /** @default "all" */
-        mode?: "all" | "movies" | "series";
+        mode?: "all" | "movies" | "series" | "library";
         /**
          * @default "en-US"
          * @pattern ^[a-z]{2}-[A-Z]{2}$
@@ -4564,7 +5458,7 @@ export class Api<
     getHomeContinue: (
       query?: {
         /** @default "all" */
-        mode?: "all" | "movies" | "series";
+        mode?: "all" | "movies" | "series" | "library";
         /**
          * @default "en-US"
          * @pattern ^[a-z]{2}-[A-Z]{2}$
@@ -4911,6 +5805,98 @@ export class Api<
       this.request<TitleFiles, GetTitleFilesError>({
         path: `/api/titles/${id}/files/${torrentId}`,
         method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Titles
+     * @name GetTitleLibrary
+     * @request GET:/api/titles/{id}/library
+     */
+    getTitleLibrary: (id: string, params: RequestParams = {}) =>
+      this.request<TitleLibrary, GetTitleLibraryError>({
+        path: `/api/titles/${id}/library`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Titles
+     * @name GetTitleDownload
+     * @request GET:/api/titles/{id}/download
+     */
+    getTitleDownload: (id: string, params: RequestParams = {}) =>
+      this.request<TitleDownload, GetTitleDownloadError>({
+        path: `/api/titles/${id}/download`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Titles
+     * @name PostTitleDownload
+     * @request POST:/api/titles/{id}/download
+     */
+    postTitleDownload: (
+      id: string,
+      data: DownloadTitleInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<TitleDownloadStart, PostTitleDownloadError>({
+        path: `/api/titles/${id}/download`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Titles
+     * @name DeleteTitleDownload
+     * @request DELETE:/api/titles/{id}/download
+     */
+    deleteTitleDownload: (
+      id: string,
+      query?: {
+        /**
+         * @minLength 1
+         * @maxLength 100
+         */
+        torrentId?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<TitleDownload, DeleteTitleDownloadError>({
+        path: `/api/titles/${id}/download`,
+        method: "DELETE",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Titles
+     * @name PostTitleKeep
+     * @request POST:/api/titles/{id}/keep
+     */
+    postTitleKeep: (id: string, params: RequestParams = {}) =>
+      this.request<TitleDownload, PostTitleKeepError>({
+        path: `/api/titles/${id}/keep`,
+        method: "POST",
         format: "json",
         ...params,
       }),
@@ -5371,6 +6357,42 @@ export class Api<
      * No description
      *
      * @tags Torrents
+     * @name PutTorrentTitle
+     * @request PUT:/api/torrents/{id}/title
+     */
+    putTorrentTitle: (
+      id: string,
+      data: UpdateTorrentTitleInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<Torrent, PutTorrentTitleError>({
+        path: `/api/torrents/${id}/title`,
+        method: "PUT",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Torrents
+     * @name DeleteTorrentLibrary
+     * @request DELETE:/api/torrents/{id}/library
+     */
+    deleteTorrentLibrary: (id: string, params: RequestParams = {}) =>
+      this.request<Torrent, DeleteTorrentLibraryError>({
+        path: `/api/torrents/${id}/library`,
+        method: "DELETE",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Torrents
      * @name GetTorrentStats
      * @request GET:/api/torrents/{id}/stats
      */
@@ -5388,6 +6410,312 @@ export class Api<
         path: `/api/torrents/${id}/stats`,
         method: "GET",
         query: query,
+        format: "json",
+        ...params,
+      }),
+  };
+  library = {
+    /**
+     * No description
+     *
+     * @tags Library
+     * @name GetHomeVideo
+     * @request GET:/api/library/home
+     */
+    getHomeVideo: (params: RequestParams = {}) =>
+      this.request<HomeVideoSection, GetHomeVideoError>({
+        path: `/api/library/home`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Library
+     * @name GetHomeVideos
+     * @request GET:/api/library/home/videos
+     */
+    getHomeVideos: (
+      query?: {
+        /**
+         * @minLength 1
+         * @maxLength 100
+         */
+        libraryId?: string;
+        /** @maxLength 4096 */
+        album?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<HomeVideoList, GetHomeVideosError>({
+        path: `/api/library/home/videos`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+  };
+  libraries = {
+    /**
+     * No description
+     *
+     * @tags Libraries
+     * @name GetLibraries
+     * @request GET:/api/libraries
+     */
+    getLibraries: (params: RequestParams = {}) =>
+      this.request<LibraryList, GetLibrariesError>({
+        path: `/api/libraries`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Libraries
+     * @name PostLibrary
+     * @request POST:/api/libraries
+     */
+    postLibrary: (data: CreateLibraryInput, params: RequestParams = {}) =>
+      this.request<Library, PostLibraryError>({
+        path: `/api/libraries`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Libraries
+     * @name PatchLibrary
+     * @request PATCH:/api/libraries/{id}
+     */
+    patchLibrary: (
+      id: string,
+      data: UpdateLibraryInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<Library, PatchLibraryError>({
+        path: `/api/libraries/${id}`,
+        method: "PATCH",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Libraries
+     * @name DeleteLibrary
+     * @request DELETE:/api/libraries/{id}
+     */
+    deleteLibrary: (id: string, params: RequestParams = {}) =>
+      this.request<null, DeleteLibraryError>({
+        path: `/api/libraries/${id}`,
+        method: "DELETE",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Libraries
+     * @name PostLibraryFolder
+     * @request POST:/api/libraries/{id}/folders
+     */
+    postLibraryFolder: (
+      id: string,
+      data: AddLibraryFolderInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<Library, PostLibraryFolderError>({
+        path: `/api/libraries/${id}/folders`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Libraries
+     * @name DeleteLibraryFolder
+     * @request DELETE:/api/libraries/folders/{folderId}
+     */
+    deleteLibraryFolder: (folderId: string, params: RequestParams = {}) =>
+      this.request<null, DeleteLibraryFolderError>({
+        path: `/api/libraries/folders/${folderId}`,
+        method: "DELETE",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Libraries
+     * @name PostLibraryFolderScan
+     * @request POST:/api/libraries/folders/{folderId}/scan
+     */
+    postLibraryFolderScan: (folderId: string, params: RequestParams = {}) =>
+      this.request<null, PostLibraryFolderScanError>({
+        path: `/api/libraries/folders/${folderId}/scan`,
+        method: "POST",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Libraries
+     * @name GetLibraryBrowse
+     * @request GET:/api/libraries/browse
+     */
+    getLibraryBrowse: (
+      query?: {
+        /** @maxLength 4096 */
+        path?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<FolderBrowse, GetLibraryBrowseError>({
+        path: `/api/libraries/browse`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Libraries
+     * @name GetLibraryUnmatched
+     * @request GET:/api/libraries/unmatched
+     */
+    getLibraryUnmatched: (params: RequestParams = {}) =>
+      this.request<UnmatchedGroupList, GetLibraryUnmatchedError>({
+        path: `/api/libraries/unmatched`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Libraries
+     * @name PutLibraryGroupTitle
+     * @request PUT:/api/libraries/groups/title
+     */
+    putLibraryGroupTitle: (
+      data: SetGroupTitleInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<null, PutLibraryGroupTitleError>({
+        path: `/api/libraries/groups/title`,
+        method: "PUT",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Libraries
+     * @name GetLibraryGroupPreview
+     * @request GET:/api/libraries/groups/preview
+     */
+    getLibraryGroupPreview: (
+      query: {
+        /**
+         * @minLength 1
+         * @maxLength 100
+         */
+        folderId: string;
+        /**
+         * @minLength 1
+         * @maxLength 4096
+         */
+        group: string;
+        /** @pattern ^tmdb:(?:movie|tv):\d{1,10}$ */
+        titleId: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<GroupPreview, GetLibraryGroupPreviewError>({
+        path: `/api/libraries/groups/preview`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Libraries
+     * @name GetLibraryFiles
+     * @request GET:/api/libraries/{id}/files
+     */
+    getLibraryFiles: (
+      id: string,
+      query?: {
+        /**
+         * @min 0
+         * @max 9007199254740991
+         * @default 0
+         */
+        offset?: number;
+        /**
+         * @min 1
+         * @max 200
+         * @default 50
+         */
+        limit?: number;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<LibraryFileList, GetLibraryFilesError>({
+        path: `/api/libraries/${id}/files`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Libraries
+     * @name PatchLibraryFile
+     * @request PATCH:/api/libraries/files/{fileId}
+     */
+    patchLibraryFile: (
+      fileId: string,
+      data: UpdateLibraryFileInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<null, PatchLibraryFileError>({
+        path: `/api/libraries/files/${fileId}`,
+        method: "PATCH",
+        body: data,
+        type: ContentType.Json,
         format: "json",
         ...params,
       }),

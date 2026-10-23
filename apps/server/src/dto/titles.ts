@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { tmdbLanguage } from './catalog.ts'
+import { titleDownloadStates, tmdbLanguage } from './catalog.ts'
 import { sourceErrorKinds } from './sources.ts'
 
 function number(max: number) {
@@ -242,6 +242,14 @@ export const titleFilesParams = z.object({
   torrentId: z.string().min(1).max(100),
 })
 
+export const fileDownload = z
+  .object({
+    state: z.enum(titleDownloadStates),
+    // Доля скачанного, 0–1
+    progress: z.number(),
+  })
+  .meta({ id: 'fileDownload' })
+
 export const titleFile = z
   .object({
     fileIndex: z.number(),
@@ -253,8 +261,105 @@ export const titleFile = z
     position: z.number(),
     duration: z.number().nullable(),
     watched: z.boolean(),
+    // Файл качается целиком, скачан или лежит в библиотеке; null — нет
+    download: fileDownload.nullable(),
   })
   .meta({ id: 'titleFile' })
+
+export const downloadTitle = z
+  .object({
+    season: z.number().int().min(1).max(999).optional(),
+    // Раздача, которая ждала метаданные: повтор после `resolving`
+    candidateId: z.string().min(1).max(64).optional(),
+    // «Скачать выбранное» с экрана «Файлы»
+    torrentId: z.string().min(1).max(100).optional(),
+    files: z
+      .array(z.number().int().min(0).max(99_999))
+      .min(1)
+      .max(10_000)
+      .optional(),
+  })
+  .refine(body => !body.torrentId === !body.files, {
+    message: 'Pass files together with torrentId',
+  })
+  .meta({ id: 'downloadTitle' })
+
+export const titleDownloadStart = z
+  .object({
+    // resolving — раздача ждёт метаданные: клиент ждёт её и повторяет с candidateId
+    status: z.enum(['started', 'resolving']),
+    torrentId: z.string(),
+    candidateId: z.string(),
+    // Сколько файлов и байт ещё скачается
+    files: z.number(),
+    bytes: z.number(),
+  })
+  .meta({ id: 'titleDownloadStart' })
+
+export const libraryFile = z
+  .object({
+    // `media_files.id`: им запускают воспроизведение
+    id: z.string(),
+    // У фильма сезона и серии нет
+    season: z.number().nullable(),
+    episode: z.number().nullable(),
+    episodeTo: z.number().nullable(),
+    // По размеру кадра из пробы: «1080p»
+    quality: z.string().nullable(),
+    size: z.number(),
+    duration: z.number().nullable(),
+  })
+  .meta({ id: 'libraryFile' })
+
+export const titleLibrary = z
+  .object({ files: z.array(libraryFile) })
+  .meta({ id: 'titleLibrary' })
+
+// Отмена одной раздачи; без неё — всех закачек тайтла
+export const cancelTitleDownloadQuery = z.object({
+  torrentId: z.string().min(1).max(100).optional(),
+})
+
+export const titleDownload = z
+  .object({
+    state: z.enum(titleDownloadStates).nullable(),
+    // Доля скачанного выбора, 0–1
+    progress: z.number(),
+    // Тайтл смотрели из кэша: «Оставить» есть что сохранить
+    canKeep: z.boolean(),
+    // Какую раздачу качаем или положили в библиотеку: качество и озвучка
+    release: z
+      .object({ quality: z.string().nullable(), voice: voiceRef.nullable() })
+      .nullable(),
+    // Пиры и скорость (байт/с) качающихся раздач тайтла
+    peers: z.object({ connected: z.number(), found: z.number() }),
+    speed: z.number(),
+    // Качается, а подключённых пиров нет
+    stalled: z.boolean(),
+    // Закачки по раздачам: кнопка загрузки показывает ту, что покрывает
+    // выбранный сезон; разложенные в библиотеку сюда не попадают
+    downloads: z.array(
+      z.object({
+        torrentId: z.string(),
+        // downloading — качается, placing — докачана и ложится в
+        // библиотеку, unmatched — докачана, но не разложится (нет номеров серий)
+        phase: z.enum(['downloading', 'placing', 'unmatched']),
+        // Сезоны выбранных видео; у фильма пусто
+        seasons: z.array(z.number().int()),
+        progress: z.number(),
+        release: z
+          .object({
+            quality: z.string().nullable(),
+            voice: voiceRef.nullable(),
+          })
+          .nullable(),
+        peers: z.object({ connected: z.number(), found: z.number() }),
+        speed: z.number(),
+        stalled: z.boolean(),
+      }),
+    ),
+  })
+  .meta({ id: 'titleDownload' })
 
 export const titleFiles = z
   .object({

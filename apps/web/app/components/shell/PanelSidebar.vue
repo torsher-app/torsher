@@ -97,12 +97,14 @@ watch(
                 t("panel.nav.attention", attentionOf(item.label))
               }}</span>
             </SidebarMenuBadge>
-            <!-- Янтарная точка, пока что-то качается -->
+            <!-- Янтарная точка, пока что-то качается. По центру строки: базовый
+                 `top` бейджа рассчитан на счётчик высотой 20 px и перебивает
+                 обычный отступ, поэтому — с `!` -->
             <SidebarMenuBadge
               v-else-if="
                 item.label === 'torrents' && downloads.isDownloading.value
               "
-              class="top-2.75 right-2.5 size-1.75 min-w-0 rounded-full bg-brand p-0"
+              class="top-1/2! right-2.5 size-1.75 min-w-0 -translate-y-1/2 rounded-full bg-brand p-0"
             >
               <span class="sr-only">{{ t("panel.nav.downloading") }}</span>
             </SidebarMenuBadge>

@@ -3,7 +3,9 @@ import type {
   Card,
   ContinueCard as ContinueItem,
   EpisodeCard,
+  FileCard as FileItem,
   HomeRow,
+  ReleaseCard as ReleaseItem,
 } from '@torsher/api-client'
 import type { ComponentPublicInstance } from 'vue'
 import type { RailItemId } from '../components/AppRail.vue'
@@ -30,13 +32,24 @@ import HeroPanel from '../components/HeroPanel.vue'
 import NewEpisodeCard from '../components/NewEpisodeCard.vue'
 import PosterCard from '../components/PosterCard.vue'
 import PosterSkeleton from '../components/PosterSkeleton.vue'
+import AppToast from '../components/AppToast.vue'
+import EpisodeListCard from '../components/EpisodeListCard.vue'
+import FileCard from '../components/FileCard.vue'
+import ReleaseCard from '../components/ReleaseCard.vue'
+import ReleasePanel from '../components/ReleasePanel.vue'
 import ScreenState from '../components/ScreenState.vue'
 import TopCard from '../components/TopCard.vue'
 import { useHero } from '../composables/useHero.ts'
 import { useHome } from '../composables/useHome.ts'
+import { useReleaseTexts } from '../composables/useReleaseTexts.ts'
 import { useStackScroll } from '../composables/useStackScroll.ts'
 import { useFocus } from '../focus/index.ts'
-import { continueOrder, resumeRoute } from '../lib/continue.ts'
+import { continueOrder, libraryRoute, resumeRoute } from '../lib/continue.ts'
+import {
+  noteReleaseOutcome,
+  releaseMatch,
+  setReleaseTitle,
+} from '../releaseMatch.ts'
 import { titleActions } from '../titleActions.ts'
 import { firstVisibleRow, stackOffset } from '../lib/rowStack.ts'
 
@@ -48,6 +61,7 @@ const RAIL_ITEM: Record<HomeMode, RailItemId> = {
   all: 'home',
   movies: 'movies',
   series: 'series',
+  library: 'library',
 }
 const SKELETON_ROWS = 2
 const SKELETON_CARDS = 7
@@ -58,7 +72,8 @@ const focus = useFocus()
 const { status, rows, loads, error, retry, refresh, refreshContinue } = useHome(
   computed(() => props.mode),
 )
-const { hero, show } = useHero()
+const { hero, show, clear: clearHero } = useHero()
+const releaseTexts = useReleaseTexts()
 
 const railItem = computed(() => RAIL_ITEM[props.mode])
 const railSection = computed(() => `rail-${railItem.value}`)
@@ -79,7 +94,9 @@ const rowElements: (HTMLElement | undefined)[] = []
 
 // У рядов подборок один id: секцию и ключ различает подборка
 function rowKey(row: HomeRow) {
-  return row.kind !== 'continue' && row.ref ? `${row.id}-${row.ref}` : row.id
+  return row.kind !== 'continue' && 'ref' in row && row.ref
+    ? `${row.id}-${row.ref}`
+    : row.id
 }
 
 function sectionOf(row: HomeRow) {
@@ -87,16 +104,29 @@ function sectionOf(row: HomeRow) {
 }
 
 function rowTitle(row: HomeRow) {
-  return (row.kind !== 'continue' && row.name) || t(row.title)
+  return ('name' in row && row.name) || t(row.title)
 }
 
-// Ряд серий 16:9 держит карточки серий, «Продолжить» — свои карточки 16:9,
-// остальные — постеры
-type RowItem = Card | ContinueItem | EpisodeCard
+// Ряд серий 16:9 держит карточки серий, «Продолжить» и раздачи без тайтла —
+// свои карточки 16:9, остальные — постеры
+// Первая плитка ряда «Домашнее видео»: весь раздел — «По датам» и «Альбомы»
+const HOME_VIDEO_TILE = { tile: 'homeVideo' } as const
+
+type Tile = typeof HOME_VIDEO_TILE
+type RowItem
+  = Card | ContinueItem | EpisodeCard | ReleaseItem | FileItem | Tile
 
 function itemsOf(row: HomeRow): RowItem[] {
-  if (row.kind === 'continue')
+  if (row.kind === 'files' && row.id === 'libraryHomeVideo')
+    return [HOME_VIDEO_TILE, ...row.items]
+
+  if (
+    row.kind === 'continue'
+    || row.kind === 'releases'
+    || row.kind === 'files'
+  ) {
     return row.items
+  }
 
   return row.kind === 'episodes' ? (row.episodes ?? []) : row.items
 }
@@ -105,8 +135,22 @@ function isEpisode(item: RowItem): item is EpisodeCard {
   return 'titleId' in item
 }
 
-// Hero серии — её сериал
-function heroCardOf(item: RowItem): Card {
+function isRelease(item: RowItem): item is ReleaseItem {
+  return 'torrentId' in item
+}
+
+function isFile(item: RowItem): item is FileItem {
+  return 'thumb' in item
+}
+
+function isTile(item: RowItem): item is Tile {
+  return 'tile' in item
+}
+
+// Hero серии — её сериал, раздачи без тайтла — подсказка, если она есть
+function heroCardOf(
+  item: Exclude<RowItem, ReleaseItem | FileItem | Tile>,
+): Card {
   return isEpisode(item)
     ? {
         id: item.titleId,
@@ -213,16 +257,39 @@ function onFocusItem(rowIndex: number, index: number, via: FocusVia) {
   if (via !== 'pointer')
     aligned.value = rowIndex
 
-  show(heroCardOf(itemsOf(row)[index]!), via)
+  const item = itemsOf(row)[index]!
+
+  // У файла без тайтла (домашнее видео, «Без описания») описания нет — общий фон
+  if (isFile(item) || isTile(item))
+    clearHero()
+  else if (!isRelease(item))
+    show(heroCardOf(item), via)
+  else if (item.suggestion)
+    show(item.suggestion, via)
+  else clearHero()
 }
 
 function itemKey(item: RowItem) {
+  if (isTile(item))
+    return `tile:${item.tile}`
+
+  if (isRelease(item))
+    return `release:${item.torrentId}`
+
+  if (isFile(item))
+    return `file:${item.id}`
+
   return isEpisode(item)
     ? `${item.titleId}:${item.season}:${item.episode}`
     : item.id
 }
 
-function open(item: RowItem) {
+// Файл без тайтла — сразу плеер: карточки тайтла у него нет
+function playFile(item: FileItem) {
+  router.push(libraryRoute(item.id))
+}
+
+function open(item: Exclude<RowItem, ReleaseItem | FileItem | Tile>) {
   router.push(`/title/${isEpisode(item) ? item.titleId : item.id}`)
 }
 
@@ -232,6 +299,67 @@ function resume(item: ContinueItem) {
 }
 
 const heroResume = computed(() => !!hero.value && 'next' in hero.value.card)
+// Hero подсказки раздачи — та же карточка, что в `suggestion`
+const heroRelease = computed(() =>
+  rows.value.some(
+    row =>
+      row.kind === 'releases'
+      && row.items.some(item => item.suggestion === hero.value?.card),
+  ),
+)
+
+// Раздача без тайтла: панель «Это …» / «Найти тайтл» / «Не фильм»
+const release = ref<ReleaseItem>()
+const releaseToast = ref('')
+let releaseOrigin: HTMLElement | undefined
+// Выбор из поиска «Библиотека» видит при возврате и перечитывает ряды
+let seenRelease = releaseMatch.version
+
+function openRelease(item: ReleaseItem) {
+  releaseOrigin = focus.current() ?? undefined
+  release.value = item
+}
+
+// Панель закрылась — фокус на карточке, с которой её открыли, если она ещё в ряду
+function closeRelease() {
+  release.value = undefined
+  nextTick(() => {
+    if (releaseOrigin?.isConnected)
+      focus.focusOn(releaseOrigin)
+    else restoreFocus()
+  })
+}
+
+async function chooseRelease(titleId: string | null) {
+  const target = release.value
+
+  if (!target)
+    return
+
+  const outcome = await setReleaseTitle(target.torrentId, titleId)
+
+  releaseToast.value = releaseTexts.outcomeOf(outcome)
+
+  if (outcome === 'saved' || outcome === 'ignored') {
+    seenRelease = releaseMatch.version
+    closeRelease()
+    void refresh()
+  }
+}
+
+// Поиск в режиме выбора: тайтл выбирают там, итог — тостом здесь
+function searchRelease() {
+  const target = release.value
+
+  if (!target)
+    return
+
+  release.value = undefined
+  router.push({
+    path: '/library/pick',
+    query: { torrent: target.torrentId, q: target.query, name: target.name },
+  })
+}
 
 // Экран в KeepAlive: ряды могут прийти, когда пользователь уже ушёл на другой экран
 let isActive = false
@@ -271,8 +399,21 @@ onActivated(() => {
   isActive = true
   restoreFocus()
 
-  if (seenVersion !== titleActions.version) {
+  if (releaseMatch.notice) {
+    releaseToast.value = releaseTexts.outcomeOf(releaseMatch.notice)
+    noteReleaseOutcome('')
+  }
+
+  // Ряды «Библиотеки» — свои, без каталога: дёшево перечитать при каждом
+  // возврате, и новые загрузки и раздачи без тайтла видны сразу. Первый
+  // показ ряды ещё грузит сам
+  if (
+    (props.mode === 'library' && status.value === 'ready')
+    || seenVersion !== titleActions.version
+    || seenRelease !== releaseMatch.version
+  ) {
     seenVersion = titleActions.version
+    seenRelease = releaseMatch.version
     void refresh()
   }
   else {
@@ -314,7 +455,12 @@ onBeforeUnmount(() => {
     <BackdropLayer :src="hero?.details?.backdrop" />
 
     <div class="home__hero">
-      <HeroPanel v-if="hero" :hero="hero" :resume="heroResume" />
+      <HeroPanel
+        v-if="hero"
+        :hero="hero"
+        :resume="heroResume"
+        :release="heroRelease"
+      />
     </div>
 
     <div v-if="status === 'error' && error" class="home__state">
@@ -350,6 +496,26 @@ onBeforeUnmount(() => {
             :load-image="isNear(index)"
             @select="resume(item as ContinueItem)"
           />
+          <EpisodeListCard
+            v-else-if="isTile(item)"
+            :title="t('homeVideo.all')"
+            :meta="t('homeVideo.count', row.kind === 'files' ? row.total : 0)"
+            icon="homeVideo"
+            @select="router.push('/home-video')"
+          />
+          <FileCard
+            v-else-if="isFile(item)"
+            :file="item"
+            :dated="row.id === 'libraryHomeVideo'"
+            :load-image="isNear(index)"
+            @select="playFile(item)"
+          />
+          <ReleaseCard
+            v-else-if="isRelease(item)"
+            :release="item"
+            :load-image="isNear(index)"
+            @select="openRelease(item)"
+          />
           <NewEpisodeCard
             v-else-if="isEpisode(item)"
             :episode="item"
@@ -375,7 +541,10 @@ onBeforeUnmount(() => {
 
     <div v-else-if="status === 'ready'" class="home__state">
       <FocusSection name="home-state" :edges="{ left: railSection }" autofocus>
-        <ScreenState kind="homeEmpty" @retry="retry" />
+        <ScreenState
+          :kind="mode === 'library' ? 'libraryEmpty' : 'homeEmpty'"
+          @retry="retry"
+        />
       </FocusSection>
     </div>
 
@@ -393,6 +562,17 @@ onBeforeUnmount(() => {
     </div>
 
     <AppRail :current="railItem" :section="railSection" :content="content" />
+
+    <AppToast :message="releaseToast" @hide="releaseToast = ''" />
+    <ReleasePanel
+      v-if="release"
+      :release="release"
+      :subtitle="releaseTexts.factsOf(release)"
+      @close="closeRelease"
+      @confirm="chooseRelease"
+      @search="searchRelease"
+      @ignore="chooseRelease(null)"
+    />
   </main>
 </template>
 

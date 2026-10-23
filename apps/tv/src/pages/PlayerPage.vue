@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { SourceCandidate, UpNext } from '@torsher/api-client'
+import type { LibraryFile, SourceCandidate, UpNext } from '@torsher/api-client'
 import type { KeyAction } from '../focus/index.ts'
 import type { StageStep } from '../lib/player.ts'
 import {
@@ -59,15 +59,22 @@ import {
   upNextVisible,
   videoTimePolicy,
 } from '../lib/player.ts'
-import { episodeCode, playerRoute, resolveRoute } from '../lib/continue.ts'
+import {
+  episodeCode,
+  libraryRoute,
+  playerRoute,
+  resolveRoute,
+} from '../lib/continue.ts'
 import { LOADER_DELAY_MS } from '../lib/loader.ts'
 import { goBack } from '../lib/navigation.ts'
 import { titleRefOf } from '../lib/sources.ts'
 import { session, updatePlayerSettings } from '../session.ts'
 
 const props = defineProps<{
-  torrentId: string
-  fileIndex: string
+  // Файл раздачи — `torrentId` и `fileIndex`, файл библиотеки — `mediaFileId`
+  torrentId?: string
+  fileIndex?: string
+  mediaFileId?: string
   // Открыт из карточки тайтла: позиция сохраняется по серии, а не по файлу
   titleId?: string
   season?: string
@@ -80,12 +87,39 @@ const SAVE_EVERY_S = 10
 const { t, locale } = useI18n()
 const router = useRouter()
 const focus = useFocus()
+const isLibrary = !!props.mediaFileId
 const player = usePlayback(
-  props.torrentId,
-  Number(props.fileIndex),
+  props.mediaFileId
+    ? { mediaFileId: props.mediaFileId }
+    : { torrentId: props.torrentId!, fileIndex: Number(props.fileIndex) },
   titleRefOf(props.titleId, props.season, props.episode),
 )
 const { playback, stats } = player
+// Пиры и скорость — только у раздачи: файл библиотеки играется с диска
+const shownStats = computed(() => (isLibrary ? undefined : stats.value))
+// Серии сериала в библиотеке: следующая серия и выбор серии играют их сразу
+const libraryFiles = ref<LibraryFile[]>([])
+
+if (isLibrary && props.titleId) {
+  api.titles
+    .getTitleLibrary(props.titleId)
+    .then((result) => {
+      libraryFiles.value = result.files
+    })
+    .catch(() => {
+      // Без списка следующая серия ищется, как у раздачи
+    })
+}
+
+function libraryFileOf(season: number, episode: number) {
+  return libraryFiles.value.find(
+    file =>
+      file.season === season
+      && file.episode !== null
+      && episode >= file.episode
+      && episode <= (file.episodeTo ?? file.episode),
+  )
+}
 
 // Экран подготовки: кадр, логотип и серия тайтла — если плеер открыт из карточки
 const season = props.season ? Number(props.season) : undefined
@@ -460,8 +494,18 @@ async function switchTo(target: {
     episode: target.episode,
   }
   const next = upNext.value
+  // Файл библиотеки — следующую серию тоже берём из библиотеки, если она там
+  const own = isLibrary
+    ? libraryFileOf(target.season, target.episode)
+    : undefined
+
+  if (own) {
+    void router.replace(libraryRoute(own.id, title))
+    return
+  }
+
   const file
-    = target.fileIndex !== undefined
+    = target.fileIndex !== undefined && props.torrentId
       ? { torrentId: props.torrentId, fileIndex: target.fileIndex }
       : next?.season === target.season && next.episode === target.episode
         ? next.file
@@ -1250,11 +1294,11 @@ onBeforeUnmount(() => {
       <PlayerLamp
         v-else
         :step="step"
-        :connected="stats?.peers.connected ?? 0"
+        :connected="shownStats?.peers.connected ?? 0"
       />
 
       <template v-if="!showsError" #bottom>
-        <PlayerBuffering :step="step" :stats="stats" />
+        <PlayerBuffering :step="step" :stats="shownStats" />
       </template>
     </PlayerStage>
 
@@ -1264,8 +1308,8 @@ onBeforeUnmount(() => {
       <p v-if="stalled" class="player__stall" role="status">
         <span class="player__spinner" aria-hidden="true" />
         {{ t(slow ? "player.steps.slow" : "player.steps.buffering")
-        }}<template v-if="stats">
-          · {{ t("player.peers", stats.peers.connected) }}
+        }}<template v-if="shownStats">
+          · {{ t("player.peers", shownStats.peers.connected) }}
         </template>
       </p>
 
@@ -1278,7 +1322,7 @@ onBeforeUnmount(() => {
         :buffer-end="position + bufferSeconds"
         :scrub-target="osd.scrub.value?.target ?? null"
         :paused="paused"
-        :stats="stats"
+        :stats="shownStats"
         :buffer-seconds="bufferSeconds"
         :now="now"
         :audio-label="tracks.audioLabel.value"

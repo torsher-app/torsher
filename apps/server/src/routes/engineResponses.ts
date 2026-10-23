@@ -37,13 +37,22 @@ export function sendEngineError(reply: FastifyReply, err: unknown) {
 }
 
 // Наружу — явно собранный объект: `.torrent` и magnet в ответ не попадают.
-// `live` — раздача в движке; нет — данных на диске нет
-export function toTorrentResponse(torrent: Torrent, live?: EngineTorrentState) {
+// `live` — раздача в движке; нет — данных на диске нет. `placed` — индексы
+// файлов, которые лежат в библиотеке
+export function toTorrentResponse(
+  torrent: Torrent,
+  live?: EngineTorrentState,
+  placed: Set<number> = new Set(),
+) {
   const files = (torrent.files ?? [])
     .map((file, index) => ({ file, index }))
     .filter(({ file }) => !file.padding)
   const selected = new Set(live?.selected ?? torrent.selectedFiles ?? [])
   const streaming = isStreaming(torrent.id)
+  const waiting = files.some(
+    ({ file, index }) =>
+      selected.has(index) && isVideoFile(file.path) && !placed.has(index),
+  )
 
   return {
     id: torrent.id,
@@ -59,12 +68,16 @@ export function toTorrentResponse(torrent: Torrent, live?: EngineTorrentState) {
       isVideo: isVideoFile(file.path),
       downloaded: live?.fileProgress[index] ?? 0,
       selected: selected.has(index),
+      inLibrary: placed.has(index),
     })),
     totalSize: files.reduce((sum, { file }) => sum + file.size, 0),
     addedAt: torrent.addedAt.toISOString(),
     lastAccessAt: torrent.lastAccessAt?.toISOString() ?? null,
     titleId: torrent.titleId,
+    matchStatus: torrent.matchStatus,
+    matchSuggestion: torrent.matchSuggestion,
     retention: torrent.retention,
+    inLibrary: placed.size > 0 && !waiting,
     pauseReason: live?.paused ? (torrent.pauseReason ?? 'user') : null,
     state: downloadStateOf(live, streaming),
     streaming,

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Card } from '@torsher/api-client'
 import { openTitleActions } from '../titleActions.ts'
+import DownloadBadge from './DownloadBadge.vue'
 import PosterRatingBadge from './PosterRatingBadge.vue'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -15,8 +16,10 @@ const props = withDefaults(
     loadImage?: boolean
     // Профиль смотрел этот тайтл
     watched?: boolean
+    // Долгое нажатие открывает меню действий; при выборе тайтла для раздачи — нет
+    actions?: boolean
   }>(),
-  { caption: false, loadImage: true, watched: false },
+  { caption: false, loadImage: true, watched: false, actions: true },
 )
 
 defineEmits<{ select: [] }>()
@@ -46,7 +49,7 @@ const meta = computed(() => {
     v-focusable
     class="card poster-card"
     type="button"
-    data-long-press
+    :data-long-press="actions ? '' : undefined"
     @click="$emit('select')"
     @longpress="openActions"
   >
@@ -62,6 +65,7 @@ const meta = computed(() => {
         {{ card.title }}
       </span>
       <PosterRatingBadge :card="card" />
+      <DownloadBadge :card="card" />
       <WatchedMark v-if="watched" class="poster-card__watched" />
       <span class="card__ring" />
     </span>

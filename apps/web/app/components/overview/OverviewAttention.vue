@@ -13,6 +13,7 @@ const { t, locale } = useI18n()
 
 const sectionLabels: Record<AttentionItem['section'], string> = {
   downloads: 'panel.nav.torrents',
+  library: 'panel.nav.library',
   storage: 'panel.settings.nav.storage',
   sources: 'panel.nav.sources',
   network: 'panel.settings.nav.network',
@@ -31,6 +32,8 @@ function textOf(item: AttentionItem) {
       return t(`${key}.${reason}`)
     case 'engine_crashed':
       return t(key, { n: count }, count)
+    case 'library_copies':
+      return t(key)
     case 'storage_low':
       return t(key, {
         free: formatBytes(free, locale.value),

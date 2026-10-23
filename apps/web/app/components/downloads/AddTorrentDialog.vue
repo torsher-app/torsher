@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { Torrent } from '@torsher/api-client'
 import type { TorrentErrorKind } from '~/composables/useTorrents'
 import { CircleAlertIcon, FileUpIcon, LinkIcon } from '@lucide/vue'
 import { toTypedSchema } from '@vee-validate/zod'
@@ -22,7 +23,16 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import LoadingButton from '~/components/LoadingButton.vue'
 import { torrentErrorKind } from '~/composables/useTorrents'
 import { dialogSheetClass } from '~/lib/dialog'
-import { readFileAsBase64, TORRENT_FILE_MAX_BYTES } from '~/lib/torrents'
+import {
+  isSingleVideo,
+  readFileAsBase64,
+  TORRENT_FILE_MAX_BYTES,
+} from '~/lib/torrents'
+
+// Что делать с добавленной: список решает, качать ли сразу или открыть выбор
+const emit = defineEmits<{
+  added: [torrent: Torrent, existed: boolean]
+}>()
 
 const open = defineModel<boolean>('open', { required: true })
 
@@ -111,11 +121,16 @@ const onSubmit = handleSubmit(async (values) => {
     )
 
     open.value = false
+    emit('added', added, existed)
 
     if (existed) {
       toast.info(t('panel.torrents.addDialog.exists'))
       return
     }
+
+    // Фильм начинает качаться сразу — об этом скажет тост закачки
+    if (isSingleVideo(added))
+      return
 
     toast.success(t('panel.torrents.addDialog.added'), {
       description:

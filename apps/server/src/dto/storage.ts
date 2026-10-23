@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { libraryLinkModes } from './setup.ts'
 
 const GIB = 1024 ** 3
 // 1 ПБ: защита от опечатки в лишние нули, а не реальный предел
@@ -23,6 +24,17 @@ export const storageOverview = z
     // Кэш просмотров, закреплённое («Оставить») и всё остальное на томе
     cacheUsed: z.number(),
     keptUsed: z.number(),
+    // Своя раскладка библиотеки: `shared` — байты, общие с раздачами
+    // (хардлинк, reflink); `linkMode` — как туда кладутся файлы, null — не
+    // проверено или каталоги недоступны
+    library: z.object({
+      path: z.string(),
+      used: z.number(),
+      shared: z.number(),
+      // Сколько библиотека занимает на томе загрузок сверх общего с раздачами
+      own: z.number(),
+      linkMode: z.enum(libraryLinkModes).nullable(),
+    }),
     other: z.number(),
     policy: z.object({
       cacheLimit: z.number(),

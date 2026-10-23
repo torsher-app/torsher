@@ -1,15 +1,22 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
+import type { IconName } from './AppIcon.vue'
 import AppIcon from './AppIcon.vue'
 
 /**
- * Первая плитка ряда серий: открывает полный список сезона. Размер — как у
- * `EpisodeCard`, чтобы ряд не менял шаг.
+ * Первая плитка ряда: открывает полный список — серий сезона или всего
+ * домашнего видео. Размер — как у карточек 16:9 ряда, чтобы ряд не менял шаг.
  */
-defineProps<{
-  // Вторая строка подписи: число серий сезона
-  meta: string
-}>()
+withDefaults(
+  defineProps<{
+    // Вторая строка подписи: сколько всего
+    meta: string
+    // Первая строка; по умолчанию — «Все серии»
+    title?: string
+    icon?: IconName
+  }>(),
+  { title: undefined, icon: 'list' },
+)
 
 defineEmits<{ select: [] }>()
 
@@ -24,11 +31,11 @@ const { t } = useI18n()
     @click="$emit('select')"
   >
     <span class="episode-list-card__frame">
-      <AppIcon name="list" class="episode-list-card__icon" />
+      <AppIcon :name="icon" class="episode-list-card__icon" />
       <span class="card__ring" />
     </span>
     <span class="episode-list-card__title">{{
-      t("title.episodeList.open")
+      title ?? t("title.episodeList.open")
     }}</span>
     <span class="episode-list-card__meta">{{ meta }}</span>
   </button>

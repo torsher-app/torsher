@@ -124,6 +124,8 @@ const LAYOUT: Record<HomeMode, TmdbHomeRowId[]> = {
     'topRatedSeries',
   ],
   movies: ['trendingMovies', 'popularMovies', 'nowPlaying', 'topRatedMovies'],
+  // Раздел «Библиотека» каталога не показывает
+  library: [],
   series: [
     'trendingSeries',
     'popularSeries',
