@@ -8,6 +8,7 @@ import ConnectPage from './pages/ConnectPage.vue'
 import FilesPage from './pages/FilesPage.vue'
 import { createScreenKeys } from './lib/screenKeys.ts'
 import HomePage from './pages/HomePage.vue'
+import HomeVideoPage from './pages/HomeVideoPage.vue'
 import PersonPage from './pages/PersonPage.vue'
 import PlayerPage from './pages/PlayerPage.vue'
 import ProfilesPage from './pages/ProfilesPage.vue'
@@ -30,6 +31,27 @@ export const router = createRouter({
     { path: '/', component: HomePage, props: { mode: 'all' } },
     { path: '/movies', component: HomePage, props: { mode: 'movies' } },
     { path: '/series', component: HomePage, props: { mode: 'series' } },
+    { path: '/library', component: HomePage, props: { mode: 'library' } },
+    { path: '/home-video', component: HomeVideoPage },
+    // Альбом домашнего видео: та же страница, видео одной папки
+    {
+      path: '/home-video/album',
+      component: HomeVideoPage,
+      props: route => ({
+        libraryId: queryOf(route.query.library),
+        album: queryOf(route.query.album) ?? '',
+      }),
+    },
+    // Тайтл для раздачи без тайтла: тот же поиск, OK по постеру — выбор
+    {
+      path: '/library/pick',
+      component: SearchPage,
+      props: route => ({
+        pick: queryOf(route.query.torrent),
+        initialQuery: queryOf(route.query.q),
+        pickName: queryOf(route.query.name),
+      }),
+    },
     { path: '/search', component: SearchPage },
     { path: '/mine', component: MinePage },
     // Фильтр каталога — в query
@@ -49,7 +71,16 @@ export const router = createRouter({
       meta: { stack: true },
     },
     // «Смотреть» на карточке → все раздачи тайтла → файлы выбранной → плеер
-    { path: '/title/:id/sources', component: SourcesPage, props: true },
+    {
+      path: '/title/:id/sources',
+      component: SourcesPage,
+      // «Скачать фильм / сезон» — тот же выбор раздачи, дальше «Файлы» с отметками
+      props: route => ({
+        id: route.params.id,
+        download: route.query.download === '1',
+        season: queryOf(route.query.season),
+      }),
+    },
     {
       path: '/title/:id/files/:torrentId',
       component: FilesPage,
@@ -59,6 +90,7 @@ export const router = createRouter({
         torrentId: route.params.torrentId,
         season: queryOf(route.query.season),
         episode: queryOf(route.query.episode),
+        download: route.query.download === '1',
       }),
     },
     { path: '/settings', component: SettingsPage },
@@ -79,6 +111,17 @@ export const router = createRouter({
     // Подключение по коду и «Кто смотрит?»: сюда ведёт гейт ниже
     { path: '/connect', component: ConnectPage },
     { path: '/profiles', component: ProfilesPage },
+    // Файл библиотеки играется с диска сервера, без раздачи
+    {
+      path: '/play/library/:mediaFileId',
+      component: PlayerPage,
+      props: route => ({
+        mediaFileId: route.params.mediaFileId,
+        titleId: queryOf(route.query.title),
+        season: queryOf(route.query.season),
+        episode: queryOf(route.query.episode),
+      }),
+    },
     {
       path: '/play/:torrentId/:fileIndex',
       component: PlayerPage,

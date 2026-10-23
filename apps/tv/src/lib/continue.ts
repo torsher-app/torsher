@@ -58,6 +58,21 @@ export function playerRoute(
   }
 }
 
+/** Плеер с файлом библиотеки: тайтл и серия — для позиции и следующей серии */
+export function libraryRoute(
+  mediaFileId: string,
+  title?: { id: string, season?: number | null, episode?: number | null },
+): ScreenRoute {
+  return {
+    path: `/play/library/${mediaFileId}`,
+    query: title && {
+      title: title.id,
+      season: title.season ? String(title.season) : undefined,
+      episode: title.episode ? String(title.episode) : undefined,
+    },
+  }
+}
+
 /** Экран подготовки: ищет файл серии и уходит в плеер */
 export function resolveRoute(
   titleId: string,

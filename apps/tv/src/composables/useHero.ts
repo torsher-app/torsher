@@ -49,8 +49,16 @@ export function useHero() {
 
   onScopeDispose(scheduler.cancel)
 
+  // Фокус на том, у чего тайтла нет (раздача без тайтла): hero пустой
+  function clear() {
+    scheduler.cancel()
+    latest = undefined
+    hero.value = undefined
+  }
+
   return {
     hero,
     show: (card: Card, via: FocusVia) => scheduler.schedule(card, via),
+    clear,
   }
 }

@@ -13,6 +13,7 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import AppIcon from '../components/AppIcon.vue'
+import DownloadPanel from '../components/DownloadPanel.vue'
 import ContentRow from '../components/ContentRow.vue'
 import EpisodeCard from '../components/EpisodeCard.vue'
 import EpisodeList from '../components/EpisodeList.vue'
@@ -36,16 +37,24 @@ import {
 import { sectionName, useBlockStack } from '../composables/useBlockStack.ts'
 import { useResumeLabels } from '../composables/useResumeLabels.ts'
 import { useStackedScreen } from '../composables/useStackedScreen.ts'
+import { useTitleLibrary } from '../composables/useTitleLibrary.ts'
+import {
+  useDownloadTexts,
+  useTitleDownload,
+} from '../composables/useTitleDownload.ts'
 import { useTitleProgress } from '../composables/useTitleProgress.ts'
 import { useFocus } from '../focus/index.ts'
 import {
   knownTitleMine,
+  noteTitleDownload,
   noteTitleMine,
   openTitleActions,
   rememberTitleMine,
 } from '../titleActions.ts'
 import { queryOf as catalogQueryOf } from '../lib/catalogFilter.ts'
-import { resumeRoute } from '../lib/continue.ts'
+import { libraryRoute, resumeRoute } from '../lib/continue.ts'
+import { downloadSlot } from '../lib/downloadSlot.ts'
+import { libraryFileFor, libraryTarget } from '../lib/library.ts'
 import { crewCaption } from '../lib/people.ts'
 import { revealOffset } from '../lib/rowTrack.ts'
 import {
@@ -236,10 +245,43 @@ function progressOfEpisode(item: Episode) {
   )
 }
 
+// «Смотреть» сначала решает, что играть, — только по прогрессу: серия
+// продолжения, без неё — первая серия первого сезона (не спецвыпуски)
+const nextEpisode = computed(() => {
+  if (resume.value)
+    return resume.value
+
+  const first
+    = seasons.value.find(item => item.number > 0) ?? seasons.value[0]
+
+  return first ? { season: first.number, episode: 1 } : null
+})
+
+// Потом — откуда: эта серия (фильм) есть в библиотеке — плеер с диска сразу
+const { libraryFiles, refreshLibrary } = useTitleLibrary(id)
+const fromLibrary = computed(() =>
+  libraryTarget(libraryFiles.value, isSeries.value, nextEpisode.value),
+)
+
 // Вторая строка главной кнопки: что продолжим или что смотрели последний раз
 const primaryHint = computed(() => {
-  if (resume.value)
-    return resumeLine(resume.value)
+  const own = fromLibrary.value
+
+  if (resume.value) {
+    const line = resumeLine(resume.value)
+
+    return own ? `${line} · ${t('title.fromLibraryShort')}` : line
+  }
+
+  if (own) {
+    return [
+      own.season && own.episode ? `S${own.season}E${own.episode}` : '',
+      t('title.fromLibrary'),
+      own.quality,
+    ]
+      .filter(Boolean)
+      .join(' · ')
+  }
 
   const line = historyOf(progress.value)?.line
 
@@ -298,20 +340,27 @@ async function toggleWatchlist() {
   }
 }
 
-function openActions(step?: 'rating') {
-  if (title.value) {
-    openTitleActions(
-      { id: props.id, title: title.value.title, kind: title.value.kind },
-      step,
-    )
-  }
-}
-
 // «Продолжить» запускает просмотр сразу; выбрать раздачу — кнопкой «Источники»
 function onPrimary() {
-  if (resume.value)
+  const own = fromLibrary.value
+
+  if (own) {
+    router.push(
+      libraryRoute(own.id, {
+        id: props.id,
+        season: own.season,
+        episode: own.season
+          ? (resume.value?.episode ?? own.episode)
+          : undefined,
+      }),
+    )
+  }
+  else if (resume.value) {
     router.push(resumeRoute(props.id, resume.value))
-  else openSources()
+  }
+  else {
+    openSources()
+  }
 }
 
 // OK на серии ставит или снимает «просмотрено»: смотреть — через «Смотреть»
@@ -657,6 +706,194 @@ const { active } = useStackedScreen(screen, {
   fallback: () => order.value[0],
   onReturn: refreshProgress,
 })
+
+// «Скачать фильм / сезон»: лучшая раздача по профилю и озвучке, закачка
+// целиком в библиотеку. Состояние — живое, пока качается и экран на виду
+const { download, refreshDownload } = useTitleDownload(id, () => active.value)
+
+// Вернулись на карточку (из «Источников», плеера) — состояние свежее
+watch(active, (value, previous) => {
+  if (value && previous === false) {
+    void refreshDownload()
+    void refreshLibrary()
+  }
+})
+const downloadTexts = useDownloadTexts()
+const downloadToast = ref('')
+const downloadPanel = ref(false)
+
+// Серий выбранного сезона в библиотеке: файл с несколькими сериями — все они
+const seasonInLibrary = computed(() => {
+  let count = 0
+
+  for (const file of libraryFiles.value) {
+    if (file.season === selectedSeason.value && file.episode !== null)
+      count += (file.episodeTo ?? file.episode) - file.episode + 1
+  }
+
+  return count
+})
+
+// Слот загрузки: заголовок кнопки — всегда действие («Скачать …» или идущая
+// закачка выбранного объёма); всё уже в библиотеке — кнопки нет, об этом
+// говорит вторая строка «Смотреть», другая раздача — в «Ещё»
+const slot = computed(() =>
+  downloadSlot({
+    series: isSeries.value,
+    season: selectedSeason.value,
+    downloads: download.value?.downloads ?? [],
+    movieInLibrary: !isSeries.value && libraryFiles.value.length > 0,
+    seasonInLibrary: seasonInLibrary.value,
+    seasonAired: currentSeason.value?.airedEpisodeCount ?? 0,
+  }),
+)
+
+const activeDownload = computed(() =>
+  slot.value.kind === 'active' ? slot.value.download : undefined,
+)
+
+const downloadLabel = computed(() => {
+  const value = slot.value
+
+  if (value.kind === 'active')
+    return downloadTexts.activeLabel(value.download)
+
+  return isSeries.value
+    ? t('download.season', { n: selectedSeason.value ?? 1 })
+    : t('download.movie')
+})
+
+// Вторая строка: у закачки — раздача и пиры; у сезона — сколько серий уже
+// в библиотеке или сколько их всего
+const downloadHint = computed(() => {
+  const value = slot.value
+
+  if (value.kind === 'active')
+    return downloadTexts.activeHint(value.download)
+
+  if (!isSeries.value)
+    return ''
+
+  const aired = currentSeason.value?.airedEpisodeCount ?? 0
+
+  if (seasonInLibrary.value > 0) {
+    return t('download.seasonInLibrary', {
+      n: seasonInLibrary.value,
+      total: aired,
+    })
+  }
+
+  return aired > 0 ? t('download.episodes', aired) : ''
+})
+
+// OK: идущая закачка — панель с ней и отменой; не разложится — её «Файлы»,
+// откуда видео смотрятся; иначе выбор раздачи в «Источниках», как у «Смотреть»
+function onDownload() {
+  const value = slot.value
+
+  if (!title.value)
+    return
+
+  if (value.kind !== 'active') {
+    pickDownload()
+    return
+  }
+
+  if (value.download.phase === 'unmatched')
+    router.push(`/title/${props.id}/files/${value.download.torrentId}`)
+  else downloadPanel.value = true
+}
+
+function pickDownload() {
+  downloadPanel.value = false
+  router.push({
+    path: `/title/${props.id}/sources`,
+    query: {
+      download: '1',
+      season: isSeries.value ? String(selectedSeason.value ?? 1) : undefined,
+    },
+  })
+}
+
+const downloadButton = ref<HTMLElement>()
+const primaryButton = ref<HTMLElement>()
+
+// Панель закрылась — фокус на кнопке, с которой её открыли
+function closeDownloadPanel() {
+  downloadPanel.value = false
+  nextTick(() => {
+    focus.focusOn(downloadButton.value ?? primaryButton.value!)
+  })
+}
+
+// Закачка закончилась на открытой карточке и кнопка ушла из-под фокуса —
+// фокус на «Смотреть», а не в никуда
+watch(
+  () => slot.value.kind,
+  (kind, previous) => {
+    if (kind !== 'none' || previous === 'none')
+      return
+
+    const button = downloadButton.value
+
+    if (button && document.activeElement === button) {
+      nextTick(() => {
+        if (primaryButton.value)
+          focus.focusOn(primaryButton.value)
+      })
+    }
+
+    downloadPanel.value = false
+  },
+  { flush: 'pre' },
+)
+
+// Закачка раздачи легла в библиотеку или пропала — перечитываем файлы:
+// от них зависят «Смотреть», вторая строка и значки серий
+watch(
+  () =>
+    (download.value?.downloads ?? [])
+      .map(item => `${item.torrentId}:${item.phase}`)
+      .join(','),
+  (next, previous) => {
+    if (previous !== undefined && next !== previous)
+      void refreshLibrary()
+  },
+)
+
+async function cancelDownload(torrentId: string) {
+  closeDownloadPanel()
+
+  try {
+    const fresh = await api.titles.deleteTitleDownload(props.id, { torrentId })
+
+    noteTitleDownload(props.id, fresh)
+    await refreshDownload()
+    downloadToast.value = t('download.cancelled')
+  }
+  catch (err) {
+    downloadToast.value = await downloadTexts.errorOf(err, 'nothingToCancel')
+  }
+}
+
+// Всё в библиотеке и кнопки загрузки нет — другая раздача в «Ещё»
+function openActions(step?: 'rating') {
+  if (title.value) {
+    openTitleActions(
+      {
+        id: props.id,
+        title: title.value.title,
+        kind: title.value.kind,
+        redownload:
+          slot.value.kind === 'none'
+            ? { season: isSeries.value ? selectedSeason.value : undefined }
+            : undefined,
+      },
+      step,
+    )
+  }
+}
+
 const {
   native: nativeScroll,
   offset,
@@ -885,6 +1122,7 @@ onBeforeUnmount(() => {
           autofocus
         >
           <button
+            ref="primaryButton"
             v-focusable
             class="action action--primary title__primary"
             type="button"
@@ -899,46 +1137,67 @@ onBeforeUnmount(() => {
             </span>
           </button>
           <button
-            v-if="resume"
+            v-if="slot.kind !== 'none'"
+            ref="downloadButton"
             v-focusable
-            class="action title__secondary"
+            class="action title__secondary title__download"
             type="button"
+            @click="onDownload"
+          >
+            <AppIcon name="download" class="title__action-icon" />
+            <span class="title__primary-text">
+              {{ downloadLabel }}
+              <small v-if="downloadHint" class="title__primary-hint">
+                {{ downloadHint }}
+              </small>
+            </span>
+          </button>
+          <!-- Остальное — иконки: название кнопки в фокусе подписано под ней
+               отдельным слоем, ряд при смене фокуса не двигается -->
+          <button
+            v-if="resume || fromLibrary"
+            v-focusable
+            class="action title__icon"
+            type="button"
+            :aria-label="t('title.sources')"
             @click="openSources"
           >
-            <AppIcon name="source" class="title__action-icon" />
-            {{ t("title.sources") }}
+            <AppIcon name="source" />
+            <span class="title__caption">{{ t("title.sources") }}</span>
           </button>
           <button
             v-focusable
-            class="action title__secondary"
+            class="action title__icon"
             type="button"
             :aria-pressed="!!mine?.watchlist"
+            :aria-label="t('actions.watchlist')"
             @click="toggleWatchlist"
           >
-            <AppIcon
-              :name="mine?.watchlist ? 'check' : 'plus'"
-              class="title__action-icon"
-            />
-            {{ t("actions.watchlist") }}
+            <AppIcon :name="mine?.watchlist ? 'check' : 'plus'" />
+            <span class="title__caption">{{ t("actions.watchlist") }}</span>
           </button>
           <button
             v-focusable
-            class="action title__secondary"
+            class="action title__icon"
             type="button"
+            :aria-label="t('actions.rate')"
             @click="openActions('rating')"
           >
-            <AppIcon name="star" class="title__action-icon" />
-            <!-- Звезда уже нарисована иконкой: рядом только число -->
-            {{ mine?.rating ?? t("actions.rate") }}
+            <AppIcon name="star" />
+            <span v-if="mine?.rating" class="title__icon-value">
+              {{ mine.rating }}
+            </span>
+            <span class="title__caption">{{ t("actions.rate") }}</span>
           </button>
           <button
             v-focusable
-            class="action title__secondary title__more"
+            class="action title__icon"
             type="button"
             :aria-label="t('actions.more')"
             @click="openActions()"
           >
             <AppIcon name="more" />
+            <span class="title__caption">{{ t("actions.more") }}</span>
           </button>
         </FocusSection>
 
@@ -1023,6 +1282,12 @@ onBeforeUnmount(() => {
                 :meta="episodeMeta(item)"
                 :progress="progressOfEpisode(item)?.share ?? 0"
                 :watched="!!progressOfEpisode(item)?.watched"
+                :in-library="
+                  !!libraryFileFor(libraryFiles, {
+                    season: selectedSeason,
+                    episode: item.number,
+                  })
+                "
                 @select="toggleWatched(item)"
               />
             </template>
@@ -1218,6 +1483,20 @@ onBeforeUnmount(() => {
       </div>
     </div>
     <AppToast :message="mineError" @hide="mineError = ''" />
+    <AppToast :message="downloadToast" @hide="downloadToast = ''" />
+    <!-- Поверх стека карточки: у него transform, fixed внутри встал бы по нему -->
+    <Teleport to="body">
+      <DownloadPanel
+        v-if="downloadPanel && title && activeDownload"
+        :title="title.title"
+        :series="isSeries"
+        :season="selectedSeason"
+        :download="activeDownload"
+        @close="closeDownloadPanel"
+        @cancel="cancelDownload"
+        @pick="pickDownload"
+      />
+    </Teleport>
 
     <OptionsPanel
       v-if="tagGroup && active"
@@ -1397,6 +1676,23 @@ onBeforeUnmount(() => {
   margin: 0 calc(var(--u) * 12);
 }
 
+/* Ширина по подписи, но не больше предела: вторая строка с пирами и
+   скоростью длинная, её хвост уходит в многоточие */
+.title__download {
+  max-width: calc(var(--u) * 480);
+  font-variant-numeric: tabular-nums;
+}
+
+.title__download .title__primary-text {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.title__download .title__primary-hint {
+  max-width: 100%;
+}
+
 .title__age {
   flex: none;
   margin-left: calc(var(--u) * 14);
@@ -1446,11 +1742,40 @@ onBeforeUnmount(() => {
   margin-left: calc(var(--u) * 18);
 }
 
-/* «Ещё» — только значок: квадратная кнопка высотой ряда */
-.title__more {
+/* Кнопка-иконка: квадрат высотой ряда, с оценкой — шире на число */
+.title__icon {
+  position: relative;
   justify-content: center;
   min-width: calc(var(--u) * 84);
-  padding: 0;
+  margin-left: calc(var(--u) * 18);
+  padding: 0 calc(var(--u) * 26);
+}
+
+.title__icon-value {
+  margin-left: calc(var(--u) * 10);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Подпись кнопки в фокусе — свой слой под кнопкой, как у «Назад»: ширина
+   кнопки и ряд не меняются. Кнопка в фокусе увеличена — подпись вместе с ней */
+.title__caption {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-top: calc(var(--u) * 14);
+  color: var(--color-text);
+  font-size: var(--font-size-s);
+  font-weight: 500;
+  white-space: nowrap;
+  text-shadow: 0 calc(var(--u) * 2) calc(var(--u) * 8) rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  transform: translateX(-50%);
+  transition: opacity var(--motion-fast) var(--motion-easing);
+  pointer-events: none;
+}
+
+.title__icon:focus .title__caption {
+  opacity: 1;
 }
 
 /* Главная кнопка говорит, что вы получите: вторая строка — качество и озвучка */
@@ -1472,7 +1797,7 @@ onBeforeUnmount(() => {
 }
 
 .title__primary-hint {
-  max-width: calc(var(--u) * 640);
+  max-width: calc(var(--u) * 520);
   overflow: hidden;
   font-size: var(--font-size-s);
   font-weight: 500;

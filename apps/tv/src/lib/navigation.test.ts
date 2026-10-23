@@ -27,6 +27,36 @@ describe('backAction', () => {
     })
   })
 
+  it('домашнее видео — назад в «Библиотеку», альбом — к альбомам', () => {
+    const section = route('/home-video')
+    const album = route('/home-video/album', {}, { album: 'Отпуск' })
+
+    expect(backAction(section, '/library')).toEqual({ kind: 'history' })
+    expect(backAction(section, undefined)).toEqual({
+      kind: 'replace',
+      path: '/library',
+    })
+    expect(backAction(album, '/home-video')).toEqual({ kind: 'history' })
+    expect(backAction(album, undefined)).toEqual({
+      kind: 'replace',
+      path: '/home-video',
+    })
+  })
+
+  it('выбор тайтла для раздачи — назад в «Библиотеку»', () => {
+    const pick = route('/library/pick', {}, { torrent: 't1' })
+
+    expect(backAction(pick, '/library')).toEqual({ kind: 'history' })
+    expect(backAction(pick, '/')).toEqual({
+      kind: 'replace',
+      path: '/library',
+    })
+    expect(backAction(pick, undefined)).toEqual({
+      kind: 'replace',
+      path: '/library',
+    })
+  })
+
   it('персона — назад туда, откуда открыли, без истории — на главную', () => {
     const person = route('/person/:id', { id: 'tmdb:person:525' })
 
@@ -80,6 +110,24 @@ describe('backAction', () => {
     expect(backAction(player, null)).toEqual({
       kind: 'replace',
       path: `/title/${ID}/files/t1`,
+    })
+  })
+
+  it('плеер файла библиотеки — на карточку или туда, откуда открыли', () => {
+    const player = route(
+      '/play/library/:mediaFileId',
+      { mediaFileId: 'm1' },
+      { title: ID },
+    )
+
+    expect(backAction(player, `/title/${ID}`)).toEqual({ kind: 'history' })
+    expect(backAction(player, `/title/${ID}/sources`)).toEqual({
+      kind: 'history',
+    })
+    expect(backAction(player, '/')).toEqual({ kind: 'history' })
+    expect(backAction(player, null)).toEqual({
+      kind: 'replace',
+      path: `/title/${ID}`,
     })
   })
 

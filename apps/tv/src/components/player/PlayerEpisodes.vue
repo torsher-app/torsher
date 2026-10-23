@@ -27,8 +27,8 @@ const props = defineProps<{
   seasons: TitleSeason[]
   season: number
   episode: number
-  /** Раздача, которую смотрят: в ней отмечаем, какие серии уже есть */
-  torrentId: string
+  /** Раздача, которую смотрят: в ней отмечаем, какие серии уже есть; у файла библиотеки её нет */
+  torrentId?: string
 }>()
 
 const emit = defineEmits<{
@@ -162,19 +162,21 @@ onMounted(() => {
       )
     })
     .catch(() => {})
-  api.titles
-    .getTitleFiles(props.titleId, props.torrentId)
-    .then((result) => {
-      const map = new Map<string, number>()
+  if (props.torrentId) {
+    api.titles
+      .getTitleFiles(props.titleId, props.torrentId)
+      .then((result) => {
+        const map = new Map<string, number>()
 
-      for (const file of result.files) {
-        if (file.season !== null && file.episode !== null)
-          map.set(keyOf(file.season, file.episode), file.fileIndex)
-      }
+        for (const file of result.files) {
+          if (file.season !== null && file.episode !== null)
+            map.set(keyOf(file.season, file.episode), file.fileIndex)
+        }
 
-      files.value = map
-    })
-    .catch(() => {})
+        files.value = map
+      })
+      .catch(() => {})
+  }
 })
 </script>
 

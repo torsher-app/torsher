@@ -43,6 +43,7 @@ const { active: screensaverActive } = useScreensaver(
       :key="`screens-${cacheKey}`"
       :include="[
         'HomePage',
+        'HomeVideoPage',
         'SearchPage',
         'SourcesPage',
         'MinePage',

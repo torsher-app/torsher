@@ -20,10 +20,25 @@ import { useCatalogLanguage } from '../composables/useCatalogLanguage.ts'
 import { useCatalogTitle } from '../composables/useCatalogTitle.ts'
 import { useHeldLoading } from '../composables/useHeldLoading.ts'
 import { useSourceLabels } from '../composables/useSourceLabels.ts'
+import AppToast from '../components/AppToast.vue'
+import type { DownloadStep } from '../composables/useTitleDownload.ts'
+import {
+  startDownload,
+  useDownloadTexts,
+} from '../composables/useTitleDownload.ts'
 import { useTitleMeta } from '../composables/useTitleMeta.ts'
 import { loadSeason } from '../composables/useTitleSections.ts'
 import { NATIVE_WHEEL_ATTRIBUTE, useFocus } from '../focus/index.ts'
 import { playerRoute } from '../lib/continue.ts'
+import {
+  downloadPercent,
+  isSelectable,
+  presetSelection,
+  seasonSelection,
+  selectionSummary,
+  toggleAll,
+  toggleSeason,
+} from '../lib/download.ts'
 import {
   FILES_POLL_INTERVAL_MS,
   FILES_POLL_LIMIT_MS,
@@ -46,6 +61,8 @@ const props = defineProps<{
   // С какой серии пришли (история): на неё встаёт фокус
   season?: string
   episode?: string
+  // Пришли с «Скачать»: выбор файлов сразу включён, серии сезона отмечены
+  download?: boolean
 }>()
 
 // Пиры присылают метаданные не сразу: спрашиваем раз в 2 с, не дольше 90 с
@@ -55,7 +72,8 @@ const router = useRouter()
 // Сразу в плеер — только когда раздачу выбрали в «Источниках»: экран,
 // открытый ссылкой или подставленный Back из плеера, показывает список, иначе
 // Back из плеера снова вёл бы в плеер
-const skipAllowed = openedForward(router.options.history.state)
+const skipAllowed
+  = !props.download && openedForward(router.options.history.state)
 const focus = useFocus()
 const language = useCatalogLanguage()
 const id = toRef(props, 'id')
@@ -75,7 +93,26 @@ const files = ref<TitleFile[]>([])
 const releaseName = ref('')
 const episodes = ref(new Map<string, Episode>())
 const list = ref<HTMLElement>()
+const actions = ref<HTMLElement>()
 let stopped = false
+
+// «Скачать выбранное»: OK на строке отмечает файл вместо плеера
+const selecting = ref(false)
+const selected = ref(new Set<number>())
+const downloading = ref(false)
+// Старт закачки: подключаем раздачу, у magnet — ждём от пиров список файлов
+const downloadStep = ref<DownloadStep>()
+const toast = ref('')
+const texts = useDownloadTexts()
+const summary = computed(() => selectionSummary(files.value, selected.value))
+const allSelected = computed(() => {
+  const selectable = files.value.filter(isSelectable)
+
+  return (
+    selectable.length > 0
+    && selectable.every(file => selected.value.has(file.fileIndex))
+  )
+})
 
 function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms))
@@ -173,10 +210,25 @@ function rowAt(index: number) {
   return list.value?.querySelector<HTMLElement>(`[data-file="${index}"]`)
 }
 
-// Список показался — фокус на нужной серии
+// Список показался — фокус на нужной серии; при «Скачать» — отметки
+// сезона и фокус на «Скачать выбранное»
 watch(waitingFiles, async (value) => {
   if (value || phase.value !== 'ready')
     return
+
+  if (props.download && files.value.length > 0) {
+    selected.value = presetSelection(files.value, wanted.value.season)
+    selecting.value = true
+    await nextTick()
+
+    const button
+      = actions.value?.querySelector<HTMLElement>('.files__download')
+
+    if (button) {
+      focus.focusOn(button)
+      return
+    }
+  }
 
   await nextTick()
   focusInitial()
@@ -259,6 +311,138 @@ function play(file: TitleFile, replace = false) {
   else void router.push(to)
 }
 
+const hasList = computed(
+  () =>
+    phase.value === 'ready' && !waitingFiles.value && files.value.length > 0,
+)
+
+function downloadLabel(file: TitleFile) {
+  const download = file.download
+
+  if (!download)
+    return ''
+
+  return download.state === 'downloading'
+    ? t('download.state.downloading', { n: downloadPercent(download.progress) })
+    : t(`download.state.${download.state}`)
+}
+
+function onRow(file: TitleFile) {
+  if (!selecting.value) {
+    play(file)
+    return
+  }
+
+  if (!isSelectable(file))
+    return
+
+  const next = new Set(selected.value)
+
+  if (!next.delete(file.fileIndex))
+    next.add(file.fileIndex)
+
+  selected.value = next
+}
+
+function startSelecting() {
+  selected.value = new Set()
+  selecting.value = true
+  // Кнопка «Скачать…» сменилась: фокус — на строки, их и отмечают
+  nextTick(focusInitial)
+}
+
+function stopSelecting(refocus: boolean) {
+  if (props.download && refocus && !downloading.value) {
+    back()
+    return
+  }
+
+  selecting.value = false
+  selected.value = new Set()
+
+  if (refocus) {
+    nextTick(() => {
+      const button
+        = actions.value?.querySelector<HTMLElement>('[data-focusable]')
+
+      if (button)
+        focus.focusOn(button)
+    })
+  }
+}
+
+// Файлы перечитываются без лоадера: значки загрузки и прогресс свежие
+async function refreshFiles() {
+  try {
+    const result = await api.titles.getTitleFiles(props.id, props.torrentId)
+
+    if (!stopped && result.status === 'ready')
+      files.value = result.files
+  }
+  catch {
+    // Значки обновятся на следующем шаге
+  }
+}
+
+async function downloadSelected() {
+  if (downloading.value || summary.value.count === 0)
+    return
+
+  downloading.value = true
+
+  try {
+    const result = await startDownload(
+      props.id,
+      {
+        torrentId: props.torrentId,
+        files: files.value
+          .filter(file => selected.value.has(file.fileIndex))
+          .map(file => file.fileIndex),
+      },
+      () => stopped,
+      (step) => {
+        downloadStep.value = step
+      },
+    )
+
+    if (!result)
+      return
+
+    toast.value = texts.started(result)
+    stopSelecting(true)
+    await refreshFiles()
+  }
+  catch (err) {
+    toast.value = await texts.errorOf(err)
+  }
+  finally {
+    downloading.value = false
+    downloadStep.value = undefined
+  }
+}
+
+// Пока что-то качается или ждёт библиотеки, значки у файлов меняются сами
+const refreshTimer = setInterval(() => {
+  const changing = files.value.some(
+    file =>
+      file.download?.state === 'downloading'
+      || file.download?.state === 'downloaded',
+  )
+
+  if (changing)
+    void refreshFiles()
+}, 5000)
+
+// Назад в режиме выбора — выход из него, а не с экрана; пришли с «Скачать» —
+// выбор и есть экран, Назад уводит обратно в «Источники»
+const offKey = focus.onKey((action) => {
+  if (action.type !== 'back' || !selecting.value || props.download)
+    return false
+
+  stopSelecting(false)
+  return true
+})
+
 function back() {
   goBack(router)
 }
@@ -269,6 +453,8 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   stopped = true
+  clearInterval(refreshTimer)
+  offKey()
 })
 </script>
 
@@ -283,7 +469,10 @@ onBeforeUnmount(() => {
     >
     <div class="files__shade" />
 
-    <FocusSection name="files-back" :edges="{ down: 'files-list' }">
+    <FocusSection
+      name="files-back"
+      :edges="{ down: hasList ? 'files-actions' : 'files-list' }"
+    >
       <button v-focusable class="screen-back" type="button" @click="back">
         <AppIcon name="chevronLeft" />
         <span class="screen-back__label">{{ t("common.back") }}</span>
@@ -301,17 +490,79 @@ onBeforeUnmount(() => {
         </p>
         <p class="files__meta">
           {{
-            phase === "ready" && !waitingFiles
-              ? `${t("files.title")} · ${t("files.count", files.length)}`
-              : "\u00A0"
+            downloadStep
+              ? t(`download.${downloadStep}Line`)
+              : selecting
+                ? t("files.selectHint")
+                : phase === "ready" && !waitingFiles
+                  ? `${t("files.title")} · ${t("files.count", files.length)}`
+                  : "\u00A0"
           }}
         </p>
       </header>
 
+      <!-- Строка действий постоянной высоты: кнопки появляются со списком -->
+      <FocusSection
+        name="files-actions"
+        class="files__actions"
+        :edges="{ up: 'files-back', down: 'files-list' }"
+      >
+        <div ref="actions" class="files__actions-row">
+          <template v-if="hasList && !selecting">
+            <button
+              v-focusable
+              class="action files__select"
+              type="button"
+              @click="startSelecting"
+            >
+              <AppIcon name="download" class="files__action-icon" />
+              {{ t("files.select") }}
+            </button>
+          </template>
+          <template v-else-if="hasList">
+            <button
+              v-focusable
+              class="action action--primary files__download"
+              type="button"
+              :aria-disabled="summary.count === 0 || downloading"
+              @click="downloadSelected"
+            >
+              <AppLoader
+                v-if="downloading"
+                class="files__action-icon"
+                :size="40"
+              />
+              <AppIcon v-else name="download" class="files__action-icon" />
+              {{
+                summary.count > 0
+                  ? `${t("files.downloadSelected")} · ${t("download.files", summary.count)} · ${sizeLabel(summary.bytes)}`
+                  : t("files.selectedNone")
+              }}
+            </button>
+            <button
+              v-focusable
+              class="action"
+              type="button"
+              @click="selected = toggleAll(files, selected)"
+            >
+              {{ t(allSelected ? "files.clearAll" : "files.selectAll") }}
+            </button>
+            <button
+              v-focusable
+              class="action"
+              type="button"
+              @click="stopSelecting(true)"
+            >
+              {{ t("files.cancel") }}
+            </button>
+          </template>
+        </div>
+      </FocusSection>
+
       <FocusSection
         name="files-list"
         class="files__list"
-        :edges="{ up: 'files-back' }"
+        :edges="{ up: hasList ? 'files-actions' : 'files-back' }"
         autofocus
       >
         <div ref="list">
@@ -343,23 +594,52 @@ onBeforeUnmount(() => {
           </div>
 
           <template v-for="(file, index) in files" v-else :key="file.fileIndex">
-            <h2
+            <template
               v-if="
                 grouped
                   && file.season !== null
                   && (index === 0 || files[index - 1]!.season !== file.season)
               "
-              class="files__season"
             >
-              {{ t("files.season", { n: file.season }) }}
-            </h2>
+              <!-- В выборе заголовок отмечает весь сезон; размер тот же, что у h2 -->
+              <button
+                v-if="selecting"
+                v-focusable
+                class="files__season files__season--toggle"
+                type="button"
+                :aria-pressed="
+                  seasonSelection(files, selected, file.season) === 'all'
+                "
+                @click="selected = toggleSeason(files, selected, file.season)"
+              >
+                {{ t("files.season", { n: file.season }) }}
+                <span
+                  class="files__season-check"
+                  :class="`files__season-check--${seasonSelection(files, selected, file.season)}`"
+                >
+                  <AppIcon
+                    :name="
+                      seasonSelection(files, selected, file.season) === 'some'
+                        ? 'minus'
+                        : 'check'
+                    "
+                  />
+                </span>
+              </button>
+              <h2 v-else class="files__season">
+                {{ t("files.season", { n: file.season }) }}
+              </h2>
+            </template>
             <button
               v-focusable
               class="file"
               :class="{ 'file--watched': file.watched }"
               type="button"
               :data-file="index"
-              @click="play(file)"
+              :aria-pressed="
+                selecting ? selected.has(file.fileIndex) : undefined
+              "
+              @click="onRow(file)"
             >
               <span class="file__frame">
                 <img
@@ -369,6 +649,14 @@ onBeforeUnmount(() => {
                   alt=""
                   decoding="async"
                 >
+                <!-- Отметка выбора поверх кадра: строка не меняет размер -->
+                <span
+                  v-if="selecting && isSelectable(file)"
+                  class="file__check"
+                  :class="{ 'file__check--on': selected.has(file.fileIndex) }"
+                >
+                  <AppIcon name="check" />
+                </span>
                 <span v-if="file.episode !== null" class="file__number">
                   {{ file.episode }}
                 </span>
@@ -387,12 +675,29 @@ onBeforeUnmount(() => {
                   titleOf(file) === file.name ? "\u00A0" : file.name
                 }}</span>
               </span>
-              <span class="file__size">{{ sizeLabel(file.size) }}</span>
+              <span class="file__side">
+                <span class="file__size">{{ sizeLabel(file.size) }}</span>
+                <span
+                  class="file__download"
+                  :class="
+                    file.download && `file__download--${file.download.state}`
+                  "
+                >
+                  <AppIcon
+                    v-if="file.download?.state === 'library'"
+                    name="library"
+                    class="file__download-icon"
+                  />
+                  {{ downloadLabel(file) || "\u00A0" }}
+                </span>
+              </span>
             </button>
           </template>
         </div>
       </FocusSection>
     </section>
+
+    <AppToast :message="toast" @hide="toast = ''" />
   </main>
 </template>
 
@@ -460,7 +765,7 @@ onBeforeUnmount(() => {
 /* Строки прокручиваются нативно: движок фокуса зовёт scrollIntoView */
 .files__list {
   flex: 1;
-  margin: calc(var(--u) * 24) calc(var(--u) * -16) 0;
+  margin: calc(var(--u) * 12) calc(var(--u) * -16) 0;
   padding: calc(var(--u) * 12) calc(var(--u) * 16) calc(var(--u) * 54);
   overflow-y: auto;
 }
@@ -470,10 +775,60 @@ onBeforeUnmount(() => {
 }
 
 .files__season {
-  margin: calc(var(--u) * 24) 0 calc(var(--u) * 12);
+  display: flex;
+  align-items: center;
+  height: calc(var(--u) * 52);
+  margin: calc(var(--u) * 24) 0 calc(var(--u) * 12) calc(var(--u) * -16);
+  padding: 0 calc(var(--u) * 16);
   color: var(--color-text-muted);
   font-size: var(--font-size-m);
   font-weight: 600;
+  line-height: 1;
+}
+
+/* Кнопка сезона в выборе — тот же заголовок: шрифт и отступы не меняются.
+   Во всю ширину, как строки: шаг вниз из кнопок над списком ищет элемент в
+   колонке по центру, и узкий заголовок сбивал бы выбор */
+.files__season--toggle {
+  width: calc(100% + var(--u) * 16);
+  border: 0;
+  border-radius: calc(var(--u) * 26);
+  background: transparent;
+  font-family: inherit;
+  transition: transform var(--motion-base) var(--motion-easing);
+}
+
+.files__season--toggle:focus {
+  --bump-scale: 1.02;
+
+  background: var(--color-focus);
+  color: var(--color-bg);
+  transform: scale(var(--bump-scale));
+}
+
+.files__season-check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--u) * 36);
+  height: calc(var(--u) * 36);
+  margin-left: calc(var(--u) * 14);
+  border: calc(var(--u) * 3) solid currentColor;
+  border-radius: 50%;
+  color: transparent;
+  font-size: calc(var(--u) * 22);
+}
+
+.files__season-check--none {
+  border-color: var(--color-text-muted);
+}
+
+/* Как флажок таблицы: часть сезона — «–», весь сезон — «✓» */
+.files__season-check--some,
+.files__season-check--all {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
 }
 
 .files__state {
@@ -594,11 +949,83 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
-.file__size {
+.files__actions {
+  height: calc(var(--u) * 84);
+  margin-top: calc(var(--u) * 24);
+}
+
+.files__actions-row {
+  display: flex;
+}
+
+.files__action-icon {
+  margin-right: calc(var(--u) * 14);
+  font-size: calc(var(--u) * 36);
+}
+
+.files__download {
+  font-variant-numeric: tabular-nums;
+}
+
+.files__download[aria-disabled='true']:not(:focus) {
+  opacity: 0.6;
+}
+
+/* Размер и значок загрузки — колонка постоянной ширины справа */
+.file__side {
+  display: flex;
+  flex-direction: column;
   flex-shrink: 0;
+  align-items: flex-end;
+  width: calc(var(--u) * 240);
   margin-left: calc(var(--u) * 24);
+}
+
+.file__size {
   color: var(--color-text-muted);
   font-size: var(--font-size-s);
+  font-variant-numeric: tabular-nums;
+}
+
+.file__download {
+  display: inline-flex;
+  align-items: center;
+  margin-top: calc(var(--u) * 8);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-s);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.file__download--library {
+  color: var(--color-ok);
+}
+
+.file__download-icon {
+  margin-right: calc(var(--u) * 8);
+}
+
+/* Отметка выбора: круг в углу кадра, залитый у выбранного файла */
+.file__check {
+  position: absolute;
+  top: calc(var(--u) * 10);
+  left: calc(var(--u) * 10);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--u) * 44);
+  height: calc(var(--u) * 44);
+  border: calc(var(--u) * 3) solid #fff;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.45);
+  color: transparent;
+  font-size: calc(var(--u) * 28);
+}
+
+.file__check--on {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
 }
 
 .file--watched:not(:focus) .file__title {
@@ -607,7 +1034,8 @@ onBeforeUnmount(() => {
 
 .file:focus .file__detail,
 .file:focus .file__name,
-.file:focus .file__size {
+.file:focus .file__size,
+.file:focus .file__download {
   color: var(--color-bg);
 }
 </style>

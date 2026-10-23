@@ -5,6 +5,7 @@ const props = defineProps<{ src?: string }>()
 
 // Два слоя: новый кадр проявляется поверх старого, когда загрузился
 const layers = reactive<(string | undefined)[]>([undefined, undefined])
+const loaded = reactive([false, false])
 const front = ref<number>()
 
 watch(
@@ -19,12 +20,26 @@ watch(
     if (front.value !== undefined && layers[front.value] === src)
       return
 
-    layers[front.value === 0 ? 1 : 0] = src
+    const back = front.value === 0 ? 1 : 0
+
+    // Кадр уже лежит в заднем слое (вернулись к прошлому тайтлу): `src` тот
+    // же, `load` не придёт — показываем сразу
+    if (layers[back] === src) {
+      if (loaded[back])
+        front.value = back
+
+      return
+    }
+
+    layers[back] = src
+    loaded[back] = false
   },
   { immediate: true },
 )
 
 function onLoad(index: number) {
+  loaded[index] = true
+
   if (layers[index] === props.src)
     front.value = index
 }
@@ -32,6 +47,12 @@ function onLoad(index: number) {
 
 <template>
   <div class="backdrop" aria-hidden="true">
+    <!-- Своего кадра нет (файл без описания, раздача без подсказки) — общий
+         фон, а не кадр прошлого тайтла и не пустота -->
+    <div
+      class="backdrop__fallback"
+      :class="{ 'backdrop__fallback--shown': front === undefined }"
+    />
     <template v-for="(layer, index) in layers" :key="index">
       <img
         v-if="layer"
@@ -50,6 +71,7 @@ function onLoad(index: number) {
 
 <style scoped>
 .backdrop,
+.backdrop__fallback,
 .backdrop__image,
 .backdrop__scrim {
   position: absolute;
@@ -78,6 +100,20 @@ function onLoad(index: number) {
 }
 
 .backdrop__image--shown {
+  opacity: 1;
+}
+
+/* Мягкий отсвет акцента справа сверху и холодный снизу — цвета из токенов */
+.backdrop__fallback {
+  background:
+    radial-gradient(ellipse 60% 70% at 78% 18%, rgba(232, 184, 74, 0.2), rgba(232, 184, 74, 0) 70%),
+    radial-gradient(ellipse 50% 60% at 92% 88%, rgba(141, 182, 255, 0.12), rgba(141, 182, 255, 0) 70%),
+    var(--color-surface);
+  opacity: 0;
+  transition: opacity calc(var(--motion-base) * 2) var(--motion-easing);
+}
+
+.backdrop__fallback--shown {
   opacity: 1;
 }
 

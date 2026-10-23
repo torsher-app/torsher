@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Episode } from '@torsher/api-client'
+import AppIcon from './AppIcon.vue'
 import ProgressTrack from './ProgressTrack.vue'
 import WatchedMark from './WatchedMark.vue'
 
@@ -12,8 +13,10 @@ withDefaults(
     // Доля просмотренного 0…1 и отметка «просмотрено»
     progress?: number
     watched?: boolean
+    // Серия лежит в библиотеке: полка в левом верхнем углу кадра
+    inLibrary?: boolean
   }>(),
-  { meta: '', loadImage: true, progress: 0, watched: false },
+  { meta: '', loadImage: true, progress: 0, watched: false, inLibrary: false },
 )
 
 defineEmits<{ select: [] }>()
@@ -38,6 +41,9 @@ defineEmits<{ select: [] }>()
         {{ episode.number }}
       </span>
       <WatchedMark v-if="watched" />
+      <span v-if="inLibrary" class="episode-card__library">
+        <AppIcon name="library" />
+      </span>
       <ProgressTrack v-if="progress > 0" :value="progress" />
       <span class="card__ring" />
     </span>
@@ -49,6 +55,23 @@ defineEmits<{ select: [] }>()
 </template>
 
 <style scoped>
+/* Поверх кадра, как отметка «просмотрено»: карточка не меняет размер */
+.episode-card__library {
+  position: absolute;
+  z-index: 1;
+  top: calc(var(--u) * 12);
+  left: calc(var(--u) * 12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--u) * 40);
+  height: calc(var(--u) * 40);
+  border-radius: 50%;
+  background: rgba(10, 12, 18, 0.78);
+  color: var(--color-ok);
+  font-size: calc(var(--u) * 24);
+}
+
 .episode-card {
   position: relative;
   display: block;

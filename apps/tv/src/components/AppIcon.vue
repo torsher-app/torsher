@@ -30,6 +30,9 @@ export type IconName
     | 'more'
     | 'source'
     | 'next'
+    | 'library'
+    | 'homeVideo'
+    | 'minus'
 
 const props = defineProps<{ name: IconName }>()
 
@@ -74,7 +77,12 @@ const PATHS: Record<IconName, (string | IconPart)[]> = {
   play: ['M7 4.5v15l12.5-7.5z'],
   pause: ['M6.5 4.5h4v15h-4z', 'M13.5 4.5h4v15h-4z'],
   fromStart: ['M6.5 5v14', { d: 'M18.5 5.5v13L9 12z', fill: true }],
-  download: ['M12 4.5v14M6 12.5l6 6 6-6'],
+  // Стрелка в лоток: «загрузить к себе», а не просто «вниз»
+  download: [
+    'M12 3.5v11',
+    'm7.5 10 4.5 4.5 4.5-4.5',
+    'M4.5 15v3a1.5 1.5 0 0 0 1.5 1.5h12a1.5 1.5 0 0 0 1.5-1.5v-3',
+  ],
   audio: ['M4 14.5v-5M8 18V6M12 21V3M16 18V6M20 14.5v-5'],
   subtitles: [
     'M5.5 5h13A2.5 2.5 0 0 1 21 7.5v9a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 16.5v-9A2.5 2.5 0 0 1 5.5 5z',
@@ -90,6 +98,7 @@ const PATHS: Record<IconName, (string | IconPart)[]> = {
     'M15 14h4a1 1 0 0 1 1 1v4a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1z',
   ],
   plus: ['M12 5v14M5 12h14'],
+  minus: ['M6 12h12'],
   star: [
     'm12 3.5 2.6 5.4 5.9.8-4.3 4.1 1 5.8L12 16.8l-5.2 2.8 1-5.8-4.3-4.1 5.9-.8z',
   ],
@@ -105,6 +114,13 @@ const PATHS: Record<IconName, (string | IconPart)[]> = {
   source: ['M4 8h14l-3.5-3.5', 'M20 16H6l3.5 3.5'],
   next: [{ d: 'M5 5v14l10-7z', fill: true }, 'M19 5v14'],
   list: ['M9 6.5h11M9 12h11M9 17.5h11', 'M4.5 6.5h.01M4.5 12h.01M4.5 17.5h.01'],
+  // Полка: два корешка и наклонённый третий
+  library: ['M5 4.5v15', 'M9.5 4.5v15', 'm14 5.5 4.5 13.5'],
+  // Видеокамера: корпус и объектив справа
+  homeVideo: [
+    'M4.5 7h9A1.5 1.5 0 0 1 15 8.5v7a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 3 15.5v-7A1.5 1.5 0 0 1 4.5 7z',
+    'm15 10.5 5.5-3v9l-5.5-3z',
+  ],
   // Шестерёнка: кольцо, восемь зубцов и отверстие
   settings: [
     'M12 5.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13z',

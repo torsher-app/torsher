@@ -60,6 +60,21 @@ export type PlayerError
     | 'unknown'
 
 export type EngineKind = EngineUnavailableResponse['kind']
+
+/**
+ * Файл библиотеки лежит на диске сервера целиком: движок не участвует, весь
+ * файл «впереди». Пиров нет, но буферизация и сторожа плеера считают его
+ * готовым — подключённый «пир» означает «данные доступны».
+ */
+function localStats(size: number): TorrentStats {
+  return {
+    activity: 'downloading',
+    peers: { connected: 1, found: 1 },
+    downloadSpeed: 0,
+    uploadSpeed: 0,
+    file: { size, downloaded: size, bufferedAhead: size },
+  }
+}
 export type StorageShortage = Omit<InsufficientStorageResponse, 'message'>
 
 async function playerErrorOf(err: unknown) {
@@ -96,15 +111,16 @@ async function playerErrorOf(err: unknown) {
   }
 }
 
+/** Что играем: файл раздачи или файл библиотеки с диска сервера */
+export type PlaybackSource
+  = { torrentId: string, fileIndex: number } | { mediaFileId: string }
+
 /**
- * Запуск файла раздачи, статистика движка для буферизации и OSD и сохранение
- * позиции. Видео и его события живут в экране плеера.
+ * Запуск файла раздачи или библиотеки, статистика движка для буферизации и
+ * OSD и сохранение позиции. Видео и его события живут в экране плеера.
  */
-export function usePlayback(
-  torrentId: string,
-  fileIndex: number,
-  title?: PlaybackTitle,
-) {
+export function usePlayback(source: PlaybackSource, title?: PlaybackTitle) {
+  const library = 'mediaFileId' in source
   const status = ref<'loading' | 'ready' | 'error'>('loading')
   const playback = shallowRef<Playback>()
   // Сессия, пока сервер читает файл: экран показывает подготовку с названием
@@ -211,8 +227,7 @@ export function usePlayback(
 
     try {
       created = await api.playback.postPlayback({
-        torrentId,
-        fileIndex,
+        ...source,
         title,
         device: deviceProfile(),
         language: i18n.global.locale.value as CreatePlaybackInput['language'],
@@ -289,10 +304,12 @@ export function usePlayback(
       const { offset, intervalMs } = next()
 
       try {
-        stats.value = await api.torrents.getTorrentStats(torrentId, {
-          fileIndex: String(fileIndex),
-          offset: String(Math.floor(offset)),
-        })
+        stats.value = library
+          ? localStats(playback.value?.size ?? 0)
+          : await api.torrents.getTorrentStats(source.torrentId, {
+              fileIndex: String(source.fileIndex),
+              offset: String(Math.floor(offset)),
+            })
         statsAt = Date.now()
       }
       catch {
@@ -319,8 +336,7 @@ export function usePlayback(
 
     return api.watchState
       .putWatchState({
-        torrentId,
-        fileIndex,
+        ...source,
         position,
         duration:
           Number.isFinite(duration) && duration > 0 ? duration : undefined,

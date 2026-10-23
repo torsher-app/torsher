@@ -7,7 +7,7 @@ import { replaceContinueRow } from '../lib/continue.ts'
 import { createLatest } from '../lib/latest.ts'
 import { useCatalogLanguage } from './useCatalogLanguage.ts'
 
-export type HomeMode = 'all' | 'movies' | 'series'
+export type HomeMode = 'all' | 'movies' | 'series' | 'library'
 
 export type HomeStatus = 'loading' | 'ready' | 'error'
 

@@ -25,6 +25,7 @@ const HOME = '/'
 const SECTIONS = new Set([
   '/movies',
   '/series',
+  '/library',
   '/search',
   '/mine',
   '/settings',
@@ -37,6 +38,13 @@ const SECTIONS = new Set([
  */
 const CATALOG = '/catalog'
 
+/** Выбор тайтла для раздачи: открывают из «Библиотеки», назад — туда */
+const LIBRARY_PICK = '/library/pick'
+
+/** Домашнее видео открывают из «Библиотеки»: назад — туда; альбом — к альбомам */
+const HOME_VIDEO = '/home-video'
+const HOME_VIDEO_ALBUM = '/home-video/album'
+
 /**
  * Экран уровнем выше и какая прошлая запись истории им считается. Флоу
  * просмотра — иерархия: плеер → «Файлы» → «Источники» → карточка → откуда
@@ -45,6 +53,27 @@ const CATALOG = '/catalog'
  */
 function parentOf(route: RouteLike) {
   const id = stringOf(route.params.id)
+
+  if (route.pattern === HOME_VIDEO) {
+    return {
+      path: '/library',
+      accepts: (back: string) => pathOf(back) === '/library',
+    }
+  }
+
+  if (route.pattern === HOME_VIDEO_ALBUM) {
+    return {
+      path: '/home-video',
+      accepts: (back: string) => pathOf(back) === '/home-video',
+    }
+  }
+
+  if (route.pattern === LIBRARY_PICK) {
+    return {
+      path: '/library',
+      accepts: (back: string) => pathOf(back) === '/library',
+    }
+  }
 
   if (SECTIONS.has(route.pattern)) {
     return {
@@ -91,6 +120,29 @@ function parentOf(route: RouteLike) {
     case '/person/:id':
       // Персону открывают из карточки, поиска или другой персоны: назад — туда
       return { path: '/', accepts: () => true }
+    case '/play/library/:mediaFileId': {
+      const title = stringOf(route.query.title)
+
+      if (!title)
+        return undefined
+
+      // Файл библиотеки открывают с карточки («Смотреть»), из «Источников»
+      // (строка «В библиотеке») и с главной («Продолжить»): назад — туда
+      const card = `/title/${title}`
+
+      return {
+        path: card,
+        accepts: (back: string) => {
+          const path = pathOf(back)
+
+          return (
+            path === card
+            || path === `${card}/sources`
+            || (!path.startsWith(`${card}/`) && !path.startsWith('/play/'))
+          )
+        },
+      }
+    }
     case '/play/:torrentId/:fileIndex': {
       const title = stringOf(route.query.title)
 

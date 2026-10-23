@@ -10,6 +10,8 @@ const props = defineProps<{
   hero: Hero
   // Карточка «Продолжить»: OK сразу запускает просмотр
   resume?: boolean
+  // Подсказка раздачи без тайтла: OK открывает выбор тайтла
+  release?: boolean
 }>()
 
 const { t } = useI18n()
@@ -83,6 +85,11 @@ const meta = computed(() => {
       <div v-if="resume" class="hero__keys">
         <span class="hero__key">
           <span class="hero__button">OK</span>{{ t("home.hint.resume") }}
+        </span>
+      </div>
+      <div v-else-if="release" class="hero__keys">
+        <span class="hero__key">
+          <span class="hero__button">OK</span>{{ t("home.hint.release") }}
         </span>
       </div>
       <div v-else class="hero__keys">

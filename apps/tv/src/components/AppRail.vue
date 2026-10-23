@@ -16,6 +16,7 @@ export type RailItemId
     | 'series'
     | 'catalog'
     | 'mine'
+    | 'library'
     | 'settings'
     | 'about'
 
@@ -47,6 +48,12 @@ const main = computed<RailItem[]>(() => [
   { id: 'series', icon: 'series', label: t('nav.series'), path: '/series' },
   { id: 'catalog', icon: 'catalog', label: t('nav.catalog'), path: '/catalog' },
   { id: 'mine', icon: 'mine', label: t('nav.mine'), path: '/mine' },
+  {
+    id: 'library',
+    icon: 'library',
+    label: t('nav.library'),
+    path: '/library',
+  },
 ])
 
 // Внизу, под профилем: настройки этого устройства и «О программе»

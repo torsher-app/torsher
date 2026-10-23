@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Card } from '@torsher/api-client'
 import { openTitleActions } from '../titleActions.ts'
+import DownloadBadge from './DownloadBadge.vue'
 import PosterRatingBadge from './PosterRatingBadge.vue'
 
 const props = withDefaults(
@@ -45,6 +46,7 @@ function openActions() {
         {{ card.title }}
       </span>
       <PosterRatingBadge :card="card" />
+      <DownloadBadge :card="card" />
       <span class="card__ring" />
     </span>
   </button>

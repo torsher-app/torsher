@@ -11,6 +11,7 @@ import type { PanelOption } from '../components/OptionsPanel.vue'
 import AppIcon from '../components/AppIcon.vue'
 import AppLoader from '../components/AppLoader.vue'
 import AppToast from '../components/AppToast.vue'
+import LibraryRow from '../components/LibraryRow.vue'
 import FocusSection from '../components/FocusSection.vue'
 import OptionsPanel from '../components/OptionsPanel.vue'
 import SourceRow from '../components/SourceRow.vue'
@@ -18,6 +19,7 @@ import { useCatalogTitle } from '../composables/useCatalogTitle.ts'
 import { useHeldLoading } from '../composables/useHeldLoading.ts'
 import { useResource } from '../composables/useResource.ts'
 import { useSourceLabels } from '../composables/useSourceLabels.ts'
+import { useTitleLibrary } from '../composables/useTitleLibrary.ts'
 import { useTitleSeason } from '../composables/useTitleSections.ts'
 import { useTitleProgress } from '../composables/useTitleProgress.ts'
 import { NATIVE_WHEEL_ATTRIBUTE, useFocus } from '../focus/index.ts'
@@ -28,6 +30,8 @@ import {
   qualityOptions,
   seasonOptions,
 } from '../lib/sources.ts'
+import { libraryRoute } from '../lib/continue.ts'
+import { libraryTarget } from '../lib/library.ts'
 import { loadSourceView, saveSourceView } from '../lib/sourceView.ts'
 import { formatYears } from '../lib/titleInfo.ts'
 
@@ -37,7 +41,12 @@ defineOptions({ name: 'SourcesPage' })
  * «Источники» тайтла: все раздачи всех сезонов, история просмотра, сортировка и
  * фильтры. Выбор раздачи подключает её и открывает «Файлы».
  */
-const props = defineProps<{ id: string }>()
+const props = defineProps<{
+  id: string
+  // Открыли с «Скачать»: выбранная раздача откроет «Файлы» с отметками
+  download?: boolean
+  season?: string
+}>()
 
 const { t } = useI18n()
 const router = useRouter()
@@ -90,6 +99,16 @@ function setView(patch: Partial<SourceView>) {
 function resetFilters() {
   setView({ season: undefined, voice: undefined, quality: undefined })
 }
+
+// «Скачать сезон N» — список сразу по этому сезону
+watch(
+  () => (props.download ? props.season : undefined),
+  (season) => {
+    if (season && Number(season) !== view.value.season)
+      setView({ season: Number(season) })
+  },
+  { immediate: true },
+)
 
 // Поиск для экрана: показавшийся лоадер держится минимум, шапка и список
 // приходят вместе с ним одним шагом
@@ -361,6 +380,12 @@ const headerMeta = computed(() => {
 
 // История: что и какой раздачей смотрели последний раз; OK — её «Файлы» на этой серии
 const history = computed(() => historyOf(progress.value))
+// У раздачи без качества и озвучки в имени строке нечего добавить
+const historyText = computed(() =>
+  history.value?.line
+    ? t('sources.history', { line: history.value.line })
+    : t('sources.lastWatched'),
+)
 
 function openHistory() {
   const value = history.value
@@ -410,6 +435,38 @@ async function openErrorKey(err: unknown) {
   }
 }
 
+// Файлы библиотеки для строки «В библиотеке»: по выбранному сезону, если он есть
+const { libraryFiles } = useTitleLibrary(id)
+const libraryRowFiles = computed(() => {
+  const season = view.value.season
+
+  return season === undefined
+    ? libraryFiles.value
+    : libraryFiles.value.filter(file => file.season === season)
+})
+
+// Строку «В библиотеке» выбрали сами: файл серии продолжения, без неё — первый
+function playLibrary() {
+  const resume = progress.value?.resume
+  const own = libraryTarget(libraryRowFiles.value, isSeries.value, resume)
+  const target = own ?? libraryRowFiles.value[0]
+
+  if (!target)
+    return
+
+  router.push(
+    libraryRoute(target.id, {
+      id: props.id,
+      season: target.season,
+      episode: target.season
+        ? own
+          ? resume?.episode
+          : target.episode
+        : undefined,
+    }),
+  )
+}
+
 async function open(candidateId: string) {
   if (opening.value)
     return
@@ -423,15 +480,18 @@ async function open(candidateId: string) {
       query: query.value,
     })
 
-    // Выбран сезон — «Файлы» встают на его первую серию
+    // Выбран сезон — «Файлы» встают на его первую серию; при «Скачать» —
+    // отмечают его серии
+    const season
+      = props.download && props.season
+        ? props.season
+        : view.value.season === undefined
+          ? undefined
+          : String(view.value.season)
+
     router.push({
       path: `/title/${props.id}/files/${result.torrentId}`,
-      query: {
-        season:
-          view.value.season === undefined
-            ? undefined
-            : String(view.value.season),
-      },
+      query: { season, download: props.download ? '1' : undefined },
     })
   }
   catch (err) {
@@ -534,7 +594,7 @@ const meta = computed(() => {
     <section class="sources__main" :[NATIVE_WHEEL_ATTRIBUTE]="true">
       <header class="sources__head">
         <h2 class="sources__title">
-          {{ t("sources.title") }}
+          {{ t(download ? "download.sourcesTitle" : "sources.title") }}
         </h2>
         <p class="sources__head-meta">
           <!-- Пустая строка держит высоту, пока раздачи ищутся: ниже ничего не сдвигается -->
@@ -562,7 +622,7 @@ const meta = computed(() => {
       >
         <button v-focusable class="history" type="button" @click="openHistory">
           <AppIcon name="recent" class="history__icon" />
-          {{ t("sources.history", { line: history.line }) }}
+          {{ historyText }}
         </button>
       </FocusSection>
       <!-- «Нет истории» — только когда прогресс уже пришёл: без подмены текста, высота держится -->
@@ -573,11 +633,7 @@ const meta = computed(() => {
           "
         >
           <AppIcon name="recent" class="history__icon" />
-          {{
-            history
-              ? t("sources.history", { line: history.line })
-              : t("sources.historyEmpty")
-          }}
+          {{ history ? historyText : t("sources.historyEmpty") }}
         </template>
       </p>
 
@@ -616,6 +672,15 @@ const meta = computed(() => {
         :edges="edgesOf('sources-list')"
         autofocus
       >
+        <!-- Файл из библиотеки — первым и сразу: поиск раздач ему не нужен.
+             В режиме загрузки каждая строка по OK качает — строки, которая
+             играет, там нет -->
+        <LibraryRow
+          v-if="!download && libraryRowFiles.length > 0"
+          :files="libraryRowFiles"
+          @select="playLibrary"
+        />
+
         <div
           v-if="searching"
           v-focusable
