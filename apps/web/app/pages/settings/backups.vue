@@ -11,6 +11,7 @@ import BackupList from '~/components/settings/BackupList.vue'
 import BackupRestartScreen from '~/components/settings/BackupRestartScreen.vue'
 import BackupRestoreResult from '~/components/settings/BackupRestoreResult.vue'
 import BackupScheduleCard from '~/components/settings/BackupScheduleCard.vue'
+import TransferCard from '~/components/settings/TransferCard.vue'
 import { backupErrorText } from '~/lib/backups'
 
 definePageMeta({
@@ -134,6 +135,8 @@ async function onRestored(
       <BackupEncryptionCard :status="status" />
 
       <BackupList :status="status" @restored="onRestored" />
+
+      <TransferCard @restored="onRestored" />
     </template>
 
     <BackupRestartScreen />

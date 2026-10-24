@@ -48,6 +48,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   changed: []
+  // Данные профиля поменялись: импорт применён или отменён
+  applied: []
 }>()
 
 const open = defineModel<boolean>('open', { required: true })
@@ -118,7 +120,12 @@ function show(next: ImportJob) {
 
   if (next.state === 'ready') {
     step.value = 'preview'
-    applyForm.resetForm()
+    // В экспорте Torsher даты оценок есть всегда: по умолчанию — более поздняя
+    applyForm.resetForm({
+      values: {
+        conflicts: next.preview?.sources.includes('torsher') ? 'newer' : 'keep',
+      },
+    })
 
     // Обзор карточки приходит без предпросмотра: дочитываем его сразу
     if (!next.preview)
@@ -239,6 +246,7 @@ const onApply = applyForm.handleSubmit(async (values) => {
     )
     step.value = 'result'
     emit('changed')
+    emit('applied')
   }
   catch {
     actionFailed.value = true
@@ -284,6 +292,7 @@ async function onUndo() {
         : undefined,
     })
     emit('changed')
+    emit('applied')
     open.value = false
   }
   catch {
@@ -328,9 +337,7 @@ const conflictOptions = computed(() => [
           <CircleAlertIcon />
           <AlertTitle>{{ t("panel.imports.errors.title") }}</AlertTitle>
           <AlertDescription>
-            {{
-              uploadErrorText(uploadError)
-            }}
+            {{ uploadErrorText(uploadError) }}
           </AlertDescription>
         </Alert>
 
@@ -363,7 +370,7 @@ const conflictOptions = computed(() => [
               id="import-files-input"
               type="file"
               multiple
-              accept=".csv,.json,.zip,text/csv,application/json,application/zip"
+              accept=".csv,.json,.zip,.gz,text/csv,application/json,application/zip,application/gzip"
               class="sr-only"
               :aria-invalid="!!filesForm.errors.value.files || undefined"
               @change="onPick"
@@ -415,6 +422,7 @@ const conflictOptions = computed(() => [
             <li>{{ t("panel.imports.dialog.formatLetterboxd") }}</li>
             <li>{{ t("panel.imports.dialog.formatTrakt") }}</li>
             <li>{{ t("panel.imports.dialog.formatImportCsv") }}</li>
+            <li>{{ t("panel.imports.dialog.formatTorsher") }}</li>
           </ul>
         </div>
       </form>
@@ -451,9 +459,7 @@ const conflictOptions = computed(() => [
         <CircleAlertIcon />
         <AlertTitle>{{ t("panel.imports.dialog.failedTitle") }}</AlertTitle>
         <AlertDescription>
-          {{
-            t("panel.imports.dialog.failedText")
-          }}
+          {{ t("panel.imports.dialog.failedText") }}
         </AlertDescription>
       </Alert>
 
@@ -484,6 +490,12 @@ const conflictOptions = computed(() => [
         <dl
           class="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 gap-y-2 rounded-lg border p-3 text-[13.5px]"
         >
+          <template v-if="preview.progress">
+            <dt>{{ t("panel.imports.preview.progress") }}</dt>
+            <dd class="text-right tabular-nums">
+              {{ preview.progress.new + preview.progress.updated }}
+            </dd>
+          </template>
           <dt>{{ t("panel.imports.preview.newRatings") }}</dt>
           <dd class="text-right tabular-nums">
             {{ preview.ratings.new }}
@@ -492,22 +504,47 @@ const conflictOptions = computed(() => [
           <dd class="text-right tabular-nums">
             {{ preview.watchlist.new }}
           </dd>
+          <template v-if="preview.favorites">
+            <dt>{{ t("panel.imports.preview.favorites") }}</dt>
+            <dd class="text-right tabular-nums">
+              {{ preview.favorites.new }}
+            </dd>
+          </template>
+          <template v-if="preview.dropped">
+            <dt>{{ t("panel.imports.preview.dropped") }}</dt>
+            <dd class="text-right tabular-nums">
+              {{ preview.dropped.new }}
+            </dd>
+          </template>
           <dt>{{ t("panel.imports.preview.same") }}</dt>
           <dd class="text-right tabular-nums">
-            {{ preview.ratings.same + preview.watchlist.same }}
+            {{
+              preview.ratings.same
+                + preview.watchlist.same
+                + (preview.progress?.same ?? 0)
+            }}
           </dd>
           <dt>{{ t("panel.imports.preview.conflicts") }}</dt>
           <dd class="text-right tabular-nums">
             {{ preview.ratings.conflicts }}
           </dd>
+          <!-- В экспорте Torsher тайтлы уже с ID: сопоставлять нечего -->
+          <template v-if="!preview.progress">
+            <dt class="text-muted-foreground">
+              {{ t("panel.imports.preview.unmatched") }}
+            </dt>
+            <dd class="text-right text-muted-foreground tabular-nums">
+              {{ preview.unsure + preview.notFound }}
+            </dd>
+          </template>
           <dt class="text-muted-foreground">
-            {{ t("panel.imports.preview.unmatched") }}
-          </dt>
-          <dd class="text-right text-muted-foreground tabular-nums">
-            {{ preview.unsure + preview.notFound }}
-          </dd>
-          <dt class="text-muted-foreground">
-            {{ t("panel.imports.preview.skipped") }}
+            {{
+              t(
+                preview.progress
+                  ? "panel.imports.preview.skippedExport"
+                  : "panel.imports.preview.skipped",
+              )
+            }}
           </dt>
           <dd class="text-right text-muted-foreground tabular-nums">
             {{ preview.skipped }}
@@ -571,9 +608,7 @@ const conflictOptions = computed(() => [
           <CircleAlertIcon />
           <AlertTitle>{{ t("panel.imports.errors.applyFailed") }}</AlertTitle>
           <AlertDescription>
-            {{
-              t("panel.imports.errors.applyFailedText")
-            }}
+            {{ t("panel.imports.errors.applyFailedText") }}
           </AlertDescription>
         </Alert>
       </form>
@@ -605,9 +640,7 @@ const conflictOptions = computed(() => [
         <Alert v-if="actionFailed" variant="destructive">
           <CircleAlertIcon />
           <AlertDescription>
-            {{
-              t("panel.imports.errors.undoFailed")
-            }}
+            {{ t("panel.imports.errors.undoFailed") }}
           </AlertDescription>
         </Alert>
       </div>

@@ -12,7 +12,9 @@ import type {
 } from './formats.ts'
 import type { MatchResult } from './match.ts'
 import type { ConflictPolicy, IncomingMine, MineValues } from './merge.ts'
+import type { ProfileRows } from './profileData.ts'
 import { randomUUID } from 'node:crypto'
+import { gunzipSync } from 'node:zlib'
 import { and, asc, count, desc, eq, inArray, isNull, lt } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import {
@@ -23,9 +25,19 @@ import {
 import { logFor } from '../logs/index.ts'
 import { TmdbError } from '../tmdb/client.ts'
 import { parseCatalogId } from '../tmdb/mappers.ts'
-import { parseImportFiles } from './formats.ts'
+import {
+  DocumentError,
+  looksLikeExport,
+  parseExportDocument,
+} from './document.ts'
+import { ImportFormatError, parseImportFiles } from './formats.ts'
 import { matchEntry, matchKey } from './match.ts'
 import { mergeMine, ratingOutcome } from './merge.ts'
+import {
+  applyProfileMerge,
+  planProfileMerge,
+  undoProgress,
+} from './profileData.ts'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const MATCH_CONCURRENCY = 4
@@ -54,6 +66,8 @@ interface ImportJob {
   done: number
   error?: 'catalog'
   finishedAt?: number
+  // Экспорт профиля Torsher: тайтлы уже с ID, сопоставлять нечего
+  document?: ProfileRows
 }
 
 const jobs = new Map<string, ImportJob>()
@@ -132,18 +146,91 @@ async function runMatching(job: ImportJob) {
   }
 }
 
-/**
- * Разбирает файлы сразу (неподдерживаемый файл — ошибка запроса) и
- * запускает сопоставление в фоне. У профиля одна задача: новая заменяет
- * прежнюю, ещё не применённую.
- */
-export function startImport(profileId: string, files: ImportFile[]) {
-  const parsed = parseImportFiles(files)
+function textOf(file: ImportFile) {
+  // gzip: экспорт можно загрузить и сжатым
+  const data
+    = file.data[0] === 0x1F && file.data[1] === 0x8B
+      ? gunzipSync(file.data)
+      : file.data
+
+  return data.toString('utf8')
+}
+
+/** Экспорт Torsher с одним профилем или `undefined`, если это другой файл */
+function exportRowsOf(files: ImportFile[]): ProfileRows | undefined {
+  if (files.length !== 1)
+    return undefined
+
+  let text: string
+
+  try {
+    text = textOf(files[0]!)
+  }
+  catch {
+    throw new ImportFormatError('broken', files[0]!.name)
+  }
+
+  if (!looksLikeExport(text))
+    return undefined
+
+  try {
+    const document = parseExportDocument(text)
+
+    if (document.profiles.length !== 1)
+      throw new ImportFormatError('serverExport', files[0]!.name)
+
+    return { progress: document.progress, mine: document.mine }
+  }
+  catch (err) {
+    if (err instanceof DocumentError) {
+      throw new ImportFormatError(
+        err.kind === 'newerVersion' ? 'newerVersion' : 'broken',
+        files[0]!.name,
+      )
+    }
+
+    throw err
+  }
+}
+
+function replaceJob(profileId: string, job: ImportJob) {
   const previous = activeJobOf(profileId)
 
   if (previous)
     jobs.delete(previous.id)
 
+  jobs.set(job.id, job)
+}
+
+/**
+ * Разбирает файлы сразу (неподдерживаемый файл — ошибка запроса) и
+ * запускает сопоставление в фоне. У профиля одна задача: новая заменяет
+ * прежнюю, ещё не применённую. Экспорт профиля Torsher готов сразу.
+ */
+export function startImport(profileId: string, files: ImportFile[]) {
+  const document = exportRowsOf(files)
+
+  if (document) {
+    const job: ImportJob = {
+      id: randomUUID(),
+      profileId,
+      state: 'ready',
+      entries: [],
+      skipped: 0,
+      sources: ['torsher'],
+      results: new Map(),
+      total: 0,
+      done: 0,
+      finishedAt: Date.now(),
+      document,
+    }
+
+    replaceJob(profileId, job)
+
+    return job
+  }
+
+  const parsed = parseImportFiles(files)
   const job: ImportJob = {
     id: randomUUID(),
     profileId,
@@ -156,7 +243,7 @@ export function startImport(profileId: string, files: ImportFile[]) {
     done: 0,
   }
 
-  jobs.set(job.id, job)
+  replaceJob(profileId, job)
   runMatching(job).catch((err) => {
     job.state = 'failed'
     job.error = 'catalog'
@@ -279,9 +366,34 @@ export interface ImportPreview {
   conflictSamples: ImportConflictSample[]
   // «Более поздняя» имеет смысл, только когда у конфликтов есть даты
   conflictsDated: boolean
+  progress?: { new: number, updated: number, same: number }
+  favorites?: { new: number, same: number }
+  dropped?: { new: number, same: number }
+}
+
+function documentPreviewOf(job: ImportJob, document: ProfileRows) {
+  const { counts } = planProfileMerge(job.profileId, document, 'newer')
+
+  return {
+    sources: job.sources,
+    ratings: counts.ratings,
+    watchlist: counts.watchlist,
+    unsure: 0,
+    notFound: 0,
+    skipped: counts.skipped,
+    // Названий в файле нет: пример «у вас 7, в файле 9» без названия не нужен
+    conflictSamples: [],
+    conflictsDated: counts.conflictsDated,
+    progress: counts.progress,
+    favorites: counts.favorites,
+    dropped: counts.dropped,
+  }
 }
 
 function previewOf(job: ImportJob): ImportPreview {
+  if (job.document)
+    return documentPreviewOf(job, job.document)
+
   const { matched, unmatched } = groupEntries(job)
   const rows = currentRows(job.profileId, [...matched.keys()])
   const preview: ImportPreview = {
@@ -404,6 +516,9 @@ export function applyImport(
   if (job.state !== 'ready')
     throw new ImportStateError()
 
+  if (job.document)
+    return applyDocument(job, job.document, policy)
+
   const { matched, unmatched } = groupEntries(job)
   const rows = currentRows(profileId, [...matched.keys()])
   const now = new Date()
@@ -471,6 +586,50 @@ export function applyImport(
   return { id: importId, ...summary }
 }
 
+/** Экспорт профиля Torsher: позиции и «Моё» одной транзакцией */
+function applyDocument(
+  job: ImportJob,
+  document: ProfileRows,
+  policy: ConflictPolicy,
+) {
+  const now = new Date()
+  const importId = randomUUID()
+  const db = getDb()
+  let summary: ImportSummary = { imported: 0, unchanged: 0, unmatched: 0 }
+
+  db.transaction((tx) => {
+    const plan = planProfileMerge(job.profileId, document, policy, now)
+    const undo = applyProfileMerge(job.profileId, plan, now)
+    const { counts } = plan
+
+    summary = {
+      imported: undo.length,
+      unchanged: plan.unchanged,
+      unmatched: counts.skipped,
+    }
+
+    tx.insert(profileImports)
+      .values({
+        id: importId,
+        profileId: job.profileId,
+        sources: job.sources.join(','),
+        conflicts: policy,
+        summary,
+        undo,
+        appliedAt: now,
+      })
+      .run()
+  })
+
+  jobs.delete(job.id)
+  logFor('catalog').info(
+    { profileId: job.profileId, importId, ...summary },
+    'Profile data imported',
+  )
+
+  return { id: importId, ...summary }
+}
+
 function canUndo(row: ProfileImport, now = Date.now()) {
   return (
     !row.undoneAt
@@ -500,15 +659,25 @@ export function undoImport(profileId: string, id: string) {
     throw new ImportStateError()
 
   const applied = row.appliedAt.getTime()
+  const mineUndo = row.undo!.filter(
+    (item): item is ImportUndoEntry => !('table' in item),
+  )
+  const progressUndo = row.undo!.filter(item => 'table' in item)
   const rows = currentRows(
     profileId,
-    row.undo!.map(item => item.titleId),
+    mineUndo.map(item => item.titleId),
   )
   let restored = 0
   let kept = 0
 
   db.transaction((tx) => {
-    for (const { titleId, before } of row.undo!) {
+    for (const entry of progressUndo) {
+      if (undoProgress(profileId, entry))
+        restored++
+      else kept++
+    }
+
+    for (const { titleId, before } of mineUndo) {
       const current = rows.get(titleId)
 
       if (!current || current.updatedAt.getTime() !== applied) {

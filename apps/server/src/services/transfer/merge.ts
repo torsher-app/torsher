@@ -2,13 +2,18 @@ import type { ProfileTitle } from '../../db/schema.ts'
 
 export type ConflictPolicy = 'keep' | 'replace' | 'newer'
 
-/** Что пришло о тайтле из файла: оценка с датой и отметка «Позже» */
+/**
+ * Что пришло о тайтле из файла: оценка с датой и отметка «Позже»; из
+ * экспорта Torsher — ещё «Избранное» и «Брошено»
+ */
 export interface IncomingMine {
   kind: 'movie' | 'series'
   rating?: number
   ratedAt?: Date
   // null — в списке, но без даты
   watchlistAt?: Date | null
+  favoriteAt?: Date
+  droppedAt?: Date
 }
 
 export type RatingOutcome = 'none' | 'new' | 'same' | 'conflict'
@@ -57,9 +62,9 @@ function takesIncoming(
 
 /**
  * Слияние своей строки «Моё» с пришедшей из файла. Оценка — по политике
- * конфликта; «Позже» — объединение; «Избранное» и «Брошено» не трогаются.
- * Как и при ручной оценке, оценённый фильм в «Позже» не остаётся.
- * `undefined` — менять нечего.
+ * конфликта; «Позже» и «Избранное» — объединение, время своей отметки
+ * остаётся; «Брошено» — более позднее. Как и при ручной оценке, оценённый
+ * фильм в «Позже» не остаётся. `undefined` — менять нечего.
  */
 export function mergeMine(
   current: MineValues | undefined,
@@ -94,6 +99,19 @@ export function mergeMine(
     && !movieRated
   ) {
     next.watchlistAt = incoming.watchlistAt ?? now
+    changed = true
+  }
+
+  if (incoming.favoriteAt && !next.favoriteAt) {
+    next.favoriteAt = incoming.favoriteAt
+    changed = true
+  }
+
+  if (
+    incoming.droppedAt
+    && (!next.droppedAt || incoming.droppedAt > next.droppedAt)
+  ) {
+    next.droppedAt = incoming.droppedAt
     changed = true
   }
 

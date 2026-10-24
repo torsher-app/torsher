@@ -2,7 +2,13 @@ import type { Buffer } from 'node:buffer'
 import { csvRecords } from './csv.ts'
 import { isZip, readZip, ZipError } from './zip.ts'
 
-export const importSources = ['imdb', 'letterboxd', 'trakt'] as const
+// `torsher` — экспорт профиля другого сервера Torsher (transfer/document.ts)
+export const importSources = [
+  'imdb',
+  'letterboxd',
+  'trakt',
+  'torsher',
+] as const
 
 export type ImportSource = (typeof importSources)[number]
 export type ImportList = 'rating' | 'watchlist'
@@ -35,8 +41,17 @@ export interface ImportFile {
 export const MAX_IMPORT_BYTES = 20 * 1024 * 1024
 export const MAX_IMPORT_ROWS = 20_000
 
+// `serverExport` — экспорт сервера с несколькими профилями: его
+// импортируют в «Резервных копиях»; `newerVersion` — файл от более новой
+// версии Torsher
 export type ImportFormatErrorKind
-  = 'unsupported' | 'broken' | 'tooLarge' | 'tooMany' | 'empty'
+  = | 'unsupported'
+    | 'broken'
+    | 'tooLarge'
+    | 'tooMany'
+    | 'empty'
+    | 'serverExport'
+    | 'newerVersion'
 
 export class ImportFormatError extends Error {
   kind: ImportFormatErrorKind

@@ -138,6 +138,27 @@ docker compose run --rm torsher torsher restore <backup file>
 
 **Updates.** The server doesn't apply database changes of a new version without a backup made right before them: if that backup fails, the server doesn't start and says why. `TORSHER_SKIP_PRE_UPDATE_BACKUP=1` skips it if you accept the risk. A database already changed by a newer version doesn't start with an older one: run the newer version again or restore the `pre-update` backup.
 
+### Moving data to another server
+
+A backup restores a whole server and replaces its database. To bring profiles, watch positions, lists, ratings and collections into a server that already has its own, use an export instead: it merges.
+
+- **Settings → Backups → Export…** downloads `torsher-export-<date>.json`. Profiles, positions, Watchlist, Favorites, ratings and Dropped are always in it; collections, libraries (connected folders and manual matches) and settings (network routes, indexers, notification channels) are optional. Profile PINs, the account, devices, torrents and files are never exported.
+- Keys and passwords (indexer keys, proxy logins, the TMDB key, channel secrets) go into the file only with an export password; without it they have to be entered again on the new server.
+- **Settings → Backups → Import…** on the other server shows what will change, lets you pick which profile each one goes into (by default a profile with the same name, otherwise a new one) and merges: the later watch position and rating win, lists and collections are combined, existing settings are kept. Importing the same file twice changes nothing. The server makes a `pre-import` backup first; restoring it undoes the import.
+- One profile: **Export** and **Import…** in the profile card under **Profiles & devices**.
+
+From the command line:
+
+```bash
+docker exec torsher torsher export --libraries --settings > torsher-export.json
+```
+
+```bash
+docker exec -i torsher torsher import /data/db/torsher-export.json --dry-run
+```
+
+The file to import has to be inside the container, for example copied into `/data/db`. Without `--dry-run` the command applies the import; `--password-stdin` reads the export password, `--profile <name>` exports or imports one profile. After an import with settings or new folders, restart the container to apply them.
+
 ### Updating
 
 Once a day the server checks the releases of its source repository on GitHub and shows **Version X is available** on the overview and under **Settings → About**, with the highlights of the release notes. The request carries no identifiers and no data about the server; turn it off under **Settings → About**. The **Beta** channel there also offers pre-releases.

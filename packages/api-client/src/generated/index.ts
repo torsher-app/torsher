@@ -2516,12 +2516,19 @@ export interface CreateProfileImportInput {
 
 export interface ImportFormatErrorResponseInput {
   message: string;
-  kind: "unsupported" | "broken" | "tooLarge" | "tooMany" | "empty";
+  kind:
+    | "unsupported"
+    | "broken"
+    | "tooLarge"
+    | "tooMany"
+    | "empty"
+    | "serverExport"
+    | "newerVersion";
   file?: string;
 }
 
 export interface ImportPreviewInput {
-  sources: ("imdb" | "letterboxd" | "trakt")[];
+  sources: ("imdb" | "letterboxd" | "trakt" | "torsher")[];
   ratings: {
     /**
      * @min -9007199254740991
@@ -2581,6 +2588,47 @@ export interface ImportPreviewInput {
     incoming: number;
   }[];
   conflictsDated: boolean;
+  progress?: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    new: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    updated: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    same: number;
+  };
+  favorites?: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    new: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    same: number;
+  };
+  dropped?: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    new: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    same: number;
+  };
 }
 
 export interface ImportJobInput {
@@ -3005,6 +3053,685 @@ export interface UpdateStoragePolicyInput {
    * @max 1125899906842624
    */
   minFree: number;
+}
+
+export interface CreateExportInput {
+  scope: "server" | "profile";
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  profileId?: string;
+  include?: {
+    collections?: boolean;
+    libraries?: boolean;
+    settings?: boolean;
+  };
+  /**
+   * @minLength 8
+   * @maxLength 1024
+   */
+  password?: string;
+}
+
+export interface ExportFileInput {
+  format: "torsher-export";
+  version: 1;
+  /**
+   * @format date-time
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+   */
+  exportedAt: string;
+  torsher: {
+    /** @maxLength 100 */
+    version: string;
+    /** @maxLength 100 */
+    commit: string | null;
+  };
+  scope: "server" | "profile";
+  encryption?: {
+    kdf: "scrypt";
+    /**
+     * @minLength 1
+     * @maxLength 200
+     */
+    salt: string;
+    /**
+     * @format starts_with
+     * @maxLength 10000
+     * @pattern ^p1:.*
+     */
+    check: string;
+  };
+  /** @minItems 1 */
+  profiles: {
+    /**
+     * @minLength 1
+     * @maxLength 20
+     */
+    key: string;
+    /**
+     * @minLength 1
+     * @maxLength 100
+     */
+    name: string;
+    color:
+      | "violet"
+      | "green"
+      | "orange"
+      | "blue"
+      | "rose"
+      | "teal"
+      | "amber"
+      | "slate";
+    language: "ru_RU" | "en_US" | null;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    ageLimit: number | null;
+    posterRatings: ("tmdb" | "imdb")[];
+    player: {
+      autoNext?: boolean;
+      subtitleSize?: "s" | "m" | "l";
+      subtitleBackground?: "none" | "shadow" | "box";
+    } | null;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    position: number;
+  }[];
+  progress: {
+    /**
+     * @minLength 1
+     * @maxLength 20
+     */
+    profile: string;
+    /**
+     * @minLength 1
+     * @maxLength 100
+     */
+    title?: string;
+    file?: {
+      /**
+       * @minLength 1
+       * @maxLength 4096
+       */
+      folder: string;
+      /**
+       * @minLength 1
+       * @maxLength 4096
+       */
+      path: string;
+    };
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    season: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    episode: number;
+    /** @min 0 */
+    position: number;
+    /** @min 0 */
+    duration: number | null;
+    /** @maxLength 200 */
+    voiceStudio: string | null;
+    /** @maxLength 50 */
+    voiceType: string | null;
+    /**
+     * @format date-time
+     * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+     */
+    updatedAt: string;
+  }[];
+  mine: {
+    /**
+     * @minLength 1
+     * @maxLength 20
+     */
+    profile: string;
+    /**
+     * @minLength 1
+     * @maxLength 100
+     */
+    title: string;
+    /**
+     * @format date-time
+     * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+     */
+    watchlistAt: string | null;
+    /**
+     * @format date-time
+     * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+     */
+    favoriteAt: string | null;
+    /**
+     * @min 1
+     * @max 10
+     */
+    rating: number | null;
+    /**
+     * @format date-time
+     * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+     */
+    ratedAt: string | null;
+    /**
+     * @format date-time
+     * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+     */
+    droppedAt: string | null;
+  }[];
+  collections?: {
+    /**
+     * @minLength 1
+     * @maxLength 100
+     */
+    name: string;
+    showOnHome: boolean;
+    hiddenFrom: string[];
+    titles: {
+      /**
+       * @minLength 1
+       * @maxLength 100
+       */
+      title: string;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      addedAt: string;
+      /**
+       * @minLength 1
+       * @maxLength 20
+       */
+      addedBy: string | null;
+    }[];
+  }[];
+  voices?: {
+    /**
+     * @minLength 1
+     * @maxLength 100
+     */
+    title: string;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    season: number;
+    /** @maxLength 200 */
+    studio: string | null;
+    /** @maxLength 50 */
+    type: string | null;
+    /**
+     * @format date-time
+     * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+     */
+    updatedAt: string;
+  }[];
+  aliases?: {
+    /**
+     * @minLength 1
+     * @maxLength 100
+     */
+    title: string;
+    /**
+     * @minLength 1
+     * @maxLength 500
+     */
+    value: string;
+    /** @maxLength 20 */
+    lang: string | null;
+  }[];
+  libraries?: {
+    kind: "video" | "home";
+    /**
+     * @minLength 1
+     * @maxLength 100
+     */
+    name: string;
+    exclude: string[];
+    watch: boolean;
+    hiddenFrom: string[];
+    folders: {
+      /**
+       * @minLength 1
+       * @maxLength 4096
+       */
+      path: string;
+      hint: "auto" | "movies" | "shows";
+    }[];
+    files: {
+      /**
+       * @minLength 1
+       * @maxLength 4096
+       */
+      folder: string;
+      /**
+       * @minLength 1
+       * @maxLength 4096
+       */
+      path: string;
+      match?: {
+        status: "matched" | "unsure" | "unmatched" | "ignored";
+        /**
+         * @minLength 1
+         * @maxLength 100
+         */
+        title: string | null;
+        /**
+         * @min -9007199254740991
+         * @max 9007199254740991
+         */
+        season: number | null;
+        /**
+         * @min -9007199254740991
+         * @max 9007199254740991
+         */
+        episode: number | null;
+        /**
+         * @min -9007199254740991
+         * @max 9007199254740991
+         */
+        episodeTo: number | null;
+        /** @maxLength 200 */
+        version: string | null;
+      };
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      capturedAt?: string;
+    }[];
+  }[];
+  settings?: {
+    routes?: {
+      /**
+       * @minLength 1
+       * @maxLength 255
+       */
+      match: string;
+      via: "direct" | "socks5h" | "http";
+      /** @maxLength 300 */
+      proxyAddress: string | null;
+      /**
+       * @format starts_with
+       * @maxLength 10000
+       * @pattern ^p1:.*
+       */
+      proxyUsername: string | null;
+      /**
+       * @format starts_with
+       * @maxLength 10000
+       * @pattern ^p1:.*
+       */
+      proxyPassword: string | null;
+      dns: "system" | "quad9" | "google" | "cloudflare" | "custom";
+      /** @maxLength 2048 */
+      dohUrl: string | null;
+      /**
+       * @min -9007199254740991
+       * @max 9007199254740991
+       */
+      position: number;
+    }[];
+    managers?: {
+      /**
+       * @minLength 1
+       * @maxLength 20
+       */
+      key: string;
+      kind: "prowlarr" | "jackett";
+      /**
+       * @minLength 1
+       * @maxLength 2048
+       */
+      url: string;
+      /**
+       * @format starts_with
+       * @maxLength 10000
+       * @pattern ^p1:.*
+       */
+      apiKey: string | null;
+    }[];
+    indexers?: {
+      /**
+       * @minLength 1
+       * @maxLength 200
+       */
+      name: string;
+      /**
+       * @minLength 1
+       * @maxLength 2048
+       */
+      url: string;
+      /**
+       * @format starts_with
+       * @maxLength 10000
+       * @pattern ^p1:.*
+       */
+      apiKey: string | null;
+      enabled: boolean;
+      /** @maxLength 20 */
+      manager: string | null;
+      /** @maxLength 200 */
+      externalId: string | null;
+    }[];
+    channels?: {
+      /**
+       * @minLength 1
+       * @maxLength 50
+       */
+      kind: string;
+      /**
+       * @minLength 1
+       * @maxLength 200
+       */
+      name: string;
+      enabled: boolean;
+      language: "ru_RU" | "en_US";
+      /** @maxLength 2048 */
+      panelUrl: string | null;
+      config: Record<string, any>;
+      events: string[];
+      includeWarnings: boolean;
+      notifyResolved: boolean;
+    }[];
+    /**
+     * @format starts_with
+     * @maxLength 10000
+     * @pattern ^p1:.*
+     */
+    tmdbKey?: string | null;
+  };
+}
+
+export interface TransferErrorResponseInput {
+  message: string;
+  kind: "notExport" | "newerVersion" | "broken" | "tooLarge";
+}
+
+export interface PreviewServerImportInput {
+  /** @minLength 1 */
+  data: string;
+  /**
+   * @minLength 1
+   * @maxLength 1024
+   */
+  password?: string;
+}
+
+export interface ProfileMergeCountsInput {
+  progress: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    new: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    updated: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    same: number;
+  };
+  ratings: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    new: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    same: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    conflicts: number;
+  };
+  watchlist: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    new: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    same: number;
+  };
+  favorites: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    new: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    same: number;
+  };
+  dropped: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    new: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    same: number;
+  };
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  skipped: number;
+  conflictSamples: {
+    titleId: string;
+    title: string;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    current: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    incoming: number;
+  }[];
+  conflictsDated: boolean;
+}
+
+export interface ServerImportPreviewInput {
+  token: string;
+  /**
+   * @format date-time
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+   */
+  exportedAt: string;
+  version: string;
+  profiles: {
+    key: string;
+    name: string;
+    target:
+      | {
+          kind: "existing";
+          id: string;
+        }
+      | {
+          kind: "new";
+        }
+      | {
+          kind: "skip";
+        };
+    counts: ProfileMergeCountsInput;
+  }[];
+  collections?: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    new: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    merged: number;
+  };
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  voices: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  aliases: number;
+  libraries?: {
+    folders: {
+      /**
+       * @min -9007199254740991
+       * @max 9007199254740991
+       */
+      new: number;
+      /**
+       * @min -9007199254740991
+       * @max 9007199254740991
+       */
+      existing: number;
+    };
+    missingFolders: string[];
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    decisions: number;
+  };
+  settings?: {
+    routes: {
+      /**
+       * @min -9007199254740991
+       * @max 9007199254740991
+       */
+      new: number;
+      /**
+       * @min -9007199254740991
+       * @max 9007199254740991
+       */
+      existing: number;
+    };
+    managers: {
+      /**
+       * @min -9007199254740991
+       * @max 9007199254740991
+       */
+      new: number;
+      /**
+       * @min -9007199254740991
+       * @max 9007199254740991
+       */
+      existing: number;
+    };
+    indexers: {
+      /**
+       * @min -9007199254740991
+       * @max 9007199254740991
+       */
+      new: number;
+      /**
+       * @min -9007199254740991
+       * @max 9007199254740991
+       */
+      existing: number;
+    };
+    channels: {
+      /**
+       * @min -9007199254740991
+       * @max 9007199254740991
+       */
+      new: number;
+      /**
+       * @min -9007199254740991
+       * @max 9007199254740991
+       */
+      existing: number;
+    };
+    tmdbKey: boolean;
+  };
+  secrets: "none" | "locked" | "wrong" | "ok";
+}
+
+export interface ApplyServerImportInput {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  token: string;
+  mapping: Record<string, string>;
+  conflicts: "keep" | "replace" | "newer";
+}
+
+export interface ServerImportResultInput {
+  backup: string | null;
+  profiles: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    created: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    merged: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    changed: number;
+  };
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  collections: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  settings: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  folders: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  decisions: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  skipped: number;
 }
 
 export interface UpdateMeInput {
@@ -5545,12 +6272,19 @@ export interface CreateProfileImport {
 
 export interface ImportFormatErrorResponse {
   message: string;
-  kind: "unsupported" | "broken" | "tooLarge" | "tooMany" | "empty";
+  kind:
+    | "unsupported"
+    | "broken"
+    | "tooLarge"
+    | "tooMany"
+    | "empty"
+    | "serverExport"
+    | "newerVersion";
   file?: string;
 }
 
 export interface ImportPreview {
-  sources: ("imdb" | "letterboxd" | "trakt")[];
+  sources: ("imdb" | "letterboxd" | "trakt" | "torsher")[];
   ratings: {
     /**
      * @min -9007199254740991
@@ -5610,6 +6344,47 @@ export interface ImportPreview {
     incoming: number;
   }[];
   conflictsDated: boolean;
+  progress?: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    new: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    updated: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    same: number;
+  };
+  favorites?: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    new: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    same: number;
+  };
+  dropped?: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    new: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    same: number;
+  };
 }
 
 export interface ImportJob {
@@ -6036,6 +6811,685 @@ export interface UpdateStoragePolicy {
   minFree: number;
 }
 
+export interface CreateExport {
+  scope: "server" | "profile";
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  profileId?: string;
+  include?: {
+    collections?: boolean;
+    libraries?: boolean;
+    settings?: boolean;
+  };
+  /**
+   * @minLength 8
+   * @maxLength 1024
+   */
+  password?: string;
+}
+
+export interface ExportFile {
+  format: "torsher-export";
+  version: 1;
+  /**
+   * @format date-time
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+   */
+  exportedAt: string;
+  torsher: {
+    /** @maxLength 100 */
+    version: string;
+    /** @maxLength 100 */
+    commit: string | null;
+  };
+  scope: "server" | "profile";
+  encryption?: {
+    kdf: "scrypt";
+    /**
+     * @minLength 1
+     * @maxLength 200
+     */
+    salt: string;
+    /**
+     * @format starts_with
+     * @maxLength 10000
+     * @pattern ^p1:.*
+     */
+    check: string;
+  };
+  /** @minItems 1 */
+  profiles: {
+    /**
+     * @minLength 1
+     * @maxLength 20
+     */
+    key: string;
+    /**
+     * @minLength 1
+     * @maxLength 100
+     */
+    name: string;
+    color:
+      | "violet"
+      | "green"
+      | "orange"
+      | "blue"
+      | "rose"
+      | "teal"
+      | "amber"
+      | "slate";
+    language: "ru_RU" | "en_US" | null;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    ageLimit: number | null;
+    posterRatings: ("tmdb" | "imdb")[];
+    player: {
+      autoNext?: boolean;
+      subtitleSize?: "s" | "m" | "l";
+      subtitleBackground?: "none" | "shadow" | "box";
+    } | null;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    position: number;
+  }[];
+  progress: {
+    /**
+     * @minLength 1
+     * @maxLength 20
+     */
+    profile: string;
+    /**
+     * @minLength 1
+     * @maxLength 100
+     */
+    title?: string;
+    file?: {
+      /**
+       * @minLength 1
+       * @maxLength 4096
+       */
+      folder: string;
+      /**
+       * @minLength 1
+       * @maxLength 4096
+       */
+      path: string;
+    };
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    season: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    episode: number;
+    /** @min 0 */
+    position: number;
+    /** @min 0 */
+    duration: number | null;
+    /** @maxLength 200 */
+    voiceStudio: string | null;
+    /** @maxLength 50 */
+    voiceType: string | null;
+    /**
+     * @format date-time
+     * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+     */
+    updatedAt: string;
+  }[];
+  mine: {
+    /**
+     * @minLength 1
+     * @maxLength 20
+     */
+    profile: string;
+    /**
+     * @minLength 1
+     * @maxLength 100
+     */
+    title: string;
+    /**
+     * @format date-time
+     * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+     */
+    watchlistAt: string | null;
+    /**
+     * @format date-time
+     * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+     */
+    favoriteAt: string | null;
+    /**
+     * @min 1
+     * @max 10
+     */
+    rating: number | null;
+    /**
+     * @format date-time
+     * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+     */
+    ratedAt: string | null;
+    /**
+     * @format date-time
+     * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+     */
+    droppedAt: string | null;
+  }[];
+  collections?: {
+    /**
+     * @minLength 1
+     * @maxLength 100
+     */
+    name: string;
+    showOnHome: boolean;
+    hiddenFrom: string[];
+    titles: {
+      /**
+       * @minLength 1
+       * @maxLength 100
+       */
+      title: string;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      addedAt: string;
+      /**
+       * @minLength 1
+       * @maxLength 20
+       */
+      addedBy: string | null;
+    }[];
+  }[];
+  voices?: {
+    /**
+     * @minLength 1
+     * @maxLength 100
+     */
+    title: string;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    season: number;
+    /** @maxLength 200 */
+    studio: string | null;
+    /** @maxLength 50 */
+    type: string | null;
+    /**
+     * @format date-time
+     * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+     */
+    updatedAt: string;
+  }[];
+  aliases?: {
+    /**
+     * @minLength 1
+     * @maxLength 100
+     */
+    title: string;
+    /**
+     * @minLength 1
+     * @maxLength 500
+     */
+    value: string;
+    /** @maxLength 20 */
+    lang: string | null;
+  }[];
+  libraries?: {
+    kind: "video" | "home";
+    /**
+     * @minLength 1
+     * @maxLength 100
+     */
+    name: string;
+    exclude: string[];
+    watch: boolean;
+    hiddenFrom: string[];
+    folders: {
+      /**
+       * @minLength 1
+       * @maxLength 4096
+       */
+      path: string;
+      hint: "auto" | "movies" | "shows";
+    }[];
+    files: {
+      /**
+       * @minLength 1
+       * @maxLength 4096
+       */
+      folder: string;
+      /**
+       * @minLength 1
+       * @maxLength 4096
+       */
+      path: string;
+      match?: {
+        status: "matched" | "unsure" | "unmatched" | "ignored";
+        /**
+         * @minLength 1
+         * @maxLength 100
+         */
+        title: string | null;
+        /**
+         * @min -9007199254740991
+         * @max 9007199254740991
+         */
+        season: number | null;
+        /**
+         * @min -9007199254740991
+         * @max 9007199254740991
+         */
+        episode: number | null;
+        /**
+         * @min -9007199254740991
+         * @max 9007199254740991
+         */
+        episodeTo: number | null;
+        /** @maxLength 200 */
+        version: string | null;
+      };
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      capturedAt?: string;
+    }[];
+  }[];
+  settings?: {
+    routes?: {
+      /**
+       * @minLength 1
+       * @maxLength 255
+       */
+      match: string;
+      via: "direct" | "socks5h" | "http";
+      /** @maxLength 300 */
+      proxyAddress: string | null;
+      /**
+       * @format starts_with
+       * @maxLength 10000
+       * @pattern ^p1:.*
+       */
+      proxyUsername: string | null;
+      /**
+       * @format starts_with
+       * @maxLength 10000
+       * @pattern ^p1:.*
+       */
+      proxyPassword: string | null;
+      dns: "system" | "quad9" | "google" | "cloudflare" | "custom";
+      /** @maxLength 2048 */
+      dohUrl: string | null;
+      /**
+       * @min -9007199254740991
+       * @max 9007199254740991
+       */
+      position: number;
+    }[];
+    managers?: {
+      /**
+       * @minLength 1
+       * @maxLength 20
+       */
+      key: string;
+      kind: "prowlarr" | "jackett";
+      /**
+       * @minLength 1
+       * @maxLength 2048
+       */
+      url: string;
+      /**
+       * @format starts_with
+       * @maxLength 10000
+       * @pattern ^p1:.*
+       */
+      apiKey: string | null;
+    }[];
+    indexers?: {
+      /**
+       * @minLength 1
+       * @maxLength 200
+       */
+      name: string;
+      /**
+       * @minLength 1
+       * @maxLength 2048
+       */
+      url: string;
+      /**
+       * @format starts_with
+       * @maxLength 10000
+       * @pattern ^p1:.*
+       */
+      apiKey: string | null;
+      enabled: boolean;
+      /** @maxLength 20 */
+      manager: string | null;
+      /** @maxLength 200 */
+      externalId: string | null;
+    }[];
+    channels?: {
+      /**
+       * @minLength 1
+       * @maxLength 50
+       */
+      kind: string;
+      /**
+       * @minLength 1
+       * @maxLength 200
+       */
+      name: string;
+      enabled: boolean;
+      language: "ru_RU" | "en_US";
+      /** @maxLength 2048 */
+      panelUrl: string | null;
+      config: Record<string, any>;
+      events: string[];
+      includeWarnings: boolean;
+      notifyResolved: boolean;
+    }[];
+    /**
+     * @format starts_with
+     * @maxLength 10000
+     * @pattern ^p1:.*
+     */
+    tmdbKey?: string | null;
+  };
+}
+
+export interface TransferErrorResponse {
+  message: string;
+  kind: "notExport" | "newerVersion" | "broken" | "tooLarge";
+}
+
+export interface PreviewServerImport {
+  /** @minLength 1 */
+  data: string;
+  /**
+   * @minLength 1
+   * @maxLength 1024
+   */
+  password?: string;
+}
+
+export interface ProfileMergeCounts {
+  progress: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    new: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    updated: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    same: number;
+  };
+  ratings: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    new: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    same: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    conflicts: number;
+  };
+  watchlist: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    new: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    same: number;
+  };
+  favorites: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    new: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    same: number;
+  };
+  dropped: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    new: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    same: number;
+  };
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  skipped: number;
+  conflictSamples: {
+    titleId: string;
+    title: string;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    current: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    incoming: number;
+  }[];
+  conflictsDated: boolean;
+}
+
+export interface ServerImportPreview {
+  token: string;
+  /**
+   * @format date-time
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+   */
+  exportedAt: string;
+  version: string;
+  profiles: {
+    key: string;
+    name: string;
+    target:
+      | {
+          kind: "existing";
+          id: string;
+        }
+      | {
+          kind: "new";
+        }
+      | {
+          kind: "skip";
+        };
+    counts: ProfileMergeCounts;
+  }[];
+  collections?: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    new: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    merged: number;
+  };
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  voices: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  aliases: number;
+  libraries?: {
+    folders: {
+      /**
+       * @min -9007199254740991
+       * @max 9007199254740991
+       */
+      new: number;
+      /**
+       * @min -9007199254740991
+       * @max 9007199254740991
+       */
+      existing: number;
+    };
+    missingFolders: string[];
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    decisions: number;
+  };
+  settings?: {
+    routes: {
+      /**
+       * @min -9007199254740991
+       * @max 9007199254740991
+       */
+      new: number;
+      /**
+       * @min -9007199254740991
+       * @max 9007199254740991
+       */
+      existing: number;
+    };
+    managers: {
+      /**
+       * @min -9007199254740991
+       * @max 9007199254740991
+       */
+      new: number;
+      /**
+       * @min -9007199254740991
+       * @max 9007199254740991
+       */
+      existing: number;
+    };
+    indexers: {
+      /**
+       * @min -9007199254740991
+       * @max 9007199254740991
+       */
+      new: number;
+      /**
+       * @min -9007199254740991
+       * @max 9007199254740991
+       */
+      existing: number;
+    };
+    channels: {
+      /**
+       * @min -9007199254740991
+       * @max 9007199254740991
+       */
+      new: number;
+      /**
+       * @min -9007199254740991
+       * @max 9007199254740991
+       */
+      existing: number;
+    };
+    tmdbKey: boolean;
+  };
+  secrets: "none" | "locked" | "wrong" | "ok";
+}
+
+export interface ApplyServerImport {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  token: string;
+  mapping: Record<string, string>;
+  conflicts: "keep" | "replace" | "newer";
+}
+
+export interface ServerImportResult {
+  backup: string | null;
+  profiles: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    created: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    merged: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    changed: number;
+  };
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  collections: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  settings: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  folders: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  decisions: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  skipped: number;
+}
+
 export interface UpdateMe {
   /** @minLength 2 */
   name?: string;
@@ -6304,6 +7758,14 @@ export type DeleteBackupRestoreError = MessageResponse;
 export type DeleteBackupError = MessageResponse;
 
 export type PostBackupRestoreError = MessageResponse | BackupErrorResponse;
+
+export type PostTransferExportError = MessageResponse;
+
+export type PostTransferImportPreviewError =
+  TransferErrorResponse | MessageResponse;
+
+export type PostTransferImportApplyError =
+  MessageResponse | BackupErrorResponse;
 
 export type GetNetRoutesError = MessageResponse;
 
@@ -8997,6 +10459,64 @@ export class Api<
     ) =>
       this.request<RestoreResponse, PostBackupRestoreError>({
         path: `/api/backups/${name}/restore`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+  };
+  transfer = {
+    /**
+     * No description
+     *
+     * @tags Transfer
+     * @name PostTransferExport
+     * @request POST:/api/transfer/export
+     */
+    postTransferExport: (data: CreateExportInput, params: RequestParams = {}) =>
+      this.request<ExportFile, PostTransferExportError>({
+        path: `/api/transfer/export`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Transfer
+     * @name PostTransferImportPreview
+     * @request POST:/api/transfer/import/preview
+     */
+    postTransferImportPreview: (
+      data: PreviewServerImportInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<ServerImportPreview, PostTransferImportPreviewError>({
+        path: `/api/transfer/import/preview`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Transfer
+     * @name PostTransferImportApply
+     * @request POST:/api/transfer/import/apply
+     */
+    postTransferImportApply: (
+      data: ApplyServerImportInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<ServerImportResult, PostTransferImportApplyError>({
+        path: `/api/transfer/import/apply`,
         method: "POST",
         body: data,
         type: ContentType.Json,

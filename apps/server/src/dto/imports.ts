@@ -34,6 +34,8 @@ export const importFormatErrorKinds = [
   'tooLarge',
   'tooMany',
   'empty',
+  'serverExport',
+  'newerVersion',
 ] as const
 
 export const importFormatErrorResponse = z
@@ -71,6 +73,20 @@ export const importPreview = z
       }),
     ),
     conflictsDated: z.boolean(),
+    // Только у экспорта Torsher: позиции, «Избранное» и «Брошено»
+    progress: z
+      .object({
+        new: z.number().int(),
+        updated: z.number().int(),
+        same: z.number().int(),
+      })
+      .optional(),
+    favorites: z
+      .object({ new: z.number().int(), same: z.number().int() })
+      .optional(),
+    dropped: z
+      .object({ new: z.number().int(), same: z.number().int() })
+      .optional(),
   })
   .meta({ id: 'importPreview' })
 

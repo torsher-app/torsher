@@ -28,6 +28,7 @@ import { storageRoutes } from './storage.ts'
 import { streamRoutes } from './stream.ts'
 import { titleRoutes } from './titles.ts'
 import { torrentRoutes } from './torrents.ts'
+import { transferRoutes } from './transfer.ts'
 import { updateRoutes } from './updates.ts'
 import { userRoutes } from './users.ts'
 
@@ -75,6 +76,7 @@ export const apiRoutes: FastifyPluginAsyncZod = async (app) => {
   app.register(hlsRoutes, { prefix: '/hls' })
   app.register(storageRoutes, { prefix: '/storage' })
   app.register(backupRoutes, { prefix: '/backups' })
+  app.register(transferRoutes, { prefix: '/transfer' })
   app.register(netRoutes, { prefix: '/net' })
   app.register(settingsRoutes, { prefix: '/settings' })
   app.register(setupRoutes, { prefix: '/setup' })

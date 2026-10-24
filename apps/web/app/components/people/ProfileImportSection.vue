@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import type { Profile } from '@torsher/api-client'
-import { ChevronRightIcon, FileUpIcon, RefreshCwIcon } from '@lucide/vue'
+import {
+  ChevronRightIcon,
+  FileDownIcon,
+  FileUpIcon,
+  RefreshCwIcon,
+} from '@lucide/vue'
 import { toast } from 'vue-sonner'
 import { useI18n } from 'vue-i18n'
 import {
@@ -19,16 +24,23 @@ import {
   undoImportRun,
   useProfileImports,
 } from '~/composables/useProfileImports'
+import { downloadExport } from '~/composables/useTransfer'
 import { dialogSheetClass } from '~/lib/dialog'
 import { formatDate } from '~/lib/format'
 import ImportRatingsDialog from './ImportRatingsDialog.vue'
 
 /**
- * Блок карточки профиля: импорт своих оценок из файлов других сервисов,
- * последний импорт с отменой и ссылка на несопоставленное.
+ * Блок карточки профиля: экспорт профиля в файл, импорт оценок из файлов
+ * других сервисов и экспорта Torsher, последний импорт с отменой и ссылка
+ * на несопоставленное.
  */
 const props = defineProps<{
   profile: Profile
+}>()
+
+const emit = defineEmits<{
+  // Импорт применён или отменён: позиции и списки профиля поменялись
+  changed: []
 }>()
 
 const { t, locale } = useI18n()
@@ -37,6 +49,21 @@ const { overview, state, load } = useProfileImports(() => props.profile.id)
 const dialogOpen = ref(false)
 const undoOpen = ref(false)
 const undoing = ref(false)
+const exporting = ref(false)
+
+async function onExport() {
+  exporting.value = true
+
+  try {
+    await downloadExport({ scope: 'profile', profileId: props.profile.id })
+  }
+  catch {
+    toast.error(t('panel.imports.errors.exportFailed'))
+  }
+  finally {
+    exporting.value = false
+  }
+}
 
 const job = computed(() => overview.value?.job ?? null)
 const last = computed(() => overview.value?.last ?? null)
@@ -56,6 +83,7 @@ async function onUndo() {
         : undefined,
     })
     undoOpen.value = false
+    emit('changed')
   }
   catch {
     toast.error(t('panel.imports.errors.undoFailed'))
@@ -73,10 +101,21 @@ async function onUndo() {
       <h3 class="text-[13.5px] font-medium">
         {{ t("panel.imports.section") }}
       </h3>
-      <Button variant="outline" size="xs" @click="dialogOpen = true">
-        <FileUpIcon aria-hidden="true" />
-        {{ t(job ? "panel.imports.open" : "panel.imports.start") }}
-      </Button>
+      <div class="flex shrink-0 gap-1.5">
+        <LoadingButton
+          variant="outline"
+          size="xs"
+          :loading="exporting"
+          @click="onExport"
+        >
+          <FileDownIcon aria-hidden="true" />
+          {{ t("panel.imports.export") }}
+        </LoadingButton>
+        <Button variant="outline" size="xs" @click="dialogOpen = true">
+          <FileUpIcon aria-hidden="true" />
+          {{ t(job ? "panel.imports.open" : "panel.imports.start") }}
+        </Button>
+      </div>
     </div>
 
     <!-- Одна строка состояния постоянной высоты: загрузка не двигает блок -->
@@ -146,15 +185,14 @@ async function onUndo() {
       :profile-name="profile.name"
       :job="job"
       @changed="load"
+      @applied="emit('changed')"
     />
 
     <AlertDialog v-model:open="undoOpen">
       <AlertDialogContent :class="dialogSheetClass">
         <AlertDialogHeader class="place-items-start text-left">
           <AlertDialogTitle>
-            {{
-              t("panel.imports.undoDialog.title")
-            }}
+            {{ t("panel.imports.undoDialog.title") }}
           </AlertDialogTitle>
           <AlertDialogDescription>
             {{ t("panel.imports.undoDialog.text") }}

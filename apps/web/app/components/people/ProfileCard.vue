@@ -217,7 +217,7 @@ function onInteractOutside(event: Event) {
             </ul>
           </section>
 
-          <ProfileImportSection :profile="shown" />
+          <ProfileImportSection :profile="shown" @changed="recent.load" />
         </div>
 
         <footer class="flex shrink-0 flex-wrap gap-2 border-t p-3">
