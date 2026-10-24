@@ -255,10 +255,8 @@ onMounted(() => {
 .episodes__seasons {
   display: flex;
   flex-shrink: 0;
-  /* Прокрутка обрезает всё за краем: запас под увеличение чипа в фокусе,
-     поля возвращают строку на место */
-  margin: 0 calc(var(--u) * -16);
-  padding: calc(var(--u) * 6) calc(var(--u) * 16) calc(var(--u) * 22);
+  margin: 0 calc(var(--focus-ring-gap) * -1);
+  padding: calc(var(--u) * 6) var(--focus-ring-gap) calc(var(--u) * 22);
   overflow-x: auto;
 }
 
@@ -285,10 +283,8 @@ onMounted(() => {
 
 .episodes__list {
   height: 100%;
-  /* Запас под увеличение строки в фокусе (×1.06 от ширины панели): прокрутка
-     обрезает её края */
-  margin: 0 calc(var(--u) * -24);
-  padding: calc(var(--u) * 6) calc(var(--u) * 24);
+  margin: 0 calc(var(--focus-ring-gap) * -1);
+  padding: calc(var(--u) * 6) var(--focus-ring-gap);
   overflow-y: auto;
 }
 

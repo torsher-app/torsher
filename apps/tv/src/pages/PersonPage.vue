@@ -431,11 +431,12 @@ onBeforeUnmount(() => {
   pointer-events: none;
 }
 
-/* Высота постоянная: от неё считается положение рядов */
+/* Высота постоянная: от неё считается положение рядов. Первый ряд на первом
+   экране помещается вместе с кольцом фокуса: наведение экран не прокручивает */
 .person__head {
   position: relative;
   display: flex;
-  height: calc(var(--u) * 660);
+  height: calc(var(--u) * 640);
   padding: calc(var(--u) * 132) var(--safe-x) 0 var(--content-x);
   box-sizing: border-box;
 }

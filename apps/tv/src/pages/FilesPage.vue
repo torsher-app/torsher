@@ -765,8 +765,8 @@ onBeforeUnmount(() => {
 /* Строки прокручиваются нативно: движок фокуса зовёт scrollIntoView */
 .files__list {
   flex: 1;
-  margin: calc(var(--u) * 12) calc(var(--u) * -16) 0;
-  padding: calc(var(--u) * 12) calc(var(--u) * 16) calc(var(--u) * 54);
+  margin: calc(var(--u) * 12) calc(var(--focus-ring-gap) * -1) 0;
+  padding: calc(var(--u) * 12) var(--focus-ring-gap) calc(var(--u) * 54);
   overflow-y: auto;
 }
 

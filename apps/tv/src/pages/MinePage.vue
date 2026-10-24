@@ -574,8 +574,8 @@ onBeforeUnmount(() => {
 .mine__sections {
   flex: 1;
   max-height: calc(var(--u) * 860);
-  margin: 0 calc(var(--u) * -16);
-  padding: calc(var(--u) * 8) calc(var(--u) * 16) var(--safe-y);
+  margin: 0 calc(var(--focus-ring-gap) * -1);
+  padding: calc(var(--u) * 8) var(--focus-ring-gap) var(--safe-y);
   overflow-y: auto;
 }
 
@@ -684,18 +684,19 @@ onBeforeUnmount(() => {
   font-size: calc(var(--u) * 30);
 }
 
-/* Сетка уезжает под шапку: окно обрезает её по верху, без clip-path */
+/* Сетка уезжает под шапку: окно обрезает её по верху, без clip-path; запас
+   окна слева и сверху — кольцу фокуса */
 .mine__viewport {
   position: absolute;
-  top: calc(var(--u) * 270);
+  top: calc(var(--u) * 294 - var(--focus-ring-gap));
   right: 0;
   bottom: 0;
-  left: calc(var(--u) * -24);
+  left: calc(var(--focus-ring-gap) * -1);
   overflow: hidden;
 }
 
 .mine__column {
-  padding: calc(var(--u) * 24) 0 calc(var(--u) * 160) calc(var(--u) * 24);
+  padding: var(--focus-ring-gap) 0 calc(var(--u) * 160) var(--focus-ring-gap);
   transition: transform var(--motion-base) var(--motion-easing);
 }
 

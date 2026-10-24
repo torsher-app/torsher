@@ -1852,11 +1852,14 @@ onBeforeUnmount(() => {
 
 /*
  * Окно ленты чипов: слева обрезаем по краю контента, справа — по краю экрана;
- * запас вокруг — под масштаб фокуса
+ * запас вокруг — кольцу фокуса
  */
 .title__chips-view {
   margin-bottom: calc(var(--u) * 36);
-  clip-path: inset(calc(var(--u) * -16) calc(var(--safe-x) * -1) calc(var(--u) * -16) calc(var(--u) * -16));
+  clip-path: inset(
+    calc(var(--focus-ring-gap) * -1) calc(var(--safe-x) * -1) calc(var(--focus-ring-gap) * -1)
+      calc(var(--focus-ring-gap) * -1)
+  );
 }
 
 /* position: relative — offsetLeft чипа считается от ленты */
