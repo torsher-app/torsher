@@ -55,9 +55,13 @@ async function httpConnect(route: NetRoute, host: string, port: number) {
 
   socket.write(`${lines.join('\r\n')}\r\n\r\n`)
 
+  // Ответ прокси читается через `readable`, а не `data`: так сокет не
+  // переходит в поток, и приветствие сервера, пришедшее до того, как клиент
+  // протокола подпишется на данные, остаётся в буфере, а не теряется
   return new Promise<Socket>((resolve, reject) => {
-    let head = ''
+    let head = Buffer.alloc(0)
     const fail = (err: Error) => {
+      cleanup()
       socket.destroy()
       reject(err)
     }
@@ -66,38 +70,53 @@ async function httpConnect(route: NetRoute, host: string, port: number) {
       CONNECT_TIMEOUT_MS,
     )
 
-    function onData(chunk: Buffer) {
-      head += chunk.toString('latin1')
-
-      const end = head.indexOf('\r\n\r\n')
-
-      if (end === -1) {
-        if (head.length > 8192)
-          fail(new Error('Proxy response is too long'))
-
-        return
-      }
-
+    function cleanup() {
       clearTimeout(timer)
-      socket.removeListener('data', onData)
-
-      if (!/^HTTP\/1\.[01] 200/.test(head)) {
-        fail(
-          new Error(`Proxy refused: ${head.slice(0, head.indexOf('\r\n'))}`),
-        )
-        return
-      }
-
-      // Байты после заголовка — уже ответ сервера: вернуть их в поток
-      const rest = Buffer.from(head.slice(end + 4), 'latin1')
-
-      if (rest.length)
-        socket.unshift(rest)
-
-      resolve(socket)
+      socket.removeListener('readable', onReadable)
+      socket.removeListener('error', fail)
     }
 
-    socket.on('data', onData)
+    function onReadable() {
+      for (let chunk = socket.read(); chunk !== null; chunk = socket.read()) {
+        head = Buffer.concat([head, chunk])
+
+        const end = head.indexOf('\r\n\r\n')
+
+        if (end === -1) {
+          if (head.length > 8192) {
+            fail(new Error('Proxy response is too long'))
+            return
+          }
+
+          continue
+        }
+
+        cleanup()
+
+        const status = head.subarray(0, end).toString('latin1')
+
+        if (!/^HTTP\/1\.[01] 200/.test(status)) {
+          socket.destroy()
+          reject(
+            new Error(
+              `Proxy refused: ${status.slice(0, status.indexOf('\r\n'))}`,
+            ),
+          )
+          return
+        }
+
+        // Байты после заголовка — уже ответ сервера: вернуть их в буфер
+        const rest = head.subarray(end + 4)
+
+        if (rest.length)
+          socket.unshift(rest)
+
+        resolve(socket)
+        return
+      }
+    }
+
+    socket.on('readable', onReadable)
     socket.once('error', fail)
   })
 }

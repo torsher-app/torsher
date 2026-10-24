@@ -4,7 +4,12 @@ import { connect, createServer } from 'node:net'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { getDb, migrateDb } from '../../../db/index.ts'
 import { netRoutes } from '../../../db/schema.ts'
-import { createRoute, routesChanged } from '../../net/index.ts'
+import {
+  connectThroughRoute,
+  createRoute,
+  routeForHost,
+  routesChanged,
+} from '../../net/index.ts'
 import { renderTest } from '../render.ts'
 import { email } from './email.ts'
 import {
@@ -275,5 +280,42 @@ describe('email', () => {
     expect(smtp.received[0]?.data).toContain('Torsher test notification')
 
     proxy.server.close()
+  })
+
+  it('данные сервера, пришедшие сразу после ответа прокси, не теряются', async () => {
+    // Прокси отвечает 200 и сразу шлёт приветствие сервера, а клиент
+    // протокола подписывается на сокет позже — как Nodemailer после getSocket
+    const proxy = createServer((client) => {
+      client.once('data', () => {
+        client.write('HTTP/1.1 200 Connection established\r\n\r\n')
+        setTimeout(() => client.write('220 late greeting\r\n'), 20)
+      })
+    })
+    const proxyPort = await listen(proxy)
+
+    createRoute({
+      match: 'smtp-late.example',
+      via: 'http',
+      proxy: `127.0.0.1:${proxyPort}`,
+      dns: 'system',
+    })
+    routesChanged()
+
+    const socket = (await connectThroughRoute(
+      routeForHost('smtp-late.example'),
+      'smtp-late.example',
+      25,
+    ))!
+
+    await new Promise(resolve => setTimeout(resolve, 80))
+
+    const greeting = await new Promise<string>((resolve) => {
+      socket.once('data', chunk => resolve(chunk.toString('latin1')))
+    })
+
+    expect(greeting).toBe('220 late greeting\r\n')
+
+    socket.destroy()
+    proxy.close()
   })
 })
