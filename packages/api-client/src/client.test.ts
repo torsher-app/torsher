@@ -175,6 +175,33 @@ describe('режимы ошибок', () => {
     expect(options.onError).not.toHaveBeenCalled()
     expect(options.onFatal).not.toHaveBeenCalled()
   })
+
+  it('режим — тот, что был при старте запроса, а не при ответе', async () => {
+    let mode: ErrorMode = 'silent'
+    let respond: (response: Response) => void = () => {}
+
+    fetchMock.mockReturnValue(
+      new Promise((resolve) => {
+        respond = resolve
+      }),
+    )
+    const onError = vi.fn()
+    const api = createApiClient({
+      getErrorMode: () => mode,
+      onSessionExpired: vi.fn(),
+      onError,
+      onFatal: vi.fn(),
+    })
+
+    const pending = catchError(api.users.getUsersMe())
+
+    // Параллельный запрос вернул режим по умолчанию раньше этого ответа
+    mode = 'toast'
+    respond(json(404))
+    await pending
+
+    expect(onError).not.toHaveBeenCalled()
+  })
 })
 
 describe('повтор', () => {

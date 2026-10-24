@@ -28,7 +28,7 @@ import {
 import LoadingButton from '~/components/LoadingButton.vue'
 import { folderPathError } from '~/composables/useLibraries'
 import { dialogSheetClass } from '~/lib/dialog'
-import FolderPicker from './FolderPicker.vue'
+import FolderPicker from '~/components/storage/FolderPicker.vue'
 
 const props = defineProps<{
   library: Library | null

@@ -105,3 +105,20 @@ export function sampleTorrentFile(pieceLength = 262_144) {
     },
   })
 }
+
+/** Ход переноса раздачи в другой каталог */
+export function moveState(
+  dir: string,
+  state: 'running' | 'done' | 'failed' = 'done',
+  error?: string,
+  kind?: string,
+) {
+  return {
+    dir,
+    state,
+    bytesTotal: 3_145_728,
+    bytesDone: state === 'running' ? 1_048_576 : 3_145_728,
+    ...(error ? { error } : {}),
+    ...(kind ? { kind } : {}),
+  }
+}

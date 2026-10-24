@@ -52,6 +52,7 @@ Everything except the values below is set in the panel.
 | `API_PORT` | `8080` | Port inside the container |
 | `ENGINE_PEER_PORT` | any free port | Port the torrent engine accepts peer connections on; publish it to be reachable from outside |
 | `LOG_LEVEL` | level chosen in the panel, `info` | Log level: `error`, `warn`, `info` or `debug`. When set, the **Verbose logs** switch in the panel is unavailable |
+| `DOWNLOADS_PATH`, `LIBRARY_PATH` | `/data/torrents`, `/data/library` | Default downloads and library folders; a folder chosen in Settings → Storage takes precedence |
 
 ### Hardware transcoding
 
@@ -65,7 +66,30 @@ Docker Desktop on macOS and Windows does not pass a GPU into Linux containers: t
 
 ### Data
 
-Everything lives in the `/data` volume. `/data/torrents` holds downloads, `/data/library` holds the files you keep, laid out by title (`movies/Title (2010) [tmdbid-27205]/…`, `shows/Title (2008) [tmdbid-1396]/Season 01/…`) so Jellyfin, Plex and Kodi can read it too. A kept file is hard-linked from downloads, so it keeps seeding without taking extra space; this needs both folders in one volume. Otherwise the file is copied, and the panel warns about it. `/data/db` holds the database and the key files (`secret.key`, `session.key`): back it up together. Losing `secret.key` makes the saved indexer API keys unreadable, and you will have to enter them again.
+By default everything lives in the `/data` volume. `/data/torrents` holds downloads, `/data/library` holds the files you keep, laid out by title (`movies/Title (2010) [tmdbid-27205]/…`, `shows/Title (2008) [tmdbid-1396]/Season 01/…`) so Jellyfin, Plex and Kodi can read it too. A kept file is hard-linked from downloads, so it keeps seeding without taking extra space; this needs both folders in one volume. Otherwise the file is copied, and the panel warns about it. `/data/db` holds the database and the key files (`secret.key`, `session.key`): back it up together. Losing `secret.key` makes the saved indexer API keys unreadable, and you will have to enter them again.
+
+### Storage
+
+The container sees only the folders you mount, so a disk is first mounted in `docker-compose.yml`, and then the downloads and library folders are chosen in the panel under **Settings → Storage** (or in the setup wizard). The folder browser shows free space, checks that the folder is writable and tells whether hard links work between downloads and the library.
+
+**One disk (recommended).** Mount one folder as `/data`, as the example file does. Downloads and the library share the volume, and kept files are hard links:
+
+```yaml
+volumes:
+  - /mnt/media/torsher:/data
+```
+
+**Several disks.** Keep `/data` on the system disk for the database, mount the big disk as one more volume and choose `/storage/torrents` and `/storage/library` in the panel. Keep both folders inside that one volume: two volumes, even on the same disk, turn hard links into copies.
+
+```yaml
+volumes:
+  - ./data:/data
+  - /mnt/big:/storage
+```
+
+When a folder already holds data, the panel asks what to do with it. **New only** sends new downloads or files to the new folder and leaves the old ones where they are, still working. **Move** copies everything in the background: one torrent at a time is paused while its files move, each torrent switches to the new folder as soon as its files are verified, and the old files are deleted. A move survives a server restart and continues where it stopped. Moving downloads to a volume other than the library's makes kept files independent copies, so those torrents return to the cache; the panel says so before the move starts.
+
+`DOWNLOADS_PATH` and `LIBRARY_PATH` set the defaults. A folder chosen in the panel is stored in the database and wins; **Reset to default** returns to the environment value. Torrents that never left the default folder follow a changed `DOWNLOADS_PATH`, so remounting the disk under a new path is a compose change. Folders chosen in the panel are kept as they are: change them in the panel, not by remounting.
 
 `/data/db/logs` holds the server log: up to 25 MB in five rotating files, kept across restarts. Secrets and paths inside the downloads folder are masked before an entry is written. The panel shows recent entries under **Logs**, and **Download logs** there saves the whole log as a text file to attach to a bug report.
 

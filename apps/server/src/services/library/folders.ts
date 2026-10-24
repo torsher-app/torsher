@@ -2,7 +2,7 @@ import type { Library, LibraryFolder } from '../../db/schema.ts'
 import { constants } from 'node:fs'
 import { access, readdir, stat } from 'node:fs/promises'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
-import { and, desc, eq, inArray, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm'
 import { config } from '../../config.ts'
 import { getDb } from '../../db/index.ts'
 import {
@@ -10,7 +10,10 @@ import {
   libraryFolders,
   libraryHiddenProfiles,
   mediaFiles,
+  torrents,
 } from '../../db/schema.ts'
+import { envStoragePath, storagePath } from '../storage/paths.ts'
+import { managedFolders } from './files.ts'
 import { isScanning, scanFolder } from './scan.ts'
 import { unwatchFolder, watcherState, watchFolder } from './watch.ts'
 
@@ -40,8 +43,31 @@ export class FolderPathError extends Error {
   }
 }
 
-function overlaps(a: string, b: string) {
+export function overlaps(a: string, b: string) {
   return a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`)
+}
+
+/**
+ * Каталоги Torsher: данные, загрузки (действующие, окружения и прежние, где
+ * ещё лежат раздачи) и все папки своей раскладки
+ */
+export function ownStoragePaths() {
+  const dirs = getDb()
+    .selectDistinct({ dir: torrents.downloadDir })
+    .from(torrents)
+    .where(isNotNull(torrents.downloadDir))
+    .all()
+    .map(row => row.dir!)
+  const paths = [
+    config.dataDir,
+    envStoragePath('downloads'),
+    storagePath('downloads'),
+    envStoragePath('library'),
+    ...dirs,
+    ...managedFolders().map(folder => folder.path),
+  ]
+
+  return [...new Set(paths.map(item => resolve(item)))]
 }
 
 /** Путь читается и это папка; запись не нужна — папки подключаются только на чтение */
@@ -50,9 +76,7 @@ export async function checkFolderPath(path: string) {
     throw new FolderPathError('not_absolute')
 
   const target = resolve(path)
-  const own = [config.dataDir, config.downloadsPath, config.libraryPath].map(
-    item => resolve(item),
-  )
+  const own = ownStoragePaths()
 
   // Каталоги Torsher (данные, загрузки, своя раскладка) — не папка пользователя
   if (own.some(item => overlaps(target, item)))

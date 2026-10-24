@@ -10,6 +10,7 @@ import {
 import { requireOwner } from '../middleware/auth.ts'
 import { discoverManagers } from '../services/setup/discover.ts'
 import { checkStorage } from '../services/setup/storage.ts'
+import { storagePath } from '../services/storage/paths.ts'
 import {
   getWizard,
   updateWizard as saveWizard,
@@ -64,8 +65,8 @@ export const setupRoutes: FastifyPluginAsyncZod = async (app) => {
     async () =>
       checkStorage({
         dataDir: config.dataDir,
-        downloadsDir: config.downloadsPath,
-        libraryDir: config.libraryPath,
+        downloadsDir: storagePath('downloads'),
+        libraryDir: storagePath('library'),
       }),
   )
 

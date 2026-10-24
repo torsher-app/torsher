@@ -3,6 +3,7 @@ import type { StorageCheck, StorageDirCheck } from '@torsher/api-client'
 import type { WizardCheck } from '~/lib/wizardChecks'
 import { useI18n } from 'vue-i18n'
 import { Skeleton } from '@/components/ui/skeleton'
+import StorageFoldersCard from '~/components/settings/StorageFoldersCard.vue'
 import StoragePolicyCards from '~/components/settings/StoragePolicyCards.vue'
 import WizardActions from '~/components/wizard/WizardActions.vue'
 import WizardChecks from '~/components/wizard/WizardChecks.vue'
@@ -139,11 +140,23 @@ async function runCheck() {
   }
 }
 
-// Новый лимит или запас меняют оценку места
+// Новый лимит, запас или папка меняют оценку места и хардлинков
 watch(
-  () => storage.overview.value?.policy,
-  (policy, previous) => {
-    if (previous && policy)
+  () => {
+    const value = storage.overview.value
+
+    return (
+      value
+      && [
+        value.policy.cacheLimit,
+        value.policy.minFree,
+        value.folders.downloads.path,
+        value.folders.library.path,
+      ].join(':')
+    )
+  },
+  (key, previous) => {
+    if (previous && key)
       runCheck()
   },
 )
@@ -177,13 +190,14 @@ onMounted(() => {
     class="grid gap-5"
     aria-busy="true"
   >
+    <Skeleton class="h-64 rounded-xl" />
     <Skeleton class="h-48 rounded-xl" />
     <Skeleton class="h-48 rounded-xl" />
   </div>
-  <StoragePolicyCards
-    v-else-if="storage.overview.value"
-    :overview="storage.overview.value"
-  />
+  <template v-else-if="storage.overview.value">
+    <StorageFoldersCard :overview="storage.overview.value" />
+    <StoragePolicyCards :overview="storage.overview.value" />
+  </template>
 
   <WizardActions step="storage" :next-label="nextLabel" />
 </template>

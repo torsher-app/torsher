@@ -10,10 +10,12 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime/debug"
 	"runtime/pprof"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -36,11 +38,19 @@ type api struct {
 	client  *torrent.Client
 	session *session
 	logger  *slog.Logger
-	// Каталог загрузок и отметки скачанных кусков: удаление с файлами
-	// убирает и то и другое
+	// Каталог загрузок по умолчанию и отметки скачанных кусков: удаление с
+	// файлами убирает и то и другое
 	downloads  string
 	completion storage.PieceCompletion
-	speeds     *speedTracker
+	// Каталог каждой раздачи (`metainfo.Hash` → путь); нет записи — по
+	// умолчанию. Хранилища других каталогов создаются по первой раздаче в них
+	dirs     sync.Map
+	storesMu sync.Mutex
+	stores   map[string]storage.ClientImpl
+	// Переносы раздач между каталогами
+	movesMu sync.Mutex
+	moves   map[metainfo.Hash]*moveJob
+	speeds  *speedTracker
 	// Раздачи прошлого запуска добавлены заново: до этого сервер к движку не
 	// ходит, `/health` отвечает `restoring`
 	restored atomic.Bool
@@ -61,6 +71,8 @@ func newAPI(client *torrent.Client, session *session, store clientStorage, logge
 		logger:     logger,
 		downloads:  store.downloads,
 		completion: store.completion,
+		stores:     map[string]storage.ClientImpl{},
+		moves:      map[metainfo.Hash]*moveJob{},
 		speeds:     newSpeedTracker(),
 		windows:    newWindows(),
 		exit:       os.Exit,
@@ -94,6 +106,8 @@ func (a *api) routes() http.Handler {
 	mux.HandleFunc("POST /torrents/{hash}/pause", a.pause)
 	mux.HandleFunc("POST /torrents/{hash}/resume", a.resume)
 	mux.HandleFunc("DELETE /torrents/{hash}", a.forget)
+	mux.HandleFunc("POST /torrents/{hash}/move", a.startMove)
+	mux.HandleFunc("GET /torrents/{hash}/move", a.moveStatus)
 	mux.HandleFunc("GET /torrents/{hash}/stats", a.stats)
 	mux.HandleFunc("GET /torrents/{hash}/files/{index}/stream", a.stream)
 
@@ -365,11 +379,14 @@ func (a *api) restore(ctx context.Context) {
 			return
 		}
 
+		dir := a.dirOrDefault(item.saved.Dir)
+
 		if info, err := item.meta.UnmarshalInfo(); err == nil {
-			adoptPartFiles(a.downloads, &info)
+			a.finishMove(item.meta.HashInfoBytes(), &info, dir, &item.saved)
+			adoptPartFiles(dir, &info)
 		}
 
-		t, err := a.client.AddTorrent(item.meta)
+		t, err := a.addIn(item.meta, dir)
 		if err != nil {
 			a.logger.Warn("restore torrent", "err", err)
 			continue
@@ -412,6 +429,15 @@ func (a *api) add(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	dir := a.downloads
+	if raw := r.URL.Query().Get("dir"); raw != "" {
+		if !filepath.IsAbs(raw) {
+			writeError(w, http.StatusBadRequest, "invalid_dir", errors.New("dir must be an absolute path"))
+			return
+		}
+		dir = filepath.Clean(raw)
+	}
+
 	mi, err := readMetainfo(r)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_torrent", err)
@@ -424,13 +450,34 @@ func (a *api) add(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, known := a.client.Torrent(mi.HashInfoBytes())
+	hash := mi.HashInfoBytes()
 
-	if info, err := mi.UnmarshalInfo(); err == nil && !known {
-		adoptPartFiles(a.downloads, &info)
+	if a.isMoving(hash) {
+		writeMoving(w)
+		return
 	}
 
-	t, err := a.client.AddTorrent(mi)
+	existing, known := a.client.Torrent(hash)
+
+	// Раздачу, у которой только искали метаданные, клиент держит в каталоге по
+	// умолчанию: она ничего не записала и открывается заново в своём.
+	// Добавленная раньше остаётся в своём каталоге — сменить его может только
+	// перенос
+	if known && !a.session.has(hash) && !samePath(a.dirOf(hash), dir) {
+		existing.Drop()
+		a.dirs.Delete(hash)
+		known = false
+	}
+
+	if known {
+		dir = a.dirOf(hash)
+	}
+
+	if info, err := mi.UnmarshalInfo(); err == nil && !known {
+		adoptPartFiles(dir, &info)
+	}
+
+	t, err := a.addIn(mi, dir)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_torrent", err)
 		return
@@ -446,6 +493,7 @@ func (a *api) add(w http.ResponseWriter, r *http.Request) {
 	saved := a.session.get(t.InfoHash())
 	saved.Selected = selected
 	saved.Background = nil
+	saved.Dir = a.sessionDir(dir)
 
 	if err := setFiles(t, selected); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_files", err)
@@ -469,6 +517,14 @@ func (a *api) torrentOf(w http.ResponseWriter, r *http.Request) (*torrent.Torren
 	}
 
 	t, ok := a.client.Torrent(hash)
+
+	// После поиска: перенос убирает раздачу из клиента уже после отметки,
+	// и пропавшая раздача должна дать `torrent_moving`, а не 404
+	if a.isMoving(hash) {
+		writeMoving(w)
+		return nil, false
+	}
+
 	if !ok || t.Info() == nil {
 		writeError(w, http.StatusNotFound, "torrent_not_found", errors.New("torrent is not in the engine"))
 		return nil, false
@@ -550,8 +606,11 @@ func (a *api) forget(w http.ResponseWriter, r *http.Request) {
 	deleteFiles := r.URL.Query().Get("delete_files") == "true"
 	info := t.Info()
 	hash := t.InfoHash()
+	dir := a.dirOf(hash)
 
 	t.Drop()
+	a.dirs.Delete(hash)
+	a.forgetMove(hash)
 
 	if err := a.session.remove(hash); err != nil {
 		a.logger.Warn("remove session", "err", err)
@@ -569,7 +628,7 @@ func (a *api) forget(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		deleted, err := deleteTorrentFiles(a.downloads, info)
+		deleted, err := deleteTorrentFiles(dir, info)
 		response.DeletedBytes = deleted
 		// Удаление файлов — единственное место, где движок сам стирает данные
 		a.logger.Info("torrent files deleted", "hash", hash.HexString(), "bytes", deleted)

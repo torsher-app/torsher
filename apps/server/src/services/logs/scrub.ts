@@ -25,14 +25,22 @@ function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-function downloadsPrefixes() {
-  const raw = config.downloadsPath
-  const prefixes = new Set([raw, resolve(raw)])
+// Каталоги загрузок кроме окружения: выбранный в панели и прежние, где ещё
+// лежат раздачи
+let extraDownloads: string[] = []
 
-  try {
-    prefixes.add(realpathSync.native(raw))
+function downloadsPrefixes() {
+  const prefixes = new Set<string>()
+
+  for (const raw of [config.downloadsPath, ...extraDownloads]) {
+    prefixes.add(raw)
+    prefixes.add(resolve(raw))
+
+    try {
+      prefixes.add(realpathSync.native(raw))
+    }
+    catch {}
   }
-  catch {}
 
   // Строка записи — уже JSON: `\` в путях Windows там удвоены
   for (const prefix of [...prefixes])
@@ -75,6 +83,13 @@ function downloadsRegExp() {
 
 /** Пересчитать каталог загрузок: он читается из окружения при первой записи */
 export function resetScrub() {
+  downloadsPattern = undefined
+  extraDownloads = []
+}
+
+/** Каталоги загрузок из базы: путь панели и прежние каталоги раздач */
+export function setScrubDownloads(paths: string[]) {
+  extraDownloads = paths
   downloadsPattern = undefined
 }
 

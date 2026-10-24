@@ -134,6 +134,13 @@
       "when": 1792811838069,
       "tag": "0018_thin_scarlet_witch",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1792813060054,
+      "tag": "0019_unique_ghost_rider",
+      "breakpoints": true
     }
   ]
 }

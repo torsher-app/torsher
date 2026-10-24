@@ -11,7 +11,8 @@ import {
 
 /**
  * Ошибка движка → статус: недоступен — 503 с видом причины для текста клиента,
- * отклонил запрос — 400, не дождались — 504, ответил ошибкой — 502.
+ * отклонил запрос — 400, не дождались — 504, раздача переезжает в другую
+ * папку — 409, ответил ошибкой — 502.
  */
 export function sendEngineError(reply: FastifyReply, err: unknown) {
   if (err instanceof InsufficientStorageError) {
@@ -31,6 +32,8 @@ export function sendEngineError(reply: FastifyReply, err: unknown) {
       return reply.code(400).send({ message: err.message })
     case 'timeout':
       return reply.code(504).send({ message: err.message })
+    case 'moving':
+      return reply.code(409).send({ message: err.message })
     default:
       return reply.code(502).send({ message: err.message })
   }
