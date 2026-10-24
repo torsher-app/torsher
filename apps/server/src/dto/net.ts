@@ -141,7 +141,8 @@ export const startNetCheck = z
   })
   .meta({ id: 'startNetCheck' })
 
-export const tmdbKeySources = ['custom', 'app', 'none'] as const
+export const tmdbDefaultKeys = ['env', 'app'] as const
+export const tmdbKeySources = ['custom', ...tmdbDefaultKeys, 'none'] as const
 
 export const imdbDatasetStates = [
   'off',
@@ -176,10 +177,11 @@ export const imdbDatasetStatus = z
 export const metadataSettings = z
   .object({
     tmdb: z.object({
-      // custom — свой ключ, app — ключ приложения, none — ключа нет
+      // custom — свой ключ из панели, env — ключ из окружения сервера,
+      // app — ключ приложения из образа, none — ключа нет
       source: z.enum(tmdbKeySources),
-      // Сервер собран с ключом приложения: свой ключ можно убрать
-      hasAppKey: z.boolean(),
+      // Ключ без своего: env или app; null — свой ключ убрать нельзя
+      defaultKey: z.enum(tmdbDefaultKeys).nullable(),
     }),
     imdb: imdbDatasetStatus,
   })
@@ -196,7 +198,7 @@ const tmdbKey = z.string().trim().min(16).max(1000)
 
 export const updateMetadataSettings = z
   .object({
-    // null — вернуться к ключу приложения
+    // null — убрать свой ключ и вернуться к ключу из окружения или приложения
     tmdbKey: tmdbKey.nullable(),
   })
   .meta({ id: 'updateMetadataSettings' })

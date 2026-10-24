@@ -1,4 +1,8 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import {
+  afterAll,
   afterEach,
   beforeAll,
   beforeEach,
@@ -469,27 +473,82 @@ describe('проверка хостов', () => {
 
 describe('ключ TMDB', () => {
   const KEY = 'eyJhbGciOiJIUzI1NiJ9.owner-token'
+  const APP_KEY = 'eyJhbGciOiJIUzI1NiJ9.app-token'
+  let appKeyDir: string
 
-  it('без своего ключа — ключ приложения', async () => {
-    vi.stubEnv('TMDB_ACCESS_TOKEN', 'app-token')
+  beforeAll(() => {
+    appKeyDir = mkdtempSync(join(tmpdir(), 'torsher-tmdb-'))
+  })
+
+  afterAll(() => {
+    rmSync(appKeyDir, { recursive: true, force: true })
+  })
+
+  // Без содержимого — образ без ключа приложения
+  function useAppKey(content?: string) {
+    const path = join(appKeyDir, `key-${Math.random()}`)
+
+    if (content !== undefined)
+      writeFileSync(path, content)
+
+    vi.spyOn(config, 'tmdbAppKeyPath', 'get').mockReturnValue(path)
+  }
+
+  async function lastAuthorization() {
+    fetchMock.mockImplementation(async () => Response.json({ images: {} }))
+    await inject('POST', '/api/settings/metadata/check', {})
+
+    return new Headers(fetchMock.mock.calls.at(-1)![1]?.headers).get(
+      'authorization',
+    )
+  }
+
+  it('без своего ключа и env — ключ приложения из образа', async () => {
+    vi.stubEnv('TMDB_ACCESS_TOKEN', '')
+    useAppKey(`${APP_KEY}\n`)
 
     const res = await inject('GET', '/api/settings/metadata')
 
     expect(res.json()).toEqual({
-      tmdb: { source: 'app', hasAppKey: true },
+      tmdb: { source: 'app', defaultKey: 'app' },
       imdb: { enabled: false, state: 'off' },
     })
+    expect(res.body).not.toContain(APP_KEY)
+    expect(await lastAuthorization()).toBe(`Bearer ${APP_KEY}`)
   })
 
+  it('ключ из окружения важнее ключа приложения', async () => {
+    vi.stubEnv('TMDB_ACCESS_TOKEN', 'env-token')
+    useAppKey(APP_KEY)
+
+    const res = await inject('GET', '/api/settings/metadata')
+
+    expect(res.json().tmdb).toEqual({ source: 'env', defaultKey: 'env' })
+    expect(await lastAuthorization()).toBe('Bearer env-token')
+  })
+
+  it.each([[undefined], ['  \n']])(
+    'без ключа приложения и env — none: %#',
+    async (content) => {
+      vi.stubEnv('TMDB_ACCESS_TOKEN', '')
+      useAppKey(content)
+
+      const res = await inject('GET', '/api/settings/metadata')
+
+      expect(res.json().tmdb).toEqual({ source: 'none', defaultKey: null })
+    },
+  )
+
   it('сохраняет свой ключ шифрованно и ходит с ним в TMDB', async () => {
-    vi.stubEnv('TMDB_ACCESS_TOKEN', 'app-token')
+    vi.stubEnv('TMDB_ACCESS_TOKEN', '')
+    useAppKey(APP_KEY)
 
     const saved = await inject('PUT', '/api/settings/metadata', {
       tmdbKey: KEY,
     })
 
     expect(saved.json()).toEqual({
-      tmdb: { source: 'custom', hasAppKey: true },
+      tmdb: { source: 'custom', defaultKey: 'app' },
       imdb: { enabled: false, state: 'off' },
     })
     expect(saved.body).not.toContain(KEY)
@@ -546,6 +605,7 @@ describe('ключ TMDB', () => {
 
   it('без ключа — missing', async () => {
     vi.stubEnv('TMDB_ACCESS_TOKEN', '')
+    useAppKey()
 
     const res = await inject('POST', '/api/settings/metadata/check', {})
 

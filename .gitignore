@@ -22,3 +22,6 @@ apps/server/openapi.json
 # Бинарник движка, если собрать его `go build` прямо в каталоге модуля
 /engine/engine
 /engine/torsher-engine
+
+# Ключ приложения TMDB: образ кладёт его сюда при сборке, в Git его нет
+/apps/server/tmdb-app-key
