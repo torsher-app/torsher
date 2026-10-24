@@ -1,4 +1,7 @@
 {
+  "projects": [
+    "apps/server"
+  ],
   "release": {
     "ignore": [],
     "changelog": {
@@ -9,7 +12,8 @@
       "commit": true,
       "tag": true,
       "push": true,
-      "commitMessage": "chore(release): {tag}"
+      "commitMessage": "chore(release): {tag}",
+      "tagFormat": "v{version}"
     }
   }
 }

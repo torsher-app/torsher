@@ -16,6 +16,7 @@ import { libraryRoutes } from './library.ts'
 import { logRoutes } from './logs.ts'
 import { mineRoutes } from './mine.ts'
 import { netRoutes } from './net.ts'
+import { notificationRoutes } from './notifications.ts'
 import { overviewRoutes } from './overview.ts'
 import { playbackRoutes } from './playback.ts'
 import { profileImportRoutes } from './profileImports.ts'
@@ -26,6 +27,7 @@ import { storageRoutes } from './storage.ts'
 import { streamRoutes } from './stream.ts'
 import { titleRoutes } from './titles.ts'
 import { torrentRoutes } from './torrents.ts'
+import { updateRoutes } from './updates.ts'
 import { userRoutes } from './users.ts'
 
 export const apiRoutes: FastifyPluginAsyncZod = async (app) => {
@@ -53,6 +55,8 @@ export const apiRoutes: FastifyPluginAsyncZod = async (app) => {
 
   app.register(aboutRoutes, { prefix: '/about' })
   app.register(overviewRoutes, { prefix: '/overview' })
+  app.register(updateRoutes, { prefix: '/updates' })
+  app.register(notificationRoutes, { prefix: '/notifications' })
   app.register(authRoutes, { prefix: '/auth' })
   app.register(userRoutes, { prefix: '/users' })
   app.register(catalogRoutes, { prefix: '/catalog' })

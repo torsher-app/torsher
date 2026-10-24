@@ -386,7 +386,7 @@ export function startCheck(id?: string) {
   return true
 }
 
-/** Ждать конца проверки — для тестов */
+/** Ждать конца проверки: перепроверка проблем монитором и тесты */
 export async function waitForCheck() {
   while (run.done < run.total || checking.size)
     await new Promise(resolve => setTimeout(resolve, 5))

@@ -39,7 +39,14 @@ export const navItems: NavItem[] = [
 export interface SettingsItem {
   to: string
   /** Ключ строки в `panel.settings.nav` */
-  label: 'storage' | 'network' | 'metadata' | 'playback' | 'account' | 'about'
+  label:
+    | 'storage'
+    | 'network'
+    | 'metadata'
+    | 'playback'
+    | 'notifications'
+    | 'account'
+    | 'about'
 }
 
 export const settingsItems: SettingsItem[] = [
@@ -47,6 +54,7 @@ export const settingsItems: SettingsItem[] = [
   { to: '/settings/network', label: 'network' },
   { to: '/settings/metadata', label: 'metadata' },
   { to: '/settings/playback', label: 'playback' },
+  { to: '/settings/notifications', label: 'notifications' },
   { to: '/settings/account', label: 'account' },
   { to: '/settings/about', label: 'about' },
 ]

@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/breadcrumb'
 import { Button } from '@/components/ui/button'
 import { useSidebar } from '@/components/ui/sidebar'
+import NotificationsBell from '~/components/notifications/NotificationsBell.vue'
 
 defineProps<{
   title: string
@@ -58,6 +59,8 @@ const { toggleSidebar } = useSidebar()
     </Breadcrumb>
     <div class="ml-auto flex shrink-0 items-center gap-1.5">
       <slot name="actions" />
+      <!-- Колокол — на каждой странице панели, последним справа -->
+      <NotificationsBell />
     </div>
   </header>
 </template>

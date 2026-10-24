@@ -1665,6 +1665,7 @@ export interface LogEntryInput {
     | "sources"
     | "catalog"
     | "network"
+    | "notifications"
     | "auth";
   message: string;
   details?: string;
@@ -1996,6 +1997,61 @@ export interface UpdatePlaybackSettingsInput {
   accel: "auto" | "software";
 }
 
+export interface ReleaseInfoInput {
+  version: string;
+  publishedAt?: string;
+  url: string;
+  notes: string[];
+  prerelease: boolean;
+}
+
+export interface UpdateStatusResponseInput {
+  current: {
+    version: string;
+    commit?: string;
+  };
+  docsUrl: string;
+  enabled: boolean;
+  channel: "stable" | "beta";
+  state:
+    | "off"
+    | "dev"
+    | "unsupported"
+    | "unknown"
+    | "checking"
+    | "current"
+    | "available"
+    | "error";
+  latest?: ReleaseInfoInput;
+  checkedAt?: string;
+  error?: {
+    kind: "unavailable" | "rate_limited" | "invalid" | "not_found";
+    at: string;
+  };
+}
+
+export interface UpdateSettingsBodyInput {
+  enabled: boolean;
+  channel: "stable" | "beta";
+}
+
+export interface DismissUpdateBodyInput {
+  /**
+   * @minLength 1
+   * @maxLength 64
+   */
+  version: string;
+}
+
+export interface OverviewUpdateInput {
+  version: string;
+  publishedAt?: string;
+  url: string;
+  notes: string[];
+  channel: "stable" | "beta";
+  docsUrl: string;
+}
+
 export interface AttentionItemInput {
   kind:
     | "engine_down"
@@ -2035,6 +2091,7 @@ export interface OverviewResponseInput {
   startedAt: string;
   version: string;
   attention: AttentionItemInput[];
+  update?: OverviewUpdateInput;
   downloads: {
     total: number;
     active: number;
@@ -2057,6 +2114,192 @@ export interface OverviewResponseInput {
     watching: number;
   };
   playback: PlaybackSettingsInput | null;
+}
+
+export interface NotificationParamsInput {
+  count?: number;
+  name?: string;
+  reason?: string;
+  free?: number;
+  minFree?: number;
+  version?: string;
+  from?: string;
+  type?: string;
+}
+
+export interface NotificationItemInput {
+  id: string;
+  kind:
+    | "problem"
+    | "update_available"
+    | "server_updated"
+    | "download_completed"
+    | "device_paired"
+    | "channel_failing";
+  problem?:
+    | "engine_down"
+    | "engine_crashed"
+    | "storage_low"
+    | "storage_paused"
+    | "library_copies"
+    | "library_offline"
+    | "library_unmatched"
+    | "library_watcher"
+    | "indexer_error"
+    | "indexer_missing"
+    | "dns_spoofing"
+    | "host_unreachable"
+    | "tmdb_key_invalid"
+    | "media_accel_failed";
+  severity: "error" | "warning" | "info";
+  section?:
+    | "downloads"
+    | "library"
+    | "storage"
+    | "sources"
+    | "network"
+    | "metadata"
+    | "playback"
+    | "logs"
+    | "about"
+    | "people"
+    | "notifications";
+  params: NotificationParamsInput;
+  createdAt: string;
+  readAt?: string;
+  resolvedAt?: string;
+}
+
+export interface NotificationListInput {
+  items: NotificationItemInput[];
+  nextCursor?: string;
+  unread: number;
+}
+
+export interface NotificationUnreadCountInput {
+  count: number;
+}
+
+export type MarkNotificationsReadBodyInput =
+  | {
+      /**
+       * @maxItems 100
+       * @minItems 1
+       */
+      ids: string[];
+    }
+  | {
+      all: true;
+    };
+
+export type NotificationChannelConfigInput = Record<
+  string,
+  string | number | boolean | null
+>;
+
+export interface NotificationChannelBodyInput {
+  kind: "telegram" | "webhook" | "ntfy" | "gotify" | "apprise" | "email";
+  /**
+   * @minLength 1
+   * @maxLength 80
+   */
+  name: string;
+  enabled: boolean;
+  language: "ru_RU" | "en_US";
+  /** @format uri */
+  panelUrl?: string | null;
+  config: NotificationChannelConfigInput;
+  /** @maxItems 4 */
+  events: ("problems" | "updates" | "downloads" | "devices")[];
+  includeWarnings: boolean;
+  notifyResolved: boolean;
+}
+
+export interface NotificationChannelInput {
+  id: string;
+  kind: "telegram" | "webhook" | "ntfy" | "gotify" | "apprise" | "email";
+  name: string;
+  enabled: boolean;
+  language: "ru_RU" | "en_US";
+  panelUrl?: string;
+  config: NotificationChannelConfigInput;
+  secrets: string[];
+  events: ("problems" | "updates" | "downloads" | "devices")[];
+  includeWarnings: boolean;
+  notifyResolved: boolean;
+  lastSentAt?: string;
+  lastError?: {
+    kind: string;
+    at: string;
+  };
+  createdAt: string;
+}
+
+export interface NotificationChannelListInput {
+  kinds: ("telegram" | "webhook" | "ntfy" | "gotify" | "apprise" | "email")[];
+  items: NotificationChannelInput[];
+}
+
+export interface NotificationChannelEnabledBodyInput {
+  enabled: boolean;
+}
+
+export interface NotificationChannelConfigErrorInput {
+  message: string;
+  fields: string[];
+}
+
+export interface NotificationChannelTestBodyInput {
+  kind: "telegram" | "webhook" | "ntfy" | "gotify" | "apprise" | "email";
+  /**
+   * @minLength 1
+   * @maxLength 80
+   */
+  name: string;
+  enabled: boolean;
+  language: "ru_RU" | "en_US";
+  /** @format uri */
+  panelUrl?: string | null;
+  config: NotificationChannelConfigInput;
+  /** @maxItems 4 */
+  events: ("problems" | "updates" | "downloads" | "devices")[];
+  includeWarnings: boolean;
+  notifyResolved: boolean;
+  id?: string;
+}
+
+export interface NotificationChannelTestResultInput {
+  ok: boolean;
+  kind?:
+    | "unauthorized"
+    | "not_found"
+    | "rate_limited"
+    | "unavailable"
+    | "invalid_response"
+    | "invalid_config";
+  status?: number;
+}
+
+export interface TelegramChatsBodyInput {
+  /** @maxLength 200 */
+  token?: string;
+  id?: string;
+}
+
+export interface TelegramChatsInput {
+  ok: boolean;
+  kind?:
+    | "unauthorized"
+    | "not_found"
+    | "rate_limited"
+    | "unavailable"
+    | "invalid_response"
+    | "invalid_config";
+  chats: {
+    id: string;
+    title: string;
+    type: string;
+  }[];
 }
 
 export interface CreateProfileImportInput {
@@ -4148,6 +4391,7 @@ export interface LogEntry {
     | "sources"
     | "catalog"
     | "network"
+    | "notifications"
     | "auth";
   message: string;
   details?: string;
@@ -4479,6 +4723,61 @@ export interface UpdatePlaybackSettings {
   accel: "auto" | "software";
 }
 
+export interface ReleaseInfo {
+  version: string;
+  publishedAt?: string;
+  url: string;
+  notes: string[];
+  prerelease: boolean;
+}
+
+export interface UpdateStatusResponse {
+  current: {
+    version: string;
+    commit?: string;
+  };
+  docsUrl: string;
+  enabled: boolean;
+  channel: "stable" | "beta";
+  state:
+    | "off"
+    | "dev"
+    | "unsupported"
+    | "unknown"
+    | "checking"
+    | "current"
+    | "available"
+    | "error";
+  latest?: ReleaseInfo;
+  checkedAt?: string;
+  error?: {
+    kind: "unavailable" | "rate_limited" | "invalid" | "not_found";
+    at: string;
+  };
+}
+
+export interface UpdateSettingsBody {
+  enabled: boolean;
+  channel: "stable" | "beta";
+}
+
+export interface DismissUpdateBody {
+  /**
+   * @minLength 1
+   * @maxLength 64
+   */
+  version: string;
+}
+
+export interface OverviewUpdate {
+  version: string;
+  publishedAt?: string;
+  url: string;
+  notes: string[];
+  channel: "stable" | "beta";
+  docsUrl: string;
+}
+
 export interface AttentionItem {
   kind:
     | "engine_down"
@@ -4518,6 +4817,7 @@ export interface OverviewResponse {
   startedAt: string;
   version: string;
   attention: AttentionItem[];
+  update?: OverviewUpdate;
   downloads: {
     total: number;
     active: number;
@@ -4540,6 +4840,192 @@ export interface OverviewResponse {
     watching: number;
   };
   playback: PlaybackSettings | null;
+}
+
+export interface NotificationParams {
+  count?: number;
+  name?: string;
+  reason?: string;
+  free?: number;
+  minFree?: number;
+  version?: string;
+  from?: string;
+  type?: string;
+}
+
+export interface NotificationItem {
+  id: string;
+  kind:
+    | "problem"
+    | "update_available"
+    | "server_updated"
+    | "download_completed"
+    | "device_paired"
+    | "channel_failing";
+  problem?:
+    | "engine_down"
+    | "engine_crashed"
+    | "storage_low"
+    | "storage_paused"
+    | "library_copies"
+    | "library_offline"
+    | "library_unmatched"
+    | "library_watcher"
+    | "indexer_error"
+    | "indexer_missing"
+    | "dns_spoofing"
+    | "host_unreachable"
+    | "tmdb_key_invalid"
+    | "media_accel_failed";
+  severity: "error" | "warning" | "info";
+  section?:
+    | "downloads"
+    | "library"
+    | "storage"
+    | "sources"
+    | "network"
+    | "metadata"
+    | "playback"
+    | "logs"
+    | "about"
+    | "people"
+    | "notifications";
+  params: NotificationParams;
+  createdAt: string;
+  readAt?: string;
+  resolvedAt?: string;
+}
+
+export interface NotificationList {
+  items: NotificationItem[];
+  nextCursor?: string;
+  unread: number;
+}
+
+export interface NotificationUnreadCount {
+  count: number;
+}
+
+export type MarkNotificationsReadBody =
+  | {
+      /**
+       * @maxItems 100
+       * @minItems 1
+       */
+      ids: string[];
+    }
+  | {
+      all: true;
+    };
+
+export type NotificationChannelConfig = Record<
+  string,
+  string | number | boolean | null
+>;
+
+export interface NotificationChannelBody {
+  kind: "telegram" | "webhook" | "ntfy" | "gotify" | "apprise" | "email";
+  /**
+   * @minLength 1
+   * @maxLength 80
+   */
+  name: string;
+  enabled: boolean;
+  language: "ru_RU" | "en_US";
+  /** @format uri */
+  panelUrl?: string | null;
+  config: NotificationChannelConfig;
+  /** @maxItems 4 */
+  events: ("problems" | "updates" | "downloads" | "devices")[];
+  includeWarnings: boolean;
+  notifyResolved: boolean;
+}
+
+export interface NotificationChannel {
+  id: string;
+  kind: "telegram" | "webhook" | "ntfy" | "gotify" | "apprise" | "email";
+  name: string;
+  enabled: boolean;
+  language: "ru_RU" | "en_US";
+  panelUrl?: string;
+  config: NotificationChannelConfig;
+  secrets: string[];
+  events: ("problems" | "updates" | "downloads" | "devices")[];
+  includeWarnings: boolean;
+  notifyResolved: boolean;
+  lastSentAt?: string;
+  lastError?: {
+    kind: string;
+    at: string;
+  };
+  createdAt: string;
+}
+
+export interface NotificationChannelList {
+  kinds: ("telegram" | "webhook" | "ntfy" | "gotify" | "apprise" | "email")[];
+  items: NotificationChannel[];
+}
+
+export interface NotificationChannelEnabledBody {
+  enabled: boolean;
+}
+
+export interface NotificationChannelConfigError {
+  message: string;
+  fields: string[];
+}
+
+export interface NotificationChannelTestBody {
+  kind: "telegram" | "webhook" | "ntfy" | "gotify" | "apprise" | "email";
+  /**
+   * @minLength 1
+   * @maxLength 80
+   */
+  name: string;
+  enabled: boolean;
+  language: "ru_RU" | "en_US";
+  /** @format uri */
+  panelUrl?: string | null;
+  config: NotificationChannelConfig;
+  /** @maxItems 4 */
+  events: ("problems" | "updates" | "downloads" | "devices")[];
+  includeWarnings: boolean;
+  notifyResolved: boolean;
+  id?: string;
+}
+
+export interface NotificationChannelTestResult {
+  ok: boolean;
+  kind?:
+    | "unauthorized"
+    | "not_found"
+    | "rate_limited"
+    | "unavailable"
+    | "invalid_response"
+    | "invalid_config";
+  status?: number;
+}
+
+export interface TelegramChatsBody {
+  /** @maxLength 200 */
+  token?: string;
+  id?: string;
+}
+
+export interface TelegramChats {
+  ok: boolean;
+  kind?:
+    | "unauthorized"
+    | "not_found"
+    | "rate_limited"
+    | "unavailable"
+    | "invalid_response"
+    | "invalid_config";
+  chats: {
+    id: string;
+    title: string;
+    type: string;
+  }[];
 }
 
 export interface CreateProfileImport {
@@ -4978,6 +5464,39 @@ export interface WrongPasswordResponse {
 }
 
 export type GetOverviewError = MessageResponse;
+
+export type GetUpdateStatusError = MessageResponse;
+
+export type UpdateUpdateSettingsError = MessageResponse;
+
+export type CheckForUpdatesError = MessageResponse;
+
+export type DismissUpdateError = MessageResponse;
+
+export type GetNotificationsError = MessageResponse;
+
+export type GetUnreadNotificationsError = MessageResponse;
+
+export type MarkNotificationsReadError = MessageResponse;
+
+export type GetNotificationChannelsError = MessageResponse;
+
+export type CreateNotificationChannelError =
+  MessageResponse | NotificationChannelConfigError;
+
+export type UpdateNotificationChannelError =
+  MessageResponse | NotificationChannelConfigError;
+
+export type SetNotificationChannelEnabledError = MessageResponse;
+
+export type DeleteNotificationChannelError = MessageResponse;
+
+export type TestNotificationChannelError = MessageResponse;
+
+export type TestNotificationChannelDraftError =
+  MessageResponse | NotificationChannelConfigError;
+
+export type FindTelegramChatsError = MessageResponse;
 
 export type PostAuthSignupError = MessageResponse;
 
@@ -5571,6 +6090,289 @@ export class Api<
       this.request<OverviewResponse, GetOverviewError>({
         path: `/api/overview`,
         method: "GET",
+        format: "json",
+        ...params,
+      }),
+  };
+  updates = {
+    /**
+     * No description
+     *
+     * @tags Updates
+     * @name GetUpdateStatus
+     * @request GET:/api/updates
+     */
+    getUpdateStatus: (params: RequestParams = {}) =>
+      this.request<UpdateStatusResponse, GetUpdateStatusError>({
+        path: `/api/updates`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Updates
+     * @name UpdateUpdateSettings
+     * @request PUT:/api/updates/settings
+     */
+    updateUpdateSettings: (
+      data: UpdateSettingsBodyInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<UpdateStatusResponse, UpdateUpdateSettingsError>({
+        path: `/api/updates/settings`,
+        method: "PUT",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Updates
+     * @name CheckForUpdates
+     * @request POST:/api/updates/check
+     */
+    checkForUpdates: (params: RequestParams = {}) =>
+      this.request<UpdateStatusResponse, CheckForUpdatesError>({
+        path: `/api/updates/check`,
+        method: "POST",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Updates
+     * @name DismissUpdate
+     * @request POST:/api/updates/dismiss
+     */
+    dismissUpdate: (data: DismissUpdateBodyInput, params: RequestParams = {}) =>
+      this.request<null, DismissUpdateError>({
+        path: `/api/updates/dismiss`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+  };
+  notifications = {
+    /**
+     * No description
+     *
+     * @tags Notifications
+     * @name GetNotifications
+     * @request GET:/api/notifications
+     */
+    getNotifications: (
+      query?: {
+        before?: string;
+        /**
+         * @min 1
+         * @max 100
+         * @default 20
+         */
+        limit?: number;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<NotificationList, GetNotificationsError>({
+        path: `/api/notifications`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Notifications
+     * @name GetUnreadNotifications
+     * @request GET:/api/notifications/unread
+     */
+    getUnreadNotifications: (params: RequestParams = {}) =>
+      this.request<NotificationUnreadCount, GetUnreadNotificationsError>({
+        path: `/api/notifications/unread`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Notifications
+     * @name MarkNotificationsRead
+     * @request POST:/api/notifications/read
+     */
+    markNotificationsRead: (
+      data: MarkNotificationsReadBodyInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<null, MarkNotificationsReadError>({
+        path: `/api/notifications/read`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Notifications
+     * @name GetNotificationChannels
+     * @request GET:/api/notifications/channels
+     */
+    getNotificationChannels: (params: RequestParams = {}) =>
+      this.request<NotificationChannelList, GetNotificationChannelsError>({
+        path: `/api/notifications/channels`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Notifications
+     * @name CreateNotificationChannel
+     * @request POST:/api/notifications/channels
+     */
+    createNotificationChannel: (
+      data: NotificationChannelBodyInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<NotificationChannel, CreateNotificationChannelError>({
+        path: `/api/notifications/channels`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Notifications
+     * @name UpdateNotificationChannel
+     * @request PUT:/api/notifications/channels/{id}
+     */
+    updateNotificationChannel: (
+      id: string,
+      data: NotificationChannelBodyInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<NotificationChannel, UpdateNotificationChannelError>({
+        path: `/api/notifications/channels/${id}`,
+        method: "PUT",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Notifications
+     * @name SetNotificationChannelEnabled
+     * @request PATCH:/api/notifications/channels/{id}
+     */
+    setNotificationChannelEnabled: (
+      id: string,
+      data: NotificationChannelEnabledBodyInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<NotificationChannel, SetNotificationChannelEnabledError>({
+        path: `/api/notifications/channels/${id}`,
+        method: "PATCH",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Notifications
+     * @name DeleteNotificationChannel
+     * @request DELETE:/api/notifications/channels/{id}
+     */
+    deleteNotificationChannel: (id: string, params: RequestParams = {}) =>
+      this.request<null, DeleteNotificationChannelError>({
+        path: `/api/notifications/channels/${id}`,
+        method: "DELETE",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Notifications
+     * @name TestNotificationChannel
+     * @request POST:/api/notifications/channels/{id}/test
+     */
+    testNotificationChannel: (id: string, params: RequestParams = {}) =>
+      this.request<NotificationChannelTestResult, TestNotificationChannelError>(
+        {
+          path: `/api/notifications/channels/${id}/test`,
+          method: "POST",
+          format: "json",
+          ...params,
+        },
+      ),
+
+    /**
+     * No description
+     *
+     * @tags Notifications
+     * @name TestNotificationChannelDraft
+     * @request POST:/api/notifications/channels/test
+     */
+    testNotificationChannelDraft: (
+      data: NotificationChannelTestBodyInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<
+        NotificationChannelTestResult,
+        TestNotificationChannelDraftError
+      >({
+        path: `/api/notifications/channels/test`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Notifications
+     * @name FindTelegramChats
+     * @request POST:/api/notifications/telegram/chats
+     */
+    findTelegramChats: (
+      data: TelegramChatsBodyInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<TelegramChats, FindTelegramChatsError>({
+        path: `/api/notifications/telegram/chats`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
         format: "json",
         ...params,
       }),
@@ -8282,7 +9084,7 @@ export class Api<
     getLogs: (
       query?: {
         level?: "debug" | "info" | "warn" | "error";
-        /** @pattern ^(?:server|engine|playback|storage|sources|catalog|network|auth)(?:,(?:server|engine|playback|storage|sources|catalog|network|auth))*$ */
+        /** @pattern ^(?:server|engine|playback|storage|sources|catalog|network|notifications|auth)(?:,(?:server|engine|playback|storage|sources|catalog|network|notifications|auth))*$ */
         source?: string;
         /** @maxLength 200 */
         q?: string;

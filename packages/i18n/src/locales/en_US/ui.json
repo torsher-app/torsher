@@ -994,7 +994,8 @@
         "storage": "Storage",
         "network": "Network",
         "metadata": "Metadata",
-        "playback": "Playback"
+        "playback": "Playback",
+        "notifications": "Notifications"
       },
       "account": {
         "description": "The server owner account. A second one can't be created: the household watches through profiles.",
@@ -1917,7 +1918,8 @@
         "sources": "Sources",
         "catalog": "Catalog",
         "network": "Network",
-        "auth": "Sign-in"
+        "auth": "Sign-in",
+        "notifications": "Notifications"
       },
       "levels": {
         "debug": "Debug",
@@ -2293,6 +2295,208 @@
         "next": "Next",
         "back": "Back"
       }
+    },
+    "updates": {
+      "title": "Updates",
+      "text": "Once a day the server checks the project's releases on GitHub. The request carries no data about you or this server.",
+      "available": "Version {version} is available",
+      "published": "Released {date}",
+      "dismiss": "Hide until the next version",
+      "howTo": "How to update",
+      "whatsNew": "What's new",
+      "toggle": "Check for updates",
+      "toggleText": "When off, the server never contacts GitHub.",
+      "channel": "Channel",
+      "channels": {
+        "stable": "Stable",
+        "stableText": "Releases only. Recommended.",
+        "beta": "Beta",
+        "betaText": "Pre-releases too: new features earlier, rough edges possible."
+      },
+      "check": "Check now",
+      "state": {
+        "off": "Update checks are off",
+        "dev": "Development build: updates aren't checked",
+        "unsupported": "The source repository isn't on GitHub: updates aren't checked",
+        "unknown": "Not checked yet",
+        "checking": "Checking…",
+        "current": "Up to date · checked {time}",
+        "available": "Checked {time}",
+        "error": "Couldn't check for updates"
+      },
+      "error": {
+        "unavailable": "GitHub didn't respond: will try again in an hour",
+        "rate_limited": "GitHub limited requests from this address: will try again later",
+        "invalid": "GitHub returned an unexpected response",
+        "not_found": "The repository isn't found on GitHub or is private"
+      },
+      "dialog": {
+        "title": "Update to {version}",
+        "text": "The container doesn't update itself. Run the command on the server, in the folder with docker-compose.yml.",
+        "compose": "Docker Compose",
+        "tag": "The image tag in docker-compose.yml should be :{tag}. If it names a version, change it to :{version} first.",
+        "backup": "The database, keys and downloads live in the /data volume and survive the container being replaced.",
+        "docs": "Update guide",
+        "watching": "Someone is watching on {n} device | Someone is watching on {n} devices",
+        "watchingText": "Updating restarts the server and interrupts playback."
+      }
+    },
+    "notifications": {
+      "title": "Notifications",
+      "bellUnread": "Notifications, {n} unread | Notifications, {n} unread",
+      "readAll": "Mark all as read",
+      "loadError": "Couldn't load notifications",
+      "empty": "Nothing new",
+      "more": "Show more",
+      "settings": "Notification settings",
+      "resolved": "resolved",
+      "unreadMark": "Unread",
+      "description": "Where the server tells you about problems, updates and finished downloads.",
+      "channels": "Channels",
+      "add": "Add channel",
+      "loadChannelsError": "Couldn't load channels",
+      "emptyTitle": "No channels yet",
+      "emptyText": "The bell in the panel already shows everything. Add Telegram, a webhook, ntfy, Gotify or email to get messages when the panel is closed.",
+      "centerHint": "The notification center in the panel always gets every event.",
+      "noEvents": "no events selected",
+      "failing": "Not delivered: {reason}",
+      "lastSent": "Last sent {time}",
+      "neverSent": "Nothing sent yet",
+      "enabledLabel": "Channel “{name}” is on",
+      "actions": "Actions for “{name}”",
+      "edit": "Edit",
+      "kinds": {
+        "telegram": "Telegram",
+        "webhook": "Webhook",
+        "ntfy": "ntfy",
+        "gotify": "Gotify",
+        "apprise": "Apprise API",
+        "email": "Email"
+      },
+      "kindShort": {
+        "telegram": "Messages from your bot",
+        "webhook": "Discord, Slack or your own JSON receiver",
+        "ntfy": "Push notifications to your phone",
+        "gotify": "Your own Gotify server",
+        "apprise": "Other services through your apprise-api",
+        "email": "Letters over SMTP"
+      },
+      "kindHints": {
+        "telegram": "Create a bot with BotFather in Telegram, paste its token and pick the chat.",
+        "webhook": "Discord and Slack are recognized by the address; any other address gets Torsher JSON.",
+        "ntfy": "Install the ntfy app and subscribe to the same topic. Choose a topic that's hard to guess.",
+        "gotify": "Create an application in Gotify and paste its token.",
+        "apprise": "Sends through your own apprise-api server, which reaches the services it supports.",
+        "email": "Any SMTP server: your mail provider or your own."
+      },
+      "groups": {
+        "problems": "Server problems",
+        "updates": "Updates",
+        "downloads": "Finished downloads",
+        "devices": "New devices"
+      },
+      "groupHints": {
+        "problems": "Engine, storage, indexers, network, TMDB — the same as “Needs attention”",
+        "updates": "A new Torsher version is available",
+        "downloads": "Files you chose to download are fully downloaded",
+        "devices": "A TV was connected with a code"
+      },
+      "dialog": {
+        "addTitle": "Add a channel",
+        "addKindTitle": "Add {kind}",
+        "editTitle": "Edit channel",
+        "chooseKind": "Where should the server send messages?",
+        "back": "Back",
+        "savedSecret": "Saved",
+        "savedSecretHint": "Saved. Leave empty to keep it.",
+        "removeSecret": "Remove",
+        "restoreSecret": "Undo",
+        "clearedSecretHint": "Will be removed when you save.",
+        "movedSecretHint": "The address changed: enter it again.",
+        "unknownKind": "This server doesn't support this kind of channel",
+        "saveFailed": "Couldn't save the channel. Try again.",
+        "saved": "Channel saved",
+        "added": "Channel added"
+      },
+      "validation": {
+        "required": "Fill in this field",
+        "url": "Enter an address starting with http:// or https://",
+        "invalid": "The server didn't accept this value"
+      },
+      "fields": {
+        "name": "Name",
+        "botToken": "Bot token",
+        "botTokenHint": "BotFather sends it when the bot is created.",
+        "chatId": "Chat",
+        "chatIdHint": "A chat ID number, or {'@'}name of a public channel.",
+        "webhookUrl": "Webhook address",
+        "webhookUrlHint": "It works as a key: keep it private.",
+        "format": {
+          "label": "Format",
+          "hint": "Automatic picks Discord or Slack by the address.",
+          "auto": "Automatic",
+          "discord": "Discord",
+          "slack": "Slack",
+          "json": "Torsher JSON"
+        },
+        "authorization": "Authorization header",
+        "authorizationHint": "Optional: sent as is, for example “Bearer …”.",
+        "server": "Server",
+        "topic": "Topic",
+        "topicHint": "Anyone who knows the topic can read it on a public server.",
+        "accessToken": "Access token",
+        "accessTokenHint": "Optional: for a server with access control.",
+        "appToken": "Application token",
+        "appriseServer": "apprise-api address",
+        "appriseServerHint": "Your own apprise-api server.",
+        "appriseKey": "Configuration key",
+        "appriseKeyHint": "A saved configuration in apprise-api; or fill in the service URLs below.",
+        "appriseUrls": "Service URLs",
+        "appriseUrlsHint": "Apprise URLs separated by commas or spaces, if there's no key.",
+        "username": "Username",
+        "password": "Password",
+        "smtpHost": "SMTP server",
+        "port": "Port",
+        "security": {
+          "label": "Encryption",
+          "starttls": "STARTTLS (usually port 587)",
+          "tls": "TLS (usually port 465)",
+          "none": "None"
+        },
+        "from": "From",
+        "to": "To",
+        "events": "Events",
+        "includeWarnings": "Warnings too, not only errors",
+        "notifyResolved": "Tell when a problem is resolved",
+        "language": "Message language",
+        "panelUrl": "Panel address",
+        "panelUrlHint": "For links in messages.",
+        "languageHint": "Independent of the panel language."
+      },
+      "test": {
+        "send": "Send test",
+        "ok": "Test message sent",
+        "okText": "Check that it arrived.",
+        "sent": "Test message sent to “{name}”",
+        "errors": {
+          "unauthorized": "The service rejected the token or password",
+          "not_found": "The chat, topic or address wasn't found",
+          "rate_limited": "The service limited messages: try again later",
+          "unavailable": "The service didn't respond: check the address and the network route",
+          "invalid_response": "The service rejected the message",
+          "invalid_config": "The settings are incomplete or a saved key can't be read: enter it again"
+        }
+      },
+      "telegram": {
+        "find": "Find chat",
+        "findHint": "Send /start to the bot first.",
+        "none": "No chats yet: send /start to the bot and search again."
+      },
+      "deleteDialog": {
+        "title": "Delete “{name}”?",
+        "text": "Messages will stop going to this channel. The notification center in the panel keeps working.",
+        "deleted": "Channel “{name}” deleted"
+      }
     }
   },
   "mine": {
@@ -2506,5 +2710,43 @@
     "count": "{n} video | {n} videos",
     "empty": "Nothing here yet",
     "all": "All home videos"
+  },
+  "notifications": {
+    "problem": {
+      "error": "Torsher: problem",
+      "warning": "Torsher: warning",
+      "resolved": "Torsher: resolved"
+    },
+    "events": {
+      "update_available": {
+        "title": "Torsher {version} is available",
+        "text": "See what's new and how to update in the panel."
+      },
+      "server_updated": {
+        "title": "Updated to {version}",
+        "text": "Torsher was updated from version {from}."
+      },
+      "download_completed": {
+        "title": "Download complete",
+        "text": "“{name}” has finished downloading."
+      },
+      "device_paired": {
+        "title": "Device connected",
+        "text": "“{name}” was connected with a code."
+      },
+      "channel_failing": {
+        "title": "Notifications aren't delivered",
+        "text": "Channel “{name}” couldn't send a message."
+      },
+      "test": {
+        "title": "Torsher test notification",
+        "text": "This channel works: Torsher notifications will arrive here."
+      }
+    },
+    "overflow": {
+      "title": "Torsher: too many notifications",
+      "text": "{n} more notification is in the panel | {n} more notifications are in the panel"
+    },
+    "openPanel": "Open the panel"
   }
 }
