@@ -137,7 +137,99 @@ describe('movieToDetails', () => {
       countries: [],
       studios: [],
       creators: [],
+      tagline: 'Добро пожаловать в реальный мир',
+      status: undefined,
+      originalLanguage: undefined,
+      releases: [{ type: 'premiere', date: '1999-03-31' }],
+      budget: undefined,
+      revenue: undefined,
     })
+  })
+
+  it('не отдаёт нулевые бюджет и сборы и пустой слоган, переводит статус', () => {
+    expect(
+      movieToDetails({
+        ...movie,
+        budget: 0,
+        revenue: 465000000,
+        tagline: ' ',
+        status: 'Post Production',
+        original_language: 'en',
+      }),
+    ).toMatchObject({
+      budget: undefined,
+      revenue: 465000000,
+      tagline: undefined,
+      status: 'postProduction',
+      originalLanguage: 'en',
+    })
+  })
+
+  it('снимает со слогана внешние кавычки, но не внутренние', () => {
+    expect(
+      movieToDetails({ ...movie, tagline: '«Последняя надежда двух миров»' })
+        .tagline,
+    ).toBe('Последняя надежда двух миров')
+    expect(
+      movieToDetails({ ...movie, tagline: '«Один» против «всех»' }).tagline,
+    ).toBe('«Один» против «всех»')
+  })
+
+  it('берёт кинорелиз региона позже премьеры и цифровой релиз, без него — американский', () => {
+    const dated = {
+      ...movie,
+      release_date: '2026-03-15',
+      release_dates: {
+        results: [
+          {
+            iso_3166_1: 'US',
+            release_dates: [
+              {
+                certification: '',
+                type: 3,
+                release_date: '2026-03-15T00:00:00.000Z',
+              },
+              {
+                certification: '',
+                type: 4,
+                release_date: '2026-05-20T00:00:00.000Z',
+              },
+              {
+                certification: '',
+                type: 4,
+                release_date: '2026-05-01T00:00:00.000Z',
+              },
+            ],
+          },
+          {
+            iso_3166_1: 'RU',
+            release_dates: [
+              {
+                certification: '',
+                type: 1,
+                release_date: '2026-03-01T00:00:00.000Z',
+              },
+              {
+                certification: '',
+                type: 3,
+                release_date: '2026-03-20T00:00:00.000Z',
+              },
+            ],
+          },
+        ],
+      },
+    }
+
+    expect(movieToDetails(dated, 'ru-RU').releases).toEqual([
+      { type: 'premiere', date: '2026-03-15' },
+      { type: 'theatrical', date: '2026-03-20', country: 'RU' },
+      { type: 'digital', date: '2026-05-01', country: 'US' },
+    ])
+    // Кинорелиз в день премьеры повтором не считается
+    expect(movieToDetails(dated, 'en-US').releases).toEqual([
+      { type: 'premiere', date: '2026-03-15' },
+      { type: 'digital', date: '2026-05-01', country: 'US' },
+    ])
   })
 
   it('берёт возраст региона языка, иначе американский, пропуская пустые', () => {
@@ -268,6 +360,47 @@ describe('tvToDetails', () => {
     }
 
     expect(tvToDetails(tv).studios).toEqual(['NTV', 'START'])
+  })
+
+  it('берёт эфир, статус, следующую серию и число серий', () => {
+    expect(
+      tvToDetails({
+        ...tvOngoing,
+        number_of_episodes: 26,
+        original_language: 'en',
+        next_episode_to_air: {
+          season_number: 2,
+          episode_number: 5,
+          air_date: '2026-10-31',
+        },
+      }),
+    ).toMatchObject({
+      status: 'returning',
+      originalLanguage: 'en',
+      firstAirDate: '2008-01-20',
+      lastAirDate: '2026-10-17',
+      nextEpisode: { season: 2, episode: 5, airDate: '2026-10-31' },
+      episodeCount: 26,
+    })
+    expect(tvToDetails(tv).nextEpisode).toBeUndefined()
+  })
+
+  it('длительность серии — из episode_run_time, без неё — по последней серии', () => {
+    expect(
+      tvToDetails({ ...tvOngoing, episode_run_time: [48, 55] }).episodeRuntime,
+    ).toBe(48)
+    expect(
+      tvToDetails({
+        ...tvOngoing,
+        episode_run_time: [],
+        last_episode_to_air: {
+          season_number: 2,
+          episode_number: 4,
+          runtime: 52,
+        },
+      }).episodeRuntime,
+    ).toBe(52)
+    expect(tvToDetails(tvOngoing).episodeRuntime).toBeUndefined()
   })
 
   it('не показывает рейтинг без голосов и бэкдроп без картинки', () => {

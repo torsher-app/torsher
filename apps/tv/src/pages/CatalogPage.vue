@@ -29,6 +29,7 @@ import PosterSkeleton from '../components/PosterSkeleton.vue'
 import ScreenState from '../components/ScreenState.vue'
 import { useCatalogDiscover } from '../composables/useCatalogDiscover.ts'
 import { useCatalogGenres } from '../composables/useCatalogGenres.ts'
+import { useChipRibbon } from '../composables/useChipRibbon.ts'
 import { useStackScroll } from '../composables/useStackScroll.ts'
 import { useFocus } from '../focus/index.ts'
 import {
@@ -54,14 +55,12 @@ import {
   windowOf,
 } from '../lib/gridWindow.ts'
 import { stackOffset } from '../lib/rowStack.ts'
-import { revealOffset } from '../lib/rowTrack.ts'
 
 defineOptions({ name: 'CatalogPage' })
 
 const COLUMNS = 6
 // Две строки скелетонов: столько сетки видно до первого ответа
 const SKELETON_ROWS = 2
-const CHIP_GAP = 24
 // Оценка TMDB — бренд, не переводится
 const RATING_LABEL = 'TMDB'
 
@@ -454,31 +453,13 @@ function reset() {
 }
 
 // Лента чипов: все фильтры в ширину экрана не помещаются
-
-const chipsView = ref<HTMLElement>()
-const chipsOffset = ref(0)
-
-function revealChip(el: HTMLElement) {
-  const track = el.parentElement
-
-  if (!chipsView.value || !track)
-    return
-
-  // Поля окна — место кольцу фокуса и safe area, лента видна между ними
-  const style = getComputedStyle(chipsView.value)
-  const viewWidth
-    = chipsView.value.clientWidth
-      - Number.parseFloat(style.paddingLeft)
-      - Number.parseFloat(style.paddingRight)
-
-  chipsOffset.value = revealOffset(
-    chipsOffset.value,
-    { left: el.offsetLeft, width: el.offsetWidth },
-    viewWidth,
-    track.scrollWidth,
-    (window.innerWidth / 1920) * CHIP_GAP,
-  )
-}
+const {
+  view: chipsView,
+  native: nativeChips,
+  trackStyle: chipsTrackStyle,
+  reveal: revealChip,
+  onScroll: onChipsScroll,
+} = useChipRibbon()
 
 // Сетка: строки по COLUMNS, в DOM — окно строк вокруг опорной
 
@@ -600,10 +581,14 @@ const stopFocus = focus.onFocus((el, via) => {
   if (!screen.value?.contains(el))
     return
 
-  if (chipsView.value?.contains(el))
-    revealChip(el)
-  else if (area.value?.contains(el))
+  // Наведение только подсвечивает: лента под указкой не едет
+  if (chipsView.value?.contains(el)) {
+    if (via !== 'pointer')
+      revealChip(el)
+  }
+  else if (area.value?.contains(el)) {
     onFocusGrid(el, via)
+  }
 })
 
 watch(visibleRows, () => nextTick(measure))
@@ -681,12 +666,17 @@ onBeforeUnmount(() => {
       </p>
     </header>
 
-    <div ref="chipsView" class="catalog__chips-view">
+    <div
+      ref="chipsView"
+      class="catalog__chips-view"
+      :class="{ 'catalog__chips-view--native': nativeChips }"
+      @scroll="onChipsScroll"
+    >
       <FocusSection
         name="catalog-controls"
         manual-scroll
         class="catalog__chips"
-        :style="{ transform: `translateX(${-chipsOffset}px)` }"
+        :style="chipsTrackStyle"
         :edges="{ left: RAIL_SECTION, down: content }"
       >
         <button
@@ -849,7 +839,7 @@ onBeforeUnmount(() => {
   font-variant-numeric: tabular-nums;
 }
 
-/* Лента чипов в окне: фокусный чип пульт держит в окне (revealOffset) */
+/* Лента чипов в окне: фокусный чип пульт держит в окне (useChipRibbon) */
 .catalog__chips-view {
   position: absolute;
   z-index: 6;
@@ -862,6 +852,21 @@ onBeforeUnmount(() => {
 }
 
 /* position: relative — offsetLeft чипа считается от ленты */
+/* Веб: окно прокручивается нативно, поля под кольцо и safe area те же */
+.catalog__chips-view--native {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.catalog__chips-view--native::-webkit-scrollbar {
+  display: none;
+}
+
+/* Дорожка шириной по чипам: иначе правое поле окна не входит в прокрутку */
+.catalog__chips-view--native .catalog__chips {
+  width: max-content;
+}
+
 .catalog__chips {
   position: relative;
   display: flex;
