@@ -54,8 +54,8 @@ function respond(body: Uint8Array, headers: Record<string, string> = {}) {
   })
 }
 
-beforeAll(() => {
-  migrateDb()
+beforeAll(async () => {
+  await migrateDb()
 })
 
 beforeEach(() => {

@@ -158,7 +158,7 @@ function ratingOf(titleId: string) {
 }
 
 beforeAll(async () => {
-  migrateDb()
+  await migrateDb()
   getDb()
     .insert(users)
     .values({

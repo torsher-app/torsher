@@ -4,8 +4,8 @@ import { migrateDb } from '../db/index.ts'
 
 const app = createApp()
 
-beforeAll(() => {
-  migrateDb()
+beforeAll(async () => {
+  await migrateDb()
 })
 
 afterEach(() => {

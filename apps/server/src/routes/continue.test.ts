@@ -106,7 +106,7 @@ async function continueItems(search = '') {
 }
 
 beforeAll(async () => {
-  migrateDb()
+  await migrateDb()
   getDb()
     .insert(users)
     .values({

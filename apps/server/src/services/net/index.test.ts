@@ -148,7 +148,7 @@ let socksAuthPort = 0
 let proxyPort = 0
 
 beforeAll(async () => {
-  migrateDb()
+  await migrateDb()
   setNetTransport(null);
   [targetPort, socksPort, socksAuthPort, proxyPort] = await Promise.all([
     listen(target),

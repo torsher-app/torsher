@@ -20,6 +20,7 @@ export function createShutdown(options: ShutdownOptions) {
   let started = false
   let finished = false
   let timer: ReturnType<typeof setTimeout> | undefined
+  let successCode = 0
 
   function finish(code: number) {
     if (finished)
@@ -28,7 +29,7 @@ export function createShutdown(options: ShutdownOptions) {
     finished = true
     clearTimeout(timer)
 
-    if (code !== 0)
+    if (code !== successCode)
       options.kill()
 
     options.exit(code)
@@ -43,7 +44,7 @@ export function createShutdown(options: ShutdownOptions) {
           return
       }
 
-      finish(0)
+      finish(successCode)
     }
     catch (err) {
       options.onError?.(err)
@@ -51,13 +52,16 @@ export function createShutdown(options: ShutdownOptions) {
     }
   }
 
-  return () => {
+  // Код успешной остановки: перезапуск после восстановления выходит с
+  // ненулевым, чтобы Docker поднял контейнер и при `restart: on-failure`
+  return (exitCode = 0) => {
     if (started) {
       finish(1)
       return
     }
 
     started = true
+    successCode = exitCode
     timer = setTimeout(finish, timeoutMs, 1)
     void run()
   }

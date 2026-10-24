@@ -120,8 +120,8 @@ async function scanned(res: Awaited<ReturnType<typeof addLibrary>>) {
   return folderId
 }
 
-beforeAll(() => {
-  migrateDb()
+beforeAll(async () => {
+  await migrateDb()
   getDb()
     .insert(users)
     .values({

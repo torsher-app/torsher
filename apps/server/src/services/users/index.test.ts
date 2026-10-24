@@ -7,8 +7,8 @@ function user(email: string) {
   return { name: 'User', email, passwordHash: 'hash' }
 }
 
-beforeAll(() => {
-  migrateDb()
+beforeAll(async () => {
+  await migrateDb()
 })
 
 beforeEach(() => {

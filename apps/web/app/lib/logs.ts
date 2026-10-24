@@ -40,6 +40,7 @@ export const logSourceLabels: Record<LogSource, string> = {
   catalog: 'panel.logs.sources.catalog',
   network: 'panel.logs.sources.network',
   auth: 'panel.logs.sources.auth',
+  backups: 'panel.logs.sources.backups',
 }
 
 export const LOG_SOURCES = Object.keys(logSourceLabels) as LogSource[]

@@ -1665,7 +1665,8 @@ export interface LogEntryInput {
     | "sources"
     | "catalog"
     | "network"
-    | "auth";
+    | "auth"
+    | "backups";
   message: string;
   details?: string;
   context?: Record<string, string | number | boolean>;
@@ -4148,7 +4149,8 @@ export interface LogEntry {
     | "sources"
     | "catalog"
     | "network"
-    | "auth";
+    | "auth"
+    | "backups";
   message: string;
   details?: string;
   context?: Record<string, string | number | boolean>;
@@ -8282,7 +8284,7 @@ export class Api<
     getLogs: (
       query?: {
         level?: "debug" | "info" | "warn" | "error";
-        /** @pattern ^(?:server|engine|playback|storage|sources|catalog|network|auth)(?:,(?:server|engine|playback|storage|sources|catalog|network|auth))*$ */
+        /** @pattern ^(?:server|engine|playback|storage|sources|catalog|network|auth|backups)(?:,(?:server|engine|playback|storage|sources|catalog|network|auth|backups))*$ */
         source?: string;
         /** @maxLength 200 */
         q?: string;

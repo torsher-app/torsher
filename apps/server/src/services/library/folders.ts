@@ -40,7 +40,7 @@ export class FolderPathError extends Error {
   }
 }
 
-function overlaps(a: string, b: string) {
+export function overlaps(a: string, b: string) {
   return a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`)
 }
 

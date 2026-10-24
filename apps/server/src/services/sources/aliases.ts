@@ -11,7 +11,7 @@ import { titleAliases } from '../../db/schema.ts'
 import { TMDB_MAX_CACHE_AGE_MS } from '../tmdb/cache.ts'
 
 // Алиасы, собранные из данных TMDB: их срок хранения — как у кэша TMDB
-const TMDB_KINDS: TitleAliasKind[] = [
+export const TMDB_ALIAS_KINDS: TitleAliasKind[] = [
   'official',
   'original',
   'alternative',
@@ -71,7 +71,9 @@ export function syncTitleAliases(
   now = Date.now(),
 ): TitleAlias[] {
   const current = readAliases(titleId)
-  const fromTmdb = current.filter(alias => TMDB_KINDS.includes(alias.kind))
+  const fromTmdb = current.filter(alias =>
+    TMDB_ALIAS_KINDS.includes(alias.kind),
+  )
   const fresh
     = fromTmdb.length > 0
       && fromTmdb.every(alias => now - alias.syncedAt.getTime() < ALIAS_TTL_MS)
@@ -87,7 +89,7 @@ export function syncTitleAliases(
       .where(
         and(
           eq(titleAliases.titleId, titleId),
-          inArray(titleAliases.kind, TMDB_KINDS),
+          inArray(titleAliases.kind, TMDB_ALIAS_KINDS),
         ),
       )
       .run()
@@ -105,7 +107,7 @@ export function purgeExpiredAliases(now = Date.now()) {
     .delete(titleAliases)
     .where(
       and(
-        inArray(titleAliases.kind, TMDB_KINDS),
+        inArray(titleAliases.kind, TMDB_ALIAS_KINDS),
         lte(titleAliases.syncedAt, new Date(now - TMDB_MAX_CACHE_AGE_MS)),
       ),
     )

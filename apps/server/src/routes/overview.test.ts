@@ -106,7 +106,7 @@ function insertTorrent(values: Partial<typeof torrents.$inferInsert> = {}) {
 }
 
 beforeAll(async () => {
-  migrateDb()
+  await migrateDb()
 
   const user = createOwner({
     name: 'Owner',

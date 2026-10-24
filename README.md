@@ -52,6 +52,7 @@ Everything except the values below is set in the panel.
 | `API_PORT` | `8080` | Port inside the container |
 | `ENGINE_PEER_PORT` | any free port | Port the torrent engine accepts peer connections on; publish it to be reachable from outside |
 | `LOG_LEVEL` | level chosen in the panel, `info` | Log level: `error`, `warn`, `info` or `debug`. When set, the **Verbose logs** switch in the panel is unavailable |
+| `TORSHER_SKIP_PRE_UPDATE_BACKUP` | — | Set to `1` to let an update change the database even when the backup before the update fails. Without a backup a failed update can't be undone |
 
 ### Hardware transcoding
 

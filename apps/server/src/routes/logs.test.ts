@@ -47,7 +47,7 @@ async function logs(query = '') {
 }
 
 beforeAll(async () => {
-  migrateDb()
+  await migrateDb()
 
   const user = createOwner({
     name: 'Owner',

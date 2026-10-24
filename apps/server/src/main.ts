@@ -3,7 +3,16 @@ import process from 'node:process'
 import packageJson from '../package.json' with { type: 'json' }
 import { createApp } from './app.ts'
 import { config } from './config.ts'
-import { migrateDb } from './db/index.ts'
+import type { MigrateReport } from './db/index.ts'
+import { DowngradeError, migrateDb, PreUpdateBackupError } from './db/index.ts'
+import {
+  addRestoreWarningsNow,
+  applyPendingRestoreNow,
+  cleanupBackupTempNow,
+  finalizeRestoreNow,
+  startBackupScheduler,
+  stopBackupScheduler,
+} from './services/backups/index.ts'
 import { createEngine, isEngineReady } from './services/engine/index.ts'
 import {
   checkLinkMode,
@@ -45,6 +54,8 @@ import {
   resumeResolving,
 } from './services/torrents/index.ts'
 import { purgeImports } from './services/transfer/imports.ts'
+import { onRestartRequested } from './services/lifecycle.ts'
+import { reconcileTorrentsAfterRestore } from './services/torrents/reconcile.ts'
 import { createShutdown } from './shutdown.ts'
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -54,7 +65,25 @@ const STORAGE_CHECK_MS = 60 * 1000
 // после перезапуска ничего не знал бы о сети, пока владелец не открыл «Сеть»
 const HOST_CHECK_MS = 30 * 60 * 1000
 
-migrateDb()
+// До любого обращения к базе и ключу секретов: восстановление подменяет их
+await cleanupBackupTempNow()
+
+const restoreResult = await applyPendingRestoreNow()
+let migrateReport: MigrateReport
+
+try {
+  migrateReport = await migrateDb()
+}
+catch (err) {
+  // Даунгрейд или копия перед миграциями не удалась: база не тронута,
+  // владелец видит причину в журнале контейнера
+  if (err instanceof DowngradeError || err instanceof PreUpdateBackupError) {
+    process.stderr.write(`${err.message}\n`)
+    process.exit(1)
+  }
+
+  throw err
+}
 
 function savedLogLevel() {
   const saved = getSetting<string>('logLevel')
@@ -66,6 +95,34 @@ const initialLevel: LogLevel = config.logLevel ?? savedLogLevel() ?? 'info'
 const logger = createLogger({ level: initialLevel, logsDir: config.logsDir })
 
 installLogger(logger)
+
+// Восстановление и копия перед миграциями прошли до логгера: пишем их итог сейчас
+if (restoreResult.applied) {
+  logFor('backups').info(
+    { backup: restoreResult.backup, warnings: restoreResult.warnings },
+    'Database restored from a backup',
+  )
+}
+else if ('failed' in restoreResult) {
+  logFor('backups').error(
+    {
+      backup: restoreResult.backup,
+      reason: restoreResult.reason,
+      err: restoreResult.error,
+    },
+    'Restore failed, the previous database was put back',
+  )
+}
+
+if (migrateReport.backup) {
+  logFor('backups').info(migrateReport.backup, 'Backup created before update')
+}
+else if (migrateReport.skippedBackup) {
+  logFor('backups').warn(
+    migrateReport.skippedBackup,
+    'Database updated without a backup: TORSHER_SKIP_PRE_UPDATE_BACKUP is set',
+  )
+}
 
 // Срок хранения данных TMDB ограничен: чистим и при старте, и раз в сутки
 function purgeTmdbData() {
@@ -145,7 +202,34 @@ function checkStorage() {
 // Раздачи, которые ждали метаданные до перезапуска, дожидаются их снова.
 // Выбор, накопленный просмотром в прежних версиях, снимается до проверки
 // места: иначе пауза из-за места считала бы его закачкой
+let reconcilePending = restoreResult.applied
+
 const engine = createEngine(logFor('engine'), () => {
+  // Сессия движка новее восстановленной базы: сверяем один раз
+  if (reconcilePending) {
+    reconcilePending = false
+    reconcileTorrentsAfterRestore()
+      .then((result) => {
+        if (result.skipped) {
+          addRestoreWarningsNow([{ kind: result.skipped }])
+          logFor('backups').warn(
+            'Torrents not reconciled after restore: downloads folder is unavailable',
+          )
+          return
+        }
+
+        const { skipped: _skipped, ...counts } = result
+
+        addRestoreWarningsNow([
+          { kind: 'torrents_reconciled', params: counts },
+        ])
+        logFor('backups').info(counts, 'Torrents reconciled after restore')
+      })
+      .catch(err =>
+        logFor('backups').error({ err }, 'Torrent reconcile failed'),
+      )
+  }
+
   resumeResolving().catch(err =>
     logFor('engine').error({ err }, 'Resolve failed'),
   )
@@ -170,6 +254,7 @@ function checkHosts() {
 const shutdown = createShutdown({
   steps: [
     async () => logFor('server').info('Server is stopping'),
+    async () => stopBackupScheduler(),
     // ffmpeg перепаковки тоже дочерний: его сегменты после выхода не нужны
     stopAllSessions,
     () => engine.stop(),
@@ -182,8 +267,15 @@ const shutdown = createShutdown({
   onError: err => app.log.error({ err }, 'Shutdown failed'),
 })
 
-process.on('SIGINT', shutdown)
-process.on('SIGTERM', shutdown)
+process.on('SIGINT', () => shutdown())
+process.on('SIGTERM', () => shutdown())
+
+// Восстановление ждёт перезапуска: выходим с кодом 3, Docker поднимает
+// контейнер и при `unless-stopped`, и при `on-failure`
+onRestartRequested((reason) => {
+  logFor('server').info({ reason }, 'Server is restarting')
+  shutdown(3)
+})
 process.once('exit', () => engine.kill())
 
 await app.listen({ port: config.port, host: config.host })
@@ -198,6 +290,10 @@ logFor('server').info(
   'Server started',
 )
 
+if (restoreResult.applied)
+  finalizeRestoreNow()
+
+startBackupScheduler()
 void engine.start()
 checkHosts()
 setInterval(checkHosts, HOST_CHECK_MS).unref()

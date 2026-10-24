@@ -5,8 +5,8 @@ import { migrateDb } from '../db/index.ts'
 
 const app = createApp()
 
-beforeAll(() => {
-  migrateDb()
+beforeAll(async () => {
+  await migrateDb()
 })
 
 async function signupAndSignin(email: string) {

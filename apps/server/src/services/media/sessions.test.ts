@@ -84,8 +84,8 @@ async function probeStarted() {
 }
 
 describe('сессии воспроизведения', () => {
-  beforeAll(() => {
-    migrateDb()
+  beforeAll(async () => {
+    await migrateDb()
     // Порт без сервера: индекс MKV не прочитается, перепаковке он не обязателен
     setEngineReady('http://127.0.0.1:1')
   })

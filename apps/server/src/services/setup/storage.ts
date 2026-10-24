@@ -47,7 +47,7 @@ async function existingDir(path: string) {
 
 // Права и ACL по `access` врут на сетевых и read-only томах, поэтому пишем
 // настоящий файл и сразу удаляем
-async function canWrite(dir: string) {
+export async function canWrite(dir: string) {
   const probe = join(dir, `.torsher-write-${randomBytes(6).toString('hex')}`)
 
   try {

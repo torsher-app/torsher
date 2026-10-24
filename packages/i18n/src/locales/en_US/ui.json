@@ -1917,7 +1917,8 @@
         "sources": "Sources",
         "catalog": "Catalog",
         "network": "Network",
-        "auth": "Sign-in"
+        "auth": "Sign-in",
+        "backups": "Backups"
       },
       "levels": {
         "debug": "Debug",

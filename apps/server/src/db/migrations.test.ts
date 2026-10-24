@@ -1,26 +1,17 @@
-import {
-  cpSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs'
-import { tmpdir } from 'node:os'
+import { readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import Database from 'better-sqlite3'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator'
 import { afterAll, describe, expect, it } from 'vitest'
+import {
+  migrationsBefore as copyMigrationsBefore,
+  readMigrationsJournal,
+} from './fixtures/index.ts'
 
 const MIGRATIONS_DIR = join(import.meta.dirname, 'migrations')
 
-interface Journal {
-  entries: { idx: number, tag: string }[]
-}
-
-const journal = JSON.parse(
-  readFileSync(join(MIGRATIONS_DIR, 'meta/_journal.json'), 'utf8'),
-) as Journal
+const journal = readMigrationsJournal()
 const profilesIdx = journal.entries.findIndex(entry =>
   readFileSync(join(MIGRATIONS_DIR, `${entry.tag}.sql`), 'utf8').includes(
     'CREATE TABLE `profiles`',
@@ -30,17 +21,9 @@ const tempDirs: string[] = []
 
 /** Каталог первых `count` миграций: база в том виде, в каком её застаёт обновление */
 function migrationsBefore(count: number) {
-  const dir = mkdtempSync(join(tmpdir(), 'torsher-migrations-'))
+  const dir = copyMigrationsBefore(count)
 
   tempDirs.push(dir)
-  cpSync(MIGRATIONS_DIR, dir, { recursive: true })
-  writeFileSync(
-    join(dir, 'meta/_journal.json'),
-    JSON.stringify({
-      ...journal,
-      entries: journal.entries.slice(0, count),
-    }),
-  )
 
   return dir
 }
@@ -51,6 +34,17 @@ function migrationsBeforeProfiles() {
 
 afterAll(() => {
   for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true })
+})
+
+describe('журнал миграций', () => {
+  // Drizzle применяет только миграции новее последней в базе: `when` не по
+  // порядку (после слияния веток) молча пропустил бы миграцию
+  it('when строго растёт вместе с idx', () => {
+    const entries = [...journal.entries].sort((a, b) => a.idx - b.idx)
+
+    for (let i = 1; i < entries.length; i++)
+      expect(entries[i]!.when).toBeGreaterThan(entries[i - 1]!.when)
+  })
 })
 
 describe('миграция профилей', () => {

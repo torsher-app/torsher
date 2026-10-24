@@ -104,8 +104,8 @@ function insertTorrent(
     .get()
 }
 
-beforeAll(() => {
-  migrateDb()
+beforeAll(async () => {
+  await migrateDb()
   // Сессию проверяют по аккаунту в базе (версия сессий)
   getDb()
     .insert(users)

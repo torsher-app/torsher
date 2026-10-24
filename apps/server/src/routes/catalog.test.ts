@@ -35,8 +35,8 @@ function authed() {
   return { [ACCESS_TOKEN_COOKIE]: signToken('user-1', 'user_access') }
 }
 
-beforeAll(() => {
-  migrateDb()
+beforeAll(async () => {
+  await migrateDb()
   // Сессию проверяют по аккаунту в базе (версия сессий)
   getDb()
     .insert(users)

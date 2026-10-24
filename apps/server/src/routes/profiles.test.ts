@@ -20,8 +20,8 @@ const app = createApp()
 let owner: Record<string, string>
 let torrentId: string
 
-beforeAll(() => {
-  migrateDb()
+beforeAll(async () => {
+  await migrateDb()
 
   const user = createOwner({
     name: 'Owner',

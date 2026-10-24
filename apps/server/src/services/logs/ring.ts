@@ -11,6 +11,7 @@ export const LOG_SOURCES = [
   'catalog',
   'network',
   'auth',
+  'backups',
 ] as const
 
 export type LogSource = (typeof LOG_SOURCES)[number]

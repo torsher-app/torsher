@@ -36,8 +36,8 @@ function failure(code: string, name = 'Error') {
   })
 }
 
-beforeAll(() => {
-  migrateDb()
+beforeAll(async () => {
+  await migrateDb()
 
   const { id } = createOwner({
     name: 'Owner',
