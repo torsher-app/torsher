@@ -397,7 +397,7 @@
     },
     "notConfigured": {
       "title": "Catalog is not set up",
-      "text": "The server has no TMDB access token. Add TMDB_ACCESS_TOKEN to the server environment"
+      "text": "The server has no TMDB key. Add your own key in the Torsher panel: Settings → Metadata"
     },
     "unavailable": {
       "title": "TMDB is unavailable",
@@ -822,6 +822,7 @@
           "source": {
             "custom": "Your key",
             "app": "App key",
+            "env": "Environment key",
             "none": "No key"
           },
           "rejected": "TMDB rejected the key",
@@ -1316,6 +1317,8 @@
         "app": "App key",
         "appText": "Built into this server build",
         "appMissing": "This build has no app key",
+        "env": "Environment key",
+        "envText": "TMDB_ACCESS_TOKEN in the server environment",
         "custom": "Your key",
         "customText": "An API key or a read access token from your TMDB account",
         "key": "Key",
@@ -1327,6 +1330,7 @@
         "noneText": "Without a key the showcase catalog won't load. Enter your own key.",
         "savedCustom": "Your TMDB key saved",
         "savedApp": "The app key is in use",
+        "savedEnv": "The environment key is in use",
         "savedText": "The catalog uses it from the next request",
         "check": {
           "action": "Check",

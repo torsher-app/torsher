@@ -70,6 +70,18 @@ RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
     done \
  && find /out/packages -name '*.test.ts' -delete
 
+# Ключ приложения TMDB: с ним каталог работает без своего ключа. Приходит
+# секретом сборки, а не build-arg: build-args видны в provenance образа.
+# В образе лежит файлом, а не в ENV: env виден в `docker inspect` и переходит
+# движку. Без секрета (форк, локальная сборка) файла нет. Содержимое секрета
+# не входит в ключ кэша, поэтому CI собирает эту стадию без кэша
+FROM --platform=$BUILDPLATFORM node:${NODE_VERSION}-bookworm-slim AS tmdb-app-key
+RUN --mount=type=secret,id=tmdb_app_key,required=false \
+    mkdir -p /out \
+ && if [ -s /run/secrets/tmdb_app_key ]; then \
+      cp /run/secrets/tmdb_app_key /out/tmdb-app-key; \
+    fi
+
 # trixie, а не bookworm: ffmpeg из Debian (перепаковка видео и ffprobe) там
 # 7.1, в bookworm — 5.1. Пакет Debian собран без несвободных частей
 FROM node:${NODE_VERSION}-trixie-slim
@@ -109,6 +121,7 @@ COPY --from=build /out/server/package.json server/package.json
 COPY --from=build /out/server/node_modules server/node_modules
 COPY --from=build /out/server/src server/src
 COPY --from=build /out/packages packages
+COPY --from=tmdb-app-key /out/ server/
 COPY --from=build /src/apps/tv/dist tv/dist
 COPY --from=build /src/apps/web/.output/public web/.output/public
 COPY --from=engine /out/torsher-engine /usr/local/bin/torsher-engine

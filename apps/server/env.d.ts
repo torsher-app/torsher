@@ -15,7 +15,7 @@ declare global {
       TORSHER_SECRET?: string
       /** Префикс имён cookie: <prefix>_access_token. По умолчанию torsher. */
       COOKIE_PREFIX?: string
-      /** API Read Access Token TMDB (v4). Без него каталог отвечает 503. */
+      /** Свой API Read Access Token TMDB (v4). Важнее ключа приложения из образа. */
       TMDB_ACCESS_TOKEN?: string
       /** Email dev-пользователя для `pnpm seed`. */
       SEED_USER_EMAIL?: string

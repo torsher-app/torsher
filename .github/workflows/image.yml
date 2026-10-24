@@ -70,6 +70,11 @@ jobs:
           build-args: |
             TORSHER_VERSION=${{ steps.version.outputs.version }}
             TORSHER_COMMIT=${{ github.sha }}
+          # TMDB app key for the catalog. Without the secret (forks) the input
+          # stays empty and the image has no app key. The secret is not part
+          # of the cache key, so its stage is always rebuilt
+          secrets: ${{ secrets.TMDB_APP_TOKEN && format('tmdb_app_key={0}', secrets.TMDB_APP_TOKEN) || '' }}
+          no-cache-filters: tmdb-app-key
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
