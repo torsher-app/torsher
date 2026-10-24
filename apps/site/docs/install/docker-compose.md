@@ -64,22 +64,27 @@ Inside, Torsher creates:
 
 ### Several disks
 
-Put `/data` on the largest disk, so downloads and the library sit on one volume. A kept file is then a hard link: it keeps seeding and takes no extra space.
+Keep `/data` on the system disk for the database, and mount the big disk once more as its own volume:
 
 ```yaml
 volumes:
-  # Downloads and the library together, on the large disk
-  - /mnt/storage/torsher:/data
+  # Database and keys, on the system disk
+  - ./data:/data
+  # The big disk: downloads and the library together
+  - /mnt/big:/storage
   # Movies and series you already have, read-only
   - /mnt/media/movies:/media/movies:ro
-  - /mnt/media/shows:/media/shows:ro
 ```
 
-After the first start, add the read-only folders in the panel: <Ui k="panel.nav.library" />, then <Ui k="panel.library.add.title" />, with the path inside the container, for example `/media/movies`. Torsher indexes them in place and never writes there.
+After the first start, choose the folders in the panel under <Ui k="panel.nav.settings panel.settings.nav.storage" />, card <Ui k="panel.settings.storage.folders.title" /> (the setup wizard shows the same card): `/storage/torrents` for <Ui k="panel.settings.storage.folders.downloads" /> and `/storage/library` for <Ui k="panel.settings.storage.folders.library" />. The folder browser shows free space and whether hard links work between the two.
+
+Add the read-only folders under <Ui k="panel.nav.library" />, then <Ui k="panel.library.add.title" />, with the path inside the container, for example `/media/movies`. Torsher indexes them in place and never writes there.
 
 ::: warning Keep downloads and the library in one volume
-Do not mount `/data/torrents` and `/data/library` separately, even from the same disk: hard links don't cross volumes, and every kept file is copied and takes space twice. The setup wizard and the storage settings warn when this happens.
+Put both folders inside the same mounted volume, as `/storage` above. Two volumes, even on the same disk, block hard links: every kept file is copied and takes space twice. The folder browser and the storage settings warn when this happens.
 :::
+
+When a folder already holds data, the panel asks whether to send only new files to the new folder or move everything there in the background.
 
 ## 4. Start
 
@@ -113,11 +118,17 @@ The panel asks you to create the owner account and starts the [setup wizard](/do
 
 ## Update
 
+When a new version is out, the panel shows it on <Ui k="panel.nav.overview" /> and under <Ui k="panel.nav.settings panel.settings.nav.about" />. To update, run in the folder with `docker-compose.yml`:
+
 ```bash
-docker compose pull && docker compose up -d
+docker compose pull
 ```
 
-The database is migrated on start. Settings, the library and the watch history stay.
+```bash
+docker compose up -d
+```
+
+Settings, the library and the watch history stay. Before an update that changes the database, the server makes a backup of it first. Details: [Update and roll back](/docs/maintain/update).
 
 ## If something went wrong
 

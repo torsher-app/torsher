@@ -77,4 +77,4 @@ If the household has several profiles, the TV asks who's watching. Open any titl
 
 - The panel doesn't open: check that the container runs with `docker compose ps` and read `docker compose logs torsher`.
 - A wizard check is red: [Troubleshooting](/docs/troubleshooting).
-- The catalog is empty: the server needs a [TMDB key](/docs/setup/tmdb).
+- The catalog is empty: check the [TMDB key](/docs/setup/tmdb).

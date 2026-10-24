@@ -93,18 +93,19 @@ The container finds the group that owns `/dev/dri` on your system by itself; you
 
 ## Without a GPU
 
-The CPU is always available. On start, the server measures how fast the CPU encodes and picks a frame size it can keep up with: larger video is scaled down to 1080p, 720p or 576p. <Ui k="panel.settings.playback.ceiling" /> in the playback settings shows the result.
+The CPU is always available. On start, the server measures how fast the CPU encodes and picks a frame size it can keep up with: larger video is scaled down to 1080p, 720p or 576p. The playback settings show the result under <Ui k="panel.settings.playback.transcode.title" />.
 
 Docker Desktop on macOS and Windows does not pass a GPU into Linux containers, so transcoding runs on the CPU there.
 
 ## Check
 
-Open <Ui k="panel.nav.settings panel.settings.nav.playback" /> in the panel. Under <Ui k="panel.settings.playback.accel.title" /> you should see VAAPI or NVENC and the codecs the GPU decodes. If you changed something, select <Ui k="panel.settings.playback.check" /> to test again.
+Open <Ui k="panel.nav.settings panel.settings.nav.playback" /> in the panel. Under <Ui k="panel.settings.playback.accel.title" /> you should see your GPU marked <Ui k="panel.settings.playback.status.working" /> and the codecs it decodes; <Ui k="panel.settings.playback.details" /> shows the method (VAAPI or NVENC) and the device. If you changed something, select <Ui k="panel.settings.playback.check" /> to test again.
 
 <Ui k="panel.settings.playback.useGpu" /> is on by default. Turn it off if the GPU produces artifacts: the CPU encodes instead.
 
 ## If something went wrong
 
+- **<Ui k="panel.settings.playback.failed.title" />.** The container can't open the device, the host lacks the GPU firmware, or the kernel is too old. Go through steps 1–2 for your GPU again.
 - **<Ui k="panel.settings.playback.noGpu" /> with `/dev/dri` passed through.** Check that the host shows `renderD128` in `ls -l /dev/dri`. On Intel N100 and N150, check the firmware and the kernel version from step 2.
 - **NVENC is missing.** Run `docker run --rm --gpus all ubuntu nvidia-smi`. If it fails, the NVIDIA Container Toolkit is not set up yet.
 - **HDR looks washed out.** <Ui k="panel.settings.playback.toneMapping" /> shows whether the server converts HDR colors on the GPU, on the CPU or not at all.

@@ -1,16 +1,19 @@
 ---
 title: Backup and move
-description: "Back up the database and keys, and move Torsher to a new server."
+description: "Daily database backups, backups to another disk, password protection, restoring, and moving Torsher to a new server."
 ---
 
 # Backup and move
 
-Back up the database and keys, and move Torsher to a new server.
+Daily database backups, backups to another disk, password protection, restoring, and moving Torsher to a new server.
 
 <Draft />
 
 ## What this page will cover
 
-- What to back up: `/data/db` with its key files
-- Backing up while the container is stopped
-- Moving to another machine
+- What a backup holds and what it doesn't: videos and downloads need your own snapshots
+- The daily schedule and how many backups are kept
+- Keeping backups on another disk or a NAS share
+- <Ui k="panel.backups.encryption.password" />
+- Restoring in the panel, with a command, or when the container doesn't start
+- Moving to a new server with <Ui k="panel.backups.setup.link" />

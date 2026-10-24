@@ -1,11 +1,11 @@
 ---
 title: TMDB key
-description: "The Torsher catalog comes from TMDB. When the server needs your own TMDB key, how to get one for free and where to enter it."
+description: "The Torsher catalog comes from TMDB. The image ships with an app key; when and how to use your own TMDB key instead."
 ---
 
 # TMDB key
 
-Titles, posters, descriptions and cast in the showcase come from [TMDB](https://www.themoviedb.org/), a community-built movie and TV database. The server needs a TMDB key to use it. A build may come with an app key; your own key works regardless and keeps working if TMDB revokes the app key.
+Titles, posters, descriptions and cast in the showcase come from [TMDB](https://www.themoviedb.org/), a community-built movie and TV database. The official image ships with Torsher's app key, so the catalog works without any setup. You need your own key only if the app key stops working or your build has none, for example an image you built yourself.
 
 ::: tip What you'll get
 <Ui k="panel.settings.metadata.check.ok" /> in the panel and a full catalog on the TV.
@@ -15,7 +15,7 @@ Titles, posters, descriptions and cast in the showcase come from [TMDB](https://
 
 Open <Ui k="panel.nav.settings panel.settings.nav.metadata" /> in the panel, or look at the <Ui k="panel.wizard.steps.network.title" /> step of the setup wizard:
 
-- <Ui k="panel.wizard.network.key.ok" />: nothing to do.
+- <Ui k="panel.wizard.network.key.ok" /> with <Ui k="panel.settings.metadata.app" />: the app key works, nothing to do.
 - <Ui k="panel.wizard.network.key.missing" /> or <Ui k="panel.wizard.network.key.rejected" />: get your own key below.
 - <Ui k="panel.wizard.network.key.unavailable" />: the server doesn't reach TMDB at all. Fix the network first, see [Network](/docs/setup/network).
 
@@ -31,7 +31,7 @@ In <Ui k="panel.nav.settings panel.settings.nav.metadata" />, under <Ui k="panel
 
 The catalog uses the key from the next request. Select <Ui k="panel.settings.metadata.check.action" /> to test it.
 
-You can also set the token in `docker-compose.yml` as `TMDB_ACCESS_TOKEN`. A key saved in the panel takes precedence.
+You can also set the token in `docker-compose.yml` as `TMDB_ACCESS_TOKEN`: it replaces the app key. A key saved in the panel takes precedence over both. To go back to the app key, choose <Ui k="panel.settings.metadata.app" />.
 
 ## If something went wrong
 

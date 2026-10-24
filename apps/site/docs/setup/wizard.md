@@ -26,6 +26,8 @@ You can leave any step with <Ui k="panel.wizard.actions.skip" /> or <Ui k="panel
 
 Create the owner account: name, email and password. The email is only for signing in; the server sends no email. There is one account per server. The household watches through profiles that you add later.
 
+Moving from another Torsher server? Choose <Ui k="panel.backups.setup.link" /> on this screen instead, upload a backup file from the old server, and sign in with the old server's password afterwards. See [Backup and move](/docs/maintain/backup).
+
 Forgot the password later? See [Reset the password](/docs/maintain/reset-password).
 
 ## 2. Storage
@@ -36,7 +38,9 @@ The server checks where it keeps the database, downloads and the library:
 - **Free space** on the downloads volume against the cache limit and the reserve.
 - **How kept files reach the library:** a hard link, a reflink or a copy. A copy means downloads and the library are on different volumes. See [Docker Compose](/docs/install/docker-compose#several-disks).
 
-Below the checks, set two limits:
+Below the checks, the <Ui k="panel.settings.storage.folders.title" /> card shows where downloads and the library go. The defaults inside `/data` are right for one disk. With a [second disk](/docs/install/docker-compose#several-disks), choose its folders here.
+
+Then set two limits:
 
 - <Ui k="panel.settings.storage.cacheTitle" />: how much space what you watch may take. When the cache is full, the oldest items are deleted.
 - <Ui k="panel.settings.storage.reserveTitle" />: below this much free space, new playback doesn't start and downloads pause. At least 20 GB is a good start.
