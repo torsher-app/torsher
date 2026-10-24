@@ -33,8 +33,8 @@ onMounted(load)
       class="grid gap-5"
       aria-busy="true"
     >
-      <Skeleton class="h-56 rounded-xl" />
-      <Skeleton class="h-44 rounded-xl" />
+      <Skeleton class="h-68 rounded-xl" />
+      <Skeleton class="h-77 rounded-xl" />
     </div>
 
     <section

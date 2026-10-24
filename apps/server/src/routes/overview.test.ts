@@ -19,6 +19,7 @@ import {
   torrents,
 } from '../db/schema.ts'
 import { setEngineDown, setEngineReady } from '../services/engine/index.ts'
+import { accelDeps, mediaAccel, resetAccel } from '../services/media/accel.ts'
 import {
   INFO_HASH,
   liveState,
@@ -204,6 +205,7 @@ describe('обзор', () => {
       },
       sources: { ok: 0, total: 0 },
       devices: { total: 1, watching: 0 },
+      playback: null,
     })
     expect(Date.parse(body.startedAt)).toBeLessThanOrEqual(Date.now())
   })
@@ -395,6 +397,61 @@ describe('обзор', () => {
     )
 
     expect(kinds).toEqual(['tmdb_key_invalid', 'engine_down'])
+  })
+
+  it('ускорение: плитка после проверки, видеокарта не прошла проверку', async () => {
+    let gpuWorks = false
+
+    vi.spyOn(accelDeps, 'list').mockImplementation(async kind =>
+      kind === '-encoders'
+        ? ' V....D libx264  H.264\n V....D h264_vaapi  VAAPI'
+        : '',
+    )
+    vi.spyOn(accelDeps, 'renderNodes').mockResolvedValue([
+      '/dev/dri/renderD128',
+    ])
+    vi.spyOn(accelDeps, 'nvidiaDevices').mockResolvedValue([])
+    vi.spyOn(accelDeps, 'run').mockImplementation(async (args) => {
+      const ok = !args.includes('h264_vaapi') || gpuWorks
+
+      return {
+        code: ok ? 0 : 1,
+        stderr: ok ? '' : 'Failed to initialise VAAPI connection: -1',
+        ms: 500,
+      }
+    })
+
+    try {
+      await mediaAccel()
+
+      const failed = await overview()
+
+      expect(failed.playback).toMatchObject({
+        accel: 'auto',
+        encoder: 'software',
+        failed: [{ encoder: 'vaapi', device: '/dev/dri/renderD128' }],
+      })
+      expect(failed.attention).toEqual([
+        {
+          kind: 'media_accel_failed',
+          severity: 'warning',
+          section: 'playback',
+          params: {},
+        },
+      ])
+
+      gpuWorks = true
+      resetAccel()
+      await mediaAccel()
+
+      const working = await overview()
+
+      expect(working.playback).toMatchObject({ encoder: 'vaapi', failed: [] })
+      expect(working.attention).toEqual([])
+    }
+    finally {
+      resetAccel()
+    }
   })
 
   // Результаты проверки хостов живут в памяти процесса: этот тест последний

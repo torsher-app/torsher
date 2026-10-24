@@ -13,6 +13,7 @@ import { playbackSettings, updatePlaybackSettings } from '../dto/media.ts'
 import { requireOwner } from '../middleware/auth.ts'
 import {
   mediaAccel,
+  playbackSettingsOf,
   recheckAccel,
   setAccelMode,
 } from '../services/media/index.ts'
@@ -36,12 +37,6 @@ function toMetadataResponse() {
 
 const guardResponses = {
   401: messageResponse,
-}
-
-function toPlaybackResponse(state: Awaited<ReturnType<typeof mediaAccel>>) {
-  const { mode, ...rest } = state
-
-  return { accel: mode, ...rest }
 }
 
 /** Настройки сервера: только сессия аккаунта. Ключи в ответы не попадают */
@@ -152,7 +147,7 @@ export const settingsRoutes: FastifyPluginAsyncZod = async (app) => {
         response: { 200: playbackSettings, ...guardResponses },
       },
     },
-    async () => toPlaybackResponse(await mediaAccel()),
+    async () => playbackSettingsOf(await mediaAccel()),
   )
 
   app.put(
@@ -170,7 +165,7 @@ export const settingsRoutes: FastifyPluginAsyncZod = async (app) => {
       },
     },
     async request =>
-      toPlaybackResponse(await setAccelMode(request.body.accel)),
+      playbackSettingsOf(await setAccelMode(request.body.accel)),
   )
 
   // Новые пробы видеокарты и замер процессора: после смены железа или драйвера
@@ -183,6 +178,6 @@ export const settingsRoutes: FastifyPluginAsyncZod = async (app) => {
         response: { 200: playbackSettings, ...guardResponses },
       },
     },
-    async () => toPlaybackResponse(await recheckAccel()),
+    async () => playbackSettingsOf(await recheckAccel()),
   )
 }

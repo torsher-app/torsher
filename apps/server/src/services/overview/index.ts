@@ -1,5 +1,6 @@
 import type { AttentionItem } from '../../dto/overview.ts'
 import type { EngineTorrentState } from '../engine/index.ts'
+import type { AccelState } from '../media/index.ts'
 import { performance } from 'node:perf_hooks'
 import packageJson from '../../../package.json' with { type: 'json' }
 import { isWatching, listDevices } from '../devices/index.ts'
@@ -7,6 +8,7 @@ import { engineCrashCount, engineState } from '../engine/index.ts'
 import { listIndexers } from '../indexers/index.ts'
 import { checkState } from '../net/check.ts'
 import { currentLinkMode } from '../library/link.ts'
+import { accelSnapshot, playbackSettingsOf } from '../media/index.ts'
 import { isStreaming, storageSummary } from '../storage/index.ts'
 import { tmdbKeyStatus } from '../tmdb/credentials.ts'
 import {
@@ -183,6 +185,25 @@ function tmdbAttention(): AttentionItem[] {
   ]
 }
 
+/**
+ * Видеокарта видна контейнеру, но ни одна не прошла пробное кодирование:
+ * видео перекодирует процессор, медленнее и с меньшим потолком. Без
+ * устройства пункта нет — у многих серверов видеокарты просто нет.
+ */
+function playbackAttention(state: AccelState | null): AttentionItem[] {
+  if (!state || state.gpus.length > 0 || state.failed.length === 0)
+    return []
+
+  return [
+    {
+      kind: 'media_accel_failed',
+      severity: 'warning',
+      section: 'playback',
+      params: {},
+    },
+  ]
+}
+
 function storageAttention(
   storage: { free: number, minFree: number, total: number },
   pausedNames: string[],
@@ -260,6 +281,7 @@ export async function getOverview() {
   const downloads = downloadsOf(live)
   const enabled = listIndexers().filter(indexer => indexer.enabled)
   const devices = listDevices()
+  const accel = accelSnapshot()
   const attention = [
     ...engineAttention(),
     ...storageAttention(storage, downloads.pausedForStorage),
@@ -267,6 +289,7 @@ export async function getOverview() {
     ...indexerAttention(),
     ...networkAttention(),
     ...tmdbAttention(),
+    ...playbackAttention(accel),
   ]
 
   return {
@@ -296,5 +319,6 @@ export async function getOverview() {
       total: devices.length,
       watching: devices.filter(device => isWatching(device)).length,
     },
+    playback: accel && playbackSettingsOf(accel),
   }
 }

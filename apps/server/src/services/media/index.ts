@@ -1,5 +1,11 @@
 export type { AccelMode, AccelState } from './accel.ts'
-export { mediaAccel, recheckAccel, setAccelMode } from './accel.ts'
+export {
+  accelSnapshot,
+  mediaAccel,
+  playbackSettingsOf,
+  recheckAccel,
+  setAccelMode,
+} from './accel.ts'
 export type {
   AudioPreference,
   DeviceProfile,

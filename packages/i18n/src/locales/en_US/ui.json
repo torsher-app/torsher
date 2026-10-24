@@ -929,6 +929,7 @@
           "rejected": "TMDB rejects the key: the catalog and showcase are empty",
           "unreadable": "The saved TMDB key can't be decrypted: enter it again"
         },
+        "media_accel_failed": "A GPU was found but failed the test: the CPU transcodes video",
         "library_offline": {
           "one": "Library folder unavailable: {name}",
           "many": "Library folders unavailable: {n}"
@@ -967,6 +968,21 @@
           "emptyHint": "Pair a TV with the code on its screen",
           "watching": "Watching now: {n} | Watching now: {n}",
           "idle": "Nobody is watching"
+        },
+        "playback": {
+          "checking": "Checking…",
+          "checkingHint": "The server is testing the GPU and the CPU",
+          "gpuHint": "Acceleration is on",
+          "off": "CPU only",
+          "offHint": "The GPU is turned off in settings",
+          "failed": "The GPU doesn't work",
+          "failedHint": "Found, but failed the test",
+          "none": "No GPU",
+          "noneHint": "The CPU transcodes video",
+          "unavailable": "Nothing to transcode with",
+          "unavailableHint": "The server's ffmpeg has no H.264 encoder",
+          "cpu": "CPU up to {height}p",
+          "hdr": "HDR to SDR up to {height}p"
         }
       }
     },
@@ -1248,37 +1264,62 @@
           "title": "Hardware acceleration",
           "text": "A GPU transcodes video many times faster than the CPU and barely loads it. The server checks it with a test encode on startup."
         },
-        "encoder": {
-          "vaapi": "VAAPI",
-          "nvenc": "NVENC",
-          "software": "CPU",
-          "none": "nothing"
+        "gpu": {
+          "named": "{vendor} GPU",
+          "unnamed": "GPU"
         },
-        "lowPower": "low-power",
-        "decodes": "decodes {codecs}",
-        "decodesNothing": "CPU decodes",
+        "status": {
+          "working": "Working",
+          "off": "Off"
+        },
+        "decodes": "Decodes {codecs} itself. For other codecs the CPU decodes and the GPU encodes.",
+        "decodesNothing": "The CPU decodes, the GPU encodes.",
+        "offText": "The CPU transcodes video: the GPU is turned off with the switch below.",
         "deep": "{codec} 10-bit",
-        "noGpu": "No GPU found",
-        "noGpuHint": "The CPU transcodes. To let the container see a GPU, pass through /dev/dri (Intel, AMD) or set up the NVIDIA Container Toolkit — see the README.",
+        "noGpu": "The server can't see a GPU",
+        "noGpuHint": "The CPU transcodes video. If the computer has an Intel, AMD or NVIDIA GPU, pass it through to the container.",
+        "connectLink": "How to connect",
+        "failed": {
+          "title": "A GPU was found but doesn't work",
+          "text": "The server sees the device, but the test encode on it failed, so the CPU transcodes video. Usually the container can't access the device, the host lacks the GPU firmware, or the kernel is too old."
+        },
+        "fixLink": "How to fix",
+        "unavailable": {
+          "title": "Nothing to transcode with",
+          "text": "The server's ffmpeg has no H.264 encoder: video a device can't play by itself won't open."
+        },
         "useGpu": "Transcode on the GPU",
         "useGpuHint": "Turn off if the GPU produces artifacts: the CPU will encode instead.",
-        "current": "Encoding with: {encoder} · checked {date}",
+        "details": "Details",
+        "detail": {
+          "method": "Method",
+          "device": "Device",
+          "driver": "Driver",
+          "model": "Model",
+          "error": "Test error"
+        },
+        "lowPower": "low-power",
+        "current": {
+          "gpuNamed": "Encoding on the {vendor} GPU · checked {date}",
+          "gpu": "Encoding on the GPU · checked {date}",
+          "software": "Encoding on the CPU · checked {date}",
+          "none": "Nothing to encode with · checked {date}"
+        },
         "check": "Check again",
         "transcode": {
           "title": "CPU and HDR",
-          "text": "Without a GPU the CPU encodes. The server picked the frame size limit from a speed test: larger video is scaled down.",
+          "text": "Without a GPU, or with it turned off, the CPU encodes video. The server measured what it can handle on startup: larger video is scaled down.",
           "hint": "A GPU encodes up to 1080p"
         },
-        "ceiling": "CPU limit",
-        "bench": "x264 at 1080p: {fps} fps",
+        "ceiling": "CPU handles",
+        "bench": "Measured on startup: {fps} fps at 1080p",
         "noBench": "Speed not measured",
+        "ceilingValue": "up to {height}p",
         "noSoftware": "no x264",
         "toneMapping": "HDR to SDR",
-        "toneMappingHint": {
-          "gpu": "HDR colors are converted for a regular screen on the GPU",
-          "software": "Without a GPU the CPU converts them — this is slow",
-          "none": "The server's ffmpeg lacks the filters: HDR will look washed out"
-        },
+        "toneMappingHint": "Only needed when HDR video has to be transcoded — for a browser or a screen without HDR. A TV with HDR plays such video by itself.",
+        "toneMappingLimit": "The frame is scaled down to {height}p: conversion can't keep up with more.",
+        "toneMappingNone": "The server's ffmpeg lacks the filters: transcoded HDR video will look washed out.",
         "toneMappingValue": {
           "gpu": "GPU",
           "software": "CPU",

@@ -1962,6 +1962,40 @@ export interface MetadataKeyCheckInput {
   kind: "rejected" | "unavailable" | "missing" | null;
 }
 
+export interface GpuEncoderInput {
+  encoder: "vaapi" | "nvenc";
+  device: string | null;
+  name: string | null;
+  vendor: "intel" | "amd" | "nvidia" | null;
+  lowPower: boolean;
+  decode: string[];
+}
+
+export interface GpuFailureInput {
+  encoder: "vaapi" | "nvenc";
+  device: string | null;
+  error: string;
+}
+
+export interface PlaybackSettingsInput {
+  accel: "auto" | "software";
+  encoder: "software" | "vaapi" | "nvenc" | null;
+  gpus: GpuEncoderInput[];
+  failed: GpuFailureInput[];
+  software: boolean;
+  softwareFps: number | null;
+  softwareMaxHeight: number;
+  gpuToneMapping: boolean;
+  softwareToneMapping: boolean;
+  toneMappingFps: number | null;
+  toneMappingMaxHeight: number;
+  checkedAt: string;
+}
+
+export interface UpdatePlaybackSettingsInput {
+  accel: "auto" | "software";
+}
+
 export interface AttentionItemInput {
   kind:
     | "engine_down"
@@ -1976,7 +2010,8 @@ export interface AttentionItemInput {
     | "indexer_missing"
     | "dns_spoofing"
     | "host_unreachable"
-    | "tmdb_key_invalid";
+    | "tmdb_key_invalid"
+    | "media_accel_failed";
   severity: "error" | "warning";
   section:
     | "downloads"
@@ -1985,6 +2020,7 @@ export interface AttentionItemInput {
     | "sources"
     | "network"
     | "metadata"
+    | "playback"
     | "logs";
   params: {
     count?: number;
@@ -2020,6 +2056,7 @@ export interface OverviewResponseInput {
     total: number;
     watching: number;
   };
+  playback: PlaybackSettingsInput | null;
 }
 
 export interface CreateProfileImportInput {
@@ -2339,32 +2376,6 @@ export interface PinErrorResponseInput {
    * @max 9007199254740991
    */
   retryAfter: number | null;
-}
-
-export interface GpuEncoderInput {
-  encoder: "vaapi" | "nvenc";
-  device: string | null;
-  name: string | null;
-  lowPower: boolean;
-  decode: string[];
-}
-
-export interface PlaybackSettingsInput {
-  accel: "auto" | "software";
-  encoder: "software" | "vaapi" | "nvenc" | null;
-  gpus: GpuEncoderInput[];
-  software: boolean;
-  softwareFps: number | null;
-  softwareMaxHeight: number;
-  gpuToneMapping: boolean;
-  softwareToneMapping: boolean;
-  toneMappingFps: number | null;
-  toneMappingMaxHeight: number;
-  checkedAt: string;
-}
-
-export interface UpdatePlaybackSettingsInput {
-  accel: "auto" | "software";
 }
 
 export interface WizardStateInput {
@@ -4434,6 +4445,40 @@ export interface MetadataKeyCheck {
   kind: "rejected" | "unavailable" | "missing" | null;
 }
 
+export interface GpuEncoder {
+  encoder: "vaapi" | "nvenc";
+  device: string | null;
+  name: string | null;
+  vendor: "intel" | "amd" | "nvidia" | null;
+  lowPower: boolean;
+  decode: string[];
+}
+
+export interface GpuFailure {
+  encoder: "vaapi" | "nvenc";
+  device: string | null;
+  error: string;
+}
+
+export interface PlaybackSettings {
+  accel: "auto" | "software";
+  encoder: "software" | "vaapi" | "nvenc" | null;
+  gpus: GpuEncoder[];
+  failed: GpuFailure[];
+  software: boolean;
+  softwareFps: number | null;
+  softwareMaxHeight: number;
+  gpuToneMapping: boolean;
+  softwareToneMapping: boolean;
+  toneMappingFps: number | null;
+  toneMappingMaxHeight: number;
+  checkedAt: string;
+}
+
+export interface UpdatePlaybackSettings {
+  accel: "auto" | "software";
+}
+
 export interface AttentionItem {
   kind:
     | "engine_down"
@@ -4448,7 +4493,8 @@ export interface AttentionItem {
     | "indexer_missing"
     | "dns_spoofing"
     | "host_unreachable"
-    | "tmdb_key_invalid";
+    | "tmdb_key_invalid"
+    | "media_accel_failed";
   severity: "error" | "warning";
   section:
     | "downloads"
@@ -4457,6 +4503,7 @@ export interface AttentionItem {
     | "sources"
     | "network"
     | "metadata"
+    | "playback"
     | "logs";
   params: {
     count?: number;
@@ -4492,6 +4539,7 @@ export interface OverviewResponse {
     total: number;
     watching: number;
   };
+  playback: PlaybackSettings | null;
 }
 
 export interface CreateProfileImport {
@@ -4811,32 +4859,6 @@ export interface PinErrorResponse {
    * @max 9007199254740991
    */
   retryAfter: number | null;
-}
-
-export interface GpuEncoder {
-  encoder: "vaapi" | "nvenc";
-  device: string | null;
-  name: string | null;
-  lowPower: boolean;
-  decode: string[];
-}
-
-export interface PlaybackSettings {
-  accel: "auto" | "software";
-  encoder: "software" | "vaapi" | "nvenc" | null;
-  gpus: GpuEncoder[];
-  software: boolean;
-  softwareFps: number | null;
-  softwareMaxHeight: number;
-  gpuToneMapping: boolean;
-  softwareToneMapping: boolean;
-  toneMappingFps: number | null;
-  toneMappingMaxHeight: number;
-  checkedAt: string;
-}
-
-export interface UpdatePlaybackSettings {
-  accel: "auto" | "software";
 }
 
 export interface WizardState {
