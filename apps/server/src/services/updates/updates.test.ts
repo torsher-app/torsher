@@ -54,8 +54,8 @@ function respond(body: unknown, init: ResponseInit = {}) {
   })
 }
 
-beforeAll(() => {
-  migrateDb()
+beforeAll(async () => {
+  await migrateDb()
 
   const user = createOwner({
     name: 'Owner',

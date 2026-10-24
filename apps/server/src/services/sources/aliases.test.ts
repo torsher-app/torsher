@@ -25,8 +25,8 @@ const identity: TitleIdentity = {
   ],
 }
 
-beforeAll(() => {
-  migrateDb()
+beforeAll(async () => {
+  await migrateDb()
 })
 
 describe('aliasesOf', () => {

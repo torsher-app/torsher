@@ -10,7 +10,7 @@ let email = 'owner@example.com'
 let password = 'password123'
 
 beforeAll(async () => {
-  migrateDb()
+  await migrateDb()
   await app.inject({
     method: 'POST',
     url: '/api/auth/signup',

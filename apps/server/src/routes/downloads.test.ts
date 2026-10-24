@@ -110,8 +110,8 @@ function rowOf(id: string) {
     .find(row => row.id === id)
 }
 
-beforeAll(() => {
-  migrateDb()
+beforeAll(async () => {
+  await migrateDb()
   // Сессию проверяют по аккаунту в базе (версия сессий)
   getDb()
     .insert(users)

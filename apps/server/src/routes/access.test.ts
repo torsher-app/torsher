@@ -106,7 +106,7 @@ function inject(
 }
 
 beforeAll(async () => {
-  migrateDb()
+  await migrateDb()
   // Без движка роуты раздач отвечают сразу, а не ждут его
   setEngineDown('stopped')
   await app.ready()

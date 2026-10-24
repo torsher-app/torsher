@@ -68,7 +68,7 @@ const meta = computed(() => {
         class="grid gap-4 sm:grid-cols-2"
         aria-busy="true"
       >
-        <Skeleton v-for="index in 4" :key="index" class="h-36 rounded-xl" />
+        <Skeleton v-for="index in 6" :key="index" class="h-36 rounded-xl" />
       </div>
 
       <section

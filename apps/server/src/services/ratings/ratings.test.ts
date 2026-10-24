@@ -53,8 +53,8 @@ function plugin(overrides: Partial<RatingProvider>): RatingProvider {
   }
 }
 
-beforeAll(() => {
-  migrateDb()
+beforeAll(async () => {
+  await migrateDb()
 })
 
 beforeEach(() => {

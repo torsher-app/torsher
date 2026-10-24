@@ -29,8 +29,8 @@ function cookieOf(userId: string) {
   return { [ACCESS_TOKEN_COOKIE]: signToken(userId, 'user_access') }
 }
 
-beforeAll(() => {
-  migrateDb()
+beforeAll(async () => {
+  await migrateDb()
   owner = cookieOf(
     createOwner({
       name: 'Owner',

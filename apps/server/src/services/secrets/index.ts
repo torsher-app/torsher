@@ -64,7 +64,7 @@ export function loadSecretKey({ secret, filePath }: SecretKeySource): Buffer {
   return key
 }
 
-function decodeKeyFile(content: string) {
+export function decodeKeyFile(content: string) {
   const key = Buffer.from(content.trim(), 'base64')
 
   if (key.length !== KEY_BYTES)
@@ -135,6 +135,11 @@ function key() {
   })
 
   return cachedKey
+}
+
+/** Текущий ключ секретов: копия базы кладёт его в манифест */
+export function currentSecretKey() {
+  return key()
 }
 
 export function encryptSecret(plaintext: string) {

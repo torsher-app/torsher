@@ -36,8 +36,8 @@ function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status })
 }
 
-beforeAll(() => {
-  migrateDb()
+beforeAll(async () => {
+  await migrateDb()
 })
 
 beforeEach(() => {

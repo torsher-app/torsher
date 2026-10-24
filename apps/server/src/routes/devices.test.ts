@@ -17,8 +17,8 @@ const TV_AGENT
 
 let owner: Record<string, string>
 
-beforeAll(() => {
-  migrateDb()
+beforeAll(async () => {
+  await migrateDb()
 
   const user = createOwner({
     name: 'Owner',

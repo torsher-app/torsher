@@ -22,8 +22,8 @@ function restart(cookies: Record<string, string>) {
   return app.inject({ method: 'POST', url: '/api/engine/restart', cookies })
 }
 
-beforeAll(() => {
-  migrateDb()
+beforeAll(async () => {
+  await migrateDb()
 
   const user = createOwner({
     name: 'Owner',

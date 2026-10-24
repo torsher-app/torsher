@@ -49,7 +49,7 @@ function json(body: unknown, status = 200) {
 }
 
 beforeAll(async () => {
-  migrateDb()
+  await migrateDb()
   root = await mkdtemp(join(tmpdir(), 'torsher-setup-'))
 })
 

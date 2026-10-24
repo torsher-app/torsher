@@ -82,6 +82,11 @@ export const config = {
     return join(this.dataDir, 'imdb-ratings.db')
   },
 
+  // Обновить базу без копии перед миграциями — осознанный риск владельца
+  get skipPreUpdateBackup() {
+    return process.env.TORSHER_SKIP_PRE_UPDATE_BACKUP === '1'
+  },
+
   get downloadsPath() {
     return process.env.DOWNLOADS_PATH || join(this.dataDir, 'downloads')
   },

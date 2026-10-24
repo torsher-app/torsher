@@ -9,8 +9,8 @@ import { signToken } from '../utils/token.ts'
 const app = createApp()
 let owner = {}
 
-beforeAll(() => {
-  migrateDb()
+beforeAll(async () => {
+  await migrateDb()
 
   const { id } = createOwner({
     name: 'Owner',

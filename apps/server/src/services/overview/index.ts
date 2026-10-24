@@ -3,6 +3,11 @@ import type { EngineTorrentState } from '../engine/index.ts'
 import type { AccelState } from '../media/index.ts'
 import { performance } from 'node:perf_hooks'
 import { config } from '../../config.ts'
+import {
+  backupProblems,
+  getBackupSettings,
+  lastBackupAt,
+} from '../backups/index.ts'
 import { isWatching, listDevices } from '../devices/index.ts'
 import { engineCrashCount, engineState } from '../engine/index.ts'
 import { listIndexers } from '../indexers/index.ts'
@@ -243,6 +248,61 @@ function storageAttention(
   return items
 }
 
+const BACKUP_FAILURES = new Set([
+  'no_space',
+  'io',
+  'integrity',
+  'key_unavailable',
+  'dir_unavailable',
+  'stale',
+])
+
+/**
+ * Копии: каталог недоступен (по минутному тику расписания), последняя
+ * плановая попытка не удалась или копии давно нет. Недоступный каталог
+ * уже объясняет сбой и давность — второй строкой их не повторяем.
+ */
+function backupAttention(): AttentionItem[] {
+  const { dirUnavailable, failed } = backupProblems()
+  const items: AttentionItem[] = []
+
+  if (dirUnavailable) {
+    items.push({
+      kind: 'backup_dir_unavailable',
+      severity: 'error',
+      section: 'backups',
+      params: {},
+    })
+  }
+
+  if (
+    failed
+    && !(
+      dirUnavailable
+      && (failed.kind === 'dir_unavailable' || failed.kind === 'stale')
+    )
+  ) {
+    const reason = BACKUP_FAILURES.has(failed.kind) ? failed.kind : 'io'
+    const { need, free } = failed.params
+
+    items.push({
+      kind: 'backup_failed',
+      severity: 'error',
+      section: 'backups',
+      params: {
+        reason,
+        ...(reason === 'no_space'
+          && typeof need === 'number'
+          && typeof free === 'number'
+          ? { need, free }
+          : {}),
+      },
+    })
+  }
+
+  return items
+}
+
 function downloadsOf(live: Map<string, EngineTorrentState>) {
   const rows = listTorrents()
   let active = 0
@@ -280,6 +340,7 @@ async function collect(known?: Map<string, EngineTorrentState>) {
   const attention = [
     ...engineAttention(),
     ...storageAttention(storage, downloads.pausedForStorage),
+    ...backupAttention(),
     ...libraryAttention(),
     ...indexerAttention(),
     ...networkAttention(),
@@ -335,5 +396,10 @@ export async function getOverview() {
       watching: devices.filter(device => isWatching(device)).length,
     },
     playback: accel && playbackSettingsOf(accel),
+    backups: {
+      enabled: getBackupSettings().enabled,
+      lastSuccessAt: await lastBackupAt(),
+      failing: attention.some(item => item.section === 'backups'),
+    },
   }
 }

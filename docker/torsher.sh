@@ -15,8 +15,16 @@ else
 fi
 
 # Журнал контейнера — вывод процесса 1, а docker exec туда не пишет. Факт
-# сброса (без пароля) попадает в журнал сервера отсюда, пока есть права root
-if [ "${1:-}" = reset-password ] && [ -w /proc/1/fd/1 ]; then
-  printf '{"level":30,"time":%s,"msg":"Owner password was reset from the command line"}\n' \
-    "$(date +%s%3N)" > /proc/1/fd/1 || true
-fi
+# сброса (без пароля) и подготовленного восстановления попадает в журнал
+# сервера отсюда, пока есть права root
+log_to_container() {
+  if [ -w /proc/1/fd/1 ]; then
+    printf '{"level":30,"time":%s,"msg":"%s"}\n' \
+      "$(date +%s%3N)" "$1" > /proc/1/fd/1 || true
+  fi
+}
+
+case "${1:-}" in
+  reset-password) log_to_container 'Owner password was reset from the command line' ;;
+  restore) log_to_container 'Restore from a backup was requested from the command line; it applies on the next start' ;;
+esac

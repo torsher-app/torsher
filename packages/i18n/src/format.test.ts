@@ -61,4 +61,23 @@ describe('attentionMessage', () => {
 
     expect(translate(messages, 'en_US', message.key)).not.toBe(message.key)
   })
+
+  it('сбой копии: нехватка места с цифрами, без цифр — общая фраза', () => {
+    const counted = attentionMessage({
+      kind: 'backup_failed',
+      params: { reason: 'no_space', need: 3, free: 1 },
+    })
+    const bare = attentionMessage({
+      kind: 'backup_failed',
+      params: { reason: 'no_space' },
+    })
+
+    expect(counted).toEqual({
+      key: 'panel.overview.attention.backup_failed.no_space',
+      params: { need: 3, free: 1 },
+    })
+    expect(translate(messages, 'ru_RU', bare.key)).toBe(
+      'Резервная копия не сделана: не хватает места на диске',
+    )
+  })
 })

@@ -40,8 +40,8 @@ function freshLanguage(region = 'US') {
   return `${String.fromCharCode(97 + (languageIndex % 26))}${String.fromCharCode(97 + Math.floor(languageIndex / 26))}-${region}`
 }
 
-beforeAll(() => {
-  migrateDb()
+beforeAll(async () => {
+  await migrateDb()
 })
 
 beforeEach(() => {

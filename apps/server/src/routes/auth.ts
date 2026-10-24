@@ -5,6 +5,7 @@ import { getDb } from '../db/index.ts'
 import { users } from '../db/schema.ts'
 import { setupResponse, signin, signup } from '../dto/auth.ts'
 import { messageResponse } from '../dto/common.ts'
+import { restoreInProgress } from '../services/backups/index.ts'
 import {
   createOwner,
   needsSetup,
@@ -55,16 +56,27 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
           201: messageResponse,
           400: messageResponse,
           403: messageResponse,
+          409: messageResponse,
           500: messageResponse,
         },
       },
     },
     async (request, reply) => {
       try {
+        const passwordHash = await hashPassword(request.body.password)
+
+        // Проверка и создание — без `await` между ними: восстановление на
+        // пустом сервере перепроверяет аккаунт так же синхронно
+        if (restoreInProgress()) {
+          return reply
+            .code(409)
+            .send({ message: 'Restore from a backup is in progress' })
+        }
+
         createOwner({
           name: request.body.name,
           email: normalizeEmail(request.body.email),
-          passwordHash: await hashPassword(request.body.password),
+          passwordHash,
         })
 
         return reply.code(201).send({ message: 'User created' })

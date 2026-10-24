@@ -9,8 +9,8 @@ import {
 
 const TTL_MS = 60_000
 
-beforeAll(() => {
-  migrateDb()
+beforeAll(async () => {
+  await migrateDb()
 })
 
 afterEach(() => {

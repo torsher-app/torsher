@@ -271,7 +271,7 @@ describe.runIf(hasFfmpeg())('воспроизведение с пробой и �
       `http://127.0.0.1:${(engine.address() as AddressInfo).port}`,
     )
 
-    migrateDb()
+    await migrateDb()
     getDb()
       .insert(users)
       .values({

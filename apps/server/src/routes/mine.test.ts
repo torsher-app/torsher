@@ -80,7 +80,7 @@ function items(query: string) {
 }
 
 beforeAll(async () => {
-  migrateDb()
+  await migrateDb()
   getDb()
     .insert(users)
     .values({

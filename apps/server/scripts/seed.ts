@@ -25,7 +25,7 @@ if (config.isProduction) {
 const email = normalizeEmail(process.env.SEED_USER_EMAIL ?? 'dev@example.com')
 const password = process.env.SEED_USER_PASSWORD ?? 'devpassword'
 
-migrateDb()
+await migrateDb()
 
 const db = getDb()
 const existing = db.select().from(users).where(eq(users.email, email)).get()

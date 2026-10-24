@@ -113,8 +113,8 @@ function confirm(monitor: Monitor, items: AttentionItem[], from = Date.now()) {
   for (let i = 0; i < 3; i++) monitor.tick(items, from + i * MINUTE)
 }
 
-beforeAll(() => {
-  migrateDb()
+beforeAll(async () => {
+  await migrateDb()
 
   const user = createOwner({
     name: 'Owner',

@@ -144,8 +144,8 @@ describe('catalogDiscoverQuery', () => {
 describe('discoverTitles и getGenres', () => {
   const fetchMock = vi.fn<typeof fetch>()
 
-  beforeAll(() => {
-    migrateDb()
+  beforeAll(async () => {
+    await migrateDb()
   })
 
   beforeEach(() => {

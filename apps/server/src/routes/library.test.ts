@@ -103,8 +103,8 @@ let searchResults: Record<string, object[]> = {}
 
 const engineCalls: string[] = []
 
-beforeAll(() => {
-  migrateDb()
+beforeAll(async () => {
+  await migrateDb()
   getDb()
     .insert(users)
     .values({

@@ -17,12 +17,15 @@ export const attentionKinds = [
   'host_unreachable',
   'tmdb_key_invalid',
   'media_accel_failed',
+  'backup_failed',
+  'backup_dir_unavailable',
 ] as const
 
 export const attentionSections = [
   'downloads',
   'library',
   'storage',
+  'backups',
   'sources',
   'network',
   'metadata',
@@ -40,11 +43,12 @@ export const attentionItem = z
       // Сколько элементов с этой проблемой; у одного — его имя
       count: z.number().optional(),
       name: z.string().optional(),
-      // Причина: вид недоступности движка, состояние ключа TMDB
+      // Причина: вид недоступности движка, состояние ключа TMDB, сбой копии
       reason: z.string().optional(),
-      // Байт: свободно на томе и запас
+      // Байт: свободно на томе и запас; `need` — сколько нужно копии
       free: z.number().optional(),
       minFree: z.number().optional(),
+      need: z.number().optional(),
     }),
   })
   .meta({ id: 'attentionItem' })
@@ -78,5 +82,11 @@ export const overviewResponse = z
     devices: z.object({ total: z.number(), watching: z.number() }),
     // Ускорение перекодирования; null — первая проверка после старта ещё идёт
     playback: playbackSettings.nullable(),
+    // Резервные копии: последняя удачная и есть ли сбой в «Требует внимания»
+    backups: z.object({
+      enabled: z.boolean(),
+      lastSuccessAt: z.string().optional(),
+      failing: z.boolean(),
+    }),
   })
   .meta({ id: 'overviewResponse' })

@@ -136,7 +136,7 @@ let smtp: ReturnType<typeof smtpServer>
 let smtpPort: number
 
 beforeAll(async () => {
-  migrateDb()
+  await migrateDb()
   smtp = smtpServer()
   smtpPort = await listen(smtp.server)
 })

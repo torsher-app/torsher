@@ -25,6 +25,7 @@ const sectionPaths: Record<NotificationSection, string> = {
   downloads: '/downloads',
   library: '/library',
   storage: '/settings/storage',
+  backups: '/settings/backups',
   sources: '/sources?filter=attention',
   network: '/settings/network',
   metadata: '/settings/metadata',
@@ -98,6 +99,9 @@ export function problemText(
 
   if (typeof values.minFree === 'number')
     values.minFree = formatBytes(values.minFree, language)
+
+  if (typeof values.need === 'number')
+    values.need = formatBytes(values.need, language)
 
   return t(language, message.key, values, message.count)
 }

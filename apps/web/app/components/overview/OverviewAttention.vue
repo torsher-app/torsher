@@ -15,6 +15,7 @@ const sectionLabels: Record<AttentionItem['section'], string> = {
   downloads: 'panel.nav.torrents',
   library: 'panel.nav.library',
   storage: 'panel.settings.nav.storage',
+  backups: 'panel.settings.nav.backups',
   sources: 'panel.nav.sources',
   network: 'panel.settings.nav.network',
   metadata: 'panel.settings.nav.metadata',

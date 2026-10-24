@@ -48,6 +48,188 @@ export interface MessageResponseInput {
   message: string;
 }
 
+export interface BackupItemInput {
+  name: string;
+  reason:
+    | "scheduled"
+    | "manual"
+    | "pre-update"
+    | "pre-restore"
+    | "pre-import"
+    | "uploaded";
+  createdAt: string;
+  version: string;
+  size: number;
+  encrypted: boolean;
+  dirKind: "main" | "fallback";
+}
+
+export interface RestoreWarningInput {
+  kind: string;
+  params?: Record<string, string | number>;
+}
+
+export interface RestoreStatusInput {
+  state: "checking" | "pending" | "done" | "failed";
+  backup?: string;
+  at?: string;
+  reason?: string;
+  params?: Record<string, string | number>;
+  warnings: RestoreWarningInput[];
+}
+
+export interface BackupStatusInput {
+  settings: {
+    enabled: boolean;
+    time: string;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    keepDaily: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    keepWeekly: number;
+    mode: "key" | "password";
+    passwordSetAt?: string;
+  };
+  dir: {
+    path: string;
+    source: "default" | "panel";
+    available: boolean;
+    free?: number;
+    total?: number;
+    sameVolumeAsDatabase: boolean;
+  };
+  state: {
+    running?: {
+      reason:
+        | "scheduled"
+        | "manual"
+        | "pre-update"
+        | "pre-restore"
+        | "pre-import"
+        | "uploaded";
+      startedAt: string;
+    };
+    lastSuccessAt?: string;
+    lastAttempt?: {
+      at: string;
+      error?: {
+        kind: string;
+        params: Record<string, string | number>;
+      };
+    };
+    manual?: {
+      at: string;
+      error?: {
+        kind: string;
+        params: Record<string, string | number>;
+      };
+    };
+    nextAt?: string;
+    timezone: string;
+  };
+  restore?: RestoreStatusInput;
+  items: BackupItemInput[];
+}
+
+export interface UpdateBackupSettingsInput {
+  enabled: boolean;
+  /** @pattern ^(?:[01]\d|2[0-3]):[0-5]\d$ */
+  time: string;
+  /**
+   * @min 1
+   * @max 30
+   */
+  keepDaily: number;
+  /**
+   * @min 0
+   * @max 12
+   */
+  keepWeekly: number;
+  /**
+   * @minLength 1
+   * @maxLength 4096
+   */
+  dir?: string | null;
+}
+
+export type UpdateBackupEncryptionInput =
+  | {
+      mode: "key";
+    }
+  | {
+      mode: "password";
+      /**
+       * @minLength 8
+       * @maxLength 1024
+       */
+      password: string;
+    };
+
+export interface BackupDirCheckBodyInput {
+  /**
+   * @minLength 1
+   * @maxLength 4096
+   */
+  path: string;
+}
+
+export interface BackupDirCheckInput {
+  path: string;
+  problem:
+    | "not_absolute"
+    | "missing"
+    | "not_directory"
+    | "denied"
+    | "overlaps_storage"
+    | null;
+  free: number;
+  total: number;
+  sameVolumeAsDatabase: boolean;
+}
+
+export interface RestoreBackupBodyInput {
+  /** @maxLength 1024 */
+  password?: string;
+}
+
+export interface RestoreResponseInput {
+  restore: RestoreStatusInput;
+}
+
+export interface RestoreStateResponseInput {
+  restore?: RestoreStatusInput;
+}
+
+export interface BackupErrorResponseInput {
+  message: string;
+  kind:
+    | "no_space"
+    | "io"
+    | "integrity"
+    | "dir_unavailable"
+    | "busy"
+    | "not_found"
+    | "not_torsher"
+    | "corrupt"
+    | "wrong_password"
+    | "newer_version"
+    | "key_unavailable"
+    | "too_large"
+    | "account_created"
+    | "not_absolute"
+    | "missing"
+    | "not_directory"
+    | "denied"
+    | "overlaps_storage";
+  params?: Record<string, string | number>;
+  field?: string;
+}
+
 export interface TitleRatingInput {
   provider: string;
   label: string;
@@ -1666,7 +1848,8 @@ export interface LogEntryInput {
     | "catalog"
     | "network"
     | "notifications"
-    | "auth";
+    | "auth"
+    | "backups";
   message: string;
   details?: string;
   context?: Record<string, string | number | boolean>;
@@ -2067,12 +2250,15 @@ export interface AttentionItemInput {
     | "dns_spoofing"
     | "host_unreachable"
     | "tmdb_key_invalid"
-    | "media_accel_failed";
+    | "media_accel_failed"
+    | "backup_failed"
+    | "backup_dir_unavailable";
   severity: "error" | "warning";
   section:
     | "downloads"
     | "library"
     | "storage"
+    | "backups"
     | "sources"
     | "network"
     | "metadata"
@@ -2084,6 +2270,7 @@ export interface AttentionItemInput {
     reason?: string;
     free?: number;
     minFree?: number;
+    need?: number;
   };
 }
 
@@ -2114,6 +2301,11 @@ export interface OverviewResponseInput {
     watching: number;
   };
   playback: PlaybackSettingsInput | null;
+  backups: {
+    enabled: boolean;
+    lastSuccessAt?: string;
+    failing: boolean;
+  };
 }
 
 export interface NotificationParamsInput {
@@ -2122,6 +2314,7 @@ export interface NotificationParamsInput {
   reason?: string;
   free?: number;
   minFree?: number;
+  need?: number;
   version?: string;
   from?: string;
   type?: string;
@@ -2150,12 +2343,15 @@ export interface NotificationItemInput {
     | "dns_spoofing"
     | "host_unreachable"
     | "tmdb_key_invalid"
-    | "media_accel_failed";
+    | "media_accel_failed"
+    | "backup_failed"
+    | "backup_dir_unavailable";
   severity: "error" | "warning" | "info";
   section?:
     | "downloads"
     | "library"
     | "storage"
+    | "backups"
     | "sources"
     | "network"
     | "metadata"
@@ -2880,6 +3076,188 @@ export interface Signin {
 
 export interface MessageResponse {
   message: string;
+}
+
+export interface BackupItem {
+  name: string;
+  reason:
+    | "scheduled"
+    | "manual"
+    | "pre-update"
+    | "pre-restore"
+    | "pre-import"
+    | "uploaded";
+  createdAt: string;
+  version: string;
+  size: number;
+  encrypted: boolean;
+  dirKind: "main" | "fallback";
+}
+
+export interface RestoreWarning {
+  kind: string;
+  params?: Record<string, string | number>;
+}
+
+export interface RestoreStatus {
+  state: "checking" | "pending" | "done" | "failed";
+  backup?: string;
+  at?: string;
+  reason?: string;
+  params?: Record<string, string | number>;
+  warnings: RestoreWarning[];
+}
+
+export interface BackupStatus {
+  settings: {
+    enabled: boolean;
+    time: string;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    keepDaily: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    keepWeekly: number;
+    mode: "key" | "password";
+    passwordSetAt?: string;
+  };
+  dir: {
+    path: string;
+    source: "default" | "panel";
+    available: boolean;
+    free?: number;
+    total?: number;
+    sameVolumeAsDatabase: boolean;
+  };
+  state: {
+    running?: {
+      reason:
+        | "scheduled"
+        | "manual"
+        | "pre-update"
+        | "pre-restore"
+        | "pre-import"
+        | "uploaded";
+      startedAt: string;
+    };
+    lastSuccessAt?: string;
+    lastAttempt?: {
+      at: string;
+      error?: {
+        kind: string;
+        params: Record<string, string | number>;
+      };
+    };
+    manual?: {
+      at: string;
+      error?: {
+        kind: string;
+        params: Record<string, string | number>;
+      };
+    };
+    nextAt?: string;
+    timezone: string;
+  };
+  restore?: RestoreStatus;
+  items: BackupItem[];
+}
+
+export interface UpdateBackupSettings {
+  enabled: boolean;
+  /** @pattern ^(?:[01]\d|2[0-3]):[0-5]\d$ */
+  time: string;
+  /**
+   * @min 1
+   * @max 30
+   */
+  keepDaily: number;
+  /**
+   * @min 0
+   * @max 12
+   */
+  keepWeekly: number;
+  /**
+   * @minLength 1
+   * @maxLength 4096
+   */
+  dir?: string | null;
+}
+
+export type UpdateBackupEncryption =
+  | {
+      mode: "key";
+    }
+  | {
+      mode: "password";
+      /**
+       * @minLength 8
+       * @maxLength 1024
+       */
+      password: string;
+    };
+
+export interface BackupDirCheckBody {
+  /**
+   * @minLength 1
+   * @maxLength 4096
+   */
+  path: string;
+}
+
+export interface BackupDirCheck {
+  path: string;
+  problem:
+    | "not_absolute"
+    | "missing"
+    | "not_directory"
+    | "denied"
+    | "overlaps_storage"
+    | null;
+  free: number;
+  total: number;
+  sameVolumeAsDatabase: boolean;
+}
+
+export interface RestoreBackupBody {
+  /** @maxLength 1024 */
+  password?: string;
+}
+
+export interface RestoreResponse {
+  restore: RestoreStatus;
+}
+
+export interface RestoreStateResponse {
+  restore?: RestoreStatus;
+}
+
+export interface BackupErrorResponse {
+  message: string;
+  kind:
+    | "no_space"
+    | "io"
+    | "integrity"
+    | "dir_unavailable"
+    | "busy"
+    | "not_found"
+    | "not_torsher"
+    | "corrupt"
+    | "wrong_password"
+    | "newer_version"
+    | "key_unavailable"
+    | "too_large"
+    | "account_created"
+    | "not_absolute"
+    | "missing"
+    | "not_directory"
+    | "denied"
+    | "overlaps_storage";
+  params?: Record<string, string | number>;
+  field?: string;
 }
 
 export interface TitleRating {
@@ -4499,7 +4877,8 @@ export interface LogEntry {
     | "catalog"
     | "network"
     | "notifications"
-    | "auth";
+    | "auth"
+    | "backups";
   message: string;
   details?: string;
   context?: Record<string, string | number | boolean>;
@@ -4900,12 +5279,15 @@ export interface AttentionItem {
     | "dns_spoofing"
     | "host_unreachable"
     | "tmdb_key_invalid"
-    | "media_accel_failed";
+    | "media_accel_failed"
+    | "backup_failed"
+    | "backup_dir_unavailable";
   severity: "error" | "warning";
   section:
     | "downloads"
     | "library"
     | "storage"
+    | "backups"
     | "sources"
     | "network"
     | "metadata"
@@ -4917,6 +5299,7 @@ export interface AttentionItem {
     reason?: string;
     free?: number;
     minFree?: number;
+    need?: number;
   };
 }
 
@@ -4947,6 +5330,11 @@ export interface OverviewResponse {
     watching: number;
   };
   playback: PlaybackSettings | null;
+  backups: {
+    enabled: boolean;
+    lastSuccessAt?: string;
+    failing: boolean;
+  };
 }
 
 export interface NotificationParams {
@@ -4955,6 +5343,7 @@ export interface NotificationParams {
   reason?: string;
   free?: number;
   minFree?: number;
+  need?: number;
   version?: string;
   from?: string;
   type?: string;
@@ -4983,12 +5372,15 @@ export interface NotificationItem {
     | "dns_spoofing"
     | "host_unreachable"
     | "tmdb_key_invalid"
-    | "media_accel_failed";
+    | "media_accel_failed"
+    | "backup_failed"
+    | "backup_dir_unavailable";
   severity: "error" | "warning" | "info";
   section?:
     | "downloads"
     | "library"
     | "storage"
+    | "backups"
     | "sources"
     | "network"
     | "metadata"
@@ -5894,6 +6286,24 @@ export type PostStorageMoveError =
 
 export type PostStorageMoveCancelError =
   MessageResponse | EngineUnavailableResponse;
+
+export type GetBackupsError = MessageResponse;
+
+export type PostBackupError = MessageResponse;
+
+export type PutBackupSettingsError = MessageResponse | BackupErrorResponse;
+
+export type PutBackupEncryptionError = MessageResponse;
+
+export type PostBackupDirCheckError = MessageResponse;
+
+export type GetBackupRestoreError = MessageResponse;
+
+export type DeleteBackupRestoreError = MessageResponse;
+
+export type DeleteBackupError = MessageResponse;
+
+export type PostBackupRestoreError = MessageResponse | BackupErrorResponse;
 
 export type GetNetRoutesError = MessageResponse;
 
@@ -8437,6 +8847,163 @@ export class Api<
         ...params,
       }),
   };
+  backups = {
+    /**
+     * No description
+     *
+     * @tags Backups
+     * @name GetBackups
+     * @request GET:/api/backups
+     */
+    getBackups: (params: RequestParams = {}) =>
+      this.request<BackupStatus, GetBackupsError>({
+        path: `/api/backups`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Backups
+     * @name PostBackup
+     * @request POST:/api/backups
+     */
+    postBackup: (params: RequestParams = {}) =>
+      this.request<BackupStatus, PostBackupError>({
+        path: `/api/backups`,
+        method: "POST",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Backups
+     * @name PutBackupSettings
+     * @request PUT:/api/backups/settings
+     */
+    putBackupSettings: (
+      data: UpdateBackupSettingsInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<BackupStatus, PutBackupSettingsError>({
+        path: `/api/backups/settings`,
+        method: "PUT",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Backups
+     * @name PutBackupEncryption
+     * @request PUT:/api/backups/encryption
+     */
+    putBackupEncryption: (
+      data: UpdateBackupEncryptionInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<BackupStatus, PutBackupEncryptionError>({
+        path: `/api/backups/encryption`,
+        method: "PUT",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Backups
+     * @name PostBackupDirCheck
+     * @request POST:/api/backups/check
+     */
+    postBackupDirCheck: (
+      data: BackupDirCheckBodyInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<BackupDirCheck, PostBackupDirCheckError>({
+        path: `/api/backups/check`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Backups
+     * @name GetBackupRestore
+     * @request GET:/api/backups/restore
+     */
+    getBackupRestore: (params: RequestParams = {}) =>
+      this.request<RestoreStateResponse, GetBackupRestoreError>({
+        path: `/api/backups/restore`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Backups
+     * @name DeleteBackupRestore
+     * @request DELETE:/api/backups/restore
+     */
+    deleteBackupRestore: (params: RequestParams = {}) =>
+      this.request<null, DeleteBackupRestoreError>({
+        path: `/api/backups/restore`,
+        method: "DELETE",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Backups
+     * @name DeleteBackup
+     * @request DELETE:/api/backups/{name}
+     */
+    deleteBackup: (name: string, params: RequestParams = {}) =>
+      this.request<null, DeleteBackupError>({
+        path: `/api/backups/${name}`,
+        method: "DELETE",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Backups
+     * @name PostBackupRestore
+     * @request POST:/api/backups/{name}/restore
+     */
+    postBackupRestore: (
+      name: string,
+      data: RestoreBackupBodyInput | null,
+      params: RequestParams = {},
+    ) =>
+      this.request<RestoreResponse, PostBackupRestoreError>({
+        path: `/api/backups/${name}/restore`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+  };
   net = {
     /**
      * No description
@@ -9384,7 +9951,7 @@ export class Api<
     getLogs: (
       query?: {
         level?: "debug" | "info" | "warn" | "error";
-        /** @pattern ^(?:server|engine|playback|storage|sources|catalog|network|notifications|auth)(?:,(?:server|engine|playback|storage|sources|catalog|network|notifications|auth))*$ */
+        /** @pattern ^(?:server|engine|playback|storage|sources|catalog|network|notifications|auth|backups)(?:,(?:server|engine|playback|storage|sources|catalog|network|notifications|auth|backups))*$ */
         source?: string;
         /** @maxLength 200 */
         q?: string;
