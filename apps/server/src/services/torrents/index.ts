@@ -24,6 +24,8 @@ import {
 } from '../engine/index.ts'
 import { findSidecars } from '../media/subtitles.ts'
 import { enforceStorage, ensureSpaceFor } from '../storage/index.ts'
+import { isMovingTorrent } from '../storage/moving.ts'
+import { downloadDirValue, storagePath, torrentDir } from '../storage/paths.ts'
 import { parseMagnet } from './magnet.ts'
 import { isVideoFile } from './media.ts'
 import { bufferedAheadBytes, fileOffsetOf } from './playback.ts'
@@ -419,6 +421,34 @@ export function linkTitle(torrent: Torrent, titleId: string) {
 }
 
 /**
+ * Добавляет раздачу в движок в её каталоге. Раздача, которой в движке нет,
+ * на диске ничего не хранит и получает действующий каталог загрузок: так
+ * выбранная в панели папка действует с первой новой закачки.
+ */
+async function addToEngine(torrent: Torrent, files: number[]) {
+  if (!torrent.torrentFile)
+    throw new NotReadyError()
+
+  if (isMovingTorrent(torrent.id))
+    throw new EngineError('moving', 'Torrent is being moved')
+
+  if (!torrent.inEngine) {
+    const downloadDir = downloadDirValue(storagePath('downloads'))
+
+    if (downloadDir !== torrent.downloadDir) {
+      update(torrent.id, { downloadDir })
+      torrent = { ...torrent, downloadDir }
+    }
+  }
+
+  await addTorrent(
+    torrent.torrentFile!,
+    files,
+    torrent.downloadDir ? torrentDir(torrent) : undefined,
+  )
+}
+
+/**
  * Скачать выбранные файлы целиком сейчас. Скачанное руками закрепляется
  * («Оставить»): само оно не удалится. Места мало — сервер сразу ставит
  * загрузку на паузу, и раздача попадает в «Требуют внимания».
@@ -429,7 +459,7 @@ export async function downloadFiles(torrent: Torrent, chosen: number[]) {
 
   const files = withSubtitles(torrent, chosen)
 
-  await addTorrent(torrent.torrentFile, files)
+  await addToEngine(torrent, files)
 
   if (torrent.pauseReason)
     await resumeTorrent(torrent.infoHash)
@@ -538,8 +568,18 @@ export async function clearStreamSelections() {
     .filter(row => row.selectedFiles?.length)
 
   for (const row of rows) {
-    if (row.inEngine)
-      await ignoreMissing(selectFiles(row.infoHash, []))
+    if (row.inEngine) {
+      try {
+        await ignoreMissing(selectFiles(row.infoHash, []))
+      }
+      catch (err) {
+        // Раздача переезжает: выбор снимется при следующем старте движка
+        if (err instanceof EngineError && err.kind === 'moving')
+          continue
+
+        throw err
+      }
+    }
 
     update(row.id, { selectedFiles: null })
   }
@@ -568,7 +608,7 @@ export async function prepareStream(torrent: Torrent, fileIndex: number) {
 
   const selected = streamSelection(torrent, fileIndex)
 
-  await addTorrent(torrent.torrentFile, selected)
+  await addToEngine(torrent, selected)
 
   if (torrent.pauseReason)
     await resumeTorrent(torrent.infoHash)
@@ -604,7 +644,7 @@ export async function openFileStream(
       throw new EngineError('rejected', 'Torrent metadata is not ready')
 
     // Движок потерял раздачу; место под неё проверялось при старте просмотра
-    await addTorrent(torrent.torrentFile, streamSelection(torrent, fileIndex))
+    await addToEngine(torrent, streamSelection(torrent, fileIndex))
     update(torrent.id, { inEngine: true })
 
     return openStream(torrent.infoHash, fileIndex, range, signal, window)

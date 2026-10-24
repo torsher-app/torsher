@@ -14,6 +14,108 @@ export const storageQueueItem = z
   })
   .meta({ id: 'storageQueueItem' })
 
+export const storageKinds = ['downloads', 'library'] as const
+
+export const storagePathProblems = [
+  'not_absolute',
+  'not_directory',
+  'denied',
+  'inside_data',
+  'overlaps_other',
+  'library_folder',
+] as const
+
+const folderContents = z.object({
+  path: z.string(),
+  // Раздач в движке или файлов своей раскладки и их объём
+  items: z.number().int(),
+  bytes: z.number(),
+})
+
+export const storageFolder = z
+  .object({
+    path: z.string(),
+    // `env` — путь из окружения (по умолчанию), `panel` — выбран в панели
+    source: z.enum(['env', 'panel']),
+    envPath: z.string(),
+    // Том папки
+    total: z.number(),
+    free: z.number(),
+    // Что лежит в действующей папке
+    items: z.number().int(),
+    bytes: z.number(),
+    // Прежние папки, где ещё остались данные
+    leftovers: z.array(folderContents),
+  })
+  .meta({ id: 'storageFolder' })
+
+export const storageMoveState = z
+  .object({
+    id: z.string(),
+    kind: z.enum(storageKinds),
+    target: z.string(),
+    status: z.enum(['running', 'done', 'failed', 'cancelled']),
+    bytesTotal: z.number(),
+    bytesDone: z.number(),
+    itemsTotal: z.number().int(),
+    itemsDone: z.number().int(),
+    // Раздача или файл, который переезжает сейчас
+    currentName: z.string().nullable(),
+    // Ждём движок или конца просмотра раздачи
+    waiting: z.boolean(),
+    error: z
+      .enum(['no_space', 'denied', 'engine', 'exists', 'failed'])
+      .nullable(),
+    startedAt: z.string(),
+    finishedAt: z.string().nullable(),
+  })
+  .meta({ id: 'storageMoveState' })
+
+export const storagePathCheckBody = z
+  .object({
+    kind: z.enum(storageKinds),
+    path: z.string().min(1).max(4096),
+  })
+  .meta({ id: 'storagePathCheckBody' })
+
+export const storagePathCheck = z
+  .object({
+    path: z.string(),
+    // Почему папку нельзя выбрать; null — можно
+    problem: z.enum(storagePathProblems).nullable(),
+    exists: z.boolean(),
+    writable: z.boolean(),
+    total: z.number(),
+    free: z.number(),
+    // На одном томе с текущей папкой: перенос не займёт места
+    sameVolume: z.boolean(),
+    // Как файлы попадут из загрузок в библиотеку с этой папкой
+    linkMode: z.enum(libraryLinkModes).nullable(),
+    // Сколько займёт «Перенести» на томе этой папки
+    moveBytes: z.number(),
+  })
+  .meta({ id: 'storagePathCheck' })
+
+export const updateStoragePath = z
+  .object({
+    kind: z.enum(storageKinds),
+    // null — «Вернуть по умолчанию»: путь из окружения
+    path: z.string().min(1).max(4096).nullable(),
+    mode: z.enum(['new_only', 'move']),
+  })
+  .meta({ id: 'updateStoragePath' })
+
+export const startStorageMove = z
+  .object({ kind: z.enum(storageKinds) })
+  .meta({ id: 'startStorageMove' })
+
+export const storagePathErrorResponse = z
+  .object({
+    message: z.string(),
+    kind: z.enum([...storagePathProblems, 'busy', 'no_space']),
+  })
+  .meta({ id: 'storagePathErrorResponse' })
+
 export const storageOverview = z
   .object({
     // Каталог загрузок на сервере
@@ -44,6 +146,12 @@ export const storageOverview = z
     }),
     // Что удалится само первым: кэш по давности просмотра
     queue: z.array(storageQueueItem),
+    // Папки загрузок и своей раскладки и перенос между папками
+    folders: z.object({
+      downloads: storageFolder,
+      library: storageFolder,
+    }),
+    move: storageMoveState.nullable(),
   })
   .meta({ id: 'storageOverview' })
 

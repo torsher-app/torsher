@@ -11,10 +11,11 @@ export type EngineUnavailableKind = 'not_installed' | 'starting' | 'stopped'
  * `unavailable` — движок не запущен или не отвечает, `not_found` — раздачи
  * в нём нет, `rejected` — движок отклонил запрос (битый `.torrent`, неверный magnet),
  * `timeout` — не дождались ответа (метаданные magnet так и не пришли),
+ * `moving` — раздача переезжает в другой каталог,
  * `failed` — движок ответил ошибкой или неожиданной формой.
  */
 export type EngineErrorKind
-  = 'unavailable' | 'not_found' | 'rejected' | 'timeout' | 'failed'
+  = 'unavailable' | 'not_found' | 'rejected' | 'timeout' | 'moving' | 'failed'
 
 export class EngineError extends Error {
   readonly kind: EngineErrorKind
@@ -100,6 +101,18 @@ const engineStats = engineTorrentState.extend({
 
 const engineForget = z.object({ deletedBytes: z.number() })
 
+const engineMoveState = z.object({
+  dir: z.string(),
+  state: z.enum(['running', 'done', 'failed']),
+  bytesTotal: z.number(),
+  bytesDone: z.number(),
+  error: z.string().optional(),
+  /** `exists` — в новом каталоге чужой файл под тем же именем */
+  kind: z.string().optional(),
+})
+
+export type EngineMoveState = z.infer<typeof engineMoveState>
+
 export type EngineTorrentDetails = z.infer<typeof engineTorrentDetails>
 
 /** Раздача в движке: пауза, выбор, сколько скачано, пиры и скорость */
@@ -160,6 +173,9 @@ async function errorOf(response: Response) {
 
   if (response.status === 504)
     return new EngineError('timeout', message)
+
+  if (response.status === 409 && body.kind === 'torrent_moving')
+    return new EngineError('moving', message)
 
   if (response.status >= 400 && response.status < 500)
     return new EngineError('rejected', message)
@@ -261,9 +277,19 @@ export async function inspectTorrent(bytes: Uint8Array) {
  * файлы. Целиком выбранный файл докачивается после начала просмотра, до этого
  * движок качает только куски, которые читает поток.
  */
-export async function addTorrent(bytes: Uint8Array, onlyFiles: number[]) {
+export async function addTorrent(
+  bytes: Uint8Array,
+  onlyFiles: number[],
+  dir?: string,
+) {
+  const query = new URLSearchParams({ files: onlyFiles.join(',') })
+
+  // Без каталога — каталог загрузок по умолчанию (`--downloads`)
+  if (dir)
+    query.set('dir', dir)
+
   return engineJson(
-    `/torrents?files=${onlyFiles.join(',')}`,
+    `/torrents?${query.toString().replaceAll('%2C', ',')}`,
     engineTorrentDetails,
     {
       method: 'POST',
@@ -318,6 +344,23 @@ export async function forgetTorrent(
   )
 
   return result.deletedBytes
+}
+
+/**
+ * Начинает перенос файлов раздачи в другой каталог. Раздача на это время
+ * уходит из движка; ход — `torrentMoveState`.
+ */
+export async function moveTorrent(infoHash: string, dir: string) {
+  return engineJson(`/torrents/${infoHash}/move`, engineMoveState, {
+    method: 'POST',
+    body: JSON.stringify({ dir }),
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
+
+/** Ход переноса; `not_found` — движок о переносе не знает (перезапускался) */
+export async function torrentMoveState(infoHash: string) {
+  return engineJson(`/torrents/${infoHash}/move`, engineMoveState)
 }
 
 /** Все раздачи движка одним запросом: для списка загрузок и учёта места */

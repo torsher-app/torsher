@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { FolderBrowse } from '@torsher/api-client'
 import { ArrowUpIcon, FolderIcon, FolderOpenIcon } from '@lucide/vue'
+import { useDebounceFn } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -9,15 +10,21 @@ import { api } from '~/services/api'
 
 /**
  * Путь папки на сервере: ввод вручную или обзор ФС сервера (в образе — пути
- * внутри контейнера). Обзор раскрывается под полем, список постоянной высоты
+ * внутри контейнера). Обзор раскрывается под полем, список постоянной высоты.
+ * `follow` — обзор открыт сразу, и переход в папку выбирает её: так выбирают
+ * папки хранения, проверка идёт на каждом шаге
  */
-defineProps<{
+const props = defineProps<{
   id: string
   invalid?: boolean
   describedby?: string
+  follow?: boolean
+  placeholder?: string
 }>()
 
 const path = defineModel<string | undefined>({ required: true })
+
+const TYPED_BROWSE_DELAY_MS = 400
 
 const { t } = useI18n()
 const browsing = ref(false)
@@ -25,15 +32,32 @@ const listing = shallowRef<FolderBrowse | null>(null)
 const loading = ref(false)
 const failed = ref(false)
 
-async function browse(target?: string) {
+function parentOf(target: string) {
+  return target.replace(/\/[^/]+\/?$/, '') || '/'
+}
+
+/**
+ * Открывает папку в обзоре; в режиме `follow` переход выбирает её. Папки ещё
+ * нет (она создастся) — обзор открывает ближайшую существующую выше, а путь
+ * остаётся введённым
+ */
+async function browse(target = '/', select = props.follow) {
   loading.value = true
   failed.value = false
 
   try {
     listing.value = await withErrorMode('silent', () =>
-      api.libraries.getLibraryBrowse({ path: target || undefined }))
+      api.storage.getStorageBrowse({ path: target }))
+
+    if (select)
+      path.value = listing.value.path
   }
   catch {
+    if (props.follow && target !== '/') {
+      await browse(parentOf(target), false)
+      return
+    }
+
     failed.value = true
   }
   finally {
@@ -46,6 +70,34 @@ function toggle() {
 
   if (browsing.value)
     void browse(path.value?.trim() || '/')
+}
+
+// Введённый руками путь открывается в обзоре сам: заголовок списка не
+// расходится с полем
+const browseTyped = useDebounceFn((value: string) => {
+  if (value.startsWith('/') && value !== listing.value?.path)
+    void browse(value, false)
+}, TYPED_BROWSE_DELAY_MS)
+
+watch(path, (value) => {
+  if (props.follow)
+    void browseTyped(value?.trim() ?? '')
+})
+
+onMounted(() => {
+  if (props.follow) {
+    browsing.value = true
+    void browse(path.value?.trim() || '/', false)
+  }
+})
+
+// В обзоре Enter открывает введённый путь, а не отправляет форму
+function onEnter(event: KeyboardEvent) {
+  if (!props.follow)
+    return
+
+  event.preventDefault()
+  void browse(path.value?.trim() || '/', false)
 }
 
 function choose() {
@@ -66,13 +118,14 @@ function choose() {
         autocomplete="off"
         spellcheck="false"
         class="font-mono text-xs"
-        placeholder="/media/video"
+        :placeholder="placeholder ?? '/media/video'"
         :aria-invalid="invalid || undefined"
         :aria-describedby="describedby"
+        @keydown.enter="onEnter"
       />
-      <Button type="button" variant="outline" @click="toggle">
+      <Button v-if="!follow" type="button" variant="outline" @click="toggle">
         <FolderOpenIcon aria-hidden="true" />
-        {{ t("panel.library.picker.browse") }}
+        {{ t("panel.folderPicker.browse") }}
       </Button>
     </div>
 
@@ -83,7 +136,7 @@ function choose() {
           variant="ghost"
           size="icon-sm"
           :disabled="!listing?.parent || loading"
-          :aria-label="t('panel.library.picker.up')"
+          :aria-label="t('panel.folderPicker.up')"
           @click="browse(listing?.parent ?? '/')"
         >
           <ArrowUpIcon aria-hidden="true" />
@@ -95,12 +148,13 @@ function choose() {
           {{ listing?.path ?? "/" }}
         </span>
         <Button
+          v-if="!follow"
           type="button"
           size="sm"
           :disabled="!listing || loading"
           @click="choose"
         >
-          {{ t("panel.library.picker.choose") }}
+          {{ t("panel.folderPicker.choose") }}
         </Button>
       </div>
       <!-- Список постоянной высоты: переходы по папкам не двигают диалог -->
@@ -113,13 +167,13 @@ function choose() {
           <Skeleton v-for="item in 5" :key="item" class="h-7 rounded" />
         </div>
         <p v-else-if="failed" class="p-3 text-[13px] text-muted-foreground">
-          {{ t("panel.library.picker.failed") }}
+          {{ t("panel.folderPicker.failed") }}
         </p>
         <p
           v-else-if="!listing?.entries.length"
           class="p-3 text-[13px] text-muted-foreground"
         >
-          {{ t("panel.library.picker.empty") }}
+          {{ t("panel.folderPicker.empty") }}
         </p>
         <ul v-else class="grid p-1">
           <li v-for="entry in listing.entries" :key="entry.path">

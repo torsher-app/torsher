@@ -2,7 +2,6 @@ import type { LibraryFolder, MediaFile } from '../../db/schema.ts'
 import { stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { and, desc, eq, inArray, isNotNull } from 'drizzle-orm'
-import { config } from '../../config.ts'
 import { getDb } from '../../db/index.ts'
 import {
   libraries,
@@ -11,46 +10,82 @@ import {
   torrents,
 } from '../../db/schema.ts'
 import { logFor } from '../logs/index.ts'
+import {
+  envStoragePath,
+  storagePath,
+  storagePathSource,
+} from '../storage/paths.ts'
 
 /**
- * Своя раскладка — скрытая библиотека «Фильмы и сериалы» с одной папкой.
- * Создаётся при первом обращении; путь папки всегда — `LIBRARY_PATH`.
+ * Своя раскладка — скрытая библиотека «Фильмы и сериалы». Папок в ней может
+ * быть несколько: новые файлы пишутся в папку действующего пути
+ * (`storagePath('library')`), прежние остаются рабочими после «Только новые».
+ * Папка окружения идёт за сменой `LIBRARY_PATH`, как раньше.
  */
 export function managedFolder(): LibraryFolder {
-  const db = getDb()
+  const path = storagePath('library')
+  const envPath = envStoragePath('library')
+  const fromEnv = storagePathSource('library') === 'env'
 
-  return db.transaction((tx) => {
-    const found = tx
-      .select({ folder: libraryFolders })
-      .from(libraryFolders)
-      .innerJoin(libraries, eq(libraries.id, libraryFolders.libraryId))
+  return getDb().transaction((tx) => {
+    let library = tx
+      .select()
+      .from(libraries)
       .where(eq(libraries.managed, true))
       .get()
-      ?.folder
 
-    if (found) {
-      return found.path === config.libraryPath
-        ? found
-        : tx
-            .update(libraryFolders)
-            .set({ path: config.libraryPath })
-            .where(eq(libraryFolders.id, found.id))
-            .returning()
-            .get()
-    }
-
-    const library = tx
+    library ??= tx
       .insert(libraries)
       .values({ kind: 'video', name: 'Torsher', managed: true })
       .returning()
       .get()
 
+    const folders = tx
+      .select()
+      .from(libraryFolders)
+      .where(eq(libraryFolders.libraryId, library.id))
+      .all()
+    const envFolder = folders.find(folder => folder.followsEnv)
+
+    // Сменили `LIBRARY_PATH` в compose — диск переехал вместе с файлами
+    if (
+      envFolder
+      && envFolder.path !== envPath
+      && !folders.some(folder => folder.path === envPath)
+    ) {
+      tx.update(libraryFolders)
+        .set({ path: envPath })
+        .where(eq(libraryFolders.id, envFolder.id))
+        .run()
+      envFolder.path = envPath
+    }
+
+    const found = folders.find(folder => folder.path === path)
+
+    if (found)
+      return found
+
     return tx
       .insert(libraryFolders)
-      .values({ libraryId: library.id, path: config.libraryPath })
+      .values({
+        libraryId: library.id,
+        path,
+        followsEnv: fromEnv && !envFolder,
+      })
       .returning()
       .get()
   })
+}
+
+/** Все папки своей раскладки, что уже есть: действующая и прежние */
+export function managedFolders(): LibraryFolder[] {
+  return getDb()
+    .select({ folder: libraryFolders })
+    .from(libraryFolders)
+    .innerJoin(libraries, eq(libraries.id, libraryFolders.libraryId))
+    .where(eq(libraries.managed, true))
+    .all()
+    .map(row => row.folder)
 }
 
 export function absolutePathOf(folder: LibraryFolder, file: MediaFile) {
@@ -126,7 +161,7 @@ export interface LibraryUsage {
 
 /** Объём своей раскладки и сколько из него общего с раздачами в движке */
 export function libraryUsage(): LibraryUsage {
-  const folder = managedFolder()
+  const ids = managedFolders().map(folder => folder.id)
   const rows = getDb()
     .select({
       size: mediaFiles.size,
@@ -136,7 +171,7 @@ export function libraryUsage(): LibraryUsage {
     .from(mediaFiles)
     .leftJoin(torrents, eq(torrents.id, mediaFiles.torrentId))
     .where(
-      and(eq(mediaFiles.folderId, folder.id), eq(mediaFiles.state, 'present')),
+      and(inArray(mediaFiles.folderId, ids), eq(mediaFiles.state, 'present')),
     )
     .all()
 
@@ -184,15 +219,18 @@ export function linkedBytesByTorrent() {
  * удаляется), вернувшийся — снова `present`.
  */
 export async function checkManagedFiles() {
-  const folder = managedFolder()
+  const folders = new Map(
+    managedFolders().map(folder => [folder.id, folder]),
+  )
   const rows = getDb()
     .select()
     .from(mediaFiles)
-    .where(eq(mediaFiles.folderId, folder.id))
+    .where(inArray(mediaFiles.folderId, [...folders.keys()]))
     .all()
   let missing = 0
 
   for (const row of rows) {
+    const folder = folders.get(row.folderId)!
     const exists = await stat(absolutePathOf(folder, row)).then(
       () => true,
       () => false,

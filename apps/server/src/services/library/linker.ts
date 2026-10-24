@@ -6,17 +6,18 @@ import { stat } from 'node:fs/promises'
 import { join, relative, resolve, sep } from 'node:path'
 import { matchFiles, parseRelease } from '@torsher/release-parser'
 import { and, eq, isNotNull, or } from 'drizzle-orm'
-import { config } from '../../config.ts'
 import { getDb } from '../../db/index.ts'
 import { mediaFiles, profiles, torrents } from '../../db/schema.ts'
 import { isEngineReady } from '../engine/index.ts'
 import { logFor } from '../logs/index.ts'
 import { findSidecars } from '../media/subtitles.ts'
+import { torrentDir } from '../storage/paths.ts'
 import { getTitleIdentity } from '../tmdb/index.ts'
 import { liveTorrents, setRetention } from '../torrents/index.ts'
 import {
   existingTitleFolder,
   managedFolder,
+  managedFolders,
   torrentLibraryFiles,
 } from './files.ts'
 import { extensionOf, otherPath, sidecarPath, videoPath } from './layout.ts'
@@ -130,7 +131,7 @@ function isInside(base: string, path: string) {
 
 /**
  * Где файл раздачи лежит в загрузках: движок кладёт его в каталог с именем
- * раздачи, а раздачу из одного файла — прямо в каталог загрузок. Путь из
+ * раздачи, а раздачу из одного файла — прямо в каталог раздачи. Путь из
  * чужого `.torrent` за пределы загрузок не выходит.
  */
 export async function sourcePathOf(torrent: Torrent, fileIndex: number) {
@@ -139,7 +140,7 @@ export async function sourcePathOf(torrent: Torrent, fileIndex: number) {
   if (!file)
     return undefined
 
-  const base = resolve(config.downloadsPath)
+  const base = resolve(torrentDir(torrent))
   const parts = file.path.split('/')
   const candidates = [
     resolve(base, torrent.name, ...parts),
@@ -291,13 +292,15 @@ async function placeVideo(
 }
 
 /** Субтитры и дорожки серии — рядом с её файлом, когда скачаны целиком */
-async function placeSidecars(
-  folder: LibraryFolder,
-  torrent: Torrent,
-  state: EngineTorrentState,
-) {
+async function placeSidecars(torrent: Torrent, state: EngineTorrentState) {
+  const folders = new Map(
+    managedFolders().map(folder => [folder.id, folder]),
+  )
+
   for (const video of torrentLibraryFiles(torrent.id)) {
-    if (video.fileIndex === null || video.folderId !== folder.id)
+    const folder = folders.get(video.folderId)
+
+    if (video.fileIndex === null || !folder)
       continue
 
     const taken = new Set<string>()
@@ -510,7 +513,7 @@ async function linkTorrent(
       await placeVideo(folder, torrent, title, item)
   }
 
-  await placeSidecars(folder, torrent, state)
+  await placeSidecars(torrent, state)
   await releaseCopies(torrent, planned)
   return true
 }
@@ -527,6 +530,14 @@ function signatureOf(torrent: Torrent, state: EngineTorrentState) {
     torrent.matchStatus,
     torrent.selectedFiles?.join(','),
   ].join(':')
+}
+
+/**
+ * Пройти все раздачи заново: после переноса папок хардлинки могли стать
+ * копиями, и раздача должна вернуться в кэш, хотя скачанное не менялось
+ */
+export function forgetLibraryPasses() {
+  passed.clear()
 }
 
 async function runSync() {

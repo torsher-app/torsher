@@ -24,7 +24,7 @@ import (
 
 func main() {
 	listen := flag.String("listen", "127.0.0.1:0", "адрес HTTP API (только loopback)")
-	downloads := flag.String("downloads", "downloads", "каталог файлов раздач")
+	downloads := flag.String("downloads", "downloads", "каталог файлов раздач по умолчанию: раздача без своего каталога")
 	dataDir := flag.String("data", "engine-data", "каталог состояния движка")
 	peerPort := flag.Int("peer-port", 0, "порт для входящих соединений пиров (0 — любой свободный)")
 	seed := flag.Bool("seed", true, "раздавать скачанное пирам")
@@ -73,6 +73,21 @@ type clientStorage struct {
 	completion storage.PieceCompletion
 }
 
+// Файловое хранилище каталога. Отметки кусков общие у всех каталогов: ключ —
+// infohash и номер куска, поэтому перенос раздачи их не теряет
+func fileStorage(dir string, completion storage.PieceCompletion) storage.ClientImplCloser {
+	return storage.NewFileOpts(storage.NewFileClientOpts{
+		ClientBaseDir:   dir,
+		FilePathMaker:   filePathOf,
+		PieceCompletion: completion,
+		// Без `.part`: с ними хранилище пишет кусок всегда в `<файл>.part`, даже
+		// когда файл уже готов, а потом переименовывает его поверх готового.
+		// Кусок на стыке двух файлов, с которого открытие раздачи снимает
+		// отметку, так затирал готовую серию разреженным файлом
+		UsePartFiles: g.Some(false),
+	})
+}
+
 // Конфигурация клиента общая для движка и тестов: тесты отключают сеть наружу
 func newClientConfig(downloads, dataDir string, peerPort int, seed bool) (*torrent.ClientConfig, clientStorage, error) {
 	if err := os.MkdirAll(downloads, 0o755); err != nil {
@@ -90,16 +105,7 @@ func newClientConfig(downloads, dataDir string, peerPort int, seed bool) (*torre
 	// Без `Seed` библиотека отдаёт куски только в обмен на свои и перестаёт
 	// раздавать скачанное
 	cfg.Seed = seed
-	cfg.DefaultStorage = storage.NewFileOpts(storage.NewFileClientOpts{
-		ClientBaseDir:   downloads,
-		FilePathMaker:   filePathOf,
-		PieceCompletion: completion,
-		// Без `.part`: с ними хранилище пишет кусок всегда в `<файл>.part`, даже
-		// когда файл уже готов, а потом переименовывает его поверх готового.
-		// Кусок на стыке двух файлов, с которого открытие раздачи снимает
-		// отметку, так затирал готовую серию разреженным файлом
-		UsePartFiles: g.Some(false),
-	})
+	cfg.DefaultStorage = fileStorage(downloads, completion)
 	// Сообщения библиотеки — только предупреждения и ошибки: остальное шумит в журнале сервера
 	cfg.Slogger = slog.New(withoutCanceled{slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn})})
 

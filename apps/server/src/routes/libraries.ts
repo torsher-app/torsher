@@ -5,10 +5,8 @@ import { z } from 'zod'
 import { messageResponse } from '../dto/common.ts'
 import {
   addLibraryFolder,
-  browseQuery,
   createLibrary,
   fileParams,
-  folderBrowse,
   folderParams,
   folderPathErrorResponse,
   groupPreviewQuery,
@@ -28,7 +26,6 @@ import { mediaFiles } from '../db/schema.ts'
 import { requireOwner } from '../middleware/auth.ts'
 import {
   addFolder,
-  browseFolders,
   createLibrary as create,
   FolderPathError,
   libraryFiles,
@@ -243,27 +240,6 @@ export const librariesRoutes: FastifyPluginAsyncZod = async (app) => {
       }
       catch (err) {
         return sendLibraryError(reply, err)
-      }
-    },
-  )
-
-  // Обзор ФС сервера для выбора папки: только каталоги
-  app.get(
-    '/browse',
-    {
-      schema: {
-        operationId: 'getLibraryBrowse',
-        tags: ['Libraries'],
-        querystring: browseQuery,
-        response: { 200: folderBrowse, 422: messageResponse, ...guard },
-      },
-    },
-    async (request, reply) => {
-      try {
-        return await browseFolders(request.query.path)
-      }
-      catch (err) {
-        return reply.code(422).send({ message: (err as Error).message })
       }
     },
   )

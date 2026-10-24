@@ -75,6 +75,9 @@ export function createApiClient(options: ApiClientOptions) {
   }
 
   async function request(url: string, init: RequestInit) {
+    // Режим берём при старте запроса: к ответу окно `withErrorMode`, в
+    // котором запрос начался, уже может закончиться
+    const mode = options.getErrorMode()
     let response = await sendWithRetry(url, init)
 
     if (response.status === UNAUTHORIZED && !url.includes(REFRESH_PATH)) {
@@ -94,14 +97,12 @@ export function createApiClient(options: ApiClientOptions) {
     if (response.ok)
       return response
 
-    await reportError(response)
+    await reportError(response, mode)
 
     throw new HttpError(response)
   }
 
-  async function reportError(response: Response) {
-    const mode = options.getErrorMode()
-
+  async function reportError(response: Response, mode: ErrorMode) {
     if (mode === 'toast')
       options.onError(await readErrorMessage(response), response.status)
     else if (mode === 'global')

@@ -22,6 +22,16 @@ type savedTorrent struct {
 	Selected []int `json:"selected"`
 	// Пауза владельца или сервера: раздача не качает и не раздаёт
 	Paused bool `json:"paused"`
+	// Каталог файлов раздачи; пусто — каталог загрузок по умолчанию
+	Dir string `json:"dir,omitempty"`
+	// Перенос в другой каталог: `MovingTo` — файлы ставятся в новый каталог,
+	// раздача ещё живёт в старом; `MovedFrom` — раздача уже в новом, в старом
+	// остались исходники. По ним `restore` доводит прерванный перенос
+	MovingTo  string `json:"movingTo,omitempty"`
+	MovedFrom string `json:"movedFrom,omitempty"`
+	// Пути относительно каталога раздачи, которые ставит текущий перенос.
+	// Пишутся до появления файла: откат удаляет в новом каталоге только их
+	Placed []string `json:"placed,omitempty"`
 	// Только у записей прежних версий: `false` — выбор сделал просмотр и он
 	// ещё не докачивался. `restore` переводит запись в новый вид
 	Background *bool `json:"background,omitempty"`
@@ -97,6 +107,13 @@ func (s *session) update(hash metainfo.Hash, change func(*savedTorrent)) error {
 	change(&saved)
 
 	return s.saveSelection(hash, saved)
+}
+
+// Раздача сохранена в сессии: её добавляли, а не только искали метаданные
+func (s *session) has(hash metainfo.Hash) bool {
+	_, err := os.Stat(s.path(hash, ".torrent"))
+
+	return err == nil
 }
 
 func (s *session) remove(hash metainfo.Hash) error {

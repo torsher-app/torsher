@@ -272,7 +272,7 @@ describe('подключённые папки: скан', () => {
     await file('Folder/Example.mkv')
 
     const res = await app.inject({
-      url: `/api/libraries/browse?path=${encodeURIComponent(join(root, 'media'))}`,
+      url: `/api/storage/browse?path=${encodeURIComponent(join(root, 'media'))}`,
       cookies: owner,
     })
 
@@ -280,9 +280,9 @@ describe('подключённые папки: скан', () => {
       entries: [{ name: 'Folder' }],
       parent: root,
     })
-    expect(
-      (await app.inject({ url: '/api/libraries/browse' })).statusCode,
-    ).toBe(401)
+    expect((await app.inject({ url: '/api/storage/browse' })).statusCode).toBe(
+      401,
+    )
   })
 })
 

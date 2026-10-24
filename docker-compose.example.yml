@@ -23,11 +23,15 @@ services:
       # Optional: your own TMDB API Read Access Token for the catalog
       # TMDB_ACCESS_TOKEN:
     volumes:
-      # Database, keys, downloads (/data/torrents) and the library
-      # (/data/library). Keep them in one volume: files you keep are
-      # hard-linked from downloads to the library and take no extra space.
-      # Two volumes, even on one disk, turn hard links into copies
+      # One disk (recommended): database, keys, downloads (/data/torrents)
+      # and the library (/data/library) in one volume. Files you keep are
+      # hard-linked from downloads to the library and take no extra space
       - ./data:/data
+      # Several disks: keep /data above for the database, mount the big disk
+      # once and choose /storage/torrents and /storage/library in
+      # Settings → Storage. Keep both folders in this one volume: two
+      # volumes, even on one disk, turn hard links into copies
+      # - /mnt/big:/storage
       # Optional: your existing media folders, read-only
       # - /path/to/movies:/media/movies:ro
     # Optional: hardware transcoding on Intel or AMD graphics (VAAPI)

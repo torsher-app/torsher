@@ -78,12 +78,25 @@ func deleteTorrentFiles(downloads string, info *metainfo.Info) (int64, error) {
 			freed += stat.Size()
 		}
 
-		for dir := filepath.Dir(path); isInside(base, dir); dir = filepath.Dir(dir) {
-			dirs[dir] = true
-		}
+		addParentDirs(dirs, base, path)
 	}
 
-	// Глубокие каталоги — первыми; непустой (в нём чужие файлы) остаётся
+	errs = append(errs, removeEmptyDirs(dirs))
+
+	return freed, errors.Join(errs...)
+}
+
+// Каталоги раздачи между файлом и каталогом загрузок
+func addParentDirs(dirs map[string]bool, base, path string) {
+	for dir := filepath.Dir(path); isInside(base, dir); dir = filepath.Dir(dir) {
+		dirs[dir] = true
+	}
+}
+
+// Глубокие каталоги — первыми; непустой (в нём чужие файлы) остаётся
+func removeEmptyDirs(dirs map[string]bool) error {
+	var errs []error
+
 	for len(dirs) > 0 {
 		deepest := ""
 		for dir := range dirs {
@@ -98,7 +111,7 @@ func deleteTorrentFiles(downloads string, info *metainfo.Info) (int64, error) {
 		}
 	}
 
-	return freed, errors.Join(errs...)
+	return errors.Join(errs...)
 }
 
 // Каталог с чужими файлами: Linux отвечает ENOTEMPTY, часть систем — EEXIST

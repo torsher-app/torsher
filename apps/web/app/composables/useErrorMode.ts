@@ -1,6 +1,5 @@
 import type { ErrorMode } from '~/services/api'
-
-const errorMode = ref<ErrorMode>('toast')
+import { createErrorModeStack } from '@torsher/api-client'
 
 /**
  * Как API-клиент показывает ошибку ответа:
@@ -8,20 +7,14 @@ const errorMode = ref<ErrorMode>('toast')
  * - `global` — страница ошибки;
  * - `silent` — ничего, вызывающий код разбирается сам.
  */
-export function useErrorMode() {
-  return errorMode
+const errorModes = createErrorModeStack('toast')
+
+/** Режим для запроса, который начинается сейчас */
+export function currentErrorMode() {
+  return errorModes.current()
 }
 
-/** Выполняет запрос в заданном режиме и возвращает режим обратно */
-export async function withErrorMode<T>(mode: ErrorMode, fn: () => Promise<T>) {
-  const previous = errorMode.value
-
-  errorMode.value = mode
-
-  try {
-    return await fn()
-  }
-  finally {
-    errorMode.value = previous
-  }
+/** Выполняет запросы внутри `fn` в заданном режиме */
+export function withErrorMode<T>(mode: ErrorMode, fn: () => Promise<T>) {
+  return errorModes.run(mode, fn)
 }

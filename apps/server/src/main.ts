@@ -30,6 +30,7 @@ import {
   LOG_LEVELS,
   logFor,
 } from './services/logs/index.ts'
+import { setScrubDownloads } from './services/logs/scrub.ts'
 import { applyHomeVideoFields } from './services/library/homeVideo.ts'
 import { queueMatch, queueUnmatched } from './services/library/match.ts'
 import { onFolderScanned, scanAllFolders } from './services/library/scan.ts'
@@ -51,7 +52,10 @@ import {
 import { startImdbSchedule } from './services/ratings/imdb/index.ts'
 import { purgeExpiredExternalIds } from './services/ratings/index.ts'
 import { purgeExpiredAliases } from './services/sources/aliases.ts'
+import { knownDownloadDirs } from './services/storage/folders.ts'
 import { enforceStorage } from './services/storage/index.ts'
+import { resumeMoves } from './services/storage/move.ts'
+import { onStoragePathsChanged } from './services/storage/paths.ts'
 import { getSetting } from './services/settings/index.ts'
 import { purgeExpiredMetaCache } from './services/tmdb/cache.ts'
 import {
@@ -159,6 +163,19 @@ await cleanTranscodes()
 // Своя раскладка: строка библиотеки, проверка хардлинков и сверка с диском
 managedFolder()
 await checkLinkMode()
+
+// Перенос папок, прерванный остановкой, продолжается с того же места. Не по
+// готовности движка: перенос библиотеки его не ждёт, загрузки ждут сами
+resumeMoves()
+
+// Каталоги загрузок из панели и прежние каталоги раздач прячутся в журнале,
+// как каталог окружения
+function refreshScrub() {
+  setScrubDownloads(knownDownloadDirs())
+}
+
+refreshScrub()
+onStoragePathsChanged(refreshScrub)
 
 const FOLDER_SCAN_MS = 12 * 60 * 60 * 1000
 
