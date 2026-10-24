@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { IconName } from './AppIcon.vue'
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useFocus } from '../focus/index.ts'
@@ -89,6 +89,9 @@ const stopFocus = focus.onFocus((el, via) => {
   inside = within
   open.value = via === 'nav' && within
 
+  if (open.value)
+    void nextTick(() => markClipped(el))
+
   // Вход в рейл с пульта — на текущий раздел, как в Google TV и Netflix,
   // а не на запомненный или первый пункт
   if (entered && via === 'nav') {
@@ -100,6 +103,17 @@ const stopFocus = focus.onFocus((el, via) => {
       focus.focusOn(current, via)
   }
 })
+
+// Подпись длиннее плашки (длинная локаль, имя профиля) обрезана многоточием,
+// полный текст — подписью справа. Замер после раскрытия: в свёрнутом рейле
+// подписи нулевой ширины. `data-clipped`, а не класс: классы пунктов ведёт Vue
+function markClipped(el: HTMLElement) {
+  const label = el.querySelector<HTMLElement>('.rail__label')
+
+  if (label && label.scrollWidth > label.clientWidth)
+    el.dataset.clipped = ''
+  else delete el.dataset.clipped
+}
 
 // DOM-фокус ушёл мимо движка (клик в поле ввода)
 function onFocusout(event: FocusEvent) {
@@ -143,6 +157,9 @@ onBeforeUnmount(stopFocus)
       >
         <AppIcon :name="item.icon" />
         <span class="rail__label">{{ item.label }}</span>
+        <span class="focus-caption rail__caption" aria-hidden="true">{{
+          item.label
+        }}</span>
       </button>
       <div class="rail__spacer" />
       <!-- «Сменить профиль»: аватар и имя зрителя, OK — экран выбора -->
@@ -156,6 +173,9 @@ onBeforeUnmount(stopFocus)
       >
         <ProfileAvatar :profile="session.profile" class="rail__avatar" />
         <span class="rail__label">{{ session.profile.name }}</span>
+        <span class="focus-caption rail__caption" aria-hidden="true">{{
+          session.profile.name
+        }}</span>
       </button>
       <button
         v-for="item in bottom"
@@ -168,6 +188,9 @@ onBeforeUnmount(stopFocus)
       >
         <AppIcon :name="item.icon" />
         <span class="rail__label">{{ item.label }}</span>
+        <span class="focus-caption rail__caption" aria-hidden="true">{{
+          item.label
+        }}</span>
       </button>
     </FocusSection>
   </nav>
@@ -252,8 +275,10 @@ onBeforeUnmount(stopFocus)
   white-space: nowrap;
 }
 
+/* Справа поле: обрезанная подпись кончается многоточием внутри плашки */
 .rail--open .rail__item {
   width: calc(var(--u) * 340);
+  padding-right: calc(var(--u) * 24);
 }
 
 .rail__item--current {
@@ -281,8 +306,11 @@ onBeforeUnmount(stopFocus)
 }
 
 .rail__label {
+  min-width: 0;
   margin-left: calc(var(--u) * 24);
+  overflow: hidden;
   font-size: var(--font-size-m);
+  text-overflow: ellipsis;
   font-weight: 500;
   opacity: 0;
   transform: translateX(calc(var(--u) * -12));
@@ -302,6 +330,17 @@ onBeforeUnmount(stopFocus)
 .rail--open .rail__label {
   opacity: 1;
   transform: none;
+}
+
+.rail__caption {
+  top: 50%;
+  left: 100%;
+  margin-left: calc(var(--u) * 12);
+  transform: translateY(-50%);
+}
+
+.rail--open .rail__item[data-clipped]:focus .rail__caption {
+  opacity: 1;
 }
 
 .rail__spacer {
