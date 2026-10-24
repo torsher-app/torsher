@@ -1,0 +1,62 @@
+/*
+ * The site wears the product palette from @torsher/tokens. Sizes stay the
+ * site's own: the showcase unit --u is tied to a 1920 px TV screen.
+ */
+:root {
+  --vp-font-family-base: 'Onest', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --vp-font-family-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  /* The accent is too light for text on white: links use a darker amber of the same hue */
+  --vp-c-brand-1: #8a5f00;
+  --vp-c-brand-2: #a87400;
+  --vp-c-brand-3: var(--color-accent);
+  --vp-c-brand-soft: rgba(232, 184, 74, 0.16);
+
+  --vp-button-brand-text: var(--color-accent-ink);
+  --vp-button-brand-bg: var(--color-accent);
+  --vp-button-brand-border: var(--color-accent);
+  --vp-button-brand-hover-text: var(--color-accent-ink);
+  --vp-button-brand-hover-bg: var(--color-glow);
+  --vp-button-brand-hover-border: var(--color-glow);
+  --vp-button-brand-active-text: var(--color-accent-ink);
+  --vp-button-brand-active-bg: var(--color-accent);
+  --vp-button-brand-active-border: var(--color-accent);
+
+  --vp-home-hero-name-color: var(--color-accent);
+
+  /* "What you'll get" tips take the status green: in the brand amber they read as warnings */
+  --vp-c-tip-1: #1d7a4a;
+  --vp-c-tip-2: #24935a;
+  --vp-c-tip-3: var(--color-ok);
+  --vp-c-tip-soft: rgba(111, 211, 154, 0.14);
+}
+
+.dark {
+  --vp-c-bg: var(--color-bg);
+  --vp-c-bg-alt: var(--color-surface);
+  --vp-c-bg-elv: var(--color-surface-raised);
+  --vp-c-bg-soft: var(--color-surface);
+
+  --vp-c-text-1: var(--color-text);
+  --vp-c-text-2: var(--color-text-muted);
+  --vp-c-text-3: var(--color-text-dim);
+
+  --vp-c-divider: var(--color-line);
+  --vp-c-gutter: var(--color-bg);
+
+  --vp-c-brand-1: var(--color-accent);
+  --vp-c-brand-2: var(--color-glow);
+  --vp-c-brand-3: var(--color-accent);
+
+  --vp-code-block-bg: var(--color-surface);
+
+  --vp-c-tip-1: var(--color-ok);
+  --vp-c-tip-2: #8fe0b2;
+  --vp-c-tip-3: var(--color-ok);
+}
+
+/* Interface names read as on screen: the same weight everywhere on the site */
+.ui-label {
+  font-weight: 600;
+  color: var(--vp-c-text-1);
+}
