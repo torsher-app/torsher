@@ -96,6 +96,48 @@ When a folder already holds data, the panel asks what to do with it. **New only*
 
 The server exposes `GET /api/health`, and the image uses it for the Docker health check.
 
+### Backups
+
+A backup holds the database — profiles, watch positions, ratings, lists, collections, sources and settings — and the key that encrypts saved secrets. Videos, downloads, the cache and the log are not included: protect them with file system or NAS snapshots or your own backup tool.
+
+The server makes a backup once a day at 04:00 in the container's time zone (`TZ`) and keeps 7 daily and 4 weekly ones; change the time and the counts under **Settings → Backups**. It also makes one before an update that changes the database (the last 3 are kept) and before every restore. **Back up now** in the panel or this command makes one by hand:
+
+```bash
+docker exec -it torsher torsher backup
+```
+
+Backups go to `/data/db/backups`, the same disk as the database, so they don't survive a failure of that disk. To keep them elsewhere, mount a second disk or a NAS share into the container and choose the folder under **Settings → Backups**, or download backups from there:
+
+```yaml
+volumes:
+  - ./data:/data
+  - /mnt/nas/torsher-backups:/backups
+```
+
+Don't point several Torsher installations at the same backup folder.
+
+By default the secrets key is stored inside the backup, so it restores anywhere without a password: keep backups where strangers can't reach them. With **Password on the backup** the whole file is encrypted with your password. A forgotten password can't be recovered, and backups made with it become useless on another server.
+
+**Restore.** Choose **Restore…** next to a backup under **Settings → Backups**. The server saves a backup of the current state, restarts and swaps the database; this needs `restart: unless-stopped` as in the example file, otherwise start it again with `docker compose up -d`. On a fresh installation, **Restore from a backup** on the account screen uploads a backup file and restores it; sign in with the old server's password afterwards. If the panel doesn't open, restore with a command and restart the container:
+
+```bash
+docker exec -it torsher torsher restore <backup name>
+```
+
+```bash
+docker restart torsher
+```
+
+If the container doesn't start at all, run the command in a one-off container:
+
+```bash
+docker compose run --rm torsher torsher restore <backup file>
+```
+
+`torsher backups` lists the backups with their reason, version and size.
+
+**Updates.** The server doesn't apply database changes of a new version without a backup made right before them: if that backup fails, the server doesn't start and says why. `TORSHER_SKIP_PRE_UPDATE_BACKUP=1` skips it if you accept the risk. A database already changed by a newer version doesn't start with an older one: run the newer version again or restore the `pre-update` backup.
+
 ### Updating
 
 Once a day the server checks the releases of its source repository on GitHub and shows **Version X is available** on the overview and under **Settings → About**, with the highlights of the release notes. The request carries no identifiers and no data about the server; turn it off under **Settings → About**. The **Beta** channel there also offers pre-releases.

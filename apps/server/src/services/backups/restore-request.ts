@@ -25,6 +25,11 @@ import { backupDeps, SPACE_MARGIN } from './space.ts'
 
 const SQLITE_HEADER = NodeBuffer.from('SQLite format 3\0', 'latin1')
 
+/** Точка перед последней проверкой: тесты останавливают на ней подготовку */
+export const restoreRequestDeps = {
+  checkpoint: async () => {},
+}
+
 export interface BackupSecret {
   password?: string
   keyMaterial?: KeyMaterial
@@ -196,6 +201,8 @@ export async function prepareRestore(input: {
   opened: OpenedBackup
   paths: BackupPaths
   preRestore: () => Promise<unknown>
+  /** Последняя проверка перед `pending`; бросает — восстановления не будет */
+  beforePending?: () => void
 }) {
   const { paths } = input
   const release = acquireFileLock(paths.restoreLockPath)
@@ -217,6 +224,9 @@ export async function prepareRestore(input: {
         writeKeyFile(paths.pendingKeyPath, verified.secretKey)
 
       await input.preRestore()
+      await restoreRequestDeps.checkpoint()
+      // Синхронно с записью `pending`: между проверкой и записью ничего не вклинится
+      input.beforePending?.()
 
       writeRestoreState(paths.statePath, {
         state: 'pending',

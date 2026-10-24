@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import type { OverviewResponse } from '@torsher/api-client'
 import {
+  ArchiveIcon,
   ArrowDownToLineIcon,
   CircleCheckIcon,
+  CircleXIcon,
   HardDriveIcon,
   MonitorPlayIcon,
   MonitorSmartphoneIcon,
@@ -10,9 +12,11 @@ import {
   RadarIcon,
   TriangleAlertIcon,
 } from '@lucide/vue'
+import { useNow } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import { Progress } from '@/components/ui/progress'
 import { cn } from '@/lib/utils'
+import { capitalize, formatWhen } from '~/lib/backups'
 import { formatBytes } from '~/lib/format'
 import {
   accelStatusOf,
@@ -29,6 +33,26 @@ const props = defineProps<{
 const { t, locale } = useI18n()
 
 const bytes = (value: number) => formatBytes(value, locale.value)
+const now = useNow({ interval: 60_000 })
+
+/** Плитка копий: когда была последняя, и всё ли в порядке */
+const backups = computed(() => {
+  const value = props.overview.backups
+  const key = 'panel.overview.tiles.backups'
+
+  return {
+    title: value.lastSuccessAt
+      ? capitalize(
+          formatWhen(t, value.lastSuccessAt, locale.value, { now: now.value }),
+          locale.value,
+        )
+      : t(`${key}.${value.enabled ? 'none' : 'off'}`),
+    muted: !value.lastSuccessAt,
+    footer: value.failing
+      ? t(`${key}.failing`)
+      : t(`${key}.${value.enabled ? 'ok' : 'offHint'}`),
+  }
+})
 
 const storage = computed(() => props.overview.storage)
 const used = computed(() =>
@@ -237,12 +261,11 @@ const playback = computed(() => {
       </template>
     </OverviewTile>
 
-    <!-- Пятая плитка — на всю ширину: сетка остаётся без дыры -->
+    <!-- Шесть плиток — ровная сетка 2×3 без дыры -->
     <OverviewTile
       to="/settings/playback"
       :title="t('panel.settings.nav.playback')"
       :icon="MonitorPlayIcon"
-      class="sm:col-span-2"
     >
       <p class="text-[22px] font-semibold tracking-tight">
         {{ playback.title }}
@@ -262,6 +285,38 @@ const playback = computed(() => {
       </p>
       <template #footer>
         <span class="tabular-nums">{{ playback.limits }}</span>
+      </template>
+    </OverviewTile>
+
+    <OverviewTile
+      to="/settings/backups"
+      :title="t('panel.settings.nav.backups')"
+      :icon="ArchiveIcon"
+    >
+      <p
+        class="text-[22px] font-semibold tracking-tight tabular-nums"
+        :class="{ 'text-muted-foreground': backups.muted }"
+      >
+        {{ backups.title }}
+      </p>
+      <p
+        v-if="overview.backups.lastSuccessAt"
+        class="text-[13px] text-muted-foreground"
+      >
+        {{ t("panel.overview.tiles.backups.last") }}
+      </p>
+      <template #footer>
+        <CircleXIcon
+          v-if="overview.backups.failing"
+          class="size-4 shrink-0 text-destructive"
+          aria-hidden="true"
+        />
+        <CircleCheckIcon
+          v-else-if="overview.backups.enabled"
+          class="size-4 shrink-0 text-success"
+          aria-hidden="true"
+        />
+        {{ backups.footer }}
       </template>
     </OverviewTile>
   </div>

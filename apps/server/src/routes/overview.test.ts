@@ -1,4 +1,6 @@
+import type { Language } from '@torsher/i18n'
 import { Buffer } from 'node:buffer'
+import { attentionMessage, messages } from '@torsher/i18n'
 import {
   afterEach,
   beforeAll,
@@ -9,6 +11,7 @@ import {
   vi,
 } from 'vitest'
 import { createApp } from '../app.ts'
+import { attentionKinds } from '../dto/overview.ts'
 import { ACCESS_TOKEN_COOKIE, DEVICE_TOKEN_COOKIE } from '../config.ts'
 import { getDb, migrateDb } from '../db/index.ts'
 import {
@@ -18,6 +21,11 @@ import {
   storagePolicy,
   torrents,
 } from '../db/schema.ts'
+import {
+  backupProblems,
+  saveBackupSettings,
+} from '../services/backups/index.ts'
+import { updateBackupState } from '../services/backups/state.ts'
 import { setEngineDown, setEngineReady } from '../services/engine/index.ts'
 import { accelDeps, mediaAccel, resetAccel } from '../services/media/accel.ts'
 import {
@@ -206,6 +214,7 @@ describe('обзор', () => {
       sources: { ok: 0, total: 0 },
       devices: { total: 1, watching: 0 },
       playback: null,
+      backups: { enabled: true, failing: false },
     })
     expect(Date.parse(body.startedAt)).toBeLessThanOrEqual(Date.now())
   })
@@ -399,6 +408,104 @@ describe('обзор', () => {
     expect(kinds).toEqual(['tmdb_key_invalid', 'engine_down'])
   })
 
+  it('копии: каталог недоступен — одна строка, без повтора сбоя и давности', async () => {
+    updateBackupState({
+      dirAvailable: false,
+      lastAttempt: {
+        at: new Date().toISOString(),
+        slot: new Date().toISOString(),
+        count: 1,
+        error: { kind: 'dir_unavailable', params: { path: '/mnt/nas' } },
+      },
+    })
+
+    const body = await overview()
+
+    expect(body.attention).toEqual([
+      {
+        kind: 'backup_dir_unavailable',
+        severity: 'error',
+        section: 'backups',
+        params: {},
+      },
+    ])
+    expect(body.backups).toEqual({ enabled: true, failing: true })
+  })
+
+  it('копии: нет места — сбой с цифрами; удачная копия после сбоя его снимает', async () => {
+    const failedAt = new Date(Date.now() - 60_000).toISOString()
+
+    updateBackupState({
+      lastAttempt: {
+        at: failedAt,
+        slot: failedAt,
+        count: 1,
+        error: { kind: 'no_space', params: { need: 3 * GIB, free: GIB } },
+      },
+    })
+
+    expect((await overview()).attention).toEqual([
+      {
+        kind: 'backup_failed',
+        severity: 'error',
+        section: 'backups',
+        params: { reason: 'no_space', need: 3 * GIB, free: GIB },
+      },
+    ])
+
+    const okAt = new Date().toISOString()
+
+    updateBackupState({ lastSuccessAt: okAt })
+
+    const body = await overview()
+
+    expect(body.attention).toEqual([])
+    expect(body.backups).toEqual({
+      enabled: true,
+      lastSuccessAt: okAt,
+      failing: false,
+    })
+  })
+
+  it('копии: давность — от начала наблюдения, включение копий начинает его заново', () => {
+    const threeDaysAgo = new Date(Date.now() - 72 * 60 * 60 * 1000)
+
+    updateBackupState({ watchSince: threeDaysAgo.toISOString() })
+    expect(backupProblems().failed).toEqual({ kind: 'stale', params: {} })
+
+    saveBackupSettings({ enabled: false })
+    saveBackupSettings({ enabled: true })
+    expect(backupProblems().failed).toBeUndefined()
+  })
+
+  it('копии: «снимок уже идёт» — не сбой', () => {
+    const at = new Date().toISOString()
+
+    updateBackupState({
+      lastAttempt: {
+        at,
+        slot: at,
+        count: 1,
+        error: { kind: 'busy', params: {} },
+      },
+    })
+    expect(backupProblems().failed).toBeUndefined()
+  })
+
+  it('копии: двое суток без удачной — stale, выключенные не тревожат', () => {
+    const later = new Date(Date.now() + 49 * 60 * 60 * 1000)
+
+    expect(backupProblems(later).failed).toEqual({
+      kind: 'stale',
+      params: {},
+    })
+    saveBackupSettings({ enabled: false })
+    expect(backupProblems(later)).toEqual({
+      dirUnavailable: false,
+      failed: undefined,
+    })
+  })
+
   it('ускорение: плитка после проверки, видеокарта не прошла проверку', async () => {
     let gpuWorks = false
 
@@ -511,4 +618,53 @@ describe('обзор', () => {
       true,
     )
   })
+})
+
+describe('тексты «Требует внимания»', () => {
+  type Params = Parameters<typeof attentionMessage>[0]['params']
+
+  // Проблемы, у которых своя строка на причину
+  const variants: Partial<Record<(typeof attentionKinds)[number], Params[]>> = {
+    engine_down: ['not_installed', 'starting', 'stopped'].map(reason => ({
+      reason,
+    })),
+    tmdb_key_invalid: ['missing', 'unreadable', 'rejected'].map(reason => ({
+      reason,
+    })),
+    backup_failed: [
+      { reason: 'no_space', need: 2, free: 1 },
+      ...[
+        'no_space',
+        'io',
+        'integrity',
+        'key_unavailable',
+        'dir_unavailable',
+        'stale',
+      ].map(reason => ({ reason })),
+    ],
+  }
+
+  function lookup(language: Language, key: string) {
+    let node: unknown = messages[language]
+
+    for (const part of key.split('.'))
+      node = (node as Record<string, unknown> | undefined)?.[part]
+
+    return node
+  }
+
+  it.each(Object.keys(messages) as Language[])(
+    'у каждого вида проблемы есть строка (%s)',
+    (language) => {
+      for (const kind of attentionKinds) {
+        const list = variants[kind] ?? [{ name: 'x', count: 1 }, { count: 2 }]
+
+        for (const params of list) {
+          const { key } = attentionMessage({ kind, params })
+
+          expect(typeof lookup(language, key), `${kind} ${key}`).toBe('string')
+        }
+      }
+    },
+  )
 })

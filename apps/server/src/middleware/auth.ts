@@ -13,6 +13,7 @@ import {
   touchDevice,
 } from '../services/devices/index.ts'
 import { defaultProfile, getProfile } from '../services/profiles/index.ts'
+import { needsSetup } from '../services/users/index.ts'
 import { verifySession } from '../services/users/session.ts'
 import { verifyTokenFor } from '../utils/token.ts'
 
@@ -26,6 +27,8 @@ declare module 'fastify' {
     profileId: string
     /** Профиль выбран явно; иначе `profileId` — профиль по умолчанию */
     profileSelected: boolean
+    /** Пропущен без входа: аккаунта ещё не было (`requireOwnerOrFirstRun`) */
+    firstRun?: boolean
   }
 
   interface FastifyContextConfig {
@@ -86,6 +89,31 @@ export async function requireOwner(
     return unauthorized(reply)
 
   request.userId = userId
+}
+
+/**
+ * Пока аккаунта нет, роут открыт без входа — то же окно, что у создания
+ * аккаунта (восстановление из копии на пустом сервере); дальше — владелец.
+ * Такой запрос помечен `firstRun`, `userId` у него пустой. Тело читается
+ * после хука сколь угодно долго: обработчик перед действием обязан снова
+ * проверить, что аккаунта всё ещё нет (`firstRunExpired`).
+ */
+export async function requireOwnerOrFirstRun(
+  request: FastifyRequest,
+  reply: FastifyReply,
+) {
+  if (needsSetup()) {
+    request.userId = ''
+    request.firstRun = true
+    return
+  }
+
+  return requireOwner(request, reply)
+}
+
+/** Запрос пропущен без входа, а аккаунт с тех пор создали: дальше нельзя */
+export function firstRunExpired(request: FastifyRequest) {
+  return request.firstRun === true && !needsSetup()
 }
 
 /**

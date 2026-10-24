@@ -12,6 +12,8 @@ export interface BackupState {
   lastSuccessAt?: string
   lastAttempt?: BackupAttempt
   dirAvailable?: boolean
+  /** С какого момента следим за давностью копии: первый запуск расписания или включение копий */
+  watchSince?: string
 }
 
 // Старт и так занят движком и сканом: догоняющая копия — не раньше

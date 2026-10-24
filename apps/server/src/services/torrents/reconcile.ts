@@ -3,10 +3,10 @@ import { constants } from 'node:fs'
 import { access, stat } from 'node:fs/promises'
 import { relative, resolve, sep } from 'node:path'
 import { eq } from 'drizzle-orm'
-import { config } from '../../config.ts'
 import { getDb } from '../../db/index.ts'
 import { torrents } from '../../db/schema.ts'
 import { EngineError, forgetTorrent, pauseTorrent } from '../engine/index.ts'
+import { storagePath, torrentDir } from '../storage/paths.ts'
 import { deleteTorrent, liveTorrents } from './index.ts'
 
 function isInside(base: string, path: string) {
@@ -15,30 +15,33 @@ function isInside(base: string, path: string) {
   return rel !== '' && !rel.startsWith('..') && !rel.startsWith(sep)
 }
 
-async function exists(path: string) {
-  return Boolean(await stat(path).catch(() => undefined))
+async function hasBytes(path: string) {
+  const info = await stat(path).catch(() => undefined)
+
+  return Boolean(info?.isFile() && info.size > 0)
 }
 
 /**
- * Есть ли на диске хоть что-то от раздачи: движок кладёт её в каталог с
- * именем раздачи, прежние версии — файлы прямо в каталог загрузок. Прогресс
- * движка не годится: после восстановления он и база расходятся.
+ * Есть ли на диске хоть что-то от раздачи: непустой файл в каталоге с
+ * именем раздачи (так кладёт движок) или прямо в каталоге загрузок (прежние
+ * версии). Пустые каталоги не в счёт: движок создаёт их и на пустой точке
+ * монтирования. Прогресс движка не годится: после восстановления он и база
+ * расходятся.
  */
-async function hasData(torrent: Torrent) {
-  const base = resolve(config.downloadsPath)
-  const root = resolve(base, torrent.name)
-
-  if (isInside(base, root) && (await exists(root)))
-    return true
-
+async function hasData(torrent: Torrent, base: string) {
   for (const file of torrent.files ?? []) {
     if (file.padding)
       continue
 
-    const path = resolve(base, ...file.path.split('/'))
+    const parts = file.path.split('/')
 
-    if (isInside(base, path) && (await exists(path)))
-      return true
+    for (const path of [
+      resolve(base, torrent.name, ...parts),
+      resolve(base, ...parts),
+    ]) {
+      if (isInside(base, path) && (await hasBytes(path)))
+        return true
+    }
   }
 
   return false
@@ -64,7 +67,7 @@ export type ReconcileResult
   = | ({ skipped?: undefined } & ReconcileCounts)
     | { skipped: 'downloads_unavailable' }
 
-async function downloadsReadable(base: string) {
+async function dirReadable(base: string) {
   try {
     await access(base, constants.R_OK | constants.X_OK)
 
@@ -76,17 +79,67 @@ async function downloadsReadable(base: string) {
 }
 
 /**
+ * Готовые раздачи без данных — только в каталогах, которым можно верить:
+ * каталог читается и хоть у одной его раздачи данные на месте. Иначе на
+ * месте диска пустая точка монтирования, и отсутствие файлов ничего не
+ * значит. `null` — ни одному каталогу верить нельзя.
+ */
+async function missingData(rows: Torrent[]) {
+  const byDir = new Map<string, Torrent[]>()
+
+  for (const row of rows) {
+    if (row.status !== 'ready')
+      continue
+
+    const dir = resolve(torrentDir(row))
+
+    byDir.set(dir, [...(byDir.get(dir) ?? []), row])
+  }
+
+  const missing: Torrent[] = []
+  let trusted = 0
+
+  for (const [dir, group] of byDir) {
+    if (!(await dirReadable(dir)))
+      continue
+
+    const gone: Torrent[] = []
+
+    for (const row of group) {
+      if (!(await hasData(row, dir)))
+        gone.push(row)
+    }
+
+    if (gone.length === group.length)
+      continue
+
+    trusted++
+    missing.push(...gone)
+  }
+
+  return byDir.size > 0 && trusted === 0 ? null : missing
+}
+
+/**
  * Сверка движка с восстановленной базой. Раздачи, добавленные после копии,
  * снимаются с движка без удаления файлов. Раздачи базы без данных на диске:
  * кэш удаляется из базы, закреплённые встают на паузу владельца — иначе
  * сервер молча начал бы перекачивать всё закреплённое. Пауза `storage` не
- * подходит: её сервер снимает сам, когда место есть. Каталог загрузок
- * недоступен (диск не смонтирован) — сверки нет: отсутствие файлов ничего
- * не значит, и удалять по нему нельзя.
+ * подходит: её сервер снимает сам, когда место есть. Раздачи в каталоге,
+ * который недоступен (диск не смонтирован), не трогаются: удалять по
+ * отсутствию файлов нельзя. Ни одного доступного каталога — сверки нет.
  */
 export async function reconcileTorrentsAfterRestore(): Promise<ReconcileResult> {
-  if (!(await downloadsReadable(resolve(config.downloadsPath))))
+  const rows = getDb().select().from(torrents).all()
+  const missing = await missingData(rows)
+
+  if (
+    !missing
+    || (!rows.some(row => row.status === 'ready')
+      && !(await dirReadable(resolve(storagePath('downloads')))))
+  ) {
     return { skipped: 'downloads_unavailable' }
+  }
 
   const counts: ReconcileCounts = {
     removedFromEngine: 0,
@@ -94,26 +147,7 @@ export async function reconcileTorrentsAfterRestore(): Promise<ReconcileResult> 
     paused: 0,
   }
   const live = await liveTorrents()
-  const rows = getDb().select().from(torrents).all()
   const known = new Set(rows.map(row => row.infoHash))
-
-  const missing: Torrent[] = []
-  let ready = 0
-
-  for (const row of rows) {
-    if (row.status !== 'ready')
-      continue
-
-    ready++
-
-    if (!(await hasData(row)))
-      missing.push(row)
-  }
-
-  // Ни у одной раздачи нет файлов — скорее всего, на месте диска пустая
-  // точка монтирования: удалять и ставить на паузу по этому нельзя
-  if (ready > 0 && missing.length === ready)
-    return { skipped: 'downloads_unavailable' }
 
   for (const hash of live.keys()) {
     if (known.has(hash))

@@ -6,6 +6,7 @@ import { getSetting, setSetting } from '../settings/index.ts'
 import { logFor } from '../logs/index.ts'
 import { deriveKeyMaterial } from './crypto.ts'
 import { BackupError } from './errors.ts'
+import { updateBackupState } from './state.ts'
 
 export const BACKUP_SETTINGS_KEY = 'backups'
 
@@ -76,6 +77,10 @@ export function saveBackupSettings(patch: BackupSettingsPatch) {
   })
 
   setSetting(BACKUP_SETTINGS_KEY, next)
+
+  // Только что включённые копии не тревожат давностью прежней копии
+  if (!current.enabled && next.enabled)
+    updateBackupState({ watchSince: new Date().toISOString() })
 
   return next
 }

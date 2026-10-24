@@ -9,6 +9,7 @@ export const attentionLinks: Record<
   downloads: '/downloads',
   library: '/library',
   storage: '/settings/storage',
+  backups: '/settings/backups',
   sources: { path: '/sources', query: { filter: 'attention' } },
   network: '/settings/network',
   metadata: '/settings/metadata',

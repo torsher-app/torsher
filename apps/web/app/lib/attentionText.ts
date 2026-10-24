@@ -26,6 +26,9 @@ export function attentionText(
   if (typeof params.minFree === 'number')
     params.minFree = formatBytes(params.minFree, locale)
 
+  if (typeof params.need === 'number')
+    params.need = formatBytes(params.need, locale)
+
   if (message.count === undefined)
     return t(message.key, params)
 

@@ -64,6 +64,11 @@ export async function backupTick(now = new Date()) {
       (err: unknown) => {
         const error = toBackupError(err)
 
+        // Снимок уже шёл (ручная копия началась между проверкой и запуском):
+        // попытку слота не тратим, следующий тик попробует снова
+        if (error.kind === 'busy')
+          return
+
         updateBackupState({
           lastAttempt: {
             ...attempt,
@@ -81,8 +86,17 @@ export async function backupTick(now = new Date()) {
   }
 }
 
+/** С какого момента расписание следит за копиями: свежий старт не тревожит сразу */
+export function schedulerStartedAt() {
+  return startedAt
+}
+
 export function startBackupScheduler() {
   startedAt = new Date()
+
+  if (!getBackupState().watchSince)
+    updateBackupState({ watchSince: startedAt.toISOString() })
+
   void cleanupBackupTemp({
     tmpDir: backupPaths().tmpDir,
     dirs: [currentDir().path],

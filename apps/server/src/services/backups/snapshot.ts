@@ -7,6 +7,7 @@ import type {
 } from './snapshot.worker.ts'
 import { Worker } from 'node:worker_threads'
 import { BackupError, toBackupError } from './errors.ts'
+import { workerResultOf } from './worker-message.ts'
 
 const WORKER_URL = new URL('./snapshot.worker.ts', import.meta.url)
 
@@ -46,7 +47,12 @@ function runWorker(job: WorkerJob, signal?: AbortSignal) {
     }
 
     signal?.addEventListener('abort', abort, { once: true })
-    worker.once('message', (result: WorkerResult) => settle(result))
+    worker.on('message', (message: unknown) => {
+      const result = workerResultOf(message)
+
+      if (result)
+        settle(result)
+    })
     worker.once('error', err => settle(undefined, toBackupError(err)))
     worker.once('exit', (code) => {
       if (!signal?.aborted) {
@@ -59,7 +65,8 @@ function runWorker(job: WorkerJob, signal?: AbortSignal) {
   })
 }
 
-function failureOf(result: Extract<WorkerResult, { ok: false }>) {
+/** Отказ из потока — в `BackupError`; текст ошибки потока сохраняется в `detail` */
+export function failureOf(result: Extract<WorkerResult, { ok: false }>) {
   if (result.kind === 'integrity')
     return new BackupError('integrity', { detail: result.message })
 
@@ -69,8 +76,14 @@ function failureOf(result: Extract<WorkerResult, { ok: false }>) {
   if (result.kind === 'corrupt')
     return new BackupError('corrupt')
 
-  return toBackupError(
+  const error = toBackupError(
     Object.assign(new Error(result.message), { code: result.code }),
+  )
+
+  return new BackupError(
+    error.kind,
+    { ...error.params, ...(result.message ? { detail: result.message } : {}) },
+    { cause: error.cause },
   )
 }
 

@@ -58,8 +58,15 @@ export async function isBackupDirAvailable(dir: BackupDir) {
   }
 }
 
-export type BackupDirProblem
-  = 'not_absolute' | 'missing' | 'not_directory' | 'denied' | 'overlaps_storage'
+export const BACKUP_DIR_PROBLEMS = [
+  'not_absolute',
+  'missing',
+  'not_directory',
+  'denied',
+  'overlaps_storage',
+] as const
+
+export type BackupDirProblem = (typeof BACKUP_DIR_PROBLEMS)[number]
 
 /**
  * Проверка каталога, выбранного владельцем. Внутри загрузок, своей

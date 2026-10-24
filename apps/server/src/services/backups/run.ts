@@ -48,6 +48,10 @@ async function rotate(dir: string) {
 export async function createBackupNow(
   reason: BackupReason,
 ): Promise<CreatedBackup> {
+  // База в памяти (тесты): снимать нечего, и каталог копий не создаётся
+  if (config.databasePath === ':memory:')
+    throw new BackupError('io', { code: 'MEMORY_DATABASE' })
+
   if (runtime.running)
     throw new BackupError('busy')
 
@@ -85,10 +89,20 @@ export async function createBackupNow(
   catch (err) {
     const error = toBackupError(err)
 
-    logFor('backups').error(
-      { err, kind: error.kind, params: error.params, reason },
-      'Backup failed',
-    )
+    // Другой снимок держит замок (команда в контейнере): расписание
+    // повторит на следующем тике, журнал этим не засоряем
+    if (error.kind === 'busy') {
+      logFor('backups').debug(
+        { reason },
+        'Backup skipped: another one is running',
+      )
+    }
+    else {
+      logFor('backups').error(
+        { err, kind: error.kind, params: error.params, reason },
+        'Backup failed',
+      )
+    }
     throw error
   }
   finally {

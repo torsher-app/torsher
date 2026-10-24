@@ -41,18 +41,17 @@ export interface CreatedBackup {
 }
 
 /** Имя свободно: две копии одной причины в одну секунду получают соседние секунды */
-function freeName(options: CreateBackupOptions, now: Date) {
+export function freeBackupName(
+  dir: string,
+  input: { reason: BackupReason, version: string, encrypted: boolean },
+  now: Date,
+) {
   const createdAt = new Date(Math.floor(now.getTime() / 1000) * 1000)
 
   for (;;) {
-    const name = formatBackupName({
-      createdAt,
-      reason: options.reason,
-      version: options.version,
-      encrypted: Boolean(options.keyMaterial),
-    })
+    const name = formatBackupName({ ...input, createdAt })
 
-    if (!existsSync(join(options.dir, name)))
+    if (!existsSync(join(dir, name)))
       return { name, createdAt }
 
     createdAt.setTime(createdAt.getTime() + 1000)
@@ -84,7 +83,15 @@ export async function createBackup(
     await checkBackupSpace(options)
     release = acquireBackupLock(options.dir)
 
-    const { name, createdAt } = freeName(options, options.now ?? new Date())
+    const { name, createdAt } = freeBackupName(
+      options.dir,
+      {
+        reason: options.reason,
+        version: options.version,
+        encrypted: Boolean(options.keyMaterial),
+      },
+      options.now ?? new Date(),
+    )
 
     await takeSnapshot(
       {

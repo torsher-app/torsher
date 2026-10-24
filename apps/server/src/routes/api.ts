@@ -2,6 +2,7 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { aboutRoutes } from './about.ts'
 import { authRoutes } from './auth.ts'
+import { backupRoutes } from './backups.ts'
 import { catalogRoutes } from './catalog.ts'
 import { collectionRoutes } from './collections.ts'
 import { deviceRoutes } from './devices.ts'
@@ -73,6 +74,7 @@ export const apiRoutes: FastifyPluginAsyncZod = async (app) => {
   app.register(librariesRoutes, { prefix: '/libraries' })
   app.register(hlsRoutes, { prefix: '/hls' })
   app.register(storageRoutes, { prefix: '/storage' })
+  app.register(backupRoutes, { prefix: '/backups' })
   app.register(netRoutes, { prefix: '/net' })
   app.register(settingsRoutes, { prefix: '/settings' })
   app.register(setupRoutes, { prefix: '/setup' })

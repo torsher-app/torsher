@@ -139,6 +139,28 @@ describe('снимок базы', () => {
     db.close()
   })
 
+  it('в базе уже есть таблица манифеста (распакована из копии) — заменяется свежей', async () => {
+    const { db, dataDir, dir, options } = setup()
+
+    db.exec(
+      `CREATE TABLE ${MANIFEST_TABLE} (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
+    )
+    db.prepare(`INSERT INTO ${MANIFEST_TABLE} VALUES (?, ?)`).run(
+      'version',
+      '0.1.0',
+    )
+
+    const created = await createBackup(options)
+    const snapshot = await unpack(join(dir, created.name), dataDir)
+    const version = snapshot
+      .prepare(`SELECT value FROM ${MANIFEST_TABLE} WHERE key = 'version'`)
+      .get() as { value: string }
+
+    expect(version.value).toBe('1.2.3')
+    snapshot.close()
+    db.close()
+  })
+
   it('две копии в одну секунду получают разные имена', async () => {
     const { db, options, dir } = setup()
     const now = new Date('2026-10-24T01:00:00Z')

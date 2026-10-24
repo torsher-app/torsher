@@ -7,6 +7,7 @@ export interface AttentionMessageInput {
     reason?: string
     free?: number
     minFree?: number
+    need?: number
   }
 }
 
@@ -19,13 +20,13 @@ export interface AttentionMessage {
 /**
  * Какой строкой описать проблему: у проблемы с одним элементом — его имя,
  * иначе — число. Общая для «Обзора», центра уведомлений и сообщений сервера.
- * Байты (`free`, `minFree`) форматирует вызывающий: у панели и сервера свой формат.
+ * Байты (`free`, `minFree`, `need`) форматирует вызывающий: у панели и сервера свой формат.
  */
 export function attentionMessage(
   item: AttentionMessageInput,
 ): AttentionMessage {
   const key = `panel.overview.attention.${item.kind}`
-  const { count = 0, name, reason, free, minFree } = item.params
+  const { count = 0, name, reason, free, minFree, need } = item.params
 
   switch (item.kind) {
     case 'engine_down':
@@ -37,7 +38,13 @@ export function attentionMessage(
       return { key, params: { free, minFree } }
     case 'library_copies':
     case 'media_accel_failed':
+    case 'backup_dir_unavailable':
       return { key, params: {} }
+    case 'backup_failed':
+      // Нехватка места без цифр (ошибка записи, а не проверка места) — без них
+      return reason === 'no_space' && (need === undefined || free === undefined)
+        ? { key: `${key}.no_space_short`, params: {} }
+        : { key: `${key}.${reason}`, params: { need, free } }
     default:
       return name
         ? { key: `${key}.one`, params: { name } }

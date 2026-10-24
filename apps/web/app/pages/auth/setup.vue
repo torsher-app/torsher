@@ -1,14 +1,22 @@
 <script setup lang="ts">
-import { ArrowRightIcon, CircleAlertIcon } from '@lucide/vue'
+import {
+  ArchiveRestoreIcon,
+  ArrowRightIcon,
+  CircleAlertIcon,
+} from '@lucide/vue'
 import { toTypedSchema } from '@vee-validate/zod'
 import { useForm } from 'vee-validate'
 import { useI18n } from 'vue-i18n'
 import * as z from 'zod'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import LoadingButton from '~/components/LoadingButton.vue'
+import RestoreBackupDialog from '~/components/auth/RestoreBackupDialog.vue'
 import SecretInput from '~/components/SecretInput.vue'
+import BackupRestartScreen from '~/components/settings/BackupRestartScreen.vue'
+import { getErrorStatus } from '@torsher/api-client'
 import { getErrorMessage } from '~/services/api'
 
 definePageMeta({
@@ -21,6 +29,7 @@ const { signup } = useAuth()
 const { t } = useI18n()
 
 const formError = ref('')
+const restoreOpen = ref(false)
 
 // Правила совпадают с DTO бэкенда: имя от 2 символов, пароль от 8
 const schema = toTypedSchema(
@@ -47,7 +56,11 @@ const onSubmit = handleSubmit(async (values) => {
     await withErrorMode('silent', () => signup(values))
   }
   catch (err) {
-    formError.value = await getErrorMessage(err)
+    // 409 — на сервере идёт восстановление из копии: аккаунт придёт из неё
+    formError.value
+      = getErrorStatus(err) === 409
+        ? t('panel.backups.setup.restoring')
+        : await getErrorMessage(err)
   }
 })
 </script>
@@ -130,7 +143,20 @@ const onSubmit = handleSubmit(async (values) => {
       </p>
     </div>
 
-    <div class="flex justify-end pt-1.5">
+    <div
+      class="flex flex-col-reverse gap-2 pt-1.5 sm:flex-row sm:items-center sm:justify-between"
+    >
+      <!-- Перенос со старого сервера — вместо нового аккаунта, а не после него -->
+      <Button
+        type="button"
+        variant="ghost"
+        class="w-full sm:-ml-3 sm:w-auto"
+        :disabled="isSubmitting"
+        @click="restoreOpen = true"
+      >
+        <ArchiveRestoreIcon aria-hidden="true" />
+        {{ t("panel.backups.setup.link") }}
+      </Button>
       <LoadingButton
         type="submit"
         class="w-full sm:w-auto"
@@ -141,4 +167,7 @@ const onSubmit = handleSubmit(async (values) => {
       </LoadingButton>
     </div>
   </form>
+
+  <RestoreBackupDialog v-model:open="restoreOpen" />
+  <BackupRestartScreen />
 </template>

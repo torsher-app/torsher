@@ -32,8 +32,16 @@ export type RestoreRequest
       error: { kind: BackupErrorKind, params: BackupErrorParams }
     }
 
-// Состояние процесса: снимок, который идёт сейчас, и подготовка восстановления
+/** Итог последней ручной копии: панель узнаёт о сбое, когда снимок закончился */
+export interface ManualBackupResult {
+  at: string
+  error?: { kind: BackupErrorKind, params: BackupErrorParams }
+}
+
+// Состояние процесса: снимок, который идёт сейчас, итог ручной копии и
+// подготовка восстановления
 export const runtime: {
   running?: RunningBackup
+  manual?: ManualBackupResult
   restore?: RestoreRequest
 } = {}

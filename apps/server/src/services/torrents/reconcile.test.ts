@@ -69,7 +69,18 @@ describe('сверка раздач после восстановления', ()
       .run()
 
     mkdirSync(join(downloads, 'Sample keep-here'))
+    writeFileSync(
+      join(downloads, 'Sample keep-here', 'Sample.keep-here.mkv'),
+      'data',
+    )
     writeFileSync(join(downloads, 'Sample.cache-here.mkv'), 'data')
+    // Пустой каталог и пустой файл — не данные: движок создаёт их сам
+    mkdirSync(join(downloads, 'Sample keep-gone'))
+    writeFileSync(
+      join(downloads, 'Sample keep-gone', 'Sample.keep-gone.mkv'),
+      '',
+    )
+    mkdirSync(join(downloads, 'Sample cache-gone'))
 
     const live = ['a', 'b', 'c', 'd', 'e'].map(char => ({
       ...liveState,
@@ -146,5 +157,39 @@ describe('сверка раздач после восстановления', ()
       vi.stubEnv('DOWNLOADS_PATH', downloads)
       rmSync(empty, { recursive: true, force: true })
     }
+  })
+
+  it('недоступный каталог одной раздачи не мешает сверке остальных', async () => {
+    const offline = join(downloads, 'other-disk')
+
+    getDb().delete(torrents).run()
+    getDb()
+      .insert(torrents)
+      .values([
+        { ...row('here', hash('f'), 'keep'), inEngine: false },
+        { ...row('gone', hash('g'), 'cache'), inEngine: false },
+        {
+          ...row('offline', hash('h'), 'cache'),
+          inEngine: false,
+          downloadDir: offline,
+        },
+      ])
+      .run()
+    writeFileSync(join(downloads, 'Sample.here.mkv'), 'data')
+    fetchMock.mockImplementation(async () => json([]))
+
+    expect(await reconcileTorrentsAfterRestore()).toEqual({
+      removedFromEngine: 0,
+      deleted: 1,
+      paused: 0,
+    })
+    expect(
+      getDb()
+        .select()
+        .from(torrents)
+        .all()
+        .map(item => item.id)
+        .sort(),
+    ).toEqual(['here', 'offline'])
   })
 })

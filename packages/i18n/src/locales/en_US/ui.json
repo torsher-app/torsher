@@ -941,7 +941,17 @@
         "library_watcher": {
           "one": "Watcher didn’t start: {name}",
           "many": "Watcher didn’t start in {n} folders"
-        }
+        },
+        "backup_failed": {
+          "no_space": "Backup failed: not enough space ({need} needed, {free} free)",
+          "no_space_short": "Backup failed: not enough disk space",
+          "io": "Backup failed: disk write error",
+          "integrity": "Backup failed: the database failed the integrity check",
+          "key_unavailable": "Backup failed: the server can't open the backup password key",
+          "dir_unavailable": "Backup failed: the backup folder is unavailable",
+          "stale": "No backup for more than two days"
+        },
+        "backup_dir_unavailable": "The backup folder is unavailable: scheduled backups are skipped"
       },
       "tiles": {
         "downloads": {
@@ -983,6 +993,14 @@
           "unavailableHint": "The server's ffmpeg has no H.264 encoder",
           "cpu": "CPU up to {height}p",
           "hdr": "HDR to SDR up to {height}p"
+        },
+        "backups": {
+          "last": "Latest backup",
+          "none": "No backups yet",
+          "off": "Backups are off",
+          "ok": "Backed up daily",
+          "failing": "Something's wrong with backups",
+          "offHint": "Turn them on in settings"
         }
       }
     },
@@ -992,6 +1010,7 @@
         "account": "Account",
         "about": "About",
         "storage": "Storage",
+        "backups": "Backups",
         "network": "Network",
         "metadata": "Metadata",
         "playback": "Playback",
@@ -2577,6 +2596,218 @@
         "title": "Delete “{name}”?",
         "text": "Messages will stop going to this channel. The notification center in the panel keeps working.",
         "deleted": "Channel “{name}” deleted"
+      }
+    },
+    "backups": {
+      "title": "Backups",
+      "description": "A backup holds the database: profiles, watch history, ratings, lists, collections, sources and settings. Videos, downloads, cache and logs aren't included — use disk or NAS snapshots for those.",
+      "loadError": "Couldn't load backups",
+      "loadErrorText": "The server didn't respond. Make sure it's running and try again.",
+      "when": {
+        "today": "today at {time}",
+        "tomorrow": "tomorrow at {time}",
+        "yesterday": "yesterday at {time}"
+      },
+      "schedule": {
+        "title": "Schedule",
+        "text": "Once a day the server backs itself up and keeps the latest copies. Playback isn't affected.",
+        "enabled": "Back up every day",
+        "time": "Backup time",
+        "timeHint": "Server time: {zone}",
+        "keepDaily": "Daily",
+        "keepWeekly": "Weekly",
+        "days": "days",
+        "weeks": "weeks",
+        "keepHint": "How many recent backups to keep. Old ones are removed after a new one succeeds.",
+        "next": "Next backup: {when}",
+        "running": "A backup is running now",
+        "off": "Backups are off",
+        "saved": "Schedule saved",
+        "validation": {
+          "time": "Enter a time",
+          "daily": "From 1 to 30",
+          "weekly": "From 0 to 12"
+        }
+      },
+      "dir": {
+        "title": "Where to keep them",
+        "text": "Keep backups on another disk or a NAS: a copy next to the database won't survive a disk failure.",
+        "default": "default",
+        "panel": "chosen in the panel",
+        "defaultHint": "Next to the database, in the data folder",
+        "free": "{free} free of {total}",
+        "change": "Change",
+        "unavailableTitle": "Folder unavailable",
+        "unavailableText": "The server can't write to this folder. Check that the disk or NAS is mounted into the container and writable. Until then, scheduled backups are skipped.",
+        "sameVolume": "Backups on the same disk as the database won't help if that disk fails. Pick another disk or a NAS, or download backups.",
+        "dialog": {
+          "title": "Backup folder",
+          "text": "A folder inside the container. To keep backups on a second disk or a NAS, mount it into the container and pick it here.",
+          "path": "Folder",
+          "pathHint": "The folder must already exist: the server doesn't create mount points.",
+          "checking": "Checking the folder…",
+          "writable": "Writable",
+          "current": "Backups are here now",
+          "space": "{free} free of {total}",
+          "sameVolume": "Same disk as the database",
+          "otherVolume": "A different disk from the database",
+          "problems": {
+            "not_absolute": "Enter a path from the root, like /mnt/backups",
+            "missing": "This folder doesn't exist. If it's a disk or NAS, it isn't mounted",
+            "not_directory": "This is a file, not a folder",
+            "denied": "No write permission",
+            "overlaps_storage": "Not inside downloads, the library or linked folders: they have their own cleanup and scanning rules"
+          },
+          "reset": "Reset to default",
+          "save": "Save",
+          "saved": "Backup folder changed",
+          "savedDefault": "Backups are next to the database again",
+          "errorTitle": "Couldn't change the folder"
+        }
+      },
+      "encryption": {
+        "title": "Encryption",
+        "text": "Backups contain indexer keys, proxy passwords and notification tokens. Choose how to protect them.",
+        "mode": "How to protect backups",
+        "key": "Key inside the backup",
+        "keyText": "Restores anywhere without a password, but whoever has the file has the secrets too.",
+        "password": "Password on the backup",
+        "passwordText": "The file can't be read without the password. Forget it and your backups are useless.",
+        "keyWarning": "Keep backups where strangers can't reach them: the file holds indexer keys, proxy passwords and watch history.",
+        "newPassword": "Password",
+        "repeatPassword": "Repeat password",
+        "passwordHint": "At least 8 characters",
+        "lost": "The password can't be recovered: without it, backups are useless on another server. On this server, scheduled backups and restores work without it.",
+        "setAt": "Password set {date}",
+        "keyMode": "Backups without a password",
+        "change": "Change password",
+        "remove": "Remove password",
+        "oldCopies": "Existing backups keep their old password.",
+        "save": "Save",
+        "saved": "Password set",
+        "savedText": "New backups are encrypted",
+        "removed": "Password removed",
+        "removedText": "New backups carry the key inside",
+        "validation": {
+          "password": "At least 8 characters",
+          "mismatch": "Passwords don't match",
+          "max": "At most 1024 characters"
+        },
+        "removeDialog": {
+          "title": "Remove the backup password?",
+          "text": "New backups will have no password and carry the secrets key inside. Existing ones keep their old password.",
+          "confirm": "Remove password"
+        }
+      },
+      "list": {
+        "title": "Backups",
+        "text": "Newest first. Download a backup to keep it away from the server.",
+        "create": "Back up now",
+        "upload": "Upload backup…",
+        "running": "Backing up…",
+        "empty": "No backups yet",
+        "emptyText": "The first one will be made {when}.",
+        "emptyOff": "Scheduled backups are off: make one manually.",
+        "error": "Couldn't load the backup list",
+        "reasons": {
+          "scheduled": "scheduled",
+          "manual": "manual",
+          "pre-update": "before update",
+          "pre-restore": "before restore",
+          "pre-import": "before import",
+          "uploaded": "uploaded"
+        },
+        "encrypted": "Password-protected",
+        "fallback": "fallback folder",
+        "fallbackHint": "Stored in the default folder: the chosen one was unavailable",
+        "actions": "Actions for the backup from {date}",
+        "download": "Download",
+        "restore": "Restore…",
+        "delete": "Delete…",
+        "created": "Backup ready",
+        "createFailed": "Couldn't make a backup",
+        "uploaded": "Backup uploaded",
+        "uploadFailed": "Couldn't upload the backup",
+        "deleteDialog": {
+          "title": "Delete the backup from {date}?",
+          "text": "The file will be removed from the server's disk and can't be brought back.",
+          "deleted": "Backup deleted"
+        }
+      },
+      "errors": {
+        "no_space": "Not enough space: {need} needed, {free} free",
+        "no_space_short": "Not enough disk space",
+        "io": "Disk read or write error",
+        "integrity": "The database failed the integrity check",
+        "dir_unavailable": "The backup folder is unavailable",
+        "busy": "The server is already backing up or restoring",
+        "not_found": "Backup not found",
+        "not_torsher": "This isn't a Torsher backup",
+        "corrupt": "The backup file is damaged",
+        "wrong_password": "Wrong password",
+        "newer_version": "The backup was made by a newer Torsher: update the server first",
+        "key_unavailable": "The server can't open the saved password key: set the backup password again",
+        "too_large": "The file is larger than 2 GB",
+        "interrupted": "The restore was interrupted: the container stopped or lost power",
+        "missing_file": "The prepared backup disappeared before the restart",
+        "migration_failed": "Couldn't upgrade the backup database to the current version",
+        "no_account": "The backup has no owner account",
+        "unknown": "Something went wrong",
+        "account_created": "An account was created while the backup was being checked: the restore was cancelled so it isn’t erased"
+      },
+      "restore": {
+        "title": "Restore from backup",
+        "text": "The server's data will be as it was {date}. Everything changed since then will be lost.",
+        "before": "The server saves a backup of the current state first.",
+        "restart": "The server restarts and playback stops on every device.",
+        "watching": "Watching now on {n} device | Watching now on {n} devices",
+        "password": "Backup password",
+        "passwordHint": "Needed if the backup was protected on another server or the password has changed since.",
+        "confirm": "Restore",
+        "failedTitle": "Couldn't restore",
+        "keep": "Your data is unchanged."
+      },
+      "restart": {
+        "title": "The server is restarting…",
+        "text": "Swapping the database and starting again. This usually takes under a minute.",
+        "stuckTitle": "The container doesn't seem to have come back",
+        "stuckText": "It probably has no restart policy. Start it on the server, in the folder with docker-compose.yml — this page will carry on by itself:"
+      },
+      "result": {
+        "done": "Restored from the backup of {date}",
+        "doneShort": "Data restored from the backup",
+        "failed": "Couldn't restore from the backup",
+        "failedText": "{reason}. Your data is unchanged.",
+        "warnings": {
+          "secret_mismatch": "The backup's secrets are encrypted with a different TORSHER_SECRET: restore the old value or re-enter indexer keys and passwords.",
+          "no_secret_key": "The backup has no secrets key: indexer keys, proxy passwords and notification tokens need to be entered again.",
+          "downloads_unavailable": "The downloads folder was unavailable: torrents weren't checked against the disk."
+        },
+        "reconciled": {
+          "text": "Torrents checked against the disk: {parts}.",
+          "removedFromEngine": "removed from the engine — {n}",
+          "deleted": "deleted from cache — {n}",
+          "paused": "paused — {n}"
+        }
+      },
+      "setup": {
+        "link": "Restore from a backup",
+        "title": "Restore from a backup",
+        "text": "Bring your data over from the old server. After restoring, sign in with the old server's password.",
+        "file": "Backup file",
+        "fileHint": "torsher-backup-….db.gz or .db.gz.enc, up to 2 GB",
+        "choose": "Choose file",
+        "noFile": "No file chosen",
+        "password": "Backup password",
+        "passwordHint": "The password the backup was protected with on the old server",
+        "submit": "Restore",
+        "done": "Data restored",
+        "doneText": "Sign in with the old server's password",
+        "validation": {
+          "file": "Choose a backup file",
+          "password": "Enter the backup password"
+        },
+        "restoring": "The server is restoring from a backup: wait for the restart and sign in with the old server’s password"
       }
     }
   },

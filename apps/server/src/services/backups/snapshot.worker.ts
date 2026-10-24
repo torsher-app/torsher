@@ -4,13 +4,15 @@
  * заморозили бы поток видео и API.
  *
  * Поток исполняется самим Node, а не сборкой тестов, поэтому импортирует
- * только better-sqlite3 и `node:*`: модули сервера (config и прочие) тянут
+ * только better-sqlite3, `node:*` и `worker-message.ts` без зависимостей: модули сервера (config и прочие) тянут
  * за собой окружение и базу главного потока. Всё нужное приходит в
  * `workerData`.
  */
 import { chmodSync } from 'node:fs'
 import { parentPort, workerData } from 'node:worker_threads'
 import Database from 'better-sqlite3'
+import type { WorkerResultMessage } from './worker-message.ts'
+import { WORKER_RESULT_TYPE } from './worker-message.ts'
 
 /** Снимок базы: копия, очистка данных TMDB, манифест, проверка */
 export interface SnapshotJob {
@@ -101,6 +103,9 @@ function snapshot(job: SnapshotJob): WorkerResult {
         ).run(...job.tmdbAliasKinds)
       }
 
+      // Таблица уже бывает в базе: её распаковали из копии руками, или
+      // удаление после восстановления не сработало
+      db.exec(`DROP TABLE IF EXISTS "${job.manifestTable}"`)
       db.exec(
         `CREATE TABLE "${job.manifestTable}" (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
       )
@@ -221,4 +226,7 @@ catch (err) {
   result = failure(err)
 }
 
-parentPort?.postMessage(result)
+parentPort?.postMessage({
+  type: WORKER_RESULT_TYPE,
+  result,
+} satisfies WorkerResultMessage)
