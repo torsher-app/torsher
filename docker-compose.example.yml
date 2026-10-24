@@ -20,7 +20,8 @@ services:
       # Optional: key that encrypts indexer API keys in the database.
       # Without it a key file is created in /data/db. Keep it with your backups
       # TORSHER_SECRET: change-me
-      # Optional: your own TMDB API Read Access Token for the catalog
+      # Optional: your own TMDB API Read Access Token for the catalog instead
+      # of the app key built into the image
       # TMDB_ACCESS_TOKEN:
     volumes:
       # One disk (recommended): database, keys, downloads (/data/torrents)

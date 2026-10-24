@@ -286,6 +286,11 @@ export function usePlayerTracks(
     }
   }
 
+  /** Дорожка озвучки, которую слышно сейчас; без `media` — неизвестна */
+  const audioTrack = computed(() =>
+    media.value?.audio.find(track => track.index === audioStream.value),
+  )
+
   /** Есть графические субтитры: их выбор перезапускает поток */
   const hasBurnIn = computed(
     () => !!media.value?.subtitles.some(track => track.burnIn),
@@ -302,6 +307,7 @@ export function usePlayerTracks(
     selectAudio,
     selectSubtitles,
     caption,
+    audioTrack,
     /** Видимые сейчас реплики субтитров сервера, готовый HTML */
     subtitleHtml: subtitles.html,
   }

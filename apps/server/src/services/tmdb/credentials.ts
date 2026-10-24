@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { config } from '../../config.ts'
 import { decryptSecret, encryptSecret, SecretError } from '../secrets/index.ts'
 import { deleteSetting, getSetting, setSetting } from '../settings/index.ts'
@@ -9,13 +10,18 @@ interface StoredTmdbSettings {
   key: string
 }
 
-/** `custom` — ключ владельца, `app` — ключ из окружения, `none` — ключа нет */
-export type TmdbKeySource = 'custom' | 'app' | 'none'
+/** Ключ без своего ключа из панели: `env` — из окружения, `app` — ключ приложения */
+export type TmdbDefaultKey = 'env' | 'app'
+
+/** `custom` — ключ владельца из панели, `none` — ключа нет */
+export type TmdbKeySource = 'custom' | TmdbDefaultKey | 'none'
 
 // undefined — ещё не читали из базы
 let stored: string | null | undefined
 // TMDB не принял ключ сервера в последнем запросе с ним
 let rejected = false
+// Файл ключа приложения не меняется, пока процесс жив; путь — для тестов
+let appKey: { path: string, value: string | undefined } | undefined
 
 function storedCiphertext() {
   if (stored === undefined)
@@ -24,24 +30,57 @@ function storedCiphertext() {
   return stored
 }
 
+function readAppKey() {
+  const path = config.tmdbAppKeyPath
+
+  if (appKey?.path !== path) {
+    let value: string | undefined
+
+    try {
+      value = readFileSync(path, 'utf8').trim() || undefined
+    }
+    catch (err) {
+      // Без файла образ собран без ключа приложения
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT')
+        throw err
+    }
+
+    appKey = { path, value }
+  }
+
+  return appKey.value
+}
+
+/** Ключ, которым сервер ходит в TMDB без своего ключа из панели */
+export function tmdbDefaultKey(): TmdbDefaultKey | null {
+  if (config.tmdbAccessToken)
+    return 'env'
+
+  return readAppKey() ? 'app' : null
+}
+
 export function tmdbKeySource(): TmdbKeySource {
   if (storedCiphertext())
     return 'custom'
 
-  return config.tmdbAccessToken ? 'app' : 'none'
+  return tmdbDefaultKey() ?? 'none'
 }
 
 /**
- * Ключ запросов: свой ключ владельца важнее ключа приложения — TMDB вправе
- * отозвать ключ приложения. Нерасшифровываемый ключ бросает `SecretError`.
+ * Ключ запросов: свой ключ из панели, затем ключ из окружения, затем ключ
+ * приложения — TMDB вправе отозвать ключ приложения. Нерасшифровываемый ключ
+ * бросает `SecretError`.
  */
 export function currentTmdbKey() {
   const ciphertext = storedCiphertext()
 
-  return ciphertext ? decryptSecret(ciphertext) : config.tmdbAccessToken
+  if (ciphertext)
+    return decryptSecret(ciphertext)
+
+  return config.tmdbAccessToken ?? readAppKey()
 }
 
-/** `null` — вернуться к ключу приложения */
+/** `null` — убрать свой ключ: дальше работает ключ из окружения или приложения */
 export function saveTmdbKey(key: string | null) {
   if (key) {
     setSetting(SETTING_KEY, {

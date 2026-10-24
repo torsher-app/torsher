@@ -21,9 +21,33 @@ const { t } = useI18n()
 const { saveTmdbKey, checkTmdbKey } = useMetadataSettings()
 
 const TMDB_API_SETTINGS = 'https://www.themoviedb.org/settings/api'
-const MODES = ['app', 'custom'] as const
+// default — ключ без своего: из окружения сервера или ключ приложения
+const MODES = ['default', 'custom'] as const
 
 const hasCustomKey = computed(() => props.settings.tmdb.source === 'custom')
+const defaultKey = computed(() => props.settings.tmdb.defaultKey)
+
+function modeTitle(item: (typeof MODES)[number]) {
+  if (item === 'custom')
+    return t('panel.settings.metadata.custom')
+
+  return defaultKey.value === 'env'
+    ? t('panel.settings.metadata.env')
+    : t('panel.settings.metadata.app')
+}
+
+function modeText(item: (typeof MODES)[number]) {
+  if (item === 'custom')
+    return t('panel.settings.metadata.customText')
+
+  if (!defaultKey.value)
+    return t('panel.settings.metadata.appMissing')
+
+  return defaultKey.value === 'env'
+    ? t('panel.settings.metadata.envText')
+    : t('panel.settings.metadata.appText')
+}
+
 const isChecking = ref(false)
 
 // Ключ нужен, только если своего ещё нет: иначе пустое поле — оставить сохранённый.
@@ -53,7 +77,9 @@ const schema = computed(() =>
 function valuesOf(value: MetadataSettings) {
   return {
     mode:
-      value.tmdb.source === 'custom' ? ('custom' as const) : ('app' as const),
+      value.tmdb.source === 'custom'
+        ? ('custom' as const)
+        : ('default' as const),
     key: '',
   }
 }
@@ -93,14 +119,19 @@ const onSubmit = handleSubmit(async (values) => {
   const saved = await saveTmdbKey(values.mode === 'custom' ? values.key : null)
 
   resetForm({ values: valuesOf(saved) })
-  toast.success(
-    t(
-      values.mode === 'custom'
-        ? 'panel.settings.metadata.savedCustom'
-        : 'panel.settings.metadata.savedApp',
-    ),
-    { description: t('panel.settings.metadata.savedText') },
-  )
+
+  let title = 'panel.settings.metadata.savedCustom'
+
+  if (values.mode !== 'custom') {
+    title
+      = saved.tmdb.defaultKey === 'env'
+        ? 'panel.settings.metadata.savedEnv'
+        : 'panel.settings.metadata.savedApp'
+  }
+
+  toast.success(t(title), {
+    description: t('panel.settings.metadata.savedText'),
+  })
 })
 
 async function onCheck() {
@@ -153,21 +184,15 @@ async function onCheck() {
           class="flex cursor-pointer items-start justify-between gap-2 rounded-lg border border-input px-3 py-2.5 font-normal has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:ring-1 has-[[data-state=checked]]:ring-primary has-[[data-disabled]]:cursor-not-allowed has-[[data-disabled]]:opacity-60"
         >
           <span class="grid gap-1">
-            <span class="font-semibold">{{
-              t(`panel.settings.metadata.${item}`)
-            }}</span>
+            <span class="font-semibold">{{ modeTitle(item) }}</span>
             <span class="text-xs text-muted-foreground">
-              {{
-                item === "app" && !settings.tmdb.hasAppKey
-                  ? t("panel.settings.metadata.appMissing")
-                  : t(`panel.settings.metadata.${item}Text`)
-              }}
+              {{ modeText(item) }}
             </span>
           </span>
           <RadioGroupItem
             :id="`tmdb-mode-${item}`"
             :value="item"
-            :disabled="item === 'app' && !settings.tmdb.hasAppKey"
+            :disabled="item === 'default' && !defaultKey"
           />
         </Label>
       </RadioGroup>

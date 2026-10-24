@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import type { Device, Profile } from '@torsher/api-client'
-import { CircleAlertIcon, PlusIcon, RefreshCwIcon, TvIcon } from '@lucide/vue'
+import {
+  CircleAlertIcon,
+  MonitorSmartphoneIcon,
+  PlusIcon,
+  RefreshCwIcon,
+} from '@lucide/vue'
 import { useNow } from '@vueuse/core'
 import { toast } from 'vue-sonner'
 import { useI18n } from 'vue-i18n'
@@ -94,9 +99,9 @@ onBeforeUnmount(devicesStore.stopPolling)
   <PageBar :title="t('panel.people.title')" :parent="t('panel.nav.server')">
     <template v-if="state === 'ready'" #actions>
       <Button size="sm" @click="isPairOpen = true">
-        <TvIcon aria-hidden="true" />
-        <span class="sm:hidden">{{ t("panel.people.pairTvShort") }}</span>
-        <span class="hidden sm:inline">{{ t("panel.people.pairTv") }}</span>
+        <MonitorSmartphoneIcon aria-hidden="true" />
+        <span class="sm:hidden">{{ t("panel.people.pairDeviceShort") }}</span>
+        <span class="hidden sm:inline">{{ t("panel.people.pairDevice") }}</span>
       </Button>
     </template>
   </PageBar>
@@ -185,8 +190,8 @@ onBeforeUnmount(devicesStore.stopPolling)
             t("panel.people.devices.empty")
           }}</span>
           <Button variant="outline" size="sm" @click="isPairOpen = true">
-            <TvIcon aria-hidden="true" />
-            {{ t("panel.people.pairTv") }}
+            <MonitorSmartphoneIcon aria-hidden="true" />
+            {{ t("panel.people.pairDevice") }}
           </Button>
         </li>
       </ul>

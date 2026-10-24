@@ -123,9 +123,15 @@ export const config = {
     )
   },
 
-  // Без токена сервер работает, а каталог отвечает понятной ошибкой
+  // Ключ TMDB владельца из окружения. Без него и без ключа приложения сервер
+  // работает, а каталог отвечает понятной ошибкой
   get tmdbAccessToken() {
     return process.env.TMDB_ACCESS_TOKEN || undefined
+  },
+
+  // Ключ приложения TMDB: образ кладёт его файлом при сборке, в Git его нет
+  get tmdbAppKeyPath() {
+    return join(import.meta.dirname, '../tmdb-app-key')
   },
 
   // Версию продукта образ берёт из тега релиза; без него — из package.json

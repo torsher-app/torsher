@@ -1,4 +1,5 @@
-import type { MediaAudioTrack } from '@torsher/api-client'
+import type { AudioTrack, MediaAudioTrack } from '@torsher/api-client'
+import { ORIGINAL_LANGUAGES } from './catalogFilter.ts'
 
 const CODECS: Record<string, string> = {
   h264: 'H.264',
@@ -53,6 +54,28 @@ export function kilobits(bitrate: number | null) {
  */
 export function audioOrder(tracks: MediaAudioTrack[], index: number) {
   return tracks.findIndex(track => track.index === index)
+}
+
+/**
+ * Студия, которую слышно: из названия дорожки. У дорожки без названия на языке
+ * озвучки раздачи — студия раздачи: в раздаче LostFilm дорожка `rus` без
+ * подписи и есть LostFilm. Язык озвучки без явного указания — русский.
+ */
+export function heardStudio(
+  track: Pick<MediaAudioTrack, 'language' | 'studio' | 'voiceType'> | undefined,
+  release: AudioTrack | null | undefined,
+) {
+  if (track?.studio)
+    return track.studio
+
+  if (!track || track.voiceType || !release?.studio)
+    return undefined
+
+  const code = release.language ?? 'ru'
+
+  return track.language === (ORIGINAL_LANGUAGES[code] ?? code)
+    ? release.studio
+    : undefined
 }
 
 const ALLOWED_TAGS = /^<\/?[ibu]>$/

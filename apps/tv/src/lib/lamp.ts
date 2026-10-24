@@ -224,3 +224,31 @@ export function mothOrbit(path: MothPath, t: number): [number, number] {
     + 0.25 * Math.cos(t * 11 + path.phaseX),
   ]
 }
+
+const clamp01 = (value: number) => Math.min(1, Math.max(0, value))
+
+/**
+ * Свет, пока идут данные: торшер разгорается по мере набора буфера. Слабее
+ * трети не горит — иначе зажжённый рывком свет почти не виден.
+ */
+export function lampLight(progress: number) {
+  return 0.35 + 0.65 * clamp01(progress)
+}
+
+/** Темп мотыльков: чем ближе старт, тем живее кружат */
+export function mothTempo(progress: number) {
+  return 0.7 + 0.6 * clamp01(progress)
+}
+
+/**
+ * Плавное приближение к цели за кадр: новый ответ статистики не дёргает свет.
+ * `tau` — за сколько секунд проходится около двух третей пути.
+ */
+export function approach(
+  current: number,
+  target: number,
+  dt: number,
+  tau = 0.5,
+) {
+  return current + (target - current) * (1 - Math.exp(-dt / tau))
+}

@@ -1,5 +1,4 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
-import { config } from '../config.ts'
 import { messageResponse } from '../dto/common.ts'
 import {
   checkMetadataKey,
@@ -23,13 +22,17 @@ import {
   setImdbRatingsEnabled,
 } from '../services/ratings/imdb/index.ts'
 import { checkTmdbKey } from '../services/tmdb/client.ts'
-import { saveTmdbKey, tmdbKeySource } from '../services/tmdb/credentials.ts'
+import {
+  saveTmdbKey,
+  tmdbDefaultKey,
+  tmdbKeySource,
+} from '../services/tmdb/credentials.ts'
 
 function toMetadataResponse() {
   return {
     tmdb: {
       source: tmdbKeySource(),
-      hasAppKey: Boolean(config.tmdbAccessToken),
+      defaultKey: tmdbDefaultKey(),
     },
     imdb: imdbStatus(),
   }

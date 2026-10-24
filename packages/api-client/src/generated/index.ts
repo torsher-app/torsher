@@ -1205,7 +1205,10 @@ export interface ContinueRowInput {
 }
 
 export type HomeRowInput =
-  ContinueRowInput | ReleasesRowInput | FilesRowInput | CatalogRowInput;
+  | ContinueRowInput
+  | ReleasesRowInput
+  | FilesRowInput
+  | CatalogRowInput;
 
 export interface HomeResponseInput {
   rows: HomeRowInput[];
@@ -1492,6 +1495,11 @@ export interface CreatePlaybackInput {
    * @max 1000000
    */
   startPosition?: number;
+  /**
+   * @minLength 1
+   * @maxLength 200
+   */
+  voiceStudio?: string;
 }
 
 export interface MediaAudioTrackInput {
@@ -2115,8 +2123,8 @@ export interface ImdbDatasetStatusInput {
 
 export interface MetadataSettingsInput {
   tmdb: {
-    source: "custom" | "app" | "none";
-    hasAppKey: boolean;
+    source: "custom" | "env" | "app" | "none";
+    defaultKey: "env" | "app" | null;
   };
   imdb: ImdbDatasetStatusInput;
 }
@@ -5248,6 +5256,11 @@ export interface CreatePlayback {
    * @max 1000000
    */
   startPosition?: number;
+  /**
+   * @minLength 1
+   * @maxLength 200
+   */
+  voiceStudio?: string;
 }
 
 export interface MediaAudioTrack {
@@ -5871,8 +5884,8 @@ export interface ImdbDatasetStatus {
 
 export interface MetadataSettings {
   tmdb: {
-    source: "custom" | "app" | "none";
-    hasAppKey: boolean;
+    source: "custom" | "env" | "app" | "none";
+    defaultKey: "env" | "app" | null;
   };
   imdb: ImdbDatasetStatus;
 }
@@ -7542,10 +7555,12 @@ export type MarkNotificationsReadError = MessageResponse;
 export type GetNotificationChannelsError = MessageResponse;
 
 export type CreateNotificationChannelError =
-  MessageResponse | NotificationChannelConfigError;
+  | MessageResponse
+  | NotificationChannelConfigError;
 
 export type UpdateNotificationChannelError =
-  MessageResponse | NotificationChannelConfigError;
+  | MessageResponse
+  | NotificationChannelConfigError;
 
 export type SetNotificationChannelEnabledError = MessageResponse;
 
@@ -7554,7 +7569,8 @@ export type DeleteNotificationChannelError = MessageResponse;
 export type TestNotificationChannelError = MessageResponse;
 
 export type TestNotificationChannelDraftError =
-  MessageResponse | NotificationChannelConfigError;
+  | MessageResponse
+  | NotificationChannelConfigError;
 
 export type FindTelegramChatsError = MessageResponse;
 
@@ -7617,14 +7633,18 @@ export type GetTitleSourcesError = MessageResponse;
 export type PutTitleVoiceError = MessageResponse;
 
 export type PostTitleWatchError =
-  MessageResponse | WatchErrorResponse | EngineUnavailableResponse;
+  | MessageResponse
+  | WatchErrorResponse
+  | EngineUnavailableResponse;
 
 export type GetTitleProgressError = MessageResponse;
 
 export type GetTitleUpNextError = MessageResponse;
 
 export type PostTitleOpenError =
-  MessageResponse | WatchErrorResponse | EngineUnavailableResponse;
+  | MessageResponse
+  | WatchErrorResponse
+  | EngineUnavailableResponse;
 
 export type GetTitleFilesError = MessageResponse;
 
@@ -7639,10 +7659,13 @@ export type PostTitleDownloadError =
   | InsufficientStorageResponse;
 
 export type DeleteTitleDownloadError =
-  MessageResponse | EngineUnavailableResponse;
+  | MessageResponse
+  | EngineUnavailableResponse;
 
 export type PostTitleKeepError =
-  MessageResponse | EngineUnavailableResponse | InsufficientStorageResponse;
+  | MessageResponse
+  | EngineUnavailableResponse
+  | InsufficientStorageResponse;
 
 export type PutTitleWatchedError = MessageResponse;
 
@@ -7679,20 +7702,24 @@ export type DeleteTorrentError = MessageResponse | EngineUnavailableResponse;
 export type PostTorrentRetryError = MessageResponse | EngineUnavailableResponse;
 
 export type PostTorrentDownloadError =
-  MessageResponse | EngineUnavailableResponse;
+  | MessageResponse
+  | EngineUnavailableResponse;
 
 export type PostTorrentPauseError = MessageResponse | EngineUnavailableResponse;
 
 export type PostTorrentResumeError =
-  MessageResponse | EngineUnavailableResponse;
+  | MessageResponse
+  | EngineUnavailableResponse;
 
 export type PutTorrentRetentionError =
-  MessageResponse | EngineUnavailableResponse;
+  | MessageResponse
+  | EngineUnavailableResponse;
 
 export type PutTorrentTitleError = MessageResponse;
 
 export type DeleteTorrentLibraryError =
-  MessageResponse | EngineUnavailableResponse;
+  | MessageResponse
+  | EngineUnavailableResponse;
 
 export type GetTorrentStatsError = MessageResponse | EngineUnavailableResponse;
 
@@ -7733,13 +7760,18 @@ export type GetStorageBrowseError = MessageResponse;
 export type PostStorageCheckError = MessageResponse;
 
 export type PutStoragePathError =
-  MessageResponse | StoragePathErrorResponse | EngineUnavailableResponse;
+  | MessageResponse
+  | StoragePathErrorResponse
+  | EngineUnavailableResponse;
 
 export type PostStorageMoveError =
-  MessageResponse | StoragePathErrorResponse | EngineUnavailableResponse;
+  | MessageResponse
+  | StoragePathErrorResponse
+  | EngineUnavailableResponse;
 
 export type PostStorageMoveCancelError =
-  MessageResponse | EngineUnavailableResponse;
+  | MessageResponse
+  | EngineUnavailableResponse;
 
 export type GetBackupsError = MessageResponse;
 
@@ -7808,7 +7840,9 @@ export type GetSetupStorageCheckError = MessageResponse;
 export type PostSetupDiscoverManagersError = MessageResponse;
 
 export type PostPlaybackError =
-  MessageResponse | EngineUnavailableResponse | InsufficientStorageResponse;
+  | MessageResponse
+  | EngineUnavailableResponse
+  | InsufficientStorageResponse;
 
 export type GetPlaybackError = MessageResponse;
 
@@ -7839,7 +7873,8 @@ export type PostProfileSelectError = MessageResponse | PinErrorResponse;
 export type GetProfileImportsError = MessageResponse;
 
 export type PostProfileImportError =
-  ImportFormatErrorResponse | MessageResponse;
+  | ImportFormatErrorResponse
+  | MessageResponse;
 
 export type GetProfileImportUnmatchedError = MessageResponse;
 
@@ -7860,7 +7895,8 @@ export type PostDevicePairingError = MessageResponse;
 export type GetDevicePairingError = MessageResponse;
 
 export type PostDevicePairingConfirmError =
-  MessageResponse | PairingErrorResponse;
+  | MessageResponse
+  | PairingErrorResponse;
 
 export type GetDevicesError = MessageResponse;
 
@@ -7910,10 +7946,8 @@ export interface ApiConfig<SecurityDataType = unknown> {
   customFetch?: typeof fetch;
 }
 
-export interface HttpResponse<
-  D extends unknown,
-  E extends unknown = unknown,
-> extends Response {
+export interface HttpResponse<D extends unknown, E extends unknown = unknown>
+  extends Response {
   data: D;
   error: E;
 }

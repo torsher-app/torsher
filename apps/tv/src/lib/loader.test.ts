@@ -3,6 +3,7 @@ import {
   LOADER_DELAY_MS,
   LOADER_MIN_VISIBLE_MS,
   loaderHoldMs,
+  STAGE_MIN_VISIBLE_MS,
 } from './loader.ts'
 
 describe('loaderHoldMs', () => {
@@ -23,5 +24,25 @@ describe('loaderHoldMs', () => {
 
   it('lets a loader that was visible long enough go at once', () => {
     expect(loaderHoldMs(0, 3000)).toBe(0)
+  })
+})
+
+describe('loaderHoldMs on the player stage', () => {
+  const stage = { minVisible: STAGE_MIN_VISIBLE_MS }
+
+  it('skips the lamp on a fast start', () => {
+    expect(loaderHoldMs(0, 300, stage)).toBe(0)
+  })
+
+  it('keeps a lamp that has just appeared for the stage minimum', () => {
+    expect(loaderHoldMs(0, LOADER_DELAY_MS + 200, stage)).toBe(
+      STAGE_MIN_VISIBLE_MS - 200,
+    )
+  })
+
+  it('holds a lamp shown without delay from its first frame', () => {
+    expect(loaderHoldMs(0, 30, { delay: 0, ...stage })).toBe(
+      STAGE_MIN_VISIBLE_MS - 30,
+    )
   })
 })

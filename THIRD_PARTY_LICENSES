@@ -1,7 +1,7 @@
 Third-party components distributed with Torsher
 ===============================================
 
-Onest font (apps/tv and apps/web, files from the @fontsource/onest package)
+Onest font (apps/tv, apps/web and apps/site, files from the @fontsource/onest package)
 https://github.com/simpals/onest
 License: SIL Open Font License 1.1
 
@@ -98,6 +98,13 @@ INCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL
 DAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
 OTHER DEALINGS IN THE FONT SOFTWARE.
+
+
+JetBrains Mono font (apps/site, files from the @fontsource/jetbrains-mono package)
+https://github.com/JetBrains/JetBrainsMono
+License: SIL Open Font License 1.1, the same text as above
+
+Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)
 
 
 Docker image

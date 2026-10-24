@@ -55,10 +55,6 @@ watch(
     <div class="stage__content">
       <slot />
     </div>
-
-    <div v-if="$slots.bottom" class="stage__bottom">
-      <slot name="bottom" />
-    </div>
   </div>
 </template>
 
@@ -136,12 +132,5 @@ watch(
   flex-direction: column;
   align-items: center;
   text-align: center;
-}
-
-.stage__bottom {
-  position: absolute;
-  right: var(--safe-x);
-  bottom: var(--safe-y);
-  left: var(--safe-x);
 }
 </style>

@@ -550,6 +550,35 @@ describe.runIf(hasFfmpeg())('воспроизведение с пробой и �
     expect(body.audioStream).toBe(2)
   })
 
+  it('при смене раздачи — студия, которую слушали в прошлой', async () => {
+    rememberChoice(
+      {
+        profileId: await defaultProfileId(),
+        titleId: 'tmdb:tv:1',
+        season: 1,
+        episode: 5,
+      },
+      {
+        torrentId: torrent.id,
+        fileIndex: 0,
+        voice: { type: 'MVO', studio: 'LostFilm' },
+      },
+    )
+
+    const title = { id: 'tmdb:tv:1', season: 1, episode: 5 }
+
+    // Для серии выбрана LostFilm, а слушали NewStudio
+    expect(
+      (await start({ device: webos, title, voiceStudio: 'NewStudio' }))
+        .audioStream,
+    ).toBe(1)
+    // Такой студии в файле нет — дорожка на языке профиля
+    expect(
+      (await start({ device: webos, title, voiceStudio: 'Кубик в Кубе' }))
+        .audioStream,
+    ).toBe(1)
+  })
+
   it('выбранная в плеере озвучка запоминается для серии и следующих серий', async () => {
     const title = { id: 'tmdb:tv:7', season: 1, episode: 3 }
 

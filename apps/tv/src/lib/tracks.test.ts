@@ -4,9 +4,37 @@ import {
   audioOrder,
   channelsLabel,
   codecLabel,
+  heardStudio,
   kilobits,
   subtitleHtml,
 } from './tracks.ts'
+
+describe('студия, которую слышно', () => {
+  const track = { language: 'rus', studio: null, voiceType: null }
+  const lostfilm = { type: 'MVO' as const, studio: 'LostFilm' }
+
+  it('из названия дорожки', () => {
+    expect(
+      heardStudio({ ...track, studio: 'Кубик в Кубе', voiceType: 'MVO' }, lostfilm),
+    ).toBe('Кубик в Кубе')
+  })
+
+  it('дорожка без названия на языке озвучки — студия раздачи', () => {
+    expect(heardStudio(track, lostfilm)).toBe('LostFilm')
+    expect(
+      heardStudio({ ...track, language: 'ukr' }, { ...lostfilm, language: 'uk' }),
+    ).toBe('LostFilm')
+  })
+
+  it('оригинал, другой язык или тип в названии — не студия раздачи', () => {
+    expect(heardStudio({ ...track, language: 'eng' }, lostfilm)).toBeUndefined()
+    expect(
+      heardStudio({ ...track, voiceType: 'Original' }, lostfilm),
+    ).toBeUndefined()
+    expect(heardStudio(track, { type: 'D' })).toBeUndefined()
+    expect(heardStudio(undefined, lostfilm)).toBeUndefined()
+  })
+})
 
 describe('подписи дорожек', () => {
   it('кодек как в раздачах', () => {

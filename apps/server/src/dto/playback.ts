@@ -58,6 +58,8 @@ export const createPlayback = z
     audioStream: z.number().int().min(0).max(9999).optional(),
     subtitle: subtitleId.optional(),
     startPosition: seconds.optional(),
+    // Студия, которую слушали в прошлой раздаче: при смене раздачи — её дорожка
+    voiceStudio: z.string().min(1).max(200).optional(),
   })
   .refine(oneSource, sourceMessage)
   .meta({ id: 'createPlayback' })

@@ -14,3 +14,4 @@
 .DS_Store
 Dockerfile
 docker-compose*.yml
+**/tmdb-app-key
