@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/anacrolix/torrent/metainfo"
 )
@@ -15,6 +16,9 @@ import (
 // и выбор файлов каждой добавленной раздачи
 type session struct {
 	dir string
+	// Запись идёт из обработчиков и из фона (отданное за всё время): чтение
+	// и запись одной раздачи не должны перемежаться
+	mu sync.Mutex
 }
 
 type savedTorrent struct {
@@ -32,6 +36,13 @@ type savedTorrent struct {
 	// Пути относительно каталога раздачи, которые ставит текущий перенос.
 	// Пишутся до появления файла: откат удаляет в новом каталоге только их
 	Placed []string `json:"placed,omitempty"`
+	// Когда выбор стал непустым (unix мс): порядок очереди закачки. У записей
+	// прежних версий нет — они встают в начало очереди
+	QueuedAt int64 `json:"queuedAt,omitempty"`
+	// Раздавать, когда раздаче уже ничего не нужно; nil — да
+	Seed *bool `json:"seed,omitempty"`
+	// Отдано пирам за всё время, байт; пишется раз в минуту и при остановке
+	Uploaded int64 `json:"uploaded,omitempty"`
 	// Только у записей прежних версий: `false` — выбор сделал просмотр и он
 	// ещё не докачивался. `restore` переводит запись в новый вид
 	Background *bool `json:"background,omitempty"`
@@ -65,7 +76,8 @@ func writeFileAtomic(path string, data []byte) error {
 	return os.Rename(tmp, path)
 }
 
-func (s *session) save(meta *metainfo.MetaInfo, saved savedTorrent) error {
+// Пишет `.torrent` и меняет состояние раздачи, не затирая остальные поля
+func (s *session) save(meta *metainfo.MetaInfo, change func(*savedTorrent)) error {
 	var buf bytes.Buffer
 
 	if err := meta.Write(&buf); err != nil {
@@ -78,10 +90,21 @@ func (s *session) save(meta *metainfo.MetaInfo, saved savedTorrent) error {
 		return err
 	}
 
-	return s.saveSelection(hash, saved)
+	return s.update(hash, change)
 }
 
 func (s *session) saveSelection(hash metainfo.Hash, saved savedTorrent) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	return s.write(hash, saved)
+}
+
+// Отданное только растёт: копия состояния, прочитанная до фоновой записи
+// отданного, его не уменьшит
+func (s *session) write(hash metainfo.Hash, saved savedTorrent) error {
+	saved.Uploaded = max(saved.Uploaded, s.get(hash).Uploaded)
+
 	data, err := json.Marshal(saved)
 	if err != nil {
 		return err
@@ -92,21 +115,35 @@ func (s *session) saveSelection(hash metainfo.Hash, saved savedTorrent) error {
 
 // Сохранённое состояние раздачи; нет записи — пустое
 func (s *session) get(hash metainfo.Hash) savedTorrent {
-	var saved savedTorrent
-
-	if data, err := os.ReadFile(s.path(hash, ".json")); err == nil {
-		_ = json.Unmarshal(data, &saved)
-	}
+	saved, _ := s.lookup(hash)
 
 	return saved
 }
 
+// Состояние раздачи и есть ли оно: раздача, у которой только искали
+// метаданные, в сессии не записана
+func (s *session) lookup(hash metainfo.Hash) (savedTorrent, bool) {
+	var saved savedTorrent
+
+	data, err := os.ReadFile(s.path(hash, ".json"))
+	if err != nil {
+		return saved, false
+	}
+
+	_ = json.Unmarshal(data, &saved)
+
+	return saved, true
+}
+
 // Меняет одно поле состояния, не затирая остальные
 func (s *session) update(hash metainfo.Hash, change func(*savedTorrent)) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	saved := s.get(hash)
 	change(&saved)
 
-	return s.saveSelection(hash, saved)
+	return s.write(hash, saved)
 }
 
 // Раздача сохранена в сессии: её добавляли, а не только искали метаданные

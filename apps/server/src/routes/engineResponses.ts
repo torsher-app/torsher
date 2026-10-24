@@ -1,8 +1,11 @@
 import type { FastifyReply } from 'fastify'
 import type { Torrent } from '../db/schema.ts'
 import type { EngineTorrentState } from '../services/engine/index.ts'
+import type { TorrentSettings } from '../services/torrents/settings.ts'
 import { EngineError } from '../services/engine/index.ts'
 import { isStreaming } from '../services/storage/index.ts'
+import { seedingOf } from '../services/torrents/seeding.ts'
+import { getTorrentSettings } from '../services/torrents/settings.ts'
 import {
   downloadStateOf,
   InsufficientStorageError,
@@ -41,11 +44,13 @@ export function sendEngineError(reply: FastifyReply, err: unknown) {
 
 // Наружу — явно собранный объект: `.torrent` и magnet в ответ не попадают.
 // `live` — раздача в движке; нет — данных на диске нет. `placed` — индексы
-// файлов, которые лежат в библиотеке
+// файлов, которые лежат в библиотеке. Список передаёт настройки торрента
+// один раз на все строки
 export function toTorrentResponse(
   torrent: Torrent,
   live?: EngineTorrentState,
   placed: Set<number> = new Set(),
+  settings: TorrentSettings = getTorrentSettings(),
 ) {
   const files = (torrent.files ?? [])
     .map((file, index) => ({ file, index }))
@@ -92,5 +97,16 @@ export function toTorrentResponse(
     downloadSpeed: live?.downloadSpeed ?? 0,
     uploadSpeed: live?.uploadSpeed ?? 0,
     peers: live?.peers ?? { connected: 0, found: 0 },
+    seeding: seedingResponse(torrent, live, settings),
   }
+}
+
+function seedingResponse(
+  torrent: Torrent,
+  live: EngineTorrentState | undefined,
+  settings: TorrentSettings,
+) {
+  const { seed: _seed, ...state } = seedingOf(torrent, live, settings)
+
+  return state
 }

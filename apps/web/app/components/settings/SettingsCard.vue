@@ -17,9 +17,13 @@ defineProps<{
   <Card class="gap-0 py-0">
     <div class="grid gap-3 p-5">
       <div class="grid gap-1">
-        <CardTitle class="text-base font-semibold tracking-tight">
-          {{ title }}
-        </CardTitle>
+        <!-- Бейдж у заголовка — свойство настройки («После перезапуска»), а не её значение -->
+        <div class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+          <CardTitle class="text-base font-semibold tracking-tight">
+            {{ title }}
+          </CardTitle>
+          <slot name="badge" />
+        </div>
         <CardDescription class="max-w-[62ch]">
           {{ description }}
         </CardDescription>

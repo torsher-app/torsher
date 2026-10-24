@@ -126,7 +126,7 @@ export function useDownloadStatus() {
     if (view.status === 'seeding')
       return [percent, `↑ ${speed(torrent.uploadSpeed)}`].join(' · ')
 
-    if (view.group !== 'active')
+    if (view.group !== 'active' || view.status === 'queued')
       return percent
 
     const eta = etaSeconds(torrent)

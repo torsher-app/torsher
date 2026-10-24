@@ -55,6 +55,8 @@ type api struct {
 	// ходит, `/health` отвечает `restoring`
 	restored atomic.Bool
 	windows  *windows
+	limits   *limits
+	sched    *scheduler
 	// Завершение процесса после паники в обработчике; в тестах подменяется
 	exit func(code int)
 	// Время последней пробы блокировки клиента (unix nano, 0 — сторож не
@@ -64,22 +66,33 @@ type api struct {
 	lockStuckFrom time.Duration
 }
 
-func newAPI(client *torrent.Client, session *session, store clientStorage, logger *slog.Logger) *api {
-	return &api{
+func newAPI(client *torrent.Client, session *session, parts clientParts, logger *slog.Logger) *api {
+	a := &api{
 		client:     client,
 		session:    session,
 		logger:     logger,
-		downloads:  store.downloads,
-		completion: store.completion,
+		downloads:  parts.downloads,
+		completion: parts.completion,
 		stores:     map[string]storage.ClientImpl{},
 		moves:      map[metainfo.Hash]*moveJob{},
 		speeds:     newSpeedTracker(),
-		windows:    newWindows(),
+		windows:    parts.windows,
+		limits:     parts.limits,
+		sched:      newScheduler(),
 		exit:       os.Exit,
 
 		watchEvery:    watchdogInterval,
 		lockStuckFrom: watchdogTimeout,
 	}
+
+	// Привратник и потоки меняют, что качается и сколько соединений у раздач
+	a.limits.onHold = a.sched.poke
+	a.windows.streamChanged = func(opened bool) {
+		a.limits.streamChanged(opened)
+		a.sched.poke()
+	}
+
+	return a
 }
 
 func (a *api) routes() http.Handler {
@@ -110,6 +123,9 @@ func (a *api) routes() http.Handler {
 	mux.HandleFunc("GET /torrents/{hash}/move", a.moveStatus)
 	mux.HandleFunc("GET /torrents/{hash}/stats", a.stats)
 	mux.HandleFunc("GET /torrents/{hash}/files/{index}/stream", a.stream)
+	mux.HandleFunc("PUT /torrents/{hash}/seed", a.setSeed)
+	mux.HandleFunc("GET /settings", a.getSettings)
+	mux.HandleFunc("PUT /settings", a.putSettings)
 
 	return a.crashOnPanic(mux)
 }
@@ -348,6 +364,9 @@ func setFiles(t *torrent.Torrent, selected []int) error {
 // пересчитает его сам. Куски у позиции открытого потока библиотека держит
 // сама; пауза во время просмотра — редкость, а паника перезапустит движок
 func (a *api) setPaused(t *torrent.Torrent, paused bool, selected []int) {
+	// Приоритеты и отдачу на паузе ставит этот код, а после неё — планировщик заново
+	a.sched.forget(t)
+
 	if !paused {
 		t.AllowDataDownload()
 		t.AllowDataUpload()
@@ -410,13 +429,13 @@ func (a *api) restore(ctx context.Context) {
 			}
 		}
 
+		// Выбор остальных расставит планировщик: с очередью качать всё сразу нельзя
 		if saved.Paused {
 			a.setPaused(t, true, saved.Selected)
-		} else if err := setFiles(t, saved.Selected); err != nil {
-			a.logger.Warn("restore files", "hash", t.InfoHash().HexString(), "err", err)
 		}
 	}
 
+	a.reschedule()
 	a.restored.Store(true)
 	a.logger.Info("torrents restored", "count", len(restored))
 }
@@ -490,22 +509,59 @@ func (a *api) add(w http.ResponseWriter, r *http.Request) {
 		a.verifyHoles(t)
 	}
 
-	saved := a.session.get(t.InfoHash())
-	saved.Selected = selected
-	saved.Background = nil
-	saved.Dir = a.sessionDir(dir)
-
-	if err := setFiles(t, selected); err != nil {
+	if err := checkFiles(t, selected); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_files", err)
 		return
 	}
 
-	if err := a.session.save(mi, saved); err != nil {
+	sessionDir := a.sessionDir(dir)
+	err = a.session.save(mi, func(saved *savedTorrent) {
+		queue(saved, selected)
+		saved.Background = nil
+		saved.Dir = sessionDir
+	})
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, "storage", err)
 		return
 	}
 
+	a.applySelection(t)
+
 	writeJSON(w, http.StatusOK, details)
+}
+
+// Новый выбор: раздача, у которой его не было, встаёт в конец очереди
+func queue(saved *savedTorrent, selected []int) {
+	if len(selected) > 0 && (len(saved.Selected) == 0 || saved.QueuedAt == 0) {
+		saved.QueuedAt = time.Now().UnixMilli()
+	}
+	saved.Selected = selected
+}
+
+// Выбор сохранён: на паузе он ставится, как раньше (см. `setPaused`), иначе
+// его применяет планировщик — с очередью и привратником
+func (a *api) applySelection(t *torrent.Torrent) {
+	if saved := a.session.get(t.InfoHash()); saved.Paused {
+		a.sched.forget(t)
+		if err := setFiles(t, saved.Selected); err != nil {
+			a.logger.Warn("pause files", "hash", t.InfoHash().HexString(), "err", err)
+		}
+		return
+	}
+
+	a.reschedule()
+}
+
+func checkFiles(t *torrent.Torrent, selected []int) error {
+	count := len(t.Files())
+
+	for _, index := range selected {
+		if index >= count {
+			return fmt.Errorf("file index %d out of range", index)
+		}
+	}
+
+	return nil
 }
 
 func (a *api) torrentOf(w http.ResponseWriter, r *http.Request) (*torrent.Torrent, bool) {
@@ -548,13 +604,13 @@ func (a *api) selectFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := setFiles(t, body.Files); err != nil {
+	if err := checkFiles(t, body.Files); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_files", err)
 		return
 	}
 
 	err := a.session.update(t.InfoHash(), func(saved *savedTorrent) {
-		saved.Selected = body.Files
+		queue(saved, body.Files)
 		saved.Background = nil
 	})
 	if err != nil {
@@ -562,7 +618,68 @@ func (a *api) selectFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	a.applySelection(t)
+
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// Раздавать ли раздачу, когда ей уже ничего не нужно. Пока она качает выбор
+// или её смотрят, отдача разрешена всегда
+func (a *api) setSeed(w http.ResponseWriter, r *http.Request) {
+	t, ok := a.torrentOf(w, r)
+	if !ok {
+		return
+	}
+
+	var body struct {
+		Seed *bool `json:"seed"`
+	}
+
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<10)).Decode(&body); err != nil || body.Seed == nil {
+		writeError(w, http.StatusBadRequest, "invalid_seed", errors.New("seed must be true or false"))
+		return
+	}
+
+	err := a.session.update(t.InfoHash(), func(saved *savedTorrent) {
+		saved.Seed = nil
+		if !*body.Seed {
+			saved.Seed = body.Seed
+		}
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "storage", err)
+		return
+	}
+
+	a.reschedule()
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *api) getSettings(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, a.limits.current())
+}
+
+// Живые настройки: лимиты, соединения и очередь действуют сразу
+func (a *api) putSettings(w http.ResponseWriter, r *http.Request) {
+	var settings liveSettings
+
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<10)).Decode(&settings); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_settings", err)
+		return
+	}
+
+	if err := settings.validate(); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_settings", err)
+		return
+	}
+
+	a.limits.set(settings)
+
+	if a.restored.Load() {
+		a.reschedule()
+	}
+
+	writeJSON(w, http.StatusOK, settings)
 }
 
 func (a *api) pause(w http.ResponseWriter, r *http.Request) {
@@ -584,6 +701,10 @@ func (a *api) setPausedHandler(w http.ResponseWriter, r *http.Request, paused bo
 	if err := a.session.update(t.InfoHash(), func(saved *savedTorrent) { saved.Paused = paused }); err != nil {
 		writeError(w, http.StatusInternalServerError, "storage", err)
 		return
+	}
+
+	if !paused {
+		a.reschedule()
 	}
 
 	w.WriteHeader(http.StatusNoContent)
@@ -659,9 +780,13 @@ type torrentState struct {
 	// Размер выбранных файлов и сколько из них скачано
 	BytesWanted     int64 `json:"bytesWanted"`
 	WantedCompleted int64 `json:"wantedCompleted"`
+	// Выбор ждёт очереди: качаются другие раздачи
+	Queued bool `json:"queued"`
 	// Раздача отдаёт скачанное пирам
-	Seeding bool          `json:"seeding"`
-	Peers   peersResponse `json:"peers"`
+	Seeding bool `json:"seeding"`
+	// Отдано пирам за всё время, байт
+	Uploaded int64         `json:"uploaded"`
+	Peers    peersResponse `json:"peers"`
 	// Байт в секунду за последние секунды
 	DownloadSpeed int64   `json:"downloadSpeed"`
 	UploadSpeed   int64   `json:"uploadSpeed"`
@@ -680,7 +805,9 @@ func (a *api) stateOf(t *torrent.Torrent) torrentState {
 		Paused:         saved.Paused,
 		Selected:       saved.Selected,
 		BytesCompleted: t.BytesCompleted(),
+		Queued:         a.sched.isQueued(hash),
 		Seeding:        t.Seeding() && !saved.Paused,
+		Uploaded:       a.uploadedOf(t, saved),
 		Peers: peersResponse{
 			Connected: stats.ActivePeers,
 			Found:     stats.TotalPeers,

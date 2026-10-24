@@ -87,7 +87,11 @@ const engineTorrentState = z.object({
   bytesCompleted: z.number(),
   bytesWanted: z.number(),
   wantedCompleted: z.number(),
+  // Выбор ждёт очереди; у движков прежних версий поля нет
+  queued: z.boolean().optional(),
   seeding: z.boolean(),
+  // Отдано пирам за всё время
+  uploaded: z.number().optional(),
   peers: z.object({ connected: z.number(), found: z.number() }),
   downloadSpeed: z.number(),
   uploadSpeed: z.number(),
@@ -123,7 +127,9 @@ export interface EngineTorrentState {
   bytesCompleted: number
   bytesWanted: number
   wantedCompleted: number
+  queued: boolean
   seeding: boolean
+  uploaded: number
   peers: { connected: number, found: number }
   downloadSpeed: number
   uploadSpeed: number
@@ -142,7 +148,9 @@ function toState(raw: z.infer<typeof engineTorrentState>): EngineTorrentState {
     bytesCompleted: raw.bytesCompleted,
     bytesWanted: raw.bytesWanted,
     wantedCompleted: raw.wantedCompleted,
+    queued: raw.queued ?? false,
     seeding: raw.seeding,
+    uploaded: raw.uploaded ?? 0,
     peers: { connected: raw.peers.connected, found: raw.peers.found },
     downloadSpeed: raw.downloadSpeed,
     uploadSpeed: raw.uploadSpeed,
@@ -313,6 +321,43 @@ export async function selectFiles(infoHash: string, files: number[]) {
   await engineEmpty(`/torrents/${infoHash}/files`, {
     method: 'PUT',
     body: JSON.stringify({ files }),
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
+
+/**
+ * Раздавать ли раздачу, когда ей уже ничего не нужно. Пока она качает выбор
+ * или её смотрят, движок отдаёт всегда. Переживает перезапуск движка
+ */
+export async function setTorrentSeed(infoHash: string, seed: boolean) {
+  await engineEmpty(`/torrents/${infoHash}/seed`, {
+    method: 'PUT',
+    body: JSON.stringify({ seed }),
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
+
+/** Настройки, которые движок меняет без перезапуска: байт/с и штуки, 0 — без ограничения */
+export interface EngineLiveSettings {
+  downloadLimit: number
+  uploadLimit: number
+  connsPerTorrent: number
+  connsTotal: number
+  activeDownloads: number
+}
+
+const engineLiveSettings = z.object({
+  downloadLimit: z.number(),
+  uploadLimit: z.number(),
+  connsPerTorrent: z.number(),
+  connsTotal: z.number(),
+  activeDownloads: z.number(),
+})
+
+export async function putEngineSettings(settings: EngineLiveSettings) {
+  return engineJson('/settings', engineLiveSettings, {
+    method: 'PUT',
+    body: JSON.stringify(settings),
     headers: { 'Content-Type': 'application/json' },
   })
 }

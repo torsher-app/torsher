@@ -11,7 +11,8 @@ Every torrent on the server: progress, peers, files, and what will be removed fr
 
 ## What this page will cover
 
-- States: downloading, waiting for peers, seeding, kept
+- States: queued, downloading, waiting for peers, seeding, kept
+- A seeding rule for a single download in its card
 - Adding a magnet link or a .torrent file
 - Removing a download and its files
 - Restarting the torrent engine

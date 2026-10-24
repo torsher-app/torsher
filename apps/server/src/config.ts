@@ -59,7 +59,8 @@ export const config = {
     return process.env.ENGINE_PATH || undefined
   },
 
-  // Порт для входящих соединений пиров; 0 — любой свободный
+  // Порт для входящих соединений пиров по умолчанию; 0 — не задан, порт
+  // выбирается один раз и хранится в настройках торрента
   get enginePeerPort() {
     return Number(process.env.ENGINE_PEER_PORT || 0)
   },

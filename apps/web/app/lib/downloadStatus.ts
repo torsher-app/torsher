@@ -11,6 +11,7 @@ import {
   CircleXIcon,
   ClockIcon,
   HardDriveIcon,
+  ListEndIcon,
   Loader2Icon,
   PlayIcon,
 } from '@lucide/vue'
@@ -19,6 +20,7 @@ export type DownloadStatus
   = | 'resolving'
     | 'failed'
     | 'watching'
+    | 'queued'
     | 'downloading'
     | 'stalled'
     | 'paused'
@@ -107,6 +109,8 @@ function stateViewOf(torrent: ViewTorrent): DownloadView {
   }
 
   switch (torrent.state) {
+    case 'queued':
+      return view('queued', 'muted', ListEndIcon, 'outline', 'active')
     case 'downloading':
       return view('downloading', 'info', ArrowDownToLineIcon, 'info', 'active')
     case 'stalled':

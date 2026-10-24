@@ -11,8 +11,13 @@ function phaseOf(
 ): Phase {
   const download = downloadStateOf(state, streaming)
 
-  if (download === 'downloading' || download === 'stalled')
+  if (
+    download === 'queued'
+    || download === 'downloading'
+    || download === 'stalled'
+  ) {
     return 'active'
+  }
 
   // «Скачано» бывает только у выбранных файлов: окно стрима сюда не попадает
   return download === 'seeding' || download === 'complete' ? 'done' : 'other'

@@ -1336,6 +1336,126 @@ export interface UpdateDeviceInput {
   name: string;
 }
 
+export interface SeedRuleInput {
+  mode: "always" | "ratio" | "time" | "never";
+  /**
+   * @min 0.1
+   * @max 100
+   */
+  ratio?: number;
+  /**
+   * @min 1
+   * @max 5256000
+   */
+  minutes?: number;
+}
+
+export interface TorrentSettingValuesInput {
+  /**
+   * @min 0
+   * @max 10000000000
+   */
+  downloadLimit: number;
+  /**
+   * @min 0
+   * @max 10000000000
+   */
+  uploadLimit: number;
+  /**
+   * @min 0
+   * @max 100
+   */
+  activeDownloads: number;
+  seedRule: SeedRuleInput;
+  seedCache: boolean;
+  /**
+   * @min 1
+   * @max 1000
+   */
+  connsPerTorrent: number;
+  /**
+   * @min 0
+   * @max 10000
+   */
+  connsTotal: number;
+  /**
+   * @min 1024
+   * @max 65535
+   */
+  peerPort: number;
+  upnp: boolean;
+  dht: boolean;
+  pex: boolean;
+  encryption: "prefer" | "require";
+}
+
+export interface UpdateTorrentSettingsInput {
+  /**
+   * @min 0
+   * @max 10000000000
+   */
+  downloadLimit?: number;
+  /**
+   * @min 0
+   * @max 10000000000
+   */
+  uploadLimit?: number;
+  /**
+   * @min 0
+   * @max 100
+   */
+  activeDownloads?: number;
+  seedRule?: SeedRuleInput;
+  seedCache?: boolean;
+  /**
+   * @min 1
+   * @max 1000
+   */
+  connsPerTorrent?: number;
+  /**
+   * @min 0
+   * @max 10000
+   */
+  connsTotal?: number;
+  /**
+   * @min 1024
+   * @max 65535
+   */
+  peerPort?: number;
+  upnp?: boolean;
+  dht?: boolean;
+  pex?: boolean;
+  encryption?: "prefer" | "require";
+}
+
+export interface TorrentSettingsInput {
+  values: TorrentSettingValuesInput;
+  defaults: TorrentSettingValuesInput;
+  custom: (
+    | "downloadLimit"
+    | "uploadLimit"
+    | "activeDownloads"
+    | "seedRule"
+    | "seedCache"
+    | "connsPerTorrent"
+    | "connsTotal"
+    | "peerPort"
+    | "upnp"
+    | "dht"
+    | "pex"
+    | "encryption"
+  )[];
+  peerPortEnv: number | null;
+  pendingRestart: ("peerPort" | "upnp" | "dht" | "pex" | "encryption")[];
+  restartBlocked: "not_running" | "moving" | null;
+  activeStreams: number;
+}
+
+export interface RestartBlockedResponseInput {
+  message: string;
+  reason: "not_running" | "moving";
+}
+
 export interface EngineUnavailableResponseInput {
   message: string;
   kind: "not_installed" | "starting" | "stopped";
@@ -1371,6 +1491,7 @@ export interface TorrentInput {
   state:
     | "idle"
     | "partial"
+    | "queued"
     | "downloading"
     | "stalled"
     | "seeding"
@@ -1387,6 +1508,13 @@ export interface TorrentInput {
   peers: {
     connected: number;
     found: number;
+  };
+  seeding: {
+    rule: SeedRuleInput | null;
+    effective: SeedRuleInput | null;
+    uploaded: number;
+    ratio: number | null;
+    stopped: "ratio" | "time" | "never" | "cache" | null;
   };
 }
 
@@ -1414,6 +1542,10 @@ export interface DownloadTorrentInput {
 export interface UpdateTorrentTitleInput {
   /** @pattern ^tmdb:(?:movie|tv):\d{1,10}$ */
   titleId: string | null;
+}
+
+export interface UpdateTorrentSeedingInput {
+  rule: SeedRuleInput | null;
 }
 
 export interface UpdateRetentionInput {
@@ -5097,6 +5229,126 @@ export interface UpdateDevice {
   name: string;
 }
 
+export interface SeedRule {
+  mode: "always" | "ratio" | "time" | "never";
+  /**
+   * @min 0.1
+   * @max 100
+   */
+  ratio?: number;
+  /**
+   * @min 1
+   * @max 5256000
+   */
+  minutes?: number;
+}
+
+export interface TorrentSettingValues {
+  /**
+   * @min 0
+   * @max 10000000000
+   */
+  downloadLimit: number;
+  /**
+   * @min 0
+   * @max 10000000000
+   */
+  uploadLimit: number;
+  /**
+   * @min 0
+   * @max 100
+   */
+  activeDownloads: number;
+  seedRule: SeedRule;
+  seedCache: boolean;
+  /**
+   * @min 1
+   * @max 1000
+   */
+  connsPerTorrent: number;
+  /**
+   * @min 0
+   * @max 10000
+   */
+  connsTotal: number;
+  /**
+   * @min 1024
+   * @max 65535
+   */
+  peerPort: number;
+  upnp: boolean;
+  dht: boolean;
+  pex: boolean;
+  encryption: "prefer" | "require";
+}
+
+export interface UpdateTorrentSettings {
+  /**
+   * @min 0
+   * @max 10000000000
+   */
+  downloadLimit?: number;
+  /**
+   * @min 0
+   * @max 10000000000
+   */
+  uploadLimit?: number;
+  /**
+   * @min 0
+   * @max 100
+   */
+  activeDownloads?: number;
+  seedRule?: SeedRule;
+  seedCache?: boolean;
+  /**
+   * @min 1
+   * @max 1000
+   */
+  connsPerTorrent?: number;
+  /**
+   * @min 0
+   * @max 10000
+   */
+  connsTotal?: number;
+  /**
+   * @min 1024
+   * @max 65535
+   */
+  peerPort?: number;
+  upnp?: boolean;
+  dht?: boolean;
+  pex?: boolean;
+  encryption?: "prefer" | "require";
+}
+
+export interface TorrentSettings {
+  values: TorrentSettingValues;
+  defaults: TorrentSettingValues;
+  custom: (
+    | "downloadLimit"
+    | "uploadLimit"
+    | "activeDownloads"
+    | "seedRule"
+    | "seedCache"
+    | "connsPerTorrent"
+    | "connsTotal"
+    | "peerPort"
+    | "upnp"
+    | "dht"
+    | "pex"
+    | "encryption"
+  )[];
+  peerPortEnv: number | null;
+  pendingRestart: ("peerPort" | "upnp" | "dht" | "pex" | "encryption")[];
+  restartBlocked: "not_running" | "moving" | null;
+  activeStreams: number;
+}
+
+export interface RestartBlockedResponse {
+  message: string;
+  reason: "not_running" | "moving";
+}
+
 export interface EngineUnavailableResponse {
   message: string;
   kind: "not_installed" | "starting" | "stopped";
@@ -5132,6 +5384,7 @@ export interface Torrent {
   state:
     | "idle"
     | "partial"
+    | "queued"
     | "downloading"
     | "stalled"
     | "seeding"
@@ -5148,6 +5401,13 @@ export interface Torrent {
   peers: {
     connected: number;
     found: number;
+  };
+  seeding: {
+    rule: SeedRule | null;
+    effective: SeedRule | null;
+    uploaded: number;
+    ratio: number | null;
+    stopped: "ratio" | "time" | "never" | "cache" | null;
   };
 }
 
@@ -5175,6 +5435,10 @@ export interface DownloadTorrent {
 export interface UpdateTorrentTitle {
   /** @pattern ^tmdb:(?:movie|tv):\d{1,10}$ */
   titleId: string | null;
+}
+
+export interface UpdateTorrentSeeding {
+  rule: SeedRule | null;
 }
 
 export interface UpdateRetention {
@@ -7699,6 +7963,8 @@ export type PostTorrentResumeError =
 export type PutTorrentRetentionError =
   MessageResponse | EngineUnavailableResponse;
 
+export type PutTorrentSeedingError = MessageResponse;
+
 export type PutTorrentTitleError = MessageResponse;
 
 export type DeleteTorrentLibraryError =
@@ -7806,6 +8072,12 @@ export type PostImdbRefreshError = MessageResponse;
 export type GetPlaybackSettingsError = MessageResponse;
 
 export type PutPlaybackSettingsError = MessageResponse;
+
+export type GetTorrentSettingsError = MessageResponse;
+
+export type PutTorrentSettingsError = MessageResponse;
+
+export type PostTorrentRestartError = MessageResponse | RestartBlockedResponse;
 
 export type PostPlaybackCheckError = MessageResponse;
 
@@ -9845,6 +10117,27 @@ export class Api<
      * No description
      *
      * @tags Torrents
+     * @name PutTorrentSeeding
+     * @request PUT:/api/torrents/{id}/seeding
+     */
+    putTorrentSeeding: (
+      id: string,
+      data: UpdateTorrentSeedingInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<Torrent, PutTorrentSeedingError>({
+        path: `/api/torrents/${id}/seeding`,
+        method: "PUT",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Torrents
      * @name PutTorrentTitle
      * @request PUT:/api/torrents/{id}/title
      */
@@ -10789,6 +11082,56 @@ export class Api<
         method: "PUT",
         body: data,
         type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Settings
+     * @name GetTorrentSettings
+     * @request GET:/api/settings/torrent
+     */
+    getTorrentSettings: (params: RequestParams = {}) =>
+      this.request<TorrentSettings, GetTorrentSettingsError>({
+        path: `/api/settings/torrent`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Settings
+     * @name PutTorrentSettings
+     * @request PUT:/api/settings/torrent
+     */
+    putTorrentSettings: (
+      data: UpdateTorrentSettingsInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<TorrentSettings, PutTorrentSettingsError>({
+        path: `/api/settings/torrent`,
+        method: "PUT",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Settings
+     * @name PostTorrentRestart
+     * @request POST:/api/settings/torrent/restart
+     */
+    postTorrentRestart: (params: RequestParams = {}) =>
+      this.request<MessageResponse, PostTorrentRestartError>({
+        path: `/api/settings/torrent/restart`,
+        method: "POST",
         format: "json",
         ...params,
       }),

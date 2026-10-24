@@ -538,20 +538,38 @@ export function createEngineSupervisor(options: EngineSupervisorOptions) {
     },
 
     /**
-     * Перезапуск по просьбе владельца: процесс убивается, дальше — обычный
-     * перезапуск с первой паузой. Движок, который и так запускается, не трогаем:
-     * второй процесс не нужен. `false` — перезапуск не начат
+     * Перезапуск по просьбе владельца: процесс останавливается, дальше —
+     * обычный перезапуск с первой паузой. Движок, который и так запускается,
+     * не трогаем: второй процесс не нужен. `graceful` — SIGTERM и SIGKILL,
+     * только если движок не вышел за `stopTimeoutMs`: так он успевает
+     * записать состояние. Без него — сразу SIGKILL, для зависшего движка.
+     * `false` — перезапуск не начат
      */
-    restart() {
+    restart(options: { graceful?: boolean } = {}) {
       const proc = child
 
-      if (status !== 'ready' || !proc || stopping)
+      // Мягкий перезапуск ещё ждёт выхода процесса: второй не нужен
+      if (status !== 'ready' || !proc || stopping || killReason === 'restart')
         return false
 
       failures = 0
       readyAt = 0
       log.warn('Engine restart requested')
-      kill(proc, 'restart')
+
+      if (!options.graceful) {
+        kill(proc, 'restart')
+        return true
+      }
+
+      killReason = 'restart'
+      proc.kill('SIGTERM')
+
+      const force = setTimeout(() => {
+        if (proc.exitCode === null && proc.signalCode === null)
+          proc.kill('SIGKILL')
+      }, stopTimeoutMs)
+
+      proc.once('exit', () => clearTimeout(force))
       return true
     },
 

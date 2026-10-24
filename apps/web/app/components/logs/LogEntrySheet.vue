@@ -11,6 +11,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { formatLogDateTime, logLevelView, logSourceLabels } from '~/lib/logs'
+import { keepOpenOnListClick } from '~/lib/sheet'
 
 const props = defineProps<{
   entry: LogEntry | null
@@ -39,12 +40,9 @@ const view = computed(() =>
 )
 const context = computed(() => Object.entries(shown.value?.context ?? {}))
 
-// Список под карточкой остаётся живым: клик по другой строке переключает карточку
+// Строка списка переключает карточку, пустое место под строками закрывает её
 function onInteractOutside(event: Event) {
-  const target = event.target as HTMLElement | null
-
-  if (target?.closest('[data-logs-list]'))
-    event.preventDefault()
+  keepOpenOnListClick(event, '[data-logs-list]')
 }
 </script>
 

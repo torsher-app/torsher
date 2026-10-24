@@ -33,7 +33,7 @@ import { isStreaming } from './streams.ts'
 
 export { GIB } from './policy.ts'
 export type { StoragePolicy } from './policy.ts'
-export { isStreaming, trackStream } from './streams.ts'
+export { isStreaming, streamingCount, trackStream } from './streams.ts'
 
 // Только что смотрели — плеер на паузе или переключает серию: не вытесняем
 const RECENT_USE_MS = 10 * 60 * 1000

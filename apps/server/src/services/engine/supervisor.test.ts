@@ -328,6 +328,26 @@ describe('перезапуск по просьбе', () => {
     expect(supervisor.status).toBe('ready')
   })
 
+  it('мягкий: SIGTERM, через срок остановки — SIGKILL; падением не считается', async () => {
+    const { supervisor, processes, spawned } = setup()
+
+    await supervisor.start()
+    processes[0]!.ignoreTerm = true
+
+    expect(supervisor.restart({ graceful: true })).toBe(true)
+    expect(processes[0]!.signals).toEqual(['SIGTERM'])
+    // Процесс ещё жив: второй перезапуск не начинается
+    expect(supervisor.restart({ graceful: true })).toBe(false)
+
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(processes[0]!.signals).toEqual(['SIGTERM', 'SIGKILL'])
+
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(spawned).toHaveLength(2)
+    expect(supervisor.status).toBe('ready')
+    expect(supervisor.recentCrashes()).toBe(0)
+  })
+
   it('движок, который уже перезапускается, второй раз не запускает', async () => {
     const { supervisor, processes, spawned } = setup()
 

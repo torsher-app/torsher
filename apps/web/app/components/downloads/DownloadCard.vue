@@ -6,6 +6,7 @@ import {
   FileIcon,
   FilmIcon,
   LibraryIcon,
+  ListEndIcon,
   MonitorPlayIcon,
   PinIcon,
   PinOffIcon,
@@ -28,9 +29,11 @@ import LoadingButton from '~/components/LoadingButton.vue'
 import { formatDateTime, formatRelative } from '~/lib/format'
 import { releaseMetaOf } from '~/lib/releaseMeta'
 import { playerUrl, videoIndexes } from '~/lib/torrents'
+import DownloadSeedRule from './DownloadSeedRule.vue'
 import DownloadStatusIcon from './DownloadStatusIcon.vue'
 import FixMatchDialog from '~/components/library/FixMatchDialog.vue'
 import RemoveLibraryDialog from './RemoveLibraryDialog.vue'
+import { keepOpenOnListClick } from '~/lib/sheet'
 
 const props = defineProps<{
   torrent: Torrent | null
@@ -147,6 +150,34 @@ const matchText = computed(() => {
       : 'panel.torrents.match.waiting',
   )
 })
+const { ratio: formatRatio } = useSeedRuleText()
+
+// «Отдано 1,2 ГБ · рейтинг 0,4»; остановленная раздача говорит почему
+const seedingText = computed(() => {
+  const seeding = shown.value?.seeding
+
+  if (!seeding)
+    return ''
+
+  return seeding.ratio === null
+    ? t('panel.torrents.card.seedingUploaded', {
+        uploaded: status.bytes(seeding.uploaded),
+      })
+    : t('panel.torrents.card.seedingRatio', {
+        uploaded: status.bytes(seeding.uploaded),
+        ratio: formatRatio(seeding.ratio),
+      })
+})
+const seedingStop = computed(() => {
+  const seeding = shown.value?.seeding
+
+  return seeding?.stopped
+    ? t(`panel.torrents.card.stopped.${seeding.stopped}`, {
+        ratio: formatRatio(seeding.ratio ?? 0),
+      })
+    : ''
+})
+
 const storageText = computed(() => {
   if (shown.value?.inLibrary)
     return t('panel.torrents.card.storageLibrary')
@@ -207,12 +238,9 @@ function filePercent(downloaded: number, size: number) {
   return size > 0 ? Math.floor((downloaded / size) * 100) : 0
 }
 
-// Список под карточкой остаётся живым: клик по другой строке переключает карточку
+// Строка списка переключает карточку, пустое место под строками закрывает её
 function onInteractOutside(event: Event) {
-  const target = event.target as HTMLElement | null
-
-  if (target?.closest('[data-downloads-list]'))
-    event.preventDefault()
+  keepOpenOnListClick(event, '[data-downloads-list]')
 }
 </script>
 
@@ -267,6 +295,20 @@ function onInteractOutside(event: Event) {
                 class="mt-1 block font-medium text-foreground underline underline-offset-3"
               >
                 {{ t("panel.torrents.storageLink") }}
+              </NuxtLink>
+            </AlertDescription>
+          </Alert>
+
+          <Alert v-else-if="view.status === 'queued'" variant="info">
+            <ListEndIcon />
+            <AlertTitle>{{ label }}</AlertTitle>
+            <AlertDescription>
+              {{ t("panel.torrents.card.queued") }}
+              <NuxtLink
+                to="/settings/torrent"
+                class="mt-1 block font-medium text-foreground underline underline-offset-3"
+              >
+                {{ t("panel.torrents.card.queuedLink") }}
               </NuxtLink>
             </AlertDescription>
           </Alert>
@@ -376,6 +418,16 @@ function onInteractOutside(event: Event) {
               <dd class="tabular-nums">
                 {{ t("panel.torrents.card.peersValue", shown.peers) }}
               </dd>
+              <dt class="self-start text-muted-foreground">
+                {{ t("panel.torrents.card.seeding") }}
+              </dt>
+              <dd class="grid gap-0.5">
+                <span class="tabular-nums">{{ seedingText }}</span>
+                <span
+                  v-if="seedingStop"
+                  class="text-[12.5px] text-muted-foreground"
+                >{{ seedingStop }}</span>
+              </dd>
             </template>
             <dt class="self-start text-muted-foreground">
               {{ t("panel.torrents.card.storage") }}
@@ -406,6 +458,11 @@ function onInteractOutside(event: Event) {
               }}
             </dd>
           </dl>
+
+          <DownloadSeedRule
+            v-if="shown.status === 'ready' && shown.retention === 'keep'"
+            :torrent="shown"
+          />
 
           <section v-if="shown.status === 'ready'" class="grid gap-2">
             <div>
