@@ -22,6 +22,7 @@ import { Switch } from '@/components/ui/switch'
 import LoadingButton from '~/components/LoadingButton.vue'
 import { formatDateTime, formatRelative } from '~/lib/format'
 import IndexerStatusIcon from './IndexerStatusIcon.vue'
+import { keepOpenOnListClick } from '~/lib/sheet'
 
 const props = defineProps<{
   indexer: Indexer | null
@@ -88,12 +89,9 @@ async function onToggle(enabled: boolean) {
   }
 }
 
-// Список под карточкой остаётся живым: клик по другой строке переключает карточку
+// Строка списка переключает карточку, пустое место под строками закрывает её
 function onInteractOutside(event: Event) {
-  const target = event.target as HTMLElement | null
-
-  if (target?.closest('[data-sources-list]'))
-    event.preventDefault()
+  keepOpenOnListClick(event, '[data-sources-list]')
 }
 </script>
 

@@ -23,6 +23,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import HistoryRow from '~/components/history/HistoryRow.vue'
 import ProfileAvatar from './ProfileAvatar.vue'
 import ProfileImportSection from './ProfileImportSection.vue'
+import { keepOpenOnListClick } from '~/lib/sheet'
 
 const props = defineProps<{
   profile: Profile | null
@@ -55,12 +56,9 @@ const profileDevices = computed(() =>
   props.devices.filter(item => item.profile?.id === shown.value?.id),
 )
 
-// Список под карточкой остаётся живым: клик по другой строке переключает карточку
+// Строка списка переключает карточку, пустое место под строками закрывает её
 function onInteractOutside(event: Event) {
-  const target = event.target as HTMLElement | null
-
-  if (target?.closest('[data-people-list]'))
-    event.preventDefault()
+  keepOpenOnListClick(event, '[data-people-list]')
 }
 </script>
 

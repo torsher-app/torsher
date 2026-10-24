@@ -11,6 +11,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { Skeleton } from '@/components/ui/skeleton'
+import { keepOpenOnListClick } from '~/lib/sheet'
 
 const props = defineProps<{
   collection: Collection | null
@@ -85,12 +86,9 @@ async function onRemove(card: Card) {
   }
 }
 
-// Список под карточкой остаётся живым: клик по другой строке переключает карточку
+// Строка списка переключает карточку, пустое место под строками закрывает её
 function onInteractOutside(event: Event) {
-  const target = event.target as HTMLElement | null
-
-  if (target?.closest('[data-collections-list]'))
-    event.preventDefault()
+  keepOpenOnListClick(event, '[data-collections-list]')
 }
 </script>
 
