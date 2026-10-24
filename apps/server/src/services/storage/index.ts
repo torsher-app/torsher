@@ -2,7 +2,7 @@ import type { Torrent } from '../../db/schema.ts'
 import type { EngineTorrentState } from '../engine/index.ts'
 import type { ShortageKind, StoredTorrent } from './eviction.ts'
 import { eq } from 'drizzle-orm'
-import { config } from '../../config.ts'
+import { storagePath } from './paths.ts'
 import { getDb } from '../../db/index.ts'
 import { torrents } from '../../db/schema.ts'
 import {
@@ -16,9 +16,13 @@ import {
 import { libraryUsage, linkedBytesByTorrent } from '../library/files.ts'
 import { librarySharesVolume } from '../library/link.ts'
 import { logFor } from '../logs/index.ts'
+import type { StorageFolder } from './folders.ts'
+import type { StorageKind } from './paths.ts'
 import { diskUsage } from './disk.ts'
+import { storageFolder } from './folders.ts'
 import { evictionQueue, planEviction, withoutSkipped } from './eviction.ts'
 import { getPolicy, GIB, savePolicy } from './policy.ts'
+import { isMovingTorrent } from './moving.ts'
 import { isStreaming } from './streams.ts'
 
 export { GIB } from './policy.ts'
@@ -68,7 +72,7 @@ interface Snapshot {
 
 async function snapshot(): Promise<Snapshot> {
   const [disk, list] = await Promise.all([
-    diskUsage(config.downloadsPath),
+    diskUsage(storagePath('downloads')),
     listEngineTorrents(),
   ])
 
@@ -105,7 +109,10 @@ function storedOf(
       retention: row.retention,
       size: Math.max(0, state.bytesCompleted - (linked.get(row.id) ?? 0)),
       lastUsedAt,
-      protected: isStreaming(row.id) || now - lastUsedAt < RECENT_USE_MS,
+      protected:
+        isStreaming(row.id)
+        || isMovingTorrent(row.id)
+        || now - lastUsedAt < RECENT_USE_MS,
     })
   }
 
@@ -119,7 +126,7 @@ function update(id: string, values: Partial<typeof torrents.$inferInsert>) {
 /** Убирает раздачу из движка вместе с файлами; строка и позиция просмотра остаются */
 async function evict(row: Torrent) {
   // План строился по снимку, а поток мог открыться, пока вытеснялись другие
-  if (isStreaming(row.id))
+  if (isStreaming(row.id) || isMovingTorrent(row.id))
     return false
 
   try {
@@ -134,15 +141,22 @@ async function evict(row: Torrent) {
   return true
 }
 
-/** Раздачу могли убрать из движка мимо снимка: для паузы это не ошибка */
+/**
+ * Раздачу могли убрать из движка мимо снимка или она переезжает в другую
+ * папку: для паузы это не ошибка
+ */
 async function ignoreMissing(action: Promise<void>) {
   try {
     await action
     return true
   }
   catch (err) {
-    if (err instanceof EngineError && err.kind === 'not_found')
+    if (
+      err instanceof EngineError
+      && (err.kind === 'not_found' || err.kind === 'moving')
+    ) {
       return false
+    }
     throw err
   }
 }
@@ -322,10 +336,11 @@ export interface StorageOverview {
   other: number
   policy: { cacheLimit: number, minFree: number, custom: boolean }
   queue: Array<{ torrent: Torrent, size: number }>
+  folders: Record<StorageKind, StorageFolder>
 }
 
 export async function getStorageOverview(): Promise<StorageOverview> {
-  const disk = await diskUsage(config.downloadsPath)
+  const disk = await diskUsage(storagePath('downloads'))
   const rows = getDb().select().from(torrents).all()
   const live = isEngineReady()
     ? new Map((await listEngineTorrents()).map(item => [item.infoHash, item]))
@@ -343,17 +358,21 @@ export async function getStorageOverview(): Promise<StorageOverview> {
   const libraryOwn = librarySharesVolume() ? library.used - library.shared : 0
 
   return {
-    path: config.downloadsPath,
+    path: storagePath('downloads'),
     total: disk.total,
     free: disk.free,
     cacheUsed,
     keptUsed,
-    library: { path: config.libraryPath, ...library, own: libraryOwn },
+    library: { path: storagePath('library'), ...library, own: libraryOwn },
     other: Math.max(
       0,
       disk.total - disk.free - cacheUsed - keptUsed - libraryOwn,
     ),
     policy: getPolicy(disk.total),
+    folders: {
+      downloads: await storageFolder('downloads', live),
+      library: await storageFolder('library', live),
+    },
     queue: evictionQueue(stored)
       .slice(0, QUEUE_PREVIEW)
       .flatMap((item) => {
@@ -379,7 +398,7 @@ export async function updatePolicy(values: {
 
 /** Том, кэш и политика без очереди вытеснения — для «Обзора» */
 export async function storageSummary(live: Map<string, EngineTorrentState>) {
-  const disk = await diskUsage(config.downloadsPath)
+  const disk = await diskUsage(storagePath('downloads'))
   const rows = getDb().select().from(torrents).all()
   const cacheUsed = storedOf(rows, live, Date.now())
     .filter(item => item.retention === 'cache')

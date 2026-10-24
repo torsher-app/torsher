@@ -31,7 +31,7 @@ func (a *api) verifyHoles(t *torrent.Torrent) int {
 	var offset int64
 
 	for _, file := range info.UpvertedFiles() {
-		path := filepath.Join(a.downloads, filePathOf(storage.FilePathMakerOpts{Info: info, File: &file}))
+		path := filepath.Join(a.dirOf(t.InfoHash()), filePathOf(storage.FilePathMakerOpts{Info: info, File: &file}))
 
 		for _, candidate := range []string{path, path + partFileSuffix} {
 			holes, err := fileHoles(candidate)

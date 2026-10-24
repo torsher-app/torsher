@@ -5,6 +5,7 @@ import {
   forgetTorrent,
   inspectTorrent,
   listEngineTorrents,
+  moveTorrent,
   openStream,
   pauseTorrent,
   resolveMagnet,
@@ -12,6 +13,7 @@ import {
   selectFiles,
   setEngineDown,
   setEngineReady,
+  torrentMoveState,
   torrentStats,
 } from './client.ts'
 import {
@@ -19,6 +21,7 @@ import {
   INFO_HASH,
   liveState,
   liveStats,
+  moveState,
   movieDetails,
 } from './fixtures/index.ts'
 
@@ -194,6 +197,35 @@ describe('клиент движка', () => {
     await expect(forgetTorrent(INFO_HASH)).rejects.toMatchObject({
       kind: 'not_found',
     })
+  })
+
+  it('перенос в другой каталог: ход переноса, раздача на переезде — moving', async () => {
+    fetchMock.mockResolvedValueOnce(json(moveState('/big', 'running'), 202))
+    fetchMock.mockResolvedValueOnce(json(moveState('/big')))
+    fetchMock.mockResolvedValueOnce(
+      json(engineError('torrent_moving', 'torrent is being moved'), 409),
+    )
+
+    expect(await moveTorrent(INFO_HASH, '/big')).toMatchObject({
+      state: 'running',
+    })
+    expect(JSON.parse(String(fetchMock.mock.calls[0]![1]!.body))).toEqual({
+      dir: '/big',
+    })
+    expect(await torrentMoveState(INFO_HASH)).toMatchObject({ state: 'done' })
+    await expect(pauseTorrent(INFO_HASH)).rejects.toMatchObject({
+      kind: 'moving',
+    })
+  })
+
+  it('добавление в свой каталог — параметр dir', async () => {
+    fetchMock.mockResolvedValueOnce(json(movieDetails))
+
+    await addTorrent(new Uint8Array([1]), [0, 2], '/big/torrents')
+
+    expect(String(fetchMock.mock.calls[0]![0])).toContain(
+      '?files=0,2&dir=%2Fbig%2Ftorrents',
+    )
   })
 
   it('поток: Range уходит в движок, 206 и 416 отдаются как есть', async () => {

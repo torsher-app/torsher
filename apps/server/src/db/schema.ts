@@ -336,6 +336,9 @@ export const torrents = sqliteTable('torrents', {
   // Файлы, которые качаются целиком; остальные — только то, что читает поток
   selectedFiles: text('selected_files', { mode: 'json' }).$type<number[]>(),
   pauseReason: text('pause_reason', { enum: torrentPauseReasons }),
+  // Каталог файлов раздачи; null — каталог загрузок из окружения, за его
+  // сменой в compose раздача идёт сама
+  downloadDir: text('download_dir'),
   // Кадр видео из ffprobe при просмотре: точное разрешение раздачи в «Источниках»
   videoWidth: integer('video_width'),
   videoHeight: integer('video_height'),
@@ -346,6 +349,38 @@ export const torrents = sqliteTable('torrents', {
 })
 
 export type Torrent = typeof torrents.$inferSelect
+
+export const storageMoveKinds = ['downloads', 'library'] as const
+// `running` продолжается после перезапуска сервера
+export const storageMoveStatuses = [
+  'running',
+  'done',
+  'failed',
+  'cancelled',
+] as const
+
+// Перенос загрузок или своей раскладки в другую папку. Элементы не хранятся:
+// переносится всё, что лежит не в `target`, и каждый элемент переключается
+// сразу после своей копии
+export const storageMoves = sqliteTable('storage_moves', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => randomUUID()),
+  kind: text('kind', { enum: storageMoveKinds }).notNull(),
+  target: text('target').notNull(),
+  status: text('status', { enum: storageMoveStatuses }).notNull(),
+  bytesTotal: integer('bytes_total').notNull().default(0),
+  bytesDone: integer('bytes_done').notNull().default(0),
+  itemsTotal: integer('items_total').notNull().default(0),
+  itemsDone: integer('items_done').notNull().default(0),
+  error: text('error'),
+  startedAt: integer('started_at', { mode: 'timestamp_ms' })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  finishedAt: integer('finished_at', { mode: 'timestamp_ms' }),
+})
+
+export type StorageMove = typeof storageMoves.$inferSelect
 
 // Политика хранения — одна строка (`id = 1`); нет строки — значения по
 // умолчанию от размера тома
@@ -663,6 +698,11 @@ export const libraryFolders = sqliteTable('library_folders', {
     .references(() => libraries.id, { onDelete: 'cascade' }),
   // Путь, как его видит сервер (в образе — внутри контейнера)
   path: text('path').notNull(),
+  // Папка своей раскладки из `LIBRARY_PATH`: её путь идёт за сменой
+  // окружения. У папок, выбранных в панели, путь не меняется
+  followsEnv: integer('follows_env', { mode: 'boolean' })
+    .notNull()
+    .default(false),
   hint: text('hint', { enum: libraryFolderHints }).notNull().default('auto'),
   status: text('status', { enum: libraryFolderStatuses })
     .notNull()

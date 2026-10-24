@@ -5,7 +5,7 @@ import { getDb } from '../../db/index.ts'
 import { mediaFiles, torrents } from '../../db/schema.ts'
 import { logFor } from '../logs/index.ts'
 import { getTorrent, setRetention } from '../torrents/index.ts'
-import { managedFolder, torrentLibraryFiles } from './files.ts'
+import { managedFolders, torrentLibraryFiles } from './files.ts'
 import { removeFile } from './link.ts'
 import { syncLibrary } from './linker.ts'
 import { rememberUserAlias } from './recognize.ts'
@@ -17,6 +17,7 @@ export {
   libraryUsage,
   linkedBytesByTorrent,
   managedFolder,
+  managedFolders,
   placedFilesByTorrent,
   qualityOf,
   titleLibraryFiles,
@@ -35,12 +36,15 @@ export {
 
 /** Убирает файлы раздачи из своей раскладки и строки `media_files`; раздачу не трогает */
 async function unplaceFiles(torrent: Torrent) {
-  const folder = managedFolder()
-  const files = torrentLibraryFiles(torrent.id).filter(
-    file => file.folderId === folder.id,
+  const folders = new Map(
+    managedFolders().map(folder => [folder.id, folder]),
+  )
+  const files = torrentLibraryFiles(torrent.id).filter(file =>
+    folders.has(file.folderId),
   )
 
   for (const file of files) {
+    const folder = folders.get(file.folderId)!
     const absolute = join(folder.path, ...file.relPath.split('/'))
     const base = absolute.slice(0, absolute.lastIndexOf('.'))
 

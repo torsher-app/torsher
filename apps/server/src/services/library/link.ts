@@ -12,8 +12,8 @@ import {
   writeFile,
 } from 'node:fs/promises'
 import { basename, dirname, join, sep } from 'node:path'
-import { config } from '../../config.ts'
 import { logFor } from '../logs/index.ts'
+import { storagePath } from '../storage/paths.ts'
 
 // Хардлинк не проходит между томами (`EXDEV`), на ФС без ссылок и в части
 // сетевых папок; это не ошибка, а повод перейти к копии
@@ -168,8 +168,8 @@ let sameDevice = true
  * старте пробным файлом и запоминается; `null` — каталоги недоступны.
  */
 export async function checkLinkMode(
-  downloadsDir = config.downloadsPath,
-  libraryDir = config.libraryPath,
+  downloadsDir = storagePath('downloads'),
+  libraryDir = storagePath('library'),
 ) {
   linkMode = await probeLinkMode(downloadsDir, libraryDir)
 

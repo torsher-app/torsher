@@ -772,7 +772,7 @@
           "reflinkText": "Files are copied without extra space: the filesystem shares the same blocks.",
           "copy": "Downloads and the library are on different volumes: files will be copied",
           "copyText": "A kept file takes space twice until the torrent is evicted from the cache.",
-          "copyFix": "Mount downloads and the library as one /data volume, as in docker-compose.example.yml. Two volumes, even on one disk, block hard links."
+          "copyFix": "Choose downloads and library folders on one volume in the Folders card below, for example /data/torrents and /data/library. Two volumes, even on one disk, don’t allow hard links."
         }
       },
       "network": {
@@ -1014,7 +1014,6 @@
         },
         "library": {
           "title": "Library",
-          "path": "Torsher layout",
           "used": "Used",
           "usedValue": "{used}, {shared} of it shared with torrents",
           "usedEmpty": "Empty so far",
@@ -1022,9 +1021,89 @@
           "hardlink": "Hard link — the torrent keeps seeding without extra space",
           "reflink": "Reflink — a copy without extra space",
           "copy": "Copy — the file takes space twice until the torrent is evicted from the cache",
-          "unknown": "Not checked",
-          "copyTitle": "Downloads and the library are on different volumes",
-          "copyText": "Files will be copied. Mount downloads and the library as one /data volume, as in docker-compose.example.yml."
+          "unknown": "Not checked"
+        },
+        "folders": {
+          "title": "Folders",
+          "text": "Where downloads and your own library live. The container sees only mounted folders: mount a new disk in docker-compose.yml first.",
+          "downloads": "Downloads",
+          "library": "Library",
+          "free": "{free} free of {total}",
+          "torrents": "{n} torrent | {n} torrents",
+          "files": "{n} file | {n} files",
+          "empty": "Empty",
+          "default": "Default",
+          "defaultHint": "Path from the container environment",
+          "change": "Change",
+          "changeLabel": "Change the “{name}” folder",
+          "leftover": "In the previous folder: {items} · {size}",
+          "moveHere": "Move here",
+          "moving": "Moving {done} of {total}",
+          "movingBytes": "{done} of {total}",
+          "waitingStream": "Waiting for playback to finish",
+          "waitingEngine": "Waiting for the torrent engine",
+          "cancel": "Stop",
+          "cancelled": "Move stopped: what was moved works from the new folder",
+          "done": "Move finished",
+          "failedTitle": "The move stopped",
+          "failed": {
+            "no_space": "The new volume ran out of space. Free up space and retry: what was moved already works from the new folder.",
+            "denied": "Can’t write to the new folder. Check the container’s PUID and PGID and the folder permissions.",
+            "engine": "The torrent engine couldn’t move a torrent. See the Log for details.",
+            "failed": "Read or write error. See the Log for details."
+          },
+          "retry": "Retry",
+          "copyTitle": "Downloads and library are on different volumes",
+          "copyText": "“Keep” will copy files: they take space twice until the torrent is evicted from the cache. Choose folders on one volume, for example /data/torrents and /data/library."
+        },
+        "pathDialog": {
+          "titleDownloads": "Downloads folder",
+          "titleLibrary": "Library folder",
+          "textDownloads": "The torrent engine downloads torrents and the watch cache here.",
+          "textLibrary": "“Keep” and “Download” put files here in the Jellyfin layout.",
+          "path": "Folder",
+          "pathHint": "Paths inside the container. Disk not listed? Mount it in docker-compose.yml and restart the container.",
+          "current": "This is the current folder, writable",
+          "checking": "Checking the folder…",
+          "writable": "Writable",
+          "created": "The folder doesn’t exist yet — it will be created",
+          "space": "{free} free of {total}",
+          "links": {
+            "hardlink": "Hard links work: “Keep” takes no extra space",
+            "reflink": "No hard links, reflink works: copies take no extra space",
+            "copy": "Different volumes: “Keep” will copy files"
+          },
+          "problems": {
+            "not_absolute": "The path must start with /",
+            "not_directory": "This is a file, not a folder",
+            "denied": "Can’t write to this folder: check the container’s PUID and PGID",
+            "inside_data": "This is the server data folder — choose another one",
+            "overlaps_other": "This folder overlaps the downloads or library folder — choose a separate one",
+            "library_folder": "This is a connected library folder, it is read-only"
+          },
+          "mode": "What to do with existing data",
+          "newOnlyTitle": "New only",
+          "newOnlyDownloads": "New torrents go to the new folder. What’s already downloaded stays in place and keeps seeding.",
+          "newOnlyLibrary": "New files go to the new folder. Existing files stay in place and remain on the showcase.",
+          "moveTitle": "Move {size}",
+          "moveDownloads": "In the background, one torrent at a time: each pauses only while it moves. Old files are deleted after a check.",
+          "moveLibrary": "In the background, one file at a time with its subtitles. Old files are deleted after a check.",
+          "moveSameVolume": "Same volume: files move as hard links, without extra space.",
+          "moveNoSpace": "Not enough space: {needed} needed, {free} free",
+          "separates": "Library files will no longer be shared with torrents: kept torrents return to the cache and are deleted when it fills up.",
+          "reset": "Reset to default",
+          "save": "Save",
+          "startMove": "Move",
+          "savedDownloads": "Downloads folder changed",
+          "savedLibrary": "Library folder changed",
+          "moveStarted": "Move started",
+          "moveStartedText": "Progress is in the Folders card",
+          "errorTitle": "Can’t change the folder",
+          "errors": {
+            "busy": "A move is running. Wait for it or stop it.",
+            "no_space": "The new volume doesn’t have enough space for the move.",
+            "unknown": "The server didn’t respond. Try again."
+          }
         }
       },
       "network": {
@@ -1995,13 +2074,6 @@
         "title": "Add folder",
         "submit": "Add"
       },
-      "picker": {
-        "browse": "Browse",
-        "up": "Parent folder",
-        "choose": "Choose this folder",
-        "failed": "Can’t open the folder: no access or it doesn’t exist",
-        "empty": "No subfolders"
-      },
       "pathErrors": {
         "title": "Can’t connect the folder",
         "not_absolute": "Use a full path from the root: /media/video.",
@@ -2106,6 +2178,13 @@
         "next": "Next",
         "back": "Back"
       }
+    },
+    "folderPicker": {
+      "browse": "Browse",
+      "up": "Parent folder",
+      "choose": "Choose this folder",
+      "failed": "Can’t open the folder: no access or it doesn’t exist",
+      "empty": "No subfolders"
     }
   },
   "mine": {

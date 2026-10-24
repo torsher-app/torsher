@@ -2146,6 +2146,108 @@ export interface StorageQueueItemInput {
   lastAccessAt: string | null;
 }
 
+export interface StorageFolderInput {
+  path: string;
+  source: "env" | "panel";
+  envPath: string;
+  total: number;
+  free: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  items: number;
+  bytes: number;
+  leftovers: {
+    path: string;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    items: number;
+    bytes: number;
+  }[];
+}
+
+export interface StorageMoveStateInput {
+  id: string;
+  kind: "downloads" | "library";
+  target: string;
+  status: "running" | "done" | "failed" | "cancelled";
+  bytesTotal: number;
+  bytesDone: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  itemsTotal: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  itemsDone: number;
+  currentName: string | null;
+  waiting: boolean;
+  error: "no_space" | "denied" | "engine" | "failed" | null;
+  startedAt: string;
+  finishedAt: string | null;
+}
+
+export interface StoragePathCheckBodyInput {
+  kind: "downloads" | "library";
+  /**
+   * @minLength 1
+   * @maxLength 4096
+   */
+  path: string;
+}
+
+export interface StoragePathCheckInput {
+  path: string;
+  problem:
+    | "not_absolute"
+    | "not_directory"
+    | "denied"
+    | "inside_data"
+    | "overlaps_other"
+    | "library_folder"
+    | null;
+  exists: boolean;
+  writable: boolean;
+  total: number;
+  free: number;
+  sameVolume: boolean;
+  linkMode: "hardlink" | "reflink" | "copy" | null;
+  moveBytes: number;
+}
+
+export interface UpdateStoragePathInput {
+  kind: "downloads" | "library";
+  /**
+   * @minLength 1
+   * @maxLength 4096
+   */
+  path: string | null;
+  mode: "new_only" | "move";
+}
+
+export interface StartStorageMoveInput {
+  kind: "downloads" | "library";
+}
+
+export interface StoragePathErrorResponseInput {
+  message: string;
+  kind:
+    | "not_absolute"
+    | "not_directory"
+    | "denied"
+    | "inside_data"
+    | "overlaps_other"
+    | "library_folder"
+    | "busy"
+    | "no_space";
+}
+
 export interface StorageOverviewInput {
   path: string;
   total: number;
@@ -2166,6 +2268,11 @@ export interface StorageOverviewInput {
     custom: boolean;
   };
   queue: StorageQueueItemInput[];
+  folders: {
+    downloads: StorageFolderInput;
+    library: StorageFolderInput;
+  };
+  move: StorageMoveStateInput | null;
 }
 
 export interface UpdateStoragePolicyInput {
@@ -4349,6 +4456,108 @@ export interface StorageQueueItem {
   lastAccessAt: string | null;
 }
 
+export interface StorageFolder {
+  path: string;
+  source: "env" | "panel";
+  envPath: string;
+  total: number;
+  free: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  items: number;
+  bytes: number;
+  leftovers: {
+    path: string;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    items: number;
+    bytes: number;
+  }[];
+}
+
+export interface StorageMoveState {
+  id: string;
+  kind: "downloads" | "library";
+  target: string;
+  status: "running" | "done" | "failed" | "cancelled";
+  bytesTotal: number;
+  bytesDone: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  itemsTotal: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  itemsDone: number;
+  currentName: string | null;
+  waiting: boolean;
+  error: "no_space" | "denied" | "engine" | "failed" | null;
+  startedAt: string;
+  finishedAt: string | null;
+}
+
+export interface StoragePathCheckBody {
+  kind: "downloads" | "library";
+  /**
+   * @minLength 1
+   * @maxLength 4096
+   */
+  path: string;
+}
+
+export interface StoragePathCheck {
+  path: string;
+  problem:
+    | "not_absolute"
+    | "not_directory"
+    | "denied"
+    | "inside_data"
+    | "overlaps_other"
+    | "library_folder"
+    | null;
+  exists: boolean;
+  writable: boolean;
+  total: number;
+  free: number;
+  sameVolume: boolean;
+  linkMode: "hardlink" | "reflink" | "copy" | null;
+  moveBytes: number;
+}
+
+export interface UpdateStoragePath {
+  kind: "downloads" | "library";
+  /**
+   * @minLength 1
+   * @maxLength 4096
+   */
+  path: string | null;
+  mode: "new_only" | "move";
+}
+
+export interface StartStorageMove {
+  kind: "downloads" | "library";
+}
+
+export interface StoragePathErrorResponse {
+  message: string;
+  kind:
+    | "not_absolute"
+    | "not_directory"
+    | "denied"
+    | "inside_data"
+    | "overlaps_other"
+    | "library_folder"
+    | "busy"
+    | "no_space";
+}
+
 export interface StorageOverview {
   path: string;
   total: number;
@@ -4369,6 +4578,11 @@ export interface StorageOverview {
     custom: boolean;
   };
   queue: StorageQueueItem[];
+  folders: {
+    downloads: StorageFolder;
+    library: StorageFolder;
+  };
+  move: StorageMoveState | null;
 }
 
 export interface UpdateStoragePolicy {
@@ -4575,8 +4789,6 @@ export type DeleteLibraryFolderError = MessageResponse;
 
 export type PostLibraryFolderScanError = MessageResponse;
 
-export type GetLibraryBrowseError = MessageResponse;
-
 export type GetLibraryUnmatchedError = MessageResponse;
 
 export type PutLibraryGroupTitleError = MessageResponse;
@@ -4590,6 +4802,19 @@ export type PatchLibraryFileError = MessageResponse;
 export type GetStorageError = MessageResponse | EngineUnavailableResponse;
 
 export type PutStoragePolicyError = MessageResponse | EngineUnavailableResponse;
+
+export type GetStorageBrowseError = MessageResponse;
+
+export type PostStorageCheckError = MessageResponse;
+
+export type PutStoragePathError =
+  MessageResponse | StoragePathErrorResponse | EngineUnavailableResponse;
+
+export type PostStorageMoveError =
+  MessageResponse | StoragePathErrorResponse | EngineUnavailableResponse;
+
+export type PostStorageMoveCancelError =
+  MessageResponse | EngineUnavailableResponse;
 
 export type GetNetRoutesError = MessageResponse;
 
@@ -6581,28 +6806,6 @@ export class Api<
      * No description
      *
      * @tags Libraries
-     * @name GetLibraryBrowse
-     * @request GET:/api/libraries/browse
-     */
-    getLibraryBrowse: (
-      query?: {
-        /** @maxLength 4096 */
-        path?: string;
-      },
-      params: RequestParams = {},
-    ) =>
-      this.request<FolderBrowse, GetLibraryBrowseError>({
-        path: `/api/libraries/browse`,
-        method: "GET",
-        query: query,
-        format: "json",
-        ...params,
-      }),
-
-    /**
-     * No description
-     *
-     * @tags Libraries
      * @name GetLibraryUnmatched
      * @request GET:/api/libraries/unmatched
      */
@@ -6752,6 +6955,103 @@ export class Api<
         method: "PUT",
         body: data,
         type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Storage
+     * @name GetStorageBrowse
+     * @request GET:/api/storage/browse
+     */
+    getStorageBrowse: (
+      query?: {
+        /** @maxLength 4096 */
+        path?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<FolderBrowse, GetStorageBrowseError>({
+        path: `/api/storage/browse`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Storage
+     * @name PostStorageCheck
+     * @request POST:/api/storage/check
+     */
+    postStorageCheck: (
+      data: StoragePathCheckBodyInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<StoragePathCheck, PostStorageCheckError>({
+        path: `/api/storage/check`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Storage
+     * @name PutStoragePath
+     * @request PUT:/api/storage/paths
+     */
+    putStoragePath: (
+      data: UpdateStoragePathInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<StorageOverview, PutStoragePathError>({
+        path: `/api/storage/paths`,
+        method: "PUT",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Storage
+     * @name PostStorageMove
+     * @request POST:/api/storage/move
+     */
+    postStorageMove: (
+      data: StartStorageMoveInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<StorageOverview, PostStorageMoveError>({
+        path: `/api/storage/move`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Storage
+     * @name PostStorageMoveCancel
+     * @request POST:/api/storage/move/cancel
+     */
+    postStorageMoveCancel: (params: RequestParams = {}) =>
+      this.request<StorageOverview, PostStorageMoveCancelError>({
+        path: `/api/storage/move/cancel`,
+        method: "POST",
         format: "json",
         ...params,
       }),

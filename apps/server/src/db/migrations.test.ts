@@ -184,3 +184,45 @@ describe('миграция оценки на постере', () => {
     ).toEqual({ n: 1 })
   })
 })
+
+describe('миграция папок своей раскладки', () => {
+  const followsIdx = journal.entries.findIndex(entry =>
+    readFileSync(join(MIGRATIONS_DIR, `${entry.tag}.sql`), 'utf8').includes(
+      'SET `follows_env` = 1',
+    ),
+  )
+
+  it('папка своей раскладки идёт за окружением, подключённые — нет', () => {
+    const sqlite = new Database(':memory:')
+    const db = drizzle(sqlite)
+
+    migrate(db, { migrationsFolder: migrationsBefore(followsIdx) })
+
+    const now = Date.now()
+
+    sqlite
+      .prepare(
+        'INSERT INTO libraries (id, kind, name, managed, exclude, watch, created_at) VALUES (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?)',
+      )
+      .run(
+        ...['own', 'video', 'Torsher', 1, '[]', 1, now],
+        ...['user', 'video', 'Фильмы', 0, '[]', 1, now],
+      )
+    sqlite
+      .prepare(
+        'INSERT INTO library_folders (id, library_id, path) VALUES (?, ?, ?), (?, ?, ?)',
+      )
+      .run('f1', 'own', '/data/library', 'f2', 'user', '/media/movies')
+
+    migrate(db, { migrationsFolder: MIGRATIONS_DIR })
+
+    expect(
+      sqlite
+        .prepare('SELECT id, follows_env FROM library_folders ORDER BY id')
+        .all(),
+    ).toEqual([
+      { id: 'f1', follows_env: 1 },
+      { id: 'f2', follows_env: 0 },
+    ])
+  })
+})
