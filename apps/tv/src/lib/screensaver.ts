@@ -6,9 +6,20 @@ export const SLIDE_MS = 20_000
 
 const STORAGE_KEY = 'torsher.screensaver'
 
+/**
+ * Дольше заставка экран не держит: гаснет в чёрный и отдаёт его ТВ, чтобы тот
+ * включил свою заставку и выключился по своему таймеру.
+ */
+export const SCREENSAVER_HOLD_MS = 60 * 60_000
+
 /** Пора ли включать заставку: простой не меньше заданного, заставка не выключена. */
 export function idleDue(lastInputAt: number, now: number, minutes: number) {
   return minutes > 0 && now - lastInputAt >= minutes * 60_000
+}
+
+/** Заставка идёт дольше предела: кадры гаснут, удержание экрана снимается. */
+export function screensaverRests(activeSince: number, now: number) {
+  return now - activeSince >= SCREENSAVER_HOLD_MS
 }
 
 /** Порядок кадров: перемешанный, первым не стоит тот, что показывали последним. */

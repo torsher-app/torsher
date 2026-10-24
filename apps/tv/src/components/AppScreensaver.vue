@@ -1,18 +1,27 @@
 <script setup lang="ts">
 import type { Backdrop } from '@torsher/api-client'
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { api } from '../api.ts'
+import holdVideo from '../assets/screensaver-hold.mp4'
 import { useCatalogLanguage } from '../composables/useCatalogLanguage.ts'
 import { formatClock } from '../lib/player.ts'
 import { cornerOf, shuffled, SLIDE_MS } from '../lib/screensaver.ts'
+import { holdSystemScreensaver, isWebos } from '../platform/webos.ts'
 import { session } from '../session.ts'
 
 /**
  * Заставка при простое: медленная смена кадров TMDB с названием и часами, как
  * Aerial у Apple TV. Только `opacity` и `transform`. Без подключения или без
  * кадров — часы на чёрном: неподвижная витрина выгорает и на экране кода.
+ *
+ * На webOS заставка держит экран: иначе ТВ включает свою поверх. Система не
+ * включает заставку, пока на весь экран идёт видео, поэтому под кадрами
+ * крутится чёрный беззвучный ролик; вдобавок — отказ на запрос tvpower.
+ * `resting` гасит кадры в чёрный и отдаёт экран системе.
  */
+const props = defineProps<{ resting: boolean }>()
+
 const { locale } = useI18n()
 const language = useCatalogLanguage()
 
@@ -116,7 +125,56 @@ async function advance() {
   slideTimer = setTimeout(advance, SLIDE_MS)
 }
 
+const webos = isWebos()
+const hold = ref<HTMLVideoElement>()
+let releaseHold: (() => void) | undefined
+
+function holdScreen() {
+  releaseHold = holdSystemScreensaver()
+
+  const video = hold.value
+
+  if (video) {
+    video.src = holdVideo
+    // Не запустился — экран держит только ответ tvpower
+    video.play().catch(() => {})
+  }
+}
+
+// Без `src` и `load()` браузер держит ролик и аппаратный декодер
+function releaseScreen() {
+  releaseHold?.()
+  releaseHold = undefined
+
+  const video = hold.value
+
+  if (video) {
+    video.pause()
+    video.removeAttribute('src')
+    video.load()
+  }
+}
+
+function stop() {
+  stopped = true
+  clearTimeout(slideTimer)
+  clearInterval(clockTimer)
+}
+
+watch(
+  () => props.resting,
+  (resting) => {
+    if (resting) {
+      stop()
+      releaseScreen()
+    }
+  },
+)
+
 onMounted(async () => {
+  if (webos)
+    holdScreen()
+
   clockTimer = setInterval(() => {
     now.value = new Date()
   }, 10_000)
@@ -126,39 +184,43 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
-  stopped = true
-  clearTimeout(slideTimer)
-  clearInterval(clockTimer)
+  stop()
+  releaseScreen()
 })
 </script>
 
 <template>
   <div class="saver" aria-hidden="true">
-    <template v-for="(layer, index) in layers" :key="index">
-      <img
-        v-if="layer"
-        :key="layer.slide"
-        class="saver__image"
-        :class="{ 'saver__image--front': index === front }"
-        :src="layer.item.backdrop"
-        alt=""
-        decoding="async"
-      >
-    </template>
-    <div class="saver__shade" :class="`saver__shade--${corner}`" />
+    <video v-if="webos" ref="hold" class="saver__hold" muted loop playsinline />
 
-    <div
-      :key="slide"
-      class="saver__caption"
-      :class="`saver__caption--${corner}`"
-    >
-      <p class="saver__clock">
-        {{ clock }}
-      </p>
-      <p v-if="shown" class="saver__title">
-        {{ shown.title
-        }}<span v-if="shown.year" class="saver__year"> · {{ shown.year }}</span>
-      </p>
+    <div class="saver__scene" :class="{ 'saver__scene--resting': resting }">
+      <template v-for="(layer, index) in layers" :key="index">
+        <img
+          v-if="layer"
+          :key="layer.slide"
+          class="saver__image"
+          :class="{ 'saver__image--front': index === front }"
+          :src="layer.item.backdrop"
+          alt=""
+          decoding="async"
+        >
+      </template>
+      <div class="saver__shade" :class="`saver__shade--${corner}`" />
+
+      <div
+        :key="slide"
+        class="saver__caption"
+        :class="`saver__caption--${corner}`"
+      >
+        <p class="saver__clock">
+          {{ clock }}
+        </p>
+        <p v-if="shown" class="saver__title">
+          {{ shown.title
+          }}<span v-if="shown.year" class="saver__year">
+            · {{ shown.year }}</span>
+        </p>
+      </div>
     </div>
   </div>
 </template>
@@ -174,6 +236,33 @@ onBeforeUnmount(() => {
   overflow: hidden;
   background: #000;
   cursor: none;
+}
+
+/*
+ * Ролик ровно во весь экран: «видео на весь экран» система определяет по окну
+ * вывода, и ролик с полями её не останавливает. Кадры рисуются поверх
+ */
+.saver__hold {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+}
+
+.saver__scene {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  transition: opacity 2s var(--motion-easing);
+}
+
+/* Предел заставки: чёрный экран, OLED не горит, экран отдан системе */
+.saver__scene--resting {
+  opacity: 0;
 }
 
 /* Медленный наезд на весь показ кадра; слой на своём слое GPU, как фон главной */
