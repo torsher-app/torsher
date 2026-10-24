@@ -8,7 +8,9 @@ import {
   onBeforeUnmount,
   onMounted,
   ref,
+  shallowRef,
   watch,
+  watchEffect,
 } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
@@ -42,6 +44,7 @@ import {
   backAction,
   bufferedSeconds,
   bufferingStep,
+  bufferProgress,
   byteOffset,
   canDimPause,
   canRetry,
@@ -65,7 +68,11 @@ import {
   playerRoute,
   resolveRoute,
 } from '../lib/continue.ts'
-import { LOADER_DELAY_MS } from '../lib/loader.ts'
+import {
+  LOADER_DELAY_MS,
+  loaderHoldMs,
+  STAGE_MIN_VISIBLE_MS,
+} from '../lib/loader.ts'
 import { goBack } from '../lib/navigation.ts'
 import { titleRefOf } from '../lib/sources.ts'
 import { session, updatePlayerSettings } from '../session.ts'
@@ -128,6 +135,7 @@ const {
   art,
   episodeOverview,
   subtitle: artSubtitle,
+  reload: reloadArt,
 } = usePlayerArt(props.titleId, season, episode)
 
 // Название на сцене: тайтл из каталога, пока его нет — имя из ответа сервера
@@ -362,8 +370,9 @@ const errorParams = computed(() => {
  * Текст снимается заранее: запуск сбрасывает ошибку и её подробности.
  */
 const heldError = ref<{ title: string, text: string } | null>(null)
-// Ошибку уже продержали всю задержку: торшер и полоса встают без второй паузы
-const instantLoader = ref(false)
+// Ошибку уже продержали всю задержку, или экран подготовки до плеера уже
+// показывал торшер: торшер и чип встают без второй паузы
+const instantLoader = ref(history.state?.loaderShown === true)
 let retryHoldTimer = 0
 
 function holdError() {
@@ -458,6 +467,92 @@ watch(showsStage, (shown) => {
   if (!shown)
     instantLoader.value = false
 })
+
+/**
+ * Торшер и статус на сцене: с какого момента и с какой задержкой проявляются.
+ * По ним решается, уйти в видео сразу или подержать сцену (`loaderHoldMs`)
+ */
+const showsLoader = computed(() => showsStage.value && !showsError.value)
+let loaderSince = 0
+let loaderDelay = LOADER_DELAY_MS
+// Сколько файла было скачано, когда подготовка началась: от него считается
+// докачанное для процента (`bufferProgress`)
+let downloadedAtStage: number | null = null
+
+watch(
+  showsLoader,
+  (shown) => {
+    if (!shown)
+      return
+
+    loaderSince = performance.now()
+    loaderDelay = instantLoader.value ? 0 : LOADER_DELAY_MS
+    downloadedAtStage = null
+  },
+  { immediate: true },
+)
+
+// Уходящая сцена замирает: подпись и свет не меняются во время растворения
+const stageStep = ref<StageStep>(step.value)
+const stageStats = shallowRef(shownStats.value)
+
+watchEffect(() => {
+  if (!showsStage.value)
+    return
+
+  stageStep.value = step.value
+  stageStats.value = shownStats.value
+})
+
+const stageProgress = computed(() => {
+  const file = stageStats.value?.file
+
+  if (!file)
+    return 0
+
+  downloadedAtStage ??= file.downloaded
+
+  return bufferProgress(
+    file.bufferedAhead,
+    file.downloaded - downloadedAtStage,
+  )
+})
+
+/**
+ * Видео готово, а торшер только что показался: сцена держится, пока он не
+ * пробудет на экране `STAGE_MIN_VISIBLE_MS`, видео ждёт на первом кадре.
+ * Пауза плеера, а не зрителя: `onPause` и сторож её не видят
+ */
+let holding = false
+// На каждый запуск — одно удержание: после него сразу в видео
+let held = false
+let holdTimer: ReturnType<typeof setTimeout> | undefined
+// Продолжаем не с начала: после растворения сцены OSD показывает, где мы
+let osdAfterStage = false
+
+function holdStage(ms: number) {
+  holding = true
+  held = true
+  video.value?.pause()
+  holdTimer = setTimeout(() => {
+    holding = false
+    holdTimer = undefined
+    play()
+  }, ms)
+}
+
+function cancelHold() {
+  clearTimeout(holdTimer)
+  holdTimer = undefined
+  holding = false
+}
+
+function onStageGone() {
+  if (osdAfterStage && phase.value === 'playing' && !showsStage.value)
+    osd.show()
+
+  osdAfterStage = false
+}
 
 function save() {
   if (
@@ -745,6 +840,10 @@ async function begin(from: number) {
     metadataTimer = setTimeout(onMetadataTimeout, PAUSED_METADATA_MS)
 
   startAt = from
+  // Новая позиция — новый отсчёт докачанного
+  downloadedAtStage = null
+  held = false
+  cancelHold()
   restarting.value = false
   reconnecting.value = false
   // Пауза от остановки прежнего потока снимается: новый играет, и сторож его
@@ -823,6 +922,7 @@ function holdStream() {
     closePanel()
 
   clearTimeout(metadataTimer)
+  cancelHold()
 
   // Прежняя сессия закрывается при перезапуске: hls.js грузил бы её сегменты,
   // получал 404 и ронял экран посреди смены дорожки
@@ -839,6 +939,7 @@ async function restartWith(change: PlaybackRestart) {
   const at = resumeAt()
 
   requested = change
+  reloadArt()
   holdStream()
   const outcome = await player.start({ ...change, startPosition: at })
 
@@ -923,6 +1024,7 @@ function watchProgress() {
       && (phase.value === 'buffering' || phase.value === 'playing')
       && !paused.value
       && !restarting.value
+      && !holding
       && !osd.scrub.value
       && retryTimer === undefined
 
@@ -1039,9 +1141,26 @@ function onPlay() {
 }
 
 function onPlaying() {
+  if (holding)
+    return
+
   if (phase.value !== 'playing') {
+    const hold = held
+      ? 0
+      : loaderHoldMs(loaderSince, performance.now(), {
+          delay: loaderDelay,
+          minVisible: STAGE_MIN_VISIBLE_MS,
+        })
+
+    if (hold > 0) {
+      holdStage(hold)
+      return
+    }
+
+    // Сцена растворяется в видео; таймлайн — только вместе с OSD, и на старте
+    // с начала его нет
     phase.value = 'playing'
-    osd.show()
+    osdAfterStage = startAt > 0
   }
 
   stalled.value = false
@@ -1056,6 +1175,9 @@ function onWaiting() {
 }
 
 function onPause() {
+  if (holding)
+    return
+
   // Паузу при перезапуске ставит сам плеер, а конец файла ставит её перед
   // `ended` — ранний `ended` это обрыв, а не пауза зрителя
   if (!restarting.value) {
@@ -1169,6 +1291,7 @@ function onVisibility() {
     return
   }
 
+  cancelHold()
   onViewerAction()
   el?.pause()
 
@@ -1198,6 +1321,9 @@ async function start() {
   const run = ++launch
 
   phase.value = 'starting'
+  // Каждый запуск и повтор заодно перезапрашивает тайтл, сорвавшийся вместе
+  // с сервером: иначе сцена так и осталась бы без кадра и названия
+  reloadArt()
   const outcome = await player.start()
 
   if (run !== launch)
@@ -1235,6 +1361,7 @@ onBeforeUnmount(() => {
   clearTimeout(retryTimer)
   clearTimeout(retryHoldTimer)
   clearTimeout(metadataTimer)
+  clearTimeout(holdTimer)
   launch++
   document.removeEventListener('visibilitychange', onVisibility)
   player.stopStats()
@@ -1267,40 +1394,48 @@ onBeforeUnmount(() => {
       @ended="onEnded"
     />
 
-    <!-- До первого кадра и при ошибке — одна сцена: фон и шапка не перерисовываются между фазами -->
-    <PlayerStage
-      v-if="showsStage"
-      :style="instantLoader ? { '--loader-delay': '0ms' } : undefined"
-      :title="stageTitle"
-      :backdrop="art?.backdrop"
-      :logo="art?.logo"
-      :subtitle="artSubtitle"
-    >
-      <PlayerPrompt
-        v-if="showsError"
-        :title="promptError.title"
-        :text="promptError.text"
-        :busy="
-          heldError && player.status.value === 'loading' ? 'retry' : undefined
-        "
-        :rejections="retryRejections"
-        :actions="[
-          { id: 'retry', label: t('player.retry') },
-          { id: 'back', label: t('player.back') },
-        ]"
-        @choose="onPromptChoice"
-      />
+    <!--
+      До первого кадра и при ошибке — одна сцена: фон и шапка не перерисовываются
+      между фазами. В видео сцена уходит растворением
+    -->
+    <Transition name="player-stage" @after-leave="onStageGone">
+      <PlayerStage
+        v-if="showsStage"
+        :style="instantLoader ? { '--loader-delay': '0ms' } : undefined"
+        :title="stageTitle"
+        :backdrop="art?.backdrop"
+        :logo="art?.logo"
+        :subtitle="artSubtitle"
+      >
+        <PlayerPrompt
+          v-if="showsError"
+          :title="promptError.title"
+          :text="promptError.text"
+          :busy="
+            heldError && player.status.value === 'loading' ? 'retry' : undefined
+          "
+          :rejections="retryRejections"
+          :actions="[
+            { id: 'retry', label: t('player.retry') },
+            { id: 'back', label: t('player.back') },
+          ]"
+          @choose="onPromptChoice"
+        />
 
-      <PlayerLamp
-        v-else
-        :step="step"
-        :connected="shownStats?.peers.connected ?? 0"
-      />
-
-      <template v-if="!showsError" #bottom>
-        <PlayerBuffering :step="step" :stats="shownStats" />
-      </template>
-    </PlayerStage>
+        <template v-else>
+          <PlayerLamp
+            :step="stageStep"
+            :connected="stageStats?.peers.connected ?? 0"
+            :progress="stageProgress"
+          />
+          <PlayerBuffering
+            :step="stageStep"
+            :stats="stageStats"
+            :progress="stageProgress"
+          />
+        </template>
+      </PlayerStage>
+    </Transition>
 
     <template
       v-if="playback && phase === 'playing' && !restarting && !showsError"
@@ -1447,6 +1582,23 @@ onBeforeUnmount(() => {
   height: 100%;
   object-fit: contain;
   background: #000000;
+}
+
+/* Сцена растворяется над уже идущим видео: анимируется только её opacity,
+   само видео не трогаем — на ТВ оно бывает отдельным аппаратным слоем */
+.player-stage-leave-active {
+  transition: opacity 400ms var(--motion-easing);
+  pointer-events: none;
+}
+
+.player-stage-leave-to {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .player-stage-leave-active {
+    transition: none;
+  }
 }
 
 /* Короткая подгрузка после перемотки плашкой не мелькает: видна через

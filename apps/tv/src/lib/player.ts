@@ -23,6 +23,22 @@ export function bufferingStep(
   return waitedMs >= WAITING_PEERS_AFTER_MS ? 'waitingPeers' : 'connecting'
 }
 
+// Столько буфера впереди считаем «почти готово»: дальше старт решает `<video>`
+export const BUFFER_TARGET_BYTES = 16 * 1024 * 1024
+
+/**
+ * Доля подготовки для статуса и света торшера, к цели в байтах. Буфер подряд
+ * от позиции растёт рывками: куски окна приходят вразнобой, и процент стоял
+ * бы при идущей скорости. Поэтому берём большее из буфера подряд (засчитывает
+ * уже скачанное) и докачанного файлом с начала подготовки (`gained`, растёт
+ * с каждым байтом). Точного конца нет, поэтому не больше 0.99 — 100 % не обещаем.
+ */
+export function bufferProgress(bufferedAhead: number, gained = 0) {
+  const bytes = Math.max(bufferedAhead, gained)
+
+  return Math.min(0.99, Math.max(0, bytes / BUFFER_TARGET_BYTES))
+}
+
 export type BackAction = 'closePanel' | 'hideOsd' | 'exit'
 
 /** Back в два шага: сначала прячет то, что поверх видео, вторым нажатием выходит */

@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import {
+  approach,
   createCord,
+  lampLight,
   lampMode,
   lampWeight,
   MAX_MOTHS,
   mothOrbit,
   mothPath,
+  mothTempo,
   stepCord,
   swarmChange,
   tugCord,
@@ -151,5 +154,32 @@ describe('mothOrbit', () => {
       expect(Math.abs(x - 12)).toBeLessThan(path.rx + 0.5)
       expect(Math.abs(y - path.centerY)).toBeLessThan(path.ry + 0.5)
     }
+  })
+})
+
+describe('lampLight', () => {
+  it('brightens with the buffer from a visible glow', () => {
+    expect(lampLight(0)).toBeCloseTo(0.35)
+    expect(lampLight(0.5)).toBeCloseTo(0.675)
+    expect(lampLight(1)).toBe(1)
+    expect(lampLight(3)).toBe(1)
+  })
+})
+
+describe('mothTempo', () => {
+  it('speeds moths up as the start nears', () => {
+    expect(mothTempo(0)).toBeCloseTo(0.7)
+    expect(mothTempo(1)).toBeCloseTo(1.3)
+    expect(mothTempo(-1)).toBeCloseTo(0.7)
+  })
+})
+
+describe('approach', () => {
+  it('moves part of the way and never overshoots', () => {
+    const next = approach(0, 1, 0.016)
+
+    expect(next).toBeGreaterThan(0)
+    expect(next).toBeLessThan(0.1)
+    expect(approach(0.5, 1, 10)).toBeCloseTo(1)
   })
 })
