@@ -65,9 +65,11 @@ import {
 } from './services/updates/index.ts'
 import {
   clearStreamSelections,
+  liveTorrents,
   onTorrentReady,
   resumeResolving,
 } from './services/torrents/index.ts'
+import { enforceSeeding } from './services/torrents/seeding.ts'
 import { purgeImports } from './services/transfer/imports.ts'
 import { applyPendingDecisions } from './services/transfer/libraryMatches.ts'
 import { onRestartRequested } from './services/lifecycle.ts'
@@ -233,14 +235,22 @@ const app = createApp(
   config.clients,
 )
 
-// Заодно раскладывает докачанное в библиотеку: тот же список раздач движка
+// Заодно раскладывает докачанное в библиотеку и применяет правила раздачи:
+// докачанный выбор начинает отсчёт «раздавать N часов»
 function checkStorage() {
   if (!isEngineReady())
     return
 
   enforceStorage()
     .catch(err => logFor('storage').error({ err }, 'Storage check failed'))
-    .finally(syncLibrary)
+    .finally(() => {
+      void syncLibrary()
+      liveTorrents()
+        .then(enforceSeeding)
+        .catch(err =>
+          logFor('engine').error({ err }, 'Seeding check failed'),
+        )
+    })
 }
 
 // Раздачи, которые ждали метаданные до перезапуска, дожидаются их снова.

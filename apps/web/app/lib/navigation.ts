@@ -41,6 +41,7 @@ export interface SettingsItem {
   /** Ключ строки в `panel.settings.nav` */
   label:
     | 'storage'
+    | 'torrent'
     | 'backups'
     | 'network'
     | 'metadata'
@@ -52,6 +53,7 @@ export interface SettingsItem {
 
 export const settingsItems: SettingsItem[] = [
   { to: '/settings/storage', label: 'storage' },
+  { to: '/settings/torrent', label: 'torrent' },
   { to: '/settings/backups', label: 'backups' },
   { to: '/settings/network', label: 'network' },
   { to: '/settings/metadata', label: 'metadata' },

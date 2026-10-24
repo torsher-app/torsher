@@ -286,6 +286,14 @@ export const torrentErrors = ['timeout', 'rejected', 'failed'] as const
 export const torrentRetentions = ['cache', 'keep'] as const
 // Кто поставил паузу: владелец или сервер, когда кончилось место
 export const torrentPauseReasons = ['user', 'storage'] as const
+// Правило раздачи после скачивания: всегда, до рейтинга, сколько-то времени, не раздавать
+export const seedModes = ['always', 'ratio', 'time', 'never'] as const
+export interface SeedRule {
+  mode: (typeof seedModes)[number]
+  // Рейтинг: отдано, делённое на размер выбранного
+  ratio?: number
+  minutes?: number
+}
 // Распознавание раздачи без тайтла (добавленной в панели) по имени:
 // `matched` — узнали сами, `unsure` — похоже на `match_suggestion`, ждём
 // подтверждения, `unmatched` — не узнали, `ignored` — владелец сказал «не
@@ -336,6 +344,10 @@ export const torrents = sqliteTable('torrents', {
   // Файлы, которые качаются целиком; остальные — только то, что читает поток
   selectedFiles: text('selected_files', { mode: 'json' }).$type<number[]>(),
   pauseReason: text('pause_reason', { enum: torrentPauseReasons }),
+  // Своё правило раздачи закреплённой загрузки; null — как в настройках
+  seedRule: text('seed_rule', { mode: 'json' }).$type<SeedRule>(),
+  // Когда выбор докачался: отсюда считается «раздавать N часов»
+  completedAt: integer('completed_at', { mode: 'timestamp_ms' }),
   // Каталог файлов раздачи; null — каталог загрузок из окружения, за его
   // сменой в compose раздача идёт сама
   downloadDir: text('download_dir'),

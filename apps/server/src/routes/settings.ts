@@ -9,6 +9,31 @@ import {
   updateMetadataSettings,
 } from '../dto/net.ts'
 import { playbackSettings, updatePlaybackSettings } from '../dto/media.ts'
+import {
+  restartBlockedResponse,
+  torrentSettings,
+  updateTorrentSettings,
+} from '../dto/torrentSettings.ts'
+import { config } from '../config.ts'
+import {
+  engineState,
+  isEngineReady,
+  putEngineSettings,
+  restartEngine,
+} from '../services/engine/index.ts'
+import { logFor } from '../services/logs/index.ts'
+import { anyMoving } from '../services/storage/moving.ts'
+import { streamingCount } from '../services/storage/index.ts'
+import { liveTorrents } from '../services/torrents/index.ts'
+import { enforceSeeding } from '../services/torrents/seeding.ts'
+import {
+  customTorrentKeys,
+  defaultTorrentSettings,
+  getTorrentSettings,
+  liveSettingsOf,
+  pendingRestartKeys,
+  saveTorrentSettings,
+} from '../services/torrents/settings.ts'
 import { requireOwner } from '../middleware/auth.ts'
 import {
   mediaAccel,
@@ -41,6 +66,39 @@ function toMetadataResponse() {
 const guardResponses = {
   401: messageResponse,
 }
+
+function restartBlocked() {
+  if (engineState() !== 'ready')
+    return 'not_running' as const
+
+  // Перенос переживает перезапуск, но начнётся заново: ждём, пока закончится
+  if (anyMoving())
+    return 'moving' as const
+
+  return null
+}
+
+function toTorrentSettingsResponse() {
+  const values = getTorrentSettings()
+
+  return {
+    values,
+    defaults: defaultTorrentSettings(),
+    custom: customTorrentKeys(),
+    peerPortEnv: config.enginePeerPort || null,
+    pendingRestart: pendingRestartKeys(values),
+    restartBlocked: restartBlocked(),
+    activeStreams: streamingCount(),
+  }
+}
+
+const LIVE_KEYS = new Set([
+  'downloadLimit',
+  'uploadLimit',
+  'activeDownloads',
+  'connsPerTorrent',
+  'connsTotal',
+])
 
 /** Настройки сервера: только сессия аккаунта. Ключи в ответы не попадают */
 export const settingsRoutes: FastifyPluginAsyncZod = async (app) => {
@@ -169,6 +227,85 @@ export const settingsRoutes: FastifyPluginAsyncZod = async (app) => {
     },
     async request =>
       playbackSettingsOf(await setAccelMode(request.body.accel)),
+  )
+
+  app.get(
+    '/torrent',
+    {
+      schema: {
+        operationId: 'getTorrentSettings',
+        tags: ['Settings'],
+        response: { 200: torrentSettings, ...guardResponses },
+      },
+    },
+    async () => toTorrentSettingsResponse(),
+  )
+
+  // Лимиты, очередь и соединения движок применяет сразу; без движка — при
+  // его запуске, они уходят флагами. Сеть — только после перезапуска
+  app.put(
+    '/torrent',
+    {
+      schema: {
+        operationId: 'putTorrentSettings',
+        tags: ['Settings'],
+        body: updateTorrentSettings,
+        response: {
+          200: torrentSettings,
+          400: messageResponse,
+          ...guardResponses,
+        },
+      },
+    },
+    async (request) => {
+      const saved = saveTorrentSettings(request.body)
+      const keys = Object.keys(request.body)
+
+      if (isEngineReady() && keys.some(key => LIVE_KEYS.has(key))) {
+        try {
+          await putEngineSettings(liveSettingsOf(saved))
+        }
+        catch (err) {
+          logFor('engine').warn(
+            { err },
+            'Torrent settings not applied, they apply on the next engine start',
+          )
+        }
+      }
+
+      if (keys.includes('seedRule') || keys.includes('seedCache'))
+        await enforceSeeding(await liveTorrents())
+
+      return toTorrentSettingsResponse()
+    },
+  )
+
+  // Мягкий перезапуск ради сетевых настроек: просмотр на всех устройствах прервётся
+  app.post(
+    '/torrent/restart',
+    {
+      schema: {
+        operationId: 'postTorrentRestart',
+        tags: ['Settings'],
+        response: {
+          202: messageResponse,
+          409: restartBlockedResponse,
+          ...guardResponses,
+        },
+      },
+    },
+    async (_request, reply) => {
+      const blocked = restartBlocked()
+
+      if (blocked || !restartEngine({ graceful: true })) {
+        return reply.code(409).send({
+          message: 'Engine cannot be restarted now',
+          reason: blocked ?? 'not_running',
+        })
+      }
+
+      return reply.code(202).send({ message: 'Engine restarting' })
+    },
   )
 
   // Новые пробы видеокарты и замер процессора: после смены железа или драйвера

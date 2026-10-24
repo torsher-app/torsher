@@ -43,16 +43,24 @@ type fixture struct {
 func newFixture(t *testing.T) fixture {
 	t.Helper()
 
+	return newNamedFixture(t, "Sample.Movie.mkv", 3<<20+12345)
+}
+
+// Две раздачи в одном движке — под разными именами: файл с одним именем в
+// одном каталоге загрузок у них был бы общий
+func newNamedFixture(t *testing.T, name string, size int) fixture {
+	t.Helper()
+
 	dir := t.TempDir()
-	content := make([]byte, 3<<20+12345)
+	content := make([]byte, size)
 	_, _ = rand.Read(content)
 
-	if err := os.WriteFile(filepath.Join(dir, "Sample.Movie.mkv"), content, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, name), content, 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	info := metainfo.Info{PieceLength: 256 << 10}
-	if err := info.BuildFromFilePath(filepath.Join(dir, "Sample.Movie.mkv")); err != nil {
+	if err := info.BuildFromFilePath(filepath.Join(dir, name)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -94,7 +102,7 @@ func newFixture(t *testing.T) fixture {
 func newTestEngine(t *testing.T, dataDir string) (*api, *httptest.Server) {
 	t.Helper()
 
-	cfg, store, err := newClientConfig(filepath.Join(dataDir, "downloads"), dataDir, 0, true)
+	cfg, store, err := newClientConfig(filepath.Join(dataDir, "downloads"), dataDir, defaultOptions())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +121,13 @@ func newTestEngine(t *testing.T, dataDir string) (*api, *httptest.Server) {
 	engine := newAPI(client, sess, store, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	server := httptest.NewServer(engine.routes())
 
+	// Планировщик работает после `restore`, как в движке
+	ctx, cancel := context.WithCancel(context.Background())
+	go engine.schedule(ctx)
+	go engine.limits.gate(ctx)
+
 	t.Cleanup(func() {
+		cancel()
 		server.Close()
 		client.Close()
 	})
@@ -315,7 +329,10 @@ func TestLegacySessionSelection(t *testing.T) {
 		}
 
 		background := legacy.background
-		if err := sess.save(fx.meta, savedTorrent{Selected: []int{0}, Background: &background}); err != nil {
+		err = sess.save(fx.meta, func(saved *savedTorrent) {
+			*saved = savedTorrent{Selected: []int{0}, Background: &background}
+		})
+		if err != nil {
 			t.Fatal(err)
 		}
 
@@ -790,7 +807,7 @@ func TestRestartKeepsFinishedFileNextToPartFile(t *testing.T) {
 	hash := fx.meta.HashInfoBytes()
 	path := filepath.Join(dataDir, "downloads", "Show", "E01.mkv")
 
-	cfg, store, err := newClientConfig(filepath.Join(dataDir, "downloads"), dataDir, 0, true)
+	cfg, store, err := newClientConfig(filepath.Join(dataDir, "downloads"), dataDir, defaultOptions())
 	if err != nil {
 		t.Fatal(err)
 	}

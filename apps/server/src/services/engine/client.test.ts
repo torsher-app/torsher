@@ -8,11 +8,13 @@ import {
   moveTorrent,
   openStream,
   pauseTorrent,
+  putEngineSettings,
   resolveMagnet,
   resumeTorrent,
   selectFiles,
   setEngineDown,
   setEngineReady,
+  setTorrentSeed,
   torrentMoveState,
   torrentStats,
 } from './client.ts'
@@ -74,7 +76,9 @@ describe('клиент движка', () => {
       bytesCompleted: 3_145_728,
       bytesWanted: 9_437_184,
       wantedCompleted: 3_145_728,
+      queued: false,
       seeding: true,
+      uploaded: 1_048_576,
       peers: { connected: 7, found: 41 },
       downloadSpeed: 2_621_440,
       uploadSpeed: 262_144,
@@ -119,6 +123,45 @@ describe('клиент движка', () => {
       ['PUT', `/torrents/${INFO_HASH}/files`, '{"files":[0,2]}'],
       ['POST', `/torrents/${INFO_HASH}/pause`, undefined],
       ['POST', `/torrents/${INFO_HASH}/resume`, undefined],
+    ])
+  })
+
+  it('движок прежней версии без очереди и отданного — нули', async () => {
+    const { queued: _queued, uploaded: _uploaded, ...legacy } = liveState
+    fetchMock.mockResolvedValue(json([legacy]))
+
+    const [state] = await listEngineTorrents()
+
+    expect(state).toEqual(
+      expect.objectContaining({ queued: false, uploaded: 0 }),
+    )
+  })
+
+  it('флаг раздачи и живые настройки', async () => {
+    const settings = {
+      downloadLimit: 1_048_576,
+      uploadLimit: 0,
+      connsPerTorrent: 50,
+      connsTotal: 200,
+      activeDownloads: 3,
+    }
+
+    fetchMock
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(json(settings))
+
+    await setTorrentSeed(INFO_HASH, false)
+    expect(await putEngineSettings(settings)).toEqual(settings)
+
+    const calls = fetchMock.mock.calls.map(([input, init]) => [
+      init?.method,
+      String(input).replace('http://127.0.0.1:4000', ''),
+      init?.body,
+    ])
+
+    expect(calls).toEqual([
+      ['PUT', `/torrents/${INFO_HASH}/seed`, '{"seed":false}'],
+      ['PUT', '/settings', JSON.stringify(settings)],
     ])
   })
 

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { seedRule } from './torrentSettings.ts'
 import {
   torrentErrors,
   torrentMatchStatuses,
@@ -32,6 +33,7 @@ export const torrentIdParams = z.object({
 export const downloadStates = [
   'idle',
   'partial',
+  'queued',
   'downloading',
   'stalled',
   'seeding',
@@ -91,6 +93,17 @@ export const torrent = z
     downloadSpeed: z.number(),
     uploadSpeed: z.number(),
     peers,
+    seeding: z.object({
+      // Своё правило загрузки; null — как в настройках
+      rule: seedRule.nullable(),
+      // Действующее правило закреплённой загрузки; у кэша — null
+      effective: seedRule.nullable(),
+      // Отдано за всё время, байт
+      uploaded: z.number(),
+      ratio: z.number().nullable(),
+      // Почему раздача больше не раздаёт
+      stopped: z.enum(['ratio', 'time', 'never', 'cache']).nullable(),
+    }),
   })
   .meta({ id: 'torrent' })
 
@@ -125,6 +138,10 @@ export const updateTorrentTitle = z
       .nullable(),
   })
   .meta({ id: 'updateTorrentTitle' })
+
+export const updateTorrentSeeding = z
+  .object({ rule: seedRule.nullable() })
+  .meta({ id: 'updateTorrentSeeding' })
 
 export const updateRetention = z
   .object({ retention: z.enum(torrentRetentions) })

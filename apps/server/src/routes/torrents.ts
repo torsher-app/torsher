@@ -14,6 +14,7 @@ import {
   torrentStats,
   torrentStatsQuery,
   updateRetention,
+  updateTorrentSeeding,
   updateTorrentTitle,
 } from '../dto/torrents.ts'
 import { canManageLibrary, requireByRoute } from '../middleware/auth.ts'
@@ -43,6 +44,8 @@ import {
   setRetention,
   streamStats,
 } from '../services/torrents/index.ts'
+import { enforceSeeding, setSeedRule } from '../services/torrents/seeding.ts'
+import { getTorrentSettings } from '../services/torrents/settings.ts'
 import { sendEngineError, toTorrentResponse } from './engineResponses.ts'
 
 /** Ответ с живыми данными движка: прогресс, скорость, пиры */
@@ -84,8 +87,14 @@ export const torrentRoutes: FastifyPluginAsyncZod = async (app) => {
       const live = await liveTorrents()
       const rows = listTorrents()
       const placed = placedFilesByTorrent(rows.map(row => row.id))
+      const settings = getTorrentSettings()
       const items = rows.map(row =>
-        toTorrentResponse(row, live.get(row.infoHash), placed.get(row.id)),
+        toTorrentResponse(
+          row,
+          live.get(row.infoHash),
+          placed.get(row.id),
+          settings,
+        ),
       )
 
       return {
@@ -359,6 +368,40 @@ export const torrentRoutes: FastifyPluginAsyncZod = async (app) => {
       catch (err) {
         return sendEngineError(reply, err)
       }
+    },
+  )
+
+  // Своё правило раздачи у загрузки: только у закреплённых, кэшем правит
+  // общий переключатель «Раздавать то, что смотрели»
+  app.put(
+    '/:id/seeding',
+    {
+      schema: {
+        operationId: 'putTorrentSeeding',
+        tags: ['Torrents'],
+        params: torrentIdParams,
+        body: updateTorrentSeeding,
+        response: {
+          200: torrent,
+          404: messageResponse,
+          409: messageResponse,
+          ...guardResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const found = getTorrent(request.params.id)
+
+      if (!found)
+        return reply.code(404).send({ message: 'Torrent not found' })
+
+      if (found.retention !== 'keep')
+        return reply.code(409).send({ message: 'Torrent is not kept' })
+
+      setSeedRule(found, request.body.rule)
+      await enforceSeeding(await liveTorrents())
+
+      return respond(getTorrent(found.id) ?? found)
     },
   )
 

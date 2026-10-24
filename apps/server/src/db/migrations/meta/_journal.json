@@ -141,6 +141,13 @@
       "when": 1792813060054,
       "tag": "0019_unique_ghost_rider",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1792856569049,
+      "tag": "0020_purple_reptil",
+      "breakpoints": true
     }
   ]
 }

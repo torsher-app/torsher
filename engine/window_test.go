@@ -112,14 +112,38 @@ func TestClosedStreamStopsDownloading(t *testing.T) {
 	}
 }
 
+// Проба и субтитры читают без окна: куски окна не помечаются, но поток
+// считается открытым — лимит загрузки его не касается
 func TestStreamWithoutWindowKeepsOnlyReadahead(t *testing.T) {
 	engine, added, _ := streamFixture(t)
 	file := added.Files()[0]
+	hash := added.InfoHash()
 
 	reader := engine.windows.open(added, file, newStreamReader(context.Background(), file), 0)
-	defer reader.Close()
 
-	if _, ok := reader.(*windowReader); ok {
-		t.Fatal("a stream without a window must not be tracked")
+	if _, err := io.ReadFull(reader, make([]byte, 4096)); err != nil {
+		t.Fatal(err)
+	}
+
+	if !engine.windows.streaming(hash) {
+		t.Fatal("a stream without a window must count as open")
+	}
+
+	engine.windows.mu.Lock()
+	tw := engine.windows.byTorrent[hash]
+	engine.windows.mu.Unlock()
+
+	tw.updating.Lock()
+	marked := len(tw.marked)
+	tw.updating.Unlock()
+
+	if marked != 0 {
+		t.Fatalf("a stream without a window marked %d pieces", marked)
+	}
+
+	reader.Close()
+
+	if engine.windows.streaming(hash) {
+		t.Fatal("a closed stream still counts as open")
 	}
 }

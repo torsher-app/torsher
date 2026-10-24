@@ -276,6 +276,7 @@ func (a *api) startMove(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		a.flushUploaded(t)
 		complete := dropTorrent(t)
 		a.windows.forget(hash)
 		adoptPartFiles(to, info)
@@ -305,6 +306,7 @@ func (a *api) startMove(w http.ResponseWriter, r *http.Request) {
 
 	// Ожидание проверок кусков не держит ответ: задание уже занято
 	go func() {
+		a.flushUploaded(t)
 		complete := dropTorrent(t)
 		a.windows.forget(hash)
 		a.runMove(job, mi, info, from, to, saved, complete)

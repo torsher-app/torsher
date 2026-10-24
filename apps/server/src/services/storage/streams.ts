@@ -23,3 +23,8 @@ export function trackStream(torrentId: string) {
 export function isStreaming(torrentId: string) {
   return open.has(torrentId)
 }
+
+/** Сколько раздач смотрят прямо сейчас */
+export function streamingCount() {
+  return open.size
+}

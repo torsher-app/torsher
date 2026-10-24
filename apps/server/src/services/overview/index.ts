@@ -27,7 +27,7 @@ import { unmatchedGroups } from '../library/match.ts'
 
 type Params = AttentionItem['params']
 
-const ACTIVE_STATES = new Set(['downloading', 'stalled'])
+const ACTIVE_STATES = new Set(['queued', 'downloading', 'stalled'])
 
 /** Проблема с несколькими элементами: у одного в тексте его имя, иначе — число */
 function counted(names: string[]): Params {

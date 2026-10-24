@@ -234,6 +234,22 @@ export function sanitizeDb(
           `DELETE FROM server_settings WHERE key = 'storage.paths'`,
         ).run()
 
+        // Порт пиров разработчика занят его движком, а UPnP открыл бы порт на
+        // роутере: стенд выбирает свой порт и роутер не трогает
+        db.prepare(
+          `DELETE FROM server_settings WHERE key = 'torrent.generatedPeerPort'`,
+        ).run()
+
+        const torrent = readSetting(db, 'torrent')
+
+        if (torrent) {
+          delete torrent.peerPort
+          delete torrent.upnp
+          db.prepare(
+            `UPDATE server_settings SET value = ? WHERE key = 'torrent'`,
+          ).run(JSON.stringify(torrent))
+        }
+
         const backups = readSetting(db, 'backups')
 
         if (backups) {

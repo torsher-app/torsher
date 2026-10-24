@@ -13,3 +13,7 @@ export function unmarkMoving(torrentId: string) {
 export function isMovingTorrent(torrentId: string) {
   return moving.has(torrentId)
 }
+
+export function anyMoving() {
+  return moving.size > 0
+}

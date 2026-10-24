@@ -150,6 +150,11 @@ describe('copy and sanitize', () => {
       'backups',
       JSON.stringify({ enabled: true, dir: '/media/backups', time: '03:00' }),
     )
+    setting.run('torrent.generatedPeerPort', '51413')
+    setting.run(
+      'torrent',
+      JSON.stringify({ peerPort: 51413, upnp: true, downloadLimit: 1024 }),
+    )
     db.close()
 
     expect(savedStoragePath(source.databasePath, 'downloads')).toBe(
@@ -180,6 +185,18 @@ describe('copy and sanitize', () => {
         )[0] as string,
       ),
     ).toEqual({ enabled: false, time: '03:00' })
+    expect(
+      value(
+        `SELECT key FROM server_settings WHERE key = 'torrent.generatedPeerPort'`,
+      ),
+    ).toEqual([])
+    expect(
+      JSON.parse(
+        value(
+          `SELECT value FROM server_settings WHERE key = 'torrent'`,
+        )[0] as string,
+      ),
+    ).toEqual({ downloadLimit: 1024 })
     copy.close()
 
     expect(readOwner(source.databasePath)?.email).toBe('me@real.test')

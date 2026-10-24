@@ -5,6 +5,11 @@ import type {
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { config } from '../../config.ts'
+import {
+  engineSettingsArgs,
+  getTorrentSettings,
+  rememberLaunched,
+} from '../torrents/settings.ts'
 import { setEngineDown, setEngineReady } from './client.ts'
 import { engineBinaryPath } from './binary.ts'
 import { createEngineSupervisor } from './supervisor.ts'
@@ -14,9 +19,14 @@ export * from './client.ts'
 /**
  * HTTP API движка — только на loopback: наружу стрим идёт через прокси ядра
  * с авторизацией. Список раздач и состояние кусков движок хранит в каталоге
- * данных, поэтому после перезапуска раздачи на месте.
+ * данных, поэтому после перезапуска раздачи на месте. Настройки торрента
+ * читаются заново при каждом запуске: сеть меняется только так
  */
 export function engineArgs(apiPort: number) {
+  const settings = getTorrentSettings()
+
+  rememberLaunched(settings)
+
   return [
     '--listen',
     `127.0.0.1:${apiPort}`,
@@ -24,8 +34,7 @@ export function engineArgs(apiPort: number) {
     config.downloadsPath,
     '--data',
     join(config.dataDir, 'engine', 'state'),
-    '--peer-port',
-    String(config.enginePeerPort),
+    ...engineSettingsArgs(settings),
   ]
 }
 
@@ -51,9 +60,13 @@ export function createEngine(
   return supervisor
 }
 
-/** Перезапуск движка из панели; `false` — движок не запущен или уже перезапускается */
-export function restartEngine() {
-  return supervisor?.restart() ?? false
+/**
+ * Перезапуск движка из панели; `false` — движок не запущен или уже
+ * перезапускается. `graceful` — ради настроек: движок успевает записать
+ * отданное; без него — для зависшего движка
+ */
+export function restartEngine(options: { graceful?: boolean } = {}) {
+  return supervisor?.restart(options) ?? false
 }
 
 /** Падения движка за последний час — для «Обзора» */

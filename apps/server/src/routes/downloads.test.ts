@@ -197,6 +197,17 @@ describe('список загрузок', () => {
     expect(body.items[0]).toMatchObject({ state: 'idle', sizeOnDisk: 0 })
   })
 
+  it('в очереди — пока не смотрят', async () => {
+    insertTorrent({ inEngine: true, selectedFiles: [0] })
+    engine([{ ...liveState, queued: true }])
+
+    const body = (
+      await app.inject({ url: '/api/torrents', cookies: owner })
+    ).json()
+
+    expect(body.items[0].state).toBe('queued')
+  })
+
   it('скачано и раздаётся, на паузе, ждёт пиров', async () => {
     const seeding = {
       ...liveState,

@@ -1,6 +1,7 @@
 import type {
   CreateTorrentInput,
   EngineUnavailableResponse,
+  SeedRule,
   Torrent,
   TorrentList,
 } from '@torsher/api-client'
@@ -186,6 +187,15 @@ async function setTitle(id: string, titleId: string | null) {
   return updated
 }
 
+/** Своё правило раздачи загрузки; `null` — как в настройках. Ошибку показывает API-клиент */
+async function setSeedRule(id: string, rule: SeedRule | null) {
+  const updated = await api.torrents.putTorrentSeeding(id, { rule })
+
+  replaceTorrent(updated)
+
+  return updated
+}
+
 /** Ошибку показывает диалог: запрос в `silent` */
 async function removeFromLibrary(id: string) {
   const updated = await withErrorMode('silent', () =>
@@ -233,6 +243,7 @@ export function useTorrents() {
     setKept,
     removeFromLibrary,
     setTitle,
+    setSeedRule,
     restartEngine,
     stopPolling,
   }

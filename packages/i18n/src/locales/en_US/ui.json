@@ -1010,6 +1010,7 @@
         "account": "Account",
         "about": "About",
         "storage": "Storage",
+        "torrent": "Torrent",
         "backups": "Backups",
         "network": "Network",
         "metadata": "Metadata",
@@ -1427,6 +1428,129 @@
           "gpu": "GPU",
           "software": "CPU",
           "none": "none"
+        }
+      },
+      "torrent": {
+        "description": "Download speed, queue and seeding, and the torrent engine network.",
+        "loadError": "Couldn't load torrent settings",
+        "saved": "Saved",
+        "savedText": "Already in effect",
+        "savedRestart": "Takes effect after the engine restarts",
+        "unitSpeed": "MB/s",
+        "defaultIs": "Default: {value}.",
+        "noLimit": "no limit",
+        "restartBadge": "After restart",
+        "validation": {
+          "number": "Enter a number",
+          "integer": "Enter a whole number",
+          "speed": "From 0.01 to 9000 MB/s",
+          "queue": "From 0 to 100",
+          "perTorrent": "From 1 to 1000",
+          "total": "From 0 to 10,000",
+          "port": "Port from 1024 to 65,535",
+          "ratio": "Ratio from 0.1 to 100",
+          "time": "From 1 hour to 10 years"
+        },
+        "download": {
+          "title": "Download speed",
+          "text": "Limits Download and torrents added in the panel. Watching ignores the limit so video doesn't stutter.",
+          "hint": "Leave empty for no limit."
+        },
+        "upload": {
+          "title": "Upload speed",
+          "text": "How much the engine uploads to peers, including while watching. On a slow connection uploads fill it up and video stutters.",
+          "hint": "Leave empty for no limit."
+        },
+        "queue": {
+          "title": "Download queue",
+          "text": "How many downloads run at once. The rest wait, but you can already watch them.",
+          "hint": "0 — no queue: everything downloads at once."
+        },
+        "seedRule": {
+          "title": "Seeding after download",
+          "text": "What happens to files you downloaded with Download. While a download is in progress or being watched, it always seeds: otherwise peers upload slower.",
+          "label": "Rule",
+          "hint": "A single download can have its own rule in its card in Downloads.",
+          "modes": {
+            "always": "Always seed",
+            "ratio": "Until a ratio",
+            "time": "For a while",
+            "never": "Don't seed"
+          },
+          "ratio": "Ratio",
+          "ratioHint": "Uploaded divided by size: 2 means upload twice what you downloaded.",
+          "time": "Seed for",
+          "timeHint": "Counted from when the download finished.",
+          "hours": "hours",
+          "days": "days",
+          "summary": {
+            "always": "always seed",
+            "ratio": "until ratio {ratio}",
+            "time": "{time}",
+            "never": "don't seed"
+          }
+        },
+        "seedCache": {
+          "title": "Seed what you watched",
+          "text": "Watched torrents stay in the cache and seed until the cache evicts them. Turn this off if uploads get in the way.",
+          "label": "Seed watched torrents",
+          "on": "Watched torrents seed",
+          "off": "Watched torrents don't seed"
+        },
+        "conns": {
+          "title": "Connections",
+          "text": "How many peers at once. Many connections are hard on a weak router or NAS.",
+          "perTorrent": "Per torrent",
+          "total": "Total",
+          "hint": "0 total — no overall limit. A torrent being watched always gets the full per-torrent limit."
+        },
+        "port": {
+          "title": "Incoming connections",
+          "text": "The port peers connect to on their own. If it's open on the router, you get more peers.",
+          "label": "Port",
+          "upnp": "Open the port on the router with UPnP",
+          "upnpHint": "The router opens the port itself. Off by default: not every router does this safely.",
+          "env": "Port from ENGINE_PEER_PORT — docker-compose.yml publishes it.",
+          "envMismatch": "docker-compose.yml publishes port {port}: change it there too, or no incoming connections will reach the engine.",
+          "docker": "In Docker, publish the port in docker-compose.yml."
+        },
+        "discovery": {
+          "title": "Peer discovery",
+          "text": "Where the engine looks for peers besides trackers. Private trackers require DHT and PEX to be off.",
+          "dht": "DHT",
+          "dhtHint": "A shared peer network without trackers",
+          "pex": "PEX",
+          "pexHint": "Peers share the addresses of other peers",
+          "warning": "Without DHT, watching takes longer to find peers, and magnet links without trackers won't open.",
+          "on": "On: {list}",
+          "off": "Trackers only"
+        },
+        "encryption": {
+          "title": "Encryption",
+          "text": "Encryption of connections with peers.",
+          "prefer": "Prefer",
+          "preferText": "Encrypt when the peer supports it. The most peers.",
+          "require": "Require",
+          "requireText": "Encrypted connections only. Fewer peers, playback starts slower."
+        },
+        "restart": {
+          "title": "Changes are waiting for an engine restart",
+          "text": "The engine reads the port, UPnP, peer discovery and encryption when it starts.",
+          "button": "Restart engine",
+          "blocked": {
+            "not_running": "The engine isn't running right now — changes apply when it starts.",
+            "moving": "Downloads are being moved. You can restart once the move finishes."
+          }
+        },
+        "restartDialog": {
+          "title": "Restart the torrent engine?",
+          "text": "Playback on every device pauses for a few seconds and resumes on its own. Downloads continue after the restart.",
+          "watching": "{n} torrent is being watched now. | {n} torrents are being watched now.",
+          "submit": "Restart",
+          "toast": "Engine is restarting",
+          "toastText": "The new settings apply once it starts",
+          "error": "Couldn't restart the engine",
+          "errorText": "It isn't running or is moving downloads. Try again later."
         }
       }
     },
@@ -1859,6 +1983,7 @@
       },
       "states": {
         "watching": "Watching now",
+        "queued": "Queued",
         "downloading": "Downloading",
         "stalled": "Waiting for peers",
         "paused": "Paused",
@@ -1915,7 +2040,23 @@
         "title": "Title",
         "wanted": "Full download",
         "wantedNone": "Nothing — downloads only while watching",
-        "storageLibrary": "In library — the torrent keeps seeding"
+        "storageLibrary": "In library — the torrent keeps seeding",
+        "seeding": "Seeding",
+        "seedingUploaded": "Uploaded {uploaded}",
+        "seedingRatio": "Uploaded {uploaded} · ratio {ratio}",
+        "stopped": {
+          "ratio": "Seeding stopped: ratio {ratio}",
+          "time": "Seeding stopped: time is up",
+          "never": "Not seeding by rule",
+          "cache": "Not seeding: seeding watched torrents is off"
+        },
+        "seedRule": "Seeding after download",
+        "seedRuleHint": "While the download is in progress or being watched, it always seeds.",
+        "seedRuleDefault": "As in settings: {rule}",
+        "seedRuleDefaultPlain": "As in settings",
+        "seedRuleSaved": "Seeding rule saved",
+        "queued": "Starts once the downloads ahead of it finish. You can already watch it.",
+        "queuedLink": "Queue settings"
       },
       "toasts": {
         "kept": "Torrent kept",
