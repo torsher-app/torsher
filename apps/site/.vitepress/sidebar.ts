@@ -42,7 +42,7 @@ export const sidebar: DefaultTheme.SidebarItem[] = [
     text: 'TV',
     items: [
       { text: 'LG webOS', link: '/docs/tv/lg-webos' },
-      { text: 'Connect a TV', link: '/docs/tv/connect' },
+      { text: 'Connect a device', link: '/docs/tv/connect' },
       { text: 'Browser', link: '/docs/tv/browser' },
       { text: 'Other devices', link: '/docs/tv/other-devices' },
     ],
@@ -70,7 +70,7 @@ export const sidebar: DefaultTheme.SidebarItem[] = [
       { text: 'Sources', link: '/docs/panel/sources' },
       { text: 'Library', link: '/docs/panel/library' },
       { text: 'Collections', link: '/docs/panel/collections' },
-      { text: 'Profiles & devices', link: '/docs/panel/profiles-devices' },
+      { text: 'Profiles and devices', link: '/docs/panel/profiles-devices' },
       { text: 'Logs', link: '/docs/panel/logs' },
       { text: 'Settings', link: '/docs/panel/settings' },
     ],

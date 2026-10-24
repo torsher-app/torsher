@@ -73,4 +73,4 @@ Open any title on the TV and select <Ui k="title.watch" />. The <Ui k="sources.t
 
 ## Next
 
-[TMDB key](/docs/setup/tmdb), if the catalog is empty, or [Connect a TV](/docs/tv/connect).
+[TMDB key](/docs/setup/tmdb), if the catalog is empty, or [Connect a device](/docs/tv/connect).

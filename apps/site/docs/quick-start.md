@@ -67,7 +67,7 @@ Details: [Setup wizard](/docs/setup/wizard) and [Indexers](/docs/setup/indexers)
 
 On an LG TV, install the [Torsher app](/docs/tv/lg-webos). On a computer or a TV with a recent browser, open `http://<server-address>:8080/`.
 
-The screen shows a six-character code. In the panel, open <Ui k="panel.nav.people" />, select <Ui k="panel.people.pairTv" /> and enter the code. Details: [Connect a TV](/docs/tv/connect).
+The screen shows a six-character code. In the panel, open <Ui k="panel.nav.people" />, select <Ui k="panel.people.pairDevice" /> and enter the code. Details: [Connect a device](/docs/tv/connect).
 
 ## 5. Watch
 

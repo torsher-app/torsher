@@ -21,7 +21,7 @@ Torsher on the TV home screen, connected to your server, controlled with the rem
 - A computer with [Node.js](https://nodejs.org/) for LG's command-line tools that install the app.
 
 ::: info No install? Use the TV browser
-Open `http://<server-address>:8080/` in the TV's web browser and go to [Connect a TV](/docs/tv/connect). The app is still worth it: it opens Torsher straight from the TV home screen and remembers the server.
+Open `http://<server-address>:8080/` in the TV's web browser and go to [Connect a device](/docs/tv/connect). The app is still worth it: it opens Torsher straight from the TV home screen and remembers the server.
 :::
 
 ## 1. Turn on Developer Mode on the TV
@@ -89,7 +89,7 @@ The app remembers the address and opens the showcase. To change it later, use <U
 
 ## 5. Connect with a code
 
-The showcase shows a six-character code. Enter it in the panel under <Ui k="panel.nav.people panel.people.pairTv" />. Details: [Connect a TV](/docs/tv/connect).
+The showcase shows a six-character code. Enter it in the panel under <Ui k="panel.nav.people panel.people.pairDevice" />. Details: [Connect a device](/docs/tv/connect).
 
 ## If something went wrong
 
@@ -102,4 +102,4 @@ The showcase shows a six-character code. Enter it in the panel under <Ui k="pane
 
 ## Next
 
-[Connect a TV](/docs/tv/connect), then [Watching](/docs/watch/showcase).
+[Connect a device](/docs/tv/connect), then [Watching](/docs/watch/showcase).

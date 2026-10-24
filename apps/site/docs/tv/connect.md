@@ -1,11 +1,11 @@
 ---
-title: Connect a TV
-description: "Connect a TV or a browser to Torsher with a six-character code, pick a profile, and disconnect a device later."
+title: Connect a device
+description: "Connect a TV, a computer or another device to Torsher with a six-character code, pick a profile, and disconnect a device later."
 ---
 
-# Connect a TV
+# Connect a device
 
-A TV doesn't sign in with the owner password. It shows a short code, you confirm it in the control panel from your phone or computer, and the TV is connected for good.
+A TV or a browser doesn't sign in with the owner password. It shows a short code, you confirm it in the control panel from your phone or computer, and the device is connected for good. The steps below use a TV; a browser works the same way and shows <Ui k="connect.titleWeb" />.
 
 ::: tip What you'll get
 The TV shows <Ui k="profiles.title" /> or goes straight to the home screen, and appears under <Ui k="panel.people.devices.group" /> in the panel.
@@ -24,7 +24,7 @@ The TV shows <Ui k="connect.titleTv" /> with a six-character code. The code refr
 ## 2. Enter the code in the panel
 
 1. On your phone or computer, open the panel at `http://<server-address>:8080/panel/`.
-2. Open <Ui k="panel.nav.people" /> and select <Ui k="panel.people.pairTv" />.
+2. Open <Ui k="panel.nav.people" /> and select <Ui k="panel.people.pairDevice" />.
 3. Type the code from the TV screen. A code is valid for 10 minutes.
 4. Give the device a name, for example <Ui k="panel.people.pair.nameDefault" />, and select <Ui k="panel.people.pair.submit" />.
 
