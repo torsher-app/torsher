@@ -8,7 +8,7 @@ import { getDb } from '../../db/index.ts'
 import { libraries, libraryFolders, mediaFiles } from '../../db/schema.ts'
 import { logFor } from '../logs/index.ts'
 import { getTitleIdentity, TmdbError } from '../tmdb/index.ts'
-import { tmdbGet } from '../tmdb/client.ts'
+import { findByExternalId } from '../tmdb/find.ts'
 import { recognizeRelease, rememberUserAlias } from './recognize.ts'
 
 // Папки сезонов внутри папки сериала — часть того же релиза
@@ -114,25 +114,6 @@ async function titleFromTmdbId(tmdbId: string, kind: KindHint | undefined) {
   return undefined
 }
 
-interface FindResponse {
-  movie_results?: Array<{ id: number }>
-  tv_results?: Array<{ id: number }>
-}
-
-/** IMDb и TVDB ID → тайтл каталога через `/find` */
-async function titleFromExternal(id: string, source: 'imdb_id' | 'tvdb_id') {
-  const found = await tmdbGet<FindResponse>(`/find/${id}`, {
-    external_source: source,
-  })
-  const movie = found.movie_results?.[0]
-  const tv = found.tv_results?.[0]
-
-  if (movie)
-    return `tmdb:movie:${movie.id}`
-
-  return tv ? `tmdb:tv:${tv.id}` : undefined
-}
-
 async function fromNames(names: string[], kind: KindHint | undefined) {
   for (const name of names) {
     const tmdb = NAME_TMDB.exec(name)?.[1]
@@ -147,7 +128,7 @@ async function fromNames(names: string[], kind: KindHint | undefined) {
     const imdb = NAME_IMDB.exec(name)?.[1]
 
     if (imdb) {
-      const id = await titleFromExternal(imdb, 'imdb_id')
+      const id = await findByExternalId(imdb, 'imdb_id')
 
       if (id)
         return id
@@ -156,7 +137,7 @@ async function fromNames(names: string[], kind: KindHint | undefined) {
     const tvdb = NAME_TVDB.exec(name)?.[1]
 
     if (tvdb) {
-      const id = await titleFromExternal(tvdb, 'tvdb_id')
+      const id = await findByExternalId(tvdb, 'tvdb_id')
 
       if (id)
         return id
@@ -197,7 +178,7 @@ async function fromNfo(dir: string, files: string[]) {
         ?? /<imdbid>\s*(tt\d+)\s*</i.exec(text)?.[1]
 
     if (imdb) {
-      const id = await titleFromExternal(imdb, 'imdb_id')
+      const id = await findByExternalId(imdb, 'imdb_id')
 
       if (id)
         return id

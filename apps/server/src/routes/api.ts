@@ -18,6 +18,7 @@ import { mineRoutes } from './mine.ts'
 import { netRoutes } from './net.ts'
 import { overviewRoutes } from './overview.ts'
 import { playbackRoutes } from './playback.ts'
+import { profileImportRoutes } from './profileImports.ts'
 import { profileRoutes } from './profiles.ts'
 import { settingsRoutes } from './settings.ts'
 import { setupRoutes } from './setup.ts'
@@ -73,6 +74,7 @@ export const apiRoutes: FastifyPluginAsyncZod = async (app) => {
   app.register(setupRoutes, { prefix: '/setup' })
   app.register(playbackRoutes)
   app.register(profileRoutes, { prefix: '/profiles' })
+  app.register(profileImportRoutes, { prefix: '/profiles' })
   app.register(deviceRoutes, { prefix: '/devices' })
   app.register(engineRoutes, { prefix: '/engine' })
   app.register(logRoutes, { prefix: '/logs' })
