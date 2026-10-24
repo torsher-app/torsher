@@ -69,6 +69,7 @@ import {
   resumeResolving,
 } from './services/torrents/index.ts'
 import { purgeImports } from './services/transfer/imports.ts'
+import { applyPendingDecisions } from './services/transfer/libraryMatches.ts'
 import { onRestartRequested } from './services/lifecycle.ts'
 import { reconcileTorrentsAfterRestore } from './services/torrents/reconcile.ts'
 import { createShutdown } from './shutdown.ts'
@@ -197,11 +198,16 @@ onTorrentReady((torrent) => {
 startRecognition(() => void syncLibrary())
 
 // Подключённые папки: скан при старте и раз в 12 ч — страховка к
-// наблюдателю; новые файлы «Фильмов и сериалов» идут на сопоставление
+// наблюдателю; новые файлы «Фильмов и сериалов» идут на сопоставление,
+// кроме тех, о которых владелец уже решил на прежнем сервере (импорт данных)
 onFolderScanned((folder, library, result) => {
-  if (library.kind === 'video')
-    void queueMatch(folder.id, result.added)
-  else applyHomeVideoFields([...result.added, ...result.changed])
+  if (library.kind === 'video') {
+    void queueMatch(folder.id, applyPendingDecisions(folder.id, result.added))
+  }
+  else {
+    applyHomeVideoFields([...result.added, ...result.changed])
+    applyPendingDecisions(folder.id, result.added)
+  }
 
   void watchFolder(folder, library)
 })

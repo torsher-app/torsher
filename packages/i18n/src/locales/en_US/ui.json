@@ -2137,8 +2137,8 @@
       "moreError": "Couldn’t load more history"
     },
     "imports": {
-      "section": "Ratings from other services",
-      "hint": "Your own ratings and Watch later from IMDb, Letterboxd and Trakt.",
+      "section": "Import and export",
+      "hint": "Ratings and Watchlist from IMDb, Letterboxd and Trakt, or a Torsher profile export.",
       "start": "Import…",
       "open": "Open import",
       "matching": "Matching with the catalog: {done} of {total}…",
@@ -2151,18 +2151,19 @@
       "unmatchedLink": "Not matched · {n}",
       "undoDialog": {
         "title": "Undo the import?",
-        "text": "Ratings and Watch later marks go back to how they were before the import. Titles changed after the import stay as they are.",
+        "text": "Everything the import changed goes back to how it was. Titles changed after the import stay as they are.",
         "submit": "Undo import",
         "keep": "Keep it"
       },
       "sources": {
         "imdb": "IMDb",
         "letterboxd": "Letterboxd",
-        "trakt": "Trakt"
+        "trakt": "Trakt",
+        "torsher": "Torsher export"
       },
       "dialog": {
-        "title": "Import ratings and lists",
-        "description": "Into the “{name}” profile: own ratings and Watch later.",
+        "title": "Import into profile",
+        "description": "Ratings, lists and positions go into “{name}”.",
         "files": "Files to import",
         "drop": "Drop files here or choose them",
         "dropHint": "CSV, JSON or zip — up to 20 MB",
@@ -2184,7 +2185,8 @@
         "apply": "Import",
         "undo": "Undo import",
         "matchManually": "Match manually",
-        "done": "Done"
+        "done": "Done",
+        "formatTorsher": "A profile export from another Torsher server — a .json file with positions, lists and ratings"
       },
       "preview": {
         "newRatings": "New ratings",
@@ -2194,7 +2196,11 @@
         "unmatched": "Not matched",
         "skipped": "Skipped: episodes and empty rows",
         "conflictsLegend": "When a title already has a different rating",
-        "sample": "{title}: yours {current}, in the file {incoming}"
+        "sample": "{title}: yours {current}, in the file {incoming}",
+        "progress": "Watch positions",
+        "favorites": "New in Favorites",
+        "dropped": "Dropped marks",
+        "skippedExport": "Skipped: titles outside the catalog and files missing on this server"
       },
       "policies": {
         "keep": "Keep mine",
@@ -2230,7 +2236,10 @@
         "unknown": "The server didn’t accept the files. Try again.",
         "applyFailed": "Couldn’t import",
         "applyFailedText": "The server didn’t respond or the preview expired. Upload the files again.",
-        "undoFailed": "Couldn’t undo the import"
+        "undoFailed": "Couldn’t undo the import",
+        "serverExport": "“{file}” is a whole-server export. Import it in Settings → Backups.",
+        "newerVersion": "“{file}” was made by a newer Torsher version. Update this server.",
+        "exportFailed": "Could not export the profile"
       },
       "unmatched": {
         "title": "Not matched · {name}",
@@ -2252,7 +2261,8 @@
         "emptyTitle": "Everything is matched",
         "emptyText": "Import rows that didn’t find a catalog title on their own show up here.",
         "back": "Back to profiles"
-      }
+      },
+      "export": "Export"
     },
     "library": {
       "managed": "Torsher layout",
@@ -2811,6 +2821,99 @@
           "password": "Enter the backup password"
         },
         "restoring": "The server is restoring from a backup: wait for the restart and sign in with the old server’s password"
+      }
+    },
+    "transfer": {
+      "title": "Move data",
+      "text": "Profiles, watch history, lists, ratings and collections in a file you can merge into another Torsher server. Data is merged with what the server already has.",
+      "hint": "To move the whole server, restore a backup on the new one.",
+      "exportAction": "Export…",
+      "importAction": "Import…",
+      "export": {
+        "title": "Export data",
+        "description": "Profiles, positions, Watchlist, Favorites, ratings and Dropped are always included. Profile PINs are not.",
+        "failed": "The server did not export the file. Try again.",
+        "collections": "Collections",
+        "collectionsHint": "With their titles and the profiles they are hidden from",
+        "libraries": "Libraries",
+        "librariesHint": "Connected folders, manual matches and corrected home video dates",
+        "settings": "Settings",
+        "settingsHint": "Network routes, indexers and notification channels",
+        "secrets": "Keys and passwords",
+        "secretsHint": "Indexer keys, proxy logins, the TMDB key and channel secrets — encrypted with the export password",
+        "password": "Export password",
+        "passwordHint": "You will be asked for it on import. Without it, keys have to be entered again on the new server.",
+        "submit": "Download file",
+        "done": "Export file downloaded",
+        "validation": {
+          "min": "At least {n} characters",
+          "max": "The password is too long"
+        }
+      },
+      "import": {
+        "title": "Import data",
+        "description": "An export file from another Torsher server. Nothing on this server is lost: data is merged.",
+        "file": "Export file",
+        "drop": "Drop the file here or choose it",
+        "dropHint": "torsher-export-….json — up to 50 MB",
+        "remove": "Remove {name}",
+        "password": "Export password",
+        "passwordHint": "Needed if keys and passwords were included in the export.",
+        "from": "Exported {date}, Torsher {version}",
+        "profiles": "Where profiles go",
+        "target": {
+          "new": "New profile",
+          "into": "Into “{name}”",
+          "skip": "Do not import"
+        },
+        "counts": {
+          "line": "Positions: {progress} · ratings: {ratings} · Watchlist: {watchlist} · Favorites: {favorites}",
+          "later": "The import summary will show what changes",
+          "skipped": "This profile is not imported"
+        },
+        "summary": {
+          "collections": "Collections",
+          "voices": "Pinned voice-overs",
+          "folders": "New library folders",
+          "decisions": "Manual decisions about files",
+          "settings": "New settings",
+          "secrets": "Keys and passwords",
+          "secretsOk": "included",
+          "secretsNo": "not included"
+        },
+        "missingFolders": "These folders are not on this server",
+        "missingFoldersText": "They are added as unavailable and picked up once the path appears in the container.",
+        "conflicts": "If a title already has a different rating",
+        "backupNote": "The server makes a backup before the import, so the import can be undone.",
+        "next": "Next",
+        "back": "Back",
+        "submit": "Import",
+        "secrets": {
+          "locked": "The file has keys and passwords",
+          "wrong": "Wrong password",
+          "text": "Without the export password the data is imported, but keys have to be entered again.",
+          "check": "Check password"
+        },
+        "result": {
+          "created": "Profiles created",
+          "merged": "Merged into profiles",
+          "changed": "Changes",
+          "skipped": "Skipped",
+          "undo": "Undo import…",
+          "undoHint": "The backup made before the import is in the list of backups. Undoing restores it and restarts the server."
+        },
+        "errors": {
+          "title": "The file did not fit",
+          "noFile": "Choose an export file",
+          "tooLarge": "The file is larger than 50 MB",
+          "notExport": "This is not a Torsher export file.",
+          "newerVersion": "The file was made by a newer Torsher version. Update this server.",
+          "broken": "The file is damaged.",
+          "unknown": "The server did not accept the file. Try again.",
+          "backup": "The import did not start: the backup before it failed. {reason}",
+          "applyFailed": "Could not import: the server did not respond or the preview expired. Upload the file again."
+        },
+        "noFile": "No file chosen"
       }
     }
   },

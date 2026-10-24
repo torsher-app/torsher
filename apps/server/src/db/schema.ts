@@ -567,6 +567,26 @@ export interface ImportUndoEntry {
   } | null
 }
 
+// Позиция `title_progress` до импорта экспорта Torsher: null — строки не
+// было. `after` — время записанной позиции: позицию, которую после импорта
+// обновили, отмена не трогает
+export interface ImportProgressUndoEntry {
+  table: 'progress'
+  titleId: string
+  season: number
+  episode: number
+  before: {
+    position: number
+    duration: number | null
+    torrentId: string | null
+    fileIndex: number | null
+    voiceStudio: string | null
+    voiceType: string | null
+    updatedAt: number
+  } | null
+  after: number
+}
+
 // Применённый импорт оценок и «Позже» из файлов других сервисов. `undo`
 // держит прежние строки для отмены и очищается по сроку
 export const profileImports = sqliteTable(
@@ -578,11 +598,13 @@ export const profileImports = sqliteTable(
     profileId: text('profile_id')
       .notNull()
       .references(() => profiles.id, { onDelete: 'cascade' }),
-    // Через запятую: imdb, letterboxd, trakt
+    // Через запятую: imdb, letterboxd, trakt, torsher
     sources: text('sources').notNull(),
     conflicts: text('conflicts', { enum: importConflictPolicies }).notNull(),
     summary: text('summary', { mode: 'json' }).notNull().$type<ImportSummary>(),
-    undo: text('undo', { mode: 'json' }).$type<ImportUndoEntry[]>(),
+    undo: text('undo', { mode: 'json' }).$type<
+      Array<ImportUndoEntry | ImportProgressUndoEntry>
+    >(),
     appliedAt: integer('applied_at', { mode: 'timestamp_ms' }).notNull(),
     undoneAt: integer('undone_at', { mode: 'timestamp_ms' }),
   },

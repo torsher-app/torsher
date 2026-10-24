@@ -116,7 +116,7 @@ describe('mergeMine', () => {
     ).toMatchObject({ rating: 8, watchlistAt: old })
   })
 
-  it('«Избранное» и «Брошено» не трогает', () => {
+  it('без «Избранного» и «Брошено» во входе их не трогает', () => {
     expect(
       mergeMine(
         mine({ favoriteAt: old, droppedAt: old }),
@@ -125,5 +125,38 @@ describe('mergeMine', () => {
         now,
       ),
     ).toMatchObject({ favoriteAt: old, droppedAt: old, rating: 3 })
+  })
+
+  it('«Избранное» объединяет, своя отметка остаётся', () => {
+    expect(
+      mergeMine(undefined, { kind: 'movie', favoriteAt: old }, 'keep', now),
+    ).toMatchObject({ favoriteAt: old })
+    expect(
+      mergeMine(
+        mine({ favoriteAt: newer }),
+        { kind: 'movie', favoriteAt: old },
+        'keep',
+        now,
+      ),
+    ).toBeUndefined()
+  })
+
+  it('«Брошено» берёт более позднее', () => {
+    expect(
+      mergeMine(
+        mine({ droppedAt: old }),
+        { kind: 'series', droppedAt: newer },
+        'keep',
+        now,
+      ),
+    ).toMatchObject({ droppedAt: newer })
+    expect(
+      mergeMine(
+        mine({ droppedAt: newer }),
+        { kind: 'series', droppedAt: old },
+        'keep',
+        now,
+      ),
+    ).toBeUndefined()
   })
 })

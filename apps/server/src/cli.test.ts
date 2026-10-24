@@ -287,3 +287,60 @@ describe('копии из командной строки', () => {
     }
   })
 })
+
+describe('перенос данных из командной строки', () => {
+  const dir = join(tempDataDir(), 'transfer')
+
+  beforeAll(() => {
+    mkdirSync(dir, { recursive: true })
+  })
+
+  afterAll(() => {
+    rmSync(dir, { recursive: true, force: true })
+  })
+
+  it('torsher export пишет файл, torsher import --dry-run показывает сводку', async () => {
+    const file = join(dir, 'export.json')
+    const exported = fakeIo()
+
+    expect(await runCli(['export', '--out', file], exported.io)).toBe(0)
+
+    const document = JSON.parse(readFileSync(file, 'utf8'))
+
+    expect(document).toMatchObject({
+      format: 'torsher-export',
+      scope: 'server',
+    })
+
+    const imported = fakeIo()
+
+    expect(await runCli(['import', file, '--dry-run'], imported.io)).toBe(0)
+    expect(imported.out.join('\n')).toContain('positions +0')
+  })
+
+  it('torsher import: не экспорт — понятная ошибка', async () => {
+    const file = join(dir, 'other.json')
+
+    writeFileSync(file, '{"hello":"world"}')
+
+    const { io, err } = fakeIo()
+
+    expect(await runCli(['import', file], io)).toBe(1)
+    expect(err.join('\n')).toContain('not a Torsher export')
+  })
+
+  it('torsher import сливает и печатает копию перед импортом', async () => {
+    const { serverImportDeps }
+      = await import('./services/transfer/serverImport.ts')
+
+    vi.spyOn(serverImportDeps, 'backup').mockResolvedValue('pre-import-copy')
+
+    const file = join(dir, 'export.json')
+    const { io, out } = fakeIo()
+
+    expect(await runCli(['import', file], io)).toBe(0)
+    expect(out.join('\n')).toContain(
+      'Backup before the import: pre-import-copy',
+    )
+  })
+})

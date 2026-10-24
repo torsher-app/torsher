@@ -6,10 +6,12 @@
 import type { BackupSettings } from './services/backups/settings.ts'
 import { randomInt } from 'node:crypto'
 import { existsSync } from 'node:fs'
+import { readFile, writeFile } from 'node:fs/promises'
 import { basename, resolve } from 'node:path'
 import process from 'node:process'
 import { text } from 'node:stream/consumers'
 import { parseArgs } from 'node:util'
+import { gunzipSync } from 'node:zlib'
 import Database from 'better-sqlite3'
 import { config } from './config.ts'
 import { DowngradeError, migrateDb, PreUpdateBackupError } from './db/index.ts'
@@ -31,7 +33,17 @@ import {
   prepareRestore,
 } from './services/backups/restore-request.ts'
 import { parseBackupSettings } from './services/backups/settings.ts'
+import { listProfiles } from './services/profiles/index.ts'
 import { SecretError } from './services/secrets/index.ts'
+import {
+  DocumentError,
+  parseExportDocument,
+} from './services/transfer/document.ts'
+import { buildExport } from './services/transfer/export.ts'
+import {
+  applyServerImport,
+  previewServerImport,
+} from './services/transfer/serverImport.ts'
 import { needsSetup, resetOwnerPassword } from './services/users/index.ts'
 import { hashPassword } from './utils/password.ts'
 
@@ -57,6 +69,11 @@ Commands:
   restore <name|file>                Check a backup and restore it on the next start
   restore <name|file> --password-stdin
                                      Read the backup password from standard input
+  export [--profile <name>] [--libraries] [--settings] [--password-stdin] [--out <file>]
+                                     Export viewer data to a file (stdout without --out);
+                                     with --password-stdin keys and passwords are included
+  import <file> [--profile <name>] [--dry-run] [--password-stdin]
+                                     Merge an export into this server
   help                               Show this help`
 
 // Без похожих символов (0/o, 1/l/i): пароль переписывают с экрана руками
@@ -383,6 +400,187 @@ async function restore(
   return 0
 }
 
+interface TransferFlags {
+  'profile'?: string
+  'out'?: string
+  'libraries': boolean
+  'settings': boolean
+  'dry-run': boolean
+  'password-stdin': boolean
+}
+
+async function readSecret(io: CliIo) {
+  return (await io.readStdin()).replace(/\r?\n$/, '')
+}
+
+function profileNamed(name: string) {
+  const key = name.normalize('NFC').trim().toLocaleLowerCase()
+
+  return listProfiles().find(
+    profile =>
+      profile.name.normalize('NFC').trim().toLocaleLowerCase() === key,
+  )
+}
+
+async function exportCommand(flags: TransferFlags, io: CliIo) {
+  if (!(await hasAccount())) {
+    io.err(NO_ACCOUNT)
+
+    return 1
+  }
+
+  const profile = flags.profile ? profileNamed(flags.profile) : undefined
+
+  if (flags.profile && !profile) {
+    io.err(`No profile named "${flags.profile}".`)
+
+    return 1
+  }
+
+  const password = flags['password-stdin'] ? await readSecret(io) : undefined
+
+  if (password !== undefined && !newPassword.safeParse(password).success) {
+    io.err(`The password must be at least ${PASSWORD_MIN_LENGTH} characters.`)
+
+    return 1
+  }
+
+  const document = buildExport(
+    profile
+      ? { scope: 'profile', profileId: profile.id }
+      : {
+          scope: 'server',
+          include: {
+            collections: true,
+            libraries: flags.libraries,
+            settings: flags.settings || password !== undefined,
+          },
+          password,
+        },
+  )
+  const json = JSON.stringify(document, null, 2)
+
+  if (!flags.out) {
+    io.out(json)
+
+    return 0
+  }
+
+  await writeFile(resolve(flags.out), `${json}\n`, { mode: 0o600 })
+  io.err(`Exported to ${resolve(flags.out)}`)
+
+  return 0
+}
+
+function countsLine(
+  name: string,
+  counts: Awaited<
+    ReturnType<typeof previewServerImport>
+  >['profiles'][number]['counts'],
+) {
+  return (
+    `  ${name}: positions +${counts.progress.new} ~${counts.progress.updated}, `
+    + `ratings +${counts.ratings.new} (${counts.ratings.conflicts} conflicts), `
+    + `watchlist +${counts.watchlist.new}, favorites +${counts.favorites.new}, `
+    + `dropped +${counts.dropped.new}`
+  )
+}
+
+async function importCommand(file: string, flags: TransferFlags, io: CliIo) {
+  if (!(await hasAccount())) {
+    io.err(NO_ACCOUNT)
+
+    return 1
+  }
+
+  let document
+
+  try {
+    const raw = await readFile(resolve(file))
+
+    document = parseExportDocument(
+      (raw[0] === 0x1F && raw[1] === 0x8B ? gunzipSync(raw) : raw).toString(
+        'utf8',
+      ),
+    )
+  }
+  catch (err) {
+    if (err instanceof DocumentError) {
+      io.err(
+        err.kind === 'newerVersion'
+          ? 'The file comes from a newer Torsher version. Update this server first.'
+          : 'The file is not a Torsher export.',
+      )
+
+      return 1
+    }
+
+    throw err
+  }
+
+  const target = flags.profile ? profileNamed(flags.profile) : undefined
+
+  if (flags.profile && !target) {
+    io.err(`No profile named "${flags.profile}".`)
+
+    return 1
+  }
+
+  if (target && document.profiles.length !== 1) {
+    io.err('--profile works with an export of one profile.')
+
+    return 1
+  }
+
+  const password = flags['password-stdin'] ? await readSecret(io) : undefined
+  const preview = await previewServerImport(document, password)
+
+  if (preview.secrets === 'wrong') {
+    io.err('Wrong export password: keys and passwords will not be imported.')
+  }
+  else if (preview.secrets === 'locked') {
+    io.err(
+      'The file has keys and passwords: pass --password-stdin to import them.',
+    )
+  }
+
+  const mapping: Record<string, string> = {}
+
+  for (const profile of preview.profiles) {
+    mapping[profile.key] = target
+      ? target.id
+      : profile.target.kind === 'existing'
+        ? profile.target.id
+        : 'new'
+    io.out(countsLine(profile.name, profile.counts))
+  }
+
+  if (flags['dry-run'])
+    return 0
+
+  const result = await applyServerImport(preview.token, {
+    mapping,
+    conflicts: 'newer',
+    scan: false,
+  })
+
+  io.out(
+    `Imported: ${result.profiles.created} profiles created, `
+    + `${result.profiles.merged} merged, ${result.profiles.changed} changes.`,
+  )
+
+  if (result.backup)
+    io.out(`Backup before the import: ${result.backup}`)
+
+  if (result.settings || result.folders) {
+    io.out(
+      'Restart the container to apply settings and scan new folders: docker restart torsher',
+    )
+  }
+
+  return 0
+}
+
 function defaultPaths(): CliPaths {
   return { databasePath: config.databasePath, dataDir: config.dataDir }
 }
@@ -390,7 +588,7 @@ function defaultPaths(): CliPaths {
 async function runCommand(
   command: string | undefined,
   rest: string[],
-  values: { 'stdin': boolean, 'password-stdin': boolean },
+  values: { stdin: boolean } & TransferFlags,
   io: CliIo,
   paths: CliPaths,
 ) {
@@ -405,6 +603,12 @@ async function runCommand(
 
   if (command === 'restore' && rest.length === 1)
     return restore(rest[0]!, values['password-stdin'], io, paths)
+
+  if (command === 'export' && rest.length === 0)
+    return exportCommand(values, io)
+
+  if (command === 'import' && rest.length === 1)
+    return importCommand(rest[0]!, values, io)
 
   return undefined
 }
@@ -423,6 +627,11 @@ export async function runCli(
       options: {
         'stdin': { type: 'boolean', default: false },
         'password-stdin': { type: 'boolean', default: false },
+        'profile': { type: 'string' },
+        'out': { type: 'string' },
+        'libraries': { type: 'boolean', default: false },
+        'settings': { type: 'boolean', default: false },
+        'dry-run': { type: 'boolean', default: false },
       },
     })
   }
