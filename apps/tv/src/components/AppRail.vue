@@ -199,7 +199,17 @@ onBeforeUnmount(stopFocus)
   opacity: 1;
 }
 
+/*
+ * Ось рейла — центр круга пункта (28 + 64 / 2 = 60 px макета, там же центр
+ * «Назад» полноэкранных экранов). Иконка, аватар и знак встают на неё отступом
+ * (круг − знак) / 2 от левого края пункта: свои числа под отступ разъезжаются
+ * с кругом, как только меняется размер чего-то одного
+ */
 .rail__items {
+  --rail-circle: calc(var(--u) * 64);
+  --rail-mark: calc(var(--u) * 32);
+  --rail-brand: calc(var(--u) * 40);
+
   position: relative;
   display: flex;
   flex-direction: column;
@@ -216,11 +226,12 @@ onBeforeUnmount(stopFocus)
 .rail__brand {
   display: flex;
   align-items: center;
-  height: calc(var(--u) * 64);
+  height: var(--rail-circle);
   margin-bottom: calc(var(--u) * 30);
-  padding-left: calc(var(--u) * 16);
+  /* Абажур и ножка стоят по центру viewBox, шнурок справа — за осью */
+  padding-left: calc((var(--rail-circle) - var(--rail-brand)) / 2);
   color: var(--color-accent);
-  font-size: calc(var(--u) * 40);
+  font-size: var(--rail-brand);
 }
 
 .rail__item {
@@ -228,16 +239,16 @@ onBeforeUnmount(stopFocus)
   display: flex;
   flex-shrink: 0;
   align-items: center;
-  width: calc(var(--u) * 64);
-  height: calc(var(--u) * 68);
-  margin-bottom: calc(var(--u) * 6);
-  padding: 0 0 0 calc(var(--u) * 18);
+  width: var(--rail-circle);
+  height: var(--rail-circle);
+  margin-bottom: calc(var(--u) * 10);
+  padding: 0 0 0 calc((var(--rail-circle) - var(--rail-mark)) / 2);
   border: 0;
-  border-radius: calc(var(--u) * 34);
+  border-radius: calc(var(--rail-circle) / 2);
   background: transparent;
   color: var(--color-text-muted);
   font: inherit;
-  font-size: calc(var(--u) * 32);
+  font-size: var(--rail-mark);
   white-space: nowrap;
 }
 
@@ -252,7 +263,7 @@ onBeforeUnmount(stopFocus)
 .rail__item--current::before {
   content: '';
   position: absolute;
-  top: calc(var(--u) * 22);
+  top: calc((var(--rail-circle) - var(--u) * 24) / 2);
   left: calc(var(--u) * -14);
   width: calc(var(--u) * 6);
   height: calc(var(--u) * 24);
@@ -280,8 +291,9 @@ onBeforeUnmount(stopFocus)
     transform var(--motion-base) var(--motion-easing);
 }
 
+/* Подпись знака — с той же линии, что подписи пунктов */
 .rail__label--brand {
-  margin-left: calc(var(--u) * 18);
+  margin-left: calc(var(--u) * 20);
   color: var(--color-text);
   font-size: calc(var(--u) * 30);
   font-weight: 700;
@@ -296,11 +308,11 @@ onBeforeUnmount(stopFocus)
   flex-grow: 1;
 }
 
-/* Аватар на месте иконки: квадрат размером с иконку (32 px), буква мельче */
+/* Аватар на месте иконки: квадрат размером с иконку, буква мельче */
 .rail__avatar {
   flex-shrink: 0;
-  width: calc(var(--u) * 32);
-  height: calc(var(--u) * 32);
+  width: var(--rail-mark);
+  height: var(--rail-mark);
   border-radius: calc(var(--u) * 8);
   font-size: calc(var(--u) * 18);
 }
