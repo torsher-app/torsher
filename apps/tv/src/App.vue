@@ -2,8 +2,10 @@
 import { ref, watchEffect } from 'vue'
 import { useRoute } from 'vue-router'
 import AppScreensaver from './components/AppScreensaver.vue'
+import InputDebug from './components/InputDebug.vue'
 import TitleActions from './components/TitleActions.vue'
 import { useScreensaver } from './composables/useScreensaver.ts'
+import { inputDebug } from './inputDebug.ts'
 import { isStacked, screenKey } from './router.ts'
 import { session } from './session.ts'
 
@@ -65,6 +67,7 @@ const { active: screensaverActive, resting: screensaverResting }
   <Transition name="screensaver">
     <AppScreensaver v-if="screensaverActive" :resting="screensaverResting" />
   </Transition>
+  <InputDebug v-if="inputDebug" />
 </template>
 
 <style>

@@ -1,10 +1,14 @@
 <script setup lang="ts">
 import tmdbLogo from '@torsher/tokens/assets/tmdb.svg'
+import { onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import AppRail from '../components/AppRail.vue'
 import FocusSection from '../components/FocusSection.vue'
 import { useAbout } from '../composables/useAbout.ts'
+import { useFocus } from '../focus/index.ts'
+import { toggleInputDebug } from '../inputDebug.ts'
+import { createTapCounter } from '../lib/inputLog.ts'
 import { goBack } from '../lib/navigation.ts'
 import { platform } from '../platform/index.ts'
 import { canReturnToShell, returnToShell } from '../platform/shell.ts'
@@ -18,6 +22,20 @@ const RAIL_SECTION = 'rail-about'
 // Сервер выбирают в обёртке ТВ; в браузере адрес и так в строке адреса
 const isTv = platform === 'tv'
 const server = window.location.host
+
+// Пять раз ↑ подряд — журнал ввода поверх экрана. Сверху у кнопок соседей нет,
+// и стрелка сама по себе ничего не делает
+const debugTap = createTapCounter(5, 3000)
+const stopKey = useFocus().onKey((action, event) => {
+  const up = action.type === 'move' && action.direction === 'up'
+
+  if (!event.repeat && debugTap(up, Date.now()))
+    toggleInputDebug()
+
+  return false
+})
+
+onBeforeUnmount(stopKey)
 </script>
 
 <template>
