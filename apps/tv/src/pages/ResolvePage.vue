@@ -32,6 +32,8 @@ const props = defineProps<{
   // Раздача, где серию ищем первой: та, которой смотрели прошлую
   torrent?: string
   candidate?: string
+  // Озвучка, которую слушали в прошлой раздаче: плеер возьмёт её дорожку
+  voice?: string
 }>()
 
 const { t } = useI18n()
@@ -103,11 +105,15 @@ async function run() {
   if (outcome.kind === 'found') {
     // Торшер уже на экране — плеер не прячет его на вторую задержку
     void router.replace({
-      ...playerRoute(outcome.file, {
-        id: props.id,
-        season: target.season,
-        episode: target.episode,
-      }),
+      ...playerRoute(
+        outcome.file,
+        {
+          id: props.id,
+          season: target.season,
+          episode: target.episode,
+        },
+        props.voice,
+      ),
       state: {
         loaderShown: performance.now() - mountedAt >= LOADER_DELAY_MS,
       },

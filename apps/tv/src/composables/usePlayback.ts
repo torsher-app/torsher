@@ -119,7 +119,12 @@ export type PlaybackSource
  * Запуск файла раздачи или библиотеки, статистика движка для буферизации и
  * OSD и сохранение позиции. Видео и его события живут в экране плеера.
  */
-export function usePlayback(source: PlaybackSource, title?: PlaybackTitle) {
+export function usePlayback(
+  source: PlaybackSource,
+  title?: PlaybackTitle,
+  // Озвучка, которую слушали в прошлой раздаче: сервер возьмёт её дорожку
+  voiceStudio?: string,
+) {
   const library = 'mediaFileId' in source
   const status = ref<'loading' | 'ready' | 'error'>('loading')
   const playback = shallowRef<Playback>()
@@ -231,6 +236,7 @@ export function usePlayback(source: PlaybackSource, title?: PlaybackTitle) {
         title,
         device: deviceProfile(),
         language: i18n.global.locale.value as CreatePlaybackInput['language'],
+        voiceStudio,
         ...restart,
       })
       const ready = await waitProbe(created, () => run === generation)

@@ -1495,6 +1495,11 @@ export interface CreatePlaybackInput {
    * @max 1000000
    */
   startPosition?: number;
+  /**
+   * @minLength 1
+   * @maxLength 200
+   */
+  voiceStudio?: string;
 }
 
 export interface MediaAudioTrackInput {
@@ -4524,6 +4529,11 @@ export interface CreatePlayback {
    * @max 1000000
    */
   startPosition?: number;
+  /**
+   * @minLength 1
+   * @maxLength 200
+   */
+  voiceStudio?: string;
 }
 
 export interface MediaAudioTrack {

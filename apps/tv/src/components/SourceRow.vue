@@ -27,6 +27,8 @@ const props = defineProps<{
   runtime?: number
   // Раздачу подключают: лоадер поверх цифр справа, строка не двигается
   loading?: boolean
+  // Её сейчас играет плеер, из которого открыт экран
+  current?: boolean
 }>()
 
 const emit = defineEmits<{ select: [] }>()
@@ -38,6 +40,9 @@ const { voiceLabel, otherTracksLine, sizeLabel } = useSourceLabels()
 // лучшая по профилю (сам профиль — в шапке экрана). Остальные причины тройки в
 // общем списке не объясняют выбор
 const reason = computed(() => {
+  if (props.current)
+    return t('player.source.current')
+
   if (props.candidate.lastWatched)
     return t('sources.lastWatched')
 
@@ -117,7 +122,13 @@ const seedersTone = computed(() => {
 </script>
 
 <template>
-  <button v-focusable class="source" type="button" @click="emit('select')">
+  <button
+    v-focusable
+    class="source"
+    :class="{ 'source--current': current }"
+    type="button"
+    @click="emit('select')"
+  >
     <span class="source__name">{{ candidate.title }}</span>
     <span class="source__tags">
       <span
@@ -156,8 +167,8 @@ const seedersTone = computed(() => {
       <span class="source__meta">
         <span v-if="reason" class="source__tag">
           <AppIcon
-            v-if="candidate.lastWatched"
-            name="recent"
+            v-if="current || candidate.lastWatched"
+            :name="current ? 'play' : 'recent'"
             class="source__tag-icon"
           />
           {{ reason }}

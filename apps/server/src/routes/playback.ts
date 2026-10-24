@@ -219,6 +219,7 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
         audioStream,
         subtitle,
         startPosition,
+        voiceStudio,
       } = request.body
       let { title } = request.body
       let source: Pick<SessionInput, 'torrent' | 'library' | 'fileIndex'>
@@ -297,13 +298,15 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
         : torrentId
           ? getWatchState(request.profileId, torrentId, fileIndex!)
           : undefined
-      // Озвучка серии (выбранная в источниках или в плеере), иначе последних
-      // серий сезона, иначе закреплённая за сезоном
+      // Озвучка прошлой раздачи при её смене, иначе серии (выбранная в
+      // источниках или в плеере), иначе последних серий сезона, иначе
+      // закреплённая за сезоном
       const lastVoice = title
         ? lastVoiceOfSeason(request.profileId, title.id, title.season ?? 0)
         : undefined
       const studio
-        = progress?.voiceStudio
+        = voiceStudio
+          ?? progress?.voiceStudio
           ?? (lastVoice && 'studio' in lastVoice ? lastVoice.studio : undefined)
           ?? (title
             ? getPinnedVoice(title.id, title.season ?? 0)?.studio
