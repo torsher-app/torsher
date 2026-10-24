@@ -4,14 +4,22 @@ import {
   ArrowDownToLineIcon,
   CircleCheckIcon,
   HardDriveIcon,
+  MonitorPlayIcon,
   MonitorSmartphoneIcon,
   PlayIcon,
   RadarIcon,
+  TriangleAlertIcon,
 } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 import { Progress } from '@/components/ui/progress'
 import { cn } from '@/lib/utils'
 import { formatBytes } from '~/lib/format'
+import {
+  accelStatusOf,
+  mainGpuOf,
+  toneMappingOf,
+  vendorNameOf,
+} from '~/lib/playback'
 import OverviewTile from './OverviewTile.vue'
 
 const props = defineProps<{
@@ -32,6 +40,49 @@ const usedPercent = computed(() =>
 const isLow = computed(
   () => storage.value.total > 0 && storage.value.free < storage.value.minFree,
 )
+
+/** Плитка ускорения: заголовок, строка под ним и потолки в футере */
+const playback = computed(() => {
+  const settings = props.overview.playback
+  const key = 'panel.overview.tiles.playback'
+
+  if (!settings) {
+    return {
+      status: 'checking' as const,
+      title: t(`${key}.checking`),
+      hint: t(`${key}.checkingHint`),
+      limits: '',
+    }
+  }
+
+  const status = accelStatusOf(settings)
+  const gpu = mainGpuOf(settings)
+  const vendor = gpu && vendorNameOf(gpu)
+  const hdr
+    = toneMappingOf(settings) !== 'none'
+      && t(`${key}.hdr`, { height: settings.toneMappingMaxHeight })
+  const cpu
+    = settings.software
+      && t(`${key}.cpu`, { height: settings.softwareMaxHeight })
+
+  if (status === 'gpu') {
+    return {
+      status,
+      title: vendor
+        ? t('panel.settings.playback.gpu.named', { vendor })
+        : t('panel.settings.playback.gpu.unnamed'),
+      hint: t(`${key}.gpuHint`),
+      limits: hdr || '',
+    }
+  }
+
+  return {
+    status,
+    title: t(`${key}.${status}`),
+    hint: t(`${key}.${status}Hint`),
+    limits: [cpu, hdr].filter(Boolean).join(' · '),
+  }
+})
 </script>
 
 <template>
@@ -183,6 +234,34 @@ const isLow = computed(
         <template v-else>
           {{ t("panel.overview.tiles.devices.idle") }}
         </template>
+      </template>
+    </OverviewTile>
+
+    <!-- Пятая плитка — на всю ширину: сетка остаётся без дыры -->
+    <OverviewTile
+      to="/settings/playback"
+      :title="t('panel.settings.nav.playback')"
+      :icon="MonitorPlayIcon"
+      class="sm:col-span-2"
+    >
+      <p class="text-[22px] font-semibold tracking-tight">
+        {{ playback.title }}
+      </p>
+      <p class="flex items-center gap-2 text-[13px] text-muted-foreground">
+        <CircleCheckIcon
+          v-if="playback.status === 'gpu'"
+          class="size-4 shrink-0 text-success"
+          aria-hidden="true"
+        />
+        <TriangleAlertIcon
+          v-else-if="playback.status === 'failed'"
+          class="size-4 shrink-0 text-warning"
+          aria-hidden="true"
+        />
+        {{ playback.hint }}
+      </p>
+      <template #footer>
+        <span class="tabular-nums">{{ playback.limits }}</span>
       </template>
     </OverviewTile>
   </div>

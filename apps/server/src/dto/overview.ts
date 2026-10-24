@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { playbackSettings } from './media.ts'
 
 export const attentionKinds = [
   'engine_down',
@@ -14,6 +15,7 @@ export const attentionKinds = [
   'dns_spoofing',
   'host_unreachable',
   'tmdb_key_invalid',
+  'media_accel_failed',
 ] as const
 
 export const attentionSections = [
@@ -23,6 +25,7 @@ export const attentionSections = [
   'sources',
   'network',
   'metadata',
+  'playback',
   'logs',
 ] as const
 
@@ -70,5 +73,7 @@ export const overviewResponse = z
     // Включённые индексаторы и из них работающие по последней проверке
     sources: z.object({ ok: z.number(), total: z.number() }),
     devices: z.object({ total: z.number(), watching: z.number() }),
+    // Ускорение перекодирования; null — первая проверка после старта ещё идёт
+    playback: playbackSettings.nullable(),
   })
   .meta({ id: 'overviewResponse' })

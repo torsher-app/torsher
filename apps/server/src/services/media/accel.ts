@@ -12,15 +12,27 @@ import { getSetting, setSetting } from '../settings/index.ts'
 /** Чем перекодировать: что найдено (`auto`) или только процессором */
 export type AccelMode = 'auto' | 'software'
 
+export type GpuVendor = 'intel' | 'amd' | 'nvidia'
+
 export interface GpuEncoder {
   encoder: Exclude<VideoEncoder, 'software'>
   /** VAAPI: `/dev/dri/renderD*`; NVENC — первая карта */
   device: string | null
   /** Драйвер VAAPI или модель NVIDIA */
   name: string | null
+  /** По имени драйвера; null — не распознан */
+  vendor: GpuVendor | null
   lowPower: boolean
   /** Что декодирует сама: ключи `decodeKeyOf` */
   decode: string[]
+}
+
+/** Устройство видно контейнеру, но пробное кодирование на нём не прошло */
+export interface GpuFailure {
+  encoder: GpuEncoder['encoder']
+  device: string | null
+  /** Строка ошибки ffmpeg */
+  error: string
 }
 
 export interface AccelState {
@@ -28,6 +40,7 @@ export interface AccelState {
   /** Чем кодируется сейчас; null — кодировщика H.264 нет совсем */
   encoder: VideoEncoder | null
   gpus: GpuEncoder[]
+  failed: GpuFailure[]
   /** Есть `libx264` */
   software: boolean
   /** Кадров в секунду `libx264 veryfast` на 1080p; null — не замерено */
@@ -101,6 +114,15 @@ export const accelDeps = {
       .filter(name => /^renderD\d+$/.test(name))
       .sort()
       .map(name => `/dev/dri/${name}`)
+  },
+  /** `/dev/nvidia0`…: их монтирует NVIDIA Container Toolkit */
+  async nvidiaDevices() {
+    const names = await readdir('/dev').catch(() => [] as string[])
+
+    return names
+      .filter(name => /^nvidia\d+$/.test(name))
+      .sort()
+      .map(name => `/dev/${name}`)
   },
   /** Вывод `ffmpeg -encoders` или `-filters` */
   list(kind: '-encoders' | '-filters') {
@@ -246,7 +268,35 @@ async function gpuDecodes(
   return decode
 }
 
+// Первая строка с ошибкой: итоговая «Conversion failed!» причину не называет
+function errorOf(stderr: string) {
+  const lines = stderr
+    .split('\n')
+    .map(line => line.replace(/ @ 0x[\da-f]+/i, '').trim())
+    .filter(line => line && !/^Conversion failed/i.test(line))
+  const line
+    = lines.find(item =>
+      /error|fail|cannot|unable|denied|not supported|no usable|no such/i.test(
+        item,
+      ),
+    ) ?? lines.at(-1)
+
+  return line?.slice(0, 300) || 'unknown error'
+}
+
+function vendorOf(name: string | null): GpuVendor | null {
+  if (!name)
+    return null
+
+  if (/intel|\biHD\b|i965/i.test(name))
+    return 'intel'
+
+  return /amd|radeon/i.test(name) ? 'amd' : null
+}
+
 async function probeVaapi(device: string) {
+  let error = ''
+
   for (const lowPower of [false, true]) {
     const result = await accelDeps.run([
       '-hide_banner',
@@ -275,13 +325,17 @@ async function probeVaapi(device: string) {
         = /VAAPI driver: ([^\n]*)/
           .exec(result.stderr)?.[1]
           ?.trim()
-          .replace(/\.$/, '') || null
+          .replace(/\.$/, '')
+          .replace(/\s*\(\)$/, '') || null
 
-      return { lowPower, name }
+      return { ok: true as const, lowPower, name }
     }
+
+    // Последняя попытка — low-power: её причина и показывается
+    error = errorOf(result.stderr)
   }
 
-  return null
+  return { ok: false as const, error }
 }
 
 async function probeNvenc() {
@@ -299,7 +353,7 @@ async function probeNvenc() {
     '-',
   ])
 
-  return result.code === 0
+  return result.code === 0 ? null : errorOf(result.stderr)
 }
 
 /** Скорость `libx264 veryfast` на 1080p — оценка CPU для потолка разрешения */
@@ -420,26 +474,49 @@ async function detect(): Promise<AccelState> {
     names('-filters'),
   ])
   const gpus: GpuEncoder[] = []
+  const failed: GpuFailure[] = []
 
-  if (encoders.has('h264_nvenc') && (await probeNvenc())) {
-    gpus.push({
-      encoder: 'nvenc',
-      device: null,
-      name: await accelDeps.nvidiaName(),
-      lowPower: false,
-      decode: [],
-    })
+  if (encoders.has('h264_nvenc')) {
+    const error = await probeNvenc()
+
+    if (error === null) {
+      gpus.push({
+        encoder: 'nvenc',
+        device: null,
+        name: await accelDeps.nvidiaName(),
+        vendor: 'nvidia',
+        lowPower: false,
+        decode: [],
+      })
+    }
+    else {
+      // Без карты в контейнере NVENC и не ожидался: это не сбой
+      const [device] = await accelDeps.nvidiaDevices()
+
+      if (device)
+        failed.push({ encoder: 'nvenc', device, error })
+    }
   }
 
   if (encoders.has('h264_vaapi')) {
     for (const device of await accelDeps.renderNodes()) {
       const found = await probeVaapi(device)
 
-      if (found) {
-        gpus.push({ encoder: 'vaapi', device, decode: [], ...found })
-        // Одной встроенной графики хватает: вторая карта — обычно NVIDIA
-        break
+      if (!found.ok) {
+        failed.push({ encoder: 'vaapi', device, error: found.error })
+        continue
       }
+
+      gpus.push({
+        encoder: 'vaapi',
+        device,
+        name: found.name,
+        vendor: vendorOf(found.name),
+        lowPower: found.lowPower,
+        decode: [],
+      })
+      // Одной встроенной графики хватает: вторая карта — обычно NVIDIA
+      break
     }
   }
 
@@ -471,6 +548,7 @@ async function detect(): Promise<AccelState> {
     mode,
     encoder: chooseEncoder(mode, gpus, software),
     gpus,
+    failed,
     software,
     softwareFps,
     softwareMaxHeight: softwareCeiling(softwareFps),
@@ -482,28 +560,109 @@ async function detect(): Promise<AccelState> {
   }
 }
 
-function describeState(state: AccelState) {
-  const gpu = state.gpus.find(item => item.encoder === state.encoder)
-  const parts = [
-    `encoder=${state.encoder ?? 'none'}`,
-    gpu?.device,
-    gpu?.name,
-    gpu && `decode=[${gpu.decode.join(', ')}]`,
-    gpu?.lowPower && 'low-power',
-    `software=${state.softwareMaxHeight}p${state.softwareFps ? ` (${state.softwareFps.toFixed(0)} fps)` : ''}`,
-    `tonemap=${state.gpuToneMapping ? 'gpu' : state.softwareToneMapping ? 'software' : 'none'}${state.toneMappingFps ? ` ${state.toneMappingMaxHeight}p (${state.toneMappingFps.toFixed(0)} fps)` : ''}`,
-  ]
+const VENDOR_NAMES: Record<GpuVendor, string> = {
+  intel: 'Intel',
+  amd: 'AMD',
+  nvidia: 'NVIDIA',
+}
+const CODEC_NAMES: Record<string, string> = {
+  h264: 'H.264',
+  hevc: 'HEVC',
+  mpeg2video: 'MPEG-2',
+  mpeg4: 'MPEG-4',
+  vp9: 'VP9',
+  av1: 'AV1',
+}
 
-  return parts.filter(Boolean).join(', ')
+// `hevc10` → `HEVC 10-bit`
+function codecName(key: string) {
+  const deep = key.endsWith('10')
+  const codec = deep ? key.slice(0, -2) : key
+  const name = CODEC_NAMES[codec] ?? codec.toUpperCase()
+
+  return deep ? `${name} 10-bit` : name
+}
+
+function gpuText(gpu: GpuEncoder) {
+  const vendor = gpu.vendor ? `${VENDOR_NAMES[gpu.vendor]} GPU` : 'GPU'
+  const via = `${gpu.encoder.toUpperCase()}${gpu.lowPower ? ' low-power' : ''}`
+
+  return [
+    `${vendor} via ${via}`,
+    gpu.device && `on ${gpu.device}`,
+    gpu.name && `(${gpu.name})`,
+  ]
+    .filter(Boolean)
+    .join(' ')
+}
+
+function speedText(maxHeight: number, fps: number | null) {
+  return `up to ${maxHeight}p${fps ? ` (${fps.toFixed(0)} fps at 1080p)` : ''}`
+}
+
+/**
+ * Строка журнала о детекте: что кодирует, что декодирует видеокарта, сколько
+ * тянет процессор и как переводится HDR — всё, что видно в панели, одной
+ * строкой для отчёта об ошибке.
+ */
+export function describeAccel(state: AccelState) {
+  const gpu = state.gpus.find(item => item.encoder === state.encoder)
+  const parts: string[] = []
+
+  if (gpu) {
+    parts.push(gpuText(gpu))
+    parts.push(
+      gpu.decode.length > 0
+        ? `GPU decodes ${gpu.decode.map(codecName).join(', ')}`
+        : 'GPU decodes nothing, the CPU decodes',
+    )
+  }
+  else if (state.gpus[0]) {
+    parts.push(`off in settings, found ${gpuText(state.gpus[0])}`)
+  }
+  else if (state.failed.length === 0) {
+    parts.push('no GPU visible to the server')
+  }
+
+  for (const failure of state.failed) {
+    parts.push(
+      `${failure.encoder.toUpperCase()} on ${failure.device ?? 'GPU'} failed the test: ${failure.error}`,
+    )
+  }
+
+  parts.push(
+    state.software
+      ? `CPU encodes ${speedText(state.softwareMaxHeight, state.softwareFps)}`
+      : 'no CPU encoder (libx264)',
+  )
+
+  const toneMapping = toneMappingOf(state)
+
+  parts.push(
+    toneMapping
+      ? `HDR to SDR on ${toneMapping === 'gpu' ? 'GPU' : 'CPU'} ${speedText(state.toneMappingMaxHeight, state.toneMappingFps)}`
+      : 'no HDR to SDR filters',
+  )
+
+  return `Video acceleration: ${parts.join('; ')}`
 }
 
 let detected: Promise<AccelState> | undefined
+let latest: AccelState | null = null
 
 /** Детект ускорения: один раз на процесс, повторно — `recheckAccel` */
 export function mediaAccel() {
   detected ??= detect()
     .then((state) => {
-      logFor('playback').info(`Media acceleration: ${describeState(state)}`)
+      const log = logFor('playback')
+      // Видеокарта есть, но не работает — это стоит заметить в журнале
+      const broken = state.gpus.length === 0 && state.failed.length > 0
+
+      if (broken)
+        log.warn(describeAccel(state))
+      else log.info(describeAccel(state))
+
+      latest = state
       return state
     })
     .catch((err: Error) => {
@@ -512,6 +671,11 @@ export function mediaAccel() {
     })
 
   return detected
+}
+
+/** Последний готовый детект без ожидания; null — первая проверка ещё идёт */
+export function accelSnapshot() {
+  return latest
 }
 
 export function recheckAccel() {
@@ -531,12 +695,21 @@ export async function setAccelMode(mode: AccelMode) {
   }
 
   detected = Promise.resolve(next)
+  latest = next
   return next
+}
+
+/** Ответ API: режим называется `accel`, как поле формы панели */
+export function playbackSettingsOf(state: AccelState) {
+  const { mode, ...rest } = state
+
+  return { accel: mode, ...rest }
 }
 
 /** Тесты проверяют заново */
 export function resetAccel() {
   detected = undefined
+  latest = null
 }
 
 function toneMappingOf(state: AccelState): ToneMapping | null {
