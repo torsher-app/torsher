@@ -130,12 +130,15 @@ export function createFocus(options: FocusOptions) {
       press.up()
   }
 
+  function longPressTarget(target: EventTarget | null) {
+    return target instanceof Element
+      ? (target.closest<HTMLElement>(`[${LONG_PRESS_ATTRIBUTE}]`) ?? undefined)
+      : undefined
+  }
+
   // Правая кнопка мыши и долгий тап — то же меню, что долгий OK
   function onContextmenu(event: MouseEvent) {
-    const target
-      = event.target instanceof Element
-        ? event.target.closest<HTMLElement>(`[${LONG_PRESS_ATTRIBUTE}]`)
-        : null
+    const target = longPressTarget(event.target)
 
     if (!target)
       return
@@ -155,6 +158,7 @@ export function createFocus(options: FocusOptions) {
 
   function onMousemove(event: MouseEvent) {
     pointer = { x: event.clientX, y: event.clientY }
+    press.pointerMove(longPressTarget(event.target))
     engine.pointerMove(event.screenX, event.screenY, event.target)
   }
 
@@ -186,12 +190,31 @@ export function createFocus(options: FocusOptions) {
       engine.pointerHidden()
   }
 
-  // Клик мимо элементов не должен уводить DOM-фокус с текущего элемента
   function onMousedown(event: MouseEvent) {
     const target = event.target
 
+    // Клик мимо элементов не должен уводить DOM-фокус с текущего элемента
     if (!(target instanceof Element) || !target.closest('[data-focusable]'))
       event.preventDefault()
+
+    // OK Magic Remote под курсором — левая кнопка мыши: её удержание — долгое нажатие
+    if (event.button === 0)
+      press.pointerDown(longPressTarget(target))
+  }
+
+  function onMouseup(event: MouseEvent) {
+    if (event.button === 0)
+      press.pointerUp()
+  }
+
+  // Клик после долгого нажатия мышью не открывает элемент. Меню к отпусканию
+  // уже на экране, и клик приходит на общего предка, а не на постер: гасим любой.
+  // `detail` 0 — click() движка от OK с пульта, его не трогаем
+  function onClick(event: MouseEvent) {
+    if (event.detail > 0 && press.takeClick()) {
+      event.preventDefault()
+      event.stopPropagation()
+    }
   }
 
   function onWheel(event: WheelEvent) {
@@ -224,6 +247,8 @@ export function createFocus(options: FocusOptions) {
       window.addEventListener('mousemove', onMousemove)
       document.addEventListener('cursorStateChange', onCursorStateChange)
       window.addEventListener('mousedown', onMousedown)
+      window.addEventListener('mouseup', onMouseup)
+      window.addEventListener('click', onClick, true)
       window.addEventListener('wheel', onWheel, { passive: false })
       // scroll не всплывает: ловим прокрутку любого контейнера на захвате
       document.addEventListener('scroll', onScroll, true)
