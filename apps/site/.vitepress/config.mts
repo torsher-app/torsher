@@ -72,6 +72,7 @@ export default defineConfig({
     nav: [
       { text: 'Docs', link: '/docs/', activeMatch: '^/docs/' },
       { text: 'Install', link: '/docs/install/docker-compose' },
+      { text: 'Donate', link: '/donate' },
     ],
 
     sidebar: { '/docs/': sidebar },
