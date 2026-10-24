@@ -1962,6 +1962,124 @@
       "showMore": "Show more",
       "moreError": "Couldn’t load more history"
     },
+    "imports": {
+      "section": "Ratings from other services",
+      "hint": "Your own ratings and Watch later from IMDb, Letterboxd and Trakt.",
+      "start": "Import…",
+      "open": "Open import",
+      "matching": "Matching with the catalog: {done} of {total}…",
+      "ready": "Import is waiting for confirmation",
+      "failed": "Import failed: the catalog didn’t respond",
+      "loadError": "Couldn’t load the import status",
+      "last": "Imported {date}: {count}",
+      "titles": "{n} title | {n} titles",
+      "undo": "Undo",
+      "unmatchedLink": "Not matched · {n}",
+      "undoDialog": {
+        "title": "Undo the import?",
+        "text": "Ratings and Watch later marks go back to how they were before the import. Titles changed after the import stay as they are.",
+        "submit": "Undo import",
+        "keep": "Keep it"
+      },
+      "sources": {
+        "imdb": "IMDb",
+        "letterboxd": "Letterboxd",
+        "trakt": "Trakt"
+      },
+      "dialog": {
+        "title": "Import ratings and lists",
+        "description": "Into the “{name}” profile: own ratings and Watch later.",
+        "files": "Files to import",
+        "drop": "Drop files here or choose them",
+        "dropHint": "CSV, JSON or zip — up to 20 MB",
+        "remove": "Remove {name}",
+        "formats": "Supported:",
+        "formatImdb": "IMDb ratings and watchlist CSV",
+        "formatLetterboxd": "Letterboxd export — the whole zip",
+        "formatTrakt": "Trakt export — the whole zip",
+        "formatImportCsv": "CSV in the Letterboxd import format with tmdbID or imdbID — converters for other services produce it",
+        "upload": "Upload",
+        "matching": "Matching with the catalog",
+        "progress": "{done} of {total}",
+        "matchingHint": "You can close this window: matching keeps going, and the profile card shows its status.",
+        "failedTitle": "The catalog didn’t respond",
+        "failedText": "Titles can’t be matched without the catalog. Check the TMDB key and the network in settings, then upload the files again.",
+        "again": "Choose files",
+        "sources": "Files: {sources}",
+        "cancelImport": "Cancel import",
+        "apply": "Import",
+        "undo": "Undo import",
+        "matchManually": "Match manually",
+        "done": "Done"
+      },
+      "preview": {
+        "newRatings": "New ratings",
+        "watchlist": "New in Watch later",
+        "same": "Already in the profile",
+        "conflicts": "Rating differs from yours",
+        "unmatched": "Not matched",
+        "skipped": "Skipped: episodes and empty rows",
+        "conflictsLegend": "When a title already has a different rating",
+        "sample": "{title}: yours {current}, in the file {incoming}"
+      },
+      "policies": {
+        "keep": "Keep mine",
+        "keepHint": "File ratings go only to titles you haven’t rated",
+        "replace": "Replace with file ratings",
+        "replaceHint": "The file wins: your rating changes to the one from the file",
+        "newer": "Keep the later one",
+        "newerHint": "The rating given later stays — yours or the file’s",
+        "newerNoDates": "The file has no rating dates — nothing to compare"
+      },
+      "result": {
+        "imported": "Imported",
+        "unchanged": "Unchanged",
+        "unmatched": "Not matched",
+        "unmatchedHint": "Some rows didn’t find a title on their own. You can match them manually — they wait in the profile card for 90 days."
+      },
+      "toasts": {
+        "undone": "Import undone",
+        "undoneKept": "{n} title was changed after the import and stays as is | {n} titles were changed after the import and stay as they are"
+      },
+      "validation": {
+        "files": "Choose at least one file",
+        "count": "No more than {n} files at a time",
+        "size": "The files are larger than 20 MB together"
+      },
+      "errors": {
+        "title": "The files don’t fit",
+        "unsupported": "“{file}” doesn’t look like an IMDb, Letterboxd or Trakt export.",
+        "broken": "“{file}” is damaged or isn’t a zip.",
+        "tooLarge": "The files are larger than 20 MB together.",
+        "tooMany": "The files have more than 20,000 rows — split them and import in parts.",
+        "empty": "The files have neither ratings nor a Watch later list.",
+        "unknown": "The server didn’t accept the files. Try again.",
+        "applyFailed": "Couldn’t import",
+        "applyFailedText": "The server didn’t respond or the preview expired. Upload the files again.",
+        "undoFailed": "Couldn’t undo the import"
+      },
+      "unmatched": {
+        "title": "Not matched · {name}",
+        "titleShort": "Not matched",
+        "group": "Rows from files · {n}",
+        "rating": "★ {n}",
+        "watchlist": "Watch later",
+        "suggestion": "looks like “{title}”",
+        "notFound": "not found in the catalog",
+        "confirm": "Confirm",
+        "find": "Find…",
+        "hide": "Hide “{title}”",
+        "findTitle": "Find a title",
+        "matched": "“{title}” matched",
+        "matchedShort": "Matched",
+        "saveFailed": "Couldn’t save. Try again",
+        "loadError": "Couldn’t load the import rows",
+        "moreError": "Couldn’t load more",
+        "emptyTitle": "Everything is matched",
+        "emptyText": "Import rows that didn’t find a catalog title on their own show up here.",
+        "back": "Back to profiles"
+      }
+    },
     "library": {
       "managed": "Torsher layout",
       "managedText": "“Download” and “Keep” put torrent files here",
