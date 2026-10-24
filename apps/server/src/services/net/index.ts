@@ -17,6 +17,7 @@ export {
   reorderRoutes,
   updateRoute,
 } from './routes.ts'
+export { connectThroughRoute } from './socket.ts'
 
 /**
  * Как запрос уходит в сеть. Диспетчер маршрута отдаётся лениво: подменённый

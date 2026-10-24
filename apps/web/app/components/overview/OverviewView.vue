@@ -8,9 +8,10 @@ import PageBar from '~/components/shell/PageBar.vue'
 import { uptimeOf } from '~/lib/overview'
 import OverviewAttention from './OverviewAttention.vue'
 import OverviewTiles from './OverviewTiles.vue'
+import OverviewUpdate from './OverviewUpdate.vue'
 
 const { t } = useI18n()
-const { overview, state, load } = useOverview()
+const { overview, state, load, refresh } = useOverview()
 
 useOverviewPolling()
 
@@ -94,6 +95,11 @@ const meta = computed(() => {
       </section>
 
       <template v-else>
+        <OverviewUpdate
+          v-if="overview.update"
+          :update="overview.update"
+          @dismissed="refresh"
+        />
         <OverviewAttention
           v-if="overview.attention.length"
           :items="overview.attention"

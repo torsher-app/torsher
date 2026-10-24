@@ -95,9 +95,31 @@ When a folder already holds data, the panel asks what to do with it. **New only*
 
 The server exposes `GET /api/health`, and the image uses it for the Docker health check.
 
+### Updating
+
+Once a day the server checks the releases of its source repository on GitHub and shows **Version X is available** on the overview and under **Settings → About**, with the highlights of the release notes. The request carries no identifiers and no data about the server; turn it off under **Settings → About**. The **Beta** channel there also offers pre-releases.
+
+The container doesn't update itself. Run in the folder with your `docker-compose.yml`:
+
+```bash
+docker compose pull
+```
+
+```bash
+docker compose up -d
+```
+
+Docker replaces the container and keeps the `/data` volume. If the `image:` line names a version (`ghcr.io/torsher-app/torsher:0.3.0`), change it to the new one first; `:latest` follows stable releases and `:beta` follows every release. With `docker run`, stop and remove the container, `docker pull` the image and start it again with the same volumes. Tools that update containers automatically work too, but an update restarts the server and interrupts playback, so we recommend updating by hand when nobody is watching.
+
+### Notifications
+
+The bell in the panel shows server problems (the same as **Needs attention**), new versions, finished downloads and new devices. To get them when the panel is closed, add a channel under **Settings → Notifications**: Telegram, a webhook (Discord, Slack or JSON for your own receiver), ntfy, Gotify, email over SMTP, or your own `apprise-api` server for anything else. Each channel chooses its events and language and has **Send test**. A problem is reported once when it appears and, if you ask for it, once when it is resolved; a channel gets at most 20 messages an hour.
+
+Messages go through the routes in **Settings → Network**, so a channel that is only reachable through a proxy works once its host has a route. Tokens and passwords of channels are encrypted with `TORSHER_SECRET` like indexer keys.
+
 ### Forgot password
 
-The server has one account and sends no email, so the password is reset with a command inside the container:
+The server has one account and doesn't send password reset emails, so the password is reset with a command inside the container:
 
 ```bash
 docker exec -it torsher torsher reset-password

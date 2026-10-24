@@ -1,6 +1,5 @@
 import type { LogLevel } from './services/logs/index.ts'
 import process from 'node:process'
-import packageJson from '../package.json' with { type: 'json' }
 import { createApp } from './app.ts'
 import { config } from './config.ts'
 import { migrateDb } from './db/index.ts'
@@ -34,6 +33,13 @@ import {
   stopAllSessions,
 } from './services/media/index.ts'
 import { startCheck } from './services/net/check.ts'
+import {
+  announceServerUpdated,
+  announceUpdate,
+  checkEnabledIndexers,
+  purgeOldNotifications,
+  startNotificationMonitor,
+} from './services/notifications/schedule.ts'
 import { startImdbSchedule } from './services/ratings/imdb/index.ts'
 import { purgeExpiredExternalIds } from './services/ratings/index.ts'
 import { purgeExpiredAliases } from './services/sources/aliases.ts'
@@ -43,6 +49,11 @@ import { resumeMoves } from './services/storage/move.ts'
 import { onStoragePathsChanged } from './services/storage/paths.ts'
 import { getSetting } from './services/settings/index.ts'
 import { purgeExpiredMetaCache } from './services/tmdb/cache.ts'
+import {
+  onUpdateFound,
+  recordServerVersion,
+  startUpdateSchedule,
+} from './services/updates/index.ts'
 import {
   clearStreamSelections,
   onTorrentReady,
@@ -71,11 +82,19 @@ const logger = createLogger({ level: initialLevel, logsDir: config.logsDir })
 
 installLogger(logger)
 
-// Срок хранения данных TMDB ограничен: чистим и при старте, и раз в сутки
+// Сервер стартовал с новой версией — в центре уведомлений «Обновлено до X»
+const previousVersion = recordServerVersion()
+
+if (previousVersion)
+  announceServerUpdated(previousVersion, config.version)
+
+// Срок хранения данных TMDB ограничен: чистим и при старте, и раз в сутки.
+// Заодно — старые записи центра уведомлений
 function purgeTmdbData() {
   purgeExpiredMetaCache()
   purgeExpiredAliases()
   purgeExpiredExternalIds()
+  purgeOldNotifications()
 }
 
 purgeTmdbData()
@@ -138,6 +157,8 @@ mediaAccel().catch(err =>
   logFor('playback').warn({ err }, 'Acceleration check failed'),
 )
 startImdbSchedule()
+onUpdateFound(announceUpdate)
+startUpdateSchedule()
 
 const app = createApp(
   {
@@ -173,6 +194,8 @@ const engine = createEngine(logFor('engine'), () => {
 
 setInterval(checkStorage, STORAGE_CHECK_MS).unref()
 
+// Вместе с хостами — индексаторы: иначе «индексатор упал» было бы видно,
+// только когда владелец сам нажмёт «Проверить»
 function checkHosts() {
   try {
     startCheck()
@@ -180,6 +203,10 @@ function checkHosts() {
   catch (err) {
     logFor('network').error({ err }, 'Host check failed')
   }
+
+  checkEnabledIndexers().catch(err =>
+    logFor('sources').error({ err }, 'Indexer check failed'),
+  )
 }
 
 // Движок — дочерний процесс: без остановки он пережил бы сервер и держал
@@ -207,7 +234,7 @@ await app.listen({ port: config.port, host: config.host })
 
 logFor('server').info(
   {
-    version: packageJson.version,
+    version: config.version,
     port: config.port,
     platform: `${process.platform}/${process.arch}`,
     logLevel: getLogLevel(),
@@ -216,5 +243,6 @@ logFor('server').info(
 )
 
 void engine.start()
+startNotificationMonitor()
 checkHosts()
 setInterval(checkHosts, HOST_CHECK_MS).unref()
