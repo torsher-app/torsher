@@ -1,10 +1,12 @@
 import type { Plugin } from 'vite'
+import process from 'node:process'
 import vue from '@vitejs/plugin-vue'
 import { defineConfig } from 'vite'
 import { legacyApiGuard } from './build/legacyApiGuard.ts'
 
-const API_URL = 'http://localhost:3001'
-const PANEL_URL = 'http://localhost:3000'
+// Свои адреса задаёт стенд ветки (`pnpm dev:stand`): он поднимает всё на других портах
+const API_URL = process.env.TORSHER_API_URL || 'http://localhost:3001'
+const PANEL_URL = process.env.TORSHER_PANEL_URL || 'http://localhost:3000'
 
 /**
  * Витрина ведёт в панель по `panel/` рядом с собой, как на сервере. В
