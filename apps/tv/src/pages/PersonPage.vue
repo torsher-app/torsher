@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import type { PersonCredit, PersonDetails } from '@torsher/api-client'
 import type { SectionEdges } from '../focus/index.ts'
+import type { ComponentPublicInstance } from 'vue'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
+import ActionButton from '../components/ActionButton.vue'
 import AppIcon from '../components/AppIcon.vue'
 import ContentRow from '../components/ContentRow.vue'
 import FocusSection from '../components/FocusSection.vue'
@@ -185,7 +187,7 @@ function openTitle(item: PersonCredit) {
 }
 
 // Полный текст биографии — правая панель: стрелки листают текст, Back закрывает
-const bioButton = ref<HTMLElement>()
+const bioButton = ref<ComponentPublicInstance>()
 const bioText = ref<HTMLElement>()
 // Доля высоты текста на одно нажатие стрелки
 const BIO_STEP = 0.4
@@ -217,7 +219,7 @@ function closeBio() {
   bioOpen.value = false
   nextTick(() => {
     if (bioButton.value)
-      focus.focusOn(bioButton.value)
+      focus.focusOn(bioButton.value.$el)
   })
 }
 
@@ -299,15 +301,12 @@ onBeforeUnmount(() => {
             class="person__actions"
             :edges="edgesOf('person-actions')"
           >
-            <button
+            <ActionButton
               ref="bioButton"
               v-focusable
-              class="action"
-              type="button"
+              :label="t('person.biography')"
               @click="openBio"
-            >
-              {{ t("person.biography") }}
-            </button>
+            />
           </FocusSection>
         </div>
       </section>

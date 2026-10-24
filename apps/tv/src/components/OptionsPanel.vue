@@ -160,6 +160,7 @@ onBeforeUnmount(stopKey)
   margin: 0 0 calc(var(--u) * 30);
   font-size: var(--font-size-l);
   font-weight: 700;
+  overflow-wrap: break-word;
 }
 
 /* Список прокручивается нативно: у озвучек бывает десяток студий */
@@ -216,9 +217,13 @@ onBeforeUnmount(stopKey)
   margin-right: calc(var(--u) * 18);
 }
 
+/* Длинная строка переносится, а не обрезается: список прокручивается, полный
+   текст пункта виден сразу. Слово длиннее строки рвётся, а не вылезает под
+   значение справа */
 .options__text {
   flex: 1;
   min-width: 0;
+  overflow-wrap: break-word;
 }
 
 .options__hint {

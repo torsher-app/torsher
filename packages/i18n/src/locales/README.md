@@ -47,6 +47,10 @@ Group keys by screen or entity, keep nesting shallow, and reuse `common.*` inste
 
 Pull requests to this repository are not accepted. To contribute a translation, open an issue and attach the translated files.
 
+## Checking the Layout
+
+Run the development server and add `?pseudo` to the address (`http://localhost:5173/?pseudo#/`): every string is shown about 40% longer, with accents and in brackets, so you can see where a longer translation would not fit. It works only in development builds.
+
 ## Translation Guidelines
 
 1. Keep placeholders such as `{count}` and `{name}` unchanged.

@@ -1,5 +1,6 @@
 import type { Language, Messages } from '@torsher/i18n'
 import { fallbackLocale, messages, pluralRules } from '@torsher/i18n'
+import { pseudoLocalize } from '@torsher/i18n/pseudo'
 import { createI18n } from 'vue-i18n'
 import { localeOf } from './lib/language.ts'
 
@@ -9,12 +10,17 @@ function deviceLanguages() {
     : [navigator.language]
 }
 
+// `?pseudo` в адресе dev-сервера — проверка вёрстки на длинных строках любого
+// языка; в сборке условие ложно, и псевдолокаль вырезается
+const pseudo
+  = import.meta.env.DEV && new URLSearchParams(location.search).has('pseudo')
+
 export const i18n = createI18n<[Messages], Language, false>({
   legacy: false,
   // До выбора профиля — язык устройства
   locale: localeOf(null, deviceLanguages()),
   fallbackLocale,
-  messages,
+  messages: pseudo ? pseudoLocalize(messages) : messages,
   pluralRules,
 })
 

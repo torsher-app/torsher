@@ -13,8 +13,10 @@ import {
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { api } from '../api.ts'
+import ActionButton from '../components/ActionButton.vue'
 import AppIcon from '../components/AppIcon.vue'
 import AppLoader from '../components/AppLoader.vue'
+import ButtonRow from '../components/ButtonRow.vue'
 import FocusSection from '../components/FocusSection.vue'
 import { useCatalogLanguage } from '../composables/useCatalogLanguage.ts'
 import { useCatalogTitle } from '../composables/useCatalogTitle.ts'
@@ -507,55 +509,50 @@ onBeforeUnmount(() => {
         class="files__actions"
         :edges="{ up: 'files-back', down: 'files-list' }"
       >
-        <div ref="actions" class="files__actions-row">
-          <template v-if="hasList && !selecting">
-            <button
+        <div ref="actions">
+          <ButtonRow>
+            <ActionButton
+              v-if="hasList && !selecting"
               v-focusable
-              class="action files__select"
-              type="button"
+              icon="download"
+              :label="t('files.select')"
+              class="files__select"
               @click="startSelecting"
-            >
-              <AppIcon name="download" class="files__action-icon" />
-              {{ t("files.select") }}
-            </button>
-          </template>
-          <template v-else-if="hasList">
-            <button
-              v-focusable
-              class="action action--primary files__download"
-              type="button"
-              :aria-disabled="summary.count === 0 || downloading"
-              @click="downloadSelected"
-            >
-              <AppLoader
-                v-if="downloading"
-                class="files__action-icon"
-                :size="40"
+            />
+            <template v-else-if="hasList">
+              <ActionButton
+                v-focusable
+                primary
+                :label="
+                  summary.count > 0
+                    ? `${t('files.downloadSelected')} · ${t('download.files', summary.count)} · ${sizeLabel(summary.bytes)}`
+                    : t('files.selectedNone')
+                "
+                class="files__download"
+                :aria-disabled="summary.count === 0 || downloading"
+                @click="downloadSelected"
+              >
+                <template #icon>
+                  <AppLoader
+                    v-if="downloading"
+                    class="action-button__icon"
+                    :size="40"
+                  />
+                  <AppIcon v-else name="download" class="action-button__icon" />
+                </template>
+              </ActionButton>
+              <ActionButton
+                v-focusable
+                :label="t(allSelected ? 'files.clearAll' : 'files.selectAll')"
+                @click="selected = toggleAll(files, selected)"
               />
-              <AppIcon v-else name="download" class="files__action-icon" />
-              {{
-                summary.count > 0
-                  ? `${t("files.downloadSelected")} · ${t("download.files", summary.count)} · ${sizeLabel(summary.bytes)}`
-                  : t("files.selectedNone")
-              }}
-            </button>
-            <button
-              v-focusable
-              class="action"
-              type="button"
-              @click="selected = toggleAll(files, selected)"
-            >
-              {{ t(allSelected ? "files.clearAll" : "files.selectAll") }}
-            </button>
-            <button
-              v-focusable
-              class="action"
-              type="button"
-              @click="stopSelecting(true)"
-            >
-              {{ t("files.cancel") }}
-            </button>
-          </template>
+              <ActionButton
+                v-focusable
+                :label="t('files.cancel')"
+                @click="stopSelecting(true)"
+              />
+            </template>
+          </ButtonRow>
         </div>
       </FocusSection>
 
@@ -588,9 +585,11 @@ onBeforeUnmount(() => {
             <p class="files__state-title">
               {{ t(`files.${phase === "ready" ? "empty" : phase}`) }}
             </p>
-            <button v-focusable class="action" type="button" @click="back">
-              {{ t("files.toSources") }}
-            </button>
+            <ActionButton
+              v-focusable
+              :label="t('files.toSources')"
+              @click="back"
+            />
           </div>
 
           <template v-for="(file, index) in files" v-else :key="file.fileIndex">
@@ -954,12 +953,7 @@ onBeforeUnmount(() => {
   margin-top: calc(var(--u) * 24);
 }
 
-.files__actions-row {
-  display: flex;
-}
-
-.files__action-icon {
-  margin-right: calc(var(--u) * 14);
+.files__actions :deep(.action-button__icon) {
   font-size: calc(var(--u) * 36);
 }
 

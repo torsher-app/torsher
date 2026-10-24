@@ -11,10 +11,13 @@ import type {
 } from '@torsher/api-client'
 import type { PanelOption } from '../components/OptionsPanel.vue'
 import type { SectionEdges } from '../focus/index.ts'
+import type { ComponentPublicInstance } from 'vue'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
+import ActionButton from '../components/ActionButton.vue'
 import AppIcon from '../components/AppIcon.vue'
+import ButtonRow from '../components/ButtonRow.vue'
 import DownloadPanel from '../components/DownloadPanel.vue'
 import ContentRow from '../components/ContentRow.vue'
 import EpisodeCard from '../components/EpisodeCard.vue'
@@ -989,14 +992,14 @@ function pickDownload() {
   })
 }
 
-const downloadButton = ref<HTMLElement>()
-const primaryButton = ref<HTMLElement>()
+const downloadButton = ref<ComponentPublicInstance>()
+const primaryButton = ref<ComponentPublicInstance>()
 
 // Панель закрылась — фокус на кнопке, с которой её открыли
 function closeDownloadPanel() {
   downloadPanel.value = false
   nextTick(() => {
-    focus.focusOn(downloadButton.value ?? primaryButton.value!)
+    focus.focusOn((downloadButton.value ?? primaryButton.value!).$el)
   })
 }
 
@@ -1008,12 +1011,12 @@ watch(
     if (kind !== 'none' || previous === 'none')
       return
 
-    const button = downloadButton.value
+    const button = downloadButton.value?.$el
 
     if (button && document.activeElement === button) {
       nextTick(() => {
         if (primaryButton.value)
-          focus.focusOn(primaryButton.value)
+          focus.focusOn(primaryButton.value.$el)
       })
     }
 
@@ -1311,84 +1314,68 @@ onBeforeUnmount(() => {
           :edges="edgesOf('title-actions')"
           autofocus
         >
-          <button
-            ref="primaryButton"
-            v-focusable
-            class="action action--primary title__primary"
-            type="button"
-            @click="onPrimary"
-          >
-            <AppIcon name="play" class="title__action-icon" />
-            <span class="title__primary-text">
-              {{ t(resume ? "title.resume" : "title.watch") }}
-              <small v-if="primaryHint" class="title__primary-hint">
-                {{ primaryHint }}
-              </small>
-            </span>
-          </button>
-          <button
-            v-if="slot.kind !== 'none'"
-            ref="downloadButton"
-            v-focusable
-            class="action title__secondary title__download"
-            type="button"
-            @click="onDownload"
-          >
-            <AppIcon name="download" class="title__action-icon" />
-            <span class="title__primary-text">
-              {{ downloadLabel }}
-              <small v-if="downloadHint" class="title__primary-hint">
-                {{ downloadHint }}
-              </small>
-            </span>
-          </button>
-          <!-- Остальное — иконки: название кнопки в фокусе подписано под ней
-               отдельным слоем, ряд при смене фокуса не двигается -->
-          <button
-            v-if="resume || fromLibrary"
-            v-focusable
-            class="action title__icon"
-            type="button"
-            :aria-label="t('title.sources')"
-            @click="openSources"
-          >
-            <AppIcon name="source" />
-            <span class="title__caption">{{ t("title.sources") }}</span>
-          </button>
-          <button
-            v-focusable
-            class="action title__icon"
-            type="button"
-            :aria-pressed="!!mine?.watchlist"
-            :aria-label="t('actions.watchlist')"
-            @click="toggleWatchlist"
-          >
-            <AppIcon :name="mine?.watchlist ? 'check' : 'plus'" />
-            <span class="title__caption">{{ t("actions.watchlist") }}</span>
-          </button>
-          <button
-            v-focusable
-            class="action title__icon"
-            type="button"
-            :aria-label="t('actions.rate')"
-            @click="openActions('rating')"
-          >
-            <AppIcon name="star" />
-            <span v-if="mine?.rating" class="title__icon-value">
-              {{ mine.rating }}
-            </span>
-            <span class="title__caption">{{ t("actions.rate") }}</span>
-          </button>
-          <button
-            v-focusable
-            class="action title__icon"
-            type="button"
-            :aria-label="t('actions.more')"
-            @click="openActions()"
-          >
-            <AppIcon name="more" />
-            <span class="title__caption">{{ t("actions.more") }}</span>
-          </button>
+          <ButtonRow>
+            <ActionButton
+              ref="primaryButton"
+              v-focusable
+              primary
+              icon="play"
+              :label="t(resume ? 'title.resume' : 'title.watch')"
+              :value="primaryHint || undefined"
+              class="title__primary"
+              @click="onPrimary"
+            />
+            <ActionButton
+              v-if="slot.kind !== 'none'"
+              ref="downloadButton"
+              v-focusable
+              icon="download"
+              :label="downloadLabel"
+              :value="downloadHint || undefined"
+              class="title__secondary title__download"
+              @click="onDownload"
+            />
+            <!-- Остальное — значки: название кнопки в фокусе подписано под ней
+                 отдельным слоем, ряд при смене фокуса не двигается -->
+            <ActionButton
+              v-if="resume || fromLibrary"
+              v-focusable
+              icon-only
+              icon="source"
+              :label="t('title.sources')"
+              class="title__icon"
+              @click="openSources"
+            />
+            <ActionButton
+              v-focusable
+              icon-only
+              :icon="mine?.watchlist ? 'check' : 'plus'"
+              :label="t('actions.watchlist')"
+              class="title__icon"
+              :aria-pressed="!!mine?.watchlist"
+              @click="toggleWatchlist"
+            />
+            <ActionButton
+              v-focusable
+              icon-only
+              icon="star"
+              :label="t('actions.rate')"
+              class="title__icon"
+              @click="openActions('rating')"
+            >
+              <span v-if="mine?.rating" class="title__icon-value">
+                {{ mine.rating }}
+              </span>
+            </ActionButton>
+            <ActionButton
+              v-focusable
+              icon-only
+              icon="more"
+              :label="t('actions.more')"
+              class="title__icon"
+              @click="openActions()"
+            />
+          </ButtonRow>
         </FocusSection>
 
         <!-- Подсказка о том, что ниже, нужна только у верхнего края -->
@@ -1905,21 +1892,11 @@ onBeforeUnmount(() => {
   margin: 0 calc(var(--u) * 12);
 }
 
-/* Ширина по подписи, но не больше предела: вторая строка с пирами и
-   скоростью длинная, её хвост уходит в многоточие */
+/* Ширина по подписи, но уже общего предела: вторая строка с пирами и
+   скоростью длинная и меняется на ходу, её хвост уходит в многоточие */
 .title__download {
   max-width: calc(var(--u) * 480);
   font-variant-numeric: tabular-nums;
-}
-
-.title__download .title__primary-text {
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-}
-
-.title__download .title__primary-hint {
-  max-width: 100%;
 }
 
 .title__age {
@@ -1986,9 +1963,12 @@ onBeforeUnmount(() => {
   position: absolute;
   transition: opacity var(--motion-base) var(--motion-easing);
   top: calc(var(--u) * 742);
+  right: var(--safe-x);
   left: var(--content-x);
-  display: flex;
-  /* Кнопки ряда — одной высоты с двухстрочной главной */
+}
+
+/* Кнопки ряда — одной высоты с двухстрочной главной */
+.title__actions :deep(.button-row__fit) {
   align-items: stretch;
 }
 
@@ -1999,18 +1979,12 @@ onBeforeUnmount(() => {
   min-height: calc(var(--u) * 84);
 }
 
-.title__action-icon {
-  margin-right: calc(var(--u) * 14);
-}
-
 .title__secondary {
   margin-left: calc(var(--u) * 18);
 }
 
 /* Кнопка-иконка: квадрат высотой ряда, с оценкой — шире на число */
 .title__icon {
-  position: relative;
-  justify-content: center;
   min-width: calc(var(--u) * 84);
   margin-left: calc(var(--u) * 18);
   padding: 0 calc(var(--u) * 26);
@@ -2019,28 +1993,6 @@ onBeforeUnmount(() => {
 .title__icon-value {
   margin-left: calc(var(--u) * 10);
   font-variant-numeric: tabular-nums;
-}
-
-/* Подпись кнопки в фокусе — свой слой под кнопкой, как у «Назад»: ширина
-   кнопки и ряд не меняются. Кнопка в фокусе увеличена — подпись вместе с ней */
-.title__caption {
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  margin-top: calc(var(--u) * 14);
-  color: var(--color-text);
-  font-size: var(--font-size-s);
-  font-weight: 500;
-  white-space: nowrap;
-  text-shadow: 0 calc(var(--u) * 2) calc(var(--u) * 8) rgba(0, 0, 0, 0.6);
-  opacity: 0;
-  transform: translateX(-50%);
-  transition: opacity var(--motion-fast) var(--motion-easing);
-  pointer-events: none;
-}
-
-.title__icon:focus .title__caption {
-  opacity: 1;
 }
 
 /* Главная кнопка говорит, что вы получите: вторая строка — качество и озвучка */
@@ -2055,19 +2007,8 @@ onBeforeUnmount(() => {
   padding-bottom: calc(var(--u) * 12);
 }
 
-.title__primary-text {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-}
-
-.title__primary-hint {
+.title__primary :deep(.action-button__text) {
   max-width: calc(var(--u) * 520);
-  overflow: hidden;
-  font-size: var(--font-size-s);
-  font-weight: 500;
-  text-overflow: ellipsis;
-  opacity: 0.75;
 }
 
 .title__peek {

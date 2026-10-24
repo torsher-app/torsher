@@ -1,4 +1,6 @@
+import type { Rolldown } from 'vite'
 import { fileURLToPath } from 'node:url'
+import { PSEUDO_PAD } from '@torsher/i18n/pseudo'
 import { build } from 'vite'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { findLegacyApis, legacyApiGuard } from './legacyApiGuard.ts'
@@ -143,16 +145,27 @@ describe('legacyApiGuard', () => {
     ).rejects.toThrow(/Object\.hasOwn: есть с Chromium 93/)
   })
 
-  it('пропускает бандл витрины', async () => {
+  it('пропускает бандл витрины, псевдолокали в нём нет', async () => {
     // vitest выставляет NODE_ENV=test, и Vite собрал бы dev-вариант зависимостей
     vi.stubEnv('NODE_ENV', 'production')
 
-    await expect(
-      build({
-        root: appRoot,
-        logLevel: 'silent',
-        build: { write: false },
-      }),
-    ).resolves.toBeDefined()
+    const result = await build({
+      root: appRoot,
+      logLevel: 'silent',
+      build: { write: false },
+    })
+    const outputs = (
+      Array.isArray(result) ? result : [result]
+    ) as Rolldown.RolldownOutput[]
+    const code = outputs
+      .flatMap(({ output }) => output)
+      .map(file => (file.type === 'chunk' ? file.code : ''))
+      .join('\n')
+
+    // Не toContain: при провале он вывел бы в отчёт весь бандл
+    expect(code.includes('Subtitles')).toBe(true)
+    expect(code.includes(PSEUDO_PAD), 'псевдолокаль попала в бандл').toBe(
+      false,
+    )
   }, 60_000)
 })

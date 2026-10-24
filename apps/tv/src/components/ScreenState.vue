@@ -4,6 +4,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { expireSession } from '../session.ts'
+import ActionButton from './ActionButton.vue'
 
 const props = defineProps<{
   kind: LoadError | 'empty' | 'homeEmpty' | 'catalogEmpty' | 'libraryEmpty'
@@ -42,24 +43,19 @@ function connect() {
     <p class="state__text">
       {{ t(`state.${kind}.text`) }}
     </p>
-    <button
+    <ActionButton
       v-if="reconnect"
       v-focusable
-      class="action action--primary"
-      type="button"
+      primary
+      :label="t('state.connect')"
       @click="connect"
-    >
-      {{ t("state.connect") }}
-    </button>
-    <button
+    />
+    <ActionButton
       v-if="canRetry"
       v-focusable
-      class="action"
-      type="button"
+      :label="t('state.retry')"
       @click="$emit('retry')"
-    >
-      {{ t("state.retry") }}
-    </button>
+    />
     <slot />
   </div>
 </template>

@@ -20,6 +20,7 @@ import {
 } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
+import ActionButton from '../components/ActionButton.vue'
 import AppIcon from '../components/AppIcon.vue'
 import AppRail from '../components/AppRail.vue'
 import FocusSection from '../components/FocusSection.vue'
@@ -720,15 +721,12 @@ onBeforeUnmount(() => {
         :edges="{ left: RAIL_SECTION, up: 'catalog-controls' }"
       >
         <ScreenState kind="catalogEmpty">
-          <button
+          <ActionButton
             v-if="changed"
             v-focusable
-            class="action"
-            type="button"
+            :label="t('catalog.reset')"
             @click="reset"
-          >
-            {{ t("catalog.reset") }}
-          </button>
+          />
         </ScreenState>
       </FocusSection>
     </div>
@@ -776,9 +774,11 @@ onBeforeUnmount(() => {
             <p class="catalog__more-text">
               {{ t("catalog.moreFailed") }}
             </p>
-            <button v-focusable class="action" type="button" @click="loadMore">
-              {{ t("state.retry") }}
-            </button>
+            <ActionButton
+              v-focusable
+              :label="t('state.retry')"
+              @click="loadMore"
+            />
           </div>
         </FocusSection>
       </div>
