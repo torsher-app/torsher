@@ -3,7 +3,9 @@ import tmdbLogo from '@torsher/tokens/assets/tmdb.svg'
 import { onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
+import ActionButton from '../components/ActionButton.vue'
 import AppRail from '../components/AppRail.vue'
+import ButtonRow from '../components/ButtonRow.vue'
 import FocusSection from '../components/FocusSection.vue'
 import { useAbout } from '../composables/useAbout.ts'
 import { useFocus } from '../focus/index.ts'
@@ -106,18 +108,19 @@ onBeforeUnmount(stopKey)
       :edges="{ left: RAIL_SECTION }"
       autofocus
     >
-      <button v-focusable class="action" type="button" @click="goBack(router)">
-        {{ t("common.back") }}
-      </button>
-      <button
-        v-if="isTv && canReturnToShell"
-        v-focusable
-        class="action"
-        type="button"
-        @click="returnToShell(router.options.history)"
-      >
-        {{ t("about.changeServer") }}
-      </button>
+      <ButtonRow>
+        <ActionButton
+          v-focusable
+          :label="t('common.back')"
+          @click="goBack(router)"
+        />
+        <ActionButton
+          v-if="isTv && canReturnToShell"
+          v-focusable
+          :label="t('about.changeServer')"
+          @click="returnToShell(router.options.history)"
+        />
+      </ButtonRow>
     </FocusSection>
 
     <!-- Атрибуция IMDb по их условиям, пока оценки включены. Ниже кнопок: строка

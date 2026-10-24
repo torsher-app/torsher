@@ -19,6 +19,7 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { api } from '../api.ts'
 import type { PanelOption } from './OptionsPanel.vue'
+import ActionButton from './ActionButton.vue'
 import AppIcon from './AppIcon.vue'
 import AppLoader from './AppLoader.vue'
 import LibraryRow from './LibraryRow.vue'
@@ -83,7 +84,10 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   select: [candidate: SourceCandidate, choice: SourceChoice]
-  library: [fileId: string, title: { season?: number | null, episode?: number | null }]
+  library: [
+    fileId: string,
+    title: { season?: number | null, episode?: number | null },
+  ]
   back: []
 }>()
 
@@ -808,29 +812,26 @@ const meta = computed(() => {
         class="sources__controls"
         :edges="edgesOf('controls')"
       >
-        <button
+        <ActionButton
           v-for="control in controls"
           :key="control.id"
           v-focusable
-          class="chip"
+          chip
+          :label="control.label"
           :style="{ flexShrink: chipShrink(control.label) }"
-          type="button"
           @click="openPanel(control.id)"
-        >
-          <span class="sources__control">{{ control.label }}</span>
-        </button>
+        />
         <!-- Сброс — значком: строка фильтров не должна переноситься -->
-        <button
+        <ActionButton
           v-if="hasFilter"
           v-focusable
-          class="chip sources__reset"
-          type="button"
-          :aria-label="t('sources.resetFilters')"
-          :title="t('sources.resetFilters')"
+          chip
+          icon-only
+          icon="close"
+          :label="t('sources.resetFilters')"
+          class="sources__reset"
           @click="resetFilters"
-        >
-          <AppIcon name="close" />
-        </button>
+        />
       </FocusSection>
 
       <FocusSection
@@ -863,9 +864,11 @@ const meta = computed(() => {
           <p class="sources__state-title">
             {{ t("watch.searchFailed") }}
           </p>
-          <button v-focusable class="action" type="button" @click="refresh">
-            {{ t("sources.refresh") }}
-          </button>
+          <ActionButton
+            v-focusable
+            :label="t('sources.refresh')"
+            @click="refresh"
+          />
         </div>
 
         <template v-else>
@@ -876,15 +879,12 @@ const meta = computed(() => {
             <p class="sources__state-text">
               {{ t(`sources.empty.${emptyKind}.text`, { query }) }}
             </p>
-            <button
+            <ActionButton
               v-if="canRefine"
               v-focusable
-              class="action"
-              type="button"
+              :label="t('sources.query.action')"
               @click="openPanel('query')"
-            >
-              {{ t("sources.query.action") }}
-            </button>
+            />
           </div>
 
           <SourceRow
@@ -898,9 +898,11 @@ const meta = computed(() => {
           />
 
           <div class="sources__footer">
-            <button v-focusable class="action" type="button" @click="refresh">
-              {{ t("sources.refresh") }}
-            </button>
+            <ActionButton
+              v-focusable
+              :label="t('sources.refresh')"
+              @click="refresh"
+            />
           </div>
         </template>
       </FocusSection>
@@ -1093,12 +1095,9 @@ const meta = computed(() => {
 }
 
 /* Длинное значение («Озвучка: HDRezka Studio») обрезается, а не переносит строку */
-.sources__control {
-  min-width: 0;
+/* Предел — у текста, а не у строки: строка с max-width 100% сжимается вместе с чипом */
+.sources__controls :deep(.action-button__text) {
   max-width: calc(var(--u) * 340);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .sources__query-input {

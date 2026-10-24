@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
+import ActionButton from '../components/ActionButton.vue'
 import AppIcon from '../components/AppIcon.vue'
 import AppLoader from '../components/AppLoader.vue'
+import ButtonRow from '../components/ButtonRow.vue'
 import FocusSection from '../components/FocusSection.vue'
 import { useHeldLoading } from '../composables/useHeldLoading.ts'
 import { usePairing } from '../composables/usePairing.ts'
@@ -70,32 +72,26 @@ const loading = useHeldLoading(() => phase.value === 'loading')
         </ol>
 
         <FocusSection name="connect-actions" autofocus>
-          <button
-            v-if="phase === 'error'"
-            v-focusable
-            class="action action--primary"
-            type="button"
-            @click="retry"
-          >
-            {{ t("state.retry") }}
-          </button>
-          <button
-            v-focusable
-            class="action"
-            type="button"
-            @click="signInAsOwner"
-          >
-            {{ t("connect.owner") }}
-          </button>
-          <button
-            v-if="isTv && canReturnToShell"
-            v-focusable
-            class="action"
-            type="button"
-            @click="returnToShell(router.options.history)"
-          >
-            {{ t("about.changeServer") }}
-          </button>
+          <ButtonRow>
+            <ActionButton
+              v-if="phase === 'error'"
+              v-focusable
+              primary
+              :label="t('state.retry')"
+              @click="retry"
+            />
+            <ActionButton
+              v-focusable
+              :label="t('connect.owner')"
+              @click="signInAsOwner"
+            />
+            <ActionButton
+              v-if="isTv && canReturnToShell"
+              v-focusable
+              :label="t('about.changeServer')"
+              @click="returnToShell(router.options.history)"
+            />
+          </ButtonRow>
         </FocusSection>
       </div>
 

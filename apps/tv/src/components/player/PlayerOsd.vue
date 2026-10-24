@@ -9,7 +9,9 @@ import {
   formatSpeed,
   networkState,
 } from '../../lib/player.ts'
+import ActionButton from '../ActionButton.vue'
 import AppIcon from '../AppIcon.vue'
+import ButtonRow from '../ButtonRow.vue'
 import FocusSection from '../FocusSection.vue'
 import PlayerTimeline from './PlayerTimeline.vue'
 import SignalBars from './SignalBars.vue'
@@ -177,91 +179,74 @@ const networkText = computed(() => {
         :edges="{ up: 'player-timeline' }"
         manual-scroll
       >
-        <div class="osd__buttons">
+        <ButtonRow class="osd__buttons">
           <!-- Выделена, но фокус остаётся на таймлайне: OK там — пауза, а
                сюда переходят ↓, если правда нужно с начала -->
-          <button
+          <ActionButton
             v-if="fromStart"
             v-focusable
-            class="action action--primary osd__button"
-            type="button"
+            primary
+            icon="fromStart"
+            :label="t('player.fromStart')"
+            class="osd__button"
             @click="emit('fromStart')"
-          >
-            <AppIcon name="fromStart" class="osd__button-icon" />
-            {{ t("player.fromStart") }}
-          </button>
-          <button
+          />
+          <ActionButton
             v-if="audioLabel !== null"
             v-focusable
-            class="action osd__button"
-            type="button"
+            icon="audio"
+            :label="t('player.audio')"
+            :value="audioLabel"
+            class="osd__button"
             @click="emit('tracks', 'audio')"
-          >
-            <AppIcon name="audio" class="osd__button-icon" />
-            <span class="osd__button-text">
-              {{ t("player.audio") }}
-              <span class="osd__button-value">{{ audioLabel }}</span>
-            </span>
-          </button>
-          <button
+          />
+          <ActionButton
             v-if="subtitlesLabel !== null"
             v-focusable
-            class="action osd__button"
-            type="button"
+            icon="subtitles"
+            :label="t('player.subtitles')"
+            :value="subtitlesLabel"
+            class="osd__button"
             @click="emit('tracks', 'subtitles')"
-          >
-            <AppIcon name="subtitles" class="osd__button-icon" />
-            <span class="osd__button-text">
-              {{ t("player.subtitles") }}
-              <span class="osd__button-value">{{ subtitlesLabel }}</span>
-            </span>
-          </button>
-          <button
+          />
+          <ActionButton
             v-if="series"
             v-focusable
-            class="action osd__button"
-            type="button"
+            icon="list"
+            :label="t('player.episodes.button')"
+            class="osd__button"
             @click="emit('panel', 'episodes')"
-          >
-            <AppIcon name="list" class="osd__button-icon" />
-            {{ t("player.episodes.button") }}
-          </button>
-          <button
+          />
+          <ActionButton
             v-if="titled"
             v-focusable
-            class="action osd__button"
-            type="button"
+            icon="source"
+            :label="t('player.source.button')"
+            :value="sourceLabel || undefined"
+            class="osd__button"
             @click="emit('panel', 'source')"
-          >
-            <AppIcon name="source" class="osd__button-icon" />
-            <span class="osd__button-text">
-              {{ t("player.source.button") }}
-              <span v-if="sourceLabel" class="osd__button-value">{{
-                sourceLabel
-              }}</span>
-            </span>
-          </button>
-          <button
+          />
+          <ActionButton
             v-if="hasNext"
             v-focusable
-            class="action osd__button"
-            type="button"
+            icon="next"
+            :label="t('player.next')"
+            class="osd__button"
             @click="emit('next')"
-          >
-            <AppIcon name="next" class="osd__button-icon" />
-            {{ t("player.next") }}
-          </button>
-          <!-- Настройки — значком у правого края: ряд кнопок не переносится -->
-          <button
-            v-focusable
-            class="action osd__button osd__button--round"
-            type="button"
-            :aria-label="t('player.settings.button')"
-            @click="emit('panel', 'settings')"
-          >
-            <AppIcon name="settings" class="osd__button-icon" />
-          </button>
-        </div>
+          />
+          <!-- Настройки — значком в своём блоке у правого края: кнопки ряда
+               сжимаются до него, но не наезжают -->
+          <template #end>
+            <ActionButton
+              v-focusable
+              icon-only
+              icon="settings"
+              :label="t('player.settings.button')"
+              class="osd__button osd__button--round"
+              @click="emit('panel', 'settings')"
+            />
+          </template>
+        </ButtonRow>
       </FocusSection>
     </div>
   </div>
@@ -409,11 +394,9 @@ const networkText = computed(() => {
   font-weight: 600;
 }
 
-.osd__buttons {
-  display: flex;
-}
-
 .osd__button {
+  --action-icon-gap: calc(var(--u) * 16);
+
   height: calc(var(--u) * 76);
   padding: 0 calc(var(--u) * 26);
   margin-right: calc(var(--u) * 18);
@@ -424,31 +407,21 @@ const networkText = computed(() => {
   justify-content: center;
   width: calc(var(--u) * 76);
   margin-right: 0;
-  margin-left: auto;
   padding: 0;
   border-radius: 50%;
 }
 
-.osd__button--round .osd__button-icon {
-  margin-right: 0;
-}
-
-.osd__button-icon {
+.osd__button :deep(.action-button__icon) {
   width: calc(var(--u) * 28);
   height: calc(var(--u) * 28);
-  margin-right: calc(var(--u) * 16);
 }
 
-.osd__button-text {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+.osd__button :deep(.action-button__text) {
   line-height: 1.12;
 }
 
-.osd__button-value {
+.osd__button :deep(.action-button__value) {
   font-size: calc(var(--u) * 22);
-  font-weight: 500;
   opacity: 0.72;
 }
 </style>

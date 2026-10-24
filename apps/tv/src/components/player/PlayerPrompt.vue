@@ -1,5 +1,7 @@
 <script setup lang="ts" generic="T extends string">
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import ActionButton from '../ActionButton.vue'
+import ButtonRow from '../ButtonRow.vue'
 import FocusSection from '../FocusSection.vue'
 
 // Содержимое сцены плеера (`PlayerStage`): заголовок, текст и действия по центру
@@ -51,21 +53,20 @@ onBeforeUnmount(() => clearTimeout(shakeTimer))
       autofocus
       manual-scroll
     >
-      <button
-        v-for="(action, index) in actions"
-        :key="action.id"
-        v-focusable
-        class="action"
-        :class="{
-          'action--primary': index === 0,
-          'prompt__action--busy': action.id === busy,
-          'prompt__action--shake': shaking && index === 0,
-        }"
-        type="button"
-        @click="emit('choose', action.id)"
-      >
-        {{ action.label }}
-      </button>
+      <ButtonRow center>
+        <ActionButton
+          v-for="(action, index) in actions"
+          :key="action.id"
+          v-focusable
+          :primary="index === 0"
+          :label="action.label"
+          :class="{
+            'prompt__action--busy': action.id === busy,
+            'prompt__action--shake': shaking && index === 0,
+          }"
+          @click="emit('choose', action.id)"
+        />
+      </ButtonRow>
     </FocusSection>
   </div>
 </template>
@@ -92,8 +93,7 @@ onBeforeUnmount(() => clearTimeout(shakeTimer))
 
 /* Где остановились — та же дорожка, что у серий в карточке и «Файлах» */
 .prompt__actions {
-  display: flex;
-  justify-content: center;
+  align-self: stretch;
   margin-top: var(--space-4);
 }
 

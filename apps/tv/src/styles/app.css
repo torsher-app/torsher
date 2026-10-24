@@ -132,6 +132,152 @@ button {
 }
 
 /*
+ * Кнопка и чип с подписью (`ActionButton.vue`): ширина по тексту, но не больше
+ * `--action-max-width`. Название и вторая строка — свои строки, каждая
+ * обрезается многоточием: на самой кнопке (flex-контейнере) text-overflow не
+ * работает. Отступ от значка — у текста, поэтому спрятанный текст его убирает
+ */
+.action-button {
+  position: relative;
+  max-width: var(--action-max-width);
+}
+
+.action-button--icon {
+  justify-content: center;
+}
+
+.action-button__icon + .action-button__text {
+  margin-left: var(--action-icon-gap, calc(var(--u) * 14));
+}
+
+.action-button__text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.action-button__label,
+.action-button__value {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.action-button__value {
+  font-size: var(--font-size-s);
+  font-weight: 500;
+  opacity: 0.75;
+}
+
+/*
+ * Полное название кнопки в фокусе, когда на ней его не видно целиком
+ * (обрезано, спрятано сжатием ряда, кнопка-значок): свой слой под кнопкой,
+ * меняется только opacity — ширина кнопки и соседи не двигаются. Кнопка в
+ * фокусе увеличена — подпись вместе с ней. У края окна подпись сдвигает
+ * `ActionButton` (`margin-left`)
+ */
+.action-button__caption {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-top: calc(var(--u) * 10);
+  padding: calc(var(--u) * 4) calc(var(--u) * 12);
+  border-radius: var(--radius-s);
+  /* Плашка: под рядом бывает и фон, и текст (строки «Источников») */
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  font-size: var(--font-size-s);
+  font-weight: 500;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateX(-50%);
+  transition: opacity var(--motion-fast) var(--motion-easing);
+  pointer-events: none;
+}
+
+.action-button--captioned:focus .action-button__caption {
+  opacity: 1;
+}
+
+/*
+ * Ряд кнопок (`ButtonRow.vue`): кнопки — в окне, которое сжимается и режет
+ * лишнее, `end` — своей ширины справа. Окно раздвинуто на запас под кольцо по
+ * бокам и под подпись сверху и снизу (поле и такой же отрицательный отступ):
+ * кнопки стоят на прежнем месте. Поле прозрачно для указки — клики по соседям
+ * (таймлайн плеера над рядом) проходят
+ */
+.button-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.button-row__fit {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  min-width: 0;
+  margin: calc(var(--action-caption-room) * -1) calc(var(--focus-ring-gap) * -1);
+  padding: var(--action-caption-room) var(--focus-ring-gap);
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.button-row__fit > * {
+  flex-shrink: 0;
+  pointer-events: auto;
+}
+
+/* Не justify-content: при переполнении он вытолкнул бы кнопки и за левый край */
+.button-row--center > .button-row__fit > :first-child {
+  margin-left: auto;
+}
+
+.button-row--center > .button-row__fit > :last-child {
+  margin-right: auto;
+}
+
+/* Отступ — запас под увеличение крайней кнопки в фокусе: она не заходит на `end` */
+.button-row__end {
+  display: flex;
+  flex: none;
+  align-items: center;
+  margin-left: var(--focus-ring-gap);
+}
+
+/* Ступени сжатия ряда (`src/lib/rowFit.ts`): `data-fit` у окна и
+   `data-collapsed` у свёрнутых в значок кнопок ставит `useRowFit` */
+[data-fit='1'] > .action-button:not(.action-button--valued),
+[data-fit='2'] > .action-button:not(.action-button--valued),
+[data-fit='3'] > .action-button:not(.action-button--valued) {
+  max-width: calc(var(--action-max-width) / 2);
+}
+
+[data-fit='2'] > .action-button:not(.action-button--primary) .action-button__value,
+[data-fit='3'] > .action-button:not(.action-button--primary) .action-button__value {
+  display: none;
+}
+
+[data-fit] > .action-button[data-collapsed],
+[data-fit='3'] > .action-button--iconed:not(.action-button--primary) {
+  justify-content: center;
+}
+
+[data-fit] > .action-button[data-collapsed] .action-button__text,
+[data-fit='3'] > .action-button--iconed:not(.action-button--primary) .action-button__text {
+  display: none;
+}
+
+/* Не влез и значками — сжимается главная кнопка, её текст уходит в многоточие */
+[data-fit='3'] > .action-button--primary {
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+/*
  * «Назад» в левом верхнем углу полноэкранных экранов (карточка, персона,
  * «Источники», «Файлы»): видна всегда, и на ТВ — кнопка, пропадающая при
  * переходе на пульт, выглядит сломанной. В покое и под указкой — круг со

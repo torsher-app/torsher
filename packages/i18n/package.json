@@ -5,7 +5,8 @@
   "private": true,
   "exports": {
     ".": "./src/index.ts",
-    "./locales/*": "./src/locales/*"
+    "./locales/*": "./src/locales/*",
+    "./pseudo": "./src/pseudo.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
