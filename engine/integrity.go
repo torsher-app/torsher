@@ -71,7 +71,17 @@ func (a *api) verifyHoles(t *torrent.Torrent) int {
 		return 0
 	}
 
-	// Проверка кусков независима: параллельно по числу ядер
+	a.verifyPieces(t, pieces)
+
+	a.logger.Warn("pieces marked complete over file holes were rechecked",
+		"hash", t.InfoHash().HexString(), "pieces", len(pieces))
+
+	return len(pieces)
+}
+
+// Перепроверка кусков по хэшу; проверка кусков независима — параллельно по
+// числу ядер
+func (a *api) verifyPieces(t *torrent.Torrent, pieces []*torrent.Piece) {
 	queue := make(chan *torrent.Piece)
 	var wg sync.WaitGroup
 
@@ -92,9 +102,4 @@ func (a *api) verifyHoles(t *torrent.Torrent) int {
 	}
 	close(queue)
 	wg.Wait()
-
-	a.logger.Warn("pieces marked complete over file holes were rechecked",
-		"hash", t.InfoHash().HexString(), "pieces", len(pieces))
-
-	return len(pieces)
 }

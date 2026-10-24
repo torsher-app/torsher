@@ -45,8 +45,21 @@ func downloaded(t *testing.T, engine *api, server *httptest.Server, fx fixture) 
 	t.Helper()
 
 	hash := downloadFixture(t, engine, server, fx)
+	checks := 0
 	waitFor(t, 30*time.Second, func() bool {
-		return stateOfHash(t, engine, hash).WantedCompleted == int64(len(fx.content))
+		if stateOfHash(t, engine, hash).WantedCompleted == int64(len(fx.content)) {
+			return true
+		}
+
+		// Соединение с сидером изредка рвётся до конца закачки, а сам он не
+		// переподключается: тесты переноса проверяют не закачку
+		if checks++; checks%40 == 0 {
+			if added, ok := engine.client.Torrent(hash); ok {
+				added.AddClientPeer(fx.seeder)
+			}
+		}
+
+		return false
 	})
 
 	return hash

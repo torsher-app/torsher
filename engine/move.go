@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sync"
+	"time"
 
 	"github.com/anacrolix/torrent"
 	"github.com/anacrolix/torrent/metainfo"
@@ -275,12 +276,12 @@ func (a *api) startMove(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		t.Drop()
+		complete := dropTorrent(t)
 		a.windows.forget(hash)
 		adoptPartFiles(to, info)
 
 		// Сессия уже переключена: раздача вернётся при перезапуске движка
-		if err := a.reopen(mi, to, saved); err != nil {
+		if err := a.reopen(mi, to, saved, complete); err != nil {
 			a.logger.With("hash", hash.HexString()).Error("reopen torrent", "err", err)
 		}
 
@@ -302,12 +303,53 @@ func (a *api) startMove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	t.Drop()
-	a.windows.forget(hash)
-
-	go a.runMove(job, mi, info, from, to, saved)
+	// Ожидание проверок кусков не держит ответ: задание уже занято
+	go func() {
+		complete := dropTorrent(t)
+		a.windows.forget(hash)
+		a.runMove(job, mi, info, from, to, saved, complete)
+	}()
 
 	writeJSON(w, http.StatusAccepted, job.snapshot())
+}
+
+// Сколько перенос ждёт, пока куски допроверятся перед тем, как раздачу убрать
+const settleTimeout = 30 * time.Second
+
+// Убирает раздачу из клиента и возвращает её скачанные куски. Сразу после
+// закачки последние куски ещё проверяются по хэшу и записывают отметку:
+// проверка, оборванная закрытием хранилища, снимает отметку, и такие куски
+// качались бы снова. Поэтому сначала ждём, пока проверки закончатся, а
+// открытая заново раздача перепроверяет то, что всё же потерялось (`reopen`)
+func dropTorrent(t *torrent.Torrent) []int {
+	deadline := time.Now().Add(settleTimeout)
+
+	for time.Now().Before(deadline) && piecesBusy(t) {
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	var complete []int
+
+	for index := range t.NumPieces() {
+		if t.Piece(index).State().Complete {
+			complete = append(complete, index)
+		}
+	}
+
+	t.Drop()
+
+	return complete
+}
+
+func piecesBusy(t *torrent.Torrent) bool {
+	for index := range t.NumPieces() {
+		state := t.Piece(index).State()
+		if state.Hashing || state.QueuedForHash || state.Marking {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (a *api) moveStatus(w http.ResponseWriter, r *http.Request) {
@@ -333,7 +375,7 @@ func (a *api) moveStatus(w http.ResponseWriter, r *http.Request) {
 // Три шага, после каждого состояние рабочее: файлы ставятся в новый каталог
 // рядом с исходниками → раздача открывается в новом каталоге → исходники
 // удаляются. Сбой первого шага убирает поставленное, раздача остаётся на месте
-func (a *api) runMove(job *moveJob, mi *metainfo.MetaInfo, info *metainfo.Info, from, to string, saved savedTorrent) {
+func (a *api) runMove(job *moveJob, mi *metainfo.MetaInfo, info *metainfo.Info, from, to string, saved savedTorrent, complete []int) {
 	hash := mi.HashInfoBytes()
 	log := a.logger.With("hash", hash.HexString())
 	log.Info("torrent move started")
@@ -347,7 +389,7 @@ func (a *api) runMove(job *moveJob, mi *metainfo.MetaInfo, info *metainfo.Info, 
 			log.Warn("save session", "err", err)
 		}
 
-		if err := a.reopen(mi, from, saved); err != nil {
+		if err := a.reopen(mi, from, saved, complete); err != nil {
 			log.Warn("reopen torrent", "err", err)
 		}
 
@@ -403,7 +445,7 @@ func (a *api) runMove(job *moveJob, mi *metainfo.MetaInfo, info *metainfo.Info, 
 
 	// Файлы уже в новом каталоге и сессия переключена: задание удалось,
 	// а раздача без клиента до перезапуска движка — повод для ошибки в журнале
-	if err := a.reopen(mi, to, saved); err != nil {
+	if err := a.reopen(mi, to, saved, complete); err != nil {
 		log.Error("reopen torrent", "err", err)
 	}
 
@@ -420,8 +462,9 @@ func (a *api) runMove(job *moveJob, mi *metainfo.MetaInfo, info *metainfo.Info, 
 	log.Info("torrent move finished", "bytes", total)
 }
 
-// Раздача снова в клиенте в своём каталоге, с выбором и паузой, как была
-func (a *api) reopen(mi *metainfo.MetaInfo, dir string, saved savedTorrent) error {
+// Раздача снова в клиенте в своём каталоге, с выбором и паузой, как была.
+// `complete` — куски, скачанные до того, как раздачу убрали из клиента
+func (a *api) reopen(mi *metainfo.MetaInfo, dir string, saved savedTorrent, complete []int) error {
 	t, err := a.addIn(mi, dir)
 	if err != nil {
 		return err
@@ -429,6 +472,16 @@ func (a *api) reopen(mi *metainfo.MetaInfo, dir string, saved savedTorrent) erro
 
 	<-t.GotInfo()
 	a.verifyHoles(t)
+
+	var lost []*torrent.Piece
+	for _, index := range complete {
+		if piece := t.Piece(index); !piece.State().Complete {
+			lost = append(lost, piece)
+		}
+	}
+	if len(lost) > 0 {
+		a.verifyPieces(t, lost)
+	}
 
 	if saved.Paused {
 		a.setPaused(t, true, saved.Selected)
