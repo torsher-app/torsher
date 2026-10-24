@@ -787,3 +787,95 @@ export const mediaFiles = sqliteTable(
 )
 
 export type MediaFile = typeof mediaFiles.$inferSelect
+
+// Версии, с которыми стартовал сервер: смена версии — запись и сообщение
+// «Сервер обновлён» в центре уведомлений
+export const serverVersions = sqliteTable('server_versions', {
+  id: integer('id').primaryKey({ autoIncrement: true }),
+  version: text('version').notNull(),
+  commit: text('commit'),
+  startedAt: integer('started_at', { mode: 'timestamp_ms' })
+    .notNull()
+    .$defaultFn(() => new Date()),
+})
+
+export const notificationSeverities = ['error', 'warning', 'info'] as const
+
+// Центр уведомлений панели. У проблемы (`kind = problem`) открытая строка —
+// без `resolved_at`: по ней монитор помнит её после перезапуска
+export const notifications = sqliteTable(
+  'notifications',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => randomUUID()),
+    kind: text('kind').notNull(),
+    // Вид проблемы из «Требует внимания» (`attentionKinds`)
+    problem: text('problem'),
+    severity: text('severity', { enum: notificationSeverities }).notNull(),
+    section: text('section'),
+    params: text('params', { mode: 'json' })
+      .$type<Record<string, unknown>>()
+      .notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    readAt: integer('read_at', { mode: 'timestamp_ms' }),
+    resolvedAt: integer('resolved_at', { mode: 'timestamp_ms' }),
+    // Внешнее «решено» отправлено или решено не отправлять: без отметки
+    // недавно решённая проблема после перезапуска снова ждёт окна тишины
+    resolutionSentAt: integer('resolution_sent_at', { mode: 'timestamp_ms' }),
+  },
+  table => [
+    index('notifications_created_at_idx').on(table.createdAt),
+    index('notifications_problem_idx').on(table.problem, table.resolvedAt),
+  ],
+)
+
+export const notificationChannelKinds = [
+  'telegram',
+  'webhook',
+  'ntfy',
+  'gotify',
+  'apprise',
+  'email',
+] as const
+
+// Внешний канал уведомлений. Секретные поля `config` — шифртекстом
+// (services/secrets), какие именно — знает провайдер канала
+export const notificationChannels = sqliteTable('notification_channels', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => randomUUID()),
+  kind: text('kind', { enum: notificationChannelKinds }).notNull(),
+  name: text('name').notNull(),
+  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+  // Язык сообщений: язык панели живёт в браузере, а сообщение уходит без него
+  language: text('language', { enum: profileLanguages }).notNull(),
+  // Адрес панели для ссылок в сообщениях: сервер свой внешний адрес не знает
+  panelUrl: text('panel_url'),
+  config: text('config', { mode: 'json' })
+    .$type<Record<string, unknown>>()
+    .notNull(),
+  // Группы событий (`notificationGroups`)
+  events: text('events', { mode: 'json' }).$type<string[]>().notNull(),
+  includeWarnings: integer('include_warnings', { mode: 'boolean' })
+    .notNull()
+    .default(false),
+  notifyResolved: integer('notify_resolved', { mode: 'boolean' })
+    .notNull()
+    .default(false),
+  lastSentAt: integer('last_sent_at', { mode: 'timestamp_ms' }),
+  lastError: text('last_error', { mode: 'json' }).$type<{
+    kind: string
+    at: string
+  }>(),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+    .notNull()
+    .$defaultFn(() => new Date()),
+})
+
+export type NotificationChannel = typeof notificationChannels.$inferSelect

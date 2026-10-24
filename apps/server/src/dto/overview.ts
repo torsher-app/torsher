@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { overviewUpdate } from './updates.ts'
 
 export const attentionKinds = [
   'engine_down',
@@ -53,6 +54,8 @@ export const overviewResponse = z
     version: z.string(),
     // Сначала ошибки, затем предупреждения; пусто — всё в порядке
     attention: z.array(attentionItem),
+    // Новая версия, пока владелец её не скрыл
+    update: overviewUpdate.optional(),
     downloads: z.object({
       total: z.number(),
       // Качаются сейчас, в том числе без пиров

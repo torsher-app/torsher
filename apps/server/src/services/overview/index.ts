@@ -1,7 +1,7 @@
 import type { AttentionItem } from '../../dto/overview.ts'
 import type { EngineTorrentState } from '../engine/index.ts'
 import { performance } from 'node:perf_hooks'
-import packageJson from '../../../package.json' with { type: 'json' }
+import { config } from '../../config.ts'
 import { isWatching, listDevices } from '../devices/index.ts'
 import { engineCrashCount, engineState } from '../engine/index.ts'
 import { listIndexers } from '../indexers/index.ts'
@@ -9,6 +9,7 @@ import { checkState } from '../net/check.ts'
 import { currentLinkMode } from '../library/link.ts'
 import { isStreaming, storageSummary } from '../storage/index.ts'
 import { tmdbKeyStatus } from '../tmdb/credentials.ts'
+import { overviewUpdate } from '../updates/index.ts'
 import {
   downloadStateOf,
   listTorrents,
@@ -250,16 +251,10 @@ function downloadsOf(live: Map<string, EngineTorrentState>) {
   }
 }
 
-/**
- * Состояние сервера одним ответом: из того, что сервисы уже знают, без
- * новых запросов наружу. Без движка цифры загрузок — нули, том — всё равно.
- */
-export async function getOverview() {
-  const live = await liveTorrents()
+async function collect(known?: Map<string, EngineTorrentState>) {
+  const live = known ?? (await liveTorrents())
   const storage = await storageSummary(live)
   const downloads = downloadsOf(live)
-  const enabled = listIndexers().filter(indexer => indexer.enabled)
-  const devices = listDevices()
   const attention = [
     ...engineAttention(),
     ...storageAttention(storage, downloads.pausedForStorage),
@@ -269,15 +264,35 @@ export async function getOverview() {
     ...tmdbAttention(),
   ]
 
+  // Сортировка стабильна: внутри уровня — порядок разделов выше
+  attention.sort(
+    (a, b) =>
+      Number(a.severity === 'warning') - Number(b.severity === 'warning'),
+  )
+
+  return { storage, downloads, attention }
+}
+
+/** «Требует внимания» без остального «Обзора»: по нему работают уведомления */
+export async function serverAttention(live?: Map<string, EngineTorrentState>) {
+  return (await collect(live)).attention
+}
+
+/**
+ * Состояние сервера одним ответом: из того, что сервисы уже знают, без
+ * новых запросов наружу. Без движка цифры загрузок — нули, том — всё равно.
+ */
+export async function getOverview() {
+  const { storage, downloads, attention } = await collect()
+  const enabled = listIndexers().filter(indexer => indexer.enabled)
+  const devices = listDevices()
+
   return {
     // Время старта процесса, а не модуля: модуль грузится позже
     startedAt: new Date(performance.timeOrigin).toISOString(),
-    version: packageJson.version,
-    // Сортировка стабильна: внутри уровня — порядок разделов выше
-    attention: attention.sort(
-      (a, b) =>
-        Number(a.severity === 'warning') - Number(b.severity === 'warning'),
-    ),
+    version: config.version,
+    attention,
+    update: overviewUpdate(),
     downloads: downloads.tile,
     storage: {
       usedByCache: storage.cacheUsed,
