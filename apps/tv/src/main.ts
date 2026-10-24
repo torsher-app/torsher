@@ -9,6 +9,7 @@ import { i18n } from './i18n.ts'
 import { platform } from './platform/index.ts'
 import { exitApp } from './platform/webos.ts'
 import { goBack } from './lib/navigation.ts'
+import { misaligned, railAxisOffsets } from './lib/railAxis.ts'
 import { router } from './router.ts'
 import { expireSession, session } from './session.ts'
 
@@ -29,6 +30,18 @@ onSessionExpired(() => {
   expireSession()
   void router.replace('/connect')
 })
+
+// Замер оси рейла из консоли разработки: `railAxis()` — сдвиги иконок от
+// центров кругов в пикселях макета, `.bad` пуст — рейл ровный
+if (import.meta.env.DEV) {
+  Object.assign(window, {
+    railAxis() {
+      const offsets = railAxisOffsets(document, window.innerWidth / 1920)
+
+      return { offsets, bad: misaligned(offsets) }
+    },
+  })
+}
 
 createApp(App)
   .use(router)
