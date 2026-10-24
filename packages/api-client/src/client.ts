@@ -75,9 +75,8 @@ export function createApiClient(options: ApiClientOptions) {
   }
 
   async function request(url: string, init: RequestInit) {
-    // Режим берём при старте запроса: `withErrorMode` возвращает прежний,
-    // когда закончится его запрос, и параллельный тихий запрос иначе
-    // показал бы ошибку тостом
+    // Режим берём при старте запроса: к ответу окно `withErrorMode`, в
+    // котором запрос начался, уже может закончиться
     const mode = options.getErrorMode()
     let response = await sendWithRetry(url, init)
 

@@ -18,6 +18,7 @@ const sectionLabels: Record<AttentionItem['section'], string> = {
   sources: 'panel.nav.sources',
   network: 'panel.settings.nav.network',
   metadata: 'panel.settings.nav.metadata',
+  playback: 'panel.settings.nav.playback',
   logs: 'panel.nav.logs',
 }
 
@@ -33,6 +34,7 @@ function textOf(item: AttentionItem) {
     case 'engine_crashed':
       return t(key, { n: count }, count)
     case 'library_copies':
+    case 'media_accel_failed':
       return t(key)
     case 'storage_low':
       return t(key, {

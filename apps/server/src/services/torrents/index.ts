@@ -568,8 +568,18 @@ export async function clearStreamSelections() {
     .filter(row => row.selectedFiles?.length)
 
   for (const row of rows) {
-    if (row.inEngine)
-      await ignoreMissing(selectFiles(row.infoHash, []))
+    if (row.inEngine) {
+      try {
+        await ignoreMissing(selectFiles(row.infoHash, []))
+      }
+      catch (err) {
+        // Раздача переезжает: выбор снимется при следующем старте движка
+        if (err instanceof EngineError && err.kind === 'moving')
+          continue
+
+        throw err
+      }
+    }
 
     update(row.id, { selectedFiles: null })
   }

@@ -29,6 +29,9 @@ type savedTorrent struct {
 	// остались исходники. По ним `restore` доводит прерванный перенос
 	MovingTo  string `json:"movingTo,omitempty"`
 	MovedFrom string `json:"movedFrom,omitempty"`
+	// Пути относительно каталога раздачи, которые ставит текущий перенос.
+	// Пишутся до появления файла: откат удаляет в новом каталоге только их
+	Placed []string `json:"placed,omitempty"`
 	// Только у записей прежних версий: `false` — выбор сделал просмотр и он
 	// ещё не докачивался. `restore` переводит запись в новый вид
 	Background *bool `json:"background,omitempty"`

@@ -516,12 +516,15 @@ func (a *api) torrentOf(w http.ResponseWriter, r *http.Request) (*torrent.Torren
 		return nil, false
 	}
 
+	t, ok := a.client.Torrent(hash)
+
+	// После поиска: перенос убирает раздачу из клиента уже после отметки,
+	// и пропавшая раздача должна дать `torrent_moving`, а не 404
 	if a.isMoving(hash) {
 		writeMoving(w)
 		return nil, false
 	}
 
-	t, ok := a.client.Torrent(hash)
 	if !ok || t.Info() == nil {
 		writeError(w, http.StatusNotFound, "torrent_not_found", errors.New("torrent is not in the engine"))
 		return nil, false

@@ -10,7 +10,9 @@ import type {
   SeasonDetails,
   TitleDetails,
   TitleExtras,
+  TitleRelease,
   TitleSeason,
+  TitleStatus,
 } from '../../dto/catalog.ts'
 import type {
   TmdbAltTitle,
@@ -25,6 +27,7 @@ import type {
   TmdbNamed,
   TmdbPerson,
   TmdbPersonCredit,
+  TmdbRelease,
   TmdbSeason,
   TmdbTv,
   TmdbTvSeason,
@@ -70,6 +73,25 @@ const ONGOING_STATUSES = new Set([
   'In Production',
   'Planned',
 ])
+
+const STATUSES: Record<string, TitleStatus> = {
+  'Rumored': 'rumored',
+  'Planned': 'planned',
+  'In Production': 'inProduction',
+  'Post Production': 'postProduction',
+  'Released': 'released',
+  'Returning Series': 'returning',
+  'Ended': 'ended',
+  'Canceled': 'canceled',
+  // Старое написание в части ответов TMDB
+  'Cancelled': 'canceled',
+  'Pilot': 'pilot',
+}
+
+// Типы release_dates TMDB
+const THEATRICAL_LIMITED = 2
+const THEATRICAL = 3
+const DIGITAL = 4
 
 const CATALOG_ID = /^tmdb:(movie|tv):(\d+)$/
 const PERSON_ID = /^tmdb:person:(\d+)$/
@@ -283,6 +305,91 @@ function pickByRegion<T>(
   return undefined
 }
 
+// Пустые строки и нули TMDB — «неизвестно»
+function text(value: string | null | undefined) {
+  return value?.trim() || undefined
+}
+
+// Слоган клиент берёт в кавычки сам, а TMDB часто хранит его уже в кавычках
+const QUOTED = /^[«"“„]([^«»"“”„]*)[»"”“]$/
+
+function taglineOf(value: string | null | undefined) {
+  const tagline = text(value)
+
+  return tagline?.replace(QUOTED, '$1').trim() || undefined
+}
+
+function positive(value: number | null | undefined) {
+  return value && value > 0 ? value : undefined
+}
+
+function statusOf(value: string | undefined) {
+  return value ? STATUSES[value] : undefined
+}
+
+// 2026-03-15T00:00:00.000Z → 2026-03-15
+function dayOf(value: string | null | undefined) {
+  return value && /^\d{4}-\d{2}-\d{2}/.test(value)
+    ? value.slice(0, 10)
+    : undefined
+}
+
+/** Самый ранний релиз страны нужных типов: YYYY-MM-DD. */
+function earliestRelease(movie: TmdbMovie, country: string, types: number[]) {
+  const releases: TmdbRelease[]
+    = movie.release_dates?.results.find(item => item.iso_3166_1 === country)
+      ?.release_dates ?? []
+  let earliest: string | undefined
+
+  for (const release of releases) {
+    const day = dayOf(release.release_date)
+
+    if (
+      day
+      && release.type !== undefined
+      && types.includes(release.type)
+      && (!earliest || day < earliest)
+    ) {
+      earliest = day
+    }
+  }
+
+  return earliest
+}
+
+/**
+ * Даты выхода фильма: премьера в мире, кинорелиз в регионе языка, если он
+ * позже премьеры, и цифровой релиз в регионе, а без него — в США: с цифрового
+ * релиза в сети появляется видео в хорошем качестве.
+ */
+function movieReleases(movie: TmdbMovie, language: string): TitleRelease[] {
+  const region = regionOf(language)
+  const premiere = dayOf(movie.release_date)
+  const releases: TitleRelease[] = []
+
+  if (premiere)
+    releases.push({ type: 'premiere', date: premiere })
+
+  const theatrical = earliestRelease(movie, region, [
+    THEATRICAL_LIMITED,
+    THEATRICAL,
+  ])
+
+  if (theatrical && theatrical !== premiere)
+    releases.push({ type: 'theatrical', date: theatrical, country: region })
+
+  for (const country of new Set([region, FALLBACK_REGION])) {
+    const digital = earliestRelease(movie, country, [DIGITAL])
+
+    if (digital) {
+      releases.push({ type: 'digital', date: digital, country })
+      break
+    }
+  }
+
+  return releases
+}
+
 export function movieToDetails(
   movie: TmdbMovie,
   language = 'en-US',
@@ -313,6 +420,12 @@ export function movieToDetails(
     ),
     studios: names(movie.production_companies, MAX_STUDIOS),
     creators: [],
+    tagline: taglineOf(movie.tagline),
+    status: statusOf(movie.status),
+    originalLanguage: text(movie.original_language),
+    releases: movieReleases(movie, language),
+    budget: positive(movie.budget),
+    revenue: positive(movie.revenue),
   }
 }
 
@@ -382,7 +495,29 @@ export function tvToDetails(
     seasons: tv.seasons
       .filter(season => season.season_number > 0)
       .map(season => toSeason(season, tv, now)),
+    tagline: taglineOf(tv.tagline),
+    status: statusOf(tv.status),
+    originalLanguage: text(tv.original_language),
+    firstAirDate: dayOf(tv.first_air_date),
+    lastAirDate: dayOf(tv.last_air_date),
+    nextEpisode: tv.next_episode_to_air
+      ? {
+          season: tv.next_episode_to_air.season_number,
+          episode: tv.next_episode_to_air.episode_number,
+          airDate: dayOf(tv.next_episode_to_air.air_date),
+        }
+      : undefined,
+    episodeRuntime: episodeRuntimeOf(tv),
+    episodeCount: positive(tv.number_of_episodes),
   }
+}
+
+// episode_run_time TMDB у новых сериалов почти всегда пуст: тогда — по последней серии
+function episodeRuntimeOf(tv: TmdbTv) {
+  return (
+    positive(tv.episode_run_time?.[0])
+    ?? positive(tv.last_episode_to_air?.runtime)
+  )
 }
 
 export interface AiredEpisode {

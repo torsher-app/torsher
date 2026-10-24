@@ -546,6 +546,90 @@ export const profileTitles = sqliteTable(
 
 export type ProfileTitle = typeof profileTitles.$inferSelect
 
+export const importConflictPolicies = ['keep', 'replace', 'newer'] as const
+
+export interface ImportSummary {
+  imported: number
+  unchanged: number
+  unmatched: number
+}
+
+// Строка `profile_titles` до импорта: null — строки не было
+export interface ImportUndoEntry {
+  titleId: string
+  before: {
+    watchlistAt: number | null
+    favoriteAt: number | null
+    rating: number | null
+    ratedAt: number | null
+    droppedAt: number | null
+    updatedAt: number
+  } | null
+}
+
+// Применённый импорт оценок и «Позже» из файлов других сервисов. `undo`
+// держит прежние строки для отмены и очищается по сроку
+export const profileImports = sqliteTable(
+  'profile_imports',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => randomUUID()),
+    profileId: text('profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    // Через запятую: imdb, letterboxd, trakt
+    sources: text('sources').notNull(),
+    conflicts: text('conflicts', { enum: importConflictPolicies }).notNull(),
+    summary: text('summary', { mode: 'json' }).notNull().$type<ImportSummary>(),
+    undo: text('undo', { mode: 'json' }).$type<ImportUndoEntry[]>(),
+    appliedAt: integer('applied_at', { mode: 'timestamp_ms' }).notNull(),
+    undoneAt: integer('undone_at', { mode: 'timestamp_ms' }),
+  },
+  table => [
+    index('profile_imports_profile_idx').on(table.profileId, table.appliedAt),
+  ],
+)
+
+export type ProfileImport = typeof profileImports.$inferSelect
+
+export const importRowStatuses = ['unsure', 'notFound'] as const
+
+// Строки импорта, которые не сопоставились сами: ждут владельца
+export const profileImportRows = sqliteTable(
+  'profile_import_rows',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => randomUUID()),
+    importId: text('import_id')
+      .notNull()
+      .references(() => profileImports.id, { onDelete: 'cascade' }),
+    profileId: text('profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    list: text('list', { enum: ['rating', 'watchlist'] }).notNull(),
+    status: text('status', { enum: importRowStatuses }).notNull(),
+    title: text('title').notNull(),
+    year: integer('year'),
+    kind: text('kind', { enum: ['movie', 'series'] }),
+    rating: integer('rating'),
+    at: integer('at', { mode: 'timestamp_ms' }),
+    // Тайтл каталога, на который похоже
+    suggestion: text('suggestion'),
+    position: integer('position').notNull(),
+  },
+  table => [
+    index('profile_import_rows_profile_idx').on(
+      table.profileId,
+      table.importId,
+      table.position,
+    ),
+  ],
+)
+
+export type ProfileImportRow = typeof profileImportRows.$inferSelect
+
 // Подборка — свой список тайтлов, общий на сервер. Видят её все профили,
 // кроме скрытых в `collection_hidden_profiles`
 export const collections = sqliteTable(

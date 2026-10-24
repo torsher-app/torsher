@@ -341,7 +341,7 @@ const onSubmit = handleSubmit(async (values) => {
 
         <!-- Проверка постоянной высоты: строки не прыгают при переходах -->
         <ul
-          class="grid min-h-[5.5rem] content-start gap-1.5 rounded-lg border bg-muted/40 p-3 text-[13px] transition-opacity"
+          class="grid min-h-[5.5rem] content-start gap-1.5 rounded-lg border bg-muted/40 p-3 text-[13px] leading-5 transition-opacity"
           :class="{ 'opacity-60': checking && check }"
           :aria-busy="checking"
           aria-live="polite"

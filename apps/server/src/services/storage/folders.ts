@@ -1,8 +1,8 @@
 import type { EngineTorrentState } from '../engine/index.ts'
 import type { StorageKind, StoragePathSource } from './paths.ts'
 import { randomBytes } from 'node:crypto'
-import { stat, unlink, writeFile } from 'node:fs/promises'
-import { dirname, isAbsolute, join, resolve } from 'node:path'
+import { realpath, stat, unlink, writeFile } from 'node:fs/promises'
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { and, eq, inArray, isNotNull, ne } from 'drizzle-orm'
 import { config } from '../../config.ts'
 import { getDb } from '../../db/index.ts'
@@ -13,7 +13,7 @@ import {
   torrents,
 } from '../../db/schema.ts'
 import { managedFolder, managedFolders } from '../library/files.ts'
-import { overlaps } from '../library/folders.ts'
+import { overlaps, ownStoragePaths } from '../library/folders.ts'
 import { probeLinkMode } from '../library/link.ts'
 import { diskUsage } from './disk.ts'
 import {
@@ -79,24 +79,82 @@ export async function canWrite(dir: string) {
   }
 }
 
-async function deviceOf(path: string) {
-  const dir = await existingDir(path)
+/** Реальный путь: симлинки ближайшего существующего каталога раскрыты */
+export async function realPathOf(path: string) {
+  const target = resolve(path)
+  const dir = await existingDir(target)
 
-  return dir ? (await stat(dir)).dev : undefined
+  if (!dir)
+    return target
+
+  const real = await realpath(dir).catch(() => dir)
+
+  return join(real, relative(dir, target))
 }
 
-/** Две папки на одном томе: перенос между ними — хардлинки, место не нужно */
-async function onSameVolume(a: string, b: string) {
-  const [first, second] = await Promise.all([deviceOf(a), deviceOf(b)])
+/**
+ * Один каталог под разными путями: симлинк, bind-mount (тот же inode) или
+ * один сетевой экспорт, смонтированный дважды (inode разные — видно только
+ * по пробному файлу). Перенос в такой каталог удалил бы файлы вместе с
+ * «копией»
+ */
+export async function sameDirectory(a: string, b: string) {
+  const first = resolve(a)
+  const second = resolve(b)
 
-  return first !== undefined && first === second
+  if (first === second)
+    return true
+
+  if ((await realPathOf(first)) === (await realPathOf(second)))
+    return true
+
+  const [one, two] = await Promise.all([
+    stat(first).catch(() => undefined),
+    stat(second).catch(() => undefined),
+  ])
+
+  if (!one?.isDirectory() || !two?.isDirectory())
+    return false
+
+  if (one.dev === two.dev && one.ino === two.ino)
+    return true
+
+  const name = `.torsher-same-${randomBytes(6).toString('hex')}`
+
+  try {
+    await writeFile(join(second, name), '', { flag: 'wx' })
+  }
+  catch {
+    return false
+  }
+
+  try {
+    return !!(await stat(join(first, name)).catch(() => undefined))
+  }
+  finally {
+    await unlink(join(second, name)).catch(() => undefined)
+  }
+}
+
+/** Ключ тома: устройство ближайшего существующего каталога */
+async function deviceKeyOf(path: string) {
+  const dir = await existingDir(resolve(path))
+
+  return dir ? String((await stat(dir)).dev) : undefined
 }
 
 /** Подмена в тестах: разные тома на одной ФС */
-export const volumeDeps = { sameVolume: onSameVolume }
+export const volumeDeps = { volumeKey: deviceKeyOf }
 
-export function sameVolume(a: string, b: string) {
-  return volumeDeps.sameVolume(a, b)
+export function volumeKey(path: string) {
+  return volumeDeps.volumeKey(path)
+}
+
+/** Две папки на одном томе: перенос между ними — хардлинки, место не нужно */
+export async function sameVolume(a: string, b: string) {
+  const [first, second] = await Promise.all([volumeKey(a), volumeKey(b)])
+
+  return first !== undefined && first === second
 }
 
 function otherKind(kind: StorageKind): StorageKind {
@@ -104,33 +162,66 @@ function otherKind(kind: StorageKind): StorageKind {
 }
 
 /**
- * Можно ли выбрать путь: абсолютный, не пересекается с каталогом данных,
- * папкой другого вида и подключёнными папками пользователя (они только на
- * чтение). Путь окружения разрешён всегда: это «по умолчанию».
+ * Папки этого вида, куда можно переносить: действующая, окружения и прежние
+ * (каталоги раздач или папки своей раскладки)
  */
-export function pathProblem(
+function sameKindPaths(kind: StorageKind) {
+  const paths
+    = kind === 'downloads'
+      ? knownDownloadDirs()
+      : managedFolders().map(folder => folder.path)
+
+  return new Set(
+    [storagePath(kind), envStoragePath(kind), ...paths].map(path =>
+      resolve(path),
+    ),
+  )
+}
+
+async function withRealPaths(paths: string[]) {
+  const real = await Promise.all(paths.map(path => realPathOf(path)))
+
+  return [...new Set([...paths.map(path => resolve(path)), ...real])]
+}
+
+function overlapsAny(first: string[], second: string[]) {
+  return first.some(a => second.some(b => overlaps(a, b)))
+}
+
+/**
+ * Можно ли выбрать путь: абсолютный, не пересекается с каталогом данных,
+ * папками другого вида (действующими и прежними) и подключёнными папками
+ * пользователя (они только на чтение). Сверяется и путь как есть, и
+ * реальный: симлинк не обходит запрет. Путь окружения разрешён всегда: это
+ * «по умолчанию».
+ */
+export async function pathProblem(
   kind: StorageKind,
   path: string,
-): StoragePathProblem | null {
+): Promise<StoragePathProblem | null> {
   if (!isAbsolute(path))
     return 'not_absolute'
 
-  const target = resolve(path)
+  const target = await withRealPaths([path])
+  const env = await withRealPaths([envStoragePath(kind)])
 
-  if (target === envStoragePath(kind))
+  if (target.some(item => env.includes(item)))
     return null
 
-  if (overlaps(target, resolve(config.dataDir)))
+  const dataDir = resolve(config.dataDir)
+
+  if (overlapsAny(target, await withRealPaths([dataDir])))
     return 'inside_data'
 
-  const other = otherKind(kind)
+  const own = sameKindPaths(kind)
+  const others = ownStoragePaths().filter(
+    item => item !== dataDir && !own.has(item),
+  )
 
-  if (
-    overlaps(target, storagePath(other))
-    || overlaps(target, envStoragePath(other))
-  ) {
+  others.push(storagePath(otherKind(kind)), envStoragePath(otherKind(kind)))
+
+  if (overlapsAny(target, await withRealPaths(others)))
     return 'overlaps_other'
-  }
 
   const userFolders = getDb()
     .select({ path: libraryFolders.path })
@@ -138,8 +229,9 @@ export function pathProblem(
     .innerJoin(libraries, eq(libraries.id, libraryFolders.libraryId))
     .where(eq(libraries.managed, false))
     .all()
+    .map(folder => folder.path)
 
-  if (userFolders.some(folder => overlaps(target, folder.path)))
+  if (overlapsAny(target, await withRealPaths(userFolders)))
     return 'library_folder'
 
   return null
@@ -163,7 +255,7 @@ export async function checkStoragePath(
   kind: StorageKind,
   path: string,
 ): Promise<StoragePathCheck> {
-  const problem = pathProblem(kind, path)
+  const problem = await pathProblem(kind, path)
   const target = isAbsolute(path) ? resolve(path) : path
   const empty = {
     path: target,
@@ -190,8 +282,10 @@ export async function checkStoragePath(
     }
   }
 
+  // Пробный файл — только в разрешённой папке: в подключённые папки
+  // пользователя Torsher не пишет
   const [writable, disk, same] = await Promise.all([
-    canWrite(existing),
+    problem ? false : canWrite(existing),
     diskUsage(existing),
     sameVolume(target, storagePath(kind)),
   ])

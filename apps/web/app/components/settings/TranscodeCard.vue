@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { PlaybackSettings } from '@torsher/api-client'
 import { useI18n } from 'vue-i18n'
+import { toneMappingOf } from '~/lib/playback'
 import SettingsCard from './SettingsCard.vue'
 
 const props = defineProps<{
@@ -9,11 +10,20 @@ const props = defineProps<{
 
 const { t } = useI18n()
 
-const toneMapping = computed(() => {
-  if (props.settings.gpuToneMapping)
-    return 'gpu'
+const toneMapping = computed(() => toneMappingOf(props.settings))
 
-  return props.settings.softwareToneMapping ? 'software' : 'none'
+const toneMappingHint = computed(() => {
+  if (toneMapping.value === 'none')
+    return t('panel.settings.playback.toneMappingNone')
+
+  const hint = t('panel.settings.playback.toneMappingHint')
+
+  // Ниже 1080p — значит, перевод не успевает и кадр уменьшается
+  return props.settings.toneMappingMaxHeight < 1080
+    ? `${hint} ${t('panel.settings.playback.toneMappingLimit', {
+      height: props.settings.toneMappingMaxHeight,
+    })}`
+    : hint
 })
 </script>
 
@@ -22,9 +32,10 @@ const toneMapping = computed(() => {
     :title="t('panel.settings.playback.transcode.title')"
     :description="t('panel.settings.playback.transcode.text')"
   >
+    <!-- На телефоне значение — под подсказкой: справа оно сжимало её в столбик -->
     <dl class="grid gap-2">
       <div
-        class="flex items-start justify-between gap-4 rounded-lg border border-input px-3 py-2.5"
+        class="grid gap-1 rounded-lg border border-input px-3 py-2.5 sm:flex sm:items-start sm:justify-between sm:gap-4"
       >
         <dt class="grid gap-0.5">
           <span class="font-semibold">{{
@@ -40,29 +51,36 @@ const toneMapping = computed(() => {
             }}
           </span>
         </dt>
-        <dd class="font-semibold tabular-nums">
+        <dd class="font-semibold whitespace-nowrap tabular-nums">
           {{
             settings.software
-              ? `${settings.softwareMaxHeight}p`
+              ? t("panel.settings.playback.ceilingValue", {
+                height: settings.softwareMaxHeight,
+              })
               : t("panel.settings.playback.noSoftware")
           }}
         </dd>
       </div>
       <div
-        class="flex items-start justify-between gap-4 rounded-lg border border-input px-3 py-2.5"
+        class="grid gap-1 rounded-lg border border-input px-3 py-2.5 sm:flex sm:items-start sm:justify-between sm:gap-4"
       >
         <dt class="grid gap-0.5">
           <span class="font-semibold">{{
             t("panel.settings.playback.toneMapping")
           }}</span>
           <span class="text-xs text-muted-foreground">
-            {{ t(`panel.settings.playback.toneMappingHint.${toneMapping}`) }}
+            {{ toneMappingHint }}
           </span>
         </dt>
-        <dd class="font-semibold tabular-nums">
+        <dd class="font-semibold whitespace-nowrap tabular-nums">
           {{ t(`panel.settings.playback.toneMappingValue.${toneMapping}`) }}
           <template v-if="toneMapping !== 'none'">
-            · {{ settings.toneMappingMaxHeight }}p
+            ·
+            {{
+              t("panel.settings.playback.ceilingValue", {
+                height: settings.toneMappingMaxHeight,
+              })
+            }}
           </template>
         </dd>
       </div>

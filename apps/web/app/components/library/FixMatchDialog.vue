@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import type { Card } from '@torsher/api-client'
 import type { TorrentErrorKind } from '~/composables/useTorrents'
-import { CircleAlertIcon, FilmIcon, SearchIcon } from '@lucide/vue'
+import { CircleAlertIcon } from '@lucide/vue'
 import { parseRelease } from '@torsher/release-parser'
 import { useI18n } from 'vue-i18n'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -15,13 +14,10 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { Skeleton } from '@/components/ui/skeleton'
 import LoadingButton from '~/components/LoadingButton.vue'
+import TitleSearch from '~/components/TitleSearch.vue'
 import { torrentErrorKind } from '~/composables/useTorrents'
 import { dialogSheetClass } from '~/lib/dialog'
-import { api } from '~/services/api'
 
 export interface PreviewFile {
   id: string
@@ -56,15 +52,9 @@ const props = defineProps<{
 
 const open = defineModel<boolean>('open', { required: true })
 
-const { t, locale } = useI18n()
-
-const SEARCH_DELAY_MS = 300
-const RESULT_LIMIT = 8
+const { t } = useI18n()
 
 const query = ref('')
-const results = shallowRef<Card[]>([])
-const searching = ref(false)
-const searchFailed = ref(false)
 const chosen = ref<string>('')
 const saving = ref<'save' | 'ignore' | 'preview' | null>(null)
 const step = ref<'search' | 'episodes'>('search')
@@ -84,8 +74,6 @@ const withEpisodes = computed(
   () => !!props.preview && chosen.value.startsWith('tmdb:tv:'),
 )
 const error = ref<TorrentErrorKind | null>(null)
-let timer: ReturnType<typeof setTimeout> | undefined
-let run = 0
 
 // Поиск открывается с названием и годом из имени — как их понял сервер
 function initialQuery(value: string) {
@@ -93,41 +81,6 @@ function initialQuery(value: string) {
   const name = parsed.titles.ru ?? parsed.titles.orig ?? parsed.titles.translit
 
   return [name ?? value, parsed.year].filter(Boolean).join(' ')
-}
-
-async function search(value: string) {
-  const current = ++run
-  const text = value.trim()
-
-  if (!text) {
-    results.value = []
-    searching.value = false
-    return
-  }
-
-  searching.value = true
-  searchFailed.value = false
-
-  try {
-    const found = await withErrorMode('silent', () =>
-      api.catalog.getCatalogSearch({
-        query: text,
-        language: locale.value.replace('_', '-'),
-      }))
-
-    if (current === run)
-      results.value = found.items.slice(0, RESULT_LIMIT)
-  }
-  catch {
-    if (current === run) {
-      results.value = []
-      searchFailed.value = true
-    }
-  }
-  finally {
-    if (current === run)
-      searching.value = false
-  }
 }
 
 watch(open, (isOpen) => {
@@ -140,18 +93,7 @@ watch(open, (isOpen) => {
   drafts.value = []
   chosen.value = props.current ?? ''
   query.value = initialQuery(props.name)
-  void search(query.value)
 })
-
-watch(query, (value, previous) => {
-  if (previous === undefined || !open.value)
-    return
-
-  clearTimeout(timer)
-  timer = setTimeout(search, SEARCH_DELAY_MS, value)
-})
-
-onBeforeUnmount(() => clearTimeout(timer))
 
 async function showEpisodes() {
   if (!props.preview)
@@ -216,14 +158,6 @@ async function save(titleId: string | null) {
     saving.value = null
   }
 }
-
-function kindLabel(card: Card) {
-  return t(
-    card.kind === 'movie'
-      ? 'panel.torrents.match.movie'
-      : 'panel.torrents.match.series',
-  )
-}
 </script>
 
 <template>
@@ -283,99 +217,17 @@ function kindLabel(card: Card) {
       </div>
 
       <div v-else class="grid gap-3">
-        <div class="grid gap-2">
-          <Label for="match-query">{{
-            t("panel.torrents.match.search")
-          }}</Label>
-          <div class="relative">
-            <SearchIcon
-              class="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
-              aria-hidden="true"
-            />
-            <Input
-              id="match-query"
-              v-model="query"
-              autocomplete="off"
-              spellcheck="false"
-              class="pl-8"
-            />
-          </div>
-        </div>
-
-        <!-- Список постоянной высоты: результаты не двигают кнопки диалога -->
-        <div class="h-[312px] overflow-y-auto rounded-lg border">
-          <div
-            v-if="searching && !results.length"
-            class="grid gap-px p-1.5"
-            aria-busy="true"
-          >
-            <Skeleton
-              v-for="item in 4"
-              :key="item"
-              class="h-[60px] rounded-md"
-            />
-          </div>
-          <p
-            v-else-if="searchFailed || !results.length"
-            class="p-4 text-[13px] text-muted-foreground"
-          >
-            {{
-              t(
-                searchFailed
-                  ? "panel.torrents.match.searchFailed"
-                  : "panel.torrents.match.empty",
-              )
-            }}
-          </p>
-          <RadioGroup v-else v-model="chosen" class="gap-0 p-1.5">
-            <Label
-              v-for="card in results"
-              :key="card.id"
-              :for="`match-${card.id}`"
-              class="grid cursor-pointer grid-cols-[16px_40px_minmax(0,1fr)] items-center gap-3 rounded-md px-2 py-1.5 font-normal hover:bg-muted/60 has-[[data-state=checked]]:bg-muted"
-            >
-              <RadioGroupItem :id="`match-${card.id}`" :value="card.id" />
-              <span
-                class="grid h-[48px] w-[32px] place-items-center overflow-hidden rounded bg-muted text-muted-foreground"
-                aria-hidden="true"
-              >
-                <img
-                  v-if="card.poster"
-                  :src="card.poster"
-                  alt=""
-                  class="size-full object-cover"
-                  loading="lazy"
-                >
-                <FilmIcon v-else class="size-3.5" />
-              </span>
-              <span class="grid min-w-0">
-                <span class="truncate font-medium">{{ card.title }}</span>
-                <span
-                  class="truncate text-xs text-muted-foreground tabular-nums"
-                >
-                  {{
-                    [
-                      card.year,
-                      kindLabel(card),
-                      card.originalTitle !== card.title
-                        ? card.originalTitle
-                        : "",
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")
-                  }}
-                </span>
-              </span>
-            </Label>
-          </RadioGroup>
-        </div>
+        <TitleSearch
+          v-model:query="query"
+          v-model:chosen="chosen"
+          input-id="match-query"
+          :label="t('panel.torrents.match.search')"
+        />
 
         <Alert v-if="error" variant="destructive">
           <CircleAlertIcon />
           <AlertTitle>
-            {{
-              t(`panel.torrents.errorTitles.${error}`)
-            }}
+            {{ t(`panel.torrents.errorTitles.${error}`) }}
           </AlertTitle>
           <AlertDescription>
             {{ t(`panel.torrents.errors.${error}`) }}

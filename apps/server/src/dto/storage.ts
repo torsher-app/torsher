@@ -63,7 +63,9 @@ export const storageMoveState = z
     currentName: z.string().nullable(),
     // Ждём движок или конца просмотра раздачи
     waiting: z.boolean(),
-    error: z.enum(['no_space', 'denied', 'engine', 'failed']).nullable(),
+    error: z
+      .enum(['no_space', 'denied', 'engine', 'exists', 'failed'])
+      .nullable(),
     startedAt: z.string(),
     finishedAt: z.string().nullable(),
   })

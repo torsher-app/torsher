@@ -107,6 +107,8 @@ const engineMoveState = z.object({
   bytesTotal: z.number(),
   bytesDone: z.number(),
   error: z.string().optional(),
+  /** `exists` — в новом каталоге чужой файл под тем же именем */
+  kind: z.string().optional(),
 })
 
 export type EngineMoveState = z.infer<typeof engineMoveState>

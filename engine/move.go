@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 
 	"github.com/anacrolix/torrent"
@@ -23,8 +26,51 @@ const moveSuffix = ".torsher-move"
 // Подмена в тестах: `EXDEV` на любой ФС
 var linkFile = os.Link
 
+// Чужой файл под итоговым именем в новом каталоге: перенос его не трогает
+var errFileExists = errors.New("file already exists in the new directory")
+
 func samePath(a, b string) bool {
 	return filepath.Clean(a) == filepath.Clean(b)
+}
+
+// Один каталог под разными путями: симлинк, bind-mount (тот же inode) или
+// один сетевой экспорт, смонтированный дважды (inode разные — видно только
+// по пробному файлу). Перенос в такой каталог удалил бы исходники вместе с
+// «копией»
+func sameDir(from, to string) bool {
+	if samePath(from, to) {
+		return true
+	}
+
+	fromStat, err := os.Stat(from)
+	if err != nil {
+		return false
+	}
+
+	toStat, err := os.Stat(to)
+	if err != nil {
+		return false
+	}
+
+	if os.SameFile(fromStat, toStat) {
+		return true
+	}
+
+	var random [8]byte
+	_, _ = rand.Read(random[:])
+	name := ".torsher-same-" + hex.EncodeToString(random[:])
+	probe := filepath.Join(to, name)
+
+	file, err := os.OpenFile(probe, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
+	if err != nil {
+		return false
+	}
+	_ = file.Close()
+	defer os.Remove(probe)
+
+	_, err = os.Lstat(filepath.Join(from, name))
+
+	return err == nil
 }
 
 // Каталог раздачи; раздача без своего — в каталоге по умолчанию
@@ -104,6 +150,8 @@ type moveState struct {
 	BytesTotal int64  `json:"bytesTotal"`
 	BytesDone  int64  `json:"bytesDone"`
 	Error      string `json:"error,omitempty"`
+	// Вид ошибки для сервера: `exists` — в новом каталоге чужой файл
+	Kind string `json:"kind,omitempty"`
 }
 
 type moveJob struct {
@@ -153,25 +201,51 @@ func (a *api) startMove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	hash := t.InfoHash()
+	job := &moveJob{state: moveState{State: "running"}}
+
+	// Задание занимается до любого ввода-вывода: параллельный запрос получает
+	// `torrent_moving`, а не второй перенос тех же файлов
+	a.movesMu.Lock()
+	if current, ok := a.moves[hash]; ok && current.snapshot().State == "running" {
+		a.movesMu.Unlock()
+		writeMoving(w)
+		return
+	}
+	a.moves[hash] = job
+	a.movesMu.Unlock()
+
+	reject := func(status int, kind string, err error) {
+		a.forgetMove(hash)
+		writeError(w, status, kind, err)
+	}
+
 	var body struct {
 		Dir string `json:"dir"`
 	}
 
 	if err := json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&body); err != nil || !filepath.IsAbs(body.Dir) {
-		writeError(w, http.StatusBadRequest, "invalid_dir", errors.New("dir must be an absolute path"))
+		reject(http.StatusBadRequest, "invalid_dir", errors.New("dir must be an absolute path"))
 		return
 	}
 
-	hash := t.InfoHash()
+	// Раздача только из поиска метаданных: `.torrent` для повторного открытия нет
+	if !a.session.has(hash) {
+		reject(http.StatusNotFound, "torrent_not_found", errors.New("torrent is not in the engine"))
+		return
+	}
+
 	from := a.dirOf(hash)
 	to := filepath.Clean(body.Dir)
-	job := &moveJob{state: moveState{Dir: to, State: "running"}}
+	job.update(func(state *moveState) { state.Dir = to })
+
+	if err := os.MkdirAll(to, 0o755); err != nil {
+		reject(http.StatusInternalServerError, "storage", err)
+		return
+	}
 
 	if samePath(from, to) {
-		job.state.State = "done"
-		a.movesMu.Lock()
-		a.moves[hash] = job
-		a.movesMu.Unlock()
+		job.update(func(state *moveState) { state.State = "done" })
 		writeJSON(w, http.StatusOK, job.snapshot())
 		return
 	}
@@ -180,24 +254,53 @@ func (a *api) startMove(w http.ResponseWriter, r *http.Request) {
 	// не открывается обратно (`no piece root set`)
 	mi, err := metainfo.LoadFromFile(a.session.path(hash, ".torrent"))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "storage", err)
+		reject(http.StatusInternalServerError, "storage", err)
 		return
 	}
 
 	info := t.Info()
 	saved := a.session.get(hash)
 
+	// Тот же каталог под другим путём: копировать нечего, а перенос удалил бы
+	// исходники. Раздача только переоткрывается по новому пути, чтобы сессия и
+	// сервер ссылались на один и тот же путь — иначе старый путь (снятый
+	// симлинк, отмонтированный экспорт) остался бы в сессии навсегда
+	if sameDir(from, to) {
+		saved.Dir = a.sessionDir(to)
+		saved.MovingTo = ""
+		saved.MovedFrom = ""
+		saved.Placed = nil
+		if err := a.session.saveSelection(hash, saved); err != nil {
+			reject(http.StatusInternalServerError, "storage", err)
+			return
+		}
+
+		t.Drop()
+		a.windows.forget(hash)
+		adoptPartFiles(to, info)
+
+		// Сессия уже переключена: раздача вернётся при перезапуске движка
+		if err := a.reopen(mi, to, saved); err != nil {
+			a.logger.With("hash", hash.HexString()).Error("reopen torrent", "err", err)
+		}
+
+		job.update(func(state *moveState) { state.State = "done" })
+		writeJSON(w, http.StatusOK, job.snapshot())
+		return
+	}
+
+	// Поставленное прошлой попыткой в другой каталог к этому не относится
+	if !samePath(saved.MovingTo, to) {
+		saved.Placed = nil
+	}
+
 	// Отметка до первого файла: перезапуск посреди переноса уберёт
 	// недоделанное в новом каталоге (`finishMove`)
 	saved.MovingTo = to
 	if err := a.session.saveSelection(hash, saved); err != nil {
-		writeError(w, http.StatusInternalServerError, "storage", err)
+		reject(http.StatusInternalServerError, "storage", err)
 		return
 	}
-
-	a.movesMu.Lock()
-	a.moves[hash] = job
-	a.movesMu.Unlock()
 
 	t.Drop()
 	a.windows.forget(hash)
@@ -236,7 +339,10 @@ func (a *api) runMove(job *moveJob, mi *metainfo.MetaInfo, info *metainfo.Info, 
 	log.Info("torrent move started")
 
 	fail := func(err error) {
+		removePlaced(info, from, to, saved.Placed)
+
 		saved.MovingTo = ""
+		saved.Placed = nil
 		if err := a.session.saveSelection(hash, saved); err != nil {
 			log.Warn("save session", "err", err)
 		}
@@ -248,6 +354,9 @@ func (a *api) runMove(job *moveJob, mi *metainfo.MetaInfo, info *metainfo.Info, 
 		job.update(func(state *moveState) {
 			state.State = "failed"
 			state.Error = err.Error()
+			if errors.Is(err, errFileExists) {
+				state.Kind = "exists"
+			}
 		})
 		log.Warn("torrent move failed", "err", err)
 	}
@@ -264,24 +373,38 @@ func (a *api) runMove(job *moveJob, mi *metainfo.MetaInfo, info *metainfo.Info, 
 		job.update(func(state *moveState) { state.BytesDone += n })
 	}
 
-	if err := placeFiles(info, from, to, progress); err != nil {
-		removePlaced(info, from, to)
+	// Намерение пишется в сессию до того, как файл появится в новом каталоге:
+	// откат и `finishMove` удаляют только записанное, чужой файл цел
+	placed := placedFiles{
+		owned: func(rel string) bool { return slices.Contains(saved.Placed, rel) },
+		claim: func(rel string) error {
+			saved.Placed = append(saved.Placed, rel)
+			return a.session.saveSelection(hash, saved)
+		},
+	}
+
+	if err := placeFiles(info, from, to, placed, progress); err != nil {
 		fail(err)
 		return
 	}
 
-	saved.Dir = a.sessionDir(to)
-	saved.MovingTo = ""
-	saved.MovedFrom = from
+	switched := saved
+	switched.Dir = a.sessionDir(to)
+	switched.MovingTo = ""
+	switched.MovedFrom = from
+	switched.Placed = nil
 
-	if err := a.session.saveSelection(hash, saved); err != nil {
-		removePlaced(info, from, to)
+	if err := a.session.saveSelection(hash, switched); err != nil {
 		fail(err)
 		return
 	}
 
+	saved = switched
+
+	// Файлы уже в новом каталоге и сессия переключена: задание удалось,
+	// а раздача без клиента до перезапуска движка — повод для ошибки в журнале
 	if err := a.reopen(mi, to, saved); err != nil {
-		log.Warn("reopen torrent", "err", err)
+		log.Error("reopen torrent", "err", err)
 	}
 
 	if err := removeSources(info, from, to); err != nil {
@@ -315,10 +438,16 @@ func (a *api) reopen(mi *metainfo.MetaInfo, dir string, saved savedTorrent) erro
 	return setFiles(t, saved.Selected)
 }
 
+type movePair struct {
+	// Путь файла относительно каталога раздачи
+	rel      string
+	src, dst string
+}
+
 // Пары «исходник → цель» файлов раздачи; пути из чужого `.torrent` не выходят
 // за каталоги
-func movePairs(info *metainfo.Info, from, to string) ([][2]string, error) {
-	var pairs [][2]string
+func movePairs(info *metainfo.Info, from, to string) ([]movePair, error) {
+	var pairs []movePair
 
 	for _, file := range info.UpvertedFiles() {
 		rel := filePathOf(storage.FilePathMakerOpts{Info: info, File: &file})
@@ -329,7 +458,7 @@ func movePairs(info *metainfo.Info, from, to string) ([][2]string, error) {
 			return nil, fmt.Errorf("file %q is outside the downloads directory", rel)
 		}
 
-		pairs = append(pairs, [2]string{src, dst})
+		pairs = append(pairs, movePair{rel: rel, src: src, dst: dst})
 	}
 
 	return pairs, nil
@@ -351,7 +480,7 @@ func dataBytes(info *metainfo.Info, from string) (int64, error) {
 	var total int64
 
 	for _, pair := range pairs {
-		total += dataSize(pair[0])
+		total += dataSize(pair.src)
 	}
 
 	return total, nil
@@ -373,23 +502,27 @@ func dataSize(path string) int64 {
 	return size
 }
 
+// Файлы, которые ставит текущий перенос (`Placed` в сессии)
+type placedFiles struct {
+	owned func(rel string) bool
+	claim func(rel string) error
+}
+
 // Ставит каждый скачанный файл в новый каталог, не трогая исходник: в том же
-// томе — хардлинком, иначе копией одних данных. Цель от прошлой попытки
+// томе — хардлинком, иначе копией одних данных. Своя цель от прошлой попытки
 // заменяется: исходник с тех пор мог докачаться
-func placeFiles(info *metainfo.Info, from, to string, progress func(int64)) error {
+func placeFiles(info *metainfo.Info, from, to string, placed placedFiles, progress func(int64)) error {
 	pairs, err := movePairs(info, from, to)
 	if err != nil {
 		return err
 	}
 
 	for _, pair := range pairs {
-		src, dst := pair[0], pair[1]
-
-		if !isRegular(src) {
+		if !isRegular(pair.src) {
 			continue
 		}
 
-		if err := placeFile(src, dst, progress); err != nil {
+		if err := placeFile(pair, placed, progress); err != nil {
 			return err
 		}
 	}
@@ -397,9 +530,32 @@ func placeFiles(info *metainfo.Info, from, to string, progress func(int64)) erro
 	return nil
 }
 
-func placeFile(src, dst string, progress func(int64)) error {
+func placeFile(pair movePair, placed placedFiles, progress func(int64)) error {
+	src, dst := pair.src, pair.dst
+
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return err
+	}
+
+	existing, err := os.Lstat(dst)
+
+	switch {
+	case err == nil:
+		// Уже хардлинк исходника: ставить нечего
+		if source, err := os.Stat(src); err == nil && os.SameFile(source, existing) {
+			progress(dataSize(src))
+			return nil
+		}
+
+		if !placed.owned(pair.rel) {
+			return errFileExists
+		}
+	case !errors.Is(err, fs.ErrNotExist):
+		return err
+	case !placed.owned(pair.rel):
+		if err := placed.claim(pair.rel); err != nil {
+			return err
+		}
 	}
 
 	temp := dst + moveSuffix
@@ -416,10 +572,6 @@ func placeFile(src, dst string, progress func(int64)) error {
 		_ = os.Remove(temp)
 		return err
 	}
-
-	// Цель уже была хардлинком исходника: `rename` между ссылками на один
-	// файл ничего не делает, и временное имя остаётся
-	_ = os.Remove(temp)
 
 	return nil
 }
@@ -514,8 +666,9 @@ func (p *progressWriter) Write(b []byte) (int, error) {
 	return n, err
 }
 
-// Убирает из нового каталога то, что поставила прерванная попытка
-func removePlaced(info *metainfo.Info, from, to string) {
+// Убирает из нового каталога то, что поставила прерванная попытка: временные
+// файлы и файлы из `placed`. Остальное под теми же именами — чужое
+func removePlaced(info *metainfo.Info, from, to string, placed []string) {
 	pairs, err := movePairs(info, from, to)
 	if err != nil {
 		return
@@ -524,13 +677,13 @@ func removePlaced(info *metainfo.Info, from, to string) {
 	dirs := map[string]bool{}
 
 	for _, pair := range pairs {
-		_ = os.Remove(pair[1] + moveSuffix)
+		_ = os.Remove(pair.dst + moveSuffix)
 
-		if isRegular(pair[1]) {
-			_ = os.Remove(pair[1])
+		if slices.Contains(placed, pair.rel) && isRegular(pair.dst) {
+			_ = os.Remove(pair.dst)
 		}
 
-		addParentDirs(dirs, to, pair[1])
+		addParentDirs(dirs, to, pair.dst)
 	}
 
 	_ = removeEmptyDirs(dirs)
@@ -548,7 +701,7 @@ func removeSources(info *metainfo.Info, from, to string) error {
 	dirs := map[string]bool{}
 
 	for _, pair := range pairs {
-		src, dst := pair[0], pair[1]
+		src, dst := pair.src, pair.dst
 
 		if isRegular(src) && isRegular(dst) {
 			if err := os.Remove(src); err != nil && !errors.Is(err, fs.ErrNotExist) {
@@ -572,7 +725,7 @@ func (a *api) finishMove(hash metainfo.Hash, info *metainfo.Info, dir string, sa
 	}
 
 	if saved.MovingTo != "" && !samePath(saved.MovingTo, dir) {
-		removePlaced(info, dir, saved.MovingTo)
+		removePlaced(info, dir, saved.MovingTo, saved.Placed)
 	}
 
 	if saved.MovedFrom != "" && !samePath(saved.MovedFrom, dir) {
@@ -583,6 +736,7 @@ func (a *api) finishMove(hash metainfo.Hash, info *metainfo.Info, dir string, sa
 
 	saved.MovingTo = ""
 	saved.MovedFrom = ""
+	saved.Placed = nil
 
 	if err := a.session.saveSelection(hash, *saved); err != nil {
 		a.logger.Warn("save session", "hash", hash.HexString(), "err", err)

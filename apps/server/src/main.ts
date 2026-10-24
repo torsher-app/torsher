@@ -48,6 +48,7 @@ import {
   onTorrentReady,
   resumeResolving,
 } from './services/torrents/index.ts'
+import { purgeImports } from './services/transfer/imports.ts'
 import { createShutdown } from './shutdown.ts'
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -79,11 +80,17 @@ function purgeTmdbData() {
 
 purgeTmdbData()
 setInterval(purgeTmdbData, DAY_MS).unref()
+purgeImports()
+setInterval(purgeImports, DAY_MS).unref()
 await cleanTranscodes()
 
 // Своя раскладка: строка библиотеки, проверка хардлинков и сверка с диском
 managedFolder()
 await checkLinkMode()
+
+// Перенос папок, прерванный остановкой, продолжается с того же места. Не по
+// готовности движка: перенос библиотеки его не ждёт, загрузки ждут сами
+resumeMoves()
 
 // Каталоги загрузок из панели и прежние каталоги раздач прячутся в журнале,
 // как каталог окружения
@@ -159,8 +166,6 @@ const engine = createEngine(logFor('engine'), () => {
   resumeResolving().catch(err =>
     logFor('engine').error({ err }, 'Resolve failed'),
   )
-  // Перенос папок, прерванный остановкой, продолжается с того же места
-  resumeMoves()
   clearStreamSelections()
     .catch(err => logFor('engine').error({ err }, 'Selection cleanup failed'))
     .finally(checkStorage)

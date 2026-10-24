@@ -12,6 +12,7 @@ export const attentionLinks: Record<
   sources: { path: '/sources', query: { filter: 'attention' } },
   network: '/settings/network',
   metadata: '/settings/metadata',
+  playback: '/settings/playback',
   // Неожиданный выход с кодом 0 — тоже падение, но пишется на warn
   logs: { path: '/logs', query: { source: 'engine', level: 'warn' } },
 }

@@ -3,6 +3,7 @@ import {
   idleDue,
   loadScreensaverMinutes,
   saveScreensaverMinutes,
+  screensaverRests,
 } from '../lib/screensaver.ts'
 
 // Простой сверяем раз в несколько секунд: таймер не перезапускается на каждое нажатие
@@ -21,9 +22,13 @@ export function setScreensaverMinutes(minutes: number) {
  * заставке только гасят её: событие перехватывается на захвате `window` раньше
  * движка фокуса, поэтому OK ничего не открывает, Back не уходит назад, стрелка
  * не шагает, а курсор не переносит подсветку.
+ *
+ * `resting` — заставка шла дольше предела и погасла в чёрный экран.
  */
 export function useScreensaver(enabled: () => boolean) {
   const active = ref(false)
+  const resting = ref(false)
+  let activeSince = 0
   let lastInputAt = Date.now()
   let pointer: { x: number, y: number } | undefined
   let timer: ReturnType<typeof setInterval> | undefined
@@ -37,6 +42,7 @@ export function useScreensaver(enabled: () => boolean) {
     event.preventDefault()
     event.stopImmediatePropagation()
     active.value = false
+    resting.value = false
   }
 
   // Chrome шлёт mousemove и без движения, когда контент сдвинулся под курсором
@@ -56,13 +62,20 @@ export function useScreensaver(enabled: () => boolean) {
   }
 
   function check() {
+    const now = Date.now()
+
+    if (active.value) {
+      resting.value = screensaverRests(activeSince, now)
+      return
+    }
+
     if (
-      !active.value
-      && !document.hidden
+      !document.hidden
       && enabled()
-      && idleDue(lastInputAt, Date.now(), screensaverMinutes.value)
+      && idleDue(lastInputAt, now, screensaverMinutes.value)
     ) {
       active.value = true
+      activeSince = now
     }
   }
 
@@ -89,5 +102,5 @@ export function useScreensaver(enabled: () => boolean) {
     clearInterval(timer)
   })
 
-  return { active }
+  return { active, resting }
 }

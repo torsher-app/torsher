@@ -2,8 +2,10 @@
 import { ref, watchEffect } from 'vue'
 import { useRoute } from 'vue-router'
 import AppScreensaver from './components/AppScreensaver.vue'
+import InputDebug from './components/InputDebug.vue'
 import TitleActions from './components/TitleActions.vue'
 import { useScreensaver } from './composables/useScreensaver.ts'
+import { inputDebug } from './inputDebug.ts'
 import { isStacked, screenKey } from './router.ts'
 import { session } from './session.ts'
 
@@ -21,9 +23,8 @@ watchEffect(() => {
 })
 
 // В плеере заставки нет: ни при просмотре, ни на паузе — там своё затемнение
-const { active: screensaverActive } = useScreensaver(
-  () => !currentRoute.path.startsWith('/play/'),
-)
+const { active: screensaverActive, resting: screensaverResting }
+  = useScreensaver(() => !currentRoute.path.startsWith('/play/'))
 </script>
 
 <template>
@@ -64,8 +65,9 @@ const { active: screensaverActive } = useScreensaver(
   <TitleActions />
 
   <Transition name="screensaver">
-    <AppScreensaver v-if="screensaverActive" />
+    <AppScreensaver v-if="screensaverActive" :resting="screensaverResting" />
   </Transition>
+  <InputDebug v-if="inputDebug" />
 </template>
 
 <style>

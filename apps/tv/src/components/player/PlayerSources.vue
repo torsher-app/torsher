@@ -133,10 +133,8 @@ watch(showsLoader, async (shown) => {
 
 .sources__list {
   height: 100%;
-  /* Запас под увеличение строки в фокусе (×1.06 от ширины панели): прокрутка
-     обрезает её края */
-  margin: 0 calc(var(--u) * -24);
-  padding: calc(var(--u) * 6) calc(var(--u) * 24);
+  margin: 0 calc(var(--focus-ring-gap) * -1);
+  padding: calc(var(--u) * 6) var(--focus-ring-gap);
   overflow-y: auto;
 }
 

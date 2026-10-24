@@ -1,7 +1,10 @@
 import type { FastifyReply } from 'fastify'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import type { StorageOverview } from '../services/storage/index.ts'
-import type { StorageMoveState } from '../services/storage/move.ts'
+import type {
+  StorageMoveErrorKind,
+  StorageMoveState,
+} from '../services/storage/move.ts'
 import { messageResponse } from '../dto/common.ts'
 import { browseQuery, folderBrowse } from '../dto/libraries.ts'
 import {
@@ -46,8 +49,7 @@ function toMoveResponse(move: StorageMoveState | null) {
       itemsDone: move.itemsDone,
       currentName: move.currentName,
       waiting: move.waiting,
-      error:
-        (move.error as 'no_space' | 'denied' | 'engine' | 'failed') ?? null,
+      error: (move.error as StorageMoveErrorKind | null) ?? null,
       startedAt: move.startedAt.toISOString(),
       finishedAt: move.finishedAt?.toISOString() ?? null,
     }
@@ -224,7 +226,7 @@ export const storageRoutes: FastifyPluginAsyncZod = async (app) => {
 
       try {
         if (path) {
-          const problem = pathProblem(kind, path)
+          const problem = await pathProblem(kind, path)
 
           if (problem)
             throw new StoragePathError(problem)

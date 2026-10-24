@@ -31,7 +31,11 @@ import {
 } from '../library/linker.ts'
 import { logFor } from '../logs/index.ts'
 import { diskUsage } from './disk.ts'
-import { dropEmptyManagedFolders, sameVolume } from './folders.ts'
+import {
+  dropEmptyManagedFolders,
+  sameDirectory,
+  sameVolume,
+} from './folders.ts'
 import { markMoving, unmarkMoving } from './moving.ts'
 import {
   downloadDirValue,
@@ -46,7 +50,7 @@ const POLL_MS = 1000
 // Столько раз перенос раздачи начинается заново, если движок перезапустился
 const ENGINE_RETRIES = 3
 
-/** Перенос не начат: уже идёт другой или не хватит места */
+/** Перенос не начат: уже идёт или стартует другой, или не хватит места */
 export class StorageMoveError extends Error {
   readonly kind: 'busy' | 'no_space'
 
@@ -57,8 +61,12 @@ export class StorageMoveError extends Error {
   }
 }
 
-/** Почему перенос встал: панель переводит в текст */
-export type StorageMoveErrorKind = 'no_space' | 'denied' | 'engine' | 'failed'
+/**
+ * Почему перенос встал: панель переводит в текст. `exists` — в новой папке
+ * чужой файл под тем же именем
+ */
+export type StorageMoveErrorKind
+  = 'no_space' | 'denied' | 'engine' | 'exists' | 'failed'
 
 interface Running {
   id: string
@@ -71,6 +79,9 @@ interface Running {
 
 let running: Running | undefined
 let task: Promise<void> | undefined
+// Смена папки или старт переноса между первой проверкой и записью задания:
+// параллельный запрос получает `busy`, а не второе задание
+let starting = false
 
 function moveRow(id: string) {
   return getDb()
@@ -114,6 +125,10 @@ export function isMoveRunning() {
   return !!running
 }
 
+function isBusy() {
+  return !!running || starting
+}
+
 function errorKindOf(err: unknown): StorageMoveErrorKind {
   const code = (err as NodeJS.ErrnoException).code
 
@@ -123,16 +138,22 @@ function errorKindOf(err: unknown): StorageMoveErrorKind {
   if (code === 'EACCES' || code === 'EPERM' || code === 'EROFS')
     return 'denied'
 
-  if (err instanceof EngineError || err instanceof EngineMoveFailed)
+  if (err instanceof EngineMoveFailed)
+    return err.kind === 'exists' ? 'exists' : 'engine'
+
+  if (err instanceof EngineError)
     return 'engine'
 
   return 'failed'
 }
 
 class EngineMoveFailed extends Error {
-  constructor(message: string) {
+  readonly kind: string | undefined
+
+  constructor(message: string, kind?: string) {
     super(message)
     this.name = 'EngineMoveFailed'
+    this.kind = kind
   }
 }
 
@@ -220,9 +241,24 @@ export async function changeStoragePath(
   path: string | null,
   mode: 'new_only' | 'move',
 ) {
-  if (running)
+  if (isBusy())
     throw new StorageMoveError('busy')
 
+  starting = true
+
+  try {
+    await applyStoragePath(kind, path, mode)
+  }
+  finally {
+    starting = false
+  }
+}
+
+async function applyStoragePath(
+  kind: StorageKind,
+  path: string | null,
+  mode: 'new_only' | 'move',
+) {
   const target = path ? resolve(path) : null
 
   if (target)
@@ -247,14 +283,25 @@ export async function changeStoragePath(
   await checkLinkMode()
 
   if (mode === 'move')
-    await startMove(kind)
+    await beginMove(kind)
 }
 
 /** Перенести в действующую папку всё, что лежит в прежних */
 export async function startMove(kind: StorageKind) {
-  if (running)
+  if (isBusy())
     throw new StorageMoveError('busy')
 
+  starting = true
+
+  try {
+    return await beginMove(kind)
+  }
+  finally {
+    starting = false
+  }
+}
+
+async function beginMove(kind: StorageKind) {
   const target = resolve(storagePath(kind))
   const [needed, disk] = await Promise.all([
     moveBytesNeeded(kind, target),
@@ -299,7 +346,7 @@ export function cancelMove() {
 
 /** Задания, прерванные остановкой сервера, продолжаются с того же места */
 export function resumeMoves() {
-  if (running)
+  if (isBusy())
     return
 
   const row = getDb()
@@ -397,13 +444,8 @@ async function moveDownloads(state: Running, row: StorageMove) {
 
   // Без данных на диске: следующая закачка начнётся в новом каталоге
   for (const item of await pendingTorrents(target)) {
-    if (!item.row.inEngine) {
-      getDb()
-        .update(torrents)
-        .set({ downloadDir: downloadDirValue(target) })
-        .where(eq(torrents.id, item.row.id))
-        .run()
-    }
+    if (!item.row.inEngine)
+      setDownloadDir(item.row, target)
   }
 
   for (;;) {
@@ -430,6 +472,7 @@ async function moveDownloads(state: Running, row: StorageMove) {
 
     state.waiting = false
     state.currentName = next.row.name
+
     await moveOneTorrent(state, next.row, target)
     await separateLibraryCopies(next.row, target)
     itemDone(state, next.bytes)
@@ -470,8 +513,12 @@ async function moveOneTorrent(
           move = await torrentMoveState(torrent.infoHash)
         }
 
-        if (move.state === 'failed')
-          throw new EngineMoveFailed(move.error ?? 'Engine move failed')
+        if (move.state === 'failed') {
+          throw new EngineMoveFailed(
+            move.error ?? 'Engine move failed',
+            move.kind,
+          )
+        }
 
         break
       }
@@ -489,15 +536,19 @@ async function moveOneTorrent(
       }
     }
 
-    getDb()
-      .update(torrents)
-      .set({ downloadDir: downloadDirValue(target) })
-      .where(eq(torrents.id, torrent.id))
-      .run()
+    setDownloadDir(torrent, target)
   }
   finally {
     unmarkMoving(torrent.id)
   }
+}
+
+function setDownloadDir(torrent: Pick<Torrent, 'id'>, target: string) {
+  getDb()
+    .update(torrents)
+    .set({ downloadDir: downloadDirValue(target) })
+    .where(eq(torrents.id, torrent.id))
+    .run()
 }
 
 /**
@@ -549,19 +600,115 @@ async function moveLibrary(state: Running, row: StorageMove) {
   if (target.path !== row.target)
     patch(row.id, { target: target.path })
 
+  const aliases = new Set<string>()
+  const sources: LibraryFolder[] = []
+
+  for (const folder of managedFolders()) {
+    if (folder.id === target.id)
+      continue
+
+    if (await sameDirectory(folder.path, target.path))
+      aliases.add(folder.id)
+    else sources.push(folder)
+  }
+
   for (const { file, folder } of pendingFiles(target)) {
     if (state.cancelled)
       return
 
     state.currentName = basename(file.relPath)
-    await moveLibraryFile(file, folder, target)
+
+    // Та же папка под другим путём: файл уже на месте, меняется только папка
+    if (aliases.has(folder.id))
+      retargetLibraryFile(file, target)
+    else await moveLibraryFile(file, folder, target)
+
     itemDone(state, file.size)
   }
 
+  await removeOrphans(sources, target)
   dropEmptyManagedFolders()
 }
 
-/** Файл раздачи на томе новой папки: из него получится хардлинк */
+function takenIn(target: LibraryFolder, relPath: string) {
+  return getDb()
+    .select({ id: mediaFiles.id })
+    .from(mediaFiles)
+    .where(
+      and(eq(mediaFiles.folderId, target.id), eq(mediaFiles.relPath, relPath)),
+    )
+    .get()
+}
+
+function retargetLibraryFile(file: MediaFile, target: LibraryFolder) {
+  if (takenIn(target, file.relPath)) {
+    logFor('storage').warn(
+      { mediaFileId: file.id },
+      'Library file name is taken in the new folder',
+    )
+    return
+  }
+
+  getDb()
+    .update(mediaFiles)
+    .set({ folderId: target.id })
+    .where(eq(mediaFiles.id, file.id))
+    .run()
+}
+
+/**
+ * Остановка между переключением строки и удалением исходника оставляет файл
+ * в прежней папке без строки. Он удаляется, если его копия на месте в новой;
+ * файл со своей строкой не трогаем
+ */
+async function removeOrphans(sources: LibraryFolder[], target: LibraryFolder) {
+  if (!sources.length)
+    return
+
+  const db = getDb()
+  const moved = db
+    .select()
+    .from(mediaFiles)
+    .where(
+      and(eq(mediaFiles.folderId, target.id), eq(mediaFiles.state, 'present')),
+    )
+    .all()
+
+  for (const folder of sources) {
+    const own = new Set(
+      db
+        .select({ relPath: mediaFiles.relPath })
+        .from(mediaFiles)
+        .where(eq(mediaFiles.folderId, folder.id))
+        .all()
+        .map(item => item.relPath),
+    )
+
+    for (const file of moved) {
+      if (own.has(file.relPath))
+        continue
+
+      const orphan = absolutePathOf(folder, file)
+
+      if (!(await stat(orphan).catch(() => undefined))?.isFile())
+        continue
+
+      if (!(await stat(absolutePathOf(target, file)).catch(() => undefined)))
+        continue
+
+      await removeFile(orphan, folder.path, `${baseOf(orphan)}.`)
+      logFor('storage').info(
+        { mediaFileId: file.id },
+        'Leftover library file removed',
+      )
+    }
+  }
+}
+
+/**
+ * Файл раздачи на томе новой папки: из него получится хардлинк. Только
+ * докачанный: хардлинк с недокачанного файла положил бы в библиотеку дыры
+ */
 async function torrentSourceFor(file: MediaFile, target: LibraryFolder) {
   if (!file.torrentId || file.fileIndex === null)
     return undefined
@@ -572,7 +719,15 @@ async function torrentSourceFor(file: MediaFile, target: LibraryFolder) {
     .where(eq(torrents.id, file.torrentId))
     .get()
 
-  if (!torrent?.inEngine)
+  if (!torrent?.inEngine || !isEngineReady())
+    return undefined
+
+  const live = await listEngineTorrents()
+    .then(items => items.find(item => item.infoHash === torrent.infoHash))
+    .catch(() => undefined)
+  const size = torrent.files?.[file.fileIndex]?.size ?? file.size
+
+  if ((live?.fileProgress[file.fileIndex] ?? 0) < size)
     return undefined
 
   const source = await sourcePathOf(torrent, file.fileIndex)
@@ -587,16 +742,7 @@ async function moveLibraryFile(
 ) {
   const source = absolutePathOf(folder, file)
   const destination = absolutePathOf(target, file)
-  const taken = getDb()
-    .select({ id: mediaFiles.id })
-    .from(mediaFiles)
-    .where(
-      and(
-        eq(mediaFiles.folderId, target.id),
-        eq(mediaFiles.relPath, file.relPath),
-      ),
-    )
-    .get()
+  const taken = takenIn(target, file.relPath)
 
   // Такое имя в новой папке уже занято другим файлом: этот остаётся на месте
   if (taken) {

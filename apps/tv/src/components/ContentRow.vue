@@ -106,11 +106,15 @@ function measure() {
   if (!view.value || !elements || !first)
     return
 
-  itemWidth.value = first.offsetWidth
+  // Дробные размеры: при --u не целом offsetLeft округляет шаг, и за ряд
+  // ошибка копится в упор дальше конца нативной прокрутки
+  const firstRect = first.getBoundingClientRect()
+
+  itemWidth.value = firstRect.width
   step.value
     = elements.length > 1
-      ? elements[1]!.offsetLeft - first.offsetLeft
-      : first.offsetWidth
+      ? elements[1]!.getBoundingClientRect().left - firstRect.left
+      : firstRect.width
   viewWidth.value = view.value.clientWidth
   setOffset(ensureVisible(offset.value, focused ?? 0, metrics.value))
 }
@@ -242,14 +246,14 @@ onBeforeUnmount(() => {
 }
 
 /*
- * Обрезка ленты: слева остаётся полоска 48 px предыдущей карточки, сверху
- * и снизу — место под кольцо и масштаб фокуса, справа лента идёт до края
- * экрана. overflow, а не clip-path: clip-path над лентой на своём слое
- * GPU ТВ рисует маской, и это роняло кадры при листании рядов.
+ * Обрезка ленты: слева остаётся полоска 48 px предыдущей карточки (она шире
+ * запаса под кольцо фокуса), сверху и снизу — запас под кольцо, справа лента
+ * идёт до края экрана. overflow, а не clip-path: clip-path над лентой на своём
+ * слое GPU ТВ рисует маской, и это роняло кадры при листании рядов.
  */
 .row__clip {
-  margin: calc(var(--u) * -40) 0 calc(var(--u) * -40) calc(var(--u) * -48);
-  padding: calc(var(--u) * 40) 0 calc(var(--u) * 40) calc(var(--u) * 48);
+  margin: calc(var(--focus-ring-gap) * -1) 0 calc(var(--focus-ring-gap) * -1) calc(var(--u) * -48);
+  padding: var(--focus-ring-gap) 0 var(--focus-ring-gap) calc(var(--u) * 48);
   overflow: hidden;
 }
 
@@ -266,6 +270,17 @@ onBeforeUnmount(() => {
 
 .row__clip--native::-webkit-scrollbar {
   display: none;
+}
+
+/*
+ * Поле .row__view справа нативная прокрутка не считает, и в конце ряда последняя
+ * карточка уезжала к краю экрана, срезая кольцо фокуса. Распорка ставит её у
+ * safe area, как упор на ТВ (поле последней карточки уже есть, распорка — остаток)
+ */
+.row__clip--native .row__track::after {
+  content: '';
+  flex: none;
+  width: calc(var(--safe-x) - var(--u) * 28);
 }
 
 /* Видимая часть ряда для расчётов — до safe area справа */
@@ -307,7 +322,8 @@ onBeforeUnmount(() => {
 .row__page--back {
   left: calc(var(--u) * -48);
   width: calc(var(--u) * 48);
-  background: linear-gradient(90deg, var(--color-bg), rgba(11, 13, 18, 0.6));
+  /* Уходит в прозрачность: обрыв затемнения поверх карточки читался полосой */
+  background: linear-gradient(90deg, var(--color-bg) 30%, rgba(11, 13, 18, 0));
 }
 
 .row__page--forward {
