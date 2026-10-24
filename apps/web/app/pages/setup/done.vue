@@ -5,7 +5,7 @@ import {
   CircleCheckIcon,
   CircleDashedIcon,
   ExternalLinkIcon,
-  TvMinimalIcon,
+  MonitorSmartphoneIcon,
 } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 import { Button } from '@/components/ui/button'
@@ -118,13 +118,16 @@ onMounted(() => {
 
   <Card class="gap-3 p-5">
     <div class="flex items-start gap-3">
-      <TvMinimalIcon class="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+      <MonitorSmartphoneIcon
+        class="mt-0.5 size-4 shrink-0"
+        aria-hidden="true"
+      />
       <div class="grid gap-1">
         <h2 class="text-base font-semibold tracking-tight">
-          {{ t("panel.wizard.done.tvTitle") }}
+          {{ t("panel.wizard.done.deviceTitle") }}
         </h2>
         <p class="text-[13.5px] text-pretty text-muted-foreground">
-          {{ t("panel.wizard.done.tvText") }}
+          {{ t("panel.wizard.done.deviceText") }}
         </p>
         <code class="mt-1 font-mono text-[12.5px] break-all">{{
           showcaseAddress
