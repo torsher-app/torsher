@@ -11,7 +11,6 @@ import {
 import { createBackup } from './create.ts'
 import { backupDirOf } from './dir.ts'
 import { listBackupsIn } from './list.ts'
-import { appVersion } from './manifest.ts'
 import { backupPathsFor } from './paths.ts'
 import { selectForDeletion } from './rotation.ts'
 
@@ -36,7 +35,7 @@ export async function preUpdateBackup(input: {
     tmpDir: paths.tmpDir,
     dir: dir.path,
     reason: 'pre-update',
-    version: appVersion(),
+    version: config.version,
     commit: config.commit,
     secretKey,
     keyMaterial: keyMaterialFrom(settings, secretKey),

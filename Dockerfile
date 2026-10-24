@@ -62,11 +62,13 @@ RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
  && find "$sqlite/prebuilds" -type f ! -name "linux-$cpu.node" -delete \
  # Node не снимает типы с .ts внутри node_modules: пакеты монорепо на TS лежат
  # рядом с сервером, а в node_modules остаётся ссылка на них
- && mkdir -p /out/packages/release-parser \
- && cp -r /src/packages/release-parser/package.json /src/packages/release-parser/src /out/packages/release-parser/ \
- && find /out/packages -name '*.test.ts' -delete \
- && rm -rf node_modules/@torsher/release-parser \
- && ln -s ../../../packages/release-parser node_modules/@torsher/release-parser
+ && for package in release-parser i18n; do \
+      mkdir -p "/out/packages/$package" \
+      && cp -r "/src/packages/$package/package.json" "/src/packages/$package/src" "/out/packages/$package/" \
+      && rm -rf "node_modules/@torsher/$package" \
+      && ln -s "../../../packages/$package" "node_modules/@torsher/$package" || exit 1; \
+    done \
+ && find /out/packages -name '*.test.ts' -delete
 
 # trixie, а не bookworm: ffmpeg из Debian (перепаковка видео и ffprobe) там
 # 7.1, в bookworm — 5.1. Пакет Debian собран без несвободных частей
@@ -114,8 +116,10 @@ COPY --from=engine /out/licenses /usr/share/licenses/torsher-engine
 COPY --chmod=755 docker/entrypoint.sh /usr/local/bin/torsher-entrypoint
 COPY --chmod=755 docker/torsher.sh /usr/local/bin/torsher
 
+ARG TORSHER_VERSION=""
 ARG TORSHER_COMMIT=""
-ENV TORSHER_COMMIT=$TORSHER_COMMIT
+ENV TORSHER_VERSION=$TORSHER_VERSION \
+    TORSHER_COMMIT=$TORSHER_COMMIT
 
 VOLUME /data
 EXPOSE 8080

@@ -59,6 +59,7 @@ export function useOverview() {
     overview: computed(() => overview.value),
     state: readonly(state),
     load,
+    refresh,
   }
 }
 

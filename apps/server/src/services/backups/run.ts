@@ -10,7 +10,6 @@ import { createBackup } from './create.ts'
 import { backupDirOf } from './dir.ts'
 import { BackupError, toBackupError } from './errors.ts'
 import { listBackupsIn } from './list.ts'
-import { appVersion } from './manifest.ts'
 import { backupPathsFor } from './paths.ts'
 import { selectForDeletion } from './rotation.ts'
 import { getBackupSettings, keyMaterialOf } from './settings.ts'
@@ -67,7 +66,7 @@ export async function createBackupNow(
       tmpDir: paths.tmpDir,
       dir: dir.path,
       reason,
-      version: appVersion(),
+      version: config.version,
       commit: config.commit,
       secretKey: currentSecretKey(),
       keyMaterial: keyMaterialOf(settings),

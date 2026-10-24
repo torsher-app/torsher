@@ -24,7 +24,6 @@ import { createBackup } from './services/backups/create.ts'
 import { backupDirOf } from './services/backups/dir.ts'
 import { BackupError, toBackupError } from './services/backups/errors.ts'
 import { listBackupsIn } from './services/backups/list.ts'
-import { appVersion } from './services/backups/manifest.ts'
 import { parseBackupName } from './services/backups/names.ts'
 import { backupPathsFor } from './services/backups/paths.ts'
 import {
@@ -236,7 +235,7 @@ async function backup(io: CliIo, paths: CliPaths) {
     tmpDir: pathsOf(paths).tmpDir,
     dir: dir.path,
     reason: 'manual',
-    version: appVersion(),
+    version: config.version,
     commit: config.commit,
     secretKey,
     keyMaterial: keyMaterialFrom(settings, secretKey),
@@ -352,7 +351,7 @@ async function restore(
           tmpDir: restorePaths.tmpDir,
           dir: dir.path,
           reason: 'pre-restore',
-          version: appVersion(),
+          version: config.version,
           commit: config.commit,
           secretKey,
           keyMaterial: keyMaterialOrNothing(settings, pathsOf(paths).keyPath),

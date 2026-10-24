@@ -16,7 +16,7 @@ import { join } from 'node:path'
 import process from 'node:process'
 import { createInterface } from 'node:readline'
 import { Readable } from 'node:stream'
-import packageJson from '../../../package.json' with { type: 'json' }
+import { config } from '../../config.ts'
 import { parseLine } from './ring.ts'
 
 const FILE_NAME = 'torsher.log'
@@ -216,7 +216,7 @@ export interface ExportHeader {
 
 async function* exportLines(dir: string | undefined, header: ExportHeader) {
   yield [
-    `Torsher ${packageJson.version}`,
+    `Torsher ${config.version}`,
     `Platform: ${process.platform} ${process.arch}`,
     `Node: ${process.version}`,
     `Engine: ${header.engine}`,

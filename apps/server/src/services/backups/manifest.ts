@@ -1,14 +1,8 @@
 import type { Buffer } from 'node:buffer'
 import type { BackupReason } from './names.ts'
-import packageJson from '../../../package.json' with { type: 'json' }
 
 export const MANIFEST_TABLE = '_torsher_backup'
 export const MANIFEST_FORMAT = '1'
-
-/** Версия сервера для имени и манифеста копии */
-export function appVersion() {
-  return packageJson.version
-}
 
 /** Строки таблицы манифеста ключ — значение внутри снимка */
 export function manifestOf(input: {

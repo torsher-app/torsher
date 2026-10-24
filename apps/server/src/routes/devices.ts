@@ -30,6 +30,7 @@ import {
   revokeDevice,
   startPairing,
 } from '../services/devices/index.ts'
+import { notify } from '../services/notifications/index.ts'
 import { listProfiles } from '../services/profiles/index.ts'
 
 const guardResponses = {
@@ -169,11 +170,21 @@ export const deviceRoutes: FastifyPluginAsyncZod = async (app) => {
     },
     async (request, reply) => {
       try {
-        return confirmPairing({
+        const confirmed = confirmPairing({
           code: request.body.code,
           name: request.body.name,
           userId: request.userId,
         })
+
+        // След на случай чужой сессии: устройство подтверждает только владелец
+        notify({
+          kind: 'device_paired',
+          severity: 'info',
+          section: 'people',
+          params: { name: confirmed.name, type: confirmed.type },
+        })
+
+        return confirmed
       }
       catch (err) {
         if (err instanceof PairingError)

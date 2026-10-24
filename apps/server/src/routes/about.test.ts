@@ -28,6 +28,14 @@ describe('get /api/about', () => {
     })
   })
 
+  it('берёт версию образа из окружения', async () => {
+    vi.stubEnv('TORSHER_VERSION', '1.4.0-beta.2')
+
+    const res = await app.inject({ url: '/api/about' })
+
+    expect(res.json()).toMatchObject({ version: '1.4.0-beta.2' })
+  })
+
   it('берёт адрес исходников из окружения', async () => {
     vi.stubEnv('TORSHER_SOURCE_URL', 'https://example.com/fork')
 

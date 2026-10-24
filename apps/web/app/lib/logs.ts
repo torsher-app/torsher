@@ -39,6 +39,7 @@ export const logSourceLabels: Record<LogSource, string> = {
   sources: 'panel.logs.sources.sources',
   catalog: 'panel.logs.sources.catalog',
   network: 'panel.logs.sources.network',
+  notifications: 'panel.logs.sources.notifications',
   auth: 'panel.logs.sources.auth',
   backups: 'panel.logs.sources.backups',
 }

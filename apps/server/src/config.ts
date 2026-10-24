@@ -1,5 +1,6 @@
 import { dirname, join } from 'node:path'
 import process from 'node:process'
+import packageJson from '../package.json' with { type: 'json' }
 
 const LOG_LEVELS = ['error', 'warn', 'info', 'debug'] as const
 
@@ -125,6 +126,16 @@ export const config = {
   // Без токена сервер работает, а каталог отвечает понятной ошибкой
   get tmdbAccessToken() {
     return process.env.TMDB_ACCESS_TOKEN || undefined
+  },
+
+  // Версию продукта образ берёт из тега релиза; без него — из package.json
+  get version() {
+    return process.env.TORSHER_VERSION || packageJson.version
+  },
+
+  // Сборка релиза: только она проверяет обновления, у разработки версии нет
+  get isRelease() {
+    return Boolean(process.env.TORSHER_VERSION)
   },
 
   // Коммит сборки передаёт образ при сборке; в разработке его нет

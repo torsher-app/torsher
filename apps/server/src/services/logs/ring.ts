@@ -10,6 +10,7 @@ export const LOG_SOURCES = [
   'sources',
   'catalog',
   'network',
+  'notifications',
   'auth',
   'backups',
 ] as const

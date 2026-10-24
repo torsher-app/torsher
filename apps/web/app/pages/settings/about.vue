@@ -1,10 +1,23 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
+import { Skeleton } from '@/components/ui/skeleton'
 import AboutCard from '~/components/settings/AboutCard.vue'
 import BrandMark from '~/components/shell/BrandMark.vue'
+import UpdatesCard from '~/components/updates/UpdatesCard.vue'
 
 const { t } = useI18n()
 const { isAuthenticated } = useUser()
+const updates = useUpdates()
+
+// Обновления — только у владельца: без входа страница показывает одну атрибуцию
+watch(
+  isAuthenticated,
+  (value) => {
+    if (value)
+      void updates.load()
+  },
+  { immediate: true },
+)
 </script>
 
 <template>
@@ -18,6 +31,17 @@ const { isAuthenticated } = useUser()
       </p>
     </header>
     <AboutCard />
+    <!-- Скелетон в размер карточки; ошибка загрузки карточку просто не показывает -->
+    <Skeleton
+      v-if="updates.state.value === 'loading' || updates.state.value === 'idle'"
+      class="h-72 max-w-180 rounded-xl"
+      aria-busy="true"
+    />
+    <UpdatesCard
+      v-else-if="updates.status.value"
+      class="max-w-180"
+      :status="updates.status.value"
+    />
   </div>
   <!-- Без входа: атрибуция и версия доступны со страницы входа -->
   <div v-else class="grid w-full max-w-lg gap-6">

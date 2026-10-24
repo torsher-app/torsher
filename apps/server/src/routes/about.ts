@@ -1,5 +1,4 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
-import packageJson from '../../package.json' with { type: 'json' }
 import { config } from '../config.ts'
 import { aboutResponse } from '../dto/about.ts'
 import { isImdbEnabled } from '../services/ratings/imdb/state.ts'
@@ -23,7 +22,7 @@ export const aboutRoutes: FastifyPluginAsyncZod = async (app) => {
       },
     },
     () => ({
-      version: packageJson.version,
+      version: config.version,
       commit: config.commit,
       license: LICENSE,
       sourceUrl: config.sourceUrl,
