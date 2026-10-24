@@ -300,8 +300,8 @@ function chooseSeason(id: string) {
 /* Строки прокручиваются нативно: панель сама ставит фокусную посередине */
 .episode-list__rows {
   flex: 1;
-  margin: calc(var(--u) * 12) calc(var(--u) * -16) 0;
-  padding: calc(var(--u) * 12) calc(var(--u) * 16) calc(var(--u) * 24);
+  margin: calc(var(--u) * 12) calc(var(--focus-ring-gap) * -1) 0;
+  padding: calc(var(--u) * 12) var(--focus-ring-gap) calc(var(--u) * 24);
   overflow-y: auto;
 }
 

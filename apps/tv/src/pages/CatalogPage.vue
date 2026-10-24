@@ -853,11 +853,11 @@ onBeforeUnmount(() => {
 .catalog__chips-view {
   position: absolute;
   z-index: 6;
-  top: calc(var(--u) * 140);
+  top: calc(var(--u) * 156 - var(--focus-ring-gap));
   right: 0;
   left: var(--content-x);
-  padding: calc(var(--u) * 16) var(--safe-x) calc(var(--u) * 16) calc(var(--u) * 16);
-  margin-left: calc(var(--u) * -16);
+  padding: var(--focus-ring-gap) var(--safe-x) var(--focus-ring-gap) var(--focus-ring-gap);
+  margin-left: calc(var(--focus-ring-gap) * -1);
   overflow: hidden;
 }
 
