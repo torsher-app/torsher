@@ -428,7 +428,7 @@
     "titleTv": "Connect this TV",
     "titleWeb": "Connect this browser",
     "openPanel": "On your phone or computer, open the Torsher panel",
-    "openSection": "Go to Profiles & devices → Connect a TV",
+    "openSection": "Go to Profiles and devices → Connect a device",
     "enterCode": "Enter this code",
     "refreshes": "The code refreshes on its own",
     "owner": "Sign in as owner",
@@ -736,7 +736,7 @@
         },
         "done": {
           "title": "Done",
-          "text": "Connect a TV"
+          "text": "Connect a device"
         }
       },
       "account": {
@@ -875,8 +875,8 @@
         "later": "Set up later",
         "change": "Change",
         "setUp": "Set up",
-        "tvTitle": "Connect a TV",
-        "tvText": "Open this address in the TV browser or in the Torsher app. A six-character code appears on the screen — enter it here.",
+        "deviceTitle": "Connect a device",
+        "deviceText": "Open this address in a browser on the TV or computer, or in the Torsher app. A six-character code appears on the screen — enter it here.",
         "people": "Profiles and devices",
         "openShowcase": "Open showcase",
         "toPanel": "Go to panel"
@@ -977,7 +977,7 @@
         "devices": {
           "count": "{n} device | {n} devices",
           "empty": "No devices",
-          "emptyHint": "Pair a TV with the code on its screen",
+          "emptyHint": "Connect a device with the code on its screen",
           "watching": "Watching now: {n} | Watching now: {n}",
           "idle": "Nobody is watching"
         },
@@ -1620,8 +1620,8 @@
     },
     "people": {
       "title": "Profiles and devices",
-      "pairTv": "Connect a TV",
-      "pairTvShort": "Connect TV",
+      "pairDevice": "Connect a device",
+      "pairDeviceShort": "Connect",
       "loadError": "Couldn't load profiles and devices",
       "loadErrorText": "The server didn't respond. If the panel has been open for a while, reload the page.",
       "profiles": {
@@ -1709,7 +1709,7 @@
       },
       "devices": {
         "group": "Devices",
-        "empty": "No devices yet. Open Torsher on the TV — it shows a code to enter here.",
+        "empty": "No devices yet. Open Torsher on a TV or in a browser — it shows a code to enter here.",
         "watching": "Watching now",
         "noProfile": "Profile not selected",
         "types": {
@@ -1726,7 +1726,7 @@
         },
         "revokeDialog": {
           "title": "Disconnect “{name}”?",
-          "text": "The TV will have to connect again with a code.",
+          "text": "The device will have to connect again with a code.",
           "submit": "Disconnect"
         },
         "toasts": {
@@ -1735,13 +1735,13 @@
         }
       },
       "pair": {
-        "title": "Connect a TV",
-        "text": "Open Torsher on the TV — it shows a six-character code.",
+        "title": "Connect a device",
+        "text": "Open Torsher on a TV or in a browser — it shows a six-character code.",
         "code": "Code from the screen",
         "codeHint": "The code is valid for 10 minutes.",
         "name": "Device name",
         "nameDefault": "Living room TV",
-        "nameHint": "This is how the device appears in the list. The profile is chosen on the TV itself.",
+        "nameHint": "This is how the device appears in the list. The profile is chosen on the device itself.",
         "submit": "Connect",
         "errorTitles": {
           "invalid": "Code not found",
@@ -1749,8 +1749,8 @@
           "unknown": "Couldn't connect"
         },
         "errors": {
-          "invalid": "Check the code on the TV screen and enter it again.",
-          "expired": "A code is valid for 10 minutes. Show a new code on the TV and enter it.",
+          "invalid": "Check the code on the device screen and enter it again.",
+          "expired": "A code is valid for 10 minutes. Show a new code on the device and enter it.",
           "unknown": "Something went wrong. Try again."
         },
         "done": "Code accepted",
