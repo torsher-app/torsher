@@ -17,3 +17,4 @@ Daily database backups, backups to another disk, password protection, restoring,
 - <Ui k="panel.backups.encryption.password" />
 - Restoring in the panel, with a command, or when the container doesn't start
 - Moving to a new server with <Ui k="panel.backups.setup.link" />
+- <Ui k="panel.transfer.title" />: merging profiles, watch positions, lists and ratings into a server that already has its own, and exporting one profile
