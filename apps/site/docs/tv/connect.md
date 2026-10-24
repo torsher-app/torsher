@@ -37,7 +37,7 @@ The TV moves on by itself within a few seconds:
 - with one profile without a PIN, it opens the home screen;
 - otherwise it asks <Ui k="profiles.title" />. A profile with a lock asks for its four-digit PIN.
 
-To switch later, use <Ui k="profiles.switch" /> on the TV.
+To switch later, select your avatar and name near the bottom of the side menu on the TV.
 
 ## Without a code
 

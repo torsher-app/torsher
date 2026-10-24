@@ -26,7 +26,7 @@ The install file already has Prowlarr as an optional service. Skip to [Option B]
    docker compose --profile prowlarr up -d
    ```
 
-2. Open `http://<server-address>:9696`. Prowlarr asks you to set up its own sign-in on the first visit.
+2. Open `http://<server-address>:9696`. On the first visit Prowlarr may ask you to set up its own sign-in.
 3. In Prowlarr, open **Indexers** and add the indexers you are allowed to use. Prowlarr starts empty.
 4. Copy the API key from **Settings → General → API Key** in Prowlarr.
 5. In the Torsher setup wizard, the <Ui k="panel.wizard.steps.sources.title" /> step finds Prowlarr at `http://prowlarr:9696` by itself. Paste the API key and select <Ui k="panel.wizard.sources.connect.submit" />.
@@ -51,7 +51,7 @@ Already past the wizard? Use Option B with the address `http://prowlarr:9696`.
 
 4. Select <Ui k="panel.sources.importDialog.submit" />. Torsher adds every indexer of the manager.
 
-To pick up indexers you added in the manager later, import again: new ones are added, and ones that disappeared are marked rather than deleted.
+Torsher doesn't watch the manager by itself. When you add or remove indexers there, open <Ui k="panel.nav.sources" /> and use the sync button on the manager's card: new indexers are added, and ones gone from the manager are marked rather than deleted.
 
 ## Option C: one Torznab indexer
 

@@ -58,7 +58,7 @@ TV app or browser ──▶ Torsher (one container, one port)
 ## What Torsher does not do
 
 - It does not include, host or index any content and comes with no sources enabled. You choose the sources you connect and are responsible for making sure you are allowed to use them.
-- It collects no telemetry and needs no cloud account. The server talks only to TMDB, your indexers, torrent peers and the proxies you set up.
+- It collects no telemetry and needs no cloud account. The server talks only to TMDB, your indexers, torrent peers, the proxies you set up and, if you turn on IMDb ratings, the official IMDb dataset.
 
 ## Next
 

@@ -16,9 +16,8 @@ import { withBase } from 'vitepress'
     </p>
     <h1>Your home cinema in one container.</h1>
     <p class="intro">
-      A TV-first catalog, watching a torrent right away, your own library and
-      new episodes on their own — in one Docker container on your mini PC, NAS
-      or desktop.
+      A TV-first catalog, watching right away and your own library — in one
+      Docker container on your mini PC, NAS or desktop.
     </p>
     <div class="actions">
       <a class="primary" :href="withBase('/docs/install/docker-compose')">Install with Docker</a>

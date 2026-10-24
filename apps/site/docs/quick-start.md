@@ -1,6 +1,6 @@
 ---
 title: Quick start
-description: "From an empty folder to a movie on the TV in about ten minutes: start Torsher and Prowlarr with Docker Compose, run the setup wizard and connect the TV."
+description: "From an empty folder to a movie on the TV: start Torsher and Prowlarr with Docker Compose, run the setup wizard and connect the TV."
 ---
 
 # Quick start
@@ -8,14 +8,15 @@ description: "From an empty folder to a movie on the TV in about ten minutes: st
 The shortest way from an empty folder to a movie on your TV. Each step links to a page with details if something doesn't go as described.
 
 ::: tip What you'll get
-Torsher and Prowlarr running on your server, the setup wizard passed, and the TV connected and showing the catalog. About ten minutes.
+Torsher and Prowlarr running on your server, the setup wizard passed, and the TV connected and showing the catalog.
 :::
 
 <EarlyNotice />
 
 ## Before you start
 
-- A computer running Linux with [Docker Engine and the Compose plugin](https://docs.docker.com/engine/install/). Not sure about the hardware? See [Requirements](/docs/install/requirements).
+- A computer with Docker and the Compose plugin. Linux gets every feature; Windows and macOS work through Docker Desktop, with transcoding on the CPU only (see [Docker Desktop](/docs/install/docker-desktop)). Not sure about the hardware? See [Requirements](/docs/install/requirements).
+- The commands below are for Linux and macOS.
 - A terminal on that computer, directly or over SSH.
 - A TV or a computer on the same network.
 
@@ -44,11 +45,13 @@ Details: [Docker Compose](/docs/install/docker-compose).
 
 ## 2. Create the owner account
 
-Find the server's address in the local network:
+Find the server's address in the local network. On Linux:
 
 ```bash
 hostname -I
 ```
+
+On macOS and Windows, it's in the network settings of the system.
 
 Open `http://<server-address>:8080/panel/` in a browser, for example `http://192.168.1.10:8080/panel/`. Create the owner account: it signs in to the control panel. There is one account per server; the household watches through profiles.
 
@@ -62,7 +65,7 @@ Details: [Setup wizard](/docs/setup/wizard) and [Indexers](/docs/setup/indexers)
 
 ## 4. Connect the TV
 
-On an LG TV, install the [Torsher app](/docs/tv/lg-webos). On any other TV or computer, open `http://<server-address>:8080/` in the browser.
+On an LG TV, install the [Torsher app](/docs/tv/lg-webos). On a computer or a TV with a recent browser, open `http://<server-address>:8080/`.
 
 The screen shows a six-character code. In the panel, open <Ui k="panel.nav.people" />, select <Ui k="panel.people.pairTv" /> and enter the code. Details: [Connect a TV](/docs/tv/connect).
 

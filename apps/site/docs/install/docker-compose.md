@@ -15,7 +15,9 @@ Torsher running on your server, its data in a folder you chose, and the control 
 
 ## Before you start
 
-- Linux on x86-64 or arm64 with [Docker Engine and the Compose plugin](https://docs.docker.com/engine/install/). Check with `docker compose version`.
+- Docker with the Compose plugin: [Docker Engine](https://docs.docker.com/engine/install/) on Linux, or Docker Desktop on Windows and macOS. Check with `docker compose version`.
+- Linux gets every feature. Docker Desktop runs Torsher with transcoding on the CPU only, and its file sharing may not keep hard links; see [Docker Desktop](/docs/install/docker-desktop).
+- The commands on this page are for Linux and macOS.
 - Disk space for what you watch and keep. See [Requirements](/docs/install/requirements).
 
 ## 1. Get the install file
@@ -99,11 +101,13 @@ docker compose --profile prowlarr up -d
 docker compose ps
 ```
 
-The `torsher` container should be `running`, and within a minute `healthy`. Then open `http://<server-address>:8080/panel/` in a browser. The address of the server in your network:
+The `torsher` container should be `running`, and within a minute `healthy`. Then open `http://<server-address>:8080/panel/` in a browser. The address of the server in your network, on Linux:
 
 ```bash
 hostname -I
 ```
+
+On the machine itself, `http://localhost:8080/panel/` works too.
 
 The panel asks you to create the owner account and starts the [setup wizard](/docs/setup/wizard).
 

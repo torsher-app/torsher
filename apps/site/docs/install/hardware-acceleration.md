@@ -11,6 +11,10 @@ When a player can't decode a video, the server converts it to H.264 on the fly. 
 <Ui k="panel.nav.settings panel.settings.nav.playback" /> in the panel shows your GPU under <Ui k="panel.settings.playback.accel.title" />, and transcoding runs on it.
 :::
 
+::: info Status
+VAAPI, NVENC and the CPU fallback are implemented. Checks on the reference hardware (Intel N150 and NVIDIA RTX 3080) are still in progress. If something here doesn't match what you see, please [open an issue](https://github.com/torsher-app/torsher/issues) with the log.
+:::
+
 ## When transcoding happens
 
 Most of the time it doesn't: the TV app plays files directly, and browsers get the original video repackaged without re-encoding. The server transcodes only what the player can't decode, for example:

@@ -17,8 +17,8 @@ Torsher on the TV home screen, connected to your server, controlled with the rem
 
 - An LG TV with webOS. The app is tested on an LG C4 (2024); TVs from 2020 (webOS 5) and later are targeted but not tested yet.
 - The TV and the server on the same network, and the server's address, for example `192.168.1.10:8080`.
-- An [LG account](https://us.lgaccount.com/) for Developer Mode.
-- A computer with [Node.js 24](https://nodejs.org/) to install the app on the TV.
+- An LG account for Developer Mode.
+- A computer with [Node.js](https://nodejs.org/) for LG's command-line tools that install the app.
 
 ::: info No install? Use the TV browser
 Open `http://<server-address>:8080/` in the TV's web browser and go to [Connect a TV](/docs/tv/connect). The app is still worth it: it opens Torsher straight from the TV home screen and remembers the server.
@@ -68,7 +68,7 @@ Torsher appears among the TV's apps.
 If your TV already runs Homebrew Channel, you can install the same `.ipk` through it instead. We haven't tested this path yet.
 
 ::: details Build the app from source instead
-With Node.js 24 and the repository cloned:
+With Node.js 24 and the repository cloned, from the repository folder:
 
 ```bash
 corepack enable
