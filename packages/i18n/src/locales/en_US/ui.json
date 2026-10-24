@@ -144,16 +144,20 @@
     "runtimeMinutes": "{minutes} min",
     "ratingValue": "{label} {value}",
     "ongoing": "present",
-    "peekSeries": "Seasons and episodes · cast · similar",
-    "peekMovie": "Cast · similar · about the movie",
+    "peekSeries": "Seasons and episodes · about the series · cast",
+    "peekMovie": "About the movie · cast · similar",
     "episodes": "Episodes",
     "airedOf": "{aired} of {total} aired",
     "seasonAired": "{aired} of {total}",
     "airs": "airs {date}",
+    "comingOn": "Out {date}",
+    "nextEpisodeOn": "New episode {date}",
     "cast": "Cast",
     "similar": "More like this",
     "aboutSeries": "About the series",
     "aboutMovie": "About the movie",
+    "tagline": "“{text}”",
+    "overviewMore": "More",
     "facts": {
       "originalTitle": "Original title",
       "countries": "Country",
@@ -162,7 +166,31 @@
       "creators": "Created by",
       "directors": "Directed by",
       "aka": "Also known as",
+      "premiere": "Premiere",
+      "theatrical": "In theaters",
+      "digital": "Digital release",
+      "status": "Status",
+      "runtime": "Runtime",
+      "budget": "Budget",
+      "revenue": "Box office",
+      "language": "Original language",
+      "firstAir": "First aired",
+      "lastAir": "Last aired",
+      "nextEpisode": "Next episode",
+      "episodeRuntime": "Episode runtime",
+      "episodes": "Seasons and episodes",
       "data": "Data"
+    },
+    "statuses": {
+      "rumored": "Rumored",
+      "planned": "Announced",
+      "inProduction": "In production",
+      "postProduction": "Post-production",
+      "released": "Released",
+      "returning": "Ongoing",
+      "ended": "Ended",
+      "canceled": "Canceled",
+      "pilot": "Pilot"
     },
     "left": "{n} min left",
     "history": "You watched: {line}",
@@ -901,6 +929,7 @@
           "rejected": "TMDB rejects the key: the catalog and showcase are empty",
           "unreadable": "The saved TMDB key can't be decrypted: enter it again"
         },
+        "media_accel_failed": "A GPU was found but failed the test: the CPU transcodes video",
         "library_offline": {
           "one": "Library folder unavailable: {name}",
           "many": "Library folders unavailable: {n}"
@@ -939,6 +968,21 @@
           "emptyHint": "Pair a TV with the code on its screen",
           "watching": "Watching now: {n} | Watching now: {n}",
           "idle": "Nobody is watching"
+        },
+        "playback": {
+          "checking": "Checking…",
+          "checkingHint": "The server is testing the GPU and the CPU",
+          "gpuHint": "Acceleration is on",
+          "off": "CPU only",
+          "offHint": "The GPU is turned off in settings",
+          "failed": "The GPU doesn't work",
+          "failedHint": "Found, but failed the test",
+          "none": "No GPU",
+          "noneHint": "The CPU transcodes video",
+          "unavailable": "Nothing to transcode with",
+          "unavailableHint": "The server's ffmpeg has no H.264 encoder",
+          "cpu": "CPU up to {height}p",
+          "hdr": "HDR to SDR up to {height}p"
         }
       }
     },
@@ -1221,37 +1265,62 @@
           "title": "Hardware acceleration",
           "text": "A GPU transcodes video many times faster than the CPU and barely loads it. The server checks it with a test encode on startup."
         },
-        "encoder": {
-          "vaapi": "VAAPI",
-          "nvenc": "NVENC",
-          "software": "CPU",
-          "none": "nothing"
+        "gpu": {
+          "named": "{vendor} GPU",
+          "unnamed": "GPU"
         },
-        "lowPower": "low-power",
-        "decodes": "decodes {codecs}",
-        "decodesNothing": "CPU decodes",
+        "status": {
+          "working": "Working",
+          "off": "Off"
+        },
+        "decodes": "Decodes {codecs} itself. For other codecs the CPU decodes and the GPU encodes.",
+        "decodesNothing": "The CPU decodes, the GPU encodes.",
+        "offText": "The CPU transcodes video: the GPU is turned off with the switch below.",
         "deep": "{codec} 10-bit",
-        "noGpu": "No GPU found",
-        "noGpuHint": "The CPU transcodes. To let the container see a GPU, pass through /dev/dri (Intel, AMD) or set up the NVIDIA Container Toolkit — see the README.",
+        "noGpu": "The server can't see a GPU",
+        "noGpuHint": "The CPU transcodes video. If the computer has an Intel, AMD or NVIDIA GPU, pass it through to the container.",
+        "connectLink": "How to connect",
+        "failed": {
+          "title": "A GPU was found but doesn't work",
+          "text": "The server sees the device, but the test encode on it failed, so the CPU transcodes video. Usually the container can't access the device, the host lacks the GPU firmware, or the kernel is too old."
+        },
+        "fixLink": "How to fix",
+        "unavailable": {
+          "title": "Nothing to transcode with",
+          "text": "The server's ffmpeg has no H.264 encoder: video a device can't play by itself won't open."
+        },
         "useGpu": "Transcode on the GPU",
         "useGpuHint": "Turn off if the GPU produces artifacts: the CPU will encode instead.",
-        "current": "Encoding with: {encoder} · checked {date}",
+        "details": "Details",
+        "detail": {
+          "method": "Method",
+          "device": "Device",
+          "driver": "Driver",
+          "model": "Model",
+          "error": "Test error"
+        },
+        "lowPower": "low-power",
+        "current": {
+          "gpuNamed": "Encoding on the {vendor} GPU · checked {date}",
+          "gpu": "Encoding on the GPU · checked {date}",
+          "software": "Encoding on the CPU · checked {date}",
+          "none": "Nothing to encode with · checked {date}"
+        },
         "check": "Check again",
         "transcode": {
           "title": "CPU and HDR",
-          "text": "Without a GPU the CPU encodes. The server picked the frame size limit from a speed test: larger video is scaled down.",
+          "text": "Without a GPU, or with it turned off, the CPU encodes video. The server measured what it can handle on startup: larger video is scaled down.",
           "hint": "A GPU encodes up to 1080p"
         },
-        "ceiling": "CPU limit",
-        "bench": "x264 at 1080p: {fps} fps",
+        "ceiling": "CPU handles",
+        "bench": "Measured on startup: {fps} fps at 1080p",
         "noBench": "Speed not measured",
+        "ceilingValue": "up to {height}p",
         "noSoftware": "no x264",
         "toneMapping": "HDR to SDR",
-        "toneMappingHint": {
-          "gpu": "HDR colors are converted for a regular screen on the GPU",
-          "software": "Without a GPU the CPU converts them — this is slow",
-          "none": "The server's ffmpeg lacks the filters: HDR will look washed out"
-        },
+        "toneMappingHint": "Only needed when HDR video has to be transcoded — for a browser or a screen without HDR. A TV with HDR plays such video by itself.",
+        "toneMappingLimit": "The frame is scaled down to {height}p: conversion can't keep up with more.",
+        "toneMappingNone": "The server's ffmpeg lacks the filters: transcoded HDR video will look washed out.",
         "toneMappingValue": {
           "gpu": "GPU",
           "software": "CPU",
@@ -1963,6 +2032,124 @@
       },
       "showMore": "Show more",
       "moreError": "Couldn’t load more history"
+    },
+    "imports": {
+      "section": "Ratings from other services",
+      "hint": "Your own ratings and Watch later from IMDb, Letterboxd and Trakt.",
+      "start": "Import…",
+      "open": "Open import",
+      "matching": "Matching with the catalog: {done} of {total}…",
+      "ready": "Import is waiting for confirmation",
+      "failed": "Import failed: the catalog didn’t respond",
+      "loadError": "Couldn’t load the import status",
+      "last": "Imported {date}: {count}",
+      "titles": "{n} title | {n} titles",
+      "undo": "Undo",
+      "unmatchedLink": "Not matched · {n}",
+      "undoDialog": {
+        "title": "Undo the import?",
+        "text": "Ratings and Watch later marks go back to how they were before the import. Titles changed after the import stay as they are.",
+        "submit": "Undo import",
+        "keep": "Keep it"
+      },
+      "sources": {
+        "imdb": "IMDb",
+        "letterboxd": "Letterboxd",
+        "trakt": "Trakt"
+      },
+      "dialog": {
+        "title": "Import ratings and lists",
+        "description": "Into the “{name}” profile: own ratings and Watch later.",
+        "files": "Files to import",
+        "drop": "Drop files here or choose them",
+        "dropHint": "CSV, JSON or zip — up to 20 MB",
+        "remove": "Remove {name}",
+        "formats": "Supported:",
+        "formatImdb": "IMDb ratings and watchlist CSV",
+        "formatLetterboxd": "Letterboxd export — the whole zip",
+        "formatTrakt": "Trakt export — the whole zip",
+        "formatImportCsv": "CSV in the Letterboxd import format with tmdbID or imdbID — converters for other services produce it",
+        "upload": "Upload",
+        "matching": "Matching with the catalog",
+        "progress": "{done} of {total}",
+        "matchingHint": "You can close this window: matching keeps going, and the profile card shows its status.",
+        "failedTitle": "The catalog didn’t respond",
+        "failedText": "Titles can’t be matched without the catalog. Check the TMDB key and the network in settings, then upload the files again.",
+        "again": "Choose files",
+        "sources": "Files: {sources}",
+        "cancelImport": "Cancel import",
+        "apply": "Import",
+        "undo": "Undo import",
+        "matchManually": "Match manually",
+        "done": "Done"
+      },
+      "preview": {
+        "newRatings": "New ratings",
+        "watchlist": "New in Watch later",
+        "same": "Already in the profile",
+        "conflicts": "Rating differs from yours",
+        "unmatched": "Not matched",
+        "skipped": "Skipped: episodes and empty rows",
+        "conflictsLegend": "When a title already has a different rating",
+        "sample": "{title}: yours {current}, in the file {incoming}"
+      },
+      "policies": {
+        "keep": "Keep mine",
+        "keepHint": "File ratings go only to titles you haven’t rated",
+        "replace": "Replace with file ratings",
+        "replaceHint": "The file wins: your rating changes to the one from the file",
+        "newer": "Keep the later one",
+        "newerHint": "The rating given later stays — yours or the file’s",
+        "newerNoDates": "The file has no rating dates — nothing to compare"
+      },
+      "result": {
+        "imported": "Imported",
+        "unchanged": "Unchanged",
+        "unmatched": "Not matched",
+        "unmatchedHint": "Some rows didn’t find a title on their own. You can match them manually — they wait in the profile card for 90 days."
+      },
+      "toasts": {
+        "undone": "Import undone",
+        "undoneKept": "{n} title was changed after the import and stays as is | {n} titles were changed after the import and stay as they are"
+      },
+      "validation": {
+        "files": "Choose at least one file",
+        "count": "No more than {n} files at a time",
+        "size": "The files are larger than 20 MB together"
+      },
+      "errors": {
+        "title": "The files don’t fit",
+        "unsupported": "“{file}” doesn’t look like an IMDb, Letterboxd or Trakt export.",
+        "broken": "“{file}” is damaged or isn’t a zip.",
+        "tooLarge": "The files are larger than 20 MB together.",
+        "tooMany": "The files have more than 20,000 rows — split them and import in parts.",
+        "empty": "The files have neither ratings nor a Watch later list.",
+        "unknown": "The server didn’t accept the files. Try again.",
+        "applyFailed": "Couldn’t import",
+        "applyFailedText": "The server didn’t respond or the preview expired. Upload the files again.",
+        "undoFailed": "Couldn’t undo the import"
+      },
+      "unmatched": {
+        "title": "Not matched · {name}",
+        "titleShort": "Not matched",
+        "group": "Rows from files · {n}",
+        "rating": "★ {n}",
+        "watchlist": "Watch later",
+        "suggestion": "looks like “{title}”",
+        "notFound": "not found in the catalog",
+        "confirm": "Confirm",
+        "find": "Find…",
+        "hide": "Hide “{title}”",
+        "findTitle": "Find a title",
+        "matched": "“{title}” matched",
+        "matchedShort": "Matched",
+        "saveFailed": "Couldn’t save. Try again",
+        "loadError": "Couldn’t load the import rows",
+        "moreError": "Couldn’t load more",
+        "emptyTitle": "Everything is matched",
+        "emptyText": "Import rows that didn’t find a catalog title on their own show up here.",
+        "back": "Back to profiles"
+      }
     },
     "library": {
       "managed": "Torsher layout",

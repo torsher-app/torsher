@@ -437,18 +437,19 @@ onBeforeUnmount(stopFocus)
   padding: calc(var(--u) * 6) 0;
 }
 
-/* Сетка уезжает под шапку: окно обрезает её по верху */
+/* Сетка уезжает под шапку: окно обрезает её по верху; запас окна слева и
+   сверху — кольцу фокуса */
 .home-video__viewport {
   position: absolute;
-  top: calc(var(--u) * 270);
+  top: calc(var(--u) * 294 - var(--focus-ring-gap));
   right: 0;
   bottom: 0;
-  left: calc(var(--content-x) - var(--u) * 24);
+  left: calc(var(--content-x) - var(--focus-ring-gap));
   overflow: hidden;
 }
 
 .home-video__column {
-  padding: calc(var(--u) * 24) 0 calc(var(--u) * 160) calc(var(--u) * 24);
+  padding: var(--focus-ring-gap) 0 calc(var(--u) * 160) var(--focus-ring-gap);
   transition: transform var(--motion-base) var(--motion-easing);
 }
 

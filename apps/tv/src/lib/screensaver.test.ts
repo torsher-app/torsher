@@ -5,6 +5,7 @@ import {
   idleDue,
   loadScreensaverMinutes,
   saveScreensaverMinutes,
+  screensaverRests,
   shuffled,
 } from './screensaver.ts'
 
@@ -18,6 +19,16 @@ describe('idleDue', () => {
 
   it('0 минут — заставка выключена', () => {
     expect(idleDue(0, 600 * MINUTE, 0)).toBe(false)
+  })
+})
+
+describe('screensaverRests', () => {
+  it('гаснет через час после включения', () => {
+    const since = 5 * MINUTE
+
+    expect(screensaverRests(since, since + 60 * MINUTE - 1)).toBe(false)
+    expect(screensaverRests(since, since + 60 * MINUTE)).toBe(true)
+    expect(screensaverRests(since, since + 180 * MINUTE)).toBe(true)
   })
 })
 

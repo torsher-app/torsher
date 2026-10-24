@@ -93,3 +93,50 @@ export function formatPublishDate(iso: string, locale: string) {
 
   return `${pad(date.getDate())}.${pad(date.getMonth() + 1)}.${date.getFullYear()}`
 }
+
+/** Дата выхода в фактах тайтла: «15 марта 2026 г.», без данных локали — «15.03.2026». */
+export function formatReleaseDate(date: string, locale: string) {
+  const value = parseAirDate(date)
+
+  if (Number.isNaN(value.getTime()))
+    return ''
+
+  try {
+    if (Intl.DateTimeFormat.supportedLocalesOf([locale]).length > 0) {
+      return new Intl.DateTimeFormat(locale, {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      }).format(value)
+    }
+  }
+  catch {
+    // Ниже — формат без Intl
+  }
+
+  return `${pad(value.getDate())}.${pad(value.getMonth() + 1)}.${value.getFullYear()}`
+}
+
+function groupDigits(value: number) {
+  return String(Math.round(value)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')
+}
+
+/** Бюджет и сборы TMDB — доллары без копеек: «200 000 000 $», «$200,000,000». */
+export function formatUsd(amount: number, locale: string) {
+  try {
+    if (Intl.NumberFormat.supportedLocalesOf([locale]).length > 0) {
+      // Без minimumFractionDigits: 0 старый V8 бросает RangeError на maximum 0
+      return new Intl.NumberFormat(locale, {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+      }).format(amount)
+    }
+  }
+  catch {
+    // Ниже — формат без Intl
+  }
+
+  return `$${groupDigits(amount)}`
+}

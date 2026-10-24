@@ -175,8 +175,8 @@ onBeforeUnmount(stopKey)
 
 .options__list {
   flex: 1;
-  margin: 0 calc(var(--u) * -16);
-  padding: calc(var(--u) * 8) calc(var(--u) * 16) var(--safe-y);
+  margin: 0 calc(var(--focus-ring-gap) * -1);
+  padding: calc(var(--u) * 8) var(--focus-ring-gap) var(--safe-y);
   overflow-y: auto;
 }
 

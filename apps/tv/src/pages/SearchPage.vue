@@ -453,12 +453,13 @@ onBeforeUnmount(stopFocus)
   text-overflow: ellipsis;
 }
 
+/* Запас слева — кольцу фокуса крайней карточки: в вебе колонка обрезает края */
 .search__right {
   position: absolute;
   top: calc(var(--u) * 106);
   right: 0;
-  left: calc(var(--u) * 840);
-  padding-bottom: calc(var(--u) * 160);
+  left: calc(var(--u) * 840 - var(--focus-ring-gap));
+  padding: 0 0 calc(var(--u) * 160) var(--focus-ring-gap);
   transition: transform var(--motion-base) var(--motion-easing);
 }
 

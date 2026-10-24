@@ -22,6 +22,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton'
 import HistoryRow from '~/components/history/HistoryRow.vue'
 import ProfileAvatar from './ProfileAvatar.vue'
+import ProfileImportSection from './ProfileImportSection.vue'
 
 const props = defineProps<{
   profile: Profile | null
@@ -215,6 +216,8 @@ function onInteractOutside(event: Event) {
               />
             </ul>
           </section>
+
+          <ProfileImportSection :profile="shown" />
         </div>
 
         <footer class="flex shrink-0 flex-wrap gap-2 border-t p-3">

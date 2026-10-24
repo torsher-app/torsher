@@ -5,6 +5,8 @@ import type {
   CrewMember,
   Episode,
   Person,
+  TitleDetails,
+  TitleRelease,
   TitleSeason,
 } from '@torsher/api-client'
 import type { PanelOption } from '../components/OptionsPanel.vue'
@@ -35,6 +37,7 @@ import {
   useTitleSeason,
 } from '../composables/useTitleSections.ts'
 import { sectionName, useBlockStack } from '../composables/useBlockStack.ts'
+import { useChipRibbon } from '../composables/useChipRibbon.ts'
 import { useResumeLabels } from '../composables/useResumeLabels.ts'
 import { useStackedScreen } from '../composables/useStackedScreen.ts'
 import { useTitleLibrary } from '../composables/useTitleLibrary.ts'
@@ -51,15 +54,19 @@ import {
   openTitleActions,
   rememberTitleMine,
 } from '../titleActions.ts'
-import { queryOf as catalogQueryOf } from '../lib/catalogFilter.ts'
+import {
+  queryOf as catalogQueryOf,
+  ORIGINAL_LANGUAGES,
+} from '../lib/catalogFilter.ts'
 import { libraryRoute, resumeRoute } from '../lib/continue.ts'
 import { downloadSlot } from '../lib/downloadSlot.ts'
 import { libraryFileFor, libraryTarget } from '../lib/library.ts'
 import { crewCaption } from '../lib/people.ts'
-import { revealOffset } from '../lib/rowTrack.ts'
 import {
   formatAirDate,
   formatPublishDate,
+  formatReleaseDate,
+  formatUsd,
   formatYears,
   isUpcoming,
   seasonAired,
@@ -103,6 +110,9 @@ const {
   error: extrasError,
   retry: retryExtras,
 } = useTitleExtras(extrasId)
+const extrasSettled = computed(
+  () => !!extras.value || extrasStatus.value === 'error',
+)
 
 // Индекс фокусной серии; -1 — плитка «Все серии» перед ними
 const focusedEpisode = ref(0)
@@ -176,24 +186,63 @@ const cast = computed(() => extras.value?.cast ?? [])
 const crew = computed(() => extras.value?.crew ?? [])
 const similar = computed(() => extras.value?.similar ?? [])
 
+// Что впереди: дата выхода фильма, новая серия, а без даты — статус, если
+// годы его не говорят («2019–2022» уже значит «завершён»)
+const upcomingLine = computed(() => {
+  const value = title.value
+
+  if (!value)
+    return ''
+
+  if (value.kind === 'movie') {
+    const next = value.releases?.find(release => isUpcoming(release.date))
+
+    if (next) {
+      return t('title.comingOn', {
+        date: formatPublishDate(next.date, language.value),
+      })
+    }
+
+    return value.status !== 'released' ? statusName(value.status) : ''
+  }
+
+  const airDate = value.nextEpisode?.airDate
+
+  if (airDate && isUpcoming(airDate)) {
+    return t('title.nextEpisodeOn', {
+      date: formatAirDate(airDate, language.value),
+    })
+  }
+
+  return value.status === 'canceled' || !value.year
+    ? statusName(value.status)
+    : ''
+})
+
+function statusName(status: TitleDetails['status']) {
+  return status ? t(`title.statuses.${status}`) : ''
+}
+
 const meta = computed(() => {
   const value = title.value
 
   if (!value)
     return []
 
+  // Жанры последними: строка режется многоточием с конца
   const parts = [
     formatYears(value, t('title.ongoing')),
     t(value.kind === 'movie' ? 'title.movie' : 'title.series'),
+    upcomingLine.value,
   ]
-
-  if (value.genres.length > 0)
-    parts.push(value.genres.slice(0, MAX_GENRES).join(', '))
 
   if (value.seasons?.length)
     parts.push(t('title.seasonCount', value.seasons.length))
   else if (value.runtime)
     parts.push(formatRuntime(value.runtime))
+
+  if (value.genres.length > 0)
+    parts.push(value.genres.slice(0, MAX_GENRES).join(', '))
 
   return parts.filter(Boolean)
 })
@@ -492,27 +541,119 @@ function openCatalog(id: string) {
   })
 }
 
-const facts = computed(() => {
-  const value = title.value
+function languageName(code: string) {
+  const key = `languages.${ORIGINAL_LANGUAGES[code]}`
 
-  if (!value)
-    return []
+  return te(key) ? t(key) : code
+}
 
-  const list: { label: string, value: string, mono?: boolean }[] = []
-  const add = (label: string, items: string[], mono = false) => {
-    if (items.length > 0)
-      list.push({ label: t(label), value: items.join(', '), mono })
+// Дата релиза в регионе — со страной: «20 марта 2026 г. · Россия»
+function releaseValue(release: TitleRelease) {
+  const date = formatReleaseDate(release.date, language.value)
+
+  return release.country ? `${date} · ${countryName(release.country)}` : date
+}
+
+const aka = computed(() => extras.value?.aka ?? [])
+
+interface Fact {
+  label: string
+  value: string
+}
+
+type AddFact = (label: string, items: (string | 0 | undefined)[]) => void
+
+function movieFacts(value: TitleDetails, add: AddFact) {
+  for (const release of value.releases ?? [])
+    add(`title.facts.${release.type}`, [releaseValue(release)])
+
+  // Вышедшему фильму статус «Вышел» ничего не добавляет
+  if (value.status !== 'released')
+    add('title.facts.status', [statusName(value.status)])
+
+  add('title.facts.runtime', [
+    value.runtime ? formatRuntime(value.runtime) : undefined,
+  ])
+  add('title.facts.budget', [
+    value.budget ? formatUsd(value.budget, language.value) : undefined,
+  ])
+  add('title.facts.revenue', [
+    value.revenue ? formatUsd(value.revenue, language.value) : undefined,
+  ])
+}
+
+function seriesFacts(value: TitleDetails, add: AddFact) {
+  const next = value.nextEpisode
+
+  add('title.facts.status', [statusName(value.status)])
+  add('title.facts.nextEpisode', [
+    next
+      ? [
+          `S${next.season}E${next.episode}`,
+          next.airDate && formatReleaseDate(next.airDate, language.value),
+        ]
+          .filter(Boolean)
+          .join(' · ')
+      : undefined,
+  ])
+  add('title.facts.firstAir', [
+    value.firstAirDate && formatReleaseDate(value.firstAirDate, language.value),
+  ])
+
+  if (value.lastAirDate !== value.firstAirDate) {
+    add('title.facts.lastAir', [
+      value.lastAirDate && formatReleaseDate(value.lastAirDate, language.value),
+    ])
   }
 
-  add('title.facts.originalTitle', [value.originalTitle])
+  add('title.facts.episodeRuntime', [
+    value.episodeRuntime ? formatRuntime(value.episodeRuntime) : undefined,
+  ])
+  add('title.facts.episodes', [
+    [
+      value.seasons?.length && t('title.seasonCount', value.seasons.length),
+      value.episodeCount && t('title.episodeList.count', value.episodeCount),
+    ]
+      .filter(Boolean)
+      .join(' · '),
+  ])
+}
+
+/*
+ * Факты появляются вместе с extras (режиссёры, другие названия, чипы):
+ * строки не добавляются под взглядом. Пустые пункты не показываются.
+ */
+const facts = computed<Fact[]>(() => {
+  const value = title.value
+
+  if (!value || !extrasSettled.value)
+    return []
+
+  const list: Fact[] = []
+  const add: AddFact = (label, items) => {
+    const present = items.filter((item): item is string => !!item)
+
+    if (present.length > 0)
+      list.push({ label: t(label), value: present.join(', ') })
+  }
+
+  if (value.kind === 'movie')
+    movieFacts(value, add)
+  else seriesFacts(value, add)
+
   add('title.facts.countries', value.countries.map(countryName))
+  add('title.facts.language', [
+    value.originalLanguage && languageName(value.originalLanguage),
+  ])
   add(
     isSeries.value ? 'title.facts.network' : 'title.facts.studio',
     value.studios,
   )
   add('title.facts.creators', value.creators)
   add('title.facts.directors', extras.value?.directors ?? [])
-  add('title.facts.aka', extras.value?.aka ?? [], true)
+  add('title.facts.originalTitle', [
+    value.originalTitle !== value.title ? value.originalTitle : undefined,
+  ])
   list.push({ label: t('title.facts.data'), value: 'TMDB' })
 
   return list
@@ -637,6 +778,39 @@ function cardKey(item: Card) {
   return item.id
 }
 
+// Описание на первом экране — 3 строки. Не влезло — оно фокусируется и
+// с «Ещё» открывает полный текст в панели
+const overviewText = ref<HTMLElement>()
+const overviewClipped = ref(false)
+const overviewOpen = ref(false)
+let overviewOpener: HTMLElement | undefined
+
+function measureOverview() {
+  const el = overviewText.value
+
+  overviewClipped.value = !!el && el.scrollHeight > el.clientHeight + 1
+}
+
+watch([overviewText, () => title.value?.overview], () =>
+  nextTick(measureOverview))
+window.addEventListener('resize', measureOverview)
+// Строки считаются по метрикам шрифта: пока он грузится, запасной уже других
+document.fonts?.ready.then(measureOverview)
+
+function openOverview() {
+  overviewOpener = focus.current() ?? undefined
+  overviewOpen.value = true
+}
+
+function closeOverview() {
+  overviewOpen.value = false
+
+  nextTick(() => {
+    if (overviewOpener?.isConnected)
+      focus.focusOn(overviewOpener)
+  })
+}
+
 /*
  * Экран сам ставит секцию на место (transform), поэтому все его секции —
  * manual-scroll: scrollIntoView прокрутил бы контейнер с overflow: hidden.
@@ -653,6 +827,9 @@ const order = computed(() => {
   if (!title.value)
     return list
 
+  if (overviewClipped.value)
+    list.push('title-overview')
+
   list.push('title-actions')
 
   if (seasons.value.length > 0) {
@@ -663,6 +840,9 @@ const order = computed(() => {
     else if (episodes.value.length > 0)
       list.push('title-episodes')
   }
+
+  if (facts.value.length > 0)
+    list.push(tagGroups.value.length > 0 ? 'title-tags' : 'title-facts')
 
   if (extrasStatus.value === 'error') {
     list.push('title-extras-state')
@@ -676,13 +856,6 @@ const order = computed(() => {
 
     if (similar.value.length > 0)
       list.push('title-similar')
-  }
-
-  if (facts.value.length > 0) {
-    if (tagGroups.value.length > 0)
-      list.push('title-tags')
-
-    list.push('title-facts')
   }
 
   return list
@@ -703,7 +876,8 @@ function edgesOf(name: string): SectionEdges {
 const stack = ref<HTMLElement>()
 const screen = ref<HTMLElement>()
 const { active } = useStackedScreen(screen, {
-  fallback: () => order.value[0],
+  fallback: () =>
+    order.value.includes('title-actions') ? 'title-actions' : order.value[0],
   onReturn: refreshProgress,
 })
 
@@ -911,24 +1085,13 @@ const {
 })
 
 // Лента чипов: у долгих сериалов десятки сезонов, фокусный чип держим в окне
-const chipsView = ref<HTMLElement>()
-const chipsOffset = ref(0)
-const CHIP_GAP = 24
-
-function revealChip(chip: HTMLElement) {
-  const track = chip.parentElement
-
-  if (!chipsView.value || !track)
-    return
-
-  chipsOffset.value = revealOffset(
-    chipsOffset.value,
-    { left: chip.offsetLeft, width: chip.offsetWidth },
-    chipsView.value.clientWidth,
-    track.scrollWidth,
-    (window.innerWidth / 1920) * CHIP_GAP,
-  )
-}
+const {
+  view: chipsView,
+  native: nativeChips,
+  trackStyle: chipsTrackStyle,
+  reveal: revealChip,
+  onScroll: onChipsScroll,
+} = useChipRibbon()
 
 // Секция прошлого фокуса: вход в чипы сезонов отличается от шага по ним
 let previousSection: string | undefined
@@ -1028,6 +1191,7 @@ function back() {
 onBeforeUnmount(() => {
   stopFocus()
   clearTimeout(seasonTimer)
+  window.removeEventListener('resize', measureOverview)
 })
 </script>
 
@@ -1108,7 +1272,33 @@ onBeforeUnmount(() => {
             </span>
           </div>
 
-          <p v-if="title.overview" class="title__overview">
+          <!-- Обрезанное описание — кнопка: OK открывает полный текст.
+               Целиком влезшее не фокусируется, наведение его не подсвечивает -->
+          <FocusSection
+            v-if="title.overview && overviewClipped"
+            name="title-overview"
+            manual-scroll
+            :edges="edgesOf('title-overview')"
+          >
+            <button
+              v-focusable
+              class="title__overview-button"
+              type="button"
+              @click="openOverview"
+            >
+              <span ref="overviewText" class="title__overview">
+                {{ title.overview }}
+              </span>
+              <span class="title__overview-more">
+                {{ t("title.overviewMore") }}
+              </span>
+            </button>
+          </FocusSection>
+          <p
+            v-else-if="title.overview"
+            ref="overviewText"
+            class="title__overview"
+          >
             {{ title.overview }}
           </p>
         </div>
@@ -1226,12 +1416,17 @@ onBeforeUnmount(() => {
               }}
             </small>
           </h2>
-          <div ref="chipsView" class="title__chips-view">
+          <div
+            ref="chipsView"
+            class="title__chips-view"
+            :class="{ 'title__chips-view--native': nativeChips }"
+            @scroll="onChipsScroll"
+          >
             <FocusSection
               name="title-seasons"
               manual-scroll
               class="title__chips"
-              :style="{ transform: `translateX(${-chipsOffset}px)` }"
+              :style="chipsTrackStyle"
               :edges="edgesOf('title-seasons')"
             >
               <button
@@ -1333,6 +1528,77 @@ onBeforeUnmount(() => {
         </div>
       </section>
 
+      <!-- Сразу под первым экраном (у сериала — под сериями): факты нужны,
+           чтобы решить, смотреть ли, раньше актёров и «Похожего» -->
+      <section
+        v-if="facts.length > 0"
+        class="block"
+        :class="{ 'block--above': blocksAbove.includes('facts') }"
+        data-block="facts"
+      >
+        <div class="block__inner">
+          <h2 class="block__title">
+            {{ t(isSeries ? "title.aboutSeries" : "title.aboutMovie") }}
+          </h2>
+          <p v-if="title.tagline" class="about__tagline">
+            {{ t("title.tagline", { text: title.tagline }) }}
+          </p>
+          <!-- Пульт встаёт на чипы ниже, и блок выравнивается целиком.
+               Без чипов фокус берёт сама сетка фактов: иначе до блока не дойти -->
+          <dl v-if="tagGroups.length > 0" class="facts">
+            <div v-for="fact in facts" :key="fact.label" class="facts__item">
+              <dt class="facts__label">
+                {{ fact.label }}
+              </dt>
+              <dd class="facts__value">
+                {{ fact.value }}
+              </dd>
+            </div>
+          </dl>
+          <FocusSection
+            v-else
+            name="title-facts"
+            manual-scroll
+            :edges="edgesOf('title-facts')"
+          >
+            <dl v-focusable class="facts" tabindex="-1">
+              <div v-for="fact in facts" :key="fact.label" class="facts__item">
+                <dt class="facts__label">
+                  {{ fact.label }}
+                </dt>
+                <dd class="facts__value">
+                  {{ fact.value }}
+                </dd>
+              </div>
+            </dl>
+          </FocusSection>
+          <!-- Другие названия длинные: в ячейке сетки они растянули бы строку -->
+          <p v-if="aka.length > 0" class="about__aka">
+            <span class="about__aka-label">{{ t("title.facts.aka") }}</span>
+            {{ aka.join(", ") }}
+          </p>
+          <FocusSection
+            v-if="tagGroups.length > 0"
+            name="title-tags"
+            manual-scroll
+            class="title__tags"
+            :edges="edgesOf('title-tags')"
+          >
+            <button
+              v-for="group in tagGroups"
+              :key="group.id"
+              v-focusable
+              class="chip"
+              type="button"
+              @click="openTags(group.id)"
+            >
+              {{ group.label }}
+              <span class="chip__count">{{ group.items.length }}</span>
+            </button>
+          </FocusSection>
+        </div>
+      </section>
+
       <section
         v-if="extrasStatus === 'error' && extrasError"
         class="block"
@@ -1419,57 +1685,6 @@ onBeforeUnmount(() => {
           class="skeleton-track__person skeleton"
         />
       </div>
-
-      <section
-        v-if="facts.length > 0"
-        class="block"
-        :class="{ 'block--above': blocksAbove.includes('facts') }"
-        data-block="facts"
-      >
-        <div class="block__inner">
-          <h2 class="block__title">
-            {{ t(isSeries ? "title.aboutSeries" : "title.aboutMovie") }}
-          </h2>
-          <FocusSection
-            v-if="tagGroups.length > 0"
-            name="title-tags"
-            manual-scroll
-            class="title__tags"
-            :edges="edgesOf('title-tags')"
-          >
-            <button
-              v-for="group in tagGroups"
-              :key="group.id"
-              v-focusable
-              class="chip"
-              type="button"
-              @click="openTags(group.id)"
-            >
-              {{ group.label }}
-              <span class="chip__count">{{ group.items.length }}</span>
-            </button>
-          </FocusSection>
-          <FocusSection
-            name="title-facts"
-            manual-scroll
-            :edges="edgesOf('title-facts')"
-          >
-            <dl v-focusable class="facts" tabindex="-1">
-              <div v-for="fact in facts" :key="fact.label" class="facts__row">
-                <dt class="facts__label">
-                  {{ fact.label }}
-                </dt>
-                <dd
-                  class="facts__value"
-                  :class="{ 'facts__value--mono': fact.mono }"
-                >
-                  {{ fact.value }}
-                </dd>
-              </div>
-            </dl>
-          </FocusSection>
-        </div>
-      </section>
     </div>
 
     <div v-else class="title__stack" aria-hidden="true">
@@ -1497,6 +1712,20 @@ onBeforeUnmount(() => {
         @pick="pickDownload"
       />
     </Teleport>
+
+    <OptionsPanel
+      v-if="overviewOpen && title && active"
+      :title="title.title"
+      :subtitle="
+        title.tagline ? t('title.tagline', { text: title.tagline }) : undefined
+      "
+      @close="closeOverview"
+    >
+      <!-- Фокусу нужен элемент панели; текст длинный, колесо прокручивает его -->
+      <p v-focusable class="overview-panel" tabindex="-1">
+        {{ title.overview }}
+      </p>
+    </OptionsPanel>
 
     <OptionsPanel
       v-if="tagGroup && active"
@@ -1705,6 +1934,42 @@ onBeforeUnmount(() => {
 }
 
 /* -webkit-line-clamp работает и в Chromium 68 */
+/* Кнопка не меняет вёрстку текста: поле под кольцо снято отрицательным отступом */
+.title__overview-button {
+  display: block;
+  max-width: calc(var(--u) * 900 + 2 * var(--space-2));
+  margin: calc(-1 * var(--space-2));
+  padding: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-m);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  transition: box-shadow var(--motion-fast) var(--motion-easing);
+}
+
+/* Крупный текстовый блок: кольцо, как у поля ввода, без масштаба */
+.title__overview-button:focus {
+  box-shadow: 0 0 0 var(--focus-ring-width) var(--color-focus);
+}
+
+.title__overview-more {
+  display: block;
+  margin-top: var(--space-1);
+  color: var(--color-text);
+  font-size: var(--font-size-s);
+  font-weight: 600;
+}
+
+.overview-panel {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-m);
+  line-height: 1.5;
+  white-space: pre-line;
+}
+
 .title__overview {
   display: -webkit-box;
   max-width: calc(var(--u) * 900);
@@ -1852,11 +2117,14 @@ onBeforeUnmount(() => {
 
 /*
  * Окно ленты чипов: слева обрезаем по краю контента, справа — по краю экрана;
- * запас вокруг — под масштаб фокуса
+ * запас вокруг — кольцу фокуса
  */
 .title__chips-view {
   margin-bottom: calc(var(--u) * 36);
-  clip-path: inset(calc(var(--u) * -16) calc(var(--safe-x) * -1) calc(var(--u) * -16) calc(var(--u) * -16));
+  clip-path: inset(
+    calc(var(--focus-ring-gap) * -1) calc(var(--safe-x) * -1) calc(var(--focus-ring-gap) * -1)
+      calc(var(--focus-ring-gap) * -1)
+  );
 }
 
 /* position: relative — offsetLeft чипа считается от ленты */
@@ -1864,6 +2132,29 @@ onBeforeUnmount(() => {
   position: relative;
   display: flex;
   transition: transform var(--motion-base) var(--motion-easing);
+}
+
+/*
+ * Веб: окно прокручивается нативно (тачпад вбок, Shift + колесо). overflow
+ * режет и по бокам, поэтому место кольцу — полем, снятым отрицательным
+ * отступом; справа окно идёт до края экрана, как у рядов
+ */
+.title__chips-view--native {
+  margin: calc(var(--focus-ring-gap) * -1) calc(var(--safe-x) * -1) calc(var(--u) * 36 - var(--focus-ring-gap))
+    calc(var(--focus-ring-gap) * -1);
+  padding: var(--focus-ring-gap) var(--safe-x) var(--focus-ring-gap) var(--focus-ring-gap);
+  overflow-x: auto;
+  overflow-y: hidden;
+  clip-path: none;
+}
+
+.title__chips-view--native::-webkit-scrollbar {
+  display: none;
+}
+
+/* Дорожка шириной по чипам: иначе правое поле окна не входит в прокрутку */
+.title__chips-view--native .title__chips {
+  width: max-content;
 }
 
 .chip__count {
@@ -1927,20 +2218,46 @@ onBeforeUnmount(() => {
   font-weight: 400;
 }
 
-.title__tags {
-  display: flex;
-  margin-bottom: calc(var(--u) * 28);
+.about__tagline {
+  margin: 0 0 var(--space-4);
+  font-size: var(--font-size-m);
+  font-style: italic;
+  line-height: 1.35;
 }
 
+.about__aka {
+  max-width: calc(var(--u) * 1240);
+  margin: var(--space-4) 0 0;
+  color: var(--color-text-muted);
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: var(--font-size-s);
+  line-height: 1.42;
+}
+
+.about__aka-label {
+  display: block;
+  margin-bottom: var(--space-1);
+  color: var(--color-text-dim);
+  font-family: var(--font-family);
+}
+
+.title__tags {
+  display: flex;
+  margin-top: calc(var(--u) * 40);
+}
+
+/*
+ * Сетка «подпись над значением». Поле вокруг сетки
+ * снято отрицательным отступом: место под кольцо фокуса, когда сетка
+ * фокусируется сама (без чипов), а текст стоит по краю колонки
+ */
 .facts {
   display: grid;
-  grid-template-columns: auto 1fr;
-  grid-gap: calc(var(--u) * 14) calc(var(--u) * 40);
-  max-width: calc(var(--u) * 1240);
-  margin: 0;
-  padding: var(--space-4);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-gap: calc(var(--u) * 28) calc(var(--u) * 48);
+  margin: calc(-1 * var(--space-3));
+  padding: var(--space-3);
   border-radius: var(--radius-l);
-  background: var(--color-glass);
   font-size: var(--font-size-s);
   transition: box-shadow var(--motion-fast) var(--motion-easing);
 }
@@ -1950,21 +2267,14 @@ onBeforeUnmount(() => {
   box-shadow: 0 0 0 var(--focus-ring-width) var(--color-focus);
 }
 
-/* Строка — обёртка для пары dt/dd: в сетку попадают сами dt и dd */
-.facts__row {
-  display: contents;
-}
-
 .facts__label {
+  margin-bottom: var(--space-1);
   color: var(--color-text-dim);
 }
 
 .facts__value {
   margin: 0;
-}
-
-.facts__value--mono {
-  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
 }
 
 .skeleton-track {

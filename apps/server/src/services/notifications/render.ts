@@ -28,6 +28,7 @@ const sectionPaths: Record<NotificationSection, string> = {
   sources: '/sources?filter=attention',
   network: '/settings/network',
   metadata: '/settings/metadata',
+  playback: '/settings/playback',
   logs: '/logs?source=engine&level=warn',
   about: '/settings/about',
   people: '/people',

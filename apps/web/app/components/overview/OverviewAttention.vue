@@ -18,6 +18,7 @@ const sectionLabels: Record<AttentionItem['section'], string> = {
   sources: 'panel.nav.sources',
   network: 'panel.settings.nav.network',
   metadata: 'panel.settings.nav.metadata',
+  playback: 'panel.settings.nav.playback',
   logs: 'panel.nav.logs',
 }
 </script>

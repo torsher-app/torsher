@@ -55,6 +55,7 @@ import {
   onTorrentReady,
   resumeResolving,
 } from './services/torrents/index.ts'
+import { purgeImports } from './services/transfer/imports.ts'
 import { createShutdown } from './shutdown.ts'
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -94,6 +95,8 @@ function purgeTmdbData() {
 
 purgeTmdbData()
 setInterval(purgeTmdbData, DAY_MS).unref()
+purgeImports()
+setInterval(purgeImports, DAY_MS).unref()
 await cleanTranscodes()
 
 // Своя раскладка: строка библиотеки, проверка хардлинков и сверка с диском

@@ -64,6 +64,9 @@ interface TmdbDetailsBase {
   vote_count: number
   production_countries?: { iso_3166_1: string }[]
   production_companies?: TmdbNamed[]
+  tagline?: string | null
+  // ISO 639-1
+  original_language?: string
   // Есть, если детали запрошены с append_to_response=images
   images?: { logos: TmdbImage[] }
 }
@@ -74,13 +77,26 @@ export interface TmdbMovie extends TmdbDetailsBase {
   release_date: string
   runtime: number | null
   imdb_id?: string | null
+  // Rumored, Planned, In Production, Post Production, Released, Canceled
+  status?: string
+  // Доллары; 0 — неизвестно
+  budget?: number
+  revenue?: number
   // append_to_response=release_dates
   release_dates?: {
     results: {
       iso_3166_1: string
-      release_dates: { certification: string }[]
+      release_dates: TmdbRelease[]
     }[]
   }
+}
+
+export interface TmdbRelease {
+  certification: string
+  // 1 премьера, 2 ограниченный прокат, 3 прокат, 4 цифровой, 5 диск, 6 ТВ
+  type?: number
+  // ISO 8601 с временем: 2026-03-15T00:00:00.000Z
+  release_date?: string
 }
 
 export interface TmdbTvSeason {
@@ -96,6 +112,7 @@ export interface TmdbEpisodeRef {
   name?: string
   air_date?: string | null
   still_path?: string | null
+  runtime?: number | null
 }
 
 export interface TmdbTv extends TmdbDetailsBase {
@@ -108,6 +125,9 @@ export interface TmdbTv extends TmdbDetailsBase {
   origin_country?: string[]
   networks?: TmdbNamed[]
   created_by?: TmdbNamed[]
+  // Минуты; TMDB заполняет его не у всех сериалов
+  episode_run_time?: number[]
+  number_of_episodes?: number
   last_episode_to_air?: TmdbEpisodeRef | null
   next_episode_to_air?: TmdbEpisodeRef | null
   seasons: TmdbTvSeason[]

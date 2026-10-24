@@ -9,12 +9,23 @@ const gpuEncoder = z
     device: z.string().nullable(),
     // Драйвер VAAPI или модель NVIDIA
     name: z.string().nullable(),
+    // Производитель по имени драйвера; null — не распознан
+    vendor: z.enum(['intel', 'amd', 'nvidia']).nullable(),
     // Кодирует только в режиме low-power (VDEnc)
     lowPower: z.boolean(),
     // Что декодирует сама: `h264`, `hevc`, `hevc10`, `av1`…
     decode: z.array(z.string()),
   })
   .meta({ id: 'gpuEncoder' })
+
+const gpuFailure = z
+  .object({
+    encoder: z.enum(['vaapi', 'nvenc']),
+    device: z.string().nullable(),
+    // Строка ошибки ffmpeg из пробного кодирования
+    error: z.string(),
+  })
+  .meta({ id: 'gpuFailure' })
 
 /** Ускорение перекодирования: что найдено на сервере и что выбрано */
 export const playbackSettings = z
@@ -24,6 +35,8 @@ export const playbackSettings = z
     // Чем кодируется сейчас; null — кодировщика H.264 нет совсем
     encoder: z.enum(['software', 'vaapi', 'nvenc']).nullable(),
     gpus: z.array(gpuEncoder),
+    // Устройства видны контейнеру, но пробное кодирование на них не прошло
+    failed: z.array(gpuFailure),
     software: z.boolean(),
     // Кадров в секунду x264 на 1080p по замеру и потолок кадра процессора
     softwareFps: z.number().nullable(),

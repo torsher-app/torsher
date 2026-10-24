@@ -110,6 +110,26 @@ export interface TitleSeasonInput {
   year?: number;
 }
 
+export interface TitleReleaseInput {
+  type: "premiere" | "theatrical" | "digital";
+  date: string;
+  country?: string;
+}
+
+export interface TitleNextEpisodeInput {
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  season: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  episode: number;
+  airDate?: string;
+}
+
 export interface TitleDetailsInput {
   id: string;
   kind: "movie" | "series";
@@ -150,6 +170,42 @@ export interface TitleDetailsInput {
   studios: string[];
   creators: string[];
   seasons?: TitleSeasonInput[];
+  tagline?: string;
+  status?:
+    | "rumored"
+    | "planned"
+    | "inProduction"
+    | "postProduction"
+    | "released"
+    | "returning"
+    | "ended"
+    | "canceled"
+    | "pilot";
+  originalLanguage?: string;
+  releases?: TitleReleaseInput[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  budget?: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  revenue?: number;
+  firstAirDate?: string;
+  lastAirDate?: string;
+  nextEpisode?: TitleNextEpisodeInput;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  episodeRuntime?: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  episodeCount?: number;
 }
 
 export interface EpisodeInput {
@@ -1907,6 +1963,40 @@ export interface MetadataKeyCheckInput {
   kind: "rejected" | "unavailable" | "missing" | null;
 }
 
+export interface GpuEncoderInput {
+  encoder: "vaapi" | "nvenc";
+  device: string | null;
+  name: string | null;
+  vendor: "intel" | "amd" | "nvidia" | null;
+  lowPower: boolean;
+  decode: string[];
+}
+
+export interface GpuFailureInput {
+  encoder: "vaapi" | "nvenc";
+  device: string | null;
+  error: string;
+}
+
+export interface PlaybackSettingsInput {
+  accel: "auto" | "software";
+  encoder: "software" | "vaapi" | "nvenc" | null;
+  gpus: GpuEncoderInput[];
+  failed: GpuFailureInput[];
+  software: boolean;
+  softwareFps: number | null;
+  softwareMaxHeight: number;
+  gpuToneMapping: boolean;
+  softwareToneMapping: boolean;
+  toneMappingFps: number | null;
+  toneMappingMaxHeight: number;
+  checkedAt: string;
+}
+
+export interface UpdatePlaybackSettingsInput {
+  accel: "auto" | "software";
+}
+
 export interface ReleaseInfoInput {
   version: string;
   publishedAt?: string;
@@ -1976,7 +2066,8 @@ export interface AttentionItemInput {
     | "indexer_missing"
     | "dns_spoofing"
     | "host_unreachable"
-    | "tmdb_key_invalid";
+    | "tmdb_key_invalid"
+    | "media_accel_failed";
   severity: "error" | "warning";
   section:
     | "downloads"
@@ -1985,6 +2076,7 @@ export interface AttentionItemInput {
     | "sources"
     | "network"
     | "metadata"
+    | "playback"
     | "logs";
   params: {
     count?: number;
@@ -2021,6 +2113,7 @@ export interface OverviewResponseInput {
     total: number;
     watching: number;
   };
+  playback: PlaybackSettingsInput | null;
 }
 
 export interface NotificationParamsInput {
@@ -2056,7 +2149,8 @@ export interface NotificationItemInput {
     | "indexer_missing"
     | "dns_spoofing"
     | "host_unreachable"
-    | "tmdb_key_invalid";
+    | "tmdb_key_invalid"
+    | "media_accel_failed";
   severity: "error" | "warning" | "info";
   section?:
     | "downloads"
@@ -2065,6 +2159,7 @@ export interface NotificationItemInput {
     | "sources"
     | "network"
     | "metadata"
+    | "playback"
     | "logs"
     | "about"
     | "people"
@@ -2207,6 +2302,219 @@ export interface TelegramChatsInput {
   }[];
 }
 
+export interface CreateProfileImportInput {
+  /**
+   * @maxItems 20
+   * @minItems 1
+   */
+  files: {
+    /**
+     * @minLength 1
+     * @maxLength 255
+     */
+    name: string;
+    /** @minLength 1 */
+    data: string;
+  }[];
+}
+
+export interface ImportFormatErrorResponseInput {
+  message: string;
+  kind: "unsupported" | "broken" | "tooLarge" | "tooMany" | "empty";
+  file?: string;
+}
+
+export interface ImportPreviewInput {
+  sources: ("imdb" | "letterboxd" | "trakt")[];
+  ratings: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    new: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    same: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    conflicts: number;
+  };
+  watchlist: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    new: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    same: number;
+  };
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  unsure: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  notFound: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  skipped: number;
+  conflictSamples: {
+    titleId: string;
+    title: string;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    current: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    incoming: number;
+  }[];
+  conflictsDated: boolean;
+}
+
+export interface ImportJobInput {
+  id: string;
+  state: "matching" | "ready" | "failed";
+  progress: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    done: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    total: number;
+  };
+  error?: "catalog";
+  preview?: ImportPreviewInput;
+}
+
+export interface ImportSummaryInput {
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  imported: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  unchanged: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  unmatched: number;
+}
+
+export interface ImportOverviewInput {
+  job: ImportJobInput | null;
+  last: {
+    id: string;
+    /**
+     * @format date-time
+     * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+     */
+    appliedAt: string;
+    summary: ImportSummaryInput;
+    canUndo: boolean;
+  } | null;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  unmatched: number;
+}
+
+export interface ApplyProfileImportInput {
+  conflicts: "keep" | "replace" | "newer";
+}
+
+export interface AppliedImportInput {
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  imported: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  unchanged: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  unmatched: number;
+  id: string;
+}
+
+export interface UndoneImportInput {
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  restored: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  kept: number;
+}
+
+export interface UnmatchedImportRowInput {
+  id: string;
+  list: "rating" | "watchlist";
+  status: "unsure" | "notFound";
+  title: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  year: number | null;
+  kind: "movie" | "series" | null;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  rating: number | null;
+  suggestion: CardInput | null;
+}
+
+export interface UnmatchedImportRowsInput {
+  items: UnmatchedImportRowInput[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  total: number;
+}
+
+export interface MatchImportRowInput {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  titleId: string;
+}
+
 export interface PlayerSettingsInput {
   autoNext: boolean;
   subtitleSize: "s" | "m" | "l";
@@ -2311,32 +2619,6 @@ export interface PinErrorResponseInput {
    * @max 9007199254740991
    */
   retryAfter: number | null;
-}
-
-export interface GpuEncoderInput {
-  encoder: "vaapi" | "nvenc";
-  device: string | null;
-  name: string | null;
-  lowPower: boolean;
-  decode: string[];
-}
-
-export interface PlaybackSettingsInput {
-  accel: "auto" | "software";
-  encoder: "software" | "vaapi" | "nvenc" | null;
-  gpus: GpuEncoderInput[];
-  software: boolean;
-  softwareFps: number | null;
-  softwareMaxHeight: number;
-  gpuToneMapping: boolean;
-  softwareToneMapping: boolean;
-  toneMappingFps: number | null;
-  toneMappingMaxHeight: number;
-  checkedAt: string;
-}
-
-export interface UpdatePlaybackSettingsInput {
-  accel: "auto" | "software";
 }
 
 export interface WizardStateInput {
@@ -2555,6 +2837,26 @@ export interface TitleSeason {
   year?: number;
 }
 
+export interface TitleRelease {
+  type: "premiere" | "theatrical" | "digital";
+  date: string;
+  country?: string;
+}
+
+export interface TitleNextEpisode {
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  season: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  episode: number;
+  airDate?: string;
+}
+
 export interface TitleDetails {
   id: string;
   kind: "movie" | "series";
@@ -2595,6 +2897,42 @@ export interface TitleDetails {
   studios: string[];
   creators: string[];
   seasons?: TitleSeason[];
+  tagline?: string;
+  status?:
+    | "rumored"
+    | "planned"
+    | "inProduction"
+    | "postProduction"
+    | "released"
+    | "returning"
+    | "ended"
+    | "canceled"
+    | "pilot";
+  originalLanguage?: string;
+  releases?: TitleRelease[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  budget?: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  revenue?: number;
+  firstAirDate?: string;
+  lastAirDate?: string;
+  nextEpisode?: TitleNextEpisode;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  episodeRuntime?: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  episodeCount?: number;
 }
 
 export interface Episode {
@@ -4351,6 +4689,40 @@ export interface MetadataKeyCheck {
   kind: "rejected" | "unavailable" | "missing" | null;
 }
 
+export interface GpuEncoder {
+  encoder: "vaapi" | "nvenc";
+  device: string | null;
+  name: string | null;
+  vendor: "intel" | "amd" | "nvidia" | null;
+  lowPower: boolean;
+  decode: string[];
+}
+
+export interface GpuFailure {
+  encoder: "vaapi" | "nvenc";
+  device: string | null;
+  error: string;
+}
+
+export interface PlaybackSettings {
+  accel: "auto" | "software";
+  encoder: "software" | "vaapi" | "nvenc" | null;
+  gpus: GpuEncoder[];
+  failed: GpuFailure[];
+  software: boolean;
+  softwareFps: number | null;
+  softwareMaxHeight: number;
+  gpuToneMapping: boolean;
+  softwareToneMapping: boolean;
+  toneMappingFps: number | null;
+  toneMappingMaxHeight: number;
+  checkedAt: string;
+}
+
+export interface UpdatePlaybackSettings {
+  accel: "auto" | "software";
+}
+
 export interface ReleaseInfo {
   version: string;
   publishedAt?: string;
@@ -4420,7 +4792,8 @@ export interface AttentionItem {
     | "indexer_missing"
     | "dns_spoofing"
     | "host_unreachable"
-    | "tmdb_key_invalid";
+    | "tmdb_key_invalid"
+    | "media_accel_failed";
   severity: "error" | "warning";
   section:
     | "downloads"
@@ -4429,6 +4802,7 @@ export interface AttentionItem {
     | "sources"
     | "network"
     | "metadata"
+    | "playback"
     | "logs";
   params: {
     count?: number;
@@ -4465,6 +4839,7 @@ export interface OverviewResponse {
     total: number;
     watching: number;
   };
+  playback: PlaybackSettings | null;
 }
 
 export interface NotificationParams {
@@ -4500,7 +4875,8 @@ export interface NotificationItem {
     | "indexer_missing"
     | "dns_spoofing"
     | "host_unreachable"
-    | "tmdb_key_invalid";
+    | "tmdb_key_invalid"
+    | "media_accel_failed";
   severity: "error" | "warning" | "info";
   section?:
     | "downloads"
@@ -4509,6 +4885,7 @@ export interface NotificationItem {
     | "sources"
     | "network"
     | "metadata"
+    | "playback"
     | "logs"
     | "about"
     | "people"
@@ -4651,6 +5028,219 @@ export interface TelegramChats {
   }[];
 }
 
+export interface CreateProfileImport {
+  /**
+   * @maxItems 20
+   * @minItems 1
+   */
+  files: {
+    /**
+     * @minLength 1
+     * @maxLength 255
+     */
+    name: string;
+    /** @minLength 1 */
+    data: string;
+  }[];
+}
+
+export interface ImportFormatErrorResponse {
+  message: string;
+  kind: "unsupported" | "broken" | "tooLarge" | "tooMany" | "empty";
+  file?: string;
+}
+
+export interface ImportPreview {
+  sources: ("imdb" | "letterboxd" | "trakt")[];
+  ratings: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    new: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    same: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    conflicts: number;
+  };
+  watchlist: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    new: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    same: number;
+  };
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  unsure: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  notFound: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  skipped: number;
+  conflictSamples: {
+    titleId: string;
+    title: string;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    current: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    incoming: number;
+  }[];
+  conflictsDated: boolean;
+}
+
+export interface ImportJob {
+  id: string;
+  state: "matching" | "ready" | "failed";
+  progress: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    done: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    total: number;
+  };
+  error?: "catalog";
+  preview?: ImportPreview;
+}
+
+export interface ImportSummary {
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  imported: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  unchanged: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  unmatched: number;
+}
+
+export interface ImportOverview {
+  job: ImportJob | null;
+  last: {
+    id: string;
+    /**
+     * @format date-time
+     * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+     */
+    appliedAt: string;
+    summary: ImportSummary;
+    canUndo: boolean;
+  } | null;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  unmatched: number;
+}
+
+export interface ApplyProfileImport {
+  conflicts: "keep" | "replace" | "newer";
+}
+
+export interface AppliedImport {
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  imported: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  unchanged: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  unmatched: number;
+  id: string;
+}
+
+export interface UndoneImport {
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  restored: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  kept: number;
+}
+
+export interface UnmatchedImportRow {
+  id: string;
+  list: "rating" | "watchlist";
+  status: "unsure" | "notFound";
+  title: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  year: number | null;
+  kind: "movie" | "series" | null;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  rating: number | null;
+  suggestion: Card | null;
+}
+
+export interface UnmatchedImportRows {
+  items: UnmatchedImportRow[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  total: number;
+}
+
+export interface MatchImportRow {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  titleId: string;
+}
+
 export interface PlayerSettings {
   autoNext: boolean;
   subtitleSize: "s" | "m" | "l";
@@ -4755,32 +5345,6 @@ export interface PinErrorResponse {
    * @max 9007199254740991
    */
   retryAfter: number | null;
-}
-
-export interface GpuEncoder {
-  encoder: "vaapi" | "nvenc";
-  device: string | null;
-  name: string | null;
-  lowPower: boolean;
-  decode: string[];
-}
-
-export interface PlaybackSettings {
-  accel: "auto" | "software";
-  encoder: "software" | "vaapi" | "nvenc" | null;
-  gpus: GpuEncoder[];
-  software: boolean;
-  softwareFps: number | null;
-  softwareMaxHeight: number;
-  gpuToneMapping: boolean;
-  softwareToneMapping: boolean;
-  toneMappingFps: number | null;
-  toneMappingMaxHeight: number;
-  checkedAt: string;
-}
-
-export interface UpdatePlaybackSettings {
-  accel: "auto" | "software";
 }
 
 export interface WizardState {
@@ -5174,6 +5738,25 @@ export type PutProfilePinError = MessageResponse;
 export type DeleteProfilePinError = MessageResponse;
 
 export type PostProfileSelectError = MessageResponse | PinErrorResponse;
+
+export type GetProfileImportsError = MessageResponse;
+
+export type PostProfileImportError =
+  ImportFormatErrorResponse | MessageResponse;
+
+export type GetProfileImportUnmatchedError = MessageResponse;
+
+export type PostProfileImportMatchError = MessageResponse;
+
+export type DeleteProfileImportUnmatchedError = MessageResponse;
+
+export type GetProfileImportError = MessageResponse;
+
+export type DeleteProfileImportError = MessageResponse;
+
+export type PostProfileImportApplyError = MessageResponse;
+
+export type PostProfileImportUndoError = MessageResponse;
 
 export type PostDevicePairingError = MessageResponse;
 
@@ -8172,6 +8755,200 @@ export class Api<
         method: "POST",
         body: data,
         type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Profiles
+     * @name GetProfileImports
+     * @request GET:/api/profiles/{id}/imports
+     */
+    getProfileImports: (id: string, params: RequestParams = {}) =>
+      this.request<ImportOverview, GetProfileImportsError>({
+        path: `/api/profiles/${id}/imports`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Profiles
+     * @name PostProfileImport
+     * @request POST:/api/profiles/{id}/imports
+     */
+    postProfileImport: (
+      id: string,
+      data: CreateProfileImportInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<ImportJob, PostProfileImportError>({
+        path: `/api/profiles/${id}/imports`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Profiles
+     * @name GetProfileImportUnmatched
+     * @request GET:/api/profiles/{id}/imports/unmatched
+     */
+    getProfileImportUnmatched: (
+      id: string,
+      query?: {
+        /**
+         * @min 0
+         * @max 9007199254740991
+         * @default 0
+         */
+        offset?: number;
+        /**
+         * @min 1
+         * @max 50
+         * @default 50
+         */
+        limit?: number;
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<UnmatchedImportRows, GetProfileImportUnmatchedError>({
+        path: `/api/profiles/${id}/imports/unmatched`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Profiles
+     * @name PostProfileImportMatch
+     * @request POST:/api/profiles/{id}/imports/unmatched/{rowId}
+     */
+    postProfileImportMatch: (
+      id: string,
+      rowId: string,
+      data: MatchImportRowInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<null, PostProfileImportMatchError>({
+        path: `/api/profiles/${id}/imports/unmatched/${rowId}`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Profiles
+     * @name DeleteProfileImportUnmatched
+     * @request DELETE:/api/profiles/{id}/imports/unmatched/{rowId}
+     */
+    deleteProfileImportUnmatched: (
+      id: string,
+      rowId: string,
+      params: RequestParams = {},
+    ) =>
+      this.request<null, DeleteProfileImportUnmatchedError>({
+        path: `/api/profiles/${id}/imports/unmatched/${rowId}`,
+        method: "DELETE",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Profiles
+     * @name GetProfileImport
+     * @request GET:/api/profiles/{id}/imports/{importId}
+     */
+    getProfileImport: (
+      id: string,
+      importId: string,
+      params: RequestParams = {},
+    ) =>
+      this.request<ImportJob, GetProfileImportError>({
+        path: `/api/profiles/${id}/imports/${importId}`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Profiles
+     * @name DeleteProfileImport
+     * @request DELETE:/api/profiles/{id}/imports/{importId}
+     */
+    deleteProfileImport: (
+      id: string,
+      importId: string,
+      params: RequestParams = {},
+    ) =>
+      this.request<null, DeleteProfileImportError>({
+        path: `/api/profiles/${id}/imports/${importId}`,
+        method: "DELETE",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Profiles
+     * @name PostProfileImportApply
+     * @request POST:/api/profiles/{id}/imports/{importId}/apply
+     */
+    postProfileImportApply: (
+      id: string,
+      importId: string,
+      data: ApplyProfileImportInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<AppliedImport, PostProfileImportApplyError>({
+        path: `/api/profiles/${id}/imports/${importId}/apply`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Profiles
+     * @name PostProfileImportUndo
+     * @request POST:/api/profiles/{id}/imports/{importId}/undo
+     */
+    postProfileImportUndo: (
+      id: string,
+      importId: string,
+      params: RequestParams = {},
+    ) =>
+      this.request<UndoneImport, PostProfileImportUndoError>({
+        path: `/api/profiles/${id}/imports/${importId}/undo`,
+        method: "POST",
         format: "json",
         ...params,
       }),

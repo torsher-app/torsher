@@ -36,6 +36,7 @@ export function attentionMessage(
     case 'storage_low':
       return { key, params: { free, minFree } }
     case 'library_copies':
+    case 'media_accel_failed':
       return { key, params: {} }
     default:
       return name
