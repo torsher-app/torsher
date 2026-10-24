@@ -3,13 +3,16 @@ import type { LampMode, MothPath } from '../../lib/lamp.ts'
 import type { StageStep } from '../../lib/player.ts'
 import { computed, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue'
 import {
+  approach,
   CLICK_PULL,
   CORD_LENGTH,
   createCord,
+  lampLight,
   lampMode,
   lampWeight,
   mothOrbit,
   mothPath,
+  mothTempo,
   stepCord,
   swarmChange,
   tugCord,
@@ -21,7 +24,8 @@ import {
 /**
  * Торшер сцены подготовки плеера. Пока пиров нет, шнурок дёргают всё
  * настойчивее, а свет не загорается; пошли данные — рывок зажигает свет,
- * и к нему слетаются мотыльки, по одному на подключённого пира.
+ * и к нему слетаются мотыльки, по одному на подключённого пира. Свет
+ * разгорается, а мотыльки кружат живее по мере набора буфера (`progress`).
  *
  * Движение считается покадрово (шнурок на пружине, траектории мотыльков),
  * поэтому кадр меняет атрибуты SVG напрямую, без перерисовки Vue.
@@ -30,10 +34,12 @@ const props = withDefaults(
   defineProps<{
     step: StageStep
     connected: number
+    // Доля подготовки 0–1, `bufferProgress`
+    progress?: number
     // Ширина в пикселях макета
     size?: number
   }>(),
-  { size: 200 },
+  { progress: 0, size: 200 },
 )
 
 const id = useId()
@@ -79,6 +85,10 @@ let lastTugAt = -10
 let nextSpawn = 0
 let frame = 0
 let lastFrame = 0
+// Яркость горящего света догоняет прогресс плавно, а не скачком на ответ статистики
+let glow = lampLight(0)
+// Время траекторий мотыльков: идёт быстрее с прогрессом, без скачков позиции
+let swarmClock = 0
 
 function willBeLit() {
   return pendingLight ? pendingLight.on : isLit
@@ -196,7 +206,7 @@ function updateSwarm(dt: number, now: number) {
     if (moth.state === 'arriving') {
       const k = Math.min(1, age / ARRIVE)
       const eased = 1 - (1 - k) ** 3
-      const [ox, oy] = mothOrbit(moth.path, now)
+      const [ox, oy] = mothOrbit(moth.path, swarmClock)
 
       x = moth.fromX + (ox - moth.fromX) * eased
       y = moth.fromY + (oy - moth.fromY) * eased
@@ -205,7 +215,7 @@ function updateSwarm(dt: number, now: number) {
         moth.state = 'circling'
     }
     else if (moth.state === 'circling') {
-      [x, y] = mothOrbit(moth.path, now)
+      [x, y] = mothOrbit(moth.path, swarmClock)
     }
     else {
       if (age > LEAVE) {
@@ -235,7 +245,7 @@ function updateSwarm(dt: number, now: number) {
 
 function light(now: number) {
   if (isLit)
-    return 1
+    return glow
 
   if (mode !== 'noPeers' || now < waitStart)
     return 0
@@ -283,6 +293,8 @@ function update(dt: number, now: number) {
     waitPrev = t
   }
 
+  glow = approach(glow, lampLight(props.progress), dt)
+  swarmClock += dt * mothTempo(props.progress)
   updateSwarm(dt, now)
   stepCord(cord, dt, now)
   render(now)
@@ -298,9 +310,12 @@ function tick(timestamp: number) {
   frame = requestAnimationFrame(tick)
 }
 
-// Без анимации торшер просто горит, если данные идут, и стоит выключенным, если нет
+// Без анимации торшер горит по прогрессу, если данные идут, и стоит выключенным, если нет
 function still() {
-  const opacity = lampMode(props.step) === 'peers' ? '1' : '0'
+  const opacity
+    = lampMode(props.step) === 'peers'
+      ? lampLight(props.progress).toFixed(3)
+      : '0'
 
   if (lit.value)
     lit.value.style.opacity = opacity
@@ -314,7 +329,7 @@ const reducedMotion
     && window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
 watch(
-  () => props.step,
+  () => [props.step, props.progress],
   () => {
     if (reducedMotion)
       still()

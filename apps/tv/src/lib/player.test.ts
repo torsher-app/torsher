@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   backAction,
+  BUFFER_TARGET_BYTES,
   bufferedSeconds,
   bufferingStep,
+  bufferProgress,
   byteOffset,
   canDimPause,
   canRetry,
@@ -482,5 +484,25 @@ describe('следующая серия', () => {
     expect(countdownOf(12.2)).toBe(13)
     expect(countdownOf(-1)).toBe(0)
     expect(countdownOf(Number.NaN)).toBe(0)
+  })
+})
+
+describe('bufferProgress', () => {
+  it('grows with the buffer ahead', () => {
+    expect(bufferProgress(0)).toBe(0)
+    expect(bufferProgress(BUFFER_TARGET_BYTES / 2)).toBe(0.5)
+  })
+
+  it('moves with every downloaded byte while the run ahead stalls', () => {
+    expect(bufferProgress(1024, BUFFER_TARGET_BYTES / 4)).toBe(0.25)
+  })
+
+  it('counts a cached run ahead even when nothing downloads', () => {
+    expect(bufferProgress(BUFFER_TARGET_BYTES / 2, 0)).toBe(0.5)
+  })
+
+  it('never promises a finished buffer', () => {
+    expect(bufferProgress(BUFFER_TARGET_BYTES)).toBe(0.99)
+    expect(bufferProgress(BUFFER_TARGET_BYTES * 4)).toBe(0.99)
   })
 })

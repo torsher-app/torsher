@@ -15,6 +15,7 @@ import { usePlayerArt } from '../composables/usePlayerArt.ts'
 import { useFocus } from '../focus/index.ts'
 import { playerRoute } from '../lib/continue.ts'
 import { lastVoiceKey } from '../lib/episodes.ts'
+import { LOADER_DELAY_MS } from '../lib/loader.ts'
 import { goBack } from '../lib/navigation.ts'
 
 /**
@@ -47,6 +48,7 @@ const { art, subtitle } = usePlayerArt(props.id, target.season, target.episode)
 const step = ref<ResolveStep>('searching')
 const notFound = ref(false)
 let cancelled = false
+const mountedAt = performance.now()
 let offKey: (() => void) | undefined
 
 const label = computed(() => t(`resolve.${step.value}`))
@@ -99,13 +101,17 @@ async function run() {
   })
 
   if (outcome.kind === 'found') {
-    void router.replace(
-      playerRoute(outcome.file, {
+    // Торшер уже на экране — плеер не прячет его на вторую задержку
+    void router.replace({
+      ...playerRoute(outcome.file, {
         id: props.id,
         season: target.season,
         episode: target.episode,
       }),
-    )
+      state: {
+        loaderShown: performance.now() - mountedAt >= LOADER_DELAY_MS,
+      },
+    })
   }
   else if (outcome.kind === 'notFound') {
     notFound.value = true
@@ -141,9 +147,8 @@ onBeforeUnmount(() => {
         ]"
         @choose="onChoice"
       />
-      <PlayerLamp v-else step="connecting" :connected="0" />
-
-      <template v-if="!notFound" #bottom>
+      <template v-else>
+        <PlayerLamp step="connecting" :connected="0" />
         <PlayerBuffering step="connecting" :stats="undefined" :label="label" />
       </template>
     </PlayerStage>

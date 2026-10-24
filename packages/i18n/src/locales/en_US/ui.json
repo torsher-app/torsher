@@ -482,6 +482,7 @@
     "peers": "{n} peer | {n} peers",
     "found": "{n} peer found | {n} peers found",
     "speed": "{value} MB/s",
+    "progress": "{n}%",
     "bufferSeconds": "buffer {n} s",
     "bufferMinutes": "buffer {n} min",
     "downloaded": "Downloaded",
@@ -499,10 +500,10 @@
     "restartHint": "The player cannot switch audio by itself: the stream will restart from this point",
     "burnInHint": "The server burns “in picture” subtitles into the video: the stream will restart from this point",
     "steps": {
-      "connecting": "Connecting to peers",
+      "connecting": "Connecting",
       "waitingPeers": "Waiting for peers",
       "buffering": "Buffering",
-      "reconnecting": "Reconnecting…",
+      "reconnecting": "Reconnecting",
       "slow": "Slow torrent"
     },
     "waitingHint": "Nobody is sharing this file yet. The torrent may be rare: wait or pick another one.",
