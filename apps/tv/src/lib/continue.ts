@@ -47,6 +47,7 @@ export interface ScreenRoute {
 export function playerRoute(
   file: EpisodeFile,
   title?: { id: string, season?: number | null, episode?: number | null },
+  voice?: string,
 ): ScreenRoute {
   return {
     path: `/play/${file.torrentId}/${file.fileIndex}`,
@@ -54,6 +55,7 @@ export function playerRoute(
       title: title.id,
       season: title.season ? String(title.season) : undefined,
       episode: title.episode ? String(title.episode) : undefined,
+      voice,
     },
   }
 }

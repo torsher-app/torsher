@@ -22,9 +22,10 @@ import PlayerPrompt from '../components/player/PlayerPrompt.vue'
 import PlayerStage from '../components/player/PlayerStage.vue'
 import AppIcon from '../components/AppIcon.vue'
 import FocusSection from '../components/FocusSection.vue'
+import SourcesScreen from '../components/SourcesScreen.vue'
+import type { SourceChoice } from '../components/SourcesScreen.vue'
 import PlayerEpisodes from '../components/player/PlayerEpisodes.vue'
 import PlayerSettings from '../components/player/PlayerSettings.vue'
-import PlayerSources from '../components/player/PlayerSources.vue'
 import PlayerTracks from '../components/player/PlayerTracks.vue'
 import PlayerUpNext from '../components/player/PlayerUpNext.vue'
 import type {
@@ -75,6 +76,7 @@ import {
 } from '../lib/loader.ts'
 import { goBack } from '../lib/navigation.ts'
 import { titleRefOf } from '../lib/sources.ts'
+import { heardStudio } from '../lib/tracks.ts'
 import { session, updatePlayerSettings } from '../session.ts'
 
 const props = defineProps<{
@@ -86,6 +88,8 @@ const props = defineProps<{
   titleId?: string
   season?: string
   episode?: string
+  // Озвучка, которую слушали в прошлой раздаче: после смены раздачи
+  voice?: string
 }>()
 
 // Позиция сохраняется по ходу просмотра, а не только на выходе: ТВ могут выключить
@@ -100,6 +104,7 @@ const player = usePlayback(
     ? { mediaFileId: props.mediaFileId }
     : { torrentId: props.torrentId!, fileIndex: Number(props.fileIndex) },
   titleRefOf(props.titleId, props.season, props.episode),
+  props.voice,
 )
 const { playback, stats } = player
 // Пиры и скорость — только у раздачи: файл библиотеки играется с диска
@@ -623,9 +628,12 @@ function playNext() {
     return switchTo(upNext.value)
 }
 
-// Другая раздача той же серии: позиция серии сохранится и продолжится в ней
-async function switchSource(candidate: SourceCandidate) {
-  if (candidate.lastWatched) {
+/**
+ * Другая раздача той же серии: позиция серии сохранится и продолжится в ней,
+ * озвучка — та, что слышно сейчас, если она там есть
+ */
+async function switchSource(candidate: SourceCandidate, choice: SourceChoice) {
+  if (candidate.lastWatched && !isLibrary) {
     closePanel()
     return
   }
@@ -641,8 +649,27 @@ async function switchSource(candidate: SourceCandidate) {
       season: props.season,
       episode: props.episode,
       candidate: candidate.id,
+      voice: heardStudio(tracks.audioTrack.value, choice.playingVoice),
     },
   })
+}
+
+// Строка «В библиотеке» экрана источников: файл этой серии с диска
+async function switchToLibrary(
+  fileId: string,
+  title: { season?: number | null, episode?: number | null },
+) {
+  if (isLibrary) {
+    closePanel()
+    return
+  }
+
+  if (leaving || !props.titleId)
+    return
+
+  leaving = true
+  await save()
+  void router.replace(libraryRoute(fileId, { id: props.titleId, ...title }))
 }
 
 function exit() {
@@ -766,9 +793,11 @@ function onKey(action: KeyAction, event: KeyboardEvent) {
     return true
   }
 
-  // Влево из панели, где левее ничего нет, — к фильму: панель закрывается
+  // Влево из панели, где левее ничего нет, — к фильму: панель закрывается.
+  // Источники — экран целиком, а не панель сбоку: их закрывает только Back
   if (
     panel.value
+    && panel.value !== 'source'
     && action.type === 'move'
     && action.direction === 'left'
     && !hasLeftInPanel()
@@ -1090,6 +1119,10 @@ function onTracksSelect(id: string) {
 function openPanel(kind: Panel) {
   panel.value = kind
   osd.hold()
+
+  // Источники закрывают фильм целиком: он ждёт на паузе
+  if (kind === 'source')
+    video.value?.pause()
 }
 
 function onLoadedMetadata() {
@@ -1505,13 +1538,14 @@ onBeforeUnmount(() => {
         @select="switchTo"
         @close="closePanel"
       />
-      <PlayerSources
+      <SourcesScreen
         v-else-if="panel === 'source' && titleId"
-        :title-id="titleId"
-        :season="season"
-        :episode="episode"
+        :id="titleId"
+        class="player__sources"
+        :playing="{ season, episode, library: isLibrary }"
         @select="switchSource"
-        @close="closePanel"
+        @library="switchToLibrary"
+        @back="closePanel"
       />
       <PlayerSettings
         v-else-if="panel === 'settings'"
@@ -1633,6 +1667,11 @@ onBeforeUnmount(() => {
   border-top-color: var(--color-accent);
   border-radius: 50%;
   animation: player-spin 900ms linear infinite;
+}
+
+/* Источники — экран целиком поверх фильма, субтитров и кнопки «Назад» */
+.player__sources {
+  z-index: 10;
 }
 
 .player__subtitles {

@@ -576,9 +576,7 @@
     "source": {
       "button": "Source",
       "keepsPosition": "Switching keeps your position",
-      "current": "Now playing",
-      "empty": "No other torrents with this episode",
-      "failed": "Could not switch the torrent"
+      "current": "Now playing"
     },
     "settings": {
       "button": "Settings",

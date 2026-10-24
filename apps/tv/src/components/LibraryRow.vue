@@ -11,6 +11,8 @@ import AppIcon from './AppIcon.vue'
  */
 const props = defineProps<{
   files: LibraryFile[]
+  // Файл играет плеер, из которого открыт экран
+  current?: boolean
 }>()
 
 const emit = defineEmits<{ select: [] }>()
@@ -47,7 +49,13 @@ const size = computed(() =>
 </script>
 
 <template>
-  <button v-focusable class="library-row" type="button" @click="emit('select')">
+  <button
+    v-focusable
+    class="library-row"
+    :class="{ 'library-row--current': current }"
+    type="button"
+    @click="emit('select')"
+  >
     <span class="library-row__lead">
       <span class="library-row__title">
         <AppIcon name="library" class="library-row__icon" />
@@ -70,7 +78,9 @@ const size = computed(() =>
     </span>
     <span class="library-row__side">
       <span class="library-row__size">{{ size }}</span>
-      <span class="library-row__dim">{{ t("sources.libraryPlay") }}</span>
+      <span class="library-row__dim">{{
+        current ? t("player.source.current") : t("sources.libraryPlay")
+      }}</span>
     </span>
   </button>
 </template>
