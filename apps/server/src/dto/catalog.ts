@@ -89,6 +89,39 @@ export const titleSeason = z
   })
   .meta({ id: 'titleSeason' })
 
+// Статус тайтла в TMDB: у фильма — стадия производства, у сериала — идёт ли эфир
+export const titleStatuses = [
+  'rumored',
+  'planned',
+  'inProduction',
+  'postProduction',
+  'released',
+  'returning',
+  'ended',
+  'canceled',
+  'pilot',
+] as const
+
+export const titleRelease = z
+  .object({
+    // Премьера — первый выход в мире; кино и цифровой — в регионе языка запроса
+    type: z.enum(['premiere', 'theatrical', 'digital']),
+    // YYYY-MM-DD
+    date: z.string(),
+    // ISO 3166-1 у релиза в регионе
+    country: z.string().optional(),
+  })
+  .meta({ id: 'titleRelease' })
+
+export const titleNextEpisode = z
+  .object({
+    season: z.number().int(),
+    episode: z.number().int(),
+    // YYYY-MM-DD
+    airDate: z.string().optional(),
+  })
+  .meta({ id: 'titleNextEpisode' })
+
 export const titleDetails = card
   .extend({
     overview: z.string(),
@@ -112,6 +145,21 @@ export const titleDetails = card
     // Создатели сериала; режиссёры фильма — в extras
     creators: z.array(z.string()),
     seasons: z.array(titleSeason).optional(),
+    tagline: z.string().optional(),
+    status: z.enum(titleStatuses).optional(),
+    // ISO 639-1: название языка выбирает клиент
+    originalLanguage: z.string().optional(),
+    // Только у фильмов: даты выхода, бюджет и сборы в долларах
+    releases: z.array(titleRelease).optional(),
+    budget: z.number().int().optional(),
+    revenue: z.number().int().optional(),
+    // Только у сериалов: эфир (YYYY-MM-DD), следующая серия, длительность
+    // серии в минутах и число серий во всех сезонах
+    firstAirDate: z.string().optional(),
+    lastAirDate: z.string().optional(),
+    nextEpisode: titleNextEpisode.optional(),
+    episodeRuntime: z.number().int().optional(),
+    episodeCount: z.number().int().optional(),
   })
   .meta({ id: 'titleDetails' })
 
@@ -353,6 +401,8 @@ export type Card = z.output<typeof card>
 export type Backdrop = z.output<typeof backdrop>
 export type TitleDetails = z.output<typeof titleDetails>
 export type TitleSeason = z.output<typeof titleSeason>
+export type TitleRelease = z.output<typeof titleRelease>
+export type TitleStatus = (typeof titleStatuses)[number]
 export type Episode = z.output<typeof episode>
 export type SeasonDetails = z.output<typeof seasonDetails>
 export type Person = z.output<typeof person>

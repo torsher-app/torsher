@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   formatAirDate,
   formatPublishDate,
+  formatReleaseDate,
+  formatUsd,
   formatYears,
   isUpcoming,
   seasonAired,
@@ -71,5 +73,31 @@ describe('formatPublishDate', () => {
       '05.03.2023',
     )
     expect(formatPublishDate('not a date', 'ru-RU')).toBe('')
+  })
+})
+
+describe('formatReleaseDate', () => {
+  it('день, месяц словом и год на языке интерфейса', () => {
+    const label = formatReleaseDate('2026-03-15', 'ru-RU')
+
+    expect(label).toMatch(/15/)
+    expect(label).toMatch(/марта/)
+    expect(label).toMatch(/2026/)
+  })
+
+  it('без данных локали — числовая дата, мусор — пусто', () => {
+    expect(formatReleaseDate('2026-03-05', 'xx-XX')).toBe('05.03.2026')
+    expect(formatReleaseDate('soon', 'ru-RU')).toBe('')
+  })
+})
+
+describe('formatUsd', () => {
+  it('доллары без копеек по правилам языка', () => {
+    expect(formatUsd(200000000, 'en-US')).toBe('$200,000,000')
+    expect(formatUsd(200000000, 'ru-RU')).toMatch(/^200\s000\s000\s\$$/)
+  })
+
+  it('без данных локали — цифры группами', () => {
+    expect(formatUsd(1234567, 'xx-XX')).toBe('$1 234 567')
   })
 })

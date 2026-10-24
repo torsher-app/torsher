@@ -110,6 +110,26 @@ export interface TitleSeasonInput {
   year?: number;
 }
 
+export interface TitleReleaseInput {
+  type: "premiere" | "theatrical" | "digital";
+  date: string;
+  country?: string;
+}
+
+export interface TitleNextEpisodeInput {
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  season: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  episode: number;
+  airDate?: string;
+}
+
 export interface TitleDetailsInput {
   id: string;
   kind: "movie" | "series";
@@ -150,6 +170,42 @@ export interface TitleDetailsInput {
   studios: string[];
   creators: string[];
   seasons?: TitleSeasonInput[];
+  tagline?: string;
+  status?:
+    | "rumored"
+    | "planned"
+    | "inProduction"
+    | "postProduction"
+    | "released"
+    | "returning"
+    | "ended"
+    | "canceled"
+    | "pilot";
+  originalLanguage?: string;
+  releases?: TitleReleaseInput[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  budget?: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  revenue?: number;
+  firstAirDate?: string;
+  lastAirDate?: string;
+  nextEpisode?: TitleNextEpisodeInput;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  episodeRuntime?: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  episodeCount?: number;
 }
 
 export interface EpisodeInput {
@@ -2314,6 +2370,26 @@ export interface TitleSeason {
   year?: number;
 }
 
+export interface TitleRelease {
+  type: "premiere" | "theatrical" | "digital";
+  date: string;
+  country?: string;
+}
+
+export interface TitleNextEpisode {
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  season: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  episode: number;
+  airDate?: string;
+}
+
 export interface TitleDetails {
   id: string;
   kind: "movie" | "series";
@@ -2354,6 +2430,42 @@ export interface TitleDetails {
   studios: string[];
   creators: string[];
   seasons?: TitleSeason[];
+  tagline?: string;
+  status?:
+    | "rumored"
+    | "planned"
+    | "inProduction"
+    | "postProduction"
+    | "released"
+    | "returning"
+    | "ended"
+    | "canceled"
+    | "pilot";
+  originalLanguage?: string;
+  releases?: TitleRelease[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  budget?: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  revenue?: number;
+  firstAirDate?: string;
+  lastAirDate?: string;
+  nextEpisode?: TitleNextEpisode;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  episodeRuntime?: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  episodeCount?: number;
 }
 
 export interface Episode {
