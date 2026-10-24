@@ -172,29 +172,36 @@ button {
 }
 
 /*
- * Полное название кнопки в фокусе, когда на ней его не видно целиком
- * (обрезано, спрятано сжатием ряда, кнопка-значок): свой слой под кнопкой,
- * меняется только opacity — ширина кнопки и соседи не двигаются. Кнопка в
- * фокусе увеличена — подпись вместе с ней. У края окна подпись сдвигает
- * `ActionButton` (`margin-left`)
+ * Полный текст элемента в фокусе, когда на нём его не видно целиком: плашка
+ * своим слоем, меняется только opacity — элемент и соседи не двигаются.
+ * Место задаёт хозяин: под кнопкой (`.action-button__caption`), справа от
+ * пункта рейла
  */
-.action-button__caption {
+.focus-caption {
   position: absolute;
-  top: 100%;
-  left: 50%;
-  margin-top: calc(var(--u) * 10);
   padding: calc(var(--u) * 4) calc(var(--u) * 12);
   border-radius: var(--radius-s);
-  /* Плашка: под рядом бывает и фон, и текст (строки «Источников») */
+  /* Плашка: под подписью бывает и фон, и текст (строки «Источников») */
   background: var(--color-surface-raised);
   color: var(--color-text);
   font-size: var(--font-size-s);
   font-weight: 500;
   white-space: nowrap;
   opacity: 0;
-  transform: translateX(-50%);
   transition: opacity var(--motion-fast) var(--motion-easing);
   pointer-events: none;
+}
+
+/*
+ * Подпись кнопки — под ней (обрезано, спрятано сжатием ряда, кнопка-значок).
+ * Кнопка в фокусе увеличена — подпись вместе с ней. У края окна подпись
+ * сдвигает `ActionButton` (`margin-left`)
+ */
+.action-button__caption {
+  top: 100%;
+  left: 50%;
+  margin-top: calc(var(--u) * 10);
+  transform: translateX(-50%);
 }
 
 .action-button--captioned:focus .action-button__caption {

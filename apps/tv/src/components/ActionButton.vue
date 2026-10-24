@@ -120,7 +120,7 @@ watch(
     <slot />
     <span
       ref="captionEl"
-      class="action-button__caption"
+      class="focus-caption action-button__caption"
       :style="shift ? { marginLeft: `${shift}px` } : undefined"
       aria-hidden="true"
     >{{ caption }}</span>
