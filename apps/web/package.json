@@ -9,6 +9,7 @@
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
     "typecheck": "nuxt typecheck",
+    "test": "vitest run",
     "icons": "sh node_modules/@torsher/tokens/scripts/icons.sh public"
   },
   "dependencies": {
@@ -41,6 +42,7 @@
   },
   "devDependencies": {
     "typescript": "^5.9.2",
+    "vitest": "^5.0.5",
     "vue-tsc": "^3.3.13"
   }
 }

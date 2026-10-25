@@ -17,7 +17,8 @@ const kinds = shallowRef<ChannelKind[]>([])
 const state = ref<LoadState>('idle')
 
 async function load() {
-  state.value = channels.value.length ? state.value : 'loading'
+  if (state.value !== 'ready')
+    state.value = 'loading'
 
   try {
     const list = await withErrorMode('silent', () =>
@@ -28,7 +29,7 @@ async function load() {
     state.value = 'ready'
   }
   catch {
-    if (!channels.value.length)
+    if (state.value === 'loading')
       state.value = 'error'
   }
 }

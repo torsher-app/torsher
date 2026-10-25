@@ -15,6 +15,9 @@ definePageMeta({
 
 const { t } = useI18n()
 const { overview, state, load } = useStorage()
+const loading = useHeldLoading(
+  () => state.value === 'loading' || state.value === 'idle',
+)
 
 onMounted(load)
 </script>
@@ -31,11 +34,7 @@ onMounted(load)
     </header>
 
     <!-- Скелетон повторяет карточки тома и настроек -->
-    <div
-      v-if="state === 'loading' || state === 'idle'"
-      class="grid gap-5"
-      aria-busy="true"
-    >
+    <div v-if="loading" class="grid gap-5" aria-busy="true">
       <Skeleton class="h-64 rounded-xl" />
       <Skeleton class="h-36 rounded-xl" />
       <Skeleton class="h-40 rounded-xl" />

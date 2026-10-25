@@ -21,6 +21,8 @@ const sources = useSources()
 
 const found = shallowRef<DiscoveredManager[] | null>(null)
 const isDiscovering = ref(false)
+// Повторный поиск оставляет прошлую находку на месте: идёт он в проверках выше
+const discovering = useHeldLoading(() => !found.value)
 const isImportOpen = ref(false)
 
 function isConnected(item: DiscoveredManager) {
@@ -149,7 +151,7 @@ onBeforeUnmount(sources.stopPolling)
     @retry="retry"
   />
 
-  <Skeleton v-if="isDiscovering || !found" class="h-64 rounded-xl" />
+  <Skeleton v-if="discovering || !found" class="h-64 rounded-xl" />
   <ConnectManagerCard
     v-else-if="notConnected.length > 0"
     :key="notConnected.map((item) => item.url).join()"

@@ -5,6 +5,7 @@
   "private": true,
   "exports": {
     "./tokens.css": "./tokens.css",
+    "./loader": "./loader.ts",
     "./assets/*": "./assets/*"
   }
 }

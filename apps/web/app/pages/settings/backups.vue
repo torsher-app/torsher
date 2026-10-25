@@ -20,6 +20,9 @@ definePageMeta({
 
 const { t, locale } = useI18n()
 const { status, state, load } = useBackups()
+const loading = useHeldLoading(
+  () => state.value === 'loading' || state.value === 'idle',
+)
 const { clearSession } = useAuth()
 
 useBackupsPolling()
@@ -77,11 +80,7 @@ async function onRestored(
     </header>
 
     <!-- Скелетон повторяет карточки и строки списка копий -->
-    <div
-      v-if="state === 'loading' || state === 'idle'"
-      class="grid gap-5"
-      aria-busy="true"
-    >
+    <div v-if="loading" class="grid gap-5" aria-busy="true">
       <Skeleton class="h-72 rounded-xl" />
       <Skeleton class="h-40 rounded-xl" />
       <Skeleton class="h-64 rounded-xl" />

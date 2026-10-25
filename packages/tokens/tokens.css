@@ -82,7 +82,7 @@
   --motion-base: 220ms;
   --motion-easing: cubic-bezier(0.2, 0, 0, 1);
   /* Лоадер показывается, только если ждём дольше: быстрый ответ не мелькает им.
-     То же значение в JS — LOADER_DELAY_MS витрины (apps/tv/src/lib/loader.ts) */
+     То же значение в JS — LOADER_DELAY_MS (loader.ts рядом) и в стилях панели */
   --loader-delay: 400ms;
 
   --poster-width: calc(var(--u) * 240);
