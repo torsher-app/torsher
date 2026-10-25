@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { SettingsIcon, TvIcon } from '@lucide/vue'
+import { BookOpenIcon, HeartIcon, SettingsIcon, TvIcon } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 import {
   Sidebar,
@@ -27,6 +27,12 @@ const followed = useFollows()
 
 // Витрина открывается с профилем по умолчанию: вход у неё общий с панелью
 const { tvUrl } = useRuntimeConfig().public
+
+// Метка показывает сайту, что переход из панели. Она одна для всех установок:
+// без версии и идентификаторов, иначе ссылка стала бы телеметрией
+const docsUrl = 'https://torsher.app/docs/?ref=panel'
+// Каналы донатов меняются на сайте, поэтому панель ведёт только на его страницу
+const donateUrl = 'https://torsher.app/donate?ref=panel'
 
 // Имени сервера пока нет: подписью служит адрес, по которому открыта панель
 const host = useRequestURL().host
@@ -127,6 +133,24 @@ watch(
               <a :href="tvUrl" target="_blank" rel="noopener">
                 <TvIcon aria-hidden="true" />
                 <span>{{ t("panel.nav.showcase") }}</span>
+                <span class="sr-only">({{ t("panel.nav.newTab") }})</span>
+              </a>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton as-child :class="itemClass">
+              <a :href="docsUrl" target="_blank" rel="noopener noreferrer">
+                <BookOpenIcon aria-hidden="true" />
+                <span>{{ t("panel.nav.docs") }}</span>
+                <span class="sr-only">({{ t("panel.nav.newTab") }})</span>
+              </a>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+          <SidebarMenuItem>
+            <SidebarMenuButton as-child :class="itemClass">
+              <a :href="donateUrl" target="_blank" rel="noopener noreferrer">
+                <HeartIcon aria-hidden="true" />
+                <span>{{ t("panel.nav.donate") }}</span>
                 <span class="sr-only">({{ t("panel.nav.newTab") }})</span>
               </a>
             </SidebarMenuButton>
