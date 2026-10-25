@@ -40,6 +40,7 @@ import ReleasePanel from '../components/ReleasePanel.vue'
 import ScreenState from '../components/ScreenState.vue'
 import TopCard from '../components/TopCard.vue'
 import { useHero } from '../composables/useHero.ts'
+import { useHeldLoading } from '../composables/useHeldLoading.ts'
 import { useHome } from '../composables/useHome.ts'
 import { useReleaseTexts } from '../composables/useReleaseTexts.ts'
 import { useStackScroll } from '../composables/useStackScroll.ts'
@@ -371,6 +372,20 @@ function restoreFocus() {
 
 watch(aligned, alignRows)
 
+// Скелетон, который уже проявился, держится минимум: ряды и фокус ждут его
+const showSkeleton = useHeldLoading(
+  () => status.value === 'loading' && rows.value.length === 0,
+)
+
+watch(showSkeleton, async (value) => {
+  if (value)
+    return
+
+  await nextTick()
+  alignRows()
+  restoreFocus()
+})
+
 // Новые ряды: экран встаёт на первый, фокус — в первый ряд. Тихое
 // обновление (правка списков, «Продолжить» после плеера) оставляет экран на
 // том же ряду, даже если ряды выше появились или пропали
@@ -463,14 +478,17 @@ onBeforeUnmount(() => {
       />
     </div>
 
-    <div v-if="status === 'error' && error" class="home__state">
+    <div
+      v-if="status === 'error' && error && !showSkeleton"
+      class="home__state"
+    >
       <FocusSection name="home-state" :edges="{ left: railSection }" autofocus>
         <ScreenState :kind="error" @retry="retry" />
       </FocusSection>
     </div>
 
     <div
-      v-else-if="rows.length > 0"
+      v-else-if="rows.length > 0 && !showSkeleton"
       ref="rowsElement"
       class="home__rows"
       :class="{ 'home__rows--native': nativeScroll }"
@@ -539,7 +557,7 @@ onBeforeUnmount(() => {
       </ContentRow>
     </div>
 
-    <div v-else-if="status === 'ready'" class="home__state">
+    <div v-else-if="status === 'ready' && !showSkeleton" class="home__state">
       <FocusSection name="home-state" :edges="{ left: railSection }" autofocus>
         <ScreenState
           :kind="mode === 'library' ? 'libraryEmpty' : 'homeEmpty'"

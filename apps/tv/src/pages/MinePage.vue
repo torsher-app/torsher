@@ -85,12 +85,26 @@ const shown = computed(() =>
   sections.value.find(item => sectionKey(item) === shownKey.value),
 )
 
-watch(status, (value) => {
-  if (value !== 'loading')
-    shownKey.value = selectedKey.value
-})
+// Скелетон — только пока показать нечего; есть прежние карточки — они
+// остаются на экране и приглушаются, если загрузка затянулась
+const showSkeleton = useHeldLoading(
+  () => status.value === 'loading' && items.value.length === 0,
+)
+const stale = useHeldLoading(
+  () => status.value === 'loading' && items.value.length > 0,
+)
 
-const loading = useHeldLoading(() => status.value === 'loading')
+// Шапка ждёт и удержания скелетона. Пустой раздел готов без загрузки, и статус
+// не меняется: следим и за ключом. После рендера — когда загрузка нового
+// раздела уже началась
+watch(
+  [status, selectedKey, showSkeleton],
+  ([value, , skeleton]) => {
+    if (value !== 'loading' && !skeleton)
+      shownKey.value = selectedKey.value
+  },
+  { flush: 'post' },
+)
 
 function sectionLabel(section: MineSection) {
   return section.id === 'collection'
@@ -444,9 +458,10 @@ onBeforeUnmount(() => {
       <div class="mine__head">
         <h2 class="mine__title">
           {{ shown ? sectionLabel(shown) : "" }}
-          <span v-if="shown && status === 'ready'" class="mine__total">{{
-            total
-          }}</span>
+          <span
+            v-if="shown && status === 'ready' && !showSkeleton"
+            class="mine__total"
+          >{{ total }}</span>
         </h2>
         <FocusSection
           name="mine-controls"
@@ -493,12 +508,12 @@ onBeforeUnmount(() => {
               :edges="{ left: 'mine-sections', up: 'mine-controls' }"
             >
               <ScreenState
-                v-if="status === 'error' && error"
+                v-if="status === 'error' && error && !showSkeleton"
                 :kind="error"
                 @retry="retry"
               />
               <div
-                v-else-if="loading && !items.length"
+                v-else-if="showSkeleton"
                 class="mine__grid"
                 aria-hidden="true"
               >
@@ -515,7 +530,7 @@ onBeforeUnmount(() => {
               <div
                 v-else
                 class="mine__grid"
-                :class="{ 'mine__grid--stale': loading }"
+                :class="{ 'mine__grid--stale': stale }"
                 :style="gridPadding"
               >
                 <div
@@ -723,9 +738,11 @@ onBeforeUnmount(() => {
   transition: opacity var(--motion-base) var(--motion-easing);
 }
 
-/* Долгая смена раздела: прежние карточки приглушены, сетка не пропадает */
+/* Долгая смена раздела: прежние карточки приглушены, сетка не пропадает.
+   Приглушение — тоже лоадер: проявляется через --loader-delay */
 .mine__grid--stale {
   opacity: 0.4;
+  transition-delay: var(--loader-delay);
 }
 
 .mine__empty {

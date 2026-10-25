@@ -16,6 +16,7 @@ import SidePanel from '../components/SidePanel.vue'
 import { sectionName, useBlockStack } from '../composables/useBlockStack.ts'
 import { useCatalogLanguage } from '../composables/useCatalogLanguage.ts'
 import { useCatalogPerson } from '../composables/useCatalogPerson.ts'
+import { useHeldLoading } from '../composables/useHeldLoading.ts'
 import { useStackedScreen } from '../composables/useStackedScreen.ts'
 import { useFocus } from '../focus/index.ts'
 import { goBack } from '../lib/navigation.ts'
@@ -36,6 +37,11 @@ const language = useCatalogLanguage()
 
 const id = computed(() => props.id)
 const { person, status, error, retry } = useCatalogPerson(id)
+// Проявившийся скелетон держится минимум: экран и фокус ждут его
+const showSkeleton = useHeldLoading(() => status.value === 'loading')
+const shownPerson = computed(() =>
+  showSkeleton.value ? undefined : person.value,
+)
 
 const credits = computed(() => person.value?.credits ?? [])
 
@@ -150,7 +156,7 @@ const stopFocus = focus.onFocus((el, via) => {
 })
 
 // Данные пришли: фокус на первую секцию, если зритель ещё на этом экране
-watch(person, async (value) => {
+watch(shownPerson, async (value) => {
   if (!value)
     return
 
@@ -248,7 +254,7 @@ onBeforeUnmount(() => {
     </FocusSection>
 
     <FocusSection
-      v-if="status === 'error' && error"
+      v-if="status === 'error' && error && !showSkeleton"
       name="person-state"
       class="person__state"
       :edges="{ up: 'person-back' }"
@@ -258,7 +264,7 @@ onBeforeUnmount(() => {
     </FocusSection>
 
     <div
-      v-else-if="person"
+      v-else-if="person && !showSkeleton"
       ref="stack"
       class="person__stack"
       :style="{ transform: stackTransform }"
@@ -450,6 +456,11 @@ onBeforeUnmount(() => {
   overflow: hidden;
   border-radius: var(--radius-m);
   background: var(--color-surface-raised);
+}
+
+/* Фон скелетона мерцает слоем под элементом: свой фон рамки его закрыл бы */
+.person__photo.skeleton {
+  background: none;
 }
 
 .person__photo-image {

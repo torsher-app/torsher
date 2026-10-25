@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import tmdbLogo from '@torsher/tokens/assets/tmdb.svg'
-import { onBeforeUnmount } from 'vue'
+import { computed, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import ActionButton from '../components/ActionButton.vue'
@@ -8,6 +8,7 @@ import AppRail from '../components/AppRail.vue'
 import ButtonRow from '../components/ButtonRow.vue'
 import FocusSection from '../components/FocusSection.vue'
 import { useAbout } from '../composables/useAbout.ts'
+import { useHeldLoading } from '../composables/useHeldLoading.ts'
 import { useFocus } from '../focus/index.ts'
 import { toggleInputDebug } from '../inputDebug.ts'
 import { createTapCounter } from '../lib/inputLog.ts'
@@ -17,7 +18,10 @@ import { canReturnToShell, returnToShell } from '../platform/shell.ts'
 
 const { t } = useI18n()
 const router = useRouter()
-const { status, about } = useAbout()
+const { status, about: loaded } = useAbout()
+// Проявившийся скелетон держится минимум: сведения ждут его
+const showSkeleton = useHeldLoading(() => status.value === 'loading')
+const about = computed(() => (showSkeleton.value ? undefined : loaded.value))
 
 const RAIL_SECTION = 'rail-about'
 
@@ -49,7 +53,7 @@ onBeforeUnmount(stopKey)
       © 2026 Anton Reshetov
     </p>
 
-    <p v-if="status === 'error'" class="about__muted">
+    <p v-if="status === 'error' && !showSkeleton" class="about__muted">
       {{ t("about.serverUnavailable") }}
     </p>
     <template v-else>

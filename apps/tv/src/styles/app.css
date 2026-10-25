@@ -409,10 +409,32 @@ button {
   }
 }
 
-/* Скелетон мерцает через opacity: на ТВ анимируем только transform и opacity */
+/* Скелетон — лоадер: место занято сразу, а виден он через --loader-delay, и
+   быстрый ответ им не мелькает. Сам элемент проявляется, мерцает слой под ним:
+   обе анимации на opacity, на одном элементе одна перекрыла бы другую. Своего
+   фона у элемента .skeleton быть не должно — он закроет мерцание */
 .skeleton {
+  position: relative;
+  opacity: 0;
+  animation: skeleton-appear var(--motion-fast) var(--motion-easing) var(--loader-delay) forwards;
+}
+
+.skeleton::before {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  border-radius: inherit;
   background: var(--color-surface-raised);
-  animation: skeleton-pulse 1s var(--motion-easing) infinite alternate;
+  content: '';
+  animation: skeleton-pulse 1s var(--motion-easing) var(--loader-delay) infinite alternate;
+}
+
+@keyframes skeleton-appear {
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes skeleton-pulse {

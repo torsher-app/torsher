@@ -42,6 +42,7 @@ import {
 } from '../composables/useTitleSections.ts'
 import { sectionName, useBlockStack } from '../composables/useBlockStack.ts'
 import { useChipRibbon } from '../composables/useChipRibbon.ts'
+import { useHeldLoading } from '../composables/useHeldLoading.ts'
 import { useResumeLabels } from '../composables/useResumeLabels.ts'
 import { useStackedScreen } from '../composables/useStackedScreen.ts'
 import { useTitleLibrary } from '../composables/useTitleLibrary.ts'
@@ -90,6 +91,8 @@ const { formatRuntime } = useTitleMeta()
 
 const id = computed(() => props.id)
 const { status, title, error, retry } = useCatalogTitle(id)
+// Проявившийся скелетон держится минимум: карточка, секции и фокус ждут его
+const titleSkeleton = useHeldLoading(() => status.value === 'loading')
 
 const isSeries = computed(() => title.value?.kind === 'series')
 const seasons = computed(() => title.value?.seasons ?? [])
@@ -114,8 +117,10 @@ const {
   error: extrasError,
   retry: retryExtras,
 } = useTitleExtras(extrasId)
+const extrasSkeleton = useHeldLoading(() => extrasStatus.value === 'loading')
 const extrasSettled = computed(
-  () => !!extras.value || extrasStatus.value === 'error',
+  () =>
+    !extrasSkeleton.value && (!!extras.value || extrasStatus.value === 'error'),
 )
 
 // Индекс фокусной серии; -1 — плитка «Все серии» перед ними
@@ -167,7 +172,7 @@ const episodes = computed<Episode[]>(() =>
     ? season.value.episodes
     : [],
 )
-const episodesLoading = computed(
+const episodesLoading = useHeldLoading(
   () =>
     requestedSeason.value !== selectedSeason.value
     || seasonStatus.value === 'loading',
@@ -1257,7 +1262,7 @@ onBeforeUnmount(() => {
     </FocusSection>
 
     <FocusSection
-      v-if="status === 'error' && error"
+      v-if="status === 'error' && error && !titleSkeleton"
       name="title-state"
       class="title__state"
       :edges="{ up: 'title-back' }"
@@ -1267,7 +1272,7 @@ onBeforeUnmount(() => {
     </FocusSection>
 
     <div
-      v-else-if="title"
+      v-else-if="title && !titleSkeleton"
       ref="stack"
       class="title__stack"
       :style="{ transform: stackTransform }"
@@ -1464,7 +1469,7 @@ onBeforeUnmount(() => {
         </div>
 
         <FocusSection
-          v-if="seasonStatus === 'error' && seasonError"
+          v-if="seasonStatus === 'error' && seasonError && !episodesLoading"
           name="title-season-state"
           manual-scroll
           class="block__inner"
@@ -1617,7 +1622,7 @@ onBeforeUnmount(() => {
       </section>
 
       <section
-        v-if="extrasStatus === 'error' && extrasError"
+        v-if="extrasStatus === 'error' && extrasError && !extrasSkeleton"
         class="block"
         :class="{ 'block--above': blocksAbove.includes('extras') }"
         data-block="extras"
@@ -1632,7 +1637,7 @@ onBeforeUnmount(() => {
         </FocusSection>
       </section>
 
-      <template v-else-if="extras">
+      <template v-else-if="extras && !extrasSkeleton">
         <section
           v-if="cast.length > 0"
           class="block"

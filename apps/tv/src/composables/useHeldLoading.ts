@@ -1,15 +1,17 @@
-import { onBeforeUnmount, ref, watch } from 'vue'
+import { onScopeDispose, ref, watch } from 'vue'
 import { loaderHoldMs } from '../lib/loader.ts'
 
 /**
  * Загрузка для показа: лоадер, который уже проявился, держится минимальное
  * время (`loaderHoldMs`), и экран меняется один раз, без вспышки. Контент
- * и фокус ждут этого флага, а не самой загрузки.
+ * и фокус ждут этого флага, а не самой загрузки. Проявляется лоадер сам, через
+ * `--loader-delay` (AppLoader, `.skeleton`): флаг поднимается сразу, и место
+ * под лоадер занято с первого кадра.
  */
 export function useHeldLoading(loading: () => boolean) {
   const shown = ref(loading())
   let startedAt = shown.value ? performance.now() : 0
-  let timer = 0
+  let timer: ReturnType<typeof setTimeout> | undefined
 
   watch(loading, (value) => {
     clearTimeout(timer)
@@ -31,12 +33,12 @@ export function useHeldLoading(loading: () => boolean) {
       return
     }
 
-    timer = window.setTimeout(() => {
+    timer = setTimeout(() => {
       shown.value = false
     }, hold)
   })
 
-  onBeforeUnmount(() => clearTimeout(timer))
+  onScopeDispose(() => clearTimeout(timer))
 
   return shown
 }
