@@ -1,0 +1,54 @@
+name: Deploy site
+
+# Builds torsher.app (landing and docs) and uploads it to the web server.
+# Runs only by hand: publishing the site is a deliberate step
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-site
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # The deploy secrets live in an environment allowed only for main:
+    # a run from any other branch never gets the server key
+    environment: site-production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm --filter @torsher/site check
+
+      - run: pnpm --filter @torsher/site build
+
+      # The host key is pinned under an alias, so the server address stays a
+      # secret and a spoofed server gets refused instead of the site files.
+      # The deploy key may only rsync into the site directory, so the remote
+      # path "/" is the site root. --delay-updates moves every new file into
+      # place at the end and --delete-after removes stale ones after that:
+      # visitors never get pages that point to missing assets. .well-known
+      # holds the certificate challenges and is not ours to delete
+      - name: Upload
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          echo 'torsher-site ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFHhqbo0J+UvSn1qfazOAr4WJ9enZqK4M8ibVJUkllHG' > ~/.ssh/known_hosts
+          rsync -rlptzv --delay-updates --delete-after --exclude=/.well-known/ \
+            -e "ssh -i $HOME/.ssh/deploy_key -o IdentitiesOnly=yes -o UserKnownHostsFile=$HOME/.ssh/known_hosts -o HostKeyAlias=torsher-site -o StrictHostKeyChecking=yes" \
+            apps/site/.vitepress/dist/ "$DEPLOY_USER@$DEPLOY_HOST:/"
