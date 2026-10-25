@@ -220,3 +220,54 @@ describe('миграция папок своей раскладки', () => {
     ])
   })
 })
+
+describe('миграция происхождения раздач', () => {
+  const originIdx = journal.entries.findIndex(entry =>
+    readFileSync(join(MIGRATIONS_DIR, `${entry.tag}.sql`), 'utf8').includes(
+      'SET `origin` = \'manual\'',
+    ),
+  )
+
+  it('добавленные в панели — `manual`, выбранные из карточки — `search`', () => {
+    const sqlite = new Database(':memory:')
+    const db = drizzle(sqlite)
+
+    migrate(db, { migrationsFolder: migrationsBefore(originIdx) })
+
+    const insert = sqlite.prepare(
+      'INSERT INTO torrents (id, info_hash, name, source, status, title_id, match_status, added_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    )
+
+    insert.run(
+      'card',
+      '1'.repeat(40),
+      'A',
+      'file',
+      'ready',
+      'tmdb:tv:1',
+      null,
+      0,
+    )
+    insert.run('panel', '2'.repeat(40), 'B', 'file', 'ready', null, null, 0)
+    insert.run(
+      'recognized',
+      '3'.repeat(40),
+      'C',
+      'file',
+      'ready',
+      'tmdb:tv:1',
+      'matched',
+      0,
+    )
+
+    migrate(db, { migrationsFolder: MIGRATIONS_DIR })
+
+    expect(
+      sqlite.prepare('SELECT id, origin FROM torrents ORDER BY id').all(),
+    ).toEqual([
+      { id: 'card', origin: 'search' },
+      { id: 'panel', origin: 'manual' },
+      { id: 'recognized', origin: 'manual' },
+    ])
+  })
+})

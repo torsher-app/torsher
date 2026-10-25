@@ -13,7 +13,8 @@ export interface FoundRelease {
   /** Стабильный между поисками: по infohash, без него — по названию и размеру. */
   id: string
   title: string
-  indexers: { id: string, name: string }[]
+  /** `detailsUrl` — страница раздачи у этого индексатора (`<comments>`). */
+  indexers: { id: string, name: string, detailsUrl?: string }[]
   /**
    * Ссылка на `.torrent` у индексатора — только на сервере: в ней бывает ключ.
    * `indexerOrigin` — origin индексатора: только туда ссылка может вести на loopback.
@@ -89,7 +90,7 @@ export const RESOLUTION_RANK: Record<VideoClass, number> = {
 }
 
 // Разумный размер на фильм и на серию: всё, что вне, — подозрительно
-const SIZE_CORRIDOR: Record<
+export const SIZE_CORRIDOR: Record<
   'movie' | 'series',
   Partial<Record<VideoClass, [number, number]>>
 > = {
@@ -105,7 +106,7 @@ const SIZE_CORRIDOR: Record<
   },
 }
 
-const SCREEN_COPIES = new Set(['CAMRip', 'TS'])
+export const SCREEN_COPIES: ReadonlySet<string> = new Set(['CAMRip', 'TS'])
 
 /** Веса факторов счёта: качество, озвучка, сиды и размер складываются */
 export const WEIGHTS = {
@@ -138,7 +139,7 @@ function isRussian(track: AudioTrack) {
     : !!(track.type || track.studio)
 }
 
-function voiceRank(track: AudioTrack, profile: RankingProfile) {
+export function voiceRank(track: AudioTrack, profile: RankingProfile) {
   const index = track.type ? profile.voiceTypes.indexOf(track.type) : -1
 
   return index === -1 ? profile.voiceTypes.length : index

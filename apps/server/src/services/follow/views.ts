@@ -99,7 +99,7 @@ async function statesOf(
   language: string,
 ): Promise<EpisodeWithState[]> {
   if (follow.kind === 'movie')
-    return movieState(follow.titleId, summary?.details.status === 'released')
+    return movieState(follow, summary?.details.status === 'released')
 
   return summary
     ? followEpisodeStates(follow, scheduleOf(summary), language)
@@ -164,6 +164,7 @@ export async function followDetailsOf(
       episode: item.episode,
       airDate: item.airDate,
       state: item.state,
+      waitUntil: item.waitUntil?.toISOString(),
     })),
   }
 }

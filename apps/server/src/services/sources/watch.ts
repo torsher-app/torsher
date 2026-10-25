@@ -1,5 +1,5 @@
 import type { ParsedRelease } from '@torsher/release-parser'
-import type { Torrent } from '../../db/schema.ts'
+import type { Torrent, TorrentOrigin } from '../../db/schema.ts'
 import type { RankedRelease } from './rank.ts'
 import { matchFiles, parseRelease } from '@torsher/release-parser'
 import { EngineError } from '../engine/index.ts'
@@ -70,7 +70,13 @@ export function isSkippable(err: unknown) {
   return err instanceof EngineError && err.kind !== 'unavailable'
 }
 
-function magnetOf(release: RankedRelease) {
+/** Что нужно, чтобы добавить раздачу: ссылка индексатора, magnet или infohash */
+export type AcquirableRelease = Pick<
+  RankedRelease,
+  'title' | 'link' | 'magnet' | 'infoHash'
+>
+
+function magnetOf(release: AcquirableRelease) {
   if (release.magnet)
     return release.magnet
 
@@ -81,8 +87,9 @@ function magnetOf(release: RankedRelease) {
 
 /** Раздача в базе: по `.torrent` от индексатора, а без него — по magnet */
 export async function acquire(
-  release: RankedRelease,
+  release: AcquirableRelease,
   hasTime: () => boolean,
+  origin: TorrentOrigin = 'search',
 ): Promise<Torrent | undefined> {
   const magnet = magnetOf(release)
 
@@ -95,8 +102,8 @@ export async function acquire(
       )
 
       return downloaded.kind === 'file'
-        ? (await addTorrentFile(downloaded.bytes)).torrent
-        : (await addMagnet(downloaded.magnet)).torrent
+        ? (await addTorrentFile(downloaded.bytes, origin)).torrent
+        : (await addMagnet(downloaded.magnet, origin)).torrent
     }
     catch (err) {
       if (!(err instanceof SourceError) || !magnet || !hasTime())
@@ -104,7 +111,7 @@ export async function acquire(
     }
   }
 
-  return magnet ? (await addMagnet(magnet)).torrent : undefined
+  return magnet ? (await addMagnet(magnet, origin)).torrent : undefined
 }
 
 export function seasonOfFile(

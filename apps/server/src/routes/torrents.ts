@@ -136,8 +136,11 @@ export const torrentRoutes: FastifyPluginAsyncZod = async (app) => {
 
       try {
         const result = magnet
-          ? await addMagnet(magnet)
-          : await addTorrentFile(Buffer.from(torrentFile ?? '', 'base64'))
+          ? await addMagnet(magnet, 'manual')
+          : await addTorrentFile(
+              Buffer.from(torrentFile ?? '', 'base64'),
+              'manual',
+            )
 
         return reply
           .code(result.created ? 201 : 200)

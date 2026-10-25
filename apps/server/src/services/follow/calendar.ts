@@ -5,7 +5,7 @@ import { mapLimit } from '../../utils/mapLimit.ts'
 import { DETAILS_CONCURRENCY, summaryOf } from '../mine/cards.ts'
 import { profileStates } from '../mine/index.ts'
 import { getSeason } from '../tmdb/index.ts'
-import { downloadingEpisodes, libraryEpisodes } from './episodes.ts'
+import { stateInputs } from './episodes.ts'
 import { followsOfProfile, isFollowing } from './index.ts'
 import { episodeKey, episodeStates, localDay } from './wanted.ts'
 
@@ -117,8 +117,7 @@ async function titleItems(
             aired: item.airDate <= window.today,
             airDate: item.airDate,
           })),
-          library: libraryEpisodes(titleId),
-          downloading: downloadingEpisodes(titleId),
+          ...stateInputs(follow),
         }).map(item => [episodeKey(item), item.state]),
       )
     : undefined

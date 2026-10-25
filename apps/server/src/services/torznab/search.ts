@@ -25,6 +25,11 @@ export type SearchParams = Record<string, string>
 export interface TorznabRelease {
   title: string
   guid?: string
+  /**
+   * Страница раздачи на трекере из `<comments>` (у Jackett — `Details`,
+   * у Prowlarr — `InfoUrl`): по ней узнаётся обновлённая тема.
+   */
+  detailsUrl?: string
   /** Ссылка на `.torrent` у индексатора; в ней бывает API-ключ. */
   link?: string
   magnet?: string
@@ -176,6 +181,7 @@ function toRelease(item: XmlNode): TorznabRelease | undefined {
   const magnet
     = attrs.get('magneturl') ?? links.find(link => link.startsWith('magnet:'))
   const link = links.find(value => /^https?:\/\//i.test(value))
+  const comments = text(item, 'comments')?.trim()
   const infoHash = attrs.get('infohash')?.trim().toLowerCase()
   const seeders = toNumber(attrs.get('seeders'))
   // `peers` в Torznab — сиды вместе с личерами
@@ -184,6 +190,8 @@ function toRelease(item: XmlNode): TorznabRelease | undefined {
   return {
     title,
     guid: text(item, 'guid')?.trim() || undefined,
+    detailsUrl:
+      comments && /^https?:\/\//i.test(comments) ? comments : undefined,
     link,
     magnet,
     infoHash:

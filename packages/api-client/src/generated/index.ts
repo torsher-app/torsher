@@ -435,7 +435,14 @@ export interface EpisodeInput {
    */
   runtime?: number;
   still?: string;
-  follow?: "upcoming" | "searching" | "downloading" | "in_library";
+  follow?:
+    | "upcoming"
+    | "searching"
+    | "waiting"
+    | "no_space"
+    | "missing"
+    | "downloading"
+    | "in_library";
 }
 
 export interface SeasonDetailsInput {
@@ -1762,7 +1769,15 @@ export interface FollowEpisodeInput {
    */
   episode: number;
   airDate?: string;
-  state: "upcoming" | "searching" | "downloading" | "in_library";
+  state:
+    | "upcoming"
+    | "searching"
+    | "waiting"
+    | "no_space"
+    | "missing"
+    | "downloading"
+    | "in_library";
+  waitUntil?: string;
 }
 
 export interface FollowSummaryInput {
@@ -1853,7 +1868,15 @@ export interface ScheduleItemInput {
   airDate: string;
   image?: string;
   followed: boolean;
-  state: "upcoming" | "searching" | "downloading" | "in_library" | null;
+  state:
+    | "upcoming"
+    | "searching"
+    | "waiting"
+    | "no_space"
+    | "missing"
+    | "downloading"
+    | "in_library"
+    | null;
 }
 
 export interface ScheduleResponseInput {
@@ -4609,7 +4632,14 @@ export interface Episode {
    */
   runtime?: number;
   still?: string;
-  follow?: "upcoming" | "searching" | "downloading" | "in_library";
+  follow?:
+    | "upcoming"
+    | "searching"
+    | "waiting"
+    | "no_space"
+    | "missing"
+    | "downloading"
+    | "in_library";
 }
 
 export interface SeasonDetails {
@@ -5935,7 +5965,15 @@ export interface FollowEpisode {
    */
   episode: number;
   airDate?: string;
-  state: "upcoming" | "searching" | "downloading" | "in_library";
+  state:
+    | "upcoming"
+    | "searching"
+    | "waiting"
+    | "no_space"
+    | "missing"
+    | "downloading"
+    | "in_library";
+  waitUntil?: string;
 }
 
 export interface FollowSummary {
@@ -6026,7 +6064,15 @@ export interface ScheduleItem {
   airDate: string;
   image?: string;
   followed: boolean;
-  state: "upcoming" | "searching" | "downloading" | "in_library" | null;
+  state:
+    | "upcoming"
+    | "searching"
+    | "waiting"
+    | "no_space"
+    | "missing"
+    | "downloading"
+    | "in_library"
+    | null;
 }
 
 export interface ScheduleResponse {

@@ -92,6 +92,7 @@ export const searchXml = `<?xml version="1.0" encoding="UTF-8"?>
     <item>
       <title>Тихая гавань / Quiet Harbor / Сезон: 2 / Серии: 1-8 из 8 (2024) WEB-DL 1080p | LostFilm</title>
       <guid>https://indexer.example/details/101</guid>
+      <comments>https://indexer.example/details/101</comments>
       <link>https://indexer.example/download/101?apikey=secret-key</link>
       <pubDate>Mon, 14 Oct 2024 18:00:00 +0000</pubDate>
       <size>16106127360</size>

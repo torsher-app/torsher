@@ -118,9 +118,10 @@ async function remainingBytes(torrent: Torrent, files: number[]) {
 /**
  * Закачка целиком: место под остаток проверяется до старта (закреплённое
  * лимит кэша не занимает, только запас свободного места), выбор раздачи
- * дополняется — уже качающиеся файлы остаются.
+ * дополняется — уже качающиеся файлы остаются. Нехватка места —
+ * `InsufficientStorageError`. Общий путь «Скачать» и «Следить».
  */
-async function start(torrent: Torrent, files: number[]) {
+export async function startDownload(torrent: Torrent, files: number[]) {
   const bytes = await remainingBytes(torrent, files)
 
   await ensureSpaceFor({ torrent: { ...torrent, retention: 'keep' }, bytes })
@@ -190,7 +191,7 @@ export async function downloadTitle(
       throw new DownloadNotFoundError()
     }
 
-    return start(torrent, files)
+    return startDownload(torrent, files)
   }
 
   const kind = ref.type === 'movie' ? 'movie' : 'series'
@@ -268,7 +269,7 @@ export async function downloadTitle(
     const files = filesOf(torrent, release, kind, season)
 
     if (files.length)
-      return start(torrent, files)
+      return startDownload(torrent, files)
   }
 
   throw new WatchError(

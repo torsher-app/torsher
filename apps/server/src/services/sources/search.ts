@@ -45,6 +45,16 @@ export interface IndexerFailure {
   id: string
   name: string
   kind: SourceErrorKind
+  /** Индексатор просит повторить не раньше (`Retry-After`) */
+  retryAt?: Date
+}
+
+export interface SearchOptions {
+  deadlineMs?: number
+  /** Запросов к индексаторам одновременно */
+  concurrency?: number
+  /** Текстовых запросов на индексатор, кроме запроса по ID */
+  textQueries?: number
 }
 
 export interface SearchOutcome {
@@ -62,11 +72,30 @@ interface Hit {
 interface IndexerState {
   ok: boolean
   error?: SourceErrorKind
+  retryAt?: Date
 }
 
 // Год в конце строки зрителя («Дюна 2021») матчеру не нужен: он сверяет
 // год раздачи с годом тайтла сам
 const TRAILING_YEAR = /\s+(?:19|20)\d{2}$/
+
+let viewerSearches = 0
+
+/** Идёт поиск зрителя («Источники», «Смотреть»): фоновые поиски ждут */
+export function isViewerSearching() {
+  return viewerSearches > 0
+}
+
+export async function asViewerSearch<T>(task: () => Promise<T>) {
+  viewerSearches++
+
+  try {
+    return await task()
+  }
+  finally {
+    viewerSearches--
+  }
+}
 
 function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms).unref?.())
@@ -103,6 +132,11 @@ export function mergeHits(hits: Hit[]) {
     const key = identityKey(release)
     const seeders = release.seeders ?? 0
     const found = merged.get(key)
+    const source = {
+      id: indexer.id,
+      name: indexer.name,
+      ...(release.detailsUrl && { detailsUrl: release.detailsUrl }),
+    }
     const link = release.link
       ? {
           url: release.link,
@@ -115,7 +149,7 @@ export function mergeHits(hits: Hit[]) {
       merged.set(key, {
         id: releaseId(key),
         title: release.title,
-        indexers: [{ id: indexer.id, name: indexer.name }],
+        indexers: [source],
         link,
         magnet: release.magnet,
         infoHash:
@@ -129,8 +163,11 @@ export function mergeHits(hits: Hit[]) {
       continue
     }
 
-    if (!found.indexers.some(item => item.id === indexer.id))
-      found.indexers.push({ id: indexer.id, name: indexer.name })
+    const known = found.indexers.find(item => item.id === indexer.id)
+
+    if (!known)
+      found.indexers.push(source)
+    else known.detailsUrl ??= release.detailsUrl
 
     if (seeders > found.seeders) {
       found.seeders = seeders
@@ -157,8 +194,13 @@ export function mergeHits(hits: Hit[]) {
 export async function searchReleases(
   target: SearchTarget,
   indexers: SearchableIndexer[],
-  deadlineMs = SEARCH_DEADLINE_MS,
+  options: SearchOptions = {},
 ): Promise<SearchOutcome> {
+  const {
+    deadlineMs = SEARCH_DEADLINE_MS,
+    concurrency = SEARCH_CONCURRENCY,
+    textQueries,
+  } = options
   const { identity, aliases, season } = target
   const manual = target.query?.trim()
   const query = manual
@@ -170,7 +212,7 @@ export async function searchReleases(
           tmdb: identity.tmdbId,
           tvdb: identity.tvdbId,
         },
-        titles: textQueriesOf(aliases),
+        titles: textQueriesOf(aliases, textQueries),
         year: identity.year,
         season,
       }
@@ -212,6 +254,9 @@ export async function searchReleases(
     }
     catch (err) {
       state.error ??= errorKind(err)
+
+      if (err instanceof SourceError && err.retryAt)
+        state.retryAt ??= err.retryAt
     }
   }
 
@@ -224,7 +269,7 @@ export async function searchReleases(
   }
 
   const workers = Array.from(
-    { length: Math.min(SEARCH_CONCURRENCY, tasks.length) },
+    { length: Math.min(concurrency, tasks.length) },
     worker,
   )
 
@@ -238,7 +283,12 @@ export async function searchReleases(
       return []
 
     return [
-      { id: indexer.id, name: indexer.name, kind: state.error ?? 'timeout' },
+      {
+        id: indexer.id,
+        name: indexer.name,
+        kind: state.error ?? 'timeout',
+        ...(state.retryAt && { retryAt: state.retryAt }),
+      },
     ]
   })
   const titleTarget = {
