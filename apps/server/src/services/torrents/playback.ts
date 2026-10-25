@@ -47,25 +47,44 @@ export function bufferedAheadBytes(input: BufferInput) {
   return Math.max(0, end - start)
 }
 
+// Последние 10% — титры: фильм, остановленный на них, досмотрен. Титры у
+// фильмов идут 8–12 минут, хвост в минутах их не покрывает
+const RESUME_MIN_SHARE = 0.05
+const WATCHED_SHARE = 0.9
+const RESUME_MIN_DURATION = 300
+// Длительность знает только плеер: без неё досмотренным файл не считается,
+// а продолжать есть смысл с первых минут
 const RESUME_MIN_SECONDS = 30
-const RESUME_TAIL_SECONDS = 120
-const RESUME_TAIL_SHARE = 0.05
 
-function tailOf(duration: number) {
-  return Math.min(RESUME_TAIL_SECONDS, duration * RESUME_TAIL_SHARE)
-}
-
-/** Досмотрено: позиция в хвосте файла, где продолжать уже нечего */
+/**
+ * Досмотрено: позиция после 90% или в последней секунде. Файл короче пяти
+ * минут продолжать нечего — он досмотрен, как только начат.
+ */
 export function isWatched(position: number, duration: number | null) {
-  return !!duration && duration - position <= tailOf(duration)
+  if (!duration || duration <= 0)
+    return false
+
+  const share = position / duration
+
+  if (share < RESUME_MIN_SHARE)
+    return false
+
+  return (
+    share > WATCHED_SHARE
+    || position >= duration - 1
+    || duration < RESUME_MIN_DURATION
+  )
 }
 
 /**
- * Позиция, с которой плеер продолжает сам. В самом начале продолжать нечего,
- * у самого конца файл считается досмотренным — играем с начала.
+ * Позиция, с которой плеер продолжает сам. В первых 5% продолжать нечего,
+ * досмотренный файл играем с начала.
  */
 export function resumePosition(position: number, duration: number | null) {
-  if (position < RESUME_MIN_SECONDS)
+  if (!duration || duration <= 0)
+    return position < RESUME_MIN_SECONDS ? null : position
+
+  if (position / duration < RESUME_MIN_SHARE)
     return null
 
   return isWatched(position, duration) ? null : position
