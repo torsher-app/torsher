@@ -164,10 +164,10 @@ export function useFollows() {
   }
 
   /** «Не брать эту раздачу»: карточка перечитывается — отложенного могло не стать */
-  function block(id: string, infoHash: string) {
+  function block(id: string, candidateId: string) {
     return run(id, async () => {
       await withErrorMode('silent', () =>
-        api.follow.postFollowBlocklist({ followId: id, infoHash }))
+        api.follow.postFollowBlocklist({ followId: id, candidateId }))
       await loadDetails(id).catch(() => {})
     })
   }

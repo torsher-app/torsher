@@ -30,6 +30,7 @@ import {
   blockedPart,
   blockedReleases,
   blockRelease,
+  listingsOf,
   rememberListing,
 } from './blocklist.ts'
 import { recordHistory } from './history.ts'
@@ -221,6 +222,16 @@ export function resetEpisodes(follow: Follow, episodes: EpisodeRef[]) {
   }
 }
 
+/** Показ кандидата у его индексатора */
+function candidateRelease(candidate: FollowPendingCandidate) {
+  return {
+    infoHash: candidate.infoHash,
+    title: candidate.title,
+    size: candidate.size,
+    indexers: [{ id: candidate.indexerId, detailsUrl: candidate.detailsUrl }],
+  }
+}
+
 /**
  * Раздача в чёрный список; `only` — только эти серии: остальные серии
  * раздачи в её файлах есть. Кандидат без infohash запоминается, как его
@@ -245,7 +256,7 @@ export function blockTorrent(
     ...(options.only && { episodes: episodes.map(episodeKey) }),
     ...(candidate
       && !candidate.infoHash && {
-      listing: { page: candidate.detailsUrl, title: candidate.title },
+      listings: listingsOf(candidateRelease(candidate)),
     }),
   })
 
@@ -488,19 +499,12 @@ export async function grabCandidate(
   if (followById(follow.id)?.state !== 'active')
     return 'later'
 
-  const blocks = blockedReleases(now)
+  const blocks = blockedReleases(follow.titleId, now)
 
   episodes = withoutBlocked(
     follow,
     episodes,
-    blockedPart(
-      {
-        infoHash: candidate.infoHash,
-        title: candidate.title,
-        detailsUrls: candidate.detailsUrl ? [candidate.detailsUrl] : [],
-      },
-      blocks,
-    ),
+    blockedPart(candidateRelease(candidate), blocks),
   )
 
   if (!episodes.length)
@@ -555,18 +559,15 @@ export async function grabCandidate(
   retryAt.delete(candidate.id)
 
   const blocked = blockedPart(
-    { infoHash: torrent.infoHash, title: candidate.title, detailsUrls: [] },
+    { infoHash: torrent.infoHash, title: candidate.title, indexers: [] },
     blocks,
   )
 
-  // Раздачу без infohash узнали только сейчас: по странице и названию её
-  // узнают до скачивания, и `.torrent` не качается на каждом проходе
+  // Раздачу без infohash узнали только сейчас: по показу её узнают до
+  // скачивания, и `.torrent` не качается на каждом проходе
   if (blocked !== undefined && !candidate.infoHash) {
-    rememberListing(
-      torrent.infoHash,
-      { page: candidate.detailsUrl, title: candidate.title },
-      now,
-    )
+    for (const listing of listingsOf(candidateRelease(candidate)))
+      rememberListing(torrent.infoHash, listing, now)
   }
 
   episodes = withoutBlocked(follow, episodes, blocked)

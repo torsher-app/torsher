@@ -313,9 +313,14 @@ export const blocklistItem = z
   .object({
     id: z.string(),
     titleId: z.string(),
-    infoHash: z.string(),
+    // null — раздачу без infohash запретили по её показам у индексаторов
+    infoHash: z.string().nullable(),
     releaseTitle: z.string(),
     reason: z.enum(blocklistReasons),
+    // Только эти серии; null — раздача целиком
+    episodes: z
+      .array(z.object({ season: z.number().int(), episode: z.number().int() }))
+      .nullable(),
     createdAt: z.string(),
     // null — навсегда
     expiresAt: z.string().nullable(),
@@ -329,7 +334,8 @@ export const blocklistResponse = z
 export const blockRelease = z
   .object({
     followId: z.string().min(1).max(100),
-    infoHash: z.string().regex(/^[0-9a-f]{40}$/i),
+    // `id` кандидата в снимке серии
+    candidateId: z.string().min(1).max(500),
   })
   .meta({ id: 'blockRelease' })
 

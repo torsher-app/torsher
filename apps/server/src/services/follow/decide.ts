@@ -289,14 +289,7 @@ export function checkCandidate(
   const upgrades = new Set<string>()
   const considered: EpisodeRef[] = []
   const episodeRejections = new Map<string, Rejection>()
-  const blocked = blockedPart(
-    {
-      infoHash: release.infoHash,
-      title: release.title,
-      detailsUrls: release.indexers.flatMap(item => item.detailsUrl ?? []),
-    },
-    ctx.blocked,
-  )
+  const blocked = blockedPart(release, ctx.blocked)
   let blockedEpisodes = false
 
   for (const item of named) {

@@ -1195,6 +1195,8 @@ export interface FollowDecision {
   studio?: string
   voiceType?: string
   verdict: 'grab' | 'pending' | 'rejected'
+  /** Индексаторы и страницы раздачи: по ним узнают раздачу без infohash */
+  sources?: { id: string, detailsUrl?: string }[]
   rejections: {
     code: string
     type: 'permanent' | 'temporary'
@@ -1328,6 +1330,17 @@ export const blocklistReasons = ['stalled', 'user', 'failed_check'] as const
 
 export type BlocklistReason = (typeof blocklistReasons)[number]
 
+/**
+ * Показ раздачи у индексатора. Размер отличает перезалив в той же теме с тем
+ * же названием, индексатор — показ без страницы
+ */
+export interface BlocklistListing {
+  indexerId?: string
+  page?: string
+  title: string
+  size?: number
+}
+
 // Раздачи, которые автоматика не берёт; `expires_at` пуст — навсегда
 export const releaseBlocklist = sqliteTable(
   'release_blocklist',
@@ -1336,17 +1349,17 @@ export const releaseBlocklist = sqliteTable(
       .primaryKey()
       .$defaultFn(() => randomUUID()),
     titleId: text('title_id').notNull(),
-    infoHash: text('info_hash').notNull(),
+    // Пусто — раздачу без infohash запретили до скачивания: только `listings`
+    infoHash: text('info_hash'),
     detailsUrl: text('details_url'),
     releaseTitle: text('release_title').notNull(),
     reason: text('reason', { enum: blocklistReasons }).notNull(),
     // Серии (`season:episode`), которых нет в файлах раздачи; пусто — вся раздача
     episodes: text('episodes', { mode: 'json' }).$type<string[]>(),
-    // Как индексатор показал раздачу без infohash: такую узнают по странице и
-    // названию вместе (без страницы — по названию). У записей без них — только
-    // infohash: у обновлённой темы адрес тот же, а раздача новая
-    listedPage: text('listed_page'),
-    listedTitle: text('listed_title'),
+    // Как индексаторы показали раздачу без infohash: такую узнают по показу
+    // целиком. У записей без них — только infohash: у обновлённой темы адрес
+    // тот же, а раздача новая
+    listings: text('listings', { mode: 'json' }).$type<BlocklistListing[]>(),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
     expiresAt: integer('expires_at', { mode: 'timestamp_ms' }),
   },

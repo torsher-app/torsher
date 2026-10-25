@@ -204,6 +204,13 @@
       "when": 1792931169897,
       "tag": "0028_odd_landau",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "6",
+      "when": 1792936905419,
+      "tag": "0029_sticky_micromacro",
+      "breakpoints": true
     }
   ]
 }

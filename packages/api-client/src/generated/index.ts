@@ -2102,9 +2102,23 @@ export interface FollowQueueResponseInput {
 export interface BlocklistItemInput {
   id: string;
   titleId: string;
-  infoHash: string;
+  infoHash: string | null;
   releaseTitle: string;
   reason: "stalled" | "user" | "failed_check";
+  episodes:
+    | {
+        /**
+         * @min -9007199254740991
+         * @max 9007199254740991
+         */
+        season: number;
+        /**
+         * @min -9007199254740991
+         * @max 9007199254740991
+         */
+        episode: number;
+      }[]
+    | null;
   createdAt: string;
   expiresAt: string | null;
 }
@@ -2119,8 +2133,11 @@ export interface BlockReleaseInput {
    * @maxLength 100
    */
   followId: string;
-  /** @pattern ^[0-9a-f]{40}$ */
-  infoHash: string;
+  /**
+   * @minLength 1
+   * @maxLength 500
+   */
+  candidateId: string;
 }
 
 export interface FollowSettingsInput {
@@ -6658,9 +6675,23 @@ export interface FollowQueueResponse {
 export interface BlocklistItem {
   id: string;
   titleId: string;
-  infoHash: string;
+  infoHash: string | null;
   releaseTitle: string;
   reason: "stalled" | "user" | "failed_check";
+  episodes:
+    | {
+        /**
+         * @min -9007199254740991
+         * @max 9007199254740991
+         */
+        season: number;
+        /**
+         * @min -9007199254740991
+         * @max 9007199254740991
+         */
+        episode: number;
+      }[]
+    | null;
   createdAt: string;
   expiresAt: string | null;
 }
@@ -6675,8 +6706,11 @@ export interface BlockRelease {
    * @maxLength 100
    */
   followId: string;
-  /** @pattern ^[0-9a-f]{40}$ */
-  infoHash: string;
+  /**
+   * @minLength 1
+   * @maxLength 500
+   */
+  candidateId: string;
 }
 
 export interface FollowSettings {

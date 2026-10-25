@@ -135,6 +135,10 @@ function decisionOf(
     title: release.title,
     infoHash: release.infoHash,
     indexers: release.indexers.map(item => item.name),
+    sources: release.indexers.map(item => ({
+      id: item.id,
+      detailsUrl: item.detailsUrl,
+    })),
     size: release.size,
     seeders: release.seeders,
     quality: release.resolution?.value,
@@ -477,7 +481,7 @@ export async function decideFollow(
     downloading: new Set(
       states.filter(item => item.state === 'downloading').map(episodeKey),
     ),
-    blocked: blockedReleases(now),
+    blocked: blockedReleases(follow.titleId, now),
     firstSeen: new Map(
       [...rows.values()].map(row => [episodeKey(row), row.firstSeenAt]),
     ),
