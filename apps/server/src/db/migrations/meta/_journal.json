@@ -169,6 +169,13 @@
       "when": 1792906851656,
       "tag": "0023_violet_polaris",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1792908734146,
+      "tag": "0024_romantic_proemial_gods",
+      "breakpoints": true
     }
   ]
 }

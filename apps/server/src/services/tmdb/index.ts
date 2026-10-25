@@ -43,11 +43,15 @@ import {
   searchResultsToPeople,
   seasonToDetails,
   similarCards,
+  trackerSeasonName,
   trimExtras,
   trimPerson,
   tvAiring,
   tvToDetails,
+  withTrackerEpisodes,
+  withTrackerSeason,
 } from './mappers.ts'
+import { trackerEpisodesOf } from './tracker.ts'
 
 export { fetchTmdbImage, TmdbError } from './client.ts'
 export { discoverTitles, getGenres } from './discover.ts'
@@ -159,6 +163,13 @@ async function loadTitle(ref: TmdbRef, language: string): Promise<LoadedTitle> {
   }
 }
 
+/** Сериал с сериями с трекера: их TMDB ещё не знает, а раздачи уже есть */
+function withTracker(title: LoadedTitle): LoadedTitle {
+  return title.airing
+    ? withTrackerEpisodes(title, trackerEpisodesOf(title.details.id))
+    : title
+}
+
 /**
  * Детали и, у сериала, последняя вышедшая и следующая серии — из той же записи
  * кэша, что и карточка. Описание на запасном языке не добирается: это для
@@ -167,7 +178,7 @@ async function loadTitle(ref: TmdbRef, language: string): Promise<LoadedTitle> {
 export async function getTitleSummary(id: string, language: string) {
   const ref = parseCatalogId(id)
 
-  return ref ? loadTitle(ref, language) : undefined
+  return ref ? withTracker(await loadTitle(ref, language)) : undefined
 }
 
 /** `undefined` — ID не из каталога; отсутствие тайтла в TMDB — `TmdbError`. */
@@ -180,7 +191,7 @@ export async function getTitle(
   if (!ref)
     return undefined
 
-  const { details, imdbId } = await loadTitle(ref, language)
+  const { details, imdbId } = withTracker(await loadTitle(ref, language))
 
   if (!details.overview && language !== FALLBACK_LANGUAGE) {
     try {
@@ -228,6 +239,26 @@ function cachedLanguages(ref: TmdbRef) {
     .filter(language => /^[a-z]{2}-[A-Z]{2}$/.test(language))
 
   return languages.length ? [...new Set(languages)] : [FALLBACK_LANGUAGE]
+}
+
+/**
+ * Серий в сезонах по одному TMDB, без серий с трекера: из деталей в кэше на
+ * любом языке. `undefined` — ID не сериала; ошибки TMDB — `TmdbError`.
+ */
+export async function tmdbEpisodeCounts(id: string) {
+  const ref = parseCatalogId(id)
+
+  if (ref?.type !== 'tv')
+    return undefined
+
+  const { details } = await loadTitle(ref, cachedLanguages(ref)[0]!)
+
+  return new Map(
+    (details.seasons ?? []).map(season => [
+      season.number,
+      season.episodeCount,
+    ]),
+  )
 }
 
 /** Эфир сериала из деталей в кэше на любом языке, без запроса в сеть */
@@ -324,7 +355,10 @@ export async function changedTvIds(
   }
 }
 
-/** `undefined` — ID не сериала из каталога; нет сезона в TMDB — `TmdbError`. */
+/**
+ * Сезон с сериями с трекера в конце. `undefined` — ID не сериала из каталога;
+ * нет сезона ни в TMDB, ни на трекере — `TmdbError`.
+ */
 export async function getSeason(
   id: string,
   number: number,
@@ -335,15 +369,40 @@ export async function getSeason(
   if (ref?.type !== 'tv')
     return undefined
 
-  const season = seasonToDetails(
-    await loadSeason(ref.tmdbId, number, language),
+  const tracker = trackerEpisodesOf(id).filter(
+    item => item.season === number,
   )
+
+  if (!tracker.length)
+    return tmdbSeason(ref.tmdbId, number, language)
+
+  // Сезона, который знают только раздачи, в TMDB не спрашиваем
+  const { details } = await loadTitle(ref, language)
+  const seasons = details.seasons ?? []
+  const known = seasons.find(season => season.number === number)
+
+  return known
+    ? withTrackerSeason(
+        await tmdbSeason(ref.tmdbId, number, language),
+        known.episodeCount,
+        tracker,
+      )
+    : withTrackerSeason(
+        { number, name: trackerSeasonName(number, seasons), episodes: [] },
+        0,
+        tracker,
+      )
+}
+
+/** Сезон по TMDB: описания серий без перевода — с английской версии */
+async function tmdbSeason(tmdbId: number, number: number, language: string) {
+  const season = seasonToDetails(await loadSeason(tmdbId, number, language))
   const missing = season.episodes.some(episode => !episode.overview)
 
   if (missing && language !== FALLBACK_LANGUAGE) {
     try {
       const fallback = seasonToDetails(
-        await loadSeason(ref.tmdbId, number, FALLBACK_LANGUAGE),
+        await loadSeason(tmdbId, number, FALLBACK_LANGUAGE),
       )
       const overviews = new Map(
         fallback.episodes.map(episode => [episode.number, episode.overview]),

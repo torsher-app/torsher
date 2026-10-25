@@ -4,6 +4,7 @@ import type {
   EpisodeFacts,
   EpisodeRef,
   EpisodeWithState,
+  LoadedEpisode,
   ScheduledEpisode,
   SeriesSchedule,
 } from './wanted.ts'
@@ -15,6 +16,7 @@ import { getSeason } from '../tmdb/index.ts'
 import {
   episodeKey,
   episodeStates,
+  isAired,
   localDay,
   scheduledEpisodes,
 } from './wanted.ts'
@@ -162,7 +164,7 @@ export async function followEpisodeStates(
   now = new Date(),
 ): Promise<EpisodeWithState[]> {
   const cursor = { season: follow.startSeason, episode: follow.startEpisode }
-  const loaded = new Map<number, { number: number, airDate?: string }[]>()
+  const loaded = new Map<number, LoadedEpisode[]>()
 
   await Promise.all(
     seasonsToLoad(schedule, cursor).map(async (number) => {
@@ -208,7 +210,7 @@ export function seasonEpisodeStates(
   const episodes: ScheduledEpisode[] = season.episodes.map(item => ({
     season: season.number,
     episode: item.number,
-    aired: !!item.airDate && item.airDate <= today,
+    aired: isAired(item, today),
     airDate: item.airDate,
   }))
   const states = episodeStates({

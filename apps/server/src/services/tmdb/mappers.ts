@@ -568,6 +568,165 @@ export function seasonToDetails(season: TmdbSeason): SeasonDetails {
   }
 }
 
+/** Серия, которую знают только раздачи; `seenOn` — день первого появления */
+export interface TrackerEpisode {
+  season: number
+  episode: number
+  // YYYY-MM-DD в поясе сервера
+  seenOn: string
+}
+
+type TvAiring = ReturnType<typeof tvAiring>
+
+interface EpisodeNumber {
+  season: number
+  episode: number
+}
+
+function isLater(a: EpisodeNumber, b: EpisodeNumber | undefined) {
+  return (
+    !b
+    || a.season > b.season
+    || (a.season === b.season && a.episode > b.episode)
+  )
+}
+
+/**
+ * Самая дальняя серия с трекера в каждом сезоне — только сверх `known`
+ * (серий в сезоне по TMDB): серию, которую TMDB уже знает, ведёт TMDB.
+ */
+export function trackerBeyond(
+  known: Map<number, number>,
+  episodes: TrackerEpisode[],
+) {
+  const furthest = new Map<number, TrackerEpisode>()
+
+  for (const item of episodes) {
+    if (item.season <= 0 || item.episode <= (known.get(item.season) ?? 0))
+      continue
+
+    const current = furthest.get(item.season)
+
+    if (!current || item.episode > current.episode)
+      furthest.set(item.season, item)
+  }
+
+  return furthest
+}
+
+/** Сезон, которого нет в TMDB, называется по соседнему: «Сезон 2» → «Сезон 3» */
+export function trackerSeasonName(number: number, seasons: TitleSeason[]) {
+  for (const season of seasons) {
+    const match = /^(\D*)(\d+)(\D*)$/.exec(season.name)
+
+    if (match && Number(match[2]) === season.number)
+      return `${match[1]}${number}${match[3]}`
+  }
+
+  return String(number)
+}
+
+/**
+ * Серии с трекера поверх деталей сериала. Сезон растёт до самой дальней такой
+ * серии, и все серии до неё считаются вышедшими: раз вышла шестая, вышла и
+ * пятая. Сезон, которого нет в TMDB, добавляется. Последняя вышедшая серия —
+ * с трекера, если она дальше; анонс, который она обогнала, снимается.
+ */
+export function withTrackerEpisodes<
+  T extends { details: TitleDetails, airing?: TvAiring },
+>(title: T, episodes: TrackerEpisode[]): T {
+  const seasons = title.details.seasons ?? []
+  const known = new Map(
+    seasons.map(season => [season.number, season.episodeCount]),
+  )
+  const furthest = trackerBeyond(known, episodes)
+
+  if (!furthest.size)
+    return title
+
+  const merged = seasons.map((season) => {
+    const item = furthest.get(season.number)
+
+    return item
+      ? {
+          ...season,
+          episodeCount: item.episode,
+          airedEpisodeCount: item.episode,
+        }
+      : season
+  })
+  let added = 0
+  let top: TrackerEpisode | undefined
+
+  for (const [number, item] of furthest) {
+    added += item.episode - (known.get(number) ?? 0)
+
+    if (isLater(item, top))
+      top = item
+
+    if (!known.has(number)) {
+      merged.push({
+        number,
+        name: trackerSeasonName(number, seasons),
+        episodeCount: item.episode,
+        airedEpisodeCount: item.episode,
+      })
+    }
+  }
+
+  const { last, next } = title.airing ?? {}
+  const latest
+    = top && isLater(top, last)
+      ? { season: top.season, episode: top.episode, airDate: top.seenOn }
+      : last
+  const keepNext = !!next && !!latest && isLater(next, latest)
+
+  return {
+    ...title,
+    details: {
+      ...title.details,
+      seasons: merged.sort((a, b) => a.number - b.number),
+      episodeCount: (title.details.episodeCount ?? 0) + added,
+      nextEpisode: keepNext ? title.details.nextEpisode : undefined,
+    },
+    ...(title.airing && {
+      airing: { last: latest, next: keepNext ? next : undefined },
+    }),
+  }
+}
+
+/**
+ * Серии с трекера в конце сезона — без названия, описания и кадра; `known` —
+ * серий в сезоне по деталям TMDB (0 — сезона в TMDB нет).
+ */
+export function withTrackerSeason(
+  season: SeasonDetails,
+  known: number,
+  episodes: TrackerEpisode[],
+): SeasonDetails {
+  const listed = Math.max(known, ...season.episodes.map(item => item.number))
+  const furthest = trackerBeyond(
+    new Map([[season.number, listed]]),
+    episodes,
+  ).get(season.number)
+
+  if (!furthest)
+    return season
+
+  return {
+    ...season,
+    episodes: [
+      ...season.episodes,
+      ...Array.from({ length: furthest.episode - listed }, (_, index) => ({
+        number: listed + index + 1,
+        title: '',
+        overview: '',
+        tracker: true,
+      })),
+    ],
+  }
+}
+
 // У сериала роль — персонаж, которого актёр играл в большинстве серий
 function roleOf(member: TmdbCastMember) {
   if (member.character)

@@ -443,6 +443,7 @@ export interface EpisodeInput {
     | "missing"
     | "downloading"
     | "in_library";
+  tracker?: boolean;
 }
 
 export interface SeasonDetailsInput {
@@ -4640,6 +4641,7 @@ export interface Episode {
     | "missing"
     | "downloading"
     | "in_library";
+  tracker?: boolean;
 }
 
 export interface SeasonDetails {
