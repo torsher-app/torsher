@@ -1,5 +1,7 @@
+import type { Language } from '@torsher/i18n'
 import type { NotificationItem } from '@torsher/api-client'
 import type { RouteLocationRaw } from 'vue-router'
+import { followNotificationText, isFollowNotification } from '@torsher/i18n'
 import { attentionText } from '~/lib/attentionText'
 import { attentionLinks } from '~/lib/overview'
 
@@ -40,13 +42,27 @@ export function notificationTitle(
     })
   }
 
+  if (isFollowNotification(item.kind)) {
+    return followNotificationText(t, locale as Language, item.kind, item.params)
+      .title
+  }
+
   return t(`notifications.events.${item.kind}.title`, { ...item.params })
 }
 
 /** Вторая строка — у событий, кроме проблем: у тех текст уже в заголовке */
-export function notificationText(t: Translate, item: NotificationItem) {
+export function notificationText(
+  t: Translate,
+  locale: string,
+  item: NotificationItem,
+) {
   if (item.kind === 'problem')
     return ''
+
+  if (isFollowNotification(item.kind)) {
+    return followNotificationText(t, locale as Language, item.kind, item.params)
+      .text
+  }
 
   return t(`notifications.events.${item.kind}.text`, { ...item.params })
 }

@@ -604,7 +604,7 @@ describe('монитор проблем', () => {
 })
 
 describe('завершённые загрузки', () => {
-  function addTorrent(name: string) {
+  function addTorrent(name: string, origin: 'search' | 'follow' = 'search') {
     return getDb()
       .insert(torrents)
       .values({
@@ -613,6 +613,7 @@ describe('завершённые загрузки', () => {
         source: 'magnet',
         status: 'ready',
         inEngine: true,
+        origin,
       })
       .returning()
       .get()
@@ -639,6 +640,16 @@ describe('завершённые загрузки', () => {
     expect(inbox()).toMatchObject([
       { kind: 'download_completed', params: { name: 'Big Buck Bunny' } },
     ])
+  })
+
+  it('о закачке «Следить» сообщает слежение, а не «Загрузка завершена»', () => {
+    const row = addTorrent('Synthetic.Show.S01', 'follow')
+    const watcher = createDownloadWatcher()
+
+    watcher.tick(new Map([[row.infoHash, downloading(row.infoHash)]]))
+    watcher.tick(new Map([[row.infoHash, done(row.infoHash)]]))
+
+    expect(inbox()).toHaveLength(0)
   })
 
   it('уже скачанная после старта не сообщается', () => {

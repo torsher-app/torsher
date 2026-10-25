@@ -6,8 +6,11 @@ import {
   CircleCheckIcon,
   CircleXIcon,
   DownloadIcon,
+  EyeIcon,
+  LibraryIcon,
   MonitorSmartphoneIcon,
   RefreshCwIcon,
+  SearchXIcon,
 } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 import { formatDateTime, formatRelative } from '~/lib/format'
@@ -54,13 +57,22 @@ const icon = computed(() => {
         component: MonitorSmartphoneIcon,
         class: 'text-muted-foreground',
       }
+    case 'follow_downloaded':
+    case 'follow_upgraded':
+      return { component: LibraryIcon, class: 'text-primary' }
+    case 'follow_missing':
+      return { component: SearchXIcon, class: 'text-warning' }
+    case 'follow_waiting':
+    case 'follow_other_voice':
+    case 'follow_topic_updated':
+      return { component: EyeIcon, class: 'text-muted-foreground' }
     default:
       return { component: CircleAlertIcon, class: 'text-warning' }
   }
 })
 
 const title = computed(() => notificationTitle(t, locale.value, props.item))
-const text = computed(() => notificationText(t, props.item))
+const text = computed(() => notificationText(t, locale.value, props.item))
 const link = computed(() => notificationLink(props.item))
 const time = computed(() =>
   formatRelative(props.item.createdAt, locale.value, props.now),

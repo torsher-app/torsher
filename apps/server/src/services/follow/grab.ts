@@ -26,6 +26,7 @@ import { InsufficientStorageError } from '../storage/index.ts'
 import { getTorrent, linkTitle } from '../torrents/index.ts'
 import { blockRelease, isBlocked } from './blocklist.ts'
 import { recordHistory } from './history.ts'
+import { announceOtherVoice } from './notify.ts'
 import {
   refreshTargets,
   startRefresh,
@@ -394,6 +395,13 @@ export async function startGrab(
       )
     }
   }
+
+  await announceOtherVoice(
+    follow,
+    candidate,
+    present.filter(item => !upgrading.has(episodeKey(item))),
+    options.ownStudio,
+  )
 
   // Уже скачанные целиком файлы ложатся в библиотеку сразу
   void syncLibrary()

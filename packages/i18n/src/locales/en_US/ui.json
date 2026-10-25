@@ -957,7 +957,15 @@
           "dir_unavailable": "Backup failed: the backup folder is unavailable",
           "stale": "No backup for more than two days"
         },
-        "backup_dir_unavailable": "The backup folder is unavailable: scheduled backups are skipped"
+        "backup_dir_unavailable": "The backup folder is unavailable: scheduled backups are skipped",
+        "follow_no_space": {
+          "need": "Not enough space for {n} followed episode: {need} needed | Not enough space for {n} followed episodes: {need} needed",
+          "plain": "Not enough space for {n} followed episode | Not enough space for {n} followed episodes"
+        },
+        "follow_feed_limited": {
+          "one": "Indexer “{name}” has been limiting or failing requests for over 6 hours: Following can't see new releases",
+          "many": "{n} indexer has been limiting or failing requests for over 6 hours: Following can't see new releases | {n} indexers have been limiting or failing requests for over 6 hours: Following can't see new releases"
+        }
       },
       "tiles": {
         "downloads": {
@@ -2665,7 +2673,7 @@
       "settings": "Notification settings",
       "resolved": "resolved",
       "unreadMark": "Unread",
-      "description": "Where the server tells you about problems, updates and finished downloads.",
+      "description": "Where the server tells you about problems, updates, finished downloads and new episodes.",
       "channels": "Channels",
       "add": "Add channel",
       "loadChannelsError": "Couldn't load channels",
@@ -2707,13 +2715,15 @@
         "problems": "Server problems",
         "updates": "Updates",
         "downloads": "Finished downloads",
-        "devices": "New devices"
+        "devices": "New devices",
+        "follow": "Following"
       },
       "groupHints": {
         "problems": "Engine, storage, indexers, network, TMDB — the same as “Needs attention”",
         "updates": "A new Torsher version is available",
         "downloads": "Files you chose to download are fully downloaded",
-        "devices": "A TV was connected with a code"
+        "devices": "A TV was connected with a code",
+        "follow": "New in the library, and episodes that have had no releases for a long time"
       },
       "dialog": {
         "addTitle": "Add a channel",
@@ -3774,6 +3784,41 @@
     "overflow": {
       "title": "Torsher: too many notifications",
       "text": "{n} more notification is in the panel | {n} more notifications are in the panel"
+    },
+    "follow": {
+      "quoted": "“{title}”",
+      "unknownTitle": "A followed title",
+      "and": " and ",
+      "downloaded": {
+        "title": "Episode in the library | Episodes in the library",
+        "titleMovie": "Movie in the library"
+      },
+      "upgraded": {
+        "title": "Replaced with a better version"
+      },
+      "waiting": {
+        "titleVoice": "Waiting for your voiceover",
+        "titleQuality": "Waiting for better quality",
+        "text": "{subject} is out in {found}; waiting for {target} until {until} | {subject} are out in {found}; waiting for {target} until {until}",
+        "textMovie": "{subject} is out in {found}; waiting for {target} until {until}",
+        "textPlain": "{subject}: waiting for {target} until {until}"
+      },
+      "otherVoice": {
+        "title": "Took another voiceover",
+        "text": "{subject} — {taken}. We'll replace it if {own} comes out",
+        "textPlain": "{subject}: we'll replace it if {own} comes out"
+      },
+      "topicUpdated": {
+        "title": "Release updated",
+        "text": "{title}, season {season}: episodes 1–{to} of {total}",
+        "textTo": "{title}, season {season}: episodes 1–{to}",
+        "textSeason": "{title}, season {season}"
+      },
+      "missing": {
+        "title": "No releases yet",
+        "text": "{subject} came out a while ago, but there are still no releases | {subject} came out a while ago, but there are still no releases",
+        "textDays": "{subject} came out {n} day ago, but there are still no releases | {subject} came out {n} days ago, but there are still no releases"
+      }
     },
     "openPanel": "Open the panel"
   }

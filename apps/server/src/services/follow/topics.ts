@@ -50,6 +50,7 @@ import {
   updateEpisodes,
 } from './grab.ts'
 import { recordHistory } from './history.ts'
+import { announceTopicUpdated } from './notify.ts'
 import { followById } from './index.ts'
 import { episodeKey } from './wanted.ts'
 
@@ -378,6 +379,21 @@ function recordUpdate(
   )
 }
 
+/** «Тема обновилась» в центр уведомлений — после записи истории */
+function announceUpdate(
+  follow: Pick<Follow, 'titleId'>,
+  topic: TrackedTopic,
+  refresh: TopicRefresh,
+) {
+  const shape = topicShape(refresh.title)
+
+  return announceTopicUpdated(follow, {
+    season: topic.season ?? shape?.season,
+    episodesTo: shape?.to,
+    episodesTotal: shape?.total,
+  })
+}
+
 /** Подмена не состоялась после `forget`: старая раздача — снова в движок */
 async function restoreOld(refresh: TopicRefresh, old: Torrent | undefined) {
   if (refresh.forgotten && old?.retention === 'keep') {
@@ -407,8 +423,10 @@ async function fallBack(ctx: RefreshContext, now: Date) {
     { now },
   )
 
-  if (result === 'started')
+  if (result === 'started') {
     recordUpdate(follow, topic, next, refresh, { fallback: true }, now)
+    await announceUpdate(follow, topic, refresh)
+  }
 
   return result
 }
@@ -774,6 +792,7 @@ export async function runRefresh(
     return undefined
 
   relink(ctx, now)
+  await announceUpdate(follow, topic, refresh)
   return runRefresh(topic.id, now)
 }
 

@@ -45,6 +45,10 @@ export function attentionMessage(
       return reason === 'no_space' && (need === undefined || free === undefined)
         ? { key: `${key}.no_space_short`, params: {} }
         : { key: `${key}.${reason}`, params: { need, free } }
+    case 'follow_no_space':
+      return need === undefined
+        ? { key: `${key}.plain`, params: {}, count }
+        : { key: `${key}.need`, params: { need }, count }
     default:
       return name
         ? { key: `${key}.one`, params: { name } }

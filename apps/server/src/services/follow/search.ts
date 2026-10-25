@@ -15,6 +15,7 @@ import { cachedSearch, peekSearch, SEARCH_TTL_MS } from '../sources/cache.ts'
 import { isViewerSearching, searchReleases } from '../sources/search.ts'
 import { getTitleIdentity } from '../tmdb/index.ts'
 import { recordHistory } from './history.ts'
+import { announceMissing } from './notify.ts'
 import { followSettings } from './settings.ts'
 import {
   decideFollow,
@@ -263,7 +264,7 @@ function setSchedule(follow: Follow, values: Partial<Follow>) {
 async function evaluate(follow: Follow, now: Date) {
   const states = await followStates(follow, now)
 
-  reportMissing(follow, states, now)
+  await announceMissing(follow, reportMissing(follow, states, now), now)
 
   const wanted = states.filter(item => WANTED_STATES.has(item.state))
   const plan = searchPlan({

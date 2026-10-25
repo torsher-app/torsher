@@ -213,8 +213,8 @@ export function versionOf(
   }
 }
 
-/** Студия и качество раздачи для истории замены */
-function releaseFacts(title: string) {
+/** Студия и качество раздачи для истории замены и уведомлений */
+export function releaseFacts(title: string) {
   const parsed = parseRelease(title)
   const studio = parsed.audio.find(track => track.studio)?.studio
   const quality = videoResolution(parsed)?.value
@@ -383,12 +383,13 @@ export function restoreUpgrades(
 /**
  * Итог апгрейдов слежения: файл заменён новой версией — событие `upgraded`,
  * срок апгрейда по-прежнему от первой закачки; раздачу апгрейда удалили —
- * серия возвращается к прежней закачке.
+ * серия возвращается к прежней закачке. Возвращает заменённые серии.
  */
 export function settleUpgrades(
   follow: Pick<Follow, 'id' | 'titleId'>,
   now = new Date(),
 ) {
+  const upgraded: { episode: EpisodeRef, title: string }[] = []
   const rows = getDb()
     .select()
     .from(followEpisodes)
@@ -445,5 +446,11 @@ export function settleUpgrades(
       },
       now,
     )
+    upgraded.push({
+      episode: { season: row.season, episode: row.episode },
+      title,
+    })
   }
+
+  return upgraded
 }

@@ -21,6 +21,7 @@ import {
   libraryFolders,
   mediaFiles,
   metaCache,
+  notifications,
   releaseBlocklist,
   titleVoices,
   torrents,
@@ -228,6 +229,14 @@ function rows(followId: string) {
     .sort((a, b) => a.episode - b.episode)
 }
 
+function inbox() {
+  return getDb()
+    .select()
+    .from(notifications)
+    .all()
+    .map(row => ({ kind: row.kind, params: row.params }))
+}
+
 function historyKinds(followId: string) {
   return getDb()
     .select()
@@ -277,6 +286,7 @@ beforeEach(() => {
     releaseBlocklist,
     metaCache,
     trackedTopics,
+    notifications,
   ])
     getDb().delete(table).run()
 
@@ -418,6 +428,26 @@ describe('автоматика «Следить»', () => {
       'downloading',
       ...Array.from({ length: 4 }).fill('upcoming'),
     ])
+    // Своя студия — ни «ждём», ни «взяли другую»
+    expect(inbox()).toEqual([])
+
+    // Серии пака легли в библиотеку: одно сообщение на тайтл
+    libraryEpisodes(6, 7, 8)
+    await followAutomation(new Date(now.getTime() + 60_000))
+    await followAutomation(new Date(now.getTime() + 120_000))
+
+    expect(inbox()).toEqual([
+      {
+        kind: 'follow_downloaded',
+        params: expect.objectContaining({
+          titleId: SERIES,
+          episodes: 'S2E6–E8',
+          count: 3,
+          studio: 'LostFilm',
+          quality: '1080p',
+        }),
+      },
+    ])
   })
 
   it('чужая студия ждёт окна, потом качается без нового поиска', async () => {
@@ -463,6 +493,19 @@ describe('автоматика «Следить»', () => {
       ],
     })
 
+    expect(inbox()).toEqual([
+      {
+        kind: 'follow_waiting',
+        params: expect.objectContaining({
+          episodes: 'S2E8',
+          studio: 'NewStudio',
+          quality: '1080p',
+          wait: { studio: 'LostFilm' },
+          until: episode8!.waitUntil!.toISOString(),
+        }),
+      },
+    ])
+
     const waiting = (await followStates(followById(follow.id)!)).find(
       item => item.episode === 8,
     )
@@ -498,6 +541,15 @@ describe('автоматика «Следить»', () => {
     })
     // Чужая студия против студии из правил сезону не закрепляется
     expect(getDb().select().from(titleVoices).all()).toEqual([])
+    expect(inbox().map(item => item.kind)).toEqual([
+      'follow_waiting',
+      'follow_other_voice',
+    ])
+    expect(inbox()[1]!.params).toMatchObject({
+      episodes: 'S2E8',
+      studio: 'NewStudio',
+      own: 'LostFilm',
+    })
   })
 
   it('нет места — `no_space`, кандидат остаётся; место вернулось — качается', async () => {

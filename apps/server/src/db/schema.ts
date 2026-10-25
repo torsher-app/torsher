@@ -269,6 +269,9 @@ export const indexers = sqliteTable(
     // зрителя на них не смотрит
     backoffUntil: integer('backoff_until', { mode: 'timestamp_ms' }),
     failureCount: integer('failure_count').notNull().default(0),
+    // Первая ошибка серии подряд: по ней «Требует внимания» видит индексатор,
+    // который не отвечает фону часами
+    backoffSince: integer('backoff_since', { mode: 'timestamp_ms' }),
     // Лента новых раздач: что сказал Prowlarr (`supportsRss`), null — не
     // знаем и пробуем. Позиция, до которой лента уже прочитана, время
     // последнего чтения и пустые или негодные ответы подряд
@@ -1237,6 +1240,8 @@ export const followEpisodes = sqliteTable(
     grabbedTitle: text('grabbed_title'),
     // Файл серии лёг в библиотеку
     downloadedAt: integer('downloaded_at', { mode: 'timestamp_ms' }),
+    // Об этом сообщили «в библиотеке»: серии одной раздачи сообщаются вместе
+    notifiedAt: integer('notified_at', { mode: 'timestamp_ms' }),
     // Не используется: выбранным вручную считается файл не из захвата автоматики
     manual: integer('manual', { mode: 'boolean' }).notNull().default(false),
     // Идёт апгрейд: прежняя закачка, которую заменяет новая раздача

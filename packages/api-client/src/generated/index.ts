@@ -3020,7 +3020,9 @@ export interface AttentionItemInput {
     | "tmdb_key_invalid"
     | "media_accel_failed"
     | "backup_failed"
-    | "backup_dir_unavailable";
+    | "backup_dir_unavailable"
+    | "follow_no_space"
+    | "follow_feed_limited";
   severity: "error" | "warning";
   section:
     | "downloads"
@@ -3031,7 +3033,8 @@ export interface AttentionItemInput {
     | "network"
     | "metadata"
     | "playback"
-    | "logs";
+    | "logs"
+    | "follow";
   params: {
     count?: number;
     name?: string;
@@ -3086,6 +3089,26 @@ export interface NotificationParamsInput {
   version?: string;
   from?: string;
   type?: string;
+  titleId?: string;
+  names?: {
+    ru_RU?: string;
+    en_US?: string;
+  };
+  episodes?: string;
+  season?: number;
+  studio?: string;
+  voiceType?: string;
+  quality?: string;
+  wait?: {
+    studio?: string;
+    voiceType?: string;
+    quality?: string;
+  };
+  until?: string;
+  own?: string;
+  episodesTo?: number;
+  episodesTotal?: number;
+  days?: number;
 }
 
 export interface NotificationItemInput {
@@ -3096,7 +3119,13 @@ export interface NotificationItemInput {
     | "server_updated"
     | "download_completed"
     | "device_paired"
-    | "channel_failing";
+    | "channel_failing"
+    | "follow_downloaded"
+    | "follow_waiting"
+    | "follow_other_voice"
+    | "follow_upgraded"
+    | "follow_topic_updated"
+    | "follow_missing";
   problem?:
     | "engine_down"
     | "engine_crashed"
@@ -3113,7 +3142,9 @@ export interface NotificationItemInput {
     | "tmdb_key_invalid"
     | "media_accel_failed"
     | "backup_failed"
-    | "backup_dir_unavailable";
+    | "backup_dir_unavailable"
+    | "follow_no_space"
+    | "follow_feed_limited";
   severity: "error" | "warning" | "info";
   section?:
     | "downloads"
@@ -3125,6 +3156,7 @@ export interface NotificationItemInput {
     | "metadata"
     | "playback"
     | "logs"
+    | "follow"
     | "about"
     | "people"
     | "notifications";
@@ -3173,8 +3205,8 @@ export interface NotificationChannelBodyInput {
   /** @format uri */
   panelUrl?: string | null;
   config: NotificationChannelConfigInput;
-  /** @maxItems 4 */
-  events: ("problems" | "updates" | "downloads" | "devices")[];
+  /** @maxItems 5 */
+  events: ("problems" | "updates" | "downloads" | "devices" | "follow")[];
   includeWarnings: boolean;
   notifyResolved: boolean;
 }
@@ -3188,7 +3220,7 @@ export interface NotificationChannelInput {
   panelUrl?: string;
   config: NotificationChannelConfigInput;
   secrets: string[];
-  events: ("problems" | "updates" | "downloads" | "devices")[];
+  events: ("problems" | "updates" | "downloads" | "devices" | "follow")[];
   includeWarnings: boolean;
   notifyResolved: boolean;
   lastSentAt?: string;
@@ -3225,8 +3257,8 @@ export interface NotificationChannelTestBodyInput {
   /** @format uri */
   panelUrl?: string | null;
   config: NotificationChannelConfigInput;
-  /** @maxItems 4 */
-  events: ("problems" | "updates" | "downloads" | "devices")[];
+  /** @maxItems 5 */
+  events: ("problems" | "updates" | "downloads" | "devices" | "follow")[];
   includeWarnings: boolean;
   notifyResolved: boolean;
   id?: string;
@@ -7544,7 +7576,9 @@ export interface AttentionItem {
     | "tmdb_key_invalid"
     | "media_accel_failed"
     | "backup_failed"
-    | "backup_dir_unavailable";
+    | "backup_dir_unavailable"
+    | "follow_no_space"
+    | "follow_feed_limited";
   severity: "error" | "warning";
   section:
     | "downloads"
@@ -7555,7 +7589,8 @@ export interface AttentionItem {
     | "network"
     | "metadata"
     | "playback"
-    | "logs";
+    | "logs"
+    | "follow";
   params: {
     count?: number;
     name?: string;
@@ -7610,6 +7645,26 @@ export interface NotificationParams {
   version?: string;
   from?: string;
   type?: string;
+  titleId?: string;
+  names?: {
+    ru_RU?: string;
+    en_US?: string;
+  };
+  episodes?: string;
+  season?: number;
+  studio?: string;
+  voiceType?: string;
+  quality?: string;
+  wait?: {
+    studio?: string;
+    voiceType?: string;
+    quality?: string;
+  };
+  until?: string;
+  own?: string;
+  episodesTo?: number;
+  episodesTotal?: number;
+  days?: number;
 }
 
 export interface NotificationItem {
@@ -7620,7 +7675,13 @@ export interface NotificationItem {
     | "server_updated"
     | "download_completed"
     | "device_paired"
-    | "channel_failing";
+    | "channel_failing"
+    | "follow_downloaded"
+    | "follow_waiting"
+    | "follow_other_voice"
+    | "follow_upgraded"
+    | "follow_topic_updated"
+    | "follow_missing";
   problem?:
     | "engine_down"
     | "engine_crashed"
@@ -7637,7 +7698,9 @@ export interface NotificationItem {
     | "tmdb_key_invalid"
     | "media_accel_failed"
     | "backup_failed"
-    | "backup_dir_unavailable";
+    | "backup_dir_unavailable"
+    | "follow_no_space"
+    | "follow_feed_limited";
   severity: "error" | "warning" | "info";
   section?:
     | "downloads"
@@ -7649,6 +7712,7 @@ export interface NotificationItem {
     | "metadata"
     | "playback"
     | "logs"
+    | "follow"
     | "about"
     | "people"
     | "notifications";
@@ -7697,8 +7761,8 @@ export interface NotificationChannelBody {
   /** @format uri */
   panelUrl?: string | null;
   config: NotificationChannelConfig;
-  /** @maxItems 4 */
-  events: ("problems" | "updates" | "downloads" | "devices")[];
+  /** @maxItems 5 */
+  events: ("problems" | "updates" | "downloads" | "devices" | "follow")[];
   includeWarnings: boolean;
   notifyResolved: boolean;
 }
@@ -7712,7 +7776,7 @@ export interface NotificationChannel {
   panelUrl?: string;
   config: NotificationChannelConfig;
   secrets: string[];
-  events: ("problems" | "updates" | "downloads" | "devices")[];
+  events: ("problems" | "updates" | "downloads" | "devices" | "follow")[];
   includeWarnings: boolean;
   notifyResolved: boolean;
   lastSentAt?: string;
@@ -7749,8 +7813,8 @@ export interface NotificationChannelTestBody {
   /** @format uri */
   panelUrl?: string | null;
   config: NotificationChannelConfig;
-  /** @maxItems 4 */
-  events: ("problems" | "updates" | "downloads" | "devices")[];
+  /** @maxItems 5 */
+  events: ("problems" | "updates" | "downloads" | "devices" | "follow")[];
   includeWarnings: boolean;
   notifyResolved: boolean;
   id?: string;

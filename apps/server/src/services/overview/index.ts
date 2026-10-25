@@ -10,6 +10,7 @@ import {
 } from '../backups/index.ts'
 import { isWatching, listDevices } from '../devices/index.ts'
 import { engineCrashCount, engineState } from '../engine/index.ts'
+import { followAttention } from '../follow/attention.ts'
 import { listIndexers } from '../indexers/index.ts'
 import { checkState } from '../net/check.ts'
 import { currentLinkMode } from '../library/link.ts'
@@ -346,6 +347,7 @@ async function collect(known?: Map<string, EngineTorrentState>) {
     ...networkAttention(),
     ...tmdbAttention(),
     ...playbackAttention(accel),
+    ...followAttention(),
   ]
 
   // Сортировка стабильна: внутри уровня — порядок разделов выше

@@ -45,7 +45,12 @@ export function createDownloadWatcher() {
         seen.add(torrent.id)
         phases.set(torrent.id, phase)
 
-        if (previous === 'active' && phase === 'done') {
+        // О закачках автоматики сообщает «Следить»: тайтл, серии, озвучка
+        if (
+          previous === 'active'
+          && phase === 'done'
+          && torrent.origin !== 'follow'
+        ) {
           notify({
             kind: 'download_completed',
             severity: 'info',
