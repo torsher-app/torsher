@@ -222,12 +222,24 @@ export const catalogTag = z
   })
   .meta({ id: 'catalogTag' })
 
+// Часть франшизы TMDB на карточке фильма
+export const franchisePart = card
+  .extend({
+    // Фильм, чья это карточка: выделен и никуда не ведёт
+    current: z.boolean(),
+    // У профиля есть прогресс по фильму
+    watched: z.boolean(),
+  })
+  .meta({ id: 'franchisePart' })
+
 export const titleExtras = z
   .object({
     cast: z.array(person),
     // Режиссёр (у сериала — создатели), сценарий, оператор, композитор, продюсеры
     crew: z.array(crewMember),
     similar: z.array(card),
+    // Фильмы франшизы по дате выхода, вместе с текущим; пусто — не франшиза
+    franchise: z.array(franchisePart),
     // Другие названия тайтла: по ним его узнают и ищут раздачи
     aka: z.array(z.string()),
     directors: z.array(z.string()),
@@ -407,6 +419,7 @@ export type Episode = z.output<typeof episode>
 export type SeasonDetails = z.output<typeof seasonDetails>
 export type Person = z.output<typeof person>
 export type TitleExtras = z.output<typeof titleExtras>
+export type FranchisePart = z.output<typeof franchisePart>
 export type CatalogTag = z.output<typeof catalogTag>
 export type CatalogType = (typeof catalogTypes)[number]
 export type CatalogSort = (typeof catalogSorts)[number]

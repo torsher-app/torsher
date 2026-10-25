@@ -1,5 +1,7 @@
+import type { TmdbExtras } from './types.ts'
 import { describe, expect, it } from 'vitest'
 import {
+  collection,
   logos,
   movie,
   movieExtras,
@@ -15,6 +17,7 @@ import {
 } from './fixtures/index.ts'
 import {
   extrasToDto,
+  franchiseParts,
   listResultToCard,
   movieToDetails,
   parseCatalogId,
@@ -463,6 +466,19 @@ describe('extras', () => {
     ])
   })
 
+  it('у фильма сохраняет франшизу', () => {
+    expect(
+      trimExtras({
+        ...movieExtras,
+        belongs_to_collection: {
+          id: 2344,
+          name: 'Матрица (Коллекция)',
+          poster_path: '/collection.jpg',
+        } as TmdbExtras['belongs_to_collection'],
+      }).belongs_to_collection,
+    ).toEqual({ id: 2344, name: 'Матрица (Коллекция)' })
+  })
+
   it('у фильма оставляет только должности съёмочной группы', () => {
     expect(
       trimExtras(movieExtras).credits?.crew.map(member => member.job),
@@ -593,6 +609,55 @@ describe('extras', () => {
     )
 
     expect(dto.aka).toEqual(['Матрица: Перезагрузка 1', 'Matrix (1999)'])
+  })
+})
+
+describe('franchiseParts', () => {
+  const movieRef = { type: 'movie', tmdbId: 604 } as const
+
+  it('по дате выхода, без частей без даты, текущий помечен', () => {
+    expect(
+      franchiseParts(collection.parts, movieRef).map(part => [
+        part.id,
+        part.year,
+        part.current,
+      ]),
+    ).toEqual([
+      ['tmdb:movie:603', 1999, false],
+      ['tmdb:movie:604', 2003, true],
+      ['tmdb:movie:605', 2003, false],
+      ['tmdb:movie:624860', 2021, false],
+    ])
+  })
+
+  it('часть без постера остаётся', () => {
+    const parts = franchiseParts(collection.parts, movieRef)
+
+    expect(parts.find(part => part.id === 'tmdb:movie:605')?.poster).toBe(
+      undefined,
+    )
+  })
+
+  it('текущий фильм без даты — последним', () => {
+    const parts = franchiseParts(collection.parts, {
+      type: 'movie',
+      tmdbId: 999001,
+    })
+
+    expect(parts.at(-1)).toMatchObject({
+      id: 'tmdb:movie:999001',
+      current: true,
+    })
+    expect(parts).toHaveLength(5)
+  })
+
+  it('одна часть — не франшиза', () => {
+    expect(
+      franchiseParts(
+        collection.parts.filter(part => part.id === 603),
+        { type: 'movie', tmdbId: 603 },
+      ),
+    ).toEqual([])
   })
 })
 

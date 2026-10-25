@@ -3,6 +3,7 @@ import type {
   Card,
   CrewJob,
   CrewMember,
+  FranchisePart,
   Person,
   PersonCredit,
   PersonDetails,
@@ -649,6 +650,10 @@ export function trimExtras(extras: TmdbExtras): TmdbExtras {
       crew: tvCrew,
     },
     recommendations: extras.recommendations,
+    belongs_to_collection: extras.belongs_to_collection && {
+      id: extras.belongs_to_collection.id,
+      name: extras.belongs_to_collection.name,
+    },
     alternative_titles: extras.alternative_titles,
     genres: extras.genres,
     production_companies: extras.production_companies?.slice(
@@ -816,6 +821,28 @@ export function similarCards(results: TmdbListResult[], ref: TmdbRef): Card[] {
     .slice(0, MAX_SIMILAR)
 }
 
+/**
+ * Части франшизы по дате выхода. Части без даты — слухи и планы TMDB, их нет;
+ * текущий фильм без даты остаётся последним. Одна часть — не франшиза.
+ * `watched` заполняет сервис.
+ */
+export function franchiseParts(
+  parts: TmdbListResult[],
+  ref: TmdbRef,
+): FranchisePart[] {
+  const self = toCatalogId(ref.type, ref.tmdbId)
+  const dateOf = (part: TmdbListResult) => part.release_date || '9999'
+  const list = parts
+    .filter(
+      part => part.release_date || toCatalogId('movie', part.id) === self,
+    )
+    .sort((a, b) => dateOf(a).localeCompare(dateOf(b)))
+    .flatMap(part => listResultToCard(part, 'movie') ?? [])
+    .map(card => ({ ...card, current: card.id === self, watched: false }))
+
+  return list.length > 1 ? list : []
+}
+
 export function extrasToDto(
   extras: TmdbExtras,
   ref: TmdbRef,
@@ -840,6 +867,7 @@ export function extrasToDto(
       .map(toPerson),
     crew: crewOf(extras, ref),
     similar: similarCards(extras.recommendations?.results ?? [], ref),
+    franchise: [],
     aka: pickAka(
       altTitles,
       [extras.title, extras.original_title, extras.name, extras.original_name],

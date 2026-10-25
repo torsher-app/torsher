@@ -10,6 +10,7 @@ import {
 import { migrateDb } from '../../db/index.ts'
 import { knownImdbIds } from '../ratings/externalIds.ts'
 import {
+  collection,
   movie,
   movieExtras,
   person,
@@ -208,11 +209,17 @@ describe('getSeason', () => {
 })
 
 describe('getTitleExtras', () => {
+  const noneWatched = () => new Set<string>()
+  const franchiseExtras = {
+    ...movieExtras,
+    belongs_to_collection: { id: 2344, name: 'Матрица (Коллекция)' },
+  }
+
   it('просит актёров, рекомендации и названия одним запросом и кэширует урезанное', async () => {
     fetchMock.mockResolvedValue(json(tvExtras))
 
-    const extras = await getTitleExtras('tmdb:tv:2000', 'ru-RU')
-    const again = await getTitleExtras('tmdb:tv:2000', 'ru-RU')
+    const extras = await getTitleExtras('tmdb:tv:2000', 'ru-RU', noneWatched)
+    const again = await getTitleExtras('tmdb:tv:2000', 'ru-RU', noneWatched)
 
     const requested = new URL(String(fetchMock.mock.calls[0]![0]))
 
@@ -230,12 +237,94 @@ describe('getTitleExtras', () => {
       .mockResolvedValueOnce(json(movieExtras))
       .mockResolvedValueOnce(json(trendingAll))
 
-    const extras = await getTitleExtras('tmdb:movie:603', 'en-US')
+    const extras = await getTitleExtras('tmdb:movie:603', 'en-US', noneWatched)
 
     expect(new URL(String(fetchMock.mock.calls[1]![0])).pathname).toBe(
       '/3/movie/603/similar',
     )
     expect(extras?.similar.map(card => card.id)).toEqual(['tmdb:tv:1396'])
+  })
+
+  it('части франшизы фильма — одним запросом коллекции, с отметками и кэшем', async () => {
+    fetchMock.mockImplementation(async url =>
+      new URL(String(url)).pathname === '/3/collection/2344'
+        ? json(collection)
+        : json(franchiseExtras),
+    )
+
+    const watched = vi.fn(() => new Set(['tmdb:movie:603']))
+    const extras = await getTitleExtras('tmdb:movie:604', 'ru-RU', watched)
+
+    await getTitleExtras('tmdb:movie:605', 'ru-RU', watched)
+
+    const collectionCalls = fetchMock.mock.calls.filter(
+      ([url]) => new URL(String(url)).pathname === '/3/collection/2344',
+    )
+
+    expect(collectionCalls).toHaveLength(1)
+    expect(
+      new URL(String(collectionCalls[0]![0])).searchParams.get('language'),
+    ).toBe('ru-RU')
+    expect(
+      extras?.franchise.map(part => [part.id, part.current, part.watched]),
+    ).toEqual([
+      ['tmdb:movie:603', false, true],
+      ['tmdb:movie:604', true, false],
+      ['tmdb:movie:605', false, false],
+      ['tmdb:movie:624860', false, false],
+    ])
+    expect(extras?.franchise[0]?.ratings?.[0]?.provider).toBe('tmdb')
+  })
+
+  it('части франшизы не повторяются в «Похожем»', async () => {
+    fetchMock.mockImplementation(async url =>
+      new URL(String(url)).pathname === '/3/collection/2346'
+        ? json({ ...collection, id: 2346 })
+        : json({
+            ...franchiseExtras,
+            belongs_to_collection: { id: 2346, name: 'Матрица' },
+            recommendations: {
+              results: [
+                ...collection.parts.slice(0, 2),
+                ...trendingAll.results,
+              ],
+            },
+          }),
+    )
+
+    const extras = await getTitleExtras('tmdb:movie:604', 'en-US', noneWatched)
+    const parts = new Set(extras?.franchise.map(part => part.id))
+
+    expect(extras?.similar.length).toBeGreaterThan(0)
+    expect(extras?.similar.some(card => parts.has(card.id))).toBe(false)
+  })
+
+  it('сбой коллекции — карточка без франшизы', async () => {
+    // Своя коллекция: ответ 2344 уже лежит в кэше от прошлого теста
+    fetchMock.mockImplementation(async url =>
+      new URL(String(url)).pathname === '/3/collection/2345'
+        ? json({ status_message: 'boom' }, 500)
+        : json({
+            ...franchiseExtras,
+            belongs_to_collection: { id: 2345, name: 'Другая' },
+          }),
+    )
+
+    const extras = await getTitleExtras('tmdb:movie:606', 'ru-RU', noneWatched)
+
+    expect(extras?.franchise).toEqual([])
+    expect(extras?.cast.length).toBeGreaterThan(0)
+  })
+
+  it('у сериала франшизу не запрашивает', async () => {
+    fetchMock.mockResolvedValue(
+      json({ ...tvExtras, belongs_to_collection: { id: 1, name: 'x' } }),
+    )
+
+    const extras = await getTitleExtras('tmdb:tv:2001', 'ru-RU', noneWatched)
+
+    expect(extras?.franchise).toEqual([])
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 })
 

@@ -8,6 +8,7 @@ import type {
 } from '../../dto/catalog.ts'
 import type { TmdbRef } from './mappers.ts'
 import type {
+  TmdbCollection,
   TmdbExtras,
   TmdbListResponse,
   TmdbMovie,
@@ -27,6 +28,7 @@ import { tmdbGet } from './client.ts'
 import { getTrendingCards } from './home.ts'
 import {
   extrasToDto,
+  franchiseParts,
   movieToDetails,
   parseCatalogId,
   parsePersonId,
@@ -59,8 +61,9 @@ const TRENDING_LIMIT = 12
  * меняется, иначе до конца TTL отдавались бы ответы без новых полей.
  */
 const DETAILS_KEY_VERSION = 'v3'
-// v2: съёмочная группа сериала и создатели; v3: жанры, студии и keywords
-const EXTRAS_KEY_VERSION = 'v3'
+// v2: съёмочная группа сериала и создатели; v3: жанры, студии и keywords;
+// v4: франшиза фильма
+const EXTRAS_KEY_VERSION = 'v4'
 const PERSON_KEY_VERSION = 'v1'
 
 // У части тайтлов нет перевода описания: его берём с английской версии
@@ -242,10 +245,14 @@ export async function getSeason(
   return season
 }
 
-/** `undefined` — ID не из каталога; отсутствие тайтла в TMDB — `TmdbError`. */
+/**
+ * `watched` — тайтлы, по которым у профиля есть прогресс: отметки на частях
+ * франшизы. `undefined` — ID не из каталога; нет тайтла в TMDB — `TmdbError`.
+ */
 export async function getTitleExtras(
   id: string,
   language: string,
+  watched: (titleIds: string[]) => Set<string>,
 ): Promise<TitleExtras | undefined> {
   const ref = parseCatalogId(id)
 
@@ -266,6 +273,31 @@ export async function getTitleExtras(
   )
   const dto = extrasToDto(extras, ref, language)
 
+  const collection = extras.belongs_to_collection
+
+  if (ref.type === 'movie' && collection) {
+    try {
+      const response = await withMetaCache(
+        `tmdb:collection:${collection.id}:${language}`,
+        DETAILS_TTL_MS,
+        () =>
+          tmdbGet<TmdbCollection>(`/collection/${collection.id}`, { language }),
+      )
+
+      dto.franchise = franchiseParts(response.parts, ref)
+    }
+    catch {
+      // Без частей франшизы карточка всё равно полезна
+    }
+  }
+
+  // Части франшизы — своим рядом выше: в «Похожем» они бы повторились
+  const inFranchise = new Set(dto.franchise.map(part => part.id))
+  const notInFranchise = (cards: Card[]) =>
+    cards.filter(card => !inFranchise.has(card.id))
+
+  dto.similar = notInFranchise(dto.similar)
+
   if (dto.similar.length === 0) {
     try {
       const similar = await withMetaCache(
@@ -277,14 +309,18 @@ export async function getTitleExtras(
           }),
       )
 
-      dto.similar = similarCards(similar.results, ref)
+      dto.similar = notInFranchise(similarCards(similar.results, ref))
     }
     catch {
       // Без «Похожего» карточка всё равно полезна
     }
   }
 
-  await withRatings(dto.similar)
+  const seen = watched(dto.franchise.map(part => part.id))
+
+  for (const part of dto.franchise) part.watched = seen.has(part.id)
+
+  await withRatings([...dto.similar, ...dto.franchise])
 
   return dto
 }

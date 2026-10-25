@@ -13,6 +13,7 @@ import { getDb, migrateDb } from '../db/index.ts'
 import { titleProgress, users } from '../db/schema.ts'
 import { defaultProfile } from '../services/profiles/index.ts'
 import {
+  collection,
   discoverPage,
   movie,
   movieExtras,
@@ -258,6 +259,38 @@ describe('get /api/catalog/titles/:id/extras', () => {
       directors: ['Lilly Wachowski', 'Lana Wachowski'],
     })
     expect(res.json().cast).toHaveLength(2)
+  })
+
+  it('отмечает части франшизы, которые профиль смотрел', async () => {
+    getDb()
+      .insert(titleProgress)
+      .values({
+        profileId: defaultProfile().id,
+        titleId: 'tmdb:movie:604',
+        season: 0,
+        episode: 0,
+        position: 300,
+      })
+      .run()
+    fetchMock.mockImplementation(async url =>
+      new URL(String(url)).pathname === '/3/collection/2344'
+        ? json(collection)
+        : json({
+            ...movieExtras,
+            belongs_to_collection: { id: 2344, name: 'Матрица (Коллекция)' },
+          }),
+    )
+
+    const res = await app.inject({
+      url: `/api/catalog/titles/${encodeURIComponent('tmdb:movie:603')}/extras?language=ru-RU`,
+      cookies: authed(),
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json().franchise.slice(0, 2)).toMatchObject([
+      { id: 'tmdb:movie:603', current: true, watched: false },
+      { id: 'tmdb:movie:604', current: false, watched: true },
+    ])
   })
 })
 

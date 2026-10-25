@@ -3,6 +3,7 @@ import type { FocusVia, SectionEdges } from '../focus/index.ts'
 import type { TrackMetrics } from '../lib/rowTrack.ts'
 import {
   computed,
+  nextTick,
   onActivated,
   onBeforeUnmount,
   onMounted,
@@ -33,8 +34,10 @@ const props = withDefaults(
     itemKey: (item: T) => string | number
     title?: string
     edges?: SectionEdges
+    // Карточка, видимая при открытии ряда, пока в нём не было фокуса
+    start?: number
   }>(),
-  { title: undefined, edges: undefined },
+  { title: undefined, edges: undefined, start: 0 },
 )
 
 const emit = defineEmits<{
@@ -99,7 +102,7 @@ function onClipScroll() {
     offset.value = clip.value.scrollLeft
 }
 
-function measure() {
+async function measure() {
   const elements = view.value?.querySelectorAll<HTMLElement>('[data-index]')
   const first = elements?.[0]
 
@@ -116,7 +119,21 @@ function measure() {
       ? elements[1]!.getBoundingClientRect().left - firstRect.left
       : firstRect.width
   viewWidth.value = view.value.clientWidth
-  setOffset(ensureVisible(offset.value, focused ?? 0, metrics.value))
+
+  const next = ensureVisible(
+    offset.value,
+    focused ?? props.start,
+    metrics.value,
+  )
+
+  // В вебе ширину прокрутки дают отрисованные карточки: окно рендера сначала
+  // встаёт у цели, иначе scrollTo к дальней карточке упёрся бы в край окна
+  if (native && next !== offset.value) {
+    offset.value = next
+    await nextTick()
+  }
+
+  setOffset(next)
 }
 
 // Карточка под фокусом ушла из окна рендера (ряд пролистали стрелкой): её больше нет в DOM

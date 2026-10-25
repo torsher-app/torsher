@@ -176,10 +176,13 @@ export const catalogRoutes: FastifyPluginAsyncZod = async (app) => {
       },
     },
     async (request, reply) => {
+      const { profileId } = request
+
       try {
         const extras = await getTitleExtras(
           request.params.id,
           request.query.language,
+          ids => watchedTitles(profileId, ids),
         )
 
         if (!extras)
@@ -187,7 +190,8 @@ export const catalogRoutes: FastifyPluginAsyncZod = async (app) => {
 
         return {
           ...extras,
-          similar: withPosterRatings(extras.similar, request.profileId),
+          similar: withPosterRatings(extras.similar, profileId),
+          franchise: withPosterRatings(extras.franchise, profileId),
         }
       }
       catch (err) {
