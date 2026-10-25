@@ -5,7 +5,7 @@ description: "Connect a Torznab indexer to Torsher: start Prowlarr from the inst
 
 # Indexers
 
-Torsher ships with no sources. It finds releases through Torznab indexers that you run and fill yourself: any Torznab indexer works, for example Prowlarr or Jackett. Connect a manager once, and Torsher picks up all its indexers and keeps them in sync.
+Torsher ships with no sources. It finds releases through Torznab indexers that you run and fill yourself: any Torznab indexer works, for example Prowlarr or Jackett. Connect a manager once, and Torsher picks up all its indexers; when you change them in the manager, sync it in the panel.
 
 ::: tip What you'll get
 An indexer manager connected to Torsher, and releases appearing when you select <Ui k="title.watch" />.

@@ -11,8 +11,6 @@ The Torsher app for LG TVs is a small launcher: it remembers your server's addre
 Torsher on the TV home screen, connected to your server, controlled with the remote and the Magic Remote pointer.
 :::
 
-<EarlyNotice />
-
 ## Before you start
 
 - An LG TV with webOS. The app is tested on an LG C4 (2024); TVs from 2020 (webOS 5) and later are targeted but not tested yet.

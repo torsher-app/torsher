@@ -11,8 +11,6 @@ Torsher is one container described in one `docker-compose.yml`. This page sets i
 Torsher running on your server, its data in a folder you chose, and the control panel open in your browser.
 :::
 
-<EarlyNotice />
-
 ## Before you start
 
 - Docker with the Compose plugin: [Docker Engine](https://docs.docker.com/engine/install/) on Linux, or Docker Desktop on Windows and macOS. Check with `docker compose version`.
