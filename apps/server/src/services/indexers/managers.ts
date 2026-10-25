@@ -21,6 +21,9 @@ export interface RemoteIndexer {
   enabled: boolean
   /** Если менеджер отдаёт возможности вместе со списком */
   caps?: TorznabCaps
+  /** Prowlarr знает, читается ли у индексатора лента; Jackett — нет */
+  supportsRss?: boolean
+  priority?: number
 }
 
 /** Адрес менеджера без хвостового слеша, query и hash; путь (URL base) сохраняется */
@@ -81,7 +84,8 @@ async function listProwlarr(baseUrl: string, apiKey: string) {
     if (typeof item !== 'object' || item === null)
       return []
 
-    const { id, name, protocol, enable } = item as Record<string, unknown>
+    const { id, name, protocol, enable, supportsRss, priority }
+      = item as Record<string, unknown>
 
     // Перечисление приходит строкой, у старых версий — числом (2 — torrent)
     if (protocol !== 'torrent' && protocol !== 2)
@@ -96,6 +100,9 @@ async function listProwlarr(baseUrl: string, apiKey: string) {
         name,
         url: `${baseUrl}/${id}`,
         enabled: enable !== false,
+        ...(typeof supportsRss === 'boolean' && { supportsRss }),
+        ...(typeof priority === 'number'
+          && Number.isInteger(priority) && { priority }),
       },
     ]
   })

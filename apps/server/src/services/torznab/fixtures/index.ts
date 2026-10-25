@@ -33,6 +33,8 @@ export const prowlarrIndexers = [
     protocol: 'torrent',
     enable: true,
     privacy: 'public',
+    supportsRss: true,
+    priority: 10,
   },
   {
     id: 2,
@@ -40,6 +42,8 @@ export const prowlarrIndexers = [
     protocol: 'torrent',
     enable: false,
     privacy: 'private',
+    supportsRss: false,
+    priority: 25,
   },
   {
     id: 3,

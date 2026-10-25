@@ -1,6 +1,7 @@
 import { logFor } from '../logs/index.ts'
 import { liveTorrents } from '../torrents/index.ts'
 import { purgeBlocklist } from './blocklist.ts'
+import { feedPass } from './feed.ts'
 import { continueGrabs } from './grab.ts'
 import { purgeHistory } from './history.ts'
 import { followById } from './index.ts'
@@ -20,7 +21,7 @@ let purgedAt = 0
 /**
  * Автоматика по действующим слежениям: зависшие закачки, magnet дождался
  * метаданных, кончилось окно или освободилось место, файл лёг в библиотеку,
- * целевой поиск. Без действующих слежений никуда не ходит.
+ * лента индексаторов, целевой поиск. Без действующих слежений никуда не ходит.
  */
 export async function followAutomation(now = new Date()) {
   if (now.getTime() - purgedAt >= PURGE_EVERY_MS) {
@@ -47,6 +48,7 @@ export async function followAutomation(now = new Date()) {
     markDownloaded(follow, now)
   }
 
+  await feedPass(activeFollows(), now)
   await searchPass(activeFollows(), now)
 }
 

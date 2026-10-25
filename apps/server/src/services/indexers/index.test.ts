@@ -68,12 +68,16 @@ describe('listManagerIndexers', () => {
         name: 'Indexer A',
         url: 'http://manager.example:9696/1',
         enabled: true,
+        supportsRss: true,
+        priority: 10,
       },
       {
         externalId: '2',
         name: 'Indexer B',
         url: 'http://manager.example:9696/2',
         enabled: false,
+        supportsRss: false,
+        priority: 25,
       },
     ])
 
@@ -172,6 +176,13 @@ describe('importManager', () => {
       expect(decryptSecret(row.apiKey!)).toBe('manager-key')
     }
     expect(rows.find(row => row.name === 'Indexer B')?.enabled).toBe(false)
+    // Лента и приоритет — как в Prowlarr
+    expect(
+      rows.map(row => [row.name, row.supportsRss, row.priority]).sort(),
+    ).toEqual([
+      ['Indexer A', true, 10],
+      ['Indexer B', false, 25],
+    ])
   })
 
   it('повторный импорт синхронизирует: добавляет, обновляет, помечает исчезнувшие', async () => {
