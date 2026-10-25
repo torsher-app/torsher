@@ -33,6 +33,7 @@ export const notificationGroupOrder = [
   'updates',
   'downloads',
   'devices',
+  'follow',
 ] as const
 
 /** Поля настроек вида канала; секреты при правке приходят пустыми */

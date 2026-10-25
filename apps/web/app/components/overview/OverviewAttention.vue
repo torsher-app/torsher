@@ -21,6 +21,7 @@ const sectionLabels: Record<AttentionItem['section'], string> = {
   metadata: 'panel.settings.nav.metadata',
   playback: 'panel.settings.nav.playback',
   logs: 'panel.nav.logs',
+  follow: 'panel.nav.follow',
 }
 </script>
 

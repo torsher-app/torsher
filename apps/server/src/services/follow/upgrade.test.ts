@@ -652,7 +652,9 @@ describe('апгрейд серии', () => {
     await syncLibrary()
     expect(libraryRows(8)).toHaveLength(1)
 
-    settleUpgrades(followById(follow.id)!)
+    expect(settleUpgrades(followById(follow.id)!)).toEqual([
+      { episode: { season: 2, episode: 8 }, title: NEW_TITLE },
+    ])
 
     expect(episodeRow(follow.id, 8)).toMatchObject({
       upgradeFrom: null,

@@ -4,6 +4,17 @@ import ruRU from './locales/ru_RU/ui.json' with { type: 'json' }
 
 export { attentionMessage } from './attention.ts'
 export type { AttentionMessage, AttentionMessageInput } from './attention.ts'
+export {
+  followNotificationKinds,
+  followNotificationText,
+  formatFollowUntil,
+  isFollowNotification,
+} from './follow.ts'
+export type {
+  FollowNotificationKind,
+  FollowNotificationParams,
+  FollowReleaseFacts,
+} from './follow.ts'
 export { translate } from './format.ts'
 export type { MessageParams } from './format.ts'
 export type { Language } from './language.ts'

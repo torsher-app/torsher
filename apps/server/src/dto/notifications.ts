@@ -1,3 +1,4 @@
+import { followNotificationKinds } from '@torsher/i18n'
 import { z } from 'zod'
 import {
   notificationChannelKinds,
@@ -18,6 +19,7 @@ export const notificationKinds = [
   'download_completed',
   'device_paired',
   'channel_failing',
+  ...followNotificationKinds,
 ] as const
 
 export type NotificationKind = (typeof notificationKinds)[number]
@@ -28,6 +30,7 @@ export const notificationGroups = [
   'updates',
   'downloads',
   'devices',
+  'follow',
 ] as const
 
 export type NotificationGroup = (typeof notificationGroups)[number]
@@ -48,6 +51,33 @@ export const notificationParams = attentionItem.shape.params
     from: z.string().optional(),
     // Тип подключённого устройства
     type: z.string().optional(),
+    // События «Следить»: тайтл, его название на языках интерфейса на момент
+    // события и серии строкой («S1E10, S2E1–E2», у фильма пусто)
+    titleId: z.string().optional(),
+    names: z
+      .object({ ru_RU: z.string().optional(), en_US: z.string().optional() })
+      .optional(),
+    episodes: z.string().optional(),
+    season: z.number().optional(),
+    // Озвучка и качество раздачи: скачанной, взятой или вышедшей
+    studio: z.string().optional(),
+    voiceType: z.string().optional(),
+    quality: z.string().optional(),
+    // Чего ждёт отложенная серия и до какого момента (ISO)
+    wait: z
+      .object({
+        studio: z.string().optional(),
+        voiceType: z.string().optional(),
+        quality: z.string().optional(),
+      })
+      .optional(),
+    until: z.string().optional(),
+    // Своя студия сезона, которую ждёт серия в другой озвучке
+    own: z.string().optional(),
+    episodesTo: z.number().optional(),
+    episodesTotal: z.number().optional(),
+    // Сколько дней назад вышла серия без раздач
+    days: z.number().optional(),
   })
   .meta({ id: 'notificationParams' })
 

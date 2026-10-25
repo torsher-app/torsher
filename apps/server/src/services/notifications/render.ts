@@ -4,7 +4,13 @@ import type {
   NotificationSection,
 } from '../../dto/notifications.ts'
 import type { Notification } from './inbox.ts'
-import { attentionMessage, messages, translate } from '@torsher/i18n'
+import {
+  attentionMessage,
+  followNotificationText,
+  isFollowNotification,
+  messages,
+  translate,
+} from '@torsher/i18n'
 
 /** Сообщение для внешнего канала: провайдер раскладывает его в свой формат */
 export interface RenderedMessage {
@@ -34,6 +40,7 @@ const sectionPaths: Record<NotificationSection, string> = {
   about: '/settings/about',
   people: '/people',
   notifications: '/settings/notifications',
+  follow: '/follow',
 }
 
 const BYTE_UNITS = [
@@ -138,8 +145,25 @@ export function renderNotification(
     }
   }
 
+  if (isFollowNotification(row.kind)) {
+    const text = followNotificationText(
+      (key, values, count) => t(language, key, values, count),
+      language,
+      row.kind,
+      params,
+    )
+
+    return { ...base, event: row.kind, ...text }
+  }
+
   const key = `notifications.events.${row.kind}`
-  const values: MessageParams = { ...params }
+  // В строки подставляются только простые значения
+  const values: MessageParams = Object.fromEntries(
+    Object.entries(params).filter(
+      (entry): entry is [string, string | number] =>
+        typeof entry[1] === 'string' || typeof entry[1] === 'number',
+    ),
+  )
 
   return {
     ...base,

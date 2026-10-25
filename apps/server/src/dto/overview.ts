@@ -19,6 +19,8 @@ export const attentionKinds = [
   'media_accel_failed',
   'backup_failed',
   'backup_dir_unavailable',
+  'follow_no_space',
+  'follow_feed_limited',
 ] as const
 
 export const attentionSections = [
@@ -31,6 +33,7 @@ export const attentionSections = [
   'metadata',
   'playback',
   'logs',
+  'follow',
 ] as const
 
 export const attentionItem = z

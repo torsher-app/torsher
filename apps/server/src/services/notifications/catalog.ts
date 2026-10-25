@@ -20,6 +20,11 @@ export function groupOf(
       return 'downloads'
     case 'device_paired':
       return 'devices'
+    // Остальное «Следить» — только центр: ожидание, замена и тема
+    // объясняют автоматику, а не просят действия
+    case 'follow_downloaded':
+    case 'follow_missing':
+      return 'follow'
     default:
       return undefined
   }

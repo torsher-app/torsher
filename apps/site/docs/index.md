@@ -21,7 +21,7 @@ What Torsher does today, what it replaces, what you need to bring, and how the p
 - **Plays everywhere.** When a TV or a browser can't play a file, the server converts it on the fly, on the GPU if it has one.
 - **For the whole household.** Profiles with a PIN, continue watching, your own lists, ratings and collections.
 - **Network that works.** DNS over HTTPS and routes through your own SOCKS5 or HTTP proxy, per host.
-- **Looks after itself.** Daily database backups, a notice when a new version is out, and notifications about problems, finished downloads and new devices in Telegram, a webhook, ntfy, Gotify or email.
+- **Looks after itself.** Daily database backups, a notice when a new version is out, and notifications about problems, finished downloads, new episodes of the shows you follow and new devices in Telegram, a webhook, ntfy, Gotify or email.
 
 Coming next: following series so new episodes arrive on their own, and more TV platforms. See [Other devices](/docs/tv/other-devices).
 

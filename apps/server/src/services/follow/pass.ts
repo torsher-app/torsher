@@ -8,6 +8,7 @@ import type {
 import type { VoiceRef } from '../sources/profile.ts'
 import type { FoundRelease, RankContext } from '../sources/rank.ts'
 import type { CheckedCandidate, DecideContext, SeasonPlan } from './decide.ts'
+import type { NewPending } from './notify.ts'
 import type { UpgradeCheck, UpgradeTarget } from './upgrade.ts'
 import type { EpisodeRef, EpisodeWithState } from './wanted.ts'
 import type { VideoClass } from '@torsher/release-parser'
@@ -33,6 +34,7 @@ import {
 import { followEpisodeStates, movieState, stateInputs } from './episodes.ts'
 import { grabCandidate, pendingOf, resetEpisodes } from './grab.ts'
 import { recordHistory, reportedEpisodes } from './history.ts'
+import { announceWaiting } from './notify.ts'
 import { scheduleOf } from './index.ts'
 import {
   seasonTopics,
@@ -240,8 +242,9 @@ function savePlan(
   considered: EpisodeRef[],
   topics: TrackedTopic[],
   now: Date,
-) {
+): NewPending[] {
   const db = getDb()
+  const fresh: NewPending[] = []
   const found: EpisodeRef[] = []
 
   for (const [key, at] of plan.found) {
@@ -257,7 +260,10 @@ function savePlan(
   if (found.length)
     historyBySeason(follow, 'found', found, {}, now)
 
-  const pendingByCandidate = new Map<string, EpisodeRef[]>()
+  const pendingByCandidate = new Map<
+    string,
+    { candidate: FollowPendingCandidate, episodes: EpisodeRef[] }
+  >()
 
   for (const item of plan.pending) {
     const key = episodeKey(item.episode)
@@ -279,17 +285,23 @@ function savePlan(
       .run()
 
     if (!row?.pending) {
-      const list = pendingByCandidate.get(candidate.id) ?? []
+      const group = pendingByCandidate.get(candidate.id) ?? {
+        candidate,
+        episodes: [],
+      }
 
-      list.push(item.episode)
-      pendingByCandidate.set(candidate.id, list)
+      group.episodes.push(item.episode)
+      pendingByCandidate.set(candidate.id, group)
     }
   }
 
-  for (const [id, episodes] of pendingByCandidate) {
+  for (const [id, { candidate, episodes }] of pendingByCandidate) {
     const item = plan.pending.find(
       entry => entry.candidate.release.id === id,
     )!
+    const wait = item.candidate.rejections.find(
+      rejection => rejection.code === 'wait',
+    )?.params
 
     historyBySeason(
       follow,
@@ -297,15 +309,16 @@ function savePlan(
       episodes,
       {
         releaseTitle: item.candidate.release.title,
-        params: {
-          until: item.until.toISOString(),
-          ...item.candidate.rejections.find(
-            rejection => rejection.code === 'wait',
-          )?.params,
-        },
+        params: { until: item.until.toISOString(), ...wait },
       },
       now,
     )
+    fresh.push({
+      episodes,
+      candidate,
+      until: item.until,
+      wait: wait ?? {},
+    })
   }
 
   for (const episode of considered) {
@@ -323,6 +336,8 @@ function savePlan(
       )
       .run()
   }
+
+  return fresh
 }
 
 /** Заменяемые серии сезона для решателя: версия текущего файла или запрет */
@@ -479,6 +494,7 @@ export async function decideFollow(
     now,
   }
   const grabs: { plan: SeasonPlan, voice?: VoiceRef }[] = []
+  const waiting: NewPending[] = []
   const topics = titleTopics(follow.titleId)
   const ownTopics = seasonTopics(follow.id)
   const seenTopics = new Set<string>()
@@ -533,18 +549,21 @@ export async function decideFollow(
     if (best)
       saveSeason(follow, season, best, now)
 
-    savePlan(
-      follow,
-      plan,
-      rows,
-      considered.filter(item => item.season === season),
-      topics,
-      now,
+    waiting.push(
+      ...savePlan(
+        follow,
+        plan,
+        rows,
+        considered.filter(item => item.season === season),
+        topics,
+        now,
+      ),
     )
     grabs.push({ plan, voice })
   }
 
   touchTopics([...seenTopics], now)
+  await announceWaiting(follow, waiting)
 
   for (const { plan, voice } of grabs) {
     for (const grab of plan.grabs) {
@@ -667,7 +686,7 @@ export function markDownloaded(follow: Follow, now = new Date()) {
     historyBySeason(follow, 'downloaded', done, {}, now)
 }
 
-/** «Не нашли»: событие один раз на серию */
+/** «Не нашли»: событие один раз на серию; возвращает впервые не найденные */
 export function reportMissing(
   follow: Follow,
   states: EpisodeWithState[],
@@ -676,13 +695,15 @@ export function reportMissing(
   const missing = states.filter(item => item.state === 'missing')
 
   if (!missing.length)
-    return
+    return []
 
   const reported = reportedEpisodes(follow.id, 'missing')
   const fresh = missing.filter(item => !reported.has(episodeKey(item)))
 
   if (fresh.length)
     historyBySeason(follow, 'missing', fresh, {}, now)
+
+  return fresh
 }
 
 /** Действующие слежения: на паузе и остановленные ничего не ищут и не качают */

@@ -16,6 +16,8 @@ import { ACCESS_TOKEN_COOKIE, DEVICE_TOKEN_COOKIE } from '../config.ts'
 import { getDb, migrateDb } from '../db/index.ts'
 import {
   devices,
+  followEpisodes,
+  follows,
   indexers,
   serverSettings,
   storagePolicy,
@@ -96,6 +98,41 @@ function insertIndexer(values: Partial<typeof indexers.$inferInsert>) {
     .run()
 }
 
+function insertFollow(state: 'active' | 'paused' = 'active') {
+  return getDb()
+    .insert(follows)
+    .values({
+      titleId: 'tmdb:tv:3000',
+      kind: 'series',
+      state,
+      startSeason: 1,
+      startEpisode: 1,
+      requireRussian: false,
+      waitHours: 24,
+    })
+    .returning()
+    .get()
+}
+
+function insertNoSpace(followId: string, episode: number, size?: number) {
+  getDb()
+    .insert(followEpisodes)
+    .values({
+      followId,
+      season: 1,
+      episode,
+      firstSeenAt: new Date(),
+      pending: {
+        id: size === undefined ? `plain-${episode}` : 'pack',
+        title: 'Synthetic Show S01',
+        seeders: 3,
+        ...(size !== undefined && { size }),
+      },
+      stateNote: 'no_space',
+    })
+    .run()
+}
+
 function insertTorrent(values: Partial<typeof torrents.$inferInsert> = {}) {
   getDb()
     .insert(torrents)
@@ -165,6 +202,7 @@ beforeEach(() => {
   vi.stubGlobal('fetch', fetchMock)
   setEngineReady(ENGINE)
   engineCrashes.count = 0
+  getDb().delete(follows).run()
   getDb().delete(torrents).run()
   getDb().delete(indexers).run()
   getDb().delete(storagePolicy).run()
@@ -395,6 +433,67 @@ describe('обзор', () => {
         params: { count: 2 },
       },
     ])
+  })
+
+  it('«Следить»: серии ждут места — ошибка с числом серий и размером без повторов', async () => {
+    const follow = insertFollow()
+
+    insertNoSpace(follow.id, 1, 4 * GIB)
+    insertNoSpace(follow.id, 2, 4 * GIB)
+    insertNoSpace(follow.id, 3)
+
+    expect((await overview()).attention).toEqual([
+      {
+        kind: 'follow_no_space',
+        severity: 'error',
+        section: 'follow',
+        params: { count: 3, need: 4 * GIB },
+      },
+    ])
+
+    // На паузе слежение не качает — и места не ждёт
+    getDb().update(follows).set({ state: 'paused' }).run()
+
+    expect((await overview()).attention).toEqual([])
+  })
+
+  it('«Следить»: фон ошибается у индексатора дольше 6 ч — предупреждение', async () => {
+    const now = Date.now()
+
+    insertIndexer({
+      name: 'Slow',
+      checkStatus: 'ok',
+      failureCount: 4,
+      backoffSince: new Date(now - 7 * 60 * 60 * 1000),
+    })
+    insertIndexer({
+      name: 'Fresh',
+      url: 'http://fresh.example/torznab',
+      checkStatus: 'ok',
+      failureCount: 1,
+      backoffSince: new Date(now - 60 * 60 * 1000),
+    })
+
+    // Без действующих слежений фон не ходит — и проблемы нет
+    expect((await overview()).attention).toEqual([])
+
+    insertFollow()
+
+    expect((await overview()).attention).toEqual([
+      {
+        kind: 'follow_feed_limited',
+        severity: 'warning',
+        section: 'follow',
+        params: { count: 1, name: 'Slow' },
+      },
+    ])
+
+    // Ошибка проверки — уже `indexer_error`, второй строкой не повторяется
+    getDb().update(indexers).set({ checkStatus: 'timeout' }).run()
+
+    expect(
+      (await overview()).attention.map((item: { kind: string }) => item.kind),
+    ).toEqual(['indexer_error'])
   })
 
   it('порядок: ошибки раньше предупреждений', async () => {
@@ -631,6 +730,7 @@ describe('тексты «Требует внимания»', () => {
     tmdb_key_invalid: ['missing', 'unreadable', 'rejected'].map(reason => ({
       reason,
     })),
+    follow_no_space: [{ count: 3, need: 1 }, { count: 1 }],
     backup_failed: [
       { reason: 'no_space', need: 2, free: 1 },
       ...[

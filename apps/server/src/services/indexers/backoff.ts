@@ -68,8 +68,8 @@ export function availableForBackground<T extends SearchableIndexer>(
 
 /**
  * Итог фонового поиска по индексаторам: ошибка — следующая ступень лестницы
- * или `Retry-After`, успех — сброс. Индексатор без нужного режима поиска
- * (`unsupported`) не виноват.
+ * или `Retry-After` и начало серии ошибок, если её ещё нет, успех — сброс.
+ * Индексатор без нужного режима поиска (`unsupported`) не виноват.
  */
 export function recordBackgroundOutcome(
   asked: SearchableIndexer[],
@@ -87,14 +87,17 @@ export function recordBackgroundOutcome(
 
     if (!failure) {
       db.update(indexers)
-        .set({ backoffUntil: null, failureCount: 0 })
+        .set({ backoffUntil: null, backoffSince: null, failureCount: 0 })
         .where(eq(indexers.id, indexer.id))
         .run()
       continue
     }
 
     const row = db
-      .select({ failureCount: indexers.failureCount })
+      .select({
+        failureCount: indexers.failureCount,
+        backoffSince: indexers.backoffSince,
+      })
       .from(indexers)
       .where(eq(indexers.id, indexer.id))
       .get()
@@ -104,6 +107,7 @@ export function recordBackgroundOutcome(
       .set({
         failureCount: count,
         backoffUntil: backoffUntil(count, now, failure.retryAt),
+        backoffSince: row?.backoffSince ?? now,
       })
       .where(eq(indexers.id, indexer.id))
       .run()

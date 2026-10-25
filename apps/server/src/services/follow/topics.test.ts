@@ -31,6 +31,7 @@ import {
   indexers,
   mediaFiles,
   metaCache,
+  notifications,
   profiles,
   releaseBlocklist,
   titleProgress,
@@ -483,6 +484,7 @@ beforeEach(async () => {
   vi.stubEnv('TMDB_ACCESS_TOKEN', 'test-token')
 
   for (const table of [
+    notifications,
     follows,
     followHistory,
     trackedTopics,
@@ -732,6 +734,25 @@ describe('подмена раздачи темы', () => {
       torrentId: next.id,
       params: { from: 8, to: 9, total: 12, carried: 8, redownload: 0 },
     })
+    // В центр — «тема обновилась», наружу не уходит
+    expect(
+      getDb()
+        .select()
+        .from(notifications)
+        .all()
+        .filter(row => row.kind !== 'follow_downloaded')
+        .map(row => [row.kind, row.params]),
+    ).toEqual([
+      [
+        'follow_topic_updated',
+        expect.objectContaining({
+          titleId: follow.titleId,
+          season: 2,
+          episodesTo: 9,
+          episodesTotal: 12,
+        }),
+      ],
+    ])
     expect(old.id).not.toBe(next.id)
 
     // Девятая докачалась: в библиотеку ложится только она, без дублей

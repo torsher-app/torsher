@@ -194,7 +194,7 @@ function start(target: ChannelKind) {
         props.channel?.language
         ?? (locale.value === 'ru_RU' ? 'ru_RU' : 'en_US'),
       panelUrl: props.channel?.panelUrl ?? defaultPanelUrl(),
-      events: props.channel?.events ?? ['problems', 'updates'],
+      events: props.channel?.events ?? ['problems', 'updates', 'follow'],
       includeWarnings: props.channel?.includeWarnings ?? false,
       notifyResolved: props.channel?.notifyResolved ?? false,
       config: configOf(target, props.channel),
