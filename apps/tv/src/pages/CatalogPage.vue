@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Card } from '@torsher/api-client'
 import type { PanelOption } from '../components/OptionsPanel.vue'
+import type { ComponentPublicInstance } from 'vue'
 import type { FocusVia } from '../focus/index.ts'
 import type {
   CatalogFilter,
@@ -31,7 +32,9 @@ import ScreenState from '../components/ScreenState.vue'
 import { useCatalogDiscover } from '../composables/useCatalogDiscover.ts'
 import { useCatalogGenres } from '../composables/useCatalogGenres.ts'
 import { useChipRibbon } from '../composables/useChipRibbon.ts'
+import { useHeldLoading } from '../composables/useHeldLoading.ts'
 import { useStackScroll } from '../composables/useStackScroll.ts'
+import { loaderHoldMs } from '../lib/loader.ts'
 import { useFocus } from '../focus/index.ts'
 import {
   CATALOG_SORTS,
@@ -126,7 +129,12 @@ const {
 } = useCatalogDiscover(params)
 const { genres } = useCatalogGenres(computed(() => filter.value.type))
 
-const stale = computed(
+// Скелетон — только пока показать нечего; прежняя выдача остаётся на экране
+// и приглушается, если загрузка затянулась
+const showSkeleton = useHeldLoading(
+  () => status.value === 'loading' && items.value.length === 0,
+)
+const stale = useHeldLoading(
   () => status.value === 'loading' && items.value.length > 0,
 )
 const isEmpty = computed(
@@ -469,12 +477,52 @@ interface Cell {
   card?: Card
 }
 
+// Следующая страница сменяет хвост-скелетоны не раньше, чем проявившийся
+// скелетон отдержится (`loaderHoldMs`): иначе ответ сразу после его проявления
+// даёт вспышку. Отсчёт — от появления последнего скелетона хвоста: строки
+// окна монтируются по мере прокрутки. Новая выдача встаёт сразу
+const shownCount = ref(items.value.length)
+const seenTail = new WeakSet<Element>()
+let tailShownAt = 0
+let tailTimer: ReturnType<typeof setTimeout> | undefined
+
+function noteTail(instance: Element | ComponentPublicInstance | null) {
+  const el = (instance as ComponentPublicInstance | null)?.$el as
+    Element | undefined
+
+  if (el && !seenTail.has(el)) {
+    seenTail.add(el)
+    tailShownAt = performance.now()
+  }
+}
+
+watch([() => items.value.length, resets], ([length, reset], [, prevReset]) => {
+  clearTimeout(tailTimer)
+
+  const hold
+    = length > shownCount.value && reset === prevReset
+      ? loaderHoldMs(tailShownAt, performance.now())
+      : 0
+
+  if (hold === 0) {
+    shownCount.value = length
+    return
+  }
+
+  tailTimer = setTimeout(() => {
+    shownCount.value = length
+  }, hold)
+})
+
 // Пока есть ещё страницы, хвост сетки — скелетоны: пришедшие карточки встают
 // на их место, и сетка не сдвигается
 const cells = computed<Cell[]>(() => {
-  const list: Cell[] = items.value.map(card => ({ key: card.id, card }))
+  const list: Cell[] = items.value
+    .slice(0, shownCount.value)
+    .map(card => ({ key: card.id, card }))
+  const pending = hasMore.value || shownCount.value < items.value.length
 
-  if (hasMore.value && !moreFailed.value) {
+  if (pending && !moreFailed.value) {
     const fill = ((COLUMNS - (list.length % COLUMNS)) % COLUMNS) + COLUMNS
 
     for (let index = 0; index < fill; index += 1)
@@ -618,8 +666,25 @@ let isActive = false
 let focusPending = false
 
 // Новая выдача: сетка — в начало. Фокус уходит в неё при открытии экрана и
-// когда он не в чипах и не в панели: фильтры меняют подряд, не теряя чип
-watch(resets, async () => {
+// когда он не в чипах и не в панели: фильтры меняют подряд, не теряя чип.
+// Пока держится скелетон, сетки ещё нет — выдача ждёт его
+let resetWaiting = false
+
+watch(resets, () => {
+  if (showSkeleton.value)
+    resetWaiting = true
+  else void applyReset()
+})
+
+watch(showSkeleton, (value) => {
+  if (value || !resetWaiting)
+    return
+
+  resetWaiting = false
+  void applyReset()
+})
+
+async function applyReset() {
   aligned.value = 0
   alignRow(0)
   await nextTick()
@@ -631,7 +696,7 @@ watch(resets, async () => {
     focus.activate(content.value)
 
   focusPending = false
-})
+}
 
 onActivated(() => {
   isActive = true
@@ -651,6 +716,7 @@ function onResize() {
 
 onMounted(() => window.addEventListener('resize', onResize))
 onBeforeUnmount(() => {
+  clearTimeout(tailTimer)
   stopFocus()
   window.removeEventListener('resize', onResize)
 })
@@ -706,7 +772,10 @@ onBeforeUnmount(() => {
       </FocusSection>
     </div>
 
-    <div v-if="status === 'error' && error" class="catalog__state">
+    <div
+      v-if="status === 'error' && error && !showSkeleton"
+      class="catalog__state"
+    >
       <FocusSection
         name="catalog-state"
         :edges="{ left: RAIL_SECTION, up: 'catalog-controls' }"
@@ -715,7 +784,7 @@ onBeforeUnmount(() => {
       </FocusSection>
     </div>
 
-    <div v-else-if="isEmpty" class="catalog__state">
+    <div v-else-if="isEmpty && !showSkeleton" class="catalog__state">
       <FocusSection
         name="catalog-state"
         :edges="{ left: RAIL_SECTION, up: 'catalog-controls' }"
@@ -732,7 +801,7 @@ onBeforeUnmount(() => {
     </div>
 
     <div
-      v-else-if="items.length > 0"
+      v-else-if="items.length > 0 && !showSkeleton"
       ref="area"
       class="catalog__area"
       :class="{ 'catalog__area--native': nativeScroll }"
@@ -766,7 +835,7 @@ onBeforeUnmount(() => {
                 :load-image="hasImages(row.index, anchor)"
                 @select="open(cell.card)"
               />
-              <PosterSkeleton v-else />
+              <PosterSkeleton v-else :ref="noteTail" />
             </template>
           </div>
 
@@ -919,9 +988,11 @@ onBeforeUnmount(() => {
   will-change: opacity;
 }
 
-/* Прежняя выдача, пока грузится новая: видно, что фильтр уже применяется */
+/* Прежняя выдача, пока грузится новая: видно, что фильтр уже применяется.
+   Приглушение — тоже лоадер: проявляется через --loader-delay */
 .catalog__grid--stale {
   opacity: 0.4;
+  transition-delay: var(--loader-delay);
 }
 
 /* grid-gap, а не gap у flex: gap для flexbox появился только в Chromium 84 */

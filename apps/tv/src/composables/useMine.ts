@@ -106,6 +106,16 @@ export function useMineItems(
     if (!current)
       return
 
+    // Пустой раздел виден по счётчику: сразу пусто, без запроса и скелетона
+    if (current.count === 0) {
+      latest.cancel()
+      items.value = []
+      total.value = 0
+      status.value = 'ready'
+
+      return
+    }
+
     status.value = 'loading'
 
     const outcome = await latest.run(signal =>

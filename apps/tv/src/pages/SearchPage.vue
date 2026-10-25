@@ -19,6 +19,7 @@ import PosterCard from '../components/PosterCard.vue'
 import PosterSkeleton from '../components/PosterSkeleton.vue'
 import ScreenState from '../components/ScreenState.vue'
 import { useCatalogSearch } from '../composables/useCatalogSearch.ts'
+import { useHeldLoading } from '../composables/useHeldLoading.ts'
 import { useReleaseTexts } from '../composables/useReleaseTexts.ts'
 import { useStackScroll } from '../composables/useStackScroll.ts'
 import { useTrending } from '../composables/useTrending.ts'
@@ -76,7 +77,8 @@ const shownPeople = computed(() =>
 const shown = computed<Card[]>(() =>
   hasQuery.value && !isEmpty.value ? items.value : (trending.value ?? []),
 )
-const showSkeleton = computed(
+// Проявившийся скелетон держится минимум: сетка ждёт его
+const showSkeleton = useHeldLoading(
   () =>
     shown.value.length === 0 && (status.value === 'loading' || !trending.value),
 )
@@ -296,7 +298,7 @@ onBeforeUnmount(stopFocus)
     >
       <FocusSection name="search-results" :edges="resultsEdges" manual-scroll>
         <ScreenState
-          v-if="status === 'error' && error"
+          v-if="status === 'error' && error && !showSkeleton"
           :kind="error"
           @retry="retry"
         />
@@ -326,7 +328,10 @@ onBeforeUnmount(stopFocus)
               {{ t("search.popular") }}
             </h2>
           </template>
-          <div v-if="shown.length > 0" class="grid">
+          <div v-if="showSkeleton" class="grid">
+            <PosterSkeleton v-for="index in SKELETON_COUNT" :key="index" />
+          </div>
+          <div v-else-if="shown.length > 0" class="grid">
             <PosterCard
               v-for="item in shown"
               :key="item.id"
@@ -335,9 +340,6 @@ onBeforeUnmount(stopFocus)
               :actions="!isPick"
               @select="open(item)"
             />
-          </div>
-          <div v-else-if="showSkeleton" class="grid">
-            <PosterSkeleton v-for="index in SKELETON_COUNT" :key="index" />
           </div>
         </template>
       </FocusSection>
