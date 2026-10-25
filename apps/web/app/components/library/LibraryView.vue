@@ -47,6 +47,9 @@ const {
   setGroupTitle,
 } = useLibraries()
 const now = useNow({ interval: 30_000 })
+const loading = useHeldLoading(
+  () => state.value === 'loading' || state.value === 'idle',
+)
 
 // Своя раскладка Torsher — первой: она всегда есть и не удаляется
 const ordered = computed(() =>
@@ -165,7 +168,7 @@ onBeforeUnmount(stopPolling)
 
 <template>
   <PageBar :title="t('panel.nav.library')">
-    <template v-if="state === 'ready'" #actions>
+    <template v-if="!loading && state === 'ready'" #actions>
       <Button size="sm" @click="isAddOpen = true">
         <PlusIcon aria-hidden="true" />
         <span class="max-sm:sr-only">{{ t("panel.library.add.title") }}</span>
@@ -174,11 +177,7 @@ onBeforeUnmount(stopPolling)
   </PageBar>
 
   <div class="mx-auto grid w-full max-w-[880px] gap-5 p-4 md:p-6">
-    <div
-      v-if="state === 'loading' && !libraries.length"
-      class="grid gap-4"
-      aria-busy="true"
-    >
+    <div v-if="loading" class="grid gap-4" aria-busy="true">
       <Skeleton v-for="item in 2" :key="item" class="h-36 rounded-xl" />
     </div>
 

@@ -45,6 +45,7 @@ const emit = defineEmits<{
 
 const { t, locale } = useI18n()
 const { overview, state, load } = useProfileImports(() => props.profile.id)
+const loading = useHeldLoading(() => state.value === 'loading')
 
 const dialogOpen = ref(false)
 const undoOpen = ref(false)
@@ -122,7 +123,7 @@ async function onUndo() {
     <div
       class="flex min-h-5 items-center gap-2 text-[13px] text-muted-foreground"
     >
-      <Skeleton v-if="state === 'loading'" class="h-3.5 w-3/5" />
+      <Skeleton v-if="loading" class="h-3.5 w-3/5" />
       <template v-else-if="state === 'error'">
         {{ t("panel.imports.loadError") }}
         <Button variant="outline" size="xs" @click="load">
@@ -171,7 +172,7 @@ async function onUndo() {
     </div>
 
     <NuxtLink
-      v-if="overview && overview.unmatched > 0"
+      v-if="!loading && overview && overview.unmatched > 0"
       :to="`/people/${profile.id}/import`"
       class="inline-flex w-fit items-center gap-0.5 text-[12.5px] text-muted-foreground hover:text-foreground"
     >

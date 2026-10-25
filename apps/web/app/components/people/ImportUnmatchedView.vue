@@ -37,6 +37,9 @@ const {
   match,
   dismiss,
 } = useImportUnmatched(profileId, { limit: PAGE_SIZE })
+const loading = useHeldLoading(
+  () => state.value === 'loading' && items.value.length === 0,
+)
 
 const profile = computed(
   () =>
@@ -130,7 +133,7 @@ async function saveFound(titleId: string) {
     parent-to="/people"
   />
 
-  <div v-if="state === 'loading' && items.length === 0" aria-busy="true">
+  <div v-if="loading" aria-busy="true">
     <div class="flex min-h-9 items-center border-b bg-muted px-4">
       <Skeleton class="h-3 w-24" />
     </div>

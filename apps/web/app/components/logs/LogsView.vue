@@ -45,6 +45,11 @@ const {
   isFiltered,
 } = logs
 
+const loading = useHeldLoading(
+  () => state.value === 'loading' || state.value === 'idle',
+)
+const reloading = useHeldLoading(() => isReloading.value)
+
 const list = ref<HTMLElement | null>(null)
 const selectedId = ref<number | null>(null)
 
@@ -52,7 +57,7 @@ const selected = computed(
   () => entries.value.find(entry => entry.id === selectedId.value) ?? null,
 )
 const isEmpty = computed(
-  () => entries.value.length === 0 && !isFiltered.value && !isReloading.value,
+  () => entries.value.length === 0 && !isFiltered.value && !reloading.value,
 )
 
 // Пустой фильтр говорит, что именно пусто
@@ -91,7 +96,7 @@ function onVerbose(value: boolean | 'indeterminate') {
 
 <template>
   <PageBar :title="t('panel.logs.title')" :parent="t('panel.nav.server')">
-    <template v-if="state === 'ready'" #actions>
+    <template v-if="!loading && state === 'ready'" #actions>
       <DropdownMenu>
         <DropdownMenuTrigger as-child>
           <Button
@@ -136,7 +141,7 @@ function onVerbose(value: boolean | 'indeterminate') {
     </template>
   </PageBar>
 
-  <LogsSkeleton v-if="state === 'loading' || state === 'idle'" />
+  <LogsSkeleton v-if="loading" />
 
   <div v-else-if="state === 'error'" class="min-h-0 flex-1 overflow-y-auto">
     <section
@@ -183,7 +188,7 @@ function onVerbose(value: boolean | 'indeterminate') {
   <template v-else>
     <LogsFilters />
 
-    <LogsSkeleton v-if="isReloading" :filters="false" />
+    <LogsSkeleton v-if="reloading" :filters="false" />
 
     <div v-else class="relative flex min-h-0 flex-1 flex-col">
       <!-- Плашка поверх списка: появление новых записей ничего не сдвигает -->

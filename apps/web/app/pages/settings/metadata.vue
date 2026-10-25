@@ -12,6 +12,9 @@ definePageMeta({
 
 const { t } = useI18n()
 const { settings, state, load, stopImdbPolling } = useMetadataSettings()
+const loading = useHeldLoading(
+  () => state.value === 'loading' || state.value === 'idle',
+)
 
 onMounted(load)
 onBeforeUnmount(stopImdbPolling)
@@ -29,11 +32,7 @@ onBeforeUnmount(stopImdbPolling)
     </header>
 
     <!-- Скелетоны в размер обеих карточек: ничего не прыгает после загрузки -->
-    <div
-      v-if="state === 'loading' || state === 'idle'"
-      class="grid gap-5"
-      aria-busy="true"
-    >
+    <div v-if="loading" class="grid gap-5" aria-busy="true">
       <Skeleton class="h-56 rounded-xl" />
       <Skeleton class="h-56 rounded-xl" />
     </div>

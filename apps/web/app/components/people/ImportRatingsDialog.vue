@@ -102,6 +102,9 @@ const applyForm = useForm({
 const [conflicts, conflictsProps] = applyForm.defineField('conflicts')
 
 const preview = computed(() => job.value?.preview ?? null)
+const previewLoading = useHeldLoading(
+  () => step.value === 'preview' && !preview.value,
+)
 const progress = computed(() => {
   const value = job.value?.progress
 
@@ -465,7 +468,7 @@ const conflictOptions = computed(() => [
 
       <!-- Шаг 3: предпросмотр -->
       <div
-        v-else-if="step === 'preview' && !preview"
+        v-else-if="step === 'preview' && previewLoading"
         class="grid gap-2 rounded-lg border p-3"
         aria-busy="true"
       >

@@ -46,7 +46,9 @@ function schedule() {
 }
 
 async function load() {
-  state.value = 'loading'
+  // Показанное остаётся на экране, пока идёт новый запрос, и ошибка его не прячет
+  if (state.value !== 'ready')
+    state.value = 'loading'
 
   try {
     await fetchAll()
@@ -54,7 +56,8 @@ async function load() {
     schedule()
   }
   catch {
-    state.value = 'error'
+    if (state.value === 'loading')
+      state.value = 'error'
   }
 }
 

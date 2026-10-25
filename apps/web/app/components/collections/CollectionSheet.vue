@@ -29,6 +29,10 @@ const { titlesOf, removeTitle } = useCollections()
 const shown = useLastValue(() => props.collection)
 const titles = shallowRef<Card[]>([])
 const state = ref<'loading' | 'error' | 'ready'>('loading')
+// Карточка живёт и закрытой: время скелетона идёт от выбора подборки
+const loading = useHeldLoading(
+  () => !!props.collection && state.value === 'loading',
+)
 const removing = ref<string>()
 let token = 0
 
@@ -39,6 +43,13 @@ async function load() {
     return
 
   const mine = ++token
+
+  // Пустая подборка: пустое состояние сразу, без запроса
+  if (current.count === 0) {
+    titles.value = []
+    state.value = 'ready'
+    return
+  }
 
   state.value = 'loading'
 
@@ -125,7 +136,7 @@ function onInteractOutside(event: Event) {
         </header>
 
         <div class="min-h-0 flex-1 overflow-y-auto">
-          <ul v-if="state === 'loading'" aria-busy="true">
+          <ul v-if="loading" aria-busy="true">
             <li
               v-for="row in Math.min(Math.max(shown.count, 1), 6)"
               :key="row"

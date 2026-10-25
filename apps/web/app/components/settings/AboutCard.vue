@@ -9,16 +9,21 @@ import { api } from '~/services/api'
 
 const { t } = useI18n()
 
-const about = shallowRef<AboutResponse>()
-const failed = ref(false)
+const fetched = shallowRef<AboutResponse>()
+const fetchFailed = ref(false)
+const loading = useHeldLoading(() => !fetched.value && !fetchFailed.value)
+
+// Ответ — после скелетона: проявившийся держится минимальное время
+const about = computed(() => (loading.value ? undefined : fetched.value))
+const failed = computed(() => !loading.value && fetchFailed.value)
 
 // Без авторизации и без тоста: атрибуция на странице видна и при ошибке
 onMounted(async () => {
   try {
-    about.value = await withErrorMode('silent', () => api.about.getAbout())
+    fetched.value = await withErrorMode('silent', () => api.about.getAbout())
   }
   catch {
-    failed.value = true
+    fetchFailed.value = true
   }
 })
 </script>

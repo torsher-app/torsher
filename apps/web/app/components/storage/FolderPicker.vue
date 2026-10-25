@@ -31,6 +31,8 @@ const browsing = ref(false)
 const listing = shallowRef<FolderBrowse | null>(null)
 const loading = ref(false)
 const failed = ref(false)
+// Скелетон — только под первый список: при переходах прошлый остаётся на месте
+const listLoading = useHeldLoading(() => loading.value && !listing.value)
 
 function parentOf(target: string) {
   return target.replace(/\/[^/]+\/?$/, '') || '/'
@@ -159,11 +161,7 @@ function choose() {
       </div>
       <!-- Список постоянной высоты: переходы по папкам не двигают диалог -->
       <div class="h-[200px] overflow-y-auto rounded-md bg-muted/40">
-        <div
-          v-if="loading && !listing"
-          class="grid gap-1 p-1.5"
-          aria-busy="true"
-        >
+        <div v-if="listLoading" class="grid gap-1 p-1.5" aria-busy="true">
           <Skeleton v-for="item in 5" :key="item" class="h-7 rounded" />
         </div>
         <p v-else-if="failed" class="p-3 text-[13px] text-muted-foreground">

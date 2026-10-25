@@ -19,6 +19,9 @@ definePageMeta({
 
 const { t } = useI18n()
 const { settings, state, load } = useTorrentSettings()
+const loading = useHeldLoading(
+  () => state.value === 'loading' || state.value === 'idle',
+)
 
 onMounted(load)
 </script>
@@ -35,11 +38,7 @@ onMounted(load)
     </header>
 
     <!-- Скелетоны в размер карточек: ничего не прыгает после загрузки -->
-    <div
-      v-if="state === 'loading' || state === 'idle'"
-      class="grid gap-5"
-      aria-busy="true"
-    >
+    <div v-if="loading" class="grid gap-5" aria-busy="true">
       <Skeleton class="h-48 rounded-xl" />
       <Skeleton class="h-48 rounded-xl" />
       <Skeleton class="h-52 rounded-xl" />

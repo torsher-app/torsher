@@ -51,6 +51,10 @@ const now = useNow({ interval: 30_000 })
 const recent = useProfileHistory(() => shown.value?.id, {
   limit: RECENT_LIMIT,
 })
+// Карточка живёт и закрытой: время скелетона идёт от выбора профиля
+const recentLoading = useHeldLoading(
+  () => !!props.profile && recent.state.value === 'loading',
+)
 
 const profileDevices = computed(() =>
   props.devices.filter(item => item.profile?.id === shown.value?.id),
@@ -163,7 +167,11 @@ function onInteractOutside(event: Event) {
                 {{ t("panel.history.recent") }}
               </h3>
               <NuxtLink
-                v-if="recent.state.value === 'ready' && recent.total.value > 0"
+                v-if="
+                  !recentLoading
+                    && recent.state.value === 'ready'
+                    && recent.total.value > 0
+                "
                 :to="`/people/${shown.id}/history`"
                 class="inline-flex items-center gap-0.5 text-[12.5px] text-muted-foreground hover:text-foreground"
               >
@@ -171,11 +179,7 @@ function onInteractOutside(event: Event) {
                 <ChevronRightIcon class="size-3.5" aria-hidden="true" />
               </NuxtLink>
             </div>
-            <ul
-              v-if="recent.state.value === 'loading'"
-              class="-mx-4 border-t"
-              aria-busy="true"
-            >
+            <ul v-if="recentLoading" class="-mx-4 border-t" aria-busy="true">
               <li
                 v-for="row in 3"
                 :key="row"

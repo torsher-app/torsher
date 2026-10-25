@@ -28,6 +28,10 @@ const {
 useUnreadPolling()
 
 const open = ref(false)
+// Время скелетона идёт от открытия поповера, а не от монтирования колокола
+const loading = useHeldLoading(
+  () => open.value && (state.value === 'loading' || state.value === 'idle'),
+)
 const now = useNow({ interval: 60_000 })
 
 const badge = computed(() => (unread.value > 9 ? '9+' : String(unread.value)))
@@ -102,11 +106,7 @@ function onReadAll() {
 
       <div class="max-h-[min(28rem,60dvh)] overflow-y-auto">
         <!-- Скелетон строк той же высоты, что строки списка -->
-        <div
-          v-if="state === 'loading' || state === 'idle'"
-          class="divide-y"
-          aria-busy="true"
-        >
+        <div v-if="loading" class="divide-y" aria-busy="true">
           <div
             v-for="index in 3"
             :key="index"
