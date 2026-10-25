@@ -1163,12 +1163,15 @@ export const followSeasons = sqliteTable(
 
 /**
  * Отложенный кандидат серии: всё, чтобы захватить его без нового поиска.
- * Ссылка на `.torrent` — шифртекстом: в ней бывает ключ индексатора.
+ * Ссылка на `.torrent` и magnet — шифртекстом: в них бывают ключ индексатора
+ * и passkey трекера.
  */
 export interface FollowPendingCandidate {
   id: string
   title: string
   infoHash?: string
+  magnetSecret?: string
+  /** Открытый magnet записей прежних версий */
   magnet?: string
   link?: { secret: string, indexerId: string, indexerOrigin: string }
   indexerId?: string
@@ -1308,6 +1311,12 @@ export const followHistory = sqliteTable(
   table => [
     index('follow_history_title_idx').on(table.titleId, table.at),
     index('follow_history_at_idx').on(table.at),
+    // Уборка ищет последнее «не нашли» серии
+    index('follow_history_follow_kind_idx').on(
+      table.followId,
+      table.kind,
+      table.at,
+    ),
   ],
 )
 
@@ -1331,6 +1340,13 @@ export const releaseBlocklist = sqliteTable(
     detailsUrl: text('details_url'),
     releaseTitle: text('release_title').notNull(),
     reason: text('reason', { enum: blocklistReasons }).notNull(),
+    // Серии (`season:episode`), которых нет в файлах раздачи; пусто — вся раздача
+    episodes: text('episodes', { mode: 'json' }).$type<string[]>(),
+    // Как индексатор показал раздачу без infohash: такую узнают по странице и
+    // названию вместе (без страницы — по названию). У записей без них — только
+    // infohash: у обновлённой темы адрес тот же, а раздача новая
+    listedPage: text('listed_page'),
+    listedTitle: text('listed_title'),
     createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
     expiresAt: integer('expires_at', { mode: 'timestamp_ms' }),
   },

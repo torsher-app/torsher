@@ -72,8 +72,10 @@ export function availableForBackground<T extends SearchableIndexer>(
  * Индексатор без нужного режима поиска (`unsupported`) не виноват.
  */
 export function recordBackgroundOutcome(
-  asked: SearchableIndexer[],
-  failed: IndexerFailure[],
+  asked: Pick<SearchableIndexer, 'id'>[],
+  failed: (Pick<IndexerFailure, 'id' | 'kind' | 'retryAt'> & {
+    name?: string
+  })[],
   now = new Date(),
 ) {
   const db = getDb()

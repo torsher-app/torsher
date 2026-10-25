@@ -8,11 +8,12 @@ import type { FoundRelease, RankedRelease } from '../sources/rank.ts'
 import type { TopicKey } from './topics.ts'
 import type { EpisodeRef } from './wanted.ts'
 import { matchFiles, parseRelease } from '@torsher/release-parser'
-import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
+import { and, eq, gt, inArray, isNotNull, isNull } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import { followEpisodes } from '../../db/schema.ts'
 import { syncLibrary } from '../library/linker.ts'
 import { logFor } from '../logs/index.ts'
+import { backoffUntil, recordBackgroundOutcome } from '../indexers/backoff.ts'
 import { decryptSecret, encryptSecret, SecretError } from '../secrets/index.ts'
 import { startDownload } from '../sources/download.ts'
 import { getPinnedVoice, pinVoice } from '../sources/voices.ts'
@@ -24,8 +25,15 @@ import {
 } from '../sources/watch.ts'
 import { InsufficientStorageError } from '../storage/index.ts'
 import { getTorrent, linkTitle } from '../torrents/index.ts'
-import { blockRelease, isBlocked } from './blocklist.ts'
+import { SourceError } from '../torznab/index.ts'
+import {
+  blockedPart,
+  blockedReleases,
+  blockRelease,
+  rememberListing,
+} from './blocklist.ts'
 import { recordHistory } from './history.ts'
+import { followById } from './index.ts'
 import { announceOtherVoice } from './notify.ts'
 import {
   refreshTargets,
@@ -44,7 +52,8 @@ import { episodeKey } from './wanted.ts'
 import { seasonVoice } from './voice.ts'
 
 // Ссылка индексатора не ответила: следующая попытка того же кандидата — не
-// на каждом тике, скачивание `.torrent` у Prowlarr считается в его лимит
+// на каждом тике, скачивание `.torrent` у Prowlarr считается в его лимит.
+// Так же ждёт кандидат, которому не хватило места
 const ACQUIRE_RETRY_MS = 15 * 60 * 1000
 
 const retryAt = new Map<string, number>()
@@ -61,8 +70,9 @@ export function retryLater(
   candidate: FollowPendingCandidate,
   episodes: EpisodeRef[],
   now: Date,
+  until = new Date(now.getTime() + ACQUIRE_RETRY_MS),
 ): GrabResult {
-  retryAt.set(candidate.id, now.getTime() + ACQUIRE_RETRY_MS)
+  retryAt.set(candidate.id, until.getTime())
 
   // Серия в библиотеке кандидата не ждёт: апгрейд повторит следующий поиск
   const upgrades = upgradeKeys(follow, episodes)
@@ -76,9 +86,9 @@ export function retryLater(
 }
 
 /**
- * Кандидат для `pending`: ссылка на `.torrent` уходит в базу шифртекстом.
- * Индексатор и адрес страницы — отслеживаемой темы, если раздача из неё,
- * иначе того индексатора, чья ссылка.
+ * Кандидат для `pending`: ссылка на `.torrent` и magnet (в `tr=` бывает
+ * passkey) уходят в базу шифртекстом. Индексатор и адрес страницы —
+ * отслеживаемой темы, если раздача из неё, иначе того индексатора, чья ссылка.
  */
 export function pendingOf(
   release: FoundRelease & Partial<Pick<RankedRelease, 'resolution' | 'voice'>>,
@@ -98,7 +108,7 @@ export function pendingOf(
     id: release.id,
     title: release.title,
     infoHash: release.infoHash,
-    magnet: release.magnet,
+    magnetSecret: release.magnet && encryptSecret(release.magnet),
     link: release.link && {
       secret: encryptSecret(release.link.url),
       indexerId: release.link.indexerId,
@@ -127,6 +137,23 @@ export function linkOf(candidate: FollowPendingCandidate) {
   }
   catch (err) {
     // Сменился ключ сервера: остаётся magnet или infohash
+    if (err instanceof SecretError)
+      return undefined
+
+    throw err
+  }
+}
+
+/** Записи прежних версий хранят magnet открытым текстом */
+export function pendingMagnet(candidate: FollowPendingCandidate) {
+  if (!candidate.magnetSecret)
+    return candidate.magnet
+
+  try {
+    return decryptSecret(candidate.magnetSecret)
+  }
+  catch (err) {
+    // Сменился ключ сервера: остаётся ссылка или infohash
     if (err instanceof SecretError)
       return undefined
 
@@ -194,19 +221,32 @@ export function resetEpisodes(follow: Follow, episodes: EpisodeRef[]) {
   }
 }
 
+/**
+ * Раздача в чёрный список; `only` — только эти серии: остальные серии
+ * раздачи в её файлах есть. Кандидат без infohash запоминается, как его
+ * показал индексатор: так его узнают до скачивания `.torrent`.
+ */
 export function blockTorrent(
   follow: Follow,
   torrent: Pick<Torrent, 'infoHash' | 'name'>,
   reason: 'stalled' | 'failed_check',
   episodes: EpisodeRef[],
   detailsUrl?: string,
+  options: { only?: boolean, candidate?: FollowPendingCandidate } = {},
 ) {
+  const { candidate } = options
+
   blockRelease({
     titleId: follow.titleId,
     infoHash: torrent.infoHash,
     releaseTitle: torrent.name,
     reason,
     detailsUrl,
+    ...(options.only && { episodes: episodes.map(episodeKey) }),
+    ...(candidate
+      && !candidate.infoHash && {
+      listing: { page: candidate.detailsUrl, title: candidate.title },
+    }),
   })
 
   for (const season of new Set(episodes.map(item => item.season))) {
@@ -294,7 +334,7 @@ function pinFirstVoice(
 /**
  * Выбор файлов нужных серий в раздаче с метаданными и закачка тем же путём,
  * что «Скачать». Серий из названия нет в файлах — раздача в чёрный список
- * навсегда: её список файлов не изменится.
+ * навсегда, по этим сериям или целиком: её список файлов не изменится.
  */
 export async function startGrab(
   follow: Follow,
@@ -309,7 +349,17 @@ export async function startGrab(
   const absent = episodes.filter(item => !files.has(episodeKey(item)))
 
   if (absent.length) {
-    blockTorrent(follow, torrent, 'failed_check', absent, candidate.detailsUrl)
+    blockTorrent(
+      follow,
+      torrent,
+      'failed_check',
+      absent,
+      candidate.detailsUrl,
+      {
+        only: present.length > 0,
+        candidate,
+      },
+    )
     resetEpisodes(follow, absent)
   }
 
@@ -323,12 +373,16 @@ export async function startGrab(
     await startDownload(torrent, [...new Set(files.values())])
   }
   catch (err) {
+    // Апгрейд подождёт следующего поиска, серия остаётся в библиотеке
+    restoreUpgrades(follow, upgrades)
+
     if (!(err instanceof InsufficientStorageError))
       throw err
 
-    // Апгрейд подождёт следующего поиска, серия остаётся в библиотеке
-    restoreUpgrades(follow, upgrades)
-    // Кандидат остаётся: захват повторится, когда место освободится
+    const waitUntil = new Date(now.getTime() + ACQUIRE_RETRY_MS)
+
+    // Кандидат остаётся: захват повторится, когда место освободится, — не на
+    // каждом тике, а с паузой
     updateEpisodes(
       follow,
       present.filter(item => !upgrading.has(episodeKey(item))),
@@ -337,8 +391,15 @@ export async function startGrab(
         fileIndex: null,
         grabbedAt: null,
         pending: candidate,
+        waitUntil,
         stateNote: 'no_space',
       },
+    )
+    // Та же пауза у апгрейда; серия остаётся в библиотеке с прежним файлом
+    updateEpisodes(
+      follow,
+      present.filter(item => upgrading.has(episodeKey(item))),
+      { waitUntil, stateNote: 'no_space' },
     )
 
     return 'no_space'
@@ -423,10 +484,36 @@ export async function grabCandidate(
 ): Promise<GrabResult> {
   const now = options.now ?? new Date()
 
-  if (candidate.infoHash && isBlocked(candidate.infoHash, now)) {
-    resetEpisodes(follow, episodes)
+  // Проход начался раньше: слежение могли остановить или удалить
+  if (followById(follow.id)?.state !== 'active')
+    return 'later'
+
+  const blocks = blockedReleases(now)
+
+  episodes = withoutBlocked(
+    follow,
+    episodes,
+    blockedPart(
+      {
+        infoHash: candidate.infoHash,
+        title: candidate.title,
+        detailsUrls: candidate.detailsUrl ? [candidate.detailsUrl] : [],
+      },
+      blocks,
+    ),
+  )
+
+  if (!episodes.length)
     return 'blocked'
-  }
+
+  // Места не хватило недавно: до конца паузы `.torrent` снова не качаем,
+  // откуда бы ни пришёл кандидат
+  const spaceWait = noSpaceWait(follow, episodes, now)
+
+  episodes = episodes.filter(item => !spaceWait.has(episodeKey(item)))
+
+  if (!episodes.length)
+    return 'later'
 
   if ((retryAt.get(candidate.id) ?? 0) > now.getTime())
     return 'later'
@@ -438,7 +525,7 @@ export async function grabCandidate(
       {
         title: candidate.title,
         link: linkOf(candidate),
-        magnet: candidate.magnet,
+        magnet: pendingMagnet(candidate),
         infoHash: candidate.infoHash,
       },
       () => true,
@@ -453,7 +540,13 @@ export async function grabCandidate(
       { err, titleId: follow.titleId },
       'Follow could not add a release',
     )
-    return retryLater(follow, candidate, episodes, now)
+    return retryLater(
+      follow,
+      candidate,
+      episodes,
+      now,
+      backOffIndexer(candidate, err, now),
+    )
   }
 
   if (!torrent)
@@ -461,15 +554,32 @@ export async function grabCandidate(
 
   retryAt.delete(candidate.id)
 
-  if (isBlocked(torrent.infoHash, now)) {
-    resetEpisodes(follow, episodes)
-    return 'blocked'
+  const blocked = blockedPart(
+    { infoHash: torrent.infoHash, title: candidate.title, detailsUrls: [] },
+    blocks,
+  )
+
+  // Раздачу без infohash узнали только сейчас: по странице и названию её
+  // узнают до скачивания, и `.torrent` не качается на каждом проходе
+  if (blocked !== undefined && !candidate.infoHash) {
+    rememberListing(
+      torrent.infoHash,
+      { page: candidate.detailsUrl, title: candidate.title },
+      now,
+    )
   }
+
+  episodes = withoutBlocked(follow, episodes, blocked)
+
+  if (!episodes.length)
+    return 'blocked'
 
   torrent = linkTitle(torrent, follow.titleId)
 
   if (torrent.status === 'failed') {
-    blockTorrent(follow, torrent, 'stalled', episodes, candidate.detailsUrl)
+    blockTorrent(follow, torrent, 'stalled', episodes, candidate.detailsUrl, {
+      candidate,
+    })
     resetEpisodes(follow, episodes)
     return 'blocked'
   }
@@ -489,20 +599,104 @@ export async function grabCandidate(
 
   beginUpgrade(follow, episodes, torrent.id)
 
-  if (torrent.status === 'resolving') {
-    updateEpisodes(follow, episodes, {
-      torrentId: torrent.id,
-      fileIndex: null,
-      grabbedAt: now,
-      pending: candidate,
-      waitUntil: null,
-      stateNote: null,
-    })
+  try {
+    if (torrent.status === 'resolving') {
+      updateEpisodes(follow, episodes, {
+        torrentId: torrent.id,
+        fileIndex: null,
+        grabbedAt: now,
+        pending: candidate,
+        waitUntil: null,
+        stateNote: null,
+      })
 
-    return 'resolving'
+      return 'resolving'
+    }
+
+    return await startGrab(follow, torrent, candidate, episodes, {
+      ...options,
+      now,
+    })
+  }
+  catch (err) {
+    // Иначе серия осталась бы с прежним файлом и пометкой апгрейда, и итог
+    // апгрейда записал бы замену, которой не было
+    restoreUpgrades(follow, upgradingRows(follow, episodes))
+    throw err
+  }
+}
+
+/** Серии, у которых идёт пауза после нехватки места */
+function noSpaceWait(follow: Follow, episodes: EpisodeRef[], now: Date) {
+  const keys = new Set<string>()
+
+  for (const where of episodesWhere(follow, episodes)) {
+    const rows = getDb()
+      .select()
+      .from(followEpisodes)
+      .where(
+        and(
+          where,
+          eq(followEpisodes.stateNote, 'no_space'),
+          gt(followEpisodes.waitUntil, now),
+        ),
+      )
+      .all()
+
+    for (const row of rows) keys.add(episodeKey(row))
   }
 
-  return startGrab(follow, torrent, candidate, episodes, { ...options, now })
+  return keys
+}
+
+/**
+ * Серии кандидата без тех, что в чёрном списке у его раздачи; заблокированные
+ * снова нужны
+ */
+function withoutBlocked(
+  follow: Follow,
+  episodes: EpisodeRef[],
+  blocked: Set<string> | null | undefined,
+) {
+  if (blocked === undefined)
+    return episodes
+
+  const free = blocked
+    ? episodes.filter(item => !blocked.has(episodeKey(item)))
+    : []
+
+  resetEpisodes(
+    follow,
+    episodes.filter(item => !free.includes(item)),
+  )
+  return free
+}
+
+/**
+ * Индексатор просит подождать (`Retry-After` у 429 или 503): срок уходит в
+ * его бэкофф — его не спросят ни лента, ни поиск, — и кандидат ждёт столько же.
+ */
+function backOffIndexer(
+  candidate: FollowPendingCandidate,
+  err: unknown,
+  now: Date,
+) {
+  const retry = new Date(now.getTime() + ACQUIRE_RETRY_MS)
+
+  if (!(err instanceof SourceError) || !err.retryAt || !candidate.link)
+    return retry
+
+  const { indexerId } = candidate.link
+
+  recordBackgroundOutcome(
+    [{ id: indexerId }],
+    [{ id: indexerId, kind: err.kind, retryAt: err.retryAt }],
+    now,
+  )
+
+  return new Date(
+    Math.max(retry.getTime(), backoffUntil(1, now, err.retryAt).getTime()),
+  )
 }
 
 /** Серии, захват которых ждёт метаданные magnet, по раздачам */
@@ -555,7 +749,16 @@ export async function continueGrabs(
     const candidate = rows[0]!.pending
 
     if (torrent.status === 'failed' || !candidate) {
-      blockTorrent(follow, torrent, 'stalled', episodes, candidate?.detailsUrl)
+      blockTorrent(
+        follow,
+        torrent,
+        'stalled',
+        episodes,
+        candidate?.detailsUrl,
+        {
+          candidate: candidate ?? undefined,
+        },
+      )
       resetEpisodes(follow, episodes)
       continue
     }

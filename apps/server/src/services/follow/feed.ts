@@ -37,10 +37,11 @@ import { isViewerSearching, mergeHits } from '../sources/search.ts'
 import { getTitleIdentity } from '../tmdb/index.ts'
 import { searchIndexer, SourceError } from '../torznab/index.ts'
 import { releaseSeasons } from './decide.ts'
-import { linkOf, pendingOf } from './grab.ts'
+import { linkOf, pendingMagnet, pendingOf } from './grab.ts'
 import { recordHistory } from './history.ts'
 import { followById } from './index.ts'
 import { decideFollow, followStates } from './pass.ts'
+import { underFollowLock } from './schedule.ts'
 import { requestFollowSearch } from './search.ts'
 import { followSettings } from './settings.ts'
 import { WANTED_STATES } from './wanted.ts'
@@ -350,6 +351,10 @@ interface FollowIndex {
 }
 
 let index: FollowIndex | undefined
+// Курсор, от которого индексатор последний раз не догнал ленту: лента без
+// позиций, которые можно узнать, не догоняет его никогда, и целевой поиск по
+// пробелу шёл бы всем слежениям каждые 15 минут
+const gapCursors = new Map<string, string>()
 
 /** Префиксы по словам: «тихая гавань возвращение» → «тихая», «тихая гавань» */
 function wordPrefixes(name: string) {
@@ -490,9 +495,10 @@ function candidateTitles(found: FollowIndex, parsed: ParsedRelease) {
   return result
 }
 
-/** Тесты: индекс собирается заново */
+/** Тесты: индекс собирается заново, пробелы лент забыты */
 export function resetFollowIndex() {
   index = undefined
+  gapCursors.clear()
 }
 
 function pendingReleases(follow: Follow) {
@@ -541,7 +547,7 @@ function releaseOfPending(
         ]
       : [],
     link: linkOf(candidate),
-    magnet: candidate.magnet,
+    magnet: pendingMagnet(candidate),
     infoHash: candidate.infoHash,
     size: candidate.size,
     seeders: candidate.seeders,
@@ -707,8 +713,12 @@ export async function feedPass(
 
     hits.push(...read.items.map(release => ({ indexer, release })))
 
-    if (read.gap)
+    const cursor = JSON.stringify(indexer.rssCursor ?? null)
+
+    if (read.gap && gapCursors.get(indexer.id) !== cursor) {
+      gapCursors.set(indexer.id, cursor)
       await reportGap(indexer, read.gap, active, now)
+    }
   }
 
   if (!hits.length)
@@ -813,10 +823,18 @@ export async function confirmUnsure(
     match: { confidence: 'high' as const, issues: [] },
   }
 
-  await decideFollow(
-    follow,
-    releasesForDecide(follow, target, [release], now),
-    now,
+  // Владелец ответа тика не ждёт: решение — за тиком, под его замком
+  void underFollowLock(() =>
+    decideFollow(
+      follow,
+      releasesForDecide(follow, target, [release], now),
+      now,
+    ),
+  ).catch(err =>
+    logFor('catalog').warn(
+      { err, titleId: follow.titleId },
+      'Follow confirmed release decision failed',
+    ),
   )
   return 'ok'
 }

@@ -29,6 +29,7 @@ import {
   followHistory,
   follows,
   indexers,
+  libraryFolders,
   mediaFiles,
   metaCache,
   profiles,
@@ -222,6 +223,8 @@ function searchXml() {
 }
 
 let live: EngineTorrentState[] = []
+let failFiles = false
+let torrentDownloads = 0
 let root = ''
 let folderId = ''
 let profileId = ''
@@ -487,6 +490,18 @@ beforeEach(async () => {
   versions.clear()
   items = []
   live = []
+  failFiles = false
+  torrentDownloads = 0
+  disk.free = 512 * 1024 ** 3
+  getDb()
+    .update(indexers)
+    .set({
+      checkStatus: null,
+      rssCursor: null,
+      rssCheckedAt: null,
+      rssFailures: 0,
+    })
+    .run()
   movieReleases = []
   fetchMock.mockReset()
   fetchMock.mockImplementation(async (input, init = {}) => {
@@ -508,11 +523,16 @@ beforeEach(async () => {
     if (url.pathname === '/torznab/api')
       return new Response(searchXml())
 
-    if (url.pathname.startsWith('/download/'))
+    if (url.pathname.startsWith('/download/')) {
+      torrentDownloads++
       return new Response(torrentBytes(url.pathname.slice(-40)))
+    }
 
     if (url.host !== '127.0.0.1:4000')
       return json({ status_message: 'unexpected' }, 404)
+
+    if (url.pathname === '/torrents' && method === 'POST' && failFiles)
+      return json({ kind: 'internal', message: 'engine failed' }, 500)
 
     if (
       url.pathname === '/torrents/inspect'
@@ -723,6 +743,129 @@ describe('апгрейд серии', () => {
 
     expect(torrentByHash(NEW)).toBeUndefined()
     expect(episodeRow(follow.id, 8).decisions).toBeNull()
+  })
+
+  it('сбой закачки после начала апгрейда — серия остаётся прежней, «заменили» нет', async () => {
+    const follow = insertFollow()
+    const { old, downloadedAt } = await seedOld(follow)
+
+    failFiles = true
+    await followAutomation(new Date())
+
+    expect(episodeRow(follow.id, 8)).toMatchObject({
+      torrentId: old.id,
+      fileIndex: 1,
+      downloadedAt,
+      upgradeFrom: null,
+    })
+    expect(settleUpgrades(followById(follow.id)!)).toEqual([])
+    expect(history(follow.id).map(row => row.kind)).not.toContain('upgraded')
+  })
+
+  it('серию убрали из библиотеки — она качается заново как новая, а не как замена', async () => {
+    const follow = insertFollow()
+    const { old } = await seedOld(follow)
+
+    // Файла восьмой серии нет, прежняя раздача её больше не качает
+    getDb().delete(mediaFiles).where(eq(mediaFiles.torrentId, old.id)).run()
+    getDb()
+      .update(torrents)
+      .set({ selectedFiles: [0] })
+      .where(eq(torrents.id, old.id))
+      .run()
+    await followAutomation(new Date())
+
+    const next = torrentByHash(NEW)!
+
+    expect(episodeRow(follow.id, 8)).toMatchObject({
+      torrentId: next.id,
+      fileIndex: 0,
+      downloadedAt: null,
+      upgradeFrom: null,
+    })
+    expect(
+      history(follow.id).find(row => row.kind === 'grabbed')?.params,
+    ).not.toHaveProperty('upgrade')
+  })
+
+  it('папка библиотеки отключена — серия не забывается, апгрейд потом видит файл своим', async () => {
+    const follow = insertFollow()
+    const { old, downloadedAt } = await seedOld(follow)
+
+    // Диск отключён: файл «пропал», прежняя раздача его больше не качает
+    items = []
+    getDb()
+      .update(mediaFiles)
+      .set({ state: 'missing', missingSince: new Date() })
+      .where(eq(mediaFiles.torrentId, old.id))
+      .run()
+    getDb()
+      .update(libraryFolders)
+      .set({ status: 'offline' })
+      .where(eq(libraryFolders.id, folderId))
+      .run()
+    getDb()
+      .update(torrents)
+      .set({ selectedFiles: [0] })
+      .where(eq(torrents.id, old.id))
+      .run()
+    requestFollowSearch(follow.id)
+    await followAutomation(new Date())
+
+    expect(episodeRow(follow.id, 8)).toMatchObject({
+      torrentId: old.id,
+      fileIndex: 1,
+      downloadedAt,
+    })
+
+    // Диск вернулся: новая версия своей студии заменяет файл автоматики
+    getDb()
+      .update(mediaFiles)
+      .set({ state: 'present', missingSince: null })
+      .where(eq(mediaFiles.torrentId, old.id))
+      .run()
+    getDb()
+      .update(libraryFolders)
+      .set({ status: 'ok' })
+      .where(eq(libraryFolders.id, folderId))
+      .run()
+    items = [{ title: NEW_TITLE, hash: NEW }]
+    clearSearchCache()
+    requestFollowSearch(follow.id)
+    await followAutomation(new Date(Date.now() + 2 * 60_000))
+
+    expect(episodeRow(follow.id, 8).upgradeFrom).toMatchObject({
+      torrentId: old.id,
+      fileIndex: 1,
+    })
+  })
+
+  it('апгрейду не хватило места — во время паузы лента не качает `.torrent`', async () => {
+    const follow = insertFollow()
+    const { old, downloadedAt } = await seedOld(follow)
+
+    disk.free = 0
+    await followAutomation(new Date())
+
+    expect(torrentDownloads).toBe(1)
+    expect(episodeRow(follow.id, 8)).toMatchObject({
+      torrentId: old.id,
+      fileIndex: 1,
+      downloadedAt,
+      upgradeFrom: null,
+    })
+
+    // Лента индексатора приносит ту же версию
+    getDb().update(indexers).set({ checkStatus: 'ok' }).run()
+    clearSearchCache()
+    await followAutomation(new Date(Date.now() + 60_000))
+
+    expect(torrentDownloads).toBe(1)
+    expect(
+      (await followStates(followById(follow.id)!)).find(
+        item => item.episode === 8,
+      )?.state,
+    ).toBe('in_library')
   })
 
   it('новая версия зависла — серия возвращается к прежней закачке', async () => {

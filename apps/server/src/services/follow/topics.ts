@@ -501,7 +501,9 @@ async function prepare(
   )
 
   if (absent.length) {
-    blockTorrent(follow, next, 'failed_check', absent, topic.detailsUrl)
+    blockTorrent(follow, next, 'failed_check', absent, topic.detailsUrl, {
+      only: absent.length < refresh.episodes.length,
+    })
     resetEpisodes(follow, absent)
     refresh.episodes = refresh.episodes.filter(item =>
       files.has(episodeKey(item)),
@@ -544,6 +546,7 @@ async function prepare(
       fileIndex: null,
       grabbedAt: null,
       pending: refresh.candidate,
+      waitUntil: new Date(now.getTime() + RETRY_MS),
       stateNote: 'no_space',
     })
     return 'no_space'

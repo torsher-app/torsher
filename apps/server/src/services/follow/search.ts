@@ -15,6 +15,7 @@ import { cachedSearch, peekSearch, SEARCH_TTL_MS } from '../sources/cache.ts'
 import { isViewerSearching, searchReleases } from '../sources/search.ts'
 import { getTitleIdentity } from '../tmdb/index.ts'
 import { recordHistory } from './history.ts'
+import { followById } from './index.ts'
 import { announceMissing } from './notify.ts'
 import { followSettings } from './settings.ts'
 import {
@@ -358,8 +359,17 @@ async function runSearch(due: DueSearch, now: Date) {
   const { follow } = due
   const found = await followReleases(follow, now, due.request === 'manual')
 
-  if (!found)
+  // Проход начался раньше: слежение могли остановить или удалить
+  if (followById(follow.id)?.state !== 'active')
     return false
+
+  // Тайтла нет в каталоге: иначе он каждый проход занимал бы единственный
+  // поиск, а остальные слежения ждали бы
+  if (!found) {
+    state.requested.delete(follow.id)
+    setSchedule(follow, { nextSearchAt: new Date(now.getTime() + HOUR_MS) })
+    return false
+  }
 
   if (!('outcome' in found)) {
     // Все индексаторы в бэкоффе: ждём первый освободившийся

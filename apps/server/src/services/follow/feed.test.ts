@@ -34,6 +34,7 @@ import {
   rssIntervalMin,
 } from './feed.ts'
 import { activeFollows } from './pass.ts'
+import { underFollowLock } from './schedule.ts'
 import { requestedSearch, resetFollowSearch } from './search.ts'
 import { localDay } from './wanted.ts'
 
@@ -105,6 +106,8 @@ interface Item {
   hash: string
   /** Минут назад */
   age: number
+  /** Без guid, адреса страницы и даты: позицию не узнать */
+  bare?: boolean
 }
 
 function feedXml(items: Item[]) {
@@ -112,9 +115,13 @@ function feedXml(items: Item[]) {
     .map(
       item => `<item>
   <title>${item.title}</title>
-  <guid>https://tracker.example/topic/${item.hash.slice(0, 6)}</guid>
+  ${
+    item.bare
+      ? ''
+      : `<guid>https://tracker.example/topic/${item.hash.slice(0, 6)}</guid>
   <comments>https://tracker.example/topic/${item.hash.slice(0, 6)}</comments>
-  <pubDate>${new Date(Date.now() - item.age * MINUTE_MS).toUTCString()}</pubDate>
+  <pubDate>${new Date(Date.now() - item.age * MINUTE_MS).toUTCString()}</pubDate>`
+  }
   <size>${1.5 * GB}</size>
   <torznab:attr name="seeders" value="30" />
   <torznab:attr name="infohash" value="${item.hash}" />
@@ -426,6 +433,33 @@ describe('проход ленты', () => {
     expect(history().map(row => row.kind)).toContain('gap')
   })
 
+  it('лента, где позицию не узнать: пробел у того же курсора — один целевой поиск', async () => {
+    libraryEpisodes(1, 2, 3, 4, 5, 6, 7)
+
+    const items = filler(200, 3, 10).map(item => ({ ...item, bare: true }))
+
+    insertIndexer('Indexer A', 'a.indexer.example', {
+      rssCursor: { infoHash: items[0]!.hash },
+      rssCheckedAt: new Date(Date.now() - DAY_MS),
+    })
+
+    const follow = insertFollow()
+    const now = Date.now()
+
+    feeds.set('a.indexer.example', items)
+    await feedPass(activeFollows(), new Date(now), { wait: noWait })
+    expect(requestedSearch(follow.id)).toBe('gap')
+
+    // Поиск по пробелу прошёл
+    resetFollowSearch(0)
+    await feedPass(activeFollows(), new Date(now + 20 * MINUTE_MS), {
+      wait: noWait,
+    })
+
+    expect(requests).toHaveLength(2)
+    expect(requestedSearch(follow.id)).toBeUndefined()
+  })
+
   it('повтор позиции из другого индексатора — один кандидат', async () => {
     libraryEpisodes(1, 2, 3, 4, 5, 6, 7)
     insertIndexer('Indexer A', 'a.indexer.example')
@@ -495,6 +529,8 @@ describe('проход ленты', () => {
     expect(episodeRows(follow.id)).toEqual([])
 
     expect(await confirmUnsure(unsure[0]!.id)).toBe('ok')
+    // Решение идёт в фоне под замком тика
+    await underFollowLock(async () => {})
     expect(
       getDb()
         .select()
