@@ -10,12 +10,12 @@ import {
 } from '../indexers/backoff.ts'
 import { listSearchableIndexers } from '../indexers/index.ts'
 import { logFor } from '../logs/index.ts'
-import { getSetting } from '../settings/index.ts'
 import { syncTitleAliases } from '../sources/aliases.ts'
 import { cachedSearch, peekSearch, SEARCH_TTL_MS } from '../sources/cache.ts'
 import { isViewerSearching, searchReleases } from '../sources/search.ts'
 import { getTitleIdentity } from '../tmdb/index.ts'
 import { recordHistory } from './history.ts'
+import { followSettings } from './settings.ts'
 import { decideFollow, followStates, reportMissing } from './pass.ts'
 import { localDay, MISSING_AFTER_DAYS, WANTED_STATES } from './wanted.ts'
 
@@ -41,7 +41,6 @@ const MOVIE_EVERY_MS = 7 * DAY_MS
 const IDLE_RECHECK_MS = DAY_MS
 // Между стартами целевых поисков; общий бюджет — в час
 const SEARCH_GAP_MS = MINUTE_MS
-export const DEFAULT_SEARCHES_PER_HOUR = 20
 // После старта сервера фон молчит, как льготный период монитора уведомлений
 const QUIET_AFTER_START_MS = 5 * MINUTE_MS
 // Фон не торопится: срок больше, параллельно меньше, запросов меньше, чем у
@@ -49,7 +48,6 @@ const QUIET_AFTER_START_MS = 5 * MINUTE_MS
 const SEARCH_DEADLINE_MS = 20_000
 const SEARCH_CONCURRENCY = 2
 const TEXT_QUERIES = 2
-const SETTINGS_KEY = 'follow'
 
 /**
  * `manual` — «Искать сейчас», без бюджета; `retry` — после зависшей закачки;
@@ -69,15 +67,8 @@ const state: SearchState = {
   requested: new Map(),
 }
 
-interface FollowSettings {
-  searchesPerHour?: number
-}
-
 export function searchesPerHour() {
-  return (
-    getSetting<FollowSettings>(SETTINGS_KEY)?.searchesPerHour
-    ?? DEFAULT_SEARCHES_PER_HOUR
-  )
+  return followSettings().searchesPerHour
 }
 
 /** Начало дня выхода в поясе сервера */

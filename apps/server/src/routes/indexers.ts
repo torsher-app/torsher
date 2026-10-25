@@ -13,6 +13,7 @@ import {
   checkIndexer,
   createManualIndexer,
   deleteIndexer,
+  getIndexer,
   listIndexers,
   updateIndexer as patchIndexer,
 } from '../services/indexers/index.ts'
@@ -83,6 +84,15 @@ export const indexerRoutes: FastifyPluginAsyncZod = async (app) => {
       },
     },
     async (request, reply) => {
+      const current = getIndexer(request.params.id)
+
+      if (!current)
+        return reply.code(404).send({ message: 'Indexer not found' })
+
+      // Синхронизация Prowlarr перезаписала бы выбор владельца
+      if (request.body.feed !== undefined && current.managerKind === 'prowlarr')
+        return reply.code(400).send({ message: 'feed_managed' })
+
       const updated = patchIndexer(request.params.id, request.body)
 
       if (!updated)

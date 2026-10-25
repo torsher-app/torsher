@@ -214,6 +214,7 @@ export interface IndexerPatch {
   name?: string
   enabled?: boolean
   apiKey?: string
+  feed?: boolean
 }
 
 export function updateIndexer(id: string, patch: IndexerPatch) {
@@ -224,6 +225,12 @@ export function updateIndexer(id: string, patch: IndexerPatch) {
 
   if (patch.enabled !== undefined)
     values.enabled = patch.enabled
+
+  // Включённая заново лента пробуется сразу, а не через неделю после неудач
+  if (patch.feed !== undefined) {
+    values.supportsRss = patch.feed ? null : false
+    values.rssFailures = 0
+  }
 
   // Новый ключ сбрасывает результат проверки: старый к нему не относится
   if (patch.apiKey) {

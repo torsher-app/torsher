@@ -645,6 +645,7 @@
       "label": "Panel sections",
       "overview": "Overview",
       "torrents": "Downloads",
+      "follow": "Following",
       "sources": "Sources",
       "people": "Profiles & devices",
       "logs": "Logs",
@@ -1014,6 +1015,7 @@
         "about": "About",
         "storage": "Storage",
         "torrent": "Torrent",
+        "follow": "Following",
         "backups": "Backups",
         "network": "Network",
         "metadata": "Metadata",
@@ -1555,6 +1557,47 @@
           "error": "Couldn't restart the engine",
           "errorText": "It isn't running or is moving downloads. Try again later."
         }
+      },
+      "follow": {
+        "description": "How Torsher looks for new episodes of followed titles and which rules new follows get.",
+        "loadError": "Couldn't load follow settings",
+        "saved": "Saved",
+        "rss": {
+          "title": "Read new releases feed",
+          "description": "How often to read the feed of new releases from each indexer. A single request per indexer covers all follows.",
+          "unit": "min",
+          "hint": "From 10 to 120 minutes, 0 turns the feed off.",
+          "off": "The feed is off: episodes are found by targeted searches only.",
+          "error": "0 or from 10 to 120 minutes"
+        },
+        "budget": {
+          "title": "Targeted searches per hour",
+          "description": "Searches by title aliases when an episode aired or a follow was just turned on. Fewer searches are gentler on indexers.",
+          "unit": "per hour",
+          "hint": "“Search now” doesn't count toward the limit.",
+          "error": "From 1 to 60"
+        },
+        "defaults": {
+          "title": "Rules for new follows",
+          "description": "What a follow gets when it's turned on from the TV. Each follow's rules can be changed later.",
+          "wait": "Wait for better: series",
+          "movieWait": "Wait for better: movies",
+          "hint": "Existing follows keep their rules.",
+          "russian": {
+            "auto": {
+              "title": "For foreign titles",
+              "text": "Required when the original isn't Russian"
+            },
+            "always": {
+              "title": "Always",
+              "text": "Every title"
+            },
+            "never": {
+              "title": "Not required",
+              "text": "Any release"
+            }
+          }
+        }
       }
     },
     "sources": {
@@ -1741,6 +1784,17 @@
         "apiKey": "New API key",
         "apiKeyHint": "Leave empty to keep the current key.",
         "saved": "{name} saved"
+      },
+      "feed": {
+        "label": "Feed",
+        "read": "Read {time}",
+        "pending": "Not read yet",
+        "failing": "No feed three times in a row — next try {date}",
+        "off": "Off: follows find releases by targeted search only",
+        "unsupported": "The indexer doesn't support a feed",
+        "managed": "set in Prowlarr",
+        "enabledToast": "Feed is on for {name}",
+        "disabledToast": "Feed is off for {name}"
       }
     },
     "people": {
@@ -3059,6 +3113,305 @@
           "applyFailed": "Could not import: the server did not respond or the preview expired. Upload the file again."
         },
         "noFile": "No file chosen"
+      }
+    },
+    "follow": {
+      "title": "Following",
+      "movieLabel": "Movie",
+      "and": " and ",
+      "noDate": "date unknown",
+      "loadError": "Couldn't load follows",
+      "loadErrorText": "Check that the server is running and try again.",
+      "profilesLabel": "Followed by: {names}",
+      "groups": {
+        "attention": "Needs attention",
+        "waiting": "Waiting for episodes",
+        "done": "All downloaded",
+        "stopped": "Stopped"
+      },
+      "filters": {
+        "label": "Follow filters",
+        "all": "All",
+        "attention": "Needs attention",
+        "stopped": "Stopped",
+        "search": "Search follows",
+        "searchPlaceholder": "Title",
+        "nothing": "Nothing found for “{query}”",
+        "nothing_all": "No follows here",
+        "nothing_attention": "Nothing needs attention",
+        "nothing_stopped": "No stopped follows",
+        "reset": "Reset filters"
+      },
+      "empty": {
+        "title": "Follow a series on the TV",
+        "text": "Press “Follow” on a title page on the TV: new episodes will download into your library on their own, in your voice-over and the best quality released.",
+        "foot": "Rules, found releases and history of every follow will show up here."
+      },
+      "policy": {
+        "start": "From {episode}",
+        "anyVoice": "Any voice-over",
+        "strict": "Only {studio}",
+        "wait": "wait {n} h | wait {n} h",
+        "noWait": "no waiting"
+      },
+      "presets": {
+        "best": {
+          "title": "Best",
+          "text": "1080p, then 720p, then SD — when there's nothing better",
+          "short": "1080p → SD"
+        },
+        "uhd": {
+          "title": "4K",
+          "text": "2160p, then 1080p and 720p",
+          "short": "4K → 720p"
+        },
+        "compact": {
+          "title": "Compact",
+          "text": "720p, then SD: saves disk space",
+          "short": "720p → SD"
+        }
+      },
+      "status": {
+        "series": {
+          "paused": "Paused",
+          "stopped": "No profile follows it",
+          "noSpace": "Not enough space for {n} episode | Not enough space for {n} episodes",
+          "missing": "{n} episode not found | {n} episodes not found",
+          "downloading": "Downloading {n} episode | Downloading {n} episodes",
+          "waiting": "Waiting for a better release until {until}",
+          "searching": "Looking for {n} episode | Looking for {n} episodes",
+          "next": "Next: {episode} · {date}",
+          "nextUnknown": "Waiting for the next episode",
+          "done": "All downloaded",
+          "unsure": "{n} similar release to confirm | {n} similar releases to confirm"
+        },
+        "movie": {
+          "paused": "Paused",
+          "stopped": "No profile follows it",
+          "noSpace": "Not enough space for the movie",
+          "missing": "No releases found",
+          "downloading": "Downloading",
+          "waiting": "Waiting for a better release until {until}",
+          "searching": "Looking for a release",
+          "next": "Not released yet",
+          "done": "In the library",
+          "unsure": "Similar releases to confirm"
+        }
+      },
+      "actions": {
+        "menu": "Actions for {name}",
+        "searchNow": "Search now",
+        "pause": "Pause",
+        "resume": "Resume",
+        "delete": "Delete"
+      },
+      "toasts": {
+        "searchRequested": "Search requested",
+        "searchRequestedText": "It starts within a minute; results will appear in the history",
+        "searchFailed": "Couldn't request a search",
+        "notActive": "The follow is paused: resume it to search",
+        "paused": "Follow paused",
+        "resumed": "Follow resumed",
+        "saveFailed": "Couldn't save"
+      },
+      "deleteDialog": {
+        "title": "Delete the follow for “{name}”?",
+        "text": "New episodes won't be searched or downloaded, and profiles will be unsubscribed. Downloaded files and the library stay. Pausing keeps the rules and subscriptions.",
+        "confirm": "Delete",
+        "done": "Follow deleted"
+      },
+      "card": {
+        "status": "Status",
+        "profiles": "Followed by",
+        "noProfiles": "Nobody",
+        "search": "Search",
+        "searchRequested": "Search requested — starts within a minute",
+        "searchLast": "Last search {time}",
+        "searchNever": "Not searched yet",
+        "searchNext": "Next look {time}",
+        "noSpace": "The release is found but doesn't fit: download starts by itself once there's space.",
+        "storageLink": "Open storage settings",
+        "missing": "These episodes aired long ago and no releases were found. Torsher will still pick them up from new releases, or press “Search now”.",
+        "stopped": "The last profile unfollowed: nothing new is searched or downloaded. Following it again on the TV resumes it.",
+        "episodes": "Episodes",
+        "movie": "Movie",
+        "episodesHint": "Click an episode to see what was found and why it was rejected.",
+        "noEpisodes": "No episodes from the chosen one yet.",
+        "loadError": "Couldn't load episodes",
+        "season": "Season {n}",
+        "seasonComplete": "all {n} in the library | all {n} in the library",
+        "candidates": "{n} release | {n} releases",
+        "unsure": "These releases look like this title, but Torsher isn't sure. Confirm or dismiss them: a confirmed name is remembered for this title.",
+        "unsureLink": "Open in Activity"
+      },
+      "rules": {
+        "title": "Rules",
+        "start": "From which episode",
+        "startKeep": "As now: from {episode}",
+        "startNew": "Only new episodes",
+        "startSeason": "From the current season",
+        "startBeginning": "From the beginning",
+        "startCustom": "From an episode…",
+        "startHint": "Episodes before it aren't downloaded. Future seasons are always included.",
+        "season": "Season",
+        "episode": "Episode",
+        "voice": "Voice-over studio",
+        "voicePlaceholder": "Any",
+        "voiceHint": "Used when the season has no pinned voice-over. The voice-over picked on the TV wins.",
+        "strict": "Only this studio",
+        "strictHint": "Don't take other voice-overs at all; waiting applies to quality only.",
+        "wait": "Wait for better",
+        "waitHours": "{n} hour | {n} hours",
+        "noWait": "Don't wait",
+        "waitHint": "From the moment the episode first appears, Torsher waits for your voice-over and top quality; then it takes the best of what was released.",
+        "quality": "Quality",
+        "russian": "Russian audio track required",
+        "russianHint": "Releases without a Russian track are not taken.",
+        "save": "Save rules",
+        "saved": "Rules saved",
+        "validation": {
+          "season": "Season from 1 to 999",
+          "episode": "Episode from 1 to 9999"
+        }
+      },
+      "episodeStates": {
+        "upcoming": "Not aired yet",
+        "upcomingOn": "Airs {date}",
+        "searching": "Looking",
+        "waiting": "Waiting for a better release",
+        "waitingUntil": "Waiting for better until {until}",
+        "downloading": "Downloading",
+        "in_library": "In the library",
+        "no_space": "Not enough space",
+        "missing": "Not found"
+      },
+      "candidates": {
+        "empty": "No releases in the last check.",
+        "loadError": "Couldn't load releases",
+        "seeders": "{n} seeder | {n} seeders",
+        "verdicts": {
+          "grab": "Taken",
+          "pending": "Pending",
+          "rejected": "Rejected"
+        },
+        "block": "Don't take this release",
+        "blocked": "Release won't be taken",
+        "blockFailed": "Couldn't add to the blocklist",
+        "inBlocklist": "In the blocklist"
+      },
+      "rejections": {
+        "title_unsure": "not sure it's this title",
+        "screen_copy": "screen recording",
+        "no_russian": "no Russian audio track",
+        "quality": "{quality} isn't in the chosen quality",
+        "qualityUnknown": "quality isn't in the chosen ones",
+        "size": "size doesn't look like an episode: {size}",
+        "blocklisted": "in the blocklist",
+        "voice_strict": "not {studio}, other voice-overs aren't taken",
+        "no_wanted": "these episodes are already there",
+        "already_downloading": "a release as good is already downloading",
+        "no_seeders": "no seeders",
+        "wait": "waiting for {target} until {until}",
+        "waitPlain": "waiting until {until}",
+        "outranked": "a better release covers these episodes",
+        "unknown": "doesn't fit the rules"
+      },
+      "blockReasons": {
+        "stalled": "didn't download: no peers or progress",
+        "user": "you declined it",
+        "failed_check": "no wanted episodes in its files",
+        "unknown": "blocklisted"
+      },
+      "events": {
+        "found": "Found {episodes}",
+        "pending": "Pending {episodes}: waiting for {target} until {until}",
+        "pendingPlain": "Pending {episodes} until {until}",
+        "grabbed": "Downloading {episodes}",
+        "grabbedMeta": "Downloading {episodes} · {meta}",
+        "downloaded": "{episodes} is in the library",
+        "failed": "{episodes}: download stalled — no peers or progress",
+        "blocklisted": "{episodes}: release blocklisted — {reason}",
+        "missing": "{episodes} not found: aired long ago, no releases",
+        "search": "Search found {n} release | Search found {n} releases",
+        "searchManual": "Search on request found {n} release | Search on request found {n} releases",
+        "searchFailed": "{n} indexer didn't respond | {n} indexers didn't respond",
+        "unknown": "Event: {kind}",
+        "gap": "Indexer {indexer} feed skipped a period from {from} to {to}: running targeted searches",
+        "gapPlain": "Indexer {indexer} feed skipped a period: running targeted searches",
+        "gapIndexer": "removed",
+        "unsure": "Looks like this title, not sure",
+        "unsureConfirmed": "Looks like this title — you confirmed it",
+        "unsureDismissed": "Looks like this title — you said it isn't"
+      },
+      "queue": {
+        "pending": "Waiting for {target} until {until}",
+        "pendingPlain": "Pending until {until}",
+        "downloading": "Downloading · {percent}%",
+        "downloadingPlain": "Downloading",
+        "resolving": "Waiting for torrent metadata",
+        "noSpace": "Waiting for space: needs {size}",
+        "noSpacePlain": "Waiting for space",
+        "paused": "follow paused"
+      },
+      "activity": {
+        "title": "Activity",
+        "filters": "Activity filters",
+        "tabsLabel": "Activity sections",
+        "tabs": {
+          "queue": "Queue",
+          "history": "History",
+          "blocklist": "Blocklist"
+        },
+        "kind": "Event",
+        "allKinds": "All events",
+        "titleFilter": "Title",
+        "allTitles": "All titles",
+        "kinds": {
+          "found": "Found",
+          "pending": "Pending",
+          "grabbed": "Downloading",
+          "downloaded": "In the library",
+          "failed": "Stalled",
+          "blocklisted": "Blocklisted",
+          "missing": "Not found",
+          "search": "Search",
+          "unsure": "Not sure",
+          "gap": "Feed gap"
+        },
+        "loadError": {
+          "queue": "Couldn't load the queue",
+          "history": "Couldn't load the history",
+          "blocklist": "Couldn't load the blocklist"
+        },
+        "loadMore": "Show more",
+        "loadMoreFailed": "Couldn't load more",
+        "nothingFiltered": "Nothing for these filters",
+        "empty": {
+          "queue": {
+            "title": "The queue is empty",
+            "text": "Pending releases, downloads of followed titles and episodes waiting for space show up here."
+          },
+          "history": {
+            "title": "No history yet",
+            "text": "What Torsher found, downloaded and rejected for your follows is listed here for 90 days."
+          },
+          "blocklist": {
+            "title": "The blocklist is empty",
+            "text": "Releases that stalled or that you declined get here, and follows don't take them."
+          }
+        }
+      },
+      "blocklist": {
+        "until": "until {date}",
+        "forever": "forever",
+        "remove": "Remove from list",
+        "removed": "Removed from the blocklist"
+      },
+      "unsure": {
+        "confirm": "It's this title",
+        "dismiss": "Not this title",
+        "confirmed": "Release confirmed",
+        "dismissed": "Release dismissed"
       }
     }
   },

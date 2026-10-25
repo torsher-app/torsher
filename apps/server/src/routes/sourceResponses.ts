@@ -4,6 +4,7 @@ import type {
   ManagerWithCounts,
   SyncResult,
 } from '../services/indexers/index.ts'
+import { feedProbeAt } from '../services/follow/feed.ts'
 import { logFor } from '../services/logs/index.ts'
 import { SourceError } from '../services/torznab/index.ts'
 
@@ -31,6 +32,11 @@ export function toIndexerResponse(indexer: IndexerWithManager) {
       : null,
     checkStatus: indexer.checkStatus,
     checkedAt: indexer.checkedAt?.toISOString() ?? null,
+    feed: {
+      supported: indexer.supportsRss,
+      checkedAt: indexer.rssCheckedAt?.toISOString() ?? null,
+      probeAt: feedProbeAt(indexer)?.toISOString() ?? null,
+    },
   }
 }
 

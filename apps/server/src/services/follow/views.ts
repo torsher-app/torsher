@@ -5,7 +5,10 @@ import type {
   TitleFollowResponse,
 } from '../../dto/follow.ts'
 import type { TitleSummary } from '../mine/cards.ts'
-import type { EpisodeWithState } from './wanted.ts'
+import type { EpisodeWithState, FollowEpisodeState } from './wanted.ts'
+import { eq } from 'drizzle-orm'
+import { getDb } from '../../db/index.ts'
+import { followEpisodes } from '../../db/schema.ts'
 import { mapLimit } from '../../utils/mapLimit.ts'
 import { DETAILS_CONCURRENCY, summaryOf } from '../mine/cards.ts'
 import { followEpisodeStates, movieState } from './episodes.ts'
@@ -17,7 +20,14 @@ import {
   scheduleOf,
   subscribersOf,
 } from './index.ts'
-import { compareEpisodes, cursorOptions, wantedEpisodes } from './wanted.ts'
+import { unsureCounts } from './panel.ts'
+import { requestedSearch } from './search.ts'
+import {
+  compareEpisodes,
+  cursorOptions,
+  episodeKey,
+  wantedEpisodes,
+} from './wanted.ts'
 
 type NextEpisode = FollowSummary['next']
 
@@ -106,9 +116,46 @@ async function statesOf(
     : []
 }
 
+const COUNT_KEYS: Record<FollowEpisodeState, keyof FollowSummary['counts']> = {
+  upcoming: 'upcoming',
+  searching: 'searching',
+  waiting: 'waiting',
+  downloading: 'downloading',
+  no_space: 'noSpace',
+  missing: 'missing',
+  in_library: 'inLibrary',
+}
+
+function countsOf(states: EpisodeWithState[]) {
+  const counts: FollowSummary['counts'] = {
+    upcoming: 0,
+    searching: 0,
+    waiting: 0,
+    downloading: 0,
+    noSpace: 0,
+    missing: 0,
+    inLibrary: 0,
+  }
+
+  for (const item of states) {
+    counts[COUNT_KEYS[item.state]]++
+  }
+
+  return counts
+}
+
+function nearestWait(states: EpisodeWithState[]) {
+  const times = states
+    .map(item => item.waitUntil?.getTime())
+    .filter(time => time !== undefined)
+
+  return times.length ? new Date(Math.min(...times)).toISOString() : undefined
+}
+
 async function summaryView(
   follow: Follow,
   language: string,
+  unsure: Map<string, number>,
 ): Promise<FollowSummary & { states: EpisodeWithState[] }> {
   const summary = await summaryOf(follow.titleId, language)
   const states = await statesOf(follow, summary, language)
@@ -131,6 +178,9 @@ async function summaryView(
     year: summary?.details.year,
     profiles: subscribersOf(follow.id),
     wanted: wantedEpisodes(states).length,
+    counts: countsOf(states),
+    unsure: unsure.get(follow.id) ?? 0,
+    waitUntil: nearestWait(states),
     createdAt: follow.createdAt.toISOString(),
     updatedAt: follow.updatedAt.toISOString(),
     states,
@@ -139,8 +189,9 @@ async function summaryView(
 
 /** Список «Слежу» для панели */
 export async function followSummaries(language: string) {
+  const unsure = unsureCounts()
   const views = await mapLimit(listFollows(), DETAILS_CONCURRENCY, follow =>
-    summaryView(follow, language))
+    summaryView(follow, language, unsure))
 
   return views.map(({ states: _states, ...view }) => view)
 }
@@ -155,7 +206,23 @@ export async function followDetailsOf(
   if (!follow)
     return undefined
 
-  const { states, ...view } = await summaryView(follow, language)
+  const { states, ...view } = await summaryView(
+    follow,
+    language,
+    unsureCounts(follow.id),
+  )
+  const candidates = new Map(
+    getDb()
+      .select({
+        season: followEpisodes.season,
+        episode: followEpisodes.episode,
+        decisions: followEpisodes.decisions,
+      })
+      .from(followEpisodes)
+      .where(eq(followEpisodes.followId, follow.id))
+      .all()
+      .map(row => [episodeKey(row), row.decisions?.length ?? 0]),
+  )
 
   return {
     ...view,
@@ -165,6 +232,10 @@ export async function followDetailsOf(
       airDate: item.airDate,
       state: item.state,
       waitUntil: item.waitUntil?.toISOString(),
+      candidates: candidates.get(episodeKey(item)) ?? 0,
     })),
+    lastSearchAt: follow.lastSearchAt?.toISOString() ?? null,
+    nextSearchAt: follow.nextSearchAt?.toISOString() ?? null,
+    searchRequested: requestedSearch(follow.id) === 'manual',
   }
 }

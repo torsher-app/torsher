@@ -657,6 +657,11 @@ export interface IndexerInput {
     | "remote"
     | null;
   checkedAt: string | null;
+  feed: {
+    supported: boolean | null;
+    checkedAt: string | null;
+    probeAt: string | null;
+  };
 }
 
 export interface IndexerListInput {
@@ -693,6 +698,7 @@ export interface UpdateIndexerInput {
    * @maxLength 500
    */
   apiKey?: string;
+  feed?: boolean;
 }
 
 export interface IndexerManagerInput {
@@ -1778,6 +1784,49 @@ export interface FollowEpisodeInput {
     | "downloading"
     | "in_library";
   waitUntil?: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  candidates: number;
+}
+
+export interface FollowEpisodeCountsInput {
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  upcoming: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  searching: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  waiting: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  downloading: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  noSpace: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  missing: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  inLibrary: number;
 }
 
 export interface FollowSummaryInput {
@@ -1809,6 +1858,13 @@ export interface FollowSummaryInput {
    * @max 9007199254740991
    */
   wanted: number;
+  counts: FollowEpisodeCountsInput;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  unsure: number;
+  waitUntil?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -1846,9 +1902,186 @@ export interface FollowDetailsInput {
    * @max 9007199254740991
    */
   wanted: number;
+  counts: FollowEpisodeCountsInput;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  unsure: number;
+  waitUntil?: string;
   createdAt: string;
   updatedAt: string;
   episodes: FollowEpisodeInput[];
+  lastSearchAt: string | null;
+  nextSearchAt: string | null;
+  searchRequested: boolean;
+}
+
+export interface FollowCandidateInput {
+  id: string;
+  title: string;
+  infoHash?: string;
+  indexers: string[];
+  size?: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  seeders: number;
+  quality?: string;
+  studio?: string;
+  voiceType?: string;
+  verdict: "grab" | "pending" | "rejected";
+  rejections: {
+    code: string;
+    type: "permanent" | "temporary";
+    params?: Record<string, string | number>;
+  }[];
+  blocked: boolean;
+}
+
+export interface FollowCandidatesResponseInput {
+  firstSeenAt: string | null;
+  items: FollowCandidateInput[];
+}
+
+export interface FollowActivityItemInput {
+  id: string;
+  at: string;
+  kind:
+    | "found"
+    | "pending"
+    | "grabbed"
+    | "downloaded"
+    | "failed"
+    | "blocklisted"
+    | "missing"
+    | "search"
+    | "gap"
+    | "unsure";
+  followId: string | null;
+  titleId: string | null;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  season: number | null;
+  episodes: number[];
+  releaseTitle: string | null;
+  indexer: string | null;
+  torrentId: string | null;
+  params: Record<string, any>;
+}
+
+export interface FollowActivityResponseInput {
+  items: FollowActivityItemInput[];
+  hasMore: boolean;
+}
+
+export interface FollowQueueItemInput {
+  kind: "pending" | "downloading" | "no_space";
+  followId: string;
+  titleId: string;
+  followState: "active" | "paused" | "stopped" | "done";
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  season: number;
+  episodes: number[];
+  releaseTitle: string;
+  until?: string;
+  waitFor?: {
+    studio?: string;
+    voiceType?: string;
+    quality?: string;
+  };
+  size?: number;
+  torrentId?: string;
+  progress?: number | null;
+  resolving?: boolean;
+}
+
+export interface FollowQueueResponseInput {
+  items: FollowQueueItemInput[];
+}
+
+export interface BlocklistItemInput {
+  id: string;
+  titleId: string;
+  infoHash: string;
+  releaseTitle: string;
+  reason: "stalled" | "user" | "failed_check";
+  createdAt: string;
+  expiresAt: string | null;
+}
+
+export interface BlocklistResponseInput {
+  items: BlocklistItemInput[];
+}
+
+export interface BlockReleaseInput {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  followId: string;
+  /** @pattern ^[0-9a-f]{40}$ */
+  infoHash: string;
+}
+
+export interface FollowSettingsInput {
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  rssIntervalMin: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  searchesPerHour: number;
+  defaults: {
+    /**
+     * @min 0
+     * @max 168
+     */
+    waitHours: number;
+    /**
+     * @min 0
+     * @max 168
+     */
+    movieWaitHours: number;
+    qualityPreset: "best" | "uhd" | "compact";
+    requireRussian: "auto" | "always" | "never";
+  };
+}
+
+export interface UpdateFollowSettingsInput {
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  rssIntervalMin?: number;
+  /**
+   * @min 1
+   * @max 60
+   */
+  searchesPerHour?: number;
+  defaults?: {
+    /**
+     * @min 0
+     * @max 168
+     */
+    waitHours?: number;
+    /**
+     * @min 0
+     * @max 168
+     */
+    movieWaitHours?: number;
+    qualityPreset?: "best" | "uhd" | "compact";
+    requireRussian?: "auto" | "always" | "never";
+  };
 }
 
 export interface ScheduleItemInput {
@@ -4854,6 +5087,11 @@ export interface Indexer {
     | "remote"
     | null;
   checkedAt: string | null;
+  feed: {
+    supported: boolean | null;
+    checkedAt: string | null;
+    probeAt: string | null;
+  };
 }
 
 export interface IndexerList {
@@ -4890,6 +5128,7 @@ export interface UpdateIndexer {
    * @maxLength 500
    */
   apiKey?: string;
+  feed?: boolean;
 }
 
 export interface IndexerManager {
@@ -5974,6 +6213,49 @@ export interface FollowEpisode {
     | "downloading"
     | "in_library";
   waitUntil?: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  candidates: number;
+}
+
+export interface FollowEpisodeCounts {
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  upcoming: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  searching: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  waiting: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  downloading: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  noSpace: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  missing: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  inLibrary: number;
 }
 
 export interface FollowSummary {
@@ -6005,6 +6287,13 @@ export interface FollowSummary {
    * @max 9007199254740991
    */
   wanted: number;
+  counts: FollowEpisodeCounts;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  unsure: number;
+  waitUntil?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -6042,9 +6331,186 @@ export interface FollowDetails {
    * @max 9007199254740991
    */
   wanted: number;
+  counts: FollowEpisodeCounts;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  unsure: number;
+  waitUntil?: string;
   createdAt: string;
   updatedAt: string;
   episodes: FollowEpisode[];
+  lastSearchAt: string | null;
+  nextSearchAt: string | null;
+  searchRequested: boolean;
+}
+
+export interface FollowCandidate {
+  id: string;
+  title: string;
+  infoHash?: string;
+  indexers: string[];
+  size?: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  seeders: number;
+  quality?: string;
+  studio?: string;
+  voiceType?: string;
+  verdict: "grab" | "pending" | "rejected";
+  rejections: {
+    code: string;
+    type: "permanent" | "temporary";
+    params?: Record<string, string | number>;
+  }[];
+  blocked: boolean;
+}
+
+export interface FollowCandidatesResponse {
+  firstSeenAt: string | null;
+  items: FollowCandidate[];
+}
+
+export interface FollowActivityItem {
+  id: string;
+  at: string;
+  kind:
+    | "found"
+    | "pending"
+    | "grabbed"
+    | "downloaded"
+    | "failed"
+    | "blocklisted"
+    | "missing"
+    | "search"
+    | "gap"
+    | "unsure";
+  followId: string | null;
+  titleId: string | null;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  season: number | null;
+  episodes: number[];
+  releaseTitle: string | null;
+  indexer: string | null;
+  torrentId: string | null;
+  params: Record<string, any>;
+}
+
+export interface FollowActivityResponse {
+  items: FollowActivityItem[];
+  hasMore: boolean;
+}
+
+export interface FollowQueueItem {
+  kind: "pending" | "downloading" | "no_space";
+  followId: string;
+  titleId: string;
+  followState: "active" | "paused" | "stopped" | "done";
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  season: number;
+  episodes: number[];
+  releaseTitle: string;
+  until?: string;
+  waitFor?: {
+    studio?: string;
+    voiceType?: string;
+    quality?: string;
+  };
+  size?: number;
+  torrentId?: string;
+  progress?: number | null;
+  resolving?: boolean;
+}
+
+export interface FollowQueueResponse {
+  items: FollowQueueItem[];
+}
+
+export interface BlocklistItem {
+  id: string;
+  titleId: string;
+  infoHash: string;
+  releaseTitle: string;
+  reason: "stalled" | "user" | "failed_check";
+  createdAt: string;
+  expiresAt: string | null;
+}
+
+export interface BlocklistResponse {
+  items: BlocklistItem[];
+}
+
+export interface BlockRelease {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  followId: string;
+  /** @pattern ^[0-9a-f]{40}$ */
+  infoHash: string;
+}
+
+export interface FollowSettings {
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  rssIntervalMin: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  searchesPerHour: number;
+  defaults: {
+    /**
+     * @min 0
+     * @max 168
+     */
+    waitHours: number;
+    /**
+     * @min 0
+     * @max 168
+     */
+    movieWaitHours: number;
+    qualityPreset: "best" | "uhd" | "compact";
+    requireRussian: "auto" | "always" | "never";
+  };
+}
+
+export interface UpdateFollowSettings {
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  rssIntervalMin?: number;
+  /**
+   * @min 1
+   * @max 60
+   */
+  searchesPerHour?: number;
+  defaults?: {
+    /**
+     * @min 0
+     * @max 168
+     */
+    waitHours?: number;
+    /**
+     * @min 0
+     * @max 168
+     */
+    movieWaitHours?: number;
+    qualityPreset?: "best" | "uhd" | "compact";
+    requireRussian?: "auto" | "always" | "never";
+  };
 }
 
 export interface ScheduleItem {
@@ -8689,6 +9155,10 @@ export type PostTorrentRestartError = MessageResponse | RestartBlockedResponse;
 
 export type PostPlaybackCheckError = MessageResponse;
 
+export type GetFollowSettingsError = MessageResponse;
+
+export type PutFollowSettingsError = MessageResponse;
+
 export type GetSetupWizardError = MessageResponse;
 
 export type PutSetupWizardError = MessageResponse;
@@ -8723,6 +9193,24 @@ export type GetFollowError = MessageResponse;
 export type UpdateFollowError = MessageResponse;
 
 export type DeleteFollowError = MessageResponse;
+
+export type GetFollowCandidatesError = MessageResponse;
+
+export type PostFollowSearchError = MessageResponse;
+
+export type GetFollowActivityError = MessageResponse;
+
+export type PostFollowUnsureConfirmError = MessageResponse;
+
+export type PostFollowUnsureDismissError = MessageResponse;
+
+export type GetFollowQueueError = MessageResponse;
+
+export type GetFollowBlocklistError = MessageResponse;
+
+export type PostFollowBlocklistError = MessageResponse;
+
+export type DeleteFollowBlocklistError = MessageResponse;
 
 export type GetProfilesError = MessageResponse;
 
@@ -11855,6 +12343,41 @@ export class Api<
         format: "json",
         ...params,
       }),
+
+    /**
+     * No description
+     *
+     * @tags Settings
+     * @name GetFollowSettings
+     * @request GET:/api/settings/follow
+     */
+    getFollowSettings: (params: RequestParams = {}) =>
+      this.request<FollowSettings, GetFollowSettingsError>({
+        path: `/api/settings/follow`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Settings
+     * @name PutFollowSettings
+     * @request PUT:/api/settings/follow
+     */
+    putFollowSettings: (
+      data: UpdateFollowSettingsInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<FollowSettings, PutFollowSettingsError>({
+        path: `/api/settings/follow`,
+        method: "PUT",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
   };
   setup = {
     /**
@@ -12126,6 +12649,195 @@ export class Api<
     deleteFollow: (id: string, params: RequestParams = {}) =>
       this.request<MessageResponse, DeleteFollowError>({
         path: `/api/follows/${id}`,
+        method: "DELETE",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Follow
+     * @name GetFollowCandidates
+     * @request GET:/api/follows/{id}/candidates
+     */
+    getFollowCandidates: (
+      id: string,
+      query: {
+        /**
+         * @min 0
+         * @max 999
+         */
+        season: number;
+        /**
+         * @min 0
+         * @max 9999
+         */
+        episode: number;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<FollowCandidatesResponse, GetFollowCandidatesError>({
+        path: `/api/follows/${id}/candidates`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Follow
+     * @name PostFollowSearch
+     * @request POST:/api/follows/{id}/search
+     */
+    postFollowSearch: (id: string, params: RequestParams = {}) =>
+      this.request<MessageResponse, PostFollowSearchError>({
+        path: `/api/follows/${id}/search`,
+        method: "POST",
+        format: "json",
+        ...params,
+      }),
+  };
+  follow = {
+    /**
+     * No description
+     *
+     * @tags Follow
+     * @name GetFollowActivity
+     * @request GET:/api/follow/activity
+     */
+    getFollowActivity: (
+      query?: {
+        /**
+         * @minLength 1
+         * @maxLength 100
+         */
+        follow?: string;
+        kind?:
+          | "found"
+          | "pending"
+          | "grabbed"
+          | "downloaded"
+          | "failed"
+          | "blocklisted"
+          | "missing"
+          | "search"
+          | "gap"
+          | "unsure";
+        /**
+         * @minLength 1
+         * @maxLength 100
+         */
+        before?: string;
+        /**
+         * @min 1
+         * @max 100
+         * @default 50
+         */
+        limit?: number;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<FollowActivityResponse, GetFollowActivityError>({
+        path: `/api/follow/activity`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Follow
+     * @name PostFollowUnsureConfirm
+     * @request POST:/api/follow/unsure/{id}/confirm
+     */
+    postFollowUnsureConfirm: (id: string, params: RequestParams = {}) =>
+      this.request<MessageResponse, PostFollowUnsureConfirmError>({
+        path: `/api/follow/unsure/${id}/confirm`,
+        method: "POST",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Follow
+     * @name PostFollowUnsureDismiss
+     * @request POST:/api/follow/unsure/{id}/dismiss
+     */
+    postFollowUnsureDismiss: (id: string, params: RequestParams = {}) =>
+      this.request<MessageResponse, PostFollowUnsureDismissError>({
+        path: `/api/follow/unsure/${id}/dismiss`,
+        method: "POST",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Follow
+     * @name GetFollowQueue
+     * @request GET:/api/follow/queue
+     */
+    getFollowQueue: (params: RequestParams = {}) =>
+      this.request<FollowQueueResponse, GetFollowQueueError>({
+        path: `/api/follow/queue`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Follow
+     * @name GetFollowBlocklist
+     * @request GET:/api/follow/blocklist
+     */
+    getFollowBlocklist: (params: RequestParams = {}) =>
+      this.request<BlocklistResponse, GetFollowBlocklistError>({
+        path: `/api/follow/blocklist`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Follow
+     * @name PostFollowBlocklist
+     * @request POST:/api/follow/blocklist
+     */
+    postFollowBlocklist: (
+      data: BlockReleaseInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<MessageResponse, PostFollowBlocklistError>({
+        path: `/api/follow/blocklist`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Follow
+     * @name DeleteFollowBlocklist
+     * @request DELETE:/api/follow/blocklist/{id}
+     */
+    deleteFollowBlocklist: (id: string, params: RequestParams = {}) =>
+      this.request<MessageResponse, DeleteFollowBlocklistError>({
+        path: `/api/follow/blocklist/${id}`,
         method: "DELETE",
         format: "json",
         ...params,
