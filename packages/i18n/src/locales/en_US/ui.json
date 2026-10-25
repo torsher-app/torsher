@@ -3418,6 +3418,7 @@
   "mine": {
     "sections": {
       "continue": "Continue",
+      "schedule": "Schedule",
       "watchlist": "Watch later",
       "favorites": "Favorites",
       "watched": "Watched",
@@ -3477,6 +3478,23 @@
     "emptyFiltered": {
       "title": "Nothing matches the filters",
       "text": "Change the type or rating, or reset the filters"
+    },
+    "schedule": {
+      "upcoming": "Upcoming",
+      "recent": "Recent",
+      "today": "Today",
+      "tomorrow": "Tomorrow",
+      "yesterday": "Yesterday",
+      "empty": {
+        "upcoming": {
+          "title": "No upcoming episodes",
+          "text": "Episodes of series you follow or watch will show up here"
+        },
+        "recent": {
+          "title": "No episodes in the last two weeks",
+          "text": "Recently aired episodes of series you follow or watch will show up here"
+        }
+      }
     }
   },
   "actions": {
@@ -3601,6 +3619,88 @@
     "unmatchedHint": "No episode numbers — watch from “Files”",
     "episodes": "{n} episode | {n} episodes",
     "otherSeason": "Another release of season {n}"
+  },
+  "follow": {
+    "follow": "Follow",
+    "following": "Following",
+    "movieLine": "We'll download it once it's out digitally",
+    "policy": {
+      "new": "New episodes",
+      "season": "From season {n}",
+      "beginning": "From the start",
+      "from": "From {code}",
+      "anyVoice": "Any audio",
+      "only": "Only {studio}"
+    },
+    "status": {
+      "paused": "Following is paused",
+      "noSpace": "Not enough space for {n} episode | Not enough space for {n} episodes",
+      "waiting": "Waiting for {target} until {until}",
+      "waitingBetter": "Waiting for a better release until {until}",
+      "downloading": "Downloading {n} episode | Downloading {n} episodes",
+      "missing": "No release found: {n} episode | No release found: {n} episodes",
+      "searching": "Looking for a release: {n} episode | Looking for a release: {n} episodes",
+      "next": "Next episode {code} {date} — we'll download it",
+      "movieNoSpace": "Not enough space on the server",
+      "movieDownloading": "Downloading",
+      "movieSearching": "Looking for a release",
+      "bestQuality": "{quality} is the best released so far",
+      "pinned": "{studio} audio is pinned to this season"
+    },
+    "until": {
+      "today": "{time}",
+      "tomorrow": "tomorrow, {time}",
+      "date": "{date}, {time}"
+    },
+    "voiceQuality": "{voice} in {quality}",
+    "panel": {
+      "start": "Start from",
+      "voice": "Audio",
+      "wait": "Wait for better",
+      "quality": "Quality",
+      "stop": "Stop following",
+      "stopHint": "Downloaded episodes stay in the library",
+      "readOnly": "Rules are changed by a profile without an age limit",
+      "starts": {
+        "new": "New episodes only",
+        "season": "From the current season",
+        "beginning": "From the beginning",
+        "custom": "From episode {code}"
+      },
+      "voiceAny": "Any",
+      "voiceOnly": "Only {studio}",
+      "voicePreferHint": "We wait for it, then take the best one released",
+      "voiceOnlyHint": "No other audio",
+      "voiceAnyHint": "The best by translation type",
+      "voiceUnknownHint": "The first downloaded episode or your pick in Sources pins the audio",
+      "waitNone": "Don't wait",
+      "waitHours": "{n} h",
+      "waitDay": "1 day",
+      "waitDays": "{n} day | {n} days",
+      "waitHint": "How long we wait for your audio and the best quality after an episode first appears",
+      "qualities": {
+        "best": "Best",
+        "uhd": "4K",
+        "compact": "Data saver"
+      }
+    },
+    "errors": {
+      "follow": "Couldn't start following. Try again",
+      "save": "Couldn't save. Try again",
+      "stop": "Couldn't stop following. Try again"
+    },
+    "stopped": "Stopped following. Downloads stay in the library",
+    "episode": {
+      "in_library": "in library",
+      "downloading": "downloading",
+      "waiting": "waiting for {target}",
+      "waitingBetter": "waiting for better",
+      "no_space": "no space",
+      "missing": "not found",
+      "searching": "searching"
+    },
+    "badge": "Following",
+    "badgeNew": "Following · {n} new episodes"
   },
   "release": {
     "unsure": "Looks like “{title}”",

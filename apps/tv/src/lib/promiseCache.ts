@@ -30,5 +30,13 @@ export function createPromiseCache<T>(limit: number) {
     return promise
   }
 
-  return { get }
+  /** Убрать записи, ключ которых подходит: ответ устарел на сервере */
+  function forget(match: (key: string) => boolean) {
+    for (const key of [...entries.keys()]) {
+      if (match(key))
+        entries.delete(key)
+    }
+  }
+
+  return { get, forget }
 }

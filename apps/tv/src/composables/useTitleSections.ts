@@ -18,6 +18,11 @@ export function loadSeason(id: string, number: number, language: string) {
     api.catalog.getCatalogSeason(id, String(number), { language }))
 }
 
+/** Сезоны тайтла заново с сервера: «Следить» поменяло состояния серий */
+export function forgetSeasons(id: string) {
+  seasonCache.forget(key => key.startsWith(`${id}:`))
+}
+
 export function useTitleSeason(
   id: Ref<string>,
   number: Ref<number | undefined>,

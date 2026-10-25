@@ -75,6 +75,10 @@ export const card = z
     availability: z.enum(titleDownloadStates).optional(),
     // Доля скачанного, 0–1, только у `downloading`
     downloadProgress: z.number().optional(),
+    // Профиль следит за тайтлом («Следить» идёт или на паузе)
+    followed: z.boolean().optional(),
+    // Серии, которые «Следить» положило в библиотеку, а профиль не досмотрел
+    followNew: z.number().int().optional(),
   })
   .meta({ id: 'card' })
 
@@ -135,6 +139,17 @@ export const followEpisodeStates = [
   'downloading',
   'in_library',
 ] as const
+
+// Чего ждёт отложенная серия «Следить»: свою студию или тип озвучки и
+// ступень качества — до конца окна ожидания (ISO)
+export const followWait = z
+  .object({
+    until: z.string(),
+    studio: z.string().optional(),
+    voiceType: z.string().optional(),
+    quality: z.string().optional(),
+  })
+  .meta({ id: 'followWait' })
 
 // Серия, с которой слежение охватывает сериал; у фильма 0/0
 export const followCursor = z
@@ -211,6 +226,8 @@ export const episode = z
     // Серии нет в TMDB, её знают раздачи («на трекере»): без названия,
     // описания, даты и кадра
     tracker: z.boolean().optional(),
+    // Только у `waiting`
+    followWait: followWait.optional(),
   })
   .meta({ id: 'episode' })
 
@@ -455,6 +472,7 @@ export type TitleSeason = z.output<typeof titleSeason>
 export type TitleRelease = z.output<typeof titleRelease>
 export type TitleStatus = (typeof titleStatuses)[number]
 export type Episode = z.output<typeof episode>
+export type FollowWait = z.output<typeof followWait>
 export type SeasonDetails = z.output<typeof seasonDetails>
 export type Person = z.output<typeof person>
 export type TitleExtras = z.output<typeof titleExtras>

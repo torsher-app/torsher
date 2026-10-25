@@ -1,6 +1,7 @@
 import type { Card } from '../../dto/catalog.ts'
 import { and, eq, inArray, isNotNull } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
+import { followBadges } from '../follow/badges.ts'
 import { titleDownloads } from '../library/status.ts'
 import { lastLiveTorrents } from '../torrents/index.ts'
 import {
@@ -35,7 +36,8 @@ export function ratingsOf(profileId: string, titleIds: string[]) {
 /**
  * Значки на постере: своя оценка профиля — всегда, оценки сервисов — по
  * настройке профиля из `card.ratings` (их собирают поставщики оценок до вызова)
- * в порядке поставщиков, загрузка тайтла — по последнему снимку движка.
+ * в порядке поставщиков, загрузка тайтла — по последнему снимку движка,
+ * «слежу» и новые серии — по подпискам профиля.
  */
 export function withPosterRatings<T extends Card>(
   cards: T[],
@@ -55,6 +57,10 @@ export function withPosterRatings<T extends Card>(
     cards.map(card => card.id),
     lastLiveTorrents(),
   )
+  const followed = followBadges(
+    profileId,
+    cards.map(card => card.id),
+  )
 
   return cards.map((card) => {
     const shown = (card.ratings ?? []).flatMap((rating) => {
@@ -68,6 +74,7 @@ export function withPosterRatings<T extends Card>(
     })
 
     const download = downloads.get(card.id)
+    const followNew = followed.get(card.id)
 
     return {
       ...card,
@@ -76,6 +83,8 @@ export function withPosterRatings<T extends Card>(
       availability: download?.state ?? undefined,
       downloadProgress:
         download?.state === 'downloading' ? download.progress : undefined,
+      followed: followNew !== undefined || undefined,
+      followNew: followNew || undefined,
     }
   })
 }

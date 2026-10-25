@@ -22,6 +22,8 @@ const state = reactive({
   known: new Map<string, TitleMine>(),
   // Загрузка тайтла после «Скачать» и «Оставить»: значок постера — сразу
   downloads: new Map<string, TitleDownload>(),
+  // «Следить» после кнопки в карточке: значок постера — сразу
+  follows: new Map<string, boolean>(),
   // Растёт с каждой правкой: экраны со списками перечитывают их при возврате
   version: 0,
 })
@@ -88,4 +90,24 @@ export function downloadOf(card: Card) {
   return known?.state
     ? { state: known.state, progress: known.progress }
     : undefined
+}
+
+/** «Следить» на карточке: запомнить и сообщить экранам со списками */
+export function noteTitleFollow(id: string, followed: boolean) {
+  if (state.follows.get(id) === followed)
+    return
+
+  state.follows.set(id, followed)
+  state.version++
+}
+
+/**
+ * Значок «слежу» на постере: включённое или выключенное на витрине важнее
+ * карточки, пришедшей раньше. Новые серии — только из карточки.
+ */
+export function followOf(card: Card) {
+  const known = state.follows.get(card.id)
+  const followed = known ?? !!card.followed
+
+  return followed ? { newCount: card.followNew ?? 0 } : undefined
 }

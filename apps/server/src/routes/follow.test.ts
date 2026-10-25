@@ -1,3 +1,4 @@
+import type { Card } from '../dto/catalog.ts'
 import { randomUUID } from 'node:crypto'
 import { eq } from 'drizzle-orm'
 import {
@@ -14,8 +15,10 @@ import { ACCESS_TOKEN_COOKIE, DEVICE_TOKEN_COOKIE } from '../config.ts'
 import { getDb, migrateDb } from '../db/index.ts'
 import {
   devices,
+  followEpisodes,
   followProfiles,
   follows,
+  followSeasons,
   libraries,
   libraryFolders,
   mediaFiles,
@@ -31,7 +34,9 @@ import {
   isNearAir,
   refreshFollowSchedules,
 } from '../services/follow/tmdbRefresh.ts'
+import { withPosterRatings } from '../services/mine/index.ts'
 import { createProfile, deleteProfile } from '../services/profiles/index.ts'
+import { pinVoice } from '../services/sources/voices.ts'
 import { tvOngoing } from '../services/tmdb/fixtures/index.ts'
 import { signToken } from '../utils/token.ts'
 
@@ -198,6 +203,48 @@ function keptTorrent(files: string[], selectedFiles: number[]) {
     .run()
 }
 
+// Серия пришла: отложенный кандидат ждёт свою студию до `until`
+function pendingEpisode(episode: number, until: Date) {
+  getDb()
+    .insert(followEpisodes)
+    .values({
+      followId: followRow()!.id,
+      season: 2,
+      episode,
+      firstSeenAt: new Date(),
+      waitUntil: until,
+      pending: { id: 'r1', title: 'Quiet.Harbor.S02E03.720p', seeders: 5 },
+      decisions: [
+        {
+          id: 'r1',
+          title: 'Quiet.Harbor.S02E03.720p',
+          indexers: ['Indexer'],
+          seeders: 5,
+          verdict: 'pending',
+          rejections: [
+            {
+              code: 'wait',
+              type: 'temporary',
+              params: {
+                until: until.toISOString(),
+                studio: 'Studio One',
+                quality: '1080p',
+              },
+            },
+          ],
+        },
+      ],
+    })
+    .run()
+}
+
+function getFollow(cookies: Record<string, string>) {
+  return app.inject({
+    url: `/api/titles/${SERIES}/follow?language=ru-RU`,
+    cookies,
+  })
+}
+
 beforeAll(async () => {
   await migrateDb()
   getDb()
@@ -230,6 +277,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   getDb().delete(follows).run()
+  pinVoice(SERIES, 2, null)
   getDb().delete(titleProgress).run()
   getDb().delete(mediaFiles).run()
   getDb().delete(torrents).run()
@@ -477,6 +525,108 @@ describe('состояния серий', () => {
     ])
   })
 
+  it('карточка: статус — сезон, счётчики, озвучка и качество', async () => {
+    const res = await getFollow(owner)
+
+    expect(res.json().follow).toMatchObject({
+      season: 2,
+      voice: null,
+      quality: { value: '1080p', lowered: false },
+      waiting: null,
+      counts: { downloading: 1, noSpace: 0, missing: 0, searching: 2 },
+    })
+  })
+
+  it('карточка: чего ждёт отложенная серия, закреплённая студия', async () => {
+    const until = new Date(Date.now() + 6 * 60 * 60 * 1000)
+
+    pendingEpisode(3, until)
+    pinVoice(SERIES, 2, { studio: 'Studio One' })
+
+    const res = await getFollow(owner)
+
+    expect(res.json().follow).toMatchObject({
+      voice: { studio: 'Studio One', pinned: true },
+      waiting: {
+        season: 2,
+        episode: 3,
+        until: until.toISOString(),
+        studio: 'Studio One',
+        quality: '1080p',
+      },
+      counts: { searching: 1 },
+    })
+
+    const season = await app.inject({
+      url: `/api/catalog/titles/${SERIES}/seasons/2?language=ru-RU`,
+      cookies: owner,
+    })
+    const third = season.json().episodes[2]
+
+    expect(third).toMatchObject({
+      follow: 'waiting',
+      followWait: { until: until.toISOString(), studio: 'Studio One' },
+    })
+    expect(season.json().episodes[3].followWait).toBeUndefined()
+  })
+
+  it('карточка: верхняя ступень не выходила три серии — cutoff ниже', async () => {
+    const id = followRow()!.id
+
+    for (const episode of [1, 2, 3]) {
+      getDb()
+        .insert(followEpisodes)
+        .values({ followId: id, season: 2, episode, firstSeenAt: new Date() })
+        .run()
+    }
+
+    getDb()
+      .insert(followSeasons)
+      .values({ followId: id, season: 2, bestQualitySeen: '720p' })
+      .run()
+
+    const res = await getFollow(owner)
+
+    expect(res.json().follow.quality).toEqual({ value: '720p', lowered: true })
+  })
+
+  it('постер: «слежу» и новые скачанные серии, которые профиль не досмотрел', async () => {
+    const id = followRow()!.id
+    const now = new Date()
+
+    for (const episode of [1, 2, 3]) {
+      getDb()
+        .insert(followEpisodes)
+        .values({
+          followId: id,
+          season: 2,
+          episode,
+          firstSeenAt: now,
+          downloadedAt: episode < 3 ? now : null,
+        })
+        .run()
+    }
+
+    watched(ownerProfile, 2, 1)
+
+    const card: Card = {
+      id: SERIES,
+      kind: 'series',
+      title: 'Тихая гавань',
+      originalTitle: 'Quiet Harbor',
+    }
+
+    expect(withPosterRatings([card], ownerProfile)[0]).toMatchObject({
+      followed: true,
+      followNew: 1,
+    })
+
+    const other = withPosterRatings([card], tv(null).profileId)[0]
+
+    expect(other?.followed).toBeUndefined()
+    expect(other?.followNew).toBeUndefined()
+  })
+
   it('курсор дальше — серии до него без состояния', async () => {
     await follow(owner, { start: { season: 2, episode: 4 } })
 
@@ -577,6 +727,27 @@ describe('gET /schedule', () => {
       3,
     ])
     expect(recent[0]).toMatchObject({ state: 'searching', airDate: day(-3) })
+    expect(recent[0].studio).toBeUndefined()
+    expect(recent[0].mediaFileId).toBeUndefined()
+  })
+
+  it('своя студия сезона и файл серии из библиотеки', async () => {
+    await follow(owner)
+    pinVoice(SERIES, 2, { studio: 'Studio One' })
+    libraryEpisode(2, 4)
+
+    const res = await app.inject({
+      url: '/api/schedule?language=ru-RU',
+      cookies: owner,
+    })
+    const [fourth] = res.json().recent
+
+    expect(fourth).toMatchObject({
+      episode: 4,
+      state: 'in_library',
+      studio: 'Studio One',
+      mediaFileId: expect.any(String),
+    })
   })
 
   it('без слежения и просмотров — пусто', async () => {

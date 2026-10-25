@@ -1,4 +1,4 @@
-import type { SeasonDetails } from '../../dto/catalog.ts'
+import type { FollowWait, SeasonDetails } from '../../dto/catalog.ts'
 import type { Follow } from '../../db/schema.ts'
 import type {
   EpisodeFacts,
@@ -8,7 +8,7 @@ import type {
   ScheduledEpisode,
   SeriesSchedule,
 } from './wanted.ts'
-import { and, eq, isNotNull } from 'drizzle-orm'
+import { and, eq, isNotNull, isNull } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import { followEpisodes, mediaFiles, torrents } from '../../db/schema.ts'
 import { planVideos } from '../library/linker.ts'
@@ -21,11 +21,15 @@ import {
   scheduledEpisodes,
 } from './wanted.ts'
 
-/** Серии тайтла в библиотеке; файл на несколько серий даёт каждую */
-export function libraryEpisodes(titleId: string) {
-  const keys = new Set<string>()
+/**
+ * Файлы серий тайтла в библиотеке по ключу серии; файл на несколько серий
+ * даёт каждую
+ */
+export function libraryEpisodeFiles(titleId: string) {
+  const files = new Map<string, string>()
   const rows = getDb()
     .select({
+      id: mediaFiles.id,
       season: mediaFiles.season,
       episode: mediaFiles.episode,
       episodeTo: mediaFiles.episodeTo,
@@ -49,10 +53,15 @@ export function libraryEpisodes(titleId: string) {
       episode <= (row.episodeTo ?? row.episode);
       episode++
     )
-      keys.add(episodeKey({ season: row.season, episode }))
+      files.set(episodeKey({ season: row.season, episode }), row.id)
   }
 
-  return keys
+  return files
+}
+
+/** Серии тайтла в библиотеке */
+export function libraryEpisodes(titleId: string) {
+  return new Set(libraryEpisodeFiles(titleId).keys())
 }
 
 /**
@@ -120,6 +129,49 @@ export function episodeFacts(followId: string): EpisodeFacts {
   }
 
   return facts
+}
+
+function textParam(value: string | number | undefined) {
+  return typeof value === 'string' ? value : undefined
+}
+
+/**
+ * Чего ждут отложенные серии слежения: параметры отказа `wait` у отложенного
+ * кандидата в снимке решений
+ */
+export function waitTargets(followId: string) {
+  const targets = new Map<string, FollowWait>()
+  const rows = getDb()
+    .select()
+    .from(followEpisodes)
+    .where(
+      and(
+        eq(followEpisodes.followId, followId),
+        isNotNull(followEpisodes.waitUntil),
+        isNull(followEpisodes.torrentId),
+      ),
+    )
+    .all()
+
+  for (const row of rows) {
+    if (!row.pending || !row.waitUntil)
+      continue
+
+    const params = row.decisions
+      ?.find(item => item.verdict === 'pending')
+      ?.rejections
+      .find(item => item.code === 'wait')
+      ?.params
+
+    targets.set(episodeKey(row), {
+      until: row.waitUntil.toISOString(),
+      studio: textParam(params?.studio),
+      voiceType: textParam(params?.voiceType),
+      quality: textParam(params?.quality),
+    })
+  }
+
+  return targets
 }
 
 type StateFollow = Pick<

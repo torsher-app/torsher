@@ -12,6 +12,8 @@ export interface PanelOption {
   selected: boolean
   // Значение справа: своя оценка, «›» у шага дальше
   detail?: string
+  // Виден и фокусируется, но не выбирается: правило, которое профилю не менять
+  disabled?: boolean
 }
 
 /**
@@ -27,6 +29,8 @@ const props = withDefaults(
     options?: PanelOption[]
     // Выбор одного значения открывается на выбранном; меню действий — сверху
     focusSelected?: boolean
+    // Открыться на этом пункте: возврат из шага — на пункт, который его открыл
+    focusOption?: string
   }>(),
   { focusSelected: true },
 )
@@ -42,18 +46,25 @@ const panel = ref<HTMLElement>()
 
 // Панель открывается на выбранном пункте: шаг вниз от него — соседнее значение
 onMounted(() => {
-  if (!props.focusSelected)
+  if (!props.focusSelected && props.focusOption === undefined)
     return
 
   nextTick(() => {
-    const selected = panel.value?.querySelector<HTMLElement>(
-      '.options__row[aria-pressed="true"]',
+    const target = panel.value?.querySelector<HTMLElement>(
+      props.focusOption === undefined
+        ? '.options__row[aria-pressed="true"]'
+        : `.options__row[data-option="${props.focusOption}"]`,
     )
 
-    if (selected)
-      focus.focusOn(selected)
+    if (target)
+      focus.focusOn(target)
   })
 })
+
+function choose(option: PanelOption) {
+  if (!option.disabled)
+    emit('select', option.id)
+}
 
 const stopKey = focus.onKey((action) => {
   if (action.type !== 'back')
@@ -102,9 +113,12 @@ onBeforeUnmount(stopKey)
             :key="option.id"
             v-focusable
             class="options__row"
+            :class="{ 'options__row--disabled': option.disabled }"
             type="button"
+            :data-option="option.id"
             :aria-pressed="option.selected"
-            @click="emit('select', option.id)"
+            :aria-disabled="option.disabled || undefined"
+            @click="choose(option)"
           >
             <span class="options__check">
               <AppIcon v-if="option.selected" name="check" />
@@ -208,6 +222,11 @@ onBeforeUnmount(stopKey)
   background: var(--color-focus);
   color: var(--color-bg);
   transform: scale(var(--bump-scale));
+}
+
+/* Правило видно, но профилю его не менять: текст тише, фокус тот же */
+.options__row--disabled:not(:focus) {
+  color: var(--color-text-muted);
 }
 
 .options__check {

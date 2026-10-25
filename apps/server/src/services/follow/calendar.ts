@@ -5,8 +5,9 @@ import { mapLimit } from '../../utils/mapLimit.ts'
 import { DETAILS_CONCURRENCY, summaryOf } from '../mine/cards.ts'
 import { profileStates } from '../mine/index.ts'
 import { getSeason } from '../tmdb/index.ts'
-import { stateInputs } from './episodes.ts'
+import { libraryEpisodeFiles, stateInputs } from './episodes.ts'
 import { followsOfProfile, isFollowing } from './index.ts'
+import { seasonVoice } from './pass.ts'
 import { episodeKey, episodeStates, localDay } from './wanted.ts'
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -122,6 +123,8 @@ async function titleItems(
       )
     : undefined
 
+  const files = libraryEpisodeFiles(titleId)
+
   return episodes.map(item => ({
     titleId,
     title: summary.details.title,
@@ -134,5 +137,9 @@ async function titleItems(
     state:
       states?.get(episodeKey({ season: item.season, episode: item.number }))
       ?? null,
+    studio: follow ? seasonVoice(follow, item.season)?.studio : undefined,
+    mediaFileId: files.get(
+      episodeKey({ season: item.season, episode: item.number }),
+    ),
   }))
 }
