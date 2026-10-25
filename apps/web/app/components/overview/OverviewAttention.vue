@@ -43,7 +43,7 @@ const sectionLabels: Record<AttentionItem['section'], string> = {
         >
           <component
             :is="item.severity === 'error' ? CircleXIcon : CircleAlertIcon"
-            class="mt-0.5 size-4 sm:mt-0"
+            class="mt-px size-4 sm:mt-0"
             :class="
               item.severity === 'error' ? 'text-destructive' : 'text-warning'
             "

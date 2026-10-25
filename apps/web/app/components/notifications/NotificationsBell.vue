@@ -112,7 +112,7 @@ function onReadAll() {
             :key="index"
             class="grid grid-cols-[16px_minmax(0,1fr)] gap-x-3 px-4 py-3"
           >
-            <Skeleton class="mt-0.5 size-4 rounded-full" />
+            <Skeleton class="mt-px size-4 rounded-full" />
             <span class="grid gap-1.5">
               <Skeleton class="h-4 w-4/5" />
               <Skeleton class="h-3 w-16" />

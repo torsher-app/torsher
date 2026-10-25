@@ -216,7 +216,7 @@ const playback = computed(() => {
         </template>
         <template v-else-if="overview.sources.ok === overview.sources.total">
           <CircleCheckIcon
-            class="size-4 shrink-0 text-success"
+            class="size-4 shrink-0 -translate-y-px text-success"
             aria-hidden="true"
           />
           {{ t("panel.overview.tiles.sources.allWorking") }}
@@ -247,7 +247,10 @@ const playback = computed(() => {
           v-else-if="overview.devices.watching > 0"
           class="flex items-center gap-2 text-info"
         >
-          <PlayIcon class="size-4 shrink-0" aria-hidden="true" />
+          <PlayIcon
+            class="size-4 shrink-0 -translate-y-px"
+            aria-hidden="true"
+          />
           {{
             t(
               "panel.overview.tiles.devices.watching",
@@ -273,12 +276,12 @@ const playback = computed(() => {
       <p class="flex items-center gap-2 text-[13px] text-muted-foreground">
         <CircleCheckIcon
           v-if="playback.status === 'gpu'"
-          class="size-4 shrink-0 text-success"
+          class="size-4 shrink-0 -translate-y-px text-success"
           aria-hidden="true"
         />
         <TriangleAlertIcon
           v-else-if="playback.status === 'failed'"
-          class="size-4 shrink-0 text-warning"
+          class="size-4 shrink-0 -translate-y-px text-warning"
           aria-hidden="true"
         />
         {{ playback.hint }}
@@ -308,12 +311,12 @@ const playback = computed(() => {
       <template #footer>
         <CircleXIcon
           v-if="overview.backups.failing"
-          class="size-4 shrink-0 text-destructive"
+          class="size-4 shrink-0 -translate-y-px text-destructive"
           aria-hidden="true"
         />
         <CircleCheckIcon
           v-else-if="overview.backups.enabled"
-          class="size-4 shrink-0 text-success"
+          class="size-4 shrink-0 -translate-y-px text-success"
           aria-hidden="true"
         />
         {{ backups.footer }}

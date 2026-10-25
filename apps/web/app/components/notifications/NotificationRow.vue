@@ -80,7 +80,7 @@ const time = computed(() =>
   >
     <component
       :is="icon.component"
-      class="mt-0.5 size-4"
+      class="mt-px size-4"
       :class="icon.class"
       aria-hidden="true"
     />
@@ -103,7 +103,7 @@ const time = computed(() =>
     </span>
     <!-- Место под точку есть всегда: прочитанная строка не сдвигается -->
     <span
-      class="mt-1.5 size-2 rounded-full"
+      class="mt-1.25 size-2 rounded-full"
       :class="item.readAt ? 'bg-transparent' : 'bg-primary'"
     >
       <span v-if="!item.readAt" class="sr-only">{{

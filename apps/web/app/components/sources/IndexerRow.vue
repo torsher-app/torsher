@@ -73,7 +73,7 @@ const checkedAt = computed(() =>
     <IndexerStatusIcon
       :view="view"
       :label="label"
-      class="row-span-2 mt-0.5 self-start sm:row-span-1 sm:mt-0 sm:self-center"
+      class="row-span-2 mt-1.5 self-start sm:row-span-1 sm:mt-0 sm:self-center"
     />
     <button
       type="button"
