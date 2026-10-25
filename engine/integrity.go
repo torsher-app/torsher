@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sync"
+	"time"
 
 	"github.com/anacrolix/torrent"
 	"github.com/anacrolix/torrent/storage"
@@ -80,7 +81,9 @@ func (a *api) verifyHoles(t *torrent.Torrent) int {
 }
 
 // Перепроверка кусков по хэшу; проверка кусков независима — параллельно по
-// числу ядер
+// числу ядер. `VerifyData` библиотеки возвращается, как только хэш посчитан, а
+// отметку кусок пишет уже после (`Marking`): без ожидания прошедший проверку
+// кусок ещё выглядел бы недокачанным
 func (a *api) verifyPieces(t *torrent.Torrent, pieces []*torrent.Piece) {
 	queue := make(chan *torrent.Piece)
 	var wg sync.WaitGroup
@@ -92,7 +95,9 @@ func (a *api) verifyPieces(t *torrent.Torrent, pieces []*torrent.Piece) {
 			for piece := range queue {
 				if err := piece.VerifyData(); err != nil {
 					a.logger.Warn("verify piece", "hash", t.InfoHash().HexString(), "err", err)
+					continue
 				}
+				waitPieceSettled(piece)
 			}
 		}()
 	}
@@ -102,4 +107,15 @@ func (a *api) verifyPieces(t *torrent.Torrent, pieces []*torrent.Piece) {
 	}
 	close(queue)
 	wg.Wait()
+}
+
+func waitPieceSettled(piece *torrent.Piece) {
+	deadline := time.Now().Add(settleTimeout)
+
+	for time.Now().Before(deadline) {
+		if state := piece.State(); !state.Hashing && !state.QueuedForHash && !state.Marking {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
