@@ -702,6 +702,45 @@ func TestSparseFileIsNotTrustedAsComplete(t *testing.T) {
 	}
 }
 
+// Перепроверка возвращается, когда отметка уже записана: на этом держится
+// перенос, который перепроверяет потерянные куски и сразу объявляет `done`
+func TestVerifiedPiecesAreCompleteOnReturn(t *testing.T) {
+	fx := newFixture(t)
+	dataDir := t.TempDir()
+	downloads := filepath.Join(dataDir, "downloads")
+
+	if err := os.MkdirAll(downloads, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(downloads, "Sample.Movie.mkv"), fx.content, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	engine, server := newTestEngine(t, dataDir)
+	post(t, server.URL+"/torrents?files=0", fx.raw).Body.Close()
+	added, _ := engine.client.Torrent(fx.meta.HashInfoBytes())
+
+	for round := range 5 {
+		var pieces []*torrent.Piece
+		for index := range added.NumPieces() {
+			piece := added.Piece(index)
+			if err := piece.Storage().MarkNotComplete(); err != nil {
+				t.Fatal(err)
+			}
+			piece.UpdateCompletion()
+			pieces = append(pieces, piece)
+		}
+
+		engine.verifyPieces(added, pieces)
+
+		for _, piece := range pieces {
+			if !piece.State().Complete {
+				t.Fatalf("round %d: piece %v is not complete after verify", round, piece)
+			}
+		}
+	}
+}
+
 // Раздача из двух файлов: размер первого не кратен куску, поэтому кусок на
 // стыке принадлежит обоим
 func newTwoFileFixture(t *testing.T) (fixture, []byte, []byte) {
