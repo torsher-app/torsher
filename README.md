@@ -1,258 +1,221 @@
-# Torsher
+<p align="center">
+  <img src="./apps/site/public/logo.svg" alt="Torsher" width="120">
+</p>
 
-Self-hosted media center in a single Docker container: browse a catalog, start watching a torrent right away, keep what you watched in your own library, and let new episodes arrive on their own.
+<h1 align="center">Torsher</h1>
+<p align="center">
+Your home cinema in one container.
+</p>
 
-Torsher combines a BitTorrent client, a media library and series automation with a TV-first interface. It ships no indexers or content: you connect the sources you are allowed to use.
+<p align="center">
+  <strong>Watch a torrent right away, keep what you watched in your own library, and let new episodes arrive on their own.</strong>
+  <br>
+  Self-hosted and open source, built for the TV first.
+</p>
 
-## Status
+<p align="center">
+  <img alt="GitHub release" src="https://img.shields.io/github/v/release/torsher-app/torsher">
+  <img alt="GitHub stars" src="https://img.shields.io/github/stars/torsher-app/torsher?style=flat">
+  <img alt="GitHub license" src="https://img.shields.io/github/license/torsher-app/torsher">
+</p>
 
-Early development. Nothing here is ready for use yet.
+<p align="center">
+  <a href="https://torsher.app/docs/install/docker-compose">Install</a> &nbsp;|&nbsp;
+  <a href="https://torsher.app/docs/">Documentation</a> &nbsp;|&nbsp;
+  <a href="https://github.com/torsher-app/torsher/releases">Releases</a> &nbsp;|&nbsp;
+  <a href="https://torsher.app">Website</a>
+</p>
 
-## Install
+<br>
 
-Torsher runs as a single Docker container on x86-64 and arm64 Linux: a mini PC, a NAS or a desktop. Docker Desktop on macOS and Windows works too.
+<p align="center">
+  <img src="./apps/site/public/og-image.png" alt="Torsher showcase on a TV with the Continue watching row" width="800">
+</p>
 
-1. Copy [`docker-compose.example.yml`](docker-compose.example.yml) into an empty folder as `docker-compose.yml`.
-2. Set `PUID` and `PGID` to the user that should own the files in `./data` (`id -u` and `id -g` on the host).
-3. Start it:
+<p align="center">
+  <sub>Runs on x86-64 and arm64 Linux · Watch in a browser or on LG webOS</sub>
+  <br>
+  <sub>Titles and artwork in the picture are made up.</sub>
+</p>
+
+<br>
+
+## Support
+
+Torsher is open source and built by one developer. Donations are its only funding: there are no paid features, no ads and no telemetry. Donations pay for development time and test hardware and have nothing to do with content or the sources you connect.
+
+See the [Donate](https://torsher.app/donate) page.
+
+## About
+
+Torsher started when I bought a mini PC with an Intel N150 as a home server and set up the usual self-hosted media stack on it: Jellyfin, Sonarr, Radarr, Prowlarr and Seerr. It worked, but I got tired of keeping it together. Each app has its own interface, settings and database, they all have to be wired to each other, and the TV is only the last link in the chain.
+
+So I built the one thing I wanted instead: a media center in one Docker container, on a mini PC, a NAS or a desktop. One process with one database and one interface does the jobs of a torrent client, a media server, series and movie managers and a request app, and the TV comes first. The indexer stays outside: Torsher connects to any Torznab indexer, for example Prowlarr or Jackett.
+
+## Features
+
+### Watch right away
+
+Pick a title and select **Watch**. Torsher finds releases in your indexers and starts playback while the file downloads.
+
+- Releases ranked by quality and voice-over, with dubbing and voice-over studios shown
+- Downloads a few minutes ahead of where you are and stops when you close the player, so nothing fills your disk by accident
+- Audio and subtitle tracks switch in the player
+- When a TV or a browser can't play a file, the server converts it on the fly, on the GPU if it has one
+
+### Your library
+
+What you watch stays in a cache that cleans itself up. **Keep** moves the file into your library.
+
+- Laid out by title so Jellyfin, Plex and Kodi can read it too
+- On one volume a kept file is hard-linked: it keeps seeding and takes no extra space
+- Folders you already have are indexed in place and never written to
+- Home videos get their own section
+
+### Follow
+
+**Follow** a series on the TV, and new episodes download into your library on their own.
+
+- From the episode you choose, in your voice-over and the best quality released
+- The same voice-over for the whole season
+- A followed movie downloads once it is out digitally
+- The control panel lists every follow with its episodes and the releases found for each
+
+### A showcase made for the TV
+
+Movies and series with posters, descriptions, cast and ratings from TMDB.
+
+- Arrows, OK and Back on the remote, or the Magic Remote pointer and a mouse in any browser
+- Profiles for the household, each with its own progress, lists, ratings and language and an optional PIN
+- Progress belongs to the title, not the file: switch the release and keep your place
+- Written for the browser engine of LG TVs from 2020
+
+### Control panel
+
+Everything is set up in the browser, on a phone or a computer: sources, storage, profiles and devices.
+
+- A setup wizard that checks storage, the network and your indexer
+- DNS over HTTPS and routes through your own SOCKS5 or HTTP proxy, per host
+- Daily database backups, restore and export to another server
+- Notifications about problems, finished downloads and new episodes in Telegram, a webhook, ntfy, Gotify or email
+
+## Quick start
+
+You need a computer with Docker and the Compose plugin. Linux gets every feature; Docker Desktop on macOS and Windows transcodes on the CPU only.
+
+1. Download the install file, [`docker-compose.example.yml`](docker-compose.example.yml), into an empty folder:
 
    ```bash
-   docker compose up -d
+   mkdir torsher && cd torsher
+   curl -fsSL https://raw.githubusercontent.com/torsher-app/torsher/main/docker-compose.example.yml -o docker-compose.yml
    ```
 
-4. Open `http://<host>:8080/panel/` and create the owner account. The server has one account. A setup wizard then checks storage, network access to TMDB and looks for Prowlarr or Jackett nearby; every step can be skipped.
-5. Open `http://<host>:8080/` on a TV or in a browser to use the showcase.
+2. Find your user and group IDs. If they are not both `1000`, put them into `PUID` and `PGID` in `docker-compose.yml`:
 
-Updating is `docker compose pull && docker compose up -d`. Database migrations run on start.
+   ```bash
+   id -u && id -g
+   ```
 
-### Sources
+3. Start Torsher together with Prowlarr, the indexer manager. If you already run a Torznab indexer, `docker compose up -d` starts Torsher alone:
 
-Torsher comes without any sources. Connect any Torznab indexer, for example Prowlarr or Jackett. The setup wizard finds a manager at its usual address (a compose service named `prowlarr` or `jackett`, the Docker host, this machine) and connects it with the API key. Later, in the panel open **Sources** and choose **Import from Prowlarr or Jackett** (address and API key) or **Add manually** for a single Torznab indexer.
+   ```bash
+   docker compose --profile prowlarr up -d
+   ```
 
-The example file has an optional Prowlarr service. It starts empty, and you add the indexers you are allowed to use:
+4. Open `http://<server-address>:8080/panel/` and create the owner account. The setup wizard asks for Prowlarr's API key: add the indexers you are allowed to use in Prowlarr at `http://<server-address>:9696` first.
 
-```bash
-docker compose --profile prowlarr up -d
-```
+5. Install the [Torsher app](https://torsher.app/docs/tv/lg-webos) on an LG TV, or open `http://<server-address>:8080/` in a browser. Enter the code from the screen in the panel under **Profiles & devices → Connect a device**.
 
-Prowlarr is then at `http://<host>:9696`, and Torsher reaches it as `http://prowlarr:9696`.
+The [Quick start](https://torsher.app/docs/quick-start) walks through each step, and [Docker Compose](https://torsher.app/docs/install/docker-compose) explains every line of the install file, several disks and updates.
 
-### Following
+## Platforms
 
-Select **Follow** on a series or a movie on the TV, and Torsher downloads new episodes into the library on its own, through your Torznab indexer.
-
-- **Rules.** From which episode (only new ones, the current season, the beginning), the voice-over studio or any, how long to wait for your voice-over and the top quality after an episode first appears (a day for series and 3 days for movies by default), and the quality: 1080p → 720p → SD, 4K → 1080p → 720p or 720p → SD. One follow per title on the server; profiles subscribe to it. A profile with an age limit can follow but can't change the rules.
-- **Finding releases.** The server reads the feed of new releases from each indexer every 15 minutes (one request per indexer for all follows) and searches by every title alias when it needs to: when following starts, when an episode airs and for a while after, and on **Search now**. Targeted searches are limited to 20 an hour, and an indexer that answers 429 is left alone until its `Retry-After`. Only releases matched to the title with confidence are taken; similar ones wait for your answer in the panel.
-- **What is downloaded.** Only the wanted episodes of a season pack. A release that adds episodes over the season is switched to its new version without downloading the episodes you have, and watch positions are kept. An episode in another voice-over or a lower quality is replaced by a better release within 7 days, as long as nobody has started watching it; files you picked yourself are never replaced. Episodes that are in releases but not in TMDB yet count as aired. Movies download once a digital or disc release is out; screen recordings are never taken.
-- **Panel.** **Following** lists every follow with its rules, episodes and the releases found for each, with the reason a release was rejected. **Activity** has the queue, a 90-day history and the blocklist. **Settings → Following** sets the feed interval, the search limit and the rules for new follows; the feed of each indexer can be turned off in its card under **Sources**.
-- **Notifications.** Episodes in the library and episodes with no releases long after they aired go to the channels with the **Following** group; not enough space for followed episodes and an indexer failing for over 6 hours show up in **Needs attention**.
-
-Downloads of followed titles are kept in the library, never evicted from the cache to make room. When they don't fit, the episode waits for space and the panel says how much is needed.
-
-### Configuration
-
-Everything except the values below is set in the panel.
-
-| Variable | Default | Purpose |
+| Platform | Status | |
 | --- | --- | --- |
-| `PUID`, `PGID` | `1000` | Owner of the files Torsher writes to `/data` |
-| `TZ` | `Etc/UTC` | Time zone |
-| `TORSHER_SECRET` | key file in `/data/db` | Key that encrypts indexer API keys in the database |
-| `SECRET_KEY` | key file in `/data/db` | Key that signs sign-in sessions. If you set it, use a random string of at least 32 characters (`openssl rand -hex 32`): the server refuses to start with a shorter one |
-| `TMDB_ACCESS_TOKEN` | app key built into the image | Your own TMDB API Read Access Token for the catalog. It replaces the app key; a key set in Settings → Metadata takes precedence over both |
-| `HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY` | — | Your proxy for outgoing requests until the default route is changed in Settings → Network |
-| `API_PORT` | `8080` | Port inside the container |
-| `TRUST_PROXY` | — | Set it when Torsher runs behind a reverse proxy: the proxy's address or subnet (`172.18.0.0/16`, several separated by commas, or `loopback`, `uniquelocal`), or `true` to trust any. Without it, sign-in attempt limits and the log see every client as the proxy's address. Don't set it without a proxy: a client could then fake its own address |
-| `ENGINE_PEER_PORT` | any free port | Port the torrent engine accepts peer connections on; publish it to be reachable from outside |
-| `LOG_LEVEL` | level chosen in the panel, `info` | Log level: `error`, `warn`, `info` or `debug`. When set, the **Verbose logs** switch in the panel is unavailable |
-| `DOWNLOADS_PATH`, `LIBRARY_PATH` | `/data/torrents`, `/data/library` | Default downloads and library folders; a folder chosen in Settings → Storage takes precedence |
-| `TORSHER_SKIP_PRE_UPDATE_BACKUP` | — | Set to `1` to let an update change the database even when the backup before the update fails. Without a backup a failed update can't be undone |
+| Web browser | Available | The showcase on any computer, and the control panel on a phone or a computer |
+| LG webOS | Available | A thin TV app that plays most files directly on the TV |
+| Android TV | Planned | The same showcase with a native player |
+| Apple TV and phones | Planned | Through apps that already exist for these devices |
 
-### Hardware transcoding
+The server runs on x86-64 Linux, including NAS systems on x86, with arm64 Linux and Docker Desktop on a best-effort basis. See [Requirements](https://torsher.app/docs/install/requirements).
 
-When a player can't decode a video (old Xvid/DivX AVI files, HEVC or 10-bit video in a browser, HDR, image subtitles), the server transcodes it to H.264 on the fly. It uses a GPU when the container can see one and the CPU otherwise. **Settings → Playback** in the panel shows what was found.
+## Sources
 
-- **Intel and AMD (VAAPI).** Uncomment `devices: /dev/dri` in the compose file. Intel graphics from Tiger Lake onwards (including N100 and N150) encode in low-power mode only; this needs the GuC/HuC firmware on the host (`firmware-intel-graphics` on Debian, `linux-firmware` elsewhere) and, on Alder Lake-N, Linux 6.2 or later.
-- **NVIDIA (NVENC).** Install the NVIDIA driver and the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) on the host and uncomment the NVIDIA block in the compose file.
-- **CPU.** Always available. The server measures the CPU on start and scales larger video down to 1080p, 720p or 576p to keep up with playback.
+Torsher does not include, host or index any content, and comes with no sources enabled. You connect the sources yourself, for example any Torznab indexer such as Prowlarr or Jackett, and you are responsible for making sure you are allowed to use them.
 
-Docker Desktop on macOS and Windows does not pass a GPU into Linux containers: transcoding runs on the CPU there.
+The project runs no servers for your content and collects no telemetry. The only request a server makes on the project's behalf is a daily update check against this repository's releases on GitHub, without identifiers; it can be turned off in the panel.
 
-### Data
+Movie and series information and images come from [The Movie Database (TMDB)](https://www.themoviedb.org/). This product uses the TMDB API but is not endorsed or certified by TMDB.
 
-By default everything lives in the `/data` volume. `/data/torrents` holds downloads, `/data/library` holds the files you keep, laid out by title (`movies/Title (2010) [tmdbid-27205]/…`, `shows/Title (2008) [tmdbid-1396]/Season 01/…`) so Jellyfin, Plex and Kodi can read it too. A kept file is hard-linked from downloads, so it keeps seeding without taking extra space; this needs both folders in one volume. Otherwise the file is copied, and the panel warns about it. `/data/db` holds the database and the key files (`secret.key`, `session.key`): back it up together. Losing `secret.key` makes the saved indexer API keys unreadable, and you will have to enter them again.
+## Contributions
 
-### Storage
+Torsher does not accept external pull requests. To report a bug, please [open an issue](https://github.com/torsher-app/torsher/issues) with what you did, what you expected and the file from **Download logs** under **Logs** in the panel. Issues are also welcome for release titles Torsher reads wrong and for reports from your hardware: a NAS, an older LG TV or an ARM board.
 
-The container sees only the folders you mount, so a disk is first mounted in `docker-compose.yml`, and then the downloads and library folders are chosen in the panel under **Settings → Storage** (or in the setup wizard). The folder browser shows free space, checks that the folder is writable and tells whether hard links work between downloads and the library.
+## Build Locally
 
-**One disk (recommended).** Mount one folder as `/data`, as the example file does. Downloads and the library share the volume, and kept files are hard links:
+<details>
+<summary>Instructions for building from source</summary>
 
-```yaml
-volumes:
-  - /mnt/media/torsher:/data
-```
+### Prerequisites
 
-**Several disks.** Keep `/data` on the system disk for the database, mount the big disk as one more volume and choose `/storage/torrents` and `/storage/library` in the panel. Keep both folders inside that one volume: two volumes, even on the same disk, turn hard links into copies.
+- Node.js 24 and pnpm (`corepack enable`)
+- Go 1.24+ for the torrent engine
+- `ffmpeg` and `ffprobe` for audio and subtitle tracks and remuxing
 
-```yaml
-volumes:
-  - ./data:/data
-  - /mnt/big:/storage
-```
-
-When a folder already holds data, the panel asks what to do with it. **New only** sends new downloads or files to the new folder and leaves the old ones where they are, still working. **Move** copies everything in the background: one torrent at a time is paused while its files move, each torrent switches to the new folder as soon as its files are verified, and the old files are deleted. A move survives a server restart and continues where it stopped. Moving downloads to a volume other than the library's makes kept files independent copies, so those torrents return to the cache; the panel says so before the move starts.
-
-`DOWNLOADS_PATH` and `LIBRARY_PATH` set the defaults. A folder chosen in the panel is stored in the database and wins; **Reset to default** returns to the environment value. Torrents that never left the default folder follow a changed `DOWNLOADS_PATH`, so remounting the disk under a new path is a compose change. Folders chosen in the panel are kept as they are: change them in the panel, not by remounting.
-
-`/data/db/logs` holds the server log: up to 25 MB in five rotating files, kept across restarts. Secrets and paths inside the downloads folder are masked before an entry is written. The panel shows recent entries under **Logs**, and **Download logs** there saves the whole log as a text file to attach to a bug report.
-
-The server exposes `GET /api/health`, and the image uses it for the Docker health check.
-
-### Backups
-
-A backup holds the database — profiles, watch positions, ratings, lists, collections, sources and settings — and the key that encrypts saved secrets. Videos, downloads, the cache and the log are not included: protect them with file system or NAS snapshots or your own backup tool.
-
-The server makes a backup once a day at 04:00 in the container's time zone (`TZ`) and keeps 7 daily and 4 weekly ones; change the time and the counts under **Settings → Backups**. It also makes one before an update that changes the database (the last 3 are kept) and before every restore. **Back up now** in the panel or this command makes one by hand:
-
-```bash
-docker exec -it torsher torsher backup
-```
-
-Backups go to `/data/db/backups`, the same disk as the database, so they don't survive a failure of that disk. To keep them elsewhere, mount a second disk or a NAS share into the container and choose the folder under **Settings → Backups**, or download backups from there:
-
-```yaml
-volumes:
-  - ./data:/data
-  - /mnt/nas/torsher-backups:/backups
-```
-
-Don't point several Torsher installations at the same backup folder.
-
-By default the secrets key is stored inside the backup, so it restores anywhere without a password: keep backups where strangers can't reach them. With **Password on the backup** the whole file is encrypted with your password. A forgotten password can't be recovered, and backups made with it become useless on another server.
-
-**Restore.** Choose **Restore…** next to a backup under **Settings → Backups**. The server saves a backup of the current state, restarts and swaps the database; this needs `restart: unless-stopped` as in the example file, otherwise start it again with `docker compose up -d`. On a fresh installation, **Restore from a backup** on the account screen uploads a backup file and restores it; sign in with the old server's password afterwards. If the panel doesn't open, restore with a command and restart the container:
-
-```bash
-docker exec -it torsher torsher restore <backup name>
-```
-
-```bash
-docker restart torsher
-```
-
-If the container doesn't start at all, run the command in a one-off container:
-
-```bash
-docker compose run --rm torsher torsher restore <backup file>
-```
-
-`torsher backups` lists the backups with their reason, version and size.
-
-**Updates.** The server doesn't apply database changes of a new version without a backup made right before them: if that backup fails, the server doesn't start and says why. `TORSHER_SKIP_PRE_UPDATE_BACKUP=1` skips it if you accept the risk. A database already changed by a newer version doesn't start with an older one: run the newer version again or restore the `pre-update` backup.
-
-### Moving data to another server
-
-A backup restores a whole server and replaces its database. To bring profiles, watch positions, lists, ratings and collections into a server that already has its own, use an export instead: it merges.
-
-- **Settings → Backups → Export…** downloads `torsher-export-<date>.json`. Profiles, positions, Watchlist, Favorites, ratings and Dropped are always in it; collections, libraries (connected folders and manual matches) and settings (network routes, indexers, notification channels) are optional. Profile PINs, the account, devices, torrents and files are never exported.
-- Keys and passwords (indexer keys, proxy logins, the TMDB key, channel secrets) go into the file only with an export password; without it they have to be entered again on the new server.
-- **Settings → Backups → Import…** on the other server shows what will change, lets you pick which profile each one goes into (by default a profile with the same name, otherwise a new one) and merges: the later watch position and rating win, lists and collections are combined, existing settings are kept. Importing the same file twice changes nothing. The server makes a `pre-import` backup first; restoring it undoes the import.
-- One profile: **Export** and **Import…** in the profile card under **Profiles & devices**.
-
-From the command line:
-
-```bash
-docker exec torsher torsher export --libraries --settings > torsher-export.json
-```
-
-```bash
-docker exec -i torsher torsher import /data/db/torsher-export.json --dry-run
-```
-
-The file to import has to be inside the container, for example copied into `/data/db`. Without `--dry-run` the command applies the import; `--password-stdin` reads the export password, `--profile <name>` exports or imports one profile. After an import with settings or new folders, restart the container to apply them.
-
-### Updating
-
-Once a day the server checks the releases of its source repository on GitHub and shows **Version X is available** on the overview and under **Settings → About**, with the highlights of the release notes. The request carries no identifiers and no data about the server; turn it off under **Settings → About**. The **Beta** channel there also offers pre-releases.
-
-The container doesn't update itself. Run in the folder with your `docker-compose.yml`:
-
-```bash
-docker compose pull
-```
-
-```bash
-docker compose up -d
-```
-
-Docker replaces the container and keeps the `/data` volume. If the `image:` line names a version (`ghcr.io/torsher-app/torsher:0.3.0`), change it to the new one first; `:latest` follows stable releases and `:beta` follows every release. With `docker run`, stop and remove the container, `docker pull` the image and start it again with the same volumes. Tools that update containers automatically work too, but an update restarts the server and interrupts playback, so we recommend updating by hand when nobody is watching.
-
-### Notifications
-
-The bell in the panel shows server problems (the same as **Needs attention**), new versions, finished downloads, new devices and what following did. To get them when the panel is closed, add a channel under **Settings → Notifications**: Telegram, a webhook (Discord, Slack or JSON for your own receiver), ntfy, Gotify, email over SMTP, or your own `apprise-api` server for anything else. Each channel chooses its events and language and has **Send test**. A problem is reported once when it appears and, if you ask for it, once when it is resolved; a channel gets at most 20 messages an hour.
-
-Messages go through the routes in **Settings → Network**, so a channel that is only reachable through a proxy works once its host has a route. Tokens and passwords of channels are encrypted with `TORSHER_SECRET` like indexer keys.
-
-### Forgot password
-
-The server has one account and doesn't send password reset emails, so the password is reset with a command inside the container:
-
-```bash
-docker exec -it torsher torsher reset-password
-```
-
-It prints a new random password and signs out every browser and device. To set your own password instead, pass it on standard input:
-
-```bash
-printf '%s' 'new password' | docker exec -i torsher torsher reset-password --stdin
-```
-
-Change the password afterwards in the panel under **Settings → Account**. Use your container name in place of the first `torsher` if it differs.
-
-## Development
-
-Requires Node.js 24 and pnpm (`corepack enable`).
+### Install Dependencies
 
 ```bash
 pnpm install
+```
+
+### Check
+
+```bash
 pnpm lint
 pnpm typecheck
 pnpm test
 ```
 
-Streaming needs the torrent engine in `engine/` (Go, built on [anacrolix/torrent](https://github.com/anacrolix/torrent)). With Go 1.24+ installed, `pnpm dev` builds it into the server data folder on start; without Go, the server starts without it. To build it separately:
+### Development
+
+`pnpm dev` starts the server, the panel and the showcase with hot reload:
+
+```bash
+pnpm dev
+```
+
+It builds the torrent engine in `engine/` (Go, built on [anacrolix/torrent](https://github.com/anacrolix/torrent)) into the server data folder on start; without Go, the server starts without it. To build the engine separately:
 
 ```bash
 pnpm --filter @torsher/server engine:build
 ```
 
-To use a prebuilt binary instead, set `ENGINE_PATH` in `apps/server/.env`.
+To use a prebuilt binary instead, set `ENGINE_PATH` in `apps/server/.env`. Without `ffmpeg` and `ffprobe` in `PATH` (or their paths in `FFMPEG_PATH` and `FFPROBE_PATH`), the player plays files directly.
 
-Audio and subtitle tracks, and remuxing files a browser cannot play directly (MKV, AC3), need `ffmpeg` and `ffprobe` in `PATH`, or their paths in `FFMPEG_PATH` and `FFPROBE_PATH`. Without them the player plays files directly. The image ships FFmpeg from Debian.
+### Build
 
-`pnpm dev` starts the server, the panel and the showcase with hot reload. `pnpm build` builds the showcase and the panel, which the server then serves itself: the showcase at `/`, the panel at `/panel/` and the API at `/api`.
+`pnpm build` builds the showcase and the panel, which the server then serves itself: the showcase at `/`, the panel at `/panel/` and the API at `/api`.
 
-Build the image locally:
+```bash
+pnpm build
+```
+
+The Docker image:
 
 ```bash
 docker buildx build --platform linux/arm64 -t torsher:dev --load .
 ```
 
-A local build has no TMDB app key: the published image gets it from a CI secret. Set `TMDB_ACCESS_TOKEN` or add your own key in the panel. To build with a key, pass it as a build secret:
+A local build has no TMDB app key: set `TMDB_ACCESS_TOKEN` or add your own key in the panel. To build with a key, pass it as a build secret:
 
 ```bash
 docker buildx build --secret id=tmdb_app_key,env=TMDB_ACCESS_TOKEN -t torsher:dev --load .
 ```
 
-## Disclaimer
-
-Torsher does not include, host or index any content. You choose the sources you connect and are responsible for making sure you are allowed to use them.
-
-## Contributing
-
-Issues and bug reports are welcome. Pull requests to this repository are not accepted.
+</details>
 
 ## License
 
-[AGPL-3.0-only](LICENSE) © 2026-present, [Anton Reshetov](https://github.com/antonreshetov)
+[AGPL-3.0](LICENSE)
+
+Copyright (c) 2026-present, [Anton Reshetov](https://github.com/antonreshetov).
