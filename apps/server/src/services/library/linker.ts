@@ -21,7 +21,7 @@ import {
   torrentLibraryFiles,
 } from './files.ts'
 import { extensionOf, otherPath, sidecarPath, videoPath } from './layout.ts'
-import { placeFile } from './link.ts'
+import { placeFile, replaceFile } from './link.ts'
 import { queueProbe } from './probe.ts'
 
 /** Видеофайл раздачи, который ляжет в раскладку, и его серия */
@@ -312,6 +312,66 @@ async function placeVideo(
   queueProbe(row.id)
 }
 
+/**
+ * Файл, перезалитый в новой версии раздачи (`stale`): когда новая версия
+ * скачана целиком, она встаёт на место прежней. Строка, путь и прогресс те
+ * же, проба — заново.
+ */
+async function replaceStale(torrent: Torrent, state: EngineTorrentState) {
+  const folders = new Map(
+    managedFolders().map(folder => [folder.id, folder]),
+  )
+
+  for (const row of torrentLibraryFiles(torrent.id)) {
+    const folder = folders.get(row.folderId)
+
+    if (
+      !row.stale
+      || !folder
+      || row.fileIndex === null
+      || !isComplete(torrent, state, row.fileIndex)
+    ) {
+      continue
+    }
+
+    const source = await sourcePathOf(torrent, row.fileIndex)
+
+    if (!source)
+      continue
+
+    try {
+      const absolute = libraryPath(folder, row.relPath)
+      const linkMode = await replaceFile(source, absolute)
+      const placed = await stat(absolute)
+
+      getDb()
+        .update(mediaFiles)
+        .set({
+          stale: false,
+          size: placed.size,
+          mtime: placed.mtime,
+          inode: placed.ino,
+          linkMode,
+          state: 'present',
+          missingSince: null,
+        })
+        .where(eq(mediaFiles.id, row.id))
+        .run()
+      logFor('storage').info(
+        { torrentId: torrent.id, fileIndex: row.fileIndex, linkMode },
+        'Library file replaced with the new version',
+      )
+      queueProbe(row.id)
+    }
+    catch (err) {
+      logFor('storage').error(
+        { err, torrentId: torrent.id, fileIndex: row.fileIndex },
+        'Library file was not replaced',
+      )
+    }
+  }
+}
+
 /** Субтитры и дорожки серии — рядом с её файлом, когда скачаны целиком */
 async function placeSidecars(torrent: Torrent, state: EngineTorrentState) {
   const folders = new Map(
@@ -535,6 +595,7 @@ async function linkTorrent(
       await placeVideo(folder, torrent, title, item)
   }
 
+  await replaceStale(torrent, state)
   await placeSidecars(torrent, state)
   await releaseCopies(torrent, planned)
   return true

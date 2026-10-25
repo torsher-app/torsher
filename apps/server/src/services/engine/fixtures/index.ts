@@ -30,6 +30,16 @@ export const movieDetails = {
   ],
 }
 
+/** Сверка с каталогом (`inspect?dir=`): видео совпало, субтитры перезалиты */
+export const comparedDetails = {
+  ...movieDetails,
+  files: [
+    { ...movieDetails.files[0]!, onDisk: 'match' },
+    { ...movieDetails.files[1]!, onDisk: 'missing' },
+    { ...movieDetails.files[2]!, onDisk: 'differs' },
+  ],
+}
+
 /** Скачаны первые `count` кусков из 41 */
 export function piecesDone(count: number) {
   return '1'.repeat(count) + '0'.repeat(41 - count)

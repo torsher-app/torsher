@@ -423,3 +423,31 @@ describe('лестница качества', () => {
     expect(checked.step).toBe(3)
   })
 })
+
+describe('продолжение темы', () => {
+  it('раздача из темы сезона выше раздачи, у которой больше сидов', () => {
+    const topic = {
+      indexerId: 'ix',
+      detailsUrl: 'https://tracker.example/topic/1',
+    }
+    const fromTopic = found(
+      'topic',
+      'Тихая гавань / Quiet Harbor / Сезон: 2 / Серии: 1-5 из 12 (2024) WEB-DL 1080p | LostFilm',
+      {
+        indexers: [
+          { id: 'ix', name: 'Indexer A', detailsUrl: topic.detailsUrl },
+        ],
+        seeders: 5,
+        size: 5 * 1.5 * GB,
+      },
+    )
+    const single = episode(5, 'WEB-DL 1080p | LostFilm', { seeders: 500 })
+
+    expect(
+      grabbed(plan([single, fromTopic], {}, { ...season2, topic })),
+    ).toEqual([{ id: 'topic', episodes: [5] }])
+    expect(grabbed(plan([single, fromTopic]))).toEqual([
+      { id: single.id, episodes: [5] },
+    ])
+  })
+})

@@ -6,6 +6,7 @@ import {
   link,
   mkdir,
   readdir,
+  rename,
   rmdir,
   stat,
   unlink,
@@ -81,6 +82,31 @@ export async function placeFile(
 
     // `link` вместо `rename`: занятое за время копии имя не перезаписывается
     await link(temp, target)
+    return mode
+  }
+  finally {
+    await unlink(temp).catch(() => {})
+  }
+}
+
+/**
+ * Заменяет файл библиотеки новой версией на месте: новая кладётся рядом по
+ * той же лестнице, что `placeFile`, и встаёт под имя одним `rename` — путь
+ * не пропадает ни на миг, сторонний медиасервер видит тот же файл.
+ */
+export async function replaceFile(
+  source: string,
+  target: string,
+): Promise<MediaLinkMode> {
+  const temp = join(
+    dirname(target),
+    `.${basename(target)}.${randomBytes(4).toString('hex')}.torsher-tmp`,
+  )
+
+  try {
+    const mode = await placeFile(source, temp)
+
+    await rename(temp, target)
     return mode
   }
   finally {

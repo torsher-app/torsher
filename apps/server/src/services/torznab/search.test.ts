@@ -181,6 +181,33 @@ describe('searchIndexer', () => {
     expect(error.retryAt.getTime()).toBeGreaterThan(Date.now() + 590_000)
   })
 
+  it('без `<comments>` страница темы — `guid`, если это не ссылка на файл', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(`<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel>
+<item>
+  <title>Quiet.Harbor.S02.1080p.WEB-DL</title>
+  <guid>https://tracker.example/topic/7</guid>
+  <link>https://indexer.example/download/7</link>
+</item>
+<item>
+  <title>Quiet.Harbor.S01.1080p.WEB-DL</title>
+  <guid>https://indexer.example/download/8</guid>
+  <link>https://indexer.example/download/8</link>
+</item>
+</channel></rss>`),
+    )
+
+    const releases = await searchIndexer('https://indexer.example/torznab', {
+      t: 'search',
+    })
+
+    expect(releases.map(release => release.detailsUrl)).toEqual([
+      'https://tracker.example/topic/7',
+      undefined,
+    ])
+  })
+
   it('пустой канал — пустой список', async () => {
     fetchMock.mockResolvedValue(new Response(emptySearchXml))
 

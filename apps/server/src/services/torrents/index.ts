@@ -438,15 +438,20 @@ export function linkTitle(torrent: Torrent, titleId: string) {
  * на диске ничего не хранит и получает действующий каталог загрузок: так
  * выбранная в панели папка действует с первой новой закачки.
  */
-async function addToEngine(torrent: Torrent, files: number[]) {
+async function addToEngine(
+  torrent: Torrent,
+  files: number[],
+  dir?: Torrent['downloadDir'],
+) {
   if (!torrent.torrentFile)
     throw new NotReadyError()
 
   if (isMovingTorrent(torrent.id))
     throw new EngineError('moving', 'Torrent is being moved')
 
-  if (!torrent.inEngine) {
-    const downloadDir = downloadDirValue(storagePath('downloads'))
+  if (!torrent.inEngine || dir !== undefined) {
+    const downloadDir
+      = dir !== undefined ? dir : downloadDirValue(storagePath('downloads'))
 
     if (downloadDir !== torrent.downloadDir) {
       update(torrent.id, { downloadDir })
@@ -464,15 +469,21 @@ async function addToEngine(torrent: Torrent, files: number[]) {
 /**
  * Скачать выбранные файлы целиком сейчас. Скачанное руками закрепляется
  * («Оставить»): само оно не удалится. Места мало — сервер сразу ставит
- * загрузку на паузу, и раздача попадает в «Требуют внимания».
+ * загрузку на паузу, и раздача попадает в «Требуют внимания». `dir` —
+ * свой каталог раздачи (`download_dir`): новая версия обновлённой темы
+ * ложится туда, где лежит старая.
  */
-export async function downloadFiles(torrent: Torrent, chosen: number[]) {
+export async function downloadFiles(
+  torrent: Torrent,
+  chosen: number[],
+  options: { dir?: Torrent['downloadDir'] } = {},
+) {
   if (!torrent.torrentFile)
     throw new NotReadyError()
 
   const files = withSubtitles(torrent, chosen)
 
-  await addToEngine(torrent, files)
+  await addToEngine(torrent, files, options.dir)
 
   if (torrent.pauseReason)
     await resumeTorrent(torrent.infoHash)

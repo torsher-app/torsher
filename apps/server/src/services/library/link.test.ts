@@ -11,7 +11,13 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { linkDeps, placeFile, probeLinkMode, removeFile } from './link.ts'
+import {
+  linkDeps,
+  placeFile,
+  probeLinkMode,
+  removeFile,
+  replaceFile,
+} from './link.ts'
 
 let root = ''
 
@@ -99,6 +105,21 @@ describe('лестница связывания', () => {
     await expect(
       placeFile(from, join(root, 'library', 'Film.mkv')),
     ).rejects.toMatchObject({ code: 'EIO' })
+  })
+})
+
+describe('замена файла библиотеки', () => {
+  it('новая версия встаёт под то же имя, временных файлов не остаётся', async () => {
+    const from = await source()
+    const to = join(root, 'library', 'Film.mkv')
+
+    await mkdir(join(root, 'library'), { recursive: true })
+    await writeFile(to, 'old video')
+
+    expect(await replaceFile(from, to)).toBe('hardlink')
+    expect(await readFile(to, 'utf8')).toBe('video data')
+    expect((await stat(to)).ino).toBe((await stat(from)).ino)
+    expect(await readdir(join(root, 'library'))).toEqual(['Film.mkv'])
   })
 })
 

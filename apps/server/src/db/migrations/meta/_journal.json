@@ -169,6 +169,13 @@
       "when": 1792906851656,
       "tag": "0023_violet_polaris",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1792909046295,
+      "tag": "0024_safe_mother_askani",
+      "breakpoints": true
     }
   ]
 }
