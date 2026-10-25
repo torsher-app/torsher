@@ -5,7 +5,9 @@ import { settingsItems } from '~/lib/navigation'
 
 const { t } = useI18n()
 const route = useRoute()
-const { isAuthenticated } = useUser()
+// Снимок на открытии: после выхода страница видна, пока открывается вход,
+// и не перестраивается под гостя. Гостю middleware страницы даёт раскладку auth
+const isGuest = !useUser().isAuthenticated.value
 
 const current = computed(() =>
   settingsItems.find(item => route.path.startsWith(item.to)),
@@ -14,7 +16,7 @@ const current = computed(() =>
 
 <template>
   <!-- Без входа открывается только «О программе»: без оболочки и подменю -->
-  <NuxtPage v-if="!isAuthenticated" />
+  <NuxtPage v-if="isGuest" />
   <div v-else class="flex min-h-0 flex-1 flex-col">
     <PageBar
       :title="

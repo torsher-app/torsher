@@ -30,7 +30,9 @@ defineProps<{
 }>()
 
 const { t } = useI18n()
-const { user } = useUser()
+const { user: current } = useUser()
+// После выхода панель видна, пока открывается вход: имя не пропадает раньше
+const user = useLastValue(() => current.value)
 const { logout } = useAuth()
 const colorMode = useColorMode()
 const { language } = usePanelLanguage()

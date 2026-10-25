@@ -18,6 +18,7 @@ import { getErrorStatus } from '@torsher/api-client'
 import { api, getErrorMessage } from '~/services/api'
 
 definePageMeta({
+  layout: 'auth',
   middleware: ['guest-only', 'first-run'],
 })
 
@@ -26,6 +27,9 @@ const { t } = useI18n()
 
 const isRejected = ref(false)
 const isResetShown = ref(false)
+// Вход прошёл, а страница ещё не сменилась: панель догружается или браузер
+// уходит на витрину. Кнопка крутится до конца, а не оживает на миг
+const isLeaving = ref(false)
 const formError = ref('')
 const about = shallowRef<AboutResponse>()
 
@@ -51,6 +55,7 @@ const onSubmit = handleSubmit(async (values) => {
 
   try {
     await withErrorMode('silent', () => signin(values))
+    isLeaving.value = true
   }
   catch (err) {
     // 400 — неверная пара email и пароль; остальное — сервер или сеть
@@ -144,7 +149,11 @@ onMounted(async () => {
           </p>
         </div>
 
-        <LoadingButton type="submit" class="w-full" :loading="isSubmitting">
+        <LoadingButton
+          type="submit"
+          class="w-full"
+          :loading="isSubmitting || isLeaving"
+        >
           {{ t("panel.auth.submit") }}
         </LoadingButton>
       </form>
