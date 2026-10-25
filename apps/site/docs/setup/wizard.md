@@ -59,7 +59,7 @@ The catalog and posters come from TMDB. The server checks that it reaches <Ui k=
 
 Torsher finds releases in Torznab indexers. The wizard looks for Prowlarr and Jackett nearby: compose services named `prowlarr` and `jackett`, the Docker host, the container network gateway and this machine, on ports 9696 and 9117.
 
-- **A manager is found.** Paste its API key and select <Ui k="panel.wizard.sources.connect.submit" />. Torsher adds all its indexers and keeps them in sync.
+- **A manager is found.** Paste its API key and select <Ui k="panel.wizard.sources.connect.submit" />. Torsher adds all its indexers. When you change them in the manager later, sync it in <Ui k="panel.nav.sources" />.
 - **It runs somewhere else.** Use <Ui k="panel.wizard.sources.none.importTitle" />: the address as the Torsher server reaches it, and the API key.
 - **You have no indexer yet.** Start Prowlarr from the install file and select <Ui k="panel.wizard.checks.retry" />.
 
