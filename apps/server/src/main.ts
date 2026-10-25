@@ -14,6 +14,10 @@ import {
 } from './services/backups/index.ts'
 import { createEngine, isEngineReady } from './services/engine/index.ts'
 import {
+  startFollowScheduler,
+  stopFollowScheduler,
+} from './services/follow/schedule.ts'
+import {
   checkLinkMode,
   checkManagedFiles,
   managedFolder,
@@ -324,6 +328,7 @@ const shutdown = createShutdown({
   steps: [
     async () => logFor('server').info('Server is stopping'),
     async () => stopBackupScheduler(),
+    async () => stopFollowScheduler(),
     // ffmpeg перепаковки тоже дочерний: его сегменты после выхода не нужны
     stopAllSessions,
     () => engine.stop(),
@@ -363,6 +368,7 @@ if (restoreResult.applied)
   finalizeRestoreNow()
 
 startBackupScheduler()
+startFollowScheduler()
 void engine.start()
 startNotificationMonitor()
 checkHosts()

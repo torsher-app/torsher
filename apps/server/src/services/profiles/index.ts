@@ -1,7 +1,9 @@
 import type { PlayerSettings, Profile } from '../../db/schema.ts'
-import { asc, desc, eq, lt, sql } from 'drizzle-orm'
+import { and, asc, desc, eq, inArray, lt, notExists, sql } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import {
+  followProfiles,
+  follows,
   profiles,
   profileTitles,
   titleProgress,
@@ -230,6 +232,41 @@ export function deleteProfile(id: string, moveTo?: string) {
       }
     }
 
+    const subscribed = tx
+      .select({ followId: followProfiles.followId })
+      .from(followProfiles)
+      .where(eq(followProfiles.profileId, id))
+      .all()
+      .map(row => row.followId)
+
+    if (moveTo) {
+      for (const followId of subscribed) {
+        tx.insert(followProfiles)
+          .values({ followId, profileId: moveTo, createdAt: new Date() })
+          .onConflictDoNothing()
+          .run()
+      }
+    }
+
     tx.delete(profiles).where(eq(profiles.id, id)).run()
+
+    // Профиль был последним подписчиком — слежение останавливается, как при отписке
+    if (subscribed.length) {
+      tx.update(follows)
+        .set({ state: 'stopped', nextSearchAt: null, updatedAt: new Date() })
+        .where(
+          and(
+            inArray(follows.id, subscribed),
+            inArray(follows.state, ['active', 'paused']),
+            notExists(
+              tx
+                .select({ id: followProfiles.followId })
+                .from(followProfiles)
+                .where(eq(followProfiles.followId, follows.id)),
+            ),
+          ),
+        )
+        .run()
+    }
   })
 }

@@ -946,6 +946,137 @@ export const mediaFiles = sqliteTable(
 
 export type MediaFile = typeof mediaFiles.$inferSelect
 
+// `paused` — остановил владелец, правила и подписки остаются; `stopped` —
+// отписался последний профиль; `done` — фильм в библиотеке, ждать нечего
+export const followStates = ['active', 'paused', 'stopped', 'done'] as const
+// Лестница качества: `best` — 1080p → 720p → SD, `uhd` — 2160p → 1080p → 720p,
+// `compact` — 720p → SD
+export const followQualityPresets = ['best', 'uhd', 'compact'] as const
+
+export type FollowState = (typeof followStates)[number]
+export type FollowQualityPreset = (typeof followQualityPresets)[number]
+
+// «Следить» — одно на тайтл на весь сервер: диск и библиотека общие, и два
+// профиля с разными правилами скачали бы сериал дважды. Профили подписываются
+// в `follow_profiles`. Слежение охватывает серии с курсора `start_*` и дальше
+export const follows = sqliteTable(
+  'follows',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => randomUUID()),
+    // Каталожный ID (`tmdb:tv:1396`)
+    titleId: text('title_id').notNull().unique(),
+    kind: text('kind', { enum: ['movie', 'series'] }).notNull(),
+    state: text('state', { enum: followStates }).notNull(),
+    // У фильма 0/0
+    startSeason: integer('start_season').notNull(),
+    startEpisode: integer('start_episode').notNull(),
+    // Студия из правил: действует, если за сезоном не закреплена своя
+    voiceStudio: text('voice_studio'),
+    voiceStrict: integer('voice_strict', { mode: 'boolean' })
+      .notNull()
+      .default(false),
+    requireRussian: integer('require_russian', { mode: 'boolean' }).notNull(),
+    // Окно ожидания своей озвучки и верхней ступени от первого появления серии
+    waitHours: integer('wait_hours').notNull(),
+    qualityPreset: text('quality_preset', { enum: followQualityPresets })
+      .notNull()
+      .default('best'),
+    createdByProfileId: text('created_by_profile_id').references(
+      () => profiles.id,
+      { onDelete: 'set null' },
+    ),
+    // Целевой поиск по лестнице интервалов
+    nextSearchAt: integer('next_search_at', { mode: 'timestamp_ms' }),
+    lastSearchAt: integer('last_search_at', { mode: 'timestamp_ms' }),
+    searchStep: integer('search_step').notNull().default(0),
+    // Последнее принудительное обновление расписания из TMDB
+    scheduleRefreshedAt: integer('schedule_refreshed_at', {
+      mode: 'timestamp_ms',
+    }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  table => [index('follows_state_idx').on(table.state)],
+)
+
+export type Follow = typeof follows.$inferSelect
+
+export const followProfiles = sqliteTable(
+  'follow_profiles',
+  {
+    followId: text('follow_id')
+      .notNull()
+      .references(() => follows.id, { onDelete: 'cascade' }),
+    profileId: text('profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  table => [
+    primaryKey({ columns: [table.followId, table.profileId] }),
+    index('follow_profiles_profile_idx').on(table.profileId),
+  ],
+)
+
+// Знание о сезоне, которое не вычислить из TMDB и библиотеки
+export const followSeasons = sqliteTable(
+  'follow_seasons',
+  {
+    followId: text('follow_id')
+      .notNull()
+      .references(() => follows.id, { onDelete: 'cascade' }),
+    season: integer('season').notNull(),
+    // Лучший класс разрешения среди увиденных раздач: «шоу без верхней ступени»
+    bestQualitySeen: text('best_quality_seen'),
+    // «из 12» по названиям раздач — подсказка размера сезона
+    expectedTotal: integer('expected_total'),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  table => [primaryKey({ columns: [table.followId, table.season] })],
+)
+
+// Серия, которая «пришла»: остальное состояние серии вычисляется
+export const followEpisodes = sqliteTable(
+  'follow_episodes',
+  {
+    followId: text('follow_id')
+      .notNull()
+      .references(() => follows.id, { onDelete: 'cascade' }),
+    // У фильма 0/0
+    season: integer('season').notNull(),
+    episode: integer('episode').notNull(),
+    // Первый кандидат, прошедший постоянные проверки: старт окна ожидания
+    firstSeenAt: integer('first_seen_at', { mode: 'timestamp_ms' }).notNull(),
+    waitUntil: integer('wait_until', { mode: 'timestamp_ms' }),
+    // Лучший отложенный кандидат
+    pending: text('pending', { mode: 'json' }).$type<Record<string, unknown>>(),
+    // Снимок последнего прогона: кандидаты и вердикты
+    decisions: text('decisions', { mode: 'json' }).$type<unknown[]>(),
+    torrentId: text('torrent_id').references(() => torrents.id, {
+      onDelete: 'set null',
+    }),
+    fileIndex: integer('file_index'),
+    grabbedAt: integer('grabbed_at', { mode: 'timestamp_ms' }),
+    // Раздачу выбрали вручную — апгрейд её не заменяет
+    manual: integer('manual', { mode: 'boolean' }).notNull().default(false),
+    // `no_space` | `missing`
+    stateNote: text('state_note'),
+  },
+  table => [
+    primaryKey({ columns: [table.followId, table.season, table.episode] }),
+  ],
+)
+
 // Версии, с которыми стартовал сервер: смена версии — запись и сообщение
 // «Сервер обновлён» в центре уведомлений
 export const serverVersions = sqliteTable('server_versions', {

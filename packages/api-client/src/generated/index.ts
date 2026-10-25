@@ -321,6 +321,26 @@ export interface TitleNextEpisodeInput {
   airDate?: string;
 }
 
+export interface FollowCursorInput {
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  season: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  episode: number;
+}
+
+export interface TitleFollowBriefInput {
+  id: string;
+  state: "active" | "paused" | "stopped" | "done";
+  subscribed: boolean;
+  start: FollowCursorInput;
+}
+
 export interface TitleDetailsInput {
   id: string;
   kind: "movie" | "series";
@@ -397,6 +417,7 @@ export interface TitleDetailsInput {
    * @max 9007199254740991
    */
   episodeCount?: number;
+  follow?: TitleFollowBriefInput | null;
 }
 
 export interface EpisodeInput {
@@ -414,6 +435,7 @@ export interface EpisodeInput {
    */
   runtime?: number;
   still?: string;
+  follow?: "upcoming" | "searching" | "downloading" | "in_library";
 }
 
 export interface SeasonDetailsInput {
@@ -1613,6 +1635,230 @@ export interface TorrentStatsInput {
     downloaded: number;
     bufferedAhead: number;
   };
+}
+
+export interface FollowTitleInput {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  voiceStudio?: string | null;
+  voiceStrict?: boolean;
+  requireRussian?: boolean;
+  /**
+   * @min 0
+   * @max 168
+   */
+  waitHours?: number;
+  qualityPreset?: "best" | "uhd" | "compact";
+  start?:
+    | "auto"
+    | "new"
+    | "season"
+    | "beginning"
+    | {
+        /**
+         * @min 1
+         * @max 999
+         */
+        season: number;
+        /**
+         * @min 1
+         * @max 9999
+         */
+        episode: number;
+      };
+}
+
+export interface UpdateFollowInput {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  voiceStudio?: string | null;
+  voiceStrict?: boolean;
+  requireRussian?: boolean;
+  /**
+   * @min 0
+   * @max 168
+   */
+  waitHours?: number;
+  qualityPreset?: "best" | "uhd" | "compact";
+  start?:
+    | "new"
+    | "season"
+    | "beginning"
+    | {
+        /**
+         * @min 1
+         * @max 999
+         */
+        season: number;
+        /**
+         * @min 1
+         * @max 9999
+         */
+        episode: number;
+      };
+  state?: "active" | "paused";
+}
+
+export interface TitleFollowInput {
+  id: string;
+  kind: "movie" | "series";
+  state: "active" | "paused" | "stopped" | "done";
+  start: FollowCursorInput;
+  voiceStudio: string | null;
+  voiceStrict: boolean;
+  requireRussian: boolean;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  waitHours: number;
+  qualityPreset: "best" | "uhd" | "compact";
+  next: TitleNextEpisodeInput | null;
+  subscribed: boolean;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  profileCount: number;
+}
+
+export interface TitleFollowResponseInput {
+  follow: TitleFollowInput | null;
+  canEdit: boolean;
+  options: {
+    new: FollowCursorInput;
+    season: FollowCursorInput;
+    beginning: FollowCursorInput;
+  } | null;
+}
+
+export interface FollowProfileInput {
+  id: string;
+  name: string;
+  color:
+    | "violet"
+    | "green"
+    | "orange"
+    | "blue"
+    | "rose"
+    | "teal"
+    | "amber"
+    | "slate";
+}
+
+export interface FollowEpisodeInput {
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  season: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  episode: number;
+  airDate?: string;
+  state: "upcoming" | "searching" | "downloading" | "in_library";
+}
+
+export interface FollowSummaryInput {
+  id: string;
+  kind: "movie" | "series";
+  state: "active" | "paused" | "stopped" | "done";
+  start: FollowCursorInput;
+  voiceStudio: string | null;
+  voiceStrict: boolean;
+  requireRussian: boolean;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  waitHours: number;
+  qualityPreset: "best" | "uhd" | "compact";
+  next: TitleNextEpisodeInput | null;
+  titleId: string;
+  title: string | null;
+  poster?: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  year?: number;
+  profiles: FollowProfileInput[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  wanted: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FollowListResponseInput {
+  items: FollowSummaryInput[];
+}
+
+export interface FollowDetailsInput {
+  id: string;
+  kind: "movie" | "series";
+  state: "active" | "paused" | "stopped" | "done";
+  start: FollowCursorInput;
+  voiceStudio: string | null;
+  voiceStrict: boolean;
+  requireRussian: boolean;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  waitHours: number;
+  qualityPreset: "best" | "uhd" | "compact";
+  next: TitleNextEpisodeInput | null;
+  titleId: string;
+  title: string | null;
+  poster?: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  year?: number;
+  profiles: FollowProfileInput[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  wanted: number;
+  createdAt: string;
+  updatedAt: string;
+  episodes: FollowEpisodeInput[];
+}
+
+export interface ScheduleItemInput {
+  titleId: string;
+  title: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  season: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  episode: number;
+  episodeTitle?: string;
+  airDate: string;
+  image?: string;
+  followed: boolean;
+  state: "upcoming" | "searching" | "downloading" | "in_library" | null;
+}
+
+export interface ScheduleResponseInput {
+  upcoming: ScheduleItemInput[];
+  recent: ScheduleItemInput[];
 }
 
 export interface DeviceProfileInput {
@@ -4249,6 +4495,26 @@ export interface TitleNextEpisode {
   airDate?: string;
 }
 
+export interface FollowCursor {
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  season: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  episode: number;
+}
+
+export interface TitleFollowBrief {
+  id: string;
+  state: "active" | "paused" | "stopped" | "done";
+  subscribed: boolean;
+  start: FollowCursor;
+}
+
 export interface TitleDetails {
   id: string;
   kind: "movie" | "series";
@@ -4325,6 +4591,7 @@ export interface TitleDetails {
    * @max 9007199254740991
    */
   episodeCount?: number;
+  follow?: TitleFollowBrief | null;
 }
 
 export interface Episode {
@@ -4342,6 +4609,7 @@ export interface Episode {
    */
   runtime?: number;
   still?: string;
+  follow?: "upcoming" | "searching" | "downloading" | "in_library";
 }
 
 export interface SeasonDetails {
@@ -5540,6 +5808,230 @@ export interface TorrentStats {
     downloaded: number;
     bufferedAhead: number;
   };
+}
+
+export interface FollowTitle {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  voiceStudio?: string | null;
+  voiceStrict?: boolean;
+  requireRussian?: boolean;
+  /**
+   * @min 0
+   * @max 168
+   */
+  waitHours?: number;
+  qualityPreset?: "best" | "uhd" | "compact";
+  start?:
+    | "auto"
+    | "new"
+    | "season"
+    | "beginning"
+    | {
+        /**
+         * @min 1
+         * @max 999
+         */
+        season: number;
+        /**
+         * @min 1
+         * @max 9999
+         */
+        episode: number;
+      };
+}
+
+export interface UpdateFollow {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  voiceStudio?: string | null;
+  voiceStrict?: boolean;
+  requireRussian?: boolean;
+  /**
+   * @min 0
+   * @max 168
+   */
+  waitHours?: number;
+  qualityPreset?: "best" | "uhd" | "compact";
+  start?:
+    | "new"
+    | "season"
+    | "beginning"
+    | {
+        /**
+         * @min 1
+         * @max 999
+         */
+        season: number;
+        /**
+         * @min 1
+         * @max 9999
+         */
+        episode: number;
+      };
+  state?: "active" | "paused";
+}
+
+export interface TitleFollow {
+  id: string;
+  kind: "movie" | "series";
+  state: "active" | "paused" | "stopped" | "done";
+  start: FollowCursor;
+  voiceStudio: string | null;
+  voiceStrict: boolean;
+  requireRussian: boolean;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  waitHours: number;
+  qualityPreset: "best" | "uhd" | "compact";
+  next: TitleNextEpisode | null;
+  subscribed: boolean;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  profileCount: number;
+}
+
+export interface TitleFollowResponse {
+  follow: TitleFollow | null;
+  canEdit: boolean;
+  options: {
+    new: FollowCursor;
+    season: FollowCursor;
+    beginning: FollowCursor;
+  } | null;
+}
+
+export interface FollowProfile {
+  id: string;
+  name: string;
+  color:
+    | "violet"
+    | "green"
+    | "orange"
+    | "blue"
+    | "rose"
+    | "teal"
+    | "amber"
+    | "slate";
+}
+
+export interface FollowEpisode {
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  season: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  episode: number;
+  airDate?: string;
+  state: "upcoming" | "searching" | "downloading" | "in_library";
+}
+
+export interface FollowSummary {
+  id: string;
+  kind: "movie" | "series";
+  state: "active" | "paused" | "stopped" | "done";
+  start: FollowCursor;
+  voiceStudio: string | null;
+  voiceStrict: boolean;
+  requireRussian: boolean;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  waitHours: number;
+  qualityPreset: "best" | "uhd" | "compact";
+  next: TitleNextEpisode | null;
+  titleId: string;
+  title: string | null;
+  poster?: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  year?: number;
+  profiles: FollowProfile[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  wanted: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FollowListResponse {
+  items: FollowSummary[];
+}
+
+export interface FollowDetails {
+  id: string;
+  kind: "movie" | "series";
+  state: "active" | "paused" | "stopped" | "done";
+  start: FollowCursor;
+  voiceStudio: string | null;
+  voiceStrict: boolean;
+  requireRussian: boolean;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  waitHours: number;
+  qualityPreset: "best" | "uhd" | "compact";
+  next: TitleNextEpisode | null;
+  titleId: string;
+  title: string | null;
+  poster?: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  year?: number;
+  profiles: FollowProfile[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  wanted: number;
+  createdAt: string;
+  updatedAt: string;
+  episodes: FollowEpisode[];
+}
+
+export interface ScheduleItem {
+  titleId: string;
+  title: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  season: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  episode: number;
+  episodeTitle?: string;
+  airDate: string;
+  image?: string;
+  followed: boolean;
+  state: "upcoming" | "searching" | "downloading" | "in_library" | null;
+}
+
+export interface ScheduleResponse {
+  upcoming: ScheduleItem[];
+  recent: ScheduleItem[];
 }
 
 export interface DeviceProfile {
@@ -8170,6 +8662,22 @@ export type GetPlaybackSubtitlesError = MessageResponse;
 
 export type PutWatchStateError = MessageResponse;
 
+export type GetTitleFollowError = MessageResponse;
+
+export type FollowTitleError = MessageResponse;
+
+export type UnfollowTitleError = MessageResponse;
+
+export type GetScheduleError = MessageResponse;
+
+export type GetFollowsError = MessageResponse;
+
+export type GetFollowError = MessageResponse;
+
+export type UpdateFollowError = MessageResponse;
+
+export type DeleteFollowError = MessageResponse;
+
 export type GetProfilesError = MessageResponse;
 
 export type PostProfileError = MessageResponse;
@@ -9814,6 +10322,87 @@ export class Api<
         format: "json",
         ...params,
       }),
+
+    /**
+     * No description
+     *
+     * @tags Follow
+     * @name GetTitleFollow
+     * @request GET:/api/titles/{id}/follow
+     */
+    getTitleFollow: (
+      id: string,
+      query?: {
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<TitleFollowResponse, GetTitleFollowError>({
+        path: `/api/titles/${id}/follow`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Follow
+     * @name FollowTitle
+     * @request PUT:/api/titles/{id}/follow
+     */
+    followTitle: (
+      id: string,
+      data: FollowTitleInput,
+      query?: {
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<TitleFollowResponse, FollowTitleError>({
+        path: `/api/titles/${id}/follow`,
+        method: "PUT",
+        query: query,
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Follow
+     * @name UnfollowTitle
+     * @request DELETE:/api/titles/{id}/follow
+     */
+    unfollowTitle: (
+      id: string,
+      query?: {
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<TitleFollowResponse, UnfollowTitleError>({
+        path: `/api/titles/${id}/follow`,
+        method: "DELETE",
+        query: query,
+        format: "json",
+        ...params,
+      }),
   };
   mine = {
     /**
@@ -11370,6 +11959,128 @@ export class Api<
         method: "PUT",
         body: data,
         type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+  };
+  schedule = {
+    /**
+     * No description
+     *
+     * @tags Follow
+     * @name GetSchedule
+     * @request GET:/api/schedule
+     */
+    getSchedule: (
+      query?: {
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<ScheduleResponse, GetScheduleError>({
+        path: `/api/schedule`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+  };
+  follows = {
+    /**
+     * No description
+     *
+     * @tags Follow
+     * @name GetFollows
+     * @request GET:/api/follows
+     */
+    getFollows: (
+      query?: {
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<FollowListResponse, GetFollowsError>({
+        path: `/api/follows`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Follow
+     * @name GetFollow
+     * @request GET:/api/follows/{id}
+     */
+    getFollow: (
+      id: string,
+      query?: {
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<FollowDetails, GetFollowError>({
+        path: `/api/follows/${id}`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Follow
+     * @name UpdateFollow
+     * @request PATCH:/api/follows/{id}
+     */
+    updateFollow: (
+      id: string,
+      data: UpdateFollowInput,
+      query?: {
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<FollowDetails, UpdateFollowError>({
+        path: `/api/follows/${id}`,
+        method: "PATCH",
+        query: query,
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Follow
+     * @name DeleteFollow
+     * @request DELETE:/api/follows/{id}
+     */
+    deleteFollow: (id: string, params: RequestParams = {}) =>
+      this.request<MessageResponse, DeleteFollowError>({
+        path: `/api/follows/${id}`,
+        method: "DELETE",
         format: "json",
         ...params,
       }),
