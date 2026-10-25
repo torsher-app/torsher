@@ -167,23 +167,81 @@ describe('лестница целевого поиска', () => {
     ).toBe(false)
   })
 
-  it('фильм — раз в неделю', () => {
-    expect(
+  it('фильм до цифрового релиза — раз в неделю и в день релиза', () => {
+    const plan = (lastSearchAt: Date, availableFrom?: Date) =>
       searchPlan({
         kind: 'movie',
         wanted: [{}],
-        lastSearchAt: at(-6 * DAY_MS),
+        availableFrom,
+        lastSearchAt,
         now: NOW,
-      }),
-    ).toEqual({ due: false, next: at(DAY_MS) })
-    expect(
+      })
+
+    expect(plan(at(-6 * DAY_MS))).toEqual({ due: false, next: at(DAY_MS) })
+    expect(plan(at(-7 * DAY_MS)).due).toBe(true)
+    expect(plan(at(-DAY_MS), at(2 * DAY_MS))).toEqual({
+      due: false,
+      next: at(2 * DAY_MS),
+    })
+    // Релиз наступил после прошлого поиска — ищем сразу
+    expect(plan(at(-DAY_MS), at(-HOUR_MS)).due).toBe(true)
+  })
+
+  it('фильм с цифрового релиза — раз в сутки 14 дней, потом раз в неделю', () => {
+    const plan = (lastSearchAt: Date, released: number) =>
       searchPlan({
         kind: 'movie',
         wanted: [{}],
-        lastSearchAt: at(-7 * DAY_MS),
+        availableFrom: at(-released * DAY_MS),
+        lastSearchAt,
+        now: NOW,
+      })
+
+    expect(plan(at(-20 * HOUR_MS), 5)).toEqual({
+      due: false,
+      next: at(4 * HOUR_MS),
+    })
+    expect(plan(at(-DAY_MS), 5).due).toBe(true)
+    expect(plan(at(-3 * DAY_MS), 20).due).toBe(false)
+    expect(plan(at(-7 * DAY_MS), 20).due).toBe(true)
+  })
+
+  it('фильм в библиотеке, который ещё стоит заменить, ищется по той же лестнице', () => {
+    expect(
+      searchPlan({
+        kind: 'movie',
+        wanted: [],
+        upgrading: true,
+        availableFrom: at(-3 * DAY_MS),
+        lastSearchAt: at(-DAY_MS),
         now: NOW,
       }).due,
     ).toBe(true)
+    expect(
+      searchPlan({
+        kind: 'movie',
+        wanted: [],
+        lastSearchAt: at(-30 * DAY_MS),
+        now: NOW,
+      }).due,
+    ).toBe(false)
+  })
+
+  it('апгрейд серий в библиотеке — поиск раз в сутки', () => {
+    const plan = (lastSearchAt: Date) =>
+      searchPlan({
+        kind: 'series',
+        wanted: [],
+        upgrading: true,
+        lastSearchAt,
+        now: NOW,
+      })
+
+    expect(plan(at(-20 * HOUR_MS))).toEqual({
+      due: false,
+      next: at(4 * HOUR_MS),
+    })
+    expect(plan(at(-DAY_MS)).due).toBe(true)
   })
 })
 

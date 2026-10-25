@@ -18,6 +18,7 @@ export const ACTIVITY_KINDS: ActivityKind[] = [
   'pending',
   'grabbed',
   'downloaded',
+  'upgraded',
   'failed',
   'blocklisted',
   'missing',

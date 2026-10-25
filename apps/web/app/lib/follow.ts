@@ -3,6 +3,7 @@ import type { Component } from 'vue'
 import type { StatusTone } from '~/lib/indexerStatus'
 import {
   BanIcon,
+  CircleArrowUpIcon,
   CircleCheckIcon,
   CircleDashedIcon,
   CircleHelpIcon,
@@ -246,6 +247,7 @@ export const EVENT_VIEW: Record<string, { icon: Component, tone: StatusTone }>
     pending: { icon: ClockIcon, tone: 'muted' },
     grabbed: { icon: DownloadIcon, tone: 'info' },
     downloaded: { icon: LibraryIcon, tone: 'success' },
+    upgraded: { icon: CircleArrowUpIcon, tone: 'success' },
     failed: { icon: TriangleAlertIcon, tone: 'warning' },
     blocklisted: { icon: BanIcon, tone: 'muted' },
     missing: { icon: CircleXIcon, tone: 'warning' },

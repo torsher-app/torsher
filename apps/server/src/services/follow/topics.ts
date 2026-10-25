@@ -609,6 +609,7 @@ function relink(ctx: RefreshContext, now: Date) {
         torrentId: next.id,
         fileIndex: files.get(episodeKey(episode)) ?? null,
         grabbedAt: now,
+        grabbedTitle: refresh.title,
         pending: null,
         waitUntil: null,
         stateNote: null,

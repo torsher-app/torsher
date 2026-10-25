@@ -4,6 +4,11 @@ import type { RankingProfile, VoiceRef } from '../sources/profile.ts'
 import type { RankedRelease } from '../sources/rank.ts'
 import type { OrderedCandidate } from './rank.ts'
 import type { TopicKey } from './topics.ts'
+import type {
+  ReleaseVersion,
+  UpgradeCheck,
+  VersionPosition,
+} from './upgrade.ts'
 import type { EpisodeRef } from './wanted.ts'
 import {
   RESOLUTION_RANK,
@@ -11,7 +16,9 @@ import {
   SIZE_CORRIDOR,
   voiceMatches,
 } from '../sources/rank.ts'
+import { isDigitalSource } from './availability.ts'
 import { compareCandidates, ladderStep, QUALITY_LADDERS } from './rank.ts'
+import { isUpgrade } from './upgrade.ts'
 import { episodeKey } from './wanted.ts'
 
 const HOUR_MS = 60 * 60 * 1000
@@ -24,7 +31,9 @@ const SIZE_FAR_ABOVE = 2
 
 /**
  * Почему кандидат не берётся. Постоянный отказ — раздача не подходит совсем,
- * временный — пока не подходит (нет сидов, ждём лучшее).
+ * временный — пока не подходит (нет сидов, ждём лучшее, фильм ещё не вышел
+ * в цифре). `not_better`, `watched`, `manual` — серию в библиотеке не
+ * заменяем.
  */
 export type RejectionCode
   = | 'title_unsure'
@@ -39,6 +48,10 @@ export type RejectionCode
     | 'no_seeders'
     | 'wait'
     | 'outranked'
+    | 'not_available'
+    | 'not_better'
+    | 'watched'
+    | 'manual'
 
 export type RejectionType = 'permanent' | 'temporary'
 
@@ -54,7 +67,11 @@ const TEMPORARY: ReadonlySet<RejectionCode> = new Set([
   'no_seeders',
   'wait',
   'outranked',
+  'not_available',
 ])
+
+// Почему не заменяем серию в библиотеке: самое окончательное — первым
+const UPGRADE_REJECTIONS: RejectionCode[] = ['manual', 'watched', 'not_better']
 
 function reject(code: RejectionCode, params?: Rejection['params']): Rejection {
   return {
@@ -83,6 +100,16 @@ export interface DecideContext {
   blocked: Set<string>
   /** Первое появление серии: старт окна ожидания */
   firstSeen: Map<string, Date>
+  /**
+   * Серии в библиотеке, которые рассматривает апгрейд: текущая версия или
+   * почему не заменяем
+   */
+  upgrades?: Map<string, UpgradeCheck>
+  /**
+   * Фильм ещё не вышел в цифре — берём только раздачи из цифры: дата
+   * доступности, `null` — дат нет. У сериала и вышедшего фильма — нет поля
+   */
+  unavailableUntil?: Date | null
   now: Date
 }
 
@@ -95,8 +122,14 @@ export interface SeasonContext {
 }
 
 export interface CheckedCandidate extends OrderedCandidate {
-  /** Нужные серии сезона, которые раздача закрывает */
+  /** Нужные и заменяемые (апгрейд) серии сезона, которые раздача закрывает */
   episodes: EpisodeRef[]
+  /** Из них серии в библиотеке, которые раздача заменит: без окна ожидания */
+  upgrades: Set<string>
+  /** Нужные и рассмотренные апгрейдом серии раздачи: для снимка */
+  considered: EpisodeRef[]
+  /** Почему раздача не заменит серию в библиотеке */
+  episodeRejections: Map<string, Rejection>
   /** Озвучка уже та, которую ждём */
   voiceAtCutoff: boolean
   rejections: Rejection[]
@@ -173,7 +206,7 @@ function isFromTopic(release: RankedRelease, topic: TopicKey | undefined) {
   )
 }
 
-function hasOwnVoice(release: RankedRelease, voice: VoiceRef | undefined) {
+function hasOwnVoice(release: ReleaseVersion, voice: VoiceRef | undefined) {
   return !!voice && release.voices.some(track => voiceMatches(track, voice))
 }
 
@@ -182,9 +215,9 @@ function hasOwnVoice(release: RankedRelease, voice: VoiceRef | undefined) {
  * тайтла с русским оригиналом — любая.
  */
 function isVoiceAtCutoff(
-  release: RankedRelease,
+  release: ReleaseVersion,
   season: SeasonContext,
-  ctx: DecideContext,
+  ctx: Pick<DecideContext, 'russianOriginal' | 'profile'>,
 ) {
   if (ctx.russianOriginal)
     return true
@@ -193,6 +226,41 @@ function isVoiceAtCutoff(
     return hasOwnVoice(release, season.voice)
 
   return release.voice?.type === ctx.profile.voiceTypes[0]
+}
+
+/** Где версия относительно cutoff сезона */
+export function positionOf(
+  version: ReleaseVersion,
+  season: SeasonContext,
+  ctx: Pick<DecideContext, 'russianOriginal' | 'profile' | 'preset'>,
+): VersionPosition {
+  return {
+    voiceAtCutoff: isVoiceAtCutoff(version, season, ctx),
+    step:
+      ladderStep(version.resolution?.value, ctx.preset)
+      ?? Number.POSITIVE_INFINITY,
+  }
+}
+
+export function isAtCutoff(position: VersionPosition, season: SeasonContext) {
+  return position.voiceAtCutoff && position.step <= season.cutoffStep
+}
+
+/** Почему кандидат не заменит серию в библиотеке; `undefined` — заменит */
+function upgradeRejection(
+  check: UpgradeCheck,
+  candidate: VersionPosition,
+  season: SeasonContext,
+  ctx: DecideContext,
+) {
+  if (check.blocked)
+    return reject(check.blocked)
+
+  const current = positionOf(check.current!, season, ctx)
+
+  return isAtCutoff(current, season) || !isUpgrade(candidate, current)
+    ? reject('not_better')
+    : undefined
 }
 
 /**
@@ -207,14 +275,62 @@ export function checkCandidate(
   const rejections: Rejection[] = []
   const step = ladderStep(release.resolution?.value, ctx.preset)
   const ownVoice = hasOwnVoice(release, season.voice)
+  const voiceAtCutoff = isVoiceAtCutoff(release, season, ctx)
+  const position = {
+    voiceAtCutoff,
+    step: step ?? Number.POSITIVE_INFINITY,
+  }
   const named = releaseEpisodes(release, season.season, ctx)
-  const episodes = named.filter(item => ctx.wanted.has(episodeKey(item)))
+  const episodes: EpisodeRef[] = []
+  const upgrades = new Set<string>()
+  const considered: EpisodeRef[] = []
+  const episodeRejections = new Map<string, Rejection>()
+
+  for (const item of named) {
+    const key = episodeKey(item)
+    const check = ctx.upgrades?.get(key)
+
+    if (ctx.wanted.has(key)) {
+      episodes.push(item)
+      considered.push(item)
+      continue
+    }
+
+    if (!check)
+      continue
+
+    const rejection = upgradeRejection(check, position, season, ctx)
+
+    considered.push(item)
+
+    if (rejection) {
+      episodeRejections.set(key, rejection)
+      continue
+    }
+
+    episodes.push(item)
+    upgrades.add(key)
+  }
 
   if (release.match.confidence !== 'high')
     rejections.push(reject('title_unsure'))
 
-  if (release.parsed.source && SCREEN_COPIES.has(release.parsed.source))
+  if (release.parsed.source && SCREEN_COPIES.has(release.parsed.source)) {
     rejections.push(reject('screen_copy'))
+  }
+  else if (
+    ctx.unavailableUntil !== undefined
+    && !isDigitalSource(release.parsed.source)
+  ) {
+    rejections.push(
+      reject(
+        'not_available',
+        ctx.unavailableUntil
+          ? { date: ctx.unavailableUntil.toISOString() }
+          : undefined,
+      ),
+    )
+  }
 
   if (ctx.requireRussian && release.voices.length === 0)
     rejections.push(reject('no_russian'))
@@ -238,10 +354,14 @@ export function checkCandidate(
     rejections.push(reject('voice_strict', { studio: season.voice.studio }))
 
   if (episodes.length === 0) {
+    const kept = UPGRADE_REJECTIONS.find(code =>
+      [...episodeRejections.values()].some(item => item.code === code),
+    )
+
     rejections.push(
       named.some(item => ctx.downloading.has(episodeKey(item)))
         ? reject('already_downloading')
-        : reject('no_wanted'),
+        : reject(kept ?? 'no_wanted'),
     )
   }
 
@@ -255,7 +375,10 @@ export function checkCandidate(
     wantedCount: episodes.length,
     sameTopic: isFromTopic(release, season.topic),
     episodes,
-    voiceAtCutoff: isVoiceAtCutoff(release, season, ctx),
+    upgrades,
+    considered,
+    episodeRejections,
+    voiceAtCutoff,
     rejections,
   }
 }
@@ -350,7 +473,9 @@ function waitParams(
  * Решение по сезону. Нужные серии покрываются жадно: лучший по порядку Р5
  * кандидат забирает свои серии, остальное — следующие. Кандидат в cutoff
  * качается сразу; ниже cutoff — когда кончилось окно ожидания серии (от её
- * первого появления, таймер не сбрасывается), до этого он отложен.
+ * первого появления, таймер не сбрасывается), до этого он отложен. Серию в
+ * библиотеке кандидат забирает, только если он лучше её файла на шаг, и
+ * заменяет сразу.
  */
 export function planSeason(
   releases: RankedRelease[],
@@ -363,14 +488,24 @@ export function planSeason(
   const found = new Map<string, Date>()
 
   for (const candidate of checked) {
-    if (isPermanentlyRejected(candidate))
+    // До цифрового релиза фильма окно не начинается: ждать нечего
+    if (
+      isPermanentlyRejected(candidate)
+      || candidate.rejections.some(item => item.code === 'not_available')
+    ) {
       continue
+    }
 
     for (const episode of candidate.episodes) {
       const key = episodeKey(episode)
 
-      if (!ctx.firstSeen.has(key) && !found.has(key))
+      if (
+        !candidate.upgrades.has(key)
+        && !ctx.firstSeen.has(key)
+        && !found.has(key)
+      ) {
         found.set(key, ctx.now)
+      }
     }
   }
 
@@ -384,6 +519,12 @@ export function planSeason(
     compareCandidates(a, b, ctx.profile, ctx.kind),
   )
   const uncovered = new Set(ctx.wanted)
+
+  for (const [key, check] of ctx.upgrades ?? []) {
+    if (check.current)
+      uncovered.add(key)
+  }
+
   const grabs: PlannedGrab[] = []
   const pending: PlannedPending[] = []
 
@@ -410,7 +551,12 @@ export function planSeason(
 
       const until = windowEnd(episode)
 
-      if (atCutoff || until <= ctx.now) {
+      // Окно серии уже кончилось, поэтому и взяли не cutoff: замена — сразу
+      if (
+        atCutoff
+        || until <= ctx.now
+        || candidate.upgrades.has(episodeKey(episode))
+      ) {
         ready.push(episode)
         continue
       }

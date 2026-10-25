@@ -5,12 +5,18 @@ import { feedPass } from './feed.ts'
 import { continueGrabs } from './grab.ts'
 import { purgeHistory } from './history.ts'
 import { followById } from './index.ts'
-import { activeFollows, grabPending, markDownloaded } from './pass.ts'
+import {
+  activeFollows,
+  completeMovie,
+  grabPending,
+  markDownloaded,
+} from './pass.ts'
 import { isQuietAfterStart, searchPass, startFollowSearch } from './search.ts'
 import { checkStalled, hasActiveGrabs } from './stalled.ts'
 import { refreshFollowSchedules } from './tmdbRefresh.ts'
 import { continueRefreshes } from './topics.ts'
 import { purgeTrackerEpisodes } from './trackerEpisodes.ts'
+import { settleUpgrades } from './upgrade.ts'
 
 // Что и когда делать, лежит в таблицах слежения; тик только решает, что пора
 const TICK_MS = 30_000
@@ -22,8 +28,9 @@ let purgedAt = 0
 
 /**
  * Автоматика по действующим слежениям: зависшие закачки, magnet дождался
- * метаданных, кончилось окно или освободилось место, файл лёг в библиотеку,
- * лента индексаторов, целевой поиск. Без действующих слежений никуда не ходит.
+ * метаданных, кончилось окно или освободилось место, файл лёг в библиотеку
+ * или заменён апгрейдом, фильм больше нечем заменить, лента индексаторов,
+ * целевой поиск. Без действующих слежений никуда не ходит.
  * Незаконченная подмена темы продолжается всегда: это не поиск, а раздача,
  * которую нельзя оставить забытой.
  */
@@ -52,7 +59,9 @@ export async function followAutomation(now = new Date()) {
 
   for (const follow of active) {
     await grabPending(follow, now)
+    settleUpgrades(follow, now)
     markDownloaded(follow, now)
+    await completeMovie(follow, now)
   }
 
   await feedPass(activeFollows(), now)

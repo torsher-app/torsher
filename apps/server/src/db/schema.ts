@@ -900,6 +900,12 @@ export type MediaLinkMode = (typeof mediaLinkModes)[number]
 
 // Файл в папке библиотеки. Файлы раздач в кэше сюда не попадают: они
 // недокачаны и живут в `torrents.files`
+/** Файл раздачи: раздача и индекс файла в ней */
+export interface MediaFileRef {
+  torrentId: string
+  fileIndex: number
+}
+
 export const mediaFiles = sqliteTable(
   'media_files',
   {
@@ -928,6 +934,16 @@ export const mediaFiles = sqliteTable(
     // Раздачу подменили новой версией, а этот файл в ней перезалит: файл
     // библиотеки — прежняя версия, пока новую не скачают целиком
     stale: integer('stale', { mode: 'boolean' }).notNull().default(false),
+    // Новая версия из другой раздачи (апгрейд «Следить»): когда скачана
+    // целиком, встаёт на место этого файла, до тех пор в библиотеке — прежний
+    replacementTorrentId: text('replacement_torrent_id').references(
+      () => torrents.id,
+      { onDelete: 'set null' },
+    ),
+    replacementFileIndex: integer('replacement_file_index'),
+    // Файлы раздач, которые этот файл заменил: связыватель не кладёт их второй
+    // версией, хотя они скачаны и раздача ещё закреплена
+    replaced: text('replaced', { mode: 'json' }).$type<MediaFileRef[]>(),
     linkMode: text('link_mode', { enum: mediaLinkModes }),
     probe: text('probe', { mode: 'json' }).$type<MediaInfo>(),
     duration: real('duration'),
@@ -1180,6 +1196,17 @@ export interface FollowDecision {
   }[]
 }
 
+/**
+ * Прежняя закачка серии, которую заменяет апгрейд: к ней серия вернётся, если
+ * новая версия не скачается. `downloadedAt` — миллисекунды.
+ */
+export interface FollowUpgradeFrom {
+  torrentId: string
+  fileIndex: number
+  downloadedAt: number
+  title: string
+}
+
 // `no_space` — захват ждёт места на диске
 export const followEpisodeNotes = ['no_space'] as const
 
@@ -1205,10 +1232,17 @@ export const followEpisodes = sqliteTable(
     }),
     fileIndex: integer('file_index'),
     grabbedAt: integer('grabbed_at', { mode: 'timestamp_ms' }),
+    // Название захваченной раздачи у индексатора: по нему апгрейд сравнивает
+    // озвучку и качество, в имени раздачи (`info.name`) их часто нет
+    grabbedTitle: text('grabbed_title'),
     // Файл серии лёг в библиотеку
     downloadedAt: integer('downloaded_at', { mode: 'timestamp_ms' }),
-    // Раздачу выбрали вручную — апгрейд её не заменяет
+    // Не используется: выбранным вручную считается файл не из захвата автоматики
     manual: integer('manual', { mode: 'boolean' }).notNull().default(false),
+    // Идёт апгрейд: прежняя закачка, которую заменяет новая раздача
+    upgradeFrom: text('upgrade_from', {
+      mode: 'json',
+    }).$type<FollowUpgradeFrom>(),
     stateNote: text('state_note', { enum: followEpisodeNotes }),
   },
   table => [
@@ -1224,12 +1258,14 @@ export type FollowEpisode = typeof followEpisodes.$inferSelect
 // `missing` — серия вышла давно, раздач нет, `search` — целевой поиск,
 // `gap` — лента индексатора пропустила период (без тайтла), `unsure` — позиция
 // ленты похожа на тайтл, но матч не уверен, `topic_updated` — раздача
-// обновляемой темы подменена новой версией
+// обновляемой темы подменена новой версией, `upgraded` — файл серии заменён
+// версией ближе к cutoff
 export const followHistoryKinds = [
   'found',
   'pending',
   'grabbed',
   'downloaded',
+  'upgraded',
   'failed',
   'blocklisted',
   'missing',

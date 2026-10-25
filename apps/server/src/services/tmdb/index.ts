@@ -261,6 +261,49 @@ export async function tmdbEpisodeCounts(id: string) {
   )
 }
 
+/** Релиз фильма по TMDB: тип (`TmdbRelease.type`) и дата `YYYY-MM-DD` */
+export interface MovieRelease {
+  type: number
+  date: string
+}
+
+/**
+ * Даты релизов фильма во всех странах и основная дата выхода — из тех же
+ * деталей, что карточка (`release_dates` приходят с ними), на любом языке в
+ * кэше. `undefined` — ID не фильма; ошибки TMDB — `TmdbError`.
+ */
+export async function getMovieReleases(id: string) {
+  const ref = parseCatalogId(id)
+
+  if (ref?.type !== 'movie')
+    return undefined
+
+  const language = cachedLanguages(ref)[0]!
+  const movie = await withMetaCache(
+    detailsKey(ref, language),
+    DETAILS_TTL_MS,
+    () =>
+      tmdbGet<TmdbMovie>(`/movie/${ref.tmdbId}`, detailsParams(ref, language)),
+  )
+  const releases: MovieRelease[] = []
+
+  for (const country of movie.release_dates?.results ?? []) {
+    for (const release of country.release_dates) {
+      const date = release.release_date?.slice(0, 10)
+
+      if (
+        release.type !== undefined
+        && date
+        && /^\d{4}-\d{2}-\d{2}$/.test(date)
+      ) {
+        releases.push({ type: release.type, date })
+      }
+    }
+  }
+
+  return { releaseDate: movie.release_date || undefined, releases }
+}
+
 /** Эфир сериала из деталей в кэше на любом языке, без запроса в сеть */
 export function cachedTvAiring(id: string) {
   const ref = parseCatalogId(id)

@@ -31,6 +31,10 @@ const REJECTIONS = new Set([
   'no_seeders',
   'wait',
   'outranked',
+  'not_available',
+  'not_better',
+  'watched',
+  'manual',
 ])
 
 const EVENTS = new Set([
@@ -38,6 +42,7 @@ const EVENTS = new Set([
   'pending',
   'grabbed',
   'downloaded',
+  'upgraded',
   'failed',
   'blocklisted',
   'missing',
@@ -157,6 +162,16 @@ export function useFollowText() {
     if (item.code === 'quality' && !params.quality)
       return t('panel.follow.rejections.qualityUnknown')
 
+    if (item.code === 'not_available' && typeof params.date === 'string') {
+      return t('panel.follow.rejections.notAvailableDate', {
+        date: new Intl.DateTimeFormat(locale.value.replace('_', '-'), {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+        }).format(new Date(params.date)),
+      })
+    }
+
     return t(`panel.follow.rejections.${item.code}`, params)
   }
 
@@ -192,10 +207,21 @@ export function useFollowText() {
       }
       case 'grabbed': {
         const meta = target(waitTargetOf(params))
+        const key = params.upgrade ? 'grabbedUpgrade' : 'grabbed'
 
         return meta
-          ? t('panel.follow.events.grabbedMeta', { episodes: label, meta })
-          : t('panel.follow.events.grabbed', { episodes: label })
+          ? t(`panel.follow.events.${key}Meta`, { episodes: label, meta })
+          : t(`panel.follow.events.${key}`, { episodes: label })
+      }
+      case 'upgraded': {
+        const version = (value: unknown) =>
+          target(waitTargetOf(value as Record<string, unknown> | undefined))
+        const from = version(params.from)
+        const to = version(params.to)
+
+        return from && to
+          ? t('panel.follow.events.upgradedMeta', { episodes: label, from, to })
+          : t('panel.follow.events.upgraded', { episodes: label })
       }
       case 'blocklisted':
         return t('panel.follow.events.blocklisted', {

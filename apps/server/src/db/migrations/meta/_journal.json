@@ -183,6 +183,13 @@
       "when": 1792917460816,
       "tag": "0025_dapper_mantis",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "6",
+      "when": 1792919372062,
+      "tag": "0026_perpetual_strong_guy",
+      "breakpoints": true
     }
   ]
 }

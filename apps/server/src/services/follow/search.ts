@@ -16,7 +16,13 @@ import { isViewerSearching, searchReleases } from '../sources/search.ts'
 import { getTitleIdentity } from '../tmdb/index.ts'
 import { recordHistory } from './history.ts'
 import { followSettings } from './settings.ts'
-import { decideFollow, followStates, reportMissing } from './pass.ts'
+import {
+  decideFollow,
+  followStates,
+  movieAvailability,
+  reportMissing,
+  upgradeNeeded,
+} from './pass.ts'
 import { localDay, MISSING_AFTER_DAYS, WANTED_STATES } from './wanted.ts'
 
 const MINUTE_MS = 60 * 1000
@@ -35,8 +41,12 @@ const LADDER_MS = [
     (_, index) => (21 + index * 7) * DAY_MS,
   ),
 ]
-// Фильм до среза доступности ищется раз в неделю
+// Фильм до цифрового релиза и через 14 дней после него ищется раз в неделю,
+// эти 14 дней — раз в сутки
 const MOVIE_EVERY_MS = 7 * DAY_MS
+const MOVIE_DAILY_MS = 14 * DAY_MS
+// Окно апгрейда: серии в библиотеке ищется замена раз в сутки
+const UPGRADE_EVERY_MS = DAY_MS
 // Без нужных серий слежение смотрится хотя бы раз в сутки: TMDB мог сдвинуть даты
 const IDLE_RECHECK_MS = DAY_MS
 // Между стартами целевых поисков; общий бюджет — в час
@@ -80,6 +90,10 @@ export interface SearchPlanInput {
   kind: 'movie' | 'series'
   /** Нужные серии; без даты — давно вышедшие (только поиск при включении) */
   wanted: { airDate?: string }[]
+  /** Серии в библиотеке, которые ещё стоит заменить (апгрейд) */
+  upgrading?: boolean
+  /** Фильм: когда стал или станет доступен (цифровой релиз) */
+  availableFrom?: Date
   /** Ближайшая невышедшая серия */
   upcomingAirDate?: string
   lastSearchAt?: Date | null
@@ -87,23 +101,45 @@ export interface SearchPlanInput {
 }
 
 /**
+ * Фильм: до доступности — раз в неделю и в день доступности, с неё — раз в
+ * сутки 14 дней, потом раз в неделю
+ */
+function moviePlan(input: SearchPlanInput, now: number, last: number) {
+  const from = input.availableFrom?.getTime()
+  const daily
+    = from !== undefined && from <= now && now < from + MOVIE_DAILY_MS
+  const every = daily ? DAY_MS : MOVIE_EVERY_MS
+  let next = last + every
+
+  if (from !== undefined && from > last)
+    next = Math.min(next, from)
+
+  return { due: next <= now, next: new Date(Math.max(next, now)) }
+}
+
+/**
  * Пора ли искать и когда смотреть слежение снова. Поиск при включении — если
  * есть нужные серии и поиска ещё не было; дальше — точки лестницы от дня
- * выхода каждой нужной серии, прошедшие с прошлого поиска.
+ * выхода каждой нужной серии, прошедшие с прошлого поиска, а пока серии в
+ * библиотеке можно заменить — раз в сутки.
  */
 export function searchPlan(input: SearchPlanInput) {
   const now = input.now.getTime()
   const last = input.lastSearchAt?.getTime()
-  let due = input.wanted.length > 0 && last === undefined
+  const needed = input.wanted.length > 0 || !!input.upgrading
+  let due = needed && last === undefined
   let next = now + IDLE_RECHECK_MS
 
   if (input.kind === 'movie') {
-    if (input.wanted.length && last !== undefined) {
-      due = now - last >= MOVIE_EVERY_MS
-      next = Math.min(next, last + MOVIE_EVERY_MS)
-    }
+    if (needed && last !== undefined)
+      return moviePlan(input, now, last)
 
-    return { due, next: new Date(Math.max(next, now)) }
+    return { due, next: new Date(next) }
+  }
+
+  if (input.upgrading && last !== undefined) {
+    due ||= now - last >= UPGRADE_EVERY_MS
+    next = Math.min(next, Math.max(last + UPGRADE_EVERY_MS, now))
   }
 
   for (const item of input.wanted) {
@@ -233,6 +269,8 @@ async function evaluate(follow: Follow, now: Date) {
   const plan = searchPlan({
     kind: follow.kind,
     wanted: wanted.map(item => ({ airDate: item.airDate })),
+    upgrading: await upgradeNeeded(follow, states, now),
+    availableFrom: (await movieAvailability(follow, now))?.from,
     upcomingAirDate: states.find(item => item.state === 'upcoming')?.airDate,
     lastSearchAt: follow.lastSearchAt,
     now,
