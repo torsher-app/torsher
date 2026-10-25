@@ -37,6 +37,18 @@ docker compose --profile prowlarr up -d
 
 Prowlarr is then at `http://<host>:9696`, and Torsher reaches it as `http://prowlarr:9696`.
 
+### Following
+
+Select **Follow** on a series or a movie on the TV, and Torsher downloads new episodes into the library on its own, through your Torznab indexer.
+
+- **Rules.** From which episode (only new ones, the current season, the beginning), the voice-over studio or any, how long to wait for your voice-over and the top quality after an episode first appears (a day for series and 3 days for movies by default), and the quality: 1080p → 720p → SD, 4K → 1080p → 720p or 720p → SD. One follow per title on the server; profiles subscribe to it. A profile with an age limit can follow but can't change the rules.
+- **Finding releases.** The server reads the feed of new releases from each indexer every 15 minutes (one request per indexer for all follows) and searches by every title alias when it needs to: when following starts, when an episode airs and for a while after, and on **Search now**. Targeted searches are limited to 20 an hour, and an indexer that answers 429 is left alone until its `Retry-After`. Only releases matched to the title with confidence are taken; similar ones wait for your answer in the panel.
+- **What is downloaded.** Only the wanted episodes of a season pack. A release that adds episodes over the season is switched to its new version without downloading the episodes you have, and watch positions are kept. An episode in another voice-over or a lower quality is replaced by a better release within 7 days, as long as nobody has started watching it; files you picked yourself are never replaced. Episodes that are in releases but not in TMDB yet count as aired. Movies download once a digital or disc release is out; screen recordings are never taken.
+- **Panel.** **Following** lists every follow with its rules, episodes and the releases found for each, with the reason a release was rejected. **Activity** has the queue, a 90-day history and the blocklist. **Settings → Following** sets the feed interval, the search limit and the rules for new follows; the feed of each indexer can be turned off in its card under **Sources**.
+- **Notifications.** Episodes in the library and episodes with no releases long after they aired go to the channels with the **Following** group; not enough space for followed episodes and an indexer failing for over 6 hours show up in **Needs attention**.
+
+Downloads of followed titles are kept in the library, never evicted from the cache to make room. When they don't fit, the episode waits for space and the panel says how much is needed.
+
 ### Configuration
 
 Everything except the values below is set in the panel.
@@ -178,7 +190,7 @@ Docker replaces the container and keeps the `/data` volume. If the `image:` line
 
 ### Notifications
 
-The bell in the panel shows server problems (the same as **Needs attention**), new versions, finished downloads and new devices. To get them when the panel is closed, add a channel under **Settings → Notifications**: Telegram, a webhook (Discord, Slack or JSON for your own receiver), ntfy, Gotify, email over SMTP, or your own `apprise-api` server for anything else. Each channel chooses its events and language and has **Send test**. A problem is reported once when it appears and, if you ask for it, once when it is resolved; a channel gets at most 20 messages an hour.
+The bell in the panel shows server problems (the same as **Needs attention**), new versions, finished downloads, new devices and what following did. To get them when the panel is closed, add a channel under **Settings → Notifications**: Telegram, a webhook (Discord, Slack or JSON for your own receiver), ntfy, Gotify, email over SMTP, or your own `apprise-api` server for anything else. Each channel chooses its events and language and has **Send test**. A problem is reported once when it appears and, if you ask for it, once when it is resolved; a channel gets at most 20 messages an hour.
 
 Messages go through the routes in **Settings → Network**, so a channel that is only reachable through a proxy works once its host has a route. Tokens and passwords of channels are encrypted with `TORSHER_SECRET` like indexer keys.
 

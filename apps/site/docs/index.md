@@ -19,11 +19,12 @@ What Torsher does today, what it replaces, what you need to bring, and how the p
 - **Keep what you like.** What you watch stays in a cache that cleans itself up. Choose <Ui k="download.keep" /> or <Ui k="download.movie" /> and the file goes to your library, laid out so Jellyfin, Plex and Kodi can read it too.
 - **Your existing files.** Connect the folders you already have: Torsher indexes them in place and never writes there. Home videos get their own section.
 - **Plays everywhere.** When a TV or a browser can't play a file, the server converts it on the fly, on the GPU if it has one.
+- **New episodes on their own.** Follow a series on the TV, and new episodes download into your library from the episode you choose, in your voice-over and the best quality released. A followed movie downloads once it is out digitally. See [Follow](/docs/watch/follow).
 - **For the whole household.** Profiles with a PIN, continue watching, your own lists, ratings and collections.
 - **Network that works.** DNS over HTTPS and routes through your own SOCKS5 or HTTP proxy, per host.
 - **Looks after itself.** Daily database backups, a notice when a new version is out, and notifications about problems, finished downloads, new episodes of the shows you follow and new devices in Telegram, a webhook, ntfy, Gotify or email.
 
-Coming next: following series so new episodes arrive on their own, and more TV platforms. See [Other devices](/docs/tv/other-devices).
+Coming next: more TV platforms. See [Other devices](/docs/tv/other-devices).
 
 ## What it replaces
 
