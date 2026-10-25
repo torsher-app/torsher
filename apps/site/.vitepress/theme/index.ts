@@ -2,7 +2,6 @@ import type { Theme } from 'vitepress'
 // The site sets Onest itself: the default theme would also load Inter
 import DefaultTheme from 'vitepress/theme-without-fonts'
 import Draft from '../components/Draft.vue'
-import EarlyNotice from '../components/EarlyNotice.vue'
 import Ui from '../components/Ui.vue'
 
 import '@fontsource/onest/latin-400.css'
@@ -19,7 +18,6 @@ export default {
   extends: DefaultTheme,
   enhanceApp({ app }) {
     app.component('Draft', Draft)
-    app.component('EarlyNotice', EarlyNotice)
     app.component('Ui', Ui)
   },
 } satisfies Theme

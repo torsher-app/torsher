@@ -11,8 +11,6 @@ The shortest way from an empty folder to a movie on your TV. Each step links to 
 Torsher and Prowlarr running on your server, the setup wizard passed, and the TV connected and showing the catalog.
 :::
 
-<EarlyNotice />
-
 ## Before you start
 
 - A computer with Docker and the Compose plugin. Linux gets every feature; Windows and macOS work through Docker Desktop, with transcoding on the CPU only (see [Docker Desktop](/docs/install/docker-desktop)). Not sure about the hardware? See [Requirements](/docs/install/requirements).

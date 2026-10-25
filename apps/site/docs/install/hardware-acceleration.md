@@ -12,7 +12,7 @@ When a player can't decode a video, the server converts it to H.264 on the fly. 
 :::
 
 ::: info Status
-VAAPI, NVENC and the CPU fallback are implemented. Checks on the reference hardware (Intel N150 and NVIDIA RTX 3080) are still in progress. If something here doesn't match what you see, please [open an issue](https://github.com/torsher-app/torsher/issues) with the log.
+VAAPI transcoding is tested on an Intel N150 mini PC. NVENC is implemented but not tested on NVIDIA hardware yet. If something here doesn't match what you see, please [open an issue](https://github.com/torsher-app/torsher/issues) with the log.
 :::
 
 ## When transcoding happens

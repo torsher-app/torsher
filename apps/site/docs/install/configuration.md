@@ -13,7 +13,7 @@ Torsher keeps its settings in the database and changes them in the control panel
 | --- | --- | --- |
 | `PUID`, `PGID` | `1000` | Owner of the files Torsher writes to `/data` |
 | `TZ` | `Etc/UTC` | Time zone |
-| `TORSHER_SECRET` | key file in `/data/db` | Key that encrypts indexer API keys in the database |
+| `TORSHER_SECRET` | key file in `/data/db` | Key that encrypts saved secrets in the database: indexer API keys, proxy passwords, the TMDB key and notification tokens |
 | `SECRET_KEY` | key file in `/data/db` | Key that signs sign-in sessions. If you set it, use a random string of at least 32 characters (`openssl rand -hex 32`): the server refuses to start with a shorter one |
 | `TMDB_ACCESS_TOKEN` | app key built into the image | Your own TMDB API Read Access Token for the catalog instead of the app key. A key set in <Ui k="panel.nav.settings panel.settings.nav.metadata" /> takes precedence over both |
 | `HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY` | — | Your proxy for outgoing requests until the default route is changed in <Ui k="panel.nav.settings panel.settings.nav.network" /> |
