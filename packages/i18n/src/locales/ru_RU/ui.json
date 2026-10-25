@@ -154,6 +154,8 @@
     "nextEpisodeOn": "Новая серия {date}",
     "cast": "Актёры",
     "similar": "Похожее",
+    "franchise": "Все части",
+    "franchiseCurrent": "Этот фильм",
     "aboutSeries": "О сериале",
     "aboutMovie": "О фильме",
     "tagline": "«{text}»",

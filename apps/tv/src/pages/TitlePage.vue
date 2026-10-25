@@ -4,6 +4,7 @@ import type {
   Card,
   CrewMember,
   Episode,
+  FranchisePart,
   Person,
   TitleDetails,
   TitleRelease,
@@ -188,6 +189,27 @@ const showEpisodeList = ref(false)
 const cast = computed(() => extras.value?.cast ?? [])
 const crew = computed(() => extras.value?.crew ?? [])
 const similar = computed(() => extras.value?.similar ?? [])
+const franchise = computed(() => extras.value?.franchise ?? [])
+// Ряд франшизы открывается на текущем фильме: у длинных франшиз он за краем
+const currentPart = computed(() =>
+  Math.max(
+    0,
+    franchise.value.findIndex(part => part.current),
+  ),
+)
+const focusedPart = ref<number>()
+
+// Под рядом — год и название части под фокусом: постеры франшизы похожи
+const franchiseLine = computed(() => {
+  const part = franchise.value[focusedPart.value ?? currentPart.value]
+
+  if (!part)
+    return ''
+
+  return [part.year, part.title, part.current && t('title.franchiseCurrent')]
+    .filter(Boolean)
+    .join(' · ')
+})
 
 // Что впереди: дата выхода фильма, новая серия, а без даты — статус, если
 // годы его не говорят («2019–2022» уже значит «завершён»)
@@ -857,6 +879,9 @@ const order = computed(() => {
     if (crew.value.length > 0)
       list.push('title-crew')
 
+    if (franchise.value.length > 0)
+      list.push('title-franchise')
+
     if (similar.value.length > 0)
       list.push('title-similar')
   }
@@ -1185,6 +1210,11 @@ function onEpisodeFocus(index: number) {
 
 function openTitle(card: Card) {
   router.push(`/title/${card.id}`)
+}
+
+function openPart(part: FranchisePart) {
+  if (!part.current)
+    openTitle(part)
 }
 
 function back() {
@@ -1646,6 +1676,36 @@ onBeforeUnmount(() => {
         </section>
 
         <section
+          v-if="franchise.length > 0"
+          class="block"
+          :class="{ 'block--above': blocksAbove.includes('franchise') }"
+          data-block="franchise"
+        >
+          <ContentRow
+            section="title-franchise"
+            :title="t('title.franchise')"
+            :items="franchise"
+            :item-key="cardKey"
+            :start="currentPart"
+            :edges="edgesOf('title-franchise')"
+            @focus-item="(index) => (focusedPart = index)"
+          >
+            <template #item="{ item }">
+              <PosterCard
+                :card="item"
+                :watched="item.watched"
+                :current="item.current"
+                @select="openPart(item)"
+              />
+            </template>
+          </ContentRow>
+          <!-- Одна строка постоянной высоты: шаг по ряду не сдвигает блоки ниже -->
+          <p class="title__franchise-line">
+            {{ franchiseLine }}
+          </p>
+        </section>
+
+        <section
           v-if="similar.length > 0"
           class="block"
           :class="{ 'block--above': blocksAbove.includes('similar') }"
@@ -2035,6 +2095,18 @@ onBeforeUnmount(() => {
 .block {
   position: relative;
   margin-bottom: calc(var(--u) * 40);
+}
+
+/* Под рядом: отступ ряда снизу больше нужного строке */
+.title__franchise-line {
+  height: calc(var(--font-size-s) * var(--line-height));
+  margin: calc(var(--u) * -28) 0 0;
+  padding: 0 var(--safe-x) 0 var(--content-x);
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-s);
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .block__inner {

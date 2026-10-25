@@ -1,4 +1,5 @@
 import type {
+  TmdbCollection,
   TmdbExtras,
   TmdbGenresResponse,
   TmdbImage,
@@ -615,3 +616,59 @@ export const movieGenres = {
     { id: 35, name: 'комедия' },
   ],
 } as TmdbGenresResponse
+
+// Части в TMDB идут не по порядку; без даты — анонс без подробностей
+export const collection = {
+  id: 2344,
+  name: 'Матрица (Коллекция)',
+  parts: [
+    {
+      id: 624860,
+      media_type: 'movie',
+      title: 'Матрица: Воскрешение',
+      original_title: 'The Matrix Resurrections',
+      release_date: '2021-12-16',
+      poster_path: '/resurrections.jpg',
+      vote_average: 6.4,
+      vote_count: 6000,
+    },
+    {
+      id: 603,
+      media_type: 'movie',
+      title: 'Матрица',
+      original_title: 'The Matrix',
+      release_date: '1999-03-31',
+      poster_path: '/matrix.jpg',
+      vote_average: 8.2,
+      vote_count: 26000,
+    },
+    {
+      id: 999001,
+      media_type: 'movie',
+      title: 'Матрица 5',
+      original_title: 'The Matrix 5',
+      release_date: '',
+      poster_path: null,
+    },
+    {
+      id: 605,
+      media_type: 'movie',
+      title: 'Матрица: Революция',
+      original_title: 'The Matrix Revolutions',
+      release_date: '2003-11-05',
+      poster_path: null,
+      vote_average: 6.7,
+      vote_count: 10000,
+    },
+    {
+      id: 604,
+      media_type: 'movie',
+      title: 'Матрица: Перезагрузка',
+      original_title: 'The Matrix Reloaded',
+      release_date: '2003-05-15',
+      poster_path: '/reloaded.jpg',
+      vote_average: 7.0,
+      vote_count: 11000,
+    },
+  ],
+} as TmdbCollection

@@ -154,6 +154,8 @@
     "nextEpisodeOn": "New episode {date}",
     "cast": "Cast",
     "similar": "More like this",
+    "franchise": "All films",
+    "franchiseCurrent": "This film",
     "aboutSeries": "About the series",
     "aboutMovie": "About the movie",
     "tagline": "“{text}”",

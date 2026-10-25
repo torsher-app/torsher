@@ -193,6 +193,8 @@ export interface TmdbExtras {
   // Создатели сериала: поле самих деталей
   created_by?: TmdbCrewMember[]
   recommendations?: TmdbListResponse
+  // Поле деталей фильма: франшиза TMDB, у сериала его нет
+  belongs_to_collection?: { id: number, name: string } | null
   // titles у фильма, results у сериала
   alternative_titles?: { titles?: TmdbAltTitle[], results?: TmdbAltTitle[] }
   // Поля самих деталей: чипы карточки
@@ -201,6 +203,13 @@ export interface TmdbExtras {
   networks?: TmdbNamed[]
   // append_to_response=keywords: keywords у фильма, results у сериала
   keywords?: { keywords?: TmdbNamed[], results?: TmdbNamed[] }
+}
+
+/** Франшиза: /collection/{id}, части — фильмы в порядке TMDB */
+export interface TmdbCollection {
+  id: number
+  name: string
+  parts: TmdbListResult[]
 }
 
 /** Тайтл в фильмографии персоны: combined_credits, с media_type */

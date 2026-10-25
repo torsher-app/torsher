@@ -436,10 +436,35 @@ export interface CatalogTagInput {
   name: string;
 }
 
+export interface FranchisePartInput {
+  id: string;
+  kind: "movie" | "series";
+  title: string;
+  originalTitle: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  year?: number;
+  poster?: string;
+  ratings?: TitleRatingInput[];
+  posterRatings?: PosterRatingInput[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  ownRating?: number;
+  availability?: "downloading" | "downloaded" | "library";
+  downloadProgress?: number;
+  current: boolean;
+  watched: boolean;
+}
+
 export interface TitleExtrasInput {
   cast: PersonInput[];
   crew: CrewMemberInput[];
   similar: CardInput[];
+  franchise: FranchisePartInput[];
   aka: string[];
   directors: string[];
   tags: {
@@ -4330,10 +4355,35 @@ export interface CatalogTag {
   name: string;
 }
 
+export interface FranchisePart {
+  id: string;
+  kind: "movie" | "series";
+  title: string;
+  originalTitle: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  year?: number;
+  poster?: string;
+  ratings?: TitleRating[];
+  posterRatings?: PosterRating[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  ownRating?: number;
+  availability?: "downloading" | "downloaded" | "library";
+  downloadProgress?: number;
+  current: boolean;
+  watched: boolean;
+}
+
 export interface TitleExtras {
   cast: Person[];
   crew: CrewMember[];
   similar: Card[];
+  franchise: FranchisePart[];
   aka: string[];
   directors: string[];
   tags: {

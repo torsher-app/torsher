@@ -16,10 +16,18 @@ const props = withDefaults(
     loadImage?: boolean
     // Профиль смотрел этот тайтл
     watched?: boolean
+    // Карточка того тайтла, на чьей странице ряд: части франшизы
+    current?: boolean
     // Долгое нажатие открывает меню действий; при выборе тайтла для раздачи — нет
     actions?: boolean
   }>(),
-  { caption: false, loadImage: true, watched: false, actions: true },
+  {
+    caption: false,
+    loadImage: true,
+    watched: false,
+    current: false,
+    actions: true,
+  },
 )
 
 defineEmits<{ select: [] }>()
@@ -50,6 +58,7 @@ const meta = computed(() => {
     class="card poster-card"
     type="button"
     :data-long-press="actions ? '' : undefined"
+    :aria-current="current ? 'true' : undefined"
     @click="$emit('select')"
     @longpress="openActions"
   >
@@ -64,6 +73,7 @@ const meta = computed(() => {
       <span v-else-if="!card.poster" class="poster-card__placeholder">
         {{ card.title }}
       </span>
+      <span v-if="current" class="poster-card__current" />
       <PosterRatingBadge :card="card" />
       <DownloadBadge :card="card" />
       <WatchedMark v-if="watched" class="poster-card__watched" />
@@ -112,6 +122,22 @@ const meta = computed(() => {
 
 .poster-card__image {
   object-fit: cover;
+}
+
+/* Рамка акцентом внутри постера; в фокусе её сменяет кольцо фокуса — двойная обводка читалась как ошибка */
+.poster-card__current {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  border: calc(var(--u) * 4) solid var(--color-accent);
+  border-radius: var(--radius-m);
+  pointer-events: none;
+}
+
+.poster-card:focus .poster-card__current {
+  opacity: 0;
 }
 
 /* Правый верхний угол занимает своя оценка профиля: отметка — слева */
