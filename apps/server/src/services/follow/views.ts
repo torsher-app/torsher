@@ -1,0 +1,169 @@
+import type { Follow } from '../../db/schema.ts'
+import type {
+  FollowDetails,
+  FollowSummary,
+  TitleFollowResponse,
+} from '../../dto/follow.ts'
+import type { TitleSummary } from '../mine/cards.ts'
+import type { EpisodeWithState } from './wanted.ts'
+import { mapLimit } from '../../utils/mapLimit.ts'
+import { DETAILS_CONCURRENCY, summaryOf } from '../mine/cards.ts'
+import { followEpisodeStates, movieState } from './episodes.ts'
+import {
+  followById,
+  followOf,
+  isSubscribed,
+  listFollows,
+  scheduleOf,
+  subscribersOf,
+} from './index.ts'
+import { compareEpisodes, cursorOptions, wantedEpisodes } from './wanted.ts'
+
+type NextEpisode = FollowSummary['next']
+
+function startOf(follow: Follow) {
+  return { season: follow.startSeason, episode: follow.startEpisode }
+}
+
+function rulesView(follow: Follow, next: NextEpisode) {
+  return {
+    id: follow.id,
+    kind: follow.kind,
+    state: follow.state,
+    start: startOf(follow),
+    voiceStudio: follow.voiceStudio,
+    voiceStrict: follow.voiceStrict,
+    requireRussian: follow.requireRussian,
+    waitHours: follow.waitHours,
+    qualityPreset: follow.qualityPreset,
+    next,
+  }
+}
+
+/** Анонсированная серия TMDB, если она не раньше курсора */
+function announcedNext(follow: Follow, summary: TitleSummary | undefined) {
+  const next = summary?.airing?.next
+
+  if (
+    follow.kind !== 'series'
+    || !next
+    || compareEpisodes(next, startOf(follow)) < 0
+  ) {
+    return null
+  }
+
+  return { season: next.season, episode: next.episode, airDate: next.airDate }
+}
+
+/** Краткое «Следить» для деталей тайтла */
+export function titleFollowBrief(titleId: string, profileId: string) {
+  const follow = followOf(titleId)
+
+  return follow
+    ? {
+        id: follow.id,
+        state: follow.state,
+        subscribed: isSubscribed(follow.id, profileId),
+        start: startOf(follow),
+      }
+    : null
+}
+
+/** «Следить» тайтла для витрины: правила, подписка и пресеты курсора */
+export async function titleFollowView(
+  titleId: string,
+  profileId: string,
+  canEdit: boolean,
+  language: string,
+): Promise<TitleFollowResponse> {
+  const follow = followOf(titleId)
+  const series = titleId.startsWith('tmdb:tv:')
+  const summary = series ? await summaryOf(titleId, language) : undefined
+
+  return {
+    follow: follow
+      ? {
+          ...rulesView(follow, announcedNext(follow, summary)),
+          subscribed: isSubscribed(follow.id, profileId),
+          profileCount: subscribersOf(follow.id).length,
+        }
+      : null,
+    canEdit,
+    options: summary ? cursorOptions(scheduleOf(summary)) : null,
+  }
+}
+
+async function statesOf(
+  follow: Follow,
+  summary: TitleSummary | undefined,
+  language: string,
+): Promise<EpisodeWithState[]> {
+  if (follow.kind === 'movie')
+    return movieState(follow.titleId, summary?.details.status === 'released')
+
+  return summary
+    ? followEpisodeStates(follow, scheduleOf(summary), language)
+    : []
+}
+
+async function summaryView(
+  follow: Follow,
+  language: string,
+): Promise<FollowSummary & { states: EpisodeWithState[] }> {
+  const summary = await summaryOf(follow.titleId, language)
+  const states = await statesOf(follow, summary, language)
+  const upcoming = states.find(item => item.state === 'upcoming')
+
+  return {
+    ...rulesView(
+      follow,
+      follow.kind === 'series' && upcoming
+        ? {
+            season: upcoming.season,
+            episode: upcoming.episode,
+            airDate: upcoming.airDate,
+          }
+        : null,
+    ),
+    titleId: follow.titleId,
+    title: summary?.details.title ?? null,
+    poster: summary?.details.poster,
+    year: summary?.details.year,
+    profiles: subscribersOf(follow.id),
+    wanted: wantedEpisodes(states).length,
+    createdAt: follow.createdAt.toISOString(),
+    updatedAt: follow.updatedAt.toISOString(),
+    states,
+  }
+}
+
+/** Список «Слежу» для панели */
+export async function followSummaries(language: string) {
+  const views = await mapLimit(listFollows(), DETAILS_CONCURRENCY, follow =>
+    summaryView(follow, language))
+
+  return views.map(({ states: _states, ...view }) => view)
+}
+
+/** Карточка слежения в панели: серии с курсора и их состояния */
+export async function followDetailsOf(
+  id: string,
+  language: string,
+): Promise<FollowDetails | undefined> {
+  const follow = followById(id)
+
+  if (!follow)
+    return undefined
+
+  const { states, ...view } = await summaryView(follow, language)
+
+  return {
+    ...view,
+    episodes: states.map(item => ({
+      season: item.season,
+      episode: item.episode,
+      airDate: item.airDate,
+      state: item.state,
+    })),
+  }
+}

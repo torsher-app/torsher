@@ -7,6 +7,7 @@ import { catalogRoutes } from './catalog.ts'
 import { collectionRoutes } from './collections.ts'
 import { deviceRoutes } from './devices.ts'
 import { engineRoutes } from './engine.ts'
+import { followRoutes } from './follow.ts'
 import { hlsRoutes } from './hls.ts'
 import { homeRoutes } from './home.ts'
 import { imageRoutes } from './images.ts'
@@ -81,6 +82,7 @@ export const apiRoutes: FastifyPluginAsyncZod = async (app) => {
   app.register(settingsRoutes, { prefix: '/settings' })
   app.register(setupRoutes, { prefix: '/setup' })
   app.register(playbackRoutes)
+  app.register(followRoutes)
   app.register(profileRoutes, { prefix: '/profiles' })
   app.register(profileImportRoutes, { prefix: '/profiles' })
   app.register(deviceRoutes, { prefix: '/devices' })

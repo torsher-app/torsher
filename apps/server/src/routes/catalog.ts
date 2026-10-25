@@ -20,6 +20,9 @@ import {
 } from '../dto/catalog.ts'
 import { messageResponse } from '../dto/common.ts'
 import { requireViewer } from '../middleware/auth.ts'
+import { seasonEpisodeStates } from '../services/follow/episodes.ts'
+import { followOf, isFollowing } from '../services/follow/index.ts'
+import { titleFollowBrief } from '../services/follow/views.ts'
 import { withPosterRatings } from '../services/mine/index.ts'
 import { watchedTitles } from '../services/sources/progress.ts'
 import {
@@ -113,7 +116,10 @@ export const catalogRoutes: FastifyPluginAsyncZod = async (app) => {
         if (!details)
           return reply.code(404).send({ message: 'Title not found' })
 
-        return details
+        return {
+          ...details,
+          follow: titleFollowBrief(details.id, request.profileId),
+        }
       }
       catch (err) {
         return sendTmdbError(reply, err)
@@ -151,7 +157,20 @@ export const catalogRoutes: FastifyPluginAsyncZod = async (app) => {
         if (!season)
           return reply.code(404).send({ message: 'Season not found' })
 
-        return season
+        const follow = followOf(id)
+
+        if (!isFollowing(follow))
+          return season
+
+        const states = seasonEpisodeStates(follow, season)
+
+        return {
+          ...season,
+          episodes: season.episodes.map(episode => ({
+            ...episode,
+            follow: states.get(episode.number)?.state,
+          })),
+        }
       }
       catch (err) {
         return sendTmdbError(reply, err)

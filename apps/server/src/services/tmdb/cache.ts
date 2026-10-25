@@ -1,4 +1,4 @@
-import { eq, lte } from 'drizzle-orm'
+import { eq, like, lte } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import { metaCache } from '../../db/schema.ts'
 
@@ -43,15 +43,44 @@ export async function withMetaCache<T>(
     throw err
   }
 
+  storeMetaCache(key, value)
+
+  return value
+}
+
+/** Записывает свежий ответ источника: так обновление обходит срок кэша */
+export function storeMetaCache(key: string, value: unknown) {
   const json = JSON.stringify(value)
   const fetchedAt = new Date()
 
-  db.insert(metaCache)
+  getDb()
+    .insert(metaCache)
     .values({ key, json, fetchedAt })
     .onConflictDoUpdate({ target: metaCache.key, set: { json, fetchedAt } })
     .run()
+}
 
-  return value
+/** Запись кэша без запроса в сеть, любой свежести в пределах хранения */
+export function readMetaCache<T>(key: string, now = Date.now()) {
+  const found = getDb()
+    .select()
+    .from(metaCache)
+    .where(eq(metaCache.key, key))
+    .get()
+
+  return found && now - found.fetchedAt.getTime() < TMDB_MAX_CACHE_AGE_MS
+    ? (JSON.parse(found.json) as T)
+    : undefined
+}
+
+/** Ключи кэша по шаблону `LIKE` */
+export function metaCacheKeys(pattern: string) {
+  return getDb()
+    .select({ key: metaCache.key })
+    .from(metaCache)
+    .where(like(metaCache.key, pattern))
+    .all()
+    .map(row => row.key)
 }
 
 /**

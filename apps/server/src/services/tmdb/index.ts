@@ -8,6 +8,7 @@ import type {
 } from '../../dto/catalog.ts'
 import type { TmdbRef } from './mappers.ts'
 import type {
+  TmdbChanges,
   TmdbCollection,
   TmdbExtras,
   TmdbListResponse,
@@ -23,7 +24,12 @@ import {
   withRatings,
 } from '../ratings/index.ts'
 import { TMDB_PROVIDER } from '../ratings/tmdb.ts'
-import { withMetaCache } from './cache.ts'
+import {
+  metaCacheKeys,
+  readMetaCache,
+  storeMetaCache,
+  withMetaCache,
+} from './cache.ts'
 import { tmdbGet } from './client.ts'
 import { getTrendingCards } from './home.ts'
 import {
@@ -124,8 +130,12 @@ interface LoadedTitle {
   imdbId?: string | null
 }
 
+function detailsKey(ref: TmdbRef, language: string) {
+  return `tmdb:${ref.type}:${ref.tmdbId}:${language}:${DETAILS_KEY_VERSION}`
+}
+
 async function loadTitle(ref: TmdbRef, language: string): Promise<LoadedTitle> {
-  const key = `tmdb:${ref.type}:${ref.tmdbId}:${language}:${DETAILS_KEY_VERSION}`
+  const key = detailsKey(ref, language)
   const params = detailsParams(ref, language)
 
   if (ref.type === 'movie') {
@@ -201,12 +211,117 @@ export async function getTitle(
   return details
 }
 
+function seasonKey(tmdbId: number, number: number, language: string) {
+  return `tmdb:tv:${tmdbId}:season:${number}:${language}`
+}
+
 function loadSeason(tmdbId: number, number: number, language: string) {
-  return withMetaCache(
-    `tmdb:tv:${tmdbId}:season:${number}:${language}`,
-    SEASON_TTL_MS,
-    () => tmdbGet<TmdbSeason>(`/tv/${tmdbId}/season/${number}`, { language }),
-  )
+  return withMetaCache(seasonKey(tmdbId, number, language), SEASON_TTL_MS, () =>
+    tmdbGet<TmdbSeason>(`/tv/${tmdbId}/season/${number}`, { language }))
+}
+
+/** Языки, на которых детали сериала лежат в кэше; нет ни одного — английский */
+function cachedLanguages(ref: TmdbRef) {
+  const prefix = `tmdb:${ref.type}:${ref.tmdbId}:`
+  const languages = metaCacheKeys(`${prefix}%:${DETAILS_KEY_VERSION}`)
+    .map(key => key.slice(prefix.length).split(':')[0])
+    .filter(language => /^[a-z]{2}-[A-Z]{2}$/.test(language))
+
+  return languages.length ? [...new Set(languages)] : [FALLBACK_LANGUAGE]
+}
+
+/** Эфир сериала из деталей в кэше на любом языке, без запроса в сеть */
+export function cachedTvAiring(id: string) {
+  const ref = parseCatalogId(id)
+
+  if (ref?.type !== 'tv')
+    return undefined
+
+  for (const language of cachedLanguages(ref)) {
+    const tv = readMetaCache<TmdbTv>(detailsKey(ref, language))
+
+    if (tv)
+      return tvAiring(tv)
+  }
+
+  return undefined
+}
+
+/**
+ * Перезагружает детали сериала мимо срока кэша на всех языках, на которых
+ * они лежат в кэше, а с `seasons` — и сезоны последней вышедшей и следующей
+ * серий: расписание «Следить» свежее общего кэша. Ответ — эфир из последних
+ * деталей; `undefined` — ID не сериала.
+ */
+export async function refreshTvSchedule(
+  id: string,
+  options: { seasons: boolean },
+) {
+  const ref = parseCatalogId(id)
+
+  if (ref?.type !== 'tv')
+    return undefined
+
+  let airing: ReturnType<typeof tvAiring> | undefined
+
+  for (const language of cachedLanguages(ref)) {
+    const tv = await tmdbGet<TmdbTv>(
+      `/tv/${ref.tmdbId}`,
+      detailsParams(ref, language),
+    )
+
+    storeMetaCache(detailsKey(ref, language), tv)
+    airing = tvAiring(tv)
+
+    if (!options.seasons)
+      continue
+
+    const seasons = new Set(
+      [airing.last?.season, airing.next?.season].filter(
+        (number): number is number => number !== undefined && number > 0,
+      ),
+    )
+
+    for (const number of seasons) {
+      storeMetaCache(
+        seasonKey(ref.tmdbId, number, language),
+        await tmdbGet<TmdbSeason>(`/tv/${ref.tmdbId}/season/${number}`, {
+          language,
+        }),
+      )
+    }
+  }
+
+  return airing
+}
+
+/**
+ * ID сериалов TMDB, изменившихся с `startDate` по `endDate` (`YYYY-MM-DD`,
+ * не больше 14 дней). `undefined` — страниц больше `maxPages`: изменилось
+ * слишком много, проще считать изменившимся всё.
+ */
+export async function changedTvIds(
+  startDate: string,
+  endDate: string,
+  maxPages: number,
+) {
+  const ids = new Set<number>()
+
+  for (let page = 1; ; page++) {
+    const response = await tmdbGet<TmdbChanges>('/tv/changes', {
+      start_date: startDate,
+      end_date: endDate,
+      page: String(page),
+    })
+
+    for (const item of response.results) ids.add(item.id)
+
+    if (page >= response.total_pages)
+      return ids
+
+    if (page >= maxPages)
+      return undefined
+  }
 }
 
 /** `undefined` — ID не сериала из каталога; нет сезона в TMDB — `TmdbError`. */

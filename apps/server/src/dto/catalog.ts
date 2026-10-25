@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { posterRatingSources } from '../db/schema.ts'
+import { followStates, posterRatingSources } from '../db/schema.ts'
 
 // Скачивание тайтла на сервере: «Скачать» и «Оставить» на витрине
 export const titleDownloadStates = [
@@ -122,6 +122,33 @@ export const titleNextEpisode = z
   })
   .meta({ id: 'titleNextEpisode' })
 
+// Состояние серии у тайтла «Следить»: `upcoming` — ещё не вышла, `searching` —
+// вышла и её ищем, `downloading` — качается, `in_library` — в библиотеке
+export const followEpisodeStates = [
+  'upcoming',
+  'searching',
+  'downloading',
+  'in_library',
+] as const
+
+// Серия, с которой слежение охватывает сериал; у фильма 0/0
+export const followCursor = z
+  .object({
+    season: z.number().int(),
+    episode: z.number().int(),
+  })
+  .meta({ id: 'followCursor' })
+
+export const titleFollowBrief = z
+  .object({
+    id: z.string(),
+    state: z.enum(followStates),
+    // Подписан ли профиль зрителя
+    subscribed: z.boolean(),
+    start: followCursor,
+  })
+  .meta({ id: 'titleFollowBrief' })
+
 export const titleDetails = card
   .extend({
     overview: z.string(),
@@ -160,6 +187,8 @@ export const titleDetails = card
     nextEpisode: titleNextEpisode.optional(),
     episodeRuntime: z.number().int().optional(),
     episodeCount: z.number().int().optional(),
+    // «Следить» на сервере; null — за тайтлом не следят
+    follow: titleFollowBrief.nullable().optional(),
   })
   .meta({ id: 'titleDetails' })
 
@@ -172,6 +201,8 @@ export const episode = z
     airDate: z.string().optional(),
     runtime: z.number().int().optional(),
     still: z.string().optional(),
+    // Только у тайтла «Следить» и серий с его курсора
+    follow: z.enum(followEpisodeStates).optional(),
   })
   .meta({ id: 'episode' })
 

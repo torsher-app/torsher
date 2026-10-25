@@ -240,3 +240,10 @@ export interface TmdbPerson {
     crew: TmdbPersonCredit[]
   }
 }
+
+// /tv/changes: изменившиеся тайтлы за период, по 100 на страницу
+export interface TmdbChanges {
+  results: { id: number }[]
+  page: number
+  total_pages: number
+}
