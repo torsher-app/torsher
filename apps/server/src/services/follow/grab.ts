@@ -41,6 +41,7 @@ import {
   upgradingRows,
 } from './upgrade.ts'
 import { episodeKey } from './wanted.ts'
+import { seasonVoice } from './voice.ts'
 
 // Ссылка индексатора не ответила: следующая попытка того же кандидата — не
 // на каждом тике, скачивание `.torrent` у Prowlarr считается в его лимит
@@ -559,7 +560,10 @@ export async function continueGrabs(
       continue
     }
 
-    await startGrab(follow, torrent, candidate, episodes, { now })
+    await startGrab(follow, torrent, candidate, episodes, {
+      ownStudio: seasonVoice(follow, episodes[0]!.season)?.studio,
+      now,
+    })
   }
 }
 
