@@ -30,6 +30,8 @@ const { t } = useI18n()
 
 const formError = ref('')
 const restoreOpen = ref(false)
+// Аккаунт создан, а мастер ещё не открылся: кнопка крутится до смены страницы
+const isLeaving = ref(false)
 
 // Правила совпадают с DTO бэкенда: имя от 2 символов, пароль от 8
 const schema = toTypedSchema(
@@ -54,6 +56,7 @@ const onSubmit = handleSubmit(async (values) => {
 
   try {
     await withErrorMode('silent', () => signup(values))
+    isLeaving.value = true
   }
   catch (err) {
     // 409 — на сервере идёт восстановление из копии: аккаунт придёт из неё
@@ -151,7 +154,7 @@ const onSubmit = handleSubmit(async (values) => {
         type="button"
         variant="ghost"
         class="w-full sm:-ml-3 sm:w-auto"
-        :disabled="isSubmitting"
+        :disabled="isSubmitting || isLeaving"
         @click="restoreOpen = true"
       >
         <ArchiveRestoreIcon aria-hidden="true" />
@@ -160,7 +163,7 @@ const onSubmit = handleSubmit(async (values) => {
       <LoadingButton
         type="submit"
         class="w-full sm:w-auto"
-        :loading="isSubmitting"
+        :loading="isSubmitting || isLeaving"
       >
         {{ t("panel.wizard.account.submit") }}
         <ArrowRightIcon aria-hidden="true" />

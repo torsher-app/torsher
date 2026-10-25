@@ -5,23 +5,27 @@ import AboutCard from '~/components/settings/AboutCard.vue'
 import BrandMark from '~/components/shell/BrandMark.vue'
 import UpdatesCard from '~/components/updates/UpdatesCard.vue'
 
+definePageMeta({
+  // Страница открывается и со входа: гостю — без оболочки панели
+  middleware: () => {
+    if (!useUser().isAuthenticated.value)
+      setPageLayout('auth')
+  },
+})
+
 const { t } = useI18n()
-const { isAuthenticated } = useUser()
 const updates = useUpdates()
 
+// Снимок на открытии, как у родительской страницы настроек
+const isGuest = !useUser().isAuthenticated.value
+
 // Обновления — только у владельца: без входа страница показывает одну атрибуцию
-watch(
-  isAuthenticated,
-  (value) => {
-    if (value)
-      void updates.load()
-  },
-  { immediate: true },
-)
+if (!isGuest)
+  void updates.load()
 </script>
 
 <template>
-  <div v-if="isAuthenticated" class="grid gap-5">
+  <div v-if="!isGuest" class="grid gap-5">
     <header>
       <h1 class="text-[22px] font-semibold tracking-tight">
         {{ t("about.title") }}
