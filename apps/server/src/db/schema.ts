@@ -1225,6 +1225,22 @@ export const releaseBlocklist = sqliteTable(
   table => [index('release_blocklist_hash_idx').on(table.infoHash)],
 )
 
+// Серии, которых ещё нет в TMDB, по явному диапазону в уверенно сопоставленной
+// раздаче («на трекере»). Строка не нужна, когда TMDB узнал серию
+export const trackerEpisodes = sqliteTable(
+  'tracker_episodes',
+  {
+    titleId: text('title_id').notNull(),
+    season: integer('season').notNull(),
+    episode: integer('episode').notNull(),
+    firstSeenAt: integer('first_seen_at', { mode: 'timestamp_ms' }).notNull(),
+    releaseTitle: text('release_title').notNull(),
+  },
+  table => [
+    primaryKey({ columns: [table.titleId, table.season, table.episode] }),
+  ],
+)
+
 // Версии, с которыми стартовал сервер: смена версии — запись и сообщение
 // «Сервер обновлён» в центре уведомлений
 export const serverVersions = sqliteTable('server_versions', {

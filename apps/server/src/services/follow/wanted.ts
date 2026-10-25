@@ -1,4 +1,8 @@
+import { localDay } from '../../utils/localDay.ts'
 import { nextAired } from '../mine/newEpisodes.ts'
+
+// По дате в поясе сервера серия считается вышедшей
+export { localDay }
 
 export interface EpisodeRef {
   season: number
@@ -77,14 +81,6 @@ export function episodeKey(ref: EpisodeRef) {
 
 export function compareEpisodes(a: EpisodeRef, b: EpisodeRef) {
   return a.season - b.season || a.episode - b.episode
-}
-
-/** Дата в часовом поясе сервера (`TZ`): по ней серия считается вышедшей */
-export function localDay(date = new Date()) {
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-
-  return `${date.getFullYear()}-${month}-${day}`
 }
 
 function regularSeasons(schedule: SeriesSchedule) {
@@ -167,14 +163,26 @@ export function defaultCursor(
     : { season: ongoing, episode: 1 }
 }
 
+/** Серия загруженного сезона; `tracker` — её знают только раздачи */
+export interface LoadedEpisode {
+  number: number
+  airDate?: string
+  tracker?: boolean
+}
+
+/** Серия с трекера вышла: раздача с ней уже есть */
+export function isAired(item: LoadedEpisode, today: string) {
+  return !!item.tracker || (!!item.airDate && item.airDate <= today)
+}
+
 /**
  * Серии сезонов с курсора по TMDB. Загруженный сезон даёт даты, и серия
- * считается вышедшей по `air_date` в поясе сервера; без него — по числу
- * вышедших серий из деталей.
+ * считается вышедшей по `air_date` в поясе сервера, а серия с трекера — сразу;
+ * без него — по числу вышедших серий из деталей (с трекером).
  */
 export function scheduledEpisodes(
   schedule: SeriesSchedule,
-  loaded: Map<number, { number: number, airDate?: string }[]>,
+  loaded: Map<number, LoadedEpisode[]>,
   from: EpisodeRef,
   today: string,
 ): ScheduledEpisode[] {
@@ -187,7 +195,7 @@ export function scheduledEpisodes(
         return episodes.map(item => ({
           season: season.number,
           episode: item.number,
-          aired: !!item.airDate && item.airDate <= today,
+          aired: isAired(item, today),
           airDate: item.airDate,
         }))
       }

@@ -3,6 +3,7 @@ import type { TitleIdentity } from '../tmdb/index.ts'
 import type { VoiceRef } from './profile.ts'
 import type { RankedRelease, Ranking } from './rank.ts'
 import type { IndexerFailure } from './search.ts'
+import { recordTrackerEpisodes } from '../follow/trackerEpisodes.ts'
 import { listSearchableIndexers } from '../indexers/index.ts'
 import { getTitleIdentity } from '../tmdb/index.ts'
 import { normalizeTitle } from '@torsher/release-parser'
@@ -157,6 +158,10 @@ export async function getTitleSources(
       ),
     { refresh: request.refresh },
   )
+
+  if (identity.kind === 'series')
+    await recordTrackerEpisodes(titleId, search.outcome.releases)
+
   const releases
     = episode === undefined
       ? search.outcome.releases

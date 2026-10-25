@@ -29,6 +29,7 @@ import { followEpisodeStates, movieState, stateInputs } from './episodes.ts'
 import { grabCandidate, pendingOf, resetEpisodes } from './grab.ts'
 import { recordHistory, reportedEpisodes } from './history.ts'
 import { scheduleOf } from './index.ts'
+import { recordTrackerEpisodes } from './trackerEpisodes.ts'
 import { compareEpisodes, episodeKey, WANTED_STATES } from './wanted.ts'
 
 // Фону язык зрителя не нужен: из деталей берётся только расписание, а
@@ -281,13 +282,18 @@ function savePlan(
 /**
  * Прогон решателя по найденным раздачам: нужные серии по сезонам, проверки,
  * порядок Р5 с закреплённой студией сезона, жадное покрытие, окно ожидания.
- * Кандидаты в cutoff и с кончившимся окном захватываются сразу.
+ * Кандидаты в cutoff и с кончившимся окном захватываются сразу. Серии
+ * раздач, которых нет в TMDB, сначала записываются с трекера — и становятся
+ * нужными в том же прогоне.
  */
 export async function decideFollow(
   follow: Follow,
   releases: FoundRelease[],
   now = new Date(),
 ) {
+  if (follow.kind === 'series')
+    await recordTrackerEpisodes(follow.titleId, releases, now)
+
   const states = await followStates(follow, now)
   const wanted = states.filter(item => WANTED_STATES.has(item.state))
 

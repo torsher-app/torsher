@@ -9,6 +9,7 @@ import { activeFollows, grabPending, markDownloaded } from './pass.ts'
 import { isQuietAfterStart, searchPass, startFollowSearch } from './search.ts'
 import { checkStalled, hasActiveGrabs } from './stalled.ts'
 import { refreshFollowSchedules } from './tmdbRefresh.ts'
+import { purgeTrackerEpisodes } from './trackerEpisodes.ts'
 
 // Что и когда делать, лежит в таблицах слежения; тик только решает, что пора
 const TICK_MS = 30_000
@@ -28,6 +29,7 @@ export async function followAutomation(now = new Date()) {
     purgedAt = now.getTime()
     purgeHistory(now)
     purgeBlocklist(now)
+    await purgeTrackerEpisodes()
   }
 
   const active = activeFollows()
