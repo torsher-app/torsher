@@ -123,7 +123,7 @@ const checks = computed<WizardCheck[]>(() => {
   return [...hosts.map(hostCheck), keyCheckItem()]
 })
 
-const isLoading = computed(() =>
+const isLoading = useHeldLoading(() =>
   [network.state.value, metadata.state.value].some(
     state => state === 'idle' || state === 'loading',
   ),

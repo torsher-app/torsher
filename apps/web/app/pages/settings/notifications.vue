@@ -21,6 +21,9 @@ definePageMeta({
 
 const { t } = useI18n()
 const { channels, state, load, setEnabled, test } = useNotificationChannels()
+const loading = useHeldLoading(
+  () => state.value === 'loading' || state.value === 'idle',
+)
 const now = useNow({ interval: 60_000 })
 
 const dialogOpen = ref(false)
@@ -99,7 +102,7 @@ async function onTest(channel: NotificationChannel) {
           {{ t("panel.notifications.channels") }}
         </h2>
         <Button
-          v-if="state === 'ready' && channels.length"
+          v-if="!loading && state === 'ready' && channels.length"
           size="sm"
           @click="onAdd"
         >
@@ -109,11 +112,7 @@ async function onTest(channel: NotificationChannel) {
       </div>
 
       <!-- Скелетон строк той же высоты, что строки каналов -->
-      <div
-        v-if="state === 'loading' || state === 'idle'"
-        class="divide-y rounded-xl border"
-        aria-busy="true"
-      >
+      <div v-if="loading" class="divide-y rounded-xl border" aria-busy="true">
         <div
           v-for="index in 2"
           :key="index"

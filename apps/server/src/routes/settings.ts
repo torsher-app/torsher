@@ -8,6 +8,7 @@ import {
   updateImdbSettings,
   updateMetadataSettings,
 } from '../dto/net.ts'
+import { followSettingsResponse, updateFollowSettings } from '../dto/follow.ts'
 import { playbackSettings, updatePlaybackSettings } from '../dto/media.ts'
 import {
   restartBlockedResponse,
@@ -21,6 +22,10 @@ import {
   putEngineSettings,
   restartEngine,
 } from '../services/engine/index.ts'
+import {
+  followSettings,
+  saveFollowSettings,
+} from '../services/follow/settings.ts'
 import { logFor } from '../services/logs/index.ts'
 import { anyMoving } from '../services/storage/moving.ts'
 import { streamingCount } from '../services/storage/index.ts'
@@ -319,5 +324,34 @@ export const settingsRoutes: FastifyPluginAsyncZod = async (app) => {
       },
     },
     async () => playbackSettingsOf(await recheckAccel()),
+  )
+
+  app.get(
+    '/follow',
+    {
+      schema: {
+        operationId: 'getFollowSettings',
+        tags: ['Settings'],
+        response: { 200: followSettingsResponse, ...guardResponses },
+      },
+    },
+    async () => followSettings(),
+  )
+
+  app.put(
+    '/follow',
+    {
+      schema: {
+        operationId: 'putFollowSettings',
+        tags: ['Settings'],
+        body: updateFollowSettings,
+        response: {
+          200: followSettingsResponse,
+          400: messageResponse,
+          ...guardResponses,
+        },
+      },
+    },
+    async request => saveFollowSettings(request.body),
   )
 }

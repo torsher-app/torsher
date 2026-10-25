@@ -23,6 +23,9 @@ export function useProfileHistory(
   // Сколько строк сервера уже запрошено: тайтл без деталей TMDB в ответ не
   // попадает, и по числу показанных смещение не посчитать
   const served = ref(0)
+  // Чья история в `items`: тот же профиль остаётся на экране, пока идёт новый
+  // запрос (смена языка, импорт), чужой — нет
+  let shownFor: string | undefined
   let token = 0
 
   function request(id: string, offset: number) {
@@ -42,7 +45,13 @@ export function useProfileHistory(
 
     const mine = ++token
 
-    state.value = 'loading'
+    if (state.value !== 'ready' || shownFor !== id) {
+      items.value = []
+      total.value = 0
+      shownFor = undefined
+      state.value = 'loading'
+    }
+
     loadingMore.value = false
 
     try {
@@ -54,10 +63,11 @@ export function useProfileHistory(
       items.value = res.items
       total.value = res.total
       served.value = options.limit
+      shownFor = id
       state.value = 'ready'
     }
     catch {
-      if (mine === token)
+      if (mine === token && state.value === 'loading')
         state.value = 'error'
     }
   }

@@ -49,6 +49,7 @@ const state = computed(() => {
 
   return states.every(item => item === 'ready') ? 'ready' : 'loading'
 })
+const loading = useHeldLoading(() => state.value === 'loading')
 const canDelete = computed(() => profiles.value.length > 1)
 const selected = computed(
   () => profiles.value.find(item => item.id === selectedId.value) ?? null,
@@ -97,7 +98,7 @@ onBeforeUnmount(devicesStore.stopPolling)
 
 <template>
   <PageBar :title="t('panel.people.title')" :parent="t('panel.nav.server')">
-    <template v-if="state === 'ready'" #actions>
+    <template v-if="!loading && state === 'ready'" #actions>
       <Button size="sm" @click="isPairOpen = true">
         <MonitorSmartphoneIcon aria-hidden="true" />
         <span class="sm:hidden">{{ t("panel.people.pairDeviceShort") }}</span>
@@ -106,7 +107,7 @@ onBeforeUnmount(devicesStore.stopPolling)
     </template>
   </PageBar>
 
-  <PeopleSkeleton v-if="state === 'loading'" />
+  <PeopleSkeleton v-if="loading" />
 
   <div v-else-if="state === 'error'" class="min-h-0 flex-1 overflow-y-auto">
     <section

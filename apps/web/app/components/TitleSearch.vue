@@ -26,8 +26,11 @@ const RESULT_LIMIT = 8
 const { t, locale } = useI18n()
 
 const results = shallowRef<Card[]>([])
-const searching = ref(false)
+// Поиск ждёт паузы во вводе, но уже идёт: «ничего не нашли» не мелькает
+// ни до первого ответа, ни пока печатают
+const searching = ref(!!query.value.trim())
 const searchFailed = ref(false)
+const loading = useHeldLoading(() => searching.value && !results.value.length)
 let timer: ReturnType<typeof setTimeout> | undefined
 let run = 0
 
@@ -70,6 +73,7 @@ onMounted(() => void search(query.value))
 
 watch(query, (value) => {
   clearTimeout(timer)
+  searching.value = !!value.trim()
   timer = setTimeout(search, SEARCH_DELAY_MS, value)
 })
 
@@ -105,11 +109,7 @@ function kindLabel(card: Card) {
 
     <!-- Список постоянной высоты: результаты не двигают кнопки диалога -->
     <div class="h-[312px] overflow-y-auto rounded-lg border">
-      <div
-        v-if="searching && !results.length"
-        class="grid gap-px p-1.5"
-        aria-busy="true"
-      >
+      <div v-if="loading" class="grid gap-px p-1.5" aria-busy="true">
         <Skeleton v-for="item in 4" :key="item" class="h-[60px] rounded-md" />
       </div>
       <p

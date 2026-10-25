@@ -57,7 +57,12 @@ const isDeleteOpen = computed({
       deleteTarget.value = null
   },
 })
-const isReady = computed(() => state.value === 'ready' && !isEmpty.value)
+const loading = useHeldLoading(
+  () => state.value === 'loading' || state.value === 'idle',
+)
+const isReady = computed(
+  () => !loading.value && state.value === 'ready' && !isEmpty.value,
+)
 
 function groupTitle(
   kind: 'attention' | 'manager' | 'manual',
@@ -98,7 +103,7 @@ onBeforeUnmount(stopPolling)
     </template>
   </PageBar>
 
-  <SourcesSkeleton v-if="state === 'loading' || state === 'idle'" />
+  <SourcesSkeleton v-if="loading" />
 
   <div v-else-if="state === 'error'" class="min-h-0 flex-1 overflow-y-auto">
     <section

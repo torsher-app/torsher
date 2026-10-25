@@ -67,6 +67,7 @@ export const sidebar: DefaultTheme.SidebarItem[] = [
     items: [
       { text: 'Overview', link: '/docs/panel/overview' },
       { text: 'Downloads', link: '/docs/panel/downloads' },
+      { text: 'Following', link: '/docs/panel/follow' },
       { text: 'Sources', link: '/docs/panel/sources' },
       { text: 'Library', link: '/docs/panel/library' },
       { text: 'Collections', link: '/docs/panel/collections' },

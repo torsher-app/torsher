@@ -16,11 +16,14 @@ const { overview, state, load, refresh } = useOverview()
 useOverviewPolling()
 
 const now = useNow({ interval: 60_000 })
+const loading = useHeldLoading(
+  () => state.value === 'loading' || state.value === 'idle',
+)
 
 const meta = computed(() => {
   const value = overview.value
 
-  if (!value)
+  if (!value || loading.value)
     return ''
 
   const uptime = uptimeOf(value.startedAt, now.value.getTime())
@@ -63,11 +66,7 @@ const meta = computed(() => {
       </header>
 
       <!-- Скелетон повторяет сетку плиток -->
-      <div
-        v-if="state === 'loading' || state === 'idle'"
-        class="grid gap-4 sm:grid-cols-2"
-        aria-busy="true"
-      >
+      <div v-if="loading" class="grid gap-4 sm:grid-cols-2" aria-busy="true">
         <Skeleton v-for="index in 6" :key="index" class="h-36 rounded-xl" />
       </div>
 

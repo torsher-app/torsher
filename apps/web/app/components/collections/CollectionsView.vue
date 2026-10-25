@@ -18,6 +18,9 @@ import DeleteCollectionDialog from './DeleteCollectionDialog.vue'
 
 const { t } = useI18n()
 const { collections, state, load } = useCollections()
+const loading = useHeldLoading(
+  () => state.value === 'loading' || state.value === 'idle',
+)
 const profilesStore = useProfiles()
 
 const isCreateOpen = ref(false)
@@ -73,7 +76,10 @@ onMounted(() => {
     :title="t('panel.collections.title')"
     :parent="t('panel.nav.server')"
   >
-    <template v-if="state === 'ready' && collections.length > 0" #actions>
+    <template
+      v-if="!loading && state === 'ready' && collections.length > 0"
+      #actions
+    >
       <Button size="sm" @click="isCreateOpen = true">
         <PlusIcon aria-hidden="true" />
         {{ t("panel.collections.add") }}
@@ -81,7 +87,7 @@ onMounted(() => {
     </template>
   </PageBar>
 
-  <div v-if="state === 'loading' || state === 'idle'" aria-busy="true">
+  <div v-if="loading" aria-busy="true">
     <div class="flex min-h-9 items-center border-b bg-muted px-4">
       <Skeleton class="h-3 w-24" />
     </div>

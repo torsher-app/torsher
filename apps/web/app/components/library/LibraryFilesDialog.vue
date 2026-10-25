@@ -36,9 +36,11 @@ const loading = ref(false)
 const editing = ref<string | null>(null)
 const draft = ref('')
 const saving = ref(false)
+const listLoading = useHeldLoading(() => loading.value && !items.value.length)
 
 async function load(more = false) {
-  if (!props.library)
+  // Без папок нет и файлов: пустое состояние сразу, без запроса
+  if (!props.library?.folders.length)
     return
 
   loading.value = true
@@ -115,11 +117,7 @@ async function save(item: LibraryFileItem, value: string | null) {
       </DialogHeader>
 
       <div class="max-h-[60vh] overflow-y-auto rounded-lg border">
-        <div
-          v-if="loading && !items.length"
-          class="grid gap-1 p-2"
-          aria-busy="true"
-        >
+        <div v-if="listLoading" class="grid gap-1 p-2" aria-busy="true">
           <Skeleton v-for="item in 5" :key="item" class="h-12 rounded" />
         </div>
         <p

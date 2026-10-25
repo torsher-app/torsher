@@ -6,7 +6,7 @@ import { copyText } from '~/lib/clipboard'
 /** Действия строки и карточки индексатора с итогом тостом: меню и карточка делят их */
 export function useIndexerActions() {
   const { t } = useI18n()
-  const { testIndexer, setEnabled } = useSources()
+  const { testIndexer, setEnabled, updateIndexer } = useSources()
 
   async function test(indexer: Indexer) {
     try {
@@ -44,6 +44,19 @@ export function useIndexerActions() {
     )
   }
 
+  /** Лента новых раздач для «Следить»; у индексаторов Prowlarr её задаёт Prowlarr */
+  async function setFeed(indexer: Indexer, feed: boolean) {
+    await updateIndexer(indexer.id, { feed })
+    toast.success(
+      t(
+        feed
+          ? 'panel.sources.feed.enabledToast'
+          : 'panel.sources.feed.disabledToast',
+        { name: indexer.name },
+      ),
+    )
+  }
+
   async function copyUrl(indexer: Indexer) {
     try {
       await copyText(indexer.url)
@@ -54,5 +67,5 @@ export function useIndexerActions() {
     }
   }
 
-  return { test, toggle, copyUrl }
+  return { test, toggle, setFeed, copyUrl }
 }

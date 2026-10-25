@@ -23,6 +23,7 @@ const route = useRoute()
 const { setOpenMobile } = useSidebar()
 const { attentionCount, ensureLoaded } = useSources()
 const downloads = useTorrents()
+const followed = useFollows()
 
 // Витрина открывается с профилем по умолчанию: вход у неё общий с панелью
 const { tvUrl } = useRuntimeConfig().public
@@ -42,6 +43,9 @@ function attentionOf(label: string) {
   if (label === 'sources')
     return attentionCount.value
 
+  if (label === 'follow')
+    return followed.attentionCount.value
+
   return label === 'torrents' ? downloads.attentionCount.value : 0
 }
 
@@ -49,6 +53,7 @@ function attentionOf(label: string) {
 onMounted(() => {
   void ensureLoaded()
   void downloads.ensureLoaded()
+  void followed.ensureLoaded()
 })
 watch(
   () => route.fullPath,

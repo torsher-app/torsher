@@ -208,6 +208,9 @@ export const episode = z
     still: z.string().optional(),
     // Только у тайтла «Следить» и серий с его курсора
     follow: z.enum(followEpisodeStates).optional(),
+    // Серии нет в TMDB, её знают раздачи («на трекере»): без названия,
+    // описания, даты и кадра
+    tracker: z.boolean().optional(),
   })
   .meta({ id: 'episode' })
 

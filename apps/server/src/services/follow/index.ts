@@ -13,6 +13,7 @@ import { watchedEpisodes } from '../mine/status.ts'
 import { episodeProgress } from '../sources/progress.ts'
 import { getTitleSummary } from '../tmdb/index.ts'
 import { parseCatalogId } from '../tmdb/mappers.ts'
+import { followSettings } from './settings.ts'
 import { cursorOptions, defaultCursor } from './wanted.ts'
 
 export type {
@@ -21,9 +22,6 @@ export type {
   SeriesSchedule,
 } from './wanted.ts'
 
-// Окно ожидания своей озвучки и качества: у фильма первые русские релизы часто
-// с любительским переводом, дубляж выходит позже
-const DEFAULT_WAIT_HOURS = { series: 24, movie: 72 } as const
 const HOUR_MS = 60 * 60 * 1000
 
 export class FollowNotFoundError extends Error {}
@@ -148,6 +146,20 @@ function rescheduleWaits(
     .run()
 }
 
+/** Правила нового слежения из «Настройки → Слежу» */
+function defaultRules(kind: Follow['kind'], originalLanguage?: string) {
+  const defaults = followSettings().defaults
+
+  return {
+    waitHours: kind === 'movie' ? defaults.movieWaitHours : defaults.waitHours,
+    qualityPreset: defaults.qualityPreset,
+    requireRussian:
+      defaults.requireRussian === 'auto'
+        ? originalLanguage !== 'ru'
+        : defaults.requireRussian === 'always',
+  }
+}
+
 function rulesOf(rules: FollowRules = {}) {
   return Object.fromEntries(
     Object.entries(rules).filter(([, value]) => value !== undefined),
@@ -220,8 +232,7 @@ export async function followTitle(
             state: 'active',
             startSeason: start?.season ?? 0,
             startEpisode: start?.episode ?? 0,
-            requireRussian: summary?.details.originalLanguage !== 'ru',
-            waitHours: DEFAULT_WAIT_HOURS[kind],
+            ...defaultRules(kind, summary?.details.originalLanguage),
             ...rules,
             createdByProfileId: profileId,
             createdAt: now,

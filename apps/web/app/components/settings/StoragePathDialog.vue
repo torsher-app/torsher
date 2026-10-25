@@ -68,6 +68,8 @@ const [mode] = defineField('mode')
 
 const check = shallowRef<StoragePathCheck | null>(null)
 const checking = ref(false)
+// Скелетон — только под первую проверку: дальше прошлые строки остаются приглушёнными
+const checkLoading = useHeldLoading(() => checking.value && !check.value)
 const serverError = ref<StoragePathError | null>(null)
 let checkSeq = 0
 
@@ -346,7 +348,7 @@ const onSubmit = handleSubmit(async (values) => {
           :aria-busy="checking"
           aria-live="polite"
         >
-          <template v-if="check">
+          <template v-if="check && !checkLoading">
             <li
               v-for="row in checkRows"
               :key="row.id"
@@ -361,7 +363,7 @@ const onSubmit = handleSubmit(async (values) => {
               <span class="min-w-0">{{ row.text }}</span>
             </li>
           </template>
-          <template v-else-if="checking">
+          <template v-else-if="checkLoading">
             <li class="sr-only">
               {{ t(`${base}.checking`) }}
             </li>

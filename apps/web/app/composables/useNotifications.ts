@@ -29,7 +29,8 @@ async function refreshUnread() {
 
 /** Список открытого поповера: первая страница заново, прошлый список виден до ответа */
 async function load() {
-  state.value = items.value.length ? state.value : 'loading'
+  if (state.value !== 'ready')
+    state.value = 'loading'
 
   try {
     const page = await withErrorMode('silent', () =>
@@ -41,7 +42,7 @@ async function load() {
     state.value = 'ready'
   }
   catch {
-    if (!items.value.length)
+    if (state.value === 'loading')
       state.value = 'error'
   }
 }

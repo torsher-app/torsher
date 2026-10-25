@@ -54,6 +54,7 @@ const [path] = defineField('path')
 
 const check = shallowRef<BackupDirCheck | null>(null)
 const checking = ref(false)
+const checkLoading = useHeldLoading(() => checking.value)
 const resetting = ref(false)
 const serverError = ref<BackupRequestError['problem'] | null>(null)
 let checkSeq = 0
@@ -269,7 +270,7 @@ async function resetToDefault() {
           aria-live="polite"
         >
           <!-- Только проверка этого пути: строки прошлой папки ввели бы в заблуждение -->
-          <template v-if="check && checkedHere && !checking">
+          <template v-if="check && checkedHere && !checkLoading">
             <li
               v-for="row in checkRows"
               :key="row.id"
@@ -284,7 +285,7 @@ async function resetToDefault() {
               <span class="min-w-0">{{ row.text }}</span>
             </li>
           </template>
-          <template v-else-if="checking || check">
+          <template v-else-if="checkLoading || check">
             <li class="sr-only">
               {{ t(`${base}.checking`) }}
             </li>

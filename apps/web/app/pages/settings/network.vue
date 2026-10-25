@@ -16,6 +16,9 @@ definePageMeta({
 
 const { t } = useI18n()
 const network = useNetwork()
+const loading = useHeldLoading(
+  () => network.state.value === 'loading' || network.state.value === 'idle',
+)
 
 const dialogOpen = ref(false)
 const editing = ref<NetRoute | null>(null)
@@ -65,11 +68,7 @@ onBeforeUnmount(network.stopPolling)
     </header>
 
     <!-- Скелетон повторяет список хостов и карточки настроек -->
-    <div
-      v-if="network.state.value === 'loading' || network.state.value === 'idle'"
-      class="grid gap-5"
-      aria-busy="true"
-    >
+    <div v-if="loading" class="grid gap-5" aria-busy="true">
       <div class="grid gap-0 overflow-hidden rounded-xl border">
         <Skeleton class="m-5 h-10 w-2/3" />
         <div

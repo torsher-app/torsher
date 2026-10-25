@@ -50,6 +50,16 @@ export const indexer = z
     searchModes: searchModes.nullable(),
     checkStatus: z.enum(indexerCheckStatuses).nullable(),
     checkedAt: z.string().nullable(),
+    // Лента новых раздач для «Следить»
+    feed: z.object({
+      // Что сказал Prowlarr; false у ручного и Jackett — выключил владелец;
+      // null — пробуем
+      supported: z.boolean().nullable(),
+      // Последнее чтение, ISO
+      checkedAt: z.string().nullable(),
+      // Выключена неудачами подряд: когда попробуем снова, ISO
+      probeAt: z.string().nullable(),
+    }),
   })
   .meta({ id: 'indexer' })
 
@@ -70,6 +80,8 @@ export const updateIndexer = z
     name: indexerName.optional(),
     enabled: z.boolean().optional(),
     apiKey: apiKey.optional(),
+    // Читать ленту новых раздач; у индексаторов Prowlarr это задаёт Prowlarr
+    feed: z.boolean().optional(),
   })
   .meta({ id: 'updateIndexer' })
 

@@ -24,6 +24,9 @@ import RestartEngineDialog from './RestartEngineDialog.vue'
 
 const { t } = useI18n()
 const { torrents, engine, state, isEmpty, load, stopPolling } = useTorrents()
+const loading = useHeldLoading(
+  () => state.value === 'loading' || state.value === 'idle',
+)
 const { filter, search, groups, resetFilters } = useDownloadsList()
 const actions = useDownloadActions()
 
@@ -72,7 +75,7 @@ onBeforeUnmount(stopPolling)
 
 <template>
   <PageBar :title="t('panel.torrents.title')" :parent="t('panel.nav.server')">
-    <template v-if="state === 'ready'" #actions>
+    <template v-if="!loading && state === 'ready'" #actions>
       <!-- Запасной путь, если движок завис, а сам сервер этого не распознал.
            Пока движок запускается, перезапуск ничего не даст -->
       <Button
@@ -95,7 +98,7 @@ onBeforeUnmount(stopPolling)
   </PageBar>
 
   <!-- Скелетон повторяет строку фильтров, заголовок группы и строки той же высоты -->
-  <div v-if="state === 'loading' || state === 'idle'" aria-busy="true">
+  <div v-if="loading" aria-busy="true">
     <div class="flex min-h-11 items-center gap-2 border-b pr-2.5 pl-3">
       <Skeleton v-for="chip in 4" :key="chip" class="h-7 w-20 rounded-md" />
     </div>

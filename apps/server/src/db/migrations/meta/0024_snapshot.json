@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "4efea5fc-5d14-4923-9744-2602b8b26b7e",
+  "id": "ab96bde3-8b8a-4c56-8730-abf8cc5ebdad",
   "prevId": "a2983371-2899-4fc7-96a1-2e9ac98a2a60",
   "tables": {
     "collection_hidden_profiles": {
@@ -770,13 +770,6 @@
           "notNull": true,
           "autoincrement": false
         },
-        "topic_id": {
-          "name": "topic_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
         "best_quality_seen": {
           "name": "best_quality_seen",
           "type": "text",
@@ -812,19 +805,6 @@
             "id"
           ],
           "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "follow_seasons_topic_id_tracked_topics_id_fk": {
-          "name": "follow_seasons_topic_id_tracked_topics_id_fk",
-          "tableFrom": "follow_seasons",
-          "tableTo": "tracked_topics",
-          "columnsFrom": [
-            "topic_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },
@@ -1530,14 +1510,6 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
-        },
-        "stale": {
-          "name": "stale",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": false
         },
         "link_mode": {
           "name": "link_mode",
@@ -3289,16 +3261,9 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "tracked_topics": {
-      "name": "tracked_topics",
+    "tracker_episodes": {
+      "name": "tracker_episodes",
       "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
         "title_id": {
           "name": "title_id",
           "type": "text",
@@ -3306,30 +3271,23 @@
           "notNull": true,
           "autoincrement": false
         },
-        "indexer_id": {
-          "name": "indexer_id",
-          "type": "text",
+        "season": {
+          "name": "season",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "details_url": {
-          "name": "details_url",
-          "type": "text",
+        "episode": {
+          "name": "episode",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "torrent_id": {
-          "name": "torrent_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "info_hash": {
-          "name": "info_hash",
-          "type": "text",
+        "first_seen_at": {
+          "name": "first_seen_at",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -3340,96 +3298,20 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
-        },
-        "season": {
-          "name": "season",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "episodes_to": {
-          "name": "episodes_to",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "episodes_total": {
-          "name": "episodes_total",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "refresh": {
-          "name": "refresh",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "last_seen_at": {
-          "name": "last_seen_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
         }
       },
-      "indexes": {
-        "tracked_topics_key_idx": {
-          "name": "tracked_topics_key_idx",
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "tracker_episodes_title_id_season_episode_pk": {
           "columns": [
-            "indexer_id",
-            "details_url"
+            "title_id",
+            "season",
+            "episode"
           ],
-          "isUnique": true
-        },
-        "tracked_topics_title_idx": {
-          "name": "tracked_topics_title_idx",
-          "columns": [
-            "title_id"
-          ],
-          "isUnique": false
+          "name": "tracker_episodes_title_id_season_episode_pk"
         }
       },
-      "foreignKeys": {
-        "tracked_topics_indexer_id_indexers_id_fk": {
-          "name": "tracked_topics_indexer_id_indexers_id_fk",
-          "tableFrom": "tracked_topics",
-          "tableTo": "indexers",
-          "columnsFrom": [
-            "indexer_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "tracked_topics_torrent_id_torrents_id_fk": {
-          "name": "tracked_topics_torrent_id_torrents_id_fk",
-          "tableFrom": "tracked_topics",
-          "tableTo": "torrents",
-          "columnsFrom": [
-            "torrent_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
     },

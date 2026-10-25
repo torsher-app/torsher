@@ -15,6 +15,9 @@ definePageMeta({
 
 const { t } = useI18n()
 const updates = useUpdates()
+const loading = useHeldLoading(
+  () => updates.state.value === 'loading' || updates.state.value === 'idle',
+)
 
 // Снимок на открытии, как у родительской страницы настроек
 const isGuest = !useUser().isAuthenticated.value
@@ -37,7 +40,7 @@ if (!isGuest)
     <AboutCard />
     <!-- Скелетон в размер карточки; ошибка загрузки карточку просто не показывает -->
     <Skeleton
-      v-if="updates.state.value === 'loading' || updates.state.value === 'idle'"
+      v-if="loading"
       class="h-72 max-w-180 rounded-xl"
       aria-busy="true"
     />

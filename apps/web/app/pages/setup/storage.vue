@@ -19,6 +19,9 @@ definePageMeta({
 const { t, locale } = useI18n()
 const { checkStorage } = useWizard()
 const storage = useStorage()
+const loading = useHeldLoading(
+  () => storage.state.value === 'loading' || storage.state.value === 'idle',
+)
 
 const result = shallowRef<StorageCheck | null>(null)
 const isChecking = ref(false)
@@ -185,11 +188,7 @@ onMounted(() => {
   />
 
   <!-- Настройки — те же карточки, что в «Настройки → Хранилище» -->
-  <div
-    v-if="storage.state.value === 'loading' || storage.state.value === 'idle'"
-    class="grid gap-5"
-    aria-busy="true"
-  >
+  <div v-if="loading" class="grid gap-5" aria-busy="true">
     <Skeleton class="h-64 rounded-xl" />
     <Skeleton class="h-48 rounded-xl" />
     <Skeleton class="h-48 rounded-xl" />

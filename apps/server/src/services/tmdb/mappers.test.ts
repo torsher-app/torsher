@@ -32,7 +32,10 @@ import {
   toPersonId,
   trimExtras,
   trimPerson,
+  tvAiring,
   tvToDetails,
+  withTrackerEpisodes,
+  withTrackerSeason,
 } from './mappers.ts'
 
 describe('каталожный ID', () => {
@@ -776,5 +779,77 @@ describe('персона', () => {
       placeOfBirth: 'London, England, UK',
       biography: '',
     })
+  })
+})
+
+describe('серии с трекера', () => {
+  // Второй сезон вышел целиком, третий анонсирован, но в сезонах TMDB его нет
+  const finished = {
+    ...tvOngoing,
+    last_episode_to_air: { season_number: 2, episode_number: 10 },
+    next_episode_to_air: {
+      season_number: 3,
+      episode_number: 1,
+      air_date: '2026-11-20',
+    },
+    seasons: tvOngoing.seasons.slice(0, 2),
+  }
+  const title = {
+    details: tvToDetails(finished, 'ru-RU', new Date('2026-10-20')),
+    airing: tvAiring(finished),
+  }
+
+  it('добавляют сезон, которого нет в TMDB, и обгоняют анонс', () => {
+    const merged = withTrackerEpisodes(title, [
+      { season: 2, episode: 9, seenOn: '2026-10-01' },
+      { season: 3, episode: 2, seenOn: '2026-10-21' },
+    ])
+
+    expect(merged.details.seasons).toEqual([
+      expect.objectContaining({ number: 1, episodeCount: 8 }),
+      expect.objectContaining({
+        number: 2,
+        episodeCount: 10,
+        airedEpisodeCount: 10,
+      }),
+      {
+        number: 3,
+        name: 'Сезон 3',
+        episodeCount: 2,
+        airedEpisodeCount: 2,
+      },
+    ])
+    expect(merged.details.episodeCount).toBe(
+      (title.details.episodeCount ?? 0) + 2,
+    )
+    expect(merged.airing?.last).toEqual({
+      season: 3,
+      episode: 2,
+      airDate: '2026-10-21',
+    })
+    expect(merged.airing?.next).toBeUndefined()
+    expect(merged.details.nextEpisode).toBeUndefined()
+  })
+
+  it('не трогают сериал, если TMDB знает все серии', () => {
+    const merged = withTrackerEpisodes(title, [
+      { season: 2, episode: 10, seenOn: '2026-10-01' },
+    ])
+
+    expect(merged).toBe(title)
+  })
+
+  it('дописывают в сезон серии сверх TMDB без названия и описания', () => {
+    const details = seasonToDetails(season)
+    const known = Math.max(...details.episodes.map(item => item.number))
+
+    expect(
+      withTrackerSeason(details, known, [
+        { season: details.number, episode: known + 2, seenOn: '2026-10-21' },
+      ]).episodes.slice(details.episodes.length),
+    ).toEqual([
+      { number: known + 1, title: '', overview: '', tracker: true },
+      { number: known + 2, title: '', overview: '', tracker: true },
+    ])
   })
 })

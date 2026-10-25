@@ -28,7 +28,9 @@ function replace(updated: Collection) {
 }
 
 async function load() {
-  state.value = 'loading'
+  // Показанное остаётся на экране, пока идёт новый запрос, и ошибка его не прячет
+  if (state.value !== 'ready')
+    state.value = 'loading'
 
   try {
     const res = await withErrorMode('silent', () =>
@@ -38,7 +40,8 @@ async function load() {
     state.value = 'ready'
   }
   catch {
-    state.value = 'error'
+    if (state.value === 'loading')
+      state.value = 'error'
   }
 }
 

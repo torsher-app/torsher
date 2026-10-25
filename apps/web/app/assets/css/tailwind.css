@@ -75,6 +75,31 @@ html.tv {
   --radius-xl: calc(var(--radius) + 4px);
 }
 
+/* Скелетон — лоадер: место занято сразу, а виден он через --loader-delay, и
+   быстрый ответ им не мелькает (то же значение в JS — LOADER_DELAY_MS
+   в @torsher/tokens/loader). Проявляется сам элемент, мерцает слой под ним:
+   обе анимации на opacity, на одном элементе одна перекрыла бы другую */
+:root {
+  --loader-delay: 400ms;
+}
+
+@theme {
+  --animate-skeleton-in: skeleton-in 160ms ease-out var(--loader-delay) both;
+  --animate-skeleton-pulse: skeleton-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) var(--loader-delay) infinite;
+
+  @keyframes skeleton-in {
+    from {
+      opacity: 0;
+    }
+  }
+
+  @keyframes skeleton-pulse {
+    50% {
+      opacity: 0.5;
+    }
+  }
+}
+
 /* Холодные нейтральные с лёгким синим оттенком; основная кнопка и фокус —
    цвета текста. Янтарный --brand на белом не даёт контраста 3:1, поэтому
    кнопки и ссылки им не красим */
