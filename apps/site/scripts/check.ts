@@ -1,8 +1,9 @@
 /**
- * Checks what the VitePress build lets through: every `<Ui k>` names an
- * existing interface string (a failed render still exits 0), every page has a
- * title and a description for search engines and link previews, and every
- * documentation page is reachable from the sidebar.
+ * Checks what the VitePress build lets through: every `<Ui k>` in a page and
+ * every `label()` or `format()` key in a component names an existing interface
+ * string (a failed render still exits 0), every page has a title and a
+ * description for search engines and link previews, and every documentation
+ * page is reachable from the sidebar.
  */
 import { readdirSync, readFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
@@ -21,6 +22,15 @@ function pages(dir: string): string[] {
         : pages(path)
     }
     return entry.name.endsWith('.md') ? [path] : []
+  })
+}
+
+function components(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name)
+    if (entry.isDirectory())
+      return components(path)
+    return entry.name.endsWith('.vue') ? [path] : []
   })
 }
 
@@ -62,6 +72,21 @@ for (const file of pages(root)) {
 
   if (name.startsWith('docs/') && !inSidebar.has(linkOf(file)))
     problems.push(`${name}: not in .vitepress/sidebar.ts`)
+}
+
+for (const file of components(join(root, '.vitepress', 'components'))) {
+  const source = readFileSync(file, 'utf8')
+
+  for (const [, key] of source.matchAll(/\b(?:label|format)\('([^']+)'/g)) {
+    try {
+      label(key!)
+    }
+    catch {
+      problems.push(
+        `${relative(root, file)}: unknown interface string "${key}"`,
+      )
+    }
+  }
 }
 
 if (problems.length > 0) {

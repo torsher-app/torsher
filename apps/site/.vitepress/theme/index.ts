@@ -13,6 +13,7 @@ import '@fontsource/jetbrains-mono/latin-400.css'
 import '@fontsource/jetbrains-mono/latin-500.css'
 import '@torsher/tokens/tokens.css'
 import './styles.css'
+import './landing.css'
 
 export default {
   extends: DefaultTheme,
