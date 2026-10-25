@@ -24,7 +24,8 @@ import {
   stopSession,
   voiceOfTrack,
 } from '../services/media/index.ts'
-import { fileProgressId, getMediaFile } from '../services/library/index.ts'
+import { playableMediaFile } from '../services/library/folders.ts'
+import { fileProgressId } from '../services/library/index.ts'
 import { clearMovieWatchlist } from '../services/mine/index.ts'
 import { getProfile } from '../services/profiles/index.ts'
 import {
@@ -226,7 +227,7 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
       let fileName: string
 
       if (mediaFileId) {
-        const found = getMediaFile(mediaFileId)
+        const found = playableMediaFile(mediaFileId, request.profileId)
 
         if (!found || (title && !parseCatalogId(title.id)))
           return reply.code(404).send({ message: 'File not found' })
@@ -482,7 +483,9 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
         = request.body
       let { title } = request.body
       const torrent = torrentId ? getTorrent(torrentId) : undefined
-      const library = mediaFileId ? getMediaFile(mediaFileId) : undefined
+      const library = mediaFileId
+        ? playableMediaFile(mediaFileId, request.profileId)
+        : undefined
 
       if (
         (torrentId && (!torrent || !playableFile(torrent, fileIndex!)))

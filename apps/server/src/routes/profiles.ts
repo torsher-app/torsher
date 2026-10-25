@@ -71,7 +71,7 @@ export const profileRoutes: FastifyPluginAsyncZod = async (app) => {
   app.get(
     '',
     {
-      config: { viewer: true },
+      config: { viewer: true, allowNoProfile: true },
       schema: {
         operationId: 'getProfiles',
         tags: ['Profiles'],
@@ -281,7 +281,7 @@ export const profileRoutes: FastifyPluginAsyncZod = async (app) => {
   app.post(
     '/:id/select',
     {
-      config: { viewer: true },
+      config: { viewer: true, allowNoProfile: true },
       schema: {
         operationId: 'postProfileSelect',
         tags: ['Profiles'],

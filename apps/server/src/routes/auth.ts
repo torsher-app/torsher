@@ -4,12 +4,13 @@ import { REFRESH_TOKEN_COOKIE } from '../config.ts'
 import { getDb } from '../db/index.ts'
 import { users } from '../db/schema.ts'
 import { setupResponse, signin, signup } from '../dto/auth.ts'
-import { messageResponse } from '../dto/common.ts'
+import { messageResponse, tooManyAttemptsResponse } from '../dto/common.ts'
 import { restoreInProgress } from '../services/backups/index.ts'
 import {
   createOwner,
   needsSetup,
   SetupDoneError,
+  signinLimiter,
 } from '../services/users/index.ts'
 import { logFor } from '../services/logs/index.ts'
 import { verifySession } from '../services/users/session.ts'
@@ -108,10 +109,24 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
           200: messageResponse,
           400: messageResponse,
           403: messageResponse,
+          429: tooManyAttemptsResponse,
         },
       },
     },
     async (request, reply) => {
+      const limitKey = `signin:${request.ip}`
+
+      // Попытка засчитывается до проверки пароля: параллельные запросы не
+      // проскочат лимит, пока argon2 считает
+      if (signinLimiter.isLimited(limitKey) || !signinLimiter.hit(limitKey)) {
+        const retryAfter = signinLimiter.retryAfter(limitKey)
+
+        return reply
+          .code(429)
+          .header('Retry-After', String(retryAfter))
+          .send({ message: 'too_many_attempts', retryAfter })
+      }
+
       const user = getDb()
         .select()
         .from(users)
@@ -127,6 +142,8 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
         logFor('auth').warn({ ip: request.ip }, 'Sign-in failed')
         return reply.code(400).send({ message: 'Invalid email or password' })
       }
+
+      signinLimiter.reset(limitKey)
 
       if (user.isBanned || user.isDeleted)
         return reply.code(403).send({ message: 'Account is not available' })

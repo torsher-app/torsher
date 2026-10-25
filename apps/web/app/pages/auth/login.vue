@@ -15,7 +15,7 @@ import LoadingButton from '~/components/LoadingButton.vue'
 import SecretInput from '~/components/SecretInput.vue'
 import BrandMark from '~/components/shell/BrandMark.vue'
 import { getErrorStatus } from '@torsher/api-client'
-import { api, getErrorMessage } from '~/services/api'
+import { api, getErrorMessage, retryAfterMinutes } from '~/services/api'
 
 definePageMeta({
   layout: 'auth',
@@ -58,9 +58,13 @@ const onSubmit = handleSubmit(async (values) => {
     isLeaving.value = true
   }
   catch (err) {
+    const minutes = await retryAfterMinutes(err)
+
     // 400 — неверная пара email и пароль; остальное — сервер или сеть
     if (getErrorStatus(err) === 400)
       isRejected.value = true
+    else if (minutes)
+      formError.value = t('panel.auth.tooManyAttempts', { n: minutes })
     else formError.value = await getErrorMessage(err)
   }
 })

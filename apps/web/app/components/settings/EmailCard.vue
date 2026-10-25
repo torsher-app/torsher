@@ -11,7 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import LoadingButton from '~/components/LoadingButton.vue'
 import SecretInput from '~/components/SecretInput.vue'
-import { getErrorMessage } from '~/services/api'
+import { getErrorMessage, retryAfterMinutes } from '~/services/api'
 import SettingsCard from './SettingsCard.vue'
 
 const { t } = useI18n()
@@ -62,7 +62,11 @@ const onSubmit = handleSubmit(async (values) => {
       )
     }
     else {
-      formError.value = await getErrorMessage(err)
+      const minutes = await retryAfterMinutes(err)
+
+      formError.value = minutes
+        ? t('panel.auth.tooManyAttempts', { n: minutes })
+        : await getErrorMessage(err)
     }
 
     return

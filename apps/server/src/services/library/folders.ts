@@ -13,7 +13,7 @@ import {
   torrents,
 } from '../../db/schema.ts'
 import { envStoragePath, storagePath } from '../storage/paths.ts'
-import { managedFolders } from './files.ts'
+import { getMediaFile, managedFolders } from './files.ts'
 import { isScanning, scanFolder } from './scan.ts'
 import { unwatchFolder, watcherState, watchFolder } from './watch.ts'
 
@@ -460,4 +460,22 @@ export async function browseFolders(path = '/') {
     parent: target === '/' ? null : dirname(target),
     entries: dirs,
   }
+}
+
+/**
+ * Файл библиотеки, которую от профиля зрителя скрыли, для него не существует.
+ * У токена потока владельца профиля нет — ему открыто всё.
+ */
+export function playableMediaFile(id: string, profileId: string) {
+  const found = getMediaFile(id)
+
+  if (
+    found
+    && profileId
+    && hiddenLibraryIds(profileId).includes(found.folder.libraryId)
+  ) {
+    return undefined
+  }
+
+  return found
 }

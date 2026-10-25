@@ -86,6 +86,20 @@ export async function resolveSession() {
   }
 }
 
+/**
+ * Сервер больше не знает профиль этого устройства: снова «Кто смотрит?».
+ * `false` — витрина ещё не смотрела, выбор и так впереди.
+ */
+export function requireProfile() {
+  if (state.status !== 'ready')
+    return false
+
+  state.status = 'choosing'
+  state.profile = undefined
+
+  return true
+}
+
 /** Устройство отключили или сессия кончилась: витрина снова ждёт кода */
 export function expireSession() {
   state.status = 'unpaired'

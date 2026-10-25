@@ -1,7 +1,7 @@
 import type { LogLevel } from './services/logs/index.ts'
 import process from 'node:process'
 import { createApp } from './app.ts'
-import { config } from './config.ts'
+import { checkStartupConfig, config } from './config.ts'
 import type { MigrateReport } from './db/index.ts'
 import { DowngradeError, migrateDb, PreUpdateBackupError } from './db/index.ts'
 import {
@@ -82,6 +82,14 @@ const STORAGE_CHECK_MS = 60 * 1000
 // «Обзор» берёт недоступные хосты из последней проверки: без фоновой он
 // после перезапуска ничего не знал бы о сети, пока владелец не открыл «Сеть»
 const HOST_CHECK_MS = 30 * 60 * 1000
+
+try {
+  checkStartupConfig()
+}
+catch (err) {
+  process.stderr.write(`${(err as Error).message}\n`)
+  process.exit(1)
+}
 
 // До любого обращения к базе и ключу секретов: восстановление подменяет их
 await cleanupBackupTempNow()
@@ -229,6 +237,7 @@ const app = createApp(
   {
     // Плеер держит поток часами: при остановке его не дожидаемся
     forceCloseConnections: true,
+    trustProxy: config.trustProxy,
     loggerInstance: logger,
     logController: new RequestLogController(),
   },

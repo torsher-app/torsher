@@ -312,6 +312,9 @@ const onSubmit = handleSubmit(async (form) => {
                 </SelectItem>
               </SelectContent>
             </Select>
+            <p class="text-[12.5px] text-muted-foreground">
+              {{ t("panel.people.profileDialog.ageLimitHint") }}
+            </p>
           </div>
         </div>
 

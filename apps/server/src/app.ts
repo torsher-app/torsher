@@ -34,7 +34,7 @@ export function createApp(
   app.decorateRequest('profileSelected', false)
 
   app.register(cors, {
-    origin: config.clientUrl,
+    origin: config.clientUrl ?? false,
     credentials: true,
   })
   app.register(cookie)
