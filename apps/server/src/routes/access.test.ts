@@ -1,8 +1,10 @@
 import type { HTTPMethods } from 'fastify'
+import { eq } from 'drizzle-orm'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { createApp } from '../app.ts'
 import { ACCESS_TOKEN_COOKIE, DEVICE_TOKEN_COOKIE } from '../config.ts'
-import { migrateDb } from '../db/index.ts'
+import { getDb, migrateDb } from '../db/index.ts'
+import { users } from '../db/schema.ts'
 import { setEngineDown } from '../services/engine/index.ts'
 import { createOwner } from '../services/users/index.ts'
 import { signToken } from '../utils/token.ts'
@@ -75,6 +77,14 @@ const VIEWER = new Set([
   'PUT /api/profiles/current/player',
 ])
 
+// Роуты потока: токен из адреса вместо cookie (`requireStream`)
+const STREAM = [
+  'GET /api/stream/:torrentId/:fileIndex',
+  'GET /api/library/files/:id/stream',
+  'GET /api/hls/:id/main.m3u8',
+  'GET /api/hls/:id/:segment',
+]
+
 const app = createApp()
 const routes: { method: HTTPMethods, url: string }[] = []
 
@@ -88,7 +98,9 @@ app.addHook('onRoute', (route) => {
 })
 
 let device: Record<string, string>
+let deviceId: string
 let owner: Record<string, string>
+let ownerId: string
 
 function keyOf(route: { method: string, url: string }) {
   return `${route.method} ${route.url}`
@@ -117,6 +129,7 @@ beforeAll(async () => {
     passwordHash: 'x',
   })
 
+  ownerId = user.id
   owner = { [ACCESS_TOKEN_COOKIE]: signToken(user.id, 'user_access') }
 
   const started = await app.inject({
@@ -140,7 +153,12 @@ beforeAll(async () => {
   )
 
   device = { [DEVICE_TOKEN_COOKIE]: cookie!.value }
+  deviceId = (await app.inject({ url: '/api/devices', cookies: owner })).json().items[0].id
 })
+
+function streamUrl(key: string, token: string) {
+  return `${key.split(' ')[1]!.replace(/:\w+/g, '0')}?token=${token}`
+}
 
 describe('доступ к маршрутам API', () => {
   it('списки ссылаются только на существующие маршруты', () => {
@@ -182,6 +200,66 @@ describe('доступ к маршрутам API', () => {
       expect((await inject(route, owner)).statusCode, keyOf(route)).not.toBe(
         401,
       )
+    }
+  })
+})
+
+describe('токены потока и сессии', () => {
+  it('токен потока устройства открывает роуты потока', async () => {
+    const token = signToken(`device:${deviceId}`, 'stream')
+
+    for (const key of STREAM) {
+      const res = await app.inject({ url: streamUrl(key, token) })
+
+      expect(res.statusCode, key).not.toBe(401)
+    }
+  })
+
+  it('access и refresh в адресе потока не принимаются', async () => {
+    for (const purpose of ['user_access', 'user_refresh'] as const) {
+      const token = signToken(ownerId, purpose)
+
+      for (const key of STREAM) {
+        const res = await app.inject({ url: streamUrl(key, token) })
+
+        expect(res.statusCode, `${purpose} ${key}`).toBe(401)
+      }
+    }
+  })
+
+  it('токен потока в access-cookie не открывает панель', async () => {
+    const res = await app.inject({
+      url: '/api/users/me',
+      cookies: { [ACCESS_TOKEN_COOKIE]: signToken(ownerId, 'stream') },
+    })
+
+    expect(res.statusCode).toBe(401)
+  })
+
+  it('access с устаревшей версией сессий — 401', async () => {
+    const stale = {
+      [ACCESS_TOKEN_COOKIE]: signToken(ownerId, 'user_access', 0),
+    }
+    const db = getDb()
+
+    db.update(users)
+      .set({ sessionVersion: 1 })
+      .where(eq(users.id, ownerId))
+      .run()
+
+    try {
+      expect(
+        (await app.inject({ url: '/api/users/me', cookies: stale })).statusCode,
+      ).toBe(401)
+      expect(
+        (await app.inject({ url: '/api/profiles', cookies: stale })).statusCode,
+      ).toBe(401)
+    }
+    finally {
+      db.update(users)
+        .set({ sessionVersion: 0 })
+        .where(eq(users.id, ownerId))
+        .run()
     }
   })
 })

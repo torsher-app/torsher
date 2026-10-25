@@ -41,19 +41,25 @@ export async function checkPinAttempt(
   if (entry && entry.lockedUntil > now)
     throw new PinLockedError(Math.ceil((entry.lockedUntil - now) / 1000))
 
+  // Неудача засчитывается до проверки: параллельные запросы не должны видеть
+  // одну и ту же устаревшую запись и обходить блокировку
+  const failures = (entry && entry.lockedUntil === 0 ? entry.failures : 0) + 1
+  const locks = failures >= MAX_FAILURES
+
+  attempts.set(
+    key,
+    locks
+      ? { failures: 0, lockedUntil: now + LOCK_MS }
+      : { failures, lockedUntil: 0 },
+  )
+
   if (await verify()) {
     attempts.delete(key)
     return { ok: true }
   }
 
-  const failures = (entry && entry.lockedUntil === 0 ? entry.failures : 0) + 1
-
-  if (failures >= MAX_FAILURES) {
-    attempts.set(key, { failures: 0, lockedUntil: now + LOCK_MS })
+  if (locks)
     throw new PinLockedError(Math.ceil(LOCK_MS / 1000))
-  }
-
-  attempts.set(key, { failures, lockedUntil: 0 })
 
   return { ok: false, attemptsLeft: MAX_FAILURES - failures }
 }

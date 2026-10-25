@@ -23,6 +23,9 @@ services:
       # Optional: your own TMDB API Read Access Token for the catalog instead
       # of the app key built into the image
       # TMDB_ACCESS_TOKEN:
+      # Behind a reverse proxy: its address or subnet, so that sign-in
+      # attempt limits see real client addresses. Don't set it without a proxy
+      # TRUST_PROXY: 172.18.0.0/16
     volumes:
       # One disk (recommended): database, keys, downloads (/data/torrents)
       # and the library (/data/library) in one volume. Files you keep are

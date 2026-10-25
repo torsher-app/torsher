@@ -2,6 +2,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify'
 import type { Device } from '../db/schema.ts'
 import {
   ACCESS_TOKEN_COOKIE,
+  config,
   DEVICE_TOKEN_COOKIE,
   deviceCookieOptions,
   PROFILE_COOKIE,
@@ -25,7 +26,10 @@ declare module 'fastify' {
     deviceId: string | null
     /** Профиль зрителя: его позиции, прогресс и язык */
     profileId: string
-    /** Профиль выбран явно; иначе `profileId` — профиль по умолчанию */
+    /**
+     * Профиль выбран явно; иначе `profileId` — профиль по умолчанию, а у
+     * устройства при PIN на нём — пустая строка (профиль надо выбрать)
+     */
     profileSelected: boolean
     /** Пропущен без входа: аккаунта ещё не было (`requireOwnerOrFirstRun`) */
     firstRun?: boolean
@@ -34,6 +38,8 @@ declare module 'fastify' {
   interface FastifyContextConfig {
     /** Роут витрины в плагине панели: пускает и токен устройства */
     viewer?: boolean
+    /** Роут витрины открыт устройству без профиля: список и выбор профиля */
+    allowNoProfile?: boolean
   }
 }
 
@@ -42,6 +48,37 @@ const DEVICE_COOKIE_RENEW_MS = 24 * 60 * 60 * 1000
 // Токен потока устройства подписан на `device:<id>`: так поток знает,
 // чей он, и перестаёт открываться сразу после отзыва устройства
 const DEVICE_SUBJECT_PREFIX = 'device:'
+
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS'])
+const SAME_ORIGIN_FETCHES = new Set(['same-origin', 'none'])
+
+/**
+ * Изменение с чужого сайта под cookie владельца. SameSite=Lax не спасает от
+ * соседнего сервиса того же «site» (другой порт или поддомен в домашней сети).
+ * Запрос без `Sec-Fetch-Site` пропускаем: его не шлют старые браузеры и
+ * не-браузерные клиенты, а современный браузер жертвы странице убрать этот
+ * заголовок не даёт.
+ */
+function isCrossSite(request: FastifyRequest) {
+  if (SAFE_METHODS.has(request.method))
+    return false
+
+  const site = request.headers['sec-fetch-site']
+
+  if (!site || SAME_ORIGIN_FETCHES.has(site))
+    return false
+
+  return !config.clientUrl || request.headers.origin !== config.clientUrl
+}
+
+// Своя сериализация: у роута 403 может быть описан другой схемой
+// (неверный пароль, PIN), и валидатор ответа превратил бы отказ в 500
+function crossSiteRejected(reply: FastifyReply) {
+  return reply
+    .code(403)
+    .serializer(JSON.stringify)
+    .send({ message: 'cross_site_request' })
+}
 
 function unauthorized(reply: FastifyReply) {
   return reply.code(401).send({ message: 'Unauthorized' })
@@ -59,20 +96,40 @@ function ownerIdOf(request: FastifyRequest) {
   }
 }
 
-// Выбранный профиль могли удалить: тогда зритель снова смотрит профилем по умолчанию
+/**
+ * Выбранный профиль могли удалить: тогда зритель снова смотрит профилем по
+ * умолчанию. Устройству профиль с PIN сам не подставляется — иначе PIN
+ * обходился бы, пока на ТВ профиль не выбран.
+ */
 function setProfile(
   request: FastifyRequest,
   selectedId: string | null | undefined,
+  isDevice = false,
 ) {
   const selected = selectedId ? getProfile(selectedId) : undefined
 
-  request.profileId = selected?.id ?? defaultProfile().id
   request.profileSelected = !!selected
+
+  if (selected) {
+    request.profileId = selected.id
+    return
+  }
+
+  const fallback = defaultProfile()
+
+  request.profileId = isDevice && fallback.pinHash ? '' : fallback.id
 }
 
 function asDevice(request: FastifyRequest, device: Device) {
   request.deviceId = device.id
-  setProfile(request, device.profileId)
+  setProfile(request, device.profileId, true)
+}
+
+function profileRequired(reply: FastifyReply) {
+  return reply
+    .code(403)
+    .serializer(JSON.stringify)
+    .send({ message: 'profile_required' })
 }
 
 /**
@@ -87,6 +144,9 @@ export async function requireOwner(
 
   if (!userId)
     return unauthorized(reply)
+
+  if (isCrossSite(request))
+    return crossSiteRejected(reply)
 
   request.userId = userId
 }
@@ -103,6 +163,9 @@ export async function requireOwnerOrFirstRun(
   reply: FastifyReply,
 ) {
   if (needsSetup()) {
+    if (isCrossSite(request))
+      return crossSiteRejected(reply)
+
     request.userId = ''
     request.firstRun = true
     return
@@ -119,6 +182,8 @@ export function firstRunExpired(request: FastifyRequest) {
 /**
  * Витрина: токен устройства из cookie или сессия владельца. Кладёт в запрос
  * устройство и профиль; без выбранного профиля — профиль по умолчанию.
+ * Устройство без выбранного профиля при PIN на профиле по умолчанию получает
+ * 403 `profile_required` везде, кроме роутов с `config.allowNoProfile`.
  * Отозванное устройство получает 401 на первом же запросе.
  */
 export async function requireViewer(
@@ -146,6 +211,10 @@ export async function requireViewer(
       }
 
       asDevice(request, device)
+
+      if (!request.profileId && !request.routeOptions.config.allowNoProfile)
+        return profileRequired(reply)
+
       return
     }
 
@@ -202,6 +271,9 @@ export async function requireStream(
 
   if (!token) {
     await requireViewer(request, reply)
+
+    if (reply.sent)
+      return reply
   }
   else {
     let subject: string
@@ -220,6 +292,9 @@ export async function requireStream(
         return unauthorized(reply)
 
       asDevice(request, device)
+
+      if (!request.profileId)
+        return profileRequired(reply)
     }
     else {
       // Поток владельца несёт версию сессий: после смены пароля он закрывается

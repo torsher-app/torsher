@@ -698,6 +698,7 @@
       "rejected": "Wrong email or password",
       "rejectedText": "Check the keyboard layout and Caps Lock.",
       "failed": "Couldn't sign in",
+      "tooManyAttempts": "Too many attempts. Try again in {n} min",
       "backToLogin": "Back to sign in",
       "validation": {
         "email": "Enter a valid email",
@@ -1789,7 +1790,7 @@
         "ageLimit": "Age limit",
         "devices": "Devices",
         "noDevices": "None",
-        "defaultHint": "The panel owner and TVs without a selected profile watch as this profile."
+        "defaultHint": "The panel owner and TVs without a selected profile watch as this profile. If it has a PIN, such TVs ask who’s watching first."
       },
       "profileDialog": {
         "createTitle": "New profile",
@@ -1802,6 +1803,7 @@
         "language": "Showcase language",
         "languageHint": "Interface and descriptions on the TV.",
         "ageLimit": "Age limit",
+        "ageLimitHint": "The catalog isn’t filtered by age yet. For now a profile with a limit can’t match unrecognized downloads to titles on the TV.",
         "noLimits": "No restrictions",
         "pin": "PIN",
         "pinHint": "4 digits. The TV asks for it when switching to this profile.",
@@ -1824,7 +1826,7 @@
       },
       "deleteDialog": {
         "title": "Delete profile “{name}”?",
-        "text": "Devices using it switch to the default profile.",
+        "text": "Devices using it switch to the default profile, or ask who’s watching if the default profile has a PIN.",
         "move": "Move watch history to another profile",
         "moveText": "Positions and episode progress go to the selected profile.",
         "target": "Target profile",

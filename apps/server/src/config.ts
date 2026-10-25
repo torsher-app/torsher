@@ -1,8 +1,14 @@
 import { dirname, join } from 'node:path'
 import process from 'node:process'
+import Fastify from 'fastify'
 import packageJson from '../package.json' with { type: 'json' }
 
 const LOG_LEVELS = ['error', 'warn', 'info', 'debug'] as const
+// Значение из `.env.example`: с ним подписи токенов знает каждый
+const PLACEHOLDER_SECRET_KEY = 'change-me-in-production'
+const MIN_SECRET_KEY_LENGTH = 32
+const ON = ['true', '1', 'on', 'yes']
+const OFF = ['false', '0', 'off', 'no']
 
 function required(name: 'SECRET_KEY') {
   const value = process.env[name]
@@ -16,9 +22,20 @@ function required(name: 'SECRET_KEY') {
 export const config = {
   port: Number(process.env.API_PORT ?? 3001),
   host: process.env.API_HOST ?? '0.0.0.0',
-  clientUrl: process.env.CLIENT_URL ?? 'http://localhost:3000',
+  // Origin панели на другом адресе: ему открыт CORS с cookie и изменения
+  // владельца с чужого сайта. Адрес по умолчанию — только для разработки:
+  // в образе панель на том же origin, и чужой сервис на localhost:3000
+  // доверенным становиться не должен
+  get clientUrl(): string | undefined {
+    return (
+      process.env.CLIENT_URL
+      || (this.isProduction ? undefined : 'http://localhost:3000')
+    )
+  },
   databasePath: process.env.DATABASE_PATH ?? '.data/torsher.db',
-  isProduction: process.env.NODE_ENV === 'production',
+  get isProduction() {
+    return process.env.NODE_ENV === 'production'
+  },
 
   // Собранные витрина и панель: в монорепо и в образе лежат по одним путям
   clients: {
@@ -29,7 +46,31 @@ export const config = {
   // Секрет читается лениво: приложение можно поднять в памяти
   // (например, чтобы выгрузить OpenAPI-спеку) без настроенного окружения
   get secretKey() {
-    return required('SECRET_KEY')
+    const value = required('SECRET_KEY')
+
+    if (
+      this.isProduction
+      && (value === PLACEHOLDER_SECRET_KEY || value.length < MIN_SECRET_KEY_LENGTH)
+    ) {
+      throw new Error(
+        `SECRET_KEY должен быть случайной строкой не короче ${MIN_SECRET_KEY_LENGTH} символов (например, openssl rand -hex 32)`,
+      )
+    }
+
+    return value
+  },
+
+  // За обратным прокси адрес клиента берётся из X-Forwarded-For только от
+  // доверенного прокси: иначе клиент подставит любой адрес и обойдёт
+  // ограничение попыток входа. Строка — адреса и подсети через запятую
+  get trustProxy(): boolean | string {
+    const value = process.env.TRUST_PROXY?.trim() ?? ''
+    const flag = value.toLowerCase()
+
+    if (!value || OFF.includes(flag))
+      return false
+
+    return ON.includes(flag) ? true : value
   },
 
   // Ключ шифрования секретов в базе (API-ключи индексаторов и т. п.).
@@ -157,6 +198,24 @@ export const config = {
       process.env.TORSHER_SOURCE_URL || 'https://github.com/torsher-app/torsher'
     )
   },
+}
+
+/**
+ * Проверка окружения при старте сервера: ошибка в ключе подписи или в
+ * `TRUST_PROXY` останавливает его сразу, а не на первом запросе.
+ */
+export function checkStartupConfig() {
+  void config.secretKey
+
+  try {
+    // Адреса и подсети разбирает Fastify при создании приложения
+    Fastify({ trustProxy: config.trustProxy })
+  }
+  catch (err) {
+    throw new Error(
+      `TRUST_PROXY: ${(err as Error).message}. Укажите адреса или подсети прокси через запятую, loopback, uniquelocal или true`,
+    )
+  }
 }
 
 const cookiePrefix = process.env.COOKIE_PREFIX ?? 'torsher'

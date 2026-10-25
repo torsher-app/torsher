@@ -131,3 +131,23 @@ describe('без входа: аккаунт появился после хука
     expect(files('backups-tmp')).toEqual([])
   })
 })
+
+describe('без входа на пустом сервере: запрос с чужого сайта', () => {
+  it('загрузка копии — 403, файла нет', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/backups/upload',
+      headers: {
+        'content-type': 'application/octet-stream',
+        'sec-fetch-site': 'same-site',
+      },
+      payload: GZIP,
+    })
+
+    expect(res.statusCode).toBe(403)
+    expect(res.json()).toEqual({ message: 'cross_site_request' })
+    expect(
+      files('backups').filter(name => name.includes('-uploaded-')),
+    ).toEqual([])
+  })
+})

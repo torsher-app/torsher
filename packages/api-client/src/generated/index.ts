@@ -48,6 +48,15 @@ export interface MessageResponseInput {
   message: string;
 }
 
+export interface TooManyAttemptsResponseInput {
+  message: "too_many_attempts";
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  retryAfter: number;
+}
+
 export interface BackupItemInput {
   name: string;
   reason:
@@ -3967,6 +3976,15 @@ export interface MessageResponse {
   message: string;
 }
 
+export interface TooManyAttemptsResponse {
+  message: "too_many_attempts";
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  retryAfter: number;
+}
+
 export interface BackupItem {
   name: string;
   reason:
@@ -7884,7 +7902,7 @@ export type FindTelegramChatsError = MessageResponse;
 
 export type PostAuthSignupError = MessageResponse;
 
-export type PostAuthSigninError = MessageResponse;
+export type PostAuthSigninError = MessageResponse | TooManyAttemptsResponse;
 
 export type PostAuthRefreshError = MessageResponse;
 
@@ -7892,9 +7910,11 @@ export type GetUsersMeError = MessageResponse;
 
 export type PatchUsersMeError = MessageResponse;
 
-export type PutUsersMePasswordError = MessageResponse | WrongPasswordResponse;
+export type PutUsersMePasswordError =
+  MessageResponse | WrongPasswordResponse | TooManyAttemptsResponse;
 
-export type PutUsersMeEmailError = MessageResponse | WrongPasswordResponse;
+export type PutUsersMeEmailError =
+  MessageResponse | WrongPasswordResponse | TooManyAttemptsResponse;
 
 export type GetCatalogSearchError = MessageResponse;
 

@@ -2,16 +2,17 @@ import '@torsher/tokens/tokens.css'
 import './styles/fonts.css'
 import './styles/app.css'
 import { createApp } from 'vue'
-import { onSessionExpired } from './api.ts'
+import { onProfileRequired, onSessionExpired } from './api.ts'
 import App from './App.vue'
 import { createFocus } from './focus/index.ts'
 import { i18n } from './i18n.ts'
 import { platform } from './platform/index.ts'
 import { exitApp } from './platform/webos.ts'
 import { goBack } from './lib/navigation.ts'
+import { gateTarget } from './lib/session.ts'
 import { misaligned, railAxisOffsets } from './lib/railAxis.ts'
 import { router } from './router.ts'
-import { expireSession, session } from './session.ts'
+import { expireSession, requireProfile, session } from './session.ts'
 
 document.documentElement.setAttribute('data-platform', platform)
 
@@ -29,6 +30,18 @@ onSessionExpired(() => {
 
   expireSession()
   void router.replace('/connect')
+})
+
+// Профиль на устройстве сбросили (удалили его или поставили PIN на профиль
+// по умолчанию): к выбору профиля, а после него — обратно на этот экран
+onProfileRequired(() => {
+  if (!requireProfile())
+    return
+
+  const target = gateTarget(session.status, router.currentRoute.value)
+
+  if (target)
+    void router.replace(target)
 })
 
 // Замер оси рейла из консоли разработки: `railAxis()` — сдвиги иконок от

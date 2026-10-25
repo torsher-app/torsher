@@ -9,7 +9,7 @@ import {
 } from '../dto/home.ts'
 import { libraryStreamParams, streamQuery } from '../dto/playback.ts'
 import { requireStream, requireViewer } from '../middleware/auth.ts'
-import { getMediaFile } from '../services/library/index.ts'
+import { playableMediaFile } from '../services/library/folders.ts'
 import {
   fileCardsOf,
   homeAlbums,
@@ -61,7 +61,7 @@ export const libraryRoutes: FastifyPluginAsyncZod = async (app) => {
       },
     },
     async (request, reply) => {
-      const found = getMediaFile(request.params.id)
+      const found = playableMediaFile(request.params.id, request.profileId)
       const info = found && (await stat(found.path).catch(() => undefined))
 
       if (!found || !info?.isFile())
@@ -107,7 +107,7 @@ export const libraryRoutes: FastifyPluginAsyncZod = async (app) => {
       },
     },
     async (request, reply) => {
-      const found = getMediaFile(request.params.id)
+      const found = playableMediaFile(request.params.id, request.profileId)
       const path = found && (await ensureThumb(found.file, found.path))
 
       if (!path)

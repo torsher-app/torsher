@@ -1,6 +1,10 @@
 export interface RateLimiter {
   /** Засчитывает попытку; `false` — лимит окна исчерпан */
   hit: (key: string, now?: number) => boolean
+  /** Лимит окна уже исчерпан; попытка не засчитывается */
+  isLimited: (key: string, now?: number) => boolean
+  /** Секунд до конца текущего окна; 0 — окна нет */
+  retryAfter: (key: string, now?: number) => number
   reset: (key?: string) => void
 }
 
@@ -22,6 +26,14 @@ export function createRateLimiter(options: {
     }
   }
 
+  function current(key: string, now: number) {
+    const entry = windows.get(key)
+
+    return entry && now - entry.startedAt < options.windowMs
+      ? entry
+      : undefined
+  }
+
   return {
     hit(key, now = Date.now()) {
       if (windows.size > 1000)
@@ -37,6 +49,16 @@ export function createRateLimiter(options: {
       entry.count += 1
 
       return entry.count <= options.limit
+    },
+    isLimited(key, now = Date.now()) {
+      return (current(key, now)?.count ?? 0) >= options.limit
+    },
+    retryAfter(key, now = Date.now()) {
+      const entry = current(key, now)
+
+      return entry
+        ? Math.ceil((entry.startedAt + options.windowMs - now) / 1000)
+        : 0
     },
     reset(key) {
       if (key === undefined)

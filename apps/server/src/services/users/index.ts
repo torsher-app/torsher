@@ -1,7 +1,21 @@
 import { eq, sql } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import { profiles, users } from '../../db/schema.ts'
+import { createRateLimiter } from '../../utils/rateLimit.ts'
 import { startWizard } from '../setup/wizard.ts'
+
+// Неудачи входа с одного адреса: пароль владельца не перебрать, а опечатки
+// владельца не закроют ему вход надолго
+export const signinLimiter = createRateLimiter({
+  limit: 10,
+  windowMs: 15 * 60 * 1000,
+})
+// Неверный текущий пароль при смене пароля или email — на аккаунт: украденная
+// сессия не подберёт им пароль
+export const passwordConfirmLimiter = createRateLimiter({
+  limit: 5,
+  windowMs: 15 * 60 * 1000,
+})
 
 export interface NewUser {
   name: string
