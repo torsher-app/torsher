@@ -15,6 +15,7 @@ import {
   followEpisodes,
   followHistory,
   follows,
+  followSeasons,
   indexers,
   libraries,
   libraryFolders,
@@ -23,6 +24,7 @@ import {
   releaseBlocklist,
   titleVoices,
   torrents,
+  trackedTopics,
 } from '../../db/schema.ts'
 import { setEngineDown, setEngineReady } from '../engine/index.ts'
 import { sampleTorrentFile } from '../engine/fixtures/index.ts'
@@ -274,6 +276,7 @@ beforeEach(() => {
     titleVoices,
     releaseBlocklist,
     metaCache,
+    trackedTopics,
   ])
     getDb().delete(table).run()
 
@@ -377,6 +380,23 @@ describe('автоматика «Следить»', () => {
     expect(
       getDb().select().from(titleVoices).where(eq(titleVoices.season, 2)).get(),
     ).toMatchObject({ studio: 'LostFilm' })
+    // Пак сезона с адресом темы — отслеживаемая тема, сезон качается ею
+    const topic = getDb().select().from(trackedTopics).get()
+
+    expect(topic).toMatchObject({
+      titleId: SERIES,
+      detailsUrl: 'https://tracker.example/topic/aaaa',
+      torrentId: torrent!.id,
+      infoHash: PACK_HASH,
+      season: 2,
+      episodesTo: 8,
+      episodesTotal: 12,
+      refresh: null,
+    })
+    expect(getDb().select().from(followSeasons).get()).toMatchObject({
+      season: 2,
+      topicId: topic!.id,
+    })
     expect(historyKinds(follow.id).sort()).toEqual([
       'found',
       'grabbed',

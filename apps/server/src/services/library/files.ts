@@ -101,6 +101,35 @@ export function torrentLibraryFiles(torrentId: string) {
     .all()
 }
 
+/**
+ * Раздачу подменили новой версией: файлы библиотеки переходят к тем же
+ * файлам новой (старый индекс → новый). Файл, который в новой версии
+ * перезалит (`stale`), остаётся прежним, пока связыватель не заменит его.
+ * Строки без пары остаются без раздачи.
+ */
+export function relinkMediaFiles(
+  oldId: string,
+  newId: string,
+  map: Map<number, number>,
+  stale: Set<number>,
+) {
+  const db = getDb()
+
+  for (const row of torrentLibraryFiles(oldId)) {
+    const fileIndex
+      = row.fileIndex === null ? undefined : map.get(row.fileIndex)
+
+    db.update(mediaFiles)
+      .set(
+        fileIndex === undefined
+          ? { torrentId: null, fileIndex: null }
+          : { torrentId: newId, fileIndex, stale: stale.has(fileIndex) },
+      )
+      .where(eq(mediaFiles.id, row.id))
+      .run()
+  }
+}
+
 /** Файлы библиотеки по раздачам: индексы файлов, которые уже положены */
 export function placedFilesByTorrent(torrentIds: string[]) {
   const placed = new Map<string, Set<number>>()

@@ -37,6 +37,8 @@ export interface OrderedCandidate {
   ownVoice: boolean
   /** Сколько нужных серий раздача закрывает */
   wantedCount: number
+  /** Продолжение темы, которой качается сезон */
+  sameTopic?: boolean
 }
 
 function seedersBucket(seeders: number) {
@@ -58,9 +60,10 @@ function sizeDistance(release: RankedRelease, kind: 'movie' | 'series') {
 
 /**
  * Порядок кандидатов «Следить»: своя студия, ступень лестницы (внутри неё
- * точное разрешение выше выведенного), тип озвучки, число нужных серий, сиды
- * по порядку величины, размер ближе к середине коридора, счёт ранжирования.
- * Озвучка раньше качества: для русского зрителя она важнее.
+ * точное разрешение выше выведенного), тип озвучки, продолжение темы сезона,
+ * число нужных серий, сиды по порядку величины, размер ближе к середине
+ * коридора, счёт ранжирования. Озвучка раньше качества: для русского зрителя
+ * она важнее.
  */
 export function compareCandidates(
   a: OrderedCandidate,
@@ -79,6 +82,7 @@ export function compareCandidates(
     || Number(!!b.release.resolution?.sure)
     - Number(!!a.release.resolution?.sure)
     || voice(a) - voice(b)
+    || Number(!!b.sameTopic) - Number(!!a.sameTopic)
     || b.wantedCount - a.wantedCount
     || seedersBucket(b.release.seeders) - seedersBucket(a.release.seeders)
     || sizeDistance(a.release, kind) - sizeDistance(b.release, kind)

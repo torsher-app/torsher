@@ -74,7 +74,15 @@ const engineTorrentDetails = z.object({
   pieceCount: z.number(),
   // Все файлы info по порядку, включая выравнивание: индексы — как у движка
   files: z.array(
-    z.object({ path: z.string(), length: z.number(), padding: z.boolean() }),
+    z.object({
+      path: z.string(),
+      length: z.number(),
+      padding: z.boolean(),
+      // Только у сверки с диском: `match` — куски внутри файла сошлись по
+      // хэшу, `differs` — другой размер или кусок не сошёлся, `unknown` —
+      // проверить нечем (нет кусков целиком внутри файла)
+      onDisk: z.enum(['match', 'differs', 'missing', 'unknown']).optional(),
+    }),
   ),
 })
 
@@ -272,11 +280,25 @@ export async function resolveMagnet(magnet: string, timeoutMs: number) {
   return new Uint8Array(await response.arrayBuffer())
 }
 
-/** Файлы, infohash и размер куска `.torrent` без добавления раздачи */
-export async function inspectTorrent(bytes: Uint8Array) {
-  return engineJson('/torrents/inspect', engineTorrentDetails, {
+// Сверка читает файлы целиком: на сезоне это минуты
+const COMPARE_TIMEOUT_MS = 30 * 60 * 1000
+
+/**
+ * Файлы, infohash и размер куска `.torrent` без добавления раздачи. С `dir` —
+ * каталогом, куда раздачу добавят, — у файлов `onDisk`: что там уже лежит.
+ */
+export async function inspectTorrent(
+  bytes: Uint8Array,
+  options: { dir?: string } = {},
+) {
+  const query = options.dir
+    ? `?${new URLSearchParams({ dir: options.dir })}`
+    : ''
+
+  return engineJson(`/torrents/inspect${query}`, engineTorrentDetails, {
     method: 'POST',
     body: torrentBody(bytes),
+    ...(options.dir && { timeoutMs: COMPARE_TIMEOUT_MS }),
   })
 }
 

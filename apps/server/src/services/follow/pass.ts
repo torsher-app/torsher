@@ -3,6 +3,7 @@ import type {
   FollowDecision,
   FollowEpisode,
   FollowPendingCandidate,
+  TrackedTopic,
 } from '../../db/schema.ts'
 import type { VoiceRef } from '../sources/profile.ts'
 import type { FoundRelease } from '../sources/rank.ts'
@@ -29,6 +30,12 @@ import { followEpisodeStates, movieState, stateInputs } from './episodes.ts'
 import { grabCandidate, pendingOf, resetEpisodes } from './grab.ts'
 import { recordHistory, reportedEpisodes } from './history.ts'
 import { scheduleOf } from './index.ts'
+import {
+  seasonTopics,
+  titleTopics,
+  topicOfRelease,
+  touchTopics,
+} from './topics.ts'
 import { recordTrackerEpisodes } from './trackerEpisodes.ts'
 import { compareEpisodes, episodeKey, WANTED_STATES } from './wanted.ts'
 
@@ -196,6 +203,7 @@ function savePlan(
   plan: SeasonPlan,
   rows: Map<string, FollowEpisode>,
   wanted: EpisodeRef[],
+  topics: TrackedTopic[],
   now: Date,
 ) {
   const db = getDb()
@@ -219,7 +227,10 @@ function savePlan(
   for (const item of plan.pending) {
     const key = episodeKey(item.episode)
     const row = rows.get(key)
-    const candidate = pendingOf(item.candidate.release)
+    const candidate = pendingOf(
+      item.candidate.release,
+      topicOfRelease(item.candidate.release, topics),
+    )
 
     db.update(followEpisodes)
       .set({ pending: candidate, waitUntil: item.until, stateNote: null })
@@ -324,11 +335,22 @@ export async function decideFollow(
     now,
   }
   const grabs: { plan: SeasonPlan, voice?: VoiceRef }[] = []
+  const topics = titleTopics(follow.titleId)
+  const ownTopics = seasonTopics(follow.id)
+  const seenTopics = new Set<string>()
 
   for (const season of new Set(wanted.map(item => item.season))) {
     const inSeason = releases.filter(release =>
       releaseSeasons(release, follow.kind).includes(season),
     )
+
+    for (const release of inSeason) {
+      const topic = topicOfRelease(release, topics)
+
+      if (topic)
+        seenTopics.add(topic.id)
+    }
+
     const voice = seasonVoice(follow, season)
     const { ranked } = rankReleases(inSeason, {
       kind: follow.kind,
@@ -352,6 +374,7 @@ export async function decideFollow(
         season,
         voice,
         cutoffStep: cutoffStepOf(follow.qualityPreset, best, seen),
+        topic: ownTopics.get(season),
       },
       ctx,
     )
@@ -364,16 +387,22 @@ export async function decideFollow(
       plan,
       rows,
       wanted.filter(item => item.season === season),
+      topics,
       now,
     )
     grabs.push({ plan, voice })
   }
 
+  touchTopics([...seenTopics], now)
+
   for (const { plan, voice } of grabs) {
     for (const grab of plan.grabs) {
       await grabCandidate(
         follow,
-        pendingOf(grab.candidate.release),
+        pendingOf(
+          grab.candidate.release,
+          topicOfRelease(grab.candidate.release, topics),
+        ),
         grab.episodes,
         {
           ownStudio: voice?.studio,

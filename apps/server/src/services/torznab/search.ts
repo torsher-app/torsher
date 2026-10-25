@@ -27,7 +27,8 @@ export interface TorznabRelease {
   guid?: string
   /**
    * Страница раздачи на трекере из `<comments>` (у Jackett — `Details`,
-   * у Prowlarr — `InfoUrl`): по ней узнаётся обновлённая тема.
+   * у Prowlarr — `InfoUrl`), без неё — `guid`, если это адрес страницы: по
+   * ней узнаётся обновлённая тема.
    */
   detailsUrl?: string
   /** Ссылка на `.torrent` у индексатора; в ней бывает API-ключ. */
@@ -182,6 +183,14 @@ function toRelease(item: XmlNode): TorznabRelease | undefined {
     = attrs.get('magneturl') ?? links.find(link => link.startsWith('magnet:'))
   const link = links.find(value => /^https?:\/\//i.test(value))
   const comments = text(item, 'comments')?.trim()
+  const guid = text(item, 'guid')?.trim() || undefined
+  // `guid` бывает и ссылкой на `.torrent`: тогда темы по нему не узнать
+  const guidPage
+    = guid
+      && /^https?:\/\//i.test(guid)
+      && !links.some(value => value.trim() === guid)
+      ? guid
+      : undefined
   const infoHash = attrs.get('infohash')?.trim().toLowerCase()
   const seeders = toNumber(attrs.get('seeders'))
   // `peers` в Torznab — сиды вместе с личерами
@@ -189,9 +198,9 @@ function toRelease(item: XmlNode): TorznabRelease | undefined {
 
   return {
     title,
-    guid: text(item, 'guid')?.trim() || undefined,
+    guid,
     detailsUrl:
-      comments && /^https?:\/\//i.test(comments) ? comments : undefined,
+      comments && /^https?:\/\//i.test(comments) ? comments : guidPage,
     link,
     magnet,
     infoHash:

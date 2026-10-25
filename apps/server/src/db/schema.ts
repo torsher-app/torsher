@@ -925,6 +925,9 @@ export const mediaFiles = sqliteTable(
       onDelete: 'set null',
     }),
     fileIndex: integer('file_index'),
+    // Раздачу подменили новой версией, а этот файл в ней перезалит: файл
+    // библиотеки — прежняя версия, пока новую не скачают целиком
+    stale: integer('stale', { mode: 'boolean' }).notNull().default(false),
     linkMode: text('link_mode', { enum: mediaLinkModes }),
     probe: text('probe', { mode: 'json' }).$type<MediaInfo>(),
     duration: real('duration'),
@@ -1054,6 +1057,68 @@ export const followProfiles = sqliteTable(
   ],
 )
 
+/**
+ * Незаконченная подмена раздачи темы новой версией: этап виден по строке,
+ * поэтому перезапуск сервера продолжает с него. `prepare` — старая раздача
+ * ещё есть (ссылки, сверка, место, `forget`), `relinked` — база перешла на
+ * новую, её осталось добавить в движок, `added` — осталась уборка старой папки.
+ */
+export interface TopicRefresh {
+  followId: string
+  torrentId: string
+  title: string
+  episodes: { season: number, episode: number }[]
+  candidate: FollowPendingCandidate
+  stage: 'prepare' | 'relinked' | 'added'
+  /** Старую раздачу забыли в движке: запасному пути вернуть её обратно */
+  forgotten?: boolean
+  /** Выбор файлов новой раздачи: перенесённые и новые нужные */
+  selection?: number[]
+  /** Каталог старой раздачи (`download_dir`): новая ложится туда же */
+  downloadDir?: string | null
+  /** Файлы новой раздачи, которые качаются заново: не совпали с диском */
+  redownload?: number[]
+  /** Что убрать из старой папки и докуда чистить пустые каталоги */
+  cleanup?: { root: string, paths: string[] }
+  /** ISO: сбой сверки или движка — повтор не раньше */
+  retryAt?: string
+}
+
+// Обновляемая тема трекера: одна тема, новый infohash с каждой серией. Ключ —
+// индексатор и адрес страницы раздачи; `torrent_id` — текущая её раздача
+export const trackedTopics = sqliteTable(
+  'tracked_topics',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => randomUUID()),
+    titleId: text('title_id').notNull(),
+    indexerId: text('indexer_id')
+      .notNull()
+      .references(() => indexers.id, { onDelete: 'cascade' }),
+    detailsUrl: text('details_url').notNull(),
+    torrentId: text('torrent_id').references(() => torrents.id, {
+      onDelete: 'set null',
+    }),
+    infoHash: text('info_hash').notNull(),
+    releaseTitle: text('release_title').notNull(),
+    season: integer('season'),
+    // Конец диапазона серий; пусто — пак на весь сезон
+    episodesTo: integer('episodes_to'),
+    // «из 12»
+    episodesTotal: integer('episodes_total'),
+    refresh: text('refresh', { mode: 'json' }).$type<TopicRefresh>(),
+    lastSeenAt: integer('last_seen_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  },
+  table => [
+    uniqueIndex('tracked_topics_key_idx').on(table.indexerId, table.detailsUrl),
+    index('tracked_topics_title_idx').on(table.titleId),
+  ],
+)
+
+export type TrackedTopic = typeof trackedTopics.$inferSelect
+
 // Знание о сезоне, которое не вычислить из TMDB и библиотеки
 export const followSeasons = sqliteTable(
   'follow_seasons',
@@ -1062,6 +1127,10 @@ export const followSeasons = sqliteTable(
       .notNull()
       .references(() => follows.id, { onDelete: 'cascade' }),
     season: integer('season').notNull(),
+    // Тема, которой качаем сезон: её продолжение решатель ставит выше
+    topicId: text('topic_id').references(() => trackedTopics.id, {
+      onDelete: 'set null',
+    }),
     // Лучший класс разрешения среди увиденных раздач: «шоу без верхней ступени»
     bestQualitySeen: text('best_quality_seen'),
     // «из 12» по названиям раздач — подсказка размера сезона
@@ -1154,7 +1223,8 @@ export type FollowEpisode = typeof followEpisodes.$inferSelect
 // `failed` — закачка зависла, `blocklisted` — раздача в чёрном списке,
 // `missing` — серия вышла давно, раздач нет, `search` — целевой поиск,
 // `gap` — лента индексатора пропустила период (без тайтла), `unsure` — позиция
-// ленты похожа на тайтл, но матч не уверен
+// ленты похожа на тайтл, но матч не уверен, `topic_updated` — раздача
+// обновляемой темы подменена новой версией
 export const followHistoryKinds = [
   'found',
   'pending',
@@ -1166,6 +1236,7 @@ export const followHistoryKinds = [
   'search',
   'gap',
   'unsure',
+  'topic_updated',
 ] as const
 
 export type FollowHistoryKind = (typeof followHistoryKinds)[number]

@@ -3,6 +3,7 @@ import type { FollowQualityPreset } from '../../db/schema.ts'
 import type { RankingProfile, VoiceRef } from '../sources/profile.ts'
 import type { RankedRelease } from '../sources/rank.ts'
 import type { OrderedCandidate } from './rank.ts'
+import type { TopicKey } from './topics.ts'
 import type { EpisodeRef } from './wanted.ts'
 import {
   RESOLUTION_RANK,
@@ -85,11 +86,12 @@ export interface DecideContext {
   now: Date
 }
 
-/** Сезон, который решается: своя студия и ступень cutoff */
+/** Сезон, который решается: своя студия, ступень cutoff и его тема */
 export interface SeasonContext {
   season: number
   voice?: VoiceRef
   cutoffStep: number
+  topic?: TopicKey
 }
 
 export interface CheckedCandidate extends OrderedCandidate {
@@ -157,6 +159,17 @@ function isFarOutsideCorridor(
   return (
     release.episodeSize < corridor[0] * SIZE_FAR_BELOW
     || release.episodeSize > corridor[1] * SIZE_FAR_ABOVE
+  )
+}
+
+/** Раздача из темы: адрес страницы у её индексатора тот же */
+function isFromTopic(release: RankedRelease, topic: TopicKey | undefined) {
+  return (
+    !!topic
+    && release.indexers.some(
+      item =>
+        item.id === topic.indexerId && item.detailsUrl === topic.detailsUrl,
+    )
   )
 }
 
@@ -240,6 +253,7 @@ export function checkCandidate(
     step: step ?? Number.POSITIVE_INFINITY,
     ownVoice,
     wantedCount: episodes.length,
+    sameTopic: isFromTopic(release, season.topic),
     episodes,
     voiceAtCutoff: isVoiceAtCutoff(release, season, ctx),
     rejections,

@@ -5,6 +5,7 @@ import type {
   Torrent,
 } from '../../db/schema.ts'
 import type { FoundRelease, RankedRelease } from '../sources/rank.ts'
+import type { TopicKey } from './topics.ts'
 import type { EpisodeRef } from './wanted.ts'
 import { matchFiles, parseRelease } from '@torsher/release-parser'
 import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
@@ -25,6 +26,12 @@ import { InsufficientStorageError } from '../storage/index.ts'
 import { getTorrent, linkTitle } from '../torrents/index.ts'
 import { blockRelease, isBlocked } from './blocklist.ts'
 import { recordHistory } from './history.ts'
+import {
+  refreshTargets,
+  startRefresh,
+  trackTopic,
+  updatedTopicFor,
+} from './topics.ts'
 import { episodeKey } from './wanted.ts'
 
 // Ссылка индексатора не ответила: следующая попытка того же кандидата — не
@@ -40,7 +47,7 @@ export type GrabResult
  * Ссылка индексатора не ответила: кандидат остаётся отложенным с кончившимся
  * окном, и захват повторится сам — не раньше чем через 15 минут.
  */
-function retryLater(
+export function retryLater(
   follow: Follow,
   candidate: FollowPendingCandidate,
   episodes: EpisodeRef[],
@@ -51,13 +58,24 @@ function retryLater(
   return 'later'
 }
 
-/** Кандидат для `pending`: ссылка на `.torrent` уходит в базу шифртекстом */
+/**
+ * Кандидат для `pending`: ссылка на `.torrent` уходит в базу шифртекстом.
+ * Индексатор и адрес страницы — отслеживаемой темы, если раздача из неё,
+ * иначе того индексатора, чья ссылка.
+ */
 export function pendingOf(
   release: FoundRelease & Partial<Pick<RankedRelease, 'resolution' | 'voice'>>,
+  topic?: TopicKey,
 ): FollowPendingCandidate {
-  const indexer = release.link
-    ? release.indexers.find(item => item.id === release.link!.indexerId)
-    : release.indexers[0]
+  const indexer
+    = (topic
+      && release.indexers.find(
+        item =>
+          item.id === topic.indexerId && item.detailsUrl === topic.detailsUrl,
+      ))
+      || (release.link
+        ? release.indexers.find(item => item.id === release.link!.indexerId)
+        : release.indexers[0])
 
   return {
     id: release.id,
@@ -140,7 +158,7 @@ export function resetEpisodes(follow: Follow, episodes: EpisodeRef[]) {
   })
 }
 
-function block(
+export function blockTorrent(
   follow: Follow,
   torrent: Pick<Torrent, 'infoHash' | 'name'>,
   reason: 'stalled' | 'failed_check',
@@ -171,7 +189,7 @@ function block(
 }
 
 /** Файл каждой серии в раздаче; у фильма — крупнейшее видео */
-function filesFor(
+export function filesFor(
   torrent: Torrent,
   title: string,
   kind: 'movie' | 'series',
@@ -255,7 +273,7 @@ export async function startGrab(
   const absent = episodes.filter(item => !files.has(episodeKey(item)))
 
   if (absent.length) {
-    block(follow, torrent, 'failed_check', absent, candidate.detailsUrl)
+    blockTorrent(follow, torrent, 'failed_check', absent, candidate.detailsUrl)
     resetEpisodes(follow, absent)
   }
 
@@ -294,6 +312,7 @@ export async function startGrab(
 
   for (const season of new Set(present.map(item => item.season))) {
     pinFirstVoice(follow, season, candidate, options.ownStudio)
+    trackTopic(follow, torrent, candidate, season, now)
     recordHistory(
       {
         followId: follow.id,
@@ -381,10 +400,16 @@ export async function grabCandidate(
   torrent = linkTitle(torrent, follow.titleId)
 
   if (torrent.status === 'failed') {
-    block(follow, torrent, 'stalled', episodes, candidate.detailsUrl)
+    blockTorrent(follow, torrent, 'stalled', episodes, candidate.detailsUrl)
     resetEpisodes(follow, episodes)
     return 'blocked'
   }
+
+  const topic = updatedTopicFor(follow, candidate, torrent.infoHash)
+
+  // Новая версия отслеживаемой темы: не рядом со старой, а вместо неё
+  if (topic)
+    return startRefresh(follow, topic, torrent, candidate, episodes, now)
 
   if (torrent.status === 'resolving') {
     updateEpisodes(follow, episodes, {
@@ -432,7 +457,13 @@ export async function continueGrabs(
   followOf: (id: string) => Follow | undefined,
   now = new Date(),
 ) {
+  const refreshing = refreshTargets()
+
   for (const [torrentId, rows] of awaitingMetadata()) {
+    // Подмену темы ведёт `continueRefreshes`
+    if (refreshing.has(torrentId))
+      continue
+
     const torrent = getTorrent(torrentId)
     const follow = followOf(rows[0]!.followId)
 
@@ -446,7 +477,7 @@ export async function continueGrabs(
     const candidate = rows[0]!.pending
 
     if (torrent.status === 'failed' || !candidate) {
-      block(follow, torrent, 'stalled', episodes, candidate?.detailsUrl)
+      blockTorrent(follow, torrent, 'stalled', episodes, candidate?.detailsUrl)
       resetEpisodes(follow, episodes)
       continue
     }

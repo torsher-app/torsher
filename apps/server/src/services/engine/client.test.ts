@@ -19,6 +19,7 @@ import {
   torrentStats,
 } from './client.ts'
 import {
+  comparedDetails,
   engineError,
   INFO_HASH,
   liveState,
@@ -195,6 +196,23 @@ describe('клиент движка', () => {
       kind: 'rejected',
       message: 'bencode: syntax error',
     })
+  })
+
+  it('сверяет файлы раздачи с каталогом до добавления', async () => {
+    fetchMock.mockResolvedValue(json(comparedDetails))
+
+    const details = await inspectTorrent(new Uint8Array([100]), {
+      dir: '/downloads/shows',
+    })
+    const url = new URL(String(fetchMock.mock.calls[0]![0]))
+
+    expect(url.pathname).toBe('/torrents/inspect')
+    expect(url.searchParams.get('dir')).toBe('/downloads/shows')
+    expect(details.files.map(file => file.onDisk)).toEqual([
+      'match',
+      'missing',
+      'differs',
+    ])
   })
 
   it('добавляет раздачу с выбранными файлами', async () => {

@@ -9,6 +9,7 @@ import { activeFollows, grabPending, markDownloaded } from './pass.ts'
 import { isQuietAfterStart, searchPass, startFollowSearch } from './search.ts'
 import { checkStalled, hasActiveGrabs } from './stalled.ts'
 import { refreshFollowSchedules } from './tmdbRefresh.ts'
+import { continueRefreshes } from './topics.ts'
 import { purgeTrackerEpisodes } from './trackerEpisodes.ts'
 
 // Что и когда делать, лежит в таблицах слежения; тик только решает, что пора
@@ -23,6 +24,8 @@ let purgedAt = 0
  * Автоматика по действующим слежениям: зависшие закачки, magnet дождался
  * метаданных, кончилось окно или освободилось место, файл лёг в библиотеку,
  * лента индексаторов, целевой поиск. Без действующих слежений никуда не ходит.
+ * Незаконченная подмена темы продолжается всегда: это не поиск, а раздача,
+ * которую нельзя оставить забытой.
  */
 export async function followAutomation(now = new Date()) {
   if (now.getTime() - purgedAt >= PURGE_EVERY_MS) {
@@ -31,6 +34,8 @@ export async function followAutomation(now = new Date()) {
     purgeBlocklist(now)
     await purgeTrackerEpisodes()
   }
+
+  await continueRefreshes(now)
 
   const active = activeFollows()
 

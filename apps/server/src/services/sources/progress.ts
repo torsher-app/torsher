@@ -65,6 +65,45 @@ export function saveTitleProgress(
 }
 
 /**
+ * Раздачу подменили новой версией: «чем смотрели» серии переходит к тому же
+ * файлу новой (старый индекс → новый). Файла в новой версии нет — раздача у
+ * прогресса снимается, позиция серии остаётся.
+ */
+export function relinkTitleProgress(
+  oldId: string,
+  newId: string,
+  map: Map<number, number>,
+) {
+  const db = getDb()
+  const rows = db
+    .select()
+    .from(titleProgress)
+    .where(eq(titleProgress.torrentId, oldId))
+    .all()
+
+  for (const row of rows) {
+    const fileIndex
+      = row.fileIndex === null ? undefined : map.get(row.fileIndex)
+
+    db.update(titleProgress)
+      .set(
+        fileIndex === undefined
+          ? { torrentId: null, fileIndex: null }
+          : { torrentId: newId, fileIndex },
+      )
+      .where(
+        and(
+          eq(titleProgress.profileId, row.profileId),
+          eq(titleProgress.titleId, row.titleId),
+          eq(titleProgress.season, row.season),
+          eq(titleProgress.episode, row.episode),
+        ),
+      )
+      .run()
+  }
+}
+
+/**
  * Запоминает раздачу и её озвучку при выборе из карточки, не трогая позицию:
  * по студии следующая серия получает «Как в прошлых сериях».
  */
