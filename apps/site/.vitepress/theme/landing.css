@@ -1,0 +1,172 @@
+/*
+ * Landing page. Colors come from the site theme, so the page follows the
+ * light and dark switch; the TV mockups stay dark like the showcase itself.
+ */
+.ld {
+  --ld-bg: var(--vp-c-bg);
+  --ld-surface: var(--vp-c-bg-alt);
+  --ld-raised: var(--vp-c-bg-soft);
+  --ld-line: var(--vp-c-divider);
+  --ld-text: var(--vp-c-text-1);
+  --ld-muted: var(--vp-c-text-2);
+  --ld-accent-text: var(--vp-c-brand-1);
+  --ld-accent: var(--color-accent);
+  --ld-glow: var(--color-glow);
+  --ld-gutter: clamp(16px, 4vw, 40px);
+
+  container: ld / inline-size;
+  overflow-x: clip;
+  background: var(--ld-bg);
+  color: var(--ld-text);
+}
+
+.dark .ld {
+  --ld-raised: var(--color-surface-raised);
+}
+
+.ld-wrap {
+  box-sizing: border-box;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 var(--ld-gutter);
+}
+
+.ld-section {
+  padding-top: clamp(64px, 7vw, 96px);
+}
+
+.ld-eyebrow {
+  margin: 0 0 16px;
+  color: var(--ld-accent-text);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.ld-h2 {
+  max-width: 22ch;
+  margin: 0;
+  font-size: clamp(30px, 3.6vw, 48px);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.025em;
+}
+
+.ld-lead {
+  max-width: 680px;
+  margin: 18px 0 0;
+  color: var(--ld-muted);
+  font-size: 18px;
+  line-height: 1.6;
+}
+
+.ld-card {
+  box-sizing: border-box;
+  min-width: 0;
+  border: 1px solid var(--ld-line);
+  border-radius: 20px;
+  background: var(--ld-surface);
+}
+
+.ld-grid {
+  display: grid;
+  gap: 20px;
+}
+
+.ld-grid-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.ld-grid-4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+@container ld (max-width: 1020px) {
+  .ld-grid-3,
+  .ld-grid-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container ld (max-width: 620px) {
+  .ld-grid-3,
+  .ld-grid-4 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.ld-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  height: 52px;
+  padding: 0 24px;
+  border: 1px solid var(--ld-line);
+  border-radius: 12px;
+  color: var(--ld-text);
+  font-size: 16px;
+  font-weight: 500;
+  text-decoration: none;
+  transition:
+    border-color 0.2s,
+    background-color 0.2s;
+}
+
+.ld-button:hover {
+  border-color: var(--ld-muted);
+}
+
+.ld-button.primary {
+  border-color: var(--ld-accent);
+  background: var(--ld-accent);
+  color: var(--color-accent-ink);
+  font-weight: 600;
+}
+
+.ld-button.primary:hover {
+  border-color: var(--ld-glow);
+  background: var(--ld-glow);
+}
+
+.ld-button svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
+.ld-mono {
+  font-family: var(--vp-font-family-mono);
+}
+
+/* A TV frame around a showcase mockup */
+.ld-tv {
+  padding: clamp(5px, 0.7vw, 10px);
+  border: 1px solid var(--ld-line);
+  border-radius: clamp(10px, 1.4vw, 20px);
+  background: var(--color-surface);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+}
+
+.ld-tv > div {
+  overflow: hidden;
+  border-radius: clamp(6px, 0.8vw, 11px);
+}
+
+.ld-caption {
+  margin: 18px 0 0;
+  color: var(--ld-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* The phone bar with "Return to top" belongs to documentation pages */
+.ld-page .VPLocalNav {
+  display: none;
+}
+
+/* The footer sits in the light of the closing section: no band, no rule */
+.Layout.ld-page .VPFooter {
+  border-top: 0;
+  background-color: transparent;
+}

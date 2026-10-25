@@ -6,6 +6,7 @@
   "exports": {
     "./tokens.css": "./tokens.css",
     "./loader": "./loader.ts",
+    "./lamp": "./lamp.ts",
     "./assets/*": "./assets/*"
   }
 }

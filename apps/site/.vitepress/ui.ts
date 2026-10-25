@@ -20,3 +20,12 @@ export function label(key: string): string {
   // Plural strings list their forms with "|": a label needs only the first one
   return value.split(' | ')[0]!
 }
+
+/** The same string with `{placeholder}` values filled in, for mockups on the landing page */
+export function format(
+  key: string,
+  params: Record<string, string | number>,
+): string {
+  return label(key).replace(/\{(\w+)\}/g, (match, name: string) =>
+    name in params ? String(params[name]) : match)
+}

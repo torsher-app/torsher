@@ -89,7 +89,7 @@ export default defineConfig({
     },
 
     footer: {
-      message: `Released under the <a href="${repoUrl}/blob/main/LICENSE">AGPL-3.0 license</a>. This product uses the TMDB API but is not endorsed or certified by TMDB.`,
+      message: `Released under the <a href="${repoUrl}/blob/main/LICENSE">AGPL-3.0 license</a>. This product uses the TMDB API but is not endorsed or certified by TMDB.<br>Torsher includes no content: you choose your sources and are responsible for them.`,
       copyright: '© 2026-present <a href="https://github.com/antonreshetov">Anton Reshetov</a>',
     },
   },
