@@ -16,6 +16,8 @@ function pagePath(relativePath: string) {
   return `/${relativePath.replace(/\.md$/, '')}`
 }
 
+const ogImage = `${siteUrl}/og-image.png`
+
 function seoHead(relativePath: string, title: string, pageDescription: string): HeadConfig[] {
   const url = new URL(pagePath(relativePath), siteUrl).toString()
 
@@ -26,9 +28,14 @@ function seoHead(relativePath: string, title: string, pageDescription: string): 
     ['meta', { property: 'og:title', content: title }],
     ['meta', { property: 'og:description', content: pageDescription }],
     ['meta', { property: 'og:url', content: url }],
-    ['meta', { name: 'twitter:card', content: 'summary' }],
+    ['meta', { property: 'og:image', content: ogImage }],
+    ['meta', { property: 'og:image:width', content: '1200' }],
+    ['meta', { property: 'og:image:height', content: '630' }],
+    ['meta', { property: 'og:image:alt', content: 'Torsher: your home cinema in one container' }],
+    ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
     ['meta', { name: 'twitter:title', content: title }],
     ['meta', { name: 'twitter:description', content: pageDescription }],
+    ['meta', { name: 'twitter:image', content: ogImage }],
   ]
 }
 
