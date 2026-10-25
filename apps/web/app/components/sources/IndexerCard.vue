@@ -75,6 +75,51 @@ const modes = computed(() => {
     .join(', ')
 })
 
+const isFeedSaving = ref(false)
+// Prowlarr сообщает, умеет ли индексатор ленту, и синхронизация перезаписала бы выбор
+const feedManaged = computed(() => shown.value?.managerKind === 'prowlarr')
+
+const feedText = computed(() => {
+  const feed = shown.value?.feed
+
+  if (!feed)
+    return ''
+
+  if (feed.supported === false) {
+    return t(
+      feedManaged.value
+        ? 'panel.sources.feed.unsupported'
+        : 'panel.sources.feed.off',
+    )
+  }
+
+  if (feed.probeAt) {
+    return t('panel.sources.feed.failing', {
+      date: formatDateTime(feed.probeAt, locale.value),
+    })
+  }
+
+  return feed.checkedAt
+    ? t('panel.sources.feed.read', {
+        time: formatRelative(feed.checkedAt, locale.value, props.now),
+      })
+    : t('panel.sources.feed.pending')
+})
+
+async function onFeed(feed: boolean) {
+  if (!shown.value)
+    return
+
+  isFeedSaving.value = true
+
+  try {
+    await actions.setFeed(shown.value, feed)
+  }
+  finally {
+    isFeedSaving.value = false
+  }
+}
+
 async function onToggle(enabled: boolean) {
   if (!shown.value)
     return
@@ -156,6 +201,28 @@ function onInteractOutside(event: Event) {
                 :disabled="isToggling"
                 @update:model-value="onToggle"
               />
+            </dd>
+            <dt class="self-start text-muted-foreground">
+              <label for="indexer-card-feed">{{
+                t("panel.sources.feed.label")
+              }}</label>
+            </dt>
+            <dd class="grid justify-items-start gap-1">
+              <Switch
+                id="indexer-card-feed"
+                :model-value="shown.feed.supported !== false"
+                :disabled="isFeedSaving || feedManaged"
+                aria-describedby="indexer-card-feed-state"
+                @update:model-value="onFeed"
+              />
+              <span
+                id="indexer-card-feed-state"
+                class="text-[12.5px] text-muted-foreground"
+              >
+                {{ feedText
+                }}<template v-if="feedManaged">
+                  · {{ t("panel.sources.feed.managed") }}</template>
+              </span>
             </dd>
             <dt class="text-muted-foreground">
               {{ t("panel.sources.card.status") }}

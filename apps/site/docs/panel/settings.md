@@ -1,11 +1,11 @@
 ---
 title: Settings
-description: "Server settings: account, storage, torrent, backups, network, metadata, playback, notifications and about."
+description: "Server settings: account, storage, torrent, following, backups, network, metadata, playback, notifications and about."
 ---
 
 # Settings
 
-Server settings: account, storage, torrent, backups, network, metadata, playback, notifications and about.
+Server settings: account, storage, torrent, following, backups, network, metadata, playback, notifications and about.
 
 <Draft />
 
@@ -14,6 +14,7 @@ Server settings: account, storage, torrent, backups, network, metadata, playback
 - <Ui k="panel.settings.nav.account" />
 - <Ui k="panel.settings.nav.storage" />: folders, cache limit, free space reserve
 - <Ui k="panel.settings.nav.torrent" />: download and upload speed (watching ignores the download limit), download queue, seeding after download and for watched torrents, connections, incoming port and UPnP, DHT and PEX for private trackers, encryption; network changes wait for an engine restart
+- <Ui k="panel.settings.nav.follow" />: how often to read the new releases feed, targeted searches per hour, rules for new follows
 - <Ui k="panel.settings.nav.backups" />: schedule, folder, password, restore
 - <Ui k="panel.settings.nav.network" />
 - <Ui k="panel.settings.nav.metadata" />

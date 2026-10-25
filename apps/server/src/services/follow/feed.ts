@@ -31,7 +31,6 @@ import {
 import { listFeedIndexers } from '../indexers/index.ts'
 import { rememberUserAlias } from '../library/recognize.ts'
 import { logFor } from '../logs/index.ts'
-import { getSetting } from '../settings/index.ts'
 import { syncTitleAliases } from '../sources/aliases.ts'
 import { peekSearch, SEARCH_TTL_MS } from '../sources/cache.ts'
 import { isViewerSearching, mergeHits } from '../sources/search.ts'
@@ -43,6 +42,7 @@ import { recordHistory } from './history.ts'
 import { followById } from './index.ts'
 import { decideFollow, followStates } from './pass.ts'
 import { requestFollowSearch } from './search.ts'
+import { followSettings } from './settings.ts'
 import { WANTED_STATES } from './wanted.ts'
 
 const MINUTE_MS = 60 * 1000
@@ -61,15 +61,9 @@ const DEFAULT_PAGE_SIZE = 100
 // пробы раз в неделю: индексатор не отдаёт ленту на запрос без `q`
 const FAILURES_TO_DISABLE = 3
 const PROBE_EVERY_MS = 7 * DAY_MS
-const SETTINGS_KEY = 'follow'
-
-interface FollowSettings {
-  rssIntervalMin?: number
-}
-
 /** Интервал ленты в минутах; 0 — лента выключена */
 export function rssIntervalMin() {
-  const value = getSetting<FollowSettings>(SETTINGS_KEY)?.rssIntervalMin
+  const value = followSettings().rssIntervalMin
 
   if (value === undefined || !Number.isFinite(value))
     return DEFAULT_RSS_INTERVAL_MIN
@@ -90,6 +84,15 @@ export function feedJitter(indexerId: string, checkedAt: Date) {
     .digest()
 
   return (hash.readUInt32BE(0) % (2 * JITTER_MS + 1)) - JITTER_MS
+}
+
+/** Лента выключена неудачами: когда её попробуют снова; иначе null */
+export function feedProbeAt(
+  indexer: Pick<FeedIndexer, 'rssFailures' | 'rssCheckedAt'>,
+) {
+  return indexer.rssFailures >= FAILURES_TO_DISABLE && indexer.rssCheckedAt
+    ? new Date(indexer.rssCheckedAt.getTime() + PROBE_EVERY_MS)
+    : null
 }
 
 /** Пора ли читать ленту индексатора; выключенная лента пробуется раз в неделю */

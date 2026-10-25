@@ -1,0 +1,255 @@
+import type { FollowDetails, FollowSummary } from '@torsher/api-client'
+import type { Component } from 'vue'
+import type { StatusTone } from '~/lib/indexerStatus'
+import {
+  BanIcon,
+  CircleCheckIcon,
+  CircleDashedIcon,
+  CircleHelpIcon,
+  CircleIcon,
+  CircleXIcon,
+  ClockIcon,
+  DownloadIcon,
+  HardDriveIcon,
+  LibraryIcon,
+  SearchIcon,
+  SparklesIcon,
+  TriangleAlertIcon,
+} from '@lucide/vue'
+
+export type FollowGroup = 'attention' | 'waiting' | 'done' | 'stopped'
+
+export const FOLLOW_GROUPS: FollowGroup[] = [
+  'attention',
+  'waiting',
+  'done',
+  'stopped',
+]
+
+/**
+ * Группа слежения в списке: проблемы первыми, остановленные последними. «Ждём
+ * серию» — что-то нужно, качается или анонсировано; иначе «Всё скачано».
+ */
+export function followGroupOf(follow: FollowSummary): FollowGroup {
+  if (follow.state === 'paused' || follow.state === 'stopped')
+    return 'stopped'
+
+  if (follow.counts.noSpace || follow.counts.missing || follow.unsure)
+    return 'attention'
+
+  if (follow.state === 'done')
+    return 'done'
+
+  // Без серий после курсора сериал ждёт новый сезон, а не «всё скачано»
+  return follow.counts.inLibrary
+    && !follow.wanted
+    && !follow.counts.downloading
+    && !follow.counts.upcoming
+    && !follow.next
+    ? 'done'
+    : 'waiting'
+}
+
+export type FollowStatus
+  = | 'paused'
+    | 'stopped'
+    | 'noSpace'
+    | 'missing'
+    | 'unsure'
+    | 'downloading'
+    | 'waiting'
+    | 'searching'
+    | 'next'
+    | 'done'
+
+export interface FollowStatusView {
+  status: FollowStatus
+  tone: StatusTone
+  icon: Component
+  /** Сколько серий в этом состоянии: для текста */
+  count: number
+}
+
+const STATUS_VIEW: Record<
+  FollowStatus,
+  Pick<FollowStatusView, 'tone' | 'icon'>
+> = {
+  paused: { tone: 'muted', icon: CircleDashedIcon },
+  stopped: { tone: 'muted', icon: CircleDashedIcon },
+  noSpace: { tone: 'destructive', icon: HardDriveIcon },
+  missing: { tone: 'warning', icon: CircleXIcon },
+  unsure: { tone: 'warning', icon: CircleHelpIcon },
+  downloading: { tone: 'info', icon: DownloadIcon },
+  waiting: { tone: 'muted', icon: ClockIcon },
+  searching: { tone: 'muted', icon: SearchIcon },
+  next: { tone: 'muted', icon: CircleIcon },
+  done: { tone: 'success', icon: CircleCheckIcon },
+}
+
+/** Одно состояние слежения для строки: самое важное из серий */
+export function followStatusOf(follow: FollowSummary): FollowStatusView {
+  const { counts } = follow
+  const pick = (status: FollowStatus, count = 0) => ({
+    status,
+    count,
+    ...STATUS_VIEW[status],
+  })
+
+  if (follow.state === 'paused')
+    return pick('paused')
+
+  if (follow.state === 'stopped')
+    return pick('stopped')
+
+  if (counts.noSpace)
+    return pick('noSpace', counts.noSpace)
+
+  if (counts.missing)
+    return pick('missing', counts.missing)
+
+  if (follow.unsure)
+    return pick('unsure', follow.unsure)
+
+  if (counts.downloading)
+    return pick('downloading', counts.downloading)
+
+  if (counts.waiting)
+    return pick('waiting', counts.waiting)
+
+  if (counts.searching)
+    return pick('searching', counts.searching)
+
+  return counts.inLibrary && !follow.next && !counts.upcoming
+    ? pick('done')
+    : pick('next')
+}
+
+/** «S2E1–E3, E5»: подряд идущие серии — диапазоном; у фильма (сезон 0) — пусто */
+export function episodesLabel(season: number | null, episodes: number[]) {
+  if (!season)
+    return ''
+
+  const sorted = [...new Set(episodes)].sort((a, b) => a - b)
+  const parts: string[] = []
+  let start = sorted[0]
+  let prev = start
+
+  for (const episode of [...sorted.slice(1), Number.NaN]) {
+    if (episode === prev! + 1) {
+      prev = episode
+      continue
+    }
+
+    if (start !== undefined)
+      parts.push(start === prev ? `E${start}` : `E${start}–E${prev}`)
+
+    start = episode
+    prev = episode
+  }
+
+  return parts.length ? `S${season}${parts.join(', ')}` : `S${season}`
+}
+
+/** Студия → тип озвучки → качество: чего ждёт отложенный кандидат */
+export interface WaitTarget {
+  studio?: string
+  voiceType?: string
+  quality?: string
+}
+
+/** Параметры отказа или события могут прийти любого типа: берём только строки */
+export function waitTargetOf(params: Record<string, unknown> | undefined) {
+  const pick = (key: string) =>
+    typeof params?.[key] === 'string' ? (params[key] as string) : undefined
+
+  return {
+    studio: pick('studio'),
+    voiceType: pick('voiceType'),
+    quality: pick('quality'),
+  }
+}
+
+/** Время окна: сегодня — только часы, иначе с датой */
+export function formatUntil(iso: string, locale: string, now = Date.now()) {
+  const date = new Date(iso)
+  const tag = locale.replace('_', '-')
+  const sameDay = date.toDateString() === new Date(now).toDateString()
+
+  return new Intl.DateTimeFormat(
+    tag,
+    sameDay
+      ? { timeStyle: 'short' }
+      : {
+          weekday: 'short',
+          day: 'numeric',
+          month: 'short',
+          hour: 'numeric',
+          minute: '2-digit',
+        },
+  ).format(date)
+}
+
+/** Дата выхода серии `YYYY-MM-DD` без сдвига в UTC */
+export function formatAirDate(airDate: string, locale: string) {
+  const [year, month, day] = airDate.split('-').map(Number) as [
+    number,
+    number,
+    number,
+  ]
+
+  return new Intl.DateTimeFormat(locale.replace('_', '-'), {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+  }).format(new Date(year, month - 1, day))
+}
+
+/** Бейдж состояния в карточке — того же тона, что иконка в строке */
+export const toneBadge = {
+  success: 'success',
+  warning: 'warning',
+  info: 'info',
+  destructive: 'destructive',
+  muted: 'outline',
+} as const satisfies Record<StatusTone, string>
+
+export const QUALITY_PRESETS = ['best', 'uhd', 'compact'] as const
+
+// «Ждать лучшее»: от «не ждать» до недели, как предел DTO
+const WAIT_OPTIONS = [0, 6, 12, 24, 48, 72, 168]
+
+/** Варианты окна; значение не из списка (задано на ТВ или раньше) — тоже в списке */
+export function waitOptionsFor(current: number) {
+  return WAIT_OPTIONS.includes(current)
+    ? WAIT_OPTIONS
+    : [...WAIT_OPTIONS, current].sort((a, b) => a - b)
+}
+
+/** Цвет состояния серии в карточке: проблемы — цветом, остальное приглушено */
+export const EPISODE_TONES = {
+  upcoming: 'muted',
+  searching: 'muted',
+  waiting: 'muted',
+  downloading: 'info',
+  in_library: 'success',
+  no_space: 'destructive',
+  missing: 'warning',
+} as const satisfies Record<
+  FollowDetails['episodes'][number]['state'],
+  StatusTone
+>
+
+/** Иконка и тон события истории */
+export const EVENT_VIEW: Record<string, { icon: Component, tone: StatusTone }>
+  = {
+    found: { icon: SparklesIcon, tone: 'muted' },
+    pending: { icon: ClockIcon, tone: 'muted' },
+    grabbed: { icon: DownloadIcon, tone: 'info' },
+    downloaded: { icon: LibraryIcon, tone: 'success' },
+    failed: { icon: TriangleAlertIcon, tone: 'warning' },
+    blocklisted: { icon: BanIcon, tone: 'muted' },
+    missing: { icon: CircleXIcon, tone: 'warning' },
+    search: { icon: SearchIcon, tone: 'muted' },
+    gap: { icon: TriangleAlertIcon, tone: 'warning' },
+    unsure: { icon: CircleHelpIcon, tone: 'warning' },
+  }

@@ -1,5 +1,5 @@
 import type { FollowHistoryKind } from '../../db/schema.ts'
-import { and, desc, eq, lt, sql } from 'drizzle-orm'
+import { and, desc, eq, lt, or, sql } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import { followHistory } from '../../db/schema.ts'
 
@@ -49,6 +49,53 @@ export function followHistoryOf(followId: string, limit = 100) {
     .orderBy(desc(followHistory.at))
     .limit(limit)
     .all()
+}
+
+export interface HistoryQuery {
+  followId?: string
+  kind?: FollowHistoryKind
+  /** id последней показанной строки: порция старше неё */
+  before?: string
+  limit: number
+}
+
+/** Лента «Активности», свежие сверху; `hasMore` — есть строки старше порции */
+export function listHistory(query: HistoryQuery) {
+  const db = getDb()
+  const cursor = query.before
+    ? db
+        .select({ at: followHistory.at, id: followHistory.id })
+        .from(followHistory)
+        .where(eq(followHistory.id, query.before))
+        .get()
+    : undefined
+  const rows = db
+    .select()
+    .from(followHistory)
+    .where(
+      and(
+        query.followId ? eq(followHistory.followId, query.followId) : undefined,
+        query.kind ? eq(followHistory.kind, query.kind) : undefined,
+        // Строки одного момента различает id: порции не теряют и не повторяют их
+        cursor
+          ? or(
+              lt(followHistory.at, cursor.at),
+              and(
+                eq(followHistory.at, cursor.at),
+                lt(followHistory.id, cursor.id),
+              ),
+            )
+          : undefined,
+      ),
+    )
+    .orderBy(desc(followHistory.at), desc(followHistory.id))
+    .limit(query.limit + 1)
+    .all()
+
+  return {
+    rows: rows.slice(0, query.limit),
+    hasMore: rows.length > query.limit,
+  }
 }
 
 /** Серии слежения, о которых уже было событие этого вида (`season:episode`) */

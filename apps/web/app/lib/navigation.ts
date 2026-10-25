@@ -2,6 +2,7 @@ import type { Component } from 'vue'
 import {
   ArrowDownToLineIcon,
   BookmarkIcon,
+  EyeIcon,
   LayoutGridIcon,
   LibraryIcon,
   MonitorSmartphoneIcon,
@@ -15,6 +16,7 @@ export interface NavItem {
   label:
     | 'overview'
     | 'torrents'
+    | 'follow'
     | 'library'
     | 'sources'
     | 'collections'
@@ -28,6 +30,8 @@ export interface NavItem {
 export const navItems: NavItem[] = [
   { to: '/', label: 'overview', icon: LayoutGridIcon },
   { to: '/downloads', label: 'torrents', icon: ArrowDownToLineIcon },
+  // «Активность» — внутри раздела, по кнопке в шапке «Слежу»
+  { to: '/follow', label: 'follow', icon: EyeIcon },
   // Иконки как на витрине: полка — библиотека; подборки там живут в «Моё» с закладкой
   { to: '/library', label: 'library', icon: LibraryIcon },
   { to: '/sources', label: 'sources', icon: RadarIcon },
@@ -42,6 +46,7 @@ export interface SettingsItem {
   label:
     | 'storage'
     | 'torrent'
+    | 'follow'
     | 'backups'
     | 'network'
     | 'metadata'
@@ -54,6 +59,7 @@ export interface SettingsItem {
 export const settingsItems: SettingsItem[] = [
   { to: '/settings/storage', label: 'storage' },
   { to: '/settings/torrent', label: 'torrent' },
+  { to: '/settings/follow', label: 'follow' },
   { to: '/settings/backups', label: 'backups' },
   { to: '/settings/network', label: 'network' },
   { to: '/settings/metadata', label: 'metadata' },

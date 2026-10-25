@@ -2,10 +2,18 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import type { CursorChoice, FollowRules } from '../services/follow/index.ts'
 import { messageResponse } from '../dto/common.ts'
 import {
+  blocklistParams,
+  blocklistResponse,
+  blockRelease as blockReleaseBody,
+  followActivityQuery,
+  followActivityResponse,
+  followCandidatesQuery,
+  followCandidatesResponse,
   followDetails,
   followLanguageQuery,
   followListResponse,
   followParams,
+  followQueueResponse,
   followTitle as followTitleBody,
   scheduleResponse,
   titleFollowResponse,
@@ -17,13 +25,24 @@ import {
   requireOwner,
   requireViewer,
 } from '../middleware/auth.ts'
+import { listBlocklist, unblockRelease } from '../services/follow/blocklist.ts'
 import { profileSchedule } from '../services/follow/calendar.ts'
 import {
   deleteFollow,
+  followById,
   followTitle,
   unfollowTitle,
   updateFollow,
 } from '../services/follow/index.ts'
+import { confirmUnsure } from '../services/follow/feed.ts'
+import {
+  blockFromSnapshot,
+  dismissUnsure,
+  followActivity,
+  followCandidates,
+  followQueue,
+} from '../services/follow/panel.ts'
+import { requestFollowSearch } from '../services/follow/search.ts'
 import {
   followDetailsOf,
   followSummaries,
@@ -34,6 +53,11 @@ import { sendTmdbError } from './catalog.ts'
 
 const titleNotFound = { message: 'Title not found' }
 const followNotFound = { message: 'Follow not found' }
+
+const ownerErrors = {
+  401: messageResponse,
+  404: messageResponse,
+}
 
 const viewerErrors = {
   401: messageResponse,
@@ -274,6 +298,190 @@ export const followRoutes: FastifyPluginAsyncZod = async (app) => {
         return reply.code(404).send(followNotFound)
 
       return { message: 'Follow deleted' }
+    },
+  )
+  app.get(
+    '/follows/:id/candidates',
+    {
+      onRequest: requireOwner,
+      schema: {
+        operationId: 'getFollowCandidates',
+        tags: ['Follow'],
+        params: followParams,
+        querystring: followCandidatesQuery,
+        response: { 200: followCandidatesResponse, ...ownerErrors },
+      },
+    },
+    async (request, reply) => {
+      const { id } = request.params
+
+      if (!followById(id))
+        return reply.code(404).send(followNotFound)
+
+      return followCandidates(id, request.query.season, request.query.episode)
+    },
+  )
+
+  app.post(
+    '/follows/:id/search',
+    {
+      onRequest: requireOwner,
+      schema: {
+        operationId: 'postFollowSearch',
+        tags: ['Follow'],
+        params: followParams,
+        response: {
+          200: messageResponse,
+          409: messageResponse,
+          ...ownerErrors,
+        },
+      },
+    },
+    async (request, reply) => {
+      const follow = followById(request.params.id)
+
+      if (!follow)
+        return reply.code(404).send(followNotFound)
+
+      // На паузе и остановленные планировщик не смотрит: поиск бы не прошёл
+      if (follow.state !== 'active')
+        return reply.code(409).send({ message: 'follow_not_active' })
+
+      requestFollowSearch(follow.id, 'manual')
+      return { message: 'Search requested' }
+    },
+  )
+
+  app.get(
+    '/follow/activity',
+    {
+      onRequest: requireOwner,
+      schema: {
+        operationId: 'getFollowActivity',
+        tags: ['Follow'],
+        querystring: followActivityQuery,
+        response: { 200: followActivityResponse, 401: messageResponse },
+      },
+    },
+    async (request) => {
+      const { follow, ...query } = request.query
+
+      return followActivity({ ...query, followId: follow })
+    },
+  )
+
+  app.post(
+    '/follow/unsure/:id/confirm',
+    {
+      onRequest: requireOwner,
+      schema: {
+        operationId: 'postFollowUnsureConfirm',
+        tags: ['Follow'],
+        params: followParams,
+        response: { 200: messageResponse, ...ownerErrors },
+      },
+    },
+    async (request, reply) => {
+      // На паузе алиас запоминается, а решатель подождёт возобновления
+      if ((await confirmUnsure(request.params.id)) === 'not_found')
+        return reply.code(404).send({ message: 'Entry not found' })
+
+      return { message: 'Release confirmed' }
+    },
+  )
+
+  app.post(
+    '/follow/unsure/:id/dismiss',
+    {
+      onRequest: requireOwner,
+      schema: {
+        operationId: 'postFollowUnsureDismiss',
+        tags: ['Follow'],
+        params: followParams,
+        response: { 200: messageResponse, ...ownerErrors },
+      },
+    },
+    async (request, reply) => {
+      if (!dismissUnsure(request.params.id))
+        return reply.code(404).send({ message: 'Entry not found' })
+
+      return { message: 'Release dismissed' }
+    },
+  )
+
+  app.get(
+    '/follow/queue',
+    {
+      onRequest: requireOwner,
+      schema: {
+        operationId: 'getFollowQueue',
+        tags: ['Follow'],
+        response: { 200: followQueueResponse, 401: messageResponse },
+      },
+    },
+    async () => ({ items: await followQueue() }),
+  )
+
+  app.get(
+    '/follow/blocklist',
+    {
+      onRequest: requireOwner,
+      schema: {
+        operationId: 'getFollowBlocklist',
+        tags: ['Follow'],
+        response: { 200: blocklistResponse, 401: messageResponse },
+      },
+    },
+    async () => ({
+      items: listBlocklist().map(row => ({
+        id: row.id,
+        titleId: row.titleId,
+        infoHash: row.infoHash,
+        releaseTitle: row.releaseTitle,
+        reason: row.reason,
+        createdAt: row.createdAt.toISOString(),
+        expiresAt: row.expiresAt?.toISOString() ?? null,
+      })),
+    }),
+  )
+
+  app.post(
+    '/follow/blocklist',
+    {
+      onRequest: requireOwner,
+      schema: {
+        operationId: 'postFollowBlocklist',
+        tags: ['Follow'],
+        body: blockReleaseBody,
+        response: { 200: messageResponse, ...ownerErrors },
+      },
+    },
+    async (request, reply) => {
+      const { followId, infoHash } = request.body
+
+      if (!blockFromSnapshot(followId, infoHash))
+        return reply.code(404).send({ message: 'Release not found' })
+
+      return { message: 'Release blocked' }
+    },
+  )
+
+  app.delete(
+    '/follow/blocklist/:id',
+    {
+      onRequest: requireOwner,
+      schema: {
+        operationId: 'deleteFollowBlocklist',
+        tags: ['Follow'],
+        params: blocklistParams,
+        response: { 200: messageResponse, ...ownerErrors },
+      },
+    },
+    async (request, reply) => {
+      if (!unblockRelease(request.params.id))
+        return reply.code(404).send({ message: 'Entry not found' })
+
+      return { message: 'Entry removed' }
     },
   )
 }
