@@ -210,6 +210,8 @@ type fileDetails struct {
 	Path    string `json:"path"`
 	Length  int64  `json:"length"`
 	Padding bool   `json:"padding"`
+	// Только у `inspect` с `dir`: сверка с файлом на диске (`compareOnDisk`)
+	OnDisk string `json:"onDisk,omitempty"`
 }
 
 type torrentDetails struct {
@@ -273,6 +275,23 @@ func (a *api) inspect(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_torrent", err)
 		return
+	}
+
+	if raw := r.URL.Query().Get("dir"); raw != "" {
+		if !filepath.IsAbs(raw) {
+			writeError(w, http.StatusBadRequest, "invalid_dir", errors.New("dir must be an absolute path"))
+			return
+		}
+
+		info, err := mi.UnmarshalInfo()
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_torrent", err)
+			return
+		}
+
+		for i, state := range compareOnDisk(r.Context(), &info, filepath.Clean(raw)) {
+			details.Files[i].OnDisk = state
+		}
 	}
 
 	writeJSON(w, http.StatusOK, details)
