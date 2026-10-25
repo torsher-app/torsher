@@ -22,6 +22,8 @@ import {
   deleteRoute,
   listRoutes,
   netFetch,
+  netResolveDeps,
+  resolvesToLocal,
   routesChanged,
   setNetTransport,
 } from './index.ts'
@@ -37,8 +39,16 @@ function close(server: Server) {
   return new Promise(resolve => server.close(resolve))
 }
 
-// Цель запросов: отвечает хостом, который пришёл в запросе
+// Цель запросов: отвечает хостом, который пришёл в запросе;
+// `/redirect?to=<адрес>` отвечает редиректом на этот адрес
 const target = createHttpServer((req, res) => {
+  const to = new URL(req.url!, 'http://target').searchParams.get('to')
+
+  if (to) {
+    res.writeHead(302, { location: to }).end()
+    return
+  }
+
   res.end(`hello ${req.headers.host}`)
 })
 
@@ -286,6 +296,24 @@ describe('netFetch', () => {
     }
   })
 
+  it('picks the route again for the host of a redirect', async () => {
+    createRoute({
+      match: 'hop.socks.test',
+      via: 'socks5h',
+      proxy: `127.0.0.1:${socksPort}`,
+      dns: 'system',
+    })
+    routesChanged()
+
+    const next = `http://hop.socks.test:${targetPort}/`
+    const res = await netFetch(
+      `http://127.0.0.1:${targetPort}/redirect?to=${encodeURIComponent(next)}`,
+    )
+
+    expect(await res.text()).toBe(`hello hop.socks.test:${targetPort}`)
+    expect(socksLog.requested).toEqual([`hop.socks.test:${targetPort}`])
+  })
+
   it('picks up changed routes', async () => {
     const route = createRoute({
       match: 'switch.test',
@@ -303,5 +331,90 @@ describe('netFetch', () => {
       netFetch(`http://switch.test:${targetPort}/`),
     ).rejects.toThrow()
     expect(socksLog.requested).toHaveLength(1)
+  })
+})
+
+describe('resolvesToLocal', () => {
+  it('resolves a direct host through the doh of its route', async () => {
+    setDohSend(async (url) => {
+      const query = queryFromUrl(url)
+      const records = queryType(query) === 1 ? [{ address: '127.0.0.1' }] : []
+
+      return new Response(new Uint8Array(dnsAnswer(query, records)))
+    })
+    createRoute({
+      match: '*.rebind.test',
+      via: 'direct',
+      dns: 'custom',
+      dohUrl: 'https://doh.example/dns-query',
+    })
+    routesChanged()
+
+    expect(await resolvesToLocal('loop.rebind.test')).toBe(true)
+  })
+
+  it('catches a mapped loopback in an expanded AAAA answer', async () => {
+    setDohSend(async (url) => {
+      const query = queryFromUrl(url)
+      const records
+        = queryType(query) === 28 ? [{ address: '0:0:0:0:0:ffff:7f00:1' }] : []
+
+      return new Response(new Uint8Array(dnsAnswer(query, records)))
+    })
+    createRoute({
+      match: '*.mapped.test',
+      via: 'direct',
+      dns: 'custom',
+      dohUrl: 'https://doh6.example/dns-query',
+    })
+    routesChanged()
+
+    expect(await resolvesToLocal('loop.mapped.test')).toBe(true)
+  })
+
+  it('leaves names to the proxy from the environment', async () => {
+    vi.stubEnv('http_proxy', `http://127.0.0.1:${proxyPort}`)
+    routesChanged()
+
+    try {
+      expect(
+        await netResolveDeps.routeAddresses('env.proxy.test'),
+      ).toBeUndefined()
+    }
+    finally {
+      vi.stubEnv('http_proxy', '')
+      routesChanged()
+    }
+  })
+
+  it('leaves names behind a proxy to the proxy', async () => {
+    createRoute({
+      match: 'behind.proxy.test',
+      via: 'socks5h',
+      proxy: `127.0.0.1:${socksPort}`,
+      dns: 'system',
+    })
+    routesChanged()
+
+    expect(
+      await netResolveDeps.routeAddresses('behind.proxy.test'),
+    ).toBeUndefined()
+    expect(await resolvesToLocal('behind.proxy.test')).toBe(false)
+  })
+
+  it('treats a dns failure as not local', async () => {
+    const spy = vi
+      .spyOn(netResolveDeps, 'routeAddresses')
+      .mockRejectedValue(
+        Object.assign(new Error('not found'), { code: 'ENOTFOUND' }),
+      )
+
+    try {
+      expect(await resolvesToLocal('missing.nowhere.test')).toBe(false)
+      expect(spy).toHaveBeenCalledWith('missing.nowhere.test')
+    }
+    finally {
+      spy.mockRestore()
+    }
   })
 })

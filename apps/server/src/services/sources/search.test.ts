@@ -176,7 +176,11 @@ describe('mergeHits', () => {
       size: 100,
       infoHash: hash,
       magnet: `magnet:?xt=urn:btih:${hash}`,
-      link: { url: 'https://a.indexer.example/download/1', indexerId: 'a' },
+      link: {
+        url: 'https://a.indexer.example/download/1',
+        indexerId: 'a',
+        indexerOrigin: 'https://a.indexer.example',
+      },
       indexers: [
         { id: 'a', name: 'Indexer a' },
         { id: 'b', name: 'Indexer b' },

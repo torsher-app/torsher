@@ -104,7 +104,11 @@ export function mergeHits(hits: Hit[]) {
     const seeders = release.seeders ?? 0
     const found = merged.get(key)
     const link = release.link
-      ? { url: release.link, indexerId: indexer.id }
+      ? {
+          url: release.link,
+          indexerId: indexer.id,
+          indexerOrigin: new URL(indexer.url).origin,
+        }
       : undefined
 
     if (!found) {

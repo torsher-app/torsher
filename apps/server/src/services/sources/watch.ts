@@ -91,6 +91,7 @@ export async function acquire(
       const downloaded = await downloadTorrent(
         release.link.url,
         DOWNLOAD_TIMEOUT_MS,
+        { trustedOrigin: release.link.indexerOrigin },
       )
 
       return downloaded.kind === 'file'
