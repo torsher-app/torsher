@@ -12,10 +12,10 @@ export function useAuth() {
     await api.auth.postAuthSignin(body)
     await fetchMe()
 
+    const query = new URLSearchParams(window.location.search)
+
     // Вход ради витрины: уходим из панели целиком, роутер туда не ведёт
-    const next = returnPath(
-      new URLSearchParams(window.location.search).get('next'),
-    )
+    const next = returnPath(query.get('next'))
     if (next) {
       // Путь — на origin витрины: в разработке у неё свой dev-сервер
       window.location.assign(
@@ -24,7 +24,8 @@ export function useAuth() {
       return
     }
 
-    await navigateTo('/')
+    // Гость пришёл со страницы панели (`required-auth`): возвращаем туда же
+    await navigateTo(returnPath(query.get('redirect')) ?? '/')
   }
 
   async function signup(body: SignupInput) {
