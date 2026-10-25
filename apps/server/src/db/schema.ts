@@ -264,6 +264,11 @@ export const indexers = sqliteTable(
     caps: text('caps', { mode: 'json' }).$type<TorznabCaps>(),
     checkStatus: text('check_status', { enum: indexerCheckStatuses }),
     checkedAt: integer('checked_at', { mode: 'timestamp_ms' }),
+    // Фоновый поиск «Следить» пропускает индексатор до срока: `Retry-After`
+    // из ответа 429 или ступень лестницы по числу ошибок подряд. Поиск
+    // зрителя на них не смотрит
+    backoffUntil: integer('backoff_until', { mode: 'timestamp_ms' }),
+    failureCount: integer('failure_count').notNull().default(0),
     createdAt: integer('created_at', { mode: 'timestamp_ms' })
       .notNull()
       .$defaultFn(() => new Date()),
@@ -282,6 +287,9 @@ export const torrentSources = ['magnet', 'file'] as const
 // `resolving` — ждём метаданные magnet от пиров, `failed` — не дождались
 export const torrentStatuses = ['resolving', 'ready', 'failed'] as const
 export const torrentErrors = ['timeout', 'rejected', 'failed'] as const
+// Откуда раздача: `search` — «Источники» и «Скачать» в карточке, `manual` —
+// magnet или `.torrent` в панели, `follow` — автоматика «Следить»
+export const torrentOrigins = ['search', 'manual', 'follow'] as const
 // `cache` — просмотренное, вытесняется по давности; `keep` — «Оставить»
 export const torrentRetentions = ['cache', 'keep'] as const
 // Кто поставил паузу: владелец или сервер, когда кончилось место
@@ -341,6 +349,7 @@ export const torrents = sqliteTable('torrents', {
   retention: text('retention', { enum: torrentRetentions })
     .notNull()
     .default('cache'),
+  origin: text('origin', { enum: torrentOrigins }).notNull().default('search'),
   // Файлы, которые качаются целиком; остальные — только то, что читает поток
   selectedFiles: text('selected_files', { mode: 'json' }).$type<number[]>(),
   pauseReason: text('pause_reason', { enum: torrentPauseReasons }),
@@ -361,6 +370,7 @@ export const torrents = sqliteTable('torrents', {
 })
 
 export type Torrent = typeof torrents.$inferSelect
+export type TorrentOrigin = (typeof torrentOrigins)[number]
 
 export const storageMoveKinds = ['downloads', 'library'] as const
 // `running` продолжается после перезапуска сервера
@@ -1045,6 +1055,47 @@ export const followSeasons = sqliteTable(
   table => [primaryKey({ columns: [table.followId, table.season] })],
 )
 
+/**
+ * Отложенный кандидат серии: всё, чтобы захватить его без нового поиска.
+ * Ссылка на `.torrent` — шифртекстом: в ней бывает ключ индексатора.
+ */
+export interface FollowPendingCandidate {
+  id: string
+  title: string
+  infoHash?: string
+  magnet?: string
+  link?: { secret: string, indexerId: string, indexerOrigin: string }
+  indexerId?: string
+  detailsUrl?: string
+  size?: number
+  seeders: number
+  quality?: string
+  studio?: string
+  voiceType?: string
+}
+
+/** Кандидат в снимке последнего прогона серии: что нашли и почему отклонили */
+export interface FollowDecision {
+  id: string
+  title: string
+  infoHash?: string
+  indexers: string[]
+  size?: number
+  seeders: number
+  quality?: string
+  studio?: string
+  voiceType?: string
+  verdict: 'grab' | 'pending' | 'rejected'
+  rejections: {
+    code: string
+    type: 'permanent' | 'temporary'
+    params?: Record<string, string | number>
+  }[]
+}
+
+// `no_space` — захват ждёт места на диске
+export const followEpisodeNotes = ['no_space'] as const
+
 // Серия, которая «пришла»: остальное состояние серии вычисляется
 export const followEpisodes = sqliteTable(
   'follow_episodes',
@@ -1059,22 +1110,96 @@ export const followEpisodes = sqliteTable(
     firstSeenAt: integer('first_seen_at', { mode: 'timestamp_ms' }).notNull(),
     waitUntil: integer('wait_until', { mode: 'timestamp_ms' }),
     // Лучший отложенный кандидат
-    pending: text('pending', { mode: 'json' }).$type<Record<string, unknown>>(),
+    pending: text('pending', { mode: 'json' }).$type<FollowPendingCandidate>(),
     // Снимок последнего прогона: кандидаты и вердикты
-    decisions: text('decisions', { mode: 'json' }).$type<unknown[]>(),
+    decisions: text('decisions', { mode: 'json' }).$type<FollowDecision[]>(),
     torrentId: text('torrent_id').references(() => torrents.id, {
       onDelete: 'set null',
     }),
     fileIndex: integer('file_index'),
     grabbedAt: integer('grabbed_at', { mode: 'timestamp_ms' }),
+    // Файл серии лёг в библиотеку
+    downloadedAt: integer('downloaded_at', { mode: 'timestamp_ms' }),
     // Раздачу выбрали вручную — апгрейд её не заменяет
     manual: integer('manual', { mode: 'boolean' }).notNull().default(false),
-    // `no_space` | `missing`
-    stateNote: text('state_note'),
+    stateNote: text('state_note', { enum: followEpisodeNotes }),
   },
   table => [
     primaryKey({ columns: [table.followId, table.season, table.episode] }),
   ],
+)
+
+export type FollowEpisode = typeof followEpisodes.$inferSelect
+
+// `found` — первое появление серии, `pending` — кандидат отложен до конца
+// окна, `grabbed` — закачка начата, `downloaded` — файл в библиотеке,
+// `failed` — закачка зависла, `blocklisted` — раздача в чёрном списке,
+// `missing` — серия вышла давно, раздач нет, `search` — целевой поиск
+export const followHistoryKinds = [
+  'found',
+  'pending',
+  'grabbed',
+  'downloaded',
+  'failed',
+  'blocklisted',
+  'missing',
+  'search',
+] as const
+
+export type FollowHistoryKind = (typeof followHistoryKinds)[number]
+
+// Что делала автоматика: тексты собираются по `kind` и `params` на клиенте
+export const followHistory = sqliteTable(
+  'follow_history',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => randomUUID()),
+    followId: text('follow_id').references(() => follows.id, {
+      onDelete: 'set null',
+    }),
+    titleId: text('title_id').notNull(),
+    at: integer('at', { mode: 'timestamp_ms' }).notNull(),
+    kind: text('kind', { enum: followHistoryKinds }).notNull(),
+    season: integer('season'),
+    episodes: text('episodes', { mode: 'json' }).$type<number[]>(),
+    releaseTitle: text('release_title'),
+    indexerId: text('indexer_id'),
+    torrentId: text('torrent_id'),
+    params: text('params', { mode: 'json' })
+      .$type<Record<string, unknown>>()
+      .notNull(),
+  },
+  table => [
+    index('follow_history_title_idx').on(table.titleId, table.at),
+    index('follow_history_at_idx').on(table.at),
+  ],
+)
+
+export type FollowHistoryRow = typeof followHistory.$inferSelect
+
+// `stalled` — без пиров и прогресса, `user` — «Не брать эту раздачу»,
+// `failed_check` — в файлах раздачи нет серий из названия
+export const blocklistReasons = ['stalled', 'user', 'failed_check'] as const
+
+export type BlocklistReason = (typeof blocklistReasons)[number]
+
+// Раздачи, которые автоматика не берёт; `expires_at` пуст — навсегда
+export const releaseBlocklist = sqliteTable(
+  'release_blocklist',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => randomUUID()),
+    titleId: text('title_id').notNull(),
+    infoHash: text('info_hash').notNull(),
+    detailsUrl: text('details_url'),
+    releaseTitle: text('release_title').notNull(),
+    reason: text('reason', { enum: blocklistReasons }).notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    expiresAt: integer('expires_at', { mode: 'timestamp_ms' }),
+  },
+  table => [index('release_blocklist_hash_idx').on(table.infoHash)],
 )
 
 // Версии, с которыми стартовал сервер: смена версии — запись и сообщение

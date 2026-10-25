@@ -137,6 +137,7 @@ describe('searchIndexer', () => {
         title:
           'Тихая гавань / Quiet Harbor / Сезон: 2 / Серии: 1-8 из 8 (2024) WEB-DL 1080p | LostFilm',
         guid: 'https://indexer.example/details/101',
+        detailsUrl: 'https://indexer.example/details/101',
         link: 'https://indexer.example/download/101?apikey=secret-key',
         magnet: undefined,
         infoHash: '1111111111111111111111111111111111111111',
@@ -160,6 +161,24 @@ describe('searchIndexer', () => {
         categories: [5000, 5045],
       },
     ])
+  })
+
+  it('429 — ошибка с `Retry-After`', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(torznabErrorXml(429, 'Query limit'), {
+        status: 429,
+        headers: { 'Retry-After': '600' },
+      }),
+    )
+
+    const error = await searchIndexer('https://indexer.example/torznab', {
+      t: 'search',
+      q: 'Quiet Harbor',
+    }).catch(err => err)
+
+    expect(error).toBeInstanceOf(SourceError)
+    expect(error.kind).toBe('remote')
+    expect(error.retryAt.getTime()).toBeGreaterThan(Date.now() + 590_000)
   })
 
   it('пустой канал — пустой список', async () => {

@@ -109,6 +109,8 @@ export const followEpisode = z
     // YYYY-MM-DD; у серий из числа вышедших и без анонса даты нет
     airDate: z.string().optional(),
     state: z.enum(followEpisodeStates),
+    // До какого момента ждём лучший кандидат, ISO; только у `waiting`
+    waitUntil: z.string().optional(),
   })
   .meta({ id: 'followEpisode' })
 

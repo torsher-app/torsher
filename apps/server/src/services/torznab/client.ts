@@ -25,12 +25,33 @@ export type SourceErrorKind
 
 export class SourceError extends Error {
   readonly kind: SourceErrorKind
+  /** Когда индексатор просит повторить: `Retry-After` ответа 429 или 503 */
+  readonly retryAt?: Date
 
-  constructor(kind: SourceErrorKind, message: string, options?: ErrorOptions) {
+  constructor(
+    kind: SourceErrorKind,
+    message: string,
+    options?: ErrorOptions & { retryAt?: Date },
+  ) {
     super(message, options)
     this.name = 'SourceError'
     this.kind = kind
+    this.retryAt = options?.retryAt
   }
+}
+
+/** `Retry-After` — секунды или HTTP-дата; без заголовка или в прошлом — нет */
+export function retryAtOf(res: Response, now = Date.now()) {
+  const value = res.headers.get('retry-after')?.trim()
+
+  if (!value)
+    return undefined
+
+  const at = /^\d+$/.test(value)
+    ? now + Number(value) * 1000
+    : new Date(value).getTime()
+
+  return Number.isFinite(at) && at > now ? new Date(at) : undefined
 }
 
 function isTimeout(err: unknown) {
@@ -131,6 +152,16 @@ const AUTH_ERROR_CODES = new Set(['100', '101', '102'])
 export async function readTorznabXml(res: Response) {
   if (res.status === 401 || res.status === 403)
     throw new SourceError('auth', 'Source rejected the API key')
+
+  // Лимит запросов (у Prowlarr — `QueryLimit` и «disabled till»): тело
+  // бывает и XML-ошибкой, срок важнее
+  if (res.status === 429 || res.status === 503) {
+    await res.body?.cancel().catch(() => {})
+
+    throw new SourceError('remote', `Source responded with ${res.status}`, {
+      retryAt: retryAtOf(res),
+    })
+  }
 
   const body = await readBody(res)
   let xml

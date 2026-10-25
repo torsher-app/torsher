@@ -1,6 +1,7 @@
 import type { SeasonDetails } from '../../dto/catalog.ts'
 import type { Follow } from '../../db/schema.ts'
 import type {
+  EpisodeFacts,
   EpisodeRef,
   EpisodeWithState,
   ScheduledEpisode,
@@ -8,7 +9,7 @@ import type {
 } from './wanted.ts'
 import { and, eq, isNotNull } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
-import { mediaFiles, torrents } from '../../db/schema.ts'
+import { followEpisodes, mediaFiles, torrents } from '../../db/schema.ts'
 import { planVideos } from '../library/linker.ts'
 import { getSeason } from '../tmdb/index.ts'
 import {
@@ -88,6 +89,55 @@ export function downloadingEpisodes(
   return keys
 }
 
+/** Что записал решатель о сериях слежения */
+export function episodeFacts(followId: string): EpisodeFacts {
+  const facts: EpisodeFacts = {
+    seen: new Set(),
+    grabbing: new Set(),
+    noSpace: new Set(),
+    waitUntil: new Map(),
+  }
+  const rows = getDb()
+    .select()
+    .from(followEpisodes)
+    .where(eq(followEpisodes.followId, followId))
+    .all()
+
+  for (const row of rows) {
+    const key = episodeKey(row)
+
+    facts.seen.add(key)
+
+    // Захват есть, а файла ещё нет: magnet ждёт метаданные
+    if (row.torrentId && row.fileIndex === null && !row.downloadedAt)
+      facts.grabbing.add(key)
+    else if (row.stateNote === 'no_space')
+      facts.noSpace.add(key)
+    else if (row.pending && row.waitUntil && !row.torrentId)
+      facts.waitUntil.set(key, row.waitUntil)
+  }
+
+  return facts
+}
+
+type StateFollow = Pick<
+  Follow,
+  'id' | 'titleId' | 'startSeason' | 'startEpisode' | 'lastSearchAt'
+>
+
+/** Библиотека, закачки и записи решателя для состояний серий */
+export function stateInputs(
+  follow: StateFollow,
+  kind: 'movie' | 'series' = 'series',
+) {
+  return {
+    library: libraryEpisodes(follow.titleId),
+    downloading: downloadingEpisodes(follow.titleId, kind),
+    facts: episodeFacts(follow.id),
+    searched: !!follow.lastSearchAt,
+  }
+}
+
 /** Сезоны, где нужны даты серий: ещё выходят или в них последняя вышедшая */
 function seasonsToLoad(schedule: SeriesSchedule, from: EpisodeRef) {
   return schedule.seasons
@@ -106,7 +156,7 @@ function seasonsToLoad(schedule: SeriesSchedule, from: EpisodeRef) {
  * не загрузился — серии сезона по числу вышедших из деталей.
  */
 export async function followEpisodeStates(
-  follow: Pick<Follow, 'titleId' | 'startSeason' | 'startEpisode'>,
+  follow: StateFollow,
   schedule: SeriesSchedule,
   language: string,
   now = new Date(),
@@ -131,24 +181,26 @@ export async function followEpisodeStates(
   return episodeStates({
     cursor,
     episodes: scheduledEpisodes(schedule, loaded, cursor, localDay(now)),
-    library: libraryEpisodes(follow.titleId),
-    downloading: downloadingEpisodes(follow.titleId),
+    ...stateInputs(follow),
+    now,
   })
 }
 
-/** Фильм — одна «серия» 0/0: вышел — значит, его ищем */
-export function movieState(titleId: string, released: boolean) {
+/**
+ * Фильм — одна «серия» 0/0: вышел — значит, его ищем. «Не нашли» у фильма
+ * нет: его ищут, пока следят (доступность — срез «Апгрейд и фильмы»).
+ */
+export function movieState(follow: StateFollow, released: boolean) {
   return episodeStates({
     cursor: { season: 0, episode: 0 },
     episodes: [{ season: 0, episode: 0, aired: released }],
-    library: libraryEpisodes(titleId),
-    downloading: downloadingEpisodes(titleId, 'movie'),
+    ...stateInputs(follow, 'movie'),
   })
 }
 
 /** Состояния серий одного уже загруженного сезона — для карточки */
 export function seasonEpisodeStates(
-  follow: Pick<Follow, 'titleId' | 'startSeason' | 'startEpisode'>,
+  follow: StateFollow,
   season: SeasonDetails,
   now = new Date(),
 ): Map<number, EpisodeWithState> {
@@ -162,8 +214,8 @@ export function seasonEpisodeStates(
   const states = episodeStates({
     cursor: { season: follow.startSeason, episode: follow.startEpisode },
     episodes,
-    library: libraryEpisodes(follow.titleId),
-    downloading: downloadingEpisodes(follow.titleId),
+    ...stateInputs(follow),
+    now,
   })
 
   return new Map(states.map(item => [item.episode, item]))

@@ -11,7 +11,7 @@ import { cachedSearch } from './cache.ts'
 import { DEFAULT_PROFILE } from './profile.ts'
 import { coversEpisode, rankReleases, RESOLUTION_RANK } from './rank.ts'
 import { knownResolutions } from './resolution.ts'
-import { searchReleases } from './search.ts'
+import { asViewerSearch, searchReleases } from './search.ts'
 import { lastTitleProgress, lastVoiceOfSeason } from './progress.ts'
 import { getPinnedVoice } from './voices.ts'
 import { seasonReleases } from './seasonRelease.ts'
@@ -149,9 +149,11 @@ export async function getTitleSources(
   const search = await cachedSearch(
     query ? `${scope}:q:${normalizeTitle(query) || query}` : scope,
     () =>
-      searchReleases(
-        { identity, aliases, season, query },
-        listSearchableIndexers(),
+      asViewerSearch(() =>
+        searchReleases(
+          { identity, aliases, season, query },
+          listSearchableIndexers(),
+        ),
       ),
     { refresh: request.refresh },
   )

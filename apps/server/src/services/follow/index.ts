@@ -1,9 +1,14 @@
 import type { Follow, FollowQualityPreset } from '../../db/schema.ts'
 import type { TitleSummary } from '../mine/cards.ts'
 import type { EpisodeRef, SeriesSchedule } from './wanted.ts'
-import { and, asc, count, desc, eq } from 'drizzle-orm'
+import { and, asc, count, desc, eq, isNotNull, sql } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
-import { followProfiles, follows, profiles } from '../../db/schema.ts'
+import {
+  followEpisodes,
+  followProfiles,
+  follows,
+  profiles,
+} from '../../db/schema.ts'
 import { watchedEpisodes } from '../mine/status.ts'
 import { episodeProgress } from '../sources/progress.ts'
 import { getTitleSummary } from '../tmdb/index.ts'
@@ -19,6 +24,7 @@ export type {
 // Окно ожидания своей озвучки и качества: у фильма первые русские релизы часто
 // с любительским переводом, дубляж выходит позже
 const DEFAULT_WAIT_HOURS = { series: 24, movie: 72 } as const
+const HOUR_MS = 60 * 60 * 1000
 
 export class FollowNotFoundError extends Error {}
 
@@ -120,6 +126,28 @@ export function resolveCursor(
   return cursorOptions(schedule)[choice]
 }
 
+/**
+ * Окно ожидания сменили: отложенные кандидаты ждут от того же первого
+ * появления серии, но новый срок.
+ */
+function rescheduleWaits(
+  db: Pick<ReturnType<typeof getDb>, 'update'>,
+  followId: string,
+  waitHours: number,
+) {
+  db.update(followEpisodes)
+    .set({
+      waitUntil: sql`${followEpisodes.firstSeenAt} + ${waitHours * HOUR_MS}`,
+    })
+    .where(
+      and(
+        eq(followEpisodes.followId, followId),
+        isNotNull(followEpisodes.waitUntil),
+      ),
+    )
+    .run()
+}
+
 function rulesOf(rules: FollowRules = {}) {
   return Object.fromEntries(
     Object.entries(rules).filter(([, value]) => value !== undefined),
@@ -174,8 +202,11 @@ export async function followTitle(
             ...(start && {
               startSeason: start.season,
               startEpisode: start.episode,
+              // Новый курсор — новые нужные серии: ищем сразу
+              lastSearchAt: null,
             }),
             ...(current.state === 'stopped' && { state: 'active' as const }),
+            nextSearchAt: null,
             updatedAt: now,
           })
           .where(eq(follows.id, current.id))
@@ -203,6 +234,9 @@ export async function followTitle(
       .values({ followId: row.id, profileId, createdAt: now })
       .onConflictDoNothing()
       .run()
+
+    if (current && rules.waitHours !== undefined)
+      rescheduleWaits(tx, row.id, rules.waitHours)
 
     return row
   })
@@ -284,13 +318,23 @@ export async function updateFollow(
         : undefined
   }
 
+  const rules = rulesOf(patch.rules)
+
+  if (rules.waitHours !== undefined)
+    rescheduleWaits(getDb(), id, rules.waitHours)
+
   return getDb()
     .update(follows)
     .set({
-      ...rulesOf(patch.rules),
-      ...(start && { startSeason: start.season, startEpisode: start.episode }),
+      ...rules,
+      ...(start && {
+        startSeason: start.season,
+        startEpisode: start.episode,
+        lastSearchAt: null,
+      }),
       ...(patch.state && { state: patch.state }),
-      ...(patch.state === 'paused' && { nextSearchAt: null }),
+      // Планировщик посмотрит слежение заново: правила или курсор сменились
+      nextSearchAt: null,
       updatedAt: new Date(),
     })
     .where(eq(follows.id, id))

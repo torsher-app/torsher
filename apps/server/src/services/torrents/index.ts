@@ -1,4 +1,9 @@
-import type { Torrent, TorrentFileEntry, WatchState } from '../../db/schema.ts'
+import type {
+  Torrent,
+  TorrentFileEntry,
+  TorrentOrigin,
+  WatchState,
+} from '../../db/schema.ts'
 import type {
   EngineTorrentDetails,
   EngineTorrentState,
@@ -206,7 +211,10 @@ export function resumeResolving() {
  * ответ ждёт их недолго, а дальше раздача остаётся `resolving` и дозагружается
  * в фоне. Повторное добавление раздачи, которая не дождалась пиров, — повтор.
  */
-export async function addMagnet(input: string): Promise<AddResult> {
+export async function addMagnet(
+  input: string,
+  origin: TorrentOrigin = 'search',
+): Promise<AddResult> {
   const magnet = parseMagnet(input)
 
   if (!magnet)
@@ -234,6 +242,7 @@ export async function addMagnet(input: string): Promise<AddResult> {
           source: 'magnet',
           magnet: input.trim(),
           status: 'resolving',
+          origin,
         })
         .returning()
         .get()
@@ -252,7 +261,10 @@ export async function retryTorrent(torrent: Torrent) {
 }
 
 /** Раздача из `.torrent`: файлы известны сразу, движок только проверяет файл */
-export async function addTorrentFile(bytes: Uint8Array): Promise<AddResult> {
+export async function addTorrentFile(
+  bytes: Uint8Array,
+  origin: TorrentOrigin = 'search',
+): Promise<AddResult> {
   const details = await inspectTorrent(bytes)
   const infoHash = details.infoHash.toLowerCase()
   const existing = findByInfoHash(infoHash)
@@ -275,6 +287,7 @@ export async function addTorrentFile(bytes: Uint8Array): Promise<AddResult> {
       infoHash,
       name,
       source: 'file',
+      origin,
       ...readyFields(bytes, details),
     })
     .returning()

@@ -64,7 +64,7 @@ describe('searchReleases', () => {
         indexer('a', 'a.indexer.example'),
         indexer('slow', 'slow.indexer.example'),
       ],
-      50,
+      { deadlineMs: 50 },
     )
 
     expect(outcome.failed).toEqual([

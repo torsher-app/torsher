@@ -123,10 +123,15 @@ export const titleNextEpisode = z
   .meta({ id: 'titleNextEpisode' })
 
 // Состояние серии у тайтла «Следить»: `upcoming` — ещё не вышла, `searching` —
-// вышла и её ищем, `downloading` — качается, `in_library` — в библиотеке
+// вышла и её ищем, `waiting` — есть кандидат, ждём свою озвучку или качество,
+// `no_space` — захват ждёт места, `missing` — вышла давно, раздач нет,
+// `downloading` — качается, `in_library` — в библиотеке
 export const followEpisodeStates = [
   'upcoming',
   'searching',
+  'waiting',
+  'no_space',
+  'missing',
   'downloading',
   'in_library',
 ] as const
