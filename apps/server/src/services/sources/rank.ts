@@ -14,8 +14,11 @@ export interface FoundRelease {
   id: string
   title: string
   indexers: { id: string, name: string }[]
-  /** Ссылка на `.torrent` у индексатора — только на сервере: в ней бывает ключ. */
-  link?: { url: string, indexerId: string }
+  /**
+   * Ссылка на `.torrent` у индексатора — только на сервере: в ней бывает ключ.
+   * `indexerOrigin` — origin индексатора: только туда ссылка может вести на loopback.
+   */
+  link?: { url: string, indexerId: string, indexerOrigin: string }
   magnet?: string
   infoHash?: string
   size?: number

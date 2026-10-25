@@ -158,4 +158,44 @@ describe('fetchCaps', () => {
       fetchCaps('https://indexer.example', 'secret-key'),
     ).rejects.not.toThrow(/secret-key/)
   })
+
+  it('слишком большой ответ — не Torznab, тело не читается', async () => {
+    let pulls = 0
+    const body = new ReadableStream<Uint8Array>(
+      {
+        pull(controller) {
+          pulls++
+
+          if (pulls > 20)
+            controller.close()
+          else controller.enqueue(new Uint8Array(1024))
+        },
+      },
+      { highWaterMark: 0 },
+    )
+
+    fetchMock.mockResolvedValue(
+      new Response(body, {
+        headers: { 'content-length': String(17 * 1024 * 1024) },
+      }),
+    )
+
+    expect(await kindOf(fetchCaps('https://indexer.example'))).toBe(
+      'bad_response',
+    )
+    expect(pulls).toBe(0)
+  })
+
+  it('редирект с https на http — не Torznab', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(null, {
+        status: 302,
+        headers: { location: 'http://indexer.example/api' },
+      }),
+    )
+
+    expect(await kindOf(fetchCaps('https://indexer.example'))).toBe(
+      'bad_response',
+    )
+  })
 })

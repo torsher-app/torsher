@@ -1,5 +1,7 @@
 import type { TorznabCaps } from './caps.ts'
-import { netFetch } from '../net/index.ts'
+import { isLocalHostname } from '../net/address.ts'
+import { BodyTooLargeError, readBodyLimited } from '../net/body.ts'
+import { netFetch, NetRedirectError, resolvesToLocal } from '../net/index.ts'
 import { parseCaps } from './caps.ts'
 import { child, parseXml, text } from './xml.ts'
 
@@ -56,17 +58,34 @@ export async function sourceGet(
       })
     }
 
+    if (err instanceof NetRedirectError) {
+      throw new SourceError('bad_response', 'Source redirect was refused', {
+        cause: err,
+      })
+    }
+
     throw new SourceError('unreachable', 'Source is unreachable', {
       cause: err,
     })
   }
 }
 
+// Ответы Torznab и списки индексаторов менеджеров — килобайты, редко мегабайты
+const SOURCE_RESPONSE_MAX_BYTES = 16 * 1024 * 1024
+
 export async function readBody(res: Response) {
   try {
-    return await res.text()
+    return new TextDecoder().decode(
+      await readBodyLimited(res, SOURCE_RESPONSE_MAX_BYTES),
+    )
   }
   catch (err) {
+    if (err instanceof BodyTooLargeError) {
+      throw new SourceError('bad_response', 'Source response is too large', {
+        cause: err,
+      })
+    }
+
     throw new SourceError(
       isTimeout(err) ? 'timeout' : 'unreachable',
       'Source response was interrupted',
@@ -174,42 +193,49 @@ export type DownloadedTorrent
   = { kind: 'file', bytes: Uint8Array } | { kind: 'magnet', magnet: string }
 
 async function readLimited(res: Response) {
-  const length = Number(res.headers.get('content-length'))
-
-  if (length > TORRENT_FILE_MAX_BYTES)
-    throw new SourceError('bad_response', 'Torrent file is too large')
-
-  let bytes: Uint8Array
-
   try {
-    bytes = new Uint8Array(await res.arrayBuffer())
+    return await readBodyLimited(res, TORRENT_FILE_MAX_BYTES)
   }
   catch (err) {
+    if (err instanceof BodyTooLargeError)
+      throw new SourceError('bad_response', 'Torrent file is too large')
+
     throw new SourceError(
       isTimeout(err) ? 'timeout' : 'unreachable',
       'Source response was interrupted',
       { cause: err },
     )
   }
-
-  if (bytes.byteLength > TORRENT_FILE_MAX_BYTES)
-    throw new SourceError('bad_response', 'Torrent file is too large')
-
-  return bytes
 }
 
 /**
  * `.torrent` по ссылке индексатора. Индексаторы раздач только с magnet
  * отвечают на ссылку редиректом на `magnet:` — его и возвращаем.
  * Редиректы идут вручную: `fetch` не следует по схеме `magnet:`.
+ *
+ * Ссылка приходит в ответе индексатора, поэтому на loopback и link-local
+ * (API движка, метаданные облака) запрос не уходит — ни по адресу, ни по
+ * имени, которое туда разрешается, — кроме origin самого индексатора
+ * (`trustedOrigin`).
  */
 export async function downloadTorrent(
   link: string,
   timeoutMs = SOURCE_TIMEOUT_MS,
+  options: { trustedOrigin?: string } = {},
 ): Promise<DownloadedTorrent> {
   let url = new URL(link)
 
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    if (
+      url.origin !== options.trustedOrigin
+      && (isLocalHostname(url.hostname) || (await resolvesToLocal(url.hostname)))
+    ) {
+      throw new SourceError(
+        'bad_response',
+        'Torrent link points to a local address',
+      )
+    }
+
     let res: Response
 
     try {
@@ -231,6 +257,8 @@ export async function downloadTorrent(
     const location = res.headers.get('location')
 
     if (res.status >= 300 && res.status < 400 && location) {
+      await res.body?.cancel().catch(() => {})
+
       if (location.startsWith('magnet:'))
         return { kind: 'magnet', magnet: location }
 

@@ -268,7 +268,11 @@ describe('rankReleases', () => {
             'magnet:?xt=urn:btih:0000000000000000000000000000000000000000',
         }),
         release('file', 'Фонарь (2021) WEB-DL 1080p | D', 30, 8 * GB, {
-          link: { url: 'https://indexer.example/download/1', indexerId: 'ix' },
+          link: {
+            url: 'https://indexer.example/download/1',
+            indexerId: 'ix',
+            indexerOrigin: 'https://indexer.example',
+          },
         }),
       ],
       movie,
