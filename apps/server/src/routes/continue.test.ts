@@ -259,6 +259,31 @@ describe('get /api/home/continue', () => {
     expect(await continueItems()).toEqual([])
   })
 
+  it('фильм, остановленный на титрах, из ряда уходит', async () => {
+    watched(MOVIE, 0, 0, EPISODE - 5 * 60, new Date(), 's1', 0)
+
+    expect(await continueItems()).toEqual([])
+  })
+
+  it('фильм в первых 5% в ряд не попадает', async () => {
+    watched(MOVIE, 0, 0, 120, new Date(), 's1', 0)
+
+    expect(await continueItems()).toEqual([])
+  })
+
+  it('серия в первых 5% — в ряду с начала', async () => {
+    watched(SERIES, 2, 1, 120)
+
+    expect(await continueItems()).toEqual([
+      expect.objectContaining({
+        season: 2,
+        episode: 1,
+        position: 0,
+        next: false,
+      }),
+    ])
+  })
+
   it('свежие первыми, «Сериалы» без фильмов', async () => {
     watched(SERIES, 2, 1, 600, new Date(1000))
     watched(MOVIE, 0, 0, 1200, new Date(2000), 's1', 0)

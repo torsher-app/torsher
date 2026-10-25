@@ -4,6 +4,7 @@ import { contentTypeOf, isVideoFile } from './media.ts'
 import {
   bufferedAheadBytes,
   fileOffsetOf,
+  isWatched,
   resumePosition,
   streamWindowOf,
 } from './playback.ts'
@@ -116,22 +117,66 @@ describe('буфер впереди позиции', () => {
   })
 })
 
-describe('позиция для продолжения', () => {
-  it('в самом начале продолжать нечего', () => {
-    expect(resumePosition(12, 5400)).toBeNull()
+// Фильм на 2,5 часа и серия на 22 минуты
+const MOVIE = 9000
+const EPISODE = 1320
+
+describe('досмотрено', () => {
+  it('фильм, остановленный на титрах, досмотрен', () => {
+    expect(isWatched(MOVIE - 6 * 60, MOVIE)).toBe(true)
+    expect(isWatched(8101, MOVIE)).toBe(true)
   })
 
-  it('с середины — продолжить с той же секунды', () => {
+  it('90% и раньше — ещё смотрим', () => {
+    expect(isWatched(8100, MOVIE)).toBe(false)
+    expect(isWatched(4500, MOVIE)).toBe(false)
+  })
+
+  it('серия: то же правило', () => {
+    expect(isWatched(1189, EPISODE)).toBe(true)
+    expect(isWatched(1188, EPISODE)).toBe(false)
+  })
+
+  it('последняя секунда — досмотрено', () => {
+    expect(isWatched(1, 1)).toBe(true)
+    expect(isWatched(EPISODE - 1, EPISODE)).toBe(true)
+  })
+
+  it('файл короче пяти минут досмотрен, как только начат', () => {
+    expect(isWatched(60, 240)).toBe(true)
+    expect(isWatched(5, 240)).toBe(false)
+  })
+
+  it('без длительности — не досмотрено', () => {
+    expect(isWatched(9000, null)).toBe(false)
+    expect(isWatched(10, 0)).toBe(false)
+  })
+})
+
+describe('позиция для продолжения', () => {
+  it('в первых 5% продолжать нечего', () => {
+    expect(resumePosition(449, MOVIE)).toBeNull()
+    expect(resumePosition(65, EPISODE)).toBeNull()
+  })
+
+  it('с 5% — продолжить с той же секунды', () => {
+    expect(resumePosition(450, MOVIE)).toBe(450)
+    expect(resumePosition(66, EPISODE)).toBe(66)
     expect(resumePosition(1800, 5400)).toBe(1800)
   })
 
-  it('у самого конца файл считается досмотренным', () => {
-    expect(resumePosition(5300, 5400)).toBeNull()
-    expect(resumePosition(1270, 1320)).toBeNull()
+  it('досмотренный файл играем с начала', () => {
+    expect(resumePosition(MOVIE - 6 * 60, MOVIE)).toBeNull()
+    expect(resumePosition(1270, EPISODE)).toBeNull()
   })
 
-  it('без известной длительности — продолжить', () => {
+  it('файл короче пяти минут не продолжаем', () => {
+    expect(resumePosition(120, 240)).toBeNull()
+  })
+
+  it('без длительности — продолжить после первых 30 секунд', () => {
     expect(resumePosition(600, null)).toBe(600)
+    expect(resumePosition(29, null)).toBeNull()
   })
 })
 

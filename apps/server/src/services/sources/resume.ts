@@ -4,7 +4,7 @@ import { getDb } from '../../db/index.ts'
 import { titleProgress } from '../../db/schema.ts'
 import { droppedSince } from '../mine/index.ts'
 import { getTorrent } from '../torrents/index.ts'
-import { isWatched } from '../torrents/playback.ts'
+import { isWatched, resumePosition } from '../torrents/playback.ts'
 import { titleFiles } from './files.ts'
 import { episodeProgress, lastTitleProgress } from './progress.ts'
 
@@ -125,7 +125,8 @@ function fileOf(row: TitleProgress): EpisodeFile | null {
 /**
  * Цель «Продолжить»: последняя серия из плеера, если она не досмотрена; иначе
  * следующая вышедшая. Сезоны сериала загружаются, только когда нужна следующая.
- * `undefined` — продолжать нечего: не смотрели, фильм досмотрен, новых серий нет.
+ * `undefined` — продолжать нечего: не смотрели, фильм досмотрен или только
+ * начат, новых серий нет.
  */
 export async function resumeTarget(
   profileId: string,
@@ -138,10 +139,16 @@ export async function resumeTarget(
     return undefined
 
   if (!isWatched(last.position, last.duration)) {
+    const position = resumePosition(last.position, last.duration)
+
+    // Фильм начат, но продолжать нечего: в ряду он играл бы с начала
+    if (position === null && last.season === 0)
+      return undefined
+
     return {
       season: last.season || null,
       episode: last.episode || null,
-      position: last.position,
+      position: position ?? 0,
       duration: last.duration,
       next: false,
       file: fileOf(last),
