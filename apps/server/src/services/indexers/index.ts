@@ -1,4 +1,5 @@
 import type {
+  FeedCursor,
   Indexer,
   IndexerCheckStatus,
   IndexerManager,
@@ -22,6 +23,8 @@ export { normalizeManagerUrl } from './managers.ts'
 
 // Сколько проверок caps идёт одновременно после импорта
 const CHECK_CONCURRENCY = 4
+// Приоритет индексатора по умолчанию в Prowlarr
+const DEFAULT_PRIORITY = 25
 
 export interface IndexerWithManager extends Indexer {
   managerKind: IndexerManagerKind | null
@@ -114,6 +117,59 @@ export function listSearchableIndexers(): SearchableIndexer[] {
             },
           ]
         : [],
+    )
+}
+
+/** Индексатор, у которого можно читать ленту новых раздач */
+export interface FeedIndexer extends SearchableIndexer {
+  supportsRss: boolean | null
+  rssCursor: FeedCursor | null
+  rssCheckedAt: Date | null
+  rssFailures: number
+  priority: number | null
+}
+
+/**
+ * Включённые индексаторы с удачной проверкой и текстовым поиском, у которых
+ * Prowlarr не запретил ленту; по приоритету (без него — как у Prowlarr, 25)
+ */
+export function listFeedIndexers(): FeedIndexer[] {
+  const rows = getDb()
+    .select()
+    .from(indexers)
+    .where(
+      and(
+        eq(indexers.enabled, true),
+        eq(indexers.missing, false),
+        eq(indexers.checkStatus, 'ok'),
+      ),
+    )
+    .orderBy(indexers.name)
+    .all()
+
+  return rows
+    .flatMap(row =>
+      row.caps?.search.available && row.supportsRss !== false
+        ? [
+            {
+              id: row.id,
+              name: row.name,
+              url: row.url,
+              caps: row.caps,
+              apiKey: () =>
+                row.apiKey ? readStoredKey(row.apiKey) : undefined,
+              supportsRss: row.supportsRss,
+              rssCursor: row.rssCursor,
+              rssCheckedAt: row.rssCheckedAt,
+              rssFailures: row.rssFailures,
+              priority: row.priority,
+            },
+          ]
+        : [],
+    )
+    .sort(
+      (a, b) =>
+        (a.priority ?? DEFAULT_PRIORITY) - (b.priority ?? DEFAULT_PRIORITY),
     )
 }
 
@@ -303,6 +359,10 @@ function applyRemoteIndexers(
 
       const known = existing.get(item.externalId)
       const caps = item.caps ? { caps: item.caps } : {}
+      const feed = {
+        supportsRss: item.supportsRss ?? null,
+        priority: item.priority ?? null,
+      }
 
       if (!known) {
         const row = tx
@@ -315,6 +375,7 @@ function applyRemoteIndexers(
             managerId: manager.id,
             externalId: item.externalId,
             ...caps,
+            ...feed,
           })
           .returning({ id: indexers.id, enabled: indexers.enabled })
           .get()
@@ -337,6 +398,7 @@ function applyRemoteIndexers(
           apiKey: encryptedKey,
           missing: false,
           ...caps,
+          ...feed,
         })
         .where(eq(indexers.id, known.id))
         .run()

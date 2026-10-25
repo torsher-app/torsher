@@ -4,7 +4,7 @@ import type {
   FollowPendingCandidate,
   Torrent,
 } from '../../db/schema.ts'
-import type { RankedRelease } from '../sources/rank.ts'
+import type { FoundRelease, RankedRelease } from '../sources/rank.ts'
 import type { EpisodeRef } from './wanted.ts'
 import { matchFiles, parseRelease } from '@torsher/release-parser'
 import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
@@ -52,7 +52,9 @@ function retryLater(
 }
 
 /** Кандидат для `pending`: ссылка на `.torrent` уходит в базу шифртекстом */
-export function pendingOf(release: RankedRelease): FollowPendingCandidate {
+export function pendingOf(
+  release: FoundRelease & Partial<Pick<RankedRelease, 'resolution' | 'voice'>>,
+): FollowPendingCandidate {
   const indexer = release.link
     ? release.indexers.find(item => item.id === release.link!.indexerId)
     : release.indexers[0]
@@ -77,7 +79,7 @@ export function pendingOf(release: RankedRelease): FollowPendingCandidate {
   }
 }
 
-function linkOf(candidate: FollowPendingCandidate) {
+export function linkOf(candidate: FollowPendingCandidate) {
   if (!candidate.link)
     return undefined
 

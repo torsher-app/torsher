@@ -8,8 +8,9 @@ const KEEP_DAYS = 90
 const KEEP_ROWS = 5000
 
 export interface HistoryEvent {
-  followId: string
-  titleId: string
+  /** Пусто у событий индексатора (`gap`) */
+  followId?: string
+  titleId?: string
   kind: FollowHistoryKind
   season?: number
   episodes?: number[]
@@ -25,8 +26,8 @@ export function recordHistory(event: HistoryEvent, at = new Date()) {
   getDb()
     .insert(followHistory)
     .values({
-      followId: event.followId,
-      titleId: event.titleId,
+      followId: event.followId ?? null,
+      titleId: event.titleId ?? null,
       at,
       kind: event.kind,
       season: event.season ?? null,

@@ -19,6 +19,8 @@ export interface TorznabCaps {
   tvSearch: TorznabSearchMode
   movieSearch: TorznabSearchMode
   categories: TorznabCategory[]
+  /** `<limits max default>`: сколько позиций отдаётся за запрос; у старых записей нет */
+  limits?: { max?: number, default?: number }
 }
 
 function searchMode(
@@ -35,6 +37,19 @@ function searchMode(
     available: text(node, 'available')?.toLowerCase() === 'yes',
     params,
   }
+}
+
+function positive(value: string | undefined) {
+  const number = Number(value)
+
+  return Number.isInteger(number) && number > 0 ? number : undefined
+}
+
+function limitsOf(node: XmlNode | undefined) {
+  const max = positive(text(node, 'max'))
+  const fallback = positive(text(node, 'default'))
+
+  return max || fallback ? { max, default: fallback } : undefined
 }
 
 function category(node: XmlNode) {
@@ -69,10 +84,13 @@ export function parseCaps(caps: XmlNode | undefined): TorznabCaps | undefined {
     },
   )
 
+  const limits = limitsOf(child(caps, 'limits'))
+
   return {
     search: searchMode(searching, 'search'),
     tvSearch: searchMode(searching, 'tv-search'),
     movieSearch: searchMode(searching, 'movie-search'),
     categories,
+    ...(limits && { limits }),
   }
 }

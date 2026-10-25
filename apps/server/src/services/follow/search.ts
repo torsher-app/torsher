@@ -51,8 +51,11 @@ const SEARCH_CONCURRENCY = 2
 const TEXT_QUERIES = 2
 const SETTINGS_KEY = 'follow'
 
-/** `manual` — «Искать сейчас», без бюджета; `retry` — после зависшей закачки */
-export type SearchRequest = 'manual' | 'retry'
+/**
+ * `manual` — «Искать сейчас», без бюджета; `retry` — после зависшей закачки;
+ * `gap` — лента индексатора пропустила период
+ */
+export type SearchRequest = 'manual' | 'retry' | 'gap'
 
 interface SearchState {
   startedAt: number
@@ -149,14 +152,14 @@ export interface DueSearch {
 }
 
 /**
- * Порядок очереди: «Искать сейчас» и повтор после зависшей закачки →
- * ещё не искали → серия вышла сегодня → по сроку.
+ * Порядок очереди: «Искать сейчас» → повтор после зависшей закачки или
+ * пробела ленты → ещё не искали → серия вышла сегодня → по сроку.
  */
 export function compareDue(a: DueSearch, b: DueSearch) {
   const rank = (item: DueSearch) =>
     item.request === 'manual'
       ? 0
-      : item.request === 'retry'
+      : item.request === 'retry' || item.request === 'gap'
         ? 1
         : !item.follow.lastSearchAt
             ? 2
@@ -201,14 +204,18 @@ export function canStartSearch(
   )
 }
 
-/** «Искать сейчас» из панели и повторный поиск после зависшей раздачи */
+/**
+ * «Искать сейчас» из панели, повторный поиск после зависшей раздачи и после
+ * пробела ленты. Уже поставленный запрос не понижается: «Искать сейчас»
+ * остаётся без бюджета.
+ */
 export function requestFollowSearch(
   followId: string,
   request: SearchRequest = 'manual',
 ) {
   const current = state.requested.get(followId)
 
-  if (current !== 'manual')
+  if (!current || request === 'manual')
     state.requested.set(followId, request)
 }
 

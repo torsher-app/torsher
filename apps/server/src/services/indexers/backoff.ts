@@ -36,14 +36,14 @@ export function backoffUntil(failures: number, now: Date, retryAt?: Date) {
 }
 
 /** Индексаторы, которые фоновый поиск может спросить сейчас */
-export function availableForBackground(
-  list: SearchableIndexer[],
+export function availableForBackground<T extends SearchableIndexer>(
+  list: T[],
   now = new Date(),
 ) {
   const ids = list.map(item => item.id)
 
   if (!ids.length)
-    return { available: [], nextAt: undefined }
+    return { available: [] as T[], nextAt: undefined }
 
   const rows = getDb()
     .select({ id: indexers.id, backoffUntil: indexers.backoffUntil })

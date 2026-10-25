@@ -67,6 +67,7 @@ describe('fetchCaps', () => {
       params: ['q', 'season', 'ep', 'imdbid'],
     })
     expect(caps.movieSearch.available).toBe(false)
+    expect(caps.limits).toEqual({ max: 100, default: 50 })
     expect(caps.categories).toEqual([
       {
         id: 2000,

@@ -269,6 +269,15 @@ export const indexers = sqliteTable(
     // зрителя на них не смотрит
     backoffUntil: integer('backoff_until', { mode: 'timestamp_ms' }),
     failureCount: integer('failure_count').notNull().default(0),
+    // Лента новых раздач: что сказал Prowlarr (`supportsRss`), null — не
+    // знаем и пробуем. Позиция, до которой лента уже прочитана, время
+    // последнего чтения и пустые или негодные ответы подряд
+    supportsRss: integer('supports_rss', { mode: 'boolean' }),
+    rssCursor: text('rss_cursor', { mode: 'json' }).$type<FeedCursor>(),
+    rssCheckedAt: integer('rss_checked_at', { mode: 'timestamp_ms' }),
+    rssFailures: integer('rss_failures').notNull().default(0),
+    // Приоритет из Prowlarr: меньше — раньше
+    priority: integer('priority'),
     createdAt: integer('created_at', { mode: 'timestamp_ms' })
       .notNull()
       .$defaultFn(() => new Date()),
@@ -282,6 +291,15 @@ export const indexers = sqliteTable(
 )
 
 export type Indexer = typeof indexers.$inferSelect
+
+/** Самая свежая позиция прочитанной ленты индексатора */
+export interface FeedCursor {
+  guid?: string
+  detailsUrl?: string
+  infoHash?: string
+  /** ISO */
+  publishedAt?: string
+}
 
 export const torrentSources = ['magnet', 'file'] as const
 // `resolving` — ждём метаданные magnet от пиров, `failed` — не дождались
@@ -1134,7 +1152,9 @@ export type FollowEpisode = typeof followEpisodes.$inferSelect
 // `found` — первое появление серии, `pending` — кандидат отложен до конца
 // окна, `grabbed` — закачка начата, `downloaded` — файл в библиотеке,
 // `failed` — закачка зависла, `blocklisted` — раздача в чёрном списке,
-// `missing` — серия вышла давно, раздач нет, `search` — целевой поиск
+// `missing` — серия вышла давно, раздач нет, `search` — целевой поиск,
+// `gap` — лента индексатора пропустила период (без тайтла), `unsure` — позиция
+// ленты похожа на тайтл, но матч не уверен
 export const followHistoryKinds = [
   'found',
   'pending',
@@ -1144,6 +1164,8 @@ export const followHistoryKinds = [
   'blocklisted',
   'missing',
   'search',
+  'gap',
+  'unsure',
 ] as const
 
 export type FollowHistoryKind = (typeof followHistoryKinds)[number]
@@ -1158,7 +1180,8 @@ export const followHistory = sqliteTable(
     followId: text('follow_id').references(() => follows.id, {
       onDelete: 'set null',
     }),
-    titleId: text('title_id').notNull(),
+    // Пусто у событий индексатора (`gap`)
+    titleId: text('title_id'),
     at: integer('at', { mode: 'timestamp_ms' }).notNull(),
     kind: text('kind', { enum: followHistoryKinds }).notNull(),
     season: integer('season'),
