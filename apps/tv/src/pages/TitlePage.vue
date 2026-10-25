@@ -4,6 +4,7 @@ import type {
   Card,
   CrewMember,
   Episode,
+  FollowTitleInput,
   FranchisePart,
   Person,
   TitleDetails,
@@ -25,6 +26,7 @@ import EpisodeCard from '../components/EpisodeCard.vue'
 import EpisodeList from '../components/EpisodeList.vue'
 import EpisodeListCard from '../components/EpisodeListCard.vue'
 import FocusSection from '../components/FocusSection.vue'
+import FollowPanel from '../components/FollowPanel.vue'
 import OptionsPanel from '../components/OptionsPanel.vue'
 import PersonCard from '../components/PersonCard.vue'
 import PosterCard from '../components/PosterCard.vue'
@@ -37,9 +39,14 @@ import { useTitleMeta } from '../composables/useTitleMeta.ts'
 import { api } from '../api.ts'
 import { useSourceLabels } from '../composables/useSourceLabels.ts'
 import {
+  forgetSeasons,
   useTitleExtras,
   useTitleSeason,
 } from '../composables/useTitleSections.ts'
+import {
+  useFollowTexts,
+  useTitleFollow,
+} from '../composables/useTitleFollow.ts'
 import { sectionName, useBlockStack } from '../composables/useBlockStack.ts'
 import { useChipRibbon } from '../composables/useChipRibbon.ts'
 import { useHeldLoading } from '../composables/useHeldLoading.ts'
@@ -65,6 +72,7 @@ import {
 } from '../lib/catalogFilter.ts'
 import { libraryRoute, resumeRoute } from '../lib/continue.ts'
 import { downloadSlot } from '../lib/downloadSlot.ts'
+import { isFollowed } from '../lib/follow.ts'
 import { libraryFileFor, libraryTarget } from '../lib/library.ts'
 import { crewCaption } from '../lib/people.ts'
 import {
@@ -107,6 +115,7 @@ const {
   status: seasonStatus,
   error: seasonError,
   retry: retrySeason,
+  refresh: refreshSeason,
 } = useTitleSeason(id, requestedSeason)
 
 // Нижние секции грузятся после первого экрана
@@ -286,9 +295,21 @@ const {
 const { historyOf } = useSourceLabels()
 const { resumeLine } = useResumeLabels()
 
-// Кнопки появляются, когда прогресс пришёл: «Смотреть» не сменится на
-// «Продолжить» под взглядом и ширина кнопки не прыгнет
-const actionsPending = computed(() => progressStatus.value === 'loading')
+// «Следить»: подписка профиля, правила и статус слежения
+const {
+  followView,
+  followStatus: followLoad,
+  refreshFollow,
+  save: saveFollow,
+  stop: stopFollow,
+} = useTitleFollow(id)
+const followTexts = useFollowTexts()
+
+// Кнопки появляются, когда пришли прогресс и «Следить»: «Смотреть» не сменится
+// на «Продолжить» под взглядом, а «Следить» не вставит кнопку в ряд
+const actionsPending = computed(
+  () => progressStatus.value === 'loading' || followLoad.value === 'loading',
+)
 const resume = computed(() => progress.value?.resume ?? null)
 
 // Отметки «просмотрено», поставленные сейчас: сразу видны, без перезапроса прогресса
@@ -695,6 +716,7 @@ function seasonBadge(item: TitleSeason) {
   return aired ? t('title.seasonAired', aired) : String(item.episodeCount)
 }
 
+// Подпись под кадром: длительность или дата выхода и состояние «Следить»
 function episodeMeta(item: Episode) {
   if (isUpcoming(item.airDate) && item.airDate) {
     return t('title.airs', {
@@ -702,7 +724,12 @@ function episodeMeta(item: Episode) {
     })
   }
 
-  return item.runtime ? formatRuntime(item.runtime) : ''
+  return [
+    item.runtime ? formatRuntime(item.runtime) : '',
+    followTexts.episodeState(item.follow, item.followWait),
+  ]
+    .filter(Boolean)
+    .join(' · ')
 }
 
 function episodeDetail(item: Episode) {
@@ -911,7 +938,11 @@ const screen = ref<HTMLElement>()
 const { active } = useStackedScreen(screen, {
   fallback: () =>
     order.value.includes('title-actions') ? 'title-actions' : order.value[0],
-  onReturn: refreshProgress,
+  onReturn: () => {
+    void refreshProgress()
+    void refreshFollow()
+    refreshSeasonStates()
+  },
 })
 
 // «Скачать фильм / сезон»: лучшая раздача по профилю и озвучке, закачка
@@ -1080,6 +1111,107 @@ async function cancelDownload(torrentId: string) {
   }
   catch (err) {
     downloadToast.value = await downloadTexts.errorOf(err, 'nothingToCancel')
+  }
+}
+
+// «Следить» — после слота загрузки. Фильму, который уже лежит в библиотеке
+// без слежения или ради которого слежение закончилось, кнопка не нужна
+const followed = computed(() => isFollowed(followView.value?.follow))
+const showFollow = computed(() => {
+  const view = followView.value
+
+  if (!view || !title.value)
+    return false
+
+  if (isSeries.value)
+    return true
+
+  return (
+    view.follow?.state !== 'done'
+    && (followed.value || libraryFiles.value.length === 0)
+  )
+})
+const followHint = computed(() =>
+  followed.value && followView.value
+    ? followTexts.policyLine(followView.value)
+    : '',
+)
+// Статус-строка под кнопками — только у профиля, который следит
+const followLine = computed(() => {
+  const follow = followView.value?.follow
+
+  return follow && followed.value ? followTexts.statusLine(follow) : ''
+})
+const followPanelView = computed(() => {
+  const view = followView.value
+
+  return view?.follow ? { ...view, follow: view.follow } : undefined
+})
+const followPanel = ref(false)
+const followButton = ref<ComponentPublicInstance>()
+const followToast = ref('')
+
+// Состояния серий приходят с сезоном из кэша: после правки — заново
+function refreshSeasonStates() {
+  if (!followView.value?.follow)
+    return
+
+  forgetSeasons(props.id)
+  void refreshSeason()
+}
+
+// OK сразу включает слежение с умолчаниями, лист — чтобы поправить правила
+async function onFollow() {
+  if (followed.value) {
+    followPanel.value = true
+
+    return
+  }
+
+  if (await saveFollow({})) {
+    followPanel.value = true
+    refreshSeasonStates()
+  }
+  else {
+    followToast.value = t('follow.errors.follow')
+  }
+}
+
+async function onFollowSave(body: FollowTitleInput) {
+  if (await saveFollow(body))
+    refreshSeasonStates()
+  else followToast.value = t('follow.errors.save')
+}
+
+// Фокус — на кнопку, с которой открыли; ушла (фильм в библиотеке больше не
+// под слежением) — на «Смотреть»
+function focusFollowButton() {
+  nextTick(() => {
+    const button = followButton.value?.$el ?? primaryButton.value?.$el
+
+    if (button?.isConnected)
+      focus.focusOn(button)
+  })
+}
+
+function closeFollowPanel() {
+  followPanel.value = false
+  focusFollowButton()
+}
+
+async function onFollowStop() {
+  followPanel.value = false
+
+  const stopped = await stopFollow()
+
+  focusFollowButton()
+
+  if (stopped) {
+    followToast.value = t('follow.stopped')
+    refreshSeasonStates()
+  }
+  else {
+    followToast.value = t('follow.errors.stop')
   }
 }
 
@@ -1370,6 +1502,17 @@ onBeforeUnmount(() => {
               class="title__secondary title__download"
               @click="onDownload"
             />
+            <ActionButton
+              v-if="showFollow"
+              ref="followButton"
+              v-focusable
+              icon="bell"
+              :label="t(followed ? 'follow.following' : 'follow.follow')"
+              :value="followHint || undefined"
+              class="title__secondary title__follow"
+              :aria-pressed="followed"
+              @click="onFollow"
+            />
             <!-- Остальное — значки: название кнопки в фокусе подписано под ней
                  отдельным слоем, ряд при смене фокуса не двигается -->
             <ActionButton
@@ -1412,6 +1555,14 @@ onBeforeUnmount(() => {
             />
           </ButtonRow>
         </FocusSection>
+
+        <!-- Строка на своём месте всегда: текст меняется без сдвига -->
+        <p
+          class="title__follow-status"
+          :class="{ 'title__follow-status--pending': actionsPending }"
+        >
+          {{ followLine }}
+        </p>
 
         <!-- Подсказка о том, что ниже, нужна только у верхнего края -->
         <p class="title__peek" :class="{ 'title__peek--hidden': offset > 0 }">
@@ -1751,6 +1902,7 @@ onBeforeUnmount(() => {
     </div>
     <AppToast :message="mineError" @hide="mineError = ''" />
     <AppToast :message="downloadToast" @hide="downloadToast = ''" />
+    <AppToast :message="followToast" @hide="followToast = ''" />
     <!-- Поверх стека карточки: у него transform, fixed внутри встал бы по нему -->
     <Teleport to="body">
       <DownloadPanel
@@ -1764,6 +1916,15 @@ onBeforeUnmount(() => {
         @pick="pickDownload"
       />
     </Teleport>
+
+    <FollowPanel
+      v-if="followPanel && title && active && followPanelView"
+      :title="title.title"
+      :view="followPanelView"
+      @close="closeFollowPanel"
+      @save="onFollowSave"
+      @stop="onFollowStop"
+    />
 
     <OptionsPanel
       v-if="overviewOpen && title && active"
@@ -1964,6 +2125,11 @@ onBeforeUnmount(() => {
   font-variant-numeric: tabular-nums;
 }
 
+/* Политика слежения — тот же предел, что у «Скачать» */
+.title__follow {
+  max-width: calc(var(--u) * 480);
+}
+
 .title__age {
   flex: none;
   margin-left: calc(var(--u) * 14);
@@ -2074,6 +2240,27 @@ onBeforeUnmount(() => {
 
 .title__primary :deep(.action-button__text) {
   max-width: calc(var(--u) * 520);
+}
+
+/* Под кнопками и местом их подписи в фокусе, над подсказкой о том, что ниже */
+.title__follow-status {
+  position: absolute;
+  top: calc(var(--u) * 890);
+  right: var(--safe-x);
+  left: var(--content-x);
+  max-width: calc(var(--u) * 1100);
+  height: calc(var(--font-size-s) * var(--line-height));
+  margin: 0;
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-s);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  transition: opacity var(--motion-base) var(--motion-easing);
+}
+
+.title__follow-status--pending {
+  opacity: 0;
 }
 
 .title__peek {

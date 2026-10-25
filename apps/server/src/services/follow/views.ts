@@ -22,6 +22,7 @@ import {
 } from './index.ts'
 import { unsureCounts } from './panel.ts'
 import { requestedSearch } from './search.ts'
+import { followStatus } from './status.ts'
 import {
   compareEpisodes,
   cursorOptions,
@@ -79,7 +80,7 @@ export function titleFollowBrief(titleId: string, profileId: string) {
     : null
 }
 
-/** «Следить» тайтла для витрины: правила, подписка и пресеты курсора */
+/** «Следить» тайтла для витрины: правила, подписка, статус и пресеты курсора */
 export async function titleFollowView(
   titleId: string,
   profileId: string,
@@ -88,7 +89,9 @@ export async function titleFollowView(
 ): Promise<TitleFollowResponse> {
   const follow = followOf(titleId)
   const series = titleId.startsWith('tmdb:tv:')
-  const summary = series ? await summaryOf(titleId, language) : undefined
+  const summary
+    = series || follow ? await summaryOf(titleId, language) : undefined
+  const states = follow ? await statesOf(follow, summary, language) : []
 
   return {
     follow: follow
@@ -96,10 +99,11 @@ export async function titleFollowView(
           ...rulesView(follow, announcedNext(follow, summary)),
           subscribed: isSubscribed(follow.id, profileId),
           profileCount: subscribersOf(follow.id).length,
+          ...followStatus(follow, states),
         }
       : null,
     canEdit,
-    options: summary ? cursorOptions(scheduleOf(summary)) : null,
+    options: series && summary ? cursorOptions(scheduleOf(summary)) : null,
   }
 }
 

@@ -17,12 +17,17 @@ import { useRouter } from 'vue-router'
 import AppIcon from '../components/AppIcon.vue'
 import AppRail from '../components/AppRail.vue'
 import FocusSection from '../components/FocusSection.vue'
+import MineSchedule from '../components/MineSchedule.vue'
 import OptionsPanel from '../components/OptionsPanel.vue'
 import PosterCard from '../components/PosterCard.vue'
 import PosterSkeleton from '../components/PosterSkeleton.vue'
 import ScreenState from '../components/ScreenState.vue'
 import { useHeldLoading } from '../composables/useHeldLoading.ts'
-import { useMineItems, useMineSections } from '../composables/useMine.ts'
+import {
+  useMineItems,
+  useMineSections,
+  useSchedule,
+} from '../composables/useMine.ts'
 import { useStackScroll } from '../composables/useStackScroll.ts'
 import { useFocus } from '../focus/index.ts'
 import {
@@ -37,12 +42,15 @@ import {
   saveMineView,
   sectionKey,
 } from '../lib/mineView.ts'
+import type { ScheduleTab } from '../lib/follow.ts'
 import { stackOffset } from '../lib/rowStack.ts'
 import { titleActions } from '../titleActions.ts'
 
 defineOptions({ name: 'MinePage' })
 
 const RAIL_SECTION = 'rail-mine'
+// «Расписание» — свой раздел витрины после «Продолжить», без карточек «Моё»
+const SCHEDULE = 'schedule'
 const COLUMNS = 4
 const SKELETON_COUNT = 8
 // Пролёт пультом по разделам не грузит каждый: ждём, пока фокус остановится
@@ -67,6 +75,18 @@ const {
   retry: retrySections,
   refresh: refreshSections,
 } = useMineSections()
+
+const {
+  schedule,
+  status: scheduleStatus,
+  error: scheduleError,
+  retry: retrySchedule,
+  refresh: refreshSchedule,
+} = useSchedule()
+const scheduleTab = ref<ScheduleTab>('upcoming')
+const scheduleEmpty = computed(
+  () => !!schedule.value && schedule.value[scheduleTab.value].length === 0,
+)
 
 const selectedKey = ref('continue')
 const selected = computed(() =>
@@ -112,16 +132,43 @@ function sectionLabel(section: MineSection) {
     : t(`mine.sections.${section.id}`)
 }
 
-// Подборки — отдельной группой между «Избранным» и «Просмотрено»
+interface SectionEntry {
+  key: string
+  label: string
+  // Пусто, пока не пришло: место числа занято, строка не сдвигается
+  count?: number
+}
+
+function entryOf(section: MineSection): SectionEntry {
+  return {
+    key: sectionKey(section),
+    label: sectionLabel(section),
+    count: section.count,
+  }
+}
+
+// Подборки — отдельной группой между «Избранным» и «Просмотрено»;
+// «Расписание» — сразу после «Продолжить» и только вместе с разделами
+// сервера: одна эта строка до их ответа забрала бы фокус и выбор раздела
 const groups = computed(() => {
   const own = sections.value.filter(item => item.id !== 'collection')
   const collections = sections.value.filter(item => item.id === 'collection')
   const split = own.findIndex(item => item.id === 'watched')
+  const before = (split < 0 ? own : own.slice(0, split)).map(entryOf)
+  const value = schedule.value
+
+  if (own.length) {
+    before.splice(before.findIndex(item => item.key === 'continue') + 1, 0, {
+      key: SCHEDULE,
+      label: t('mine.sections.schedule'),
+      count: value ? value.upcoming.length + value.recent.length : undefined,
+    })
+  }
 
   return {
-    before: split < 0 ? own : own.slice(0, split),
-    collections,
-    after: split < 0 ? [] : own.slice(split),
+    before,
+    collections: collections.map(entryOf),
+    after: split < 0 ? [] : own.slice(split).map(entryOf),
   }
 })
 
@@ -130,7 +177,11 @@ function select(key: string) {
     return
 
   selectedKey.value = key
-  view.value = loadMineView(key)
+
+  // Расписание уже загружено вместе с «Моё»: показываем сразу
+  if (key === SCHEDULE)
+    shownKey.value = SCHEDULE
+  else view.value = loadMineView(key)
 }
 
 let selectTimer = 0
@@ -311,6 +362,14 @@ const isEmpty = computed(
   () => status.value === 'ready' && items.value.length === 0,
 )
 
+const scheduleShown = computed(() => shownKey.value === SCHEDULE)
+const sectionsRight = computed(() => {
+  if (scheduleShown.value)
+    return scheduleEmpty.value ? 'mine-schedule-tabs' : 'mine-schedule'
+
+  return isEmpty.value ? 'mine-controls' : 'mine-grid'
+})
+
 const emptyText = computed(() => {
   if (isFiltered(view.value)) {
     return {
@@ -341,6 +400,7 @@ function syncChanges() {
   seenVersion = titleActions.version
   void refreshSections()
   void refresh()
+  void refreshSchedule()
 }
 
 watch(
@@ -386,7 +446,11 @@ onActivated(() => {
   isActive = true
   syncChanges()
 
-  if (!focus.activate('mine-grid'))
+  // Из плеера и карточки — с новыми состояниями серий
+  if (scheduleShown.value)
+    void refreshSchedule()
+
+  if (!focus.activate(scheduleShown.value ? 'mine-schedule' : 'mine-grid'))
     focusSelectedSection()
 })
 
@@ -415,10 +479,7 @@ onBeforeUnmount(() => {
         <FocusSection
           name="mine-sections"
           class="mine__sections"
-          :edges="{
-            left: RAIL_SECTION,
-            right: isEmpty ? 'mine-controls' : 'mine-grid',
-          }"
+          :edges="{ left: RAIL_SECTION, right: sectionsRight }"
           autofocus
         >
           <template
@@ -433,20 +494,18 @@ onBeforeUnmount(() => {
             </h2>
             <button
               v-for="section in groups[group]"
-              :key="sectionKey(section)"
+              :key="section.key"
               v-focusable
               class="mine__section"
               :class="{
-                'mine__section--selected': sectionKey(section) === selectedKey,
+                'mine__section--selected': section.key === selectedKey,
               }"
-              :data-section="sectionKey(section)"
+              :data-section="section.key"
               type="button"
-              :aria-pressed="sectionKey(section) === selectedKey"
-              @click="select(sectionKey(section))"
+              :aria-pressed="section.key === selectedKey"
+              @click="select(section.key)"
             >
-              <span class="mine__section-name">{{
-                sectionLabel(section)
-              }}</span>
+              <span class="mine__section-name">{{ section.label }}</span>
               <span class="mine__section-count">{{ section.count }}</span>
             </button>
           </template>
@@ -454,7 +513,15 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <div class="mine__right">
+    <MineSchedule
+      v-if="scheduleShown"
+      v-model:tab="scheduleTab"
+      :schedule="schedule"
+      :loading="scheduleStatus === 'loading'"
+      :error="scheduleStatus === 'error' ? scheduleError : undefined"
+      @retry="retrySchedule"
+    />
+    <div v-else class="mine__right">
       <div class="mine__head">
         <h2 class="mine__title">
           {{ shown ? sectionLabel(shown) : "" }}

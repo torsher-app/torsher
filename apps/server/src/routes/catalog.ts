@@ -20,9 +20,13 @@ import {
 } from '../dto/catalog.ts'
 import { messageResponse } from '../dto/common.ts'
 import { requireViewer } from '../middleware/auth.ts'
-import { seasonEpisodeStates } from '../services/follow/episodes.ts'
+import {
+  seasonEpisodeStates,
+  waitTargets,
+} from '../services/follow/episodes.ts'
 import { followOf, isFollowing } from '../services/follow/index.ts'
 import { titleFollowBrief } from '../services/follow/views.ts'
+import { episodeKey } from '../services/follow/wanted.ts'
 import { withPosterRatings } from '../services/mine/index.ts'
 import { watchedTitles } from '../services/sources/progress.ts'
 import {
@@ -163,13 +167,27 @@ export const catalogRoutes: FastifyPluginAsyncZod = async (app) => {
           return season
 
         const states = seasonEpisodeStates(follow, season)
+        const waits = waitTargets(follow.id)
 
         return {
           ...season,
-          episodes: season.episodes.map(episode => ({
-            ...episode,
-            follow: states.get(episode.number)?.state,
-          })),
+          episodes: season.episodes.map((episode) => {
+            const state = states.get(episode.number)?.state
+
+            return {
+              ...episode,
+              follow: state,
+              followWait:
+                state === 'waiting'
+                  ? waits.get(
+                      episodeKey({
+                        season: season.number,
+                        episode: episode.number,
+                      }),
+                    )
+                  : undefined,
+            }
+          }),
         }
       }
       catch (err) {

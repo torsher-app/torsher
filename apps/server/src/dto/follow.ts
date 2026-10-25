@@ -9,9 +9,11 @@ import {
 import {
   followCursor,
   followEpisodeStates,
+  followWait,
   titleNextEpisode,
   tmdbLanguage,
 } from './catalog.ts'
+import { voiceTypes } from './titles.ts'
 
 export const followParams = z.object({
   id: z.string().min(1).max(100),
@@ -77,6 +79,35 @@ export const titleFollow = z
     ...followView,
     subscribed: z.boolean(),
     profileCount: z.number().int(),
+    // Сезон, о котором говорит статус: первой нужной серии, иначе следующей
+    // анонсированной, иначе курсора; у фильма 0
+    season: z.number().int(),
+    // Своя студия этого сезона; `pinned` — закреплена за ним самим, а не
+    // перешла из прошлого сезона или правил
+    voice: z
+      .object({
+        studio: z.string().optional(),
+        type: z.enum(voiceTypes).optional(),
+        pinned: z.boolean(),
+      })
+      .nullable(),
+    // Ступень cutoff по качеству в этом сезоне; `lowered` — верхняя ступень
+    // не выходила, и cutoff опущен до лучшей увиденной
+    quality: z.object({ value: z.string(), lowered: z.boolean() }),
+    // Ближайшая отложенная серия
+    waiting: followWait
+      .extend({
+        season: z.number().int(),
+        episode: z.number().int(),
+      })
+      .nullable(),
+    // Серии с курсора по состояниям
+    counts: z.object({
+      downloading: z.number().int(),
+      noSpace: z.number().int(),
+      missing: z.number().int(),
+      searching: z.number().int(),
+    }),
   })
   .meta({ id: 'titleFollow' })
 
@@ -347,6 +378,10 @@ export const scheduleItem = z
     followed: z.boolean(),
     // Состояние серии «Следить»; null — серия до курсора или тайтл не в слежении
     state: z.enum(followEpisodeStates).nullable(),
+    // Своя студия сезона у слежения
+    studio: z.string().optional(),
+    // Файл серии в библиотеке: витрина играет его с диска
+    mediaFileId: z.string().optional(),
   })
   .meta({ id: 'scheduleItem' })
 

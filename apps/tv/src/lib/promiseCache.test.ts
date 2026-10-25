@@ -50,4 +50,19 @@ describe('createPromiseCache', () => {
     expect(first).toHaveBeenCalledTimes(1)
     expect(again).toHaveBeenCalledTimes(1)
   })
+
+  it('forget убирает подходящие записи, остальные остаются', async () => {
+    const cache = createPromiseCache<string>(10)
+    const a = vi.fn().mockResolvedValue('a')
+    const b = vi.fn().mockResolvedValue('b')
+
+    await cache.get('t1:1', a)
+    await cache.get('t2:1', b)
+    cache.forget(key => key.startsWith('t1:'))
+    await cache.get('t1:1', a)
+    await cache.get('t2:1', b)
+
+    expect(a).toHaveBeenCalledTimes(2)
+    expect(b).toHaveBeenCalledTimes(1)
+  })
 })

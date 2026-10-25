@@ -1,11 +1,12 @@
-import type { Card, MineSection } from '@torsher/api-client'
+import type { Card, MineSection, ScheduleResponse } from '@torsher/api-client'
 import type { Ref } from 'vue'
 import type { LoadError } from '../lib/loadError.ts'
 import type { MineView } from '../lib/mineView.ts'
-import { onScopeDispose, ref, shallowRef, watch } from 'vue'
+import { computed, onScopeDispose, ref, shallowRef, watch } from 'vue'
 import { api, loadErrorOf } from '../api.ts'
 import { createLatest } from '../lib/latest.ts'
 import { useCatalogLanguage } from './useCatalogLanguage.ts'
+import { useResource } from './useResource.ts'
 
 export type MineStatus = 'loading' | 'ready' | 'error'
 
@@ -209,4 +210,19 @@ export function useMineItems(
   onScopeDispose(latest.cancel)
 
   return { status, items, total, error, retry: load, more, refresh }
+}
+
+/**
+ * «Расписание» профиля: ближайшие и недавние серии. Грузится вместе с «Моё»:
+ * счётчик раздела виден сразу; `refresh` перечитывает без загрузки на экране.
+ */
+export function useSchedule() {
+  const language = useCatalogLanguage()
+  const { data, status, error, retry, refresh } = useResource<ScheduleResponse>(
+    computed(() => language.value),
+    (current, signal) =>
+      api.schedule.getSchedule({ language: current }, { signal }),
+  )
+
+  return { schedule: data, status, error, retry, refresh }
 }

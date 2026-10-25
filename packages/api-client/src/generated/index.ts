@@ -275,6 +275,12 @@ export interface CardInput {
   ownRating?: number;
   availability?: "downloading" | "downloaded" | "library";
   downloadProgress?: number;
+  followed?: boolean;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  followNew?: number;
 }
 
 export interface TitleSeasonInput {
@@ -321,6 +327,13 @@ export interface TitleNextEpisodeInput {
   airDate?: string;
 }
 
+export interface FollowWaitInput {
+  until: string;
+  studio?: string;
+  voiceType?: string;
+  quality?: string;
+}
+
 export interface FollowCursorInput {
   /**
    * @min -9007199254740991
@@ -361,6 +374,12 @@ export interface TitleDetailsInput {
   ownRating?: number;
   availability?: "downloading" | "downloaded" | "library";
   downloadProgress?: number;
+  followed?: boolean;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  followNew?: number;
   overview: string;
   genres: string[];
   /**
@@ -444,6 +463,7 @@ export interface EpisodeInput {
     | "downloading"
     | "in_library";
   tracker?: boolean;
+  followWait?: FollowWaitInput;
 }
 
 export interface SeasonDetailsInput {
@@ -495,6 +515,12 @@ export interface FranchisePartInput {
   ownRating?: number;
   availability?: "downloading" | "downloaded" | "library";
   downloadProgress?: number;
+  followed?: boolean;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  followNew?: number;
   current: boolean;
   watched: boolean;
 }
@@ -580,6 +606,12 @@ export interface PersonCreditInput {
   ownRating?: number;
   availability?: "downloading" | "downloaded" | "library";
   downloadProgress?: number;
+  followed?: boolean;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  followNew?: number;
   detail?: string;
   watched: boolean;
 }
@@ -1257,6 +1289,12 @@ export interface ContinueCardInput {
   ownRating?: number;
   availability?: "downloading" | "downloaded" | "library";
   downloadProgress?: number;
+  followed?: boolean;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  followNew?: number;
   image?: string;
   season: number | null;
   episode: number | null;
@@ -1738,6 +1776,58 @@ export interface TitleFollowInput {
    * @max 9007199254740991
    */
   profileCount: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  season: number;
+  voice: {
+    studio?: string;
+    type?: "D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original";
+    pinned: boolean;
+  } | null;
+  quality: {
+    value: string;
+    lowered: boolean;
+  };
+  waiting: {
+    until: string;
+    studio?: string;
+    voiceType?: string;
+    quality?: string;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    season: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    episode: number;
+  } | null;
+  counts: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    downloading: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    noSpace: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    missing: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    searching: number;
+  };
 }
 
 export interface TitleFollowResponseInput {
@@ -2111,6 +2201,8 @@ export interface ScheduleItemInput {
     | "downloading"
     | "in_library"
     | null;
+  studio?: string;
+  mediaFileId?: string;
 }
 
 export interface ScheduleResponseInput {
@@ -4706,6 +4798,12 @@ export interface Card {
   ownRating?: number;
   availability?: "downloading" | "downloaded" | "library";
   downloadProgress?: number;
+  followed?: boolean;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  followNew?: number;
 }
 
 export interface TitleSeason {
@@ -4752,6 +4850,13 @@ export interface TitleNextEpisode {
   airDate?: string;
 }
 
+export interface FollowWait {
+  until: string;
+  studio?: string;
+  voiceType?: string;
+  quality?: string;
+}
+
 export interface FollowCursor {
   /**
    * @min -9007199254740991
@@ -4792,6 +4897,12 @@ export interface TitleDetails {
   ownRating?: number;
   availability?: "downloading" | "downloaded" | "library";
   downloadProgress?: number;
+  followed?: boolean;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  followNew?: number;
   overview: string;
   genres: string[];
   /**
@@ -4875,6 +4986,7 @@ export interface Episode {
     | "downloading"
     | "in_library";
   tracker?: boolean;
+  followWait?: FollowWait;
 }
 
 export interface SeasonDetails {
@@ -4926,6 +5038,12 @@ export interface FranchisePart {
   ownRating?: number;
   availability?: "downloading" | "downloaded" | "library";
   downloadProgress?: number;
+  followed?: boolean;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  followNew?: number;
   current: boolean;
   watched: boolean;
 }
@@ -5011,6 +5129,12 @@ export interface PersonCredit {
   ownRating?: number;
   availability?: "downloading" | "downloaded" | "library";
   downloadProgress?: number;
+  followed?: boolean;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  followNew?: number;
   detail?: string;
   watched: boolean;
 }
@@ -5688,6 +5812,12 @@ export interface ContinueCard {
   ownRating?: number;
   availability?: "downloading" | "downloaded" | "library";
   downloadProgress?: number;
+  followed?: boolean;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  followNew?: number;
   image?: string;
   season: number | null;
   episode: number | null;
@@ -6168,6 +6298,58 @@ export interface TitleFollow {
    * @max 9007199254740991
    */
   profileCount: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  season: number;
+  voice: {
+    studio?: string;
+    type?: "D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original";
+    pinned: boolean;
+  } | null;
+  quality: {
+    value: string;
+    lowered: boolean;
+  };
+  waiting: {
+    until: string;
+    studio?: string;
+    voiceType?: string;
+    quality?: string;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    season: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    episode: number;
+  } | null;
+  counts: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    downloading: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    noSpace: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    missing: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    searching: number;
+  };
 }
 
 export interface TitleFollowResponse {
@@ -6541,6 +6723,8 @@ export interface ScheduleItem {
     | "downloading"
     | "in_library"
     | null;
+  studio?: string;
+  mediaFileId?: string;
 }
 
 export interface ScheduleResponse {

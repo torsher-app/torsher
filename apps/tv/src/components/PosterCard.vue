@@ -2,6 +2,7 @@
 import type { Card } from '@torsher/api-client'
 import { openTitleActions } from '../titleActions.ts'
 import DownloadBadge from './DownloadBadge.vue'
+import FollowBadge from './FollowBadge.vue'
 import PosterRatingBadge from './PosterRatingBadge.vue'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -77,6 +78,7 @@ const meta = computed(() => {
       <PosterRatingBadge :card="card" />
       <DownloadBadge :card="card" />
       <WatchedMark v-if="watched" class="poster-card__watched" />
+      <FollowBadge :card="card" :shifted="watched" />
       <span class="card__ring" />
     </span>
     <template v-if="caption">
