@@ -1,5 +1,5 @@
 import type { AudioTrack, VoiceType } from '@torsher/release-parser'
-import type { TitleProgress } from '../../db/schema.ts'
+import type { MediaFileRef, TitleProgress } from '../../db/schema.ts'
 import type { VoiceRef } from './profile.ts'
 import { and, desc, eq, gt, inArray, isNotNull, or } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
@@ -101,6 +101,23 @@ export function relinkTitleProgress(
       )
       .run()
   }
+}
+
+/**
+ * Файл серии заменили версией из другой раздачи: «чем смотрели» переходит к
+ * новому файлу, позиция остаётся.
+ */
+export function moveFileProgress(from: MediaFileRef, to: MediaFileRef) {
+  getDb()
+    .update(titleProgress)
+    .set({ torrentId: to.torrentId, fileIndex: to.fileIndex })
+    .where(
+      and(
+        eq(titleProgress.torrentId, from.torrentId),
+        eq(titleProgress.fileIndex, from.fileIndex),
+      ),
+    )
+    .run()
 }
 
 /**

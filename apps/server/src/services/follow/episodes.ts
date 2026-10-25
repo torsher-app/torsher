@@ -241,8 +241,8 @@ export async function followEpisodeStates(
 }
 
 /**
- * Фильм — одна «серия» 0/0: вышел — значит, его ищем. «Не нашли» у фильма
- * нет: его ищут, пока следят (доступность — срез «Апгрейд и фильмы»).
+ * Фильм — одна «серия» 0/0: вышел в прокат или в цифре — значит, его ищем.
+ * «Не нашли» у фильма нет: его ищут, пока следят.
  */
 export function movieState(follow: StateFollow, released: boolean) {
   return episodeStates({

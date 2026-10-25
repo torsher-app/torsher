@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, or } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import {
   followEpisodes,
@@ -49,7 +49,11 @@ export function followBadges(profileId: string, titleIds: string[]) {
           followEpisodes.followId,
           followed.map(item => item.id),
         ),
-        isNotNull(followEpisodes.downloadedAt),
+        // Серия, которую заменяет апгрейд, уже лежит в библиотеке
+        or(
+          isNotNull(followEpisodes.downloadedAt),
+          isNotNull(followEpisodes.upgradeFrom),
+        ),
       ),
     )
     .all()

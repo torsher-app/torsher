@@ -1,4 +1,8 @@
-import type { LibraryFolder, MediaFile } from '../../db/schema.ts'
+import type {
+  LibraryFolder,
+  MediaFile,
+  MediaFileRef,
+} from '../../db/schema.ts'
 import { stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { and, desc, eq, inArray, isNotNull } from 'drizzle-orm'
@@ -99,6 +103,62 @@ export function torrentLibraryFiles(torrentId: string) {
     .from(mediaFiles)
     .where(eq(mediaFiles.torrentId, torrentId))
     .all()
+}
+
+/** Файлы библиотеки, которые ждут новой версии из этой раздачи (апгрейд) */
+export function replacementLibraryFiles(torrentId: string) {
+  return getDb()
+    .select()
+    .from(mediaFiles)
+    .where(eq(mediaFiles.replacementTorrentId, torrentId))
+    .all()
+}
+
+/**
+ * Файлы раздачи, которые связыватель не кладёт заново: уже положенные,
+ * ждущие замены прежнего файла (апгрейд) и заменённые другой версией.
+ * Скачанный файл закреплённой раздачи иначе лёг бы второй версией.
+ */
+export function heldFileIndexes(torrentId: string) {
+  const held = new Set<number>()
+
+  for (const row of torrentLibraryFiles(torrentId)) {
+    if (row.fileIndex !== null)
+      held.add(row.fileIndex)
+  }
+
+  for (const row of replacementLibraryFiles(torrentId))
+    held.add(row.replacementFileIndex!)
+
+  const replaced = getDb()
+    .select({ replaced: mediaFiles.replaced })
+    .from(mediaFiles)
+    .where(isNotNull(mediaFiles.replaced))
+    .all()
+
+  for (const row of replaced) {
+    for (const ref of row.replaced ?? []) {
+      if (ref.torrentId === torrentId)
+        held.add(ref.fileIndex)
+    }
+  }
+
+  return held
+}
+
+/**
+ * Апгрейд: файл библиотеки заменит файл другой раздачи, когда тот скачается
+ * целиком; `null` — замена снята, остаётся прежний файл.
+ */
+export function setReplacement(mediaFileId: string, ref: MediaFileRef | null) {
+  getDb()
+    .update(mediaFiles)
+    .set({
+      replacementTorrentId: ref?.torrentId ?? null,
+      replacementFileIndex: ref?.fileIndex ?? null,
+    })
+    .where(eq(mediaFiles.id, mediaFileId))
+    .run()
 }
 
 /**

@@ -6,8 +6,9 @@ import type {
   TrackedTopic,
 } from '../../db/schema.ts'
 import type { VoiceRef } from '../sources/profile.ts'
-import type { FoundRelease } from '../sources/rank.ts'
+import type { FoundRelease, RankContext } from '../sources/rank.ts'
 import type { CheckedCandidate, DecideContext, SeasonPlan } from './decide.ts'
+import type { UpgradeCheck, UpgradeTarget } from './upgrade.ts'
 import type { EpisodeRef, EpisodeWithState } from './wanted.ts'
 import type { VideoClass } from '@torsher/release-parser'
 import { and, eq, isNotNull, isNull } from 'drizzle-orm'
@@ -19,11 +20,14 @@ import { rankReleases } from '../sources/rank.ts'
 import { knownResolutions } from '../sources/resolution.ts'
 import { getPinnedVoice } from '../sources/voices.ts'
 import { getTitleIdentity } from '../tmdb/index.ts'
+import { movieAvailableFrom } from './availability.ts'
 import { blockedHashes } from './blocklist.ts'
 import {
   bestQualitySeen,
   cutoffStepOf,
+  isAtCutoff,
   planSeason,
+  positionOf,
   releaseSeasons,
 } from './decide.ts'
 import { followEpisodeStates, movieState, stateInputs } from './episodes.ts'
@@ -37,6 +41,7 @@ import {
   touchTopics,
 } from './topics.ts'
 import { recordTrackerEpisodes } from './trackerEpisodes.ts'
+import { upgradeTargets, versionOf } from './upgrade.ts'
 import { compareEpisodes, episodeKey, WANTED_STATES } from './wanted.ts'
 
 // Фону язык зрителя не нужен: из деталей берётся только расписание, а
@@ -44,6 +49,22 @@ import { compareEpisodes, episodeKey, WANTED_STATES } from './wanted.ts'
 export const BACKGROUND_LANGUAGE = 'en-US'
 // Снимок кандидатов серии для панели: что нашли и почему отклонили
 const DECISIONS_PER_EPISODE = 20
+
+/**
+ * Доступность фильма для слежения: с какого момента его можно скачать и
+ * наступил ли он. Не фильм — `undefined`.
+ */
+export async function movieAvailability(
+  follow: Pick<Follow, 'kind' | 'titleId'>,
+  now = new Date(),
+) {
+  if (follow.kind !== 'movie')
+    return undefined
+
+  const from = await movieAvailableFrom(follow.titleId)
+
+  return { from, available: !!from && from <= now }
+}
 
 /** Состояния серий слежения на расписании из кэша TMDB */
 export async function followStates(
@@ -55,8 +76,14 @@ export async function followStates(
   if (!summary)
     return []
 
-  if (follow.kind === 'movie')
-    return movieState(follow, summary.details.status === 'released')
+  // Фильм нужен с проката, а без него — с цифрового релиза
+  if (follow.kind === 'movie') {
+    return movieState(
+      follow,
+      summary.details.status === 'released'
+      || !!(await movieAvailability(follow, now))?.available,
+    )
+  }
 
   return followEpisodeStates(
     follow,
@@ -108,8 +135,10 @@ function seasonRow(followId: string, season: number) {
 function decisionOf(
   candidate: CheckedCandidate,
   verdict: FollowDecision['verdict'],
+  key: string,
 ): FollowDecision {
   const { release } = candidate
+  const own = candidate.episodeRejections.get(key)
 
   return {
     id: release.id,
@@ -122,7 +151,9 @@ function decisionOf(
     studio: release.voice?.studio,
     voiceType: release.voice?.type,
     verdict,
-    rejections: candidate.rejections,
+    // Раздача берётся ради других серий, а эту не заменит: почему
+    rejections:
+      !candidate.rejections.length && own ? [own] : candidate.rejections,
   }
 }
 
@@ -137,7 +168,7 @@ function decisionsFor(plan: SeasonPlan, episode: EpisodeRef) {
   )?.candidate
   const chosen = grabbed ?? pending
   const named = plan.candidates.filter(item =>
-    item.episodes.some(ref => episodeKey(ref) === key),
+    item.considered.some(ref => episodeKey(ref) === key),
   )
   const rest = named.filter(item => item !== chosen)
   const list = chosen ? [chosen, ...rest] : rest
@@ -148,6 +179,7 @@ function decisionsFor(plan: SeasonPlan, episode: EpisodeRef) {
       decisionOf(
         item,
         item === grabbed ? 'grab' : item === pending ? 'pending' : 'rejected',
+        key,
       ),
     )
 }
@@ -197,12 +229,15 @@ function saveSeason(
     .run()
 }
 
-/** Записи решателя по сезону: первое появление, отложенные, снимок */
+/**
+ * Записи решателя по сезону: первое появление, отложенные, снимок нужных и
+ * рассмотренных апгрейдом серий
+ */
 function savePlan(
   follow: Follow,
   plan: SeasonPlan,
   rows: Map<string, FollowEpisode>,
-  wanted: EpisodeRef[],
+  considered: EpisodeRef[],
   topics: TrackedTopic[],
   now: Date,
 ) {
@@ -273,7 +308,7 @@ function savePlan(
     )
   }
 
-  for (const episode of wanted) {
+  for (const episode of considered) {
     if (!rows.has(episodeKey(episode)) && !plan.found.has(episodeKey(episode)))
       continue
 
@@ -290,12 +325,115 @@ function savePlan(
   }
 }
 
+/** Заменяемые серии сезона для решателя: версия текущего файла или запрет */
+function upgradeChecks(
+  targets: Map<string, UpgradeTarget>,
+  season: number,
+  ctx: RankContext,
+) {
+  const checks = new Map<string, UpgradeCheck>()
+
+  for (const [key, target] of targets) {
+    if (Number(key.split(':')[0]) !== season)
+      continue
+
+    checks.set(
+      key,
+      target.current
+        ? { current: versionOf(target.current, ctx) }
+        : { blocked: target.blocked },
+    )
+  }
+
+  return checks
+}
+
+/**
+ * Есть ли у слежения серии в библиотеке, которые ещё стоит заменить: можно
+ * заменить и файл не в cutoff сезона. По ним идёт целевой поиск апгрейда.
+ */
+export async function upgradeNeeded(
+  follow: Follow,
+  states: EpisodeWithState[],
+  now = new Date(),
+) {
+  const targets = [...upgradeTargets(follow, states, now)].filter(
+    ([, target]) => target.current,
+  )
+
+  if (!targets.length)
+    return false
+
+  const identity = await getTitleIdentity(follow.titleId)
+  const rows = episodeRows(follow.id)
+
+  return targets.some(([key, target]) => {
+    const season = Number(key.split(':')[0])
+    const voice = seasonVoice(follow, season)
+    const stored = seasonRow(follow.id, season)
+    const seasonCtx = {
+      season,
+      voice,
+      cutoffStep: cutoffStepOf(
+        follow.qualityPreset,
+        (stored?.bestQualitySeen as VideoClass | null) ?? undefined,
+        rows.filter(row => row.season === season).length,
+      ),
+    }
+    const version = versionOf(target.current!, {
+      kind: follow.kind,
+      originalLanguage: identity?.originalLanguage,
+      profile: DEFAULT_PROFILE,
+      pinned: voice,
+    })
+
+    return !isAtCutoff(
+      positionOf(version, seasonCtx, {
+        russianOriginal: identity?.originalLanguage === 'ru',
+        profile: DEFAULT_PROFILE,
+        preset: follow.qualityPreset,
+      }),
+      seasonCtx,
+    )
+  })
+}
+
+/**
+ * Фильм в библиотеке, и заменять его больше незачем или нельзя (cutoff,
+ * посмотрели, выбран вручную, прошло 60 дней): слежение завершается само.
+ * Пока идёт захват или апгрейд, слежение ждёт его.
+ */
+export async function completeMovie(follow: Follow, now = new Date()) {
+  if (follow.kind !== 'movie' || follow.state !== 'active')
+    return false
+
+  const states = await followStates(follow, now)
+  const grabbing = episodeRows(follow.id).some(
+    row => !!row.upgradeFrom || (!!row.torrentId && !row.downloadedAt),
+  )
+
+  if (
+    states[0]?.state !== 'in_library'
+    || grabbing
+    || (await upgradeNeeded(follow, states, now))
+  ) {
+    return false
+  }
+
+  getDb()
+    .update(follows)
+    .set({ state: 'done', nextSearchAt: null, updatedAt: now })
+    .where(eq(follows.id, follow.id))
+    .run()
+  return true
+}
+
 /**
  * Прогон решателя по найденным раздачам: нужные серии по сезонам, проверки,
  * порядок Р5 с закреплённой студией сезона, жадное покрытие, окно ожидания.
- * Кандидаты в cutoff и с кончившимся окном захватываются сразу. Серии
- * раздач, которых нет в TMDB, сначала записываются с трекера — и становятся
- * нужными в том же прогоне.
+ * Кандидаты в cutoff и с кончившимся окном захватываются сразу, как и
+ * апгрейд серии в библиотеке. Серии раздач, которых нет в TMDB, сначала
+ * записываются с трекера — и становятся нужными в том же прогоне.
  */
 export async function decideFollow(
   follow: Follow,
@@ -307,11 +445,13 @@ export async function decideFollow(
 
   const states = await followStates(follow, now)
   const wanted = states.filter(item => WANTED_STATES.has(item.state))
+  const targets = upgradeTargets(follow, states, now)
 
-  if (!wanted.length)
+  if (!wanted.length && !targets.size)
     return
 
   const identity = await getTitleIdentity(follow.titleId)
+  const availability = await movieAvailability(follow, now)
   const rows = new Map(
     episodeRows(follow.id).map(row => [episodeKey(row), row]),
   )
@@ -332,6 +472,10 @@ export async function decideFollow(
     firstSeen: new Map(
       [...rows.values()].map(row => [episodeKey(row), row.firstSeenAt]),
     ),
+    ...(availability
+      && !availability.available && {
+      unavailableUntil: availability.from ?? null,
+    }),
     now,
   }
   const grabs: { plan: SeasonPlan, voice?: VoiceRef }[] = []
@@ -339,7 +483,11 @@ export async function decideFollow(
   const ownTopics = seasonTopics(follow.id)
   const seenTopics = new Set<string>()
 
-  for (const season of new Set(wanted.map(item => item.season))) {
+  const considered = states.filter(
+    item => WANTED_STATES.has(item.state) || targets.has(episodeKey(item)),
+  )
+
+  for (const season of new Set(considered.map(item => item.season))) {
     const inSeason = releases.filter(release =>
       releaseSeasons(release, follow.kind).includes(season),
     )
@@ -352,12 +500,15 @@ export async function decideFollow(
     }
 
     const voice = seasonVoice(follow, season)
-    const { ranked } = rankReleases(inSeason, {
+    const rankCtx = {
       kind: follow.kind,
       originalLanguage: identity?.originalLanguage,
       episodeCounts: identity?.episodeCounts,
       profile: DEFAULT_PROFILE,
       pinned: voice,
+    }
+    const { ranked } = rankReleases(inSeason, {
+      ...rankCtx,
       known: knownResolutions(inSeason),
     })
     const stored = seasonRow(follow.id, season)
@@ -376,7 +527,7 @@ export async function decideFollow(
         cutoffStep: cutoffStepOf(follow.qualityPreset, best, seen),
         topic: ownTopics.get(season),
       },
-      ctx,
+      { ...ctx, upgrades: upgradeChecks(targets, season, rankCtx) },
     )
 
     if (best)
@@ -386,7 +537,7 @@ export async function decideFollow(
       follow,
       plan,
       rows,
-      wanted.filter(item => item.season === season),
+      considered.filter(item => item.season === season),
       topics,
       now,
     )
@@ -486,6 +637,8 @@ export function markDownloaded(follow: Follow, now = new Date()) {
         isNotNull(followEpisodes.torrentId),
         isNotNull(followEpisodes.fileIndex),
         isNull(followEpisodes.downloadedAt),
+        // Апгрейд кончается заменой файла, а не появлением серии
+        isNull(followEpisodes.upgradeFrom),
       ),
     )
     .all()

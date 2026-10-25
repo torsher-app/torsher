@@ -13,6 +13,7 @@ import {
   planSeason,
 } from './decide.ts'
 import { ladderStep } from './rank.ts'
+import { isUpgrade } from './upgrade.ts'
 import { episodeKey, episodeStates, wantedEpisodes } from './wanted.ts'
 
 const GB = 1024 ** 3
@@ -449,5 +450,167 @@ describe('продолжение темы', () => {
     expect(grabbed(plan([single, fromTopic]))).toEqual([
       { id: single.id, episodes: [5] },
     ])
+  })
+})
+
+/** Версия файла в библиотеке — как у раздачи с таким названием */
+function version(tail: string) {
+  return ranked([episode(5, tail)], LOSTFILM)[0]!
+}
+
+describe('апгрейд серии в библиотеке', () => {
+  const upgrade = (tail: string) =>
+    new Map([['2:5', { current: version(tail) }]])
+
+  it('чужую студию после окна своя заменяет сразу, без окна ожидания', () => {
+    const own = episode(5, 'WEB-DL 1080p | LostFilm')
+    const result = plan([own], {
+      wanted: new Set(),
+      upgrades: upgrade('WEB-DL 1080p | NewStudio'),
+    })
+
+    expect(grabbed(result)).toEqual([{ id: own.id, episodes: [5] }])
+    expect(result.found.size).toBe(0)
+  })
+
+  it('своя студия ниже ступенью — тоже шаг: озвучка раньше качества', () => {
+    const own = episode(5, 'WEB-DL 720p | LostFilm')
+    const result = plan([own], {
+      wanted: new Set(),
+      upgrades: upgrade('WEB-DL 1080p | NewStudio'),
+    })
+
+    expect(grabbed(result)).toEqual([{ id: own.id, episodes: [5] }])
+  })
+
+  it('чужая студия выше ступенью своей не заменяет — «не лучше скачанной»', () => {
+    const other = episode(5, 'WEB-DL 1080p | NewStudio')
+    const own = episode(5, 'WEB-DL 1080p | LostFilm')
+    const result = plan([other, own], {
+      wanted: new Set(),
+      upgrades: upgrade('WEB-DL 720p | LostFilm'),
+    })
+
+    expect(codes(result, other.id)).toEqual(['not_better'])
+    expect(grabbed(result)).toEqual([{ id: own.id, episodes: [5] }])
+  })
+
+  it('файл в cutoff не заменяется ничем', () => {
+    const own = episode(5, 'WEB-DL 1080p | LostFilm', { seeders: 900 })
+    const result = plan([own], {
+      wanted: new Set(),
+      upgrades: upgrade('WEB-DL 1080p | LostFilm'),
+    })
+
+    expect(result.grabs).toEqual([])
+    expect(codes(result, own.id)).toEqual(['not_better'])
+  })
+
+  it('посмотрели или выбрали вручную — не заменяем', () => {
+    const own = episode(5, 'WEB-DL 1080p | LostFilm')
+    const blocked = (reason: 'watched' | 'manual') =>
+      plan([own], {
+        wanted: new Set(),
+        upgrades: new Map([['2:5', { blocked: reason }]]),
+      })
+
+    expect(codes(blocked('watched'), own.id)).toEqual(['watched'])
+    expect(codes(blocked('manual'), own.id)).toEqual(['manual'])
+    expect(blocked('watched').grabs).toEqual([])
+  })
+
+  it('пак берётся ради нужной серии, а посмотренную рядом не заменяет', () => {
+    const pack = found(
+      'pack',
+      'Тихая гавань / Quiet Harbor / Сезон: 2 / Серии: 5-6 из 12 (2024) WEB-DL 1080p | LostFilm',
+      { size: 3 * GB },
+    )
+    const result = plan([pack], {
+      wanted: keys(6),
+      upgrades: new Map([['2:5', { blocked: 'watched' as const }]]),
+    })
+    const candidate = result.candidates[0]!
+
+    expect(grabbed(result)).toEqual([{ id: 'pack', episodes: [6] }])
+    expect(candidate.rejections).toEqual([])
+    expect(candidate.episodeRejections.get('2:5')?.code).toBe('watched')
+    expect(candidate.considered.map(item => item.episode)).toEqual([5, 6])
+  })
+})
+
+describe('фильм до цифрового релиза', () => {
+  const movie = (id: string, title: string) =>
+    found(id, `Сигнал / Signal (2026) ${title}`, { size: 8 * GB })
+  const moviePlan = (releases: FoundRelease[], until: Date | null) =>
+    planSeason(
+      rankReleases(releases, { kind: 'movie', profile: DEFAULT_PROFILE })
+        .ranked,
+      { season: 0, cutoffStep: 0 },
+      context({
+        kind: 'movie',
+        wanted: new Set(['0:0']),
+        waitHours: 72,
+        unavailableUntil: until,
+      }),
+    )
+  const date = new Date('2026-12-01T00:00:00')
+
+  it('раздача без цифрового источника ждёт релиза и окна не начинает', () => {
+    const unknown = movie('unknown', '1080p | Дубляж')
+    const result = moviePlan([unknown], date)
+
+    expect(result.candidates[0]!.rejections).toEqual([
+      {
+        code: 'not_available',
+        type: 'temporary',
+        params: { date: date.toISOString() },
+      },
+    ])
+    expect(result.found.size).toBe(0)
+    expect(moviePlan([unknown], null).candidates[0]!.rejections[0]).toEqual({
+      code: 'not_available',
+      type: 'temporary',
+    })
+  })
+
+  it('раздача из цифры доказывает релиз: окно 3 дня', () => {
+    const web = movie('web', 'WEB-DL 1080p | MVO')
+    const result = moviePlan([web], date)
+
+    expect(result.candidates[0]!.rejections.map(item => item.code)).toEqual([
+      'wait',
+    ])
+    expect(result.pending[0]!.until).toEqual(
+      new Date(NOW.getTime() + 72 * HOUR_MS),
+    )
+  })
+
+  it('экранка не берётся никогда', () => {
+    const cam = movie('cam', 'CAMRip | Дубляж')
+
+    expect(
+      moviePlan([cam], date).candidates[0]!.rejections.map(item => item.code),
+    ).toEqual(['screen_copy'])
+    expect(
+      planSeason(
+        rankReleases([cam], { kind: 'movie', profile: DEFAULT_PROFILE }).ranked,
+        { season: 0, cutoffStep: 0 },
+        context({ kind: 'movie', wanted: new Set(['0:0']) }),
+      ).candidates[0]!.rejections.map(item => item.code),
+    ).toContain('screen_copy')
+  })
+})
+
+describe('лучше на целый шаг', () => {
+  it('озвучка в cutoff сильнее ступени, при той же озвучке — ступень', () => {
+    const at = (voiceAtCutoff: boolean, step: number) => ({
+      voiceAtCutoff,
+      step,
+    })
+
+    expect(isUpgrade(at(true, 1), at(false, 0))).toBe(true)
+    expect(isUpgrade(at(false, 0), at(true, 1))).toBe(false)
+    expect(isUpgrade(at(false, 0), at(false, 1))).toBe(true)
+    expect(isUpgrade(at(true, 1), at(true, 1))).toBe(false)
   })
 })

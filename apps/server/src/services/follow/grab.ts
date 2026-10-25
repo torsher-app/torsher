@@ -32,6 +32,13 @@ import {
   trackTopic,
   updatedTopicFor,
 } from './topics.ts'
+import {
+  beginUpgrade,
+  markReplacements,
+  restoreUpgrades,
+  upgradeKeys,
+  upgradingRows,
+} from './upgrade.ts'
 import { episodeKey } from './wanted.ts'
 
 // Ссылка индексатора не ответила: следующая попытка того же кандидата — не
@@ -54,7 +61,15 @@ export function retryLater(
   now: Date,
 ): GrabResult {
   retryAt.set(candidate.id, now.getTime() + ACQUIRE_RETRY_MS)
-  updateEpisodes(follow, episodes, { pending: candidate, waitUntil: now })
+
+  // Серия в библиотеке кандидата не ждёт: апгрейд повторит следующий поиск
+  const upgrades = upgradeKeys(follow, episodes)
+
+  updateEpisodes(
+    follow,
+    episodes.filter(item => !upgrades.has(episodeKey(item))),
+    { pending: candidate, waitUntil: now },
+  )
   return 'later'
 }
 
@@ -146,16 +161,35 @@ export function updateEpisodes(
     db.update(followEpisodes).set(values).where(where).run()
 }
 
-/** Серия снова нужна: захват снят, кандидат забыт, первое появление остаётся */
+/**
+ * Серия снова нужна: захват снят, кандидат забыт, первое появление остаётся.
+ * Не удался апгрейд — серия возвращается к прежней закачке; серию, которая
+ * уже лежит в библиотеке от автоматики, не трогаем.
+ */
 export function resetEpisodes(follow: Follow, episodes: EpisodeRef[]) {
-  updateEpisodes(follow, episodes, {
-    torrentId: null,
-    fileIndex: null,
-    grabbedAt: null,
-    pending: null,
-    waitUntil: null,
-    stateNote: null,
-  })
+  restoreUpgrades(follow, upgradingRows(follow, episodes))
+
+  const db = getDb()
+
+  for (const where of episodesWhere(follow, episodes)) {
+    db.update(followEpisodes)
+      .set({
+        torrentId: null,
+        fileIndex: null,
+        grabbedAt: null,
+        pending: null,
+        waitUntil: null,
+        stateNote: null,
+      })
+      .where(
+        and(
+          where,
+          isNull(followEpisodes.downloadedAt),
+          isNull(followEpisodes.upgradeFrom),
+        ),
+      )
+      .run()
+  }
 }
 
 export function blockTorrent(
@@ -280,6 +314,9 @@ export async function startGrab(
   if (!present.length)
     return 'no_files'
 
+  const upgrades = upgradingRows(follow, present)
+  const upgrading = new Set(upgrades.map(episodeKey))
+
   try {
     await startDownload(torrent, [...new Set(files.values())])
   }
@@ -287,14 +324,20 @@ export async function startGrab(
     if (!(err instanceof InsufficientStorageError))
       throw err
 
+    // Апгрейд подождёт следующего поиска, серия остаётся в библиотеке
+    restoreUpgrades(follow, upgrades)
     // Кандидат остаётся: захват повторится, когда место освободится
-    updateEpisodes(follow, present, {
-      torrentId: null,
-      fileIndex: null,
-      grabbedAt: null,
-      pending: candidate,
-      stateNote: 'no_space',
-    })
+    updateEpisodes(
+      follow,
+      present.filter(item => !upgrading.has(episodeKey(item))),
+      {
+        torrentId: null,
+        fileIndex: null,
+        grabbedAt: null,
+        pending: candidate,
+        stateNote: 'no_space',
+      },
+    )
 
     return 'no_space'
   }
@@ -304,35 +347,52 @@ export async function startGrab(
       torrentId: torrent.id,
       fileIndex: files.get(episodeKey(episode))!,
       grabbedAt: now,
+      grabbedTitle: candidate.title,
       pending: null,
       waitUntil: null,
       stateNote: null,
     })
   }
 
+  markReplacements(
+    follow,
+    torrent.id,
+    new Map([...files].filter(([key]) => upgrading.has(key))),
+  )
+
   for (const season of new Set(present.map(item => item.season))) {
     pinFirstVoice(follow, season, candidate, options.ownStudio)
     trackTopic(follow, torrent, candidate, season, now)
-    recordHistory(
-      {
-        followId: follow.id,
-        titleId: follow.titleId,
-        kind: 'grabbed',
-        season,
-        episodes: present
-          .filter(item => item.season === season)
-          .map(item => item.episode),
-        releaseTitle: candidate.title,
-        indexerId: candidate.indexerId,
-        torrentId: torrent.id,
-        params: {
-          ...(candidate.studio && { studio: candidate.studio }),
-          ...(candidate.voiceType && { voiceType: candidate.voiceType }),
-          ...(candidate.quality && { quality: candidate.quality }),
+
+    for (const upgrade of [false, true]) {
+      const episodes = present.filter(
+        item =>
+          item.season === season && upgrading.has(episodeKey(item)) === upgrade,
+      )
+
+      if (!episodes.length)
+        continue
+
+      recordHistory(
+        {
+          followId: follow.id,
+          titleId: follow.titleId,
+          kind: 'grabbed',
+          season,
+          episodes: episodes.map(item => item.episode),
+          releaseTitle: candidate.title,
+          indexerId: candidate.indexerId,
+          torrentId: torrent.id,
+          params: {
+            ...(candidate.studio && { studio: candidate.studio }),
+            ...(candidate.voiceType && { voiceType: candidate.voiceType }),
+            ...(candidate.quality && { quality: candidate.quality }),
+            ...(upgrade && { upgrade: true }),
+          },
         },
-      },
-      now,
-    )
+        now,
+      )
+    }
   }
 
   // Уже скачанные целиком файлы ложатся в библиотеку сразу
@@ -407,9 +467,18 @@ export async function grabCandidate(
 
   const topic = updatedTopicFor(follow, candidate, torrent.infoHash)
 
-  // Новая версия отслеживаемой темы: не рядом со старой, а вместо неё
-  if (topic)
-    return startRefresh(follow, topic, torrent, candidate, episodes, now)
+  // Новая версия отслеживаемой темы: не рядом со старой, а вместо неё. Серии,
+  // которые уже лежат в библиотеке, подмена не заменяет
+  if (topic) {
+    const upgrades = upgradeKeys(follow, episodes)
+    const fresh = episodes.filter(item => !upgrades.has(episodeKey(item)))
+
+    return fresh.length
+      ? startRefresh(follow, topic, torrent, candidate, fresh, now)
+      : 'no_files'
+  }
+
+  beginUpgrade(follow, episodes, torrent.id)
 
   if (torrent.status === 'resolving') {
     updateEpisodes(follow, episodes, {

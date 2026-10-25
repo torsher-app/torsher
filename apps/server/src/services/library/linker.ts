@@ -1,9 +1,22 @@
-import type { LibraryFolder, MediaLinkMode, Torrent } from '../../db/schema.ts'
+import type {
+  LibraryFolder,
+  MediaFileRef,
+  MediaLinkMode,
+  Torrent,
+} from '../../db/schema.ts'
 import type { EngineTorrentState } from '../engine/index.ts'
 import type { TitleIdentity } from '../tmdb/index.ts'
 import type { LayoutEpisode, LayoutTitle } from './layout.ts'
-import { stat } from 'node:fs/promises'
-import { isAbsolute, join, relative, resolve, sep } from 'node:path'
+import { readdir, stat, unlink } from 'node:fs/promises'
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+  sep,
+} from 'node:path'
 import { matchFiles, parseRelease } from '@torsher/release-parser'
 import { and, eq, isNotNull, or } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
@@ -13,11 +26,20 @@ import { logFor } from '../logs/index.ts'
 import { findSidecars } from '../media/subtitles.ts'
 import { torrentDir } from '../storage/paths.ts'
 import { getTitleIdentity } from '../tmdb/index.ts'
-import { liveTorrents, setRetention } from '../torrents/index.ts'
+import { moveFileProgress } from '../sources/progress.ts'
+import {
+  downloadFiles,
+  getTorrent,
+  isVideoFile,
+  liveTorrents,
+  setRetention,
+} from '../torrents/index.ts'
 import {
   existingTitleFolder,
+  heldFileIndexes,
   managedFolder,
   managedFolders,
+  replacementLibraryFiles,
   torrentLibraryFiles,
 } from './files.ts'
 import { extensionOf, otherPath, sidecarPath, videoPath } from './layout.ts'
@@ -312,42 +334,114 @@ async function placeVideo(
   queueProbe(row.id)
 }
 
+/** Субтитры и дорожки рядом с видео (`<база>.…`), само видео остаётся */
+async function removeSidecars(folder: LibraryFolder, relPath: string) {
+  const absolute = libraryPath(folder, relPath)
+  const name = basename(absolute)
+  const prefix = `${name.slice(0, name.lastIndexOf('.'))}.`
+  const names = await readdir(dirname(absolute)).catch(() => [] as string[])
+
+  for (const item of names) {
+    if (item !== name && item.startsWith(prefix))
+      await unlink(join(dirname(absolute), item)).catch(() => {})
+  }
+}
+
 /**
- * Файл, перезалитый в новой версии раздачи (`stale`): когда новая версия
- * скачана целиком, она встаёт на место прежней. Строка, путь и прогресс те
- * же, проба — заново.
+ * Заменённый файл больше не качается целиком: раздача без других выбранных
+ * видео возвращается в кэш и раздаётся, пока её не вытеснят.
  */
-async function replaceStale(torrent: Torrent, state: EngineTorrentState) {
+async function releaseReplaced(ref: MediaFileRef) {
+  const torrent = getTorrent(ref.torrentId)
+
+  if (!torrent || torrent.retention !== 'keep')
+    return
+
+  const rest = (torrent.selectedFiles ?? []).filter(
+    index =>
+      index !== ref.fileIndex
+      && isVideoFile(torrent.files?.[index]?.path ?? ''),
+  )
+
+  if (rest.length)
+    await downloadFiles(torrent, rest)
+  else await setRetention(torrent, 'cache')
+}
+
+/**
+ * Новые версии файлов библиотеки из этой раздачи, скачанные целиком, встают
+ * на место прежних: перезалитый в новой версии темы файл (`stale`) и файл
+ * апгрейда из другой раздачи (`replacement_*`). Строка, путь серии и
+ * прогресс те же, проба — заново. У апгрейда субтитры прежней версии
+ * убираются (лягут свои), другое расширение — другое имя файла, а прежняя
+ * раздача файл больше не качает.
+ */
+async function replaceVersions(torrent: Torrent, state: EngineTorrentState) {
   const folders = new Map(
     managedFolders().map(folder => [folder.id, folder]),
   )
+  const versions = [
+    ...torrentLibraryFiles(torrent.id)
+      .filter(row => row.stale && row.fileIndex !== null)
+      .map(row => ({ row, fileIndex: row.fileIndex! })),
+    ...replacementLibraryFiles(torrent.id).map(row => ({
+      row,
+      fileIndex: row.replacementFileIndex!,
+    })),
+  ]
 
-  for (const row of torrentLibraryFiles(torrent.id)) {
+  for (const { row, fileIndex } of versions) {
     const folder = folders.get(row.folderId)
 
-    if (
-      !row.stale
-      || !folder
-      || row.fileIndex === null
-      || !isComplete(torrent, state, row.fileIndex)
-    ) {
+    if (!folder || !isComplete(torrent, state, fileIndex))
       continue
-    }
 
-    const source = await sourcePathOf(torrent, row.fileIndex)
+    const source = await sourcePathOf(torrent, fileIndex)
 
     if (!source)
       continue
 
+    const previous
+      = row.torrentId !== torrent.id
+        && row.torrentId !== null
+        && row.fileIndex !== null
+        ? { torrentId: row.torrentId, fileIndex: row.fileIndex }
+        : undefined
+    const upgrade = row.torrentId !== torrent.id
+    const extension = extensionOf(torrent.files![fileIndex]!.path)
+    const relPath
+      = upgrade && extension && extension !== extensionOf(row.relPath)
+        ? `${row.relPath.slice(0, row.relPath.lastIndexOf('.'))}.${extension}`
+        : row.relPath
+
     try {
-      const absolute = libraryPath(folder, row.relPath)
+      const absolute = libraryPath(folder, relPath)
+
+      if (relPath !== row.relPath && (await exists(absolute)))
+        throw new Error('Library path of the new version is taken')
+
+      if (upgrade)
+        await removeSidecars(folder, row.relPath)
+
       const linkMode = await replaceFile(source, absolute)
+
+      if (relPath !== row.relPath)
+        await unlink(libraryPath(folder, row.relPath)).catch(() => {})
+
       const placed = await stat(absolute)
 
       getDb()
         .update(mediaFiles)
         .set({
+          relPath,
+          torrentId: torrent.id,
+          fileIndex,
           stale: false,
+          replacementTorrentId: null,
+          replacementFileIndex: null,
+          ...(previous && {
+            replaced: [...(row.replaced ?? []), previous],
+          }),
           size: placed.size,
           mtime: placed.mtime,
           inode: placed.ino,
@@ -357,15 +451,26 @@ async function replaceStale(torrent: Torrent, state: EngineTorrentState) {
         })
         .where(eq(mediaFiles.id, row.id))
         .run()
+
+      if (previous) {
+        moveFileProgress(previous, { torrentId: torrent.id, fileIndex })
+        await releaseReplaced(previous).catch(err =>
+          logFor('storage').warn(
+            { err, torrentId: previous.torrentId },
+            'Replaced library file was not released',
+          ),
+        )
+      }
+
       logFor('storage').info(
-        { torrentId: torrent.id, fileIndex: row.fileIndex, linkMode },
+        { torrentId: torrent.id, fileIndex, linkMode, upgrade },
         'Library file replaced with the new version',
       )
       queueProbe(row.id)
     }
     catch (err) {
       logFor('storage').error(
-        { err, torrentId: torrent.id, fileIndex: row.fileIndex },
+        { err, torrentId: torrent.id, fileIndex },
         'Library file was not replaced',
       )
     }
@@ -552,9 +657,7 @@ async function linkTorrent(
     return linkOther(folder, torrent, state)
 
   const kind = torrent.titleId.startsWith('tmdb:movie:') ? 'movie' : 'series'
-  const placed = new Set(
-    torrentLibraryFiles(torrent.id).map(file => file.fileIndex),
-  )
+  const placed = heldFileIndexes(torrent.id)
   let planned = planVideos(torrent, kind)
   const ready = (items: PlannedVideo[]) =>
     items.filter(
@@ -595,7 +698,7 @@ async function linkTorrent(
       await placeVideo(folder, torrent, title, item)
   }
 
-  await replaceStale(torrent, state)
+  await replaceVersions(torrent, state)
   await placeSidecars(torrent, state)
   await releaseCopies(torrent, planned)
   return true

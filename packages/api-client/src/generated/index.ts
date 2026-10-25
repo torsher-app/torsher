@@ -2044,12 +2044,14 @@ export interface FollowActivityItemInput {
     | "pending"
     | "grabbed"
     | "downloaded"
+    | "upgraded"
     | "failed"
     | "blocklisted"
     | "missing"
     | "search"
     | "gap"
-    | "unsure";
+    | "unsure"
+    | "topic_updated";
   followId: string | null;
   titleId: string | null;
   /**
@@ -6566,12 +6568,14 @@ export interface FollowActivityItem {
     | "pending"
     | "grabbed"
     | "downloaded"
+    | "upgraded"
     | "failed"
     | "blocklisted"
     | "missing"
     | "search"
     | "gap"
-    | "unsure";
+    | "unsure"
+    | "topic_updated";
   followId: string | null;
   titleId: string | null;
   /**
@@ -12906,12 +12910,14 @@ export class Api<
           | "pending"
           | "grabbed"
           | "downloaded"
+          | "upgraded"
           | "failed"
           | "blocklisted"
           | "missing"
           | "search"
           | "gap"
-          | "unsure";
+          | "unsure"
+          | "topic_updated";
         /**
          * @minLength 1
          * @maxLength 100
