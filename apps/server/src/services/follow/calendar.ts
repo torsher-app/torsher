@@ -7,8 +7,8 @@ import { profileStates } from '../mine/index.ts'
 import { getSeason } from '../tmdb/index.ts'
 import { libraryEpisodeFiles, stateInputs } from './episodes.ts'
 import { followsOfProfile, isFollowing } from './index.ts'
-import { seasonVoice } from './pass.ts'
 import { episodeKey, episodeStates, localDay } from './wanted.ts'
+import { seasonVoice } from './voice.ts'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 // «Недавние» — за две недели, как окно целевых поисков после выхода серии

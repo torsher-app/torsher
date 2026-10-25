@@ -18,7 +18,6 @@ import { summaryOf } from '../mine/cards.ts'
 import { DEFAULT_PROFILE } from '../sources/profile.ts'
 import { rankReleases } from '../sources/rank.ts'
 import { knownResolutions } from '../sources/resolution.ts'
-import { getPinnedVoice } from '../sources/voices.ts'
 import { getTitleIdentity } from '../tmdb/index.ts'
 import { movieAvailableFrom } from './availability.ts'
 import { blockedHashes } from './blocklist.ts'
@@ -42,6 +41,7 @@ import {
 } from './topics.ts'
 import { recordTrackerEpisodes } from './trackerEpisodes.ts'
 import { upgradeTargets, versionOf } from './upgrade.ts'
+import { seasonVoice } from './voice.ts'
 import { compareEpisodes, episodeKey, WANTED_STATES } from './wanted.ts'
 
 // Фону язык зрителя не нужен: из деталей берётся только расписание, а
@@ -91,24 +91,6 @@ export async function followStates(
     BACKGROUND_LANGUAGE,
     now,
   )
-}
-
-/**
- * Своя студия сезона: закрепление сезона, иначе ближайшего прошлого сезона
- * («как в прошлых сериях» переходит в новый), иначе студия из правил.
- */
-export function seasonVoice(
-  follow: Follow,
-  season: number,
-): VoiceRef | undefined {
-  for (let number = season; number >= (season > 0 ? 1 : 0); number--) {
-    const pinned = getPinnedVoice(follow.titleId, number)
-
-    if (pinned)
-      return pinned
-  }
-
-  return follow.voiceStudio ? { studio: follow.voiceStudio } : undefined
 }
 
 function episodeRows(followId: string) {

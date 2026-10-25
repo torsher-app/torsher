@@ -8,9 +8,9 @@ import { followEpisodes, followSeasons } from '../../db/schema.ts'
 import { getPinnedVoice } from '../sources/voices.ts'
 import { cutoffStepOf } from './decide.ts'
 import { waitTargets } from './episodes.ts'
-import { seasonVoice } from './pass.ts'
 import { QUALITY_LADDERS } from './rank.ts'
 import { episodeKey, WANTED_STATES } from './wanted.ts'
+import { seasonVoice } from './voice.ts'
 
 type FollowStatus = Pick<
   NonNullable<TitleFollowResponse['follow']>,

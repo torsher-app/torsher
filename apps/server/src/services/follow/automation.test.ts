@@ -1,5 +1,6 @@
 import type { Follow } from '../../db/schema.ts'
 import type { EngineTorrentState } from '../engine/index.ts'
+import { Buffer } from 'node:buffer'
 import { eq } from 'drizzle-orm'
 import {
   afterEach,
@@ -31,7 +32,7 @@ import { sampleTorrentFile } from '../engine/fixtures/index.ts'
 import { clearSearchCache } from '../sources/cache.ts'
 import { tvOngoing } from '../tmdb/fixtures/index.ts'
 import { pinVoice } from '../sources/voices.ts'
-import { resetGrabRetries } from './grab.ts'
+import { continueGrabs, resetGrabRetries } from './grab.ts'
 import { followById } from './index.ts'
 import { followStates, grabPending } from './pass.ts'
 import { followAutomation } from './schedule.ts'
@@ -497,6 +498,74 @@ describe('автоматика «Следить»', () => {
       waitUntil: null,
     })
     // Чужая студия против студии из правил сезону не закрепляется
+    expect(getDb().select().from(titleVoices).all()).toEqual([])
+  })
+
+  it('чужая студия по magnet после окна не закрепляется, когда пришли метаданные', async () => {
+    libraryEpisodes(1, 2, 3, 4, 5, 6, 7)
+
+    const follow = insertFollow({ voiceStudio: 'LostFilm' })
+    const now = new Date()
+    const magnet = `magnet:?xt=urn:btih:${SINGLE_HASH}`
+    const torrent = getDb()
+      .insert(torrents)
+      .values({
+        infoHash: SINGLE_HASH,
+        name: SINGLE_HASH,
+        source: 'magnet',
+        magnet,
+        status: 'resolving',
+        origin: 'follow',
+        titleId: SERIES,
+      })
+      .returning()
+      .get()
+
+    // Окно ожидания вышло, захват ждёт метаданные magnet
+    getDb()
+      .insert(followEpisodes)
+      .values({
+        followId: follow.id,
+        season: 2,
+        episode: 8,
+        firstSeenAt: new Date(now.getTime() - 24 * HOUR_MS),
+        torrentId: torrent.id,
+        grabbedAt: now,
+        pending: {
+          id: 'magnet-candidate',
+          title:
+            'Тихая гавань / Quiet Harbor / Сезон: 2 / Серии: 8 из 12 (2024) WEB-DL 1080p | NewStudio',
+          infoHash: SINGLE_HASH,
+          magnet,
+          seeders: 30,
+          studio: 'NewStudio',
+        },
+      })
+      .run()
+
+    await continueGrabs(followById, now)
+    expect(rows(follow.id)[0]!.fileIndex).toBeNull()
+
+    inspected = single
+    getDb()
+      .update(torrents)
+      .set({
+        status: 'ready',
+        name: single.name,
+        torrentFile: Buffer.from(sampleTorrentFile()),
+        pieceLength: single.pieceLength,
+        files: single.files.map(file => ({
+          path: file.path,
+          size: file.length,
+          padding: file.padding,
+        })),
+      })
+      .where(eq(torrents.id, torrent.id))
+      .run()
+
+    await continueGrabs(followById, new Date(now.getTime() + 60_000))
+
+    expect(rows(follow.id)[0]).toMatchObject({ fileIndex: 0, pending: null })
     expect(getDb().select().from(titleVoices).all()).toEqual([])
   })
 
