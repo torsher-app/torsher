@@ -16,6 +16,7 @@ import {
   encodeInputArgs,
   encodeOutputArgs,
 } from './encode.ts'
+import { untrustedInputArgs } from './inputSafety.ts'
 import { mergeCues, parseWebVtt } from './webvtt.ts'
 
 /** Желаемая длина сегмента: короче — больше запросов, длиннее — дольше старт */
@@ -40,6 +41,18 @@ const AHEAD_SECONDS = 180
 const THROTTLE_CHECK_MS = 5000
 // ffmpeg ждёт куски от пиров; совсем мёртвый поток он бросит сам
 const READ_TIMEOUT_US = 120_000_000
+
+/** Вход запуска: поток движка или файл библиотеки */
+export function inputArgs(url: string) {
+  return [
+    ...untrustedInputArgs(url),
+    '-rw_timeout',
+    String(READ_TIMEOUT_US),
+    '-i',
+    url,
+  ]
+}
+
 // Сдвиг меток в сегментах: с B-кадрами DTS начала файла отрицательный, и
 // MPEG-TS сдвинул бы первый запуск иначе, чем запуски с середины. hls.js
 // сводит время по первому загруженному сегменту, поэтому общий сдвиг ему
@@ -679,7 +692,7 @@ export class HlsTranscode {
     if (from > 0)
       args.push('-ss', (plan ? origin : seekTargetOf(starts, from)).toFixed(3))
 
-    args.push('-rw_timeout', String(READ_TIMEOUT_US), '-i', url)
+    args.push(...inputArgs(url))
 
     if (plan) {
       args.push(

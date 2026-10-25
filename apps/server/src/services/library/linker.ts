@@ -3,7 +3,7 @@ import type { EngineTorrentState } from '../engine/index.ts'
 import type { TitleIdentity } from '../tmdb/index.ts'
 import type { LayoutEpisode, LayoutTitle } from './layout.ts'
 import { stat } from 'node:fs/promises'
-import { join, relative, resolve, sep } from 'node:path'
+import { isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { matchFiles, parseRelease } from '@torsher/release-parser'
 import { and, eq, isNotNull, or } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
@@ -123,10 +123,25 @@ function metadataLanguage() {
   )
 }
 
-function isInside(base: string, path: string) {
+export function isInside(base: string, path: string) {
   const rel = relative(base, path)
 
-  return rel !== '' && !rel.startsWith('..') && !rel.startsWith(sep)
+  return (
+    rel !== ''
+    && rel !== '..'
+    && !rel.startsWith(`..${sep}`)
+    && !isAbsolute(rel)
+  )
+}
+
+/** Путь в папке библиотеки; имя из раздачи не выводит запись за её пределы */
+export function libraryPath(folder: LibraryFolder, relPath: string) {
+  const absolute = join(folder.path, ...relPath.split('/'))
+
+  if (!isInside(folder.path, absolute))
+    throw new Error('Library path is outside the folder')
+
+  return absolute
 }
 
 /**
@@ -192,7 +207,7 @@ async function freeVideoPath(
 
   for (const version of versions) {
     const relPath = make(version)
-    const found = await exists(join(folder.path, relPath))
+    const found = await exists(libraryPath(folder, relPath))
 
     // Тот же файл уже лежит (база потеряла запись) — регистрируем его
     if (!found || found.ino === sourceInode)
@@ -216,45 +231,51 @@ async function placeVideo(
   const file = torrent.files![planned.fileIndex]!
   const existingFolder = existingTitleFolder(folder.id, torrent.titleId!)
   const quality = parseRelease(torrent.name).quality
-  const target = await freeVideoPath(
-    folder,
-    (version) => {
-      const path = videoPath(
-        title,
-        extensionOf(file.path),
-        planned.episode,
-        version,
-      )
+  const notPlaced = (err: unknown) =>
+    logFor('storage').error(
+      { err, torrentId: torrent.id, fileIndex: planned.fileIndex },
+      'Library file was not placed',
+    )
+  let target: Awaited<ReturnType<typeof freeVideoPath>>
 
-      // Новые файлы тайтла — в его уже существующую папку
-      return existingFolder
-        ? [existingFolder, ...path.split('/').slice(2)].join('/')
-        : path
-    },
-    source,
-    quality,
-  )
+  try {
+    target = await freeVideoPath(
+      folder,
+      (version) => {
+        const path = videoPath(
+          title,
+          extensionOf(file.path),
+          planned.episode,
+          version,
+        )
+
+        // Новые файлы тайтла — в его уже существующую папку
+        return existingFolder
+          ? [existingFolder, ...path.split('/').slice(2)].join('/')
+          : path
+      },
+      source,
+      quality,
+    )
+  }
+  catch (err) {
+    notPlaced(err)
+    return
+  }
 
   if (!target)
     return
 
-  const absolute = join(folder.path, ...target.relPath.split('/'))
+  let absolute: string
   let linkMode: MediaLinkMode
 
-  if (target.adopt) {
-    linkMode = 'hardlink'
+  try {
+    absolute = libraryPath(folder, target.relPath)
+    linkMode = target.adopt ? 'hardlink' : await placeFile(source, absolute)
   }
-  else {
-    try {
-      linkMode = await placeFile(source, absolute)
-    }
-    catch (err) {
-      logFor('storage').error(
-        { err, torrentId: torrent.id, fileIndex: planned.fileIndex },
-        'Library file was not placed',
-      )
-      return
-    }
+  catch (err) {
+    notPlaced(err)
+    return
   }
 
   const placed = await stat(absolute)
@@ -331,17 +352,17 @@ async function placeSidecars(torrent: Torrent, state: EngineTorrentState) {
       if (!isComplete(torrent, state, sidecar.fileIndex))
         continue
 
-      const absolute = join(folder.path, ...relPath.split('/'))
-
-      if (await exists(absolute))
-        continue
-
-      const source = await sourcePathOf(torrent, sidecar.fileIndex)
-
-      if (!source)
-        continue
-
       try {
+        const absolute = libraryPath(folder, relPath)
+
+        if (await exists(absolute))
+          continue
+
+        const source = await sourcePathOf(torrent, sidecar.fileIndex)
+
+        if (!source)
+          continue
+
         await placeFile(source, absolute)
       }
       catch (err) {
@@ -416,10 +437,11 @@ async function linkOther(
       continue
 
     const relPath = otherPath(torrent.name, file.path)
-    const absolute = join(folder.path, ...relPath.split('/'))
+    let absolute: string
     let linkMode: MediaLinkMode
 
     try {
+      absolute = libraryPath(folder, relPath)
       linkMode = (await exists(absolute))
         ? 'hardlink'
         : await placeFile(source, absolute)

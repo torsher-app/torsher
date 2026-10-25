@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { parseCsv } from './csv.ts'
 import { buildZip } from './fixtures/zip.ts'
 import { ImportFormatError, parseImportFiles } from './formats.ts'
-import { readZip } from './zip.ts'
+import { readZip, ZipError } from './zip.ts'
 
 function file(name: string, content: string | Buffer) {
   return {
@@ -61,6 +61,25 @@ describe('readZip', () => {
     const zip = buildZip({ 'ratings.csv': 'x'.repeat(2048) })
 
     expect(() => readZip(zip, () => true, 1024)).toThrow()
+  })
+
+  it('смещения за пределами архива — ZipError, а не RangeError', () => {
+    const zip = buildZip({ 'ratings.csv': 'a,b' })
+    const eocd = zip.length - 22
+    const directory = zip.readUInt32LE(eocd + 16)
+
+    const farDirectory = Buffer.from(zip)
+
+    farDirectory.writeUInt32LE(0xFFFFFF00, eocd + 16)
+    expect(() => readZip(farDirectory, () => true, 1024)).toThrow(ZipError)
+
+    const farEntry = Buffer.from(zip)
+
+    farEntry.writeUInt32LE(0xFFFFFF00, directory + 42)
+    expect(() => readZip(farEntry, () => true, 1024)).toThrow(ZipError)
+    expect(() => parseImportFiles([file('export.zip', farEntry)])).toThrow(
+      expect.objectContaining({ kind: 'broken' }),
+    )
   })
 })
 

@@ -1,6 +1,7 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { Buffer } from 'node:buffer'
-import { gunzipSync } from 'node:zlib'
+import { promisify } from 'node:util'
+import { gunzip } from 'node:zlib'
 import { backupErrorResponse } from '../dto/backups.ts'
 import { messageResponse } from '../dto/common.ts'
 import {
@@ -32,20 +33,45 @@ import {
 // Экспорт сервера за годы просмотров — несколько мегабайт; base64 — на треть больше
 const MAX_EXPORT_BYTES = 50 * 1024 * 1024
 const BODY_LIMIT = Math.ceil(MAX_EXPORT_BYTES / 3) * 4 + 64 * 1024
+// JSON экспорта жмётся раз в десять; предел не даёт gzip-бомбе занять память
+const MAX_INFLATED_EXPORT_BYTES = 256 * 1024 * 1024
+
+const gunzipAsync = promisify(gunzip)
 
 const guardResponses = {
   401: messageResponse,
 }
 
-function textOf(data: string) {
+export async function readExportText(
+  data: string,
+  maxInflatedBytes = MAX_INFLATED_EXPORT_BYTES,
+) {
   const raw = Buffer.from(data, 'base64')
 
   if (raw.length > MAX_EXPORT_BYTES)
     throw new DocumentError('broken')
 
-  return (raw[0] === 0x1F && raw[1] === 0x8B ? gunzipSync(raw) : raw).toString(
-    'utf8',
-  )
+  if (raw[0] !== 0x1F || raw[1] !== 0x8B)
+    return raw.toString('utf8')
+
+  try {
+    const inflated = await gunzipAsync(raw, {
+      maxOutputLength: maxInflatedBytes,
+    })
+
+    return inflated.toString('utf8')
+  }
+  catch (err) {
+    if (
+      err instanceof Error
+      && 'code' in err
+      && err.code === 'ERR_BUFFER_TOO_LARGE'
+    ) {
+      throw new DocumentError('broken', { cause: err })
+    }
+
+    throw err
+  }
 }
 
 /** Перенос данных между серверами: экспорт и импорт файла `torsher-export` */
@@ -103,7 +129,9 @@ export const transferRoutes: FastifyPluginAsyncZod = async (app) => {
     },
     async (request, reply) => {
       try {
-        const document = parseExportDocument(textOf(request.body.data))
+        const document = parseExportDocument(
+          await readExportText(request.body.data),
+        )
 
         return await previewServerImport(document, request.body.password)
       }
@@ -111,11 +139,11 @@ export const transferRoutes: FastifyPluginAsyncZod = async (app) => {
         if (err instanceof DocumentError)
           return reply.code(400).send({ message: err.message, kind: err.kind })
 
-        // Не gzip, хотя начинается как gzip
+        // Не gzip, хотя начинается как gzip, или обрезанный gzip
         if (
           err instanceof Error
           && 'code' in err
-          && err.code === 'Z_DATA_ERROR'
+          && (err.code === 'Z_DATA_ERROR' || err.code === 'Z_BUF_ERROR')
         ) {
           return reply.code(400).send({ message: err.message, kind: 'broken' })
         }

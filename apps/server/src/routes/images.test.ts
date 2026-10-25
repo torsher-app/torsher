@@ -29,6 +29,7 @@ describe('get /api/img/:size/:file', () => {
     )
     expect(res.statusCode).toBe(200)
     expect(res.headers['content-type']).toBe('image/jpeg')
+    expect(res.headers['x-content-type-options']).toBe('nosniff')
     expect(res.headers['cache-control']).toBe(
       'public, max-age=15552000, immutable',
     )
@@ -38,6 +39,7 @@ describe('get /api/img/:size/:file', () => {
   it.each([
     '/api/img/w9999/abc123.jpg',
     '/api/img/w342/abc123.html',
+    '/api/img/w500/abc123.svg',
     '/api/img/w342/%2E%2E%2Fabc.jpg',
     '/api/img/w342/sub%2Fabc.jpg',
   ])('отвечает 400 на %s', async (url) => {
@@ -45,6 +47,19 @@ describe('get /api/img/:size/:file', () => {
 
     expect(res.statusCode).toBe(400)
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('берёт тип ответа из расширения файла, а не от TMDB', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(new Uint8Array([1, 2, 3]), {
+        headers: { 'content-type': 'image/svg+xml' },
+      }),
+    )
+
+    const res = await app.inject({ url: '/api/img/w500/logo.png' })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.headers['content-type']).toBe('image/png')
   })
 
   it('отвечает 404, если картинки нет', async () => {

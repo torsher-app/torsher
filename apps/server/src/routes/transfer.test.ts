@@ -41,6 +41,7 @@ import {
   serverImportDeps,
 } from '../services/transfer/serverImport.ts'
 import { signToken } from '../utils/token.ts'
+import { readExportText } from './transfer.ts'
 
 const app = createApp()
 
@@ -460,6 +461,25 @@ describe('server import', () => {
     )
 
     expect(newer.json().kind).toBe('newerVersion')
+
+    const packed = gzipSync(body)
+    const truncated = await preview(packed.subarray(0, packed.length >> 1))
+
+    expect(truncated.statusCode).toBe(400)
+    expect(truncated.json().kind).toBe('broken')
+  })
+
+  it('rejects a gzip that inflates past the limit', async () => {
+    const bomb = gzipSync(Buffer.alloc(1024 * 1024)).toString('base64')
+
+    await expect(readExportText(bomb, 64 * 1024)).rejects.toMatchObject({
+      name: 'DocumentError',
+      kind: 'broken',
+    })
+
+    const small = gzipSync('{"ok":true}').toString('base64')
+
+    await expect(readExportText(small, 64 * 1024)).resolves.toBe('{"ok":true}')
   })
 
   it('does not start without the pre-import backup', async () => {

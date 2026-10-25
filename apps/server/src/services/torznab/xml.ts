@@ -25,6 +25,13 @@ export function parseXml(body: string): XmlNode {
   if (!body.trimStart().startsWith('<'))
     throw new Error('Response is not XML')
 
+  // Torznab не объявляет DTD, а свои сущности парсер раскрывает: ответ
+  // раздувается в памяти во много раз. DTD парсер принимает на любой глубине,
+  // а вырезание CDATA и комментариев обходится через атрибуты и PI, поэтому
+  // проверяется весь текст, даже ценой отказа на `<!DOCTYPE` в описании
+  if (/<!DOCTYPE/i.test(body))
+    throw new Error('Response declares a DOCTYPE')
+
   return parser.parse(body, true) as XmlNode
 }
 

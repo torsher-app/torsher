@@ -7,6 +7,7 @@ import { config } from '../../config.ts'
 import { getDb } from '../../db/index.ts'
 import { mediaFiles } from '../../db/schema.ts'
 import { logFor } from '../logs/index.ts'
+import { untrustedInputArgs } from '../media/inputSafety.ts'
 
 // Ширина кадра: карточка 16:9 на ТВ — 420 px макета, с запасом на 1080p
 const THUMB_WIDTH = 640
@@ -47,28 +48,37 @@ async function slot<T>(work: () => Promise<T>) {
  * Кадр около 10 % длительности (не раньше 1 с): фильтр `thumbnail` берёт самый
  * типичный кадр пачки, без чёрных; поворот видео с телефона ffmpeg учитывает сам
  */
-function render(source: string, target: string, duration: number | null) {
+export function thumbArgs(
+  source: string,
+  target: string,
+  duration: number | null,
+) {
   const at = Math.max(1, (duration ?? 0) * 0.1)
 
+  return [
+    '-v',
+    'error',
+    '-ss',
+    at.toFixed(2),
+    ...untrustedInputArgs(source),
+    '-i',
+    source,
+    '-frames:v',
+    '1',
+    '-vf',
+    `thumbnail=30,scale=${THUMB_WIDTH}:-2`,
+    '-q:v',
+    '4',
+    '-y',
+    target,
+  ]
+}
+
+function render(source: string, target: string, duration: number | null) {
   return new Promise<void>((resolve, reject) => {
     execFile(
       config.ffmpegPath,
-      [
-        '-v',
-        'error',
-        '-ss',
-        at.toFixed(2),
-        '-i',
-        source,
-        '-frames:v',
-        '1',
-        '-vf',
-        `thumbnail=30,scale=${THUMB_WIDTH}:-2`,
-        '-q:v',
-        '4',
-        '-y',
-        target,
-      ],
+      thumbArgs(source, target, duration),
       { timeout: THUMB_TIMEOUT_MS },
       err => (err ? reject(err) : resolve()),
     )
