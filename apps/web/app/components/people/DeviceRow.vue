@@ -79,7 +79,10 @@ const seenAt = computed(
         v-if="device.watching"
         class="flex items-center gap-1.5 font-medium text-info"
       >
-        <span class="size-1.5 rounded-full bg-current" aria-hidden="true" />
+        <span
+          class="size-1.5 -translate-y-px rounded-full bg-current"
+          aria-hidden="true"
+        />
         {{ t("panel.people.devices.watching") }}
       </span>
       <span v-else :title="formatDateTime(seenAt, locale)">

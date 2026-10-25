@@ -111,7 +111,11 @@ function onInteractOutside(event: Event) {
         <header
           class="flex h-12 shrink-0 items-center gap-2 border-b pr-2 pl-4"
         >
-          <IndexerStatusIcon :view="view" :label="label" />
+          <IndexerStatusIcon
+            :view="view"
+            :label="label"
+            class="-translate-y-px"
+          />
           <SheetTitle class="min-w-0 flex-1 truncate text-[15px] font-semibold">
             {{ shown.name }}
           </SheetTitle>
@@ -149,7 +153,7 @@ function onInteractOutside(event: Event) {
                 t("panel.sources.card.search")
               }}</label>
             </dt>
-            <dd>
+            <dd class="flex">
               <Switch
                 id="indexer-card-enabled"
                 :model-value="shown.enabled"

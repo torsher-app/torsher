@@ -57,7 +57,7 @@ const groups = computed(() => {
   >
     <component
       :is="channelIcons[channel.kind]"
-      class="mt-0.5 size-4 text-muted-foreground"
+      class="mt-px size-4 text-muted-foreground"
       aria-hidden="true"
     />
     <span class="grid min-w-0 gap-0.5">
@@ -70,7 +70,10 @@ const groups = computed(() => {
         class="inline-flex items-center gap-1 text-[12.5px] text-destructive tabular-nums"
         :title="formatDateTime(channel.lastError.at, locale)"
       >
-        <CircleAlertIcon class="size-3.5 shrink-0" aria-hidden="true" />
+        <CircleAlertIcon
+          class="size-3.5 shrink-0 -translate-y-px"
+          aria-hidden="true"
+        />
         {{
           t("panel.notifications.failing", {
             reason: t(

@@ -46,6 +46,7 @@ const repeat = computed(() => props.entry.repeat ?? 1)
     <LogLevelIcon
       :level="entry.level"
       :label="t(`panel.logs.levels.${entry.level}`)"
+      class="-translate-y-px"
     />
     <span class="min-w-0 truncate text-[13px] text-muted-foreground">
       {{ t(logSourceLabels[entry.source]) }}

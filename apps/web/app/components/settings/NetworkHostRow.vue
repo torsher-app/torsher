@@ -46,7 +46,7 @@ const hasOwnRoute = computed(
     <span
       :class="
         cn(
-          'row-span-2 mt-0.5 grid size-4 place-items-center self-start sm:row-span-1 sm:mt-0 sm:self-center',
+          'row-span-2 grid size-4 place-items-center self-start sm:row-span-1 sm:-translate-y-px sm:self-center',
           toneText[view.tone],
         )
       "

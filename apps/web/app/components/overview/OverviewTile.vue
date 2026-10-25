@@ -24,7 +24,11 @@ defineProps<{
         <span
           class="flex items-center gap-2 text-[13px] font-medium text-muted-foreground"
         >
-          <component :is="icon" class="size-4 shrink-0" aria-hidden="true" />
+          <component
+            :is="icon"
+            class="size-4 shrink-0 -translate-y-px"
+            aria-hidden="true"
+          />
           {{ title }}
           <slot name="badge" />
         </span>

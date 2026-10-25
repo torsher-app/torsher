@@ -109,7 +109,7 @@ const progressClass = {
     <span
       class="col-span-2 col-start-2 row-start-2 flex min-w-0 items-center gap-2 text-[13px] whitespace-nowrap md:col-span-1 md:col-start-3 md:row-start-1"
     >
-      <DownloadStatusIcon :view="view" :label="label" />
+      <DownloadStatusIcon :view="view" :label="label" class="-translate-y-px" />
       <span class="truncate" :class="reason ? toneText[view.tone] : undefined">
         {{ reason || label }}
       </span>

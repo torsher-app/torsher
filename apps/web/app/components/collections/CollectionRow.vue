@@ -53,7 +53,7 @@ const visibility = computed(() =>
     "
   >
     <BookmarkIcon
-      class="row-span-2 mt-0.5 size-4 self-start justify-self-center text-muted-foreground sm:row-span-1 sm:mt-0 sm:self-center"
+      class="row-span-2 mt-1.5 size-4 self-start justify-self-center text-muted-foreground sm:row-span-1 sm:mt-0 sm:self-center"
       aria-hidden="true"
     />
     <button
