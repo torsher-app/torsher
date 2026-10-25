@@ -66,7 +66,7 @@ async function unpack(path: string, dataDir: string) {
   const target = join(dataDir, 'unpacked.db')
 
   rmSync(target, { force: true })
-  await gunzipToFile(path, target)
+  await gunzipToFile(path, target, Number.POSITIVE_INFINITY)
 
   return new Database(target, { readonly: true })
 }

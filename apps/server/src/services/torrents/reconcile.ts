@@ -1,7 +1,7 @@
 import type { Torrent } from '../../db/schema.ts'
 import { constants } from 'node:fs'
 import { access, stat } from 'node:fs/promises'
-import { relative, resolve, sep } from 'node:path'
+import { isAbsolute, relative, resolve, sep } from 'node:path'
 import { eq } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import { torrents } from '../../db/schema.ts'
@@ -12,7 +12,12 @@ import { deleteTorrent, liveTorrents } from './index.ts'
 function isInside(base: string, path: string) {
   const rel = relative(base, path)
 
-  return rel !== '' && !rel.startsWith('..') && !rel.startsWith(sep)
+  return (
+    rel !== ''
+    && rel !== '..'
+    && !rel.startsWith(`..${sep}`)
+    && !isAbsolute(rel)
+  )
 }
 
 async function hasBytes(path: string) {

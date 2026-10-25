@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process'
 import { config } from '../../config.ts'
+import { untrustedInputArgs } from './inputSafety.ts'
 
 export type Container = 'mp4' | 'webm' | 'mkv' | 'avi' | 'ts' | 'other'
 
@@ -261,19 +262,24 @@ export function parseProbe(output: ProbeOutput, fileName: string): MediaInfo {
 // пока движок не получит эти куски от пиров
 const PROBE_TIMEOUT_MS = 120_000
 
+export function probeArgs(url: string) {
+  return [
+    '-v',
+    'error',
+    '-print_format',
+    'json',
+    '-show_format',
+    '-show_streams',
+    ...untrustedInputArgs(url),
+    url,
+  ]
+}
+
 function runProbe(url: string, signal?: AbortSignal) {
   return new Promise<ProbeOutput>((resolve, reject) => {
     execFile(
       config.ffprobePath,
-      [
-        '-v',
-        'error',
-        '-print_format',
-        'json',
-        '-show_format',
-        '-show_streams',
-        url,
-      ],
+      probeArgs(url),
       { timeout: PROBE_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024, signal },
       (err, stdout) => {
         if (err) {

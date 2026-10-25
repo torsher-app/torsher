@@ -33,11 +33,31 @@ function findEndOfCentralDir(data: Buffer) {
 }
 
 /**
+ * Смещения и размеры берутся из самого архива: выход за буфер или битый
+ * deflate — тоже порча архива, а не сбой сервера
+ */
+export function readZip(
+  data: Buffer,
+  accept: (name: string) => boolean,
+  maxBytes: number,
+): ZipEntry[] {
+  try {
+    return readEntries(data, accept, maxBytes)
+  }
+  catch (err) {
+    if (err instanceof ZipError)
+      throw err
+
+    throw new ZipError('Broken zip archive', { cause: err })
+  }
+}
+
+/**
  * Читает архив целиком в памяти: файлы экспорта сервисов маленькие.
  * Только stored и deflate, без zip64 и шифрования. `maxBytes` — предел
  * распакованного объёма, чтобы архив-бомба не съел память.
  */
-export function readZip(
+function readEntries(
   data: Buffer,
   accept: (name: string) => boolean,
   maxBytes: number,

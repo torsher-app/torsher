@@ -261,6 +261,27 @@ export async function readEncHeader(path: string) {
 }
 
 /**
+ * Обрывает распаковку, когда снимок перерос предел: сжатая копия бывает
+ * загрузкой, и gzip-бомба иначе заняла бы весь диск
+ */
+function limitBytes(maxBytes: number) {
+  let written = 0
+
+  return new Transform({
+    transform(chunk: Buffer, _encoding, callback) {
+      written += chunk.length
+
+      if (written > maxBytes) {
+        callback(new BackupError('no_space'))
+        return
+      }
+
+      callback(null, chunk)
+    },
+  })
+}
+
+/**
  * Расшифровка и распаковка во временный файл. Файл годится только после
  * успешной проверки тега в конце: до неё он может быть подменён, поэтому
  * при любой ошибке удаляется.
@@ -270,6 +291,7 @@ export async function decryptToFile(
   targetPath: string,
   header: EncHeader,
   key64: Buffer,
+  maxBytes: number,
 ) {
   const handle = await open(sourcePath, 'r')
   let size: number
@@ -304,6 +326,7 @@ export async function decryptToFile(
       }),
       decipher,
       createGunzip(),
+      limitBytes(maxBytes),
       createWriteStream(targetPath, SNAPSHOT_FILE),
     )
   }
@@ -313,11 +336,16 @@ export async function decryptToFile(
   }
 }
 
-export async function gunzipToFile(sourcePath: string, targetPath: string) {
+export async function gunzipToFile(
+  sourcePath: string,
+  targetPath: string,
+  maxBytes: number,
+) {
   try {
     await pipeline(
       createReadStream(sourcePath),
       createGunzip(),
+      limitBytes(maxBytes),
       createWriteStream(targetPath, SNAPSHOT_FILE),
     )
   }

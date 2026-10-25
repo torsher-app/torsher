@@ -1,13 +1,26 @@
 import { Buffer } from 'node:buffer'
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { join } from 'node:path'
+import { Readable } from 'node:stream'
+import { buffer } from 'node:stream/consumers'
+import { gzipSync } from 'node:zlib'
 import Database from 'better-sqlite3'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { MIGRATIONS_DIR } from '../../db/index.ts'
 import { createBackup } from './create.ts'
 import {
+  createEncryptStream,
+  decryptToFile,
   deriveKeyMaterial,
   ENC_HEADER_BYTES,
+  gunzipToFile,
   parseEncHeader,
 } from './crypto.ts'
 import {
@@ -17,6 +30,7 @@ import {
   tempDataDir,
 } from './fixtures/index.ts'
 import { openBackupFile, verifyBackupFile } from './restore-request.ts'
+import { backupDeps } from './space.ts'
 
 const secretKey = Buffer.alloc(32, 3)
 let dataDir: string
@@ -193,5 +207,73 @@ describe('формат копии', () => {
     expect(() => parseEncHeader(withParams(18, 8, 4))).toThrow(
       expect.objectContaining({ kind: 'corrupt' }),
     )
+  })
+})
+
+describe('предел распаковки', () => {
+  const zeros = gzipSync(Buffer.alloc(1024 * 1024))
+  const limit = 64 * 1024
+
+  it('gzip: снимок больше предела — no_space, начатый файл удалён', async () => {
+    const source = join(dir, 'zeros.db.gz')
+    const target = join(dir, 'zeros.db')
+
+    writeFileSync(source, zeros)
+
+    await expect(gunzipToFile(source, target, limit)).rejects.toMatchObject({
+      kind: 'no_space',
+    })
+    expect(existsSync(target)).toBe(false)
+  })
+
+  it('.enc: снимок больше предела — no_space, начатый файл удалён', async () => {
+    const source = join(dir, 'zeros.db.gz.enc')
+    const target = join(dir, 'zeros-enc.db')
+
+    writeFileSync(
+      source,
+      await buffer(Readable.from([zeros]).pipe(createEncryptStream(material))),
+    )
+
+    const header = parseEncHeader(readFileSync(source))
+
+    await expect(
+      decryptToFile(
+        source,
+        target,
+        header,
+        Buffer.from(material.key64, 'base64'),
+        limit,
+      ),
+    ).rejects.toMatchObject({ kind: 'no_space' })
+    expect(existsSync(target)).toBe(false)
+  })
+
+  it('места на томе меньше запаса — no_space, распаковка не начинается', async () => {
+    const tmpDir = verifyOptions().tmpDir
+    const before = readdirSync(tmpDir)
+    const spy = vi
+      .spyOn(backupDeps, 'diskUsage')
+      .mockResolvedValue({ total: 1e9, free: 1024 })
+
+    try {
+      await expect(verify(plain)).rejects.toMatchObject({ kind: 'no_space' })
+      expect(readdirSync(tmpDir)).toEqual(before)
+
+      // Маленькой копии хватает и почти полного тома
+      spy.mockResolvedValue({ total: 1e9, free: 100 * 1024 * 1024 })
+      await expect(verify(plain)).resolves.toMatchObject({
+        size: expect.any(Number),
+      })
+
+      // Место узнать не удалось — распаковки без предела нет
+      spy.mockRejectedValue(
+        Object.assign(new Error('statfs'), { code: 'EIO' }),
+      )
+      await expect(verify(plain)).rejects.toMatchObject({ kind: 'io' })
+    }
+    finally {
+      spy.mockRestore()
+    }
   })
 })

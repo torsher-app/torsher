@@ -152,9 +152,25 @@ export async function verifyBackupFile(
   )
 
   try {
-    if (opened.kind === 'enc')
-      await decryptToFile(path, snapshotPath, opened.header, opened.key64)
-    else await gunzipToFile(path, snapshotPath)
+    // Размер снимка до распаковки неизвестен: предел — свободное место тома
+    const maxBytes
+      = (await backupDeps.diskUsage(options.tmpDir)).free - SPACE_MARGIN
+
+    if (maxBytes <= 0)
+      throw new BackupError('no_space')
+
+    if (opened.kind === 'enc') {
+      await decryptToFile(
+        path,
+        snapshotPath,
+        opened.header,
+        opened.key64,
+        maxBytes,
+      )
+    }
+    else {
+      await gunzipToFile(path, snapshotPath, maxBytes)
+    }
 
     const size = (await stat(snapshotPath)).size
     // Распакованная копия уже на диске: ещё столько же нужно копии текущей базы

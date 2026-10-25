@@ -17,10 +17,19 @@ const IMAGE_SIZES = [
   'original',
 ] as const
 
+// Тип ответа — по расширению, а не от апстрима: свой origin не отдаёт чужой
+// документ как HTML или SVG со скриптом
+const CONTENT_TYPES: Record<string, string> = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+}
+
 const imageParams = z.object({
   size: z.enum(IMAGE_SIZES),
   // Имя файла TMDB без каталогов: прокси не превращается в открытый прокси к хосту
-  file: z.string().regex(/^[\w-]+\.(?:jpg|jpeg|png|svg|webp)$/),
+  file: z.string().regex(/^[\w-]+\.(?:jpg|jpeg|png|webp)$/),
 })
 
 /**
@@ -55,9 +64,9 @@ export const imageRoutes: FastifyPluginAsyncZod = async (app) => {
       if (upstream.status === 404)
         return reply.code(404).send({ message: 'Image not found' })
 
-      const contentType = upstream.headers.get('content-type') ?? ''
+      const upstreamType = upstream.headers.get('content-type') ?? ''
 
-      if (!upstream.ok || !upstream.body || !contentType.startsWith('image/'))
+      if (!upstream.ok || !upstream.body || !upstreamType.startsWith('image/'))
         return reply.code(502).send({ message: 'TMDB image is unavailable' })
 
       const contentLength = upstream.headers.get('content-length')
@@ -65,8 +74,11 @@ export const imageRoutes: FastifyPluginAsyncZod = async (app) => {
       if (contentLength)
         reply.header('Content-Length', contentLength)
 
+      const extension = file.slice(file.lastIndexOf('.') + 1)
+
       return reply
-        .header('Content-Type', contentType)
+        .header('Content-Type', CONTENT_TYPES[extension])
+        .header('X-Content-Type-Options', 'nosniff')
         .header('Cache-Control', CACHE_CONTROL)
         .send(Readable.fromWeb(upstream.body))
     },
