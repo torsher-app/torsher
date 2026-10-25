@@ -328,6 +328,7 @@ onBeforeUnmount(() => {
   justify-content: center;
   padding: 0;
   border: 0;
+  background: none;
   color: var(--color-text);
   font-size: calc(var(--u) * 48);
 }
@@ -336,17 +337,64 @@ onBeforeUnmount(() => {
   color: var(--color-accent);
 }
 
+/*
+ * Кнопка ловит клик только за краем ряда: на полоске предыдущей карточки слева
+ * и в поле у края экрана справа. Карточки, видные целиком, под стрелку не
+ * попадают. Стрелки стоят зеркально, в 24 px макета за краем ряда
+ */
 .row__page--back {
   left: calc(var(--u) * -48);
   width: calc(var(--u) * 48);
-  /* Уходит в прозрачность: обрыв затемнения поверх карточки читался полосой */
-  background: linear-gradient(90deg, var(--color-bg) 30%, rgba(11, 13, 18, 0));
 }
 
 .row__page--forward {
   right: 0;
-  width: calc(var(--u) * 120 + var(--safe-x));
-  background: linear-gradient(270deg, var(--color-bg) 30%, rgba(11, 13, 18, 0));
+  width: var(--safe-x);
+  justify-content: flex-start;
+}
+
+/*
+ * Затемнение под стрелкой шире кнопки и уходит в прозрачность по обеим осям:
+ * обрыв поверх карточки читался полосой, а прямой верхний и нижний край —
+ * чертой на бэкдропе. Вертикальный спад делает маска, поэтому затемнение —
+ * отдельный слой. Маска лежит на статичном слое и при листании не перерисовывается
+ */
+.row__page::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  top: calc(var(--u) * -80);
+  bottom: calc(var(--u) * -80);
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(
+    rgba(0, 0, 0, 0),
+    #000 calc(var(--u) * 70),
+    #000 calc(100% - var(--u) * 70),
+    rgba(0, 0, 0, 0)
+  );
+}
+
+/*
+ * Слева лента обрезана не краем экрана, а у рейла. Затемнение идёт от края
+ * экрана и до края ленты держит ту же плотность, что справа у края экрана:
+ * иначе виден зазор без затемнения и черта среза карточки. Дальше, как и
+ * справа, без глухой полосы: карточка под стрелкой просвечивает
+ */
+.row__page--back::before {
+  right: calc(var(--u) * -120);
+  left: calc(var(--u) * 48 - var(--content-x));
+  background: linear-gradient(
+    90deg,
+    rgba(11, 13, 18, 0.9) calc(var(--content-x) - var(--u) * 48),
+    rgba(11, 13, 18, 0.55) calc(var(--content-x) + var(--u) * 24),
+    rgba(11, 13, 18, 0)
+  );
+}
+
+.row__page--forward::before {
+  right: 0;
+  left: calc(var(--u) * -120);
+  background: linear-gradient(270deg, rgba(11, 13, 18, 0.9), rgba(11, 13, 18, 0.55) 45%, rgba(11, 13, 18, 0));
 }
 
 [data-input='pointer'] .row__frame:hover .row__page {
