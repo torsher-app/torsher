@@ -123,6 +123,27 @@ function decision(
   }
 }
 
+const HASHLESS_A: FollowDecision = {
+  id: 'hashless-a',
+  title:
+    'Тихая гавань / Quiet Harbor / Сезон: 2 / Серия: 3 из 10 (2024) WEB-DL 720p',
+  indexers: ['Indexer A'],
+  size: 1_400_000_000,
+  seeders: 5,
+  verdict: 'pending',
+  rejections: [],
+}
+const HASHLESS_B: FollowDecision = {
+  id: 'hashless-b',
+  title:
+    'Тихая гавань / Quiet Harbor / Сезон: 2 / Серии: 1-4 из 10 (2024) WEB-DL 720p',
+  indexers: ['Indexer B'],
+  size: 5_600_000_000,
+  seeders: 9,
+  verdict: 'rejected',
+  rejections: [{ code: 'blocklisted', type: 'permanent' }],
+}
+
 function pendingEpisode(followId: string, episode: number, until: Date) {
   getDb()
     .insert(followEpisodes)
@@ -362,7 +383,7 @@ describe('снимок кандидатов и чёрный список', () =>
       method: 'POST',
       url: '/api/follow/blocklist',
       cookies: owner,
-      payload: { followId: id, infoHash: HASH_A.toUpperCase() },
+      payload: { followId: id, candidateId: 'release-a' },
     })
 
     expect(blocked.statusCode).toBe(200)
@@ -440,10 +461,133 @@ describe('снимок кандидатов и чёрный список', () =>
       method: 'POST',
       url: '/api/follow/blocklist',
       cookies: owner,
-      payload: { followId: id, infoHash: 'c'.repeat(40) },
+      payload: { followId: id, candidateId: 'release-c' },
     })
 
     expect(res.statusCode).toBe(404)
+  })
+
+  it('раздача без infohash: в списке по показу, «Не брать» запрещает её показы', async () => {
+    const id = await followSeries()
+    const until = new Date(Date.now() + 5 * HOUR_MS)
+    const page = 'https://tracker.example/topic/42'
+
+    getDb()
+      .insert(followEpisodes)
+      .values({
+        followId: id,
+        season: 2,
+        episode: 3,
+        firstSeenAt: new Date(until.getTime() - 24 * HOUR_MS),
+        waitUntil: until,
+        pending: {
+          id: 'hashless-a',
+          title: HASHLESS_A.title,
+          indexerId: 'ix-a',
+          detailsUrl: page,
+          seeders: 5,
+          size: HASHLESS_A.size,
+        },
+        decisions: [
+          { ...HASHLESS_A, sources: [{ id: 'ix-a', detailsUrl: page }] },
+          { ...HASHLESS_B, sources: [{ id: 'ix-b' }] },
+        ],
+      })
+      .run()
+    getDb()
+      .insert(releaseBlocklist)
+      .values({
+        titleId: SERIES,
+        releaseTitle: HASHLESS_B.title,
+        reason: 'failed_check',
+        listings: [
+          { indexerId: 'ix-b', title: HASHLESS_B.title, size: HASHLESS_B.size },
+        ],
+        episodes: ['2:3'],
+        createdAt: new Date(),
+      })
+      .run()
+
+    const candidates = async () =>
+      (
+        await app.inject({
+          url: `/api/follows/${id}/candidates?season=2&episode=3`,
+          cookies: owner,
+        })
+      ).json().items
+
+    expect(await candidates()).toEqual([
+      expect.objectContaining({ id: 'hashless-a', blocked: false }),
+      expect.objectContaining({ id: 'hashless-b', blocked: true }),
+    ])
+    expect((await candidates())[0]).not.toHaveProperty('sources')
+
+    const blocked = await app.inject({
+      method: 'POST',
+      url: '/api/follow/blocklist',
+      cookies: owner,
+      payload: { followId: id, candidateId: 'hashless-a' },
+    })
+
+    expect(blocked.statusCode).toBe(200)
+    expect((await candidates())[0]).toMatchObject({
+      verdict: 'rejected',
+      blocked: true,
+    })
+
+    const row = getDb()
+      .select()
+      .from(followEpisodes)
+      .where(eq(followEpisodes.followId, id))
+      .get()!
+
+    expect(row.pending).toBeNull()
+
+    const list = await app.inject({
+      url: '/api/follow/blocklist',
+      cookies: owner,
+    })
+
+    expect(list.json().items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          infoHash: null,
+          releaseTitle: HASHLESS_A.title,
+          reason: 'user',
+          episodes: null,
+        }),
+        expect.objectContaining({
+          infoHash: null,
+          reason: 'failed_check',
+          episodes: [{ season: 2, episode: 3 }],
+        }),
+      ]),
+    )
+  })
+
+  it('кандидат без infohash из снимка прежней версии — 409', async () => {
+    const id = await followSeries()
+
+    getDb()
+      .insert(followEpisodes)
+      .values({
+        followId: id,
+        season: 2,
+        episode: 3,
+        firstSeenAt: new Date(),
+        decisions: [HASHLESS_A],
+      })
+      .run()
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/follow/blocklist',
+      cookies: owner,
+      payload: { followId: id, candidateId: 'hashless-a' },
+    })
+
+    expect(res.statusCode).toBe(409)
+    expect(res.json()).toMatchObject({ message: 'release_unknown' })
   })
 })
 

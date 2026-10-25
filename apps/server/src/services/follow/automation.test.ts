@@ -138,6 +138,8 @@ interface Item {
   size?: number
   /** Только ссылка на `.torrent`, без infohash */
   noHash?: boolean
+  /** Страница раздачи; по умолчанию — по infohash */
+  page?: string
 }
 
 function searchXml(items: Item[]) {
@@ -145,8 +147,8 @@ function searchXml(items: Item[]) {
     .map(
       item => `<item>
   <title>${item.title}</title>
-  <guid>https://tracker.example/topic/${item.hash.slice(0, 4)}</guid>
-  <comments>https://tracker.example/topic/${item.hash.slice(0, 4)}</comments>
+  <guid>${item.page ?? `https://tracker.example/topic/${item.hash.slice(0, 4)}`}</guid>
+  <comments>${item.page ?? `https://tracker.example/topic/${item.hash.slice(0, 4)}`}</comments>
   <link>https://a.indexer.example/download/${item.hash}</link>
   <size>${item.size ?? 12 * GB}</size>
   <torznab:attr name="seeders" value="${item.seeders ?? 30}" />
@@ -1186,6 +1188,55 @@ describe('автоматика «Следить»', () => {
       verdict: 'rejected',
       rejections: [expect.objectContaining({ code: 'blocklisted' })],
     })
+  })
+
+  it('раздача без infohash под двумя показами: `.torrent` качается по разу на показ', async () => {
+    pinVoice(SERIES, 2, { studio: 'LostFilm' })
+    libraryEpisodes(1, 2, 3, 4, 5, 6, 7)
+    // Одну раздачу показали дважды: другая страница и другое название
+    items = [
+      {
+        title: EPISODE_8_TITLE,
+        hash: SINGLE_HASH,
+        size: 1.5 * GB,
+        noHash: true,
+        seeders: 40,
+      },
+      {
+        title:
+          'Тихая гавань / Quiet Harbor / Сезон: 2 / Серия: 8 из 12 (2024) WEB-DL 1080p | LostFilm',
+        hash: SINGLE_HASH,
+        size: 1.5 * GB,
+        noHash: true,
+        seeders: 30,
+        page: 'https://tracker.example/topic/mirror',
+      },
+    ]
+    getDb()
+      .insert(releaseBlocklist)
+      .values({
+        titleId: SERIES,
+        infoHash: SINGLE_HASH,
+        releaseTitle: single.name,
+        reason: 'failed_check',
+        createdAt: new Date(),
+      })
+      .run()
+
+    const follow = insertFollow()
+    const now = new Date()
+
+    for (const minute of [0, 1, 2, 3]) {
+      clearSearchCache()
+      requestFollowSearch(follow.id)
+      await followAutomation(new Date(now.getTime() + minute * 60_000))
+    }
+
+    expect(torrentDownloads).toBe(2)
+    expect(rows(follow.id)[0]!.decisions).toEqual([
+      expect.objectContaining({ verdict: 'rejected' }),
+      expect.objectContaining({ verdict: 'rejected' }),
+    ])
   })
 
   it('тема обновилась на месте: запрет старой версии не переходит на новую без infohash', async () => {

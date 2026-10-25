@@ -15,7 +15,12 @@ import { getDb } from '../../db/index.ts'
 import { followEpisodes, followHistory, follows } from '../../db/schema.ts'
 import { listIndexers } from '../indexers/index.ts'
 import { getTorrent, liveTorrents } from '../torrents/index.ts'
-import { blockedReleases, blockRelease, isBlocked } from './blocklist.ts'
+import {
+  blockedPart,
+  blockedReleases,
+  blockRelease,
+  listingsOf,
+} from './blocklist.ts'
 import { listHistory, recordHistory } from './history.ts'
 import { followById } from './index.ts'
 import { episodeKey } from './wanted.ts'
@@ -46,15 +51,15 @@ export function followCandidates(
       ),
     )
     .get()
-  const blocked = blockedReleases(now).hashes
+  const follow = followById(followId)
+  const blocked = follow && blockedReleases(follow.titleId, now)
   const key = episodeKey({ season, episode })
 
   return {
     firstSeenAt: row?.firstSeenAt.toISOString() ?? null,
-    items: (row?.decisions ?? []).map((item) => {
-      const part = item.infoHash
-        ? blocked.get(item.infoHash.toLowerCase())
-        : undefined
+    items: (row?.decisions ?? []).map(({ sources, ...item }) => {
+      const part
+        = blocked && blockedPart(decisionRelease(item, sources), blocked)
 
       return {
         ...item,
@@ -285,52 +290,72 @@ export async function followQueue(): Promise<FollowQueueItem[]> {
     )
 }
 
-function sameHash(decision: FollowDecision, infoHash: string) {
-  return decision.infoHash?.toLowerCase() === infoHash
+/** Кандидат снимка как раздача для сверки с чёрным списком */
+function decisionRelease(
+  decision: Omit<FollowDecision, 'sources'>,
+  sources: FollowDecision['sources'],
+) {
+  return {
+    infoHash: decision.infoHash,
+    title: decision.title,
+    size: decision.size,
+    indexers: sources ?? [],
+  }
 }
+
+type BlockFromSnapshot = 'blocked' | 'not_found' | 'release_unknown'
 
 /**
  * «Не брать эту раздачу» из снимка кандидатов: чёрный список навсегда,
- * отложенный кандидат с этим infohash снимается, в снимке — отказ
- * `blocklisted`. Поиск не запускается: следующий прогон возьмёт другую.
- * `undefined` — слежения нет или раздачи нет в его снимке.
+ * отложенный кандидат снимается, в снимке — отказ `blocklisted`. Раздача без
+ * infohash запрещается по её показам у индексаторов. Поиск не запускается:
+ * следующий прогон возьмёт другую. `not_found` — слежения нет или кандидата
+ * нет в его снимке; `release_unknown` — у кандидата без infohash снимок
+ * прежней версии без показов.
  */
-export function blockFromSnapshot(followId: string, rawHash: string) {
+export function blockFromSnapshot(
+  followId: string,
+  candidateId: string,
+): BlockFromSnapshot {
   const follow = followById(followId)
-  const infoHash = rawHash.toLowerCase()
 
   if (!follow)
-    return undefined
+    return 'not_found'
 
   const rows = episodeRows(follow.id).filter(row =>
-    row.decisions?.some(item => sameHash(item, infoHash)),
+    row.decisions?.some(item => item.id === candidateId),
   )
-  const decision = rows[0]?.decisions?.find(item => sameHash(item, infoHash))
+  const decision = rows[0]?.decisions?.find(item => item.id === candidateId)
 
   if (!decision)
-    return undefined
+    return 'not_found'
 
-  if (isBlocked(infoHash))
-    return decision
+  const release = decisionRelease(decision, decision.sources)
+
+  if (!release.infoHash && !release.indexers.length)
+    return 'release_unknown'
+
+  if (blockedPart(release, blockedReleases(follow.titleId)) === null)
+    return 'blocked'
 
   const db = getDb()
 
   db.transaction((tx) => {
     blockRelease({
       titleId: follow.titleId,
-      infoHash,
+      infoHash: release.infoHash,
       releaseTitle: decision.title,
       reason: 'user',
+      ...(!release.infoHash && { listings: listingsOf(release) }),
     })
 
     for (const row of rows) {
-      const dropPending
-        = !row.torrentId && row.pending?.infoHash?.toLowerCase() === infoHash
+      const dropPending = !row.torrentId && row.pending?.id === candidateId
 
       tx.update(followEpisodes)
         .set({
           decisions: row.decisions!.map(item =>
-            sameHash(item, infoHash)
+            item.id === candidateId
               ? {
                   ...item,
                   verdict: 'rejected' as const,
@@ -382,5 +407,5 @@ export function blockFromSnapshot(followId: string, rawHash: string) {
     }
   })
 
-  return decision
+  return 'blocked'
 }

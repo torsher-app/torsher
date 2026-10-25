@@ -1,7 +1,9 @@
-import type { BlocklistReason } from '../../db/schema.ts'
+import type { BlocklistListing, BlocklistReason } from '../../db/schema.ts'
 import { and, desc, eq, gt, isNull, lte, or } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import { releaseBlocklist } from '../../db/schema.ts'
+
+export type Listing = BlocklistListing
 
 const DAY_MS = 24 * 60 * 60 * 1000
 // Зависшая раздача может ожить: пиры приходят и уходят. Ручной запрет и
@@ -14,35 +16,15 @@ const EXPIRES_DAYS: Record<BlocklistReason, number | null> = {
 
 export interface BlocklistEntry {
   titleId: string
-  infoHash: string
+  /** Без него — раздачу без infohash запретили до скачивания `.torrent` */
+  infoHash?: string
   releaseTitle: string
   reason: BlocklistReason
   detailsUrl?: string
   /** Только эти серии (`episodeKey`); без них — раздача целиком */
   episodes?: string[]
-  /** Как индексатор показал раздачу без infohash */
-  listing?: { page?: string, title: string }
-}
-
-export function blockRelease(entry: BlocklistEntry, now = new Date()) {
-  const days = EXPIRES_DAYS[entry.reason]
-
-  return getDb()
-    .insert(releaseBlocklist)
-    .values({
-      titleId: entry.titleId,
-      infoHash: entry.infoHash.toLowerCase(),
-      detailsUrl: entry.detailsUrl ?? null,
-      releaseTitle: entry.releaseTitle,
-      reason: entry.reason,
-      episodes: entry.episodes ?? null,
-      listedPage: entry.listing?.page ?? null,
-      listedTitle: entry.listing?.title ?? null,
-      createdAt: now,
-      expiresAt: days === null ? null : new Date(now.getTime() + days * DAY_MS),
-    })
-    .returning()
-    .get()
+  /** Как индексаторы показали раздачу без infohash */
+  listings?: Listing[]
 }
 
 function active(now: Date) {
@@ -52,6 +34,126 @@ function active(now: Date) {
   )
 }
 
+export function listedKey(listing: Listing) {
+  return [
+    listing.indexerId ?? '',
+    listing.page ?? '',
+    listing.title,
+    listing.size ?? '',
+  ].join('\n')
+}
+
+/** Показы склеенной раздачи без infohash: страница у каждого индексатора своя */
+export function listingsOf(release: {
+  title: string
+  size?: number
+  indexers: { id?: string, detailsUrl?: string }[]
+}): Listing[] {
+  return release.indexers.map(item => ({
+    indexerId: item.id,
+    page: item.detailsUrl,
+    title: release.title,
+    size: release.size,
+  }))
+}
+
+function mergeListings(current: Listing[] | null, added: Listing[]) {
+  const merged = new Map(
+    (current ?? []).map(listing => [listedKey(listing), listing]),
+  )
+
+  for (const listing of added) merged.set(listedKey(listing), listing)
+
+  return merged.size ? [...merged.values()] : null
+}
+
+function laterExpiry(a: Date | null, b: Date | null) {
+  if (!a || !b)
+    return null
+
+  return a > b ? a : b
+}
+
+/**
+ * Действующая запись той же раздачи и причины: по infohash, без него — по
+ * общему показу
+ */
+function sameEntry(entry: BlocklistEntry, now: Date) {
+  const rows = getDb()
+    .select()
+    .from(releaseBlocklist)
+    .where(
+      and(
+        eq(releaseBlocklist.reason, entry.reason),
+        entry.infoHash
+          ? eq(releaseBlocklist.infoHash, entry.infoHash.toLowerCase())
+          : and(
+              isNull(releaseBlocklist.infoHash),
+              eq(releaseBlocklist.titleId, entry.titleId),
+            ),
+        active(now),
+      ),
+    )
+    .all()
+
+  if (entry.infoHash)
+    return rows[0]
+
+  const keys = new Set((entry.listings ?? []).map(listedKey))
+
+  return rows.find(row =>
+    row.listings?.some(listing => keys.has(listedKey(listing))),
+  )
+}
+
+/**
+ * Запрет раздачи. Одна раздача и причина — одна запись: повторный запрет
+ * сливается с ней (серии, больший срок, показы)
+ */
+export function blockRelease(entry: BlocklistEntry, now = new Date()) {
+  const days = EXPIRES_DAYS[entry.reason]
+  const expiresAt
+    = days === null ? null : new Date(now.getTime() + days * DAY_MS)
+  const episodes = entry.episodes ?? null
+  const current
+    = entry.infoHash || entry.listings?.length
+      ? sameEntry(entry, now)
+      : undefined
+
+  if (current) {
+    return getDb()
+      .update(releaseBlocklist)
+      .set({
+        episodes:
+          current.episodes && episodes
+            ? [...new Set([...current.episodes, ...episodes])]
+            : null,
+        expiresAt: laterExpiry(current.expiresAt, expiresAt),
+        listings: mergeListings(current.listings, entry.listings ?? []),
+        detailsUrl: current.detailsUrl ?? entry.detailsUrl ?? null,
+      })
+      .where(eq(releaseBlocklist.id, current.id))
+      .returning()
+      .get()!
+  }
+
+  return getDb()
+    .insert(releaseBlocklist)
+    .values({
+      titleId: entry.titleId,
+      infoHash: entry.infoHash?.toLowerCase() ?? null,
+      detailsUrl: entry.detailsUrl ?? null,
+      releaseTitle: entry.releaseTitle,
+      reason: entry.reason,
+      episodes,
+      listings: mergeListings(null, entry.listings ?? []),
+      createdAt: now,
+      expiresAt,
+    })
+    .returning()
+    .get()
+}
+
 /** Заблокированные серии раздачи (`episodeKey`); `null` — раздача целиком */
 export type BlockedEpisodes = Set<string> | null
 
@@ -59,12 +161,8 @@ export type BlockedEpisodes = Set<string> | null
 export interface BlockedReleases {
   /** По infohash в нижнем регистре */
   hashes: Map<string, BlockedEpisodes>
-  /** Раздача без infohash — по странице и названию (`listedKey`) */
+  /** Раздача без infohash — по показу (`listedKey`) */
   listed: Map<string, BlockedEpisodes>
-}
-
-export function listedKey(page: string | undefined, title: string) {
-  return `${page ?? ''}\n${title}`
 }
 
 function addBlock(
@@ -85,34 +183,38 @@ function addBlock(
   map.set(key, new Set([...(current ?? []), ...episodes]))
 }
 
-export function blockedReleases(now = new Date()): BlockedReleases {
+/**
+ * Действующий чёрный список для тайтла: infohash — по всем записям (это сама
+ * раздача), показы — только по записям тайтла
+ */
+export function blockedReleases(
+  titleId: string,
+  now = new Date(),
+): BlockedReleases {
   const blocked: BlockedReleases = {
     hashes: new Map(),
     listed: new Map(),
   }
   const rows = getDb()
     .select({
+      titleId: releaseBlocklist.titleId,
       infoHash: releaseBlocklist.infoHash,
-      detailsUrl: releaseBlocklist.detailsUrl,
-      releaseTitle: releaseBlocklist.releaseTitle,
       episodes: releaseBlocklist.episodes,
-      listedPage: releaseBlocklist.listedPage,
-      listedTitle: releaseBlocklist.listedTitle,
+      listings: releaseBlocklist.listings,
     })
     .from(releaseBlocklist)
     .where(active(now))
     .all()
 
   for (const row of rows) {
-    addBlock(blocked.hashes, row.infoHash, row.episodes)
+    if (row.infoHash)
+      addBlock(blocked.hashes, row.infoHash, row.episodes)
 
-    if (row.listedTitle) {
-      addBlock(
-        blocked.listed,
-        listedKey(row.listedPage ?? undefined, row.listedTitle),
-        row.episodes,
-      )
-    }
+    if (row.titleId !== titleId)
+      continue
+
+    for (const listing of row.listings ?? [])
+      addBlock(blocked.listed, listedKey(listing), row.episodes)
   }
 
   return blocked
@@ -120,15 +222,19 @@ export function blockedReleases(now = new Date()): BlockedReleases {
 
 /** Что из раздачи в чёрном списке; `undefined` — ничего */
 export function blockedPart(
-  release: { infoHash?: string, title: string, detailsUrls: string[] },
+  release: {
+    infoHash?: string
+    title: string
+    size?: number
+    indexers: { id?: string, detailsUrl?: string }[]
+  },
   blocked: BlockedReleases,
 ): BlockedEpisodes | undefined {
   if (release.infoHash)
     return blocked.hashes.get(release.infoHash.toLowerCase())
 
-  const pages = release.detailsUrls.length ? release.detailsUrls : [undefined]
-  const parts = pages.flatMap((page) => {
-    const part = blocked.listed.get(listedKey(page, release.title))
+  const parts = listingsOf(release).flatMap((listing) => {
+    const part = blocked.listed.get(listedKey(listing))
 
     return part === undefined ? [] : [part]
   })
@@ -142,36 +248,34 @@ export function blockedPart(
 }
 
 /**
- * Раздачу без infohash узнали после добавления: её записи запоминают, как её
- * показал индексатор, и следующий проход узнаёт её до скачивания `.torrent`
+ * Раздачу без infohash узнали после добавления: её записи запоминают ещё один
+ * её показ, и следующий проход узнаёт её до скачивания `.torrent`. Прежние
+ * показы остаются: одну раздачу показывают разные индексаторы
  */
 export function rememberListing(
   infoHash: string,
-  listing: { page?: string, title: string },
+  listing: Listing,
   now = new Date(),
 ) {
-  getDb()
-    .update(releaseBlocklist)
-    .set({ listedPage: listing.page ?? null, listedTitle: listing.title })
+  const key = listedKey(listing)
+  const rows = getDb()
+    .select({ id: releaseBlocklist.id, listings: releaseBlocklist.listings })
+    .from(releaseBlocklist)
     .where(
       and(eq(releaseBlocklist.infoHash, infoHash.toLowerCase()), active(now)),
     )
-    .run()
-}
+    .all()
 
-/** Раздача в чёрном списке целиком */
-export function isBlocked(infoHash: string, now = new Date()) {
-  return !!getDb()
-    .select({ id: releaseBlocklist.id })
-    .from(releaseBlocklist)
-    .where(
-      and(
-        eq(releaseBlocklist.infoHash, infoHash.toLowerCase()),
-        isNull(releaseBlocklist.episodes),
-        active(now),
-      ),
-    )
-    .get()
+  for (const row of rows) {
+    if (row.listings?.some(item => listedKey(item) === key))
+      continue
+
+    getDb()
+      .update(releaseBlocklist)
+      .set({ listings: mergeListings(row.listings, [listing]) })
+      .where(eq(releaseBlocklist.id, row.id))
+      .run()
+  }
 }
 
 /** Действующие записи, свежие сверху */

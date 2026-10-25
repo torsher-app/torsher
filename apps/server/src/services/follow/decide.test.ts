@@ -661,7 +661,7 @@ describe('чёрный список по сериям', () => {
     ).toEqual([{ id: 'p', episodes: [7, 8] }])
   })
 
-  it('раздача без infohash узнаётся по странице и названию, без страницы — по названию', () => {
+  it('раздача без infohash узнаётся по показу: страница, название и размер, без страницы — индексатор', () => {
     const page = 'https://tracker.example/topic/1'
     const byPage = episode(5, 'WEB-DL 1080p | LostFilm', {
       id: 'page',
@@ -685,20 +685,52 @@ describe('чёрный список по сериям', () => {
       'Тихая гавань / Quiet Harbor / Сезон: 2 / Серия: 5 из 12 (2024) WEB-DL 1080p | LostFilm',
       { infoHash: undefined, seeders: 80 },
     )
-    const next = episode(5, 'WEB-DL 1080p | LostFilm', { id: 'next' })
-    const result = plan([byPage, byTitle, updated, next], {
-      blocked: {
-        ...noBlocks(),
-        listed: new Map([
-          [listedKey(page, byPage.title), null],
-          [listedKey(undefined, byTitle.title), null],
-        ]),
-      },
+    // Перезалив в той же теме с тем же названием: файлы исправили
+    const reuploaded = found('reuploaded', byPage.title, {
+      infoHash: undefined,
+      seeders: 60,
+      size: 1.6 * GB,
+      indexers: [{ id: 'ix', name: 'Indexer A', detailsUrl: page }],
     })
+    const otherIndexer = found('other', byTitle.title, {
+      infoHash: undefined,
+      seeders: 50,
+      indexers: [{ id: 'iy', name: 'Indexer B' }],
+    })
+    const next = episode(5, 'WEB-DL 1080p | LostFilm', { id: 'next' })
+    const result = plan(
+      [byPage, byTitle, updated, reuploaded, otherIndexer, next],
+      {
+        blocked: {
+          ...noBlocks(),
+          listed: new Map([
+            [
+              listedKey({
+                indexerId: 'ix',
+                page,
+                title: byPage.title,
+                size: 1.5 * GB,
+              }),
+              null,
+            ],
+            [
+              listedKey({
+                indexerId: 'ix',
+                title: byTitle.title,
+                size: 1.5 * GB,
+              }),
+              null,
+            ],
+          ]),
+        },
+      },
+    )
 
     expect(codes(result, 'page')).toEqual(['blocklisted'])
     expect(codes(result, 'title')).toEqual(['blocklisted'])
     expect(codes(result, 'updated')).not.toContain('blocklisted')
+    expect(codes(result, 'reuploaded')).not.toContain('blocklisted')
+    expect(codes(result, 'other')).not.toContain('blocklisted')
     expect(codes(result, 'next')).toEqual(['outranked'])
   })
 

@@ -79,6 +79,12 @@ export function episodeKey(ref: EpisodeRef) {
   return `${ref.season}:${ref.episode}`
 }
 
+export function parseEpisodeKey(key: string): EpisodeRef {
+  const [season, episode] = key.split(':').map(Number) as [number, number]
+
+  return { season, episode }
+}
+
 export function compareEpisodes(a: EpisodeRef, b: EpisodeRef) {
   return a.season - b.season || a.episode - b.episode
 }
