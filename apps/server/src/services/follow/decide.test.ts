@@ -1,6 +1,7 @@
 import type { TitleMatch } from '@torsher/release-parser'
 import type { VoiceRef } from '../sources/profile.ts'
 import type { FoundRelease } from '../sources/rank.ts'
+import type { BlockedReleases } from './blocklist.ts'
 import type { DecideContext, SeasonContext } from './decide.ts'
 import { parseRelease } from '@torsher/release-parser'
 import { describe, expect, it } from 'vitest'
@@ -12,6 +13,7 @@ import {
   cutoffStepOf,
   planSeason,
 } from './decide.ts'
+import { listedKey } from './blocklist.ts'
 import { ladderStep } from './rank.ts'
 import { isUpgrade } from './upgrade.ts'
 import { episodeKey, episodeStates, wantedEpisodes } from './wanted.ts'
@@ -68,6 +70,10 @@ function keys(...numbers: number[]) {
   )
 }
 
+function noBlocks(): BlockedReleases {
+  return { hashes: new Map(), listed: new Map() }
+}
+
 function context(overrides: Partial<DecideContext> = {}): DecideContext {
   return {
     kind: 'series',
@@ -80,7 +86,7 @@ function context(overrides: Partial<DecideContext> = {}): DecideContext {
     episodeCounts: { 2: 12 },
     wanted: keys(5),
     downloading: new Set(),
-    blocked: new Set(),
+    blocked: noBlocks(),
     firstSeen: new Map(),
     now: NOW,
     ...overrides,
@@ -327,7 +333,7 @@ describe('решатель «Следить»', () => {
     })
     const busy = episode(6, 'WEB-DL 1080p | LostFilm', { id: 'busy' })
     const result = plan([unsure, blocked, dead, busy], {
-      blocked: new Set(['b'.repeat(40)]),
+      blocked: { ...noBlocks(), hashes: new Map([['b'.repeat(40), null]]) },
       downloading: keys(6),
     })
 
@@ -612,5 +618,99 @@ describe('лучше на целый шаг', () => {
     expect(isUpgrade(at(false, 0), at(true, 1))).toBe(false)
     expect(isUpgrade(at(false, 0), at(false, 1))).toBe(true)
     expect(isUpgrade(at(true, 1), at(true, 1))).toBe(false)
+  })
+})
+
+describe('чёрный список по сериям', () => {
+  const PACK
+    = 'Тихая гавань / Quiet Harbor / Сезон: 2 / Серии: 1-8 из 12 (2024) WEB-DL 1080p | LostFilm'
+
+  it('в паке нет серий 7–8: он берётся за остальные, за 7–8 — нет', () => {
+    const blocked = {
+      ...noBlocks(),
+      hashes: new Map([['p'.padEnd(40, '0'), new Set(['2:7', '2:8'])]]),
+    }
+    const wanted = keys(5, 6, 7, 8)
+
+    expect(
+      grabbed(plan([found('p', PACK, { size: 12 * GB })], { blocked, wanted })),
+    ).toEqual([{ id: 'p', episodes: [5, 6] }])
+
+    const rest = plan([found('p', PACK, { size: 12 * GB })], {
+      blocked,
+      wanted: keys(7, 8),
+    })
+
+    expect(rest.grabs).toEqual([])
+    expect(codes(rest, 'p')).toEqual(['blocklisted'])
+  })
+
+  it('серии другого сезона той же раздачи не заблокированы', () => {
+    const blocked = {
+      ...noBlocks(),
+      hashes: new Map([['p'.padEnd(40, '0'), new Set(['1:7', '1:8'])]]),
+    }
+
+    expect(
+      grabbed(
+        plan([found('p', PACK, { size: 12 * GB })], {
+          blocked,
+          wanted: keys(7, 8),
+        }),
+      ),
+    ).toEqual([{ id: 'p', episodes: [7, 8] }])
+  })
+
+  it('раздача без infohash узнаётся по странице и названию, без страницы — по названию', () => {
+    const page = 'https://tracker.example/topic/1'
+    const byPage = episode(5, 'WEB-DL 1080p | LostFilm', {
+      id: 'page',
+      infoHash: undefined,
+      seeders: 90,
+      indexers: [{ id: 'ix', name: 'Indexer A', detailsUrl: page }],
+    })
+    // Тема обновилась на месте: адрес тот же, название другое
+    const updated = found(
+      'updated',
+      'Тихая гавань / Quiet Harbor / Сезон: 2 / Серии: 1-9 из 12 (2024) WEB-DL 1080p | LostFilm',
+      {
+        infoHash: undefined,
+        seeders: 70,
+        size: 14 * GB,
+        indexers: [{ id: 'ix', name: 'Indexer A', detailsUrl: page }],
+      },
+    )
+    const byTitle = found(
+      'title',
+      'Тихая гавань / Quiet Harbor / Сезон: 2 / Серия: 5 из 12 (2024) WEB-DL 1080p | LostFilm',
+      { infoHash: undefined, seeders: 80 },
+    )
+    const next = episode(5, 'WEB-DL 1080p | LostFilm', { id: 'next' })
+    const result = plan([byPage, byTitle, updated, next], {
+      blocked: {
+        ...noBlocks(),
+        listed: new Map([
+          [listedKey(page, byPage.title), null],
+          [listedKey(undefined, byTitle.title), null],
+        ]),
+      },
+    })
+
+    expect(codes(result, 'page')).toEqual(['blocklisted'])
+    expect(codes(result, 'title')).toEqual(['blocklisted'])
+    expect(codes(result, 'updated')).not.toContain('blocklisted')
+    expect(codes(result, 'next')).toEqual(['outranked'])
+  })
+
+  it('многосезонный пак: диапазон не делится по сезонам, решают файлы', () => {
+    const multi = found(
+      'multi',
+      'Тихая гавань / Quiet Harbor / Сезон: 1-3 / Серии: 1-8 из 8 (2024) WEB-DL 1080p | LostFilm',
+      { size: 60 * GB },
+    )
+
+    expect(grabbed(plan([multi], { wanted: keys(9) }))).toEqual([
+      { id: 'multi', episodes: [9] },
+    ])
   })
 })

@@ -117,18 +117,36 @@ export function reportedEpisodes(followId: string, kind: FollowHistoryKind) {
   return keys
 }
 
-/** Не старше 90 дней и не больше 5000 строк */
+/**
+ * Не старше 90 дней и не больше 5000 строк. Последнее «не нашли» серии
+ * слежения остаётся: по нему событие не повторяется, а без него владелец
+ * получил бы его снова.
+ */
 export function purgeHistory(now = new Date()) {
   const db = getDb()
+  const kept = sql`(
+    ${followHistory.kind} = 'missing'
+    AND ${followHistory.followId} IS NOT NULL
+    AND NOT EXISTS (
+      SELECT 1 FROM ${followHistory} AS newer
+      WHERE newer.follow_id = ${followHistory.followId}
+        AND newer.kind = 'missing'
+        AND newer.at > ${followHistory.at}
+        AND newer.season IS ${followHistory.season}
+        AND newer.episodes IS ${followHistory.episodes}
+    )
+  )`
 
-  db.delete(followHistory)
-    .where(lt(followHistory.at, new Date(now.getTime() - KEEP_DAYS * DAY_MS)))
-    .run()
+  db.run(sql`
+    DELETE FROM ${followHistory}
+    WHERE ${followHistory.at} < ${now.getTime() - KEEP_DAYS * DAY_MS}
+      AND NOT ${kept}
+  `)
 
   db.run(sql`
     DELETE FROM ${followHistory} WHERE ${followHistory.id} NOT IN (
       SELECT ${followHistory.id} FROM ${followHistory}
       ORDER BY ${followHistory.at} DESC LIMIT ${KEEP_ROWS}
-    )
+    ) AND NOT ${kept}
   `)
 }

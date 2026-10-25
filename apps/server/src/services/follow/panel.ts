@@ -15,9 +15,10 @@ import { getDb } from '../../db/index.ts'
 import { followEpisodes, followHistory, follows } from '../../db/schema.ts'
 import { listIndexers } from '../indexers/index.ts'
 import { getTorrent, liveTorrents } from '../torrents/index.ts'
-import { blockedHashes, blockRelease, isBlocked } from './blocklist.ts'
+import { blockedReleases, blockRelease, isBlocked } from './blocklist.ts'
 import { listHistory, recordHistory } from './history.ts'
 import { followById } from './index.ts'
+import { episodeKey } from './wanted.ts'
 
 function episodeRows(followId: string) {
   return getDb()
@@ -45,14 +46,21 @@ export function followCandidates(
       ),
     )
     .get()
-  const blocked = blockedHashes(now)
+  const blocked = blockedReleases(now).hashes
+  const key = episodeKey({ season, episode })
 
   return {
     firstSeenAt: row?.firstSeenAt.toISOString() ?? null,
-    items: (row?.decisions ?? []).map(item => ({
-      ...item,
-      blocked: !!item.infoHash && blocked.has(item.infoHash.toLowerCase()),
-    })),
+    items: (row?.decisions ?? []).map((item) => {
+      const part = item.infoHash
+        ? blocked.get(item.infoHash.toLowerCase())
+        : undefined
+
+      return {
+        ...item,
+        blocked: part !== undefined && (part === null || part.has(key)),
+      }
+    }),
   }
 }
 

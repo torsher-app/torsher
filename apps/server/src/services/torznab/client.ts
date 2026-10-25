@@ -304,8 +304,13 @@ export async function downloadTorrent(
     if (res.status === 401 || res.status === 403)
       throw new SourceError('auth', 'Source rejected the API key')
 
-    if (!res.ok)
-      throw new SourceError('remote', `Source responded with ${res.status}`)
+    if (!res.ok) {
+      throw new SourceError('remote', `Source responded with ${res.status}`, {
+        ...((res.status === 429 || res.status === 503) && {
+          retryAt: retryAtOf(res),
+        }),
+      })
+    }
 
     const bytes = await readLimited(res)
 

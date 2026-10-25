@@ -71,7 +71,7 @@ export async function followAutomation(now = new Date()) {
 }
 
 /** Один проход планировщика; во время прохода новый не начинается */
-function followTick(now = new Date()) {
+export function followTick(now = new Date()) {
   running ??= refreshFollowSchedules(now)
     .then(() => followAutomation(now))
     .catch(err => logFor('catalog').warn({ err }, 'Follow tick failed'))
@@ -80,6 +80,29 @@ function followTick(now = new Date()) {
     })
 
   return running
+}
+
+/**
+ * Решение вне тика (ответ владельца) — после прохода и под его замком: иначе
+ * тот же кандидат захватили бы дважды.
+ */
+export async function underFollowLock<T>(work: () => Promise<T>): Promise<T> {
+  // Пока ждали, замок мог взять другой ждущий
+  for (let busy = running; busy; busy = running) await busy
+
+  const result = work()
+  const held = result.then(
+    () => {},
+    () => {},
+  )
+
+  running = held
+  void held.then(() => {
+    if (running === held)
+      running = undefined
+  })
+
+  return result
 }
 
 export function startFollowScheduler() {

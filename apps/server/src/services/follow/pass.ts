@@ -12,16 +12,22 @@ import type { NewPending } from './notify.ts'
 import type { UpgradeCheck, UpgradeTarget } from './upgrade.ts'
 import type { EpisodeRef, EpisodeWithState } from './wanted.ts'
 import type { VideoClass } from '@torsher/release-parser'
-import { and, eq, isNotNull, isNull } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
-import { followEpisodes, follows, followSeasons } from '../../db/schema.ts'
+import {
+  followEpisodes,
+  follows,
+  followSeasons,
+  libraryFolders,
+  mediaFiles,
+} from '../../db/schema.ts'
 import { summaryOf } from '../mine/cards.ts'
 import { DEFAULT_PROFILE } from '../sources/profile.ts'
 import { rankReleases } from '../sources/rank.ts'
 import { knownResolutions } from '../sources/resolution.ts'
 import { getTitleIdentity } from '../tmdb/index.ts'
 import { movieAvailableFrom } from './availability.ts'
-import { blockedHashes } from './blocklist.ts'
+import { blockedReleases } from './blocklist.ts'
 import {
   bestQualitySeen,
   cutoffStepOf,
@@ -34,7 +40,7 @@ import { followEpisodeStates, movieState, stateInputs } from './episodes.ts'
 import { grabCandidate, pendingOf, resetEpisodes } from './grab.ts'
 import { recordHistory, reportedEpisodes } from './history.ts'
 import { announceWaiting } from './notify.ts'
-import { scheduleOf } from './index.ts'
+import { followById, scheduleOf } from './index.ts'
 import {
   seasonTopics,
   titleTopics,
@@ -437,8 +443,14 @@ export async function decideFollow(
   releases: FoundRelease[],
   now = new Date(),
 ) {
+  // Проход начался раньше: слежение могли остановить или удалить
+  if (followById(follow.id)?.state !== 'active')
+    return
+
   if (follow.kind === 'series')
     await recordTrackerEpisodes(follow.titleId, releases, now)
+
+  forgetRemoved(follow)
 
   const states = await followStates(follow, now)
   const wanted = states.filter(item => WANTED_STATES.has(item.state))
@@ -465,7 +477,7 @@ export async function decideFollow(
     downloading: new Set(
       states.filter(item => item.state === 'downloading').map(episodeKey),
     ),
-    blocked: blockedHashes(now),
+    blocked: blockedReleases(now),
     firstSeen: new Map(
       [...rows.values()].map(row => [episodeKey(row), row.firstSeenAt]),
     ),
@@ -566,9 +578,9 @@ export async function decideFollow(
 }
 
 /**
- * Окно кончилось или место освободилось: отложенные кандидаты захватываются
- * без нового поиска. Серии, которые за это время скачали или оставили перед
- * курсором, кандидата больше не ждут.
+ * Окно кончилось или пауза после нехватки места прошла: отложенные кандидаты
+ * захватываются без нового поиска. Серии, которые за это время скачали или
+ * оставили перед курсором, кандидата больше не ждут.
  */
 export async function grabPending(follow: Follow, now = new Date()) {
   const rows = getDb()
@@ -582,10 +594,9 @@ export async function grabPending(follow: Follow, now = new Date()) {
       ),
     )
     .all()
-    .filter(
-      row =>
-        row.stateNote === 'no_space'
-        || (!!row.waitUntil && row.waitUntil <= now),
+    // Без срока — кандидат без места из прежних версий
+    .filter(row =>
+      row.waitUntil ? row.waitUntil <= now : row.stateNote === 'no_space',
     )
 
   if (!rows.length)
@@ -624,6 +635,92 @@ export async function grabPending(follow: Follow, now = new Date()) {
       ownStudio: seasonVoice(follow, episodes[0]!.season)?.studio,
       now,
     })
+  }
+}
+
+/** Серии, чей файл пропал вместе с недоступной папкой библиотеки */
+function unreachableEpisodes(titleId: string) {
+  const keys = new Set<string>()
+  const rows = getDb()
+    .select({
+      season: mediaFiles.season,
+      episode: mediaFiles.episode,
+      episodeTo: mediaFiles.episodeTo,
+    })
+    .from(mediaFiles)
+    .innerJoin(libraryFolders, eq(libraryFolders.id, mediaFiles.folderId))
+    .where(
+      and(
+        eq(mediaFiles.titleId, titleId),
+        eq(mediaFiles.state, 'missing'),
+        inArray(libraryFolders.status, ['offline', 'denied']),
+      ),
+    )
+    .all()
+
+  for (const row of rows) {
+    if (row.season === null || row.episode === null)
+      continue
+
+    for (
+      let episode = row.episode;
+      episode <= (row.episodeTo ?? row.episode);
+      episode++
+    )
+      keys.add(episodeKey({ season: row.season, episode }))
+  }
+
+  return keys
+}
+
+/**
+ * Скачанную серию убрали из библиотеки и она не качается: её закачка
+ * забывается. Новый захват — первый, а не замена файла, которого нет.
+ * Файл в отключённой папке не убран: диск вернётся вместе с ним.
+ */
+function forgetRemoved(follow: Follow) {
+  const rows = getDb()
+    .select()
+    .from(followEpisodes)
+    .where(
+      and(
+        eq(followEpisodes.followId, follow.id),
+        isNotNull(followEpisodes.downloadedAt),
+      ),
+    )
+    .all()
+
+  if (!rows.length)
+    return
+
+  const { library, downloading } = stateInputs(follow, follow.kind)
+  const unreachable = unreachableEpisodes(follow.titleId)
+
+  for (const row of rows) {
+    const key = episodeKey(row)
+
+    if (library.has(key) || downloading.has(key) || unreachable.has(key))
+      continue
+
+    getDb()
+      .update(followEpisodes)
+      .set({
+        downloadedAt: null,
+        torrentId: null,
+        fileIndex: null,
+        grabbedAt: null,
+        upgradeFrom: null,
+        waitUntil: null,
+        stateNote: null,
+      })
+      .where(
+        and(
+          eq(followEpisodes.followId, follow.id),
+          eq(followEpisodes.season, row.season),
+          eq(followEpisodes.episode, row.episode),
+        ),
+      )
+      .run()
   }
 }
 

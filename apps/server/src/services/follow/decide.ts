@@ -2,6 +2,7 @@ import type { VideoClass } from '@torsher/release-parser'
 import type { FollowQualityPreset } from '../../db/schema.ts'
 import type { RankingProfile, VoiceRef } from '../sources/profile.ts'
 import type { RankedRelease } from '../sources/rank.ts'
+import type { BlockedReleases } from './blocklist.ts'
 import type { OrderedCandidate } from './rank.ts'
 import type { TopicKey } from './topics.ts'
 import type {
@@ -17,6 +18,7 @@ import {
   voiceMatches,
 } from '../sources/rank.ts'
 import { isDigitalSource } from './availability.ts'
+import { blockedPart } from './blocklist.ts'
 import { compareCandidates, ladderStep, QUALITY_LADDERS } from './rank.ts'
 import { isUpgrade } from './upgrade.ts'
 import { episodeKey } from './wanted.ts'
@@ -96,8 +98,7 @@ export interface DecideContext {
   /** Нужные серии (`episodeKey`) */
   wanted: Set<string>
   downloading: Set<string>
-  /** Infohash в чёрном списке, нижний регистр */
-  blocked: Set<string>
+  blocked: BlockedReleases
   /** Первое появление серии: старт окна ожидания */
   firstSeen: Map<string, Date>
   /**
@@ -159,7 +160,10 @@ export function releaseEpisodes(
   if (ctx.kind === 'movie')
     return [{ season: 0, episode: 0 }]
 
-  const range = release.parsed.episodes
+  // Диапазон многосезонного пака бывает и сквозным («Сезон 1-3, Серии 1-60
+  // из 60»), и общим на все сезоны: какие серии в каком сезоне, скажут файлы
+  const range
+    = release.parsed.seasons.length > 1 ? undefined : release.parsed.episodes
   const count = ctx.episodeCounts?.[season]
 
   if (range || count) {
@@ -285,10 +289,31 @@ export function checkCandidate(
   const upgrades = new Set<string>()
   const considered: EpisodeRef[] = []
   const episodeRejections = new Map<string, Rejection>()
+  const blocked = blockedPart(
+    {
+      infoHash: release.infoHash,
+      title: release.title,
+      detailsUrls: release.indexers.flatMap(item => item.detailsUrl ?? []),
+    },
+    ctx.blocked,
+  )
+  let blockedEpisodes = false
 
   for (const item of named) {
     const key = episodeKey(item)
     const check = ctx.upgrades?.get(key)
+
+    // Этих серий нет в файлах раздачи: остальные она закрывает
+    if (blocked?.has(key)) {
+      blockedEpisodes = true
+
+      if (ctx.wanted.has(key) || check) {
+        considered.push(item)
+        episodeRejections.set(key, reject('blocklisted'))
+      }
+
+      continue
+    }
 
     if (ctx.wanted.has(key)) {
       episodes.push(item)
@@ -347,13 +372,13 @@ export function checkCandidate(
   if (isFarOutsideCorridor(release, ctx.kind))
     rejections.push(reject('size', { size: release.episodeSize! }))
 
-  if (release.infoHash && ctx.blocked.has(release.infoHash.toLowerCase()))
+  if (blocked === null || (blockedEpisodes && episodes.length === 0))
     rejections.push(reject('blocklisted'))
 
   if (ctx.voiceStrict && season.voice?.studio && !ownVoice)
     rejections.push(reject('voice_strict', { studio: season.voice.studio }))
 
-  if (episodes.length === 0) {
+  if (episodes.length === 0 && !blockedEpisodes) {
     const kept = UPGRADE_REJECTIONS.find(code =>
       [...episodeRejections.values()].some(item => item.code === code),
     )

@@ -105,4 +105,62 @@ describe('matchTitle', () => {
       match('Бумажный фонарь / Сезон: 1 / Серии: 1-6 из 6 (2021)', lantern),
     ).toEqual({ confidence: 'low', issues: ['kind'] })
   })
+
+  // Цель без сезона: так сверяет лента «Следить»
+  const quiet: TitleTarget = {
+    kind: 'series',
+    aliases: ['Quiet Harbor'],
+    year: 2020,
+  }
+
+  it('первый сезон с годом не того сериала → medium', () => {
+    expect(match('Quiet Harbor (2024) S01E01 1080p WEB-DL', quiet)).toEqual({
+      confidence: 'medium',
+      issues: ['year'],
+    })
+  })
+
+  it('пак с первого сезона с годом последнего → high', () => {
+    expect(match('Quiet.Harbor.S01-S03.2022.1080p.WEB-DL-GRP', quiet)).toEqual({
+      confidence: 'high',
+      issues: [],
+    })
+  })
+
+  it('поздний сезон с годом своего эфира → high', () => {
+    expect(match('Quiet Harbor (2023) S04E01 1080p WEB-DL', quiet)).toEqual({
+      confidence: 'high',
+      issues: [],
+    })
+  })
+
+  it('совпадение только по ключу написания без года → medium', () => {
+    expect(
+      match('Мат / Сезон: 1 / Серии: 1-8 из 8 WEB-DL 1080p', {
+        kind: 'series',
+        aliases: ['Мать'],
+        year: 2020,
+      }),
+    ).toEqual({ confidence: 'medium', issues: ['similarTitle'] })
+  })
+
+  it('совпадение по ключу написания с совпавшим годом → high', () => {
+    expect(
+      match('Брать / Сезон: 1 / Серии: 1-8 из 8 (2020) WEB-DL 1080p', {
+        kind: 'series',
+        aliases: ['Брат'],
+        year: 2020,
+      }),
+    ).toEqual({ confidence: 'high', issues: [] })
+  })
+
+  it('транслит другой письменностью — точное совпадение', () => {
+    expect(
+      match('Odnazhdy v derevne / Сезон: 1 / Серии: 1-8 из 8 WEB-DL', {
+        kind: 'series',
+        aliases: ['Однажды в деревне'],
+        year: 2020,
+      }),
+    ).toEqual({ confidence: 'high', issues: [] })
+  })
 })
