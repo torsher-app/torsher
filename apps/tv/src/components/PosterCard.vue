@@ -4,7 +4,7 @@ import { openTitleActions } from '../titleActions.ts'
 import DownloadBadge from './DownloadBadge.vue'
 import FollowBadge from './FollowBadge.vue'
 import PosterRatingBadge from './PosterRatingBadge.vue'
-import { computed } from 'vue'
+import { computed, onActivated, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import WatchedMark from './WatchedMark.vue'
 
@@ -43,6 +43,21 @@ function openActions() {
 
 const { t } = useI18n()
 
+// Постер не загрузился (прокси не достал его из TMDB) — заглушка с названием,
+// а не значок битой картинки. Возврат на экран из KeepAlive пробует снова:
+// тот же `src` в старом `<img>` браузер не перезапрашивает, а новый — да
+const broken = ref(false)
+
+watch(
+  () => props.card.poster,
+  () => {
+    broken.value = false
+  },
+)
+onActivated(() => {
+  broken.value = false
+})
+
 // Подпись в сетке поиска: «2024 · фильм»
 const meta = computed(() => {
   const kind = t(
@@ -65,13 +80,14 @@ const meta = computed(() => {
   >
     <span class="poster-card__frame">
       <img
-        v-if="card.poster && loadImage"
+        v-if="card.poster && loadImage && !broken"
         class="poster-card__image"
         :src="card.poster"
         alt=""
         decoding="async"
+        @error="broken = true"
       >
-      <span v-else-if="!card.poster" class="poster-card__placeholder">
+      <span v-else-if="!card.poster || broken" class="poster-card__placeholder">
         {{ card.title }}
       </span>
       <span v-if="current" class="poster-card__current" />
