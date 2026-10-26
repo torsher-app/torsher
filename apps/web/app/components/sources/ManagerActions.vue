@@ -3,6 +3,7 @@ import type { IndexerManager } from '@torsher/api-client'
 import {
   EllipsisIcon,
   ExternalLinkIcon,
+  KeyRoundIcon,
   Loader2Icon,
   RefreshCwIcon,
   UnplugIcon,
@@ -19,6 +20,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { sourceErrorKind } from '~/composables/useSources'
 import DisconnectManagerDialog from './DisconnectManagerDialog.vue'
+import ImportManagerDialog from './ImportManagerDialog.vue'
 
 const props = defineProps<{
   manager: IndexerManager
@@ -29,6 +31,7 @@ const { syncManager } = useSources()
 
 const isSyncing = ref(false)
 const isDisconnectOpen = ref(false)
+const isKeyOpen = ref(false)
 
 const name = computed(() => t(`panel.kinds.${props.manager.kind}`))
 
@@ -50,10 +53,17 @@ async function onSync() {
     )
   }
   catch (err) {
+    const kind = await sourceErrorKind(err)
+
+    // Ключ индексаторов менеджера — его собственный: не принят — значит,
+    // его сменили в менеджере, и новый вводят здесь
     toast.error(
       t('panel.sources.managers.syncFailed', { manager: name.value }),
       {
-        description: t(`panel.sources.errors.${await sourceErrorKind(err)}`),
+        description:
+          kind === 'auth'
+            ? t('panel.sources.managers.syncAuth', { manager: name.value })
+            : t(`panel.sources.errors.${kind}`),
       },
     )
   }
@@ -95,6 +105,10 @@ async function onSync() {
           {{ t("panel.sources.managers.open", { manager: name }) }}
         </a>
       </DropdownMenuItem>
+      <DropdownMenuItem @select="isKeyOpen = true">
+        <KeyRoundIcon aria-hidden="true" />
+        {{ t("panel.sources.managers.changeKey") }}
+      </DropdownMenuItem>
       <DropdownMenuSeparator />
       <DropdownMenuItem variant="destructive" @select="isDisconnectOpen = true">
         <UnplugIcon aria-hidden="true" />
@@ -103,4 +117,5 @@ async function onSync() {
     </DropdownMenuContent>
   </DropdownMenu>
   <DisconnectManagerDialog v-model:open="isDisconnectOpen" :manager="manager" />
+  <ImportManagerDialog v-model:open="isKeyOpen" :manager="manager" />
 </template>

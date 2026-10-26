@@ -26,13 +26,20 @@ export interface RemoteIndexer {
   priority?: number
 }
 
-/** Адрес менеджера без хвостового слеша, query и hash; путь (URL base) сохраняется */
-export function normalizeManagerUrl(input: string) {
+/**
+ * Адрес менеджера без хвостового слеша, query и hash; путь (URL base)
+ * сохраняется. У Jackett адрес копируют из браузера (`/UI/Dashboard`) или
+ * кнопкой Torznab-ленты (`/api/v2.0/...`): URL base — то, что перед ними.
+ */
+export function normalizeManagerUrl(input: string, kind: IndexerManagerKind) {
   const url = new URL(input)
 
   url.search = ''
   url.hash = ''
   url.pathname = url.pathname.replace(/\/+$/, '')
+
+  if (kind === 'jackett')
+    url.pathname = url.pathname.replace(/\/(?:UI|api\/v2\.0)(?:\/.*)?$/i, '')
 
   return url.href.replace(/\/+$/, '')
 }
@@ -125,28 +132,32 @@ async function listJackett(baseUrl: string, apiKey: string) {
   if (res.status === 404)
     notFound('jackett')
 
-  const root = child(await readTorznabXml(res), 'indexers')
+  const xml = await readTorznabXml(res)
 
-  if (!root)
+  // Jackett без настроенных индексаторов отвечает `<indexers />`, а пустой
+  // элемент парсер отдаёт строкой, не объектом
+  if (!('indexers' in xml))
     notFound('jackett')
 
-  return children(root, 'indexer').flatMap((node): RemoteIndexer[] => {
-    const id = text(node, 'id')
-    const name = text(node, 'title')?.trim()
+  return children(child(xml, 'indexers'), 'indexer').flatMap(
+    (node): RemoteIndexer[] => {
+      const id = text(node, 'id')
+      const name = text(node, 'title')?.trim()
 
-    if (!id || !name || text(node, 'configured')?.toLowerCase() === 'false')
-      return []
+      if (!id || !name || text(node, 'configured')?.toLowerCase() === 'false')
+        return []
 
-    return [
-      {
-        externalId: id,
-        name,
-        url: `${baseUrl}/api/v2.0/indexers/${encodeURIComponent(id)}/results/torznab`,
-        enabled: true,
-        caps: parseCaps(child(node, 'caps')),
-      },
-    ]
-  })
+      return [
+        {
+          externalId: id,
+          name,
+          url: `${baseUrl}/api/v2.0/indexers/${encodeURIComponent(id)}/results/torznab`,
+          enabled: true,
+          caps: parseCaps(child(node, 'caps')),
+        },
+      ]
+    },
+  )
 }
 
 export function listManagerIndexers(

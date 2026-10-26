@@ -479,7 +479,7 @@ export interface NewManager {
  * получен, в базе ничего не меняется.
  */
 export async function importManager(input: NewManager): Promise<SyncResult> {
-  const url = normalizeManagerUrl(input.url)
+  const url = normalizeManagerUrl(input.url, input.kind)
   const remote = await listManagerIndexers(input.kind, url, input.apiKey)
   const db = getDb()
 

@@ -74,6 +74,33 @@ describe('searchReleases', () => {
     expect(outcome.indexerCount).toBe(2)
   })
 
+  it('медленные индексаторы не занимают все потоки: остальные успевают', async () => {
+    fetchMock.mockImplementation(async (input) => {
+      if (String(input).includes('slow'))
+        return new Promise<Response>(() => {})
+
+      return new Response(searchXml)
+    })
+
+    const titles = ['Quiet Harbor', 'Silent Harbor', 'Calm Harbor']
+    const outcome = await searchReleases(
+      {
+        identity,
+        aliases: titles.map(value => ({ ...aliases[0]!, value })),
+        season: 2,
+      },
+      [
+        indexer('slow-1', 'slow-1.indexer.example'),
+        indexer('slow-2', 'slow-2.indexer.example'),
+        indexer('a', 'a.indexer.example'),
+      ],
+      { deadlineMs: 50, concurrency: 3 },
+    )
+
+    expect(outcome.failed.map(item => item.id)).toEqual(['slow-1', 'slow-2'])
+    expect(outcome.releases.length).toBeGreaterThan(0)
+  })
+
   it('индексатор без поиска текстом и по ID — unsupported', async () => {
     const mute = {
       ...indexer('mute', 'mute.indexer.example'),

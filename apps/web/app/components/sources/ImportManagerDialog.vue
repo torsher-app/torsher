@@ -26,6 +26,11 @@ import { sourceErrorKind } from '~/composables/useSources'
 import { dialogSheetClass } from '~/lib/dialog'
 import { fieldOfSourceError, httpUrlSchema } from '~/lib/sourceForms'
 
+const props = defineProps<{
+  /** Новый ключ подключённого менеджера: тип и адрес уже известны */
+  manager?: Pick<IndexerManager, 'kind' | 'url'>
+}>()
+
 const open = defineModel<boolean>('open', { required: true })
 
 const KINDS: { kind: IndexerManager['kind'], port: number }[] = [
@@ -70,7 +75,15 @@ const errorField = computed(() =>
 
 watch(open, (isOpen) => {
   if (isOpen) {
-    resetForm()
+    resetForm(
+      props.manager && {
+        values: {
+          kind: props.manager.kind,
+          url: props.manager.url,
+          apiKey: '',
+        },
+      },
+    )
     serverError.value = null
   }
 })
@@ -83,15 +96,23 @@ const onSubmit = handleSubmit(async (values) => {
     const manager = t(`panel.kinds.${values.kind}`)
 
     open.value = false
+
+    if (props.manager) {
+      toast.success(t('panel.sources.managers.keySaved', { manager }))
+      return
+    }
+
     toast.success(t('panel.sources.managers.imported', { manager }), {
       description:
-        result.added > 0
-          ? t('panel.sources.managers.importedText', result.added)
-          : t('panel.sources.managers.synced', {
-              added: result.added,
-              updated: result.updated,
-              missing: result.missing,
-            }),
+        result.manager.indexerCount === 0
+          ? t('panel.sources.managers.importedEmpty', { manager })
+          : result.added > 0
+            ? t('panel.sources.managers.importedText', result.added)
+            : t('panel.sources.managers.synced', {
+                added: result.added,
+                updated: result.updated,
+                missing: result.missing,
+              }),
     })
   }
   catch (err) {
@@ -104,9 +125,23 @@ const onSubmit = handleSubmit(async (values) => {
   <Dialog v-model:open="open">
     <DialogContent :class="dialogSheetClass">
       <DialogHeader>
-        <DialogTitle>{{ t("panel.sources.importDialog.title") }}</DialogTitle>
+        <DialogTitle>
+          {{
+            manager
+              ? t("panel.sources.importDialog.keyTitle", {
+                manager: t(`panel.kinds.${manager.kind}`),
+              })
+              : t("panel.sources.importDialog.title")
+          }}
+        </DialogTitle>
         <DialogDescription>
-          {{ t("panel.sources.importDialog.description") }}
+          {{
+            manager
+              ? t("panel.sources.importDialog.keyDescription", {
+                manager: t(`panel.kinds.${manager.kind}`),
+              })
+              : t("panel.sources.importDialog.description")
+          }}
         </DialogDescription>
       </DialogHeader>
 
@@ -119,9 +154,7 @@ const onSubmit = handleSubmit(async (values) => {
         <Alert v-if="serverError" variant="destructive">
           <CircleAlertIcon />
           <AlertTitle>
-            {{
-              t(`panel.sources.errorTitles.${serverError}`)
-            }}
+            {{ t(`panel.sources.errorTitles.${serverError}`) }}
           </AlertTitle>
           <AlertDescription>
             {{ t(`panel.sources.errors.${serverError}`) }}
@@ -241,7 +274,11 @@ const onSubmit = handleSubmit(async (values) => {
           form="import-manager"
           :loading="isSubmitting"
         >
-          {{ t("panel.sources.importDialog.submit") }}
+          {{
+            manager
+              ? t("panel.sources.importDialog.keySubmit")
+              : t("panel.sources.importDialog.submit")
+          }}
         </LoadingButton>
       </DialogFooter>
     </DialogContent>

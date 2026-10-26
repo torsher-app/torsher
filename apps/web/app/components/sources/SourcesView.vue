@@ -182,10 +182,14 @@ onBeforeUnmount(stopPolling)
             v-if="group.manager && group.items.length === 0"
             class="border-b px-4 py-3 text-[13px] text-muted-foreground"
           >
+            <!-- Индексаторы менеджера бывают все в «Требуют внимания» -->
             {{
-              t("panel.sources.groups.emptyManager", {
-                manager: t(`panel.kinds.${group.manager.kind}`),
-              })
+              t(
+                group.manager.indexerCount > 0
+                  ? "panel.sources.groups.managerInAttention"
+                  : "panel.sources.groups.emptyManager",
+                { manager: t(`panel.kinds.${group.manager.kind}`) },
+              )
             }}
           </li>
         </ul>

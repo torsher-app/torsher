@@ -54,7 +54,9 @@ function fixOf(host: NetHost, spoofed: boolean) {
 
 function hostCheck(host: NetHost): WizardCheck {
   const view = hostStatusView(host)
-  const status = TONE_STATUS[view.tone]
+  // Молчащий TMDB — тот же каталог без постеров и названий, что и отказ:
+  // на этом шаге это ошибка, а не предупреждение
+  const status = view.state === 'timeout' ? 'error' : TONE_STATUS[view.tone]
   const reason = text.reason(host, view)
   const latency
     = host.latencyMs !== null && view.state === 'ok'

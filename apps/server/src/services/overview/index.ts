@@ -67,12 +67,12 @@ function engineAttention(): AttentionItem[] {
 
 function indexerAttention(): AttentionItem[] {
   const enabled = listIndexers().filter(indexer => indexer.enabled)
-  // Ошибка важнее пропажи из менеджера, как в списке «Источников»
+  // Пропажа из менеджера важнее ошибки, как в списке «Источников»: в пропавшем
+  // не ищем, а проверка падает потому, что менеджер его больше не отдаёт
+  const missing = enabled.filter(indexer => indexer.missing)
   const failed = enabled.filter(
-    indexer => indexer.checkStatus && indexer.checkStatus !== 'ok',
-  )
-  const missing = enabled.filter(
-    indexer => indexer.missing && !failed.includes(indexer),
+    indexer =>
+      !indexer.missing && indexer.checkStatus && indexer.checkStatus !== 'ok',
   )
   const items: AttentionItem[] = []
 

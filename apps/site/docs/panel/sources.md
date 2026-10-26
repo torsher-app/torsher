@@ -44,15 +44,15 @@ Above the list are the filters <Ui k="panel.sources.filters.all" />, <Ui k="pane
 | <Ui k="panel.sources.status.unreachable" /> | The server can't reach the address. |
 | <Ui k="panel.sources.status.bad_response" /> | The address answered, but not with Torznab. |
 | <Ui k="panel.sources.status.remote" /> | The indexer answered with an error. |
-| Gone from the manager | It was removed in Prowlarr or Jackett. Torsher still searches it but doesn't update it. |
+| Gone from the manager | It was removed in Prowlarr or Jackett, and Torsher doesn't search it. Add it back in the manager and sync, or delete it. |
 
-Background searches by Following skip an indexer that keeps failing: for a minute after the first error, then longer after each one, up to a day.
+Searches skip an indexer that keeps failing: for a minute after the first error, then longer after each one, up to a day. This covers both the <Ui k="sources.title" /> screen on the TV, where a skipped indexer counts as one that didn't answer, and background searches by Following. When every indexer is paused, the TV asks them all anyway.
 
 ## Keep a manager in sync
 
 Torsher doesn't watch the manager by itself. After you add, remove or change indexers in Prowlarr or Jackett, select the sync button next to the manager's name. New indexers are added, changed ones are updated, and ones gone from the manager are marked rather than deleted. A toast says how many were added, updated and gone.
 
-The menu next to it opens the manager's own interface or disconnects it. When you disconnect a manager, choose what happens to its indexers:
+The menu next to it opens the manager's own interface, takes a new API key with <Ui k="panel.sources.managers.changeKey" /> after you change it in the manager, or disconnects it. When you disconnect a manager, choose what happens to its indexers:
 
 - <Ui k="panel.sources.managers.deleteIndexers" />: only the indexers added by hand remain.
 - Keep them: they become manual indexers and search keeps working.

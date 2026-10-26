@@ -14,6 +14,7 @@ import { createApp } from '../../app.ts'
 import { ACCESS_TOKEN_COOKIE } from '../../config.ts'
 import { getDb, migrateDb } from '../../db/index.ts'
 import {
+  indexers,
   notificationChannels,
   notifications,
   torrents,
@@ -23,6 +24,7 @@ import { signToken } from '../../utils/token.ts'
 import { liveState as fixtureState } from '../engine/fixtures/index.ts'
 import { logFor } from '../logs/index.ts'
 import { checkDeps, checkState, startCheck } from '../net/check.ts'
+import { capsXml } from '../torznab/fixtures/index.ts'
 import { apprise } from './channels/apprise.ts'
 import {
   createChannel,
@@ -347,6 +349,38 @@ describe('монитор проблем', () => {
     await idleDelivery()
 
     expect(inbox()).toHaveLength(0)
+  })
+
+  it('перепроверка индексаторов не трогает пропавшие из менеджера', async () => {
+    getDb()
+      .insert(indexers)
+      .values([
+        {
+          name: 'Broken',
+          url: 'http://broken.example/t',
+          checkStatus: 'remote',
+        },
+        {
+          name: 'Gone',
+          url: 'http://gone.example/t',
+          checkStatus: 'remote',
+          missing: true,
+        },
+      ])
+      .run()
+    fetchMock.mockImplementation(async () => new Response(capsXml))
+
+    try {
+      await recheckProblem('indexer_error')
+      await recheckProblem('indexer_missing')
+
+      expect(
+        fetchMock.mock.calls.map(([input]) => new URL(String(input)).host),
+      ).toEqual(['broken.example'])
+    }
+    finally {
+      getDb().delete(indexers).run()
+    }
   })
 
   it('перепроверка сети ждёт идущую проверку и запускает свою', async () => {

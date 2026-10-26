@@ -29,9 +29,12 @@ export interface HostStatusView {
  * маршруту, без него витрина опустеет.
  */
 export function hostStatusView(
-  host: Pick<NetHost, 'status' | 'checking' | 'dnsSpoofed'>,
+  host: Pick<NetHost, 'status' | 'checking' | 'dnsSpoofed' | 'route'>,
 ): HostStatusView {
-  const spoofed = host.dnsSpoofed
+  // Не отвечает и через DoH или прокси маршрута: дело уже не в DNS, а в
+  // блокировке адреса, и совет «включите DoH» вёл бы по кругу
+  const routed = host.route.via !== 'direct' || host.route.dns !== 'system'
+  const spoofed = host.dnsSpoofed && (host.status === 'ok' || !routed)
 
   if (host.checking) {
     return {

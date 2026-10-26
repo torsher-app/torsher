@@ -5,9 +5,10 @@ import { config } from '../../config.ts'
 const REDACTED = '[redacted]'
 
 // Параметр и в экранированном адресе (`&amp;`, `%3F…%3D`); значение кончается
-// на `&`, пробеле, кавычке или `\` экранирования JSON
+// на `&`, пробеле, кавычке или `\` экранирования JSON. `jackett_apikey` —
+// ключ в ссылках прокси Jackett на `.torrent`
 const SECRET_PARAM
-  = /((?:[?&#]|&amp;|%3F|%26)(?:token|access_token|refresh_token|apikey|api_key|passkey|password|sig|key)(?:=|%3D))[^&\s"\\]+/gi
+  = /((?:[?&#]|&amp;|%3F|%26)(?:token|access_token|refresh_token|apikey|jackett_apikey|api_key|passkey|password|sig|key)(?:=|%3D))[^&\s"\\]+/gi
 
 // Заголовок, попавший в текст ошибки. Значение не выходит за строку JSON
 const SECRET_AUTHORIZATION

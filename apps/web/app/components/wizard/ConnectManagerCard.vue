@@ -72,14 +72,14 @@ const onSubmit = handleSubmit(async (values) => {
       apiKey: values.apiKey,
     })
 
-    toast.success(
-      t('panel.sources.managers.imported', {
-        manager: t(`panel.kinds.${manager.kind}`),
-      }),
-      {
-        description: t('panel.sources.managers.importedText', result.added),
-      },
-    )
+    const name = t(`panel.kinds.${manager.kind}`)
+
+    toast.success(t('panel.sources.managers.imported', { manager: name }), {
+      description:
+        result.manager.indexerCount > 0
+          ? t('panel.sources.managers.importedText', result.added)
+          : t('panel.sources.managers.importedEmpty', { manager: name }),
+    })
   }
   catch (err) {
     serverError.value = await sourceErrorKind(err)

@@ -77,12 +77,13 @@ RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
 # секретом сборки, а не build-arg: build-args видны в provenance образа.
 # В образе лежит файлом, а не в ENV: env виден в `docker inspect` и переходит
 # движку. Без секрета (форк, локальная сборка) файла нет. Содержимое секрета
-# не входит в ключ кэша, поэтому CI собирает эту стадию без кэша
+# не входит в ключ кэша, поэтому CI собирает эту стадию без кэша. Секрет
+# монтируется с правами 0400 root, а сервер работает от PUID: права задаём сами
 FROM --platform=$BUILDPLATFORM node:${NODE_VERSION}-bookworm-slim AS tmdb-app-key
 RUN --mount=type=secret,id=tmdb_app_key,required=false \
     mkdir -p /out \
  && if [ -s /run/secrets/tmdb_app_key ]; then \
-      cp /run/secrets/tmdb_app_key /out/tmdb-app-key; \
+      install -m 0444 /run/secrets/tmdb_app_key /out/tmdb-app-key; \
     fi
 
 # trixie, а не bookworm: ffmpeg из Debian (перепаковка видео и ffprobe) там

@@ -46,10 +46,12 @@ Already past the wizard? Use Option B with the address `http://prowlarr:9696`.
    | Where the manager runs | Address |
    | --- | --- |
    | In the same `docker-compose.yml` | `http://prowlarr:9696` or `http://jackett:9117` |
-   | On the same machine, outside Compose | `http://<server-address>:9696` |
-   | On another machine | `http://<that-machine-address>:9696` |
+   | On the same machine, outside Compose | `http://<server-address>:9696` or `http://<server-address>:9117` |
+   | On another machine | `http://<that-machine-address>:9696` or `http://<that-machine-address>:9117` |
 
-4. Select <Ui k="panel.sources.importDialog.submit" />. Torsher adds every indexer of the manager.
+   For Jackett you can paste the address straight from your browser, such as `http://<server-address>:9117/UI/Dashboard`, or the Torznab feed address Jackett copies for an indexer: Torsher keeps the part before `/UI` or `/api`. If Jackett runs under a base path, it stays in the address: `http://<server-address>:9117/jackett`.
+
+4. Select <Ui k="panel.sources.importDialog.submit" />. Torsher adds every indexer of the manager. Jackett hands over only the indexers you have configured in it; with none, Torsher connects the manager and adds nothing until you configure indexers in Jackett and sync.
 
 Torsher doesn't watch the manager by itself. When you add or remove indexers there, open <Ui k="panel.nav.sources" /> and use the sync button on the manager's card: new indexers are added, and ones gone from the manager are marked rather than deleted.
 
@@ -69,7 +71,10 @@ Open any title on the TV and select <Ui k="title.watch" />. The <Ui k="sources.t
 
 - **<Ui k="panel.wizard.sources.notFound" />.** The manager runs at another address or port: connect it by address as in Option B.
 - **The import fails.** Check the address from the Torsher server's point of view and the API key. A `localhost` address points at the Torsher container itself, not at your machine.
-- **Some indexers are not responding.** The <Ui k="sources.title" /> screen says how many didn't answer. Check them in the manager. If the server can't reach a site directly, add a route through your proxy in [Network](/docs/setup/network).
+- **Jackett runs outside Docker and the server can't reach it.** On Windows and macOS Jackett accepts only connections from the same computer by default. In the Jackett dashboard, turn on **External access** and select **Apply server settings**.
+- **The import adds no indexers.** The manager has none configured. Add indexers in it, then use the sync button on the manager's card.
+- **Some indexers are not responding.** The <Ui k="sources.title" /> screen says how many didn't answer; the others are searched anyway. Check them in the manager. If the server can't reach a site directly, add a route through your proxy in [Network](/docs/setup/network).
+- **An indexer behind Cloudflare doesn't answer in Jackett.** Jackett needs FlareSolverr for such sites: run it and enter its address in **FlareSolverr API URL** in the Jackett dashboard. When FlareSolverr can't pass the check, Jackett waits about a minute, and Torsher counts the indexer as not responding.
 
 ## Next
 

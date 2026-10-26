@@ -175,8 +175,12 @@ export const titleSources = z
     }),
     indexers: z.object({
       total: z.number(),
+      // `skipped` — индексатор на паузе после ошибок подряд, его не спрашивали
       failed: z.array(
-        z.object({ name: z.string(), kind: z.enum(sourceErrorKinds) }),
+        z.object({
+          name: z.string(),
+          kind: z.enum([...sourceErrorKinds, 'skipped']),
+        }),
       ),
     }),
   })

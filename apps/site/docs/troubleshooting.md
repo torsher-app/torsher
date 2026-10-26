@@ -150,9 +150,9 @@ The wizard says <Ui k="panel.wizard.sources.notFound" />. It looks for Prowlarr 
 
 <Ui k="panel.nav.sources" /> marks the indexer under <Ui k="panel.sources.groups.attention" /> and says why:
 
-- **The API key is rejected.** For an indexer from Prowlarr or Jackett, update the key in the manager: the next sync picks it up. For one added by hand, enter the new key with <Ui k="panel.sources.indexers.edit" />.
+- **The API key is rejected.** An indexer from Prowlarr or Jackett uses the manager's own API key, so the key was most likely changed in the manager. Copy the current key from it and enter it in Torsher: the menu next to the manager's name → <Ui k="panel.sources.managers.changeKey" />. For an indexer added by hand, enter the new key with <Ui k="panel.sources.indexers.edit" />.
 - **It doesn't respond in time.** Search goes through the other indexers meanwhile. If the site is unreachable from your network, add a route through your proxy in [Network](/docs/setup/network).
-- **It is gone from the manager.** It was removed in Prowlarr or Jackett. Torsher keeps searching it but doesn't update it; delete it if you don't need it.
+- **It is gone from the manager.** It was removed in Prowlarr or Jackett, and Torsher doesn't search it. Add it back in the manager and sync, or delete it if you don't need it.
 
 ### Search finds nothing {#nothing-found}
 

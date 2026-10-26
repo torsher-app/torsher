@@ -21,6 +21,7 @@ definePageMeta({
 const { t } = useI18n()
 const { wizard, finish } = useWizard()
 const sources = useSources()
+const network = useNetwork()
 const { tvUrl } = useRuntimeConfig().public
 
 const SECTIONS: { step: Exclude<WizardStep, 'done'>, to: string }[] = [
@@ -53,9 +54,20 @@ function rowOf(step: Exclude<WizardStep, 'done'>) {
     }
   }
 
-  return wizard.value?.skipped.includes(step)
-    ? { done: false, text: t('panel.wizard.done.skipped') }
-    : { done: true, text: t(`panel.wizard.done.${step}`) }
+  if (wizard.value?.skipped.includes(step))
+    return { done: false, text: t('panel.wizard.done.skipped') }
+
+  // Сеть тоже по факту: шаг проходят и с недоступным TMDB, а витрина тогда пуста
+  if (step === 'network') {
+    const tmdb = (network.check.value?.hosts ?? []).filter(
+      host => host.kind === 'tmdb' || host.kind === 'tmdb_images',
+    )
+
+    if (tmdb.some(host => host.status && host.status !== 'ok'))
+      return { done: false, text: t('panel.wizard.done.noCatalog') }
+  }
+
+  return { done: true, text: t(`panel.wizard.done.${step}`) }
 }
 
 const rows = computed(() =>
@@ -66,6 +78,7 @@ onMounted(() => {
   // Ошибка сохранения не держит владельца: тост покажет API-клиент
   finish().catch(() => undefined)
   sources.ensureLoaded()
+  network.load()
 })
 </script>
 

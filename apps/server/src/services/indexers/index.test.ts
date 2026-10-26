@@ -140,6 +140,16 @@ describe('listManagerIndexers', () => {
     )
   })
 
+  it('jackett: без настроенных индексаторов — пустой список', async () => {
+    fetchMock.mockResolvedValue(
+      new Response('<?xml version="1.0" encoding="UTF-8"?>\n<indexers />'),
+    )
+
+    await expect(
+      listManagerIndexers('jackett', 'http://manager.example', 'key'),
+    ).resolves.toEqual([])
+  })
+
   it('jackett: ошибка 100 — неверный ключ', async () => {
     fetchMock.mockResolvedValue(
       new Response(torznabErrorXml(100, 'Invalid API Key')),
@@ -235,6 +245,28 @@ describe('importManager', () => {
       }),
     ).rejects.toBeInstanceOf(SourceError)
     expect(getDb().select().from(indexerManagers).all()).toHaveLength(0)
+  })
+
+  it('jackett: адрес страницы интерфейса или Torznab-ленты — тот же менеджер', async () => {
+    fetchMock.mockImplementation(async () => new Response(jackettIndexersXml))
+
+    const first = await importManager({
+      kind: 'jackett',
+      url: 'http://manager.example:9117/jackett/UI/Dashboard#indexers',
+      apiKey: 'key',
+    })
+    const second = await importManager({
+      kind: 'jackett',
+      url: 'http://manager.example:9117/jackett/api/v2.0/indexers/all/results/torznab/',
+      apiKey: 'key',
+    })
+
+    expect(first.manager.url).toBe('http://manager.example:9117/jackett')
+    expect(second.manager.id).toBe(first.manager.id)
+    expect(String(fetchMock.mock.calls[0]![0])).toBe(
+      'http://manager.example:9117/jackett/api/v2.0/indexers/all/results/torznab/api?t=indexers&configured=true&apikey=key',
+    )
+    expect(listIndexers()).toHaveLength(2)
   })
 
   it('jackett: caps из списка сохраняются сразу', async () => {

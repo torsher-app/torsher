@@ -2,8 +2,12 @@ import type { VideoClass, VoiceType } from '@torsher/release-parser'
 import type { TitleIdentity } from '../tmdb/index.ts'
 import type { VoiceRef } from './profile.ts'
 import type { RankedRelease, Ranking } from './rank.ts'
-import type { IndexerFailure } from './search.ts'
+import type { IndexerFailure, SearchTarget } from './search.ts'
 import { recordTrackerEpisodes } from '../follow/trackerEpisodes.ts'
+import {
+  availableForBackground,
+  recordBackgroundOutcome,
+} from '../indexers/backoff.ts'
 import { listSearchableIndexers } from '../indexers/index.ts'
 import { getTitleIdentity } from '../tmdb/index.ts'
 import { normalizeTitle } from '@torsher/release-parser'
@@ -127,6 +131,31 @@ function voiceOptions(ranked: RankedRelease[], pinned: VoiceRef | undefined) {
 }
 
 /**
+ * Поиск зрителя, как у Sonarr: индексатор после ошибок подряд не спрашиваем,
+ * пока не кончится пауза, и считаем не ответившим. Итог двигает ту же лестницу
+ * пауз, что и фоновые поиски. На паузе все — спрашиваем всех: зрителю всё
+ * равно нечего показать.
+ */
+async function viewerSearch(target: SearchTarget) {
+  const all = listSearchableIndexers()
+  const { available } = availableForBackground(all)
+  const asked = available.length > 0 ? available : all
+  const outcome = await searchReleases(target, asked)
+
+  recordBackgroundOutcome(asked, outcome.failed)
+
+  const skipped = all
+    .filter(indexer => !asked.includes(indexer))
+    .map(({ id, name }) => ({ id, name, kind: 'skipped' as const }))
+
+  return {
+    ...outcome,
+    indexerCount: all.length,
+    failed: [...outcome.failed, ...skipped],
+  }
+}
+
+/**
  * Раздачи тайтла для карточки: поиск по индексаторам (из кэша, если свежий),
  * отбор по серии, ранжирование по профилю с закреплённой озвучкой сезона.
  * `undefined` — ID не из каталога.
@@ -150,12 +179,7 @@ export async function getTitleSources(
   const search = await cachedSearch(
     query ? `${scope}:q:${normalizeTitle(query) || query}` : scope,
     () =>
-      asViewerSearch(() =>
-        searchReleases(
-          { identity, aliases, season, query },
-          listSearchableIndexers(),
-        ),
-      ),
+      asViewerSearch(() => viewerSearch({ identity, aliases, season, query })),
     { refresh: request.refresh },
   )
 
