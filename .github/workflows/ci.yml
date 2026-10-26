@@ -42,7 +42,27 @@ jobs:
 
       - run: pnpm --filter @torsher/site build
 
+  changes:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      engine: ${{ steps.filter.outputs.engine }}
+    steps:
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            engine:
+              - 'engine/**'
+              - '.github/workflows/ci.yml'
+
   engine:
+    needs: changes
+    # On main it always runs so engine flakiness stays visible; !cancelled() keeps it
+    # from being skipped along with the PR-only changes job.
+    if: ${{ !cancelled() && (github.event_name == 'push' || needs.changes.outputs.engine == 'true') }}
     runs-on: ubuntu-latest
     defaults:
       run:
