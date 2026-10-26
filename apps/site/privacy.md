@@ -1,6 +1,6 @@
 ---
 title: Privacy Policy
-description: "What data Torsher, the LG TV app and this site collect and where it goes: nothing reaches the project, your data stays on your own server."
+description: "What data Torsher, the LG TV app and this site collect and where it goes: the server and the TV app send the project nothing, the site uses Google Analytics."
 sidebar: false
 aside: false
 outline: false
@@ -8,7 +8,7 @@ outline: false
 
 # Privacy Policy
 
-Torsher is software you run on your own hardware. The project behind it runs no service that receives your data: no accounts, no telemetry, no analytics and no automatic crash reports. This page applies to the Torsher server, the Torsher app for LG TVs and this website.
+Torsher is software you run on your own hardware. The Torsher server and the TV app send the project nothing: no accounts, no telemetry, no analytics and no automatic crash reports. Only this website measures visits, with Google Analytics, as described below. This page applies to the Torsher server, the Torsher app for LG TVs and this website.
 
 ## The Torsher server
 
@@ -30,7 +30,11 @@ The TV app keeps only the address of your server and the session of your connect
 
 ## This website
 
-torsher.app uses no analytics, no advertising and no tracking cookies. It is served through Cloudflare, which processes visitors' IP addresses to deliver and protect the site under its own privacy policy.
+torsher.app uses Google Analytics to count visits and see which pages people read. Google Analytics sets cookies in your browser and receives your IP address, browser and device details, the pages you open and the site you came from. Google processes this data under its own [privacy policy](https://policies.google.com/privacy). The project sees only aggregated reports and uses them to improve the site and the documentation. The site shows no advertising, and the analytics are not linked to any advertising product.
+
+To opt out, block cookies for this site, use a content blocker or install the [Google Analytics opt-out add-on](https://tools.google.com/dlpage/gaoptout).
+
+The site is served through Cloudflare, which processes visitors' IP addresses to deliver and protect the site under its own privacy policy.
 
 ## Contact
 

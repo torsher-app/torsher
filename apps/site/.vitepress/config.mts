@@ -19,6 +19,9 @@ function pagePath(relativePath: string) {
 
 const ogImage = `${siteUrl}/og-image.png`
 
+// GA4 counts client-side route changes itself through enhanced measurement (browser history events)
+const gaMeasurementId = 'G-HF50VGGL41'
+
 function seoHead(relativePath: string, title: string, pageDescription: string): HeadConfig[] {
   const url = new URL(pagePath(relativePath), siteUrl).toString()
 
@@ -57,16 +60,23 @@ export default defineConfig({
   head: [
     ['link', { rel: 'icon', type: 'image/svg+xml', href: '/logo.svg' }],
     ['meta', { name: 'theme-color', content: '#0b0d12' }],
+    ['script', { async: '', src: `https://www.googletagmanager.com/gtag/js?id=${gaMeasurementId}` }],
+    ['script', {}, `window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+gtag('js', new Date());
+gtag('config', '${gaMeasurementId}');`],
   ],
 
-  transformPageData(pageData) {
-    if (pageData.isNotFound) {
-      pageData.frontmatter.head = [['meta', { name: 'robots', content: 'noindex, nofollow' }]]
-      return
-    }
+  // The built 404 page uses fixed page data and never reaches transformPageData
+  transformHead({ pageData }) {
+    if (pageData.isNotFound)
+      return [['meta', { name: 'robots', content: 'noindex, nofollow' }]]
+  },
 
+  transformPageData(pageData) {
+    // The home page sets its full title with `titleTemplate: false`
     const title = pageData.relativePath === 'index.md'
-      ? siteTitle
+      ? pageData.title
       : `${pageData.title} | ${siteTitle}`
     const head = seoHead(pageData.relativePath, title, pageData.description || description)
 

@@ -1,7 +1,8 @@
 ---
 layout: page
 pageClass: ld-page
-title: Torsher
+title: "Torsher: self-hosted media center for your TV"
+titleTemplate: false
 description: "Self-hosted media center in one Docker container. A TV-first catalog, instant torrent streaming, your own library and series automation."
 ---
 

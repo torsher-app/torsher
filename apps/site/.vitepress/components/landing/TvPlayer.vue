@@ -50,7 +50,9 @@ const buttons = [
 
       <header>
         <div class="titles">
-          <h1>Lanterns of Vell</h1>
+          <div class="title">
+            Lanterns of Vell
+          </div>
           <p>Lanterns.of.Vell.2026.1080p.mkv</p>
         </div>
         <div class="status">
@@ -244,7 +246,7 @@ header {
   padding-left: calc(var(--u) * 120);
 }
 
-.titles h1 {
+.titles .title {
   margin: 0 0 calc(var(--u) * 10);
   overflow: hidden;
   border: 0;
