@@ -76,7 +76,7 @@ If your NAS has a container form instead, enter these values:
 
 | Setting | Value |
 | --- | --- |
-| Image | `ghcr.io/torsher-app/torsher:latest` |
+| Image | `ghcr.io/torsher-app/torsher:latest`, or `torsherapp/torsher:latest` if the NAS searches only Docker Hub |
 | Port | `8080` on the NAS to `8080` in the container |
 | Folder | the folder from step 1 to `/data` |
 | Variables | `PUID`, `PGID`, `TZ` |

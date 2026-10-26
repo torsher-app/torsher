@@ -17,6 +17,7 @@ Your home cinema in one container.
   <img alt="GitHub release" src="https://img.shields.io/github/v/release/torsher-app/torsher">
   <img alt="GitHub stars" src="https://img.shields.io/github/stars/torsher-app/torsher?style=flat">
   <img alt="GitHub license" src="https://img.shields.io/github/license/torsher-app/torsher">
+  <img alt="Docker pulls" src="https://img.shields.io/docker/pulls/torsherapp/torsher">
 </p>
 
 <p align="center">
