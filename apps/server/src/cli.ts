@@ -26,12 +26,14 @@ import { createBackup } from './services/backups/create.ts'
 import { backupDirOf } from './services/backups/dir.ts'
 import { BackupError, toBackupError } from './services/backups/errors.ts'
 import { listBackupsIn } from './services/backups/list.ts'
+import { backupErrorText, formatSize } from './services/backups/messages.ts'
 import { parseBackupName } from './services/backups/names.ts'
 import { backupPathsFor } from './services/backups/paths.ts'
 import {
   openBackupFile,
   prepareRestore,
 } from './services/backups/restore-request.ts'
+import { dataVersionOf } from './services/backups/schema-version.ts'
 import { parseBackupSettings } from './services/backups/settings.ts'
 import { listProfiles } from './services/profiles/index.ts'
 import { SecretError } from './services/secrets/index.ts'
@@ -155,54 +157,14 @@ async function resetPassword(fromStdin: boolean, io: CliIo) {
 const NO_DATABASE
   = 'No database found. Run the command with the same environment as the server (DATABASE_PATH).'
 
-function formatSize(bytes: number) {
-  const units = ['B', 'KB', 'MB', 'GB', 'TB']
-  let value = bytes
-  let unit = 0
-
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024
-    unit++
-  }
-
-  return `${unit === 0 ? value : value.toFixed(1)} ${units[unit]}`
-}
-
-function backupErrorText(err: BackupError, encrypted = false) {
-  const { params } = err
-
-  switch (err.kind) {
-    case 'no_space':
-      return `Not enough disk space: ${formatSize(Number(params.need))} needed, ${formatSize(Number(params.free))} free.`
-    case 'integrity':
-      return 'The database failed the integrity check, so the backup was not saved.'
-    case 'dir_unavailable':
-      return `The backups folder is unavailable: ${params.path}`
-    case 'busy':
-      return 'Another backup or restore is in progress. Try again later.'
-    case 'not_found':
-      return 'Backup not found. Run "torsher backups" to see the list.'
-    case 'not_torsher':
-      return 'This file is not a Torsher backup.'
-    case 'corrupt':
-      return 'The backup file is damaged.'
-    case 'wrong_password':
-      return encrypted
-        ? 'Wrong password for this backup.'
-        : 'This backup is encrypted. Pass its password with --password-stdin.'
-    case 'key_unavailable':
-      return 'The backup password cannot be read with the current secret key. Set the backup password again in Settings > Backups.'
-    case 'newer_version':
-      return `This backup was made by a newer version of Torsher${params.version ? ` (v${params.version})` : ''}. Update the server, then restore.`
-    default:
-      return `The operation failed${params.code ? ` (${params.code})` : ''}.`
-  }
-}
-
-/** Настройки копий прямо из файла базы: команда работает и при сервере, который не стартует */
-function readSettings(paths: CliPaths): BackupSettings {
+/** Чтение прямо из файла базы: команда работает и при сервере, который не стартует */
+function readFromDb<T>(
+  paths: CliPaths,
+  read: (db: Database.Database) => T,
+  fallback: T,
+): T {
   if (!existsSync(paths.databasePath))
-    return parseBackupSettings(undefined)
+    return fallback
 
   try {
     const db = new Database(paths.databasePath, {
@@ -211,15 +173,28 @@ function readSettings(paths: CliPaths): BackupSettings {
     })
 
     try {
-      return readBackupSettingsFrom(db)
+      return read(db)
     }
     finally {
       db.close()
     }
   }
   catch {
-    return parseBackupSettings(undefined)
+    return fallback
   }
+}
+
+function readSettings(paths: CliPaths): BackupSettings {
+  return readFromDb(
+    paths,
+    readBackupSettingsFrom,
+    parseBackupSettings(undefined),
+  )
+}
+
+/** Команду могут запустить образом другой версии, чем та, что писала базу */
+function readDataVersion(paths: CliPaths) {
+  return readFromDb(paths, dataVersionOf, { version: '' })
 }
 
 function pathsOf(paths: CliPaths) {
@@ -252,8 +227,7 @@ async function backup(io: CliIo, paths: CliPaths) {
     tmpDir: pathsOf(paths).tmpDir,
     dir: dir.path,
     reason: 'manual',
-    version: config.version,
-    commit: config.commit,
+    ...readDataVersion(paths),
     secretKey,
     keyMaterial: keyMaterialFrom(settings, secretKey),
   })
@@ -273,7 +247,7 @@ async function listCommand(io: CliIo, paths: CliPaths) {
   )
 
   if (!available)
-    io.err(`The backups folder is unavailable: ${dir.path}`)
+    io.err(`The backups folder ${dir.path} is unavailable.`)
 
   if (!items.length) {
     io.out(`No backups in ${dir.path}`)
@@ -368,8 +342,7 @@ async function restore(
           tmpDir: restorePaths.tmpDir,
           dir: dir.path,
           reason: 'pre-restore',
-          version: config.version,
-          commit: config.commit,
+          ...readDataVersion(paths),
           secretKey,
           keyMaterial: keyMaterialOrNothing(settings, pathsOf(paths).keyPath),
         })
@@ -396,6 +369,9 @@ async function restore(
     `Backup ${basename(path)} is checked and will be restored on the next start.`,
   )
   io.out('Restart the container to apply: docker restart torsher')
+  io.out(
+    'If you changed the image in docker-compose.yml, run docker compose up -d instead.',
+  )
 
   return 0
 }

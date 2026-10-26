@@ -224,6 +224,44 @@ describe('копии из командной строки', () => {
     }
   })
 
+  it('копии подписаны версией, с которой работала база, а не версией команды', async () => {
+    const dataDir = tempDataDir()
+    const { db, dbPath } = createFileDb(dataDir)
+    const newer = { databasePath: dbPath, dataDir }
+    const [manual] = readdirSync(backups).filter(name =>
+      name.includes('-manual-'),
+    )
+
+    try {
+      seedData(db)
+      db.prepare(
+        'INSERT INTO server_versions (version, started_at) VALUES (?, ?), (?, ?)',
+      ).run('0.9.1', 0, '0.9.2', 0)
+      db.close()
+
+      expect(await runCli(['backup'], fakeIo().io, newer)).toBe(0)
+
+      const { io, out } = fakeIo()
+
+      expect(await runCli(['restore', join(backups, manual!)], io, newer)).toBe(
+        0,
+      )
+      expect(out.join('\n')).toContain('docker compose up -d')
+
+      const names = readdirSync(join(dataDir, 'backups'))
+
+      expect(names.find(name => name.includes('-manual-'))).toMatch(
+        /-manual-v0\.9\.2\.db\.gz$/,
+      )
+      expect(names.find(name => name.includes('-pre-restore-'))).toMatch(
+        /-pre-restore-v0\.9\.2\.db\.gz$/,
+      )
+    }
+    finally {
+      rmSync(dataDir, { recursive: true, force: true })
+    }
+  })
+
   it('неизвестная копия — понятная ошибка', async () => {
     const { io, err } = fakeIo()
 

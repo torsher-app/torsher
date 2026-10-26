@@ -45,3 +45,30 @@ export function compareSchema(
 
   return lastApplied > lastWhen ? 'ahead' : 'same'
 }
+
+/**
+ * Версия Torsher, которая последней работала с базой: её данные и попадут в
+ * копию. Копию перед обновлением снимает уже новая версия, а откатываться
+ * нужно на эту. Истории версий нет — пустая версия.
+ */
+export function dataVersionOf(db: Database.Database): {
+  version: string
+  commit?: string
+} {
+  const table = db
+    .prepare(
+      `SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'server_versions'`,
+    )
+    .get()
+
+  if (!table)
+    return { version: '' }
+
+  const row = db
+    .prepare(
+      'SELECT version, "commit" FROM server_versions ORDER BY id DESC LIMIT 1',
+    )
+    .get() as { version: string, commit: string | null } | undefined
+
+  return { version: row?.version ?? '', commit: row?.commit ?? undefined }
+}

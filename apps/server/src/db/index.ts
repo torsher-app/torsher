@@ -8,7 +8,8 @@ import Database from 'better-sqlite3'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator'
 import { config } from '../config.ts'
-import { toBackupError } from '../services/backups/errors.ts'
+import { BackupError, toBackupError } from '../services/backups/errors.ts'
+import { backupErrorText } from '../services/backups/messages.ts'
 import {
   compareSchema,
   lastAppliedAt,
@@ -67,16 +68,20 @@ export class PreUpdateBackupError extends Error {
     params: BackupErrorParams,
     cause: unknown,
   ) {
-    const details = Object.entries(params)
-      .map(([key, value]) => `${key}=${value}`)
-      .join(', ')
-    const hint
+    // Текст читают в журнале контейнера, где панели нет: причина — словами
+    const [reason, hint]
       = kind === 'key_unavailable'
-        ? 'The backup password cannot be read with the current secret key (TORSHER_SECRET or secret.key changed). Put the previous key back, or set TORSHER_SKIP_PRE_UPDATE_BACKUP=1 once and set the backup password again in Settings > Backups.'
-        : 'Free up space or fix access to the backups folder, or set TORSHER_SKIP_PRE_UPDATE_BACKUP=1 to update without a backup.'
+        ? [
+            'The backup password cannot be read with the current secret key (TORSHER_SECRET or secret.key changed).',
+            'Put the previous key back, or set TORSHER_SKIP_PRE_UPDATE_BACKUP=1 once and set the backup password again in Settings > Backups.',
+          ]
+        : [
+            backupErrorText(new BackupError(kind, params)),
+            'Free up space or fix access to the backups folder, or set TORSHER_SKIP_PRE_UPDATE_BACKUP=1 to update without a backup.',
+          ]
 
     super(
-      `Could not back up the database before updating it (${kind}${details ? `: ${details}` : ''}). The database was not changed. ${hint}`,
+      `Could not back up the database before updating it. ${reason} The database was not changed. ${hint}`,
       { cause },
     )
     this.name = 'PreUpdateBackupError'

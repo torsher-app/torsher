@@ -72,9 +72,9 @@ Tools that update containers on their own work too. An update interrupts playbac
 
 ## The backup before an update
 
-When a new version changes the database, the server first makes a backup with the reason <Ui k="panel.backups.list.reasons.pre-update" />, then changes the database. The last three such backups are kept. They are in the list under <Ui k="panel.nav.settings panel.settings.nav.backups" /> and in `torsher backups`.
+When a new version changes the database, the server first makes a backup with the reason <Ui k="panel.backups.list.reasons.pre-update" />, then changes the database. The last three such backups are kept. They are in the list under <Ui k="panel.nav.settings panel.settings.nav.backups" /> and in `torsher backups`. The version shown with the backup is the one you had before the update: that's the version to go back to with it.
 
-If that backup fails, for example because the disk is full, the server doesn't change the database and doesn't start. The container log says why and what to do. Free up space or fix access to the backup folder and start it again. If you accept the risk, set `TORSHER_SKIP_PRE_UPDATE_BACKUP=1` for one start: without that backup, a failed update can't be undone.
+If that backup fails, for example because the disk is full, the server doesn't change the database and doesn't start. The container log says why and what to do. Free up space or fix access to the backup folder and start it again. If you accept the risk, add `TORSHER_SKIP_PRE_UPDATE_BACKUP: 1` under `environment:` in `docker-compose.yml`, run `docker compose up -d`, and remove the line once the server has started: without that backup, a failed update can't be undone.
 
 ## Check
 
@@ -85,11 +85,13 @@ If that backup fails, for example because the disk is full, the server doesn't c
 
 A database changed by a newer version doesn't start with an older one. To go back, run the old version on the backup made before the update.
 
-1. Find the backup. Its name has `pre-update` in it:
+1. Find the backup. Its name has `pre-update` and the version you go back to:
 
    ```bash
-   docker exec -it torsher torsher backups
+   docker compose run --rm torsher torsher backups
    ```
+
+   A one-off container works even when the server doesn't start.
 
 2. In `docker-compose.yml`, set the image to the version you had before, for example `ghcr.io/torsher-app/torsher:0.2.0`, and pull it:
 
@@ -97,17 +99,19 @@ A database changed by a newer version doesn't start with an older one. To go bac
    docker compose pull
    ```
 
-3. Prepare the restore with the old version. The server isn't running at this point, so use a one-off container:
+3. Prepare the restore with the old version, in a one-off container as well:
 
    ```bash
    docker compose run --rm torsher torsher restore <backup-name>
    ```
 
-4. Start Torsher. It restores the database first, then starts:
+4. Start Torsher on the old version. It restores the database first, then starts:
 
    ```bash
    docker compose up -d
    ```
+
+   If the container was already restarting on the old version, it restores the backup on its next restart by itself.
 
 ::: warning
 Everything changed after the backup was made is lost: new positions, ratings, settings. To keep that data, fix the problem on the new version instead, or [export](/docs/maintain/backup#move-data-into-another-server) what you need first.
@@ -115,8 +119,8 @@ Everything changed after the backup was made is lost: new positions, ratings, se
 
 ## If something went wrong
 
-- **The container stops right after the update** and the log says `Could not back up the database before updating it`. See [the backup before an update](#the-backup-before-an-update).
-- **The log says `The database was updated by a newer version of Torsher`.** You started an older version on a newer database. Start the newer version again, or [roll back](#roll-back-to-the-previous-version) with its `pre-update` backup.
+- **The container keeps restarting right after the update** (`Restarting` in `docker compose ps`) and the log says `Could not back up the database before updating it`. See [the backup before an update](#the-backup-before-an-update).
+- **The log says `The database was updated by a newer version of Torsher`.** You started an older version on a newer database. Start the newer version again, or [roll back](#roll-back-to-the-previous-version): the log names the `pre-update` backup to restore.
 - **The panel never shows a new version.** <Ui k="panel.nav.settings panel.settings.nav.about" /> shows why: the check is off, GitHub limited requests from your address, or the server can't reach GitHub. Requests to GitHub go through the routes in <Ui k="panel.nav.settings panel.settings.nav.network" />.
 
 To read the container log, see [Logs and diagnostics](/docs/maintain/logs).

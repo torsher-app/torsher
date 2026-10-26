@@ -90,6 +90,24 @@ describe('копия перед миграциями', () => {
     db.close()
   })
 
+  it('в имени копии — версия, с которой работала база, а не новая', async () => {
+    const dataDir = track(tempDataDir())
+    const { db, dbPath } = createFileDb(
+      dataDir,
+      track(migrationsBefore(fullCount - 1)),
+    )
+
+    seedData(db)
+    db.prepare(
+      'INSERT INTO server_versions (version, started_at) VALUES (?, ?), (?, ?)',
+    ).run('0.9.0', 0, '0.9.1', 0)
+
+    const report = await migrateConnection(db, options(dbPath, dataDir))
+
+    expect(report.backup!.name).toMatch(/-pre-update-v0\.9\.1\.db\.gz$/)
+    db.close()
+  })
+
   it('выбранный каталог недоступен — копия в каталог по умолчанию', async () => {
     const { db, dbPath, dataDir } = oldServer()
 
@@ -121,9 +139,14 @@ describe('копия перед миграциями', () => {
     // На месте каталога по умолчанию — файл: туда не записать
     writeFileSync(join(dataDir, 'backups'), '')
 
-    await expect(
-      migrateConnection(db, options(dbPath, dataDir)),
-    ).rejects.toBeInstanceOf(PreUpdateBackupError)
+    const error = await migrateConnection(db, options(dbPath, dataDir)).catch(
+      err => err,
+    )
+
+    expect(error).toBeInstanceOf(PreUpdateBackupError)
+    expect(error.message).toContain(
+      `The backups folder ${join(dataDir, 'backups')} is unavailable.`,
+    )
     expect(count(db, '__drizzle_migrations')).toBe(OLD_COUNT)
 
     const report = await migrateConnection(
@@ -134,6 +157,19 @@ describe('копия перед миграциями', () => {
     expect(report.skippedBackup).toMatchObject({ kind: 'dir_unavailable' })
     expect(count(db, '__drizzle_migrations')).toBe(fullCount)
     db.close()
+  })
+
+  it('не хватает места — причина с размерами для человека', () => {
+    const error = new PreUpdateBackupError(
+      'no_space',
+      { need: 67952984, free: 1048576 },
+      undefined,
+    )
+
+    expect(error.message).toContain(
+      'Not enough disk space: 64.8 MB needed, 1.0 MB free.',
+    )
+    expect(error.message).toContain('The database was not changed.')
   })
 
   it('пустая новая база — копии нет', async () => {
