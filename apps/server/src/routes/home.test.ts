@@ -77,8 +77,10 @@ describe('get /api/home', () => {
 
     expect(res.statusCode).toBe(200)
 
-    const { rows } = res.json()
+    const { rows, hasSources } = res.json()
 
+    // Индексаторов в базе теста нет
+    expect(hasSources).toBe(false)
     expect(rows).toHaveLength(4)
     expect(rows[0]).toMatchObject({
       id: 'trendingMovies',

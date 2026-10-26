@@ -77,6 +77,7 @@ import {
 import { goBack } from '../lib/navigation.ts'
 import { titleRefOf } from '../lib/sources.ts'
 import { heardStudio } from '../lib/tracks.ts'
+import { lacksSources } from '../serverSources.ts'
 import { session, updatePlayerSettings } from '../session.ts'
 
 const props = defineProps<{
@@ -319,7 +320,17 @@ const externalLink = computed(() =>
 )
 
 // Следующая вышедшая серия и её файл в этой раздаче: спрашиваем при старте
-const upNext = ref<UpNext['next']>(null)
+const nextAired = ref<UpNext['next']>(null)
+// Без источников серию, которой нет ни в раздаче, ни в библиотеке, не найти:
+// её не предлагаем
+const upNext = computed(() => {
+  const next = nextAired.value
+
+  if (!next || next.file || !lacksSources())
+    return next
+
+  return libraryFileOf(next.season, next.episode) ? next : null
+})
 // Видео дошло до конца само, а не оборвалось
 const ended = ref(false)
 const upNextDismissed = ref(false)
@@ -335,7 +346,7 @@ if (props.titleId && season && episode) {
       language: language.value,
     })
     .then((result) => {
-      upNext.value = result.next
+      nextAired.value = result.next
     })
     .catch(() => {
       // Без ответа плашки нет: серию можно выбрать в «Сериях»
@@ -1496,7 +1507,7 @@ onBeforeUnmount(() => {
         :audio-label="tracks.audioLabel.value"
         :subtitles-label="tracks.subtitlesLabel.value"
         :from-start="fromStart"
-        :titled="!!titleId"
+        :titled="!!titleId && !lacksSources()"
         :series="!!(titleId && season && episode)"
         :source-label="tracks.caption.value ?? ''"
         :has-next="!!upNext"

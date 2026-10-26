@@ -72,8 +72,13 @@ import {
 } from '../lib/catalogFilter.ts'
 import { libraryRoute, resumeRoute } from '../lib/continue.ts'
 import { downloadSlot } from '../lib/downloadSlot.ts'
+import { titleOffer } from '../lib/titleOffer.ts'
 import { isFollowed } from '../lib/follow.ts'
-import { libraryFileFor, libraryTarget } from '../lib/library.ts'
+import {
+  firstLibraryFile,
+  libraryFileFor,
+  libraryTarget,
+} from '../lib/library.ts'
 import { crewCaption } from '../lib/people.ts'
 import {
   formatAirDate,
@@ -305,10 +310,16 @@ const {
 } = useTitleFollow(id)
 const followTexts = useFollowTexts()
 
+const { libraryFiles, libraryStatus, refreshLibrary } = useTitleLibrary(id)
+
 // Кнопки появляются, когда пришли прогресс и «Следить»: «Смотреть» не сменится
-// на «Продолжить» под взглядом, а «Следить» не вставит кнопку в ряд
+// на «Продолжить» под взглядом, а «Следить» не вставит кнопку в ряд. Без
+// источников «Смотреть» есть только у тайтла из библиотеки — ждём и её
 const actionsPending = computed(
-  () => progressStatus.value === 'loading' || followLoad.value === 'loading',
+  () =>
+    progressStatus.value === 'loading'
+    || followLoad.value === 'loading'
+    || (title.value?.hasSources === false && libraryStatus.value === 'loading'),
 )
 const resume = computed(() => progress.value?.resume ?? null)
 
@@ -358,10 +369,20 @@ const nextEpisode = computed(() => {
 })
 
 // Потом — откуда: эта серия (фильм) есть в библиотеке — плеер с диска сразу
-const { libraryFiles, refreshLibrary } = useTitleLibrary(id)
-const fromLibrary = computed(() =>
-  libraryTarget(libraryFiles.value, isSeries.value, nextEpisode.value),
-)
+const fromLibrary = computed(() => {
+  const own = libraryTarget(
+    libraryFiles.value,
+    isSeries.value,
+    nextEpisode.value,
+  )
+
+  // Без источников серию продолжения не найти: «Смотреть» начинает с того,
+  // что есть в библиотеке
+  if (own || resume.value || title.value?.hasSources !== false)
+    return own
+
+  return firstLibraryFile(libraryFiles.value)
+})
 
 // Вторая строка главной кнопки: что продолжим или что смотрели последний раз
 const primaryHint = computed(() => {
@@ -1055,36 +1076,41 @@ function pickDownload() {
 
 const downloadButton = ref<ComponentPublicInstance>()
 const primaryButton = ref<ComponentPublicInstance>()
+const watchlistButton = ref<ComponentPublicInstance>()
+
+// Первая кнопка ряда: без источников «Смотреть» может не быть, и первой
+// становится закачка, «Следить» или «Позже»
+function leadButton() {
+  const row = (watchlistButton.value?.$el as HTMLElement | undefined)
+    ?.parentElement
+
+  return row?.querySelector<HTMLElement>('[data-focusable]') ?? undefined
+}
+
+// Без источников «Смотреть» приходит вместе с файлами библиотеки: если фокус
+// уже встал на «Позже», ряд показывается с ним на «Смотреть»
+watch(actionsPending, (pending) => {
+  if (pending)
+    return
+
+  nextTick(() => {
+    const primary = primaryButton.value?.$el as HTMLElement | undefined
+
+    if (primary && focus.current() === watchlistButton.value?.$el)
+      focus.focusOn(primary)
+  })
+})
 
 // Панель закрылась — фокус на кнопке, с которой её открыли
 function closeDownloadPanel() {
   downloadPanel.value = false
   nextTick(() => {
-    focus.focusOn((downloadButton.value ?? primaryButton.value!).$el)
+    const button = downloadButton.value?.$el ?? leadButton()
+
+    if (button)
+      focus.focusOn(button)
   })
 }
-
-// Закачка закончилась на открытой карточке и кнопка ушла из-под фокуса —
-// фокус на «Смотреть», а не в никуда
-watch(
-  () => slot.value.kind,
-  (kind, previous) => {
-    if (kind !== 'none' || previous === 'none')
-      return
-
-    const button = downloadButton.value?.$el
-
-    if (button && document.activeElement === button) {
-      nextTick(() => {
-        if (primaryButton.value)
-          focus.focusOn(primaryButton.value.$el)
-      })
-    }
-
-    downloadPanel.value = false
-  },
-  { flush: 'pre' },
-)
 
 // Закачка раздачи легла в библиотеку или пропала — перечитываем файлы:
 // от них зависят «Смотреть», вторая строка и значки серий
@@ -1131,6 +1157,45 @@ const showFollow = computed(() => {
     && (followed.value || libraryFiles.value.length === 0)
   )
 })
+// Без источников тайтл не из библиотеки — как в медиатеке: без «Смотреть»,
+// загрузки, «Следить» и «Источников»
+const offer = computed(() =>
+  titleOffer({
+    hasSources: title.value?.hasSources,
+    inLibrary: libraryFiles.value.length > 0,
+    resume: !!resume.value,
+    followed: followed.value,
+    slot: slot.value.kind,
+  }),
+)
+const showDownload = computed(
+  () => slot.value.kind !== 'none' && offer.value.download,
+)
+
+// Кнопка загрузки ушла с открытой карточки (закачка закончилась, а без
+// источников — ещё и отменена) — фокус на первую кнопку, а не в никуда
+watch(
+  showDownload,
+  (shown, was) => {
+    if (shown || !was)
+      return
+
+    const button = downloadButton.value?.$el
+
+    if (button && document.activeElement === button) {
+      nextTick(() => {
+        const lead = leadButton()
+
+        if (lead)
+          focus.focusOn(lead)
+      })
+    }
+
+    downloadPanel.value = false
+  },
+  { flush: 'pre' },
+)
+
 const followHint = computed(() =>
   followed.value && followView.value
     ? followTexts.policyLine(followView.value)
@@ -1184,10 +1249,10 @@ async function onFollowSave(body: FollowTitleInput) {
 }
 
 // Фокус — на кнопку, с которой открыли; ушла (фильм в библиотеке больше не
-// под слежением) — на «Смотреть»
+// под слежением) — на первую кнопку ряда
 function focusFollowButton() {
   nextTick(() => {
-    const button = followButton.value?.$el ?? primaryButton.value?.$el
+    const button = followButton.value?.$el ?? leadButton()
 
     if (button?.isConnected)
       focus.focusOn(button)
@@ -1224,7 +1289,7 @@ function openActions(step?: 'rating') {
         title: title.value.title,
         kind: title.value.kind,
         redownload:
-          slot.value.kind === 'none'
+          slot.value.kind === 'none' && offer.value.otherRelease
             ? { season: isSeries.value ? selectedSeason.value : undefined }
             : undefined,
       },
@@ -1483,6 +1548,7 @@ onBeforeUnmount(() => {
         >
           <ButtonRow>
             <ActionButton
+              v-if="offer.watch"
               ref="primaryButton"
               v-focusable
               primary
@@ -1493,7 +1559,7 @@ onBeforeUnmount(() => {
               @click="onPrimary"
             />
             <ActionButton
-              v-if="slot.kind !== 'none'"
+              v-if="showDownload"
               ref="downloadButton"
               v-focusable
               icon="download"
@@ -1503,7 +1569,7 @@ onBeforeUnmount(() => {
               @click="onDownload"
             />
             <ActionButton
-              v-if="showFollow"
+              v-if="showFollow && offer.follow"
               ref="followButton"
               v-focusable
               icon="bell"
@@ -1516,7 +1582,7 @@ onBeforeUnmount(() => {
             <!-- Остальное — значки: название кнопки в фокусе подписано под ней
                  отдельным слоем, ряд при смене фокуса не двигается -->
             <ActionButton
-              v-if="resume || fromLibrary"
+              v-if="(resume || fromLibrary) && offer.sources"
               v-focusable
               icon-only
               icon="source"
@@ -1525,6 +1591,7 @@ onBeforeUnmount(() => {
               @click="openSources"
             />
             <ActionButton
+              ref="watchlistButton"
               v-focusable
               icon-only
               :icon="mine?.watchlist ? 'check' : 'plus'"
@@ -1911,6 +1978,7 @@ onBeforeUnmount(() => {
         :series="isSeries"
         :season="selectedSeason"
         :download="activeDownload"
+        :can-pick="offer.otherRelease"
         @close="closeDownloadPanel"
         @cancel="cancelDownload"
         @pick="pickDownload"
@@ -2212,6 +2280,11 @@ onBeforeUnmount(() => {
 
 .title__secondary {
   margin-left: calc(var(--u) * 18);
+}
+
+/* Без источников ряд может начинаться не со «Смотреть»: первая кнопка — у края */
+.title__actions :deep(.button-row__fit) > :first-child {
+  margin-left: 0;
 }
 
 /* Кнопка-иконка: квадрат высотой ряда, с оценкой — шире на число */

@@ -5,6 +5,7 @@ import { onScopeDispose, ref, shallowRef, watch } from 'vue'
 import { api, loadErrorOf } from '../api.ts'
 import { replaceContinueRow } from '../lib/continue.ts'
 import { createLatest } from '../lib/latest.ts'
+import { noteHasSources } from '../serverSources.ts'
 import { useCatalogLanguage } from './useCatalogLanguage.ts'
 
 export type HomeMode = 'all' | 'movies' | 'series' | 'library'
@@ -46,6 +47,7 @@ export function useHome(mode: Ref<HomeMode>) {
       return
     }
 
+    noteHasSources(outcome.value.hasSources)
     rows.value = outcome.value.rows
     status.value = 'ready'
 

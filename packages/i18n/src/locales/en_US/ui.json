@@ -272,9 +272,9 @@
       "Original": "Original"
     },
     "empty": {
-      "noIndexers": {
-        "title": "No release sources",
-        "text": "Connect any Torznab indexer, for example Prowlarr or Jackett, in the control panel."
+      "notInLibrary": {
+        "title": "Not in your library",
+        "text": "Your library has no files of this title."
       },
       "nothing": {
         "title": "No releases found",
@@ -3566,6 +3566,10 @@
     "failed": {
       "title": "The torrent did not open",
       "text": "Peers did not send the file list, or the torrent lacks this episode. Pick another one in Sources."
+    },
+    "notInLibrary": {
+      "title": "Not in your library",
+      "text": "Your library has no file of this episode."
     },
     "toSources": "To sources"
   },

@@ -437,6 +437,7 @@ export interface TitleDetailsInput {
    */
   episodeCount?: number;
   follow?: TitleFollowBriefInput | null;
+  hasSources?: boolean;
 }
 
 export interface EpisodeInput {
@@ -1317,6 +1318,7 @@ export type HomeRowInput =
 
 export interface HomeResponseInput {
   rows: HomeRowInput[];
+  hasSources: boolean;
 }
 
 export interface CollectionInput {
@@ -5011,6 +5013,7 @@ export interface TitleDetails {
    */
   episodeCount?: number;
   follow?: TitleFollowBrief | null;
+  hasSources?: boolean;
 }
 
 export interface Episode {
@@ -5890,6 +5893,7 @@ export type HomeRow = ContinueRow | ReleasesRow | FilesRow | CatalogRow;
 
 export interface HomeResponse {
   rows: HomeRow[];
+  hasSources: boolean;
 }
 
 export interface Collection {
