@@ -134,7 +134,7 @@ The [Quick start](https://torsher.app/docs/quick-start) walks through each step,
 | Platform | Status | |
 | --- | --- | --- |
 | Web browser | Available | The showcase on any computer, and the control panel on a phone or a computer |
-| LG webOS | Available | A thin TV app that plays most files directly on the TV |
+| LG webOS | Developer Mode | A thin TV app that plays most files directly on the TV. For now it installs through [Developer Mode](https://torsher.app/docs/tv/lg-webos) |
 | Android TV | Planned | The same showcase with a native player |
 | Apple TV and phones | Planned | Through apps that already exist for these devices |
 

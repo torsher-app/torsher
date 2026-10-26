@@ -163,9 +163,9 @@ const platforms = [
   },
   {
     name: 'LG webOS',
-    stage: 'Available',
+    stage: 'Developer Mode',
     ready: true,
-    text: 'A thin TV app that plays most files directly on the TV.',
+    text: 'A thin TV app that plays most files directly on the TV. For now it installs through Developer Mode.',
   },
   {
     name: 'Android TV',
