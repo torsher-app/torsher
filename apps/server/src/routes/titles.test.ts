@@ -79,6 +79,10 @@ beforeAll(async () => {
 
 beforeEach(() => {
   clearSearchCache()
+  getDb()
+    .update(indexers)
+    .set({ backoffUntil: null, backoffSince: null, failureCount: 0 })
+    .run()
   requested.length = 0
   fetchMock.mockReset()
   fetchMock.mockImplementation(async (input) => {
@@ -178,6 +182,43 @@ describe('get /api/titles/:id/sources', () => {
     expect(res.body).not.toMatch(
       /secret-key|other-key|download|btih|1111111111/,
     )
+  })
+
+  it('индексатор после ошибки пропускается до конца паузы и считается не ответившим', async () => {
+    const url = '/api/titles/tmdb:tv:101/sources?season=2&refresh=1'
+
+    await app.inject({ url, cookies: authed() })
+    requested.length = 0
+
+    const body = (await app.inject({ url, cookies: authed() })).json()
+
+    expect(
+      requested.some(item => item.hostname === 'b.indexer.example'),
+    ).toBe(false)
+    expect(body.candidates).toHaveLength(2)
+    expect(body.indexers).toEqual({
+      total: 2,
+      failed: [{ name: 'Indexer B', kind: 'skipped' }],
+    })
+  })
+
+  it('на паузе все индексаторы — спрашиваем всех', async () => {
+    getDb()
+      .update(indexers)
+      .set({ backoffUntil: new Date(Date.now() + 60_000), failureCount: 1 })
+      .run()
+
+    const body = (
+      await app.inject({
+        url: '/api/titles/tmdb:tv:101/sources?season=2',
+        cookies: authed(),
+      })
+    ).json()
+
+    expect(
+      requested.some(item => item.hostname === 'a.indexer.example'),
+    ).toBe(true)
+    expect(body.candidates).toHaveLength(2)
   })
 
   it('повтор берёт кэш, refresh ищет заново', async () => {

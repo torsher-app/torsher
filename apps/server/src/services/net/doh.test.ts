@@ -117,6 +117,32 @@ describe('createDohResolver', () => {
     })
   })
 
+  it('leaves single-label and local names to the system resolver', async () => {
+    const send = answering({})
+    const system = vi.fn(async () => [
+      { address: '172.18.0.5', family: 4 as const },
+    ])
+    const resolver = createDohResolver(
+      'https://doh.example/dns-query',
+      send,
+      system,
+    )
+
+    for (const host of [
+      'prowlarr',
+      'nas.local',
+      'box.home.arpa',
+      'host.docker.internal',
+    ]) {
+      await expect(resolver.resolve(host)).resolves.toEqual([
+        { address: '172.18.0.5', family: 4 },
+      ])
+    }
+
+    expect(system).toHaveBeenCalledTimes(4)
+    expect(send).not.toHaveBeenCalled()
+  })
+
   it('reports a failing provider as unavailable', async () => {
     const send = vi.fn<DohSend>(
       async () => new Response('busy', { status: 503 }),

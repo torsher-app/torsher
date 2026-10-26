@@ -43,6 +43,18 @@ describe('очистка записей журнала', () => {
     expect(JSON.parse(result).other).toContain('&api_key=[redacted]')
   })
 
+  it('ключ в ссылке прокси Jackett', () => {
+    const result = scrubText(
+      line({
+        msg: 'GET http://manager.example:9117/dl/indexer-a/?jackett_apikey=K1&path=P&file=F',
+        amp: '/dl/indexer-a/?jackett_apikey=K2&amp;path=P',
+      }),
+    )
+
+    expect(result).toContain('?jackett_apikey=[redacted]&path=P')
+    expect(result).not.toMatch(/K[12]/)
+  })
+
   it('учётные данные в адресе', () => {
     const result = scrubText(
       line({ msg: 'proxy socks5h://user:p%40ss@10.0.0.1:1080 failed' }),

@@ -889,7 +889,8 @@ export interface TitleSourcesInput {
         | "unreachable"
         | "bad_response"
         | "remote"
-        | "unsupported";
+        | "unsupported"
+        | "skipped";
     }[];
   };
 }
@@ -5446,7 +5447,8 @@ export interface TitleSources {
         | "unreachable"
         | "bad_response"
         | "remote"
-        | "unsupported";
+        | "unsupported"
+        | "skipped";
     }[];
   };
 }

@@ -23,7 +23,9 @@ import { textQueriesOf } from './aliases.ts'
 
 // Индексаторов бывает десяток, а каждый отвечает до таймаута запроса:
 // поиск ограничен и по одновременным запросам, и по общему сроку. Срок меньше
-// таймаута API-клиента витрины (10 с) с запасом на запрос к TMDB
+// таймаута API-клиента витрины (10 с) с запасом на запрос к TMDB. Запросы
+// одного индексатора идут по очереди: медленный (Cloudflare через FlareSolverr
+// у Jackett) держит один поток, а не все
 export const SEARCH_CONCURRENCY = 6
 export const SEARCH_DEADLINE_MS = 7000
 // Популярный тайтл даёт сотни раздач; дальше — шум
@@ -44,7 +46,8 @@ export interface SearchTarget {
 export interface IndexerFailure {
   id: string
   name: string
-  kind: SourceErrorKind
+  /** `skipped` — на паузе после ошибок подряд, в этот раз не спрашивали */
+  kind: SourceErrorKind | 'skipped'
   /** Индексатор просит повторить не раньше (`Retry-After`) */
   retryAt?: Date
 }
@@ -224,7 +227,7 @@ export async function searchReleases(
   )
   const states = new Map<string, IndexerState>()
   const hits: Hit[] = []
-  let next = 0
+  const busy = new Set<string>()
   const deadline = { expired: false }
 
   for (const indexer of indexers) {
@@ -260,11 +263,24 @@ export async function searchReleases(
     }
   }
 
+  // Оставшиеся запросы — индексаторов, занятых другими потоками: их доведут те
   async function worker() {
-    while (!deadline.expired && next < tasks.length) {
-      const task = tasks[next++]!
+    while (!deadline.expired) {
+      const index = tasks.findIndex(task => !busy.has(task.indexer.id))
 
-      await run(task.indexer, task.params)
+      if (index === -1)
+        return
+
+      const task = tasks.splice(index, 1)[0]!
+
+      busy.add(task.indexer.id)
+
+      try {
+        await run(task.indexer, task.params)
+      }
+      finally {
+        busy.delete(task.indexer.id)
+      }
     }
   }
 

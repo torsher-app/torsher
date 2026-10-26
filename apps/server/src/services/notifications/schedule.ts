@@ -21,13 +21,16 @@ const MONITOR_MS = 60 * 1000
  * хосты. Промис завершается, когда свежий результат уже записан.
  */
 export async function recheckProblem(kind: ProblemKind) {
+  // Пропажу подтверждает только синхронизация с менеджером, а проверка
+  // пропавшего падает всегда: его перепроверять незачем
   if (kind === 'indexer_error' || kind === 'indexer_missing') {
     const ids = listIndexers()
       .filter(
         indexer =>
           indexer.enabled
-          && (indexer.missing
-            || (indexer.checkStatus && indexer.checkStatus !== 'ok')),
+          && !indexer.missing
+          && indexer.checkStatus
+          && indexer.checkStatus !== 'ok',
       )
       .map(indexer => indexer.id)
 
@@ -92,7 +95,7 @@ export function startNotificationMonitor() {
  */
 export function checkEnabledIndexers() {
   const ids = listIndexers()
-    .filter(indexer => indexer.enabled)
+    .filter(indexer => indexer.enabled && !indexer.missing)
     .map(indexer => indexer.id)
 
   return checkIndexers(ids, err =>

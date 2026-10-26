@@ -51,7 +51,8 @@ export const toneText: Record<StatusTone, string> = {
 /**
  * Одно место, где статус индексатора превращается в иконку, цвет и бейдж.
  * Порядок важен: выключенный не требует внимания, идущая проверка важнее
- * прошлого результата, ошибка важнее пропажи из менеджера.
+ * прошлого результата, пропажа из менеджера важнее ошибки — в пропавшем
+ * не ищем, а проверка падает потому, что менеджер его больше не отдаёт.
  */
 export function indexerStatusView(
   indexer: Pick<Indexer, 'enabled' | 'checkStatus' | 'missing'>,
@@ -64,6 +65,9 @@ export function indexerStatusView(
   if (isChecking)
     return view('checking', 'info', Loader2Icon, 'info')
 
+  if (indexer.missing)
+    return view('missing', 'warning', CircleAlertIcon, 'warning', true)
+
   const status = indexer.checkStatus
 
   if (status === 'timeout')
@@ -71,9 +75,6 @@ export function indexerStatusView(
 
   if (status && ERROR_STATUSES.has(status))
     return view(status, 'destructive', CircleXIcon, 'destructive', true)
-
-  if (indexer.missing)
-    return view('missing', 'warning', CircleAlertIcon, 'warning', true)
 
   if (status === null)
     return view('pending', 'muted', CircleIcon, 'outline')

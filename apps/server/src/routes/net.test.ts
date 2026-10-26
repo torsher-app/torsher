@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
@@ -538,6 +538,18 @@ describe('ключ TMDB', () => {
       expect(res.json().tmdb).toEqual({ source: 'none', defaultKey: null })
     },
   )
+
+  it('нечитаемый файл ключа приложения — none, а не ошибка', async () => {
+    vi.stubEnv('TMDB_ACCESS_TOKEN', '')
+    useAppKey()
+    // Каталог вместо файла: чтение падает не ENOENT, как файл без прав
+    mkdirSync(config.tmdbAppKeyPath)
+
+    const res = await inject('GET', '/api/settings/metadata')
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json().tmdb).toEqual({ source: 'none', defaultKey: null })
+  })
 
   it('сохраняет свой ключ шифрованно и ходит с ним в TMDB', async () => {
     vi.stubEnv('TMDB_ACCESS_TOKEN', '')

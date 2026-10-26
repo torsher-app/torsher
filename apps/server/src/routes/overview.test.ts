@@ -326,9 +326,10 @@ describe('обзор', () => {
     ])
   })
 
-  it('индексаторы: ошибка важнее пропажи, выключенные не считаются', async () => {
-    insertIndexer({ name: 'Broken', checkStatus: 'auth', missing: true })
-    insertIndexer({ name: 'Gone 1', checkStatus: 'ok', missing: true })
+  it('индексаторы: пропажа важнее ошибки проверки, выключенные не считаются', async () => {
+    insertIndexer({ name: 'Broken', checkStatus: 'auth' })
+    // Менеджер больше не отдаёт индексатор, и проверка падает поэтому же
+    insertIndexer({ name: 'Gone 1', checkStatus: 'remote', missing: true })
     insertIndexer({ name: 'Gone 2', missing: true })
     insertIndexer({ name: 'Off', checkStatus: 'auth', enabled: false })
 

@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { config } from '../../config.ts'
+import { logFor } from '../logs/index.ts'
 import { decryptSecret, encryptSecret, SecretError } from '../secrets/index.ts'
 import { deleteSetting, getSetting, setSetting } from '../settings/index.ts'
 
@@ -40,9 +41,12 @@ function readAppKey() {
       value = readFileSync(path, 'utf8').trim() || undefined
     }
     catch (err) {
-      // Без файла образ собран без ключа приложения
-      if ((err as NodeJS.ErrnoException).code !== 'ENOENT')
-        throw err
+      // Без файла образ собран без ключа приложения. Нечитаемый файл (права
+      // в образе) — тоже без ключа: владелец увидит «Нет ключа» и вставит свой,
+      // а не получит ошибку в каждом запросе к TMDB
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+        logFor('catalog').error({ err }, 'TMDB app key file is not readable')
+      }
     }
 
     appKey = { path, value }

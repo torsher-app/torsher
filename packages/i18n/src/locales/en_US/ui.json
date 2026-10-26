@@ -874,6 +874,7 @@
         "storage": "Folders checked, cache set",
         "network": "Access to TMDB checked",
         "noSources": "No sources: nothing to watch yet",
+        "noCatalog": "TMDB is unreachable: the catalog and the showcase will be empty",
         "skipped": "Skipped",
         "ready": "Set up",
         "later": "Set up later",
@@ -1646,7 +1647,8 @@
       "groups": {
         "attention": "Need attention",
         "manual": "Added manually",
-        "emptyManager": "{manager} has no indexers"
+        "emptyManager": "{manager} has no indexers",
+        "managerInAttention": "All {manager} indexers are above, in Need attention"
       },
       "filterEmpty": {
         "all": "No indexers",
@@ -1689,19 +1691,19 @@
       },
       "reasons": {
         "checking": "Checking…",
-        "authManaged": "Key rejected — update it in {manager}",
+        "authManaged": "{manager} rejected the key — enter the new one in the manager menu",
         "auth": "Key rejected — enter a new key",
         "timeout": "Didn't respond in time — search goes on without it",
         "unreachable": "Unreachable — check the address and network",
         "bad_response": "The response doesn't look like Torznab — check the address",
         "remote": "The indexer returned an error",
-        "missing": "Gone from {manager} — Torsher searches it but doesn't update it"
+        "missing": "Gone from {manager} — Torsher doesn't search it"
       },
       "problems": {
-        "authManaged": "The indexer rejected the API key. Update the key in {manager} — the next sync will pick it up.",
+        "authManaged": "{manager} rejected the API key saved in Torsher: most likely the key was changed in {manager}. Copy the current key from {manager} and enter it: “⋯” next to the manager → “New API key”.",
         "auth": "The indexer rejected the API key. Enter a new key with “Edit”.",
         "timeout": "The indexer didn't respond in time. Search goes through the others and skips this one until it responds.",
-        "missing": "The indexer is no longer in {manager}. Torsher still searches it but doesn't update it. Delete it if you don't need it."
+        "missing": "The indexer is no longer in {manager}, and Torsher doesn't search it. Add it back in {manager} and sync, or delete it here if you don't need it."
       },
       "validation": {
         "name": "Enter a name",
@@ -1750,9 +1752,13 @@
         "syncedTitle": "{manager} synced",
         "synced": "Added {added}, updated {updated}, gone from the manager {missing}",
         "syncFailed": "{manager}: sync failed",
+        "changeKey": "New API key",
+        "syncAuth": "{manager} rejected the key. If it was changed, enter the new one: “⋯” → “New API key”.",
+        "keySaved": "{manager} key updated",
         "open": "Open {manager}",
         "imported": "{manager} connected",
         "importedText": "Added {n} indexer. Checking it — the status will update by itself. | Added {n} indexers. Checking them — statuses will update by themselves.",
+        "importedEmpty": "{manager} has no configured indexers. Add them there, then press “Sync {manager}” in Sources.",
         "disconnect": "Disconnect",
         "disconnectTitle": "Disconnect {manager}?",
         "disconnectText": "Torsher will stop syncing indexers with",
@@ -1765,6 +1771,9 @@
       },
       "importDialog": {
         "title": "Import from Prowlarr or Jackett",
+        "keyTitle": "New {manager} API key",
+        "keyDescription": "Torsher updates the key for the manager and all its indexers and checks them.",
+        "keySubmit": "Save key",
         "description": "Torsher adds all indexers of the manager and keeps them in sync.",
         "kind": "Manager",
         "port": "usually port {port}",

@@ -1,6 +1,7 @@
 import type { LookupFunction } from 'node:net'
 import type { NetRouteDns } from '../../db/schema.ts'
 import { Buffer } from 'node:buffer'
+import { lookup as systemLookup } from 'node:dns/promises'
 import { Agent, fetch as undiciFetch } from 'undici'
 
 export type DohProvider = Exclude<NetRouteDns, 'system' | 'custom'>
@@ -173,10 +174,44 @@ export interface DohResolver {
   lookup: LookupFunction
 }
 
-/** Резолвер RFC 8484 (wire-формат, GET): ответы кэшируются по TTL записей */
+// Зоны локальной сети: публичный DoH их не знает
+const LOCAL_SUFFIXES = [
+  '.local',
+  '.lan',
+  '.home.arpa',
+  '.internal',
+  '.localhost',
+]
+
+/**
+ * Имя без точки (сервис compose `prowlarr`, хост `nas`) или из локальной
+ * зоны: его знает только системный DNS, как и при DoH в браузерах
+ */
+export function isLocalName(host: string) {
+  const name = host.toLowerCase().replace(/\.$/, '')
+
+  return (
+    !name.includes('.')
+    || LOCAL_SUFFIXES.some(suffix => name.endsWith(suffix))
+  )
+}
+
+type SystemResolve = (host: string) => Promise<ResolvedAddress[]>
+
+const defaultSystemResolve: SystemResolve = async host =>
+  (await systemLookup(host, { all: true })).map(({ address, family }) => ({
+    address,
+    family: family as 4 | 6,
+  }))
+
+/**
+ * Резолвер RFC 8484 (wire-формат, GET): ответы кэшируются по TTL записей.
+ * Локальные имена (`isLocalName`) уходят системному DNS.
+ */
 export function createDohResolver(
   url: string,
   send: DohSend = defaultSend,
+  system: SystemResolve = defaultSystemResolve,
 ): DohResolver {
   const cache = new Map<
     string,
@@ -254,6 +289,9 @@ export function createDohResolver(
   }
 
   async function resolve(host: string) {
+    if (isLocalName(host))
+      return system(host)
+
     const cached = cache.get(host)
 
     if (cached && cached.expiresAt > Date.now())
