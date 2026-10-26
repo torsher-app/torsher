@@ -209,6 +209,53 @@ export async function announceLibrary(
   )
 }
 
+/**
+ * «Готова к просмотру» (режим `notify`): одно сообщение на тайтл со всеми
+ * сериями, выбранными с прошлого тика. Выбор пака делается целиком за один
+ * проход, ждать соседей, как «в библиотеке», не нужно. Апгрейд выбора
+ * отметку не сбрасывает — второго «готова» нет.
+ */
+export async function announceReady(
+  follow: Pick<Follow, 'id' | 'titleId'>,
+  now = new Date(),
+) {
+  const db = getDb()
+  const ready = db
+    .select()
+    .from(followEpisodes)
+    .where(
+      and(
+        eq(followEpisodes.followId, follow.id),
+        isNotNull(followEpisodes.picked),
+        isNull(followEpisodes.notifiedAt),
+      ),
+    )
+    .all()
+
+  if (!ready.length)
+    return
+
+  for (const row of ready) {
+    db.update(followEpisodes)
+      .set({ notifiedAt: now })
+      .where(
+        and(
+          eq(followEpisodes.followId, follow.id),
+          eq(followEpisodes.season, row.season),
+          eq(followEpisodes.episode, row.episode),
+        ),
+      )
+      .run()
+  }
+
+  await announce(
+    'follow_ready',
+    follow,
+    ready,
+    commonFacts(ready.map(row => candidateFacts(row.picked!))),
+  )
+}
+
 export interface NewPending {
   episodes: EpisodeRef[]
   candidate: FollowPendingCandidate

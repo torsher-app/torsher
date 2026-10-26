@@ -150,6 +150,7 @@ function toggle(item: Episode) {
           <FollowCandidates
             v-if="openKey === keyOf(item)"
             :follow-id="details.id"
+            :mode="details.mode"
             :season="item.season"
             :episode="item.episode"
           />

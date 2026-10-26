@@ -8,6 +8,7 @@ import {
   CircleDashedIcon,
   CircleHelpIcon,
   CircleIcon,
+  CirclePlayIcon,
   CircleXIcon,
   ClockIcon,
   DownloadIcon,
@@ -29,7 +30,8 @@ export const FOLLOW_GROUPS: FollowGroup[] = [
 
 /**
  * Группа слежения в списке: проблемы первыми, остановленные последними. «Ждём
- * серию» — что-то нужно, качается или анонсировано; иначе «Всё скачано».
+ * серию» — что-то нужно, качается или анонсировано; иначе «Всё готово»:
+ * скачано или, в режиме «Только уведомлять», выбрано.
  */
 export function followGroupOf(follow: FollowSummary): FollowGroup {
   if (follow.state === 'paused' || follow.state === 'stopped')
@@ -42,7 +44,7 @@ export function followGroupOf(follow: FollowSummary): FollowGroup {
     return 'done'
 
   // Без серий после курсора сериал ждёт новый сезон, а не «всё скачано»
-  return follow.counts.inLibrary
+  return (follow.counts.inLibrary || follow.counts.ready)
     && !follow.wanted
     && !follow.counts.downloading
     && !follow.counts.upcoming
@@ -120,7 +122,7 @@ export function followStatusOf(follow: FollowSummary): FollowStatusView {
   if (counts.searching)
     return pick('searching', counts.searching)
 
-  return counts.inLibrary && !follow.next && !counts.upcoming
+  return (counts.inLibrary || counts.ready) && !follow.next && !counts.upcoming
     ? pick('done')
     : pick('next')
 }
@@ -216,6 +218,9 @@ export const toneBadge = {
 
 export const QUALITY_PRESETS = ['best', 'uhd', 'compact'] as const
 
+/** «Новая серия»: скачать в библиотеку или только уведомить */
+export const FOLLOW_MODES = ['download', 'notify'] as const
+
 // «Ждать лучшее»: от «не ждать» до недели, как предел DTO
 const WAIT_OPTIONS = [0, 6, 12, 24, 48, 72, 168]
 
@@ -233,6 +238,7 @@ export const EPISODE_TONES = {
   waiting: 'muted',
   downloading: 'info',
   in_library: 'success',
+  ready: 'success',
   no_space: 'destructive',
   missing: 'warning',
 } as const satisfies Record<
@@ -246,6 +252,7 @@ export const EVENT_VIEW: Record<string, { icon: Component, tone: StatusTone }>
     found: { icon: SparklesIcon, tone: 'muted' },
     pending: { icon: ClockIcon, tone: 'muted' },
     grabbed: { icon: DownloadIcon, tone: 'info' },
+    picked: { icon: CirclePlayIcon, tone: 'success' },
     downloaded: { icon: LibraryIcon, tone: 'success' },
     upgraded: { icon: CircleArrowUpIcon, tone: 'success' },
     failed: { icon: TriangleAlertIcon, tone: 'warning' },

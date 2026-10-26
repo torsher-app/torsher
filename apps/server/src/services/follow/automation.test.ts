@@ -17,6 +17,7 @@ import { getDb, migrateDb } from '../../db/index.ts'
 import {
   followEpisodes,
   followHistory,
+  followProfiles,
   follows,
   followSeasons,
   indexers,
@@ -25,7 +26,9 @@ import {
   mediaFiles,
   metaCache,
   notifications,
+  profiles,
   releaseBlocklist,
+  titleProgress,
   titleVoices,
   torrents,
   trackedTopics,
@@ -46,8 +49,10 @@ import {
   resetGrabRetries,
 } from './grab.ts'
 import { purgeHistory } from './history.ts'
-import { followById } from './index.ts'
+import { followById, updateFollow } from './index.ts'
 import { followStates, grabPending, reportMissing } from './pass.ts'
+import { followNewEpisodes } from './badges.ts'
+import { openPick, PickError, settlePicks } from './pick.ts'
 import { followAutomation, followTick, underFollowLock } from './schedule.ts'
 import {
   requestedSearch,
@@ -336,6 +341,7 @@ beforeEach(() => {
     metaCache,
     trackedTopics,
     notifications,
+    titleProgress,
   ])
     getDb().delete(table).run()
 
@@ -1415,5 +1421,326 @@ describe('автоматика «Следить»', () => {
     await followAutomation(new Date())
 
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('режим «Только уведомлять»', () => {
+  function subscribe(followId: string) {
+    const profile = getDb().select().from(profiles).get()!
+
+    getDb()
+      .insert(followProfiles)
+      .values({ followId, profileId: profile.id })
+      .run()
+  }
+
+  it('выбирает раздачу вместо закачки и сообщает один раз', async () => {
+    pinVoice(SERIES, 1, { studio: 'LostFilm' })
+    libraryEpisodes(1, 2, 3, 4, 5)
+    items = [{ title: PACK_TITLE, hash: PACK_HASH }]
+
+    const follow = insertFollow({ mode: 'notify' })
+    const now = new Date()
+
+    await followAutomation(now)
+
+    // Фон не качает `.torrent` и не трогает движок
+    expect(torrentDownloads).toBe(0)
+    expect(engineAdds).toEqual([])
+    expect(getDb().select().from(torrents).all()).toEqual([])
+    expect(getDb().select().from(trackedTopics).all()).toEqual([])
+    expect(
+      rows(follow.id).map(row => [
+        row.episode,
+        row.picked?.infoHash,
+        row.pickedAt,
+      ]),
+    ).toEqual([
+      [6, PACK_HASH, now],
+      [7, PACK_HASH, now],
+      [8, PACK_HASH, now],
+    ])
+    expect(
+      getDb().select().from(titleVoices).where(eq(titleVoices.season, 2)).get(),
+    ).toMatchObject({ studio: 'LostFilm' })
+    expect(historyKinds(follow.id).sort()).toEqual([
+      'found',
+      'picked',
+      'search',
+    ])
+    expect(
+      (await followStates(followById(follow.id)!))
+        .filter(item => item.season === 2)
+        .slice(5, 8)
+        .map(item => item.state),
+    ).toEqual(['ready', 'ready', 'ready'])
+
+    await followAutomation(new Date(now.getTime() + 60_000))
+    await followAutomation(new Date(now.getTime() + 120_000))
+
+    expect(inbox()).toEqual([
+      {
+        kind: 'follow_ready',
+        params: expect.objectContaining({
+          titleId: SERIES,
+          episodes: 'S2E6–E8',
+          count: 3,
+          studio: 'LostFilm',
+          quality: '1080p',
+        }),
+      },
+    ])
+  })
+
+  it('чужая студия ждёт окна; своя потом подменяет выбор без закачки', async () => {
+    libraryEpisodes(1, 2, 3, 4, 5, 6, 7)
+    items = [
+      {
+        title:
+          'Тихая гавань / Quiet Harbor / Сезон: 2 / Серии: 8 из 12 (2024) WEB-DL 1080p | NewStudio',
+        hash: SINGLE_HASH,
+        size: 1.5 * GB,
+      },
+    ]
+
+    const follow = insertFollow({ mode: 'notify', voiceStudio: 'LostFilm' })
+    const now = new Date()
+
+    await followAutomation(now)
+    expect(rows(follow.id)[0]).toMatchObject({ picked: null })
+
+    const after = new Date(now.getTime() + 24 * HOUR_MS)
+
+    await grabPending(followById(follow.id)!, after)
+
+    expect(rows(follow.id)[0]).toMatchObject({
+      pending: null,
+      waitUntil: null,
+      pickedAt: after,
+      picked: expect.objectContaining({ studio: 'NewStudio' }),
+    })
+
+    items = [{ title: EPISODE_8_TITLE, hash: PARTIAL_HASH, size: 1.5 * GB }]
+    clearSearchCache()
+    requestFollowSearch(follow.id)
+    await followAutomation(new Date(after.getTime() + HOUR_MS))
+
+    expect(rows(follow.id)[0]).toMatchObject({
+      // Срок апгрейда — от первого выбора
+      pickedAt: after,
+      picked: expect.objectContaining({
+        infoHash: PARTIAL_HASH,
+        studio: 'LostFilm',
+      }),
+    })
+    expect(torrentDownloads).toBe(0)
+    expect(historyKinds(follow.id)).toContain('upgraded')
+    expect(inbox().map(item => item.kind)).toEqual([
+      'follow_waiting',
+      'follow_other_voice',
+      'follow_ready',
+      'follow_upgraded',
+    ])
+  })
+
+  it('переключение на «Скачивать новые» качает готовые серии без поиска', async () => {
+    libraryEpisodes(1, 2, 3, 4, 5, 6, 7)
+    items = [{ title: EPISODE_8_TITLE, hash: SINGLE_HASH, size: 1.5 * GB }]
+
+    // Без окна: выбор сразу
+    const follow = insertFollow({ mode: 'notify', waitHours: 0 })
+    const now = new Date()
+
+    await followAutomation(now)
+    await followAutomation(new Date(now.getTime() + 60_000))
+    expect(rows(follow.id)[0]!.picked).toBeTruthy()
+
+    const searches = indexerSearches
+
+    updateFollow(follow.id, { rules: { mode: 'download' } })
+    // Форма панели присылает окно при любой правке: готовые серии оно не
+    // откладывает
+    updateFollow(follow.id, { rules: { waitHours: 48 } })
+    await grabPending(
+      followById(follow.id)!,
+      new Date(now.getTime() + 120_000),
+    )
+
+    expect(indexerSearches).toBe(searches)
+    expect(getDb().select().from(torrents).get()).toMatchObject({
+      infoHash: SINGLE_HASH,
+      origin: 'follow',
+      selectedFiles: [0],
+    })
+    expect(rows(follow.id)[0]).toMatchObject({
+      picked: null,
+      fileIndex: 0,
+      notifiedAt: null,
+    })
+  })
+
+  it('«Смотреть» добавляет выбор стримом; серии нет в файлах — выбор снимается', async () => {
+    libraryEpisodes(1, 2, 3, 4, 5, 6, 7)
+    items = [{ title: EPISODE_8_TITLE, hash: SINGLE_HASH, size: 1.5 * GB }]
+
+    // Без окна: выбор сразу
+    const follow = insertFollow({ mode: 'notify', waitHours: 0 })
+
+    await followAutomation(new Date())
+
+    const opened = await openPick(SERIES, { season: 2, episode: 8 })
+
+    expect(opened.status).toBe('ready')
+    expect(getDb().select().from(torrents).get()).toMatchObject({
+      id: opened.torrentId,
+      infoHash: SINGLE_HASH,
+      titleId: SERIES,
+      origin: 'search',
+      retention: 'cache',
+    })
+    await expect(openPick(SERIES, { season: 2, episode: 7 })).rejects.toThrow(
+      PickError,
+    )
+
+    // Раздача выбора на деле без восьмой серии
+    getDb()
+      .update(followEpisodes)
+      .set({
+        picked: pendingOf({
+          id: 'partial',
+          title: PACK_TITLE,
+          infoHash: PARTIAL_HASH,
+          link: {
+            url: `https://a.indexer.example/download/${PARTIAL_HASH}`,
+            indexerId: getDb().select().from(indexers).get()!.id,
+            indexerOrigin: 'https://a.indexer.example',
+          },
+          indexers: [],
+          seeders: 5,
+          parsed: parseRelease(PACK_TITLE),
+          match: { confidence: 'high', issues: [] },
+        }),
+      })
+      .where(eq(followEpisodes.followId, follow.id))
+      .run()
+
+    await expect(
+      openPick(SERIES, { season: 2, episode: 8 }),
+    ).rejects.toMatchObject({ kind: 'not_playable' })
+    expect(rows(follow.id)[0]).toMatchObject({ picked: null, pickedAt: null })
+    expect(getDb().select().from(releaseBlocklist).get()).toMatchObject({
+      infoHash: PARTIAL_HASH,
+      reason: 'failed_check',
+    })
+    expect(followById(follow.id)!.nextSearchAt).toBeNull()
+  })
+
+  it('раздача пака без метаданных снимает выбор у всех его серий', async () => {
+    libraryEpisodes(1, 2, 3, 4, 5)
+    pinVoice(SERIES, 1, { studio: 'LostFilm' })
+    items = [{ title: PACK_TITLE, hash: PACK_HASH }]
+
+    const follow = insertFollow({ mode: 'notify' })
+
+    await followAutomation(new Date())
+    expect(rows(follow.id).filter(row => row.picked)).toHaveLength(3)
+
+    getDb()
+      .insert(torrents)
+      .values({
+        infoHash: PACK_HASH,
+        name: 'Quiet.Harbor.S02.1080p',
+        source: 'magnet',
+        status: 'failed',
+      })
+      .run()
+    settlePicks(followById(follow.id)!)
+
+    expect(rows(follow.id).map(row => row.picked)).toEqual([
+      null,
+      null,
+      null,
+    ])
+    expect(getDb().select().from(releaseBlocklist).get()).toMatchObject({
+      infoHash: PACK_HASH,
+      reason: 'stalled',
+      episodes: null,
+    })
+    expect(followById(follow.id)!.nextSearchAt).toBeNull()
+  })
+
+  it('«Продолжить»: новая серия — после самой дальней, начатая — не новость', async () => {
+    pinVoice(SERIES, 1, { studio: 'LostFilm' })
+    libraryEpisodes(1, 2, 3, 4, 5)
+    items = [{ title: PACK_TITLE, hash: PACK_HASH }]
+
+    const follow = insertFollow({ mode: 'notify' })
+    const profile = getDb().select().from(profiles).get()!
+
+    subscribe(follow.id)
+    await followAutomation(new Date())
+
+    const point = (episode: number, position: number) =>
+      getDb()
+        .insert(titleProgress)
+        .values({
+          profileId: profile.id,
+          titleId: SERIES,
+          season: 2,
+          episode,
+          position,
+          duration: 3000,
+          updatedAt: new Date(),
+        })
+        .onConflictDoUpdate({
+          target: [
+            titleProgress.profileId,
+            titleProgress.titleId,
+            titleProgress.season,
+            titleProgress.episode,
+          ],
+          set: { position },
+        })
+        .run()
+
+    // Седьмую досмотрели, шестую пропустили — новая только восьмая
+    point(7, 2990)
+    expect(followNewEpisodes(profile.id).get(SERIES)).toMatchObject({
+      season: 2,
+      episode: 8,
+    })
+
+    // Восьмую начали — это уже «Продолжить», а не новость
+    point(8, 600)
+    expect(followNewEpisodes(profile.id).has(SERIES)).toBe(false)
+  })
+
+  it('новая серия — в «Продолжить» с колокольчиком', async () => {
+    libraryEpisodes(1, 2, 3, 4, 5, 6, 7)
+    items = [{ title: EPISODE_8_TITLE, hash: SINGLE_HASH, size: 1.5 * GB }]
+
+    // Без окна: выбор сразу
+    const follow = insertFollow({ mode: 'notify', waitHours: 0 })
+
+    subscribe(follow.id)
+    await followAutomation(new Date())
+
+    const res = await app.inject({
+      url: '/api/home/continue?language=ru-RU',
+      cookies: owner,
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json().items).toEqual([
+      expect.objectContaining({
+        id: SERIES,
+        season: 2,
+        episode: 8,
+        position: 0,
+        next: true,
+        file: null,
+        followNewEpisode: true,
+      }),
+    ])
   })
 })

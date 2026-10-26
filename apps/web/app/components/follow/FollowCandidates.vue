@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { FollowCandidate } from '@torsher/api-client'
+import type { FollowCandidate, FollowSummary } from '@torsher/api-client'
 import { getErrorMessage, getErrorStatus } from '@torsher/api-client'
 import { BanIcon, RefreshCwIcon } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
@@ -11,6 +11,7 @@ import LoadingButton from '~/components/LoadingButton.vue'
 
 const props = defineProps<{
   followId: string
+  mode: FollowSummary['mode']
   season: number
   episode: number
 }>()
@@ -29,6 +30,16 @@ const VERDICT_BADGE = {
   pending: 'info',
   rejected: 'outline',
 } as const
+
+// В режиме «Только уведомлять» раздачу не качают, а выбирают: от выбора
+// можно отказаться, и серия найдёт другую
+const notify = computed(() => props.mode === 'notify')
+
+function verdictLabel(item: FollowCandidate) {
+  return item.verdict === 'grab' && notify.value
+    ? t('panel.follow.candidates.verdicts.picked')
+    : t(`panel.follow.candidates.verdicts.${item.verdict}`)
+}
 
 async function load() {
   state.value = 'loading'
@@ -130,14 +141,17 @@ onMounted(load)
         </span>
         <span class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
           <Badge :variant="VERDICT_BADGE[item.verdict]">
-            {{ t(`panel.follow.candidates.verdicts.${item.verdict}`) }}
+            {{ verdictLabel(item) }}
           </Badge>
           <span
             v-if="item.rejections.length"
             class="min-w-0 text-[12.5px] text-muted-foreground"
           >{{ reasons(item) }}</span>
         </span>
-        <span v-if="item.verdict !== 'grab'" class="flex items-center">
+        <span
+          v-if="item.verdict !== 'grab' || notify"
+          class="flex items-center"
+        >
           <span
             v-if="item.blocked"
             class="flex items-center gap-1.5 text-[12.5px] text-muted-foreground"

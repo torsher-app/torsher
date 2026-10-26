@@ -1,4 +1,4 @@
-import type { FollowQualityPreset } from '../../db/schema.ts'
+import type { FollowMode, FollowQualityPreset } from '../../db/schema.ts'
 import { getSetting, setSetting } from '../settings/index.ts'
 
 const SETTINGS_KEY = 'follow'
@@ -12,6 +12,7 @@ export interface FollowDefaults {
   movieWaitHours: number
   qualityPreset: FollowQualityPreset
   requireRussian: RequireRussianDefault
+  mode: FollowMode
 }
 
 export interface FollowSettings {
@@ -37,6 +38,7 @@ export const DEFAULT_FOLLOW_SETTINGS: FollowSettings = {
     movieWaitHours: 72,
     qualityPreset: 'best',
     requireRussian: 'auto',
+    mode: 'download',
   },
 }
 

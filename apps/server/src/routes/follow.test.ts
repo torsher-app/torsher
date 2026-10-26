@@ -158,6 +158,15 @@ function followRow() {
     .get()
 }
 
+// Курсор слежения из прежних версий: так тесты видят вышедшие серии
+function setCursor(season: number, episode: number) {
+  getDb()
+    .update(follows)
+    .set({ startSeason: season, startEpisode: episode })
+    .where(eq(follows.titleId, SERIES))
+    .run()
+}
+
 function watched(profileId: string, seasonNumber: number, episode: number) {
   getDb()
     .insert(titleProgress)
@@ -309,7 +318,7 @@ afterEach(() => {
 })
 
 describe('pUT /titles/:id/follow', () => {
-  it('первая подписка создаёт слежение: не смотрел, сезон идёт — с начала сезона', async () => {
+  it('первая подписка создаёт слежение: только новые серии', async () => {
     const res = await follow(owner)
 
     expect(res.statusCode).toBe(200)
@@ -318,46 +327,50 @@ describe('pUT /titles/:id/follow', () => {
       follow: {
         kind: 'series',
         state: 'active',
-        start: { season: 2, episode: 1 },
+        start: { season: 2, episode: 5 },
         subscribed: true,
         profileCount: 1,
         requireRussian: true,
         waitHours: 24,
         qualityPreset: 'best',
+        mode: 'download',
         next: { season: 2, episode: 5, airDate: day(4) },
-      },
-      options: {
-        new: { season: 2, episode: 5 },
-        season: { season: 2, episode: 1 },
-        beginning: { season: 1, episode: 1 },
+        ready: null,
       },
     })
+    expect(res.json()).not.toHaveProperty('options')
   })
 
-  it('смотрел — со следующей непросмотренной серии', async () => {
+  it('смотрел — всё равно только новые серии', async () => {
     watched(ownerProfile, 1, 1)
     watched(ownerProfile, 1, 2)
 
     const res = await follow(owner)
 
-    expect(res.json().follow.start).toEqual({ season: 1, episode: 3 })
+    expect(res.json().follow.start).toEqual({ season: 2, episode: 5 })
   })
 
-  it('повторная подписка не сдвигает курсор, выбор курсора — сдвигает', async () => {
+  it('повторная подписка и правила курсор не сдвигают', async () => {
     await follow(owner)
-    watched(ownerProfile, 2, 3)
+    setCursor(2, 1)
 
     expect((await follow(owner)).json().follow.start).toEqual({
       season: 2,
       episode: 1,
     })
-    expect((await follow(owner, { start: 'new' })).json().follow.start).toEqual(
-      { season: 2, episode: 5 },
-    )
     expect(
-      (await follow(owner, { start: { season: 1, episode: 4 } })).json().follow
+      (await follow(owner, { start: 'beginning', waitHours: 12 })).json().follow
         .start,
-    ).toEqual({ season: 1, episode: 4 })
+    ).toEqual({ season: 2, episode: 1 })
+  })
+
+  it('режим «Только уведомлять» и обратно', async () => {
+    await follow(owner)
+
+    expect((await follow(owner, { mode: 'notify' })).json().follow.mode).toBe(
+      'notify',
+    )
+    expect(followRow()?.mode).toBe('notify')
   })
 
   it('профиль с порогом подписывается, но правила не меняет', async () => {
@@ -370,7 +383,7 @@ describe('pUT /titles/:id/follow', () => {
 
     for (const payload of [
       { waitHours: 12 },
-      { start: 'new' },
+      { mode: 'notify' },
       { voiceStudio: 'Studio' },
     ]) {
       const denied = await follow(kid.cookies, payload)
@@ -444,14 +457,15 @@ describe('dELETE /titles/:id/follow', () => {
   })
 
   it('подписка на остановленное запускает его с новым курсором', async () => {
-    await follow(owner, { start: 'beginning' })
+    await follow(owner)
+    setCursor(1, 1)
     await unfollow(owner)
 
     const res = await follow(owner)
 
     expect(res.json().follow).toMatchObject({
       state: 'active',
-      start: { season: 2, episode: 1 },
+      start: { season: 2, episode: 5 },
     })
   })
 })
@@ -459,6 +473,7 @@ describe('dELETE /titles/:id/follow', () => {
 describe('состояния серий', () => {
   beforeEach(async () => {
     await follow(owner)
+    setCursor(2, 1)
     libraryEpisode(2, 1)
     keptTorrent(['Quiet.Harbor.S02E02.mkv', 'Quiet.Harbor.S02E03.mkv'], [0])
   })
@@ -505,6 +520,7 @@ describe('состояния серий', () => {
       state: 'active',
       subscribed: true,
       start: { season: 2, episode: 1 },
+      mode: 'download',
     })
 
     const season = await app.inject({
@@ -628,7 +644,7 @@ describe('состояния серий', () => {
   })
 
   it('курсор дальше — серии до него без состояния', async () => {
-    await follow(owner, { start: { season: 2, episode: 4 } })
+    setCursor(2, 4)
 
     const season = await app.inject({
       url: `/api/catalog/titles/${SERIES}/seasons/2?language=ru-RU`,
@@ -665,14 +681,15 @@ describe('панель «Слежу»', () => {
       method: 'PATCH',
       url: `/api/follows/${id}?language=ru-RU`,
       cookies: owner,
-      payload: { state: 'paused', waitHours: 72, start: 'beginning' },
+      payload: { state: 'paused', waitHours: 72, mode: 'notify' },
     })
 
     expect(patched.statusCode).toBe(200)
     expect(patched.json()).toMatchObject({
       state: 'paused',
       waitHours: 72,
-      start: { season: 1, episode: 1 },
+      mode: 'notify',
+      start: { season: 2, episode: 5 },
     })
 
     const removed = await app.inject({
@@ -706,6 +723,7 @@ describe('панель «Слежу»', () => {
 describe('gET /schedule', () => {
   it('ближайшие и недавние серии того, за чем следит профиль', async () => {
     await follow(owner)
+    setCursor(2, 1)
 
     const res = await app.inject({
       url: '/api/schedule?language=ru-RU',
@@ -733,6 +751,7 @@ describe('gET /schedule', () => {
 
   it('своя студия сезона и файл серии из библиотеки', async () => {
     await follow(owner)
+    setCursor(2, 1)
     pinVoice(SERIES, 2, { studio: 'Studio One' })
     libraryEpisode(2, 4)
 

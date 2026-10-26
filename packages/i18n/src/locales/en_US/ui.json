@@ -3138,7 +3138,7 @@
       "groups": {
         "attention": "Needs attention",
         "waiting": "Waiting for episodes",
-        "done": "All downloaded",
+        "done": "All set",
         "stopped": "Stopped"
       },
       "filters": {
@@ -3160,7 +3160,8 @@
         "foot": "Rules, found releases and history of every follow will show up here."
       },
       "policy": {
-        "start": "From {episode}",
+        "download": "Downloading",
+        "notify": "Notify only",
         "anyVoice": "Any voice-over",
         "strict": "Only {studio}",
         "wait": "wait {n} h | wait {n} h",
@@ -3183,6 +3184,28 @@
           "short": "720p → SD"
         }
       },
+      "modes": {
+        "series": {
+          "download": {
+            "title": "Download new",
+            "text": "Episodes land in the library on their own."
+          },
+          "notify": {
+            "title": "Notify only",
+            "text": "Torsher picks a release and notifies you; watch it streaming, nothing is downloaded."
+          }
+        },
+        "movie": {
+          "download": {
+            "title": "Download when it's out",
+            "text": "The movie lands in the library on its own."
+          },
+          "notify": {
+            "title": "Notify only",
+            "text": "Torsher picks a release and notifies you; watch it streaming, nothing is downloaded."
+          }
+        }
+      },
       "status": {
         "series": {
           "paused": "Paused",
@@ -3195,6 +3218,7 @@
           "next": "Next: {episode} · {date}",
           "nextUnknown": "Waiting for the next episode",
           "done": "All downloaded",
+          "doneNotify": "Everything released is ready to watch",
           "unsure": "{n} similar release to confirm | {n} similar releases to confirm"
         },
         "movie": {
@@ -3207,6 +3231,7 @@
           "searching": "Looking for a release",
           "next": "Not released yet",
           "done": "In the library",
+          "doneNotify": "Ready to watch",
           "unsure": "Similar releases to confirm"
         }
       },
@@ -3258,15 +3283,7 @@
       },
       "rules": {
         "title": "Rules",
-        "start": "From which episode",
-        "startKeep": "As now: from {episode}",
-        "startNew": "Only new episodes",
-        "startSeason": "From the current season",
-        "startBeginning": "From the beginning",
-        "startCustom": "From an episode…",
-        "startHint": "Episodes before it aren't downloaded. Future seasons are always included.",
-        "season": "Season",
-        "episode": "Episode",
+        "mode": "New episode",
         "voice": "Voice-over studio",
         "voicePlaceholder": "Any",
         "voiceHint": "Used when the season has no pinned voice-over. The voice-over picked on the TV wins.",
@@ -3280,11 +3297,7 @@
         "russian": "Russian audio track required",
         "russianHint": "Releases without a Russian track are not taken.",
         "save": "Save rules",
-        "saved": "Rules saved",
-        "validation": {
-          "season": "Season from 1 to 999",
-          "episode": "Episode from 1 to 9999"
-        }
+        "saved": "Rules saved"
       },
       "episodeStates": {
         "upcoming": "Not aired yet",
@@ -3294,6 +3307,7 @@
         "waitingUntil": "Waiting for better until {until}",
         "downloading": "Downloading",
         "in_library": "In the library",
+        "ready": "Ready to watch",
         "no_space": "Not enough space",
         "missing": "Not found"
       },
@@ -3303,6 +3317,7 @@
         "seeders": "{n} seeder | {n} seeders",
         "verdicts": {
           "grab": "Taken",
+          "picked": "Picked",
           "pending": "Pending",
           "rejected": "Rejected"
         },
@@ -3348,8 +3363,12 @@
         "grabbedMeta": "Downloading {episodes} · {meta}",
         "grabbedUpgrade": "Downloading a replacement for {episodes}",
         "grabbedUpgradeMeta": "Downloading a replacement for {episodes} · {meta}",
+        "picked": "Picked a release for {episodes}",
+        "pickedMeta": "Picked a release for {episodes} · {meta}",
         "upgraded": "{episodes}: replaced with a better version",
         "upgradedMeta": "{episodes}: replaced {from} with {to}",
+        "upgradedPick": "{episodes}: picked a better version",
+        "upgradedPickMeta": "{episodes}: picked {to} instead of {from}",
         "downloaded": "{episodes} is in the library",
         "failed": "{episodes}: download stalled — no peers or progress",
         "blocklisted": "{episodes}: release blocklisted — {reason}",
@@ -3392,6 +3411,7 @@
           "found": "Found",
           "pending": "Pending",
           "grabbed": "Downloading",
+          "picked": "Picked",
           "downloaded": "In the library",
           "upgraded": "Replaced",
           "failed": "Stalled",
@@ -3652,26 +3672,28 @@
     "follow": "Follow",
     "following": "Following",
     "movieLine": "We'll download it once it's out digitally",
+    "movieLineNotify": "We'll let you know once it's out digitally",
     "policy": {
       "new": "New episodes",
-      "season": "From season {n}",
-      "beginning": "From the start",
-      "from": "From {code}",
+      "notify": "Notify",
       "anyVoice": "Any audio",
       "only": "Only {studio}"
     },
     "status": {
       "paused": "Following is paused",
       "noSpace": "Not enough space for {n} episode | Not enough space for {n} episodes",
+      "ready": "{code} is ready to watch",
       "waiting": "Waiting for {target} until {until}",
       "waitingBetter": "Waiting for a better release until {until}",
       "downloading": "Downloading {n} episode | Downloading {n} episodes",
       "missing": "No release found: {n} episode | No release found: {n} episodes",
       "searching": "Looking for a release: {n} episode | Looking for a release: {n} episodes",
       "next": "Next episode {code} {date} — we'll download it",
+      "nextNotify": "Next episode {code} {date} — we'll let you know",
       "movieNoSpace": "Not enough space on the server",
       "movieDownloading": "Downloading",
       "movieSearching": "Looking for a release",
+      "movieReady": "Out digitally — ready to watch",
       "bestQuality": "{quality} is the best released so far",
       "pinned": "{studio} audio is pinned to this season"
     },
@@ -3682,18 +3704,28 @@
     },
     "voiceQuality": "{voice} in {quality}",
     "panel": {
-      "start": "Start from",
+      "mode": "New episode",
       "voice": "Audio",
       "wait": "Wait for better",
       "quality": "Quality",
       "stop": "Stop following",
       "stopHint": "Downloaded episodes stay in the library",
       "readOnly": "Rules are changed by a profile without an age limit",
-      "starts": {
-        "new": "New episodes only",
-        "season": "From the current season",
-        "beginning": "From the beginning",
-        "custom": "From episode {code}"
+      "modes": {
+        "download": "Download new",
+        "notify": "Notify only"
+      },
+      "modeHints": {
+        "download": "Episodes land in the library on their own",
+        "notify": "We'll notify you and stream it when you watch"
+      },
+      "modesMovie": {
+        "download": "Download when it's out",
+        "notify": "Notify only"
+      },
+      "modeHintsMovie": {
+        "download": "The movie lands in the library on its own",
+        "notify": "We'll notify you and stream it when you watch"
       },
       "voiceAny": "Any",
       "voiceOnly": "Only {studio}",
@@ -3725,10 +3757,12 @@
       "waitingBetter": "waiting for better",
       "no_space": "no space",
       "missing": "not found",
-      "searching": "searching"
+      "searching": "searching",
+      "ready": "ready"
     },
     "badge": "Following",
-    "badgeNew": "Following · {n} new episodes"
+    "badgeNew": "Following · {n} new episodes",
+    "newEpisode": "New episode"
   },
   "release": {
     "unsure": "Looks like “{title}”",
@@ -3798,6 +3832,10 @@
       "downloaded": {
         "title": "Episode in the library | Episodes in the library",
         "titleMovie": "Movie in the library"
+      },
+      "ready": {
+        "title": "Episode ready to watch | Episodes ready to watch",
+        "titleMovie": "Movie ready to watch"
       },
       "upgraded": {
         "title": "Replaced with a better version"

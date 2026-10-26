@@ -8,6 +8,8 @@ export interface ResumeLike {
   duration: number | null
   next: boolean
   file: EpisodeFile | null
+  /** Новая серия «Следить»: её раздачу выбрал слежение */
+  followNewEpisode?: boolean
 }
 
 /** «S2E5»; у фильма — пусто */
@@ -94,7 +96,8 @@ export function resolveRoute(
 
 /**
  * Куда ведёт «Продолжить»: файл уже известен — сразу плеер, иначе экран
- * подготовки ищет серию; фильм без файла — «Источники»
+ * подготовки ищет серию; фильм без файла — «Источники», а новый фильм
+ * «Следить» — тоже экран подготовки: раздачу выбрал слежение
  */
 export function resumeRoute(titleId: string, item: ResumeLike): ScreenRoute {
   if (item.file) {
@@ -107,6 +110,9 @@ export function resumeRoute(titleId: string, item: ResumeLike): ScreenRoute {
 
   if (item.season && item.episode)
     return resolveRoute(titleId, item.season, item.episode)
+
+  if (item.followNewEpisode)
+    return { path: `/title/${titleId}/play` }
 
   return { path: `/title/${titleId}/sources` }
 }

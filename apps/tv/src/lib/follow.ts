@@ -1,14 +1,7 @@
-import type {
-  FollowCursor,
-  ScheduleItem,
-  TitleFollow,
-  TitleFollowResponse,
-} from '@torsher/api-client'
+import type { ScheduleItem, TitleFollow } from '@torsher/api-client'
 
-export type CursorPreset = 'new' | 'season' | 'beginning'
-export type CursorOptions = NonNullable<TitleFollowResponse['options']>
-
-export const CURSOR_PRESETS: CursorPreset[] = ['new', 'season', 'beginning']
+/** «Новая серия»: скачать в библиотеку или только уведомить */
+export const FOLLOW_MODES = ['download', 'notify'] as const
 
 /** «Ждать лучшее»: не ждать, 12 ч, сутки, 3 дня */
 export const WAIT_HOURS = [0, 12, 24, 72]
@@ -23,23 +16,6 @@ export const QUALITY_LADDERS: Record<
   best: ['1080p', '720p', 'SD'],
   uhd: ['2160p', '1080p', '720p'],
   compact: ['720p', 'SD'],
-}
-
-function sameCursor(a: FollowCursor, b: FollowCursor) {
-  return a.season === b.season && a.episode === b.episode
-}
-
-/**
- * Каким пресетом стоит курсор. Пресеты могут совпадать (сезон только
- * начался) — берётся первый по порядку; курсор из панели — `undefined`.
- */
-export function cursorPreset(
-  start: FollowCursor,
-  options: CursorOptions | null,
-): CursorPreset | undefined {
-  return options
-    ? CURSOR_PRESETS.find(preset => sameCursor(start, options[preset]))
-    : undefined
 }
 
 /** Варианты окна: набор витрины и значение из панели, если оно другое */
@@ -61,6 +37,7 @@ export function isFollowed(follow: TitleFollow | null | undefined) {
 export type FollowStatus
   = | { kind: 'paused' }
     | { kind: 'noSpace', count: number }
+    | { kind: 'ready', code: string }
     | { kind: 'waiting', waiting: NonNullable<TitleFollow['waiting']> }
     | { kind: 'downloading', count: number }
     | { kind: 'missing', count: number }
@@ -69,7 +46,8 @@ export type FollowStatus
 
 /**
  * Главное в статус-строке карточки, по важности для зрителя: пауза, нет места,
- * ждём лучшее, качается, не нашли, ищем, следующая серия с датой
+ * готовая серия, которую профиль не досмотрел, ждём лучшее, качается, не
+ * нашли, ищем, следующая серия с датой
  */
 export function followStatus(follow: TitleFollow): FollowStatus | undefined {
   const { counts } = follow
@@ -79,6 +57,13 @@ export function followStatus(follow: TitleFollow): FollowStatus | undefined {
 
   if (counts.noSpace)
     return { kind: 'noSpace', count: counts.noSpace }
+
+  if (follow.ready) {
+    return {
+      kind: 'ready',
+      code: `S${follow.ready.season}E${follow.ready.episode}`,
+    }
+  }
 
   if (follow.waiting)
     return { kind: 'waiting', waiting: follow.waiting }

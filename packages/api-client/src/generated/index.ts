@@ -352,6 +352,7 @@ export interface TitleFollowBriefInput {
   state: "active" | "paused" | "stopped" | "done";
   subscribed: boolean;
   start: FollowCursorInput;
+  mode: "download" | "notify";
 }
 
 export interface TitleDetailsInput {
@@ -462,7 +463,8 @@ export interface EpisodeInput {
     | "no_space"
     | "missing"
     | "downloading"
-    | "in_library";
+    | "in_library"
+    | "ready";
   tracker?: boolean;
   followWait?: FollowWaitInput;
 }
@@ -1304,6 +1306,7 @@ export interface ContinueCardInput {
   duration: number | null;
   next: boolean;
   file: EpisodeFileInput | null;
+  followNewEpisode?: boolean;
 }
 
 export interface ContinueRowInput {
@@ -1705,23 +1708,20 @@ export interface FollowTitleInput {
    */
   waitHours?: number;
   qualityPreset?: "best" | "uhd" | "compact";
-  start?:
-    | "auto"
-    | "new"
-    | "season"
-    | "beginning"
-    | {
-        /**
-         * @min 1
-         * @max 999
-         */
-        season: number;
-        /**
-         * @min 1
-         * @max 9999
-         */
-        episode: number;
-      };
+  mode?: "download" | "notify";
+}
+
+export interface OpenFollowPickInput {
+  /**
+   * @min 0
+   * @max 999
+   */
+  season: number;
+  /**
+   * @min 0
+   * @max 9999
+   */
+  episode: number;
 }
 
 export interface UpdateFollowInput {
@@ -1738,22 +1738,7 @@ export interface UpdateFollowInput {
    */
   waitHours?: number;
   qualityPreset?: "best" | "uhd" | "compact";
-  start?:
-    | "new"
-    | "season"
-    | "beginning"
-    | {
-        /**
-         * @min 1
-         * @max 999
-         */
-        season: number;
-        /**
-         * @min 1
-         * @max 9999
-         */
-        episode: number;
-      };
+  mode?: "download" | "notify";
   state?: "active" | "paused";
 }
 
@@ -1771,6 +1756,7 @@ export interface TitleFollowInput {
    */
   waitHours: number;
   qualityPreset: "best" | "uhd" | "compact";
+  mode: "download" | "notify";
   next: TitleNextEpisodeInput | null;
   subscribed: boolean;
   /**
@@ -1829,17 +1815,18 @@ export interface TitleFollowInput {
      * @max 9007199254740991
      */
     searching: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    ready: number;
   };
+  ready: FollowCursorInput | null;
 }
 
 export interface TitleFollowResponseInput {
   follow: TitleFollowInput | null;
   canEdit: boolean;
-  options: {
-    new: FollowCursorInput;
-    season: FollowCursorInput;
-    beginning: FollowCursorInput;
-  } | null;
 }
 
 export interface FollowProfileInput {
@@ -1875,7 +1862,8 @@ export interface FollowEpisodeInput {
     | "no_space"
     | "missing"
     | "downloading"
-    | "in_library";
+    | "in_library"
+    | "ready";
   waitUntil?: string;
   /**
    * @min -9007199254740991
@@ -1920,6 +1908,11 @@ export interface FollowEpisodeCountsInput {
    * @max 9007199254740991
    */
   inLibrary: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  ready: number;
 }
 
 export interface FollowSummaryInput {
@@ -1936,6 +1929,7 @@ export interface FollowSummaryInput {
    */
   waitHours: number;
   qualityPreset: "best" | "uhd" | "compact";
+  mode: "download" | "notify";
   next: TitleNextEpisodeInput | null;
   titleId: string;
   title: string | null;
@@ -1980,6 +1974,7 @@ export interface FollowDetailsInput {
    */
   waitHours: number;
   qualityPreset: "best" | "uhd" | "compact";
+  mode: "download" | "notify";
   next: TitleNextEpisodeInput | null;
   titleId: string;
   title: string | null;
@@ -2045,6 +2040,7 @@ export interface FollowActivityItemInput {
     | "found"
     | "pending"
     | "grabbed"
+    | "picked"
     | "downloaded"
     | "upgraded"
     | "failed"
@@ -2166,6 +2162,7 @@ export interface FollowSettingsInput {
     movieWaitHours: number;
     qualityPreset: "best" | "uhd" | "compact";
     requireRussian: "auto" | "always" | "never";
+    mode: "download" | "notify";
   };
 }
 
@@ -2193,6 +2190,7 @@ export interface UpdateFollowSettingsInput {
     movieWaitHours?: number;
     qualityPreset?: "best" | "uhd" | "compact";
     requireRussian?: "auto" | "always" | "never";
+    mode?: "download" | "notify";
   };
 }
 
@@ -2221,6 +2219,7 @@ export interface ScheduleItemInput {
     | "missing"
     | "downloading"
     | "in_library"
+    | "ready"
     | null;
   studio?: string;
   mediaFileId?: string;
@@ -3140,6 +3139,7 @@ export interface NotificationItemInput {
     | "device_paired"
     | "channel_failing"
     | "follow_downloaded"
+    | "follow_ready"
     | "follow_waiting"
     | "follow_other_voice"
     | "follow_upgraded"
@@ -4928,6 +4928,7 @@ export interface TitleFollowBrief {
   state: "active" | "paused" | "stopped" | "done";
   subscribed: boolean;
   start: FollowCursor;
+  mode: "download" | "notify";
 }
 
 export interface TitleDetails {
@@ -5038,7 +5039,8 @@ export interface Episode {
     | "no_space"
     | "missing"
     | "downloading"
-    | "in_library";
+    | "in_library"
+    | "ready";
   tracker?: boolean;
   followWait?: FollowWait;
 }
@@ -5880,6 +5882,7 @@ export interface ContinueCard {
   duration: number | null;
   next: boolean;
   file: EpisodeFile | null;
+  followNewEpisode?: boolean;
 }
 
 export interface ContinueRow {
@@ -6280,23 +6283,20 @@ export interface FollowTitle {
    */
   waitHours?: number;
   qualityPreset?: "best" | "uhd" | "compact";
-  start?:
-    | "auto"
-    | "new"
-    | "season"
-    | "beginning"
-    | {
-        /**
-         * @min 1
-         * @max 999
-         */
-        season: number;
-        /**
-         * @min 1
-         * @max 9999
-         */
-        episode: number;
-      };
+  mode?: "download" | "notify";
+}
+
+export interface OpenFollowPick {
+  /**
+   * @min 0
+   * @max 999
+   */
+  season: number;
+  /**
+   * @min 0
+   * @max 9999
+   */
+  episode: number;
 }
 
 export interface UpdateFollow {
@@ -6313,22 +6313,7 @@ export interface UpdateFollow {
    */
   waitHours?: number;
   qualityPreset?: "best" | "uhd" | "compact";
-  start?:
-    | "new"
-    | "season"
-    | "beginning"
-    | {
-        /**
-         * @min 1
-         * @max 999
-         */
-        season: number;
-        /**
-         * @min 1
-         * @max 9999
-         */
-        episode: number;
-      };
+  mode?: "download" | "notify";
   state?: "active" | "paused";
 }
 
@@ -6346,6 +6331,7 @@ export interface TitleFollow {
    */
   waitHours: number;
   qualityPreset: "best" | "uhd" | "compact";
+  mode: "download" | "notify";
   next: TitleNextEpisode | null;
   subscribed: boolean;
   /**
@@ -6404,17 +6390,18 @@ export interface TitleFollow {
      * @max 9007199254740991
      */
     searching: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    ready: number;
   };
+  ready: FollowCursor | null;
 }
 
 export interface TitleFollowResponse {
   follow: TitleFollow | null;
   canEdit: boolean;
-  options: {
-    new: FollowCursor;
-    season: FollowCursor;
-    beginning: FollowCursor;
-  } | null;
 }
 
 export interface FollowProfile {
@@ -6450,7 +6437,8 @@ export interface FollowEpisode {
     | "no_space"
     | "missing"
     | "downloading"
-    | "in_library";
+    | "in_library"
+    | "ready";
   waitUntil?: string;
   /**
    * @min -9007199254740991
@@ -6495,6 +6483,11 @@ export interface FollowEpisodeCounts {
    * @max 9007199254740991
    */
   inLibrary: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  ready: number;
 }
 
 export interface FollowSummary {
@@ -6511,6 +6504,7 @@ export interface FollowSummary {
    */
   waitHours: number;
   qualityPreset: "best" | "uhd" | "compact";
+  mode: "download" | "notify";
   next: TitleNextEpisode | null;
   titleId: string;
   title: string | null;
@@ -6555,6 +6549,7 @@ export interface FollowDetails {
    */
   waitHours: number;
   qualityPreset: "best" | "uhd" | "compact";
+  mode: "download" | "notify";
   next: TitleNextEpisode | null;
   titleId: string;
   title: string | null;
@@ -6620,6 +6615,7 @@ export interface FollowActivityItem {
     | "found"
     | "pending"
     | "grabbed"
+    | "picked"
     | "downloaded"
     | "upgraded"
     | "failed"
@@ -6741,6 +6737,7 @@ export interface FollowSettings {
     movieWaitHours: number;
     qualityPreset: "best" | "uhd" | "compact";
     requireRussian: "auto" | "always" | "never";
+    mode: "download" | "notify";
   };
 }
 
@@ -6768,6 +6765,7 @@ export interface UpdateFollowSettings {
     movieWaitHours?: number;
     qualityPreset?: "best" | "uhd" | "compact";
     requireRussian?: "auto" | "always" | "never";
+    mode?: "download" | "notify";
   };
 }
 
@@ -6796,6 +6794,7 @@ export interface ScheduleItem {
     | "missing"
     | "downloading"
     | "in_library"
+    | "ready"
     | null;
   studio?: string;
   mediaFileId?: string;
@@ -7715,6 +7714,7 @@ export interface NotificationItem {
     | "device_paired"
     | "channel_failing"
     | "follow_downloaded"
+    | "follow_ready"
     | "follow_waiting"
     | "follow_other_voice"
     | "follow_upgraded"
@@ -9476,6 +9476,9 @@ export type FollowTitleError = MessageResponse;
 
 export type UnfollowTitleError = MessageResponse;
 
+export type OpenFollowPickError =
+  MessageResponse | WatchErrorResponse | EngineUnavailableResponse;
+
 export type GetScheduleError = MessageResponse;
 
 export type GetFollowsError = MessageResponse;
@@ -11226,6 +11229,27 @@ export class Api<
         path: `/api/titles/${id}/follow`,
         method: "DELETE",
         query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Follow
+     * @name OpenFollowPick
+     * @request POST:/api/titles/{id}/follow/open
+     */
+    openFollowPick: (
+      id: string,
+      data: OpenFollowPickInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<TitleOpen, OpenFollowPickError>({
+        path: `/api/titles/${id}/follow/open`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
         format: "json",
         ...params,
       }),
@@ -13011,6 +13035,7 @@ export class Api<
           | "found"
           | "pending"
           | "grabbed"
+          | "picked"
           | "downloaded"
           | "upgraded"
           | "failed"

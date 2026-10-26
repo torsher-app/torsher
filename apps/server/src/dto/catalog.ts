@@ -1,5 +1,9 @@
 import { z } from 'zod'
-import { followStates, posterRatingSources } from '../db/schema.ts'
+import {
+  followModes,
+  followStates,
+  posterRatingSources,
+} from '../db/schema.ts'
 
 // Скачивание тайтла на сервере: «Скачать» и «Оставить» на витрине
 export const titleDownloadStates = [
@@ -129,7 +133,8 @@ export const titleNextEpisode = z
 // Состояние серии у тайтла «Следить»: `upcoming` — ещё не вышла, `searching` —
 // вышла и её ищем, `waiting` — есть кандидат, ждём свою озвучку или качество,
 // `no_space` — захват ждёт места, `missing` — вышла давно, раздач нет,
-// `downloading` — качается, `in_library` — в библиотеке
+// `downloading` — качается, `in_library` — в библиотеке, `ready` — режим
+// «Только уведомлять»: раздача выбрана, серию смотрят стримом
 export const followEpisodeStates = [
   'upcoming',
   'searching',
@@ -138,6 +143,7 @@ export const followEpisodeStates = [
   'missing',
   'downloading',
   'in_library',
+  'ready',
 ] as const
 
 // Чего ждёт отложенная серия «Следить»: свою студию или тип озвучки и
@@ -166,6 +172,7 @@ export const titleFollowBrief = z
     // Подписан ли профиль зрителя
     subscribed: z.boolean(),
     start: followCursor,
+    mode: z.enum(followModes),
   })
   .meta({ id: 'titleFollowBrief' })
 

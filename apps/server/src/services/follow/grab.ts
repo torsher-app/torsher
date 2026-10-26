@@ -192,9 +192,9 @@ export function updateEpisodes(
 }
 
 /**
- * Серия снова нужна: захват снят, кандидат забыт, первое появление остаётся.
- * Не удался апгрейд — серия возвращается к прежней закачке; серию, которая
- * уже лежит в библиотеке от автоматики, не трогаем.
+ * Серия снова нужна: захват или выбор сняты, кандидат забыт, первое
+ * появление остаётся. Не удался апгрейд — серия возвращается к прежней
+ * закачке; серию, которая уже лежит в библиотеке от автоматики, не трогаем.
  */
 export function resetEpisodes(follow: Follow, episodes: EpisodeRef[]) {
   restoreUpgrades(follow, upgradingRows(follow, episodes))
@@ -210,6 +210,8 @@ export function resetEpisodes(follow: Follow, episodes: EpisodeRef[]) {
         pending: null,
         waitUntil: null,
         stateNote: null,
+        picked: null,
+        pickedAt: null,
       })
       .where(
         and(
@@ -223,7 +225,7 @@ export function resetEpisodes(follow: Follow, episodes: EpisodeRef[]) {
 }
 
 /** Показ кандидата у его индексатора */
-function candidateRelease(candidate: FollowPendingCandidate) {
+export function candidateRelease(candidate: FollowPendingCandidate) {
   return {
     infoHash: candidate.infoHash,
     title: candidate.title,
@@ -327,7 +329,7 @@ export function filesFor(
  * Первая закачка автоматики закрепляет студию за сезоном без закрепления —
  * если она не спорит со студией сезона из правил или прошлого сезона.
  */
-function pinFirstVoice(
+export function pinFirstVoice(
   follow: Follow,
   season: number,
   candidate: FollowPendingCandidate,
@@ -654,7 +656,7 @@ function noSpaceWait(follow: Follow, episodes: EpisodeRef[], now: Date) {
  * Серии кандидата без тех, что в чёрном списке у его раздачи; заблокированные
  * снова нужны
  */
-function withoutBlocked(
+export function withoutBlocked(
   follow: Follow,
   episodes: EpisodeRef[],
   blocked: Set<string> | null | undefined,

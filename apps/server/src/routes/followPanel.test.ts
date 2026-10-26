@@ -101,7 +101,16 @@ async function followSeries() {
   })
 
   expect(res.statusCode).toBe(200)
-  return res.json().follow.id as string
+
+  const id = res.json().follow.id as string
+
+  // Курсор с начала сезона: снимки вышедших серий
+  getDb()
+    .update(follows)
+    .set({ startSeason: 2, startEpisode: 1 })
+    .where(eq(follows.id, id))
+    .run()
+  return id
 }
 
 function decision(
@@ -234,6 +243,7 @@ describe('настройки «Слежу»', () => {
         movieWaitHours: 72,
         qualityPreset: 'best',
         requireRussian: 'auto',
+        mode: 'download',
       },
     })
 
@@ -241,14 +251,17 @@ describe('настройки «Слежу»', () => {
       method: 'PUT',
       url: '/api/settings/follow',
       cookies: owner,
-      payload: { searchesPerHour: 8, defaults: { waitHours: 6 } },
+      payload: {
+        searchesPerHour: 8,
+        defaults: { waitHours: 6, mode: 'notify' },
+      },
     })
 
     expect(saved.statusCode).toBe(200)
     expect(saved.json()).toMatchObject({
       rssIntervalMin: 15,
       searchesPerHour: 8,
-      defaults: { waitHours: 6, movieWaitHours: 72 },
+      defaults: { waitHours: 6, movieWaitHours: 72, mode: 'notify' },
     })
 
     for (const payload of [

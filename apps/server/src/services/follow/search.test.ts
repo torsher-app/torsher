@@ -68,6 +68,7 @@ function follow(overrides: Partial<Follow> = {}): Follow {
     requireRussian: true,
     waitHours: 24,
     qualityPreset: 'best',
+    mode: 'download',
     createdByProfileId: null,
     nextSearchAt: null,
     lastSearchAt: null,

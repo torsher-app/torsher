@@ -62,8 +62,11 @@ export type UpgradeBlock = 'watched' | 'manual'
 
 /** Серия в библиотеке, которую рассматривает апгрейд */
 export interface UpgradeTarget {
-  /** Раздача текущего файла из захвата автоматики и её название */
-  current?: { torrent: Torrent, title: string }
+  /**
+   * Раздача текущего файла из захвата автоматики и её название; у выбора
+   * режима `notify` раздачи в базе нет — только название
+   */
+  current?: { torrent?: Torrent, title: string }
   blocked?: UpgradeBlock
 }
 
@@ -109,16 +112,69 @@ function coveringFiles(files: MediaFile[], episode: EpisodeRef) {
 }
 
 /**
+ * Готовые серии режима `notify`, выбор которых апгрейд рассматривает: с
+ * первого выбора прошло меньше 7 дней (у фильма — 60). Серию начали смотреть —
+ * не заменяем: зритель уже выбрал, что смотрит.
+ */
+function pickTargets(
+  follow: Pick<Follow, 'id' | 'titleId' | 'kind'>,
+  states: EpisodeWithState[],
+  now: Date,
+) {
+  const targets = new Map<string, UpgradeTarget>()
+  const ready = new Set(
+    states.filter(item => item.state === 'ready').map(episodeKey),
+  )
+
+  if (!ready.size)
+    return targets
+
+  const started = startedEpisodes(follow.titleId)
+  const rows = getDb()
+    .select()
+    .from(followEpisodes)
+    .where(eq(followEpisodes.followId, follow.id))
+    .all()
+
+  for (const row of rows) {
+    const key = episodeKey(row)
+
+    if (!ready.has(key) || !row.picked || !row.pickedAt)
+      continue
+
+    if (
+      now.getTime() - row.pickedAt.getTime()
+      >= UPGRADE_WINDOW_MS[follow.kind]
+    ) {
+      continue
+    }
+
+    targets.set(
+      key,
+      started.has(key)
+        ? { blocked: 'watched' }
+        : { current: { title: row.picked.title } },
+    )
+  }
+
+  return targets
+}
+
+/**
  * Серии в библиотеке, которые апгрейд рассматривает: автоматика их видела, с
  * закачки прошло меньше 7 дней (у фильма — 60), у серии один файл на одну
  * серию. Файл не из захвата автоматики — выбран вручную; серию начали
- * смотреть — тоже не заменяем.
+ * смотреть — тоже не заменяем. В режиме `notify` закачек нет — заменяется
+ * выбор готовых серий.
  */
 export function upgradeTargets(
-  follow: Pick<Follow, 'id' | 'titleId' | 'kind'>,
+  follow: Pick<Follow, 'id' | 'titleId' | 'kind' | 'mode'>,
   states: EpisodeWithState[],
   now = new Date(),
 ) {
+  if (follow.mode === 'notify')
+    return pickTargets(follow, states, now)
+
   const targets = new Map<string, UpgradeTarget>()
   const inLibrary = states.filter(item => item.state === 'in_library')
 
@@ -200,7 +256,7 @@ export function upgradeTargets(
  * что у кандидатов; разрешение — точное, если раздачу уже пробовали
  */
 export function versionOf(
-  current: { torrent: Torrent, title: string },
+  current: { torrent?: Torrent, title: string },
   ctx: RankContext,
 ): ReleaseVersion {
   const parsed = parseRelease(current.title)
@@ -209,7 +265,9 @@ export function versionOf(
   return {
     voice: voiceOf(voices, ctx),
     voices,
-    resolution: torrentResolution(current.torrent) ?? videoResolution(parsed),
+    resolution:
+      (current.torrent && torrentResolution(current.torrent))
+      ?? videoResolution(parsed),
   }
 }
 

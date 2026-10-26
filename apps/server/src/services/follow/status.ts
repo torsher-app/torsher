@@ -98,6 +98,7 @@ export function followStatus(
       noSpace: count('no_space'),
       missing: count('missing'),
       searching: count('searching'),
+      ready: count('ready'),
     },
   }
 }

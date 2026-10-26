@@ -1,7 +1,6 @@
 import type { ScheduleItem, TitleFollow } from '@torsher/api-client'
 import { describe, expect, it } from 'vitest'
 import {
-  cursorPreset,
   followNote,
   followStatus,
   isFollowed,
@@ -11,12 +10,6 @@ import {
   untilDay,
   waitChoices,
 } from './follow.ts'
-
-const options = {
-  new: { season: 3, episode: 5 },
-  season: { season: 3, episode: 1 },
-  beginning: { season: 1, episode: 1 },
-}
 
 function follow(patch: Partial<TitleFollow> = {}): TitleFollow {
   return {
@@ -29,6 +22,7 @@ function follow(patch: Partial<TitleFollow> = {}): TitleFollow {
     requireRussian: true,
     waitHours: 24,
     qualityPreset: 'best',
+    mode: 'download',
     next: null,
     subscribed: true,
     profileCount: 1,
@@ -36,26 +30,11 @@ function follow(patch: Partial<TitleFollow> = {}): TitleFollow {
     voice: null,
     quality: { value: '1080p', lowered: false },
     waiting: null,
-    counts: { downloading: 0, noSpace: 0, missing: 0, searching: 0 },
+    counts: { downloading: 0, noSpace: 0, missing: 0, searching: 0, ready: 0 },
+    ready: null,
     ...patch,
   }
 }
-
-describe('cursorPreset', () => {
-  it('узнаёт пресет по курсору', () => {
-    expect(cursorPreset({ season: 3, episode: 5 }, options)).toBe('new')
-    expect(cursorPreset({ season: 3, episode: 1 }, options)).toBe('season')
-    expect(cursorPreset({ season: 1, episode: 1 }, options)).toBe('beginning')
-  })
-
-  it('совпавшие пресеты — первый по порядку; курсор из панели — без пресета', () => {
-    const fresh = { ...options, new: { season: 3, episode: 1 } }
-
-    expect(cursorPreset({ season: 3, episode: 1 }, fresh)).toBe('new')
-    expect(cursorPreset({ season: 2, episode: 4 }, options)).toBeUndefined()
-    expect(cursorPreset({ season: 0, episode: 0 }, null)).toBeUndefined()
-  })
-})
 
 describe('waitChoices', () => {
   it('значение из панели вне набора — своей строкой по порядку', () => {
@@ -75,7 +54,13 @@ describe('isFollowed', () => {
 })
 
 describe('followStatus', () => {
-  const counts = { downloading: 2, noSpace: 1, missing: 1, searching: 1 }
+  const counts = {
+    downloading: 2,
+    noSpace: 1,
+    missing: 1,
+    searching: 1,
+    ready: 1,
+  }
   const waiting = {
     season: 3,
     episode: 4,
@@ -99,6 +84,15 @@ describe('followStatus', () => {
         follow({ counts: { ...counts, noSpace: 0, downloading: 0 } }),
       ),
     ).toEqual({ kind: 'missing', count: 1 })
+  })
+
+  it('готовая серия, которую профиль не досмотрел, — раньше ожидания', () => {
+    const ready = { season: 3, episode: 4 }
+
+    expect(
+      followStatus(follow({ counts: { ...counts, noSpace: 0 }, ready })),
+    ).toEqual({ kind: 'ready', code: 'S3E4' })
+    expect(followStatus(follow({ counts, ready }))?.kind).toBe('noSpace')
   })
 
   it('ничего не нужно — следующая серия с датой, без неё — ничего', () => {

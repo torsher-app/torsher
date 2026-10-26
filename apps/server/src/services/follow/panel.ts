@@ -307,9 +307,9 @@ type BlockFromSnapshot = 'blocked' | 'not_found' | 'release_unknown'
 
 /**
  * «Не брать эту раздачу» из снимка кандидатов: чёрный список навсегда,
- * отложенный кандидат снимается, в снимке — отказ `blocklisted`. Раздача без
- * infohash запрещается по её показам у индексаторов. Поиск не запускается:
- * следующий прогон возьмёт другую. `not_found` — слежения нет или кандидата
+ * отложенный кандидат и выбор режима `notify` снимаются, в снимке — отказ
+ * `blocklisted`. Раздача без infohash запрещается по её показам у
+ * индексаторов. Поиск не запускается: следующий прогон возьмёт другую. `not_found` — слежения нет или кандидата
  * нет в его снимке; `release_unknown` — у кандидата без infohash снимок
  * прежней версии без показов.
  */
@@ -351,6 +351,8 @@ export function blockFromSnapshot(
 
     for (const row of rows) {
       const dropPending = !row.torrentId && row.pending?.id === candidateId
+      // Выбор не скачан: серия снова нужная и найдёт другую раздачу
+      const dropPick = row.picked?.id === candidateId
 
       tx.update(followEpisodes)
         .set({
@@ -375,6 +377,7 @@ export function blockFromSnapshot(
             waitUntil: null,
             stateNote: null,
           }),
+          ...(dropPick && { picked: null, pickedAt: null }),
         })
         .where(
           and(

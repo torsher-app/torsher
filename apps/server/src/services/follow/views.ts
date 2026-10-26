@@ -11,6 +11,8 @@ import { getDb } from '../../db/index.ts'
 import { followEpisodes } from '../../db/schema.ts'
 import { mapLimit } from '../../utils/mapLimit.ts'
 import { DETAILS_CONCURRENCY, summaryOf } from '../mine/cards.ts'
+import { episodeProgress } from '../sources/progress.ts'
+import { isWatched } from '../torrents/playback.ts'
 import { followEpisodeStates, movieState } from './episodes.ts'
 import {
   followById,
@@ -23,12 +25,7 @@ import {
 import { unsureCounts } from './panel.ts'
 import { requestedSearch } from './search.ts'
 import { followStatus } from './status.ts'
-import {
-  compareEpisodes,
-  cursorOptions,
-  episodeKey,
-  wantedEpisodes,
-} from './wanted.ts'
+import { compareEpisodes, episodeKey, wantedEpisodes } from './wanted.ts'
 
 type NextEpisode = FollowSummary['next']
 
@@ -47,6 +44,7 @@ function rulesView(follow: Follow, next: NextEpisode) {
     requireRussian: follow.requireRussian,
     waitHours: follow.waitHours,
     qualityPreset: follow.qualityPreset,
+    mode: follow.mode,
     next,
   }
 }
@@ -76,11 +74,30 @@ export function titleFollowBrief(titleId: string, profileId: string) {
         state: follow.state,
         subscribed: isSubscribed(follow.id, profileId),
         start: startOf(follow),
+        mode: follow.mode,
       }
     : null
 }
 
-/** «Следить» тайтла для витрины: правила, подписка, статус и пресеты курсора */
+/** Первая готовая серия, которую профиль не досмотрел */
+function readyFor(
+  states: EpisodeWithState[],
+  profileId: string,
+  titleId: string,
+) {
+  const watched = new Set(
+    episodeProgress(profileId, titleId)
+      .filter(point => isWatched(point.position, point.duration))
+      .map(episodeKey),
+  )
+  const ready = states.find(
+    item => item.state === 'ready' && !watched.has(episodeKey(item)),
+  )
+
+  return ready ? { season: ready.season, episode: ready.episode } : null
+}
+
+/** «Следить» тайтла для витрины: правила, подписка, статус */
 export async function titleFollowView(
   titleId: string,
   profileId: string,
@@ -100,10 +117,10 @@ export async function titleFollowView(
           subscribed: isSubscribed(follow.id, profileId),
           profileCount: subscribersOf(follow.id).length,
           ...followStatus(follow, states),
+          ready: readyFor(states, profileId, titleId),
         }
       : null,
     canEdit,
-    options: series && summary ? cursorOptions(scheduleOf(summary)) : null,
   }
 }
 
@@ -128,6 +145,7 @@ const COUNT_KEYS: Record<FollowEpisodeState, keyof FollowSummary['counts']> = {
   no_space: 'noSpace',
   missing: 'missing',
   in_library: 'inLibrary',
+  ready: 'ready',
 }
 
 function countsOf(states: EpisodeWithState[]) {
@@ -139,6 +157,7 @@ function countsOf(states: EpisodeWithState[]) {
     noSpace: 0,
     missing: 0,
     inLibrary: 0,
+    ready: 0,
   }
 
   for (const item of states) {

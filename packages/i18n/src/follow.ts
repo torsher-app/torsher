@@ -35,6 +35,7 @@ export interface FollowNotificationParams extends FollowReleaseFacts {
 
 export const followNotificationKinds = [
   'follow_downloaded',
+  'follow_ready',
   'follow_waiting',
   'follow_other_voice',
   'follow_upgraded',
@@ -125,6 +126,11 @@ export function followNotificationText(
         title: movie
           ? title('downloaded.titleMovie')
           : title('downloaded.title', count),
+        text: line(subject, facts(params)),
+      }
+    case 'follow_ready':
+      return {
+        title: movie ? title('ready.titleMovie') : title('ready.title', count),
         text: line(subject, facts(params)),
       }
     case 'follow_upgraded':

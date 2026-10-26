@@ -1,7 +1,11 @@
-import type { Follow, FollowQualityPreset } from '../../db/schema.ts'
+import type {
+  Follow,
+  FollowMode,
+  FollowQualityPreset,
+} from '../../db/schema.ts'
 import type { TitleSummary } from '../mine/cards.ts'
 import type { EpisodeRef, SeriesSchedule } from './wanted.ts'
-import { and, asc, count, desc, eq, isNotNull, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, gt, sql } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import {
   followEpisodes,
@@ -9,12 +13,11 @@ import {
   follows,
   profiles,
 } from '../../db/schema.ts'
-import { watchedEpisodes } from '../mine/status.ts'
-import { episodeProgress } from '../sources/progress.ts'
 import { getTitleSummary } from '../tmdb/index.ts'
 import { parseCatalogId } from '../tmdb/mappers.ts'
+import { applyModeChange } from './pick.ts'
 import { followSettings } from './settings.ts'
-import { cursorOptions, defaultCursor } from './wanted.ts'
+import { firstUnaired } from './wanted.ts'
 
 export type {
   EpisodeRef,
@@ -32,10 +35,8 @@ export interface FollowRules {
   requireRussian?: boolean
   waitHours?: number
   qualityPreset?: FollowQualityPreset
+  mode?: FollowMode
 }
-
-/** «С какой серии»: умолчание по просмотрам, один из пресетов или своя серия */
-export type CursorChoice = 'auto' | 'new' | 'season' | 'beginning' | EpisodeRef
 
 export function followOf(titleId: string) {
   return getDb()
@@ -101,32 +102,19 @@ export function scheduleOf(summary: TitleSummary): SeriesSchedule {
   }
 }
 
-function watchedOf(profileId: string, titleId: string) {
-  return watchedEpisodes(episodeProgress(profileId, titleId))
-}
-
-/** Курсор по выбору зрителя; у фильма — 0/0 */
-export function resolveCursor(
-  choice: CursorChoice,
-  schedule: SeriesSchedule | undefined,
-  profileId: string,
-  titleId: string,
-): EpisodeRef {
-  if (!schedule)
-    return { season: 0, episode: 0 }
-
-  if (typeof choice === 'object')
-    return choice
-
-  if (choice === 'auto')
-    return defaultCursor(schedule, watchedOf(profileId, titleId))
-
-  return cursorOptions(schedule)[choice]
+/**
+ * Курсор слежения — первая невышедшая серия: «Следить» только про новые
+ * серии, вышедшее качают «Скачать сезон» или смотрят стримом. У фильма — 0/0
+ */
+function startOf(schedule: SeriesSchedule | undefined): EpisodeRef {
+  return schedule ? firstUnaired(schedule) : { season: 0, episode: 0 }
 }
 
 /**
  * Окно ожидания сменили: отложенные кандидаты ждут от того же первого
- * появления серии, но новый срок.
+ * появления серии, но новый срок. Кончившееся окно не продлевается: такой
+ * кандидат уже ждёт захвата (в том числе выбор после смены режима), а форма
+ * панели присылает окно при любой правке правил.
  */
 function rescheduleWaits(
   db: Pick<ReturnType<typeof getDb>, 'update'>,
@@ -140,7 +128,7 @@ function rescheduleWaits(
     .where(
       and(
         eq(followEpisodes.followId, followId),
-        isNotNull(followEpisodes.waitUntil),
+        gt(followEpisodes.waitUntil, new Date()),
       ),
     )
     .run()
@@ -153,6 +141,7 @@ function defaultRules(kind: Follow['kind'], originalLanguage?: string) {
   return {
     waitHours: kind === 'movie' ? defaults.movieWaitHours : defaults.waitHours,
     qualityPreset: defaults.qualityPreset,
+    mode: defaults.mode,
     requireRussian:
       defaults.requireRussian === 'auto'
         ? originalLanguage !== 'ru'
@@ -168,15 +157,15 @@ function rulesOf(rules: FollowRules = {}) {
 
 /**
  * Подписывает профиль. Первая подписка создаёт слежение с правилами по
- * умолчанию и курсором по просмотрам профиля; подписка на остановленное
+ * умолчанию и курсором на первой невышедшей серии; подписка на остановленное
  * слежение запускает его заново с новым курсором: старый курсор скачал бы всё,
  * что вышло за время остановки. Детали TMDB нужны только новому или
- * остановленному слежению и смене курсора; ошибки TMDB — `TmdbError`.
+ * остановленному слежению; ошибки TMDB — `TmdbError`.
  */
 export async function followTitle(
   titleId: string,
   profileId: string,
-  input: { start?: CursorChoice, rules?: FollowRules },
+  input: { rules?: FollowRules },
   language: string,
 ): Promise<Follow> {
   const ref = parseCatalogId(titleId)
@@ -188,19 +177,16 @@ export async function followTitle(
   const existing = followOf(titleId)
   const restart = !existing || existing.state === 'stopped'
   const summary
-    = !existing || (kind === 'series' && (restart || input.start))
+    = !existing || (kind === 'series' && restart)
       ? await getTitleSummary(titleId, language)
       : undefined
   const schedule
     = kind === 'series' && summary ? scheduleOf(summary) : undefined
-  const start
-    = restart || input.start
-      ? resolveCursor(input.start ?? 'auto', schedule, profileId, titleId)
-      : undefined
+  const start = restart ? startOf(schedule) : undefined
   const rules = rulesOf(input.rules)
   const now = new Date()
 
-  return getDb().transaction((tx) => {
+  const saved = getDb().transaction((tx) => {
     const current = tx
       .select()
       .from(follows)
@@ -251,6 +237,11 @@ export async function followTitle(
 
     return row
   })
+
+  if (existing && rules.mode && rules.mode !== existing.mode)
+    applyModeChange(saved, rules.mode)
+
+  return saved
 }
 
 /**
@@ -293,58 +284,31 @@ export function unfollowTitle(titleId: string, profileId: string) {
 
 export interface FollowPatch {
   rules?: FollowRules
-  start?: CursorChoice
   /** Пауза и возобновление — из панели */
   state?: 'active' | 'paused'
 }
 
-/** Правка из панели; смена курсора по пресету читает расписание из TMDB */
-export async function updateFollow(
-  id: string,
-  patch: FollowPatch,
-  language: string,
-) {
+/** Правка из панели */
+export function updateFollow(id: string, patch: FollowPatch) {
   const follow = followById(id)
 
   if (!follow)
     return undefined
-
-  let start: EpisodeRef | undefined
-
-  if (patch.start) {
-    const summary
-      = follow.kind === 'series' && typeof patch.start !== 'object'
-        ? await getTitleSummary(follow.titleId, language)
-        : undefined
-
-    // «По просмотрам» у слежения на сервер — по профилю, который его включил
-    start
-      = follow.kind === 'series'
-        ? resolveCursor(
-            patch.start,
-            summary ? scheduleOf(summary) : { seasons: [] },
-            follow.createdByProfileId ?? '',
-            follow.titleId,
-          )
-        : undefined
-  }
 
   const rules = rulesOf(patch.rules)
 
   if (rules.waitHours !== undefined)
     rescheduleWaits(getDb(), id, rules.waitHours)
 
+  if (rules.mode && rules.mode !== follow.mode)
+    applyModeChange(follow, rules.mode)
+
   return getDb()
     .update(follows)
     .set({
       ...rules,
-      ...(start && {
-        startSeason: start.season,
-        startEpisode: start.episode,
-        lastSearchAt: null,
-      }),
       ...(patch.state && { state: patch.state }),
-      // Планировщик посмотрит слежение заново: правила или курсор сменились
+      // Планировщик посмотрит слежение заново: правила сменились
       nextSearchAt: null,
       updatedAt: new Date(),
     })
