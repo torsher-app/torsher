@@ -106,7 +106,11 @@ A backup with a password needs it on standard input: add `--password-stdin` and 
 
 ### When the container doesn't start
 
-Run the restore in a one-off container, then start Torsher:
+`docker exec` doesn't work while the container is stopped or restarting. List the backups and run the restore in a one-off container, then start Torsher:
+
+```bash
+docker compose run --rm torsher torsher backups
+```
 
 ```bash
 docker compose run --rm torsher torsher restore <backup-name>

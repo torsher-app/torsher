@@ -1,7 +1,6 @@
 import type Database from 'better-sqlite3'
 import { rm } from 'node:fs/promises'
 import { join } from 'node:path'
-import { config } from '../../config.ts'
 import {
   fileSecretKey,
   keyMaterialFrom,
@@ -13,6 +12,7 @@ import { backupDirOf } from './dir.ts'
 import { listBackupsIn } from './list.ts'
 import { backupPathsFor } from './paths.ts'
 import { selectForDeletion } from './rotation.ts'
+import { dataVersionOf } from './schema-version.ts'
 
 /**
  * Копия перед миграциями. Пишется в действующий каталог, а если он
@@ -35,8 +35,7 @@ export async function preUpdateBackup(input: {
     tmpDir: paths.tmpDir,
     dir: dir.path,
     reason: 'pre-update',
-    version: config.version,
-    commit: config.commit,
+    ...dataVersionOf(input.db),
     secretKey,
     keyMaterial: keyMaterialFrom(settings, secretKey),
   })
