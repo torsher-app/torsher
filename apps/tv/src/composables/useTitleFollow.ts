@@ -6,12 +6,10 @@ import type {
   TitleFollowResponse,
 } from '@torsher/api-client'
 import type { Ref } from 'vue'
-import type { CursorPreset } from '../lib/follow.ts'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { api } from '../api.ts'
 import {
-  cursorPreset,
   followNote,
   followStatus,
   qualityName,
@@ -129,23 +127,6 @@ export function useFollowTexts() {
         })
   }
 
-  function startPart(follow: TitleFollow, preset: CursorPreset | undefined) {
-    const { start } = follow
-
-    switch (preset) {
-      case 'new':
-        return t('follow.policy.new')
-      case 'season':
-        return t('follow.policy.season', { n: start.season })
-      case 'beginning':
-        return t('follow.policy.beginning')
-      default:
-        return t('follow.policy.from', {
-          code: `S${start.season}E${start.episode}`,
-        })
-    }
-  }
-
   function voicePart(follow: TitleFollow) {
     const studio = follow.voice?.studio
 
@@ -157,18 +138,22 @@ export function useFollowTexts() {
       : t('follow.policy.anyVoice')
   }
 
-  /** Вторая строка кнопки: «Новые серии · LostFilm · 1080p» */
+  /**
+   * Вторая строка кнопки: «Новые серии · LostFilm · 1080p», в режиме
+   * «Только уведомлять» — «Уведомим · LostFilm · 1080p»
+   */
   function policyLine(view: TitleFollowResponse) {
     const follow = view.follow
+    const notify = follow?.mode === 'notify'
 
     if (!follow)
       return ''
 
     if (follow.kind === 'movie')
-      return t('follow.movieLine')
+      return t(notify ? 'follow.movieLineNotify' : 'follow.movieLine')
 
     return [
-      startPart(follow, cursorPreset(follow.start, view.options)),
+      t(notify ? 'follow.policy.notify' : 'follow.policy.new'),
       voicePart(follow),
       qualityName(follow.quality.value),
     ].join(' · ')
@@ -185,6 +170,10 @@ export function useFollowTexts() {
         return movie
           ? t('follow.status.movieNoSpace')
           : t('follow.status.noSpace', status.count)
+      case 'ready':
+        return movie
+          ? t('follow.status.movieReady')
+          : t('follow.status.ready', { code: status.code })
       case 'waiting': {
         const target = waitTarget(status.waiting)
         const until = untilText(status.waiting.until)
@@ -204,10 +193,15 @@ export function useFollowTexts() {
           ? t('follow.status.movieSearching')
           : t('follow.status.searching', status.count)
       case 'next':
-        return t('follow.status.next', {
-          code: status.code,
-          date: formatAirDate(status.airDate, language.value),
-        })
+        return t(
+          follow.mode === 'notify'
+            ? 'follow.status.nextNotify'
+            : 'follow.status.next',
+          {
+            code: status.code,
+            date: formatAirDate(status.airDate, language.value),
+          },
+        )
       default:
         return ''
     }

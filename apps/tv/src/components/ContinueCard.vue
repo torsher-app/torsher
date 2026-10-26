@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import type { ContinueCard } from '@torsher/api-client'
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useResumeLabels } from '../composables/useResumeLabels.ts'
 import { watchedShare } from '../lib/continue.ts'
 import { openTitleActions } from '../titleActions.ts'
+import AppIcon from './AppIcon.vue'
 import ProgressTrack from './ProgressTrack.vue'
 
 const props = withDefaults(
@@ -17,6 +19,7 @@ const props = withDefaults(
 
 defineEmits<{ select: [] }>()
 
+const { t } = useI18n()
 const { resumeLine } = useResumeLabels()
 
 // Долгий OK — меню тайтла («Брошено» убирает его из ряда)
@@ -50,6 +53,15 @@ const share = computed(() => watchedShare(props.item))
       >
       <span v-else-if="!item.image" class="continue-card__placeholder">
         {{ item.title }}
+      </span>
+      <!-- Новая серия «Следить»: колокольчик поверх кадра, кадр не сдвигается -->
+      <span
+        v-if="item.followNewEpisode"
+        class="continue-card__bell"
+        :aria-label="t('follow.newEpisode')"
+        role="img"
+      >
+        <AppIcon name="bell" />
       </span>
       <ProgressTrack v-if="share > 0" :value="share" />
       <span class="card__ring" />
@@ -95,6 +107,24 @@ const share = computed(() => watchedShare(props.item))
 
 .continue-card__image {
   object-fit: cover;
+}
+
+/* Как значок «слежу» на постере */
+.continue-card__bell {
+  position: absolute;
+  z-index: 1;
+  top: calc(var(--u) * 12);
+  left: calc(var(--u) * 12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--u) * 36);
+  height: calc(var(--u) * 36);
+  border-radius: calc(var(--u) * 18);
+  background: rgba(10, 12, 18, 0.78);
+  color: var(--color-accent);
+  font-size: calc(var(--u) * 22);
+  line-height: 1;
 }
 
 .continue-card__placeholder {

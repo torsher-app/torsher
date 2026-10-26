@@ -5,7 +5,8 @@ import { feedPass } from './feed.ts'
 import { continueGrabs } from './grab.ts'
 import { purgeHistory } from './history.ts'
 import { followById } from './index.ts'
-import { announceLibrary, announceUpgraded } from './notify.ts'
+import { settlePicks } from './pick.ts'
+import { announceLibrary, announceReady, announceUpgraded } from './notify.ts'
 import {
   activeFollows,
   completeMovie,
@@ -30,7 +31,8 @@ let purgedAt = 0
 /**
  * Автоматика по действующим слежениям: зависшие закачки, magnet дождался
  * метаданных, кончилось окно или освободилось место, файл лёг в библиотеку
- * или заменён апгрейдом (и о них уведомления), фильм больше нечем заменить,
+ * или заменён апгрейдом, серия выбрана в режиме «Только уведомлять» (и о них
+ * уведомления), фильм больше нечем заменить,
  * лента индексаторов, целевой поиск. Без действующих слежений никуда не ходит.
  * Незаконченная подмена темы продолжается всегда: это не поиск, а раздача,
  * которую нельзя оставить забытой.
@@ -63,6 +65,8 @@ export async function followAutomation(now = new Date()) {
     await announceUpgraded(follow, settleUpgrades(follow, now))
     markDownloaded(follow, now)
     await announceLibrary(follow, now)
+    settlePicks(follow)
+    await announceReady(follow, now)
     await completeMovie(follow, now)
   }
 

@@ -41,6 +41,7 @@ import { grabCandidate, pendingOf, resetEpisodes } from './grab.ts'
 import { recordHistory, reportedEpisodes } from './history.ts'
 import { announceWaiting } from './notify.ts'
 import { followById, scheduleOf } from './index.ts'
+import { pickCandidate } from './pick.ts'
 import {
   seasonTopics,
   titleTopics,
@@ -406,8 +407,9 @@ export async function upgradeNeeded(
 }
 
 /**
- * Фильм в библиотеке, и заменять его больше незачем или нельзя (cutoff,
- * посмотрели, выбран вручную, прошло 60 дней): слежение завершается само.
+ * Фильм в библиотеке или выбран (режим `notify`), и заменять его больше
+ * незачем или нельзя (cutoff, посмотрели, выбран вручную, прошло 60 дней):
+ * слежение завершается само.
  * Пока идёт захват или апгрейд, слежение ждёт его.
  */
 export async function completeMovie(follow: Follow, now = new Date()) {
@@ -420,7 +422,7 @@ export async function completeMovie(follow: Follow, now = new Date()) {
   )
 
   if (
-    states[0]?.state !== 'in_library'
+    (states[0]?.state !== 'in_library' && states[0]?.state !== 'ready')
     || grabbing
     || (await upgradeNeeded(follow, states, now))
   ) {
@@ -433,6 +435,23 @@ export async function completeMovie(follow: Follow, now = new Date()) {
     .where(eq(follows.id, follow.id))
     .run()
   return true
+}
+
+/**
+ * Захват кандидата или, в режиме `notify`, его выбор вместо захвата. Режим
+ * читается заново: его могли сменить, пока шёл проход.
+ */
+function takeCandidate(
+  follow: Follow,
+  candidate: FollowPendingCandidate,
+  episodes: EpisodeRef[],
+  options: { ownStudio?: string, now: Date },
+) {
+  const mode = followById(follow.id)?.mode ?? follow.mode
+
+  return mode === 'notify'
+    ? pickCandidate(follow, candidate, episodes, options)
+    : grabCandidate(follow, candidate, episodes, options)
 }
 
 /**
@@ -565,7 +584,7 @@ export async function decideFollow(
 
   for (const { plan, voice } of grabs) {
     for (const grab of plan.grabs) {
-      await grabCandidate(
+      await takeCandidate(
         follow,
         pendingOf(
           grab.candidate.release,
@@ -598,9 +617,12 @@ export async function grabPending(follow: Follow, now = new Date()) {
       ),
     )
     .all()
-    // Без срока — кандидат без места из прежних версий
-    .filter(row =>
-      row.waitUntil ? row.waitUntil <= now : row.stateNote === 'no_space',
+    // Без срока — кандидат без места из прежних версий. Выбору место не
+    // нужно: в режиме `notify` серия без места ждать не будет
+    .filter(
+      row =>
+        (follow.mode === 'notify' && row.stateNote === 'no_space')
+        || (row.waitUntil ? row.waitUntil <= now : row.stateNote === 'no_space'),
     )
 
   if (!rows.length)
@@ -635,7 +657,7 @@ export async function grabPending(follow: Follow, now = new Date()) {
   }
 
   for (const { candidate, episodes } of groups.values()) {
-    await grabCandidate(follow, candidate, episodes, {
+    await takeCandidate(follow, candidate, episodes, {
       ownStudio: seasonVoice(follow, episodes[0]!.season)?.studio,
       now,
     })

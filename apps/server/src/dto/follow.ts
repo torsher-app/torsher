@@ -2,6 +2,7 @@ import { z } from 'zod'
 import {
   blocklistReasons,
   followHistoryKinds,
+  followModes,
   followQualityPresets,
   followStates,
   profileColors,
@@ -24,14 +25,6 @@ export const followLanguageQuery = z.object({
   language: tmdbLanguage,
 })
 
-const cursorRef = z.object({
-  season: z.number().int().min(1).max(999),
-  episode: z.number().int().min(1).max(9999),
-})
-
-// «Только новые серии», «С текущего сезона», «С начала сериала»
-const cursorPresets = ['new', 'season', 'beginning'] as const
-
 const rules = {
   // Студия, если за сезоном не закреплена своя; null — без студии
   voiceStudio: z.string().trim().min(1).max(100).nullable().optional(),
@@ -41,21 +34,24 @@ const rules = {
   // Ждать свою озвучку и верхнюю ступень качества, часов
   waitHours: z.number().int().min(0).max(168).optional(),
   qualityPreset: z.enum(followQualityPresets).optional(),
+  // Новая серия: качать в библиотеку или только уведомить и смотреть стримом
+  mode: z.enum(followModes).optional(),
 }
 
-export const followTitle = z
+// Курсора в правилах нет: слежение всегда с первой невышедшей серии
+export const followTitle = z.object(rules).meta({ id: 'followTitle' })
+
+// Серия, выбор которой стримит «Смотреть»; у фильма 0/0
+export const openFollowPick = z
   .object({
-    ...rules,
-    // `auto` — по просмотрам профиля; без поля курсор не меняется, у нового
-    // слежения — `auto`
-    start: z.union([z.enum(['auto', ...cursorPresets]), cursorRef]).optional(),
+    season: z.number().int().min(0).max(999),
+    episode: z.number().int().min(0).max(9999),
   })
-  .meta({ id: 'followTitle' })
+  .meta({ id: 'openFollowPick' })
 
 export const updateFollow = z
   .object({
     ...rules,
-    start: z.union([z.enum(cursorPresets), cursorRef]).optional(),
     state: z.enum(['active', 'paused']).optional(),
   })
   .meta({ id: 'updateFollow' })
@@ -70,6 +66,7 @@ const followView = {
   requireRussian: z.boolean(),
   waitHours: z.number().int(),
   qualityPreset: z.enum(followQualityPresets),
+  mode: z.enum(followModes),
   // Ближайшая невышедшая серия с курсора; у фильма и без анонса — null
   next: titleNextEpisode.nullable(),
 }
@@ -107,7 +104,11 @@ export const titleFollow = z
       noSpace: z.number().int(),
       missing: z.number().int(),
       searching: z.number().int(),
+      ready: z.number().int(),
     }),
+    // Первая готовая серия, которую профиль не досмотрел: её «Смотреть»
+    // открывает сразу, без источников
+    ready: followCursor.nullable(),
   })
   .meta({ id: 'titleFollow' })
 
@@ -116,14 +117,6 @@ export const titleFollowResponse = z
     follow: titleFollow.nullable(),
     // Профиль может менять правила: без возрастного порога или владелец
     canEdit: z.boolean(),
-    // Только у сериала: куда встанет курсор у пресетов «С какой серии»
-    options: z
-      .object({
-        new: followCursor,
-        season: followCursor,
-        beginning: followCursor,
-      })
-      .nullable(),
   })
   .meta({ id: 'titleFollowResponse' })
 
@@ -159,6 +152,7 @@ export const followEpisodeCounts = z
     noSpace: z.number().int(),
     missing: z.number().int(),
     inLibrary: z.number().int(),
+    ready: z.number().int(),
   })
   .meta({ id: 'followEpisodeCounts' })
 
@@ -171,7 +165,8 @@ export const followSummary = z
     poster: z.string().optional(),
     year: z.number().int().optional(),
     profiles: z.array(followProfile),
-    // Вышедших серий с курсора, которых нет в библиотеке и которые не качаются
+    // Вышедших серий с курсора, которых нет в библиотеке, которые не качаются
+    // и не выбраны
     wanted: z.number().int(),
     counts: followEpisodeCounts,
     // Раздач «похоже, не уверены» без ответа владельца
@@ -345,6 +340,7 @@ const followDefaults = z.object({
   qualityPreset: z.enum(followQualityPresets),
   // `auto` — у тайтлов с нерусским оригиналом
   requireRussian: z.enum(['auto', 'always', 'never']),
+  mode: z.enum(followModes),
 })
 
 // Лента реже 10 мин нагружает индексаторы, 0 — не читать

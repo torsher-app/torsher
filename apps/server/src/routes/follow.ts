@@ -1,5 +1,4 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
-import type { CursorChoice, FollowRules } from '../services/follow/index.ts'
 import { messageResponse } from '../dto/common.ts'
 import {
   blocklistParams,
@@ -15,11 +14,13 @@ import {
   followParams,
   followQueueResponse,
   followTitle as followTitleBody,
+  openFollowPick,
   scheduleResponse,
   titleFollowResponse,
   updateFollow as updateFollowBody,
 } from '../dto/follow.ts'
-import { titleParams } from '../dto/titles.ts'
+import { titleOpen, titleParams, watchErrorResponse } from '../dto/titles.ts'
+import { engineUnavailableResponse } from '../dto/torrents.ts'
 import {
   canManageLibrary,
   requireOwner,
@@ -42,6 +43,7 @@ import {
   followCandidates,
   followQueue,
 } from '../services/follow/panel.ts'
+import { openPick, PickError } from '../services/follow/pick.ts'
 import { requestFollowSearch } from '../services/follow/search.ts'
 import {
   followDetailsOf,
@@ -51,6 +53,7 @@ import {
 import { compareEpisodes, parseEpisodeKey } from '../services/follow/wanted.ts'
 import { parseCatalogId } from '../services/tmdb/mappers.ts'
 import { sendTmdbError } from './catalog.ts'
+import { sendEngineError } from './engineResponses.ts'
 
 const titleNotFound = { message: 'Title not found' }
 const followNotFound = { message: 'Follow not found' }
@@ -71,14 +74,8 @@ const tmdbErrors = {
   503: messageResponse,
 }
 
-type FollowBody = FollowRules & { start?: CursorChoice }
-
-function splitBody({ start, ...rules }: FollowBody) {
-  return { start, rules }
-}
-
-/** zod отбрасывает лишние поля: всё, что пришло, — правила и курсор */
-function changesRules(body: FollowBody) {
+/** zod отбрасывает лишние поля: всё, что пришло, — правила */
+function changesRules(body: object) {
   return Object.values(body).some(value => value !== undefined)
 }
 
@@ -143,7 +140,7 @@ export const followRoutes: FastifyPluginAsyncZod = async (app) => {
         await followTitle(
           id,
           request.profileId,
-          splitBody(request.body),
+          { rules: request.body },
           language,
         )
       }
@@ -181,6 +178,50 @@ export const followRoutes: FastifyPluginAsyncZod = async (app) => {
         canManageLibrary(request),
         request.query.language,
       )
+    },
+  )
+
+  // «Смотреть» на готовой серии режима «Только уведомлять»: раздача выбора
+  // добавляется стримом; 404 — выбора нет, 422 — раздачу не добавить, и
+  // витрина переходит к обычному автовыбору
+  app.post(
+    '/titles/:id/follow/open',
+    {
+      onRequest: requireViewer,
+      schema: {
+        operationId: 'openFollowPick',
+        tags: ['Follow'],
+        params: titleParams,
+        body: openFollowPick,
+        response: {
+          200: titleOpen,
+          ...viewerErrors,
+          422: watchErrorResponse,
+          503: engineUnavailableResponse,
+          504: messageResponse,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { id } = request.params
+
+      if (!parseCatalogId(id))
+        return reply.code(404).send(titleNotFound)
+
+      try {
+        return await openPick(id, request.body)
+      }
+      catch (err) {
+        if (err instanceof PickError) {
+          return err.kind === 'no_pick'
+            ? reply.code(404).send({ message: err.message })
+            : reply
+                .code(422)
+                .send({ message: err.message, kind: 'not_playable' })
+        }
+
+        return sendEngineError(reply, err)
+      }
     },
   )
 
@@ -255,22 +296,16 @@ export const followRoutes: FastifyPluginAsyncZod = async (app) => {
           200: followDetails,
           401: messageResponse,
           404: messageResponse,
-          ...tmdbErrors,
         },
       },
     },
     async (request, reply) => {
       const { id } = request.params
       const { language } = request.query
-      const { state, ...body } = request.body
+      const { state, ...rules } = request.body
 
-      try {
-        if (!(await updateFollow(id, { ...splitBody(body), state }, language)))
-          return reply.code(404).send(followNotFound)
-      }
-      catch (err) {
-        return sendTmdbError(reply, err)
-      }
+      if (!updateFollow(id, { rules, state }))
+        return reply.code(404).send(followNotFound)
 
       return (
         (await followDetailsOf(id, language))

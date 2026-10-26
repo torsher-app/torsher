@@ -1,5 +1,4 @@
 import { localDay } from '../../utils/localDay.ts'
-import { nextAired } from '../mine/newEpisodes.ts'
 
 // По дате в поясе сервера серия считается вышедшей
 export { localDay }
@@ -22,7 +21,8 @@ export interface ScheduledEpisode extends EpisodeRef {
  * кандидатов нет, `waiting` — есть кандидат, ждём свою озвучку или качество
  * до конца окна, `no_space` — захват ждёт места на диске, `missing` — вышла
  * давно, раздач не нашли, `downloading` — качается целиком, `in_library` —
- * лежит в библиотеке
+ * лежит в библиотеке, `ready` — режим `notify`: раздача выбрана, серию можно
+ * смотреть стримом
  */
 export type FollowEpisodeState
   = | 'upcoming'
@@ -32,8 +32,9 @@ export type FollowEpisodeState
     | 'missing'
     | 'downloading'
     | 'in_library'
+    | 'ready'
 
-/** Нужные серии: вышли, а в библиотеке их нет и они не качаются */
+/** Нужные серии: вышли, а в библиотеке их нет, они не качаются и не выбраны */
 export const WANTED_STATES: ReadonlySet<FollowEpisodeState> = new Set([
   'searching',
   'waiting',
@@ -53,6 +54,8 @@ export interface EpisodeFacts {
   seen: Set<string>
   /** Захват автоматики ждёт метаданные magnet */
   grabbing: Set<string>
+  /** Режим `notify`: раздача выбрана */
+  picked: Set<string>
   noSpace: Set<string>
   waitUntil: Map<string, Date>
 }
@@ -114,59 +117,6 @@ export function firstUnaired(schedule: SeriesSchedule): EpisodeRef {
   return season && last.episode < season.episodeCount
     ? { season: last.season, episode: last.episode + 1 }
     : { season: last.season + 1, episode: 1 }
-}
-
-/** Сезон последней вышедшей серии ещё выходит */
-function ongoingSeason(schedule: SeriesSchedule) {
-  const last = schedule.last
-
-  if (!last)
-    return undefined
-
-  const season = schedule.seasons.find(item => item.number === last.season)
-  const more
-    = schedule.next?.season === last.season
-      || (!!season && season.airedEpisodeCount < season.episodeCount)
-
-  return more ? last.season : undefined
-}
-
-/** Курсоры для выбора «С какой серии» */
-export function cursorOptions(schedule: SeriesSchedule) {
-  const seasons = regularSeasons(schedule)
-
-  return {
-    new: firstUnaired(schedule),
-    season: {
-      season: schedule.last?.season ?? seasons[0]?.number ?? 1,
-      episode: 1,
-    },
-    beginning: { season: seasons[0]?.number ?? 1, episode: 1 },
-  }
-}
-
-/**
- * Курсор при включении: профиль смотрел — следующая непросмотренная вышедшая
- * серия после самой дальней просмотренной; не смотрел, а сезон идёт — начало
- * текущего сезона; иначе только новые серии.
- */
-export function defaultCursor(
-  schedule: SeriesSchedule,
-  watched: Set<string>,
-): EpisodeRef {
-  if (watched.size) {
-    const next = nextAired(regularSeasons(schedule), watched)
-
-    return next
-      ? { season: next.season, episode: next.episode }
-      : firstUnaired(schedule)
-  }
-
-  const ongoing = ongoingSeason(schedule)
-
-  return ongoing === undefined
-    ? firstUnaired(schedule)
-    : { season: ongoing, episode: 1 }
 }
 
 /** Серия загруженного сезона; `tracker` — её знают только раздачи */
@@ -261,6 +211,9 @@ export function episodeStates(input: {
       }
       else if (input.downloading.has(key) || facts?.grabbing.has(key)) {
         state = 'downloading'
+      }
+      else if (facts?.picked.has(key)) {
+        state = 'ready'
       }
       else if (!item.aired) {
         state = 'upcoming'

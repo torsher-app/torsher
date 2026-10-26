@@ -23,6 +23,7 @@ export function groupOf(
     // Остальное «Следить» — только центр: ожидание, замена и тема
     // объясняют автоматику, а не просят действия
     case 'follow_downloaded':
+    case 'follow_ready':
     case 'follow_missing':
       return 'follow'
     default:

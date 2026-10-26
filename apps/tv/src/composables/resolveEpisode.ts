@@ -77,9 +77,34 @@ async function fileIn(
 }
 
 /**
- * Файл серии: сначала в уже известных раздачах, потом в лучших раздачах
- * тайтла, где эта серия есть, — с той же озвучкой первыми. Каждую раздачу
- * подключаем и ждём её файлы.
+ * Раздача, которую «Следить» выбрал для серии в режиме «Только уведомлять».
+ * Выбора нет или раздачу не добавить — `undefined`, дальше обычный автовыбор
+ */
+async function pickedFile(target: EpisodeTarget, options: ResolveOptions) {
+  let torrentId
+
+  try {
+    torrentId = (
+      await api.titles.openFollowPick(target.titleId, {
+        season: target.season ?? 0,
+        episode: target.episode ?? 0,
+      })
+    ).torrentId
+  }
+  catch {
+    return undefined
+  }
+
+  options.onStep?.('connecting')
+
+  return fileIn(target, torrentId, options, true)
+}
+
+/**
+ * Файл серии: сначала в уже известных раздачах (та, что смотрят, и раздача
+ * сезона — выбор зрителя сильнее), потом в раздаче, которую выбрал «Следить»,
+ * потом в лучших раздачах тайтла, где эта серия есть, — с той же озвучкой
+ * первыми. Каждую раздачу подключаем и ждём её файлы.
  */
 export async function resolveEpisode(
   target: EpisodeTarget,
@@ -101,6 +126,14 @@ export async function resolveEpisode(
     if (found)
       return { kind: 'found', file: found }
   }
+
+  const picked = await pickedFile(target, options)
+
+  if (picked === 'cancelled')
+    return { kind: 'cancelled' }
+
+  if (picked)
+    return { kind: 'found', file: picked }
 
   let candidates: SourceCandidate[] = []
   // Спрашиваем сервер и без источников по общему признаку: индексатор могли

@@ -41,6 +41,7 @@ const EVENTS = new Set([
   'found',
   'pending',
   'grabbed',
+  'picked',
   'downloaded',
   'upgraded',
   'failed',
@@ -81,15 +82,8 @@ export function useFollowText() {
   function policy(follow: FollowSummary) {
     const parts: string[] = []
 
-    if (follow.kind === 'series') {
-      parts.push(
-        t('panel.follow.policy.start', {
-          episode: episodesLabel(follow.start.season, [follow.start.episode]),
-        }),
-      )
-    }
-
     parts.push(
+      t(`panel.follow.policy.${follow.mode}`),
       follow.voiceStudio
         ? follow.voiceStrict
           ? t('panel.follow.policy.strict', { studio: follow.voiceStudio })
@@ -134,8 +128,14 @@ export function useFollowText() {
       )
     }
 
+    // В режиме «Только уведомлять» всё вышедшее не скачано, а готово
+    const status
+      = view.status === 'done' && follow.mode === 'notify'
+        ? 'doneNotify'
+        : view.status
+
     return t(
-      `panel.follow.status.${scope}.${view.status}`,
+      `panel.follow.status.${scope}.${status}`,
       { n: view.count },
       view.count,
     )
@@ -213,15 +213,25 @@ export function useFollowText() {
           ? t(`panel.follow.events.${key}Meta`, { episodes: label, meta })
           : t(`panel.follow.events.${key}`, { episodes: label })
       }
+      case 'picked': {
+        const meta = target(waitTargetOf(params))
+
+        return meta
+          ? t('panel.follow.events.pickedMeta', { episodes: label, meta })
+          : t('panel.follow.events.picked', { episodes: label })
+      }
       case 'upgraded': {
         const version = (value: unknown) =>
           target(waitTargetOf(value as Record<string, unknown> | undefined))
         const from = version(params.from)
         const to = version(params.to)
 
+        // Режим «Только уведомлять»: заменили выбранную раздачу, не файл
+        const key = params.pick ? 'upgradedPick' : 'upgraded'
+
         return from && to
-          ? t('panel.follow.events.upgradedMeta', { episodes: label, from, to })
-          : t('panel.follow.events.upgraded', { episodes: label })
+          ? t(`panel.follow.events.${key}Meta`, { episodes: label, from, to })
+          : t(`panel.follow.events.${key}`, { episodes: label })
       }
       case 'blocklisted':
         return t('panel.follow.events.blocklisted', {

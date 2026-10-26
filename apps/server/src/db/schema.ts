@@ -1002,9 +1002,13 @@ export const followStates = ['active', 'paused', 'stopped', 'done'] as const
 // Лестница качества: `best` — 1080p → 720p → SD, `uhd` — 2160p → 1080p → 720p,
 // `compact` — 720p → SD
 export const followQualityPresets = ['best', 'uhd', 'compact'] as const
+// `download` — новая серия качается в библиотеку; `notify` — раздача только
+// запоминается за серией, о ней приходит уведомление, смотрят её стримом
+export const followModes = ['download', 'notify'] as const
 
 export type FollowState = (typeof followStates)[number]
 export type FollowQualityPreset = (typeof followQualityPresets)[number]
+export type FollowMode = (typeof followModes)[number]
 
 // «Следить» — одно на тайтл на весь сервер: диск и библиотека общие, и два
 // профиля с разными правилами скачали бы сериал дважды. Профили подписываются
@@ -1033,6 +1037,7 @@ export const follows = sqliteTable(
     qualityPreset: text('quality_preset', { enum: followQualityPresets })
       .notNull()
       .default('best'),
+    mode: text('mode', { enum: followModes }).notNull().default('download'),
     createdByProfileId: text('created_by_profile_id').references(
       () => profiles.id,
       { onDelete: 'set null' },
@@ -1245,7 +1250,12 @@ export const followEpisodes = sqliteTable(
     grabbedTitle: text('grabbed_title'),
     // Файл серии лёг в библиотеку
     downloadedAt: integer('downloaded_at', { mode: 'timestamp_ms' }),
-    // Об этом сообщили «в библиотеке»: серии одной раздачи сообщаются вместе
+    // Режим `notify`: раздача, которую решатель выбрал для серии вместо
+    // захвата; её стримит «Смотреть»
+    picked: text('picked', { mode: 'json' }).$type<FollowPendingCandidate>(),
+    pickedAt: integer('picked_at', { mode: 'timestamp_ms' }),
+    // Об этом сообщили «в библиотеке» или «готова»: серии одной раздачи
+    // сообщаются вместе
     notifiedAt: integer('notified_at', { mode: 'timestamp_ms' }),
     // Не используется: выбранным вручную считается файл не из захвата автоматики
     manual: integer('manual', { mode: 'boolean' }).notNull().default(false),
@@ -1274,6 +1284,7 @@ export const followHistoryKinds = [
   'found',
   'pending',
   'grabbed',
+  'picked',
   'downloaded',
   'upgraded',
   'failed',

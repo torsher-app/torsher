@@ -56,6 +56,7 @@ const VIEWER = new Set([
   'GET /api/titles/:id/follow',
   'PUT /api/titles/:id/follow',
   'DELETE /api/titles/:id/follow',
+  'POST /api/titles/:id/follow/open',
   'GET /api/schedule',
   'GET /api/mine',
   'GET /api/mine/items',

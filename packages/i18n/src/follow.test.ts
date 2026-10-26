@@ -39,6 +39,27 @@ describe('followNotificationText', () => {
     ).toEqual({ title: 'Movie in the library', text: '“Synthetic”' })
   })
 
+  it('«готова к просмотру»: серии, студия и качество выбранной раздачи', () => {
+    expect(
+      followNotificationText(textOf('ru_RU'), 'ru_RU', 'follow_ready', {
+        names,
+        episodes: 'S2E5',
+        count: 1,
+        studio: 'Studio A',
+        quality: '1080p',
+      }),
+    ).toEqual({
+      title: 'Серия готова к просмотру',
+      text: '«Синтетика» · S2E5 · Studio A · 1080p',
+    })
+    expect(
+      followNotificationText(textOf('en_US'), 'en_US', 'follow_ready', {
+        names,
+        count: 1,
+      }),
+    ).toEqual({ title: 'Movie ready to watch', text: '“Synthetic”' })
+  })
+
   it('«ждём озвучку»: что вышло, чего ждём и до какого часа', () => {
     const until = new Date(2026, 9, 25, 20).toISOString()
     const { title, text } = followNotificationText(

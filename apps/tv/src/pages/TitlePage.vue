@@ -70,7 +70,7 @@ import {
   queryOf as catalogQueryOf,
   ORIGINAL_LANGUAGES,
 } from '../lib/catalogFilter.ts'
-import { libraryRoute, resumeRoute } from '../lib/continue.ts'
+import { libraryRoute, resolveRoute, resumeRoute } from '../lib/continue.ts'
 import { downloadSlot } from '../lib/downloadSlot.ts'
 import { titleOffer } from '../lib/titleOffer.ts'
 import { isFollowed } from '../lib/follow.ts'
@@ -356,11 +356,26 @@ function progressOfEpisode(item: Episode) {
   )
 }
 
-// «Смотреть» сначала решает, что играть, — только по прогрессу: серия
-// продолжения, без неё — первая серия первого сезона (не спецвыпуски)
+// Готовая серия «Следить», которую профиль не досмотрел: «Смотреть» стримит
+// раздачу, выбранную слежением; у фильма, завершённого по выбору (`done`), — тоже
+const followReady = computed(() => {
+  const follow = followView.value?.follow
+
+  return follow?.subscribed && follow.state !== 'stopped'
+    ? (follow.ready ?? null)
+    : null
+})
+
+// «Смотреть» сначала решает, что играть: серия продолжения, без неё —
+// готовая серия «Следить», иначе первая серия первого сезона (не спецвыпуски)
 const nextEpisode = computed(() => {
   if (resume.value)
     return resume.value
+
+  const ready = followReady.value
+
+  if (ready)
+    return ready.season ? ready : null
 
   const first
     = seasons.value.find(item => item.number > 0) ?? seasons.value[0]
@@ -402,6 +417,14 @@ const primaryHint = computed(() => {
     ]
       .filter(Boolean)
       .join(' · ')
+  }
+
+  const ready = followReady.value
+
+  if (ready) {
+    return ready.season
+      ? `S${ready.season}E${ready.episode} · ${t('follow.newEpisode')}`
+      : t('follow.status.movieReady')
   }
 
   const line = historyOf(progress.value)?.line
@@ -478,6 +501,15 @@ function onPrimary() {
   }
   else if (resume.value) {
     router.push(resumeRoute(props.id, resume.value))
+  }
+  else if (followReady.value) {
+    const { season, episode } = followReady.value
+
+    router.push(
+      season
+        ? resolveRoute(props.id, season, episode)
+        : { path: `/title/${props.id}/play` },
+    )
   }
   else {
     openSources()

@@ -1,8 +1,13 @@
 import type { ContinueCard, ContinueRow, HomeMode } from '../../dto/home.ts'
+import type { FollowNewEpisode } from '../follow/badges.ts'
+import type { ResumeTarget } from './resume.ts'
+import { followNewEpisodes } from '../follow/badges.ts'
+import { libraryTitleSet } from '../library/home.ts'
+import { droppedSince } from '../mine/index.ts'
 import { getSeason, getTitle } from '../tmdb/index.ts'
 import { parseCatalogId, withImageSize } from '../tmdb/mappers.ts'
+import { episodeProgress } from './progress.ts'
 import { excludedFromContinue, resumeTarget, watchedTitles } from './resume.ts'
-import { libraryTitleSet } from '../library/home.ts'
 
 const ROW_LIMIT = 20
 // С запасом: часть тайтлов отсеется — досмотрены, брошены или без метаданных
@@ -16,10 +21,38 @@ const MODE_TYPE: Record<HomeMode, 'movie' | 'tv' | undefined> = {
   library: undefined,
 }
 
+type CardTarget = Omit<ResumeTarget, 'updatedAt'>
+
+/** Цель карточки новой серии «Следить»: с начатого места, если его начали */
+function followTarget(
+  profileId: string,
+  titleId: string,
+  fresh: FollowNewEpisode,
+): CardTarget {
+  const movie = fresh.season === 0
+  const row = episodeProgress(profileId, titleId).find(
+    point => point.season === fresh.season && point.episode === fresh.episode,
+  )
+
+  return {
+    season: movie ? null : fresh.season,
+    episode: movie ? null : fresh.episode,
+    position: row?.position ?? 0,
+    duration: row?.duration ?? null,
+    next: !movie,
+    file:
+      fresh.file
+      ?? (row?.torrentId && row.fileIndex !== null
+        ? { torrentId: row.torrentId, fileIndex: row.fileIndex }
+        : null),
+  }
+}
+
 async function continueCard(
   profileId: string,
   titleId: string,
   language: string,
+  fresh?: FollowNewEpisode,
 ): Promise<ContinueCard | undefined> {
   // Детали и сезоны — из кэша TMDB: без сети ряд собирается из него, а тайтл
   // без кэша пропускается
@@ -28,11 +61,13 @@ async function continueCard(
   if (!details)
     return undefined
 
-  const target = await resumeTarget(profileId, titleId, async () =>
-    details.seasons?.map(season => ({
-      number: season.number,
-      airedEpisodeCount: season.airedEpisodeCount,
-    })))
+  const target = fresh
+    ? followTarget(profileId, titleId, fresh)
+    : await resumeTarget(profileId, titleId, async () =>
+        details.seasons?.map(season => ({
+          number: season.number,
+          airedEpisodeCount: season.airedEpisodeCount,
+        })))
 
   if (!target)
     return undefined
@@ -62,12 +97,30 @@ async function continueCard(
     duration: target.duration ?? (runtime ? runtime * 60 : null),
     next: target.next,
     file: target.file,
+    ...(fresh && { followNewEpisode: true }),
   }
 }
 
 /**
- * Ряд «Продолжить»: тайтлы профиля с незаконченным просмотром, свежие первыми.
- * Тайтл, чьи метаданные не загрузились, пропускается, а не роняет ряд.
+ * Новые серии слежений профиля, свежие первыми. Убранная из «Продолжить»
+ * карточка вернётся со следующей новой серией.
+ */
+export function freshFollowEpisodes(profileId: string) {
+  const dropped = droppedSince(profileId)
+
+  return [...followNewEpisodes(profileId)]
+    .filter(([titleId, fresh]) => {
+      const at = dropped.get(titleId)
+
+      return !at || at < fresh.at
+    })
+    .sort(([, a], [, b]) => b.at.getTime() - a.at.getTime())
+}
+
+/**
+ * Ряд «Продолжить»: сначала новые серии слежений профиля с колокольчиком,
+ * затем тайтлы с незаконченным просмотром, свежие первыми. Тайтл, чьи
+ * метаданные не загрузились, пропускается, а не роняет ряд.
  */
 export async function getContinueRow(
   profileId: string,
@@ -78,19 +131,22 @@ export async function getContinueRow(
   const type = MODE_TYPE[mode]
   // В разделе «Библиотека» — только тайтлы с файлами в библиотеке
   const library = mode === 'library' ? libraryTitleSet(profileId) : undefined
-  const ids = watchedTitles(profileId, CANDIDATE_LIMIT).filter((id) => {
+  const fits = (id: string) => {
     const ref = parseCatalogId(id)
 
     return (
-      !!ref
-      && !excluded.has(id)
-      && (!type || ref.type === type)
-      && (!library || library.has(id))
+      !!ref && (!type || ref.type === type) && (!library || library.has(id))
     )
-  })
-  const results = await Promise.allSettled(
-    ids.map(id => continueCard(profileId, id, language)),
+  }
+  const fresh = freshFollowEpisodes(profileId).filter(([id]) => fits(id))
+  const freshIds = new Set(fresh.map(([id]) => id))
+  const ids = watchedTitles(profileId, CANDIDATE_LIMIT).filter(
+    id => fits(id) && !excluded.has(id) && !freshIds.has(id),
   )
+  const results = await Promise.allSettled([
+    ...fresh.map(([id, item]) => continueCard(profileId, id, language, item)),
+    ...ids.map(id => continueCard(profileId, id, language)),
+  ])
   const items = results
     .flatMap(result =>
       result.status === 'fulfilled' && result.value ? [result.value] : [],

@@ -105,6 +105,7 @@ export function episodeFacts(followId: string): EpisodeFacts {
   const facts: EpisodeFacts = {
     seen: new Set(),
     grabbing: new Set(),
+    picked: new Set(),
     noSpace: new Set(),
     waitUntil: new Map(),
   }
@@ -122,6 +123,8 @@ export function episodeFacts(followId: string): EpisodeFacts {
     // Захват есть, а файла ещё нет: magnet ждёт метаданные
     if (row.torrentId && row.fileIndex === null && !row.downloadedAt)
       facts.grabbing.add(key)
+    else if (row.picked)
+      facts.picked.add(key)
     else if (row.stateNote === 'no_space')
       facts.noSpace.add(key)
     else if (row.pending && row.waitUntil && !row.torrentId)

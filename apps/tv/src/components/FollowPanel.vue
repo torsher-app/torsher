@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type {
-  FollowCursor,
   FollowTitleInput,
   TitleFollow,
   TitleFollowResponse,
@@ -10,8 +9,7 @@ import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useFollowTexts } from '../composables/useTitleFollow.ts'
 import {
-  CURSOR_PRESETS,
-  cursorPreset,
+  FOLLOW_MODES,
   QUALITY_LADDERS,
   QUALITY_PRESETS,
   qualityName,
@@ -19,7 +17,7 @@ import {
 } from '../lib/follow.ts'
 import OptionsPanel from './OptionsPanel.vue'
 
-type Step = 'main' | 'start' | 'voice' | 'wait' | 'quality'
+type Step = 'main' | 'mode' | 'voice' | 'wait' | 'quality'
 
 /**
  * Лист правил «Следить»: пункты со значением справа, OK открывает шаг с
@@ -47,16 +45,9 @@ const returnTo = ref<Step>()
 const follow = computed(() => props.view.follow)
 const series = computed(() => follow.value.kind === 'series')
 const editable = computed(() => props.view.canEdit)
-const preset = computed(() =>
-  cursorPreset(follow.value.start, props.view.options),
-)
 const studio = computed(
   () => follow.value.voice?.studio ?? follow.value.voiceStudio ?? undefined,
 )
-
-function code(cursor: FollowCursor) {
-  return `S${cursor.season}E${cursor.episode}`
-}
 
 function voiceValue() {
   if (!studio.value)
@@ -77,14 +68,16 @@ function rule(id: Step, label: string, value: string): PanelOption {
   }
 }
 
+function modeLabel(mode: (typeof FOLLOW_MODES)[number]) {
+  return t(`follow.panel.${series.value ? 'modes' : 'modesMovie'}.${mode}`)
+}
+
 const mainOptions = computed<PanelOption[]>(() => {
   const value = follow.value
   const list: PanelOption[] = []
 
-  if (series.value)
-    list.push(rule('start', t('follow.panel.start'), code(value.start)))
-
   list.push(
+    rule('mode', t('follow.panel.mode'), modeLabel(value.mode)),
     rule('voice', t('follow.panel.voice'), voiceValue()),
     rule('wait', t('follow.panel.wait'), texts.waitLabel(value.waitHours)),
     rule(
@@ -103,30 +96,16 @@ const mainOptions = computed<PanelOption[]>(() => {
   return list
 })
 
-const startOptions = computed<PanelOption[]>(() => {
-  const options = props.view.options
-  const list: PanelOption[] = options
-    ? CURSOR_PRESETS.map(id => ({
-        id,
-        label: t(`follow.panel.starts.${id}`),
-        hint: code(options[id]),
-        selected: preset.value === id,
-      }))
-    : []
-
-  // Курсор из панели: выбора серии на ТВ нет, но текущее значение видно
-  if (!preset.value) {
-    list.push({
-      id: 'custom',
-      label: t('follow.panel.starts.custom', {
-        code: code(follow.value.start),
-      }),
-      selected: true,
-    })
-  }
-
-  return list
-})
+const modeOptions = computed<PanelOption[]>(() =>
+  FOLLOW_MODES.map(id => ({
+    id,
+    label: modeLabel(id),
+    hint: t(
+      `follow.panel.${series.value ? 'modeHints' : 'modeHintsMovie'}.${id}`,
+    ),
+    selected: id === follow.value.mode,
+  })),
+)
 
 const voiceOptions = computed<PanelOption[]>(() => {
   const name = studio.value
@@ -185,8 +164,8 @@ const qualityOptions = computed<PanelOption[]>(() =>
 
 const options = computed(() => {
   switch (step.value) {
-    case 'start':
-      return startOptions.value
+    case 'mode':
+      return modeOptions.value
     case 'voice':
       return voiceOptions.value
     case 'wait':
@@ -235,9 +214,8 @@ function select(id: string) {
         step.value = id as Step
 
       return
-    case 'start':
-      if (id !== 'custom')
-        emit('save', { start: id as (typeof CURSOR_PRESETS)[number] })
+    case 'mode':
+      emit('save', { mode: id as (typeof FOLLOW_MODES)[number] })
       break
     case 'voice':
       emit('save', voiceBody(id))

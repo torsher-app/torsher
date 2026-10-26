@@ -1,8 +1,6 @@
 import type { SeriesSchedule } from './wanted.ts'
 import { describe, expect, it } from 'vitest'
 import {
-  cursorOptions,
-  defaultCursor,
   episodeStates,
   firstUnaired,
   localDay,
@@ -29,57 +27,28 @@ const between: SeriesSchedule = {
   last: { season: 2, episode: 10 },
 }
 
-describe('defaultCursor', () => {
-  it('смотрел — следующая непросмотренная вышедшая после самой дальней', () => {
-    const watched = new Set(['1:1', '1:2', '1:5'])
-
-    expect(defaultCursor(airing, watched)).toEqual({ season: 1, episode: 6 })
-  })
-
-  it('смотрел всё вышедшее — только новые серии', () => {
-    const watched = new Set(['2:4'])
-
-    expect(defaultCursor(airing, watched)).toEqual({ season: 2, episode: 5 })
-  })
-
-  it('не смотрел, сезон идёт — с начала текущего сезона', () => {
-    expect(defaultCursor(airing, new Set())).toEqual({ season: 2, episode: 1 })
-  })
-
-  it('не смотрел, сезон не идёт — только новые серии', () => {
-    expect(defaultCursor(between, new Set())).toEqual({
-      season: 3,
-      episode: 1,
-    })
+describe('firstUnaired', () => {
+  it('сезон идёт — анонсированная серия', () => {
+    expect(firstUnaired(airing)).toEqual({ season: 2, episode: 5 })
   })
 
   it('сезон идёт без анонса следующей серии — по числу вышедших', () => {
-    const quiet = { ...airing, next: undefined }
-
-    expect(defaultCursor(quiet, new Set())).toEqual({ season: 2, episode: 1 })
-    expect(firstUnaired(quiet)).toEqual({ season: 2, episode: 5 })
-  })
-})
-
-describe('cursorOptions', () => {
-  it('новые, текущий сезон и начало сериала', () => {
-    expect(cursorOptions(airing)).toEqual({
-      new: { season: 2, episode: 5 },
-      season: { season: 2, episode: 1 },
-      beginning: { season: 1, episode: 1 },
+    expect(firstUnaired({ ...airing, next: undefined })).toEqual({
+      season: 2,
+      episode: 5,
     })
   })
 
-  it('сериал ещё не вышел — всё с первой серии', () => {
+  it('сезон вышел целиком — первая серия следующего', () => {
+    expect(firstUnaired(between)).toEqual({ season: 3, episode: 1 })
+  })
+
+  it('сериал ещё не вышел — первая серия', () => {
     const announced = {
       seasons: [{ number: 1, episodeCount: 6, airedEpisodeCount: 0 }],
     }
 
-    expect(cursorOptions(announced)).toEqual({
-      new: { season: 1, episode: 1 },
-      season: { season: 1, episode: 1 },
-      beginning: { season: 1, episode: 1 },
-    })
+    expect(firstUnaired(announced)).toEqual({ season: 1, episode: 1 })
   })
 })
 
@@ -160,5 +129,28 @@ describe('episodeStates', () => {
       'in_library',
       'upcoming',
     ])
+  })
+
+  it('выбранная серия «готова» и не нужна; библиотека сильнее выбора', () => {
+    const states = episodeStates({
+      cursor: { season: 2, episode: 2 },
+      episodes,
+      library: new Set(['2:2']),
+      downloading: new Set(),
+      facts: {
+        seen: new Set(['2:2', '2:3']),
+        grabbing: new Set(),
+        picked: new Set(['2:2', '2:3']),
+        noSpace: new Set(),
+        waitUntil: new Map(),
+      },
+    })
+
+    expect(states.slice(0, 3).map(item => item.state)).toEqual([
+      'in_library',
+      'ready',
+      'searching',
+    ])
+    expect(wantedEpisodes(states).map(item => item.episode)).toEqual([4])
   })
 })

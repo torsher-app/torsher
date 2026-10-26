@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import LoadingButton from '~/components/LoadingButton.vue'
-import { QUALITY_PRESETS, waitOptionsFor } from '~/lib/follow'
+import { FOLLOW_MODES, QUALITY_PRESETS, waitOptionsFor } from '~/lib/follow'
 import SettingsCard from './SettingsCard.vue'
 
 type Defaults = FollowSettings['defaults']
@@ -31,6 +31,7 @@ const RUSSIAN = ['auto', 'always', 'never'] as const
 
 const schema = toTypedSchema(
   z.object({
+    mode: z.enum(FOLLOW_MODES),
     waitHours: z.string(),
     movieWaitHours: z.string(),
     qualityPreset: z.enum(QUALITY_PRESETS),
@@ -40,6 +41,7 @@ const schema = toTypedSchema(
 
 function valuesOf(defaults: Defaults) {
   return {
+    mode: defaults.mode,
     waitHours: String(defaults.waitHours),
     movieWaitHours: String(defaults.movieWaitHours),
     qualityPreset: defaults.qualityPreset,
@@ -52,6 +54,7 @@ const { handleSubmit, defineField, isSubmitting, meta, resetForm } = useForm({
   initialValues: valuesOf(props.defaults),
 })
 
+const [mode] = defineField('mode')
 const [waitHours] = defineField('waitHours')
 const [movieWaitHours] = defineField('movieWaitHours')
 const [qualityPreset] = defineField('qualityPreset')
@@ -73,6 +76,7 @@ watch(
 const onSubmit = handleSubmit(async (values) => {
   const saved = await save({
     defaults: {
+      mode: values.mode,
       waitHours: Number(values.waitHours),
       movieWaitHours: Number(values.movieWaitHours),
       qualityPreset: values.qualityPreset,
@@ -103,6 +107,29 @@ const choiceClass
       :description="t('panel.settings.follow.defaults.description')"
     >
       <div class="grid gap-5">
+        <fieldset class="grid gap-2">
+          <legend class="mb-2 text-sm font-medium">
+            {{ t("panel.follow.rules.mode") }}
+          </legend>
+          <RadioGroup v-model="mode" class="grid gap-2 md:grid-cols-2">
+            <Label
+              v-for="item in FOLLOW_MODES"
+              :key="item"
+              :class="choiceClass"
+            >
+              <RadioGroupItem :value="item" class="mt-0.5" />
+              <span class="grid gap-0.5">
+                <span class="font-medium">
+                  {{ t(`panel.follow.modes.series.${item}.title`) }}
+                </span>
+                <span class="text-[12.5px] font-normal text-muted-foreground">
+                  {{ t(`panel.follow.modes.series.${item}.text`) }}
+                </span>
+              </span>
+            </Label>
+          </RadioGroup>
+        </fieldset>
+
         <div class="grid gap-4 sm:grid-cols-2">
           <div class="grid gap-2">
             <Label for="follow-default-wait">{{

@@ -6,7 +6,10 @@ import {
   remainingSeconds,
 } from '../lib/continue.ts'
 
-/** Подписи «Продолжить»: «S2E5 · ещё 18 мин», «S2E6 · следующая серия» */
+/**
+ * Подписи «Продолжить»: «S2E5 · ещё 18 мин», «S2E6 · следующая серия»,
+ * «S2E7 · новая серия» — у новой серии «Следить»
+ */
 export function useResumeLabels() {
   const { t } = useI18n()
 
@@ -19,6 +22,10 @@ export function useResumeLabels() {
   }
 
   function remainingText(item: ResumeLike) {
+    // Начатая новая серия показывает, сколько осталось, как любая другая
+    if (item.followNewEpisode && (item.next || !item.position))
+      return t('follow.newEpisode')
+
     if (item.next)
       return t('continue.next')
 

@@ -4,6 +4,7 @@ import {
   ArrowUpCircleIcon,
   CircleAlertIcon,
   CircleCheckIcon,
+  CirclePlayIcon,
   CircleXIcon,
   DownloadIcon,
   EyeIcon,
@@ -60,6 +61,8 @@ const icon = computed(() => {
     case 'follow_downloaded':
     case 'follow_upgraded':
       return { component: LibraryIcon, class: 'text-primary' }
+    case 'follow_ready':
+      return { component: CirclePlayIcon, class: 'text-primary' }
     case 'follow_missing':
       return { component: SearchXIcon, class: 'text-warning' }
     case 'follow_waiting':

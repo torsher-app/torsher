@@ -19,10 +19,10 @@ import {
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import LoadingButton from '~/components/LoadingButton.vue'
-import { episodesLabel, QUALITY_PRESETS, waitOptionsFor } from '~/lib/follow'
+import { FOLLOW_MODES, QUALITY_PRESETS, waitOptionsFor } from '~/lib/follow'
 
 type Preset = FollowSummary['qualityPreset']
-type StartChoice = 'keep' | 'new' | 'season' | 'beginning' | 'custom'
+type Mode = FollowSummary['mode']
 
 const props = defineProps<{
   follow: FollowSummary
@@ -33,47 +33,19 @@ const store = useFollows()
 
 // Те же пределы, что в DTO сервера
 const schema = toTypedSchema(
-  z
-    .object({
-      start: z.enum(['keep', 'new', 'season', 'beginning', 'custom']),
-      season: z.string().trim(),
-      episode: z.string().trim(),
-      voiceStudio: z.string().trim().max(100),
-      voiceStrict: z.boolean(),
-      waitHours: z.string(),
-      qualityPreset: z.enum(['best', 'uhd', 'compact']),
-      requireRussian: z.boolean(),
-    })
-    .superRefine((values, ctx) => {
-      if (values.start !== 'custom')
-        return
-
-      const season = Number(values.season)
-      const episode = Number(values.episode)
-
-      if (!/^\d+$/.test(values.season) || season < 1 || season > 999) {
-        ctx.addIssue({
-          code: 'custom',
-          path: ['season'],
-          message: t('panel.follow.rules.validation.season'),
-        })
-      }
-
-      if (!/^\d+$/.test(values.episode) || episode < 1 || episode > 9999) {
-        ctx.addIssue({
-          code: 'custom',
-          path: ['episode'],
-          message: t('panel.follow.rules.validation.episode'),
-        })
-      }
-    }),
+  z.object({
+    mode: z.enum(['download', 'notify']),
+    voiceStudio: z.string().trim().max(100),
+    voiceStrict: z.boolean(),
+    waitHours: z.string(),
+    qualityPreset: z.enum(['best', 'uhd', 'compact']),
+    requireRussian: z.boolean(),
+  }),
 )
 
 function valuesOf(follow: FollowSummary) {
   return {
-    start: 'keep' as StartChoice,
-    season: String(follow.start.season || 1),
-    episode: String(follow.start.episode || 1),
+    mode: follow.mode as Mode,
     voiceStudio: follow.voiceStudio ?? '',
     voiceStrict: follow.voiceStrict,
     waitHours: String(follow.waitHours),
@@ -95,9 +67,7 @@ const {
   initialValues: valuesOf(props.follow),
 })
 
-const [start] = defineField('start')
-const [season, seasonProps] = defineField('season')
-const [episode, episodeProps] = defineField('episode')
+const [mode] = defineField('mode')
 const [voiceStudio, voiceStudioProps] = defineField('voiceStudio')
 const [voiceStrict] = defineField('voiceStrict')
 const [waitHours] = defineField('waitHours')
@@ -106,28 +76,15 @@ const [requireRussian] = defineField('requireRussian')
 
 const formError = ref('')
 
-// Текст выбранного пункта рисуем сами: `SelectValue` не меняет его при смене языка
-const START_LABELS: Record<StartChoice, string> = {
-  keep: 'panel.follow.rules.startKeep',
-  new: 'panel.follow.rules.startNew',
-  season: 'panel.follow.rules.startSeason',
-  beginning: 'panel.follow.rules.startBeginning',
-  custom: 'panel.follow.rules.startCustom',
-}
-
 function waitLabel(hours: number) {
   return hours
     ? t('panel.follow.rules.waitHours', { n: hours }, hours)
     : t('panel.follow.rules.noWait')
 }
-const isSeries = computed(() => props.follow.kind === 'series')
+const modeKind = computed(() =>
+  props.follow.kind === 'series' ? 'series' : 'movie',
+)
 const waitOptions = computed(() => waitOptionsFor(props.follow.waitHours))
-const currentStart = computed(() =>
-  episodesLabel(props.follow.start.season, [props.follow.start.episode]),
-)
-const startLabel = computed(() =>
-  t(START_LABELS[start.value ?? 'keep'], { episode: currentStart.value }),
-)
 
 // Другое слежение или правила сменились снаружи (пауза, «Искать сейчас»):
 // нетронутая форма подхватывает новые значения
@@ -153,17 +110,13 @@ watch(
 function bodyOf(form: typeof values): UpdateFollowInput {
   const studio = form.voiceStudio?.trim() ?? ''
   const body: UpdateFollowInput = {
+    mode: form.mode,
     voiceStudio: studio || null,
     voiceStrict: !!studio && !!form.voiceStrict,
     waitHours: Number(form.waitHours),
     qualityPreset: form.qualityPreset,
     requireRussian: !!form.requireRussian,
   }
-
-  if (form.start === 'custom')
-    body.start = { season: Number(form.season), episode: Number(form.episode) }
-  else if (form.start && form.start !== 'keep')
-    body.start = form.start
 
   return body
 }
@@ -198,70 +151,24 @@ const choiceClass
       <AlertDescription>{{ formError }}</AlertDescription>
     </Alert>
 
-    <div v-if="isSeries" class="grid gap-2">
-      <Label for="follow-start">{{ t("panel.follow.rules.start") }}</Label>
-      <Select v-model="start">
-        <SelectTrigger id="follow-start" class="w-full">
-          <SelectValue>{{ startLabel }}</SelectValue>
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="keep">
-            {{ t("panel.follow.rules.startKeep", { episode: currentStart }) }}
-          </SelectItem>
-          <SelectItem value="new">
-            {{ t("panel.follow.rules.startNew") }}
-          </SelectItem>
-          <SelectItem value="season">
-            {{ t("panel.follow.rules.startSeason") }}
-          </SelectItem>
-          <SelectItem value="beginning">
-            {{ t("panel.follow.rules.startBeginning") }}
-          </SelectItem>
-          <SelectItem value="custom">
-            {{ t("panel.follow.rules.startCustom") }}
-          </SelectItem>
-        </SelectContent>
-      </Select>
-      <div v-if="start === 'custom'" class="grid grid-cols-2 gap-3">
-        <div class="grid gap-1.5">
-          <Label for="follow-season" class="text-[12.5px] font-normal">
-            {{ t("panel.follow.rules.season") }}
-          </Label>
-          <Input
-            id="follow-season"
-            v-model="season"
-            v-bind="seasonProps"
-            inputmode="numeric"
-            autocomplete="off"
-            class="tabular-nums"
-            :aria-invalid="!!errors.season || undefined"
-          />
-          <p v-if="errors.season" class="text-[12.5px] text-destructive">
-            {{ errors.season }}
-          </p>
-        </div>
-        <div class="grid gap-1.5">
-          <Label for="follow-episode" class="text-[12.5px] font-normal">
-            {{ t("panel.follow.rules.episode") }}
-          </Label>
-          <Input
-            id="follow-episode"
-            v-model="episode"
-            v-bind="episodeProps"
-            inputmode="numeric"
-            autocomplete="off"
-            class="tabular-nums"
-            :aria-invalid="!!errors.episode || undefined"
-          />
-          <p v-if="errors.episode" class="text-[12.5px] text-destructive">
-            {{ errors.episode }}
-          </p>
-        </div>
-      </div>
-      <p v-else class="text-[12.5px] text-muted-foreground">
-        {{ t("panel.follow.rules.startHint") }}
-      </p>
-    </div>
+    <fieldset class="grid gap-2">
+      <legend class="mb-2 text-sm font-medium">
+        {{ t("panel.follow.rules.mode") }}
+      </legend>
+      <RadioGroup v-model="mode" class="grid gap-2">
+        <Label v-for="item in FOLLOW_MODES" :key="item" :class="choiceClass">
+          <RadioGroupItem :value="item" class="mt-0.5" />
+          <span class="grid gap-0.5">
+            <span class="font-medium">
+              {{ t(`panel.follow.modes.${modeKind}.${item}.title`) }}
+            </span>
+            <span class="text-[12.5px] font-normal text-muted-foreground">
+              {{ t(`panel.follow.modes.${modeKind}.${item}.text`) }}
+            </span>
+          </span>
+        </Label>
+      </RadioGroup>
+    </fieldset>
 
     <div class="grid gap-2">
       <Label for="follow-studio">{{ t("panel.follow.rules.voice") }}</Label>
