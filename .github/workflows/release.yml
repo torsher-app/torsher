@@ -1,0 +1,302 @@
+name: Release
+
+# Pushing a release tag publishes the LG webOS app, the image and the GitHub
+# Release with its assets. A manual run, even on a tag, publishes nothing: it
+# builds the app, checks the image and builds both architectures
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Two runs of one tag would race to push `latest` and create the release
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+      publish: ${{ steps.version.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # The product version is the server package version: a tag that does
+      # not match it would show a wrong version and a false update in the panel
+      - id: version
+        run: |
+          package=$(node -p "require('./apps/server/package.json').version")
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "${GITHUB_REF_NAME#v}" != "$package" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match apps/server/package.json ($package)" >&2
+            exit 1
+          fi
+          echo "version=$package" >> "$GITHUB_OUTPUT"
+          case "$package" in
+            *-*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+          if [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF_TYPE" = tag ]; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ares-package accepts only N.N.N versions, so pre-releases ship without
+  # the app
+  webos:
+    needs: version
+    if: needs.version.outputs.prerelease == 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # LG's packaging tool, installed globally as on a developer machine
+      - run: npm install --global @webos-tools/cli@3.2.6
+
+      - run: pnpm --filter @torsher/tv-shell-webos package
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: webos
+          path: apps/tv-shell-webos/build/
+          if-no-files-found: error
+
+  # Waits for the app: an image pushed without its release would reach
+  # `docker compose pull` while servers see no new version
+  image:
+    needs: [version, webos]
+    if: >-
+      !cancelled() && needs.version.result == 'success'
+      && (needs.webos.result == 'success' || needs.webos.result == 'skipped')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      # Keyless signing: cosign proves the image came from this workflow
+      id-token: write
+    env:
+      PUBLISH: ${{ needs.version.outputs.publish }}
+      # Multi-arch packages in GHCR take their description from the index
+      DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # The build itself runs natively; only the runtime stage of the other
+      # architecture needs emulation
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
+
+      # `latest`, `X.Y` and `X` follow stable releases only; `beta` follows
+      # every release, so the beta channel also gets stable versions
+      - id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=beta,enable=${{ github.ref_type == 'tag' }}
+          labels: |
+            org.opencontainers.image.title=Torsher
+            org.opencontainers.image.description=Self-hosted media center: catalog, instant torrent streaming, personal library and series automation in one container
+            org.opencontainers.image.licenses=AGPL-3.0-only
+          annotations: |
+            org.opencontainers.image.title=Torsher
+            org.opencontainers.image.description=Self-hosted media center: catalog, instant torrent streaming, personal library and series automation in one container
+            org.opencontainers.image.licenses=AGPL-3.0-only
+
+      # The image has to start before anything is published: a fresh volume,
+      # the health check, the command line and the user the server runs as.
+      # Built without the TMDB key, which the check does not need
+      - name: Build the image for the check
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: torsher:check
+          build-args: |
+            TORSHER_VERSION=${{ needs.version.outputs.version }}
+            TORSHER_COMMIT=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Check the image
+        run: |
+          docker run -d --name torsher -e PUID=1000 -e PGID=1000 -v torsher-data:/data torsher:check
+          for _ in $(seq 60); do
+            status=$(docker inspect -f '{{.State.Health.Status}}' torsher)
+            [ "$status" = healthy ] && break
+            [ "$(docker inspect -f '{{.State.Running}}' torsher)" = true ] || break
+            sleep 2
+          done
+          if [ "$status" != healthy ]; then
+            docker logs torsher
+            echo "The container did not become healthy (status: $status)" >&2
+            exit 1
+          fi
+          docker exec torsher torsher help > /dev/null
+          # docker top needs the pid column; the exact argv skips tini, whose
+          # command line also ends with the server's
+          processes=$(docker top torsher -eo pid,uid,args)
+          uid=$(echo "$processes" | awk '$3 == "node" && $4 == "server/src/main.ts" { print $2 }')
+          if [ "$uid" != 1000 ]; then
+            echo "$processes"
+            echo "The server runs as uid '$uid', not as PUID 1000" >&2
+            exit 1
+          fi
+          size=$(docker image inspect -f '{{.Size}}' torsher:check)
+          echo "Image size (linux/amd64, uncompressed): $((size / 1024 / 1024)) MiB" >> "$GITHUB_STEP_SUMMARY"
+          docker rm -f torsher > /dev/null
+
+      - if: env.PUBLISH == 'true'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: ${{ env.PUBLISH == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
+          # Attestations need a registry to land in
+          sbom: ${{ env.PUBLISH == 'true' }}
+          provenance: ${{ env.PUBLISH == 'true' && 'mode=max' || 'false' }}
+          build-args: |
+            TORSHER_VERSION=${{ needs.version.outputs.version }}
+            TORSHER_COMMIT=${{ github.sha }}
+          # TMDB app key for the catalog. Without the secret (forks) the input
+          # stays empty and the image has no app key. The secret is not part
+          # of the cache key, so its stage is always rebuilt; provenance
+          # records build arguments, not secrets
+          secrets: ${{ secrets.TMDB_APP_TOKEN && format('tmdb_app_key={0}', secrets.TMDB_APP_TOKEN) || '' }}
+          no-cache-filters: tmdb-app-key
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - if: env.PUBLISH == 'true'
+        uses: sigstore/cosign-installer@v3
+
+      - if: env.PUBLISH == 'true'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: cosign sign --yes "ghcr.io/${GITHUB_REPOSITORY}@${DIGEST}"
+
+  # The release appears only after the image is published: servers learn
+  # about a new version from releases, and `docker compose pull` must
+  # already find it. It is created as a draft with its assets and published
+  # afterwards, so servers and Homebrew Channel never see a release without
+  # the app. A separate job keeps write access to the repository away from
+  # the image build
+  release:
+    needs: [version, webos, image]
+    if: >-
+      !cancelled() && needs.version.outputs.publish == 'true'
+      && needs.image.result == 'success'
+      && (needs.webos.result == 'success' || needs.webos.result == 'skipped')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - if: needs.webos.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: webos
+          path: assets
+
+      - run: |
+          mkdir -p assets
+          cp docker-compose.example.yml assets/docker-compose.yml
+
+      - env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          # bumpy heads each version `## <project> 1.2.3 (date)`
+          awk -v version="$VERSION" '
+            /^## / { if (found) exit; if (index($0, " " version " (")) { found = 1; next } }
+            found { print }
+          ' apps/server/CHANGELOG.md > notes.md 2>/dev/null || true
+          ipk="app.torsher.webos_${VERSION}_all.ipk"
+          if [ -f "assets/$ipk" ]; then
+            app=" LG webOS app: \`$ipk\` below."
+          else
+            app=""
+          fi
+          # No list items here: the panel shows the first list items of the
+          # notes as the highlights of the release
+          cat >> notes.md <<EOF
+
+          ## Install and update
+
+          Download \`docker-compose.yml\` from this release and start Torsher next to it:
+
+          \`\`\`bash
+          docker compose up -d
+          \`\`\`
+
+          Already running Torsher: in the folder with \`docker-compose.yml\` run
+
+          \`\`\`bash
+          docker compose pull && docker compose up -d
+          \`\`\`
+
+          Image: \`ghcr.io/${GITHUB_REPOSITORY}:${VERSION}\`.${app}
+          EOF
+
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          PRERELEASE: ${{ needs.version.outputs.prerelease }}
+        run: |
+          shopt -s nullglob
+          # The manifest goes last: it points at the IPK by name and hash
+          files=(assets/*.ipk assets/docker-compose.yml)
+          manifests=(assets/*.manifest.json)
+          if [ "$PRERELEASE" = true ]; then
+            channel="--prerelease"
+            latest="--latest=false"
+          else
+            channel=""
+            latest="--latest"
+          fi
+          # A rerun of the same tag replaces the assets, keeps the notes and
+          # publishes a draft left by a failed run
+          if draft=$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq .isDraft 2> /dev/null); then
+            gh release upload "$GITHUB_REF_NAME" "${files[@]}" --clobber
+            if [ ${#manifests[@]} -gt 0 ]; then
+              gh release upload "$GITHUB_REF_NAME" "${manifests[@]}" --clobber
+            fi
+          else
+            gh release create "$GITHUB_REF_NAME" "${files[@]}" "${manifests[@]}" --draft --verify-tag \
+              --title "$GITHUB_REF_NAME" --notes-file notes.md $channel
+            draft=true
+          fi
+          if [ "$draft" = true ]; then
+            gh release edit "$GITHUB_REF_NAME" --draft=false $latest
+          fi

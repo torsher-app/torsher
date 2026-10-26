@@ -1,0 +1,24 @@
+name: Release title read wrong
+description: Torsher got the season, episodes, quality or voice-over of a release title wrong
+labels: [release-parser]
+body:
+  - type: input
+    id: title
+    attributes:
+      label: Release title
+      description: The title exactly as the indexer shows it. Leave out links and uploader names.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What it should be
+      description: The season, episodes, quality, voice-over or title Torsher should have found, and what it showed instead.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Shown in the panel under Settings → About.
+      placeholder: 1.0.0

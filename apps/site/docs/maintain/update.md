@@ -36,15 +36,25 @@ The `image:` line in `docker-compose.yml` decides which version you get:
 | --- | --- |
 | `ghcr.io/torsher-app/torsher:latest` | Stable releases. The install file uses it |
 | `ghcr.io/torsher-app/torsher:beta` | Every release, pre-releases included |
-| `ghcr.io/torsher-app/torsher:<version>` | One exact version, for example `0.3.0`. Change it to the new version by hand |
+| `ghcr.io/torsher-app/torsher:<version>` | One exact version, for example `1.0.0`. Change it to the new version by hand |
 
-`<major>.<minor>` and `<major>` tags, such as `0.3`, follow the newest stable release in that line.
+`<major>.<minor>` and `<major>` tags, such as `1.0`, follow the newest stable release in that line.
 
 ## 2. Pull the new image
 
 ```bash
 docker compose pull
 ```
+
+::: details Verify the image signature
+Release images are signed by the project's release workflow on GitHub with [Sigstore cosign](https://docs.sigstore.dev/cosign/verifying/verify/), without a key. With cosign installed, check the version you pulled:
+
+```bash
+cosign verify ghcr.io/torsher-app/torsher:<version> \
+  --certificate-identity-regexp '^https://github\.com/torsher-app/torsher/\.github/workflows/release\.yml@refs/tags/v' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+:::
 
 ## 3. Restart on the new image
 

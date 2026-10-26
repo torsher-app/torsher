@@ -58,7 +58,7 @@ Torsher includes components from other projects under their own licenses. The fu
 
 | Component | License |
 | --- | --- |
-| Onest font, in the showcase, the panel and this site | SIL Open Font License 1.1 |
+| Onest font, in the showcase, the panel, the LG webOS app and this site | SIL Open Font License 1.1 |
 | JetBrains Mono font, on this site | SIL Open Font License 1.1 |
 | Node.js, the base of the Docker image | MIT |
 | The torrent engine, built from Torsher's repository | AGPL-3.0-only, like Torsher. It links Go modules under MIT, BSD, ISC, Apache-2.0 and MPL-2.0, including anacrolix/torrent (MPL-2.0) |
@@ -66,5 +66,6 @@ Torsher includes components from other projects under their own licenses. The fu
 | tini | MIT |
 | Mesa graphics drivers | MIT |
 | Intel Media Driver, in the amd64 image only | MIT and BSD-3-Clause |
+| npm packages in the showcase, the panel and the server | MIT, ISC, Apache-2.0, BSD and other permissive licenses |
 
-Inside the image, the license files of the engine's Go modules are in `/usr/share/licenses/torsher-engine`, the Debian packages carry theirs in `/usr/share/doc/<package>/copyright`, and each server dependency in `/app/server/node_modules` has its own license file.
+Inside the image, the license files of the engine's Go modules are in `/usr/share/licenses/torsher-engine`, the packages bundled into the showcase and the panel are listed with their license texts in `/usr/share/licenses/torsher-tv` and `/usr/share/licenses/torsher-web`, the server dependencies in `/usr/share/licenses/torsher-server` (each one in `/app/server/node_modules` has its own license file), and the Debian packages carry theirs in `/usr/share/doc/<package>/copyright`.
