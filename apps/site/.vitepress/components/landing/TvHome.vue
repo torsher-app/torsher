@@ -120,7 +120,9 @@ const settingsSpokes = [
     </div>
 
     <div class="hero">
-      <h1>Lanterns of Vell</h1>
+      <div class="title">
+        Lanterns of Vell
+      </div>
       <div class="meta">
         <template v-for="(part, i) in meta" :key="part">
           <span v-if="i" class="sep" />
@@ -326,7 +328,7 @@ const settingsSpokes = [
   width: calc(var(--u) * 1000);
 }
 
-.hero h1 {
+.hero .title {
   margin: 0 0 calc(var(--u) * 22);
   border: 0;
   padding: 0;

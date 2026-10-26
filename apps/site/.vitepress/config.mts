@@ -59,14 +59,16 @@ export default defineConfig({
     ['meta', { name: 'theme-color', content: '#0b0d12' }],
   ],
 
-  transformPageData(pageData) {
-    if (pageData.isNotFound) {
-      pageData.frontmatter.head = [['meta', { name: 'robots', content: 'noindex, nofollow' }]]
-      return
-    }
+  // The built 404 page uses fixed page data and never reaches transformPageData
+  transformHead({ pageData }) {
+    if (pageData.isNotFound)
+      return [['meta', { name: 'robots', content: 'noindex, nofollow' }]]
+  },
 
+  transformPageData(pageData) {
+    // The home page sets its full title with `titleTemplate: false`
     const title = pageData.relativePath === 'index.md'
-      ? siteTitle
+      ? pageData.title
       : `${pageData.title} | ${siteTitle}`
     const head = seoHead(pageData.relativePath, title, pageData.description || description)
 
