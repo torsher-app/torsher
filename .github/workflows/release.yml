@@ -207,6 +207,20 @@ jobs:
           DIGEST: ${{ steps.build.outputs.digest }}
         run: cosign sign --yes "ghcr.io/${GITHUB_REPOSITORY}@${DIGEST}"
 
+  # Docker Hub mirrors GHCR. It runs beside the release: a failed copy does
+  # not hold the release back and is rerun by hand with the same version
+  docker-hub:
+    needs: [version, image]
+    if: >-
+      !cancelled() && needs.version.outputs.publish == 'true'
+      && needs.image.result == 'success' && vars.DOCKERHUB_IMAGE != ''
+    permissions:
+      contents: read
+    uses: ./.github/workflows/docker-hub.yml
+    with:
+      version: ${{ needs.version.outputs.version }}
+    secrets: inherit
+
   # The release appears only after the image is published: servers learn
   # about a new version from releases, and `docker compose pull` must
   # already find it. It is created as a draft with its assets and published
