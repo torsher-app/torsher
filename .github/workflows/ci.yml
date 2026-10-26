@@ -24,6 +24,8 @@ jobs:
 
       - run: pnpm test
 
+      - run: pnpm --filter @torsher/tv-shell-webos build
+
   site:
     runs-on: ubuntu-latest
     steps:

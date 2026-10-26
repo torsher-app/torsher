@@ -103,11 +103,11 @@ Everything is set up in the browser, on a phone or a computer: sources, storage,
 
 You need a computer with Docker and the Compose plugin. Linux gets every feature; Docker Desktop on macOS and Windows transcodes on the CPU only.
 
-1. Download the install file, [`docker-compose.example.yml`](docker-compose.example.yml), into an empty folder:
+1. Download the install file, `docker-compose.yml` from the [latest release](https://github.com/torsher-app/torsher/releases/latest), into an empty folder:
 
    ```bash
    mkdir torsher && cd torsher
-   curl -fsSL https://raw.githubusercontent.com/torsher-app/torsher/main/docker-compose.example.yml -o docker-compose.yml
+   curl -fsSL https://github.com/torsher-app/torsher/releases/latest/download/docker-compose.yml -o docker-compose.yml
    ```
 
 2. Find your user and group IDs. If they are not both `1000`, put them into `PUID` and `PGID` in `docker-compose.yml`:

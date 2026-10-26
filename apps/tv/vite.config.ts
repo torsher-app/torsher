@@ -35,6 +35,8 @@ export default defineConfig({
   build: {
     // Минимальная платформа — webOS 5 (Chromium 68)
     target: 'chrome68',
+    // Лицензии вшитых в бандл пакетов: образ кладёт файл в /usr/share/licenses
+    license: true,
   },
   server: {
     // Тот же origin для API и картинок: cookie сессии, выданные панелью

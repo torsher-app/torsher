@@ -1,0 +1,39 @@
+name: Bug report
+description: Something in Torsher doesn't work as expected
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected and what happened instead.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Shown in the panel under Settings → About.
+      placeholder: 1.0.0
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where
+      multiple: true
+      options:
+        - Control panel
+        - Showcase in a browser
+        - LG webOS app
+        - Server or container
+  - type: textarea
+    id: setup
+    attributes:
+      label: Setup
+      description: Hardware or NAS model, OS, Docker or Docker Desktop, TV model and webOS version if it's about the TV.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Attach the file from Download logs under Logs in the panel, or paste `docker compose logs torsher`. Secrets are removed from the log, but check it before posting.

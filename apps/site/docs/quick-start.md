@@ -24,7 +24,7 @@ Create a folder for Torsher and download the install file into it:
 
 ```bash
 mkdir torsher && cd torsher
-curl -fsSL https://raw.githubusercontent.com/torsher-app/torsher/main/docker-compose.example.yml -o docker-compose.yml
+curl -fsSL https://github.com/torsher-app/torsher/releases/latest/download/docker-compose.yml -o docker-compose.yml
 ```
 
 Find out your user and group IDs:

@@ -40,6 +40,11 @@ export default defineNuxtConfig({
 
   vite: {
     plugins: [tailwindcss()],
+    build: {
+      // Лицензии вшитых в бандл пакетов: образ кладёт файл в /usr/share/licenses.
+      // В .output/public Nitro переносит только каталог _nuxt
+      license: { fileName: '_nuxt/licenses.md' },
+    },
   },
 
   colorMode: {

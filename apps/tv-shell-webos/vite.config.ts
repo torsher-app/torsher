@@ -1,21 +1,28 @@
 import type { Plugin } from 'vite'
+import { readFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { legacyApiGuard } from '@torsher/tv/build/legacyApiGuard.ts'
 import { defineConfig } from 'vite'
-import pkg from './package.json' with { type: 'json' }
+import server from '../server/package.json' with { type: 'json' }
 
 const APP_ID = 'app.torsher.webos'
 
-/** Манифест приложения webOS; версия — из package.json пакета */
+/**
+ * Манифест приложения webOS. Версия — версия продукта из пакета сервера:
+ * IPK выходит в каждом релизе вместе с образом
+ */
 const appInfo = {
   id: APP_ID,
-  version: pkg.version,
+  version: server.version,
   vendor: 'Torsher',
   type: 'web',
   main: 'index.html',
   title: 'Torsher',
-  appDescription: 'Torsher media server showcase',
+  appDescription: 'Showcase for your Torsher media server',
   icon: 'icon-80.png',
   largeIcon: 'icon-130.png',
+  // LG не пропускает чёрный экран загрузки
+  splashBackground: 'splash.png',
   bgColor: '#0b0d12',
   iconColor: '#0b0d12',
   resolution: '1920x1080',
@@ -46,6 +53,14 @@ function webosApp(): Plugin {
         type: 'asset',
         fileName: 'appinfo.json',
         source: `${JSON.stringify(appInfo, null, 2)}\n`,
+      })
+      // OFL требует класть лицензию рядом со шрифтом, а IPK раздаётся сам по себе
+      this.emitFile({
+        type: 'asset',
+        fileName: 'licenses/onest.txt',
+        source: readFileSync(
+          createRequire(import.meta.url).resolve('@fontsource/onest/LICENSE'),
+        ),
       })
     },
   }

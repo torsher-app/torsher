@@ -22,7 +22,7 @@ Torsher running on your server, its data in a folder you chose, and the control 
 
 ```bash
 mkdir torsher && cd torsher
-curl -fsSL https://raw.githubusercontent.com/torsher-app/torsher/main/docker-compose.example.yml -o docker-compose.yml
+curl -fsSL https://github.com/torsher-app/torsher/releases/latest/download/docker-compose.yml -o docker-compose.yml
 ```
 
 This is the whole file. Lines starting with `#` are optional and stay off until you remove the `#`:

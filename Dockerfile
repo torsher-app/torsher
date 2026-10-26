@@ -42,7 +42,10 @@ RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
 COPY . .
 RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile --prefer-offline \
- && pnpm --filter @torsher/tv --filter @torsher/web build
+ && pnpm --filter @torsher/tv --filter @torsher/web build \
+ && mkdir -p /out/licenses \
+ && pnpm --filter @torsher/server licenses list --prod --json \
+    | node docker/licenses.ts > /out/licenses/server.txt
 
 ARG TARGETARCH
 RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
@@ -126,6 +129,11 @@ COPY --from=build /src/apps/tv/dist tv/dist
 COPY --from=build /src/apps/web/.output/public web/.output/public
 COPY --from=engine /out/torsher-engine /usr/local/bin/torsher-engine
 COPY --from=engine /out/licenses /usr/share/licenses/torsher-engine
+COPY --from=build /src/LICENSE /src/THIRD_PARTY_LICENSES /usr/share/licenses/torsher/
+# Лицензии того, что вшито в бандлы витрины и панели, и зависимостей сервера
+COPY --from=build /src/apps/tv/dist/.vite/license.md /usr/share/licenses/torsher-tv/licenses.md
+COPY --from=build /src/apps/web/.output/public/_nuxt/licenses.md /usr/share/licenses/torsher-web/licenses.md
+COPY --from=build /out/licenses/server.txt /usr/share/licenses/torsher-server/licenses.txt
 COPY --chmod=755 docker/entrypoint.sh /usr/local/bin/torsher-entrypoint
 COPY --chmod=755 docker/torsher.sh /usr/local/bin/torsher
 

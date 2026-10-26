@@ -67,9 +67,9 @@ function writeUpdateState(state: UpdateState) {
   setSetting(STATE_KEY, state)
 }
 
-// Как обновить контейнер — раздел README репозитория исходников
+// Как обновить контейнер — страница документации на сайте проекта
 function docsUrl() {
-  return `${config.sourceUrl.replace(/\/+$/, '')}#updating`
+  return 'https://torsher.app/docs/maintain/update'
 }
 
 function sourceRepo() {

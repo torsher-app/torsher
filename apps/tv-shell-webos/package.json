@@ -1,16 +1,16 @@
 {
   "name": "@torsher/tv-shell-webos",
   "type": "module",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "private": true,
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "icons": "rsvg-convert -w 80 -h 80 node_modules/@torsher/tokens/assets/app-icon.svg -o public/icon-80.png && rsvg-convert -w 130 -h 130 node_modules/@torsher/tokens/assets/app-icon.svg -o public/icon-130.png",
-    "package": "vite build && ares-package --no-minify --outdir build dist",
-    "install:tv": "ares-install --device ${WEBOS_DEVICE:-tv} build/app.torsher.webos_${npm_package_version}_all.ipk",
+    "icons": "rsvg-convert -w 80 -h 80 node_modules/@torsher/tokens/assets/app-icon.svg -o public/icon-80.png && rsvg-convert -w 130 -h 130 node_modules/@torsher/tokens/assets/app-icon.svg -o public/icon-130.png && rsvg-convert assets/splash.svg -o public/splash.png",
+    "package": "vite build && rm -rf build && ares-package --no-minify --outdir build dist && node scripts/manifest.ts",
+    "install:tv": "ares-install --device ${WEBOS_DEVICE:-tv} build/app.torsher.webos_*_all.ipk",
     "launch:tv": "ares-launch --device ${WEBOS_DEVICE:-tv} app.torsher.webos",
     "inspect:tv": "ares-inspect --device ${WEBOS_DEVICE:-tv} --app app.torsher.webos --open"
   },

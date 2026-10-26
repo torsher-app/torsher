@@ -53,7 +53,8 @@
   },
   "simple-git-hooks": {
     "pre-commit": "pnpm lint-staged",
-    "commit-msg": "pnpm exec commitlint --edit $1"
+    "commit-msg": "pnpm exec commitlint --edit $1",
+    "preserveUnused": ["pre-push"]
   },
   "lint-staged": {
     "*.{js,ts,vue}": [

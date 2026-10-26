@@ -1,7 +1,7 @@
 Third-party components distributed with Torsher
 ===============================================
 
-Onest font (apps/tv, apps/web and apps/site, files from the @fontsource/onest package)
+Onest font (apps/tv, apps/web, apps/tv-shell-webos and apps/site, files from the @fontsource/onest package)
 https://github.com/simpals/onest
 License: SIL Open Font License 1.1
 
@@ -110,6 +110,9 @@ Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/
 Docker image
 ============
 
+Inside the image, this file and the Torsher license are in
+/usr/share/licenses/torsher.
+
 The image is based on the official Node.js image (node:<version>-trixie-slim).
 Node.js is under the MIT License, with the licenses of its bundled components
 listed in https://github.com/nodejs/node/blob/main/LICENSE. The Debian packages
@@ -153,5 +156,13 @@ https://github.com/intel/media-driver
 License: MIT and BSD-3-Clause, full texts in
 /usr/share/doc/intel-media-va-driver/copyright inside the image
 
+npm packages (showcase, control panel and server)
+The showcase and the control panel bundle npm packages under the MIT, ISC and
+Apache-2.0 licenses. Their names, versions and full license texts are listed
+in /usr/share/licenses/torsher-tv/licenses.md and
+/usr/share/licenses/torsher-web/licenses.md inside the image, generated at
+build time.
+
 Server dependencies are installed into /app/server/node_modules, each package
-with its own license file.
+with its own license file; /usr/share/licenses/torsher-server/licenses.txt
+lists them with their licenses.

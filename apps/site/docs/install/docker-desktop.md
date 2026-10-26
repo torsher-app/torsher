@@ -36,7 +36,7 @@ Docker Desktop is supported on a best-effort basis: the image is built for it an
 ## 1. Get the install file
 
 1. Create a folder, for example `torsher` in your home folder.
-2. Download [docker-compose.example.yml](https://raw.githubusercontent.com/torsher-app/torsher/main/docker-compose.example.yml) into it and rename it to `docker-compose.yml`.
+2. Download [docker-compose.yml](https://github.com/torsher-app/torsher/releases/latest/download/docker-compose.yml) from the latest release into it.
 
 What each line means: [Docker Compose](/docs/install/docker-compose#_1-get-the-install-file).
 
