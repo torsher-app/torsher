@@ -19,6 +19,14 @@ export function libraryFileFor(
   )
 }
 
+/** Первый по порядку файл библиотеки: самая ранняя серия, у фильма — его файл */
+export function firstLibraryFile(files: LibraryFile[]) {
+  return [...files].sort(
+    (a, b) =>
+      (a.season ?? 0) - (b.season ?? 0) || (a.episode ?? 0) - (b.episode ?? 0),
+  )[0]
+}
+
 /**
  * Файл библиотеки для «Смотреть»: фильм — его файл; сериал — файл серии,
  * которую играть (её выбирает прогресс, а не библиотека). Этой серии в

@@ -6,13 +6,14 @@ import { useResource } from './useResource.ts'
 
 /** Файлы тайтла в библиотеке: «Смотреть» играет их сразу, без поиска раздач */
 export function useTitleLibrary(id: Ref<string>) {
-  const { data, refresh } = useResource<TitleLibrary>(
+  const { data, status, refresh } = useResource<TitleLibrary>(
     computed(() => id.value),
     (key, signal) => api.titles.getTitleLibrary(key, { signal }),
   )
 
   return {
     libraryFiles: computed(() => data.value?.files ?? []),
+    libraryStatus: status,
     refreshLibrary: refresh,
   }
 }

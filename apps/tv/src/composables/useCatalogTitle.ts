@@ -4,6 +4,7 @@ import type { LoadError } from '../lib/loadError.ts'
 import { onScopeDispose, ref, shallowRef, watch } from 'vue'
 import { api, loadErrorOf } from '../api.ts'
 import { createLatest } from '../lib/latest.ts'
+import { noteHasSources } from '../serverSources.ts'
 import { useCatalogLanguage } from './useCatalogLanguage.ts'
 
 export type TitleStatus = 'loading' | 'ready' | 'error'
@@ -40,6 +41,7 @@ export function useCatalogTitle(id: Ref<string>) {
       return
     }
 
+    noteHasSources(outcome.value.hasSources)
     title.value = outcome.value
     status.value = 'ready'
   }

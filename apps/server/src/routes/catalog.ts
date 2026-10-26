@@ -27,6 +27,7 @@ import {
 import { followOf, isFollowing } from '../services/follow/index.ts'
 import { titleFollowBrief } from '../services/follow/views.ts'
 import { episodeKey } from '../services/follow/wanted.ts'
+import { hasSearchableIndexers } from '../services/indexers/index.ts'
 import { withPosterRatings } from '../services/mine/index.ts'
 import { watchedTitles } from '../services/sources/progress.ts'
 import {
@@ -123,6 +124,7 @@ export const catalogRoutes: FastifyPluginAsyncZod = async (app) => {
         return {
           ...details,
           follow: titleFollowBrief(details.id, request.profileId),
+          hasSources: hasSearchableIndexers(),
         }
       }
       catch (err) {

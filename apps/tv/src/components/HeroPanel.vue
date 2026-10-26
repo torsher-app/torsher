@@ -3,6 +3,7 @@ import type { Hero } from '../composables/useHero.ts'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useTitleMeta } from '../composables/useTitleMeta.ts'
+import { lacksSources } from '../serverSources.ts'
 import AppIcon from './AppIcon.vue'
 import RatingList from './RatingList.vue'
 
@@ -34,6 +35,12 @@ const logo = computed(() =>
 // Оценки ряда видны сразу, детали их только дополняют
 const ratings = computed(
   () => props.hero.details?.ratings ?? props.hero.card.ratings ?? [],
+)
+
+// «▶ Смотреть» — только если смотреть есть откуда: из библиотеки или через
+// источники раздач
+const watchable = computed(
+  () => !!props.hero.card.availability || !lacksSources(),
 )
 
 const meta = computed(() => {
@@ -96,7 +103,7 @@ const meta = computed(() => {
         <span class="hero__key">
           <span class="hero__button">OK</span>{{ t("home.hint.details") }}
         </span>
-        <span class="hero__key">
+        <span v-if="watchable" class="hero__key">
           <span class="hero__button"><AppIcon name="play" /></span>{{ t("home.hint.watch") }}
         </span>
         <span class="hero__key">

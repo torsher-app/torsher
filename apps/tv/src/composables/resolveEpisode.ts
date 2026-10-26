@@ -6,6 +6,7 @@ import type {
 import { api } from '../api.ts'
 import { episodeCandidates, episodeFileOf } from '../lib/episodes.ts'
 import { FILES_POLL_INTERVAL_MS, FILES_POLL_LIMIT_MS } from '../lib/files.ts'
+import { noteHasSources } from '../serverSources.ts'
 
 /** Серия сериала; у фильма сезона и серии нет */
 export interface EpisodeTarget {
@@ -18,7 +19,8 @@ export type ResolveStep = 'searching' | 'connecting'
 
 export type ResolveOutcome
   = | { kind: 'found', file: EpisodeFile }
-    | { kind: 'notFound' }
+  // `noSources` — искать было негде: на сервере нет источников раздач
+    | { kind: 'notFound', noSources?: boolean }
     | { kind: 'cancelled' }
 
 export interface ResolveOptions {
@@ -101,11 +103,17 @@ export async function resolveEpisode(
   }
 
   let candidates: SourceCandidate[] = []
+  // Спрашиваем сервер и без источников по общему признаку: индексатор могли
+  // подключить, пока витрина открыта, а без индексаторов поиск мгновенный
+  let noSources = false
 
   try {
     const sources = await api.titles.getTitleSources(target.titleId, {
       all: '1',
     })
+
+    noSources = sources.indexers.total === 0
+    noteHasSources(!noSources)
 
     if (target.season !== undefined && target.episode !== undefined) {
       candidates = episodeCandidates(
@@ -116,7 +124,7 @@ export async function resolveEpisode(
     }
   }
   catch {
-    // Без источников ищем только в известных раздачах
+    // Поиск не ответил: ищем только в известных раздачах
   }
 
   for (const candidate of candidates) {
@@ -126,7 +134,9 @@ export async function resolveEpisode(
       return outcome
   }
 
-  return options.cancelled() ? { kind: 'cancelled' } : { kind: 'notFound' }
+  return options.cancelled()
+    ? { kind: 'cancelled' }
+    : { kind: 'notFound', noSources }
 }
 
 /** Подключает раздачу кандидата и ждёт в ней файл серии */

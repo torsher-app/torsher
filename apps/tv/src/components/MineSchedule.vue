@@ -21,6 +21,7 @@ import { relativeDay, scheduleDays } from '../lib/follow.ts'
 import { gridRows, rowWindow } from '../lib/homeVideo.ts'
 import { stackOffset } from '../lib/rowStack.ts'
 import { formatAirDate, isUpcoming } from '../lib/titleInfo.ts'
+import { lacksSources } from '../serverSources.ts'
 import FocusSection from './FocusSection.vue'
 import ScheduleCard from './ScheduleCard.vue'
 import ScreenState from './ScreenState.vue'
@@ -180,8 +181,9 @@ watch(tab, () => {
   scrollGridTo(0)
 })
 
+// Ещё не вышла или без источников её не найти и не скачать — карточка тайтла
 function open(item: ScheduleItem) {
-  if (isUpcoming(item.airDate)) {
+  if (isUpcoming(item.airDate) || (!item.mediaFileId && lacksSources())) {
     router.push(`/title/${item.titleId}`)
     return
   }

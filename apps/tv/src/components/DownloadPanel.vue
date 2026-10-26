@@ -9,13 +9,15 @@ import OptionsPanel from './OptionsPanel.vue'
 /**
  * Закачка выбранного объёма (фильм или сезон): какая раздача, сколько
  * скачано, пиры и скорость. «Отменить загрузку» — только этой раздачи, пока
- * она качается; другая раздача — те же «Источники», что у «Смотреть».
+ * она качается; другая раздача — те же «Источники», что у «Смотреть», если
+ * на сервере есть источники (`canPick`).
  */
 const props = defineProps<{
   title: string
   series: boolean
   season?: number
   download: ActiveDownload
+  canPick: boolean
 }>()
 
 const emit = defineEmits<{
@@ -44,6 +46,9 @@ const options = computed<PanelOption[]>(() => {
       selected: false,
     })
   }
+
+  if (!props.canPick)
+    return list
 
   list.push({
     id: 'pick',

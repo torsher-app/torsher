@@ -7,7 +7,7 @@ import type {
 } from '../../db/schema.ts'
 import type { TorznabCaps } from '../torznab/index.ts'
 import type { RemoteIndexer } from './managers.ts'
-import { and, eq, inArray, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import { indexerManagers, indexers } from '../../db/schema.ts'
 import { decryptSecret, encryptSecret, SecretError } from '../secrets/index.ts'
@@ -118,6 +118,28 @@ export function listSearchableIndexers(): SearchableIndexer[] {
           ]
         : [],
     )
+}
+
+/**
+ * Есть ли по чему искать раздачи: те же условия, что у
+ * `listSearchableIndexers`, без расшифровки ключей. Индексатор, который сейчас
+ * не отвечает, источником остаётся: это сбой, а не отсутствие источников.
+ */
+export function hasSearchableIndexers() {
+  const row = getDb()
+    .select({ id: indexers.id })
+    .from(indexers)
+    .where(
+      and(
+        eq(indexers.enabled, true),
+        eq(indexers.missing, false),
+        isNotNull(indexers.caps),
+      ),
+    )
+    .limit(1)
+    .get()
+
+  return row !== undefined
 }
 
 /** Индексатор, у которого можно читать ленту новых раздач */

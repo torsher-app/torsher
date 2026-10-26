@@ -42,6 +42,11 @@ export function cachedSearch(
     .then((outcome) => {
       const entry = { outcome, updatedAt: new Date() }
 
+      // Без индексаторов искать было не по чему: повтор бесплатный, а
+      // сохранённый пустой ответ скрыл бы индексатор, подключённый позже
+      if (outcome.indexerCount === 0)
+        return entry
+
       entries.delete(key)
       entries.set(key, entry)
 

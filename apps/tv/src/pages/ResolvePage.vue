@@ -49,13 +49,24 @@ const { art, subtitle } = usePlayerArt(props.id, target.season, target.episode)
 
 const step = ref<ResolveStep>('searching')
 const notFound = ref(false)
+// Серии не нашлось, а искать было негде: источников на сервере нет
+const noSources = ref(false)
 let cancelled = false
 const mountedAt = performance.now()
 let offKey: (() => void) | undefined
 
 const label = computed(() => t(`resolve.${step.value}`))
-// Выбранная раздача не открылась — другое объяснение, чем «серии нигде нет»
-const failure = computed(() => (props.candidate ? 'failed' : 'notFound'))
+// Выбранная раздача не открылась — другое объяснение, чем «серии нигде нет»;
+// без источников — серии просто нет в библиотеке, и «Источников» тоже нет
+const failure = computed(() =>
+  props.candidate ? 'failed' : noSources.value ? 'notInLibrary' : 'notFound',
+)
+const actions = computed(() => [
+  ...(noSources.value
+    ? []
+    : [{ id: 'sources' as const, label: t('resolve.toSources') }]),
+  { id: 'back' as const, label: t('player.back') },
+])
 
 function back() {
   cancelled = true
@@ -120,6 +131,7 @@ async function run() {
     })
   }
   else if (outcome.kind === 'notFound') {
+    noSources.value = !!outcome.noSources
     notFound.value = true
   }
 }
@@ -147,10 +159,7 @@ onBeforeUnmount(() => {
         v-if="notFound"
         :title="t(`resolve.${failure}.title`)"
         :text="t(`resolve.${failure}.text`)"
-        :actions="[
-          { id: 'sources', label: t('resolve.toSources') },
-          { id: 'back', label: t('player.back') },
-        ]"
+        :actions="actions"
         @choose="onChoice"
       />
       <template v-else>

@@ -48,6 +48,7 @@ import {
 import { libraryTarget } from '../lib/library.ts'
 import { loadSourceView, saveSourceView } from '../lib/sourceView.ts'
 import { formatYears } from '../lib/titleInfo.ts'
+import { noteHasSources } from '../serverSources.ts'
 
 /** Что играет плеер, из которого открыт экран */
 export interface PlayingSource {
@@ -139,6 +140,15 @@ function refresh() {
   forceRefresh = true
   nonce.value += 1
 }
+
+// Источников на сервере нет: экран — только строка библиотеки, без поиска
+// раздач, профиля и фильтров
+const noSources = computed(() => sources.value?.indexers.total === 0)
+
+watch(sources, (value) => {
+  if (value)
+    noteHasSources(value.indexers.total > 0)
+})
 
 // Время для «обновлено N мин назад» берём при открытии экрана
 const openedAt = new Date()
@@ -444,6 +454,23 @@ function choose(id: string) {
   closePanel()
 }
 
+// Файлы библиотеки для строки «В библиотеке»: по выбранному сезону, если он
+// есть; из плеера — файл этой серии
+const { libraryFiles } = useTitleLibrary(id)
+const libraryRowFiles = computed(() => {
+  const season = props.playing?.season ?? seasonFilter.value
+  const episode = props.playing?.episode
+
+  return libraryFiles.value.filter(
+    file =>
+      (season === undefined || file.season === season)
+      && (episode === undefined
+        || (file.episode !== null
+          && episode >= file.episode
+          && episode <= (file.episodeTo ?? file.episode))),
+  )
+})
+
 const hasFilter = computed(
   () =>
     seasonFilter.value !== undefined
@@ -455,8 +482,8 @@ const emptyKind = computed(() => {
   if (!sources.value || rows.value.length > 0)
     return undefined
 
-  if (sources.value.indexers.total === 0)
-    return 'noIndexers'
+  if (noSources.value)
+    return libraryRowFiles.value.length > 0 ? undefined : 'notInLibrary'
 
   if (hasFilter.value)
     return 'filtered'
@@ -476,7 +503,7 @@ const canRefine = computed(
 )
 
 const headerMeta = computed(() => {
-  if (!sources.value || searching.value)
+  if (!sources.value || searching.value || noSources.value)
     return ''
 
   const minutes = minutesSince(sources.value.updatedAt, openedAt)
@@ -491,7 +518,7 @@ const headerMeta = computed(() => {
 
 // По этому правилу выбрана раздача с меткой «По профилю»
 const profileLine = computed(() => {
-  if (!sources.value || searching.value)
+  if (!sources.value || searching.value || noSources.value)
     return ''
 
   const { qualities, voiceTypes, moreVoices } = profileParts(
@@ -543,23 +570,6 @@ const runtime = computed(() =>
     ? runtimeSource.value?.episodes.find(item => item.runtime)?.runtime
     : title.value?.runtime,
 )
-
-// Файлы библиотеки для строки «В библиотеке»: по выбранному сезону, если он
-// есть; из плеера — файл этой серии
-const { libraryFiles } = useTitleLibrary(id)
-const libraryRowFiles = computed(() => {
-  const season = props.playing?.season ?? seasonFilter.value
-  const episode = props.playing?.episode
-
-  return libraryFiles.value.filter(
-    file =>
-      (season === undefined || file.season === season)
-      && (episode === undefined
-        || (file.episode !== null
-          && episode >= file.episode
-          && episode <= (file.episodeTo ?? file.episode))),
-  )
-})
 
 // Строку «В библиотеке» выбрали сами: файл серии продолжения, без неё — первый
 function playLibrary() {
@@ -613,7 +623,10 @@ const order = computed(() => {
   if (showsHistory.value)
     list.push(sectionName('history'))
 
-  list.push(sectionName('controls'), sectionName('list'))
+  if (!noSources.value)
+    list.push(sectionName('controls'))
+
+  list.push(sectionName('list'))
 
   return list
 })
@@ -812,8 +825,9 @@ const meta = computed(() => {
         class="sources__controls"
         :edges="edgesOf('controls')"
       >
+        <!-- Без источников фильтровать нечего: строка пустая, но на месте -->
         <ActionButton
-          v-for="control in controls"
+          v-for="control in noSources ? [] : controls"
           :key="control.id"
           v-focusable
           chip
@@ -823,7 +837,7 @@ const meta = computed(() => {
         />
         <!-- Сброс — значком: строка фильтров не должна переноситься -->
         <ActionButton
-          v-if="hasFilter"
+          v-if="hasFilter && !noSources"
           v-focusable
           chip
           icon-only
@@ -843,9 +857,9 @@ const meta = computed(() => {
       >
         <!-- Файл из библиотеки — первым и сразу: поиск раздач ему не нужен.
              В режиме загрузки каждая строка по OK качает — строки, которая
-             играет, там нет -->
+             играет, там нет; без источников качать нечего, и строка остаётся -->
         <LibraryRow
-          v-if="!download && libraryRowFiles.length > 0"
+          v-if="(!download || noSources) && libraryRowFiles.length > 0"
           :files="libraryRowFiles"
           :current="playing?.library"
           @select="playLibrary"
@@ -897,7 +911,7 @@ const meta = computed(() => {
             @select="select(candidate)"
           />
 
-          <div class="sources__footer">
+          <div v-if="!noSources" class="sources__footer">
             <ActionButton
               v-focusable
               :label="t('sources.refresh')"

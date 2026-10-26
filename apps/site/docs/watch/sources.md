@@ -13,7 +13,7 @@ How to read a release row, narrow the list down to your voice-over and quality, 
 
 ## Before you start
 
-At least one indexer is connected. See [Indexers](/docs/setup/indexers).
+At least one indexer is connected. See [Indexers](/docs/setup/indexers). Without one, the showcase shows only titles from your library as watchable and doesn't open this screen.
 
 ## Open Sources
 
@@ -86,7 +86,6 @@ To download a whole season from a pack, see [Download and keep](/docs/watch/down
 
 ## If something went wrong
 
-- **<Ui k="sources.empty.noIndexers.title" />.** Connect an indexer. See [Indexers](/docs/setup/indexers).
 - **<Ui k="sources.empty.failed.title" />.** See [An indexer doesn't respond or rejects requests](/docs/troubleshooting#indexer-error).
 - **<Ui k="sources.empty.nothing.title" />.** Refine the search as above. See also [Search finds nothing](/docs/troubleshooting#nothing-found).
 - **<Ui k="sources.empty.filtered.title" />.** Reset the filters or pick other values.
