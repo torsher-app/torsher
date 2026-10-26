@@ -3,6 +3,7 @@ import type { BlocklistItem } from '@torsher/api-client'
 import { useI18n } from 'vue-i18n'
 import { Skeleton } from '@/components/ui/skeleton'
 import LoadingButton from '~/components/LoadingButton.vue'
+import { episodesLabel } from '~/lib/follow'
 import { formatDate, formatDateTime } from '~/lib/format'
 
 const props = defineProps<{
@@ -26,6 +27,34 @@ const term = computed(() =>
       })
     : t('panel.follow.blocklist.forever'),
 )
+
+/** Запрет по сериям: «только S2E7–E8, S3E1» */
+const only = computed(() => {
+  const list = props.item.episodes
+
+  if (!list?.length)
+    return undefined
+
+  const seasons = [...new Set(list.map(item => item.season))]
+  const label = seasons
+    .map(season =>
+      episodesLabel(
+        season,
+        list
+          .filter(item => item.season === season)
+          .map(item => item.episode),
+      ),
+    )
+    .join(', ')
+
+  return t('panel.follow.blocklist.only', { episodes: label })
+})
+
+const details = computed(() =>
+  [text.blockReason(props.item.reason), only.value, term.value]
+    .filter(Boolean)
+    .join(' · '),
+)
 </script>
 
 <template>
@@ -46,7 +75,7 @@ const term = computed(() =>
       class="col-start-1 row-start-2 truncate text-[13px] text-muted-foreground md:col-start-2 md:row-start-1"
       :title="formatDateTime(item.createdAt, locale)"
     >
-      {{ text.blockReason(item.reason) }} · {{ term }}
+      {{ details }}
     </span>
     <LoadingButton
       variant="ghost"

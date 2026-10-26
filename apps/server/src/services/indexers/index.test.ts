@@ -24,6 +24,7 @@ import {
   checkIndexers,
   createManualIndexer,
   deleteManager,
+  hasSearchableIndexers,
   importManager,
   listIndexers,
   syncManager,
@@ -309,6 +310,40 @@ describe('deleteManager', () => {
 
     expect(deleteManager(manager.id, 'delete')).toBe(true)
     expect(listIndexers()).toHaveLength(0)
+  })
+})
+
+describe('hasSearchableIndexers', () => {
+  const caps = {
+    search: { available: true, params: ['q'] },
+    tvSearch: { available: false, params: [] },
+    movieSearch: { available: false, params: [] },
+    categories: [],
+  }
+
+  function insert(values: Partial<typeof indexers.$inferInsert>) {
+    getDb()
+      .insert(indexers)
+      .values({ name: 'Indexer', url: 'http://indexer.example/api', ...values })
+      .run()
+  }
+
+  it('без индексаторов источников нет', () => {
+    expect(hasSearchableIndexers()).toBe(false)
+  })
+
+  it('выключенный, исчезнувший из менеджера и без caps — не источники', () => {
+    insert({ caps, enabled: false })
+    insert({ caps, missing: true })
+    insert({ caps: null })
+
+    expect(hasSearchableIndexers()).toBe(false)
+  })
+
+  it('включённый с caps — источник, даже если сейчас не отвечает', () => {
+    insert({ caps, checkStatus: 'unreachable' })
+
+    expect(hasSearchableIndexers()).toBe(true)
   })
 })
 

@@ -48,6 +48,7 @@ import {
   followSummaries,
   titleFollowView,
 } from '../services/follow/views.ts'
+import { compareEpisodes, parseEpisodeKey } from '../services/follow/wanted.ts'
 import { parseCatalogId } from '../services/tmdb/mappers.ts'
 import { sendTmdbError } from './catalog.ts'
 
@@ -439,6 +440,8 @@ export const followRoutes: FastifyPluginAsyncZod = async (app) => {
         infoHash: row.infoHash,
         releaseTitle: row.releaseTitle,
         reason: row.reason,
+        episodes:
+          row.episodes?.map(parseEpisodeKey).sort(compareEpisodes) ?? null,
         createdAt: row.createdAt.toISOString(),
         expiresAt: row.expiresAt?.toISOString() ?? null,
       })),
@@ -453,14 +456,23 @@ export const followRoutes: FastifyPluginAsyncZod = async (app) => {
         operationId: 'postFollowBlocklist',
         tags: ['Follow'],
         body: blockReleaseBody,
-        response: { 200: messageResponse, ...ownerErrors },
+        response: {
+          200: messageResponse,
+          409: messageResponse,
+          ...ownerErrors,
+        },
       },
     },
     async (request, reply) => {
-      const { followId, infoHash } = request.body
+      const { followId, candidateId } = request.body
+      const result = blockFromSnapshot(followId, candidateId)
 
-      if (!blockFromSnapshot(followId, infoHash))
+      if (result === 'not_found')
         return reply.code(404).send({ message: 'Release not found' })
+
+      // Снимок прежней версии не знает показов раздачи без infohash
+      if (result === 'release_unknown')
+        return reply.code(409).send({ message: 'release_unknown' })
 
       return { message: 'Release blocked' }
     },

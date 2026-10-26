@@ -272,9 +272,9 @@
       "Original": "Original"
     },
     "empty": {
-      "noIndexers": {
-        "title": "No release sources",
-        "text": "Connect any Torznab indexer, for example Prowlarr or Jackett, in the control panel."
+      "notInLibrary": {
+        "title": "Not in your library",
+        "text": "Your library has no files of this title."
       },
       "nothing": {
         "title": "No releases found",
@@ -3318,6 +3318,7 @@
         "block": "Don't take this release",
         "blocked": "Release won't be taken",
         "blockFailed": "Couldn't add to the blocklist",
+        "blockStale": "This list is from an earlier check. Select Search now and try again after the search.",
         "inBlocklist": "In the blocklist"
       },
       "rejections": {
@@ -3435,6 +3436,7 @@
       "blocklist": {
         "until": "until {date}",
         "forever": "forever",
+        "only": "{episodes} only",
         "remove": "Remove from list",
         "removed": "Removed from the blocklist"
       },
@@ -3573,6 +3575,10 @@
     "failed": {
       "title": "The torrent did not open",
       "text": "Peers did not send the file list, or the torrent lacks this episode. Pick another one in Sources."
+    },
+    "notInLibrary": {
+      "title": "Not in your library",
+      "text": "Your library has no file of this episode."
     },
     "toSources": "To sources"
   },

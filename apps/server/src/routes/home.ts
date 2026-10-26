@@ -2,6 +2,7 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { messageResponse } from '../dto/common.ts'
 import { continueRow, homeQuery, homeResponse } from '../dto/home.ts'
 import { canManageLibrary, requireViewer } from '../middleware/auth.ts'
+import { hasSearchableIndexers } from '../services/indexers/index.ts'
 import {
   libraryFileRows,
   libraryHomeRows,
@@ -61,6 +62,8 @@ export const homeRoutes: FastifyPluginAsyncZod = async (app) => {
         ...libraryFileRows(mode, profileId),
       ]
 
+      const hasSources = hasSearchableIndexers()
+
       if (catalog.status === 'fulfilled') {
         return {
           rows: [
@@ -70,6 +73,7 @@ export const homeRoutes: FastifyPluginAsyncZod = async (app) => {
               items: withPosterRatings(row.items, profileId),
             })),
           ],
+          hasSources,
         }
       }
 
@@ -79,7 +83,7 @@ export const homeRoutes: FastifyPluginAsyncZod = async (app) => {
       const config = err instanceof TmdbError && err.kind === 'config'
 
       if (own.length > 0 && !config)
-        return { rows: own }
+        return { rows: own, hasSources }
 
       return sendTmdbError(reply, err)
     },

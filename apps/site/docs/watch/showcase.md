@@ -66,6 +66,8 @@ The buttons:
 - **<Ui k="follow.follow" />**: new episodes download on their own. See [Follow](/docs/watch/follow).
 - Icon buttons: <Ui k="title.sources" /> (when <Ui k="title.watch" /> plays right away), <Ui k="actions.watchlist" />, <Ui k="actions.rate" /> and <Ui k="actions.more" />, which opens the actions menu.
 
+Until the server has an indexer, the showcase works as a media library. Titles from your library play as usual. Other titles have no <Ui k="title.watch" />, download or <Ui k="follow.follow" /> buttons: you can add them to <Ui k="actions.watchlist" /> and rate them. See [Indexers](/docs/setup/indexers).
+
 Press down for the rest of the page:
 
 - **<Ui k="title.episodes" />** of a series: season chips and a row of episodes. OK on an episode marks it watched or clears the mark; episodes are watched through <Ui k="title.watch" />. The first tile, <Ui k="title.episodeList.open" />, opens the season as a list with descriptions.

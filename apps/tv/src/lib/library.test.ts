@@ -1,6 +1,6 @@
 import type { LibraryFile } from '@torsher/api-client'
 import { describe, expect, it } from 'vitest'
-import { libraryFileFor, libraryTarget } from './library.ts'
+import { firstLibraryFile, libraryFileFor, libraryTarget } from './library.ts'
 
 function file(
   id: string,
@@ -21,6 +21,13 @@ function file(
 
 describe('файлы библиотеки', () => {
   const show = [file('a', 1, 1), file('b', 1, 2, 3), file('c', 2, 1)]
+
+  it('первый файл — самая ранняя серия, в каком бы порядке ни пришли', () => {
+    expect(firstLibraryFile([file('c', 2, 1), file('b', 1, 2, 3)])?.id).toBe(
+      'b',
+    )
+    expect(firstLibraryFile([])).toBeUndefined()
+  })
 
   it('серия — по номеру, в том числе внутри файла с несколькими сериями', () => {
     expect(libraryFileFor(show, { season: 1, episode: 3 })?.id).toBe('b')

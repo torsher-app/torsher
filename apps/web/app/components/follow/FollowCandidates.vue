@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { FollowCandidate } from '@torsher/api-client'
-import { getErrorMessage } from '@torsher/api-client'
+import { getErrorMessage, getErrorStatus } from '@torsher/api-client'
 import { BanIcon, RefreshCwIcon } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 import { toast } from 'vue-sonner'
@@ -66,21 +66,22 @@ function reasons(item: FollowCandidate) {
 }
 
 async function onBlock(item: FollowCandidate) {
-  if (!item.infoHash)
-    return
-
   blocking.value = item.id
 
   try {
-    await store.block(props.followId, item.infoHash)
+    await store.block(props.followId, item.id)
     toast.success(t('panel.follow.candidates.blocked'), {
       description: item.title,
     })
     await load()
   }
   catch (err) {
+    // Снимок прежней версии не знает, где показали раздачу без infohash
     toast.error(t('panel.follow.candidates.blockFailed'), {
-      description: await getErrorMessage(err),
+      description:
+        getErrorStatus(err) === 409
+          ? t('panel.follow.candidates.blockStale')
+          : await getErrorMessage(err),
     })
   }
   finally {
@@ -136,10 +137,7 @@ onMounted(load)
             class="min-w-0 text-[12.5px] text-muted-foreground"
           >{{ reasons(item) }}</span>
         </span>
-        <span
-          v-if="item.verdict !== 'grab' && item.infoHash"
-          class="flex items-center"
-        >
+        <span v-if="item.verdict !== 'grab'" class="flex items-center">
           <span
             v-if="item.blocked"
             class="flex items-center gap-1.5 text-[12.5px] text-muted-foreground"

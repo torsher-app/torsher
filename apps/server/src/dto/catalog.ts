@@ -209,6 +209,10 @@ export const titleDetails = card
     episodeCount: z.number().int().optional(),
     // «Следить» на сервере; null — за тайтлом не следят
     follow: titleFollowBrief.nullable().optional(),
+    // Есть ли на сервере источники раздач: без них тайтл не из библиотеки
+    // смотреть, качать и «Следить» нечем. Как и `follow`, добавляет роут:
+    // в кэш TMDB признак не попадает
+    hasSources: z.boolean().optional(),
   })
   .meta({ id: 'titleDetails' })
 

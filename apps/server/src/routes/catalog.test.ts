@@ -10,7 +10,7 @@ import {
 import { createApp } from '../app.ts'
 import { ACCESS_TOKEN_COOKIE } from '../config.ts'
 import { getDb, migrateDb } from '../db/index.ts'
-import { titleProgress, users } from '../db/schema.ts'
+import { indexers, titleProgress, users } from '../db/schema.ts'
 import { defaultProfile } from '../services/profiles/index.ts'
 import {
   collection,
@@ -163,7 +163,37 @@ describe('get /api/catalog/titles/:id', () => {
       title: 'Матрица',
       runtime: 136,
       genres: ['боевик', 'фантастика'],
+      hasSources: false,
     })
+  })
+
+  it('отмечает, что на сервере есть источники раздач', async () => {
+    fetchMock.mockResolvedValue(json(movie))
+    getDb()
+      .insert(indexers)
+      .values({
+        name: 'Indexer',
+        url: 'https://indexer.example/torznab',
+        caps: {
+          search: { available: true, params: ['q'] },
+          tvSearch: { available: false, params: [] },
+          movieSearch: { available: false, params: [] },
+          categories: [],
+        },
+      })
+      .run()
+
+    try {
+      const res = await app.inject({
+        url: `/api/catalog/titles/${encodeURIComponent('tmdb:movie:603')}?language=ru-RU`,
+        cookies: authed(),
+      })
+
+      expect(res.json()).toMatchObject({ hasSources: true })
+    }
+    finally {
+      getDb().delete(indexers).run()
+    }
   })
 })
 

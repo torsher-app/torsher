@@ -41,7 +41,7 @@ Each row shows the rules in a phrase, the next episode and the state. Click a ro
 
 - **<Ui k="panel.follow.activity.tabs.queue" />.** Releases held back and until when, downloads of followed titles with their progress, and episodes waiting for space.
 - **<Ui k="panel.follow.activity.tabs.history" />.** What Torsher found, downloaded, replaced, rejected and searched, for 90 days. A release that looks like the title but isn't certain has two buttons: <Ui k="panel.follow.unsure.confirm" /> remembers its name for this title and passes it to the automation, <Ui k="panel.follow.unsure.dismiss" /> drops it.
-- **<Ui k="panel.follow.activity.tabs.blocklist" />.** Releases that stalled (no peers and no progress for 6 hours, kept out for 7 days), releases with none of the wanted episodes inside, and releases you declined. Select <Ui k="panel.follow.blocklist.remove" /> to let one be taken again.
+- **<Ui k="panel.follow.activity.tabs.blocklist" />.** Releases that stalled (no peers and no progress for 6 hours, kept out for 7 days), releases whose files lack episodes the name promises (when only some are missing, the row lists them, and only those are kept out), and releases you declined. Select <Ui k="panel.follow.blocklist.remove" /> to let one be taken again.
 
 ## Settings
 

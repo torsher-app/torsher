@@ -216,6 +216,8 @@ export const homeRow = z
 export const homeResponse = z
   .object({
     rows: z.array(homeRow),
+    // Есть ли на сервере источники раздач, как у деталей тайтла
+    hasSources: z.boolean(),
   })
   .meta({ id: 'homeResponse' })
 
