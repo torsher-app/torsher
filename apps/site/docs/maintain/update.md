@@ -40,6 +40,8 @@ The `image:` line in `docker-compose.yml` decides which version you get:
 
 `<major>.<minor>` and `<major>` tags, such as `1.0`, follow the newest stable release in that line.
 
+The same image with the same tags is on Docker Hub as `torsherapp/torsher`, for example `torsherapp/torsher:latest`. Both names give you the same image, so pick one and keep it.
+
 ## 2. Pull the new image
 
 ```bash
@@ -47,7 +49,7 @@ docker compose pull
 ```
 
 ::: details Verify the image signature
-Release images are signed by the project's release workflow on GitHub with [Sigstore cosign](https://docs.sigstore.dev/cosign/verifying/verify/), without a key. With cosign installed, check the version you pulled:
+Release images are signed by the project's release workflow on GitHub with [Sigstore cosign](https://docs.sigstore.dev/cosign/verifying/verify/), without a key. With cosign installed, check the version you pulled. The same command works for `torsherapp/torsher:<version>` from Docker Hub:
 
 ```bash
 cosign verify ghcr.io/torsher-app/torsher:<version> \
