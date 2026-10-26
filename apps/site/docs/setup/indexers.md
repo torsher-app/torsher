@@ -51,6 +51,8 @@ Already past the wizard? Use Option B with the address `http://prowlarr:9696`.
 
    For Jackett you can paste the address straight from your browser, such as `http://<server-address>:9117/UI/Dashboard`, or the Torznab feed address Jackett copies for an indexer: Torsher keeps the part before `/UI` or `/api`. If Jackett runs under a base path, it stays in the address: `http://<server-address>:9117/jackett`.
 
+   For Prowlarr you can paste the address straight from your browser on any Prowlarr page, such as `http://<server-address>:9696/settings/general`, or an indexer's Torznab feed address: Torsher keeps the part before the page or `/api`. If Prowlarr runs under a URL base, it stays in the address: `http://<server-address>:9696/prowlarr`.
+
 4. Select <Ui k="panel.sources.importDialog.submit" />. Torsher adds every indexer of the manager. Jackett hands over only the indexers you have configured in it; with none, Torsher connects the manager and adds nothing until you configure indexers in Jackett and sync.
 
 Torsher doesn't watch the manager by itself. When you add or remove indexers there, open <Ui k="panel.nav.sources" /> and use the sync button on the manager's card: new indexers are added, and ones gone from the manager are marked rather than deleted.

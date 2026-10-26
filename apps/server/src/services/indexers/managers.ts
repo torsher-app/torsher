@@ -28,8 +28,10 @@ export interface RemoteIndexer {
 
 /**
  * Адрес менеджера без хвостового слеша, query и hash; путь (URL base)
- * сохраняется. У Jackett адрес копируют из браузера (`/UI/Dashboard`) или
- * кнопкой Torznab-ленты (`/api/v2.0/...`): URL base — то, что перед ними.
+ * сохраняется. Адрес копируют из браузера с любой страницы интерфейса или
+ * Torznab-адрес индексатора: у Jackett — `/UI/Dashboard` и `/api/v2.0/...`,
+ * у Prowlarr — маршруты интерфейса, `/{id}/api` и `/api/v1/...`. URL base —
+ * то, что перед ними, поэтому отрезаются только известные маршруты.
  */
 export function normalizeManagerUrl(input: string, kind: IndexerManagerKind) {
   const url = new URL(input)
@@ -40,6 +42,13 @@ export function normalizeManagerUrl(input: string, kind: IndexerManagerKind) {
 
   if (kind === 'jackett')
     url.pathname = url.pathname.replace(/\/(?:UI|api\/v2\.0)(?:\/.*)?$/i, '')
+
+  if (kind === 'prowlarr') {
+    url.pathname = url.pathname.replace(
+      /\/(?:indexers|search|history|settings|system|login|api|\d+\/(?:api|download))(?:\/.*)?$/i,
+      '',
+    )
+  }
 
   return url.href.replace(/\/+$/, '')
 }
