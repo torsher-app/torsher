@@ -1,5 +1,6 @@
 import type { HeadConfig } from 'vitepress'
 import { defineConfig } from 'vitepress'
+import server from '../../server/package.json' with { type: 'json' }
 import { sidebar } from './sidebar.ts'
 
 const siteUrl = 'https://torsher.app'
@@ -80,6 +81,14 @@ export default defineConfig({
       { text: 'Docs', link: '/docs/', activeMatch: '^/docs/' },
       { text: 'Install', link: '/docs/install/docker-compose' },
       { text: 'Donate', link: '/donate' },
+      {
+        // The product version is the server package version, the same one the release tag must match
+        text: server.version,
+        items: [
+          { text: 'Update', link: '/docs/maintain/update' },
+          { text: 'Changelog', link: `${repoUrl}/releases` },
+        ],
+      },
     ],
 
     sidebar: { '/docs/': sidebar },
