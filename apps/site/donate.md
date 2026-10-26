@@ -12,11 +12,9 @@ Torsher is open source under the AGPL-3.0 license and built by one developer. Do
 
 ## Donate
 
-Donation links appear with the first public release.
-
 | Platform | For | Status |
 | --- | --- | --- |
-| PayPal | One-time or monthly, by card or from a PayPal account | <Badge type="info" text="soon" /> |
+| [PayPal](https://paypal.me/antongithub) | One-time, by card or from a PayPal account | [Donate](https://paypal.me/antongithub) |
 | Open Collective | One-time or monthly, by card, with public accounting | <Badge type="info" text="soon" /> |
 
 ## What donations pay for
