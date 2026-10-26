@@ -1,4 +1,4 @@
-# Copy to docker-compose.yml and adjust the values below.
+# docker-compose.yml for Torsher. Adjust the values below, then start it:
 #
 #   docker compose up -d                        # Torsher only
 #   docker compose --profile prowlarr up -d     # Torsher and Prowlarr
