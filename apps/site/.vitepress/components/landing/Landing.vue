@@ -163,9 +163,9 @@ const platforms = [
   },
   {
     name: 'LG webOS',
-    stage: 'Available',
+    stage: 'Developer Mode',
     ready: true,
-    text: 'A thin TV app that plays most files directly on the TV.',
+    text: 'A thin TV app that plays most files directly on the TV. For now it installs through Developer Mode.',
   },
   {
     name: 'Android TV',
@@ -1281,6 +1281,7 @@ h1 {
   gap: 10px;
   padding: 22px;
   border-radius: 16px;
+  container-type: inline-size;
 }
 
 .platform-head {
@@ -1288,6 +1289,15 @@ h1 {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
+}
+
+/* The longest name with its chip needs about 250px; in a narrower card the
+   name would break onto two lines, so the chip moves under it instead */
+@container (max-width: 260px) {
+  .platform-head {
+    flex-direction: column;
+    gap: 8px;
+  }
 }
 
 .platform-name {
