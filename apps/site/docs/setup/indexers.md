@@ -74,8 +74,6 @@ Open any title on the TV and select <Ui k="title.watch" />. The <Ui k="sources.t
 - **Jackett runs outside Docker and the server can't reach it.** On Windows and macOS Jackett accepts only connections from the same computer by default. In the Jackett dashboard, turn on **External access** and select **Apply server settings**.
 - **The import adds no indexers.** The manager has none configured. Add indexers in it, then use the sync button on the manager's card.
 - **Some indexers are not responding.** The <Ui k="sources.title" /> screen says how many didn't answer; the others are searched anyway. Check them in the manager. If the server can't reach a site directly, add a route through your proxy in [Network](/docs/setup/network).
-- **An indexer behind Cloudflare doesn't answer in Jackett.** Jackett needs FlareSolverr for such sites: run it and enter its address in **FlareSolverr API URL** in the Jackett dashboard. When FlareSolverr can't pass the check, Jackett waits about a minute, and Torsher counts the indexer as not responding.
-
 ## Next
 
 [TMDB key](/docs/setup/tmdb), if the catalog is empty, or [Connect a device](/docs/tv/connect).
