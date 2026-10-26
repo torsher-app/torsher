@@ -269,6 +269,35 @@ describe('importManager', () => {
     expect(listIndexers()).toHaveLength(2)
   })
 
+  it('prowlarr: адрес страницы интерфейса или Torznab-ленты — тот же менеджер', async () => {
+    fetchMock.mockImplementation(async () => json(prowlarrIndexers))
+
+    const urls = [
+      'http://manager.example:9696/prowlarr/settings/general',
+      'http://manager.example:9696/prowlarr/',
+      'http://manager.example:9696/prowlarr/indexers/stats',
+      'http://manager.example:9696/prowlarr/system/status',
+      'http://manager.example:9696/prowlarr/login?returnUrl=%2Fprowlarr%2Fsearch',
+      'http://manager.example:9696/prowlarr/1/api?t=caps',
+      'http://manager.example:9696/prowlarr/api/v1/indexer/1/newznab',
+    ]
+    const results = []
+
+    for (const url of urls) {
+      results.push(
+        await importManager({ kind: 'prowlarr', url, apiKey: 'key' }),
+      )
+    }
+
+    for (const result of results) {
+      expect(result.manager.url).toBe('http://manager.example:9696/prowlarr')
+      expect(result.manager.id).toBe(results[0]!.manager.id)
+    }
+    expect(String(fetchMock.mock.calls[0]![0])).toBe(
+      'http://manager.example:9696/prowlarr/api/v1/indexer',
+    )
+  })
+
   it('jackett: caps из списка сохраняются сразу', async () => {
     fetchMock.mockResolvedValue(new Response(jackettIndexersXml))
 
