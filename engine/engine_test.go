@@ -32,6 +32,16 @@ func offline(cfg *torrent.ClientConfig) {
 	cfg.SetListenAddr("127.0.0.1:0")
 }
 
+// Сторонний пир в тестах — тоже anacrolix v1.61: без короткого keepalive его
+// писатель теряет пробуждение так же, как у движка (`peerKeepAlive`)
+func peerConfig() *torrent.ClientConfig {
+	cfg := torrent.NewDefaultClientConfig()
+	offline(cfg)
+	cfg.KeepAliveTimeout = peerKeepAlive
+
+	return cfg
+}
+
 type fixture struct {
 	content []byte
 	meta    *metainfo.MetaInfo
@@ -76,8 +86,7 @@ func newNamedFixture(t *testing.T, name string, size int) fixture {
 		t.Fatal(err)
 	}
 
-	cfg := torrent.NewDefaultClientConfig()
-	offline(cfg)
+	cfg := peerConfig()
 	cfg.Seed = true
 	cfg.DataDir = dir
 
@@ -632,8 +641,7 @@ func TestDownloadedDataIsSeeded(t *testing.T) {
 	// Сидер ушёл: данные есть только у движка
 	fx.seeder.Close()
 
-	cfg := torrent.NewDefaultClientConfig()
-	offline(cfg)
+	cfg := peerConfig()
 	cfg.DataDir = t.TempDir()
 
 	leecher, err := torrent.NewClient(cfg)
@@ -780,8 +788,7 @@ func newTwoFileFixture(t *testing.T) (fixture, []byte, []byte) {
 		t.Fatal(err)
 	}
 
-	cfg := torrent.NewDefaultClientConfig()
-	offline(cfg)
+	cfg := peerConfig()
 	cfg.Seed = true
 	cfg.DataDir = root
 
@@ -1113,5 +1120,102 @@ func TestLibraryLogDropsCanceledReads(t *testing.T) {
 
 	if len(lines) != 1 || !strings.Contains(lines[0], `msg="error reading"`) {
 		t.Fatalf("journal %q", out.String())
+	}
+}
+
+// Клиент с конфигурацией движка, но без HTTP API: обмен движка с движком
+func newEngineClient(t *testing.T) (*torrent.Client, string) {
+	t.Helper()
+
+	dataDir := t.TempDir()
+	downloads := filepath.Join(dataDir, "downloads")
+	cfg, _, err := newClientConfig(downloads, dataDir, defaultOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	offline(cfg)
+
+	client, err := torrent.NewClient(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return client, downloads
+}
+
+// Писатель соединения anacrolix v1.61 изредка теряет пробуждение
+// (`peerKeepAlive`): у качающего не уходит Interested или запрос, у
+// отдающего — кусок. Без короткого keepalive такая закачка стоит минуту.
+// Частота — несколько процентов коротких обменов под `-race`, поэтому их сотни
+func TestEnginesExchangeWithoutStalls(t *testing.T) {
+	const rounds, parallel = 16, 16
+
+	for round := range rounds {
+		exchangeRound(t, round, parallel)
+	}
+}
+
+func exchangeRound(t *testing.T, round, parallel int) {
+	t.Helper()
+
+	var leechers []*torrent.Torrent
+	var clients []*torrent.Client
+	// И после `t.Fatal`: сотни клиентов под `-race` упираются в предел горутин
+	defer func() {
+		for _, client := range clients {
+			client.Close()
+		}
+	}()
+
+	for i := range parallel {
+		name := fmt.Sprintf("Exchange.%d.%d.mkv", round, i)
+		content := make([]byte, 64<<10)
+		_, _ = rand.Read(content)
+
+		seeder, downloads := newEngineClient(t)
+		leecher, _ := newEngineClient(t)
+		clients = append(clients, seeder, leecher)
+
+		if err := os.WriteFile(filepath.Join(downloads, name), content, 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		info := metainfo.Info{PieceLength: 32 << 10}
+		if err := info.BuildFromFilePath(filepath.Join(downloads, name)); err != nil {
+			t.Fatal(err)
+		}
+		infoBytes, err := bencode.Marshal(info)
+		if err != nil {
+			t.Fatal(err)
+		}
+		meta := &metainfo.MetaInfo{InfoBytes: infoBytes}
+
+		st, err := seeder.AddTorrent(meta)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := st.VerifyData(); err != nil {
+			t.Fatal(err)
+		}
+
+		lt, err := leecher.AddTorrent(meta)
+		if err != nil {
+			t.Fatal(err)
+		}
+		lt.DownloadAll()
+		lt.AddClientPeer(seeder)
+		leechers = append(leechers, lt)
+	}
+
+	// Зависание с каждой стороны лечится за `peerKeepAlive`, без него — за
+	// минуту: она в срок не влезает
+	deadline := time.Now().Add(20 * time.Second)
+	for _, lt := range leechers {
+		for lt.BytesMissing() != 0 {
+			if time.Now().After(deadline) {
+				t.Fatalf("round %d: exchange stalled with %d bytes missing", round, lt.BytesMissing())
+			}
+			time.Sleep(20 * time.Millisecond)
+		}
 	}
 }

@@ -237,8 +237,7 @@ func TestSeedFlagAndUploadedSurviveRestart(t *testing.T) {
 func newLeecher(t *testing.T, fx fixture) *torrent.Torrent {
 	t.Helper()
 
-	cfg := torrent.NewDefaultClientConfig()
-	offline(cfg)
+	cfg := peerConfig()
 	cfg.DataDir = t.TempDir()
 
 	client, err := torrent.NewClient(cfg)

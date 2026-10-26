@@ -144,6 +144,14 @@ func fileStorage(dir string, completion storage.PieceCompletion) storage.ClientI
 	})
 }
 
+// Писатель соединения в anacrolix v1.61 теряет пробуждение: пересчёт
+// запросов или готовый к отдаче кусок, пришедшие между его проходом и
+// засыпанием, ждут следующего события, а с единственным пиром его нет —
+// обмен встаёт при живом незадушенном соединении. Будит писателя тогда
+// только таймер keepalive (по умолчанию минута), поэтому он короткий.
+// Исправлено в upstream (#1078, #1071) после v1.61.0
+const peerKeepAlive = 5 * time.Second
+
 // Конфигурация клиента общая для движка и тестов: тесты отключают сеть наружу
 func newClientConfig(downloads, dataDir string, opts engineOptions) (*torrent.ClientConfig, clientParts, error) {
 	if err := os.MkdirAll(downloads, 0o755); err != nil {
@@ -173,6 +181,7 @@ func newClientConfig(downloads, dataDir string, opts engineOptions) (*torrent.Cl
 		cfg.CryptoProvides = mse.CryptoMethodRC4
 		cfg.CryptoSelector = func(mse.CryptoMethod) mse.CryptoMethod { return mse.CryptoMethodRC4 }
 	}
+	cfg.KeepAliveTimeout = peerKeepAlive
 	cfg.EstablishedConnsPerTorrent = opts.live.ConnsPerTorrent
 	// Свои ограничители, а не общий `unlimited` пакета: `SetLimit` у него
 	// поменял бы лимит всем клиентам процесса
