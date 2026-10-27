@@ -34,10 +34,12 @@ Near the bottom are your avatar and name (OK switches the profile, see [Profiles
 
 The top of the screen shows the focused title: its backdrop, ratings, year, genres and description, with a hint of what OK does. Below are rows. Your own rows come first, and only when they have something:
 
-- <Ui k="home.rows.continue" />: what you started. OK resumes right away.
+- <Ui k="home.rows.continue" />: what you watched in the last 16 weeks, and new episodes of series you follow. OK resumes right away. Older titles you haven't finished stay in [Mine](/docs/watch/mine).
 - <Ui k="home.rows.library" />: titles in your library.
 - <Ui k="home.rows.newEpisodes" />: fresh episodes of series you watch.
 - <Ui k="home.rows.watchlist" /> and the collections shown on home.
+
+A row holds up to 20 titles. When <Ui k="home.rows.continue" />, <Ui k="home.rows.watchlist" /> or a collection has more, the last card is <Ui k="home.all" /> with the total: OK opens the whole list in [Mine](/docs/watch/mine).
 
 Then come catalog rows such as <Ui k="home.rows.trending" />, <Ui k="home.rows.popularMovies" /> and <Ui k="home.rows.onTheAir" />. They come from TMDB through your server; see [TMDB key](/docs/setup/tmdb) if they are empty.
 
@@ -83,10 +85,11 @@ Press down for the rest of the page:
 | **OK** | Open or select what's in focus |
 | Hold **OK** | Open the actions menu of a poster |
 | **Back** | Go one screen up |
+| Page Up, Page Down | Scroll the grid in <Ui k="nav.mine" /> a screen at a time, on a keyboard or a remote that has them |
 | Digits | Rate a title, enter a PIN |
 | Play, Pause, rewind, forward, Stop | Work in the player |
 
-**Back** goes up a level rather than retracing every step: from the player to the file list, then to <Ui k="sources.title" />, the title page and the screen you opened it from. Every section of the side menu goes back to <Ui k="nav.home" />. On <Ui k="nav.home" />, Back exits the app on a TV; newer LG TVs ask first.
+**Back** goes up a level rather than retracing every step: from the player to the file list, then to <Ui k="sources.title" />, the title page and the screen you opened it from. Every section of the side menu goes back to <Ui k="nav.home" />. On <Ui k="nav.home" />, Back exits the app on a TV; newer LG TVs ask first. Deep in the grid of <Ui k="nav.mine" />, Back first jumps to the top of the grid.
 
 ### The actions menu
 

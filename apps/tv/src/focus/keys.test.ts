@@ -22,3 +22,10 @@ describe('readKey: цифры', () => {
     expect(readKey(key(49, { shiftKey: true }))).toBeUndefined()
   })
 })
+
+describe('readKey: листание экранами', () => {
+  it('шаг на экран — PageUp и PageDown', () => {
+    expect(readKey(key(33))).toEqual({ type: 'page', direction: 'up' })
+    expect(readKey(key(34))).toEqual({ type: 'page', direction: 'down' })
+  })
+})

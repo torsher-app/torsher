@@ -1,18 +1,36 @@
 import type { ContinueCard, ContinueRow, HomeMode } from '../../dto/home.ts'
+import type { MineKind } from '../../dto/mine.ts'
 import type { FollowNewEpisode } from '../follow/badges.ts'
 import type { ResumeTarget } from './resume.ts'
 import { followNewEpisodes } from '../follow/badges.ts'
 import { libraryTitleSet } from '../library/home.ts'
-import { droppedSince } from '../mine/index.ts'
+import { droppedSince, watchingTotal } from '../mine/index.ts'
 import { getSeason, getTitle } from '../tmdb/index.ts'
 import { parseCatalogId, withImageSize } from '../tmdb/mappers.ts'
 import { episodeProgress } from './progress.ts'
-import { excludedFromContinue, resumeTarget, watchedTitles } from './resume.ts'
+import {
+  excludedFromContinue,
+  playedBefore,
+  resumeTarget,
+  watchedTitles,
+} from './resume.ts'
 
 const ROW_LIMIT = 20
 // С запасом: часть тайтлов отсеется — досмотрены, брошены или без метаданных
 const CANDIDATE_LIMIT = 40
 const CARD_BACKDROP_SIZE = 'w780'
+// Ряд главной — то, что смотрят сейчас: тайтл без просмотров дольше 16 недель
+// остаётся только в «Моё» → «Продолжить» (как срок Continue Watching у Plex)
+export const CONTINUE_MAX_AGE_DAYS = 112
+const DAY_MS = 24 * 60 * 60 * 1000
+
+// Тип раздела «Моё», куда ведёт плитка «Все»; у «Библиотеки» двойника нет
+const MODE_KIND: Record<HomeMode, MineKind | undefined> = {
+  all: 'all',
+  movies: 'movie',
+  series: 'series',
+  library: undefined,
+}
 
 const MODE_TYPE: Record<HomeMode, 'movie' | 'tv' | undefined> = {
   all: undefined,
@@ -119,8 +137,10 @@ export function freshFollowEpisodes(profileId: string) {
 
 /**
  * Ряд «Продолжить»: сначала новые серии слежений профиля с колокольчиком,
- * затем тайтлы с незаконченным просмотром, свежие первыми. Тайтл, чьи
- * метаданные не загрузились, пропускается, а не роняет ряд.
+ * затем тайтлы с незаконченным просмотром за последние 16 недель, свежие
+ * первыми. Тайтл, чьи метаданные не загрузились, пропускается, а не роняет
+ * ряд. `total` — сколько в «Моё» → «Продолжить», только когда за рядом
+ * что-то осталось: иначе считать статусы незачем.
  */
 export async function getContinueRow(
   profileId: string,
@@ -138,9 +158,10 @@ export async function getContinueRow(
       !!ref && (!type || ref.type === type) && (!library || library.has(id))
     )
   }
+  const since = new Date(Date.now() - CONTINUE_MAX_AGE_DAYS * DAY_MS)
   const fresh = freshFollowEpisodes(profileId).filter(([id]) => fits(id))
   const freshIds = new Set(fresh.map(([id]) => id))
-  const ids = watchedTitles(profileId, CANDIDATE_LIMIT).filter(
+  const ids = watchedTitles(profileId, CANDIDATE_LIMIT, since).filter(
     id => fits(id) && !excluded.has(id) && !freshIds.has(id),
   )
   const results = await Promise.allSettled([
@@ -152,11 +173,18 @@ export async function getContinueRow(
       result.status === 'fulfilled' && result.value ? [result.value] : [],
     )
     .slice(0, ROW_LIMIT)
+  const kind = MODE_KIND[mode]
+  const hidden = items.length === ROW_LIMIT || playedBefore(profileId, since)
+  const total
+    = kind && hidden
+      ? await watchingTotal(profileId, language, kind).catch(() => undefined)
+      : undefined
 
   return {
     id: 'continue',
     kind: 'continue',
     title: 'home.rows.continue',
     items,
+    ...(total !== undefined && { total }),
   }
 }

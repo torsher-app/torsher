@@ -22,6 +22,7 @@ import {
   markWatched,
   saveTitleProgress,
 } from '../services/sources/progress.ts'
+import { CONTINUE_MAX_AGE_DAYS } from '../services/sources/continue.ts'
 import { nextAiredEpisode, resumeTarget } from '../services/sources/resume.ts'
 import { isWatched } from '../services/torrents/playback.ts'
 import {
@@ -39,6 +40,7 @@ const owner = { [ACCESS_TOKEN_COOKIE]: signToken('owner', 'user_access') }
 const SERIES = 'tmdb:tv:2000'
 const MOVIE = 'tmdb:movie:603'
 const EPISODE = 52 * 60
+const DAY_MS = 24 * 60 * 60 * 1000
 
 let profileId = ''
 let tmdbDown = false
@@ -319,8 +321,8 @@ describe('get /api/home/continue', () => {
   })
 
   it('свежие первыми, «Сериалы» без фильмов', async () => {
-    watched(SERIES, 2, 1, 600, new Date(1000))
-    watched(MOVIE, 0, 0, 1200, new Date(2000), 's1', 0)
+    watched(SERIES, 2, 1, 600, new Date(Date.now() - 2 * DAY_MS))
+    watched(MOVIE, 0, 0, 1200, new Date(Date.now() - DAY_MS), 's1', 0)
 
     const all = await continueItems()
 
@@ -356,6 +358,63 @@ describe('get /api/home/continue', () => {
     expect(await continueItems()).toEqual([
       expect.objectContaining({ id: SERIES, position: 900 }),
     ])
+  })
+
+  it('тайтл без просмотров дольше 16 недель — только в «Моё», ряд даёт число', async () => {
+    watched(SERIES, 2, 1, 600)
+    watched(
+      MOVIE,
+      0,
+      0,
+      1200,
+      new Date(Date.now() - (CONTINUE_MAX_AGE_DAYS + 1) * DAY_MS),
+      's1',
+      0,
+    )
+
+    const res = await app.inject({
+      url: '/api/home/continue',
+      cookies: owner,
+    })
+
+    expect(res.json()).toMatchObject({ items: [{ id: SERIES }], total: 2 })
+
+    const mine = await app.inject({
+      url: '/api/mine/items?section=continue',
+      cookies: owner,
+    })
+
+    expect(mine.json().items.map((item: { id: string }) => item.id)).toEqual([
+      SERIES,
+      MOVIE,
+    ])
+
+    // В «Сериалах» — число сериалов; у «Библиотеки» раздела-двойника нет
+    const series = await app.inject({
+      url: '/api/home/continue?mode=series',
+      cookies: owner,
+    })
+
+    expect(series.json()).toMatchObject({ items: [{ id: SERIES }], total: 1 })
+
+    const library = await app.inject({
+      url: '/api/home/continue?mode=library',
+      cookies: owner,
+    })
+
+    expect(library.json()).not.toHaveProperty('total')
+  })
+
+  it('всё в ряду — без числа', async () => {
+    watched(SERIES, 2, 1, 600)
+
+    const res = await app.inject({
+      url: '/api/home/continue',
+      cookies: owner,
+    })
+
+    expect(res.json().items).toHaveLength(1)
+    expect(res.json()).not.toHaveProperty('total')
   })
 
   it('чужой профиль прогресса не видит', async () => {

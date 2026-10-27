@@ -9,6 +9,12 @@ const DIRECTIONS: Record<number, Direction> = {
 }
 
 const ENTER = 13
+// PageUp и PageDown: клавиатура и пульты, которые их шлют. CH+/CH− пульта LG
+// приложениям не приходят, поэтому листание экранами — не единственный путь
+const PAGES: Record<number, 'up' | 'down'> = {
+  33: 'up',
+  34: 'down',
+}
 // Клавиша контекстного меню в браузере
 const CONTEXT_MENU = 93
 const BACK = new Set([
@@ -39,6 +45,7 @@ export type KeyAction
   = | { type: 'move', direction: Direction }
     | { type: 'enter' }
     | { type: 'back' }
+    | { type: 'page', direction: 'up' | 'down' }
     | { type: 'media', key: MediaKey }
     | { type: 'digit', digit: number }
     | { type: 'menu' }
@@ -76,6 +83,11 @@ export function readKey(event: KeyboardEvent): KeyAction | undefined {
 
   if (event.keyCode === CONTEXT_MENU && !inTextField)
     return { type: 'menu' }
+
+  const page = PAGES[event.keyCode]
+
+  if (page && !inTextField)
+    return { type: 'page', direction: page }
 
   if (BACK.has(event.keyCode) && !(inTextField && event.keyCode === 8))
     return { type: 'back' }

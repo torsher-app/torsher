@@ -2,13 +2,19 @@ import type { CatalogRow } from '../../dto/home.ts'
 import { visibleCollections } from '../collections/index.ts'
 import { logFor } from '../logs/index.ts'
 import { freshFollowEpisodes } from '../sources/continue.ts'
-import { collectionCards, profileStates, watchlistCards } from './index.ts'
+import {
+  collectionCards,
+  profileStates,
+  watchlistCards,
+  watchlistTotal,
+} from './index.ts'
 import { newEpisodeCards } from './newEpisodes.ts'
 
 const ROW_LIMIT = 20
 
 /**
  * Личные ряды главной: «Новые серии», «Позже» и подборки с «На главной».
+ * У «Позже» и подборок `total` — сколько всего в их разделе «Моё».
  * Пустые не отдаются, упавший ряд не роняет главную. Сериал с новой серией
  * «Следить» уже стоит в «Продолжить» с колокольчиком — в «Новых сериях» его нет.
  */
@@ -41,6 +47,7 @@ export async function personalHomeRows(
       kind: 'posters',
       title: 'home.rows.watchlist',
       items,
+      total: watchlistTotal(profileId),
     })),
     ...collections.map(collection =>
       collectionCards(collection.id, language, ROW_LIMIT).then(items => ({
@@ -50,6 +57,7 @@ export async function personalHomeRows(
         ref: collection.id,
         name: collection.name,
         items,
+        total: collection.count,
       })),
     ),
   ]

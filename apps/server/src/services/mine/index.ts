@@ -488,6 +488,28 @@ export async function mineSections(profileId: string, language: string) {
   ]
 }
 
+/** Сколько тайтлов в «Позже»: число плитки «Все» ряда главной */
+export function watchlistTotal(profileId: string) {
+  return listEntries(profileId, 'watchlistAt').length
+}
+
+/**
+ * Сколько в «Моё» → «Продолжить» (статус «Смотрю»), с фильтром по типу —
+ * как `total` раздела: число плитки «Все» ряда «Продолжить»
+ */
+export async function watchingTotal(
+  profileId: string,
+  language: string,
+  kind: MineKind,
+) {
+  const states = await profileStates(profileId, language)
+
+  return states.filter(
+    state =>
+      state.status === 'watching' && (kind === 'all' || state.kind === kind),
+  ).length
+}
+
 /** Карточки «Позже» для ряда главной: свежие сверху */
 export async function watchlistCards(
   profileId: string,
