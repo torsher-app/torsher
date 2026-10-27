@@ -81,6 +81,9 @@ const releaseTexts = useReleaseTexts()
 const railItem = computed(() => RAIL_ITEM[props.mode])
 const railSection = computed(() => `rail-${railItem.value}`)
 
+// Раздача без тайтла: панель «Это …» / «Найти тайтл» / «Не фильм»
+const release = ref<ReleaseItem>()
+
 // Ряд, под который выставлен экран: меняется от пульта и колеса, не от наведения
 const aligned = ref(0)
 const firstVisible = ref(0)
@@ -90,8 +93,9 @@ const {
   offset: rowsOffset,
   alignTo: scrollRowsTo,
   onScroll: onRowsScroll,
+  onWheel: onScreenWheel,
   transform: rowsTransform,
-} = useStackScroll(rowsElement)
+} = useStackScroll(rowsElement, { wheelHeld: () => !!release.value })
 const lastSection = ref<string>()
 const rowElements: (HTMLElement | undefined)[] = []
 
@@ -320,8 +324,6 @@ const heroRelease = computed(() =>
   ),
 )
 
-// Раздача без тайтла: панель «Это …» / «Найти тайтл» / «Не фильм»
-const release = ref<ReleaseItem>()
 const releaseToast = ref('')
 let releaseOrigin: HTMLElement | undefined
 // Выбор из поиска «Библиотека» видит при возврате и перечитывает ряды
@@ -477,7 +479,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main class="home">
+  <main class="home" @wheel.passive="onScreenWheel">
     <BackdropLayer :src="hero?.details?.backdrop" />
 
     <div class="home__hero">

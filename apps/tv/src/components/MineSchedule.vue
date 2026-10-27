@@ -18,7 +18,8 @@ import { useFocus } from '../focus/index.ts'
 import { libraryRoute, resolveRoute } from '../lib/continue.ts'
 import type { ScheduleTab } from '../lib/follow.ts'
 import { relativeDay, scheduleDays } from '../lib/follow.ts'
-import { gridRows, rowWindow } from '../lib/homeVideo.ts'
+import { anchorSpan } from '../lib/gridWindow.ts'
+import { gridRows, rowAtOffset, rowWindow } from '../lib/homeVideo.ts'
 import { stackOffset } from '../lib/rowStack.ts'
 import { formatAirDate, isUpcoming } from '../lib/titleInfo.ts'
 import { lacksSources } from '../serverSources.ts'
@@ -79,14 +80,37 @@ const rows = computed<GridRow<ScheduleItem>[]>(() =>
 )
 
 const gridRoot = ref<HTMLElement>()
+const viewport = ref<HTMLElement>()
+const column = ref<HTMLElement>()
+const {
+  native: nativeScroll,
+  offset: columnOffset,
+  followsFocus,
+  alignTo: scrollGridTo,
+  onScroll: onColumnScroll,
+  onWheel: onScheduleWheel,
+  transform: columnTransform,
+} = useStackScroll(column)
+
 const focusedRow = ref(0)
 const heights = ref({ header: 0, cards: 0 })
+const kinds = computed(() => rows.value.map(row => row.kind))
+// В вебе колонку листают колесом мимо фокуса: окно держит верхнюю видимую строку
+const anchors = computed(() =>
+  nativeScroll
+    ? anchorSpan(
+        rowAtOffset(kinds.value, columnOffset.value, heights.value),
+        focusedRow.value,
+        followsFocus.value,
+      )
+    : { first: focusedRow.value, last: focusedRow.value },
+)
 // Пока высоты строк не измерены, окна нет: убранные строки нечем заменить
 const windowed = computed(() =>
   heights.value.cards
     ? rowWindow(
-        rows.value.map(row => row.kind),
-        focusedRow.value,
+        kinds.value,
+        anchors.value,
         ROWS_BEFORE,
         ROWS_AFTER,
         heights.value,
@@ -134,18 +158,11 @@ watch(rows, async () => {
   measure()
 })
 
-const viewport = ref<HTMLElement>()
-const column = ref<HTMLElement>()
-const {
-  native: nativeScroll,
-  alignTo: scrollGridTo,
-  onScroll: onColumnScroll,
-  transform: columnTransform,
-} = useStackScroll(column)
-
 function alignTo(el: HTMLElement) {
   if (!column.value || !viewport.value)
     return
+
+  followsFocus.value = true
 
   const gap = (window.innerWidth / 1920) * ROW_GAP
   const card = el.closest<HTMLElement>('.card') ?? el
@@ -176,8 +193,10 @@ const stopFocus = focus.onFocus((el, via) => {
     alignTo(el)
 })
 
+// Фокус на вкладках: окну строк держать его не нужно
 watch(tab, () => {
   focusedRow.value = 0
+  followsFocus.value = false
   scrollGridTo(0)
 })
 
@@ -212,7 +231,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="schedule">
+  <div class="schedule" @wheel.passive="onScheduleWheel">
     <div class="schedule__head">
       <h2 class="schedule__title">
         {{ t("mine.sections.schedule") }}

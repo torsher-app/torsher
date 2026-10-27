@@ -1,4 +1,5 @@
 import type { FileCard } from '@torsher/api-client'
+import type { AnchorSpan } from './gridWindow.ts'
 
 /**
  * Дата съёмки хранится «как на часах камеры» в UTC-компонентах: показываем
@@ -118,19 +119,19 @@ export function gridRows<T>(
 }
 
 /**
- * Окно строк вокруг строки с фокусом: в DOM — только они, остальное место
+ * Окно строк вокруг опорных (`span`): в DOM — только они, остальное место
  * держат отступы сверху и снизу по высотам строк (заголовок и карточки
  * меряются по DOM)
  */
 export function rowWindow(
   kinds: Array<'header' | 'cards'>,
-  focused: number,
+  span: AnchorSpan,
   before: number,
   after: number,
   heights: { header: number, cards: number },
 ) {
-  const from = Math.max(0, Math.min(focused, kinds.length - 1) - before)
-  const to = Math.min(kinds.length, Math.max(focused, 0) + after + 1)
+  const from = Math.max(0, Math.min(span.first, kinds.length - 1) - before)
+  const to = Math.min(kinds.length, Math.max(span.last, 0) + after + 1)
   const sum = (start: number, end: number) => {
     let total = 0
 
@@ -141,4 +142,28 @@ export function rowWindow(
   }
 
   return { from, to, top: sum(0, from), bottom: sum(to, kinds.length) }
+}
+
+/**
+ * Верхняя видимая строка при прокрутке `offset` (веб): строка, на которой
+ * кончается `offset`, по высотам строк. Пока высоты не измерены — первая
+ */
+export function rowAtOffset(
+  kinds: Array<'header' | 'cards'>,
+  offset: number,
+  heights: { header: number, cards: number },
+) {
+  if (heights.cards <= 0)
+    return 0
+
+  let bottom = 0
+
+  for (let index = 0; index < kinds.length; index++) {
+    bottom += heights[kinds[index]!]
+
+    if (bottom > offset)
+      return index
+  }
+
+  return Math.max(0, kinds.length - 1)
 }

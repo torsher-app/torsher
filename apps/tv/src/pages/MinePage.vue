@@ -30,6 +30,7 @@ import {
 } from '../composables/useMine.ts'
 import { useStackScroll } from '../composables/useStackScroll.ts'
 import { useFocus } from '../focus/index.ts'
+import { anchorSpan, rowAt } from '../lib/gridWindow.ts'
 import {
   DEFAULT_MINE_VIEW,
   gridWindow,
@@ -224,23 +225,42 @@ const viewport = ref<HTMLElement>()
 const column = ref<HTMLElement>()
 const {
   native: nativeScroll,
+  offset: columnOffset,
+  followsFocus,
   alignTo: scrollGridTo,
   onScroll: onColumnScroll,
+  onWheel: onRightWheel,
   transform: columnTransform,
 } = useStackScroll(column)
 
 // Новый раздел или вид: сетка с начала
 watch([selectedKey, view], () => {
   focusedIndex.value = 0
+  followsFocus.value = false
   scrollGridTo(0)
 })
 
 // Окно карточек в DOM: длинное «Просмотрено» не раздувает дерево на ТВ
 const rowStep = ref(0)
+// В вебе сетку листают колесом мимо фокуса: окно держит верхнюю видимую строку
+const anchors = computed(() => {
+  const focusedRow = Math.floor(focusedIndex.value / COLUMNS)
+
+  if (!nativeScroll)
+    return { first: focusedRow, last: focusedRow }
+
+  const rows = Math.ceil(items.value.length / COLUMNS)
+
+  return anchorSpan(
+    rowAt(columnOffset.value, rowStep.value, rows),
+    focusedRow,
+    followsFocus.value,
+  )
+})
 const windowed = computed(() =>
   rowStep.value
     ? gridWindow(
-        focusedIndex.value,
+        anchors.value,
         items.value.length,
         COLUMNS,
         ROWS_BEFORE,
@@ -248,6 +268,11 @@ const windowed = computed(() =>
       )
     : { from: 0, to: items.value.length },
 )
+// В вебе конец сетки открывают прокруткой, а не фокусом: страницу просит окно
+watch(windowed, ({ to }) => {
+  if (nativeScroll && rowStep.value && to >= items.value.length - PREFETCH)
+    void more()
+})
 const visible = computed(() =>
   items.value
     .slice(windowed.value.from, windowed.value.to)
@@ -276,6 +301,8 @@ function alignTo(el: HTMLElement) {
   if (!column.value || !viewport.value)
     return
 
+  followsFocus.value = true
+
   const gap = (window.innerWidth / 1920) * ROW_GAP
   const card = el.closest<HTMLElement>('[data-index]') ?? el
   const top = Math.max(0, card.offsetTop - gap)
@@ -299,9 +326,17 @@ function rowsPerScreen() {
   return rowStep.value ? Math.max(1, Math.ceil(height / rowStep.value)) : 1
 }
 
-// Карточка может быть за окном строк в DOM: сначала сдвигаем окно, потом фокус
+// Карточка может быть за окном строк в DOM: сначала сдвигаем окно, потом фокус.
+// В вебе окно идёт за прокруткой: колонку сразу ставим к строке карточки,
+// плавное выравнивание после фокуса только доводит её
 async function focusCard(index: number) {
   focusedIndex.value = index
+
+  if (nativeScroll && column.value) {
+    column.value.scrollTop = Math.floor(index / COLUMNS) * rowStep.value
+    onColumnScroll()
+  }
+
   await nextTick()
 
   const card = gridRoot.value?.querySelector<HTMLElement>(
@@ -647,7 +682,7 @@ onBeforeUnmount(() => {
       :error="scheduleStatus === 'error' ? scheduleError : undefined"
       @retry="retrySchedule"
     />
-    <div v-else class="mine__right">
+    <div v-else class="mine__right" @wheel.passive="onRightWheel">
       <div class="mine__head">
         <h2 class="mine__title">
           {{ shown ? sectionLabel(shown) : "" }}
