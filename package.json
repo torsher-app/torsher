@@ -22,6 +22,7 @@
     "dev:web": "pnpm --filter @torsher/web dev",
     "dev:server": "pnpm --filter @torsher/server dev",
     "dev:tv": "pnpm --filter @torsher/tv dev",
+    "dev:site": "pnpm --filter @torsher/site dev",
     "dev:stand": "node apps/server/scripts/devStand.ts",
     "build": "pnpm -r build",
     "start:server": "pnpm --filter @torsher/server start",

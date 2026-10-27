@@ -133,6 +133,7 @@ Settings, the library and the watch history stay. Before an update that changes 
 - **The container restarts.** Read the log: `docker compose logs torsher`.
 - **The data folder is not writable.** `PUID` and `PGID` don't match the owner of the folder on the host. Fix them and run `docker compose up -d` again.
 - **Port 8080 is taken.** Change the left side of the port mapping, for example `'8081:8080'`, and open the panel on that port.
+- **Downloading the image is very slow or stalls.** The same image is on Docker Hub: change `image:` in `docker-compose.yml` to `torsherapp/torsher:latest` and run `docker compose up -d` again. See [the image tag](/docs/maintain/update#_1-check-the-image-tag).
 
 More: [Troubleshooting](/docs/troubleshooting).
 
