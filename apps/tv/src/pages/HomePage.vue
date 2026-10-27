@@ -23,6 +23,7 @@ import {
 } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
+import AllCard from '../components/AllCard.vue'
 import AppRail from '../components/AppRail.vue'
 import BackdropLayer from '../components/BackdropLayer.vue'
 import ContentRow from '../components/ContentRow.vue'
@@ -51,6 +52,7 @@ import {
   releaseMatch,
   setReleaseTitle,
 } from '../releaseMatch.ts'
+import { mineQueryOf, mineTargetOf } from '../lib/mineView.ts'
 import { titleActions } from '../titleActions.ts'
 import { firstVisibleRow, stackOffset } from '../lib/rowStack.ts'
 
@@ -112,8 +114,10 @@ function rowTitle(row: HomeRow) {
 // свои карточки 16:9, остальные — постеры
 // Первая плитка ряда «Домашнее видео»: весь раздел — «По датам» и «Альбомы»
 const HOME_VIDEO_TILE = { tile: 'homeVideo' } as const
+// Последняя плитка ряда, за которым осталось больше: весь список в «Моё»
+const ALL_TILE = { tile: 'all' } as const
 
-type Tile = typeof HOME_VIDEO_TILE
+type Tile = typeof HOME_VIDEO_TILE | typeof ALL_TILE
 type RowItem
   = Card | ContinueItem | EpisodeCard | ReleaseItem | FileItem | Tile
 
@@ -121,15 +125,15 @@ function itemsOf(row: HomeRow): RowItem[] {
   if (row.kind === 'files' && row.id === 'libraryHomeVideo')
     return [HOME_VIDEO_TILE, ...row.items]
 
-  if (
-    row.kind === 'continue'
-    || row.kind === 'releases'
-    || row.kind === 'files'
-  ) {
+  if (row.kind === 'releases' || row.kind === 'files')
     return row.items
-  }
 
-  return row.kind === 'episodes' ? (row.episodes ?? []) : row.items
+  if (row.kind === 'episodes')
+    return row.episodes ?? []
+
+  const items: RowItem[] = row.items
+
+  return mineTargetOf(row, props.mode) ? [...items, ALL_TILE] : items
 }
 
 function isEpisode(item: RowItem): item is EpisodeCard {
@@ -292,6 +296,13 @@ function playFile(item: FileItem) {
 
 function open(item: Exclude<RowItem, ReleaseItem | FileItem | Tile>) {
   router.push(`/title/${isEpisode(item) ? item.titleId : item.id}`)
+}
+
+function openAll(row: HomeRow) {
+  const target = mineTargetOf(row, props.mode)
+
+  if (target)
+    router.push({ path: '/mine', query: mineQueryOf(target) })
 }
 
 // «Продолжить» запускает просмотр сразу, без карточки тайтла
@@ -508,8 +519,14 @@ onBeforeUnmount(() => {
         @focus-item="(item, via) => onFocusItem(index, item, via)"
       >
         <template #item="{ item, index: position }">
+          <AllCard
+            v-if="isTile(item) && item.tile === 'all'"
+            :variant="row.kind === 'continue' ? 'wide' : 'poster'"
+            :total="'total' in row ? (row.total ?? 0) : 0"
+            @select="openAll(row)"
+          />
           <ContinueCard
-            v-if="row.kind === 'continue'"
+            v-else-if="row.kind === 'continue'"
             :item="item as ContinueItem"
             :load-image="isNear(index)"
             @select="resume(item as ContinueItem)"

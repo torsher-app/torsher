@@ -1200,6 +1200,11 @@ export interface CatalogRowInput {
   name?: string;
   items: CardInput[];
   episodes?: EpisodeCardInput[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  total?: number;
 }
 
 export interface ReleaseCardInput {
@@ -1310,6 +1315,11 @@ export interface ContinueRowInput {
   kind: "continue";
   title: string;
   items: ContinueCardInput[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  total?: number;
 }
 
 export type HomeRowInput =
@@ -5771,6 +5781,11 @@ export interface CatalogRow {
   name?: string;
   items: Card[];
   episodes?: EpisodeCard[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  total?: number;
 }
 
 export interface ReleaseCard {
@@ -5881,6 +5896,11 @@ export interface ContinueRow {
   kind: "continue";
   title: string;
   items: ContinueCard[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  total?: number;
 }
 
 export type HomeRow = ContinueRow | ReleasesRow | FilesRow | CatalogRow;

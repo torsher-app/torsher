@@ -130,6 +130,8 @@
     },
     "pageBack": "Scroll back",
     "pageForward": "Scroll forward",
+    "all": "All",
+    "allCount": "{n} title | {n} titles",
     "newEpisodes": {
       "count": "{n} new episode | {n} new episodes",
       "aired": "out {date}"

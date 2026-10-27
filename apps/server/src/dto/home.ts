@@ -88,6 +88,9 @@ export const catalogRow = z
     name: z.string().optional(),
     items: z.array(card),
     episodes: z.array(episodeCard).optional(),
+    // Сколько всего в разделе «Моё», куда ведёт ряд («Позже», подборка);
+    // больше, чем в ряду, — в конце ряда плитка «Все»
+    total: z.number().int().optional(),
   })
   .meta({ id: 'catalogRow' })
 
@@ -208,6 +211,9 @@ export const continueRow = z
     kind: z.literal('continue'),
     title: z.string(),
     items: z.array(continueCard),
+    // Сколько в «Моё» → «Продолжить» с типом режима; есть, только когда за
+    // рядом что-то осталось. В «Библиотеке» двойника нет — нет и числа
+    total: z.number().int().optional(),
   })
   .meta({ id: 'continueRow' })
 

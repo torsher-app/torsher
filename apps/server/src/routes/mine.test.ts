@@ -418,6 +418,7 @@ describe('get /api/home: личные ряды', () => {
     expect(watchlist).toMatchObject({
       id: 'watchlist',
       items: [{ id: MOVIE }],
+      total: 1,
     })
   })
 

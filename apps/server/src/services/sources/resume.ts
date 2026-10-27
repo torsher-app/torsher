@@ -1,5 +1,5 @@
 import type { TitleProgress } from '../../db/schema.ts'
-import { and, desc, eq, isNotNull, max, or } from 'drizzle-orm'
+import { and, desc, eq, gte, isNotNull, lt, max, or } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import { titleProgress } from '../../db/schema.ts'
 import { droppedSince } from '../mine/index.ts'
@@ -193,26 +193,41 @@ export async function resumeTarget(
   }
 }
 
-/** Тайтлы, которые профиль смотрел в плеере, — свежие первыми */
-export function watchedTitles(profileId: string, limit: number) {
+function playedFrom(profileId: string) {
+  return and(
+    eq(titleProgress.profileId, profileId),
+    progressSeen(),
+    or(
+      isNotNull(titleProgress.torrentId),
+      isNotNull(titleProgress.mediaFileId),
+    ),
+  )
+}
+
+/** Тайтлы, которые профиль смотрел в плеере с `since`, — свежие первыми */
+export function watchedTitles(profileId: string, limit: number, since: Date) {
   const latest = max(titleProgress.updatedAt)
 
   return getDb()
     .select({ titleId: titleProgress.titleId, updatedAt: latest })
     .from(titleProgress)
-    .where(
-      and(
-        eq(titleProgress.profileId, profileId),
-        progressSeen(),
-        or(
-          isNotNull(titleProgress.torrentId),
-          isNotNull(titleProgress.mediaFileId),
-        ),
-      ),
-    )
+    .where(and(playedFrom(profileId), gte(titleProgress.updatedAt, since)))
     .groupBy(titleProgress.titleId)
     .orderBy(desc(latest))
     .limit(limit)
     .all()
     .map(row => row.titleId)
+}
+
+/**
+ * Есть ли просмотры из плеера раньше `before`. Тайтл с новыми просмотрами
+ * тоже даёт `true`: это только повод пересчитать остаток, а не сам остаток
+ */
+export function playedBefore(profileId: string, before: Date) {
+  return !!getDb()
+    .select({ titleId: titleProgress.titleId })
+    .from(titleProgress)
+    .where(and(playedFrom(profileId), lt(titleProgress.updatedAt, before)))
+    .limit(1)
+    .get()
 }

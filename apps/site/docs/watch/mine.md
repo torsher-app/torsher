@@ -15,7 +15,7 @@ How to add titles to your lists from any poster, rate them, use collections, and
 
 Sections are on the left, each with its count. Move to a section and the grid on the right follows:
 
-- **<Ui k="mine.sections.continue" />**: movies and series you started.
+- **<Ui k="mine.sections.continue" />**: movies and series you started, however long ago. The row on home shows only the last 16 weeks.
 - **<Ui k="mine.sections.schedule" />**: upcoming and recent episodes of the series you follow or watch. See [Follow](/docs/watch/follow#check).
 - **<Ui k="mine.sections.watchlist" />** and **<Ui k="mine.sections.favorites" />**.
 - **<Ui k="mine.collections" />**: one section per collection your profile can see.
@@ -23,6 +23,8 @@ Sections are on the left, each with its count. Move to a section and the grid on
 - **<Ui k="mine.sections.dropped" />**: titles you gave up on.
 
 Chips above the grid sort and filter it: <Ui k="mine.panel.sort" /> (<Ui k="mine.sort.added" /> or <Ui k="mine.sort.rating" />), <Ui k="mine.panel.kind" /> and <Ui k="mine.panel.rating" />. This TV remembers them for each section.
+
+The grid loads more posters as you scroll. In a long list, Back jumps to the first poster, and Back again goes home. Page Up and Page Down move a screen at a time on a keyboard or a remote that has them; LG remotes don't pass their channel keys to apps.
 
 ## Add a title to a list
 

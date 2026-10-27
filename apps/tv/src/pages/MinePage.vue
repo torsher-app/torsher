@@ -13,7 +13,7 @@ import {
   watch,
 } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import AppIcon from '../components/AppIcon.vue'
 import AppRail from '../components/AppRail.vue'
 import FocusSection from '../components/FocusSection.vue'
@@ -38,6 +38,8 @@ import {
   MINE_KINDS,
   MINE_RATINGS,
   MINE_SORTS,
+  pageTarget,
+  parseMineTarget,
   ratingKey,
   saveMineView,
   sectionKey,
@@ -65,6 +67,7 @@ const PREFETCH = 8
 type Control = 'sort' | 'kind' | 'rating'
 
 const { t } = useI18n()
+const route = useRoute()
 const router = useRouter()
 const focus = useFocus()
 
@@ -288,6 +291,83 @@ function alignTo(el: HTMLElement) {
   )
 }
 
+// Шаг PageUp/PageDown — высота окна в строках с округлением вверх: на ТВ
+// в окне полторы-две строки постеров, и округление вниз дало бы шаг стрелки
+function rowsPerScreen() {
+  const height = viewport.value?.clientHeight ?? 0
+
+  return rowStep.value ? Math.max(1, Math.ceil(height / rowStep.value)) : 1
+}
+
+// Карточка может быть за окном строк в DOM: сначала сдвигаем окно, потом фокус
+async function focusCard(index: number) {
+  focusedIndex.value = index
+  await nextTick()
+
+  const card = gridRoot.value?.querySelector<HTMLElement>(
+    `[data-index="${index}"] button`,
+  )
+
+  if (card) {
+    focus.focusOn(card)
+
+    return true
+  }
+
+  return false
+}
+
+// Плитка «Все» главной открывает раздел адресом `/mine?section=…&kind=…`:
+// раздел выбирается сразу, без задержки пролёта, а тип — только на этот
+// показ, без записи в сохранённый вид раздела. Адрес сразу очищается: вход
+// из рейла не возвращает в тот же раздел
+let gridFocusPending = false
+
+function openTarget() {
+  const target = parseMineTarget(route.query)
+
+  if (!target)
+    return false
+
+  clearTimeout(selectTimer)
+  selectedKey.value = target.key
+
+  const saved = loadMineView(target.key)
+
+  view.value = target.kind ? { ...saved, kind: target.kind } : saved
+  focusedIndex.value = 0
+  scrollGridTo(0)
+  gridFocusPending = true
+  void router.replace({ path: '/mine' })
+  void focusPendingGrid()
+
+  return true
+}
+
+// Фокус — на первую карточку, когда пришли карточки выбранного раздела;
+// пусто или ошибка — на сам раздел
+async function focusPendingGrid() {
+  await nextTick()
+
+  if (
+    !gridFocusPending
+    || shownKey.value !== selectedKey.value
+    || status.value === 'loading'
+    || showSkeleton.value
+  ) {
+    return
+  }
+
+  gridFocusPending = false
+
+  if (!(await focusCard(0)))
+    focusSelectedSection()
+}
+
+watch([shownKey, status, showSkeleton], () => void focusPendingGrid(), {
+  flush: 'post',
+})
+
 // Чипы вида и правая панель выбора
 const panel = ref<Control>()
 let panelOpener: HTMLElement | undefined
@@ -422,6 +502,45 @@ watch(
 // Экран в KeepAlive: разделы могут прийти, когда пользователь уже ушёл дальше
 let isActive = false
 
+// Back в глубине сетки — к её началу, с первой строки — как обычно, на
+// главную; PageUp/PageDown — на экран строк в той же колонке
+const offKey = focus.onKey((action) => {
+  if (
+    !isActive
+    || panel.value
+    || (action.type !== 'back' && action.type !== 'page')
+  ) {
+    return false
+  }
+
+  const current = focus.current()
+
+  if (!current || !gridRoot.value?.contains(current))
+    return false
+
+  if (action.type === 'back') {
+    if (focusedIndex.value < COLUMNS)
+      return false
+
+    scrollGridTo(0)
+    void focusCard(0)
+
+    return true
+  }
+
+  void focusCard(
+    pageTarget(
+      focusedIndex.value,
+      items.value.length,
+      COLUMNS,
+      rowsPerScreen(),
+      action.direction,
+    ),
+  )
+
+  return true
+})
+
 function focusSelectedSection() {
   const el = sectionsRoot.value?.querySelector<HTMLElement>(
     `[data-section="${selectedKey.value}"]`,
@@ -444,11 +563,17 @@ watch(sectionsStatus, async (value, previous) => {
 
 onActivated(() => {
   isActive = true
+
+  const targeted = openTarget()
+
   syncChanges()
 
   // Из плеера и карточки — с новыми состояниями серий
   if (scheduleShown.value)
     void refreshSchedule()
+
+  if (targeted)
+    return
 
   if (!focus.activate(scheduleShown.value ? 'mine-schedule' : 'mine-grid'))
     focusSelectedSection()
@@ -460,6 +585,7 @@ onDeactivated(() => {
 
 onBeforeUnmount(() => {
   stopFocus()
+  offKey()
   clearTimeout(selectTimer)
 })
 </script>
