@@ -64,8 +64,7 @@ func newSeasonFixture(t *testing.T, name string, episodes [][]byte) fixture {
 		t.Fatal(err)
 	}
 
-	cfg := torrent.NewDefaultClientConfig()
-	offline(cfg)
+	cfg := peerConfig()
 	cfg.Seed = true
 	cfg.DataDir = root
 
