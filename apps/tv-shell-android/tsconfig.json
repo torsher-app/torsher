@@ -1,0 +1,7 @@
+{
+  "extends": "@torsher/tsconfig/base.json",
+  "compilerOptions": {
+    "types": ["node"]
+  },
+  "include": ["scripts/**/*.ts"]
+}

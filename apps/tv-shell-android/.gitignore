@@ -1,0 +1,7 @@
+.gradle
+.kotlin
+build
+local.properties
+# Ключ подписи релиза приходит из секретов CI, в Git его нет
+*.jks
+*.keystore

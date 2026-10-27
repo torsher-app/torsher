@@ -7,6 +7,7 @@ import holdVideo from '../assets/screensaver-hold.mp4'
 import { useCatalogLanguage } from '../composables/useCatalogLanguage.ts'
 import { formatClock } from '../lib/player.ts'
 import { cornerOf, shuffled, SLIDE_MS } from '../lib/screensaver.ts'
+import { holdAndroidScreen, isAndroidShell } from '../platform/android.ts'
 import { holdSystemScreensaver, isWebos } from '../platform/webos.ts'
 import { session } from '../session.ts'
 
@@ -174,6 +175,9 @@ watch(
 onMounted(async () => {
   if (webos)
     holdScreen()
+  // На Android экран держит окно оболочки, ролик-удержание не нужен
+  else if (isAndroidShell)
+    releaseHold = holdAndroidScreen()
 
   clockTimer = setInterval(() => {
     now.value = new Date()

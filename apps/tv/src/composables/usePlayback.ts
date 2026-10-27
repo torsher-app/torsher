@@ -12,6 +12,7 @@ import { api } from '../api.ts'
 import { i18n } from '../i18n.ts'
 import { browserMediaSupport, deviceProfileOf } from '../lib/deviceProfile.ts'
 import { startErrorAction } from '../lib/player.ts'
+import { nativeDeviceProfile } from '../platform/android.ts'
 import { isWebos } from '../platform/webos.ts'
 
 // Пока сервер читает файл, статус сессии спрашивается раз в секунду
@@ -38,9 +39,14 @@ export type PlaybackRestart = Pick<
 
 let profile: CreatePlaybackInput['device'] | undefined
 
-/** Профиль плеера один на запуск витрины: возможности браузера не меняются */
+/**
+ * Профиль плеера один на запуск витрины: возможности не меняются. В оболочке
+ * Android TV играет её нативный плеер, и профиль собирает она.
+ */
 function deviceProfile() {
-  profile ??= deviceProfileOf(browserMediaSupport(isWebos()))
+  profile
+    ??= (nativeDeviceProfile() as CreatePlaybackInput['device'] | undefined)
+      ?? deviceProfileOf(browserMediaSupport(isWebos()))
   return profile
 }
 
