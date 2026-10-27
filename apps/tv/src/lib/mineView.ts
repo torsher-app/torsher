@@ -1,6 +1,7 @@
 import type { HomeRow, MineSection } from '@torsher/api-client'
 import type { LocationQuery } from 'vue-router'
 import type { HomeMode } from '../composables/useHome.ts'
+import type { AnchorSpan } from './gridWindow.ts'
 
 export type MineSort = 'added' | 'rating'
 export type MineKind = 'all' | 'movie' | 'series'
@@ -96,17 +97,16 @@ export function saveMineView(key: string, view: MineView) {
   }
 }
 
-/** Сколько карточек сетки держать в DOM: окно строк вокруг фокусной */
+/** Сколько карточек сетки держать в DOM: окно строк вокруг опорных (`span` — строки) */
 export function gridWindow(
-  focused: number,
+  span: AnchorSpan,
   total: number,
   columns: number,
   before: number,
   after: number,
 ) {
-  const row = Math.floor(Math.max(0, focused) / columns)
-  const from = Math.max(0, row - before) * columns
-  const to = Math.min(total, (row + after + 1) * columns)
+  const from = Math.max(0, span.first - before) * columns
+  const to = Math.min(total, (Math.max(0, span.last) + after + 1) * columns)
 
   return { from, to }
 }

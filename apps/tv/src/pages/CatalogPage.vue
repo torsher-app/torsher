@@ -543,8 +543,9 @@ const {
   offset,
   alignTo: scrollAreaTo,
   onScroll: onAreaScroll,
+  onWheel: onScreenWheel,
   transform: areaTransform,
-} = useStackScroll(area)
+} = useStackScroll(area, { wheelHeld: () => !!panel.value })
 
 // Строка, под которую выставлен экран: меняется от пульта и колеса, не от наведения
 const aligned = ref(0)
@@ -723,7 +724,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main ref="screen" class="catalog">
+  <main ref="screen" class="catalog" @wheel.passive="onScreenWheel">
     <header class="catalog__head">
       <h1 class="catalog__title">
         {{ t("nav.catalog") }}

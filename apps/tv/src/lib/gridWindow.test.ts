@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { hasImages, needsMore, rowAt, rowsOf, windowOf } from './gridWindow.ts'
+import {
+  anchorSpan,
+  hasImages,
+  needsMore,
+  rowAt,
+  rowsOf,
+  windowOf,
+} from './gridWindow.ts'
 
 describe('rowsOf', () => {
   it('режет на строки, последняя может быть неполной', () => {
@@ -61,5 +68,16 @@ describe('rowAt', () => {
     expect(rowAt(799, 400, 10)).toBe(1)
     expect(rowAt(99999, 400, 10)).toBe(9)
     expect(rowAt(100, 0, 10)).toBe(0)
+  })
+})
+
+describe('anchorSpan', () => {
+  it('пока прокрутка идёт за фокусом — и верхняя видимая, и фокус', () => {
+    expect(anchorSpan(0, 12, true)).toEqual({ first: 0, last: 12 })
+    expect(anchorSpan(10, 7, true)).toEqual({ first: 7, last: 10 })
+  })
+
+  it('прокрутку увели колесом — только верхняя видимая', () => {
+    expect(anchorSpan(40, 2, false)).toEqual({ first: 40, last: 40 })
   })
 })

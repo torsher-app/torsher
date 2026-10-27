@@ -46,3 +46,25 @@ export function rowAt(offset: number, rowHeight: number, total: number) {
 
   return Math.min(total - 1, Math.max(0, Math.floor(offset / rowHeight)))
 }
+
+/** Опорные строки окна: от `first` до `last` включительно */
+export interface AnchorSpan {
+  first: number
+  last: number
+}
+
+/**
+ * Опорные строки окна в вебе: верхняя видимая и, пока прокрутка идёт за
+ * фокусом, строка с фокусом. Плавная прокрутка отстаёт от быстрых стрелок, и
+ * окно от одной верхней видимой убрало бы строку с фокусом из DOM. Колесо
+ * уводит прокрутку от фокуса — тогда окно держит только видимое
+ */
+export function anchorSpan(
+  top: number,
+  focused: number,
+  followsFocus: boolean,
+): AnchorSpan {
+  return followsFocus
+    ? { first: Math.min(top, focused), last: Math.max(top, focused) }
+    : { first: top, last: top }
+}

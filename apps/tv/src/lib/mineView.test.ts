@@ -40,10 +40,16 @@ describe('sectionKey и isFiltered', () => {
 })
 
 describe('gridWindow', () => {
-  it('держит строки вокруг фокусной и не выходит за края', () => {
-    expect(gridWindow(0, 100, 4, 3, 5)).toEqual({ from: 0, to: 24 })
-    expect(gridWindow(41, 100, 4, 3, 5)).toEqual({ from: 28, to: 64 })
-    expect(gridWindow(98, 100, 4, 3, 5)).toEqual({ from: 84, to: 100 })
+  it('держит строки вокруг опорных и не выходит за края', () => {
+    const at = (row: number) => ({ first: row, last: row })
+
+    expect(gridWindow(at(0), 100, 4, 3, 5)).toEqual({ from: 0, to: 24 })
+    expect(gridWindow(at(10), 100, 4, 3, 5)).toEqual({ from: 28, to: 64 })
+    expect(gridWindow(at(24), 100, 4, 3, 5)).toEqual({ from: 84, to: 100 })
+    expect(gridWindow({ first: 2, last: 6 }, 100, 4, 3, 5)).toEqual({
+      from: 0,
+      to: 48,
+    })
   })
 })
 

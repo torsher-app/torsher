@@ -6,6 +6,7 @@ import {
   formatMonth,
   gridRows,
   groupByMonth,
+  rowAtOffset,
   rowWindow,
 } from './homeVideo.ts'
 
@@ -78,18 +79,38 @@ describe('окно сетки', () => {
       'cards',
     ] as const
 
-    expect(rowWindow([...kinds], 4, 1, 0, { header: 10, cards: 100 })).toEqual({
+    expect(
+      rowWindow([...kinds], { first: 4, last: 4 }, 1, 0, {
+        header: 10,
+        cards: 100,
+      }),
+    ).toEqual({
       from: 3,
       to: 5,
       top: 210,
       bottom: 100,
     })
     expect(
-      rowWindow([...kinds], 0, 2, 2, { header: 10, cards: 100 }),
+      rowWindow([...kinds], { first: 0, last: 0 }, 2, 2, {
+        header: 10,
+        cards: 100,
+      }),
     ).toMatchObject({
       from: 0,
       to: 3,
       top: 0,
     })
+  })
+
+  it('верхняя видимая строка — по высотам строк выше смещения', () => {
+    const kinds = ['header', 'cards', 'cards', 'header', 'cards'] as const
+    const heights = { header: 10, cards: 100 }
+
+    expect(rowAtOffset([...kinds], 0, heights)).toBe(0)
+    expect(rowAtOffset([...kinds], 10, heights)).toBe(1)
+    expect(rowAtOffset([...kinds], 209, heights)).toBe(2)
+    expect(rowAtOffset([...kinds], 215, heights)).toBe(3)
+    expect(rowAtOffset([...kinds], 5000, heights)).toBe(4)
+    expect(rowAtOffset([...kinds], 500, { header: 0, cards: 0 })).toBe(0)
   })
 })

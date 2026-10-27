@@ -23,12 +23,14 @@ import { useResource } from '../composables/useResource.ts'
 import { useStackScroll } from '../composables/useStackScroll.ts'
 import { useFocus } from '../focus/index.ts'
 import { libraryRoute } from '../lib/continue.ts'
+import { anchorSpan } from '../lib/gridWindow.ts'
 import type { GridRow } from '../lib/homeVideo.ts'
 import {
   albumName,
   formatMonth,
   gridRows,
   groupByMonth,
+  rowAtOffset,
   rowWindow,
 } from '../lib/homeVideo.ts'
 import { returnedBack } from '../lib/navigation.ts'
@@ -122,16 +124,34 @@ const rows = computed<GridRow<GridItem>[]>(() => {
   return gridRows(months.value, COLUMNS)
 })
 
+// Сетка в окне под шапкой: строка с фокусом встаёт наверх окна
+const viewport = ref<HTMLElement>()
+const column = ref<HTMLElement>()
+const {
+  native: nativeScroll,
+  offset: columnOffset,
+  followsFocus,
+  alignTo: scrollGridTo,
+  onScroll: onColumnScroll,
+  onWheel: onScreenWheel,
+  transform: columnTransform,
+} = useStackScroll(column)
+
 const focusedRow = ref(0)
 const heights = ref({ header: 0, cards: 0 })
+const kinds = computed(() => rows.value.map(row => row.kind))
+// В вебе колонку листают колесом мимо фокуса: окно держит верхнюю видимую строку
+const anchors = computed(() =>
+  nativeScroll
+    ? anchorSpan(
+        rowAtOffset(kinds.value, columnOffset.value, heights.value),
+        focusedRow.value,
+        followsFocus.value,
+      )
+    : { first: focusedRow.value, last: focusedRow.value },
+)
 const windowed = computed(() =>
-  rowWindow(
-    rows.value.map(row => row.kind),
-    focusedRow.value,
-    ROWS_BEFORE,
-    ROWS_AFTER,
-    heights.value,
-  ),
+  rowWindow(kinds.value, anchors.value, ROWS_BEFORE, ROWS_AFTER, heights.value),
 )
 const visibleRows = computed(() =>
   rows.value.slice(windowed.value.from, windowed.value.to),
@@ -208,19 +228,11 @@ function choose(next: View) {
   view.value = next
 }
 
-// Сетка в окне под шапкой: строка с фокусом встаёт наверх окна
-const viewport = ref<HTMLElement>()
-const column = ref<HTMLElement>()
-const {
-  native: nativeScroll,
-  alignTo: scrollGridTo,
-  onScroll: onColumnScroll,
-  transform: columnTransform,
-} = useStackScroll(column)
-
 function alignTo(el: HTMLElement) {
   if (!column.value || !viewport.value)
     return
+
+  followsFocus.value = true
 
   const gap = (window.innerWidth / 1920) * ROW_GAP
   const card = el.closest<HTMLElement>('.card') ?? el
@@ -255,9 +267,11 @@ const stopFocus = focus.onFocus((el, via) => {
     alignTo(el)
 })
 
+// Фокус на чипах: окну строк держать его не нужно
 watch(view, () => {
   lastCard = undefined
   focusedRow.value = 0
+  followsFocus.value = false
   scrollGridTo(0)
 })
 
@@ -302,7 +316,7 @@ onBeforeUnmount(stopFocus)
 </script>
 
 <template>
-  <main class="home-video">
+  <main class="home-video" @wheel.passive="onScreenWheel">
     <div class="home-video__head">
       <h1 class="home-video__title">
         {{ heading }}
