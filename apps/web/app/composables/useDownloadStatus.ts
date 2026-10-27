@@ -112,8 +112,9 @@ export function useDownloadStatus() {
   }
 
   /**
-   * «62 % · 8,4 МБ/с · 23 пира · ≈ 2 мин». Без выбора процент от всей
-   * раздачи ничего не говорит — вместо него сколько на диске.
+   * «62 % · 8,4 МБ/с · ↑ 120 кБ/с · 23 пира · ≈ 2 мин». Без выбора процент
+   * от всей раздачи ничего не говорит — вместо него сколько на диске.
+   * Отдачу показываем, пока она идёт: так видно, откуда общая ↑ в сводке.
    */
   function numbers(torrent: Torrent, view: DownloadView) {
     const percent
@@ -123,17 +124,22 @@ export function useDownloadStatus() {
           })
         : t('panel.torrents.onDisk', { size: bytes(torrent.sizeOnDisk) })
 
+    const upload = `↑ ${speed(torrent.uploadSpeed)}`
+
     if (view.status === 'seeding')
-      return [percent, `↑ ${speed(torrent.uploadSpeed)}`].join(' · ')
+      return [percent, upload].join(' · ')
+
+    const uploading = torrent.uploadSpeed > 0 ? upload : ''
 
     if (view.group !== 'active' || view.status === 'queued')
-      return percent
+      return [percent, uploading].filter(Boolean).join(' · ')
 
     const eta = etaSeconds(torrent)
 
     return [
       percent,
       speed(torrent.downloadSpeed),
+      uploading,
       t('panel.torrents.peers', torrent.peers.connected),
       eta === null
         ? ''

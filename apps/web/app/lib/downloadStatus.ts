@@ -47,7 +47,7 @@ export interface DownloadView {
 
 type ViewTorrent = Pick<
   Torrent,
-  'status' | 'state' | 'streaming' | 'pauseReason' | 'progress'
+  'status' | 'state' | 'streaming' | 'pauseReason' | 'progress' | 'seeding'
 >
 
 /**
@@ -135,13 +135,15 @@ function stateViewOf(torrent: ViewTorrent): DownloadView {
         false,
         'success',
       )
+    // Просмотренное в кэше движок раздаёт, пока правило не остановило:
+    // такая раздача отдаёт, хотя ничего не качает
     case 'partial':
       return view(
         'partial',
         'muted',
         CircleDashedIcon,
         'outline',
-        'idle',
+        torrent.seeding.stopped === null ? 'seeding' : 'idle',
         false,
         'muted',
       )
