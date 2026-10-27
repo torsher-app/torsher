@@ -39,8 +39,7 @@ beforeAll(async () => {
   await writeFile(join(root, 'Clip.mp4'), Buffer.alloc(4000))
 
   const user = createOwner({
-    name: 'Owner',
-    email: 'owner@example.com',
+    username: 'Owner',
     passwordHash: 'x',
   })
 

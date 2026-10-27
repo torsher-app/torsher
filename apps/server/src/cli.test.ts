@@ -53,8 +53,7 @@ describe('torsher reset-password', () => {
 
   it('ставит случайный пароль, печатает его и выкидывает сессии', async () => {
     createOwner({
-      name: 'Owner',
-      email: 'owner@example.com',
+      username: 'Owner',
       passwordHash: 'hash',
     })
 

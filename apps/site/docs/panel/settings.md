@@ -145,11 +145,10 @@ Tokens and passwords are stored encrypted and aren't shown again. When you edit 
 
 <Ui k="panel.nav.settings panel.settings.nav.account" /> holds the server owner account. There is only one: the household watches through profiles, see [Profiles and devices](/docs/panel/profiles-devices).
 
-- **<Ui k="panel.settings.account.nameTitle" />.** How the panel calls you, at least 2 characters.
-- **<Ui k="panel.settings.account.emailTitle" />.** Used only to sign in: the server sends no email. Changing it needs your current password.
+- **<Ui k="panel.settings.account.usernameTitle" />.** You sign in with it, and the panel calls you by it. 2 to 64 characters; changing it needs your current password.
 - **<Ui k="panel.settings.account.passwordTitle" />.** Enter the current password and a new one of at least 8 characters, twice.
 
-After you change the email or the password, all other browsers and devices are signed out of the panel. Forgot the password? See [Reset the password](/docs/maintain/reset-password).
+After you change the username or the password, all other browsers and devices are signed out of the panel. Forgot the password? See [Reset the password](/docs/maintain/reset-password).
 
 The panel language and theme are in the account menu at the bottom of the sidebar.
 

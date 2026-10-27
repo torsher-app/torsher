@@ -105,10 +105,10 @@ const onSubmit = handleSubmit(async (values) => {
     >
       <!-- Менеджер паролей обновляет сохранённую запись по логину рядом с паролем -->
       <input
-        type="email"
+        type="text"
         name="username"
         autocomplete="username"
-        :value="user?.email"
+        :value="user?.username"
         class="sr-only"
         tabindex="-1"
         aria-hidden="true"

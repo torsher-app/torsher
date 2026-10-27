@@ -72,8 +72,7 @@ describe('setup wizard', () => {
       .insert(users)
       .values({
         id: 'old-owner',
-        name: 'Old',
-        email: 'old@example.com',
+        username: 'Old',
         passwordHash: 'x',
       })
       .run()
@@ -90,8 +89,7 @@ describe('setup wizard', () => {
 
   it('new account starts the wizard at storage', async () => {
     const { id } = createOwner({
-      name: 'Owner',
-      email: 'owner@example.com',
+      username: 'Owner',
       passwordHash: 'x',
     })
 

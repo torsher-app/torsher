@@ -5,10 +5,18 @@ export const PASSWORD_MIN_LENGTH = 8
 
 export const newPassword = z.string().min(PASSWORD_MIN_LENGTH)
 
+// Логин и имя в панели: любые буквы и пробелы внутри, без управляющих символов
+export const username = z
+  .string()
+  .trim()
+  .normalize('NFC')
+  .min(2)
+  .max(64)
+  .regex(/^\P{Cc}+$/u)
+
 export const signup = z
   .object({
-    name: z.string().min(2),
-    email: z.email(),
+    username,
     password: newPassword,
   })
   .meta({ id: 'signup' })
@@ -22,7 +30,7 @@ export const setupResponse = z
 
 export const signin = z
   .object({
-    email: z.email(),
+    username: z.string(),
     password: z.string(),
   })
   .meta({ id: 'signin' })

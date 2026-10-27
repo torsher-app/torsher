@@ -44,7 +44,7 @@ const THEMES = [
 ] as const
 
 const initials = computed(() =>
-  (user.value?.name ?? '')
+  (user.value?.username ?? '')
     .split(/\s+/)
     .filter(Boolean)
     .slice(0, 2)
@@ -85,7 +85,7 @@ const theme = computed({
         >
           {{ initials }}
         </span>
-        <span class="min-w-0 flex-1 truncate">{{ user?.name }}</span>
+        <span class="min-w-0 flex-1 truncate">{{ user?.username }}</span>
         <ChevronsUpDownIcon class="ml-auto opacity-60" aria-hidden="true" />
       </SidebarMenuButton>
     </DropdownMenuTrigger>
@@ -93,10 +93,6 @@ const theme = computed({
       side="top"
       class="w-(--reka-dropdown-menu-trigger-width) min-w-56"
     >
-      <DropdownMenuLabel class="truncate font-normal">
-        {{ user?.email }}
-      </DropdownMenuLabel>
-      <DropdownMenuSeparator />
       <DropdownMenuLabel>{{ t("panel.account.theme") }}</DropdownMenuLabel>
       <DropdownMenuRadioGroup v-model="theme">
         <DropdownMenuRadioItem

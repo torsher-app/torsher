@@ -271,3 +271,36 @@ describe('миграция происхождения раздач', () => {
     ])
   })
 })
+
+describe('миграция имени пользователя', () => {
+  const usernameIdx = journal.entries.findIndex(entry =>
+    readFileSync(join(MIGRATIONS_DIR, `${entry.tag}.sql`), 'utf8').includes(
+      'RENAME COLUMN "name" TO "username"',
+    ),
+  )
+
+  it('логином становится имя аккаунта, email уходит, версия сессий остаётся', () => {
+    const sqlite = new Database(':memory:')
+    const db = drizzle(sqlite)
+
+    migrate(db, { migrationsFolder: migrationsBefore(usernameIdx) })
+
+    sqlite
+      .prepare(
+        'INSERT INTO users (id, name, email, password_hash, session_version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      )
+      .run('u1', 'Anton', 'owner@example.com', 'x', 3, 0, 0)
+
+    migrate(db, { migrationsFolder: MIGRATIONS_DIR })
+
+    expect(
+      sqlite.prepare('SELECT id, username, session_version FROM users').all(),
+    ).toEqual([{ id: 'u1', username: 'Anton', session_version: 3 }])
+    expect(
+      sqlite
+        .prepare('SELECT name FROM pragma_table_info(\'users\')')
+        .all()
+        .map(column => (column as { name: string }).name),
+    ).not.toContain('email')
+  })
+})

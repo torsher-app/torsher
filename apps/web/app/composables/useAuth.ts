@@ -31,7 +31,7 @@ export function useAuth() {
   async function signup(body: SignupInput) {
     await api.auth.postAuthSignup(body)
     markDone()
-    await signin({ email: body.email, password: body.password })
+    await signin({ username: body.username, password: body.password })
   }
 
   /** Сессия истекла: чистим состояние и уводим на вход */

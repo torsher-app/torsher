@@ -1,15 +1,14 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import type { User } from '../db/schema.ts'
-import { and, eq } from 'drizzle-orm'
+import { eq } from 'drizzle-orm'
 import { getDb } from '../db/index.ts'
 import { users } from '../db/schema.ts'
 import type { FastifyReply } from 'fastify'
 import { messageResponse, tooManyAttemptsResponse } from '../dto/common.ts'
 import {
-  changeEmail,
   changePassword,
+  changeUsername,
   meResponse,
-  updateMe,
   wrongPasswordResponse,
 } from '../dto/users.ts'
 import { requireOwner } from '../middleware/auth.ts'
@@ -17,10 +16,9 @@ import { logFor } from '../services/logs/index.ts'
 import {
   findActiveUser,
   passwordConfirmLimiter,
-  updateEmail,
   updatePassword,
+  updateUsername,
 } from '../services/users/index.ts'
-import { normalizeEmail } from '../utils/email.ts'
 import { hashPassword, verifyPassword } from '../utils/password.ts'
 import { setSession } from './sessionCookies.ts'
 
@@ -72,9 +70,7 @@ async function confirmPassword(
 function toMeResponse(user: User) {
   return {
     id: user.id,
-    name: user.name,
-    email: user.email,
-    isActive: user.isActive,
+    username: user.username,
     createdAt: user.createdAt.toISOString(),
   }
 }
@@ -104,33 +100,7 @@ export const userRoutes: FastifyPluginAsyncZod = async (app) => {
     },
   )
 
-  app.patch(
-    '/me',
-    {
-      onRequest: requireOwner,
-      schema: {
-        operationId: 'patchUsersMe',
-        tags: ['Users'],
-        body: updateMe,
-        response: responses,
-      },
-    },
-    async (request, reply) => {
-      const user = getDb()
-        .update(users)
-        .set(request.body)
-        .where(and(eq(users.id, request.userId), eq(users.isDeleted, false)))
-        .returning()
-        .get()
-
-      if (!user)
-        return reply.code(404).send({ message: 'User not found' })
-
-      return toMeResponse(user)
-    },
-  )
-
-  // Смена пароля и email выкидывает все прочие сессии (версия сессий растёт),
+  // Смена пароля и имени пользователя выкидывает все прочие сессии (версия сессий растёт),
   // а текущая получает новые cookie и остаётся во входе
   app.put(
     '/me/password',
@@ -172,13 +142,13 @@ export const userRoutes: FastifyPluginAsyncZod = async (app) => {
   )
 
   app.put(
-    '/me/email',
+    '/me/username',
     {
       onRequest: requireOwner,
       schema: {
-        operationId: 'putUsersMeEmail',
+        operationId: 'putUsersMeUsername',
         tags: ['Users'],
-        body: changeEmail,
+        body: changeUsername,
         response: {
           200: meResponse,
           401: messageResponse,
@@ -200,9 +170,10 @@ export const userRoutes: FastifyPluginAsyncZod = async (app) => {
       if (!user)
         return reply.code(403).send(WRONG_PASSWORD)
 
-      const updated = updateEmail(user.id, normalizeEmail(request.body.email))
+      const updated = updateUsername(user.id, request.body.username)
 
       setSession(reply, updated)
+      logFor('auth').info({ userId: user.id }, 'Username changed')
 
       return toMeResponse(updated)
     },

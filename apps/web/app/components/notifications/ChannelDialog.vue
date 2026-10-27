@@ -52,7 +52,6 @@ const props = defineProps<{
 const open = defineModel<boolean>('open', { required: true })
 
 const { t, locale } = useI18n()
-const { user } = useUser()
 const { kinds, save, testDraft } = useNotificationChannels()
 
 const kind = ref<ChannelKind | null>(null)
@@ -176,10 +175,6 @@ function configOf(target: ChannelKind, channel?: NotificationChannel) {
     if (value !== undefined && value !== null)
       config[field] = String(value)
   }
-
-  // Email владельца — адрес по умолчанию: письма идут ему же
-  if (target === 'email' && !channel && user.value?.email)
-    config.to = user.value.email
 
   return config
 }

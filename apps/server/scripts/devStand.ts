@@ -32,6 +32,7 @@ import process from 'node:process'
 import { parseArgs, parseEnv } from 'node:util'
 import { generatePassword } from '../src/cli.ts'
 import { verifyPassword } from '../src/utils/password.ts'
+import { normalizeUsername } from '../src/utils/username.ts'
 import {
   copyData,
   dirSize,
@@ -74,7 +75,7 @@ interface StandState {
   checkout: string
   pids: Record<string, number>
   urls: { panel: string, tv: string, api: string }
-  email: string
+  username: string
   password: string
   empty: boolean
 }
@@ -215,7 +216,7 @@ function printState(state: StandState) {
   Витрина   ${state.urls.tv}
   API       ${state.urls.api}
 
-  Вход      ${state.email}
+  Вход      ${state.username}
   Пароль    ${state.password}${state.empty ? '  (создайте владельца с ними в мастере)' : ''}
 
   Данные    ${join(standDir, 'data')}
@@ -255,20 +256,20 @@ async function freePorts(count: number) {
 async function standCredentials() {
   const path = join(mainCheckout, '.env.stand')
   const env = readEnvFile(path)
-  const email = env.STAND_EMAIL?.trim() || 'stand@example.test'
+  const username = env.STAND_USERNAME?.trim() || 'stand'
   let password = env.STAND_PASSWORD?.trim()
 
   if (!password) {
     password = generatePassword()
     await writeFile(
       path,
-      `# Тестовый вход стенда ветки (pnpm dev:stand): только для копии базы\nSTAND_EMAIL=${email}\nSTAND_PASSWORD=${password}\n`,
+      `# Тестовый вход стенда ветки (pnpm dev:stand): только для копии базы\nSTAND_USERNAME=${username}\nSTAND_PASSWORD=${password}\n`,
       { mode: 0o600 },
     )
     console.log(`Тестовая учётка записана в ${path}`)
   }
 
-  return { email, password }
+  return { username, password }
 }
 
 function sourceData(serverEnv: Record<string, string | undefined>) {
@@ -377,7 +378,7 @@ async function startStand() {
   await removeStand()
 
   const serverEnv = readEnvFile(join(mainCheckout, 'apps/server/.env'))
-  const { email, password } = await standCredentials()
+  const { username, password } = await standCredentials()
   const dataDir = join(standDir, 'data')
   const stand = {
     dataDir,
@@ -399,7 +400,7 @@ async function startStand() {
     checkout,
     pids: {},
     urls,
-    email,
+    username,
     password,
     empty: flags.empty,
   }
@@ -437,11 +438,11 @@ async function startStand() {
       fail('В dev-базе нет аккаунта: поднимите стенд с --empty')
 
     if (
-      owner.email === email.toLowerCase()
+      normalizeUsername(owner.username) === normalizeUsername(username)
       || (await verifyPassword(password, owner.passwordHash))
     ) {
       fail(
-        'Учётка из .env.stand совпадает с настоящей учёткой dev-базы: задайте в нём другие email и пароль',
+        'Учётка из .env.stand совпадает с настоящей учёткой dev-базы: задайте в нём другие имя пользователя и пароль',
       )
     }
 
@@ -456,7 +457,7 @@ async function startStand() {
     }
 
     await copyData(source, stand, flags.files)
-    sanitizeDb(stand.databasePath, source, stand, email)
+    sanitizeDb(stand.databasePath, source, stand, username)
 
     if (
       !runSync(process.execPath, ['src/cli.ts', 'reset-password', '--stdin'], {

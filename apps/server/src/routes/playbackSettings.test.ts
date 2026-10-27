@@ -13,8 +13,7 @@ beforeAll(async () => {
   await migrateDb()
 
   const { id } = createOwner({
-    name: 'Owner',
-    email: 'owner@example.com',
+    username: 'Owner',
     passwordHash: 'x',
   })
 

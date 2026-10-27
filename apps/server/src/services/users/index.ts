@@ -10,7 +10,7 @@ export const signinLimiter = createRateLimiter({
   limit: 10,
   windowMs: 15 * 60 * 1000,
 })
-// Неверный текущий пароль при смене пароля или email — на аккаунт: украденная
+// Неверный текущий пароль при смене пароля или имени пользователя — на аккаунт: украденная
 // сессия не подберёт им пароль
 export const passwordConfirmLimiter = createRateLimiter({
   limit: 5,
@@ -18,8 +18,7 @@ export const passwordConfirmLimiter = createRateLimiter({
 })
 
 export interface NewUser {
-  name: string
-  email: string
+  username: string
   passwordHash: string
 }
 
@@ -34,6 +33,11 @@ export class SetupDoneError extends Error {
 /** Сервер ещё не настроен: аккаунта владельца нет */
 export function needsSetup() {
   return !getDb().select({ id: users.id }).from(users).limit(1).get()
+}
+
+/** Единственный аккаунт сервера; `undefined` — его ещё не создали */
+export function findOwner() {
+  return getDb().select().from(users).limit(1).get()
 }
 
 /**
@@ -53,7 +57,7 @@ export function createOwner(values: NewUser) {
     // Первый профиль — с именем владельца: витрине сразу есть, чей прогресс писать
     if (!tx.select({ id: profiles.id }).from(profiles).limit(1).get()) {
       tx.insert(profiles)
-        .values({ name: owner.name, color: 'violet', position: 0 })
+        .values({ name: owner.username, color: 'violet', position: 0 })
         .run()
     }
 
@@ -89,11 +93,11 @@ export function updatePassword(userId: string, passwordHash: string) {
     .get()
 }
 
-/** Email — логин аккаунта, поэтому его смена тоже выкидывает прочие сессии */
-export function updateEmail(userId: string, email: string) {
+/** Имя пользователя — логин аккаунта, поэтому его смена тоже выкидывает прочие сессии */
+export function updateUsername(userId: string, username: string) {
   return getDb()
     .update(users)
-    .set({ email, sessionVersion: nextSessionVersion })
+    .set({ username, sessionVersion: nextSessionVersion })
     .where(eq(users.id, userId))
     .returning()
     .get()
@@ -105,7 +109,7 @@ export function updateEmail(userId: string, email: string) {
  * `undefined` — аккаунта ещё нет.
  */
 export function resetOwnerPassword(passwordHash: string) {
-  const owner = getDb().select({ id: users.id }).from(users).limit(1).get()
+  const owner = findOwner()
 
   return owner && updatePassword(owner.id, passwordHash)
 }

@@ -1,32 +1,33 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
-import { eq } from 'drizzle-orm'
+import { randomUUID } from 'node:crypto'
 import { REFRESH_TOKEN_COOKIE } from '../config.ts'
-import { getDb } from '../db/index.ts'
-import { users } from '../db/schema.ts'
 import { setupResponse, signin, signup } from '../dto/auth.ts'
 import { messageResponse, tooManyAttemptsResponse } from '../dto/common.ts'
 import { restoreInProgress } from '../services/backups/index.ts'
 import {
   createOwner,
+  findOwner,
   needsSetup,
   SetupDoneError,
   signinLimiter,
 } from '../services/users/index.ts'
 import { logFor } from '../services/logs/index.ts'
 import { verifySession } from '../services/users/session.ts'
-import { normalizeEmail } from '../utils/email.ts'
 import { hashPassword, verifyPassword } from '../utils/password.ts'
+import { normalizeUsername } from '../utils/username.ts'
 import { clearSession, setSession } from './sessionCookies.ts'
 
-// Drizzle может завернуть ошибку драйвера в свою, тогда код лежит в cause
-function isUniqueViolation(err: unknown): boolean {
-  if (typeof err !== 'object' || err === null)
-    return false
+let placeholderHash: Promise<string> | undefined
 
-  if ('code' in err && err.code === 'SQLITE_CONSTRAINT_UNIQUE')
-    return true
+// Хеш для входа на сервер без аккаунта: argon2 считается и тогда, чтобы
+// время ответа не отличалось
+function passwordHashToCheck(storedHash: string | undefined) {
+  if (storedHash)
+    return storedHash
 
-  return 'cause' in err && isUniqueViolation(err.cause)
+  placeholderHash ??= hashPassword(randomUUID())
+
+  return placeholderHash
 }
 
 export const authRoutes: FastifyPluginAsyncZod = async (app) => {
@@ -74,20 +75,13 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
             .send({ message: 'Restore from a backup is in progress' })
         }
 
-        createOwner({
-          name: request.body.name,
-          email: normalizeEmail(request.body.email),
-          passwordHash,
-        })
+        createOwner({ username: request.body.username, passwordHash })
 
         return reply.code(201).send({ message: 'User created' })
       }
       catch (err) {
         if (err instanceof SetupDoneError)
           return reply.code(403).send({ message: 'Registration is closed' })
-
-        if (isUniqueViolation(err))
-          return reply.code(400).send({ message: 'Email already in use' })
 
         request.log.error(err)
 
@@ -127,20 +121,24 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
           .send({ message: 'too_many_attempts', retryAfter })
       }
 
-      const user = getDb()
-        .select()
-        .from(users)
-        .where(eq(users.email, normalizeEmail(request.body.email)))
-        .get()
+      const user = findOwner()
+      // Пароль проверяется и при неверном имени: ни ответ, ни его время не
+      // подсказывают, что имя угадано
+      const passwordOk = await verifyPassword(
+        request.body.password,
+        await passwordHashToCheck(user?.passwordHash),
+      )
 
-      // Одинаковый ответ на несуществующий email и неверный пароль,
-      // чтобы форма логина не превращалась в проверку существования аккаунта
       if (
         !user
-        || !(await verifyPassword(request.body.password, user.passwordHash))
+        || !passwordOk
+        || normalizeUsername(user.username)
+        !== normalizeUsername(request.body.username)
       ) {
         logFor('auth').warn({ ip: request.ip }, 'Sign-in failed')
-        return reply.code(400).send({ message: 'Invalid email or password' })
+        return reply
+          .code(400)
+          .send({ message: 'Invalid username or password' })
       }
 
       signinLimiter.reset(limitKey)
@@ -171,7 +169,7 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
     },
     async (request, reply) => {
       try {
-        // Отозванная сессия (сменился пароль или email) не продлевается
+        // Отозванная сессия (сменился пароль или имя пользователя) не продлевается
         const { userId, sessionVersion } = verifySession(
           request.cookies[REFRESH_TOKEN_COOKIE] ?? '',
           'user_refresh',

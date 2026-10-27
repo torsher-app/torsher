@@ -22,7 +22,7 @@ A new owner password and access to the control panel again.
 docker exec -it torsher torsher reset-password
 ```
 
-The command prints a new random password: four groups of five letters and digits, without look-alike characters such as `0` and `o`. If your container has another name, put it in place of the first `torsher`.
+The command prints the owner username and a new random password: four groups of five letters and digits, without look-alike characters such as `0` and `o`. If your container has another name, put it in place of the first `torsher`.
 
 The same command is shown on the sign-in screen under <Ui k="panel.auth.forgot" />.
 
@@ -36,6 +36,10 @@ printf '%s' '<new-password>' | docker exec -i torsher torsher reset-password --s
 The password stays in your shell history. To avoid that, set a random one with the first command and change it in the panel.
 :::
 
+::: tip Forgot the username too?
+The same command prints it: the account has no other login. If you set up Torsher before usernames replaced email, your username is the name you entered in the setup wizard.
+:::
+
 ## 2. Sign in and change it
 
 Sign in to the panel with the new password, then open <Ui k="panel.nav.settings panel.settings.nav.account" /> and set a password you will remember under <Ui k="panel.settings.account.passwordTitle" />.
@@ -47,7 +51,7 @@ Sign in to the panel with the new password, then open <Ui k="panel.nav.settings 
 
 ## Check
 
-The panel opens with the new password, and the command printed `The password for <your email> has been reset.`
+The panel opens with the new password, and the command printed `The password for <your username> has been reset.`
 
 ## If something went wrong
 
