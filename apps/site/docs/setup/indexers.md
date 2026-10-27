@@ -63,7 +63,15 @@ For an indexer that isn't in a manager, open <Ui k="panel.nav.sources" />, selec
 
 ## Releases in other languages
 
-Torsher reads release titles in English and Russian, including season and episode ranges, quality, and voice-over studios and markers. Indexers with Russian-language releases work as well as English ones: the showcase shows the voice-over of each release and filters by it.
+Most indexers name releases in the scene format, such as `Show.Name.S01E02.1080p.WEB-DL.x265-GROUP`, whatever the language of the film. Torsher reads this format fully: title, year, season and episode, quality, source, codec and audio.
+
+Russian-language indexers use their own format, with the Russian and original titles, episode ranges and the voice-over in the release title. Torsher reads it too, including voice-over studios and types: the <Ui k="sources.title" /> screen shows the voice-over of each release, and <Ui k="sources.panel.voice" /> filters by it.
+
+Releases named in other languages work in part:
+
+- Season, episode and quality markers in the scene format are read whatever the language. Words like "season" and "episodes" are read only in English and Russian.
+- Language codes such as `GER`, `FRE` or `SPA` are recognized. Local voice-over markers and studios are not, so the voice-over filter doesn't sort these releases.
+- Torsher searches by IMDb, TMDB or TVDB ID when the indexer supports it, and by the original, English, Russian and Ukrainian titles from TMDB. A release named only by its title in another language, for example German or French, may not show up: select <Ui k="sources.query.action" /> on the <Ui k="sources.title" /> screen and enter the title the way the indexer names it.
 
 ## Check
 

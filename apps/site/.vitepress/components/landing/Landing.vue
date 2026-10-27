@@ -108,7 +108,7 @@ const facts = [
 const audioPoints = [
   'Dubbing, multi-voice, single-voice or the original with subtitles',
   'The same voice-over for the whole season',
-  'English and Russian release names, checked against a labeled corpus',
+  'Scene release names and Russian-language ones, checked against a labeled corpus',
   'Season packs, episode ranges and ongoing seasons',
 ]
 
