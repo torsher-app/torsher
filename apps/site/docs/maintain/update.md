@@ -42,6 +42,8 @@ The `image:` line in `docker-compose.yml` decides which version you get:
 
 The same image with the same tags is on Docker Hub as `torsherapp/torsher`, for example `torsherapp/torsher:latest`. Both names give you the same image, so pick one and keep it.
 
+If `docker compose pull` from `ghcr.io` is slow or stalls on your network, switch to Docker Hub: change the `image:` line to `torsherapp/torsher` with the same tag and pull again. Your data and settings don't depend on where the image comes from.
+
 ## 2. Pull the new image
 
 ```bash
@@ -123,6 +125,7 @@ Everything changed after the backup was made is lost: new positions, ratings, se
 
 - **The container keeps restarting right after the update** (`Restarting` in `docker compose ps`) and the log says `Could not back up the database before updating it`. See [the backup before an update](#the-backup-before-an-update).
 - **The log says `The database was updated by a newer version of Torsher`.** You started an older version on a newer database. Start the newer version again, or [roll back](#roll-back-to-the-previous-version): the log names the `pre-update` backup to restore.
+- **`docker compose pull` is very slow or stalls.** Pull the same image from Docker Hub instead, as described in step 1.
 - **The panel never shows a new version.** <Ui k="panel.nav.settings panel.settings.nav.about" /> shows why: the check is off, GitHub limited requests from your address, or the server can't reach GitHub. Requests to GitHub go through the routes in <Ui k="panel.nav.settings panel.settings.nav.network" />.
 
 To read the container log, see [Logs and diagnostics](/docs/maintain/logs).
