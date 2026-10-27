@@ -164,6 +164,7 @@ function exportProgress(
       duration: row.duration,
       voiceStudio: row.voiceStudio,
       voiceType: row.voiceType,
+      watchedAt: row.watchedAt?.toISOString() ?? null,
       updatedAt: row.updatedAt.toISOString(),
     })
   }

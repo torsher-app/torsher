@@ -1,12 +1,17 @@
 import type { TitleProgress } from '../../db/schema.ts'
-import { and, desc, eq, gt, isNotNull, max, or } from 'drizzle-orm'
+import { and, desc, eq, isNotNull, max, or } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import { titleProgress } from '../../db/schema.ts'
 import { droppedSince } from '../mine/index.ts'
 import { getTorrent } from '../torrents/index.ts'
-import { isWatched, resumePosition } from '../torrents/playback.ts'
+import { resumePosition } from '../torrents/playback.ts'
 import { titleFiles } from './files.ts'
-import { episodeProgress, lastTitleProgress } from './progress.ts'
+import {
+  episodeProgress,
+  isProgressWatched,
+  lastTitleProgress,
+  progressSeen,
+} from './progress.ts'
 
 export interface EpisodeRef {
   season: number
@@ -112,7 +117,7 @@ export function nextEpisodeFor(
   return nextAiredEpisode(seasons, after, (ref) => {
     const row = rows.get(`${ref.season}:${ref.episode}`)
 
-    return !!row && isWatched(row.position, row.duration)
+    return !!row && isProgressWatched(row)
   })
 }
 
@@ -123,8 +128,8 @@ function fileOf(row: TitleProgress): EpisodeFile | null {
 }
 
 /**
- * Цель «Продолжить»: последняя серия из плеера, если она не досмотрена; иначе
- * следующая вышедшая. Сезоны сериала загружаются, только когда нужна следующая.
+ * Цель «Продолжить»: последняя серия из плеера, если она не просмотрена или
+ * её пересматривают с места; иначе следующая вышедшая. Сезоны сериала загружаются, только когда нужна следующая.
  * `undefined` — продолжать нечего: не смотрели, фильм досмотрен или только
  * начат, новых серий нет.
  */
@@ -138,9 +143,11 @@ export async function resumeTarget(
   if (!last)
     return undefined
 
-  if (!isWatched(last.position, last.duration)) {
-    const position = resumePosition(last.position, last.duration)
+  const position = resumePosition(last.position, last.duration)
 
+  // Пересмотр в первых 5% позиции не оставляет: случайный запуск просмотренной
+  // серии не уводит «Продолжить» назад
+  if (!isProgressWatched(last) || position !== null) {
     // Фильм начат, но продолжать нечего: в ряду он играл бы с начала
     if (position === null && last.season === 0)
       return undefined
@@ -196,7 +203,7 @@ export function watchedTitles(profileId: string, limit: number) {
     .where(
       and(
         eq(titleProgress.profileId, profileId),
-        gt(titleProgress.position, 0),
+        progressSeen(),
         or(
           isNotNull(titleProgress.torrentId),
           isNotNull(titleProgress.mediaFileId),

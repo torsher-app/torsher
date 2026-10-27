@@ -147,6 +147,7 @@ function progressRows(profileId: string, titleId?: string) {
       episode: titleProgress.episode,
       position: titleProgress.position,
       duration: titleProgress.duration,
+      watchedAt: titleProgress.watchedAt,
       updatedAt: titleProgress.updatedAt,
     })
     .from(titleProgress)

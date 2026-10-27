@@ -17,6 +17,7 @@ import {
 } from '../../db/schema.ts'
 import { fileProgressId } from '../library/files.ts'
 import { parseCatalogId } from '../tmdb/mappers.ts'
+import { isWatched } from '../torrents/playback.ts'
 import { mergeMine, ratingOutcome } from './merge.ts'
 
 // SQLite ограничивает число параметров запроса
@@ -54,6 +55,7 @@ interface IncomingProgress {
   duration: number | null
   voiceStudio: string | null
   voiceType: string | null
+  watchedAt: Date | null
   updatedAt: Date
 }
 
@@ -131,15 +133,37 @@ function incomingProgress(rows: ExportProgress[]) {
       titleId,
       season: row.season,
       episode: row.episode,
-      position: row.position,
-      duration: row.duration,
       voiceStudio: row.voiceStudio,
       voiceType: row.voiceType,
       updatedAt: new Date(row.updatedAt),
+      ...watchedOf(row),
     })
   }
 
   return { resolved, skipped }
+}
+
+/**
+ * Отметка и позиция строки файла. В файлах прошлых версий отметки нет: она
+ * выводится из позиции, как тогда, а отметка с карточки (позиция 1 из 1)
+ * становится отметкой без позиции
+ */
+function watchedOf(row: ExportProgress) {
+  if (row.watchedAt !== undefined) {
+    return {
+      position: row.position,
+      duration: row.duration,
+      watchedAt: row.watchedAt ? new Date(row.watchedAt) : null,
+    }
+  }
+
+  const watchedAt = isWatched(row.position, row.duration)
+    ? new Date(row.updatedAt)
+    : null
+
+  return row.position === 1 && row.duration === 1
+    ? { position: 0, duration: null, watchedAt }
+    : { position: row.position, duration: row.duration, watchedAt }
 }
 
 function incomingMine(rows: ExportMine[]) {
@@ -236,6 +260,7 @@ function progressOutcome(
 
   return current.position === incoming.position
     && current.duration === incoming.duration
+    && current.watchedAt?.getTime() === incoming.watchedAt?.getTime()
     ? 'same'
     : 'updated'
 }
@@ -380,6 +405,7 @@ function progressUndo(
           fileIndex: row.fileIndex,
           voiceStudio: row.voiceStudio,
           voiceType: row.voiceType,
+          watchedAt: row.watchedAt?.getTime() ?? null,
           updatedAt: row.updatedAt.getTime(),
         }
       : null,
@@ -406,6 +432,7 @@ export function applyProfileMerge(
       duration: incoming.duration,
       voiceStudio: incoming.voiceStudio,
       voiceType: incoming.voiceType,
+      watchedAt: incoming.watchedAt,
       updatedAt: incoming.updatedAt,
     }
 
@@ -472,8 +499,16 @@ export function undoProgress(
     return true
   }
 
+  const { watchedAt, ...before } = entry.before
+
   db.update(titleProgress)
-    .set({ ...entry.before, updatedAt: new Date(entry.before.updatedAt) })
+    .set({
+      ...before,
+      updatedAt: new Date(before.updatedAt),
+      ...(watchedAt === undefined
+        ? {}
+        : { watchedAt: watchedAt === null ? null : new Date(watchedAt) }),
+    })
     .where(where)
     .run()
 

@@ -555,6 +555,73 @@ describe('позиция по серии', () => {
     })
   })
 
+  it('пересмотр отмеченной серии отметку не снимает', async () => {
+    const file = (await watch({ season: 2, episode: 6 })).json()
+    const title = { id: TITLE, season: 2, episode: 6 }
+    const save = (position: number) =>
+      app.inject({
+        method: 'PUT',
+        url: '/api/watch-state',
+        cookies: owner,
+        payload: {
+          torrentId: file.torrentId,
+          fileIndex: file.fileIndex,
+          position,
+          duration: 2700,
+          title,
+        },
+      })
+    const mark = (watched: boolean) =>
+      app.inject({
+        method: 'PUT',
+        url: `/api/titles/${TITLE}/watched`,
+        cookies: owner,
+        payload: { season: 2, episode: 6, watched },
+      })
+    const progress = async () =>
+      (
+        await app.inject({
+          url: `/api/titles/${TITLE}/progress`,
+          cookies: owner,
+        })
+      ).json()
+    const episode = async () =>
+      (await progress()).episodes.find(
+        (item: { season: number, episode: number }) =>
+          item.season === 2 && item.episode === 6,
+      )
+
+    await save(600)
+    await mark(true)
+
+    // Отмеченная серия играет с начала, а не с позиции файла
+    const playback = await app.inject({
+      method: 'POST',
+      url: '/api/playback',
+      cookies: owner,
+      payload: { torrentId: file.torrentId, fileIndex: file.fileIndex, title },
+    })
+
+    expect(playback.json().startPosition ?? null).toBeNull()
+
+    // Случайный запуск на 10 с
+    await save(10)
+    expect(await episode()).toMatchObject({ position: 10, watched: true })
+
+    // Пересмотр с места: «Продолжить» ведёт в него, отметка остаётся
+    await save(900)
+    expect(await episode()).toMatchObject({ position: 900, watched: true })
+    expect((await progress()).resume).toMatchObject({
+      season: 2,
+      episode: 6,
+      position: 900,
+      next: false,
+    })
+
+    await mark(false)
+    expect(await episode()).toMatchObject({ position: 0, watched: false })
+  })
+
   it('без начатых серий прогресса нет; чужой ID — 404', async () => {
     const empty = await app.inject({
       url: `/api/titles/${TITLE}/progress`,

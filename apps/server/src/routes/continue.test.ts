@@ -18,8 +18,12 @@ import {
   torrents,
   users,
 } from '../db/schema.ts'
-import { markWatched } from '../services/sources/progress.ts'
+import {
+  markWatched,
+  saveTitleProgress,
+} from '../services/sources/progress.ts'
 import { nextAiredEpisode, resumeTarget } from '../services/sources/resume.ts'
+import { isWatched } from '../services/torrents/playback.ts'
 import {
   emptyList,
   movie,
@@ -89,6 +93,8 @@ function watched(
       duration: EPISODE,
       torrentId,
       fileIndex,
+      // Как пишет плеер: отметка — по порогу досмотра
+      watchedAt: isWatched(position, EPISODE) ? updatedAt : null,
       updatedAt,
     })
     .run()
@@ -248,6 +254,35 @@ describe('get /api/home/continue', () => {
 
     expect(await continueItems()).toEqual([
       expect.objectContaining({ season: 2, episode: 3 }),
+    ])
+  })
+
+  it('короткий повторный запуск просмотренной серии ряд не откатывает', async () => {
+    watched(SERIES, 2, 1, EPISODE, new Date(Date.now() - 60_000))
+    saveTitleProgress(
+      { profileId, titleId: SERIES, season: 2, episode: 1 },
+      { position: 10, duration: EPISODE, torrentId: 's2', fileIndex: 0 },
+    )
+
+    expect(await continueItems()).toEqual([
+      expect.objectContaining({ season: 2, episode: 2, next: true }),
+    ])
+  })
+
+  it('пересмотр с места просмотренной серии продолжается', async () => {
+    watched(SERIES, 2, 1, EPISODE, new Date(Date.now() - 60_000))
+    saveTitleProgress(
+      { profileId, titleId: SERIES, season: 2, episode: 1 },
+      { position: 900, duration: EPISODE, torrentId: 's2', fileIndex: 0 },
+    )
+
+    expect(await continueItems()).toEqual([
+      expect.objectContaining({
+        season: 2,
+        episode: 1,
+        position: 900,
+        next: false,
+      }),
     ])
   })
 

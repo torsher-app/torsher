@@ -537,6 +537,9 @@ export const titleProgress = sqliteTable(
     mediaFileId: text('media_file_id'),
     voiceStudio: text('voice_studio'),
     voiceType: text('voice_type'),
+    // Досмотр в плеере или отметка с карточки. Не выводится из позиции:
+    // пересмотр досмотренной серии отметку не снимает
+    watchedAt: integer('watched_at', { mode: 'timestamp_ms' }),
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
       .notNull()
       .$defaultFn(() => new Date()),
@@ -625,6 +628,8 @@ export interface ImportProgressUndoEntry {
     fileIndex: number | null
     voiceStudio: string | null
     voiceType: string | null
+    // Нет у записей прошлых версий: отметку отмена тогда не трогает
+    watchedAt?: number | null
     updatedAt: number
   } | null
   after: number

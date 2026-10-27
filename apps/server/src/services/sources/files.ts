@@ -4,7 +4,7 @@ import { and, eq } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import { titleProgress } from '../../db/schema.ts'
 import { isVideoFile } from '../torrents/index.ts'
-import { isWatched } from '../torrents/playback.ts'
+import { isProgressWatched } from './progress.ts'
 
 /** Видеофайл раздачи для экрана «Файлы»: серия по имени и её прогресс */
 export interface TitleFile {
@@ -84,7 +84,7 @@ export function titleFiles(
           episode,
           position: known ? (row?.position ?? 0) : 0,
           duration: known ? (row?.duration ?? null) : null,
-          watched: known && !!row && isWatched(row.position, row.duration),
+          watched: known && !!row && isProgressWatched(row),
         },
       }
     })

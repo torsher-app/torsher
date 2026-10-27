@@ -60,6 +60,7 @@ import {
 import { titleFiles as filesOfTorrent } from '../services/sources/files.ts'
 import {
   episodeProgress,
+  isProgressWatched,
   lastTitleProgress,
   markWatched,
 } from '../services/sources/progress.ts'
@@ -77,7 +78,6 @@ import {
 import { getTorrent, liveTorrents } from '../services/torrents/index.ts'
 import { getSeason, getTitle, TmdbError } from '../services/tmdb/index.ts'
 import { parseCatalogId } from '../services/tmdb/mappers.ts'
-import { isWatched } from '../services/torrents/playback.ts'
 import { sendTmdbError } from './catalog.ts'
 import { sendEngineError } from './engineResponses.ts'
 
@@ -355,7 +355,7 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
               episode: last.episode || null,
               position: last.position,
               duration: last.duration,
-              watched: isWatched(last.position, last.duration),
+              watched: isProgressWatched(last),
               updatedAt: last.updatedAt.toISOString(),
             }
           : null,
@@ -365,7 +365,7 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
             episode: row.episode,
             position: row.position,
             duration: row.duration,
-            watched: isWatched(row.position, row.duration),
+            watched: isProgressWatched(row),
           }),
         ),
         seasonReleases: seasonReleases(

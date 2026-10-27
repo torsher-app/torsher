@@ -1,11 +1,12 @@
 import type { TitleStatus } from '../../dto/mine.ts'
-import { isWatched } from '../torrents/playback.ts'
+import { hasProgress, isProgressWatched } from '../sources/progress.ts'
 
 export interface ProgressPoint {
   season: number
   episode: number
   position: number
   duration: number | null
+  watchedAt: Date | null
   updatedAt: Date
 }
 
@@ -26,7 +27,7 @@ export function lastWatchedAt(progress: ProgressPoint[]) {
   let last: Date | undefined
 
   for (const point of progress) {
-    if (point.position > 0 && (!last || point.updatedAt > last))
+    if (hasProgress(point) && (!last || point.updatedAt > last))
       last = point.updatedAt
   }
 
@@ -47,10 +48,7 @@ export function isDropped(
 export function watchedEpisodes(progress: ProgressPoint[]) {
   return new Set(
     progress
-      .filter(
-        point =>
-          point.season > 0 && isWatched(point.position, point.duration),
-      )
+      .filter(point => point.season > 0 && isProgressWatched(point))
       .map(point => `${point.season}:${point.episode}`),
   )
 }
@@ -68,14 +66,14 @@ export function titleStatus(input: StatusInput): TitleStatus | null {
   if (input.kind === 'movie') {
     const point = input.progress.find(item => item.season === 0)
 
-    if (input.rating || (point && isWatched(point.position, point.duration)))
+    if (input.rating || (point && isProgressWatched(point)))
       return 'watched'
 
-    return point && point.position > 0 ? 'watching' : null
+    return point && hasProgress(point) ? 'watching' : null
   }
 
   const started = input.progress.some(
-    point => point.season > 0 && point.position > 0,
+    point => point.season > 0 && hasProgress(point),
   )
 
   if (!started)

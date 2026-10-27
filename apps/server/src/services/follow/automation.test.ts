@@ -62,6 +62,7 @@ import {
 import { checkStalled, resetStallTracking, STALL_AFTER_MS } from './stalled.ts'
 import { signToken } from '../../utils/token.ts'
 import { localDay } from './wanted.ts'
+import { isWatched } from '../torrents/playback.ts'
 
 const disk = vi.hoisted(() => ({ total: 1024 ** 4, free: 512 * 1024 ** 3 }))
 
@@ -1689,6 +1690,7 @@ describe('режим «Только уведомлять»', () => {
           episode,
           position,
           duration: 3000,
+          watchedAt: isWatched(position, 3000) ? new Date() : null,
           updatedAt: new Date(),
         })
         .onConflictDoUpdate({
@@ -1698,7 +1700,10 @@ describe('режим «Только уведомлять»', () => {
             titleProgress.season,
             titleProgress.episode,
           ],
-          set: { position },
+          set: {
+            position,
+            watchedAt: isWatched(position, 3000) ? new Date() : null,
+          },
         })
         .run()
 
