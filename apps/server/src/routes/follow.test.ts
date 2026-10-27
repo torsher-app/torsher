@@ -177,6 +177,7 @@ function watched(profileId: string, seasonNumber: number, episode: number) {
       episode,
       position: EPISODE,
       duration: EPISODE,
+      watchedAt: new Date(),
     })
     .run()
 }

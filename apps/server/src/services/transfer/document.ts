@@ -66,6 +66,8 @@ const exportProgress = z
     duration: z.number().min(0).nullable(),
     voiceStudio: z.string().max(200).nullable(),
     voiceType: z.string().max(50).nullable(),
+    // Нет у файлов прошлых версий: там отметку выводят из позиции
+    watchedAt: at.nullable().optional(),
     updatedAt: at,
   })
   .refine(row => !!row.title !== !!row.file, 'title or file')

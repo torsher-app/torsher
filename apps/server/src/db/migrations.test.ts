@@ -304,3 +304,109 @@ describe('миграция имени пользователя', () => {
     ).not.toContain('email')
   })
 })
+
+describe('миграция отметки «просмотрено»', () => {
+  const watchedIdx = journal.entries.findIndex(entry =>
+    readFileSync(join(MIGRATIONS_DIR, `${entry.tag}.sql`), 'utf8').includes(
+      'ADD `watched_at`',
+    ),
+  )
+
+  it('досмотренное и отмеченное получают отметку, позиция 1 из 1 убирается', () => {
+    const sqlite = new Database(':memory:')
+    const db = drizzle(sqlite)
+
+    migrate(db, { migrationsFolder: migrationsBefore(watchedIdx) })
+
+    sqlite
+      .prepare(
+        'INSERT INTO profiles (id, name, color, poster_rating, position, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      )
+      .run('p1', 'Owner', 'blue', 'tmdb', 0, 0)
+
+    const insert = sqlite.prepare(
+      'INSERT INTO title_progress (profile_id, title_id, season, episode, position, duration, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    )
+    const rows: [string, number, number | null][] = [
+      ['card', 1, 1],
+      ['end', 2350, 2400],
+      ['lastSecond', 1999, 2000],
+      ['short', 20, 200],
+      ['shortStart', 5, 200],
+      ['half', 1200, 2400],
+      ['noDuration', 600, null],
+      ['zero', 0, null],
+    ]
+
+    rows.forEach(([id, position, duration], episode) =>
+      insert.run(
+        'p1',
+        `tmdb:tv:${id}`,
+        1,
+        episode + 1,
+        position,
+        duration,
+        1000,
+      ),
+    )
+
+    migrate(db, { migrationsFolder: MIGRATIONS_DIR })
+
+    const result = sqlite
+      .prepare(
+        'SELECT title_id, position, duration, watched_at FROM title_progress ORDER BY episode',
+      )
+      .all()
+
+    expect(result).toEqual([
+      {
+        title_id: 'tmdb:tv:card',
+        position: 0,
+        duration: null,
+        watched_at: 1000,
+      },
+      {
+        title_id: 'tmdb:tv:end',
+        position: 2350,
+        duration: 2400,
+        watched_at: 1000,
+      },
+      {
+        title_id: 'tmdb:tv:lastSecond',
+        position: 1999,
+        duration: 2000,
+        watched_at: 1000,
+      },
+      {
+        title_id: 'tmdb:tv:short',
+        position: 20,
+        duration: 200,
+        watched_at: 1000,
+      },
+      {
+        title_id: 'tmdb:tv:shortStart',
+        position: 5,
+        duration: 200,
+        watched_at: null,
+      },
+      {
+        title_id: 'tmdb:tv:half',
+        position: 1200,
+        duration: 2400,
+        watched_at: null,
+      },
+      {
+        title_id: 'tmdb:tv:noDuration',
+        position: 600,
+        duration: null,
+        watched_at: null,
+      },
+      {
+        title_id: 'tmdb:tv:zero',
+        position: 0,
+        duration: null,
+        watched_at: null,
+      },
+    ])
+  })
+})

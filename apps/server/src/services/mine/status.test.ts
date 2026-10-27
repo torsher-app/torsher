@@ -5,11 +5,25 @@ import { isDropped, titleStatus } from './status.ts'
 const day = (n: number) => new Date(Date.UTC(2026, 9, n))
 
 function watched(season: number, episode: number, at = day(10)): ProgressPoint {
-  return { season, episode, position: 1, duration: 1, updatedAt: at }
+  return {
+    season,
+    episode,
+    position: 0,
+    duration: null,
+    watchedAt: at,
+    updatedAt: at,
+  }
 }
 
 function started(season: number, episode: number, at = day(10)): ProgressPoint {
-  return { season, episode, position: 300, duration: 3000, updatedAt: at }
+  return {
+    season,
+    episode,
+    position: 300,
+    duration: 3000,
+    watchedAt: null,
+    updatedAt: at,
+  }
 }
 
 const seasons = [
@@ -27,6 +41,12 @@ describe('titleStatus', () => {
     expect(titleStatus({ kind: 'movie', progress: [watched(0, 0)] })).toBe(
       'watched',
     )
+  })
+
+  it('пересмотр досмотренного фильма статус не меняет', () => {
+    const rewatch = { ...watched(0, 0), position: 10, duration: 5400 }
+
+    expect(titleStatus({ kind: 'movie', progress: [rewatch] })).toBe('watched')
   })
 
   it('оценённый фильм считается просмотренным, сериал — нет', () => {

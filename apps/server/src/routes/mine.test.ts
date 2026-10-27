@@ -393,8 +393,8 @@ describe('get /api/home: личные ряды', () => {
         titleId: SERIES,
         season: 2,
         episode: 3,
-        position: 1,
-        duration: 1,
+        position: 0,
+        watchedAt: new Date(Date.now() - 5 * DAY_MS),
         updatedAt: new Date(Date.now() - 5 * DAY_MS),
       })
       .run()
@@ -515,8 +515,8 @@ describe('get /api/profiles/:id/history', () => {
           titleId: SERIES,
           season: 1,
           episode: 1,
-          position: 1,
-          duration: 1,
+          position: 0,
+          watchedAt: at(5),
           updatedAt: at(5),
         },
         {
@@ -533,8 +533,8 @@ describe('get /api/profiles/:id/history', () => {
           titleId: MOVIE,
           season: 0,
           episode: 0,
-          position: 1,
-          duration: 1,
+          position: 0,
+          watchedAt: at(3),
           updatedAt: at(3),
         },
         // Выбор раздачи без просмотра в историю не попадает

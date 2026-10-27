@@ -4,6 +4,7 @@ import type { VoiceRef } from './profile.ts'
 import { and, desc, eq, gt, inArray, isNotNull, or } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import { titleProgress } from '../../db/schema.ts'
+import { isWatched } from '../torrents/playback.ts'
 
 /** Тайтл и серия в прогрессе профиля; у фильма сезона и серии нет */
 export interface TitleRef {
@@ -28,11 +29,31 @@ function whereRef(ref: TitleRef) {
   )
 }
 
+/** Просмотрено: досмотр в плеере или отметка с карточки, а не текущая позиция */
+export function isProgressWatched(row: Pick<TitleProgress, 'watchedAt'>) {
+  return row.watchedAt !== null
+}
+
+/** Смотрели или отметили просмотренным: строка не просто выбор раздачи */
+export function hasProgress(
+  row: Pick<TitleProgress, 'position' | 'watchedAt'>,
+) {
+  return row.position > 0 || row.watchedAt !== null
+}
+
+/** `hasProgress` в запросе */
+export function progressSeen() {
+  return or(gt(titleProgress.position, 0), isNotNull(titleProgress.watchedAt))
+}
+
 export function getTitleProgress(ref: TitleRef) {
   return getDb().select().from(titleProgress).where(whereRef(ref)).get()
 }
 
-/** Позиция серии из плеера; раздача и файл — чем смотрели последний раз */
+/**
+ * Позиция серии из плеера; раздача и файл — чем смотрели последний раз.
+ * Досмотр ставит отметку, а позиция пересмотра её не снимает
+ */
 export function saveTitleProgress(
   ref: TitleRef,
   values: Pick<
@@ -41,6 +62,9 @@ export function saveTitleProgress(
   > & { mediaFileId?: string | null },
 ) {
   const updatedAt = new Date()
+  const set = isWatched(values.position, values.duration)
+    ? { ...values, watchedAt: updatedAt, updatedAt }
+    : { ...values, updatedAt }
 
   return getDb()
     .insert(titleProgress)
@@ -48,8 +72,7 @@ export function saveTitleProgress(
       profileId: ref.profileId,
       titleId: ref.titleId,
       ...keyOf(ref),
-      ...values,
-      updatedAt,
+      ...set,
     })
     .onConflictDoUpdate({
       target: [
@@ -58,7 +81,7 @@ export function saveTitleProgress(
         titleProgress.season,
         titleProgress.episode,
       ],
-      set: { ...values, updatedAt },
+      set,
     })
     .returning()
     .get()
@@ -188,14 +211,14 @@ export function rememberVoice(ref: TitleRef, voice: AudioTrack) {
 }
 
 /**
- * Отметка «просмотрено» с карточки: досмотренная позиция или сброс. Раздачу
- * и озвучку серии не трогает — по ним работает «как в прошлых сериях».
+ * Отметка «просмотрено» с карточки или её снятие; позиция в обоих случаях
+ * сбрасывается: отмеченную серию не продолжают с середины. Раздачу и озвучку
+ * серии не трогает — по ним работает «как в прошлых сериях».
  */
 export function markWatched(ref: TitleRef, watched: boolean) {
-  // Позиция в самом конце: «досмотрено» и следующая серия — цель «Продолжить»
   const values = watched
-    ? { position: 1, duration: 1 }
-    : { position: 0, duration: null }
+    ? { position: 0, watchedAt: new Date() }
+    : { position: 0, duration: null, watchedAt: null }
 
   getDb()
     .insert(titleProgress)
@@ -233,7 +256,7 @@ export function watchedTitles(profileId: string, titleIds: string[]) {
       and(
         eq(titleProgress.profileId, profileId),
         inArray(titleProgress.titleId, titleIds),
-        gt(titleProgress.position, 0),
+        progressSeen(),
       ),
     )
     .all()
@@ -268,7 +291,7 @@ export function lastTitleProgress(profileId: string, titleId: string) {
       and(
         eq(titleProgress.profileId, profileId),
         eq(titleProgress.titleId, titleId),
-        gt(titleProgress.position, 0),
+        progressSeen(),
         // Смотрели в плеере: раздачу или файл библиотеки, а не отметили с карточки
         or(
           isNotNull(titleProgress.torrentId),

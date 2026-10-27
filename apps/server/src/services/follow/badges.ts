@@ -7,7 +7,7 @@ import {
   titleProgress,
 } from '../../db/schema.ts'
 import { watchedEpisodes } from '../mine/status.ts'
-import { isWatched } from '../torrents/playback.ts'
+import { isProgressWatched } from '../sources/progress.ts'
 import { episodeKey } from './wanted.ts'
 
 /**
@@ -160,11 +160,7 @@ export function followNewEpisodes(profileId: string) {
 
   for (const { id, titleId } of followed) {
     const points = progress.filter(point => point.titleId === titleId)
-    const watched = new Set(
-      points
-        .filter(point => isWatched(point.position, point.duration))
-        .map(episodeKey),
-    )
+    const watched = new Set(points.filter(isProgressWatched).map(episodeKey))
     // Новое — после самой дальней серии, которую профиль открывал: пропущенная
     // раньше серия не новость, а недосмотренная дальняя — это «Продолжить»
     const farthest = [...points].sort(

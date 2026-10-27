@@ -11,8 +11,7 @@ import { getDb } from '../../db/index.ts'
 import { followEpisodes } from '../../db/schema.ts'
 import { mapLimit } from '../../utils/mapLimit.ts'
 import { DETAILS_CONCURRENCY, summaryOf } from '../mine/cards.ts'
-import { episodeProgress } from '../sources/progress.ts'
-import { isWatched } from '../torrents/playback.ts'
+import { episodeProgress, isProgressWatched } from '../sources/progress.ts'
 import { followEpisodeStates, movieState } from './episodes.ts'
 import {
   followById,
@@ -87,7 +86,7 @@ function readyFor(
 ) {
   const watched = new Set(
     episodeProgress(profileId, titleId)
-      .filter(point => isWatched(point.position, point.duration))
+      .filter(isProgressWatched)
       .map(episodeKey),
   )
   const ready = states.find(

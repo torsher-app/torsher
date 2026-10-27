@@ -30,6 +30,7 @@ import { clearMovieWatchlist } from '../services/mine/index.ts'
 import { getProfile } from '../services/profiles/index.ts'
 import {
   getTitleProgress,
+  hasProgress,
   lastVoiceOfSeason,
   rememberVoice,
   saveTitleProgress,
@@ -290,15 +291,17 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
               titleId: fileProgressId(mediaFileId),
             }
           : undefined
-      // Прогресс серии сильнее позиции файла: раздачу могли сменить
+      // Прогресс серии сильнее позиции файла: раздачу могли сменить. Отметка
+      // с карточки тоже: отмеченную серию не продолжаем с позиции файла
       const progress = ref
         ? getTitleProgress(ref)
         : fileRef && getTitleProgress(fileRef)
-      const state = progress?.position
-        ? progress
-        : torrentId
-          ? getWatchState(request.profileId, torrentId, fileIndex!)
-          : undefined
+      const state
+        = progress && hasProgress(progress)
+          ? progress
+          : torrentId
+            ? getWatchState(request.profileId, torrentId, fileIndex!)
+            : undefined
       // Озвучка прошлой раздачи при её смене, иначе серии (выбранная в
       // источниках или в плеере), иначе последних серий сезона, иначе
       // закреплённая за сезоном

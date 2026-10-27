@@ -3,7 +3,7 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { gzipSync } from 'node:zlib'
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import {
   afterEach,
   beforeAll,
@@ -580,6 +580,64 @@ describe('profile import', () => {
         .where(eq(titleProgress.profileId, DAD))
         .all(),
     ).toHaveLength(0)
+  })
+
+  it('carries the watched mark and derives it from files of older versions', async () => {
+    const document = JSON.parse(await profileExport(ANNA))
+    const base = document.progress[0]
+    const row = (episode: number, extra: object) => ({
+      ...base,
+      title: SHOW,
+      season: 2,
+      episode,
+      voiceStudio: null,
+      voiceType: null,
+      updatedAt: at(4).toISOString(),
+      ...extra,
+    })
+    const old = (episode: number, position: number, duration: number) => {
+      const { watchedAt: _, ...rest } = row(episode, { position, duration })
+
+      return rest
+    }
+
+    document.progress.push(
+      // Отметка с карточки прошлых версий — позиция 1 из 1
+      old(1, 1, 1),
+      old(2, 2300, 2400),
+      old(3, 600, 2400),
+      row(4, { position: 0, duration: null, watchedAt: at(3).toISOString() }),
+    )
+
+    const job = (await upload(DAD, JSON.stringify(document))).json()
+
+    await app.inject({
+      method: 'POST',
+      url: `/api/profiles/${DAD}/imports/${job.id}/apply`,
+      cookies: authed(),
+      payload: { conflicts: 'newer' },
+    })
+
+    const rows = getDb()
+      .select()
+      .from(titleProgress)
+      .where(and(eq(titleProgress.profileId, DAD), eq(titleProgress.season, 2)))
+      .orderBy(titleProgress.episode)
+      .all()
+
+    expect(
+      rows.map(({ episode, position, duration, watchedAt }) => ({
+        episode,
+        position,
+        duration,
+        watchedAt,
+      })),
+    ).toEqual([
+      { episode: 1, position: 0, duration: null, watchedAt: at(4) },
+      { episode: 2, position: 2300, duration: 2400, watchedAt: at(4) },
+      { episode: 3, position: 600, duration: 2400, watchedAt: null },
+      { episode: 4, position: 0, duration: null, watchedAt: at(3) },
+    ])
   })
 
   it('sends a server export with several profiles to the settings', async () => {

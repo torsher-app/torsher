@@ -1,7 +1,7 @@
-import { and, desc, eq, gt } from 'drizzle-orm'
+import { and, desc, eq } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import { titleProgress } from '../../db/schema.ts'
-import { isWatched } from '../torrents/playback.ts'
+import { isProgressWatched, progressSeen } from '../sources/progress.ts'
 import { cardOf, summariesOf } from './cards.ts'
 
 /**
@@ -16,12 +16,7 @@ export async function profileHistory(
   const rows = getDb()
     .select()
     .from(titleProgress)
-    .where(
-      and(
-        eq(titleProgress.profileId, profileId),
-        gt(titleProgress.position, 0),
-      ),
-    )
+    .where(and(eq(titleProgress.profileId, profileId), progressSeen()))
     // Отметка всего сериала пишет серии одним временем: последней считается дальняя
     .orderBy(
       desc(titleProgress.updatedAt),
@@ -58,7 +53,7 @@ export async function profileHistory(
           episode: row.season ? row.episode : null,
           position: row.position,
           duration: row.duration,
-          watched: isWatched(row.position, row.duration),
+          watched: isProgressWatched(row),
           watchedAt: row.updatedAt.toISOString(),
         },
       ]

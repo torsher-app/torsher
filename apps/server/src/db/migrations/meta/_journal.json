@@ -225,6 +225,13 @@
       "when": 1793062107117,
       "tag": "0031_wealthy_moonstone",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "6",
+      "when": 1793064473531,
+      "tag": "0032_big_hulk",
+      "breakpoints": true
     }
   ]
 }
