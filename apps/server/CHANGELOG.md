@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.1.0 (2026-10-27)
+
+### Features
+
+- **downloads:** show upload speed and seeding cache in the list (#123) ([1f4ee25](https://github.com/torsher-app/torsher/commit/1f4ee251b5f82300630a0e83415f78b1f70cced1))
+- **android-tv:** add the Android TV shell with a native player (#121) ([34a6c01](https://github.com/torsher-app/torsher/commit/34a6c0138d83dc80f36eb08c6b3763730c5bb261))
+- **home:** link long rows to Mine and keep Continue fresh (#120) ([cdc3396](https://github.com/torsher-app/torsher/commit/cdc339676b047787684a9b0de53bcfab6dfd2f60))
+- **auth:** sign in with a username instead of email (#117) ([aa26286](https://github.com/torsher-app/torsher/commit/aa262861fb9f085b247e5fd30416e6b2e6ebe3b0))
+
+### Bug Fixes
+
+- **tv:** scroll web grids from headers and keep their rows in view (#124) ([052a420](https://github.com/torsher-app/torsher/commit/052a420e2fb98703418ccc72e09e5f24f129293e))
+- **server:** keep the watched mark when an episode is replayed (#119) ([b5f1166](https://github.com/torsher-app/torsher/commit/b5f1166833f450144edbc05149294dfeac8aee53))
+- **engine:** wake stalled peer writers with a short keepalive (#116) ([418e5cc](https://github.com/torsher-app/torsher/commit/418e5cca9ef064fb1b252284dc99c24bda86a341))
+- **tv:** show the title when a poster fails to load (#114) ([dd7c7ba](https://github.com/torsher-app/torsher/commit/dd7c7bab41f0f79b2e50cdd68c10b202fc942645))
+
 ## 1.0.0 (2026-10-26)
 
 ### Features
