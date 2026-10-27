@@ -49,6 +49,7 @@ jobs:
       pull-requests: read
     outputs:
       engine: ${{ steps.filter.outputs.engine }}
+      android: ${{ steps.filter.outputs.android }}
     steps:
       - uses: dorny/paths-filter@v4
         id: filter
@@ -56,6 +57,12 @@ jobs:
           filters: |
             engine:
               - 'engine/**'
+              - '.github/workflows/ci.yml'
+            android:
+              - 'apps/tv-shell-android/**'
+              - 'apps/server/package.json'
+              - 'packages/i18n/**'
+              - 'packages/tokens/**'
               - '.github/workflows/ci.yml'
 
   engine:
@@ -81,3 +88,24 @@ jobs:
       - run: go test -race ./...
 
       - run: CGO_ENABLED=0 go build -o /dev/null .
+
+  android:
+    needs: changes
+    # Same as the engine: always on main, on PRs only when the app changes
+    if: ${{ !cancelled() && (github.event_name == 'push' || needs.changes.outputs.android == 'true') }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/tv-shell-android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platforms;android-37.2 build-tools;36.0.0
+      - uses: gradle/actions/setup-gradle@v4
+
+      - run: ./gradlew testDebugUnitTest lintDebug assembleDebug

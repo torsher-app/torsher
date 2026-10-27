@@ -640,7 +640,9 @@
       "timeout": "{address} не ответил за 5 секунд. Проверьте, что сервер запущен, а телевизор в той же сети",
       "unreachable": "Не удалось связаться с {address}. Проверьте адрес и что сервер запущен",
       "notTorsher": "{address} ответил, но это не сервер Torsher. Проверьте адрес и порт"
-    }
+    },
+    "webviewOutdated": "Android System WebView {version} слишком старый для Torsher. Обновите его в Google Play и откройте Torsher снова",
+    "continueAnyway": "Всё равно продолжить"
   },
   "panel": {
     "nav": {

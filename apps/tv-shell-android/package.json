@@ -1,0 +1,26 @@
+{
+  "name": "@torsher/tv-shell-android",
+  "type": "module",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "strings": "node scripts/strings.ts",
+    "icons": "sh scripts/icons.sh",
+    "gradle": "./gradlew",
+    "build:apk": "./gradlew assembleDebug",
+    "check:apk": "./gradlew testDebugUnitTest lintDebug",
+    "package": "./gradlew assembleRelease",
+    "install:tv": "adb install -r app/build/outputs/apk/debug/app-debug.apk",
+    "launch:tv": "adb shell am start -n app.torsher.androidtv/.MainActivity"
+  },
+  "devDependencies": {
+    "@torsher/i18n": "workspace:*",
+    "@torsher/tokens": "workspace:*",
+    "@torsher/tsconfig": "workspace:*",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.2",
+    "vitest": "^5.0.5"
+  }
+}

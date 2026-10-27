@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Сервер в домашней сети обычно отвечает по http на адресе из LAN,
+  а диапазон IP в domain-config не задать: cleartext разрешён для всех.
+-->
+<network-security-config xmlns:tools="http://schemas.android.com/tools">
+  <base-config cleartextTrafficPermitted="true" tools:ignore="InsecureBaseConfiguration">
+    <trust-anchors>
+      <certificates src="system" />
+    </trust-anchors>
+  </base-config>
+</network-security-config>

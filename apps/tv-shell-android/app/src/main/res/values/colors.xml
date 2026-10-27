@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- Фон витрины, color-bg из @torsher/tokens -->
+  <color name="background">#0b0d12</color>
+</resources>

@@ -17,20 +17,30 @@ const PAGES: Record<number, 'up' | 'down'> = {
 }
 // Клавиша контекстного меню в браузере
 const CONTEXT_MENU = 93
+// Android TV: Back и медиакнопки ловит Activity оболочки и присылает этими
+// кодами (KEYCODE_BACK в Chromium — VKEY_BROWSER_BACK)
+export const ANDROID_BACK = 166
 const BACK = new Set([
   461, // webOS
   10009, // Tizen
+  ANDROID_BACK,
   27, // Escape в браузере
   8, // Backspace в браузере
 ])
 
-// Медиакнопки пульта webOS и пробел в браузере
+// Медиакнопки пульта webOS и Android TV, пробел в браузере. Коды Android —
+// перевод KEYCODE_MEDIA_* в Chromium (keyboard_code_conversion_android.cc);
+// Play и Pause оболочка присылает кодами webOS
 const MEDIA: Record<number, MediaKey> = {
   415: 'play',
   19: 'pause',
   413: 'stop',
   417: 'forward',
   412: 'rewind',
+  179: 'playPause',
+  178: 'stop',
+  228: 'forward',
+  227: 'rewind',
   32: 'playPause',
 }
 

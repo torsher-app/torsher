@@ -77,6 +77,58 @@ jobs:
           path: apps/tv-shell-webos/build/
           if-no-files-found: error
 
+  # Signed with the one release key forever: Android installs an update only
+  # over an APK signed by the same key. Without the key secret the job is
+  # skipped and the release goes out without the APK
+  android:
+    needs: version
+    if: needs.version.outputs.prerelease == 'false'
+    runs-on: ubuntu-latest
+    env:
+      KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+    defaults:
+      run:
+        working-directory: apps/tv-shell-android
+    steps:
+      - if: env.KEYSTORE == ''
+        run: echo "::warning::ANDROID_KEYSTORE_BASE64 is not set, the release has no Android TV APK"
+        working-directory: .
+
+      - if: env.KEYSTORE != ''
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - if: env.KEYSTORE != ''
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - if: env.KEYSTORE != ''
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platforms;android-37.2 build-tools;36.0.0
+
+      - if: env.KEYSTORE != ''
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          export ANDROID_KEYSTORE_PATH="$RUNNER_TEMP/release.jks"
+          echo "$KEYSTORE" | base64 --decode > "$ANDROID_KEYSTORE_PATH"
+          ./gradlew assembleRelease
+          mkdir -p build/apk
+          cp app/build/outputs/apk/release/app-release.apk "build/apk/app.torsher.androidtv_${VERSION}.apk"
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify "build/apk/app.torsher.androidtv_${VERSION}.apk"
+
+      - if: env.KEYSTORE != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: apps/tv-shell-android/build/apk/
+          if-no-files-found: error
+
   # Waits for the app: an image pushed without its release would reach
   # `docker compose pull` while servers see no new version
   image:
@@ -228,11 +280,12 @@ jobs:
   # the app. A separate job keeps write access to the repository away from
   # the image build
   release:
-    needs: [version, webos, image]
+    needs: [version, webos, android, image]
     if: >-
       !cancelled() && needs.version.outputs.publish == 'true'
       && needs.image.result == 'success'
       && (needs.webos.result == 'success' || needs.webos.result == 'skipped')
+      && (needs.android.result == 'success' || needs.android.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -244,6 +297,14 @@ jobs:
         with:
           name: webos
           path: assets
+
+      # Empty when the key secret is missing: the release goes out without the APK
+      - if: needs.android.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: android
+          path: assets
+        continue-on-error: true
 
       - run: |
           mkdir -p assets
@@ -262,6 +323,10 @@ jobs:
             app=" LG webOS app: \`$ipk\` below."
           else
             app=""
+          fi
+          apk="app.torsher.androidtv_${VERSION}.apk"
+          if [ -f "assets/$apk" ]; then
+            app="$app Android TV app: \`$apk\` below."
           fi
           # No list items here: the panel shows the first list items of the
           # notes as the highlights of the release
@@ -290,7 +355,7 @@ jobs:
         run: |
           shopt -s nullglob
           # The manifest goes last: it points at the IPK by name and hash
-          files=(assets/*.ipk assets/docker-compose.yml)
+          files=(assets/*.ipk assets/*.apk assets/docker-compose.yml)
           manifests=(assets/*.manifest.json)
           if [ "$PRERELEASE" = true ]; then
             channel="--prerelease"

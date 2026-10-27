@@ -6,8 +6,9 @@ import { onProfileRequired, onSessionExpired } from './api.ts'
 import App from './App.vue'
 import { createFocus } from './focus/index.ts'
 import { i18n } from './i18n.ts'
+import { connectAndroidShell } from './platform/android.ts'
 import { platform } from './platform/index.ts'
-import { exitApp } from './platform/webos.ts'
+import { exitApp } from './platform/shell.ts'
 import { goBack } from './lib/navigation.ts'
 import { gateTarget } from './lib/session.ts'
 import { misaligned, railAxisOffsets } from './lib/railAxis.ts'
@@ -55,6 +56,8 @@ if (import.meta.env.DEV) {
     },
   })
 }
+
+connectAndroidShell()
 
 createApp(App)
   .use(router)

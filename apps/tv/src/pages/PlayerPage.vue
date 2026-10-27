@@ -76,6 +76,8 @@ import {
 } from '../lib/loader.ts'
 import { goBack } from '../lib/navigation.ts'
 import { titleRefOf } from '../lib/sources.ts'
+import { hasNativePlayer } from '../platform/android.ts'
+import { attachNativeVideo } from '../platform/nativeVideo.ts'
 import { heardStudio } from '../lib/tracks.ts'
 import { lacksSources } from '../serverSources.ts'
 import { session, updatePlayerSettings } from '../session.ts'
@@ -893,7 +895,8 @@ async function begin(from: number) {
   position.value = from
   bufferingSince.value = Date.now()
 
-  if (current.mode === 'hls') {
+  // Нативный плеер оболочки сам играет HLS: hls.js ему не нужен
+  if (current.mode === 'hls' && !hasNativePlayer) {
     if (!(await hls.attach(el, current.streamUrl, from))) {
       player.fail('unsupported')
       return
@@ -1388,7 +1391,12 @@ async function start() {
   void begin(from)
 }
 
+let detachNative: (() => void) | undefined
+
 onMounted(() => {
+  if (hasNativePlayer && video.value)
+    detachNative = attachNativeVideo(video.value)
+
   offKey = focus.onKey(onKey)
   clockTimer = setInterval(() => {
     now.value = new Date()
@@ -1419,6 +1427,8 @@ onBeforeUnmount(() => {
     el.removeAttribute('src')
     el.load()
   }
+
+  detachNative?.()
 })
 </script>
 
@@ -1627,6 +1637,16 @@ onBeforeUnmount(() => {
   height: 100%;
   object-fit: contain;
   background: #000000;
+}
+
+/* Нативный плеер Android TV рисует кадр под страницей. Сам <video> без
+   источника WebView закрыл бы серым постером — он только принимает события */
+:global(.native-video .player) {
+  background: transparent;
+}
+
+:global(.native-video .player__video) {
+  visibility: hidden;
 }
 
 /* Сцена растворяется над уже идущим видео: анимируется только её opacity,
