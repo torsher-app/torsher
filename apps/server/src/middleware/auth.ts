@@ -84,7 +84,7 @@ function unauthorized(reply: FastifyReply) {
   return reply.code(401).send({ message: 'Unauthorized' })
 }
 
-/** Владелец по access-cookie; токен отозванной сессии (сменился пароль или email) не проходит */
+/** Владелец по access-cookie; токен отозванной сессии (сменился пароль или имя пользователя) не проходит */
 function ownerIdOf(request: FastifyRequest) {
   const token = request.cookies[ACCESS_TOKEN_COOKIE] ?? ''
 

@@ -58,7 +58,7 @@ export function defaultProfile(): Profile {
     return first
 
   const owner = getDb()
-    .select({ name: users.name })
+    .select({ name: users.username })
     .from(users)
     .orderBy(asc(users.createdAt))
     .get()

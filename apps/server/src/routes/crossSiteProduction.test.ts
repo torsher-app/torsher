@@ -20,8 +20,7 @@ beforeAll(async () => {
   await migrateDb()
 
   const user = createOwner({
-    name: 'Owner',
-    email: 'owner@example.com',
+    username: 'Owner',
     passwordHash: 'x',
   })
 
@@ -31,11 +30,11 @@ beforeAll(async () => {
 describe('production without CLIENT_URL', () => {
   it('trusts no origin for cross-site changes', async () => {
     const res = await app.inject({
-      method: 'PATCH',
-      url: '/api/users/me',
+      method: 'PUT',
+      url: '/api/updates/settings',
       cookies: owner,
       headers: { 'sec-fetch-site': 'same-site', 'origin': DEV_ORIGIN },
-      payload: { name: 'Owner' },
+      payload: { enabled: true, channel: 'stable' },
     })
 
     expect(res.statusCode).toBe(403)

@@ -129,7 +129,7 @@ A backup moves the whole server.
 1. On the old server, select <Ui k="panel.backups.list.create" />, then <Ui k="panel.backups.list.download" /> in the menu of the new backup.
 2. On the new server, [install Torsher](/docs/install/docker-compose) and open the panel.
 3. On the account screen of the setup wizard, choose <Ui k="panel.backups.setup.link" />, select the file and enter its password if it has one.
-4. Sign in with the old server's email and password.
+4. Sign in with the old server's username and password.
 
 Downloads and the library are not in the backup. Copy them yourself to the folders the new server uses, or let it download again what you need.
 

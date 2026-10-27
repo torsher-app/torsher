@@ -111,8 +111,7 @@ beforeAll(async () => {
     .insert(users)
     .values({
       id: 'owner',
-      name: 'Owner',
-      email: 'owner@example.com',
+      username: 'Owner',
       passwordHash: 'hash',
     })
     .run()

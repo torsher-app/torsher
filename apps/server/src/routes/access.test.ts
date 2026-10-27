@@ -129,8 +129,7 @@ beforeAll(async () => {
   await app.ready()
 
   const user = createOwner({
-    name: 'Owner',
-    email: 'owner@example.com',
+    username: 'Owner',
     passwordHash: 'x',
   })
 

@@ -17,9 +17,9 @@ export const users = sqliteTable('users', {
   id: text('id')
     .primaryKey()
     .$defaultFn(() => randomUUID()),
-  name: text('name').notNull(),
-  // Нормализуется до записи (utils/email), в базе всегда нижний регистр
-  email: text('email').notNull().unique(),
+  // Логин и имя в панели сразу: хранится как введено, сравнивается через
+  // utils/username без учёта регистра
+  username: text('username').notNull(),
   // Хеш пишется только через utils/password — схема ничего не хеширует сама
   passwordHash: text('password_hash').notNull(),
   isActive: integer('is_active', { mode: 'boolean' }).notNull().default(true),
@@ -27,7 +27,7 @@ export const users = sqliteTable('users', {
   isDeleted: integer('is_deleted', { mode: 'boolean' })
     .notNull()
     .default(false),
-  // Входит в токены сессии: смена пароля или email и сброс увеличивают её,
+  // Входит в токены сессии: смена пароля или имени пользователя и сброс увеличивают её,
   // и все выданные раньше токены перестают приниматься
   sessionVersion: integer('session_version').notNull().default(0),
   createdAt: integer('created_at', { mode: 'timestamp_ms' })

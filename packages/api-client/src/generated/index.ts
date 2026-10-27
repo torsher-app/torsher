@@ -20,13 +20,12 @@ export interface AboutResponseInput {
 }
 
 export interface SignupInput {
-  /** @minLength 2 */
-  name: string;
   /**
-   * @format email
-   * @pattern ^(?:[A-Za-z0-9_'+\-]+\.)*[A-Za-z0-9_'+\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}$
+   * @minLength 2
+   * @maxLength 64
+   * @pattern ^\P{Cc}+$
    */
-  email: string;
+  username: string;
   /** @minLength 8 */
   password: string;
 }
@@ -36,11 +35,7 @@ export interface SetupResponseInput {
 }
 
 export interface SigninInput {
-  /**
-   * @format email
-   * @pattern ^(?:[A-Za-z0-9_'+\-]+\.)*[A-Za-z0-9_'+\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}$
-   */
-  email: string;
+  username: string;
   password: string;
 }
 
@@ -4554,16 +4549,9 @@ export interface ServerImportResultInput {
   skipped: number;
 }
 
-export interface UpdateMeInput {
-  /** @minLength 2 */
-  name?: string;
-}
-
 export interface MeResponseInput {
   id: string;
-  name: string;
-  email: string;
-  isActive: boolean;
+  username: string;
   createdAt: string;
 }
 
@@ -4573,12 +4561,13 @@ export interface ChangePasswordInput {
   newPassword: string;
 }
 
-export interface ChangeEmailInput {
+export interface ChangeUsernameInput {
   /**
-   * @format email
-   * @pattern ^(?:[A-Za-z0-9_'+\-]+\.)*[A-Za-z0-9_'+\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}$
+   * @minLength 2
+   * @maxLength 64
+   * @pattern ^\P{Cc}+$
    */
-  email: string;
+  username: string;
   currentPassword: string;
 }
 
@@ -4597,13 +4586,12 @@ export interface AboutResponse {
 }
 
 export interface Signup {
-  /** @minLength 2 */
-  name: string;
   /**
-   * @format email
-   * @pattern ^(?:[A-Za-z0-9_'+\-]+\.)*[A-Za-z0-9_'+\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}$
+   * @minLength 2
+   * @maxLength 64
+   * @pattern ^\P{Cc}+$
    */
-  email: string;
+  username: string;
   /** @minLength 8 */
   password: string;
 }
@@ -4613,11 +4601,7 @@ export interface SetupResponse {
 }
 
 export interface Signin {
-  /**
-   * @format email
-   * @pattern ^(?:[A-Za-z0-9_'+\-]+\.)*[A-Za-z0-9_'+\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}$
-   */
-  email: string;
+  username: string;
   password: string;
 }
 
@@ -9130,16 +9114,9 @@ export interface ServerImportResult {
   skipped: number;
 }
 
-export interface UpdateMe {
-  /** @minLength 2 */
-  name?: string;
-}
-
 export interface MeResponse {
   id: string;
-  name: string;
-  email: string;
-  isActive: boolean;
+  username: string;
   createdAt: string;
 }
 
@@ -9149,12 +9126,13 @@ export interface ChangePassword {
   newPassword: string;
 }
 
-export interface ChangeEmail {
+export interface ChangeUsername {
   /**
-   * @format email
-   * @pattern ^(?:[A-Za-z0-9_'+\-]+\.)*[A-Za-z0-9_'+\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\-]*\.)+[A-Za-z]{2,}$
+   * @minLength 2
+   * @maxLength 64
+   * @pattern ^\P{Cc}+$
    */
-  email: string;
+  username: string;
   currentPassword: string;
 }
 
@@ -9206,12 +9184,10 @@ export type PostAuthRefreshError = MessageResponse;
 
 export type GetUsersMeError = MessageResponse;
 
-export type PatchUsersMeError = MessageResponse;
-
 export type PutUsersMePasswordError =
   MessageResponse | WrongPasswordResponse | TooManyAttemptsResponse;
 
-export type PutUsersMeEmailError =
+export type PutUsersMeUsernameError =
   MessageResponse | WrongPasswordResponse | TooManyAttemptsResponse;
 
 export type GetCatalogSearchError = MessageResponse;
@@ -10265,23 +10241,6 @@ export class Api<
      * No description
      *
      * @tags Users
-     * @name PatchUsersMe
-     * @request PATCH:/api/users/me
-     */
-    patchUsersMe: (data: UpdateMeInput, params: RequestParams = {}) =>
-      this.request<MeResponse, PatchUsersMeError>({
-        path: `/api/users/me`,
-        method: "PATCH",
-        body: data,
-        type: ContentType.Json,
-        format: "json",
-        ...params,
-      }),
-
-    /**
-     * No description
-     *
-     * @tags Users
      * @name PutUsersMePassword
      * @request PUT:/api/users/me/password
      */
@@ -10302,12 +10261,15 @@ export class Api<
      * No description
      *
      * @tags Users
-     * @name PutUsersMeEmail
-     * @request PUT:/api/users/me/email
+     * @name PutUsersMeUsername
+     * @request PUT:/api/users/me/username
      */
-    putUsersMeEmail: (data: ChangeEmailInput, params: RequestParams = {}) =>
-      this.request<MeResponse, PutUsersMeEmailError>({
-        path: `/api/users/me/email`,
+    putUsersMeUsername: (
+      data: ChangeUsernameInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<MeResponse, PutUsersMeUsernameError>({
+        path: `/api/users/me/username`,
         method: "PUT",
         body: data,
         type: ContentType.Json,

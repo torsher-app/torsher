@@ -44,9 +44,22 @@ function hasTable(db: Database.Database, name: string) {
 export function seedData(db: Database.Database) {
   const now = Date.now()
 
-  db.prepare(
-    'INSERT INTO users (id, name, email, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
-  ).run('owner', 'Owner', 'owner@example.com', 'hash', now, now)
+  const columns = db
+    .prepare('SELECT name FROM pragma_table_info(\'users\')')
+    .pluck()
+    .all()
+
+  // Старые копии — до миграции имени пользователя: логин там был email
+  if (columns.includes('username')) {
+    db.prepare(
+      'INSERT INTO users (id, username, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+    ).run('owner', 'Owner', 'hash', now, now)
+  }
+  else {
+    db.prepare(
+      'INSERT INTO users (id, name, email, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
+    ).run('owner', 'Owner', 'owner@example.com', 'hash', now, now)
+  }
   db.prepare(
     'INSERT INTO meta_cache (key, json, fetched_at) VALUES (?, ?, ?)',
   ).run('tmdb:movie:1', '{}', now)

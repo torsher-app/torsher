@@ -52,7 +52,7 @@ function hangingFetch(): typeof fetch {
     })
 }
 
-const signin = { email: 'user@example.com', password: 'secret-password' }
+const signin = { username: 'Owner', password: 'secret-password' }
 
 beforeEach(() => {
   vi.stubGlobal('fetch', fetchMock)
@@ -146,12 +146,17 @@ describe('refresh при 401', () => {
 
 describe('режимы ошибок', () => {
   it('toast — сообщение и статус в onError', async () => {
-    fetchMock.mockResolvedValue(json(400, { message: 'Invalid email' }))
+    fetchMock.mockResolvedValue(
+      json(400, { message: 'Invalid username or password' }),
+    )
     const { api, options } = setup('toast')
 
     await catchError(api.auth.postAuthSignin(signin))
 
-    expect(options.onError).toHaveBeenCalledWith('Invalid email', 400)
+    expect(options.onError).toHaveBeenCalledWith(
+      'Invalid username or password',
+      400,
+    )
     expect(options.onFatal).not.toHaveBeenCalled()
   })
 
@@ -313,14 +318,16 @@ describe('таймаут и отмена', () => {
 
 describe('getErrorMessage', () => {
   it('берёт message из тела ответа', async () => {
-    fetchMock.mockResolvedValue(json(409, { message: 'Email already taken' }))
+    fetchMock.mockResolvedValue(
+      json(409, { message: 'Restore from a backup is in progress' }),
+    )
     const { api } = setup()
 
-    const error = await catchError(
-      api.auth.postAuthSignup({ ...signin, name: 'User' }),
-    )
+    const error = await catchError(api.auth.postAuthSignup(signin))
 
-    await expect(getErrorMessage(error)).resolves.toBe('Email already taken')
+    await expect(getErrorMessage(error)).resolves.toBe(
+      'Restore from a backup is in progress',
+    )
   })
 
   it('фолбэк для тела не в JSON и для ошибок без ответа', async () => {

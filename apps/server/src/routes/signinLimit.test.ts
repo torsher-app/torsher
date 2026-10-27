@@ -17,7 +17,7 @@ vi.mock('../utils/password.ts', async (importOriginal) => {
 const app = createApp()
 const proxied = createApp({ trustProxy: true })
 
-const email = 'owner@example.com'
+const username = 'Owner'
 const password = 'password123'
 
 beforeAll(async () => {
@@ -25,7 +25,7 @@ beforeAll(async () => {
   await app.inject({
     method: 'POST',
     url: '/api/auth/signup',
-    payload: { name: 'Owner', email, password },
+    payload: { username, password },
   })
 })
 
@@ -50,7 +50,7 @@ function signin(
     headers: options.forwardedFor
       ? { 'x-forwarded-for': options.forwardedFor }
       : {},
-    payload: { email, password: pass },
+    payload: { username, password: pass },
   })
 }
 
@@ -73,13 +73,13 @@ describe('post /api/auth/signin attempt limit', () => {
     expect(verifyPassword).not.toHaveBeenCalled()
   })
 
-  it('counts unknown emails as failures', async () => {
+  it('counts unknown usernames as failures', async () => {
     for (let i = 0; i < 10; i++) {
       await app.inject({
         method: 'POST',
         url: '/api/auth/signin',
         remoteAddress: '192.168.1.10',
-        payload: { email: `nobody${i}@example.com`, password },
+        payload: { username: `nobody${i}`, password },
       })
     }
 
@@ -163,9 +163,9 @@ describe('current password confirmation limit', () => {
 
     const res = await app.inject({
       method: 'PUT',
-      url: '/api/users/me/email',
+      url: '/api/users/me/username',
       cookies,
-      payload: { email: 'new@example.com', currentPassword: password },
+      payload: { username: 'Renamed', currentPassword: password },
     })
 
     expect(res.statusCode).toBe(429)

@@ -13,27 +13,26 @@ beforeAll(async () => {
   await migrateDb()
 
   const user = createOwner({
-    name: 'Owner',
-    email: 'owner@example.com',
+    username: 'Owner',
     passwordHash: 'x',
   })
 
   owner = { [ACCESS_TOKEN_COOKIE]: signToken(user.id, 'user_access') }
 })
 
-function rename(headers: Record<string, string>) {
+function change(headers: Record<string, string>) {
   return app.inject({
-    method: 'PATCH',
-    url: '/api/users/me',
+    method: 'PUT',
+    url: '/api/updates/settings',
     cookies: owner,
     headers,
-    payload: { name: 'Owner' },
+    payload: { enabled: true, channel: 'stable' },
   })
 }
 
 describe('cross-site requests with the owner cookie', () => {
   it('rejects a panel change from another site', async () => {
-    const res = await rename({ 'sec-fetch-site': 'same-site' })
+    const res = await change({ 'sec-fetch-site': 'same-site' })
 
     expect(res.statusCode).toBe(403)
     expect(res.json()).toEqual({ message: 'cross_site_request' })
@@ -53,15 +52,15 @@ describe('cross-site requests with the owner cookie', () => {
   })
 
   it('lets same-origin, direct and header-less requests through', async () => {
-    expect((await rename({ 'sec-fetch-site': 'same-origin' })).statusCode).toBe(
+    expect((await change({ 'sec-fetch-site': 'same-origin' })).statusCode).toBe(
       200,
     )
-    expect((await rename({ 'sec-fetch-site': 'none' })).statusCode).toBe(200)
-    expect((await rename({})).statusCode).toBe(200)
+    expect((await change({ 'sec-fetch-site': 'none' })).statusCode).toBe(200)
+    expect((await change({})).statusCode).toBe(200)
   })
 
   it('lets the configured client origin through', async () => {
-    const res = await rename({
+    const res = await change({
       'sec-fetch-site': 'cross-site',
       'origin': config.clientUrl!,
     })
@@ -93,10 +92,10 @@ describe('cross-site requests with the owner cookie', () => {
 
   it('still answers 401 without a session', async () => {
     const res = await app.inject({
-      method: 'PATCH',
-      url: '/api/users/me',
+      method: 'PUT',
+      url: '/api/updates/settings',
       headers: { 'sec-fetch-site': 'cross-site' },
-      payload: { name: 'Owner' },
+      payload: { enabled: true, channel: 'stable' },
     })
 
     expect(res.statusCode).toBe(401)

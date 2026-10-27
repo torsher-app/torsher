@@ -137,10 +137,10 @@ async function resetPassword(fromStdin: boolean, io: CliIo) {
   }
 
   if (fromStdin) {
-    io.out(`The password for ${owner.email} has been reset.`)
+    io.out(`The password for ${owner.username} has been reset.`)
   }
   else {
-    io.out(`The password for ${owner.email} has been reset. New password:`)
+    io.out(`The password for ${owner.username} has been reset. New password:`)
     io.out('')
     io.out(`  ${password}`)
     io.out('')

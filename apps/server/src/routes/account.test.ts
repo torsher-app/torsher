@@ -6,7 +6,7 @@ import { signToken } from '../utils/token.ts'
 
 const app = createApp()
 
-let email = 'owner@example.com'
+let username = 'Owner'
 let password = 'password123'
 
 beforeAll(async () => {
@@ -14,7 +14,7 @@ beforeAll(async () => {
   await app.inject({
     method: 'POST',
     url: '/api/auth/signup',
-    payload: { name: 'Owner', email, password },
+    payload: { username, password },
   })
 })
 
@@ -35,7 +35,7 @@ async function signin() {
   const res = await app.inject({
     method: 'POST',
     url: '/api/auth/signin',
-    payload: { email, password },
+    payload: { username, password },
   })
 
   expect(res.statusCode).toBe(200)
@@ -123,7 +123,7 @@ describe('put /api/users/me/password', () => {
     const oldSignin = await app.inject({
       method: 'POST',
       url: '/api/auth/signin',
-      payload: { email, password },
+      payload: { username, password },
     })
 
     expect(oldSignin.statusCode).toBe(400)
@@ -142,37 +142,85 @@ describe('put /api/users/me/password', () => {
   })
 })
 
-describe('put /api/users/me/email', () => {
+describe('post /api/auth/signin', () => {
+  function attempt(payload: { username: string, password: string }) {
+    return app.inject({ method: 'POST', url: '/api/auth/signin', payload })
+  }
+
+  it('имя — без учёта регистра и пробелов по краям', async () => {
+    const res = await attempt({
+      username: `  ${username.toUpperCase()} `,
+      password,
+    })
+
+    expect(res.statusCode).toBe(200)
+  })
+
+  it('неверное имя при верном пароле — тот же ответ, что неверный пароль', async () => {
+    const wrongName = await attempt({ username: 'Somebody', password })
+    const wrongPassword = await attempt({
+      username,
+      password: 'wrong-password',
+    })
+
+    expect(wrongName.statusCode).toBe(400)
+    expect(wrongName.json()).toEqual(wrongPassword.json())
+  })
+})
+
+describe('put /api/users/me/username', () => {
   it('неверный текущий пароль — 403 с полем', async () => {
     const res = await app.inject({
       method: 'PUT',
-      url: '/api/users/me/email',
+      url: '/api/users/me/username',
       cookies: await signin(),
-      payload: { email: 'new@example.com', currentPassword: 'wrong-password' },
+      payload: { username: 'Renamed', currentPassword: 'wrong-password' },
     })
 
     expect(res.statusCode).toBe(403)
     expect(res.json().field).toBe('currentPassword')
   })
 
-  it('меняет email, выкидывает прочие сессии и оставляет текущую', async () => {
+  it.each(['A', 'a'.repeat(65), 'Line\nbreak'])(
+    'отклоняет имя %j — 400',
+    async (value) => {
+      const res = await app.inject({
+        method: 'PUT',
+        url: '/api/users/me/username',
+        cookies: await signin(),
+        payload: { username: value, currentPassword: password },
+      })
+
+      expect(res.statusCode).toBe(400)
+    },
+  )
+
+  it('меняет имя, выкидывает прочие сессии и оставляет текущую', async () => {
     const other = await signin()
     const res = await app.inject({
       method: 'PUT',
-      url: '/api/users/me/email',
+      url: '/api/users/me/username',
       cookies: await signin(),
-      payload: { email: 'New@Example.com', currentPassword: password },
+      payload: { username: '  Антон Р. ', currentPassword: password },
     })
 
     expect(res.statusCode).toBe(200)
-    expect(res.json().email).toBe('new@example.com')
+    expect(res.json().username).toBe('Антон Р.')
 
     const renewed = cookiesOf(res)
 
-    expect((await me(renewed)).json().email).toBe('new@example.com')
+    expect((await me(renewed)).json().username).toBe('Антон Р.')
     expect((await me(other)).statusCode).toBe(401)
 
-    email = 'new@example.com'
+    const oldName = await app.inject({
+      method: 'POST',
+      url: '/api/auth/signin',
+      payload: { username, password },
+    })
+
+    expect(oldName.statusCode).toBe(400)
+
+    username = 'антон р.'
     await signin()
   })
 })

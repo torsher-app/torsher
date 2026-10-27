@@ -9,17 +9,17 @@ beforeAll(async () => {
   await migrateDb()
 })
 
-async function signupAndSignin(email: string) {
+async function signupAndSignin(username: string) {
   await app.inject({
     method: 'POST',
     url: '/api/auth/signup',
-    payload: { name: 'User', email, password: 'password123' },
+    payload: { username, password: 'password123' },
   })
 
   const res = await app.inject({
     method: 'POST',
     url: '/api/auth/signin',
-    payload: { email, password: 'password123' },
+    payload: { username, password: 'password123' },
   })
   const cookie = res.cookies.find(item => item.name === ACCESS_TOKEN_COOKIE)
 
@@ -49,10 +49,10 @@ describe('первый запуск', () => {
 
     expect(before.json()).toEqual({ needsSetup: true })
 
-    const owner = await signupAndSignin('owner@example.com')
+    const owner = await signupAndSignin('Owner')
     const me = await app.inject({ url: '/api/users/me', cookies: owner })
 
-    expect(me.json().email).toBe('owner@example.com')
+    expect(me.json().username).toBe('Owner')
     expect((await app.inject({ url: '/api/auth/setup' })).json()).toEqual({
       needsSetup: false,
     })
@@ -61,8 +61,7 @@ describe('первый запуск', () => {
       method: 'POST',
       url: '/api/auth/signup',
       payload: {
-        name: 'User',
-        email: 'second@example.com',
+        username: 'User',
         password: 'password123',
       },
     })
@@ -74,7 +73,7 @@ describe('первый запуск', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/auth/signin',
-      payload: { email: 'owner@example.com', password: 'password123' },
+      payload: { username: 'Owner', password: 'password123' },
     })
     const cookie = res.cookies.find(
       item => item.name === ACCESS_TOKEN_COOKIE,

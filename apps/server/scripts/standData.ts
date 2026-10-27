@@ -151,8 +151,20 @@ export function savedStoragePath(
 }
 
 export interface OwnerInfo {
-  email: string
+  username: string
   passwordHash: string
+}
+
+// dev-база основного checkout может быть ещё до миграции имени пользователя:
+// тогда логином после неё станет `name`
+function usernameColumn(db: Database.Database) {
+  const columns = db
+    .prepare('SELECT name FROM pragma_table_info(\'users\')')
+    .all() as { name: string }[]
+
+  return columns.some(column => column.name === 'username')
+    ? 'username'
+    : 'name'
 }
 
 export function readOwner(databasePath: string): OwnerInfo | undefined {
@@ -167,7 +179,7 @@ export function readOwner(databasePath: string): OwnerInfo | undefined {
 
     return db
       .prepare(
-        'SELECT email, password_hash AS passwordHash FROM users ORDER BY rowid LIMIT 1',
+        `SELECT ${usernameColumn(db)} AS username, password_hash AS passwordHash FROM users ORDER BY rowid LIMIT 1`,
       )
       .get() as OwnerInfo | undefined
   }
@@ -185,7 +197,7 @@ export function sanitizeDb(
   databasePath: string,
   source: SourceData,
   stand: StandData,
-  ownerEmail: string,
+  ownerUsername: string,
 ) {
   const db = new Database(databasePath, { fileMustExist: true })
   const moves: [string, string][] = [
@@ -198,8 +210,8 @@ export function sanitizeDb(
     db.transaction(() => {
       if (hasTable(db, 'users')) {
         db.prepare(
-          'UPDATE users SET email = ? WHERE rowid = (SELECT rowid FROM users ORDER BY rowid LIMIT 1)',
-        ).run(ownerEmail)
+          `UPDATE users SET ${usernameColumn(db)} = ? WHERE rowid = (SELECT rowid FROM users ORDER BY rowid LIMIT 1)`,
+        ).run(ownerUsername)
       }
 
       // Раздачи — в загрузки стенда: свои каталоги разработчика движок не тронет

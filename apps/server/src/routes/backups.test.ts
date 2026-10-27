@@ -36,8 +36,7 @@ function signupRequest() {
     method: 'POST',
     url: '/api/auth/signup',
     payload: {
-      name: 'Owner',
-      email: 'owner@example.com',
+      username: 'Owner',
       password: 'owner-password',
     },
   })
@@ -242,8 +241,7 @@ describe('пустой сервер: восстановление без вхо�
 
       // Аккаунт в обход signup, пока подготовка стоит
       const user = createOwner({
-        name: 'Owner',
-        email: 'owner@example.com',
+        username: 'Owner',
         passwordHash: 'x',
       })
 

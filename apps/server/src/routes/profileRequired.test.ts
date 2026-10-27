@@ -25,8 +25,7 @@ beforeAll(async () => {
   setEngineDown('stopped')
 
   const user = createOwner({
-    name: 'Owner',
-    email: 'owner@example.com',
+    username: 'Owner',
     passwordHash: 'x',
   })
 

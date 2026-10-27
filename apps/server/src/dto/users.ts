@@ -1,18 +1,10 @@
 import { z } from 'zod'
-import { newPassword } from './auth.ts'
-
-export const updateMe = z
-  .object({
-    name: z.string().min(2).optional(),
-  })
-  .meta({ id: 'updateMe' })
+import { newPassword, username } from './auth.ts'
 
 export const meResponse = z
   .object({
     id: z.string(),
-    name: z.string(),
-    email: z.string(),
-    isActive: z.boolean(),
+    username: z.string(),
     createdAt: z.string(),
   })
   .meta({ id: 'meResponse' })
@@ -24,12 +16,12 @@ export const changePassword = z
   })
   .meta({ id: 'changePassword' })
 
-export const changeEmail = z
+export const changeUsername = z
   .object({
-    email: z.email(),
+    username,
     currentPassword: z.string(),
   })
-  .meta({ id: 'changeEmail' })
+  .meta({ id: 'changeUsername' })
 
 // Неверный текущий пароль: панель подсвечивает поле, а не показывает общую ошибку
 export const wrongPasswordResponse = z

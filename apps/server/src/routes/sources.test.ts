@@ -33,8 +33,7 @@ beforeAll(async () => {
   await migrateDb()
   owner = cookieOf(
     createOwner({
-      name: 'Owner',
-      email: 'owner@example.com',
+      username: 'Owner',
       passwordHash: 'x',
     }).id,
   )

@@ -1,6 +1,6 @@
 import type {
-  ChangeEmailInput,
   ChangePasswordInput,
+  ChangeUsernameInput,
   MeResponse,
 } from '@torsher/api-client'
 import { api } from '~/services/api'
@@ -27,17 +27,13 @@ export function useUser() {
     return user.value
   }
 
-  async function updateName(name: string) {
-    user.value = await api.users.patchUsersMe({ name })
-  }
-
   // Сервер выдаёт текущей сессии новые cookie, прочие сессии выходят
   async function changePassword(body: ChangePasswordInput) {
     await api.users.putUsersMePassword(body)
   }
 
-  async function changeEmail(body: ChangeEmailInput) {
-    user.value = await api.users.putUsersMeEmail(body)
+  async function changeUsername(body: ChangeUsernameInput) {
+    user.value = await api.users.putUsersMeUsername(body)
   }
 
   // После выхода гость известен: профиль не перезапрашиваем, вход открывается сразу
@@ -51,9 +47,8 @@ export function useUser() {
     isLoaded: readonly(isLoaded),
     isAuthenticated,
     fetchMe,
-    updateName,
     changePassword,
-    changeEmail,
+    changeUsername,
     reset,
   }
 }

@@ -35,7 +35,7 @@ function createSourceDb(path: string) {
 
   db.pragma('journal_mode = WAL')
   db.exec(`
-    CREATE TABLE users (id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL);
+    CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT NOT NULL, password_hash TEXT NOT NULL);
     CREATE TABLE torrents (id TEXT PRIMARY KEY, download_dir TEXT);
     CREATE TABLE storage_moves (id TEXT PRIMARY KEY);
     CREATE TABLE notification_channels (id TEXT PRIMARY KEY, enabled INTEGER NOT NULL);
@@ -92,7 +92,7 @@ describe('copy and sanitize', () => {
     // Строка остаётся в WAL: снимок обязан её увидеть
     db.prepare('INSERT INTO users VALUES (?, ?, ?)').run(
       'u1',
-      'me@real.test',
+      'Me Real',
       'hash',
     )
 
@@ -107,7 +107,7 @@ describe('copy and sanitize', () => {
     expect(
       [source.databasePath, `${source.databasePath}-wal`].map(hashOf),
     ).toEqual(before)
-    expect(readOwner(stand.databasePath)?.email).toBe('me@real.test')
+    expect(readOwner(stand.databasePath)?.username).toBe('Me Real')
     expect(readFileSync(join(stand.dataDir, 'secret.key'), 'utf8')).toBe('key')
     db.close()
   })
@@ -122,7 +122,7 @@ describe('copy and sanitize', () => {
 
     db.prepare('INSERT INTO users VALUES (?, ?, ?)').run(
       'u1',
-      'me@real.test',
+      'Me Real',
       'hash',
     )
     db.prepare('INSERT INTO torrents VALUES (?, ?)').run(
@@ -162,12 +162,12 @@ describe('copy and sanitize', () => {
     )
 
     await copyData(source, stand, false)
-    sanitizeDb(stand.databasePath, source, stand, 'stand@example.test')
+    sanitizeDb(stand.databasePath, source, stand, 'stand')
 
     const copy = new Database(stand.databasePath, { readonly: true })
     const value = (sql: string) => copy.prepare(sql).pluck().all()
 
-    expect(value('SELECT email FROM users')).toEqual(['stand@example.test'])
+    expect(value('SELECT username FROM users')).toEqual(['stand'])
     expect(value('SELECT download_dir FROM torrents')).toEqual([null])
     expect(value('SELECT id FROM storage_moves')).toEqual([])
     expect(value('SELECT enabled FROM notification_channels')).toEqual([0])
@@ -199,7 +199,33 @@ describe('copy and sanitize', () => {
     ).toEqual({ downloadLimit: 1024 })
     copy.close()
 
-    expect(readOwner(source.databasePath)?.email).toBe('me@real.test')
+    expect(readOwner(source.databasePath)?.username).toBe('Me Real')
+  })
+
+  it('reads and replaces the login of a dev database before the username migration', () => {
+    const source = dataAt(join(root, 'source'))
+    const stand = dataAt(join(root, 'stand'))
+
+    mkdirSync(stand.dataDir, { recursive: true })
+
+    const db = new Database(stand.databasePath)
+
+    db.exec(
+      'CREATE TABLE users (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL, password_hash TEXT NOT NULL)',
+    )
+    db.prepare('INSERT INTO users VALUES (?, ?, ?, ?)').run(
+      'u1',
+      'Me Real',
+      'me@real.test',
+      'hash',
+    )
+    db.close()
+
+    expect(readOwner(stand.databasePath)?.username).toBe('Me Real')
+
+    sanitizeDb(stand.databasePath, source, stand, 'stand')
+
+    expect(readOwner(stand.databasePath)?.username).toBe('stand')
   })
 
   it('turns scheduled backups off when the copy has no backup settings', async () => {
@@ -210,7 +236,7 @@ describe('copy and sanitize', () => {
     createSourceDb(source.databasePath).close()
 
     await copyData(source, stand, false)
-    sanitizeDb(stand.databasePath, source, stand, 'stand@example.test')
+    sanitizeDb(stand.databasePath, source, stand, 'stand')
 
     const copy = new Database(stand.databasePath, { readonly: true })
 

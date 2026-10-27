@@ -19,8 +19,8 @@ declare global {
       COOKIE_PREFIX?: string
       /** Свой API Read Access Token TMDB (v4). Важнее ключа приложения из образа. */
       TMDB_ACCESS_TOKEN?: string
-      /** Email dev-пользователя для `pnpm seed`. */
-      SEED_USER_EMAIL?: string
+      /** Имя пользователя dev-аккаунта для `pnpm seed`. */
+      SEED_USER_NAME?: string
       /** Пароль dev-пользователя для `pnpm seed`. */
       SEED_USER_PASSWORD?: string
     }

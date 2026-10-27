@@ -24,7 +24,7 @@ You can leave any step with <Ui k="panel.wizard.actions.skip" /> or <Ui k="panel
 
 ## 1. Account
 
-Create the owner account: name, email and password. The email is only for signing in; the server sends no email. There is one account per server. The household watches through profiles that you add later.
+Create the owner account: a username and a password. You sign in to the panel with them; letter case in the username doesn't matter. Torsher asks for no email. There is one account per server. The household watches through profiles that you add later.
 
 Moving from another Torsher server? Choose <Ui k="panel.backups.setup.link" /> on this screen instead, upload a backup file from the old server, and sign in with the old server's password afterwards. See [Backup and move](/docs/maintain/backup).
 

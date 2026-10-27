@@ -84,8 +84,8 @@ function server() {
   const now = Date.now()
 
   db.prepare(
-    'INSERT INTO users (id, name, email, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)',
-  ).run('current', 'Current', 'current@example.com', 'hash', now, now)
+    'INSERT INTO users (id, username, password_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+  ).run('current', 'Current', 'hash', now, now)
   db.close()
   writeFileSync(
     join(dataDir, 'secret.key'),

@@ -16,6 +16,7 @@ import LoadingButton from '~/components/LoadingButton.vue'
 import RestoreBackupDialog from '~/components/auth/RestoreBackupDialog.vue'
 import SecretInput from '~/components/SecretInput.vue'
 import BackupRestartScreen from '~/components/settings/BackupRestartScreen.vue'
+import { usernameSchema } from '~/lib/username'
 import { getErrorStatus } from '@torsher/api-client'
 import { getErrorMessage } from '~/services/api'
 
@@ -33,22 +34,20 @@ const restoreOpen = ref(false)
 // Аккаунт создан, а мастер ещё не открылся: кнопка крутится до смены страницы
 const isLeaving = ref(false)
 
-// Правила совпадают с DTO бэкенда: имя от 2 символов, пароль от 8
+// Правила совпадают с DTO бэкенда: имя от 2 до 64 символов, пароль от 8
 const schema = toTypedSchema(
   z.object({
-    name: z.string().trim().min(2, t('panel.auth.validation.name')),
-    email: z.email(t('panel.auth.validation.email')),
+    username: usernameSchema(t('panel.auth.validation.username')),
     password: z.string().min(8, t('panel.auth.validation.password')),
   }),
 )
 
 const { handleSubmit, defineField, errors, isSubmitting } = useForm({
   validationSchema: schema,
-  initialValues: { name: '', email: '', password: '' },
+  initialValues: { username: '', password: '' },
 })
 
-const [name, nameProps] = defineField('name')
-const [email, emailProps] = defineField('email')
+const [username, usernameProps] = defineField('username')
 const [password, passwordProps] = defineField('password')
 
 const onSubmit = handleSubmit(async (values) => {
@@ -86,39 +85,26 @@ const onSubmit = handleSubmit(async (values) => {
     </Alert>
 
     <div class="grid gap-2">
-      <Label for="name">{{ t("panel.auth.name") }}</Label>
+      <Label for="username">{{ t("panel.auth.username") }}</Label>
       <Input
-        id="name"
-        v-model="name"
-        v-bind="nameProps"
-        autocomplete="name"
-        :aria-invalid="!!errors.name || undefined"
-      />
-      <p v-if="errors.name" class="text-[12.5px] text-destructive">
-        {{ errors.name }}
-      </p>
-    </div>
-
-    <div class="grid gap-2">
-      <Label for="email">{{ t("panel.auth.email") }}</Label>
-      <Input
-        id="email"
-        v-model="email"
-        v-bind="emailProps"
-        type="email"
-        autocomplete="email"
-        aria-describedby="email-hint"
-        :aria-invalid="!!errors.email || undefined"
+        id="username"
+        v-model="username"
+        v-bind="usernameProps"
+        autocomplete="username"
+        autocapitalize="off"
+        spellcheck="false"
+        aria-describedby="username-hint"
+        :aria-invalid="!!errors.username || undefined"
       />
       <p
-        v-if="errors.email"
-        id="email-hint"
+        v-if="errors.username"
+        id="username-hint"
         class="text-[12.5px] text-destructive"
       >
-        {{ errors.email }}
+        {{ errors.username }}
       </p>
-      <p v-else id="email-hint" class="text-[12.5px] text-muted-foreground">
-        {{ t("panel.wizard.account.emailHint") }}
+      <p v-else id="username-hint" class="text-[12.5px] text-muted-foreground">
+        {{ t("panel.wizard.account.usernameHint") }}
       </p>
     </div>
 

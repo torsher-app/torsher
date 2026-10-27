@@ -35,17 +35,20 @@ const about = shallowRef<AboutResponse>()
 
 const schema = toTypedSchema(
   z.object({
-    email: z.email(t('panel.auth.validation.email')),
+    username: z
+      .string()
+      .trim()
+      .min(1, t('panel.auth.validation.usernameRequired')),
     password: z.string().min(1, t('panel.auth.validation.passwordRequired')),
   }),
 )
 
 const { handleSubmit, defineField, errors, isSubmitting } = useForm({
   validationSchema: schema,
-  initialValues: { email: '', password: '' },
+  initialValues: { username: '', password: '' },
 })
 
-const [email, emailProps] = defineField('email')
+const [username, usernameProps] = defineField('username')
 const [password, passwordProps] = defineField('password')
 
 // Ошибку входа показываем в форме, а не тостом: она относится к полям
@@ -60,7 +63,7 @@ const onSubmit = handleSubmit(async (values) => {
   catch (err) {
     const minutes = await retryAfterMinutes(err)
 
-    // 400 — неверная пара email и пароль; остальное — сервер или сеть
+    // 400 — неверная пара имени и пароля; остальное — сервер или сеть
     if (getErrorStatus(err) === 400)
       isRejected.value = true
     else if (minutes)
@@ -110,17 +113,18 @@ onMounted(async () => {
         </Alert>
 
         <div class="grid gap-2">
-          <Label for="email">{{ t("panel.auth.email") }}</Label>
+          <Label for="username">{{ t("panel.auth.username") }}</Label>
           <Input
-            id="email"
-            v-model="email"
-            v-bind="emailProps"
-            type="email"
-            autocomplete="email"
-            :aria-invalid="!!errors.email || undefined"
+            id="username"
+            v-model="username"
+            v-bind="usernameProps"
+            autocomplete="username"
+            autocapitalize="off"
+            spellcheck="false"
+            :aria-invalid="!!errors.username || undefined"
           />
-          <p v-if="errors.email" class="text-[12.5px] text-destructive">
-            {{ errors.email }}
+          <p v-if="errors.username" class="text-[12.5px] text-destructive">
+            {{ errors.username }}
           </p>
         </div>
 
