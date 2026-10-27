@@ -1,4 +1,6 @@
 minimumReleaseAgeExcludePrune: true
+minimumReleaseAgeExclude:
+  - '@antonreshetov/bumpy@0.6.0'
 
 trustPolicy: no-downgrade
 # semver 6.3.1 (последняя в ветке 6.x, её тянет @babel/core) вышла до появления

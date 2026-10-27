@@ -1,6 +1,15 @@
 {
   "projects": [
-    "apps/server"
+    {
+      "path": "apps/server",
+      "include": [
+        "apps/tv-shell-webos",
+        "apps/tv-shell-android",
+        "engine",
+        "Dockerfile",
+        "docker"
+      ]
+    }
   ],
   "release": {
     "ignore": [],
