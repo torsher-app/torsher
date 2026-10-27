@@ -42,6 +42,7 @@ export const sidebar: DefaultTheme.SidebarItem[] = [
     text: 'TV',
     items: [
       { text: 'LG webOS', link: '/docs/tv/lg-webos' },
+      { text: 'Android TV', link: '/docs/tv/android-tv' },
       { text: 'Connect a device', link: '/docs/tv/connect' },
       { text: 'Browser', link: '/docs/tv/browser' },
       { text: 'Other devices', link: '/docs/tv/other-devices' },

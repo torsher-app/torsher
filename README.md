@@ -125,7 +125,7 @@ You need a computer with Docker and the Compose plugin. Linux gets every feature
 
 4. Open `http://<server-address>:8080/panel/` and create the owner account. The setup wizard asks for Prowlarr's API key: add the indexers you are allowed to use in Prowlarr at `http://<server-address>:9696` first.
 
-5. Install the [Torsher app](https://torsher.app/docs/tv/lg-webos) on an LG TV, or open `http://<server-address>:8080/` in a browser. Enter the code from the screen in the panel under **Profiles & devices → Connect a device**.
+5. Install the Torsher app on an [LG TV](https://torsher.app/docs/tv/lg-webos) or an [Android TV device](https://torsher.app/docs/tv/android-tv), or open `http://<server-address>:8080/` in a browser. Enter the code from the screen in the panel under **Profiles & devices → Connect a device**.
 
 The [Quick start](https://torsher.app/docs/quick-start) walks through each step, and [Docker Compose](https://torsher.app/docs/install/docker-compose) explains every line of the install file, several disks and updates.
 
@@ -135,7 +135,7 @@ The [Quick start](https://torsher.app/docs/quick-start) walks through each step,
 | --- | --- | --- |
 | Web browser | Available | The showcase on any computer, and the control panel on a phone or a computer |
 | LG webOS | Developer Mode | A thin TV app that plays most files directly on the TV. For now it installs through [Developer Mode](https://torsher.app/docs/tv/lg-webos) |
-| Android TV | Planned | The same showcase with a native player |
+| Android TV | APK | The same showcase with a native player. For now it installs from the [APK in the release](https://torsher.app/docs/tv/android-tv) |
 | Apple TV and phones | Planned | Through apps that already exist for these devices |
 
 The server runs on x86-64 Linux, including NAS systems on x86, with arm64 Linux and Docker Desktop on a best-effort basis. See [Requirements](https://torsher.app/docs/install/requirements).

@@ -25,7 +25,7 @@ Yes, side by side. Torsher lays out the files you keep by title, with the TMDB I
 
 ## Which TVs work?
 
-LG TVs with webOS through the Torsher app, and any TV or computer with a recent browser. The app is tested on an LG C4; older webOS versions are targeted but not tested yet. Apps for other platforms are planned. See [Requirements](/docs/install/requirements#tvs-and-browsers) and [LG webOS](/docs/tv/lg-webos).
+LG TVs with webOS and Android TV or Google TV devices through the Torsher app, and any TV or computer with a recent browser. The LG app is tested on an LG C4; older webOS versions are targeted but not tested yet. The Android TV app is tested in the Google TV emulator, not on devices yet. Apps for other platforms are planned. See [Requirements](/docs/install/requirements#tvs-and-browsers), [LG webOS](/docs/tv/lg-webos) and [Android TV](/docs/tv/android-tv).
 
 ## Does it work without a GPU?
 

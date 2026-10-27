@@ -69,7 +69,7 @@ Without sources the catalog works, but there is nothing to watch from.
 
 ## 5. Done
 
-The last step lists what is set up and what you skipped. Under <Ui k="panel.wizard.done.deviceTitle" /> it shows the address to open on the TV or a computer: in the [Torsher app](/docs/tv/lg-webos) or in a browser. The TV shows a six-character code; enter it right there.
+The last step lists what is set up and what you skipped. Under <Ui k="panel.wizard.done.deviceTitle" /> it shows the address to open on the TV or a computer: in the Torsher app for [LG webOS](/docs/tv/lg-webos) or [Android TV](/docs/tv/android-tv), or in a browser. The TV shows a six-character code; enter it right there.
 
 <Ui k="panel.wizard.done.openShowcase" /> opens the showcase in this browser, <Ui k="panel.wizard.done.toPanel" /> takes you to the panel.
 

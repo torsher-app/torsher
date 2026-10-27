@@ -58,7 +58,7 @@ Torsher includes components from other projects under their own licenses. The fu
 
 | Component | License |
 | --- | --- |
-| Onest font, in the showcase, the panel, the LG webOS app and this site | SIL Open Font License 1.1 |
+| Onest font, in the showcase, the panel, the LG webOS and Android TV apps and this site | SIL Open Font License 1.1 |
 | JetBrains Mono font, on this site | SIL Open Font License 1.1 |
 | Node.js, the base of the Docker image | MIT |
 | The torrent engine, built from Torsher's repository | AGPL-3.0-only, like Torsher. It links Go modules under MIT, BSD, ISC, Apache-2.0 and MPL-2.0, including anacrolix/torrent (MPL-2.0) |
