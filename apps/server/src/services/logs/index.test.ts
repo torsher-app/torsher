@@ -5,6 +5,7 @@ import Fastify from 'fastify'
 import pino from 'pino'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
+  closeLogFiles,
   createLogger,
   installLogger,
   logFor,
@@ -114,8 +115,8 @@ describe('логгер журнала', () => {
 
     installLogger(createLogger({ level: 'info', logsDir: dir, stdout: quiet }))
     logFor('server').info('before restart')
-    // Поток файла пишет асинхронно
-    await new Promise(resolve => setTimeout(resolve, 50))
+    // Поток файла пишет асинхронно: закрытие дожидается записи на диск
+    await closeLogFiles()
 
     installLogger(createLogger({ level: 'info', logsDir: dir, stdout: quiet }))
 

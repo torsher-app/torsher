@@ -17,6 +17,7 @@ import { ACCESS_TOKEN_COOKIE, DEVICE_TOKEN_COOKIE } from '../config.ts'
 import { getDb, migrateDb } from '../db/index.ts'
 import { serverSettings } from '../db/schema.ts'
 import {
+  closeLogFiles,
   createLogger,
   installLogger,
   logFor,
@@ -33,10 +34,6 @@ const quiet = { write: () => true }
 let owner: Record<string, string>
 let device: Record<string, string>
 let dir: string
-
-function flushFiles() {
-  return new Promise(resolve => setTimeout(resolve, 50))
-}
 
 async function logs(query = '') {
   const res = await app.inject({ url: `/api/logs${query}`, cookies: owner })
@@ -235,7 +232,7 @@ describe('журнал', () => {
       { path: '/data/downloads/Some Movie (2008)/movie.mkv' },
       'open /data/downloads/Some Movie (2008)/movie.mkv: permission denied',
     )
-    await flushFiles()
+    await closeLogFiles()
 
     const res = await app.inject({ url: '/api/logs', cookies: owner })
     const download = await app.inject({
@@ -254,7 +251,7 @@ describe('журнал', () => {
 describe('скачивание', () => {
   it('текстовый файл с шапкой и записями', async () => {
     logFor('engine').error('Engine crashed')
-    await flushFiles()
+    await closeLogFiles()
 
     const res = await app.inject({ url: '/api/logs/download', cookies: owner })
 
