@@ -8,7 +8,7 @@ Your home cinema in one container.
 </p>
 
 <p align="center">
-  <strong>Watch a torrent right away, keep what you watched in your own library, and let new episodes arrive on their own.</strong>
+  <strong>Browse a catalog on your TV, start playback while the file downloads, keep what you watched in your own library, and let new episodes arrive on their own.</strong>
   <br>
   Self-hosted and open source, built for the TV first.
 </p>

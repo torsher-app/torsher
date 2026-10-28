@@ -169,11 +169,11 @@ jobs:
             type=raw,value=beta,enable=${{ github.ref_type == 'tag' }}
           labels: |
             org.opencontainers.image.title=Torsher
-            org.opencontainers.image.description=Self-hosted media center: catalog, instant torrent streaming, personal library and series automation in one container
+            org.opencontainers.image.description=Self-hosted media center in one container: a TV showcase with a catalog, your own library, playback while the file downloads and series automation
             org.opencontainers.image.licenses=AGPL-3.0-only
           annotations: |
             org.opencontainers.image.title=Torsher
-            org.opencontainers.image.description=Self-hosted media center: catalog, instant torrent streaming, personal library and series automation in one container
+            org.opencontainers.image.description=Self-hosted media center in one container: a TV showcase with a catalog, your own library, playback while the file downloads and series automation
             org.opencontainers.image.licenses=AGPL-3.0-only
 
       # The image has to start before anything is published: a fresh volume,
