@@ -10,6 +10,9 @@ node_modules
 
 .nuxt
 .output
+# Демо-сборка панели для сайта
+.nuxt-demo
+.output-demo
 .data
 .nitro
 .cache

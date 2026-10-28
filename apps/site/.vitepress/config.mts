@@ -1,4 +1,6 @@
 import type { HeadConfig } from 'vitepress'
+import { cpSync, existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { defineConfig } from 'vitepress'
 import server from '../../server/package.json' with { type: 'json' }
 import { sidebar } from './sidebar.ts'
@@ -16,6 +18,10 @@ function pagePath(relativePath: string) {
     return `/${relativePath.slice(0, -'index.md'.length)}`
   return `/${relativePath.replace(/\.md$/, '')}`
 }
+
+// The panel demo is the real panel built with in-browser mocks (`build:demo` of
+// @torsher/web); the site build ships it as static files under /demo/
+const demoBuild = join(import.meta.dirname, '../../web/.output-demo/public')
 
 const ogImage = `${siteUrl}/og-image.png`
 
@@ -51,6 +57,16 @@ export default defineConfig({
   lastUpdated: true,
   // The product UI is dark; the site opens the same way and keeps a light theme
   appearance: 'dark',
+
+  // /demo/ is the panel demo copied in at buildEnd, not a VitePress page
+  ignoreDeadLinks: [/^\/demo\//],
+
+  buildEnd({ outDir }) {
+    if (!existsSync(demoBuild))
+      throw new Error(`Panel demo not found at ${demoBuild}: run \`pnpm --filter @torsher/web build:demo\` first`)
+
+    cpSync(demoBuild, join(outDir, 'demo'), { recursive: true })
+  },
 
   sitemap: {
     hostname: siteUrl,

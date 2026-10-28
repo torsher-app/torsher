@@ -7,6 +7,8 @@ description: "From an empty folder to a movie on the TV: start Torsher and Prowl
 
 The shortest way from an empty folder to a movie on your TV. Each step links to a page with details if something doesn't go as described.
 
+Want to see the control panel first? The [panel demo](/demo/){target="_self"} runs in your browser on made-up data, with nothing to install.
+
 ::: tip What you'll get
 Torsher and Prowlarr running on your server, the setup wizard passed, and the TV connected and showing the catalog.
 :::

@@ -1,4 +1,9 @@
+import process from 'node:process'
 import tailwindcss from '@tailwindcss/vite'
+
+// Демо для сайта: та же панель, но запросы `/api/*` обслуживают моки в
+// браузере (`app/demo/`), а собирается она статикой под `/demo/` сайта
+const isDemo = process.env.NUXT_PUBLIC_DEMO === '1'
 
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
@@ -13,12 +18,31 @@ export default defineNuxtConfig({
   // В продакшене панель — статика, которую сервер отдаёт на /panel/
   // рядом с витриной в корне; в разработке Nuxt работает на своём порту
   $production: {
-    app: {
-      baseURL: '/panel/',
-    },
+    app: isDemo
+      ? {
+          baseURL: '/demo/',
+          head: {
+            meta: [{ name: 'robots', content: 'noindex' }],
+            script: [
+              {
+                src: 'https://www.googletagmanager.com/gtag/js?id=G-HF50VGGL41',
+                async: true,
+              },
+              {
+                innerHTML:
+                  'window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag(\'js\',new Date());gtag(\'config\',\'G-HF50VGGL41\')',
+              },
+            ],
+          },
+        }
+      : {
+          baseURL: '/panel/',
+        },
     runtimeConfig: {
       public: {
-        tvUrl: '/',
+        // Витрины в демо нет: адрес — как у сервера в домашней сети, его
+        // показывают «Подключите устройство», а ссылки перехватывает плагин
+        tvUrl: isDemo ? 'http://192.168.1.10:8080/' : '/',
       },
     },
   },
@@ -38,8 +62,19 @@ export default defineNuxtConfig({
 
   compatibilityDate: '2025-07-15',
 
+  ...(isDemo && {
+    // Свои каталоги: `pnpm -r build` собирает панель и демо параллельно
+    buildDir: '.nuxt-demo',
+    nitro: { output: { dir: '.output-demo' } },
+    plugins: ['~/demo/plugin.ts'],
+    // У сайта нет SPA-фолбэка для подпутей `/demo/*`: без hash прямая
+    // ссылка и перезагрузка давали бы 404 сайта
+    router: { options: { hashMode: true } },
+  }),
+
   vite: {
     plugins: [tailwindcss()],
+    define: { __DEMO__: JSON.stringify(isDemo) },
     build: {
       // Лицензии вшитых в бандл пакетов: образ кладёт файл в /usr/share/licenses.
       // В .output/public Nitro переносит только каталог _nuxt

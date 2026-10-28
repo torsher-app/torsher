@@ -3465,6 +3465,16 @@
         "confirmed": "Release confirmed",
         "dismissed": "Release dismissed"
       }
+    },
+    "demo": {
+      "label": "Demo",
+      "note": "Data is made up, changes reset on reload",
+      "signIn": "Sign in with any username and password",
+      "wizard": "Run setup wizard",
+      "skipToPanel": "Skip to the panel",
+      "install": "Install Torsher",
+      "unavailable": "Not available in the demo",
+      "tvUnavailable": "The TV app isn't part of the demo: see it on the home page"
     }
   },
   "mine": {

@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "nuxt dev --port 3000 --strictPort",
     "build": "nuxt generate",
+    "build:demo": "NUXT_PUBLIC_DEMO=1 nuxt generate",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
     "typecheck": "nuxt typecheck",

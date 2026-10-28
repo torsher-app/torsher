@@ -1,0 +1,16 @@
+// Порядок импорта — порядок регистрации маршрутов: более точные пути
+// раздела регистрирует сам раздел раньше шаблонных
+import './auth'
+import './backups'
+import './catalog'
+import './downloads'
+import './follow'
+import './library'
+import './logs'
+import './network'
+import './notifications'
+import './overview'
+import './people'
+import './settings'
+import './sources'
+import './storage'
