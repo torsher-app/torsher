@@ -210,9 +210,9 @@ const steps = [
         </p>
         <h1>Your home cinema in <span class="glow">one container.</span></h1>
         <p class="hero-lead">
-          Browse a catalog, start watching a torrent right away, keep what you
-          watched in your own library, and let new episodes arrive on their own.
-          Built for the TV first, running on your own hardware.
+          Browse a catalog, start playback while the file downloads, keep what
+          you watched in your own library, and let new episodes arrive on their
+          own. Built for the TV first, running on your own hardware.
         </p>
         <div class="actions">
           <a

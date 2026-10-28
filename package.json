@@ -3,7 +3,7 @@
   "type": "module",
   "private": true,
   "packageManager": "pnpm@12.14.0",
-  "description": "Self-hosted media center: catalog, instant torrent streaming, personal library and series automation in one container",
+  "description": "Self-hosted media center in one container: a TV showcase with a catalog, your own library, playback while the file downloads and series automation",
   "author": "Anton Reshetov <reshetov.art@gmail.com>",
   "license": "AGPL-3.0-only",
   "homepage": "https://github.com/torsher-app/torsher#readme",

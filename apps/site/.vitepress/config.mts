@@ -7,7 +7,7 @@ const siteUrl = 'https://torsher.app'
 const siteTitle = 'Torsher'
 const repoUrl = 'https://github.com/torsher-app/torsher'
 const description
-  = 'Self-hosted media center in one Docker container: a TV-first catalog, instant torrent streaming, your own library and series automation.'
+  = 'Self-hosted media center in one Docker container: a TV showcase with a catalog, your own library, playback while the file downloads and series automation.'
 
 function pagePath(relativePath: string) {
   if (relativePath === 'index.md')
