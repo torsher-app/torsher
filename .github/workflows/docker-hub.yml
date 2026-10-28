@@ -3,6 +3,7 @@ name: Docker Hub
 # Copies a published version from GHCR to Docker Hub without rebuilding it:
 # the same digest, the attestations stored in its index and the signature of
 # the release workflow, so one `cosign verify` works for both registries.
+# Then updates the repository overview there from docker/docker-hub.md.
 # A manual run copies a version that is already out
 on:
   workflow_call:
@@ -66,3 +67,24 @@ jobs:
           cosign verify "$TARGET:$VERSION" \
             --certificate-identity-regexp "^https://github\.com/${GITHUB_REPOSITORY}/\.github/workflows/release\.yml@refs/tags/v" \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com > /dev/null
+
+  # The overview comes from the checked-out ref, so Docker Hub describes the
+  # version just copied. Needs a token with the read/write/delete scope
+  overview:
+    needs: copy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: repo
+        env:
+          TARGET: ${{ vars.DOCKERHUB_IMAGE }}
+        run: echo "name=${TARGET#docker.io/}" >> "$GITHUB_OUTPUT"
+
+      - uses: peter-evans/dockerhub-description@v5
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ steps.repo.outputs.name }}
+          short-description: 'Self-hosted media center: a TV showcase, your own library and series automation in one container'
+          readme-filepath: docker/docker-hub.md
