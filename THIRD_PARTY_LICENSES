@@ -1,7 +1,8 @@
 Third-party components distributed with Torsher
 ===============================================
 
-Onest font (apps/tv, apps/web, apps/tv-shell-webos and apps/site, files from the @fontsource/onest package)
+Onest font (apps/tv, apps/web, apps/tv-shell-webos, apps/tv-shell-android and
+apps/site, files from the @fontsource/onest package)
 https://github.com/simpals/onest
 License: SIL Open Font License 1.1
 
@@ -106,6 +107,41 @@ License: SIL Open Font License 1.1, the same text as above
 
 Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)
 
+
+Android TV app
+==============
+
+The APK (apps/tv-shell-android) bundles Android libraries, all under the Apache
+License 2.0:
+
+AndroidX, including Jetpack Compose and Media3 (ExoPlayer)
+https://developer.android.com/jetpack/androidx
+
+Kotlin standard library
+https://github.com/JetBrains/kotlin
+
+kotlinx.coroutines and kotlinx.serialization
+https://github.com/Kotlin/kotlinx.coroutines
+https://github.com/Kotlin/kotlinx.serialization
+
+Guava (com.google.guava:guava, failureaccess and listenablefuture)
+https://github.com/google/guava
+
+JSpecify annotations
+https://github.com/jspecify/jspecify
+
+JetBrains Java Annotations
+https://github.com/JetBrains/java-annotations
+
+Inside the APK, assets/licenses/artifacts.json lists every bundled library with
+its version and license, generated at build time; the build fails if a library
+is under a license other than Apache-2.0. Next to it are the license text
+(Apache-2.0.txt), the NOTICE files of Kotlin, kotlinx.coroutines and
+kotlinx.serialization (NOTICE.txt), and the licenses of the parts of the Kotlin
+standard library derived from other projects (Kotlin-stdlib-third-party.txt):
+kotlin.time from ThreeTen backport under BSD-3-Clause and parts of kotlin.math
+from Boost under the Boost Software License 1.0. The Onest font license is in
+assets/licenses/Onest-OFL.txt.
 
 Docker image
 ============

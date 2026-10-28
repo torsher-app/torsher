@@ -1,6 +1,7 @@
 [versions]
 agp = "9.4.1"
 kotlin = "2.4.21"
+licensee = "1.14.1"
 activity = "1.13.0"
 composeBom = "2026.09.00"
 core = "1.19.1"
@@ -26,3 +27,4 @@ json = { module = "org.json:json", version.ref = "json" }
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+licensee = { id = "app.cash.licensee", version.ref = "licensee" }
