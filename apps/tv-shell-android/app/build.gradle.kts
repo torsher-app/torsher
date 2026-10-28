@@ -3,6 +3,7 @@ import groovy.json.JsonSlurper
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.licensee)
 }
 
 // Версия APK — версия продукта: один тег выпускает образ, IPK и APK
@@ -71,6 +72,15 @@ android {
         disable += setOf("OldTargetApi", "IconMissingDensityFolder")
         warningsAsErrors = true
     }
+}
+
+// Список библиотек APK с их лицензиями генерируется в assets/licenses/artifacts.json, а тексты
+// лицензий и NOTICE лежат рядом в src/main/assets/licenses. Разрешена только Apache-2.0:
+// зависимость под другой лицензией валит сборку, пока её текст не добавлен туда же
+licensee {
+    allow("Apache-2.0")
+    bundleAndroidAsset = true
+    androidAssetReportPath = "licenses/artifacts.json"
 }
 
 dependencies {

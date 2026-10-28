@@ -1,0 +1,41 @@
+NOTICE files of the libraries in this app that have one, as required by
+section 4(d) of the Apache License 2.0 (Apache-2.0.txt).
+
+
+Kotlin standard library (org.jetbrains.kotlin:kotlin-stdlib)
+https://github.com/JetBrains/kotlin/blob/master/license/NOTICE.txt
+
+   =========================================================================
+   ==  NOTICE file corresponding to the section 4 d of                    ==
+   ==  the Apache License, Version 2.0,                                   ==
+   ==  in this case for the Kotlin Compiler distribution.                 ==
+   =========================================================================
+
+   Kotlin Compiler
+   Copyright 2010-2024 JetBrains s.r.o and respective authors and developers
+
+
+kotlinx.coroutines (org.jetbrains.kotlinx:kotlinx-coroutines-*)
+https://github.com/Kotlin/kotlinx.coroutines/blob/master/license/NOTICE.txt
+
+=========================================================================
+==  NOTICE file corresponding to the section 4 d of                    ==
+==  the Apache License, Version 2.0,                                   ==
+==  in this case for the kotlinx.coroutines library.                   ==
+=========================================================================
+
+kotlinx.coroutines library.
+Copyright 2016-2025 JetBrains s.r.o and contributors
+
+
+kotlinx.serialization (org.jetbrains.kotlinx:kotlinx-serialization-*)
+https://github.com/Kotlin/kotlinx.serialization/blob/master/license/NOTICE.txt
+
+   =========================================================================
+   ==  NOTICE file corresponding to the section 4 d of                    ==
+   ==  the Apache License, Version 2.0,                                   ==
+   ==  in this case for the kotlix.serialization library.                 ==
+   =========================================================================
+
+   kotlinx.serialization library.
+   Copyright 2017-2019 JetBrains s.r.o and respective authors and developers
