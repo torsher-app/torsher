@@ -169,9 +169,9 @@ const platforms = [
   },
   {
     name: 'Android TV',
-    stage: 'Planned',
-    ready: false,
-    text: 'The same showcase with a native player.',
+    stage: 'APK',
+    ready: true,
+    text: 'The same showcase with a native player. For now it installs from the APK in the release.',
   },
   {
     name: 'Apple TV and phones',

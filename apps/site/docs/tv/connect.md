@@ -14,7 +14,7 @@ The TV shows <Ui k="profiles.title" /> or goes straight to the home screen, and 
 ## Before you start
 
 - The [setup wizard](/docs/setup/wizard) is done, or at least the owner account exists.
-- The TV runs the [Torsher app](/docs/tv/lg-webos) or has the showcase open in its browser at `http://<server-address>:8080/`.
+- The TV runs the Torsher app for [LG webOS](/docs/tv/lg-webos) or [Android TV](/docs/tv/android-tv), or has the showcase open in its browser at `http://<server-address>:8080/`.
 - Your phone or computer can open the control panel.
 
 ## 1. Get the code on the TV

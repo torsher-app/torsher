@@ -49,4 +49,5 @@ On a Raspberry Pi 4 and similar boards, the CPU is too slow to transcode: files 
 | LG webOS app | Tested on LG C4 (2024). TVs from 2020 (webOS 5) and later are targeted, but not tested yet |
 | Browser on a computer | Developed and checked in Chrome; other current browsers are expected to work. The server converts what a browser can't play |
 | Browser on a TV | Works if the TV browser is recent enough |
-| Android TV, Apple TV, phones | Planned. See [Other devices](/docs/tv/other-devices) |
+| Android TV and Google TV app | Tested in the Google TV emulator. Devices from Android 7.0 onwards are targeted, but not tested yet |
+| Apple TV, phones | Planned. See [Other devices](/docs/tv/other-devices) |

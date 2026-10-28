@@ -5,7 +5,7 @@ description: "Which devices Torsher works on today, which are planned, and how t
 
 # Other devices
 
-Torsher has two clients today: the app for LG TVs and the showcase in a browser. Apps for other platforms are planned but not available yet. This page lists what works now and how to watch on other devices in the meantime.
+Torsher has three clients today: the apps for LG TVs and Android TV, and the showcase in a browser. Apps for other platforms are planned but not available yet. This page lists what works now and how to watch on other devices in the meantime.
 
 ::: tip What you'll learn
 Whether your device can run Torsher today, and how to play a video on it if it can't.
@@ -16,13 +16,13 @@ Whether your device can run Torsher today, and how to play a video on it if it c
 | Client | Status |
 | --- | --- |
 | [LG webOS app](/docs/tv/lg-webos) | Tested on LG C4 (2024). TVs from 2020 (webOS 5) and later are targeted, but not tested yet |
+| [Android TV app](/docs/tv/android-tv) | Tested in the Google TV emulator. Devices from Android 7.0 onwards are targeted, but not tested yet |
 | [Browser](/docs/tv/browser) on a computer, a TV or a phone | Developed and checked in Chrome; other current browsers are expected to work |
 
 ## Planned
 
 These are not available yet, and there are no dates:
 
-- **Android TV and Google TV:** a Torsher app.
 - **Apple TV, iPhone, iPad and Android phones:** through apps that already work with Jellyfin servers, once Torsher can talk to them as a Jellyfin-compatible server.
 - **Samsung TVs (Tizen):** later.
 

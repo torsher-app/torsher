@@ -39,7 +39,7 @@ What stays outside is the **indexer**: the service that searches the sources you
 | A computer with Docker | Torsher runs as one container. A mini PC with an Intel N100 or N150 is plenty. See [Requirements](/docs/install/requirements). |
 | A Torznab indexer | Torsher ships with no sources. Prowlarr runs next to Torsher from the same install file. See [Indexers](/docs/setup/indexers). |
 | A TMDB key, maybe | The catalog comes from TMDB. If the server has no key, you get a free one from your TMDB account. See [TMDB key](/docs/setup/tmdb). |
-| A TV or a browser | The Torsher app on an LG TV, or any modern browser. See [LG webOS](/docs/tv/lg-webos). |
+| A TV or a browser | The Torsher app on an LG TV or an Android TV device, or any modern browser. See [LG webOS](/docs/tv/lg-webos) and [Android TV](/docs/tv/android-tv). |
 
 ## How the pieces fit
 
