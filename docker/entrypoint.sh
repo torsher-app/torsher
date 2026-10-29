@@ -39,14 +39,18 @@ if [ "$(id -u)" = 0 ]; then
 
   run_as="setpriv --reuid=$PUID --regid=$PGID $groups"
   user="$PUID:$PGID"
+  hint="check the owner of this folder on the host or set PUID and PGID"
 else
+  # Пользователя задал запускающий (`user:` в compose, каталог приложений
+  # NAS), сменить его отсюда нельзя: совет про PUID и PGID тут не поможет
   run_as=""
   user="$(id -u):$(id -g)"
+  hint="give this user write access to the folder on the host (PUID and PGID apply only when the container starts as root)"
 fi
 
 for dir in "$db_dir" "$downloads_dir" "$library_dir"; do
   if ! $run_as test -w "$dir"; then
-    fail "$dir is not writable by $user; check the owner of the /data volume or set PUID and PGID"
+    fail "$dir is not writable by $user; $hint"
   fi
 done
 

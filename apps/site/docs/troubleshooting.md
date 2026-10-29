@@ -47,6 +47,8 @@ Torsher writes files as the user in `PUID` and `PGID`, and that user doesn't own
    docker compose up -d
    ```
 
+If the container runs as a fixed user (`user:` in `docker-compose.yml`, or a NAS app catalog that sets it), `PUID` and `PGID` don't apply, and the message says so. Give the user from the message write access to the folder instead, with the `chown` command above and the numbers from the message.
+
 `PUID and PGID must be numeric` means one of them has letters or spaces in it.
 
 ### `SECRET_KEY` is too short {#secret-key}
