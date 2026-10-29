@@ -786,7 +786,7 @@
           "created": "Downloads folder will be created on the first download",
           "readonly": "Downloads folder is not writable"
         },
-        "fixWrite": "The owner of the files on the host must match the container's PUID and PGID (on the host: id -u and id -g). Fix them in docker-compose.yml or grant access to the volume folder, then restart the container.",
+        "fixWrite": "The owner of the files on the host must match the container's PUID and PGID (on the host: id -u and id -g). Fix them in the container settings or grant access to the volume folder, then restart the container.",
         "space": {
           "ok": "Enough space: {free} free",
           "low": "{free} free: the cache limit will not fit",
@@ -1105,7 +1105,7 @@
         },
         "folders": {
           "title": "Folders",
-          "text": "Where downloads and your own library live. The container sees only mounted folders: mount a new disk in docker-compose.yml first.",
+          "text": "Where downloads and your own library live. The container sees only mounted folders: mount a new disk into the container first.",
           "downloads": "Downloads",
           "library": "Library",
           "free": "{free} free of {total}",
@@ -1143,7 +1143,7 @@
           "textDownloads": "The torrent engine downloads torrents and the watch cache here.",
           "textLibrary": "“Keep” and “Download” put files here in the Jellyfin layout.",
           "path": "Folder",
-          "pathHint": "Paths inside the container. Disk not listed? Mount it in docker-compose.yml and restart the container.",
+          "pathHint": "Paths inside the container. Disk not listed? Mount it into the container and restart it.",
           "current": "This is the current folder, writable",
           "checking": "Checking the folder…",
           "writable": "Writable",
@@ -1525,9 +1525,9 @@
           "label": "Port",
           "upnp": "Open the port on the router with UPnP",
           "upnpHint": "The router opens the port itself. Off by default: not every router does this safely.",
-          "env": "Port from ENGINE_PEER_PORT — docker-compose.yml publishes it.",
-          "envMismatch": "docker-compose.yml publishes port {port}: change it there too, or no incoming connections will reach the engine.",
-          "docker": "In Docker, publish the port in docker-compose.yml."
+          "env": "Port from ENGINE_PEER_PORT. Publish the same port in the port mapping of your container.",
+          "envMismatch": "Your container is set to port {port}: change the port mapping and ENGINE_PEER_PORT too, or no incoming connections will reach the engine.",
+          "docker": "In Docker, publish the port in the port mapping of your container."
         },
         "discovery": {
           "title": "Peer discovery",
@@ -2517,7 +2517,7 @@
       "pathErrors": {
         "title": "Can’t connect the folder",
         "not_absolute": "Use a full path from the root: /media/video.",
-        "missing": "There is no such folder on the server. In Docker, mount it as a volume in compose.",
+        "missing": "There is no such folder on the server. In Docker, mount it into the container.",
         "not_directory": "This is a file, not a folder.",
         "denied": "The server can’t read this folder.",
         "inside_data": "This is Torsher’s data folder (downloads or its own layout). Connect your collection folder.",
