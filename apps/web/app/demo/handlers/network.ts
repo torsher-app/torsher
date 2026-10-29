@@ -12,8 +12,8 @@ import type {
   StartNetCheckInput,
   UpdateNetRouteInput,
 } from '@torsher/api-client'
-import { del, DemoError, get, patch, post, put } from '../router'
-import { ago, DAY, HOUR, isFresh, nextId } from '../state'
+import { del, DemoError, get, patch, post, put } from '@torsher/demo/router'
+import { ago, DAY, HOUR, isFresh, nextId } from '@torsher/demo/state'
 import { sourceHosts } from './sources'
 
 interface DemoRoute extends NetRoute {

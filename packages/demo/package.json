@@ -1,0 +1,29 @@
+{
+  "name": "@torsher/demo",
+  "type": "module",
+  "version": "0.0.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "exports": {
+    "./analytics": "./src/analytics.ts",
+    "./art": "./src/art.ts",
+    "./coverage": "./src/coverage.ts",
+    "./media/*": "./media/*",
+    "./router": "./src/router.ts",
+    "./state": "./src/state.ts",
+    "./titles": "./src/titles.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@torsher/api-client": "workspace:*"
+  },
+  "devDependencies": {
+    "@torsher/tsconfig": "workspace:*",
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.2",
+    "vitest": "^5.0.5"
+  }
+}

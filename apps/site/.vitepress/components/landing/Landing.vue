@@ -279,6 +279,7 @@ const steps = [
         <p class="ld-caption">
           The showcase on a TV, with the remote or a pointer. Titles and artwork
           are made up for this page.
+          <a :href="withBase('/demo/tv/')" target="_self">Try the live showcase demo →</a>
         </p>
       </div>
     </section>

@@ -1,6 +1,6 @@
 import type { OverviewResponse } from '@torsher/api-client'
-import { get } from '../router'
-import { DEMO_VERSION } from '../state'
+import { get } from '@torsher/demo/router'
+import { DEMO_VERSION } from '@torsher/demo/state'
 import { overviewUpdate, serverStartedAt } from './auth'
 import { backupAttention, backupStats } from './backups'
 import { downloadStats } from './downloads'

@@ -10,7 +10,7 @@ import type {
   UpdateTorrentSeedingInput,
   UpdateTorrentTitleInput,
 } from '@torsher/api-client'
-import type { DemoRequest } from '../router'
+import type { DemoRequest } from '@torsher/demo/router'
 import {
   putInLibrary,
   releaseOf,
@@ -20,7 +20,7 @@ import {
   TYPICAL,
 } from '../fixtures/downloads'
 import { policy } from '../fixtures/storage'
-import { titleNamed, TITLES } from '../fixtures/titles'
+import { titleNamed, TITLES } from '@torsher/demo/titles'
 import {
   ago,
   DAY,
@@ -30,8 +30,8 @@ import {
   isFresh,
   MINUTE,
   nextId,
-} from '../state'
-import { del, DemoError, get, post, put } from '../router'
+} from '@torsher/demo/state'
+import { del, DemoError, get, post, put } from '@torsher/demo/router'
 
 interface Entry {
   torrent: Torrent
@@ -120,7 +120,7 @@ function livedEntries(): Entry[] {
   })
 
   const kites = make('t-kites-e05', 'Kites over Mareth', {
-    season: 1,
+    season: 2,
     episode: 5,
     videoSize: TYPICAL.episode,
   })

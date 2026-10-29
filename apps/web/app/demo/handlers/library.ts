@@ -29,9 +29,17 @@ import {
   libraryOf,
 } from '../fixtures/library'
 import { DATA_PATH, FOLDER_CONTENT, FOLDER_TREE } from '../fixtures/storage'
-import { cardOf, findTitle } from '../fixtures/titles'
-import { ago, elapsedSeconds, nextId } from '../state'
-import { del, DemoError, get, NO_CONTENT, patch, post, put } from '../router'
+import { cardOf, findTitle } from '@torsher/demo/titles'
+import { ago, elapsedSeconds, nextId } from '@torsher/demo/state'
+import {
+  del,
+  DemoError,
+  get,
+  NO_CONTENT,
+  patch,
+  post,
+  put,
+} from '@torsher/demo/router'
 
 const libraries = initialLibraries()
 let unmatched = initialUnmatched()

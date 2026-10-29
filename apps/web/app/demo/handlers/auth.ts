@@ -14,8 +14,8 @@ import type {
   UpdateWizardInput,
   WizardState,
 } from '@torsher/api-client'
-import { DemoError, get, NO_CONTENT, post, put } from '../router'
-import { ago, DAY, DEMO_VERSION, HOUR, isFresh } from '../state'
+import { DemoError, get, NO_CONTENT, post, put } from '@torsher/demo/router'
+import { ago, DAY, DEMO_VERSION, HOUR, isFresh } from '@torsher/demo/state'
 import { isImdbEnabled } from './settings'
 
 /** Запуск сервера для «Обзора»: живая установка работает несколько дней */

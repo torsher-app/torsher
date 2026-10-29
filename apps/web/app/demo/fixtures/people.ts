@@ -5,8 +5,8 @@ import type {
   Profile,
   UnmatchedImportRow,
 } from '@torsher/api-client'
-import { ago, DAY, HOUR, MINUTE } from '../state'
-import { cardOf, titleNamed } from './titles'
+import { ago, DAY, HOUR, MINUTE } from '@torsher/demo/state'
+import { cardOf, titleNamed } from '@torsher/demo/titles'
 
 export const DEFAULT_PLAYER: PlayerSettings = {
   autoNext: true,

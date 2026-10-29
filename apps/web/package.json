@@ -20,6 +20,7 @@
     "@nuxtjs/color-mode": "^4.0.1",
     "@tailwindcss/vite": "^4.3.3",
     "@torsher/api-client": "workspace:*",
+    "@torsher/demo": "workspace:*",
     "@torsher/i18n": "workspace:*",
     "@torsher/release-parser": "workspace:*",
     "@torsher/tokens": "workspace:*",

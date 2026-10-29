@@ -31,7 +31,7 @@ import {
   livedHistory,
   livedUnmatched,
 } from '../fixtures/people'
-import { findTitle } from '../fixtures/titles'
+import { findTitle } from '@torsher/demo/titles'
 import {
   del,
   DemoError,
@@ -41,8 +41,8 @@ import {
   post,
   put,
   unavailable,
-} from '../router'
-import { ago, DAY, isFresh, nextId } from '../state'
+} from '@torsher/demo/router'
+import { ago, DAY, isFresh, nextId } from '@torsher/demo/state'
 import { ownerName, requireSession } from './auth'
 
 let profiles: Profile[] = isFresh

@@ -59,8 +59,16 @@ if (import.meta.env.DEV) {
 
 connectAndroidShell()
 
-createApp(App)
-  .use(router)
-  .use(i18n)
-  .use(createFocus({ onBack: back, nativeWheel: platform === 'web' }))
-  .mount('#app')
+function start() {
+  createApp(App)
+    .use(router)
+    .use(i18n)
+    .use(createFocus({ onBack: back, nativeWheel: platform === 'web' }))
+    .mount('#app')
+}
+
+// Демо подменяет `fetch` до первого запроса витрины; в обычной сборке ветка
+// и её чанк вырезаются
+if (__DEMO__)
+  void import('./demo/index.ts').then(({ installDemo }) => installDemo(start))
+else start()

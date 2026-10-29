@@ -4,9 +4,15 @@ import type {
   LogLevelResponse,
   LogsResponse,
 } from '@torsher/api-client'
-import { releaseName, titleNamed } from '../fixtures/titles'
-import { get, put, unavailable } from '../router'
-import { DEMO_VERSION, elapsedSeconds, HOUR, isFresh, MB } from '../state'
+import { releaseName, titleNamed } from '@torsher/demo/titles'
+import { get, put, unavailable } from '@torsher/demo/router'
+import {
+  DEMO_VERSION,
+  elapsedSeconds,
+  HOUR,
+  isFresh,
+  MB,
+} from '@torsher/demo/state'
 
 type Level = LogEntry['level']
 type Draft = Omit<LogEntry, 'id' | 'seq' | 'time'>
@@ -41,7 +47,7 @@ function between(min: number, max: number) {
 
 const RELEASES = [
   releaseName(titleNamed('Glasswing'), { season: 2, episode: 6 }),
-  releaseName(titleNamed('Kites over Mareth'), { season: 1, episode: 8 }),
+  releaseName(titleNamed('Kites over Mareth'), { season: 2, episode: 4 }),
   releaseName(titleNamed('Ninefold Harbor'), { season: 3 }),
   releaseName(titleNamed('Lanterns of Vell'), {
     quality: '2160p.WEB-DL.H.265',

@@ -20,8 +20,8 @@ import {
   policy,
   volumeOf,
 } from '../fixtures/storage'
-import { ago, elapsedSeconds, MB, nextId } from '../state'
-import { DemoError, get, post, put } from '../router'
+import { ago, elapsedSeconds, MB, nextId } from '@torsher/demo/state'
+import { DemoError, get, post, put } from '@torsher/demo/router'
 import { torrentsSnapshot } from './downloads'
 import {
   connectedFolderPaths,

@@ -11,7 +11,7 @@ import type {
   NotificationUnreadCount,
   TelegramChatsBodyInput,
 } from '@torsher/api-client'
-import { releaseName, titleNamed } from '../fixtures/titles'
+import { releaseName, titleNamed } from '@torsher/demo/titles'
 import {
   del,
   DemoError,
@@ -21,8 +21,8 @@ import {
   post,
   put,
   unavailable,
-} from '../router'
-import { ago, DAY, HOUR, isFresh, MINUTE, nextId } from '../state'
+} from '@torsher/demo/router'
+import { ago, DAY, HOUR, isFresh, MINUTE, nextId } from '@torsher/demo/state'
 
 // --- Центр уведомлений ---
 
@@ -107,7 +107,7 @@ function livedItems(): NotificationItem[] {
       'follow_ready',
       3 * HOUR,
       'Kites over Mareth',
-      [{ season: 1, episode: 8 }],
+      [{ season: 2, episode: 3 }],
       { quality: '1080p' },
     ),
     item(
@@ -156,7 +156,7 @@ function livedItems(): NotificationItem[] {
       'follow_upgraded',
       2 * DAY + 11 * HOUR,
       'Kites over Mareth',
-      [{ season: 1, episode: 7 }],
+      [{ season: 2, episode: 2 }],
       { quality: '2160p' },
     ),
     follow(
@@ -174,7 +174,7 @@ function livedItems(): NotificationItem[] {
       { section: 'downloads' },
     ),
     ...weekly('Glasswing', 2, 4, 7),
-    ...weekly('Kites over Mareth', 1, 6, 5),
+    ...weekly('Kites over Mareth', 2, 1, 5),
     item(
       'device_paired',
       40 * DAY,

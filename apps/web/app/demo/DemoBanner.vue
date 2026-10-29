@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
-import { isFresh } from './state'
+import { isFresh } from '@torsher/demo/state'
 
 const { t } = useI18n()
 const route = useRoute()

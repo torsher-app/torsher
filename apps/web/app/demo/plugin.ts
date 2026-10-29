@@ -1,5 +1,6 @@
 import { toast } from 'vue-sonner'
-import { handle, UNAVAILABLE } from './router'
+import { trackScreen } from '@torsher/demo/analytics'
+import { handle, UNAVAILABLE } from '@torsher/demo/router'
 import './handlers'
 
 /**
@@ -46,10 +47,7 @@ export default defineNuxtPlugin({
       })
     }
 
-    // Ссылки мимо клиента: скачивание файлов с `/api/*` и витрина, которой
-    // в демо нет. Сайт и документация открываются как обычно
-    const tvBase = new URL(useRuntimeConfig().public.tvUrl, location.href).href
-
+    // Скачивание файлов с `/api/*` идёт ссылкой мимо клиента
     document.addEventListener(
       'click',
       (event) => {
@@ -66,17 +64,22 @@ export default defineNuxtPlugin({
           event.preventDefault()
           toast.info(t('panel.demo.unavailable'))
         }
-        else if (url.href.startsWith(tvBase)) {
-          event.preventDefault()
-          toast.info(t('panel.demo.tvUnavailable'), {
-            action: {
-              label: 'torsher.app',
-              onClick: () => window.open('/', '_blank', 'noopener'),
-            },
-          })
-        }
       },
       { capture: true },
     )
+
+    // Первый переход роутер делает до монтирования, поэтому текущий экран
+    // отмечаем отдельно
+    nuxtApp.hook('app:mounted', () => {
+      const router = useRouter()
+      const screenOf = (route: typeof router.currentRoute.value) =>
+        route.matched.at(-1)?.path ?? route.path
+
+      trackScreen('panel', screenOf(router.currentRoute.value))
+      router.afterEach((to, from, failure) => {
+        if (!failure && to.path !== from.path)
+          trackScreen('panel', screenOf(to))
+      })
+    })
   },
 })

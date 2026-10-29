@@ -5,6 +5,14 @@ import tailwindcss from '@tailwindcss/vite'
 // браузере (`app/demo/`), а собирается она статикой под `/demo/` сайта
 const isDemo = process.env.NUXT_PUBLIC_DEMO === '1'
 
+const demoSeo = {
+  url: 'https://torsher.app/demo/',
+  title: 'Torsher demo: control panel in your browser',
+  description:
+    'Click through the Torsher control panel: overview, downloads, follows, sources, library and users. Made-up data, nothing to install.',
+  image: 'https://torsher.app/og-image.png',
+}
+
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
   // SPA: браузер ходит в API только через Nitro-прокси (server/api),
@@ -21,16 +29,30 @@ export default defineNuxtConfig({
     app: isDemo
       ? {
           baseURL: '/demo/',
+          // Своё описание для поиска и превью ссылок: демо — страница сайта
           head: {
-            meta: [{ name: 'robots', content: 'noindex' }],
+            htmlAttrs: { lang: 'en' },
+            title: demoSeo.title,
+            link: [{ rel: 'canonical', href: demoSeo.url }],
+            meta: [
+              { name: 'description', content: demoSeo.description },
+              { property: 'og:type', content: 'website' },
+              { property: 'og:site_name', content: 'Torsher' },
+              { property: 'og:title', content: demoSeo.title },
+              { property: 'og:description', content: demoSeo.description },
+              { property: 'og:url', content: demoSeo.url },
+              { property: 'og:image', content: demoSeo.image },
+              { name: 'twitter:card', content: 'summary_large_image' },
+              { name: 'twitter:title', content: demoSeo.title },
+              { name: 'twitter:description', content: demoSeo.description },
+              { name: 'twitter:image', content: demoSeo.image },
+            ],
+            // Счётчик сайта грузится только на боевом домене: dev-сервер и
+            // локальный предпросмотр в статистику не попадают
             script: [
               {
-                src: 'https://www.googletagmanager.com/gtag/js?id=G-HF50VGGL41',
-                async: true,
-              },
-              {
                 innerHTML:
-                  'window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}gtag(\'js\',new Date());gtag(\'config\',\'G-HF50VGGL41\')',
+                  'if(location.hostname===\'torsher.app\'){var s=document.createElement(\'script\');s.async=true;s.src=\'https://www.googletagmanager.com/gtag/js?id=G-HF50VGGL41\';document.head.appendChild(s);window.dataLayer=window.dataLayer||[];window.gtag=function(){dataLayer.push(arguments)};gtag(\'js\',new Date());gtag(\'config\',\'G-HF50VGGL41\')}',
               },
             ],
           },
@@ -40,9 +62,8 @@ export default defineNuxtConfig({
         },
     runtimeConfig: {
       public: {
-        // Витрины в демо нет: адрес — как у сервера в домашней сети, его
-        // показывают «Подключите устройство», а ссылки перехватывает плагин
-        tvUrl: isDemo ? 'http://192.168.1.10:8080/' : '/',
+        // Демо витрины лежит на сайте рядом, в `demo/tv/`
+        tvUrl: isDemo ? '/demo/tv/' : '/',
       },
     },
   },

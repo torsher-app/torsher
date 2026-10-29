@@ -9,5 +9,10 @@ export function panelUrl(
   href: string,
   base = import.meta.env.BASE_URL,
 ) {
+  // На сайте демо витрины лежит в `demo/tv/`, а демо панели — уровнем выше,
+  // с hash-адресами
+  if (__DEMO__)
+    return new URL(`../#/${path}`, new URL(base, href))
+
   return new URL(`panel/${path}`, new URL(base, href))
 }

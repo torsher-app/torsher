@@ -1,7 +1,7 @@
 import type { Torrent, TorrentFile } from '@torsher/api-client'
-import type { TITLES } from './titles'
-import { GB, MB } from '../state'
-import { fakeInfohash, releaseName } from './titles'
+import type { TITLES } from '@torsher/demo/titles'
+import { GB, MB } from '@torsher/demo/state'
+import { fakeInfohash, releaseName } from '@torsher/demo/titles'
 
 type DemoTitle = (typeof TITLES)[number]
 

@@ -13,8 +13,8 @@ import type {
   SourceErrorResponse,
   UpdateIndexerInput,
 } from '@torsher/api-client'
-import { del, DemoError, get, patch, post } from '../router'
-import { ago, isFresh, MINUTE, nextId } from '../state'
+import { del, DemoError, get, patch, post } from '@torsher/demo/router'
+import { ago, isFresh, MINUTE, nextId } from '@torsher/demo/state'
 
 type ManagerKind = IndexerManager['kind']
 

@@ -1,4 +1,4 @@
-import { GB, isFresh } from '../state'
+import { GB, isFresh } from '@torsher/demo/state'
 
 const TB = 1024 * GB
 

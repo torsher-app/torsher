@@ -13,8 +13,15 @@ import type {
   UpdatePlaybackSettingsInput,
   UpdateTorrentSettingsInput,
 } from '@torsher/api-client'
-import { DemoError, get, post, put } from '../router'
-import { ago, DAY, elapsedSeconds, HOUR, isFresh, MB } from '../state'
+import { DemoError, get, post, put } from '@torsher/demo/router'
+import {
+  ago,
+  DAY,
+  elapsedSeconds,
+  HOUR,
+  isFresh,
+  MB,
+} from '@torsher/demo/state'
 
 // --- Метаданные ---
 

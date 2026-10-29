@@ -5,9 +5,9 @@ import type {
   LibraryFolder,
   UnmatchedGroup,
 } from '@torsher/api-client'
-import { ago, DAY, GB, HOUR, isFresh, MB, MINUTE } from '../state'
+import { ago, DAY, GB, HOUR, isFresh, MB, MINUTE } from '@torsher/demo/state'
 import { ENV_PATHS } from './storage'
-import { releaseName, titleNamed } from './titles'
+import { releaseName, titleNamed } from '@torsher/demo/titles'
 
 export function folderOf(
   id: string,

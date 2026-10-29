@@ -3473,8 +3473,7 @@
       "wizard": "Run setup wizard",
       "skipToPanel": "Skip to the panel",
       "install": "Install Torsher",
-      "unavailable": "Not available in the demo",
-      "tvUnavailable": "The TV app isn't part of the demo: see it on the home page"
+      "unavailable": "Not available in the demo"
     }
   },
   "mine": {
@@ -3883,5 +3882,18 @@
       }
     },
     "openPanel": "Open the panel"
+  },
+  "demo": {
+    "label": "Demo",
+    "note": "Data is made up, changes reset on reload",
+    "panel": "Open the panel demo",
+    "install": "Install Torsher",
+    "credits": "Sintel, Big Buck Bunny and Tears of Steel © Blender Foundation, CC BY 3.0",
+    "videoCredit": "Video: {film} © Blender Foundation, CC BY 3.0",
+    "unavailable": "Not available in the demo",
+    "narrowTitle": "The showcase is made for a TV",
+    "narrowText": "It is laid out for a TV or a desktop screen. On a phone everything is tiny, but it works.",
+    "openAnyway": "Open anyway",
+    "backToSite": "Back to torsher.app"
   }
 }

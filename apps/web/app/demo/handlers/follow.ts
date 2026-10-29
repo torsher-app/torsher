@@ -19,13 +19,14 @@ import type {
   UpdateFollowSettingsInput,
 } from '@torsher/api-client'
 import {
+  airedEpisodes,
   fakeInfohash,
   findTitle,
   posterOf,
   releaseName,
   titleNamed,
-} from '../fixtures/titles'
-import { del, DemoError, get, patch, post, put } from '../router'
+} from '@torsher/demo/titles'
+import { del, DemoError, get, patch, post, put } from '@torsher/demo/router'
 import {
   ago,
   DAY,
@@ -36,7 +37,7 @@ import {
   MB,
   MINUTE,
   nextId,
-} from '../state'
+} from '@torsher/demo/state'
 
 type EpisodeState = FollowEpisode['state']
 type ActivityKind = FollowActivityItem['kind']
@@ -115,10 +116,7 @@ function episodesOf(
 
   title.seasons!.forEach((count, index) => {
     const season = index + 1
-    const airedCount
-      = title.ongoing && index === title.seasons!.length - 1
-        ? Math.ceil(count / 2)
-        : count
+    const airedCount = airedEpisodes(title, season)
 
     for (let episode = 1; episode <= count; episode++) {
       if (
@@ -187,13 +185,14 @@ let follows: DemoFollow[] = isFresh
         voiceStudio: STUDIO_A,
         profiles: [PROFILES.alex, PROFILES.kids],
         createdAt: ago(40 * DAY),
+        start: { season: 2, episode: 1 },
         episodes: episodesOf(
           'Kites over Mareth',
-          { season: 1, episode: 1 },
+          { season: 2, episode: 1 },
           'in_library',
           {
-            [key(1, 4)]: { state: 'downloading' },
-            [key(1, 5)]: { state: 'waiting', waitUntil: inFuture(9 * HOUR) },
+            [key(2, 4)]: { state: 'downloading' },
+            [key(2, 5)]: { state: 'waiting', waitUntil: inFuture(9 * HOUR) },
           },
         ),
       }),
@@ -319,12 +318,12 @@ function seedActivity() {
 
   const items = [
     event(fKites, 'grabbed', 25 * MINUTE, {
-      ...ep(fKites, 1, 4),
+      ...ep(fKites, 2, 4),
       indexer: 'Demo indexer',
       params: { studio: STUDIO_A, quality: '1080p' },
     }),
     event(fKites, 'found', 26 * MINUTE, {
-      ...ep(fKites, 1, 4),
+      ...ep(fKites, 2, 4),
       indexer: 'Demo indexer',
     }),
     event(fHarbor, 'unsure', 50 * MINUTE, {
@@ -332,12 +331,12 @@ function seedActivity() {
       indexer: 'Anime indexer',
     }),
     event(fKites, 'pending', 2 * HOUR, {
-      ...ep(fKites, 1, 5, '720p'),
+      ...ep(fKites, 2, 5, '720p'),
       indexer: 'Demo indexer',
       params: { studio: STUDIO_A, quality: '1080p', until: inFuture(9 * HOUR) },
     }),
     event(fKites, 'found', 2 * HOUR + MINUTE, {
-      ...ep(fKites, 1, 5, '720p'),
+      ...ep(fKites, 2, 5, '720p'),
       indexer: 'Demo indexer',
     }),
     event(fHarbor, 'grabbed', 3 * HOUR, {
@@ -363,9 +362,9 @@ function seedActivity() {
       indexer: 'Anime indexer',
       params: { from: ago(30 * HOUR), to: ago(23 * HOUR) },
     }),
-    event(fKites, 'downloaded', DAY, ep(fKites, 1, 3)),
+    event(fKites, 'downloaded', DAY, ep(fKites, 2, 3)),
     event(fKites, 'grabbed', DAY + 40 * MINUTE, {
-      ...ep(fKites, 1, 3),
+      ...ep(fKites, 2, 3),
       indexer: 'Demo indexer',
       params: { studio: STUDIO_A, quality: '1080p' },
     }),
@@ -379,7 +378,7 @@ function seedActivity() {
       params: { quality: '720p' },
     }),
     event(fKites, 'upgraded', 4 * DAY, {
-      ...ep(fKites, 1, 2),
+      ...ep(fKites, 2, 2),
       indexer: 'Demo indexer',
       params: {
         from: { quality: '720p' },
@@ -396,7 +395,7 @@ function seedActivity() {
       },
     }),
     event(fKites, 'blocklisted', 6 * DAY, {
-      ...ep(fKites, 1, 2, '720p'),
+      ...ep(fKites, 2, 2, '720p'),
       indexer: 'Public indexer',
       params: { reason: 'user' },
     }),
@@ -439,9 +438,9 @@ function seedActivity() {
       id: 'block-kites',
       titleId: fKites.titleId,
       infoHash: fakeInfohash('block-kites'),
-      releaseTitle: release(fKites, 1, 2, '720p'),
+      releaseTitle: release(fKites, 2, 2, '720p'),
       reason: 'user',
-      episodes: [{ season: 1, episode: 2 }],
+      episodes: [{ season: 2, episode: 2 }],
       createdAt: ago(6 * DAY),
       expiresAt: null,
     },

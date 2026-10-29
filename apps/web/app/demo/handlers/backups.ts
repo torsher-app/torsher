@@ -20,7 +20,7 @@ import {
   post,
   put,
   unavailable,
-} from '../router'
+} from '@torsher/demo/router'
 import {
   ago,
   DAY,
@@ -29,7 +29,7 @@ import {
   GB,
   isFresh,
   MB,
-} from '../state'
+} from '@torsher/demo/state'
 
 type Reason = BackupItem['reason']
 

@@ -6,7 +6,7 @@
   "description": "torsher.app: landing page and user documentation",
   "scripts": {
     "dev": "vitepress dev",
-    "build": "pnpm --filter @torsher/web build:demo && vitepress build",
+    "build": "pnpm --filter @torsher/web --filter @torsher/tv build:demo && vitepress build",
     "preview": "vitepress preview",
     "check": "node scripts/check.ts"
   },

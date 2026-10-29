@@ -5,7 +5,9 @@
   "private": true,
   "scripts": {
     "dev": "vite",
+    "dev:demo": "vite --mode demo",
     "build": "vite build",
+    "build:demo": "vite build --mode demo --outDir dist-demo",
     "preview": "vite preview",
     "typecheck": "vue-tsc --noEmit",
     "icons": "sh node_modules/@torsher/tokens/scripts/icons.sh public",
@@ -14,6 +16,7 @@
   "dependencies": {
     "@fontsource/onest": "5.3.1",
     "@torsher/api-client": "workspace:*",
+    "@torsher/demo": "workspace:*",
     "@torsher/i18n": "workspace:*",
     "@torsher/release-parser": "workspace:*",
     "@torsher/tokens": "workspace:*",
