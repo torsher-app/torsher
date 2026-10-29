@@ -70,6 +70,9 @@ android {
     lint {
         // targetSdk 36 осознанно (см. defaultConfig); баннер ТВ рисуется только в xhdpi
         disable += setOf("OldTargetApi", "IconMissingDensityFolder")
+        // «Вышла новая версия» зависит от дня запуска, а не от кода: с
+        // warningsAsErrors такие проверки роняют CI без единой правки
+        disable += setOf("AndroidGradlePluginVersion", "GradleDependency", "NewerVersionAvailable")
         warningsAsErrors = true
     }
 }
