@@ -29,6 +29,25 @@ const demoBuilds = [
 
 const ogImage = `${siteUrl}/og-image.png`
 
+const siteStructuredData = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    { '@type': 'WebSite', 'name': siteTitle, 'url': `${siteUrl}/` },
+    {
+      '@type': 'Organization',
+      'name': siteTitle,
+      'url': `${siteUrl}/`,
+      'logo': `${siteUrl}/logo.svg`,
+      'sameAs': [repoUrl],
+    },
+  ],
+}
+
+// GA4 counts client-side route changes itself through enhanced measurement (browser history events).
+// The tag loads only on the production host, so dev servers and local previews stay out of the stats
+const gaMeasurementId = 'G-HF50VGGL41'
+const gaScript = `if(location.hostname==='torsher.app'){var s=document.createElement('script');s.async=true;s.src='https://www.googletagmanager.com/gtag/js?id=${gaMeasurementId}';document.head.appendChild(s);window.dataLayer=window.dataLayer||[];window.gtag=function(){dataLayer.push(arguments)};gtag('js',new Date());gtag('config','${gaMeasurementId}')}`
+
 function seoHead(relativePath: string, title: string, pageDescription: string): HeadConfig[] {
   const url = new URL(pagePath(relativePath), siteUrl).toString()
 
@@ -90,6 +109,10 @@ export default defineConfig({
   transformHead({ pageData }) {
     if (pageData.isNotFound)
       return [['meta', { name: 'robots', content: 'noindex, nofollow' }]]
+
+    // Search engines read the site name and logo from the home page only
+    if (pageData.relativePath === 'index.md')
+      return [['script', { type: 'application/ld+json' }, JSON.stringify(siteStructuredData)]]
   },
 
   transformPageData(pageData) {
