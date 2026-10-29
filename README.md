@@ -23,6 +23,7 @@ Your home cinema in one container.
 <p align="center">
   <a href="https://torsher.app/docs/install/docker-compose">Install</a> &nbsp;|&nbsp;
   <a href="https://torsher.app/docs/">Documentation</a> &nbsp;|&nbsp;
+  <a href="https://torsher.app/demo/">Panel demo</a> &nbsp;|&nbsp;
   <a href="https://github.com/torsher-app/torsher/releases">Releases</a> &nbsp;|&nbsp;
   <a href="https://torsher.app">Website</a>
 </p>
@@ -93,7 +94,7 @@ Movies and series with posters, descriptions, cast and ratings from TMDB.
 
 ### Control panel
 
-Everything is set up in the browser, on a phone or a computer: sources, storage, profiles and devices.
+Everything is set up in the browser, on a phone or a computer: sources, storage, profiles and devices. Try it before installing: the [panel demo](https://torsher.app/demo/) runs in your browser on made-up data.
 
 - A setup wizard that checks storage, the network and your indexer
 - DNS over HTTPS and routes through your own SOCKS5 or HTTP proxy, per host

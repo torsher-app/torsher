@@ -233,6 +233,23 @@ const steps = [
             </svg>
             <span>Install with Docker</span>
           </a>
+          <a class="ld-button" :href="withBase('/demo/')" target="_self">
+            <svg
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path
+                d="M9.04 9.69a.5.5 0 0 1 .65-.65l11 4.5a.5.5 0 0 1-.07.95l-4.35 1.04a1 1 0 0 0-.74.74l-1.04 4.35a.5.5 0 0 1-.95.07z"
+              />
+              <path d="M14 4.1 12 6M5.1 8l-2.9-.8M6 12l-1.9 2M7.2 2.2 8 5.1" />
+            </svg>
+            <span>Try the panel demo</span>
+          </a>
           <a class="ld-button" :href="repoUrl">
             <svg
               viewBox="0 0 24 24"
@@ -262,6 +279,7 @@ const steps = [
         <p class="ld-caption">
           The showcase on a TV, with the remote or a pointer. Titles and artwork
           are made up for this page.
+          <a :href="withBase('/demo/tv/')" target="_self">Try the live showcase demo →</a>
         </p>
       </div>
     </section>
@@ -574,6 +592,8 @@ const steps = [
             Updating is <code>docker compose pull</code>. Before a new version
             changes the database, the server backs it up.
             <a :href="withBase('/docs/quick-start')">Quick start →</a>
+            Want to look around first?
+            <a :href="withBase('/demo/')" target="_self">Open the panel demo →</a>
           </p>
         </div>
         <ComposeSnippet />

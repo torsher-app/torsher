@@ -1,6 +1,11 @@
 <script setup lang="ts">
 import { Toaster } from '@/components/ui/sonner'
 
+// Плашка демо попадает только в демо-сборку: в продакшене ветка вырезается
+const DemoBanner = __DEMO__
+  ? defineAsyncComponent(() => import('~/demo/DemoBanner.vue'))
+  : null
+
 // Ссылки на иконки — от baseURL: в продакшене панель живёт на /panel/,
 // а /favicon.ico в корне отдаёт витрина
 const { baseURL } = useRuntimeConfig().app
@@ -31,6 +36,7 @@ const toastOptions = {
 <template>
   <div>
     <NuxtRouteAnnouncer />
+    <DemoBanner v-if="DemoBanner" />
     <NuxtLayout>
       <NuxtPage />
     </NuxtLayout>

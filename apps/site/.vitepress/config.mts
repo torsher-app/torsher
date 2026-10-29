@@ -1,4 +1,6 @@
 import type { HeadConfig } from 'vitepress'
+import { cpSync, existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { defineConfig } from 'vitepress'
 import server from '../../server/package.json' with { type: 'json' }
 import { sidebar } from './sidebar.ts'
@@ -17,10 +19,34 @@ function pagePath(relativePath: string) {
   return `/${relativePath.replace(/\.md$/, '')}`
 }
 
+// The panel and showcase demos are the real apps built with in-browser mocks
+// (`build:demo` of @torsher/web and @torsher/tv); the site build ships them as
+// static files under /demo/ and /demo/tv/
+const demoBuilds = [
+  { from: join(import.meta.dirname, '../../web/.output-demo/public'), to: 'demo', pkg: '@torsher/web' },
+  { from: join(import.meta.dirname, '../../tv/dist-demo'), to: 'demo/tv', pkg: '@torsher/tv' },
+]
+
 const ogImage = `${siteUrl}/og-image.png`
 
-// GA4 counts client-side route changes itself through enhanced measurement (browser history events)
+const siteStructuredData = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    { '@type': 'WebSite', 'name': siteTitle, 'url': `${siteUrl}/` },
+    {
+      '@type': 'Organization',
+      'name': siteTitle,
+      'url': `${siteUrl}/`,
+      'logo': `${siteUrl}/logo.svg`,
+      'sameAs': [repoUrl],
+    },
+  ],
+}
+
+// GA4 counts client-side route changes itself through enhanced measurement (browser history events).
+// The tag loads only on the production host, so dev servers and local previews stay out of the stats
 const gaMeasurementId = 'G-HF50VGGL41'
+const gaScript = `if(location.hostname==='torsher.app'){var s=document.createElement('script');s.async=true;s.src='https://www.googletagmanager.com/gtag/js?id=${gaMeasurementId}';document.head.appendChild(s);window.dataLayer=window.dataLayer||[];window.gtag=function(){dataLayer.push(arguments)};gtag('js',new Date());gtag('config','${gaMeasurementId}')}`
 
 function seoHead(relativePath: string, title: string, pageDescription: string): HeadConfig[] {
   const url = new URL(pagePath(relativePath), siteUrl).toString()
@@ -52,25 +78,41 @@ export default defineConfig({
   // The product UI is dark; the site opens the same way and keeps a light theme
   appearance: 'dark',
 
+  // /demo/ and /demo/tv/ are the demos copied in at buildEnd, not VitePress pages
+  ignoreDeadLinks: [/^\/demo\//],
+
+  buildEnd({ outDir }) {
+    for (const demo of demoBuilds) {
+      if (!existsSync(demo.from))
+        throw new Error(`Demo not found at ${demo.from}: run \`pnpm --filter ${demo.pkg} build:demo\` first`)
+
+      cpSync(demo.from, join(outDir, demo.to), { recursive: true })
+    }
+  },
+
   sitemap: {
     hostname: siteUrl,
-    transformItems: items => items.filter(item => !item.url.endsWith('404')),
+    // The demos are copied in after the pages, so the sitemap lists them by hand
+    transformItems: items => [
+      ...items.filter(item => !item.url.endsWith('404')),
+      ...demoBuilds.map(demo => ({ url: `${demo.to}/` })),
+    ],
   },
 
   head: [
     ['link', { rel: 'icon', type: 'image/svg+xml', href: '/logo.svg' }],
     ['meta', { name: 'theme-color', content: '#0b0d12' }],
-    ['script', { async: '', src: `https://www.googletagmanager.com/gtag/js?id=${gaMeasurementId}` }],
-    ['script', {}, `window.dataLayer = window.dataLayer || [];
-function gtag(){dataLayer.push(arguments);}
-gtag('js', new Date());
-gtag('config', '${gaMeasurementId}');`],
+    ['script', {}, gaScript],
   ],
 
   // The built 404 page uses fixed page data and never reaches transformPageData
   transformHead({ pageData }) {
     if (pageData.isNotFound)
       return [['meta', { name: 'robots', content: 'noindex, nofollow' }]]
+
+    // Search engines read the site name and logo from the home page only
+    if (pageData.relativePath === 'index.md')
+      return [['script', { type: 'application/ld+json' }, JSON.stringify(siteStructuredData)]]
   },
 
   transformPageData(pageData) {

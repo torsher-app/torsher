@@ -1,0 +1,10 @@
+{
+  "extends": "@torsher/tsconfig/base.json",
+  "compilerOptions": {
+    "lib": ["ESNext", "DOM"],
+    "types": ["node"],
+    "noUncheckedIndexedAccess": true,
+    "erasableSyntaxOnly": true
+  },
+  "include": ["src/**/*.ts"]
+}

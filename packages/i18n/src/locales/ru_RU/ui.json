@@ -3465,6 +3465,15 @@
         "confirmed": "Раздача подтверждена",
         "dismissed": "Раздача отклонена"
       }
+    },
+    "demo": {
+      "label": "Демо",
+      "note": "Данные выдуманы, изменения сбросятся при перезагрузке",
+      "signIn": "Войти можно с любым именем и паролем",
+      "wizard": "Пройти мастер",
+      "skipToPanel": "Сразу в панель",
+      "install": "Установить Torsher",
+      "unavailable": "В демо недоступно"
     }
   },
   "mine": {
@@ -3873,5 +3882,18 @@
       }
     },
     "openPanel": "Открыть панель"
+  },
+  "demo": {
+    "label": "Демо",
+    "note": "Данные выдуманы, изменения сбросятся при перезагрузке",
+    "panel": "Демо панели",
+    "install": "Установить Torsher",
+    "credits": "Sintel, Big Buck Bunny и Tears of Steel © Blender Foundation, CC BY 3.0",
+    "videoCredit": "Видео: {film} © Blender Foundation, CC BY 3.0",
+    "unavailable": "В демо недоступно",
+    "narrowTitle": "Витрина сделана для телевизора",
+    "narrowText": "Она свёрстана под телевизор или экран компьютера. На телефоне всё мелкое, но работает.",
+    "openAnyway": "Всё равно открыть",
+    "backToSite": "На torsher.app"
   }
 }
