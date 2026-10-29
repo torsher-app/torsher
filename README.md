@@ -105,6 +105,8 @@ Everything is set up in the browser, on a phone or a computer: sources, storage,
 
 You need a computer with Docker and the Compose plugin. Linux gets every feature; Docker Desktop on macOS and Windows transcodes on the CPU only.
 
+On Unraid, install Torsher from Community Applications instead: search for Torsher under **Apps**. The template and its details are in [torsher-app/unraid-templates](https://github.com/torsher-app/unraid-templates).
+
 1. Download the install file, `docker-compose.yml` from the [latest release](https://github.com/torsher-app/torsher/releases/latest), into an empty folder:
 
    ```bash

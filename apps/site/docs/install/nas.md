@@ -1,6 +1,6 @@
 ---
 title: NAS
-description: "Install Torsher on a NAS with an x86-64 CPU, such as Unraid, TrueNAS SCALE or an Intel Synology: folders, the file owner, the container settings and the GPU."
+description: "Install Torsher on a NAS with an x86-64 CPU, such as Unraid, TrueNAS SCALE or an Intel Synology: the Unraid template, folders, the file owner, the container settings and the GPU."
 ---
 
 # NAS
@@ -29,7 +29,43 @@ How each system runs containers:
 
 - **TrueNAS SCALE** takes a Compose file under **Apps**, with **Install via YAML**. See [Installing Custom Apps](https://apps.truenas.com/managing-apps/installing-custom-apps/) in the TrueNAS docs.
 - **Synology** runs Compose files as projects in **Container Manager**. See [Docker on DSM](https://www.synology.com/dsm/feature/docker) and check that your model supports Container Manager.
-- **Unraid** runs containers from its **Docker** tab and doesn't support Docker Compose on its own. See [Run Docker containers](https://docs.unraid.net/unraid-os/using-unraid-to/run-docker-containers/overview/). Enter the values from step 3 in its container form.
+- **Unraid** runs containers from templates in its **Docker** tab and doesn't support Docker Compose on its own. Torsher installs from its Community Applications, see [Unraid](#unraid) below. About containers on Unraid: [Run Docker containers](https://docs.unraid.net/unraid-os/using-unraid-to/run-docker-containers/overview/).
+
+## Unraid {#unraid}
+
+Torsher is in Community Applications, the **Apps** tab of Unraid. Its template fills in the container form: the image, the folders, the ports and the file owner. The template lives in [torsher-app/unraid-templates](https://github.com/torsher-app/unraid-templates) and hasn't been tried on a live Unraid server yet.
+
+1. Open **Apps**, search for Torsher and select **Install** on the `torsher` app.
+
+   ::: details If Torsher doesn't show up in Apps yet
+   Add the template by hand. Open the Unraid terminal (the `>_` icon in the header) and run:
+
+   ```bash
+   curl -fsSL -o /boot/config/plugins/dockerMan/templates-user/my-torsher.xml https://raw.githubusercontent.com/torsher-app/unraid-templates/main/templates/torsher.xml
+   ```
+
+   Then open **Docker**, select **Add Container**, and pick **torsher** in the **Template** list.
+   :::
+
+2. Check the paths. The defaults work on most servers:
+
+   | Path | In the container | Default on Unraid | What's inside |
+   | --- | --- | --- | --- |
+   | Appdata | `/data` | `/mnt/user/appdata/torsher` | The database, keys, the log and backups |
+   | Storage | `/storage` | `/mnt/user/data/torsher` | Downloads in `torrents`, the library in `library` |
+   | Existing media | `/media` | empty | Optional. Your existing movies and series, read-only |
+
+   Downloads and the library share the Storage path on purpose: kept files are hard-linked from downloads into the library and take no extra space, and hard links work only inside one file system. Don't split them into two paths. Hard links on Unraid also need **Settings → Global Share Settings → Tunable (support Hard Links)** set to **Yes**.
+
+   Keep Appdata on the server's own pool, not on a share mounted from another machine.
+3. Check the ports: `8080` for the panel and the showcase, and `51420` TCP and UDP for incoming connections from peers. If `8080` is taken on the server, change only the host side. The peer port must be the same number in both mappings and in the **Peer port** variable in the advanced view.
+4. Select **Apply**. When the container is running, select **WebUI** in its menu. The panel asks you to create the owner account and starts the [setup wizard](/docs/setup/wizard).
+
+The template sets `PUID` to `99` and `PGID` to `100`, the `nobody` user and the `users` group that own Unraid shares, so the file owner needs no changes.
+
+The template adds no GPU: a device the server doesn't have would stop the container from starting. For Intel or AMD graphics, add a **Device** `/dev/dri` with **Add another Path, Port, Variable, Label or Device**. For NVIDIA, install the Nvidia Driver plugin and add `--runtime=nvidia` to **Extra Parameters** in the advanced view. The steps are in the template's [GPU transcoding](https://github.com/torsher-app/unraid-templates#gpu-transcoding) section, the checks in [Hardware transcoding](/docs/install/hardware-acceleration).
+
+Then go to [Check](#check). The steps below are for other NAS systems.
 
 ## Before you start
 
@@ -104,6 +140,7 @@ Details and checks: [Hardware transcoding](/docs/install/hardware-acceleration).
 - **The port is taken.** See [Troubleshooting](/docs/troubleshooting#port-in-use).
 - **Kept files are copied.** Downloads and the library are on different file systems. See [Troubleshooting](/docs/troubleshooting#copies).
 - **The GPU failed the test.** See [Troubleshooting](/docs/troubleshooting#gpu-failed).
+- **The Unraid template is wrong**: a field, a path or the install. Please [open an issue](https://github.com/torsher-app/unraid-templates/issues) in the template repository.
 
 ## Next
 
