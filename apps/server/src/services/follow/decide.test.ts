@@ -181,7 +181,7 @@ describe('решатель «Следить»', () => {
     expect(codes(result, 'e5-WEB-DL 1080p | NewStudio')).toEqual(['outranked'])
   })
 
-  it('окно кончилось: пришедший в тот же проход не обходит отложенного', () => {
+  it('окно кончилось: выбор не зависит от порядка прихода', () => {
     const waited = episode(5, 'WEB-DL 1080p | NewStudio')
     const late = episode(5, 'WEB-DL 720p | NewStudio', { seeders: 300 })
     const expired = {
@@ -198,12 +198,16 @@ describe('решатель «Следить»', () => {
       expect(codes(result, late.id)).toEqual(['outranked'])
     }
 
-    // Лучший пришедший берётся по тому же порядку, а не потому что последний
     const better = episode(5, 'WEB-DL 1080p | LostFilm', { seeders: 3 })
 
-    expect(grabbed(plan([waited, better], expired))).toEqual([
-      { id: better.id, episodes: [5] },
-    ])
+    for (const releases of [
+      [waited, better],
+      [better, waited],
+    ]) {
+      expect(grabbed(plan(releases, expired))).toEqual([
+        { id: better.id, episodes: [5] },
+      ])
+    }
   })
 
   it('строго своя студия: чужую не берём и после окна, окно — только на качество', () => {

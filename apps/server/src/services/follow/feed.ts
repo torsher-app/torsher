@@ -598,9 +598,13 @@ export async function withPendingReleases(
   releases: FoundRelease[],
 ) {
   const ids = new Set(releases.map(release => release.id))
-  const pending = pendingReleases(follow).filter(
-    candidate => !ids.has(candidate.id),
-  )
+  const pending = pendingReleases(follow).filter((candidate) => {
+    if (ids.has(candidate.id))
+      return false
+
+    ids.add(candidate.id)
+    return true
+  })
   const target = pending.length ? await titleTarget(follow.titleId) : undefined
 
   if (!target)

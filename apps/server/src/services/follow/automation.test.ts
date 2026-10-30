@@ -686,6 +686,47 @@ describe('автоматика «Следить»', () => {
     ])
   })
 
+  it('отложенный пак на несколько серий приходит в целевой поиск один раз', async () => {
+    libraryEpisodes(1, 2, 3, 4, 5)
+
+    const delayed = 'e'.repeat(40)
+
+    items = [
+      {
+        title:
+          'Тихая гавань / Quiet Harbor / Сезон: 2 / Серии: 1-8 из 12 (2024) WEB-DL 1080p | NewStudio',
+        hash: delayed,
+      },
+    ]
+
+    const follow = insertFollow({ voiceStudio: 'LostFilm' })
+    const now = new Date()
+
+    await followAutomation(now)
+
+    // Индексатор больше не отдаёт отложенного пака
+    items = []
+    clearSearchCache()
+    requestFollowSearch(follow.id)
+    await followAutomation(new Date(now.getTime() + HOUR_MS))
+
+    const waiting = rows(follow.id)
+
+    expect(waiting.map(row => [row.episode, row.pending?.infoHash])).toEqual([
+      [6, delayed],
+      [7, delayed],
+      [8, delayed],
+    ])
+
+    for (const row of waiting) {
+      expect(
+        row
+          .decisions!.filter(item => item.infoHash === delayed)
+          .map(item => item.verdict),
+      ).toEqual(['pending'])
+    }
+  })
+
   it('чужая студия по magnet после окна не закрепляется, когда пришли метаданные', async () => {
     libraryEpisodes(1, 2, 3, 4, 5, 6, 7)
 
