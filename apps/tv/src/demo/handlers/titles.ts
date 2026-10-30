@@ -231,6 +231,7 @@ function followOf(title: DemoTitle): TitleFollowResponse {
     },
     waiting: null,
     counts: { downloading: 0, noSpace: 0, missing: 0, searching: 0, ready: 0 },
+    first: {},
     ready: null,
   }
 

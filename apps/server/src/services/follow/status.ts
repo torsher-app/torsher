@@ -9,13 +9,36 @@ import { getPinnedVoice } from '../sources/voices.ts'
 import { cutoffStepOf } from './decide.ts'
 import { waitTargets } from './episodes.ts'
 import { QUALITY_LADDERS } from './rank.ts'
-import { episodeKey, WANTED_STATES } from './wanted.ts'
+import { compareEpisodes, episodeKey, WANTED_STATES } from './wanted.ts'
 import { seasonVoice } from './voice.ts'
 
 type FollowStatus = Pick<
   NonNullable<TitleFollowResponse['follow']>,
-  'season' | 'voice' | 'quality' | 'waiting' | 'counts'
+  'season' | 'voice' | 'quality' | 'waiting' | 'counts' | 'first'
 >
+
+const FIRST_KEYS: Partial<
+  Record<EpisodeWithState['state'], keyof FollowStatus['first']>
+> = {
+  searching: 'searching',
+  missing: 'missing',
+  downloading: 'downloading',
+  no_space: 'noSpace',
+}
+
+/** Первая по порядку серия в каждом состоянии, о котором пишет статус */
+export function firstEpisodes(states: EpisodeWithState[]) {
+  const first: FollowStatus['first'] = {}
+
+  for (const item of [...states].sort(compareEpisodes)) {
+    const key = FIRST_KEYS[item.state]
+
+    if (key && !first[key])
+      first[key] = { season: item.season, episode: item.episode }
+  }
+
+  return first
+}
 
 /** Сезон статуса: первой нужной серии, иначе следующей невышедшей, иначе курсора */
 function statusSeason(follow: Follow, states: EpisodeWithState[]) {
@@ -100,5 +123,6 @@ export function followStatus(
       searching: count('searching'),
       ready: count('ready'),
     },
+    first: firstEpisodes(states),
   }
 }

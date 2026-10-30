@@ -1299,12 +1299,14 @@ function closeFollowPanel() {
 async function onFollowStop() {
   followPanel.value = false
 
+  // Ответ отписки уже не считает этот профиль: число берём до запроса
+  const shared = (followView.value?.follow?.profileCount ?? 0) > 1
   const stopped = await stopFollow()
 
   focusFollowButton()
 
   if (stopped) {
-    followToast.value = t('follow.stopped')
+    followToast.value = t(shared ? 'follow.stoppedShared' : 'follow.stopped')
     refreshSeasonStates()
   }
   else {

@@ -3707,27 +3707,34 @@
     "movieLine": "We'll download it once it's out digitally",
     "movieLineNotify": "We'll let you know once it's out digitally",
     "policy": {
-      "new": "New episodes",
+      "download": "Download",
       "notify": "Notify",
       "anyVoice": "Any audio",
       "only": "Only {studio}"
     },
     "status": {
       "paused": "Following is paused",
-      "noSpace": "Not enough space for {n} episode | Not enough space for {n} episodes",
+      "noSpace": "{code}: not enough space",
+      "noSpaceMany": "Not enough space for {n} episodes since {code}",
       "ready": "{code} is ready to watch",
-      "waiting": "Waiting for {target} until {until}",
-      "waitingBetter": "Waiting for a better release until {until}",
-      "downloading": "Downloading {n} episode | Downloading {n} episodes",
-      "missing": "No release found: {n} episode | No release found: {n} episodes",
-      "searching": "Looking for a release: {n} episode | Looking for a release: {n} episodes",
+      "waiting": "{code}: waiting for {target} until {until}",
+      "waitingBetter": "{code}: waiting for better until {until}",
+      "downloading": "Downloading {code}",
+      "downloadingMany": "Downloading {n} episodes since {code}",
+      "missing": "{code}: no releases yet",
+      "missingMany": "No releases yet for {n} episodes since {code}",
+      "searching": "{code} is out — looking for a release",
+      "searchingMany": "{n} episodes out since {code} — looking for releases",
       "next": "Next episode {code} {date} — we'll download it",
       "nextNotify": "Next episode {code} {date} — we'll let you know",
       "movieNoSpace": "Not enough space on the server",
+      "movieWaiting": "Waiting for {target} until {until}",
+      "movieWaitingBetter": "Waiting for a better release until {until}",
       "movieDownloading": "Downloading",
       "movieSearching": "Looking for a release",
+      "movieMissing": "No releases found",
       "movieReady": "Out digitally — ready to watch",
-      "bestQuality": "{quality} is the best released so far",
+      "bestQuality": "Season tops out at {quality}",
       "pinned": "{studio} audio is pinned to this season"
     },
     "until": {
@@ -3743,6 +3750,7 @@
       "quality": "Quality",
       "stop": "Stop following",
       "stopHint": "Downloaded episodes stay in the library",
+      "stopHintShared": "Only you unsubscribe, other profiles keep following",
       "readOnly": "Rules are changed by a profile without an age limit",
       "modes": {
         "download": "Download new",
@@ -3762,19 +3770,20 @@
       },
       "voiceAny": "Any",
       "voiceOnly": "Only {studio}",
-      "voicePreferHint": "We wait for it, then take the best one released",
+      "voicePreferHint": "Wait for it until “Wait for better” runs out, then take the best available",
       "voiceOnlyHint": "No other audio",
-      "voiceAnyHint": "The best by translation type",
-      "voiceUnknownHint": "The first downloaded episode or your pick in Sources pins the audio",
+      "voiceAnyHint": "Wait for a dub until “Wait for better” runs out, then take the best available",
+      "voiceUnknownHint": "The first release found or your pick in “Sources” pins the audio",
       "waitNone": "Don't wait",
       "waitHours": "{n} h",
       "waitDay": "1 day",
       "waitDays": "{n} day | {n} days",
-      "waitHint": "How long we wait for your audio and the best quality after an episode first appears",
+      "waitHint": "The first release is often not in your voice-over or quality. Wait this long for a match, then take the best available",
+      "qualityFallback": "Otherwise {steps}",
       "qualities": {
-        "best": "Best",
+        "best": "1080p",
         "uhd": "4K",
-        "compact": "Data saver"
+        "compact": "720p"
       }
     },
     "errors": {
@@ -3783,6 +3792,7 @@
       "stop": "Couldn't stop following. Try again"
     },
     "stopped": "Stopped following. Downloads stay in the library",
+    "stoppedShared": "You no longer follow this. Other profiles still do",
     "episode": {
       "in_library": "in library",
       "downloading": "downloading",

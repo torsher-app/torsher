@@ -34,14 +34,29 @@ export function isFollowed(follow: TitleFollow | null | undefined) {
   )
 }
 
+/** Код серии для статуса: «S2E6» */
+export function episodeCode(episode: { season: number, episode: number }) {
+  return `S${episode.season}E${episode.episode}`
+}
+
+/** Серий в состоянии и код первой из них */
+interface EpisodeCount {
+  count: number
+  code: string
+}
+
 export type FollowStatus
   = | { kind: 'paused' }
-    | { kind: 'noSpace', count: number }
+    | ({ kind: 'noSpace' } & EpisodeCount)
     | { kind: 'ready', code: string }
-    | { kind: 'waiting', waiting: NonNullable<TitleFollow['waiting']> }
-    | { kind: 'downloading', count: number }
-    | { kind: 'missing', count: number }
-    | { kind: 'searching', count: number }
+    | {
+      kind: 'waiting'
+      waiting: NonNullable<TitleFollow['waiting']>
+      code: string
+    }
+    | ({ kind: 'downloading' } & EpisodeCount)
+    | ({ kind: 'missing' } & EpisodeCount)
+    | ({ kind: 'searching' } & EpisodeCount)
     | { kind: 'next', code: string, airDate: string }
 
 /**
@@ -50,42 +65,81 @@ export type FollowStatus
  * нашли, ищем, следующая серия с датой
  */
 export function followStatus(follow: TitleFollow): FollowStatus | undefined {
-  const { counts } = follow
+  const { counts, first } = follow
+  // У ненулевого счётчика первая серия есть всегда, необязательна она только по типу
+  const counted = (
+    count: number,
+    episode: { season: number, episode: number } | undefined,
+  ) => ({ count, code: episode ? episodeCode(episode) : '' })
 
   if (follow.state === 'paused')
     return { kind: 'paused' }
 
   if (counts.noSpace)
-    return { kind: 'noSpace', count: counts.noSpace }
+    return { kind: 'noSpace', ...counted(counts.noSpace, first.noSpace) }
 
-  if (follow.ready) {
+  if (follow.ready)
+    return { kind: 'ready', code: episodeCode(follow.ready) }
+
+  if (follow.waiting) {
     return {
-      kind: 'ready',
-      code: `S${follow.ready.season}E${follow.ready.episode}`,
+      kind: 'waiting',
+      waiting: follow.waiting,
+      code: episodeCode(follow.waiting),
     }
   }
 
-  if (follow.waiting)
-    return { kind: 'waiting', waiting: follow.waiting }
-
-  if (counts.downloading)
-    return { kind: 'downloading', count: counts.downloading }
+  if (counts.downloading) {
+    return {
+      kind: 'downloading',
+      ...counted(counts.downloading, first.downloading),
+    }
+  }
 
   if (counts.missing)
-    return { kind: 'missing', count: counts.missing }
+    return { kind: 'missing', ...counted(counts.missing, first.missing) }
 
   if (counts.searching)
-    return { kind: 'searching', count: counts.searching }
+    return { kind: 'searching', ...counted(counts.searching, first.searching) }
 
   const next = follow.next
 
   return next?.airDate
-    ? {
-        kind: 'next',
-        code: `S${next.season}E${next.episode}`,
-        airDate: next.airDate,
-      }
+    ? { kind: 'next', code: episodeCode(next), airDate: next.airDate }
     : undefined
+}
+
+export type EpisodesKind = 'noSpace' | 'downloading' | 'missing' | 'searching'
+
+const MOVIE_KEYS: Record<EpisodesKind, string> = {
+  noSpace: 'movieNoSpace',
+  downloading: 'movieDownloading',
+  missing: 'movieMissing',
+  searching: 'movieSearching',
+}
+
+/**
+ * Ключ `follow.status.*` про серии: одна — строкой с кодом, несколько —
+ * `*Many` с числом (в русском 21 серия иначе взяла бы форму одной); у фильма
+ * свои строки без кода
+ */
+export function episodesStatusKey(
+  kind: EpisodesKind,
+  count: number,
+  movie: boolean,
+) {
+  if (movie)
+    return MOVIE_KEYS[kind]
+
+  return count === 1 ? kind : `${kind}Many`
+}
+
+/** Ключ `follow.status.*` ожидания: знаем, чего ждём, или просто лучшее */
+export function waitingStatusKey(hasTarget: boolean, movie: boolean) {
+  if (movie)
+    return hasTarget ? 'movieWaiting' : 'movieWaitingBetter'
+
+  return hasTarget ? 'waiting' : 'waitingBetter'
 }
 
 export type FollowNote

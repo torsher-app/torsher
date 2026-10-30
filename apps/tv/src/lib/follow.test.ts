@@ -1,6 +1,7 @@
 import type { ScheduleItem, TitleFollow } from '@torsher/api-client'
 import { describe, expect, it } from 'vitest'
 import {
+  episodesStatusKey,
   followNote,
   followStatus,
   isFollowed,
@@ -9,6 +10,7 @@ import {
   scheduleDays,
   untilDay,
   waitChoices,
+  waitingStatusKey,
 } from './follow.ts'
 
 function follow(patch: Partial<TitleFollow> = {}): TitleFollow {
@@ -31,10 +33,33 @@ function follow(patch: Partial<TitleFollow> = {}): TitleFollow {
     quality: { value: '1080p', lowered: false },
     waiting: null,
     counts: { downloading: 0, noSpace: 0, missing: 0, searching: 0, ready: 0 },
+    first: {},
     ready: null,
     ...patch,
   }
 }
+
+describe('episodesStatusKey', () => {
+  it('одна серия — строкой с кодом, несколько — с числом, 21 тоже', () => {
+    expect(episodesStatusKey('searching', 1, false)).toBe('searching')
+    expect(episodesStatusKey('searching', 2, false)).toBe('searchingMany')
+    expect(episodesStatusKey('noSpace', 21, false)).toBe('noSpaceMany')
+  })
+
+  it('у фильма — свои строки без кода', () => {
+    expect(episodesStatusKey('missing', 1, true)).toBe('movieMissing')
+    expect(episodesStatusKey('downloading', 1, true)).toBe('movieDownloading')
+  })
+})
+
+describe('waitingStatusKey', () => {
+  it('знаем, чего ждём, или ждём лучшее; у фильма без кода', () => {
+    expect(waitingStatusKey(true, false)).toBe('waiting')
+    expect(waitingStatusKey(false, false)).toBe('waitingBetter')
+    expect(waitingStatusKey(true, true)).toBe('movieWaiting')
+    expect(waitingStatusKey(false, true)).toBe('movieWaitingBetter')
+  })
+})
 
 describe('waitChoices', () => {
   it('значение из панели вне набора — своей строкой по порядку', () => {
@@ -67,23 +92,43 @@ describe('followStatus', () => {
     until: '2026-10-25T20:00:00.000Z',
     studio: 'Studio One',
   }
+  const first = {
+    noSpace: { season: 3, episode: 2 },
+    downloading: { season: 3, episode: 3 },
+    missing: { season: 3, episode: 5 },
+    searching: { season: 3, episode: 6 },
+  }
 
   it('по важности: пауза, место, ждём, качается, не нашли, ищем, следующая', () => {
     expect(followStatus(follow({ state: 'paused', counts }))).toEqual({
       kind: 'paused',
     })
-    expect(followStatus(follow({ counts, waiting }))?.kind).toBe('noSpace')
-    expect(
-      followStatus(follow({ counts: { ...counts, noSpace: 0 }, waiting })),
-    ).toEqual({ kind: 'waiting', waiting })
-    expect(followStatus(follow({ counts: { ...counts, noSpace: 0 } }))).toEqual(
-      { kind: 'downloading', count: 2 },
-    )
+    expect(followStatus(follow({ counts, first, waiting }))).toEqual({
+      kind: 'noSpace',
+      count: 1,
+      code: 'S3E2',
+    })
     expect(
       followStatus(
-        follow({ counts: { ...counts, noSpace: 0, downloading: 0 } }),
+        follow({ counts: { ...counts, noSpace: 0 }, first, waiting }),
       ),
-    ).toEqual({ kind: 'missing', count: 1 })
+    ).toEqual({ kind: 'waiting', waiting, code: 'S3E4' })
+    expect(
+      followStatus(follow({ counts: { ...counts, noSpace: 0 }, first })),
+    ).toEqual({ kind: 'downloading', count: 2, code: 'S3E3' })
+    expect(
+      followStatus(
+        follow({ counts: { ...counts, noSpace: 0, downloading: 0 }, first }),
+      ),
+    ).toEqual({ kind: 'missing', count: 1, code: 'S3E5' })
+    expect(
+      followStatus(
+        follow({
+          counts: { ...counts, noSpace: 0, downloading: 0, missing: 0 },
+          first,
+        }),
+      ),
+    ).toEqual({ kind: 'searching', count: 1, code: 'S3E6' })
   })
 
   it('готовая серия, которую профиль не досмотрел, — раньше ожидания', () => {

@@ -6,14 +6,17 @@ import type {
   TitleFollowResponse,
 } from '@torsher/api-client'
 import type { Ref } from 'vue'
+import type { EpisodesKind } from '../lib/follow.ts'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { api } from '../api.ts'
 import {
+  episodesStatusKey,
   followNote,
   followStatus,
   qualityName,
   untilDay,
+  waitingStatusKey,
 } from '../lib/follow.ts'
 import { formatClock } from '../lib/player.ts'
 import { formatAirDate } from '../lib/titleInfo.ts'
@@ -139,7 +142,7 @@ export function useFollowTexts() {
   }
 
   /**
-   * Вторая строка кнопки: «Новые серии · LostFilm · 1080p», в режиме
+   * Вторая строка кнопки: «Скачаем · LostFilm · 1080p», в режиме
    * «Только уведомлять» — «Уведомим · LostFilm · 1080p»
    */
   function policyLine(view: TitleFollowResponse) {
@@ -153,10 +156,22 @@ export function useFollowTexts() {
       return t(notify ? 'follow.movieLineNotify' : 'follow.movieLine')
 
     return [
-      t(notify ? 'follow.policy.notify' : 'follow.policy.new'),
+      t(notify ? 'follow.policy.notify' : 'follow.policy.download'),
       voicePart(follow),
       qualityName(follow.quality.value),
     ].join(' · ')
+  }
+
+  function episodesStatus(
+    kind: EpisodesKind,
+    status: { count: number, code: string },
+    movie: boolean,
+  ) {
+    return t(
+      `follow.status.${episodesStatusKey(kind, status.count, movie)}`,
+      { n: status.count, code: status.code },
+      status.count,
+    )
   }
 
   function mainStatus(follow: TitleFollow) {
@@ -167,31 +182,23 @@ export function useFollowTexts() {
       case 'paused':
         return t('follow.status.paused')
       case 'noSpace':
-        return movie
-          ? t('follow.status.movieNoSpace')
-          : t('follow.status.noSpace', status.count)
+      case 'downloading':
+      case 'missing':
+      case 'searching':
+        return episodesStatus(status.kind, status, movie)
       case 'ready':
         return movie
           ? t('follow.status.movieReady')
           : t('follow.status.ready', { code: status.code })
       case 'waiting': {
         const target = waitTarget(status.waiting)
-        const until = untilText(status.waiting.until)
 
-        return target
-          ? t('follow.status.waiting', { target, until })
-          : t('follow.status.waitingBetter', { until })
+        return t(`follow.status.${waitingStatusKey(!!target, movie)}`, {
+          code: status.code,
+          target,
+          until: untilText(status.waiting.until),
+        })
       }
-      case 'downloading':
-        return movie
-          ? t('follow.status.movieDownloading')
-          : t('follow.status.downloading', status.count)
-      case 'missing':
-        return movie ? '' : t('follow.status.missing', status.count)
-      case 'searching':
-        return movie
-          ? t('follow.status.movieSearching')
-          : t('follow.status.searching', status.count)
       case 'next':
         return t(
           follow.mode === 'notify'

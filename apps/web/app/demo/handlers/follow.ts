@@ -51,6 +51,7 @@ type DemoFollow = Omit<
   | 'next'
   | 'wanted'
   | 'counts'
+  | 'first'
   | 'unsure'
   | 'waitUntil'
 >
@@ -72,6 +73,14 @@ const COUNT_KEYS: Record<EpisodeState, keyof FollowSummary['counts']> = {
   in_library: 'inLibrary',
   ready: 'ready',
 }
+
+const FIRST_KEYS: Partial<Record<EpisodeState, keyof FollowSummary['first']>>
+  = {
+    searching: 'searching',
+    missing: 'missing',
+    downloading: 'downloading',
+    no_space: 'noSpace',
+  }
 
 const PROFILES = {
   alex: { id: 'profile-alex', name: 'Alex', color: 'violet' },
@@ -528,7 +537,17 @@ function detailsOf(follow: DemoFollow): FollowDetails {
     ready: 0,
   }
 
-  for (const item of follow.episodes) counts[COUNT_KEYS[item.state]]++
+  const first: FollowSummary['first'] = {}
+
+  // Серии демо идут по порядку: первая встреченная и есть первая в состоянии
+  for (const item of follow.episodes) {
+    const key = FIRST_KEYS[item.state]
+
+    counts[COUNT_KEYS[item.state]]++
+
+    if (key && !first[key])
+      first[key] = { season: item.season, episode: item.episode }
+  }
 
   const upcoming = follow.episodes.find(item => item.state === 'upcoming')
   const waits = follow.episodes
@@ -551,6 +570,7 @@ function detailsOf(follow: DemoFollow): FollowDetails {
         : null,
     wanted: follow.episodes.filter(item => WANTED.has(item.state)).length,
     counts,
+    first,
     unsure: unsureOf(follow.id),
     waitUntil: waits[0],
   }

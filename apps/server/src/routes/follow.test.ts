@@ -550,7 +550,12 @@ describe('состояния серий', () => {
       quality: { value: '1080p', lowered: false },
       waiting: null,
       counts: { downloading: 1, noSpace: 0, missing: 0, searching: 2 },
+      first: {
+        downloading: { season: 2, episode: 2 },
+        searching: { season: 2, episode: 3 },
+      },
     })
+    expect(res.json().follow.first).not.toHaveProperty('missing')
   })
 
   it('карточка: чего ждёт отложенная серия, закреплённая студия', async () => {
@@ -571,6 +576,7 @@ describe('состояния серий', () => {
         quality: '1080p',
       },
       counts: { searching: 1 },
+      first: { searching: { season: 2, episode: 4 } },
     })
 
     const season = await app.inject({

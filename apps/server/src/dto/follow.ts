@@ -71,6 +71,17 @@ const followView = {
   next: titleNextEpisode.nullable(),
 }
 
+// Первая по порядку серия в состоянии: статус называет её кодом S2E6.
+// Состояний без серий в объекте нет
+export const followFirstEpisodes = z
+  .object({
+    searching: followCursor.optional(),
+    missing: followCursor.optional(),
+    downloading: followCursor.optional(),
+    noSpace: followCursor.optional(),
+  })
+  .meta({ id: 'followFirstEpisodes' })
+
 export const titleFollow = z
   .object({
     ...followView,
@@ -106,6 +117,7 @@ export const titleFollow = z
       searching: z.number().int(),
       ready: z.number().int(),
     }),
+    first: followFirstEpisodes,
     // Первая готовая серия, которую профиль не досмотрел: её «Смотреть»
     // открывает сразу, без источников
     ready: followCursor.nullable(),
@@ -169,6 +181,7 @@ export const followSummary = z
     // и не выбраны
     wanted: z.number().int(),
     counts: followEpisodeCounts,
+    first: followFirstEpisodes,
     // Раздач «похоже, не уверены» без ответа владельца
     unsure: z.number().int(),
     // Ближайший конец окна ожидания среди `waiting`, ISO
