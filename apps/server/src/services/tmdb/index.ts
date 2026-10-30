@@ -13,6 +13,7 @@ import type {
   TmdbExtras,
   TmdbListResponse,
   TmdbMovie,
+  TmdbMultiResult,
   TmdbPerson,
   TmdbSearchResponse,
   TmdbSeason,
@@ -61,6 +62,10 @@ export type { TitleIdentity, TitleName, TitleNameKind } from './identity.ts'
 
 const HOUR_MS = 60 * 60 * 1000
 const SEARCH_TTL_MS = HOUR_MS
+// Столько выдаёт одна страница TMDB: с вариантами е/ё ответ не длиннее
+const SEARCH_PAGE_SIZE = 20
+// Каждая догадка — отдельный запрос в TMDB на каждый набранный запрос
+const MAX_YO_GUESSES = 3
 const DETAILS_TTL_MS = 7 * 24 * HOUR_MS
 // Названия и даты серий идущего сезона меняются чаще деталей
 const SEASON_TTL_MS = 24 * HOUR_MS
@@ -84,25 +89,85 @@ export interface CatalogSearch {
   people: Person[]
 }
 
+/**
+ * TMDB различает «е» и «ё», а названия в нём записаны то так, то так:
+ * «зеленая миля» не находит «Зелёную милю», «ёлки» и «елки» — разные фильмы.
+ * Запрос с «ё» ищем ещё и через «е». В запросе с «е» не угадать, где была
+ * «ё», поэтому пробуем «ё» по очереди на месте каждой из первых «е»: обычно
+ * в названии она одна.
+ */
+export function yoVariants(query: string): string[] {
+  if (query.includes('ё'))
+    return [query, query.replaceAll('ё', 'е')]
+
+  const variants = [query]
+
+  for (
+    let at = query.indexOf('е');
+    at !== -1 && variants.length <= MAX_YO_GUESSES;
+    at = query.indexOf('е', at + 1)
+  ) {
+    variants.push(`${query.slice(0, at)}ё${query.slice(at + 1)}`)
+  }
+
+  return variants
+}
+
+function searchMulti(query: string, language: string) {
+  return withMetaCache(`tmdb:search:${language}:${query}`, SEARCH_TTL_MS, () =>
+    tmdbGet<TmdbSearchResponse>('/search/multi', {
+      query,
+      language,
+      include_adult: 'false',
+    }))
+}
+
+/** Результаты вариантов вперемешку, чтобы ни один не вытеснил остальные. */
+function interleaveResults(lists: TmdbMultiResult[][]): TmdbMultiResult[] {
+  const seen = new Set<string>()
+  const merged: TmdbMultiResult[] = []
+  const longest = Math.max(...lists.map(list => list.length))
+
+  for (let index = 0; index < longest; index++) {
+    for (const list of lists) {
+      const result = list[index]
+
+      if (!result)
+        continue
+
+      const key = `${result.media_type}:${result.id}`
+
+      if (seen.has(key))
+        continue
+
+      seen.add(key)
+      merged.push(result)
+    }
+  }
+
+  return merged.slice(0, SEARCH_PAGE_SIZE)
+}
+
 export async function searchCatalog(
   query: string,
   language: string,
 ): Promise<CatalogSearch> {
-  const normalized = query.trim().toLowerCase()
-  const response = await withMetaCache(
-    `tmdb:search:${language}:${normalized}`,
-    SEARCH_TTL_MS,
-    () =>
-      tmdbGet<TmdbSearchResponse>('/search/multi', {
-        query: normalized,
-        language,
-        include_adult: 'false',
-      }),
-  )
+  const [exact, ...guesses] = yoVariants(query.trim().toLowerCase())
+  // Ошибка исходного запроса — ошибка поиска; догадки только дополняют его
+  const [response, ...settled] = await Promise.all([
+    searchMulti(exact!, language),
+    ...guesses.map(guess =>
+      searchMulti(guess, language).then(
+        guessed => guessed.results,
+        () => [],
+      ),
+    ),
+  ])
+  const results = interleaveResults([response.results, ...settled])
 
   return {
-    items: await withRatings(searchResultsToCards(response.results)),
-    people: searchResultsToPeople(response.results),
+    items: await withRatings(searchResultsToCards(results)),
+    people: searchResultsToPeople(results),
   }
 }
 
