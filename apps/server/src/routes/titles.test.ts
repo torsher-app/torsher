@@ -11,6 +11,7 @@ import { createApp } from '../app.ts'
 import { ACCESS_TOKEN_COOKIE } from '../config.ts'
 import { getDb, migrateDb } from '../db/index.ts'
 import { indexers, users } from '../db/schema.ts'
+import { saveFollowSettings } from '../services/follow/settings.ts'
 import { encryptSecret } from '../services/secrets/index.ts'
 import { clearSearchCache } from '../services/sources/cache.ts'
 import { tvIdentity } from '../services/tmdb/fixtures/index.ts'
@@ -148,6 +149,7 @@ describe('get /api/titles/:id/sources', () => {
       false,
     )
     expect(body.season).toBe(2)
+    expect(body.audio).toBe('ru')
     expect(body.candidates).toHaveLength(2)
     expect(body.top).toEqual([body.candidates[0].id])
     expect(body.candidates[0]).toMatchObject({
@@ -271,6 +273,37 @@ describe('get /api/titles/:id/sources', () => {
 
     await app.inject({ url: `${url}&query=Harbor`, cookies: authed() })
     expect(requested.length).toBeGreaterThan(searches)
+  })
+
+  it('язык озвучки дома не `ru`: ранжирует по нему, без русских студий и фильтра', async () => {
+    saveFollowSettings({ audio: { value: 'original', source: 'user' } })
+
+    try {
+      const res = await app.inject({
+        url: '/api/titles/tmdb:tv:101/sources?season=2',
+        cookies: authed(),
+      })
+      const body = res.json()
+
+      expect(body.audio).toBe('original')
+      expect(body.candidates[0]).toMatchObject({
+        quality: '2160p',
+        voice: null,
+        voiceKeys: [],
+        pickReason: 'profile',
+      })
+      expect(body.candidates[1]).toMatchObject({
+        voice: null,
+        voiceKeys: [],
+        audio: [{ studio: 'LostFilm', type: 'MVO' }],
+      })
+      expect(body.top).toEqual([body.candidates[0].id])
+      expect(body.voices).toEqual([])
+      expect(body.pinnedVoice).toBeNull()
+    }
+    finally {
+      saveFollowSettings({ audio: { value: 'ru', source: 'user' } })
+    }
   })
 
   it('400 на пустую строку зрителя', async () => {

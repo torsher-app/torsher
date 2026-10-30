@@ -55,6 +55,7 @@ get<TitleSources>('/api/titles/:id/sources', ({ params }) => {
     season: null,
     episode: null,
     updatedAt: new Date().toISOString(),
+    audio: 'ru',
     profile: { qualities: ['1080p', '2160p'], voiceTypes: ['Original'] },
     pinnedVoice: null,
     seasonCandidate: seasons

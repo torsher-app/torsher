@@ -1,4 +1,8 @@
-import type { SourceCandidate, TitleSources } from '@torsher/api-client'
+import type {
+  AudioTrack,
+  SourceCandidate,
+  TitleSources,
+} from '@torsher/api-client'
 
 export type Resolution = NonNullable<SourceCandidate['resolution']>
 export type VideoClass = Resolution['value']
@@ -88,6 +92,43 @@ export function profileParts(profile: TitleSources['profile']) {
     voiceTypes: profile.voiceTypes.slice(0, PROFILE_VOICES),
     moreVoices: profile.voiceTypes.length > PROFILE_VOICES,
   }
+}
+
+/** Чем подписать дорожку раздачи: язык, студия или тип перевода */
+export type TrackTerm
+  = | { kind: 'language', value: string }
+    | { kind: 'studio', value: string }
+    | { kind: 'type', value: NonNullable<AudioTrack['type']> }
+
+/**
+ * Дорожки раздачи для зрителя, чей язык озвучки не русский: язык — главное,
+ * без него — студия или тип перевода. Повторы схлопываются, порядок — как в
+ * названии.
+ */
+export function trackTerms(tracks: AudioTrack[]): TrackTerm[] {
+  const terms: TrackTerm[] = []
+
+  for (const track of tracks) {
+    const term: TrackTerm | undefined
+      = track.language && track.type !== 'Original'
+        ? { kind: 'language', value: track.language }
+        : track.studio
+          ? { kind: 'studio', value: track.studio }
+          : track.type
+            ? { kind: 'type', value: track.type }
+            : undefined
+
+    if (
+      term
+      && !terms.some(
+        item => item.kind === term.kind && item.value === term.value,
+      )
+    ) {
+      terms.push(term)
+    }
+  }
+
+  return terms
 }
 
 export type SourceKind = 'remux' | 'bluray' | 'web' | 'tv' | 'dvd' | 'cam'

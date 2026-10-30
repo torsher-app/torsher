@@ -122,4 +122,4 @@ Hold the click on a poster to open the actions menu. Whether a long press under 
 
 ## Next
 
-[Sources and voice-overs](/docs/watch/sources): pick a release and start watching.
+[Sources and audio](/docs/watch/sources): pick a release and start watching.

@@ -264,6 +264,7 @@
     "noVoice": "Voice-over not recognized",
     "byProfile": "By profile",
     "profile": "Profile: {qualities} · {voices}",
+    "profileAudio": "Profile: {qualities} · Audio: {audio}",
     "voiceTypes": {
       "D": "Dubbing",
       "MVO": "Multi-voice",

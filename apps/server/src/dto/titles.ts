@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { followAudios } from '../db/schema.ts'
 import { titleDownloadStates, tmdbLanguage } from './catalog.ts'
 import { sourceErrorKinds } from './sources.ts'
 
@@ -115,9 +116,11 @@ export const sourceCandidate = z
     channels: z.enum(['2.0', '5.1', '7.1']).nullable(),
     // Языки субтитров, ISO 639-1; `und` — субтитры есть, язык не указан
     subs: z.array(z.string()),
-    // Основная русская дорожка; null — озвучка не распознана
+    // Основная русская дорожка; null — озвучка не распознана, а у языка
+    // озвучки дома не `ru` — всегда null
     voice: audioTrack.nullable(),
-    // Ключи всех русских озвучек раздачи (как `voiceOption.key`): по ним фильтр
+    // Ключи всех русских озвучек раздачи (как `voiceOption.key`): по ним
+    // фильтр; у языка озвучки дома не `ru` — пусто
     voiceKeys: z.array(z.string()),
     seasons: z.array(z.number()),
     episodes: z
@@ -155,6 +158,9 @@ export const titleSources = z
     season: z.number().nullable(),
     episode: z.number().nullable(),
     updatedAt: z.string(),
+    // Язык озвучки дома, по которому ранжированы раздачи: студии, типы
+    // перевода и `profile.voiceTypes` действуют только у `ru`
+    audio: z.enum(followAudios),
     profile: z.object({
       qualities: z.array(z.enum(videoClasses)),
       voiceTypes: z.array(z.enum(voiceTypes)),

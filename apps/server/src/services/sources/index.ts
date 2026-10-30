@@ -1,8 +1,10 @@
 import type { VideoClass, VoiceType } from '@torsher/release-parser'
+import type { FollowAudio } from '../../db/schema.ts'
 import type { TitleIdentity } from '../tmdb/index.ts'
 import type { VoiceRef } from './profile.ts'
 import type { RankedRelease, Ranking } from './rank.ts'
 import type { IndexerFailure, SearchTarget } from './search.ts'
+import { serverAudio } from '../follow/audio.ts'
 import { recordTrackerEpisodes } from '../follow/trackerEpisodes.ts'
 import {
   availableForBackground,
@@ -56,6 +58,9 @@ export interface TitleSources {
   episode?: number
   updatedAt: Date
   ranking: Ranking
+  /** Язык озвучки дома, по которому ранжировали */
+  audio: FollowAudio
+  /** Студии и типы перевода: только у русского языка озвучки */
   voices: VoiceOption[]
   pinned?: VoiceRef
   /** Кандидат, который и есть раздача сезона (`seasonReleases`) */
@@ -201,14 +206,19 @@ export async function getTitleSources(
           : undefined) ?? 1)
       : undefined
   const voiceSeason = season ?? focusSeason
-  // Выбор в панели «Озвучка» сильнее студии, которой смотрели прошлые серии
+  const audio = serverAudio()
+  // Выбор в панели «Озвучка» сильнее студии, которой смотрели прошлые серии.
+  // Студии — русские: у другого языка озвучки закреплять нечего
   const pinned
-    = getPinnedVoice(titleId, voiceSeason ?? 0)
-      ?? (voiceSeason === undefined || !request.profileId
-        ? undefined
-        : lastVoiceOfSeason(request.profileId, titleId, voiceSeason))
+    = audio !== 'ru'
+      ? undefined
+      : (getPinnedVoice(titleId, voiceSeason ?? 0)
+        ?? (voiceSeason === undefined || !request.profileId
+          ? undefined
+          : lastVoiceOfSeason(request.profileId, titleId, voiceSeason)))
   const ranking = rankReleases(releases, {
     kind: identity.kind,
+    audio,
     originalLanguage: identity.originalLanguage,
     episodeCounts: identity.episodeCounts,
     profile: DEFAULT_PROFILE,
@@ -253,7 +263,8 @@ export async function getTitleSources(
     lastWatchedId,
     query,
     querySuggestions: queryCombos(aliases, identity.year),
-    voices: voiceOptions(ranking.ranked, pinned),
+    audio,
+    voices: audio === 'ru' ? voiceOptions(ranking.ranked, pinned) : [],
     pinned,
     indexerCount: search.outcome.indexerCount,
     failed: search.outcome.failed,

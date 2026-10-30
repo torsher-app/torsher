@@ -18,6 +18,7 @@ import {
   seasonOptions,
   sourceKindOf,
   titleRefOf,
+  trackTerms,
 } from './sources.ts'
 
 function candidate(
@@ -73,6 +74,7 @@ const sources: TitleSources = {
   season: 1,
   episode: 1,
   updatedAt: '2026-10-21T10:00:00Z',
+  audio: 'ru',
   profile: { qualities: ['1080p', '2160p', '720p'], voiceTypes: ['D'] },
   pinnedVoice: null,
   seasonCandidate: null,
@@ -245,6 +247,24 @@ describe('подписи', () => {
     expect(isProfilePick({ pickReason: 'smaller' })).toBe(false)
     expect(isProfilePick({ pickReason: 'bestQuality' })).toBe(false)
     expect(isProfilePick({ pickReason: null })).toBe(false)
+  })
+
+  it('дорожки для не русского языка озвучки: язык главнее студии, без повторов', () => {
+    expect(
+      trackTerms([
+        { type: 'D', language: 'de' },
+        { type: 'Original', language: 'en' },
+        { studio: 'LostFilm', type: 'MVO' },
+        { type: 'L' },
+        { language: 'de' },
+      ]),
+    ).toEqual([
+      { kind: 'language', value: 'de' },
+      { kind: 'type', value: 'Original' },
+      { kind: 'studio', value: 'LostFilm' },
+      { kind: 'type', value: 'L' },
+    ])
+    expect(trackTerms([])).toEqual([])
   })
 
   it('профиль для шапки: лестница качества и первые типы озвучки', () => {

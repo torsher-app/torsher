@@ -70,7 +70,7 @@ Russian-language indexers use their own format, with the Russian and original ti
 Releases named in other languages work in part:
 
 - Season, episode and quality markers in the scene format are read whatever the language. Words like "season" and "episodes" are read only in English and Russian.
-- Language codes such as `GER`, `FRE` or `SPA` are recognized. Local voice-over markers and studios are not, so the voice-over filter doesn't sort these releases.
+- Language codes such as `GER`, `FRE` or `SPA` are recognized: with the server's audio language set to that language, releases with the track come first on the <Ui k="sources.title" /> screen. Local voice-over markers and studios are not, so the voice-over filter, which is for Russian, doesn't sort these releases.
 - Torsher searches by IMDb, TMDB or TVDB ID when the indexer supports it, and by the original, English, Russian and Ukrainian titles from TMDB. A release named only by its title in another language, for example German or French, may not show up: select <Ui k="sources.query.action" /> on the <Ui k="sources.title" /> screen and enter the title the way the indexer names it.
 
 ## Check

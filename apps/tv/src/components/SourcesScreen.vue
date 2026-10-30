@@ -208,11 +208,17 @@ const candidates = computed(() => {
     ? all
     : all.filter(item => coversEpisode(item, season, episode))
 })
+// Фильтр озвучки — по русским студиям: у другого языка озвучки его нет, и
+// сохранённый раньше выбор не должен прятать раздачи
+const voiceFilter = computed(() =>
+  sources.value?.audio === 'ru' ? view.value.voice : undefined,
+)
 const rows = computed(() =>
   arrangeCandidates(candidates.value, {
     ...view.value,
     sort: sort.value,
     season: seasonFilter.value,
+    voice: voiceFilter.value,
   }),
 )
 const seasons = computed(() =>
@@ -474,7 +480,7 @@ const libraryRowFiles = computed(() => {
 const hasFilter = computed(
   () =>
     seasonFilter.value !== undefined
-    || !!view.value.voice
+    || !!voiceFilter.value
     || !!view.value.quality,
 )
 
@@ -524,6 +530,15 @@ const profileLine = computed(() => {
   const { qualities, voiceTypes, moreVoices } = profileParts(
     sources.value.profile,
   )
+
+  // Типы перевода — русские: у другого языка озвучки профиль — сам язык
+  if (sources.value.audio !== 'ru') {
+    return t('sources.profileAudio', {
+      qualities: qualities.join(' → '),
+      audio: t(`audioLanguages.${sources.value.audio}`),
+    })
+  }
+
   const voices = voiceTypes.map(type => t(`sources.voiceTypes.${type}`))
 
   return t('sources.profile', {
@@ -908,6 +923,7 @@ const meta = computed(() => {
             :runtime="runtime"
             :current="isCurrent(candidate)"
             :loading="opening === candidate.id"
+            :audio="sources?.audio"
             @select="select(candidate)"
           />
 

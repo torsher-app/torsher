@@ -5,7 +5,13 @@ import type {
   TitleProgress,
 } from '@torsher/api-client'
 import { useI18n } from 'vue-i18n'
-import { formatSize, sizeOf, videoClassLabel } from '../lib/sources.ts'
+import { isFollowAudio } from '../lib/follow.ts'
+import {
+  formatSize,
+  sizeOf,
+  trackTerms,
+  videoClassLabel,
+} from '../lib/sources.ts'
 
 /** Подписи раздач и озвучки: общие для кнопки карточки, листа и панели */
 export function useSourceLabels() {
@@ -34,6 +40,26 @@ export function useSourceLabels() {
       return t(`sources.voiceTypes.${track.type}`)
 
     return track.language ? track.language.toUpperCase() : ''
+  }
+
+  /**
+   * Дорожки раздачи, когда язык озвучки дома не русский: «Английская,
+   * Оригинал». Пусто — в названии дорожек нет, и это не изъян раздачи.
+   */
+  function tracksLabel(tracks: AudioTrack[]) {
+    return trackTerms(tracks)
+      .map((term) => {
+        if (term.kind === 'studio')
+          return term.value
+
+        if (term.kind === 'type')
+          return t(`sources.voiceTypes.${term.value}`)
+
+        return isFollowAudio(term.value)
+          ? t(`audioLanguages.${term.value}`)
+          : term.value.toUpperCase()
+      })
+      .join(', ')
   }
 
   /** Остальные дорожки раздачи, кроме основной: «ещё: Любительский, UK» */
@@ -118,6 +144,7 @@ export function useSourceLabels() {
 
   return {
     voiceLabel,
+    tracksLabel,
     otherTracksLine,
     sizeLabel,
     candidateSize,

@@ -264,6 +264,7 @@
     "noVoice": "Озвучка не распознана",
     "byProfile": "По профилю",
     "profile": "Профиль: {qualities} · {voices}",
+    "profileAudio": "Профиль: {qualities} · Озвучка: {audio}",
     "voiceTypes": {
       "D": "Дубляж",
       "MVO": "Многоголосый",

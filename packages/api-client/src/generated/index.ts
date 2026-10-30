@@ -867,6 +867,18 @@ export interface TitleSourcesInput {
   season: number | null;
   episode: number | null;
   updatedAt: string;
+  audio:
+    | "original"
+    | "ru"
+    | "en"
+    | "uk"
+    | "ja"
+    | "de"
+    | "fr"
+    | "es"
+    | "it"
+    | "ko"
+    | "zh";
   profile: {
     qualities: ("2160p" | "1080p" | "720p" | "SD")[];
     voiceTypes: ("D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original")[];
@@ -5644,6 +5656,18 @@ export interface TitleSources {
   season: number | null;
   episode: number | null;
   updatedAt: string;
+  audio:
+    | "original"
+    | "ru"
+    | "en"
+    | "uk"
+    | "ja"
+    | "de"
+    | "fr"
+    | "es"
+    | "it"
+    | "ko"
+    | "zh";
   profile: {
     qualities: ("2160p" | "1080p" | "720p" | "SD")[];
     voiceTypes: ("D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original")[];
