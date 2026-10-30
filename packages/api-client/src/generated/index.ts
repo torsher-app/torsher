@@ -658,7 +658,9 @@ export interface SourceErrorResponseInput {
     | "unreachable"
     | "bad_response"
     | "remote"
-    | "unsupported";
+    | "unsupported"
+    | "loopback"
+    | "mdns";
 }
 
 export interface IndexerInput {
@@ -5256,7 +5258,9 @@ export interface SourceErrorResponse {
     | "unreachable"
     | "bad_response"
     | "remote"
-    | "unsupported";
+    | "unsupported"
+    | "loopback"
+    | "mdns";
 }
 
 export interface Indexer {

@@ -62,7 +62,7 @@ export const indexerRoutes: FastifyPluginAsyncZod = async (app) => {
         return reply.code(201).send(toIndexerResponse(created))
       }
       catch (err) {
-        return sendSourceError(reply, err)
+        return sendSourceError(reply, err, request.body.url)
       }
     },
   )

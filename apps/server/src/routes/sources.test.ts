@@ -124,6 +124,23 @@ describe('индексаторы', () => {
     expect(getDb().select().from(indexers).all()).toHaveLength(0)
   })
 
+  it('ручной индексатор на localhost не ответил — 422 loopback', async () => {
+    fetchMock.mockRejectedValue(new TypeError('fetch failed'))
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/indexers',
+      cookies: owner,
+      payload: {
+        name: 'Indexer A',
+        url: 'http://localhost:9117/api/v2.0/indexers/a/results/torznab',
+      },
+    })
+
+    expect(res.statusCode).toBe(422)
+    expect(res.json()).toMatchObject({ kind: 'loopback' })
+  })
+
   it('отвечает 400 на адрес не по http', async () => {
     const res = await app.inject({
       method: 'POST',
@@ -259,6 +276,46 @@ describe('менеджеры', () => {
       payload: {
         kind: 'jackett',
         url: 'http://manager.example:9117',
+        apiKey: 'bad',
+      },
+    })
+
+    expect(res.statusCode).toBe(422)
+    expect(res.json()).toMatchObject({ kind: 'auth' })
+  })
+
+  it.each([
+    ['http://localhost:9696', 'loopback'],
+    ['http://127.0.0.1:9696/settings/general', 'loopback'],
+    ['http://[::1]:9696', 'loopback'],
+    ['http://0.0.0.0:9696', 'loopback'],
+    ['http://raspberrypi.local:9696', 'mdns'],
+    ['http://192.168.1.10:9696', 'unreachable'],
+    ['http://prowlarr:9696', 'unreachable'],
+  ])('недоступный адрес %s — 422 %s', async (url, kind) => {
+    fetchMock.mockRejectedValue(new TypeError('fetch failed'))
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/indexer-managers',
+      cookies: owner,
+      payload: { kind: 'prowlarr', url, apiKey: SECRET },
+    })
+
+    expect(res.statusCode).toBe(422)
+    expect(res.json()).toMatchObject({ kind })
+  })
+
+  it('localhost, который ответил, — обычная ошибка проверки', async () => {
+    fetchMock.mockResolvedValue(new Response('', { status: 401 }))
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/indexer-managers',
+      cookies: owner,
+      payload: {
+        kind: 'prowlarr',
+        url: 'http://localhost:9696',
         apiKey: 'bad',
       },
     })

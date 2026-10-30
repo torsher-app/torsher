@@ -21,8 +21,18 @@ export function fieldOfSourceError(kind: string): 'url' | 'apiKey' | null {
   if (kind === 'auth')
     return 'apiKey'
 
-  if (['timeout', 'unreachable', 'bad_response', 'unsupported'].includes(kind))
+  if (
+    [
+      'timeout',
+      'unreachable',
+      'loopback',
+      'mdns',
+      'bad_response',
+      'unsupported',
+    ].includes(kind)
+  ) {
     return 'url'
+  }
 
   return null
 }
