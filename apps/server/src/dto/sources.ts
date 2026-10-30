@@ -15,11 +15,18 @@ export const sourceErrorKinds = [
   'unsupported',
 ] as const
 
+/**
+ * Адрес из формы не ответил, и по нему видно почему: `loopback` — сам
+ * сервер Torsher (в Docker — его контейнер), `mdns` — имя `.local`,
+ * которое в контейнере обычно не находится
+ */
+export const sourceAddressErrorKinds = ['loopback', 'mdns'] as const
+
 /** Проверка источника не прошла: `kind` клиент переводит в понятный текст */
 export const sourceErrorResponse = z
   .object({
     message: z.string(),
-    kind: z.enum(sourceErrorKinds),
+    kind: z.enum([...sourceErrorKinds, ...sourceAddressErrorKinds]),
   })
   .meta({ id: 'sourceErrorResponse' })
 

@@ -1685,6 +1685,8 @@
         "bad_response": "Not Torznab",
         "remote": "The service returned an error",
         "unsupported": "Wrong service",
+        "loopback": "This is Torsher's own address",
+        "mdns": ".local name not found",
         "unknown": "That didn't work"
       },
       "errors": {
@@ -1694,6 +1696,8 @@
         "bad_response": "The address answered, but not with Torznab. Check the address.",
         "remote": "The indexer answered with an error. Check it in its own interface or try later.",
         "unsupported": "No manager API at this address. Check the type and the address, or update the manager.",
+        "loopback": "localhost is the Torsher server itself, and in Docker it's the Torsher container, not your computer. Enter the service name from docker-compose.yml or the IP address of the machine the service runs on.",
+        "mdns": "Names ending in .local usually don't resolve inside Docker. Enter the IP address of that machine instead.",
         "unknown": "Something went wrong. Try again."
       },
       "reasons": {
@@ -1786,6 +1790,9 @@
         "port": "usually port {port}",
         "url": "Address",
         "urlHint": "The address at which the Torsher server reaches the manager, not this computer.",
+        "urlExamples": "{service} in the same Compose, otherwise {lan}.",
+        "lanIp": "LAN IP",
+        "urlHelp": "Which address?",
         "apiKey": "API key",
         "keyHint": {
           "prowlarr": "In Prowlarr: Settings → General → API Key.",

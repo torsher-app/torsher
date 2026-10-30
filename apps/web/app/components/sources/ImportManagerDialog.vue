@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import type { IndexerManager } from '@torsher/api-client'
 import type { SourceErrorKind } from '~/composables/useSources'
-import { CircleAlertIcon } from '@lucide/vue'
+import { CircleAlertIcon, ExternalLinkIcon } from '@lucide/vue'
 import { toTypedSchema } from '@vee-validate/zod'
 import { useForm } from 'vee-validate'
 import { toast } from 'vue-sonner'
-import { useI18n } from 'vue-i18n'
+import { I18nT, useI18n } from 'vue-i18n'
 import * as z from 'zod'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
@@ -38,6 +38,8 @@ const KINDS: { kind: IndexerManager['kind'], port: number }[] = [
   { kind: 'jackett', port: 9117 },
 ]
 
+const ADDRESS_DOCS_URL = 'https://torsher.app/docs/setup/indexers?ref=panel'
+
 const { t } = useI18n()
 const { importManager } = useSources()
 
@@ -68,6 +70,13 @@ const [apiKey, apiKeyProps] = defineField('apiKey')
 
 const port = computed(
   () => KINDS.find(item => item.kind === kind.value)?.port ?? 9696,
+)
+// Имя сервиса в compose совпадает с типом менеджера, как в файле установки
+const serviceExample = computed(
+  () => `http://${kind.value ?? 'prowlarr'}:${port.value}`,
+)
+const lanExample = computed(
+  () => `http://<${t('panel.sources.importDialog.lanIp')}>:${port.value}`,
 )
 const errorField = computed(() =>
   serverError.value ? fieldOfSourceError(serverError.value) : null,
@@ -209,22 +218,52 @@ const onSubmit = handleSubmit(async (values) => {
             class="font-mono"
             :placeholder="`http://192.168.1.10:${port}`"
             :aria-invalid="!!errors.url || errorField === 'url' || undefined"
-            aria-describedby="manager-url-hint"
+            aria-describedby="manager-url-hint manager-url-examples"
           />
-          <p
-            v-if="errors.url"
-            id="manager-url-hint"
-            class="text-[12.5px] text-destructive"
-          >
-            {{ errors.url }}
-          </p>
-          <p
-            v-else
-            id="manager-url-hint"
-            class="text-[12.5px] text-muted-foreground"
-          >
-            {{ t("panel.sources.importDialog.urlHint") }}
-          </p>
+          <div class="grid gap-1">
+            <p
+              v-if="errors.url"
+              id="manager-url-hint"
+              class="text-[12.5px] text-destructive"
+            >
+              {{ errors.url }}
+            </p>
+            <p
+              v-else
+              id="manager-url-hint"
+              class="text-[12.5px] text-muted-foreground"
+            >
+              {{ t("panel.sources.importDialog.urlHint") }}
+            </p>
+            <!-- Примеры не уступают место ошибке: поле не меняет высоту -->
+            <p
+              id="manager-url-examples"
+              class="text-[12.5px] text-muted-foreground"
+            >
+              <I18nT keypath="panel.sources.importDialog.urlExamples">
+                <template #service>
+                  <span class="font-mono whitespace-nowrap text-foreground">{{
+                    serviceExample
+                  }}</span>
+                </template>
+                <template #lan>
+                  <span class="font-mono whitespace-nowrap text-foreground">{{
+                    lanExample
+                  }}</span>
+                </template>
+              </I18nT>
+              {{ " " }}
+              <a
+                :href="ADDRESS_DOCS_URL"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="inline-flex items-center gap-1 font-medium text-foreground underline-offset-4 hover:underline"
+              >
+                {{ t("panel.sources.importDialog.urlHelp") }}
+                <ExternalLinkIcon class="size-3.5" aria-hidden="true" />
+              </a>
+            </p>
+          </div>
         </div>
 
         <div class="grid gap-2">

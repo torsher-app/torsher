@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { isLocalHostname } from './address.ts'
+import {
+  isLocalHostname,
+  isLoopbackHostname,
+  isMdnsHostname,
+} from './address.ts'
 
 describe('isLocalHostname', () => {
   it.each([
@@ -50,4 +54,58 @@ describe('isLocalHostname', () => {
   ])('%s is not local', (host) => {
     expect(isLocalHostname(host)).toBe(false)
   })
+})
+
+describe('isLoopbackHostname', () => {
+  it.each([
+    'localhost',
+    'LOCALHOST.',
+    'prowlarr.localhost',
+    '127.0.0.1',
+    '127.0.1.1',
+    '127.1',
+    '2130706433',
+    '0.0.0.0',
+    '[::1]',
+    '[::]',
+    '[::ffff:127.0.0.1]',
+  ])('%s is the server itself', (host) => {
+    expect(isLoopbackHostname(new URL(`http://${host}:9696`).hostname)).toBe(
+      true,
+    )
+  })
+
+  it.each([
+    '169.254.169.254',
+    '[fe80::1]',
+    '192.168.1.10',
+    'prowlarr',
+    'host.docker.internal',
+    'localhost.example.com',
+    'raspberrypi.local',
+    '[2001:db8::1]',
+    '[::ffff:192.168.1.10]',
+  ])('%s is not the server itself', (host) => {
+    expect(isLoopbackHostname(new URL(`http://${host}:9696`).hostname)).toBe(
+      false,
+    )
+  })
+})
+
+describe('isMdnsHostname', () => {
+  it.each(['raspberrypi.local', 'NAS.LOCAL', 'nas.local.'])(
+    '%s is an mDNS name',
+    (host) => {
+      expect(isMdnsHostname(new URL(`http://${host}:9696`).hostname)).toBe(
+        true,
+      )
+    },
+  )
+
+  it.each(['local', 'prowlarr', 'nas.local.example.com', '192.168.1.10'])(
+    '%s is not an mDNS name',
+    (host) => {
+      expect(isMdnsHostname(host)).toBe(false)
+    },
+  )
 })

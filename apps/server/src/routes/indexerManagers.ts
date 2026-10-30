@@ -70,7 +70,7 @@ export const indexerManagerRoutes: FastifyPluginAsyncZod = async (app) => {
         return toSyncResponse(result)
       }
       catch (err) {
-        return sendSourceError(reply, err)
+        return sendSourceError(reply, err, request.body.url)
       }
     },
   )

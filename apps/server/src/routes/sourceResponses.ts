@@ -6,6 +6,7 @@ import type {
 } from '../services/indexers/index.ts'
 import { feedProbeAt } from '../services/follow/feed.ts'
 import { logFor } from '../services/logs/index.ts'
+import { isLoopbackHostname, isMdnsHostname } from '../services/net/address.ts'
 import { SourceError } from '../services/torznab/index.ts'
 
 // Наружу — явно собранный объект: шифртекст ключа в ответ не попадает
@@ -60,12 +61,39 @@ export function toSyncResponse(result: SyncResult) {
   }
 }
 
-/** Проверка источника не прошла — 422 с видом ошибки для понятного текста в панели */
-export function sendSourceError(reply: FastifyReply, err: unknown) {
+// Адрес не ответил: если это сам сервер или имя mDNS, панель объясняет
+// именно это, а не просит проверить адрес. Если такой адрес работает
+// (Torsher без Docker, `network_mode: host`), до ошибки дело не доходит
+function errorKindFor(err: SourceError, url?: string) {
+  if (!url || (err.kind !== 'unreachable' && err.kind !== 'timeout'))
+    return err.kind
+
+  const { hostname } = new URL(url)
+
+  if (isLoopbackHostname(hostname))
+    return 'loopback'
+
+  if (isMdnsHostname(hostname))
+    return 'mdns'
+
+  return err.kind
+}
+
+/**
+ * Проверка источника не прошла — 422 с видом ошибки для понятного текста
+ * в панели. `url` — адрес, который ввёл пользователь.
+ */
+export function sendSourceError(
+  reply: FastifyReply,
+  err: unknown,
+  url?: string,
+) {
   if (!(err instanceof SourceError))
     throw err
 
-  return reply.code(422).send({ message: err.message, kind: err.kind })
+  return reply
+    .code(422)
+    .send({ message: err.message, kind: errorKindFor(err, url) })
 }
 
 export function logCheckError(err: unknown) {

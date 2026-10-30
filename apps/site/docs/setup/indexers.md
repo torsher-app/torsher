@@ -80,7 +80,9 @@ Open any title on the TV and select <Ui k="title.watch" />. The <Ui k="sources.t
 ## If something went wrong
 
 - **<Ui k="panel.wizard.sources.notFound" />.** The manager runs at another address or port: connect it by address as in Option B.
-- **The import fails.** Check the address from the Torsher server's point of view and the API key. A `localhost` address points at the Torsher container itself, not at your machine.
+- **The import fails.** Check the address from the Torsher server's point of view and the API key.
+- **<Ui k="panel.sources.errorTitles.loopback" />.** `localhost`, `127.0.0.1` and `0.0.0.0` point at the Torsher container itself, not at your machine. Use an address from the table in [Option B](#option-b-a-manager-you-already-run). If Torsher runs without Docker or with `network_mode: host`, `localhost` works and this message doesn't appear.
+- **<Ui k="panel.sources.errorTitles.mdns" />.** Names such as `raspberrypi.local` usually don't resolve inside Docker. Use the IP address of that machine.
 - **Jackett runs outside Docker and the server can't reach it.** On Windows and macOS Jackett accepts only connections from the same computer by default. In the Jackett dashboard, turn on **External access** and select **Apply server settings**.
 - **The import adds no indexers.** The manager has none configured. Add indexers in it, then use the sync button on the manager's card.
 - **Some indexers are not responding.** The <Ui k="sources.title" /> screen says how many didn't answer; the others are searched anyway. Check them in the manager. If the server can't reach a site directly, add a route through your proxy in [Network](/docs/setup/network).
