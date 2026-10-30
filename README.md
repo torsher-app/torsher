@@ -25,6 +25,8 @@ Your home cinema in one container.
   <a href="https://torsher.app/docs/">Documentation</a> &nbsp;|&nbsp;
   <a href="https://torsher.app/demo/">Panel demo</a> &nbsp;|&nbsp;
   <a href="https://github.com/torsher-app/torsher/releases">Releases</a> &nbsp;|&nbsp;
+  <a href="https://github.com/torsher-app/torsher/discussions">Discussions</a> &nbsp;|&nbsp;
+  <a href="https://www.reddit.com/r/torsherapp/">Community</a> &nbsp;|&nbsp;
   <a href="https://torsher.app">Website</a>
 </p>
 
@@ -153,7 +155,7 @@ Movie and series information and images come from [The Movie Database (TMDB)](ht
 
 ## Contributions
 
-Torsher does not accept external pull requests. To report a bug, please [open an issue](https://github.com/torsher-app/torsher/issues) with what you did, what you expected and the file from **Download logs** under **Logs** in the panel. Issues are also welcome for release titles Torsher reads wrong and for reports from your hardware: a NAS, an older LG TV or an ARM board.
+Torsher does not accept external pull requests. Questions and ideas are welcome in [Discussions](https://github.com/torsher-app/torsher/discussions) or on [r/torsherapp](https://www.reddit.com/r/torsherapp/). To report a bug, please [open an issue](https://github.com/torsher-app/torsher/issues) with what you did, what you expected and the file from **Download logs** under **Logs** in the panel. Issues are also welcome for release titles Torsher reads wrong and for reports from your hardware: a NAS, an older LG TV or an ARM board.
 
 ## Build Locally
 

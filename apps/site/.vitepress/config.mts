@@ -8,6 +8,7 @@ import { sidebar } from './sidebar.ts'
 const siteUrl = 'https://torsher.app'
 const siteTitle = 'Torsher'
 const repoUrl = 'https://github.com/torsher-app/torsher'
+const redditUrl = 'https://www.reddit.com/r/torsherapp/'
 const description
   = 'Self-hosted media center in one Docker container: a TV showcase with a catalog, your own library, playback while the file downloads and series automation.'
 
@@ -38,7 +39,7 @@ const siteStructuredData = {
       'name': siteTitle,
       'url': `${siteUrl}/`,
       'logo': `${siteUrl}/logo.svg`,
-      'sameAs': [repoUrl],
+      'sameAs': [repoUrl, redditUrl],
     },
   ],
 }
@@ -132,6 +133,14 @@ export default defineConfig({
     nav: [
       { text: 'Docs', link: '/docs/', activeMatch: '^/docs/' },
       { text: 'Install', link: '/docs/install/docker-compose' },
+      {
+        text: 'Community',
+        items: [
+          { text: 'GitHub Discussions', link: `${repoUrl}/discussions` },
+          { text: 'Reddit r/torsherapp', link: redditUrl },
+          { text: 'Report a bug', link: '/docs/maintain/logs#what-to-put-in-a-bug-report' },
+        ],
+      },
       { text: 'Donate', link: '/donate' },
       {
         // The product version is the server package version, the same one the release tag must match
@@ -145,7 +154,10 @@ export default defineConfig({
 
     sidebar: { '/docs/': sidebar },
 
-    socialLinks: [{ icon: 'github', link: repoUrl }],
+    socialLinks: [
+      { icon: 'github', link: repoUrl },
+      { icon: 'reddit', link: redditUrl, ariaLabel: 'Torsher on Reddit' },
+    ],
 
     search: { provider: 'local' },
 

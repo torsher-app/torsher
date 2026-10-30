@@ -59,6 +59,10 @@ Two commands update it; the server backs up its database every day on its own. S
 
 Run one command on the server. See [Reset the password](/docs/maintain/reset-password).
 
+## Where can I ask a question?
+
+Ask in [GitHub Discussions](https://github.com/torsher-app/torsher/discussions) or on [r/torsherapp](https://www.reddit.com/r/torsherapp/). For a bug, [open an issue](/docs/maintain/logs#what-to-put-in-a-bug-report) with the logs.
+
 ## Something doesn't work. Where do I start?
 
 [Troubleshooting](/docs/troubleshooting) covers each check the server runs. If that doesn't help, [report the problem](/docs/maintain/logs#what-to-put-in-a-bug-report).
