@@ -181,6 +181,35 @@ describe('решатель «Следить»', () => {
     expect(codes(result, 'e5-WEB-DL 1080p | NewStudio')).toEqual(['outranked'])
   })
 
+  it('окно кончилось: выбор не зависит от порядка прихода', () => {
+    const waited = episode(5, 'WEB-DL 1080p | NewStudio')
+    const late = episode(5, 'WEB-DL 720p | NewStudio', { seeders: 300 })
+    const expired = {
+      firstSeen: new Map([['2:5', new Date(NOW.getTime() - 24 * HOUR_MS)]]),
+    }
+
+    for (const releases of [
+      [waited, late],
+      [late, waited],
+    ]) {
+      const result = plan(releases, expired)
+
+      expect(grabbed(result)).toEqual([{ id: waited.id, episodes: [5] }])
+      expect(codes(result, late.id)).toEqual(['outranked'])
+    }
+
+    const better = episode(5, 'WEB-DL 1080p | LostFilm', { seeders: 3 })
+
+    for (const releases of [
+      [waited, better],
+      [better, waited],
+    ]) {
+      expect(grabbed(plan(releases, expired))).toEqual([
+        { id: better.id, episodes: [5] },
+      ])
+    }
+  })
+
   it('строго своя студия: чужую не берём и после окна, окно — только на качество', () => {
     const result = plan(
       [

@@ -588,6 +588,34 @@ function releasesForDecide(
   return [...result.values()]
 }
 
+/**
+ * Найденное целевым поиском и отложенные кандидаты: индексатор отложенного
+ * мог не ответить или больше его не отдавать, и без них лучший отложенный
+ * подменился бы худшим из ответа. Повторы — по ID раздачи, найденное первым.
+ */
+export async function withPendingReleases(
+  follow: Follow,
+  releases: FoundRelease[],
+) {
+  const ids = new Set(releases.map(release => release.id))
+  const pending = pendingReleases(follow).filter((candidate) => {
+    if (ids.has(candidate.id))
+      return false
+
+    ids.add(candidate.id)
+    return true
+  })
+  const target = pending.length ? await titleTarget(follow.titleId) : undefined
+
+  if (!target)
+    return releases
+
+  return [
+    ...releases,
+    ...pending.map(candidate => releaseOfPending(candidate, target)),
+  ]
+}
+
 /** Есть ли у слежения нужные серии, которые раздача может закрыть */
 async function relevantFor(follow: Follow, release?: FoundRelease) {
   const wanted = (await followStates(follow)).filter(item =>
