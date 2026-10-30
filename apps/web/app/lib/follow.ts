@@ -71,6 +71,8 @@ export interface FollowStatusView {
   icon: Component
   /** Сколько серий в этом состоянии: для текста */
   count: number
+  /** Первая серия в этом состоянии: текст называет её кодом */
+  first?: { season: number, episode: number }
 }
 
 const STATUS_VIEW: Record<
@@ -91,10 +93,15 @@ const STATUS_VIEW: Record<
 
 /** Одно состояние слежения для строки: самое важное из серий */
 export function followStatusOf(follow: FollowSummary): FollowStatusView {
-  const { counts } = follow
-  const pick = (status: FollowStatus, count = 0) => ({
+  const { counts, first } = follow
+  const pick = (
+    status: FollowStatus,
+    count = 0,
+    episode?: FollowStatusView['first'],
+  ) => ({
     status,
     count,
+    first: episode,
     ...STATUS_VIEW[status],
   })
 
@@ -105,26 +112,56 @@ export function followStatusOf(follow: FollowSummary): FollowStatusView {
     return pick('stopped')
 
   if (counts.noSpace)
-    return pick('noSpace', counts.noSpace)
+    return pick('noSpace', counts.noSpace, first.noSpace)
 
   if (counts.missing)
-    return pick('missing', counts.missing)
+    return pick('missing', counts.missing, first.missing)
 
   if (follow.unsure)
     return pick('unsure', follow.unsure)
 
   if (counts.downloading)
-    return pick('downloading', counts.downloading)
+    return pick('downloading', counts.downloading, first.downloading)
 
   if (counts.waiting)
     return pick('waiting', counts.waiting)
 
   if (counts.searching)
-    return pick('searching', counts.searching)
+    return pick('searching', counts.searching, first.searching)
 
   return (counts.inLibrary || counts.ready) && !follow.next && !counts.upcoming
     ? pick('done')
     : pick('next')
+}
+
+/**
+ * Ключ текста состояния, кроме ожидания и следующей серии: у сериала с первой
+ * серией одна — строкой с кодом, несколько — `*Many` с числом (в русском 21
+ * серия иначе взяла бы форму одной)
+ */
+export function followStatusKey(
+  follow: Pick<FollowSummary, 'kind' | 'mode'>,
+  view: Pick<FollowStatusView, 'status' | 'count' | 'first'>,
+) {
+  if (follow.kind === 'movie') {
+    return `panel.follow.status.movie.${statusName(follow, view)}`
+  }
+
+  if (view.first) {
+    return `panel.follow.status.series.${view.status}${view.count === 1 ? '' : 'Many'}`
+  }
+
+  return `panel.follow.status.series.${statusName(follow, view)}`
+}
+
+// В режиме «Только уведомлять» всё вышедшее не скачано, а готово
+function statusName(
+  follow: Pick<FollowSummary, 'mode'>,
+  view: Pick<FollowStatusView, 'status'>,
+) {
+  return view.status === 'done' && follow.mode === 'notify'
+    ? 'doneNotify'
+    : view.status
 }
 
 /** «S2E1–E3, E5»: подряд идущие серии — диапазоном; у фильма (сезон 0) — пусто */

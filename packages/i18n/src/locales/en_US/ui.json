@@ -3180,7 +3180,7 @@
       },
       "empty": {
         "title": "Follow a series on the TV",
-        "text": "Press “Follow” on a title page on the TV: new episodes will download into your library on their own, in your voice-over and the best quality released.",
+        "text": "Press “Follow” on a title page on the TV: Torsher finds new episodes on its own, in your voice-over and the best quality released.",
         "foot": "Rules, found releases and history of every follow will show up here."
       },
       "policy": {
@@ -3193,18 +3193,18 @@
       },
       "presets": {
         "best": {
-          "title": "Best",
-          "text": "1080p, then 720p, then SD — when there's nothing better",
+          "title": "1080p",
+          "text": "Otherwise 720p, then SD",
           "short": "1080p → SD"
         },
         "uhd": {
           "title": "4K",
-          "text": "2160p, then 1080p and 720p",
+          "text": "Otherwise 1080p, then 720p",
           "short": "4K → 720p"
         },
         "compact": {
-          "title": "Compact",
-          "text": "720p, then SD: saves disk space",
+          "title": "720p",
+          "text": "Otherwise SD. Saves disk space",
           "short": "720p → SD"
         }
       },
@@ -3234,11 +3234,15 @@
         "series": {
           "paused": "Paused",
           "stopped": "No profile follows it",
-          "noSpace": "Not enough space for {n} episode | Not enough space for {n} episodes",
-          "missing": "{n} episode not found | {n} episodes not found",
-          "downloading": "Downloading {n} episode | Downloading {n} episodes",
+          "noSpace": "{code}: not enough space",
+          "noSpaceMany": "Not enough space for {n} episodes since {code}",
+          "missing": "{code}: no releases yet",
+          "missingMany": "No releases yet for {n} episodes since {code}",
+          "downloading": "Downloading {code}",
+          "downloadingMany": "Downloading {n} episodes since {code}",
           "waiting": "Waiting for a better release until {until}",
-          "searching": "Looking for {n} episode | Looking for {n} episodes",
+          "searching": "{code} is out — looking for a release",
+          "searchingMany": "{n} episodes out since {code} — looking for releases",
           "next": "Next: {episode} · {date}",
           "nextUnknown": "Waiting for the next episode",
           "done": "All downloaded",
@@ -3316,7 +3320,7 @@
         "wait": "Wait for better",
         "waitHours": "{n} hour | {n} hours",
         "noWait": "Don't wait",
-        "waitHint": "From the moment the episode first appears, Torsher waits for your voice-over and top quality; then it takes the best of what was released.",
+        "waitHint": "The first release is often not in your voice-over or quality. Wait this long for a match, then take the best available.",
         "quality": "Quality",
         "russian": "Russian audio track required",
         "russianHint": "Releases without a Russian track are not taken.",
