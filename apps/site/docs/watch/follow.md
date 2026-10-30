@@ -44,9 +44,9 @@ Torsher reads the audio language from tags in the release name.
 
 - **<Ui k="audioLanguages.original" />.** A release with the original audio track is taken, and so is a release whose name lists no audio at all: English-language indexers rarely write it. A release with only dubs in other languages is not taken. Torsher doesn't wait for a voice-over, only for the quality.
 - **Russian.** Voice-over studios and translation types, as described above.
-- **Another language** (German, French and others the release names tag). A release with an audio track in that language is taken at once. Without one, Torsher waits until <Ui k="follow.panel.wait" /> runs out, then takes the original, not a dub in another language. If the title's original language is the one you picked, any release will do.
+- **Another language** (German, French and others the release names tag). A release with an audio track in that language is taken at once. Without one, Torsher waits until <Ui k="follow.panel.wait" /> runs out, then takes the original, not a dub in another language. If the title's original language is the one you picked, a release that fits as the original is taken too; a release with only a dub in another language still isn't.
 
-The server's audio language applies to every follow without its own choice. Until you set it, Torsher picks it from the language of the first browser or TV that connects: Russian for Russian, a language from the list above for that language, the original for any other. A choice you make in the setup wizard, in the panel or on a follow is never changed by that guess.
+The server's audio language applies to every follow without its own choice. Until you set it, Torsher picks it from the language of the first browser or TV that connects: Russian for Russian, a language from the list above for that language, the original for English and any other. English itself is only a manual choice: with it, an anime or a K-drama would wait out the window for an English-tagged release. A choice you make in the setup wizard, in the panel or on a follow is never changed by that guess.
 
 Following starts from the first episode that hasn't aired yet and includes every season after it.
 

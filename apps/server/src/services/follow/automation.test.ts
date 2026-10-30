@@ -60,6 +60,7 @@ import {
   requestFollowSearch,
   resetFollowSearch,
 } from './search.ts'
+import { setServerAudio } from './audio.ts'
 import { saveFollowSettings } from './settings.ts'
 import { checkStalled, resetStallTracking, STALL_AFTER_MS } from './stalled.ts'
 import { signToken } from '../../utils/token.ts'
@@ -1587,6 +1588,91 @@ describe('язык озвучки', () => {
     // Студий в этом режиме нет: ни закрепления, ни «взяли другую»
     expect(getDb().select().from(titleVoices).all()).toEqual([])
     expect(inbox().map(item => item.kind)).toEqual(['follow_waiting'])
+  })
+
+  it('язык сервера сменился: отложенная чужая студия после окна не качается', async () => {
+    saveFollowSettings({ audio: { value: 'ru', source: 'auto' } })
+    libraryEpisodes(1, 2, 3, 4, 5, 6, 7)
+    items = [
+      {
+        title:
+          'Тихая гавань / Quiet Harbor / Сезон: 2 / Серии: 8 из 12 (2024) WEB-DL 1080p | NewStudio',
+        hash: SINGLE_HASH,
+        size: 1.5 * GB,
+      },
+    ]
+
+    const follow = insertFollow({ voiceStudio: 'LostFilm' })
+    const now = new Date()
+
+    await followAutomation(now)
+    expect(rows(follow.id)[0]).toMatchObject({
+      pending: expect.objectContaining({ infoHash: SINGLE_HASH }),
+    })
+
+    setServerAudio({ value: 'original', source: 'user' })
+
+    expect(rows(follow.id)[0]).toMatchObject({
+      firstSeenAt: now,
+      pending: null,
+      waitUntil: null,
+    })
+    expect(followById(follow.id)!.nextSearchAt).toBeNull()
+
+    await followAutomation(new Date(now.getTime() + 24 * HOUR_MS))
+
+    expect(getDb().select().from(torrents).all()).toEqual([])
+  })
+
+  it('язык сервера сменился на `ru`: отложенный английский 720p после окна не качается', async () => {
+    saveFollowSettings({ audio: { value: 'original', source: 'auto' } })
+    libraryEpisodes(1, 2, 3, 4, 5, 6, 7)
+    items = [
+      {
+        title: 'Quiet.Harbor.S02E08.720p.WEB-DL.x264',
+        hash: SINGLE_HASH,
+        size: 1.5 * GB,
+      },
+    ]
+
+    const follow = insertFollow({ requireRussian: true })
+    const now = new Date()
+
+    await followAutomation(now)
+    expect(rows(follow.id)[0]).toMatchObject({
+      pending: expect.objectContaining({ infoHash: SINGLE_HASH }),
+    })
+
+    setServerAudio({ value: 'ru', source: 'user' })
+    await followAutomation(new Date(now.getTime() + 24 * HOUR_MS))
+
+    expect(getDb().select().from(torrents).all()).toEqual([])
+  })
+
+  it('свой язык слежения сменился — отложенный кандидат снимается; тот же язык сервера — остаётся', async () => {
+    saveFollowSettings({ audio: { value: 'original', source: 'auto' } })
+    libraryEpisodes(1, 2, 3, 4, 5, 6, 7)
+    items = [
+      {
+        title: 'Quiet.Harbor.S02E08.720p.WEB-DL.x264',
+        hash: SINGLE_HASH,
+        size: 1.5 * GB,
+      },
+    ]
+
+    const follow = insertFollow()
+
+    await followAutomation(new Date())
+
+    // Своё правило с тем же действующим языком решения не меняет
+    updateFollow(follow.id, { rules: { audio: 'original' } })
+    expect(rows(follow.id)[0]!.pending).not.toBeNull()
+
+    updateFollow(follow.id, { rules: { audio: 'ru' } })
+    expect(rows(follow.id)[0]).toMatchObject({
+      pending: null,
+      waitUntil: null,
+    })
   })
 })
 

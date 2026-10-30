@@ -240,15 +240,20 @@ function fitsOriginal(release: ReleaseVersion, originalLanguage?: string) {
   )
 }
 
-/** Своя дорожка не русского языка: тег языка или оригинал на нём */
+/**
+ * Своя дорожка не русского языка: тег языка или, когда оригинал на нём,
+ * раздача годится как оригинал. Одного совпадения языков мало: раздача
+ * только с русским дубляжом у такого тайтла не своя.
+ */
 function hasOwnLanguage(
   release: ReleaseVersion,
   ctx: Pick<DecideContext, 'originalLanguage'>,
   language: string,
 ) {
   return (
-    ctx.originalLanguage === language
-    || release.parsed.audio.some(track => track.language === language)
+    release.parsed.audio.some(track => track.language === language)
+    || (ctx.originalLanguage === language
+      && fitsOriginal(release, ctx.originalLanguage))
   )
 }
 

@@ -67,7 +67,7 @@ Where to find the API key and how to start Prowlarr: [Indexers](/docs/setup/inde
 
 Without sources the catalog works, but there is nothing to watch from.
 
-The step also asks for the <Ui k="panel.wizard.sources.audio.title" />: which audio [Follow](/docs/watch/follow#audio-language) looks for. It is preselected from your browser language; change it if you watch in another one. <Ui k="panel.wizard.actions.next" /> saves it, and it can be changed later in <Ui k="panel.nav.settings panel.settings.nav.follow" />.
+The step also asks for the <Ui k="panel.wizard.sources.audio.title" />: which audio [Follow](/docs/watch/follow#audio-language) looks for. It is preselected from your browser language (English preselects the original); change it if you watch in another one. A language you pick is saved right away, even if you then skip the step; <Ui k="panel.wizard.actions.next" /> also saves the preselected one. It can be changed later in <Ui k="panel.nav.settings panel.settings.nav.follow" />.
 
 ## 5. Done
 

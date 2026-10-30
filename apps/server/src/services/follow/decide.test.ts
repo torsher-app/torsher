@@ -857,7 +857,7 @@ describe('язык озвучки', () => {
     expect(grabbed(result)).toEqual([{ id: plain.id, episodes: [5] }])
   })
 
-  it('другой язык совпадает с языком оригинала: любая раздача своя', () => {
+  it('другой язык совпадает с языком оригинала: своя — годная как оригинал', () => {
     const plain = english('1080p.WEB-DL.x264')
     const result = plan(
       [plain],
@@ -867,6 +867,21 @@ describe('язык озвучки', () => {
 
     expect(grabbed(result)).toHaveLength(1)
   })
+
+  it.each(['en', 'de'] as const)(
+    'язык %s совпадает с оригиналом: раздача только с русским дубляжом — `no_language`',
+    (language) => {
+      const dub = episode(5, 'WEB-DL 1080p | LostFilm', { seeders: 900 })
+      const result = plan(
+        [dub],
+        { audio: language, originalLanguage: language, firstSeen: afterWindow },
+        noVoice,
+      )
+
+      expect(codes(result, dub.id)).toEqual(['no_language'])
+      expect(grabbed(result)).toEqual([])
+    },
+  )
 
   it('оригинал в библиотеке озвучкой не заменяется', () => {
     const current = ranked([english('720p.WEB-DL.x264')])[0]!
@@ -880,4 +895,21 @@ describe('язык озвучки', () => {
       { id: better.id, episodes: [5] },
     ])
   })
+
+  it.each(['en', 'de'] as const)(
+    'язык %s совпадает с оригиналом: 720p на нём не заменяется русским 1080p',
+    (language) => {
+      const current = ranked([english('720p.WEB-DL.x264')])[0]!
+      const dub = episode(5, 'WEB-DL 1080p | LostFilm')
+      const upgrades = new Map([['2:5', { current }]])
+      const ctx = {
+        audio: language,
+        originalLanguage: language,
+        wanted: new Set<string>(),
+        upgrades,
+      }
+
+      expect(grabbed(plan([dub], ctx, noVoice))).toEqual([])
+    },
+  )
 })

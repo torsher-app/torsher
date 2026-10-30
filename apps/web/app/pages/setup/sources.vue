@@ -26,7 +26,9 @@ const sources = useSources()
 const followSettings = useFollowSettings()
 
 // Язык озвучки сервера: выбор владельца, иначе по языку этого браузера.
-// «Дальше» сохраняет его как выбор, догадка сервера больше не нужна
+// «Дальше» сохраняет его как выбор, догадка сервера больше не нужна. Смена в
+// селекте сохраняется сразу: «Пропустить» и «Позже» её не теряют, а
+// нетронутую догадку не записывают
 const audio = ref<FollowAudio>(audioFromLanguage(navigator.language))
 
 watch(
@@ -40,6 +42,12 @@ watch(
 
 function saveAudio() {
   return followSettings.save({ audio: audio.value })
+}
+
+function chooseAudio(value: string | undefined) {
+  audio.value = value as FollowAudio
+  // Ошибку показывает общий обработчик; «Дальше» сохранит ещё раз
+  saveAudio().catch(() => {})
 }
 
 const found = shallowRef<DiscoveredManager[] | null>(null)
@@ -202,7 +210,11 @@ onBeforeUnmount(sources.stopPolling)
       </p>
     </div>
     <div class="max-w-80">
-      <AudioLanguageSelect id="wizard-audio" v-model="audio" />
+      <AudioLanguageSelect
+        id="wizard-audio"
+        :model-value="audio"
+        @update:model-value="chooseAudio"
+      />
     </div>
   </Card>
 

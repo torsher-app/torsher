@@ -38,8 +38,9 @@ describe('followStatusKey', () => {
 })
 
 describe('audioFromLanguage', () => {
-  it('язык, который узнаёт парсер, — он, остальные — оригинал', () => {
+  it('язык, который узнаёт парсер, — он, остальные и английский — оригинал', () => {
     expect(audioFromLanguage('de-DE')).toBe('de')
+    expect(audioFromLanguage('en-US')).toBe('original')
     expect(audioFromLanguage('ru')).toBe('ru')
     expect(audioFromLanguage('pt-BR')).toBe('original')
     expect(audioFromLanguage(undefined)).toBe('original')

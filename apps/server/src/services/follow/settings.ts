@@ -88,6 +88,17 @@ export function saveFollowSettings(patch: FollowSettingsPatch) {
   return next
 }
 
+/**
+ * Только язык озвучки поверх сохранённого: остальные ключи не трогаются, и
+ * умолчания в базу не попадают — их новые значения дойдут до сервера
+ */
+export function saveServerAudio(audio: ServerAudio) {
+  setSetting(SETTINGS_KEY, {
+    ...getSetting<StoredSettings>(SETTINGS_KEY),
+    audio,
+  } satisfies StoredSettings)
+}
+
 /** Настройки для API: язык озвучки, которого нет, — `null` */
 export function followSettingsView(settings: FollowSettings) {
   return { ...settings, audio: settings.audio ?? null }

@@ -282,14 +282,16 @@ export const FOLLOW_AUDIOS = [
 
 /**
  * Озвучка по языку браузера — то же правило, что у сервера для
- * `Accept-Language`: язык, который узнаёт парсер, — он, остальные — оригинал
+ * `Accept-Language`: язык, который узнаёт парсер, — он, остальные и
+ * английский — оригинал (тег ENG раздачи обычно не пишут)
  */
 export function audioFromLanguage(tag: string | undefined): FollowAudio {
   const language = tag?.split('-')[0]?.toLowerCase()
 
   return (
-    FOLLOW_AUDIOS.find(audio => audio !== 'original' && audio === language)
-    ?? 'original'
+    FOLLOW_AUDIOS.find(
+      audio => audio !== 'original' && audio !== 'en' && audio === language,
+    ) ?? 'original'
   )
 }
 

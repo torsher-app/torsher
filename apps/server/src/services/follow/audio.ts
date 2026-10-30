@@ -1,6 +1,9 @@
 import type { Follow, FollowAudio } from '../../db/schema.ts'
-import { followAudios } from '../../db/schema.ts'
-import { followSettings, saveFollowSettings } from './settings.ts'
+import type { ServerAudio } from './settings.ts'
+import { and, inArray, isNotNull, isNull } from 'drizzle-orm'
+import { getDb } from '../../db/index.ts'
+import { followAudios, followEpisodes, follows } from '../../db/schema.ts'
+import { followSettings, saveServerAudio } from './settings.ts'
 
 // Пока сервер не знает языка зрителей, действует прежняя русская модель
 const FALLBACK_AUDIO: FollowAudio = 'ru'
@@ -24,7 +27,10 @@ export function followAudio(follow: Pick<Follow, 'audio'>): FollowAudio {
 
 /**
  * Озвучка по первому языку `Accept-Language` или `navigator.language`:
- * язык, который распознаёт парсер названий, — он, остальные — оригинал
+ * язык, который распознаёт парсер названий, — он, остальные — оригинал.
+ * Английский тоже даёт оригинал: англоязычные раздачи тег ENG обычно не
+ * пишут, и аниме или дорамы ждали бы окно ради него. `en` — только ручной
+ * выбор.
  */
 export function audioFromLanguage(header: string | undefined): FollowAudio {
   const first = header
@@ -41,9 +47,59 @@ export function audioFromLanguage(header: string | undefined): FollowAudio {
     .sort((a, b) => b.q - a.q || a.index - b.index)[0]
   const language = first?.tag.split('-')[0]!.toLowerCase()
 
-  return language && language !== 'original' && isFollowAudio(language)
+  return language
+    && language !== 'original'
+    && language !== 'en'
+    && isFollowAudio(language)
     ? language
     : 'original'
+}
+
+/**
+ * Действующий язык слежений сменился: отложенные кандидаты выбраны по
+ * прежнему и снимаются, иначе по концу окна их захватили бы без нового
+ * решения. Первое появление серии остаётся — окно не начинается сначала;
+ * планировщик смотрит слежения заново.
+ */
+export function forgetAudioPending(followIds: string[]) {
+  if (!followIds.length)
+    return
+
+  const db = getDb()
+
+  db.update(followEpisodes)
+    .set({ pending: null, waitUntil: null, stateNote: null })
+    .where(
+      and(
+        inArray(followEpisodes.followId, followIds),
+        isNotNull(followEpisodes.pending),
+        isNull(followEpisodes.torrentId),
+      ),
+    )
+    .run()
+  db.update(follows)
+    .set({ nextSearchAt: null })
+    .where(inArray(follows.id, followIds))
+    .run()
+}
+
+/** Язык сервера; слежения без своего правила, чей язык сменился, решают заново */
+export function setServerAudio(audio: ServerAudio) {
+  const before = serverAudio()
+
+  saveServerAudio(audio)
+
+  if (audio.value === before)
+    return
+
+  forgetAudioPending(
+    getDb()
+      .select({ id: follows.id })
+      .from(follows)
+      .where(isNull(follows.audio))
+      .all()
+      .map(row => row.id),
+  )
 }
 
 /**
@@ -59,8 +115,9 @@ export function guessServerAudio(acceptLanguage: string | undefined) {
     if (!acceptLanguage)
       return
 
-    saveFollowSettings({
-      audio: { value: audioFromLanguage(acceptLanguage), source: 'auto' },
+    setServerAudio({
+      value: audioFromLanguage(acceptLanguage),
+      source: 'auto',
     })
   }
 

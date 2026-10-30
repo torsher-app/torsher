@@ -27,6 +27,7 @@ import {
   followSettingsView,
   saveFollowSettings,
 } from '../services/follow/settings.ts'
+import { setServerAudio } from '../services/follow/audio.ts'
 import { logFor } from '../services/logs/index.ts'
 import { anyMoving } from '../services/storage/moving.ts'
 import { streamingCount } from '../services/storage/index.ts'
@@ -356,11 +357,13 @@ export const settingsRoutes: FastifyPluginAsyncZod = async (app) => {
     async (request) => {
       const { audio, ...patch } = request.body
 
+      if (audio)
+        setServerAudio({ value: audio, source: 'user' })
+
       return followSettingsView(
-        saveFollowSettings({
-          ...patch,
-          ...(audio && { audio: { value: audio, source: 'user' as const } }),
-        }),
+        Object.keys(patch).length
+          ? saveFollowSettings(patch)
+          : followSettings(),
       )
     },
   )
