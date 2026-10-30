@@ -8,6 +8,7 @@ import type { FollowStatusView, WaitTarget } from '~/lib/follow'
 import { useI18n } from 'vue-i18n'
 import {
   episodesLabel,
+  followStatusKey,
   formatAirDate,
   formatUntil,
   waitTargetOf,
@@ -128,15 +129,13 @@ export function useFollowText() {
       )
     }
 
-    // В режиме «Только уведомлять» всё вышедшее не скачано, а готово
-    const status
-      = view.status === 'done' && follow.mode === 'notify'
-        ? 'doneNotify'
-        : view.status
+    const code = view.first
+      ? episodesLabel(view.first.season, [view.first.episode])
+      : undefined
 
     return t(
-      `panel.follow.status.${scope}.${status}`,
-      { n: view.count },
+      followStatusKey(follow, view),
+      { n: view.count, code },
       view.count,
     )
   }
