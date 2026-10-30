@@ -449,6 +449,7 @@ function completeState(torrent: Torrent): EngineTorrentState {
     downloadSpeed: 0,
     uploadSpeed: 0,
     fileProgress: sizes,
+    badPieces: 0,
   }
 }
 

@@ -501,8 +501,9 @@ describe('статистика', () => {
     const torrent = insertTorrent()
 
     engine({
-      // Скачаны первые 12 кусков по 256 КиБ
-      [`GET /torrents/${INFO_HASH}/stats`]: () => json(liveStats),
+      // Скачаны первые 12 кусков по 256 КиБ, два пришли с неверным хэшем
+      [`GET /torrents/${INFO_HASH}/stats`]: () =>
+        json({ ...liveStats, badPieces: 2 }),
     })
 
     const response = await app.inject({
@@ -520,6 +521,7 @@ describe('статистика', () => {
         downloaded: 3_145_728,
         bufferedAhead: 2_097_152,
       },
+      badPieces: 2,
     })
   })
 

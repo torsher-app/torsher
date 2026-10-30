@@ -104,6 +104,8 @@ const engineTorrentState = z.object({
   downloadSpeed: z.number(),
   uploadSpeed: z.number(),
   fileProgress: z.array(z.number()).nullable(),
+  // Куски с неверным хэшем; у движков прежних версий поля нет
+  badPieces: z.number().optional(),
 })
 
 const engineStats = engineTorrentState.extend({
@@ -142,6 +144,8 @@ export interface EngineTorrentState {
   downloadSpeed: number
   uploadSpeed: number
   fileProgress: number[]
+  /** Куски с неверным хэшем за время работы движка: их байты могли уйти в поток */
+  badPieces: number
 }
 
 export interface EngineStats extends EngineTorrentState {
@@ -163,6 +167,7 @@ function toState(raw: z.infer<typeof engineTorrentState>): EngineTorrentState {
     downloadSpeed: raw.downloadSpeed,
     uploadSpeed: raw.uploadSpeed,
     fileProgress: raw.fileProgress ?? [],
+    badPieces: raw.badPieces ?? 0,
   }
 }
 

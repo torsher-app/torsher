@@ -718,6 +718,7 @@ export interface StreamStats {
   downloadSpeed: number
   uploadSpeed: number
   file: { size: number, downloaded: number, bufferedAhead: number }
+  badPieces: number
 }
 
 /**
@@ -737,6 +738,7 @@ export async function streamStats(
     downloadSpeed: 0,
     uploadSpeed: 0,
     file: { size, downloaded: 0, bufferedAhead: 0 },
+    badPieces: 0,
   }
 
   let stats
@@ -771,6 +773,7 @@ export async function streamStats(
       downloaded: stats.fileProgress[fileIndex] ?? 0,
       bufferedAhead,
     },
+    badPieces: stats.badPieces,
   }
 }
 

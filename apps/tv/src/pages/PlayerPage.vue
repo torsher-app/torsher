@@ -31,6 +31,7 @@ import PlayerUpNext from '../components/player/PlayerUpNext.vue'
 import type {
   PlaybackRestart,
   PlayerError,
+  PlayerFailure,
 } from '../composables/usePlayback.ts'
 import { api } from '../api.ts'
 import { useCatalogLanguage } from '../composables/useCatalogLanguage.ts'
@@ -52,8 +53,10 @@ import {
   clampTime,
   countdownOf,
   endedEarly,
+  errorKeyOf,
   formatGigabytes,
   freshBudget,
+  mediaFailureAction,
   nextRetry,
   PAUSED_METADATA_MS,
   settleBudget,
@@ -156,11 +159,13 @@ const stageTitle = computed(
 )
 
 const video = ref<HTMLVideoElement>()
-// Ошибка сети — повтор; разбор сегментов не удался — формат не по силам плееру
-const hls = useHls((kind) => {
+// Ошибка сети — повтор; разбор сегментов не удался — ошибка медиа
+const hls = useHls((kind, detail) => {
   if (kind === 'network')
     recover('unknown')
-  else player.fail(kind === 'media' ? 'unsupported' : 'unknown')
+  else if (kind === 'media')
+    void onMediaFailure({ detail })
+  else failAt('unknown', { detail })
 })
 
 // starting — запрашиваем адрес, buffering — ждём первые кадры, playing —
@@ -357,15 +362,14 @@ if (props.titleId && season && episode) {
 
 const remaining = computed(() => knownDuration.value - position.value)
 
-const errorKey = computed(() => {
-  if (player.error.value === 'engine')
-    return `player.errors.engine.${player.engineKind.value ?? 'starting'}`
-
-  if (player.error.value === 'storage')
-    return `player.errors.storage.${player.storage.value?.kind ?? 'no_space'}`
-
-  return `player.errors.${player.error.value ?? 'unknown'}`
-})
+const errorKey = computed(() =>
+  errorKeyOf({
+    error: player.error.value,
+    engineKind: player.engineKind.value,
+    storageKind: player.storage.value?.kind,
+    reasons: playback.value?.reasons,
+  }),
+)
 
 // Цифры места — в гигабайтах: так их видит панель
 const errorParams = computed(() => {
@@ -1003,7 +1007,7 @@ async function restartWith(change: PlaybackRestart) {
  * Сбой на нашей стороне: повтор из бюджета после паузы, а когда бюджет
  * исчерпан — ошибка экрана (`cause`; без неё — ошибка последнего запуска)
  */
-function recover(cause?: PlayerError) {
+function recover(cause?: PlayerError, failure: PlayerFailure = {}) {
   if (retryTimer !== undefined || player.status.value === 'error')
     return
 
@@ -1011,7 +1015,7 @@ function recover(cause?: PlayerError) {
 
   if (!next) {
     reconnecting.value = false
-    player.fail(cause)
+    failAt(cause, failure)
     return
   }
 
@@ -1225,9 +1229,10 @@ function onPause() {
   if (holding)
     return
 
-  // Паузу при перезапуске ставит сам плеер, а конец файла ставит её перед
-  // `ended` — ранний `ended` это обрыв, а не пауза зрителя
-  if (!restarting.value) {
+  // Паузу при перезапуске ставит сам плеер, конец файла ставит её перед
+  // `ended` — ранний `ended` это обрыв, а браузер — при ошибке источника:
+  // ни то, ни другое не пауза зрителя, и повтор не должен стартовать на паузе
+  if (!restarting.value && !video.value?.error) {
     viewerPaused = !video.value?.ended
 
     if (viewerPaused)
@@ -1258,17 +1263,48 @@ function onTimeUpdate() {
   }
 }
 
-// Код 2 — сеть (движок упал, поток оборвался), остальное — формат не по
-// силам плееру. При перезапуске прежний поток обрывается намеренно
+// Код 2 — сеть (движок упал, поток оборвался), остальное — ошибка медиа.
+// При перезапуске прежний поток обрывается намеренно
 function onError() {
   if (restarting.value)
     return
 
   clearTimeout(metadataTimer)
 
-  if (video.value?.error?.code === 2)
+  const error = video.value?.error
+
+  if (error?.code === 2)
     recover('unknown')
-  else player.fail('unsupported')
+  else void onMediaFailure({ mediaError: error?.code, detail: error?.message })
+}
+
+/** Плеер не разобрал данные: повтор или ошибка — по `mediaFailureAction` */
+async function onMediaFailure(failure: PlayerFailure) {
+  const size = playback.value?.size ?? 0
+  const offset = byteOffset(
+    phase.value === 'playing' ? position.value : startAt,
+    size,
+    knownDuration.value,
+  )
+  const fresh = await player.freshStats(offset)
+
+  if (restarting.value || player.status.value === 'error')
+    return
+
+  const { action, cause } = mediaFailureAction({
+    badPieces: fresh?.badPieces ?? 0,
+    bufferedAhead: fresh?.file.bufferedAhead ?? 0,
+    remaining: size - offset,
+  })
+
+  if (action === 'retry')
+    recover(cause, failure)
+  else failAt(cause, failure)
+}
+
+/** Ошибка экрана с позицией: сервер запишет, на какой секунде встало */
+function failAt(kind: PlayerError | undefined, failure: PlayerFailure) {
+  player.fail(kind, { ...failure, position: position.value })
 }
 
 // Старые ТВ на обрыв прямого потока отвечают не ошибкой, а концом файла.

@@ -225,6 +225,7 @@ function liveOf(hash: string, wantedCompleted: number): EngineTorrentState {
     downloadSpeed: 0,
     uploadSpeed: 0,
     fileProgress: [0, 0, 0, 0, 0, 0, 0, 0],
+    badPieces: 0,
   }
 }
 

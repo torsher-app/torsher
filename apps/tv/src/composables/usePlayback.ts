@@ -3,6 +3,7 @@ import type {
   EngineUnavailableResponse,
   InsufficientStorageResponse,
   Playback,
+  PlaybackErrorInput,
   TorrentStats,
 } from '@torsher/api-client'
 import { getErrorBody, getErrorStatus } from '@torsher/api-client'
@@ -53,8 +54,8 @@ function deviceProfile() {
 /**
  * Почему плеер не стартовал: `engine` — движок не установлен или запускается,
  * `notReady` — раздача ещё ждёт список файлов, `storage` — на сервере не
- * хватает места под файл, `unsupported` — этот плеер не открывает формат файла
- * (remux и транскод появятся позже).
+ * хватает места под файл, `unsupported` — плеер не открыл файл, `corrupt` —
+ * раздача прислала куски с неверным хэшем, и повторы не помогли.
  */
 export type PlayerError
   = | 'unauthorized'
@@ -63,7 +64,24 @@ export type PlayerError
     | 'engine'
     | 'storage'
     | 'unsupported'
+    | 'corrupt'
     | 'unknown'
+
+/** Подробности ошибки плеера для журнала сервера */
+export interface PlayerFailure {
+  /** `MediaError.code` элемента `<video>` */
+  mediaError?: number
+  /** `MediaError.message` или вид ошибки hls.js */
+  detail?: string
+  position?: number
+}
+
+// Эти ошибки экрана бывают у открытой сессии: о них сервер пишет в журнал
+const REPORTED_ERRORS = new Set<string>(['unsupported', 'corrupt', 'unknown'])
+
+function isReported(kind: string): kind is PlaybackErrorInput['error'] {
+  return REPORTED_ERRORS.has(kind)
+}
 
 export type EngineKind = EngineUnavailableResponse['kind']
 
@@ -79,6 +97,7 @@ function localStats(size: number): TorrentStats {
     downloadSpeed: 0,
     uploadSpeed: 0,
     file: { size, downloaded: size, bufferedAhead: size },
+    badPieces: 0,
   }
 }
 export type StorageShortage = Omit<InsufficientStorageResponse, 'message'>
@@ -300,11 +319,51 @@ export function usePlayback(
   }
 
   /** Ошибка экрана; без `kind` — та, что запомнил последний запуск */
-  function fail(kind?: PlayerError) {
+  function fail(kind?: PlayerError, failure: PlayerFailure = {}) {
     stopStats()
-    close()
     error.value = kind ?? error.value ?? 'unknown'
+    report(error.value, failure)
+    close()
     status.value = 'error'
+  }
+
+  // Сессию закрываем после отчёта: закрытую сервер уже не знает
+  function report(kind: PlayerError, failure: PlayerFailure) {
+    const id = playback.value?.sessionId
+
+    if (!id || closed.has(id) || !isReported(kind))
+      return
+
+    closed.add(id)
+    api.playback
+      .postPlaybackError(id, {
+        error: kind,
+        ...failure,
+        detail: failure.detail?.slice(0, 300),
+      })
+      .catch(() => {})
+      .finally(() => {
+        api.playback.deletePlayback(id).catch(() => {})
+      })
+  }
+
+  /**
+   * Свежая статистика у позиции чтения для решения об ошибке медиа: битые
+   * куски и проверенное впереди. В опросе её может не быть ещё секунду-другую
+   */
+  async function freshStats(offset: number) {
+    if (library)
+      return localStats(playback.value?.size ?? 0)
+
+    try {
+      return await api.torrents.getTorrentStats(source.torrentId, {
+        fileIndex: String(source.fileIndex),
+        offset: String(Math.floor(offset)),
+      })
+    }
+    catch {
+      return stats.value
+    }
   }
 
   /** Статистика по кругу; интервал и позицию чтения спрашивает у экрана на каждом шаге */
@@ -377,6 +436,7 @@ export function usePlayback(
     start,
     close,
     fail,
+    freshStats,
     pollStats,
     stopStats,
     /** Когда статистика пришла в последний раз: молчит — сервер или движок не отвечают */

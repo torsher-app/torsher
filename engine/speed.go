@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -32,16 +33,28 @@ type speedTracker struct {
 	mu      sync.Mutex
 	samples map[metainfo.Hash][]counterSample
 	speeds  map[metainfo.Hash]speed
+	// Куски, не прошедшие проверку хэша, на прошлом замере
+	badPieces map[metainfo.Hash]int64
+}
+
+// Прирост кусков с неверным хэшем у раздачи с прошлого замера
+type badPiecesGrowth struct {
+	hash  metainfo.Hash
+	added int64
+	total int64
 }
 
 func newSpeedTracker() *speedTracker {
 	return &speedTracker{
-		samples: map[metainfo.Hash][]counterSample{},
-		speeds:  map[metainfo.Hash]speed{},
+		samples:   map[metainfo.Hash][]counterSample{},
+		speeds:    map[metainfo.Hash]speed{},
+		badPieces: map[metainfo.Hash]int64{},
 	}
 }
 
-func (s *speedTracker) run(ctx context.Context, client *torrent.Client) {
+// Тем же обходом раздач замечает битые куски: библиотека пишет о них только
+// на Info, а её журнал у движка — с WARN
+func (s *speedTracker) run(ctx context.Context, client *torrent.Client, logger *slog.Logger) {
 	ticker := time.NewTicker(speedInterval)
 	defer ticker.Stop()
 
@@ -50,13 +63,16 @@ func (s *speedTracker) run(ctx context.Context, client *torrent.Client) {
 		case <-ctx.Done():
 			return
 		case now := <-ticker.C:
-			s.sample(now, client.Torrents())
+			for _, growth := range s.sample(now, client.Torrents()) {
+				logger.Warn("pieces failed hash check", "hash", growth.hash.HexString(), "added", growth.added, "total", growth.total)
+			}
 		}
 	}
 }
 
-func (s *speedTracker) sample(now time.Time, torrents []*torrent.Torrent) {
+func (s *speedTracker) sample(now time.Time, torrents []*torrent.Torrent) []badPiecesGrowth {
 	seen := map[metainfo.Hash]bool{}
+	var grown []badPiecesGrowth
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -85,14 +101,29 @@ func (s *speedTracker) sample(now time.Time, torrents []*torrent.Torrent) {
 				upload:   int64(float64(last.uploaded-first.uploaded) / elapsed),
 			}
 		}
+
+		if bad := badPiecesOf(stats); bad > s.badPieces[hash] {
+			grown = append(grown, badPiecesGrowth{hash, bad - s.badPieces[hash], bad})
+			s.badPieces[hash] = bad
+		}
 	}
 
 	for hash := range s.samples {
 		if !seen[hash] {
 			delete(s.samples, hash)
 			delete(s.speeds, hash)
+			delete(s.badPieces, hash)
 		}
 	}
+
+	return grown
+}
+
+// Куски, которые пиры прислали целиком, а хэш не сошёлся. Библиотека снимает
+// с них отметку и качает заново, но отзывчивый ридер успевает отдать их байты
+// плееру
+func badPiecesOf(stats torrent.TorrentStats) int64 {
+	return stats.PiecesDirtiedBad.Int64()
 }
 
 // Байт в секунду; раздачи, которую ещё не замеряли, — ноль
