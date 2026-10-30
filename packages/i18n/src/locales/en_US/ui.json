@@ -2231,7 +2231,7 @@
         "source": "Source",
         "allSources": "All sources",
         "search": "Search logs",
-        "searchPlaceholder": "Find in messages",
+        "searchPlaceholder": "Find by text or id",
         "pause": "Pause",
         "resume": "Resume",
         "pauseLabel": "Pause live updates",
@@ -2288,7 +2288,8 @@
         "context": "Context",
         "copy": "Copy entry",
         "copied": "Entry copied",
-        "copyError": "Couldn't copy the entry"
+        "copyError": "Couldn't copy the entry",
+        "filterById": "Show all entries with this id"
       }
     },
     "collections": {

@@ -162,6 +162,20 @@ describe('кольцевой буфер', () => {
     ])
   })
 
+  it('подстрока находит и значение поля', () => {
+    const ring = new LogRing()
+
+    ring.push(line({ msg: 'pieces failed hash check', infoHash: 'ABCDEF01' }))
+    ring.push(line({ msg: 'playback s1: direct', fileIndex: 3 }))
+    ring.push(line({ msg: 'Cache evicted' }))
+
+    const messages = (q: string) =>
+      ring.query({ q }).entries.map(entry => entry.message)
+
+    expect(messages('abcdef')).toEqual(['pieces failed hash check'])
+    expect(messages('3')).toEqual(['playback s1: direct'])
+  })
+
   it('курсоры before и after и признак продолжения', () => {
     const ring = new LogRing()
 

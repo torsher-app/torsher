@@ -399,7 +399,7 @@ func (a *api) setPaused(t *torrent.Torrent, paused bool, selected []int) {
 	t.DisallowDataUpload()
 
 	if err := setFiles(t, selected); err != nil {
-		a.logger.Warn("pause files", "hash", t.InfoHash().HexString(), "err", err)
+		a.logger.Warn("pause files", "infoHash", t.InfoHash().HexString(), "err", err)
 	}
 }
 
@@ -563,7 +563,7 @@ func (a *api) applySelection(t *torrent.Torrent) {
 	if saved := a.session.get(t.InfoHash()); saved.Paused {
 		a.sched.forget(t)
 		if err := setFiles(t, saved.Selected); err != nil {
-			a.logger.Warn("pause files", "hash", t.InfoHash().HexString(), "err", err)
+			a.logger.Warn("pause files", "infoHash", t.InfoHash().HexString(), "err", err)
 		}
 		return
 	}
@@ -763,7 +763,7 @@ func (a *api) forget(w http.ResponseWriter, r *http.Request) {
 	if deleteFiles {
 		for index := range info.NumPieces() {
 			if err := a.completion.Set(metainfo.PieceKey{InfoHash: hash, Index: index}, false); err != nil {
-				a.logger.Warn("reset piece completion", "hash", hash.HexString(), "err", err)
+				a.logger.Warn("reset piece completion", "infoHash", hash.HexString(), "err", err)
 				break
 			}
 		}
@@ -771,7 +771,7 @@ func (a *api) forget(w http.ResponseWriter, r *http.Request) {
 		deleted, err := deleteTorrentFiles(dir, info)
 		response.DeletedBytes = deleted
 		// Удаление файлов — единственное место, где движок сам стирает данные
-		a.logger.Info("torrent files deleted", "hash", hash.HexString(), "bytes", deleted)
+		a.logger.Info("torrent files deleted", "infoHash", hash.HexString(), "bytes", deleted)
 
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "storage", err)

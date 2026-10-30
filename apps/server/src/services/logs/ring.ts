@@ -36,7 +36,7 @@ export interface LogQuery {
   /** Минимальный уровень */
   level?: LogLevel
   sources?: LogSource[]
-  /** Подстрока сообщения без учёта регистра */
+  /** Подстрока сообщения или значения поля без учёта регистра */
   q?: string
   before?: number
   after?: number
@@ -87,6 +87,17 @@ function sourceOf(value: unknown): LogSource {
 
 function rank(level: LogLevel) {
   return LOG_LEVELS.indexOf(level)
+}
+
+// Id раздачи, сессии и тайтла лежат в полях: поиск по ним собирает все
+// записи одного случая
+function hasText(entry: LogEntry, needle: string) {
+  if (entry.message.toLowerCase().includes(needle))
+    return true
+
+  return Object.values(entry.context ?? {}).some(value =>
+    String(value).toLowerCase().includes(needle),
+  )
 }
 
 function isPrimitive(value: unknown): value is string | number | boolean {
@@ -260,7 +271,7 @@ export class LogRing {
     const matches = (entry: LogEntry) =>
       rank(entry.level) >= min
       && (!sources || sources.has(entry.source))
-      && (!needle || entry.message.toLowerCase().includes(needle))
+      && (!needle || hasText(entry, needle))
       && (before === undefined || entry.seq < before)
       && (after === undefined || entry.seq > after)
     const found: LogEntry[] = []

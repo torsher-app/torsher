@@ -271,5 +271,6 @@ function onVerbose(value: boolean | 'indeterminate') {
     :entry="selected"
     @close="selectedId = null"
     @copy="logs.copyEntry"
+    @filter="logs.filterById"
   />
 </template>

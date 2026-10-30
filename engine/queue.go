@@ -209,7 +209,7 @@ func (a *api) reschedule() {
 
 		if key := filesKey(files); key != state.files || !seen {
 			if err := setFiles(item.t, files); err != nil {
-				a.logger.Warn("schedule files", "hash", hash.HexString(), "err", err)
+				a.logger.Warn("schedule files", "infoHash", hash.HexString(), "err", err)
 			}
 			state.files = key
 		}
@@ -297,7 +297,7 @@ func (a *api) flushUploaded(t *torrent.Torrent) {
 
 	err := a.session.update(hash, func(saved *savedTorrent) { saved.Uploaded += delta })
 	if err != nil {
-		a.logger.Warn("save uploaded", "hash", hash.HexString(), "err", err)
+		a.logger.Warn("save uploaded", "infoHash", hash.HexString(), "err", err)
 		return
 	}
 

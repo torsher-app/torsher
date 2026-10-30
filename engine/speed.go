@@ -64,7 +64,7 @@ func (s *speedTracker) run(ctx context.Context, client *torrent.Client, logger *
 			return
 		case now := <-ticker.C:
 			for _, growth := range s.sample(now, client.Torrents()) {
-				logger.Warn("pieces failed hash check", "hash", growth.hash.HexString(), "added", growth.added, "total", growth.total)
+				logger.Warn("pieces failed hash check", "infoHash", growth.hash.HexString(), "added", growth.added, "total", growth.total)
 			}
 		}
 	}

@@ -97,10 +97,37 @@ export function createLogger(options: {
   )
 }
 
+// Ключ — до какого времени молчать
+const quietUntil = new Map<string, number>()
+
+/**
+ * Можно ли писать запись с этим ключом: не чаще раза за `ms`. Для отказов,
+ * которые клиент повторяет на каждом запросе (сегменты, опрос телевизора).
+ */
+export function throttleLog(key: string, ms: number) {
+  const now = Date.now()
+  const until = quietUntil.get(key)
+
+  if (until !== undefined && until > now)
+    return false
+
+  // Ключи — id сессий и адреса: истёкшие убираем, чтобы карта не росла
+  if (quietUntil.size >= 1000) {
+    for (const [stale, at] of quietUntil) {
+      if (at <= now)
+        quietUntil.delete(stale)
+    }
+  }
+
+  quietUntil.set(key, now + ms)
+  return true
+}
+
 /** Подменяет логгер сервисов; дочерние логгеры источников создаются заново */
 export function installLogger(logger: Logger) {
   root = logger
   children = new Map()
+  quietUntil.clear()
 }
 
 /**

@@ -17,11 +17,15 @@ Entries are grouped by day. A red mark is an error, a yellow one is a warning. A
 
 The page keeps only recent entries. Earlier ones are in the downloaded log.
 
+## Follow one case
+
+Entries name torrents by their info hash and playback by a session id, not by file or release names. In an entry's card, click an id to see every entry with it: for one viewing, that's the engine, the playback decision, transcoding and the player's error together.
+
 ## Narrow it down
 
 - **Level:** <Ui k="panel.logs.filters.all" />, <Ui k="panel.logs.filters.warn" /> or <Ui k="panel.logs.filters.error" />.
 - **<Ui k="panel.logs.filters.source" />:** one part of the server, such as <Ui k="panel.logs.sources.engine" />, <Ui k="panel.logs.sources.playback" />, <Ui k="panel.logs.sources.sources" />, <Ui k="panel.logs.sources.network" /> or <Ui k="panel.logs.sources.backups" />.
-- **Search** in messages.
+- **Search** in messages and in the ids an entry carries: a torrent's info hash, a playback session, a title.
 - **<Ui k="panel.logs.filters.pause" />** stops live updates while you read, <Ui k="panel.logs.filters.resume" /> starts them again.
 
 When you scroll down the list, new entries don't push it: a button at the top says how many arrived and brings them in.

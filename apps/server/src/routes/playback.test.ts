@@ -715,10 +715,105 @@ describe.runIf(hasFfmpeg())('воспроизведение с пробой и �
       expect(messages).toContain(
         `playback ${sessionId}: player error unsupported, mediaError=4, detail="PIPELINE_ERROR_DECODE: demuxer", at=12s, badPieces=3`,
       )
+
+      await logged.inject({
+        method: 'DELETE',
+        url: `/api/playback/${sessionId}`,
+        cookies: owner,
+      })
+
+      // Поиск по infohash собирает всю сессию: id лежат в полях записей
+      const session = queryLogs({ q: INFO_HASH }).entries.reverse()
+
+      expect(session.map(entry => entry.message)).toEqual([
+        expect.stringContaining(`playback ${sessionId}: direct`),
+        expect.stringContaining(`playback ${sessionId}: player error`),
+        expect.stringMatching(
+          new RegExp(
+            `^playback ${sessionId}: closed after \\d+s, reason=client$`,
+          ),
+        ),
+      ])
+      expect(session[0]!.context).toMatchObject({
+        session: sessionId,
+        infoHash: INFO_HASH,
+        fileIndex: 0,
+        size: files[0]!.size,
+        resolution: '160x90',
+        pieceLength: 262_144,
+        files: 3,
+      })
+      // Название раздачи и имя файла в журнал не попадают
+      expect(JSON.stringify(session)).not.toMatch(/Film/)
     }
     finally {
       await logged.close()
       installLogger(pino({ level: 'silent' }))
+      rmSync(logsDir, { recursive: true, force: true })
+    }
+  })
+
+  it('журнал: отказ открыть просмотр и неизвестная сессия HLS', async () => {
+    const logsDir = mkdtempSync(join(tmpdir(), 'torsher-playback-log-'))
+    const logger = createLogger({
+      level: 'info',
+      logsDir,
+      stdout: { write: () => true },
+    })
+    const logged = createApp({ loggerInstance: logger })
+    const pending = getDb()
+      .insert(torrents)
+      .values({
+        infoHash: 'b'.repeat(40),
+        name: 'Pending',
+        source: 'magnet',
+        status: 'resolving',
+        files,
+      })
+      .returning()
+      .get()
+
+    installLogger(logger)
+
+    try {
+      const rejected = await logged.inject({
+        method: 'POST',
+        url: '/api/playback',
+        cookies: owner,
+        payload: { torrentId: pending.id, fileIndex: 0 },
+      })
+
+      for (let i = 0; i < 3; i++) {
+        await logged.inject({
+          url: '/api/hls/gone/0.ts',
+          cookies: owner,
+        })
+      }
+
+      const entries = queryLogs({ sources: ['playback'] }).entries
+
+      expect(rejected.statusCode).toBe(409)
+      expect(
+        entries.find(
+          entry => entry.message === 'playback rejected: metadata not ready',
+        )?.context,
+      ).toMatchObject({
+        torrentId: pending.id,
+        infoHash: 'b'.repeat(40),
+        fileIndex: 0,
+        status: 'resolving',
+      })
+      // Плеер повторяет запрос сегмента: запись одна
+      expect(
+        entries.filter(
+          entry => entry.message === 'hls: unknown session gone',
+        ),
+      ).toHaveLength(1)
+    }
+    finally {
+      await logged.close()
+      installLogger(pino({ level: 'silent' }))
+      getDb().delete(torrents).where(eq(torrents.id, pending.id)).run()
       rmSync(logsDir, { recursive: true, force: true })
     }
   })

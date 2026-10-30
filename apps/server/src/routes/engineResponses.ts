@@ -42,6 +42,28 @@ export function sendEngineError(reply: FastifyReply, err: unknown) {
   }
 }
 
+/**
+ * Причина отказа для журнала: ответ `sendEngineError` уходит клиенту, а в
+ * журнале без этой записи остался бы только код статуса на debug
+ */
+export function engineFailureOf(
+  err: unknown,
+): { reason: string, fields: Record<string, string | number> } | undefined {
+  if (err instanceof InsufficientStorageError) {
+    const { kind, ...numbers } = err.shortage
+
+    return {
+      reason: 'not enough space',
+      fields: { shortage: kind, ...numbers },
+    }
+  }
+
+  if (err instanceof EngineError)
+    return { reason: `engine ${err.kind}`, fields: { error: err.message } }
+
+  return undefined
+}
+
 // Наружу — явно собранный объект: `.torrent` и magnet в ответ не попадают.
 // `live` — раздача в движке; нет — данных на диске нет. `placed` — индексы
 // файлов, которые лежат в библиотеке. Список передаёт настройки торрента

@@ -283,7 +283,7 @@ func (a *api) startMove(w http.ResponseWriter, r *http.Request) {
 
 		// Сессия уже переключена: раздача вернётся при перезапуске движка
 		if err := a.reopen(mi, to, saved, complete); err != nil {
-			a.logger.With("hash", hash.HexString()).Error("reopen torrent", "err", err)
+			a.logger.With("infoHash", hash.HexString()).Error("reopen torrent", "err", err)
 		}
 
 		job.update(func(state *moveState) { state.State = "done" })
@@ -379,7 +379,7 @@ func (a *api) moveStatus(w http.ResponseWriter, r *http.Request) {
 // удаляются. Сбой первого шага убирает поставленное, раздача остаётся на месте
 func (a *api) runMove(job *moveJob, mi *metainfo.MetaInfo, info *metainfo.Info, from, to string, saved savedTorrent, complete []int) {
 	hash := mi.HashInfoBytes()
-	log := a.logger.With("hash", hash.HexString())
+	log := a.logger.With("infoHash", hash.HexString())
 	log.Info("torrent move started")
 
 	fail := func(err error) {
@@ -785,7 +785,7 @@ func (a *api) finishMove(hash metainfo.Hash, info *metainfo.Info, dir string, sa
 
 	if saved.MovedFrom != "" && !samePath(saved.MovedFrom, dir) {
 		if err := removeSources(info, saved.MovedFrom, dir); err != nil {
-			a.logger.Warn("remove moved files", "hash", hash.HexString(), "err", err)
+			a.logger.Warn("remove moved files", "infoHash", hash.HexString(), "err", err)
 		}
 	}
 
@@ -794,6 +794,6 @@ func (a *api) finishMove(hash metainfo.Hash, info *metainfo.Info, dir string, sa
 	saved.Placed = nil
 
 	if err := a.session.saveSelection(hash, *saved); err != nil {
-		a.logger.Warn("save session", "hash", hash.HexString(), "err", err)
+		a.logger.Warn("save session", "infoHash", hash.HexString(), "err", err)
 	}
 }
