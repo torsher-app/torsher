@@ -41,7 +41,7 @@ const toastOptions = {
       <NuxtPage />
     </NuxtLayout>
     <Toaster
-      position="bottom-right"
+      position="top-center"
       :visible-toasts="3"
       :toast-options="toastOptions"
     />
