@@ -13,6 +13,7 @@ import { getDb, migrateDb } from '../db/index.ts'
 import { indexers, users } from '../db/schema.ts'
 import { saveFollowSettings } from '../services/follow/settings.ts'
 import { encryptSecret } from '../services/secrets/index.ts'
+import { deleteSetting } from '../services/settings/index.ts'
 import { clearSearchCache } from '../services/sources/cache.ts'
 import { tvIdentity } from '../services/tmdb/fixtures/index.ts'
 import {
@@ -150,6 +151,7 @@ describe('get /api/titles/:id/sources', () => {
     )
     expect(body.season).toBe(2)
     expect(body.audio).toBe('ru')
+    expect(body.candidates[0].audioFit).toBeNull()
     expect(body.candidates).toHaveLength(2)
     expect(body.top).toEqual([body.candidates[0].id])
     expect(body.candidates[0]).toMatchObject({
@@ -290,11 +292,13 @@ describe('get /api/titles/:id/sources', () => {
         quality: '2160p',
         voice: null,
         voiceKeys: [],
+        audioFit: 'original',
         pickReason: 'profile',
       })
       expect(body.candidates[1]).toMatchObject({
         voice: null,
         voiceKeys: [],
+        audioFit: 'foreign',
         audio: [{ studio: 'LostFilm', type: 'MVO' }],
       })
       expect(body.top).toEqual([body.candidates[0].id])
@@ -302,7 +306,8 @@ describe('get /api/titles/:id/sources', () => {
       expect(body.pinnedVoice).toBeNull()
     }
     finally {
-      saveFollowSettings({ audio: { value: 'ru', source: 'user' } })
+      // Настройки слежения — только язык озвучки: без строки сервер снова не знает языка
+      deleteSetting('follow')
     }
   })
 

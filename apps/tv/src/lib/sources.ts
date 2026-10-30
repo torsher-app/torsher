@@ -94,41 +94,26 @@ export function profileParts(profile: TitleSources['profile']) {
   }
 }
 
-/** Чем подписать дорожку раздачи: язык, студия или тип перевода */
-export type TrackTerm
-  = | { kind: 'language', value: string }
-    | { kind: 'studio', value: string }
-    | { kind: 'type', value: NonNullable<AudioTrack['type']> }
-
 /**
- * Дорожки раздачи для зрителя, чей язык озвучки не русский: язык — главное,
- * без него — студия или тип перевода. Повторы схлопываются, порядок — как в
- * названии.
+ * Языки дорожек раздачи для зрителя, чей язык озвучки не русский: код языка
+ * или `original`. Студия или тип перевода без языка бывают только у русской
+ * озвучки — это `ru`: так видно, почему раздача внизу. Повторы схлопываются,
+ * порядок — как в названии.
  */
-export function trackTerms(tracks: AudioTrack[]): TrackTerm[] {
-  const terms: TrackTerm[] = []
+export function trackLanguages(tracks: AudioTrack[]): string[] {
+  const languages: string[] = []
 
   for (const track of tracks) {
-    const term: TrackTerm | undefined
-      = track.language && track.type !== 'Original'
-        ? { kind: 'language', value: track.language }
-        : track.studio
-          ? { kind: 'studio', value: track.studio }
-          : track.type
-            ? { kind: 'type', value: track.type }
-            : undefined
+    const language
+      = track.type === 'Original'
+        ? 'original'
+        : (track.language ?? (track.studio || track.type ? 'ru' : undefined))
 
-    if (
-      term
-      && !terms.some(
-        item => item.kind === term.kind && item.value === term.value,
-      )
-    ) {
-      terms.push(term)
-    }
+    if (language && !languages.includes(language))
+      languages.push(language)
   }
 
-  return terms
+  return languages
 }
 
 export type SourceKind = 'remux' | 'bluray' | 'web' | 'tv' | 'dvd' | 'cam'
@@ -181,6 +166,18 @@ export function seasonOptions(candidates: SourceCandidate[]) {
   }
 
   return Array.from(found).sort((a, b) => a - b)
+}
+
+/**
+ * Действующий фильтр озвучки: студии и типы — русские, поэтому у другого
+ * языка озвучки дома сохранённый выбор не действует и не прячет раздачи, а
+ * при возврате к `ru` снова работает
+ */
+export function activeVoiceFilter(
+  audio: TitleSources['audio'] | undefined,
+  voice: string | undefined,
+) {
+  return audio === 'ru' ? voice : undefined
 }
 
 function matchesView(candidate: SourceCandidate, view: SourceView) {

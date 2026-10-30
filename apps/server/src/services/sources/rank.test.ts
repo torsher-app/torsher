@@ -349,7 +349,7 @@ describe('rankReleases: язык озвучки', () => {
     expect(top).not.toContain('dub')
   })
 
-  it('другой язык: у тайтла с оригиналом на нём своя любая раздача', () => {
+  it('другой язык: у тайтла с оригиналом на нём своя — годная как оригинал', () => {
     const { ranked } = rankReleases(
       [
         release('plain', 'Laterne.2021.720p.WEB-DL-GRP', 20, 3 * GB),
@@ -359,6 +359,19 @@ describe('rankReleases: язык озвучки', () => {
     )
 
     expect(ranked.map(item => item.id)).toEqual(['better', 'plain'])
+  })
+
+  it('язык оригинала совпадает: раздача только с русским дубляжом — чужая', () => {
+    const { ranked, top } = rankReleases(
+      [
+        release('dub', 'Фонарь (2021) WEB-DL 1080p | D', 300, 8 * GB),
+        release('plain', 'Lantern.2021.1080p.WEB-DL-GRP', 5, 8 * GB),
+      ],
+      { ...movie, audio: 'en', originalLanguage: 'en' },
+    )
+
+    expect(ranked.map(item => item.id)).toEqual(['plain', 'dub'])
+    expect(top).toEqual(['plain'])
   })
 
   it('студии и закреплённая озвучка не участвуют', () => {

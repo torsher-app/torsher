@@ -1,6 +1,7 @@
 import type { SourceCandidate, TitleSources } from '@torsher/api-client'
 import { describe, expect, it } from 'vitest'
 import {
+  activeVoiceFilter,
   allIndexersFailed,
   arrangeCandidates,
   bitrateOf,
@@ -18,7 +19,7 @@ import {
   seasonOptions,
   sourceKindOf,
   titleRefOf,
-  trackTerms,
+  trackLanguages,
 } from './sources.ts'
 
 function candidate(
@@ -59,6 +60,7 @@ function candidate(
     voiceKeys: voice
       ? [voice.studio ? `studio:${voice.studio}` : `type:${voice.type}`]
       : [],
+    audioFit: null,
     seasons: [1],
     episodes: null,
     isPack: true,
@@ -249,22 +251,26 @@ describe('подписи', () => {
     expect(isProfilePick({ pickReason: null })).toBe(false)
   })
 
-  it('дорожки для не русского языка озвучки: язык главнее студии, без повторов', () => {
+  it('языки дорожек для не русского языка озвучки: студия и тип без языка — русские', () => {
     expect(
-      trackTerms([
+      trackLanguages([
         { type: 'D', language: 'de' },
         { type: 'Original', language: 'en' },
         { studio: 'LostFilm', type: 'MVO' },
         { type: 'L' },
         { language: 'de' },
+        { language: 'pt' },
       ]),
-    ).toEqual([
-      { kind: 'language', value: 'de' },
-      { kind: 'type', value: 'Original' },
-      { kind: 'studio', value: 'LostFilm' },
-      { kind: 'type', value: 'L' },
-    ])
-    expect(trackTerms([])).toEqual([])
+    ).toEqual(['de', 'original', 'ru', 'pt'])
+    expect(trackLanguages([])).toEqual([])
+  })
+
+  it('сохранённый фильтр озвучки действует только у русского языка озвучки', () => {
+    expect(activeVoiceFilter('ru', 'studio:LostFilm')).toBe('studio:LostFilm')
+    expect(activeVoiceFilter('original', 'studio:LostFilm')).toBeUndefined()
+    expect(activeVoiceFilter('de', 'studio:LostFilm')).toBeUndefined()
+    expect(activeVoiceFilter(undefined, 'studio:LostFilm')).toBeUndefined()
+    expect(activeVoiceFilter('ru', undefined)).toBeUndefined()
   })
 
   it('профиль для шапки: лестница качества и первые типы озвучки', () => {

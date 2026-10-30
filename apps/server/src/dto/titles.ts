@@ -122,6 +122,10 @@ export const sourceCandidate = z
     // Ключи всех русских озвучек раздачи (как `voiceOption.key`): по ним
     // фильтр; у языка озвучки дома не `ru` — пусто
     voiceKeys: z.array(z.string()),
+    // Чем раздача подходит языку озвучки дома: `own` — дорожка на нём,
+    // `original` — годится как оригинал, `foreign` — только чужие озвучки;
+    // null — язык `ru`, там подходит русская озвучка (`voice`)
+    audioFit: z.enum(['own', 'original', 'foreign']).nullable(),
     seasons: z.array(z.number()),
     episodes: z
       .object({

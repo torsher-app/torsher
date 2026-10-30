@@ -58,6 +58,8 @@ export interface RankedRelease extends FoundRelease {
   /** Годится в тройку: уверенный матч, есть сиды, не экранная копия. */
   eligible: boolean
   reason?: SourceReason
+  /** Чем подходит языку озвучки (`audioFitOf`); у `ru` — нет. */
+  audioFit?: AudioFit
 }
 
 export interface RankContext {
@@ -198,31 +200,51 @@ export function hasOriginalAudio(
   )
 }
 
+/**
+ * Раздача годится как оригинал: есть оригинальная дорожка или не распознано
+ * ни одной — англоязычные трекеры язык обычно не пишут
+ */
+export function fitsOriginal(
+  parsed: Pick<ParsedRelease, 'audio'>,
+  originalLanguage?: string,
+) {
+  return (
+    parsed.audio.length === 0 || hasOriginalAudio(parsed, originalLanguage)
+  )
+}
+
+/**
+ * Своя дорожка не русского языка: тег языка или, когда оригинал на нём,
+ * раздача годится как оригинал. Одного совпадения языков мало: раздача
+ * только с русским дубляжом у такого тайтла не своя.
+ */
+export function hasOwnLanguage(
+  parsed: Pick<ParsedRelease, 'audio'>,
+  language: string,
+  originalLanguage?: string,
+) {
+  return (
+    parsed.audio.some(track => track.language === language)
+    || (originalLanguage === language && fitsOriginal(parsed, originalLanguage))
+  )
+}
+
 /** Чем раздача подходит языку озвучки, если он не русский */
 export type AudioFit = 'own' | 'original' | 'foreign'
 
 /**
- * `own` — дорожка на выбранном языке или тайтл с оригиналом на нём (тогда
- * своя любая раздача); `original` — оригинальная дорожка или не распознано ни
- * одной: англоязычные трекеры язык обычно не пишут; `foreign` — только озвучки
- * на других языках.
+ * `own` — своя дорожка (`hasOwnLanguage`); `original` — годится как оригинал
+ * (`fitsOriginal`); `foreign` — только озвучки на других языках.
  */
 export function audioFitOf(
   parsed: Pick<ParsedRelease, 'audio'>,
   audio: Exclude<FollowAudio, 'ru'>,
   originalLanguage?: string,
 ): AudioFit {
-  if (
-    audio !== 'original'
-    && (originalLanguage === audio
-      || parsed.audio.some(track => track.language === audio))
-  ) {
+  if (audio !== 'original' && hasOwnLanguage(parsed, audio, originalLanguage))
     return 'own'
-  }
 
-  return parsed.audio.length === 0 || hasOriginalAudio(parsed, originalLanguage)
-    ? 'original'
-    : 'foreign'
+  return fitsOriginal(parsed, originalLanguage) ? 'original' : 'foreign'
 }
 
 const AUDIO_FIT_SCORE: Record<AudioFit, number> = {
@@ -317,12 +339,12 @@ function qualityScore(
 }
 
 function voiceScore(
-  parsed: ParsedRelease,
   voice: AudioTrack | undefined,
+  audioFit: AudioFit | undefined,
   ctx: RankContext,
 ) {
-  if (ctx.audio && ctx.audio !== 'ru')
-    return AUDIO_FIT_SCORE[audioFitOf(parsed, ctx.audio, ctx.originalLanguage)]
+  if (audioFit)
+    return AUDIO_FIT_SCORE[audioFit]
 
   if (!voice)
     return 0
@@ -366,13 +388,14 @@ function sizeScore(
 function scoreOf(
   release: FoundRelease,
   voice: AudioTrack | undefined,
+  audioFit: AudioFit | undefined,
   episodeSize: number | undefined,
   resolution: VideoResolution | undefined,
   ctx: RankContext,
 ) {
   return (
     qualityScore(release.parsed, resolution, ctx.profile)
-    + voiceScore(release.parsed, voice, ctx)
+    + voiceScore(voice, audioFit, ctx)
     + seedersScore(release.seeders)
     + sizeScore(resolution, episodeSize, ctx.kind)
     + (release.match.confidence === 'medium' ? WEIGHTS.mediumMatch : 0)
@@ -476,13 +499,8 @@ export interface Ranking {
 }
 
 /** Раздача годится в тройку по озвучке: русская дорожка, а у других языков — не только чужие озвучки */
-function fitsAudio(release: RankedRelease, ctx: RankContext) {
-  if (!ctx.audio || ctx.audio === 'ru')
-    return !!release.voice
-
-  return (
-    audioFitOf(release.parsed, ctx.audio, ctx.originalLanguage) !== 'foreign'
-  )
+function fitsAudio(release: RankedRelease) {
+  return release.audioFit ? release.audioFit !== 'foreign' : !!release.voice
 }
 
 /**
@@ -498,6 +516,10 @@ export function rankReleases(
     .map((release) => {
       const voices = russianVoices(release.parsed, ctx)
       const voice = voiceOf(voices, ctx)
+      const audioFit
+        = ctx.audio && ctx.audio !== 'ru'
+          ? audioFitOf(release.parsed, ctx.audio, ctx.originalLanguage)
+          : undefined
       const episodeSize = episodeSizeOf(release, ctx.kind, ctx.episodeCounts)
       const resolution
         = ctx.known?.get(release.id) ?? videoResolution(release.parsed)
@@ -508,9 +530,10 @@ export function rankReleases(
         ...release,
         voice,
         voices,
+        audioFit,
         episodeSize,
         resolution,
-        score: scoreOf(release, voice, episodeSize, resolution, ctx),
+        score: scoreOf(release, voice, audioFit, episodeSize, resolution, ctx),
         eligible:
           release.match.confidence === 'high'
           && release.seeders > 0
@@ -526,7 +549,7 @@ export function rankReleases(
       ? allEligible
       : allEligible.filter(item => item.parsed.seasons.includes(focus))
   const eligible = inSeason.length > 0 ? inSeason : allEligible
-  const voiced = eligible.filter(item => fitsAudio(item, ctx))
+  const voiced = eligible.filter(fitsAudio)
   const top = pickTop(voiced.length > 0 ? voiced : eligible, ctx)
   const reasons = new Map(top.map(item => [item.id, item.reason]))
 

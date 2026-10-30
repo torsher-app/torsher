@@ -36,6 +36,7 @@ import { useTitleProgress } from '../composables/useTitleProgress.ts'
 import { NATIVE_WHEEL_ATTRIBUTE, useFocus } from '../focus/index.ts'
 import { coversEpisode } from '../lib/episodes.ts'
 import {
+  activeVoiceFilter,
   allIndexersFailed,
   arrangeCandidates,
   isQuality,
@@ -208,10 +209,8 @@ const candidates = computed(() => {
     ? all
     : all.filter(item => coversEpisode(item, season, episode))
 })
-// Фильтр озвучки — по русским студиям: у другого языка озвучки его нет, и
-// сохранённый раньше выбор не должен прятать раздачи
 const voiceFilter = computed(() =>
-  sources.value?.audio === 'ru' ? view.value.voice : undefined,
+  activeVoiceFilter(sources.value?.audio, view.value.voice),
 )
 const rows = computed(() =>
   arrangeCandidates(candidates.value, {

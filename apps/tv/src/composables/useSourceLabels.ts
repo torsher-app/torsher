@@ -9,7 +9,7 @@ import { isFollowAudio } from '../lib/follow.ts'
 import {
   formatSize,
   sizeOf,
-  trackTerms,
+  trackLanguages,
   videoClassLabel,
 } from '../lib/sources.ts'
 
@@ -47,18 +47,12 @@ export function useSourceLabels() {
    * Оригинал». Пусто — в названии дорожек нет, и это не изъян раздачи.
    */
   function tracksLabel(tracks: AudioTrack[]) {
-    return trackTerms(tracks)
-      .map((term) => {
-        if (term.kind === 'studio')
-          return term.value
-
-        if (term.kind === 'type')
-          return t(`sources.voiceTypes.${term.value}`)
-
-        return isFollowAudio(term.value)
-          ? t(`audioLanguages.${term.value}`)
-          : term.value.toUpperCase()
-      })
+    return trackLanguages(tracks)
+      .map(language =>
+        isFollowAudio(language)
+          ? t(`audioLanguages.${language}`)
+          : language.toUpperCase(),
+      )
       .join(', ')
   }
 

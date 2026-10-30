@@ -150,6 +150,7 @@ function toCandidate(
     // подписывают дорожки из `audio`
     voice: russian ? (release.voice ?? null) : null,
     voiceKeys: russian ? voiceKeysOf(release) : [],
+    audioFit: release.audioFit ?? null,
     seasons: parsed.seasons,
     episodes: parsed.episodes
       ? {

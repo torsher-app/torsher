@@ -188,6 +188,7 @@ function candidateOf(
     subs: ['en'],
     voice: { type: 'Original', language: 'en' },
     voiceKeys: ['type:Original'],
+    audioFit: null,
     seasons: season === undefined ? [] : [season],
     episodes:
       title.kind === 'series' && files.length

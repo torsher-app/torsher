@@ -833,6 +833,7 @@ export interface SourceCandidateInput {
   subs: string[];
   voice: AudioTrackInput | null;
   voiceKeys: string[];
+  audioFit: "own" | "original" | "foreign" | null;
   seasons: number[];
   episodes: {
     from: number;
@@ -5622,6 +5623,7 @@ export interface SourceCandidate {
   subs: string[];
   voice: AudioTrack | null;
   voiceKeys: string[];
+  audioFit: "own" | "original" | "foreign" | null;
   seasons: number[];
   episodes: {
     from: number;
