@@ -200,7 +200,11 @@ describe('окно просмотра', () => {
 })
 
 describe('порядок закачки', () => {
-  const file = (path: string) => ({ path, size: 500 * 1024 * 1024 })
+  const file = (path: string, size = 500 * 1024 * 1024) => ({
+    path,
+    size,
+    padding: false,
+  })
 
   it('серии по сезону и номеру, хоть индексы в раздаче вперемешку', () => {
     const torrent = {
@@ -221,7 +225,7 @@ describe('порядок закачки', () => {
       files: [
         file('Show.S01/Extras/Making.Of.mkv'),
         file('Show.S01/Show.S01E02.mkv'),
-        { path: 'Show.S01/Show.S01E01.srt', size: 20_480 },
+        file('Show.S01/Show.S01E01.srt', 20_480),
         file('Show.S01/Show.S01E01.mkv'),
       ],
     }
