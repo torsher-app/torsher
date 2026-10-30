@@ -23,7 +23,7 @@ import {
 } from './index.ts'
 import { unsureCounts } from './panel.ts'
 import { requestedSearch } from './search.ts'
-import { followStatus } from './status.ts'
+import { firstEpisodes, followStatus } from './status.ts'
 import { compareEpisodes, episodeKey, wantedEpisodes } from './wanted.ts'
 
 type NextEpisode = FollowSummary['next']
@@ -201,6 +201,7 @@ async function summaryView(
     profiles: subscribersOf(follow.id),
     wanted: wantedEpisodes(states).length,
     counts: countsOf(states),
+    first: firstEpisodes(states),
     unsure: unsure.get(follow.id) ?? 0,
     waitUntil: nearestWait(states),
     createdAt: follow.createdAt.toISOString(),

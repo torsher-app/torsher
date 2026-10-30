@@ -88,7 +88,11 @@ const mainOptions = computed<PanelOption[]>(() => {
     {
       id: 'stop',
       label: t('follow.panel.stop'),
-      hint: t('follow.panel.stopHint'),
+      hint: t(
+        value.profileCount > 1
+          ? 'follow.panel.stopHintShared'
+          : 'follow.panel.stopHint',
+      ),
       selected: false,
     },
   )
@@ -157,7 +161,10 @@ const qualityOptions = computed<PanelOption[]>(() =>
   QUALITY_PRESETS.map(id => ({
     id,
     label: t(`follow.panel.qualities.${id}`),
-    hint: QUALITY_LADDERS[id].map(qualityName).join(' → '),
+    // Верхняя ступень уже в подписи: подсказка — только запасные
+    hint: t('follow.panel.qualityFallback', {
+      steps: QUALITY_LADDERS[id].slice(1).map(qualityName).join(' → '),
+    }),
     selected: id === follow.value.qualityPreset,
   })),
 )

@@ -33,6 +33,7 @@ import type {
   TmdbTv,
   TmdbTvSeason,
 } from './types.ts'
+import { localDay } from '../../utils/localDay.ts'
 import { tmdbRating } from '../ratings/tmdb.ts'
 
 export type TmdbMediaType = 'movie' | 'tv'
@@ -431,11 +432,22 @@ export function movieToDetails(
 }
 
 /**
+ * Последняя вышедшая серия. Детали лежат в кэше неделю, и следующая серия из
+ * снимка могла уже выйти: её дата сравнивается с днём сервера, как у «Следить»
+ */
+function lastAired(tv: TmdbTv, now: Date) {
+  const next = tv.next_episode_to_air
+  const day = dayOf(next?.air_date)
+
+  return next && day && day <= localDay(now) ? next : tv.last_episode_to_air
+}
+
+/**
  * Сколько серий сезона вышло. Граница — последняя вышедшая серия сериала;
  * без неё сезон считается вышедшим целиком, если дата его начала прошла.
  */
 function airedCount(season: TmdbTvSeason, tv: TmdbTv, now: Date) {
-  const last = tv.last_episode_to_air
+  const last = lastAired(tv, now)
 
   if (last) {
     if (season.season_number < last.season_number)

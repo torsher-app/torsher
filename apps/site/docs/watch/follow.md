@@ -33,8 +33,8 @@ Following is shared by the whole server: one set of rules per title, so a series
 - **<Ui k="follow.panel.mode" />.** <Ui k="follow.panel.modes.download" /> (the default) or <Ui k="follow.panel.modes.notify" />. See [Download or notify](#download-or-notify). The default for new follows is set in the panel.
 - **<Ui k="follow.panel.voice" />.** The voice-over studio of the season, <Ui k="follow.panel.voiceAny" />, or only that studio. If the season has no studio yet, the first episode Torsher takes or your pick on the <Ui k="sources.title" /> screen sets it, and the next episodes keep it.
 - **<Ui k="follow.panel.wait" />.** <Ui k="follow.panel.waitNone" />, 12 hours, a day or 3 days. The wait starts when an episode first appears. During it, Torsher holds back releases in another voice-over or a lower quality; a release in your voice-over and top quality is taken at once. When the wait is over, the best release so far is taken.
-- **<Ui k="follow.panel.quality" />.** <Ui k="follow.panel.qualities.best" /> (1080p, then 720p, then SD), <Ui k="follow.panel.qualities.uhd" /> (2160p, then 1080p and 720p) or <Ui k="follow.panel.qualities.compact" /> (720p, then SD). If a show never comes out in the top quality, Torsher stops waiting for it.
-- **<Ui k="follow.panel.stop" />.** Unsubscribes your profile. When the last profile stops, nothing new is searched or downloaded. Downloaded episodes stay in the library.
+- **<Ui k="follow.panel.quality" />.** The top quality to wait for: <Ui k="follow.panel.qualities.best" /> (then 720p and SD), <Ui k="follow.panel.qualities.uhd" /> (then 1080p and 720p) or <Ui k="follow.panel.qualities.compact" /> (then SD). If a show never comes out in the top quality, Torsher stops waiting for it.
+- **<Ui k="follow.panel.stop" />.** Unsubscribes only your profile: other profiles that follow the title keep following it. When the last profile stops, nothing new is searched or downloaded. Downloaded episodes stay in the library.
 
 Whether a Russian audio track is required is set in the panel. See [Following](/docs/panel/follow).
 
@@ -71,7 +71,7 @@ Want to watch an episode before Torsher takes it? <Ui k="title.watch" /> streams
 ## Check
 
 - A new episode you haven't watched yet shows up first in <Ui k="home.rows.continue" /> on the home screen, with a bell and <Ui k="follow.newEpisode" />. Select it to start watching. If you remove the card from the row, it comes back with the next new episode.
-- The line under the buttons on the title page shows what Torsher is doing, for example an episode ready to watch, the next episode and its date, how many episodes are downloading, or what release it is waiting for and until when.
+- The line under the buttons on the title page shows what Torsher is doing and names the episode by its code, such as S2E6: an episode that is out and being searched for, an episode ready to watch, the next episode and its date, what is downloading from which episode on, or what release an episode is waiting for and until when.
 - Episodes on the title page show their state: <Ui k="follow.episode.in_library" />, <Ui k="follow.episode.ready" />, <Ui k="follow.episode.downloading" />, <Ui k="follow.episode.searching" />, <Ui k="follow.episode.waitingBetter" />, <Ui k="follow.episode.no_space" /> or <Ui k="follow.episode.missing" />.
 - Posters of followed titles have a bell badge, with the number of new episodes downloaded or ready and not watched yet.
 - <Ui k="nav.mine mine.sections.schedule" /> lists the episodes of the series you follow or watch: <Ui k="mine.schedule.upcoming" /> by day for the next 30 days and <Ui k="mine.schedule.recent" /> for the last 14. Select an episode in the library to play it, an aired one to start watching, or a future one to open the series.

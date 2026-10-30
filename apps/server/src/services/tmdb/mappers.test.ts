@@ -302,6 +302,22 @@ describe('tvToDetails', () => {
     ])
   })
 
+  it('считает вышедшей следующую серию из снимка, если её день наступил', () => {
+    const stale = {
+      ...tvOngoing,
+      next_episode_to_air: {
+        season_number: 2,
+        episode_number: 5,
+        air_date: '2026-10-30',
+      },
+    }
+    const aired = (now: Date) =>
+      tvToDetails(stale, 'ru-RU', now).seasons?.[1]?.airedEpisodeCount
+
+    expect(aired(new Date(2026, 9, 29, 23))).toBe(4)
+    expect(aired(new Date(2026, 9, 30, 0, 30))).toBe(5)
+  })
+
   it('без последней вышедшей серии смотрит на дату начала сезона', () => {
     const now = new Date('2026-10-20')
     const upcoming = tvToDetails(

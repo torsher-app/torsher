@@ -1751,6 +1751,13 @@ export interface UpdateFollowInput {
   state?: "active" | "paused";
 }
 
+export interface FollowFirstEpisodesInput {
+  searching?: FollowCursorInput;
+  missing?: FollowCursorInput;
+  downloading?: FollowCursorInput;
+  noSpace?: FollowCursorInput;
+}
+
 export interface TitleFollowInput {
   id: string;
   kind: "movie" | "series";
@@ -1830,6 +1837,7 @@ export interface TitleFollowInput {
      */
     ready: number;
   };
+  first: FollowFirstEpisodesInput;
   ready: FollowCursorInput | null;
 }
 
@@ -1955,6 +1963,7 @@ export interface FollowSummaryInput {
    */
   wanted: number;
   counts: FollowEpisodeCountsInput;
+  first: FollowFirstEpisodesInput;
   /**
    * @min -9007199254740991
    * @max 9007199254740991
@@ -2000,6 +2009,7 @@ export interface FollowDetailsInput {
    */
   wanted: number;
   counts: FollowEpisodeCountsInput;
+  first: FollowFirstEpisodesInput;
   /**
    * @min -9007199254740991
    * @max 9007199254740991
@@ -6350,6 +6360,13 @@ export interface UpdateFollow {
   state?: "active" | "paused";
 }
 
+export interface FollowFirstEpisodes {
+  searching?: FollowCursor;
+  missing?: FollowCursor;
+  downloading?: FollowCursor;
+  noSpace?: FollowCursor;
+}
+
 export interface TitleFollow {
   id: string;
   kind: "movie" | "series";
@@ -6429,6 +6446,7 @@ export interface TitleFollow {
      */
     ready: number;
   };
+  first: FollowFirstEpisodes;
   ready: FollowCursor | null;
 }
 
@@ -6554,6 +6572,7 @@ export interface FollowSummary {
    */
   wanted: number;
   counts: FollowEpisodeCounts;
+  first: FollowFirstEpisodes;
   /**
    * @min -9007199254740991
    * @max 9007199254740991
@@ -6599,6 +6618,7 @@ export interface FollowDetails {
    */
   wanted: number;
   counts: FollowEpisodeCounts;
+  first: FollowFirstEpisodes;
   /**
    * @min -9007199254740991
    * @max 9007199254740991
