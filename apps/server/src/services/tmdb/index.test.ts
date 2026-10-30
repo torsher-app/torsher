@@ -29,6 +29,7 @@ import {
   getTrending,
   searchCatalog,
   TmdbError,
+  yoVariants,
 } from './index.ts'
 
 const fetchMock = vi.fn<typeof fetch>()
@@ -94,6 +95,67 @@ describe('searchCatalog', () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
+  it('ищет и через «е», и через «ё»', async () => {
+    const jungle = {
+      id: 250001,
+      media_type: 'tv',
+      name: 'Звёзды в джунглях',
+      first_air_date: '2024-09-01',
+    }
+    fetchMock.mockImplementation(async (url) => {
+      const query = new URL(String(url)).searchParams.get('query')
+
+      return json({ results: query === 'звёзды в джунглях' ? [jungle] : [] })
+    })
+
+    const { items } = await searchCatalog('Звезды в джунглях', 'ru-RU')
+
+    expect(items.map(item => item.id)).toEqual(['tmdb:tv:250001'])
+    expect(
+      fetchMock.mock.calls.map(([url]) =>
+        new URL(String(url)).searchParams.get('query'),
+      ),
+    ).toEqual(['звезды в джунглях', 'звёзды в джунглях'])
+  })
+
+  it('варианты идут вперемешку без повторов, исходный первым', async () => {
+    const result = (id: number) => ({
+      id,
+      media_type: 'movie',
+      title: String(id),
+    })
+    fetchMock.mockImplementation(async (url) => {
+      const query = new URL(String(url)).searchParams.get('query')
+
+      return json({
+        results:
+          query === 'ёлки' ? [result(1), result(2)] : [result(3), result(1)],
+      })
+    })
+
+    const { items } = await searchCatalog('Ёлки', 'ru-RU')
+
+    expect(items.map(item => item.id)).toEqual([
+      'tmdb:movie:1',
+      'tmdb:movie:3',
+      'tmdb:movie:2',
+    ])
+  })
+
+  it('ошибка догадки не роняет поиск', async () => {
+    fetchMock.mockImplementation(async (url) => {
+      const query = new URL(String(url)).searchParams.get('query')
+
+      return query === 'зеленая'
+        ? json(searchResponse)
+        : json({ status_message: 'boom' }, 500)
+    })
+
+    const { items } = await searchCatalog('зеленая', 'ru-RU')
+
+    expect(items).toHaveLength(3)
+  })
+
   it('сетевая ошибка без кэша — unavailable', async () => {
     fetchMock.mockRejectedValue(new TypeError('fetch failed'))
 
@@ -101,6 +163,24 @@ describe('searchCatalog', () => {
 
     expect(error).toBeInstanceOf(TmdbError)
     expect(error.kind).toBe('unavailable')
+  })
+})
+
+describe('yoVariants', () => {
+  it('запрос с «ё» дополняет вариантом через «е»', () => {
+    expect(yoVariants('зелёная ёлка')).toEqual([
+      'зелёная ёлка',
+      'зеленая елка',
+    ])
+  })
+
+  it('пробует «ё» на месте каждой из первых трёх «е»', () => {
+    expect(yoVariants('зеленая')).toEqual(['зеленая', 'зёленая', 'зелёная'])
+    expect(yoVariants('еееее')).toEqual(['еееее', 'ёееее', 'еёеее', 'ееёее'])
+  })
+
+  it('без «е» и «ё» запрос один', () => {
+    expect(yoVariants('matrix')).toEqual(['matrix'])
   })
 })
 
