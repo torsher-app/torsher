@@ -178,6 +178,14 @@ Choose another release with more seeders on the <Ui k="sources.title" /> screen.
 
 The player says <Ui k="player.errors.unsupported.title" />: the device can't decode this video and the server couldn't transcode it. Open <Ui k="panel.nav.settings panel.settings.nav.playback" />: it shows what the server can transcode with. See [Hardware transcoding](/docs/install/hardware-acceleration). If the page says <Ui k="panel.settings.playback.unavailable.title" />, the server can't transcode at all: pick another release in a format the device plays.
 
+### The player couldn't open the file {#unreadable}
+
+The player says <Ui k="player.errors.unreadable.title" />: the device should play this file as is, but it failed to read it. The file may have arrived damaged. Try again, then pick another release. <Ui k="panel.nav.logs" /> has a <Ui k="panel.logs.sources.playback" /> entry with the player's error code and the file's container and codecs: include it when you [report the problem](/docs/maintain/logs#what-to-put-in-a-bug-report).
+
+### The source sent damaged data {#corrupt}
+
+The player says <Ui k="player.errors.corrupt.title" />: some pieces came from peers with errors. Torsher starts playing pieces before it can check them, so the player got the broken data. Torsher downloads those pieces again and retries on its own; this message means the retries didn't help. Try again in a minute or pick another release. The <Ui k="panel.logs.sources.engine" /> log shows `pieces failed hash check` for such a download.
+
 ### A GPU was found but failed the test {#gpu-failed}
 
 The server transcodes on the CPU instead. See [Hardware transcoding](/docs/install/hardware-acceleration#if-something-went-wrong).

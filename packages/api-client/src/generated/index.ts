@@ -1698,6 +1698,7 @@ export interface TorrentStatsInput {
     downloaded: number;
     bufferedAhead: number;
   };
+  badPieces: number;
 }
 
 export interface FollowTitleInput {
@@ -2348,6 +2349,22 @@ export interface PlaybackInput {
       toneMapping: "gpu" | "software" | null;
     } | null;
   } | null;
+}
+
+export interface PlaybackErrorInput {
+  error: "unsupported" | "corrupt" | "unknown";
+  /**
+   * @min 1
+   * @max 4
+   */
+  mediaError?: number;
+  /** @maxLength 300 */
+  detail?: string;
+  /**
+   * @min 0
+   * @max 1000000
+   */
+  position?: number;
 }
 
 export interface SubtitleCuesInput {
@@ -6278,6 +6295,7 @@ export interface TorrentStats {
     downloaded: number;
     bufferedAhead: number;
   };
+  badPieces: number;
 }
 
 export interface FollowTitle {
@@ -6928,6 +6946,22 @@ export interface Playback {
       toneMapping: "gpu" | "software" | null;
     } | null;
   } | null;
+}
+
+export interface PlaybackError {
+  error: "unsupported" | "corrupt" | "unknown";
+  /**
+   * @min 1
+   * @max 4
+   */
+  mediaError?: number;
+  /** @maxLength 300 */
+  detail?: string;
+  /**
+   * @min 0
+   * @max 1000000
+   */
+  position?: number;
 }
 
 export interface SubtitleCues {
@@ -9473,6 +9507,8 @@ export type PostPlaybackError =
 export type GetPlaybackError = MessageResponse;
 
 export type DeletePlaybackError = MessageResponse;
+
+export type PostPlaybackErrorError = MessageResponse;
 
 export type GetPlaybackSubtitlesError = MessageResponse;
 
@@ -12796,6 +12832,27 @@ export class Api<
       this.request<MessageResponse, DeletePlaybackError>({
         path: `/api/playback/${id}`,
         method: "DELETE",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Playback
+     * @name PostPlaybackError
+     * @request POST:/api/playback/{id}/error
+     */
+    postPlaybackError: (
+      id: string,
+      data: PlaybackErrorInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<MessageResponse, PostPlaybackErrorError>({
+        path: `/api/playback/${id}/error`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
         format: "json",
         ...params,
       }),

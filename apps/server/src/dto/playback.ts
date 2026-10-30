@@ -158,6 +158,21 @@ export const playbackParams = z.object({
   id: z.string().min(1).max(100),
 })
 
+/**
+ * Чем кончилось воспроизведение на клиенте — для журнала сервера: вид ошибки
+ * экрана и код `MediaError` плеера
+ */
+export const playbackError = z
+  .object({
+    error: z.enum(['unsupported', 'corrupt', 'unknown']),
+    // `MediaError.code`: 2 — сеть, 3 — декодирование, 4 — формат или источник
+    mediaError: z.number().int().min(1).max(4).optional(),
+    // Подробности плеера: `MediaError.message` или вид ошибки hls.js
+    detail: z.string().max(300).optional(),
+    position: seconds.optional(),
+  })
+  .meta({ id: 'playbackError' })
+
 export const subtitleParams = z.object({
   id: z.string().min(1).max(100),
   trackId: subtitleId,

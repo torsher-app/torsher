@@ -18,7 +18,7 @@ export type HlsFailure = 'network' | 'media' | 'other'
  * его не тянет. Свежий Chrome отвечает на HLS «maybe», но играет не всё —
  * поэтому сначала hls.js.
  */
-export function useHls(onFatal: (kind: HlsFailure) => void) {
+export function useHls(onFatal: (kind: HlsFailure, detail?: string) => void) {
   let hls: Hls | undefined
 
   function detach() {
@@ -85,6 +85,7 @@ export function useHls(onFatal: (kind: HlsFailure) => void) {
           data.type === HlsPlayer.ErrorTypes.NETWORK_ERROR
             ? 'network'
             : 'other',
+          data.details,
         )
         return
       }
@@ -96,7 +97,7 @@ export function useHls(onFatal: (kind: HlsFailure) => void) {
 
       if (action === 'fail') {
         detach()
-        onFatal('media')
+        onFatal('media', data.details)
         return
       }
 

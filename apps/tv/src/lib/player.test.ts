@@ -12,6 +12,7 @@ import {
   countdownOf,
   endedEarly,
   endsAt,
+  errorKeyOf,
   formatClock,
   formatDuration,
   formatGigabytes,
@@ -19,6 +20,7 @@ import {
   holdScrub,
   MEDIA_ERROR_WINDOW_MS,
   mediaErrorAction,
+  mediaFailureAction,
   networkState,
   nextRetry,
   pressScrub,
@@ -504,5 +506,79 @@ describe('bufferProgress', () => {
   it('never promises a finished buffer', () => {
     expect(bufferProgress(BUFFER_TARGET_BYTES)).toBe(0.99)
     expect(bufferProgress(BUFFER_TARGET_BYTES * 4)).toBe(0.99)
+  })
+})
+
+describe('errorKeyOf', () => {
+  it('про ffmpeg — только когда сервер не смог перекодировать', () => {
+    expect(
+      errorKeyOf({
+        error: 'unsupported',
+        reasons: ['VideoCodecNotSupported', 'ToolsMissing'],
+      }),
+    ).toBe('player.errors.unsupported')
+    expect(errorKeyOf({ error: 'unsupported', reasons: [] })).toBe(
+      'player.errors.unreadable',
+    )
+    expect(errorKeyOf({ error: 'unsupported' })).toBe(
+      'player.errors.unreadable',
+    )
+  })
+
+  it('битые данные, движок, место и прочее', () => {
+    expect(errorKeyOf({ error: 'corrupt', reasons: [] })).toBe(
+      'player.errors.corrupt',
+    )
+    expect(errorKeyOf({ error: 'engine' })).toBe(
+      'player.errors.engine.starting',
+    )
+    expect(errorKeyOf({ error: 'storage', storageKind: 'cache_limit' })).toBe(
+      'player.errors.storage.cache_limit',
+    )
+    expect(errorKeyOf({ error: undefined })).toBe('player.errors.unknown')
+  })
+})
+
+describe('mediaFailureAction', () => {
+  const MB = 1024 * 1024
+
+  it('данные у позиции не проверены — повтор', () => {
+    expect(
+      mediaFailureAction({
+        badPieces: 0,
+        bufferedAhead: 0,
+        remaining: 100 * MB,
+      }),
+    ).toEqual({ action: 'retry', cause: 'unsupported' })
+  })
+
+  it('битые куски — повтор и ошибка `corrupt`, даже на проверенных данных', () => {
+    expect(
+      mediaFailureAction({
+        badPieces: 2,
+        bufferedAhead: 20 * MB,
+        remaining: 100 * MB,
+      }),
+    ).toEqual({ action: 'retry', cause: 'corrupt' })
+  })
+
+  it('проверенные данные целой раздачи — ошибка формата', () => {
+    expect(
+      mediaFailureAction({
+        badPieces: 0,
+        bufferedAhead: 16 * MB,
+        remaining: 100 * MB,
+      }),
+    ).toEqual({ action: 'fail', cause: 'unsupported' })
+  })
+
+  it('у конца файла проверено до конца — ошибка формата', () => {
+    expect(
+      mediaFailureAction({
+        badPieces: 0,
+        bufferedAhead: 2 * MB,
+        remaining: 2 * MB,
+      }),
+    ).toEqual({ action: 'fail', cause: 'unsupported' })
   })
 })

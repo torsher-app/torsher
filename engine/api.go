@@ -810,6 +810,8 @@ type torrentState struct {
 	DownloadSpeed int64   `json:"downloadSpeed"`
 	UploadSpeed   int64   `json:"uploadSpeed"`
 	FileProgress  []int64 `json:"fileProgress"`
+	// Куски с неверным хэшем за время работы движка: их байты могли уйти в поток
+	BadPieces int64 `json:"badPieces"`
 }
 
 func (a *api) stateOf(t *torrent.Torrent) torrentState {
@@ -835,6 +837,7 @@ func (a *api) stateOf(t *torrent.Torrent) torrentState {
 		DownloadSpeed: current.download,
 		UploadSpeed:   current.upload,
 		FileProgress:  []int64{},
+		BadPieces:     badPiecesOf(stats),
 	}
 
 	if state.Selected == nil {

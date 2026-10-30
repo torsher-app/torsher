@@ -245,7 +245,7 @@ func run(listen, downloads, dataDir string, opts engineOptions, logger *slog.Log
 	// Сразу, а не после восстановления: `restore` тоже берёт блокировку и
 	// может застрять под ней
 	go engine.watchdog(ctx, func() { client.Torrents() })
-	go engine.speeds.run(ctx, client)
+	go engine.speeds.run(ctx, client, logger)
 	go engine.schedule(ctx)
 	go engine.limits.gate(ctx)
 

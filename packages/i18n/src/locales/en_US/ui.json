@@ -531,6 +531,14 @@
         "title": "The player can't open this format",
         "text": "The player cannot play the video in this file, and the server could not transcode it. Transcoding needs ffmpeg on the server: check the log in the panel or try another source."
       },
+      "unreadable": {
+        "title": "The player couldn't open this file",
+        "text": "The file may have arrived damaged, or it's written in a way this player can't read. Try again or pick another source."
+      },
+      "corrupt": {
+        "title": "The source sent damaged data",
+        "text": "Part of the file arrived with errors, and Torsher is downloading it again. Try again in a minute or pick another source."
+      },
       "unknown": {
         "title": "Couldn't play the file",
         "text": "The stream broke off or the server didn't respond. Try again."

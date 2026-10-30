@@ -7,6 +7,7 @@ import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { eq } from 'drizzle-orm'
+import pino from 'pino'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { createApp } from '../app.ts'
 import { ACCESS_TOKEN_COOKIE } from '../config.ts'
@@ -15,8 +16,14 @@ import { torrents, users } from '../db/schema.ts'
 import { setEngineDown, setEngineReady } from '../services/engine/index.ts'
 import {
   INFO_HASH,
+  liveStats,
   sampleTorrentFile,
 } from '../services/engine/fixtures/index.ts'
+import {
+  createLogger,
+  installLogger,
+  queryLogs,
+} from '../services/logs/index.ts'
 import { stopAllSessions } from '../services/media/index.ts'
 import { clearProbeCache } from '../services/media/probe.ts'
 import { probeDeps } from '../services/media/sessions.ts'
@@ -114,6 +121,12 @@ describe.runIf(hasFfmpeg())('воспроизведение с пробой и �
     if (url.pathname === '/torrents') {
       response.setHeader('Content-Type', 'application/json')
       response.end('[]')
+      return
+    }
+
+    if (url.pathname.endsWith('/stats')) {
+      response.setHeader('Content-Type', 'application/json')
+      response.end(JSON.stringify({ ...liveStats, badPieces: 3 }))
       return
     }
 
@@ -647,6 +660,78 @@ describe.runIf(hasFfmpeg())('воспроизведение с пробой и �
 
     expect(response.statusCode).toBe(200)
     expect(row!.lastAccessAt!.getTime()).toBeGreaterThan(stale.getTime())
+  })
+
+  it('журнал: решение с раздачей и кодеками, ошибка плеера с битыми кусками', async () => {
+    const logsDir = mkdtempSync(join(tmpdir(), 'torsher-playback-log-'))
+    const logger = createLogger({
+      level: 'info',
+      logsDir,
+      stdout: { write: () => true },
+    })
+    // Журнал запросов пишет логгер Fastify: в общем приложении тестов его нет
+    const logged = createApp({ loggerInstance: logger })
+
+    installLogger(logger)
+
+    try {
+      const started = await logged.inject({
+        method: 'POST',
+        url: '/api/playback',
+        cookies: owner,
+        payload: { torrentId: torrent.id, fileIndex: 0, device: webos },
+      })
+      const { sessionId } = started.json()
+
+      // Строка решения пишется по окончании пробы
+      await vi.waitFor(async () => {
+        const current = await logged.inject({
+          url: `/api/playback/${sessionId}`,
+          cookies: owner,
+        })
+
+        expect(current.json().status).toBe('ready')
+      })
+
+      const reported = await logged.inject({
+        method: 'POST',
+        url: `/api/playback/${sessionId}/error`,
+        cookies: owner,
+        payload: {
+          error: 'unsupported',
+          mediaError: 4,
+          detail: 'PIPELINE_ERROR_DECODE:\n demuxer',
+          position: 12.4,
+        },
+      })
+      const messages = queryLogs({ sources: ['playback'] }).entries.map(
+        entry => entry.message,
+      )
+
+      expect(reported.statusCode).toBe(200)
+      expect(messages).toContain(
+        `playback ${sessionId}: direct, torrent=${INFO_HASH} file=0, media=mkv h264 ac3, client=owner other`,
+      )
+      expect(messages).toContain(
+        `playback ${sessionId}: player error unsupported, mediaError=4, detail="PIPELINE_ERROR_DECODE: demuxer", at=12s, badPieces=3`,
+      )
+    }
+    finally {
+      await logged.close()
+      installLogger(pino({ level: 'silent' }))
+      rmSync(logsDir, { recursive: true, force: true })
+    }
+  })
+
+  it('ошибка плеера чужой или закрытой сессии — 404', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/playback/missing/error',
+      cookies: owner,
+      payload: { error: 'unknown' },
+    })
+
+    expect(response.statusCode).toBe(404)
   })
 
   it('закрытая сессия — 404', async () => {

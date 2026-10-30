@@ -191,5 +191,7 @@ export const torrentStats = z
       // Скачано подряд от позиции чтения, байт
       bufferedAhead: z.number(),
     }),
+    // Куски раздачи с неверным хэшем: плеер мог получить повреждённые байты
+    badPieces: z.number(),
   })
   .meta({ id: 'torrentStats' })

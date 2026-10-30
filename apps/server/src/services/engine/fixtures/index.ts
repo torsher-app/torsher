@@ -59,6 +59,7 @@ export const liveState = {
   downloadSpeed: 2_621_440,
   uploadSpeed: 262_144,
   fileProgress: [3_145_728, 0, 0],
+  badPieces: 0,
 }
 
 export const liveStats = {

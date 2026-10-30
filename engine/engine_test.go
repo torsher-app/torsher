@@ -47,6 +47,8 @@ type fixture struct {
 	meta    *metainfo.MetaInfo
 	raw     []byte
 	seeder  *torrent.Client
+	// Файл, который раздаёт сидер
+	path string
 }
 
 // Синтетическая раздача из одного файла и сидер, который её раздаёт
@@ -105,7 +107,7 @@ func newNamedFixture(t *testing.T, name string, size int) fixture {
 		t.Fatal(err)
 	}
 
-	return fixture{content: content, meta: meta, raw: raw.Bytes(), seeder: seeder}
+	return fixture{content: content, meta: meta, raw: raw.Bytes(), seeder: seeder, path: filepath.Join(dir, name)}
 }
 
 func newTestEngine(t *testing.T, dataDir string) (*api, *httptest.Server) {

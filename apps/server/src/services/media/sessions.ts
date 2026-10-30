@@ -70,6 +70,8 @@ export interface SessionInput {
   fileIndex: number
   fileName: string
   device?: DeviceProfile
+  /** Кто смотрит — в журнал: устройство или панель */
+  client?: string
   preference: AudioPreference
   audioStream?: number
   subtitle?: string
@@ -406,6 +408,28 @@ function ensureSweeper() {
   sweeper.unref()
 }
 
+// Раздача — infohash, как в журнале движка: по нему сводятся провалы хэша и
+// сессии. Имён файлов в журнале нет
+function describeSource(session: PlaybackSession) {
+  return session.torrent
+    ? `torrent=${session.torrent.infoHash} file=${session.fileIndex}`
+    : `library=${session.library!.id}`
+}
+
+/** Контейнер, видео и выбранная озвучка: `mkv h264 aac` */
+function describeMedia(session: PlaybackSession) {
+  const media = session.media!
+  const audio = media.audio.find(
+    track => track.index === session.audioStream,
+  )
+
+  return [
+    media.container,
+    media.video?.codec ?? 'novideo',
+    audio?.codec ?? 'noaudio',
+  ].join(' ')
+}
+
 /** Новая сессия: проба и решение идут в фоне, `ready` — их окончание */
 export function createSession(input: SessionInput) {
   const session: PlaybackSession = {
@@ -446,7 +470,9 @@ export function createSession(input: SessionInput) {
             : ''
         }${decision.audio ? `, audio=${decision.audio}` : ''}${
           encode ? `, video=encode(${describePlan(encode)})` : ''
-        }`,
+        }, ${describeSource(session)}${
+          session.media ? `, media=${describeMedia(session)}` : ''
+        }${input.client ? `, client=${input.client}` : ''}`,
       )
     })
 

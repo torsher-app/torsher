@@ -7,6 +7,7 @@ import {
   createPlayback,
   insufficientStorageResponse,
   playback,
+  playbackError,
   playbackParams,
   subtitleCues,
   subtitleParams,
@@ -16,6 +17,8 @@ import {
 } from '../dto/playback.ts'
 import { engineUnavailableResponse } from '../dto/torrents.ts'
 import { requireViewer, streamSubjectOf } from '../middleware/auth.ts'
+import { deviceTypeOf, getDevice } from '../services/devices/index.ts'
+import { torrentStats } from '../services/engine/index.ts'
 import {
   createSession,
   cuesInWindow,
@@ -87,6 +90,20 @@ function streamUrlOf(
   return session.library
     ? `/api/library/files/${session.library.id}/stream?token=${token}`
     : `/api/stream/${session.torrent!.id}/${session.fileIndex}?token=${token}`
+}
+
+/** Кто смотрит — для журнала: подключённое устройство или вход владельца */
+function clientOf(request: FastifyRequest) {
+  const device = request.deviceId ? getDevice(request.deviceId) : undefined
+
+  return device
+    ? `${device.type} "${device.name}"`
+    : `owner ${deviceTypeOf(request.headers['user-agent'])}`
+}
+
+// Текст плеера идёт в журнал одной строкой
+function oneLine(text: string) {
+  return text.replace(/\s+/g, ' ').trim()
 }
 
 interface Resume {
@@ -321,6 +338,7 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
         ...source,
         fileName,
         device,
+        client: clientOf(request),
         audioStream,
         subtitle,
         preference: {
@@ -416,6 +434,50 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
 
       await stopSession(session.id)
       return { message: 'Playback stopped' }
+    },
+  )
+
+  app.post(
+    '/playback/:id/error',
+    {
+      schema: {
+        operationId: 'postPlaybackError',
+        tags: ['Playback'],
+        params: playbackParams,
+        body: playbackError,
+        response: {
+          200: messageResponse,
+          404: messageResponse,
+          ...guardResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const session = getSession(request.params.id, streamSubjectOf(request))
+
+      if (!session)
+        return reply.code(404).send({ message: 'Playback not found' })
+
+      const { error, mediaError, detail, position } = request.body
+      // Битые куски раздачи — частая причина ошибки медиа при прямом потоке
+      const badPieces = session.torrent
+        ? await torrentStats(session.torrent.infoHash).then(
+            stats => stats.badPieces,
+            () => undefined,
+          )
+        : undefined
+
+      request.log
+        .child({ source: 'playback' })
+        .warn(
+          `playback ${session.id}: player error ${error}${
+            mediaError ? `, mediaError=${mediaError}` : ''
+          }${detail ? `, detail="${oneLine(detail)}"` : ''}${
+            position !== undefined ? `, at=${Math.round(position)}s` : ''
+          }${badPieces !== undefined ? `, badPieces=${badPieces}` : ''}`,
+        )
+
+      return { message: 'Error logged' }
     },
   )
 

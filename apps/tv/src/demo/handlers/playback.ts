@@ -4,6 +4,7 @@ import type {
   HomeVideoSection,
   MessageResponse,
   Playback,
+  PlaybackErrorInput,
   PlaybackTitleInput,
   SubtitleCues,
   TorrentStats,
@@ -161,6 +162,12 @@ del<MessageResponse>('/api/playback/:id', ({ params }) => {
   return NO_CONTENT
 })
 
+// Журнала в демо нет: отчёт об ошибке плеера просто принимаем
+post<MessageResponse, PlaybackErrorInput>(
+  '/api/playback/:id/error',
+  () => NO_CONTENT,
+)
+
 get<SubtitleCues>('/api/playback/:id/subtitles/:trackId', () => ({
   cues: [],
   done: true,
@@ -209,6 +216,7 @@ get<TorrentStats>('/api/torrents/:id/stats', ({ params, query }) => {
     downloadSpeed: streamSpeed(params.id!),
     uploadSpeed: Math.round(streamSpeed(`${params.id}:up`) / 8),
     file: { size, downloaded: size, bufferedAhead: size - offset },
+    badPieces: 0,
   }
 })
 

@@ -361,6 +361,53 @@ export function startErrorAction(error: {
 }
 
 /**
+ * Что делать с ошибкой медиа (`<video>` не сеть, разбор сегментов hls.js).
+ * Поток раздачи отдаёт байты до проверки хэша, и плеер мог разобрать мусор:
+ * данные у позиции ещё не проверены или раздача присылала битые куски —
+ * повтор (кусок докачается и пройдёт проверку, битый — скачается заново).
+ * Ошибка на проверенных данных целой раздачи — плеер не открывает сам файл.
+ */
+export function mediaFailureAction(stats: {
+  badPieces: number
+  /** Проверено подряд от позиции чтения, байт */
+  bufferedAhead: number
+  /** Байт от позиции до конца файла */
+  remaining: number
+}): { action: 'retry' | 'fail', cause: 'corrupt' | 'unsupported' } {
+  const cause = stats.badPieces > 0 ? 'corrupt' : 'unsupported'
+  const verified
+    = stats.bufferedAhead >= Math.min(BUFFER_TARGET_BYTES, stats.remaining)
+
+  return { action: stats.badPieces > 0 || !verified ? 'retry' : 'fail', cause }
+}
+
+/**
+ * Ключ текста ошибки экрана. Про ffmpeg — только когда сервер не смог
+ * перекодировать (`ToolsMissing`): прямой поток плеер должен был открыть сам,
+ * и его ошибка — нечитаемый файл
+ */
+export function errorKeyOf(input: {
+  error: string | undefined
+  engineKind?: string
+  storageKind?: string
+  /** Причины решения сервера из `POST /playback` */
+  reasons?: string[]
+}) {
+  const { error } = input
+
+  if (error === 'engine')
+    return `player.errors.engine.${input.engineKind ?? 'starting'}`
+
+  if (error === 'storage')
+    return `player.errors.storage.${input.storageKind ?? 'no_space'}`
+
+  if (error === 'unsupported' && !input.reasons?.includes('ToolsMissing'))
+    return 'player.errors.unreadable'
+
+  return `player.errors.${error ?? 'unknown'}`
+}
+
+/**
  * Конец файла раньше времени: так старые ТВ отвечают на обрыв прямого потока.
  * Длительность — текущая у видео, если он её знает: она могла уточниться
  * после `loadedmetadata`.

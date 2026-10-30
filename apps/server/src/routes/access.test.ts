@@ -65,6 +65,7 @@ const VIEWER = new Set([
   'POST /api/playback',
   'GET /api/playback/:id',
   'DELETE /api/playback/:id',
+  'POST /api/playback/:id/error',
   'GET /api/playback/:id/subtitles/:trackId',
   'GET /api/hls/:id/main.m3u8',
   'GET /api/hls/:id/:segment',
