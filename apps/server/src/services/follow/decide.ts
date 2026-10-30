@@ -12,7 +12,8 @@ import type {
 } from './upgrade.ts'
 import type { EpisodeRef } from './wanted.ts'
 import {
-  hasOriginalAudio,
+  fitsOriginal,
+  hasOwnLanguage,
   RESOLUTION_RANK,
   SCREEN_COPIES,
   SIZE_CORRIDOR,
@@ -230,34 +231,6 @@ type AudioContext = Pick<
 >
 
 /**
- * Раздача годится как оригинал: есть оригинальная дорожка или не распознано
- * ни одной — англоязычные трекеры язык обычно не пишут
- */
-function fitsOriginal(release: ReleaseVersion, originalLanguage?: string) {
-  return (
-    release.parsed.audio.length === 0
-    || hasOriginalAudio(release.parsed, originalLanguage)
-  )
-}
-
-/**
- * Своя дорожка не русского языка: тег языка или, когда оригинал на нём,
- * раздача годится как оригинал. Одного совпадения языков мало: раздача
- * только с русским дубляжом у такого тайтла не своя.
- */
-function hasOwnLanguage(
-  release: ReleaseVersion,
-  ctx: Pick<DecideContext, 'originalLanguage'>,
-  language: string,
-) {
-  return (
-    release.parsed.audio.some(track => track.language === language)
-    || (ctx.originalLanguage === language
-      && fitsOriginal(release, ctx.originalLanguage))
-  )
-}
-
-/**
  * Озвучка в cutoff: своя студия сезона; без неё — лучший тип профиля; у
  * тайтла с русским оригиналом — любая. Оригиналу озвучка не нужна, другому
  * языку нужна дорожка на нём.
@@ -273,7 +246,7 @@ function isVoiceAtCutoff(
     return true
 
   if (audio !== 'ru')
-    return hasOwnLanguage(release, ctx, audio)
+    return hasOwnLanguage(release.parsed, audio, ctx.originalLanguage)
 
   if (ctx.russianOriginal)
     return true
@@ -410,11 +383,14 @@ export function checkCandidate(
       rejections.push(reject('no_russian'))
   }
   else if (audio === 'original') {
-    if (!fitsOriginal(release, ctx.originalLanguage))
+    if (!fitsOriginal(release.parsed, ctx.originalLanguage))
       rejections.push(reject('no_original'))
   }
   // После окна вместо своего языка берём оригинал, а не чужую озвучку
-  else if (!voiceAtCutoff && !fitsOriginal(release, ctx.originalLanguage)) {
+  else if (
+    !voiceAtCutoff
+    && !fitsOriginal(release.parsed, ctx.originalLanguage)
+  ) {
     rejections.push(reject('no_language', { language: audio }))
   }
 

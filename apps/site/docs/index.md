@@ -14,7 +14,7 @@ What Torsher does today, what it replaces, what you need to bring, and how the p
 ## What it does
 
 - **A catalog made for the TV.** Movies and series with posters, descriptions, cast and ratings from TMDB, in a showcase you drive with a remote, a mouse or a keyboard.
-- **Watch right away.** Pick a title, Torsher finds releases in your indexers, ranks them by quality and voice-over, and starts playback while the file downloads. No waiting for the whole file.
+- **Watch right away.** Pick a title, Torsher finds releases in your indexers, ranks them by quality and your audio language, and starts playback while the file downloads. No waiting for the whole file.
 - **Voice-overs are first-class.** Releases show their dubbing and voice-over studios, and the player switches audio and subtitle tracks.
 - **Keep what you like.** What you watch stays in a cache that cleans itself up. Choose <Ui k="download.keep" /> or <Ui k="download.movie" /> and the file goes to your library, laid out so Jellyfin, Plex and Kodi can read it too.
 - **Your existing files.** Connect the folders you already have: Torsher indexes them in place and never writes there. Home videos get their own section.

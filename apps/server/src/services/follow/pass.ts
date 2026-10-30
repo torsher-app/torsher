@@ -541,6 +541,7 @@ export async function decideFollow(
     const voice = seasonVoice(follow, season)
     const rankCtx = {
       kind: follow.kind,
+      audio: followAudio(follow),
       originalLanguage: identity?.originalLanguage,
       episodeCounts: identity?.episodeCounts,
       profile: DEFAULT_PROFILE,

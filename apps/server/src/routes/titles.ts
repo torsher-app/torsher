@@ -123,7 +123,11 @@ async function airedSeasons(titleId: string, language: string) {
   }))
 }
 
-function toCandidate(release: RankedRelease, lastWatched: boolean) {
+function toCandidate(
+  release: RankedRelease,
+  lastWatched: boolean,
+  russian: boolean,
+) {
   const { parsed } = release
 
   return {
@@ -142,8 +146,11 @@ function toCandidate(release: RankedRelease, lastWatched: boolean) {
     audio: parsed.audio,
     channels: parsed.channels ?? null,
     subs: parsed.subs,
-    voice: release.voice ?? null,
-    voiceKeys: voiceKeysOf(release),
+    // Основная озвучка и её ключи — русские: у другого языка озвучки строку
+    // подписывают дорожки из `audio`
+    voice: russian ? (release.voice ?? null) : null,
+    voiceKeys: russian ? voiceKeysOf(release) : [],
+    audioFit: release.audioFit ?? null,
     seasons: parsed.seasons,
     episodes: parsed.episodes
       ? {
@@ -169,6 +176,7 @@ export function toSourcesResponse(sources: TitleSources) {
     season: sources.season ?? null,
     episode: sources.episode ?? null,
     updatedAt: sources.updatedAt.toISOString(),
+    audio: sources.audio,
     profile: {
       qualities: DEFAULT_PROFILE.qualities,
       voiceTypes: DEFAULT_PROFILE.voiceTypes,
@@ -177,7 +185,11 @@ export function toSourcesResponse(sources: TitleSources) {
     seasonCandidate: sources.seasonCandidate ?? null,
     top: sources.ranking.top,
     candidates: sources.ranking.ranked.map(release =>
-      toCandidate(release, release.id === sources.lastWatchedId),
+      toCandidate(
+        release,
+        release.id === sources.lastWatchedId,
+        sources.audio === 'ru',
+      ),
     ),
     voices: sources.voices,
     query: {

@@ -24,6 +24,7 @@ function candidate(
     subs: [],
     voice: null,
     voiceKeys: [],
+    audioFit: null,
     seasons: [2],
     episodes: null,
     isPack: true,
@@ -61,6 +62,26 @@ describe('episodeCandidates', () => {
         item => item.id,
       ),
     ).toEqual(['same', 'best', 'third'])
+  })
+})
+
+describe('episodeCandidates: язык озвучки не русский', () => {
+  it('раздачи только с чужими озвучками — после подходящих, но не выпадают', () => {
+    const list = [
+      candidate('dub', { audioFit: 'foreign' }),
+      candidate('plain', { audioFit: 'original' }),
+      candidate('dub2', { audioFit: 'foreign' }),
+      candidate('own', { audioFit: 'own' }),
+    ]
+
+    expect(
+      episodeCandidates(list, { season: 2, episode: 3 }).map(item => item.id),
+    ).toEqual(['plain', 'own', 'dub'])
+    expect(
+      episodeCandidates([list[0]!], { season: 2, episode: 3 }).map(
+        item => item.id,
+      ),
+    ).toEqual(['dub'])
   })
 })
 

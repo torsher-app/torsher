@@ -36,6 +36,7 @@ import { useTitleProgress } from '../composables/useTitleProgress.ts'
 import { NATIVE_WHEEL_ATTRIBUTE, useFocus } from '../focus/index.ts'
 import { coversEpisode } from '../lib/episodes.ts'
 import {
+  activeVoiceFilter,
   allIndexersFailed,
   arrangeCandidates,
   isQuality,
@@ -208,11 +209,15 @@ const candidates = computed(() => {
     ? all
     : all.filter(item => coversEpisode(item, season, episode))
 })
+const voiceFilter = computed(() =>
+  activeVoiceFilter(sources.value?.audio, view.value.voice),
+)
 const rows = computed(() =>
   arrangeCandidates(candidates.value, {
     ...view.value,
     sort: sort.value,
     season: seasonFilter.value,
+    voice: voiceFilter.value,
   }),
 )
 const seasons = computed(() =>
@@ -474,7 +479,7 @@ const libraryRowFiles = computed(() => {
 const hasFilter = computed(
   () =>
     seasonFilter.value !== undefined
-    || !!view.value.voice
+    || !!voiceFilter.value
     || !!view.value.quality,
 )
 
@@ -524,6 +529,15 @@ const profileLine = computed(() => {
   const { qualities, voiceTypes, moreVoices } = profileParts(
     sources.value.profile,
   )
+
+  // Типы перевода — русские: у другого языка озвучки профиль — сам язык
+  if (sources.value.audio !== 'ru') {
+    return t('sources.profileAudio', {
+      qualities: qualities.join(' → '),
+      audio: t(`audioLanguages.${sources.value.audio}`),
+    })
+  }
+
   const voices = voiceTypes.map(type => t(`sources.voiceTypes.${type}`))
 
   return t('sources.profile', {
@@ -908,6 +922,7 @@ const meta = computed(() => {
             :runtime="runtime"
             :current="isCurrent(candidate)"
             :loading="opening === candidate.id"
+            :audio="sources?.audio"
             @select="select(candidate)"
           />
 

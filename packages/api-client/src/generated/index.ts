@@ -833,6 +833,7 @@ export interface SourceCandidateInput {
   subs: string[];
   voice: AudioTrackInput | null;
   voiceKeys: string[];
+  audioFit: "own" | "original" | "foreign" | null;
   seasons: number[];
   episodes: {
     from: number;
@@ -867,6 +868,18 @@ export interface TitleSourcesInput {
   season: number | null;
   episode: number | null;
   updatedAt: string;
+  audio:
+    | "original"
+    | "ru"
+    | "en"
+    | "uk"
+    | "ja"
+    | "de"
+    | "fr"
+    | "es"
+    | "it"
+    | "ko"
+    | "zh";
   profile: {
     qualities: ("2160p" | "1080p" | "720p" | "SD")[];
     voiceTypes: ("D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original")[];
@@ -5610,6 +5623,7 @@ export interface SourceCandidate {
   subs: string[];
   voice: AudioTrack | null;
   voiceKeys: string[];
+  audioFit: "own" | "original" | "foreign" | null;
   seasons: number[];
   episodes: {
     from: number;
@@ -5644,6 +5658,18 @@ export interface TitleSources {
   season: number | null;
   episode: number | null;
   updatedAt: string;
+  audio:
+    | "original"
+    | "ru"
+    | "en"
+    | "uk"
+    | "ja"
+    | "de"
+    | "fr"
+    | "es"
+    | "it"
+    | "ko"
+    | "zh";
   profile: {
     qualities: ("2160p" | "1080p" | "720p" | "SD")[];
     voiceTypes: ("D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original")[];

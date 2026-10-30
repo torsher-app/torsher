@@ -53,7 +53,7 @@ export const sidebar: DefaultTheme.SidebarItem[] = [
     collapsed: true,
     items: [
       { text: 'Showcase and remote', link: '/docs/watch/showcase' },
-      { text: 'Sources and voice-overs', link: '/docs/watch/sources' },
+      { text: 'Sources and audio', link: '/docs/watch/sources' },
       { text: 'Player', link: '/docs/watch/player' },
       { text: 'Download and keep', link: '/docs/watch/download-keep' },
       { text: 'Library and home videos', link: '/docs/watch/library' },

@@ -282,6 +282,112 @@ describe('rankReleases', () => {
   })
 })
 
+describe('rankReleases: язык озвучки', () => {
+  const original: RankContext = {
+    ...movie,
+    audio: 'original',
+    originalLanguage: 'en',
+  }
+  const german: RankContext = { ...movie, audio: 'de', originalLanguage: 'en' }
+
+  it('оригинал: озвучка не даёт очков, раздача только с озвучками — ниже и вне тройки', () => {
+    const { ranked, top } = rankReleases(
+      [
+        release('dub', 'Фонарь (2021) WEB-DL 1080p | D', 300, 8 * GB),
+        release('eng', 'Lantern.2021.1080p.WEB-DL-GRP', 20, 8 * GB),
+        release('both', 'Фонарь (2021) WEB-DL 1080p | D | ENG', 20, 8 * GB),
+      ],
+      original,
+    )
+
+    expect(ranked.at(-1)!.id).toBe('dub')
+    expect(top).toEqual(['both', 'eng'])
+    expect(ranked.find(item => item.id === 'both')!.reason).toBe('profile')
+  })
+
+  it('оригинал: без подходящих раздач тройка — из остальных', () => {
+    const { top } = rankReleases(
+      [release('dub', 'Фонарь (2021) WEB-DL 1080p | D', 300, 8 * GB)],
+      original,
+    )
+
+    expect(top).toEqual(['dub'])
+  })
+
+  it('оригинал: раздача с явной оригинальной дорожкой — главная альтернатива', () => {
+    const { ranked, top } = rankReleases(
+      [
+        release('plain', 'Lantern.2021.1080p.WEB-DL-GRP', 900, 8 * GB),
+        release('small', 'Lantern.2021.1080p.WEB-DL-LITE', 50, 2 * GB),
+        release(
+          'orig',
+          'Фонарь (2021) WEB-DL 1080p | D + Original',
+          20,
+          8 * GB,
+        ),
+      ],
+      original,
+    )
+
+    expect(top.slice(0, 2)).toEqual(['plain', 'orig'])
+    expect(ranked.find(item => item.id === 'orig')!.reason).toBe(
+      'originalAudio',
+    )
+  })
+
+  it('другой язык: своя дорожка выше оригинала, чужие озвучки — ниже всех', () => {
+    const { ranked, top } = rankReleases(
+      [
+        release('dub', 'Фонарь (2021) WEB-DL 1080p | D', 300, 8 * GB),
+        release('eng', 'Lantern.2021.1080p.WEB-DL-GRP', 300, 8 * GB),
+        release('ger', 'Lantern.2021.1080p.WEB-DL.GER.DL-GRP', 20, 8 * GB),
+      ],
+      german,
+    )
+
+    expect(ranked.map(item => item.id)).toEqual(['ger', 'eng', 'dub'])
+    expect(top).not.toContain('dub')
+  })
+
+  it('другой язык: у тайтла с оригиналом на нём своя — годная как оригинал', () => {
+    const { ranked } = rankReleases(
+      [
+        release('plain', 'Laterne.2021.720p.WEB-DL-GRP', 20, 3 * GB),
+        release('better', 'Laterne.2021.1080p.WEB-DL-GRP', 20, 8 * GB),
+      ],
+      { ...german, originalLanguage: 'de' },
+    )
+
+    expect(ranked.map(item => item.id)).toEqual(['better', 'plain'])
+  })
+
+  it('язык оригинала совпадает: раздача только с русским дубляжом — чужая', () => {
+    const { ranked, top } = rankReleases(
+      [
+        release('dub', 'Фонарь (2021) WEB-DL 1080p | D', 300, 8 * GB),
+        release('plain', 'Lantern.2021.1080p.WEB-DL-GRP', 5, 8 * GB),
+      ],
+      { ...movie, audio: 'en', originalLanguage: 'en' },
+    )
+
+    expect(ranked.map(item => item.id)).toEqual(['plain', 'dub'])
+    expect(top).toEqual(['plain'])
+  })
+
+  it('студии и закреплённая озвучка не участвуют', () => {
+    const { ranked } = rankReleases(
+      [
+        release('lost', 'Фонарь (2021) WEB-DL 1080p | LostFilm', 20, 8 * GB),
+        release('eng', 'Lantern.2021.1080p.WEB-DL-GRP', 20, 8 * GB),
+      ],
+      { ...original, pinned: { studio: 'LostFilm' } },
+    )
+
+    expect(ranked[0]!.id).toBe('eng')
+    expect(ranked[0]!.reason).toBe('profile')
+  })
+})
+
 describe('rankReleases: сезон, который смотрят', () => {
   it('тройка — из раздач с этим сезоном, без них — из всех', () => {
     const releases = [

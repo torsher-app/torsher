@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { SourceCandidate } from '@torsher/api-client'
+import type { FollowAudio } from '../lib/follow.ts'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSourceLabels } from '../composables/useSourceLabels.ts'
@@ -29,12 +30,22 @@ const props = defineProps<{
   loading?: boolean
   // Её сейчас играет плеер, из которого открыт экран
   current?: boolean
+  // Язык озвучки дома, по которому сервер ранжировал раздачи; без него — `ru`
+  audio?: FollowAudio
 }>()
 
 const emit = defineEmits<{ select: [] }>()
 
 const { t, locale } = useI18n()
-const { voiceLabel, otherTracksLine, sizeLabel } = useSourceLabels()
+const { voiceLabel, tracksLabel, otherTracksLine, sizeLabel }
+  = useSourceLabels()
+
+// Студии и «Озвучка не распознана» — русская модель. Другому языку озвучки
+// важны языки дорожек, а раздача без них в названии — обычная
+const russian = computed(() => (props.audio ?? 'ru') === 'ru')
+const tracks = computed(() =>
+  russian.value ? '' : tracksLabel(props.candidate.audio),
+)
 
 // Раздача последнего просмотра — главное, что нужно знать о строке; иначе —
 // лучшая по профилю (сам профиль — в шапке экрана). Остальные причины тройки в
@@ -145,18 +156,24 @@ const seedersTone = computed(() => {
       >
         {{ badge.text }}
       </span>
-      <span
-        class="source__voice"
-        :class="{ 'source__voice--none': !candidate.voice }"
-      >
-        <AppIcon name="audio" class="source__voice-icon" />
-        {{ voiceLabel(candidate.voice) }}
-        <span v-if="voiceType" class="source__voice-type">
-          · {{ voiceType }}
+      <template v-if="russian">
+        <span
+          class="source__voice"
+          :class="{ 'source__voice--none': !candidate.voice }"
+        >
+          <AppIcon name="audio" class="source__voice-icon" />
+          {{ voiceLabel(candidate.voice) }}
+          <span v-if="voiceType" class="source__voice-type">
+            · {{ voiceType }}
+          </span>
         </span>
-      </span>
-      <span v-if="otherTracksLine(candidate)" class="source__dim">
-        {{ otherTracksLine(candidate) }}
+        <span v-if="otherTracksLine(candidate)" class="source__dim">
+          {{ otherTracksLine(candidate) }}
+        </span>
+      </template>
+      <span v-else-if="tracks" class="source__voice">
+        <AppIcon name="audio" class="source__voice-icon" />
+        {{ tracks }}
       </span>
       <span v-if="candidate.confidence === 'medium'" class="source__unsure">
         {{ t("sources.unsure") }}

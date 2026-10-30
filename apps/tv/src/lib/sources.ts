@@ -1,4 +1,8 @@
-import type { SourceCandidate, TitleSources } from '@torsher/api-client'
+import type {
+  AudioTrack,
+  SourceCandidate,
+  TitleSources,
+} from '@torsher/api-client'
 
 export type Resolution = NonNullable<SourceCandidate['resolution']>
 export type VideoClass = Resolution['value']
@@ -90,6 +94,28 @@ export function profileParts(profile: TitleSources['profile']) {
   }
 }
 
+/**
+ * Языки дорожек раздачи для зрителя, чей язык озвучки не русский: код языка
+ * или `original`. Студия или тип перевода без языка бывают только у русской
+ * озвучки — это `ru`: так видно, почему раздача внизу. Повторы схлопываются,
+ * порядок — как в названии.
+ */
+export function trackLanguages(tracks: AudioTrack[]): string[] {
+  const languages: string[] = []
+
+  for (const track of tracks) {
+    const language
+      = track.type === 'Original'
+        ? 'original'
+        : (track.language ?? (track.studio || track.type ? 'ru' : undefined))
+
+    if (language && !languages.includes(language))
+      languages.push(language)
+  }
+
+  return languages
+}
+
 export type SourceKind = 'remux' | 'bluray' | 'web' | 'tv' | 'dvd' | 'cam'
 
 const SOURCE_KINDS: Record<string, SourceKind> = {
@@ -140,6 +166,18 @@ export function seasonOptions(candidates: SourceCandidate[]) {
   }
 
   return Array.from(found).sort((a, b) => a - b)
+}
+
+/**
+ * Действующий фильтр озвучки: студии и типы — русские, поэтому у другого
+ * языка озвучки дома сохранённый выбор не действует и не прячет раздачи, а
+ * при возврате к `ru` снова работает
+ */
+export function activeVoiceFilter(
+  audio: TitleSources['audio'] | undefined,
+  voice: string | undefined,
+) {
+  return audio === 'ru' ? voice : undefined
 }
 
 function matchesView(candidate: SourceCandidate, view: SourceView) {

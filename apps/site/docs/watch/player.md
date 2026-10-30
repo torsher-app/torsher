@@ -69,7 +69,7 @@ An episode from this release starts at once. For another one, Torsher looks for 
 
 ## Switch the release
 
-<Ui k="player.source.button" /> opens the same <Ui k="sources.title" /> screen as on the title page, over the paused video, with only the releases that have this episode. The release that's playing is marked <Ui k="player.source.current" />. See [Sources and voice-overs](/docs/watch/sources).
+<Ui k="player.source.button" /> opens the same <Ui k="sources.title" /> screen as on the title page, over the paused video, with only the releases that have this episode. The release that's playing is marked <Ui k="player.source.current" />. See [Sources and audio](/docs/watch/sources).
 
 Pick another release and the player continues from the same position, with the voice-over you were hearing if the new release has it. Back returns to the video without changes.
 
