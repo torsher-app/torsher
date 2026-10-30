@@ -29,14 +29,15 @@ const { active: screensaverActive, resting: screensaverResting }
 
 <template>
   <!--
-    Главная, поиск, «Моё», каталог и «Источники» переживают переход дальше: по Back
-    возвращаемся к тем же рядам, результатам и раздаче. Ключ по пути: «Главная»,
+    Главная, поиск, «Моё» и каталог переживают переход дальше: по Back
+    возвращаемся к тем же рядам и результатам. Ключ по пути: «Главная»,
     «Фильмы» и «Сериалы» — отдельные экраны, как и «Каталог», «Мультфильмы» и
-    «Аниме», «Источники» — свои у каждого тайтла.
+    «Аниме».
     Смена профиля сбрасывает их: ряды, прогресс и язык — уже другого зрителя.
 
-    Карточки тайтлов и персоны — отдельный стек по записям истории: по цепочке
-    «актёр → фильм → режиссёр» Back возвращает каждый экран с его фокусом.
+    Карточки тайтлов, персоны и «Источники» — отдельный стек по записям истории:
+    по цепочке «актёр → фильм → режиссёр» и из «Файлов» Back возвращает каждый
+    экран с его фокусом, а новый вход открывает экран с начала.
     Свой кэш с пределом: длинная цепочка не вытесняет главную и поиск.
   -->
   <RouterView v-slot="{ Component, route }">
@@ -46,7 +47,6 @@ const { active: screensaverActive, resting: screensaverResting }
         'HomePage',
         'HomeVideoPage',
         'SearchPage',
-        'SourcesPage',
         'MinePage',
         'CatalogPage',
       ]"
@@ -55,7 +55,7 @@ const { active: screensaverActive, resting: screensaverResting }
     </KeepAlive>
     <KeepAlive
       :key="`stack-${cacheKey}`"
-      :include="['TitlePage', 'PersonPage']"
+      :include="['TitlePage', 'PersonPage', 'SourcesPage']"
       :max="STACK_DEPTH"
     >
       <component :is="Component" v-if="isStacked(route)" :key="screenKey" />
