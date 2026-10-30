@@ -10,7 +10,12 @@ import {
   SheetDescription,
   SheetTitle,
 } from '@/components/ui/sheet'
-import { formatLogDateTime, logLevelView, logSourceLabels } from '~/lib/logs'
+import {
+  formatLogDateTime,
+  LOG_ID_KEYS,
+  logLevelView,
+  logSourceLabels,
+} from '~/lib/logs'
 import { keepOpenOnListClick } from '~/lib/sheet'
 
 const props = defineProps<{
@@ -20,6 +25,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: []
   copy: [entry: LogEntry]
+  filter: [value: string]
 }>()
 
 const { t, locale } = useI18n()
@@ -133,7 +139,21 @@ function onInteractOutside(event: Event) {
                   {{ key }}
                 </dt>
                 <dd class="font-mono text-xs break-all">
-                  {{ value }}
+                  <button
+                    v-if="LOG_ID_KEYS.has(key)"
+                    type="button"
+                    class="rounded-sm text-left underline decoration-muted-foreground/50 underline-offset-2 outline-none hover:decoration-current focus-visible:ring-2 focus-visible:ring-ring"
+                    :title="t('panel.logs.card.filterById')"
+                    @click="emit('filter', String(value))"
+                  >
+                    {{ value }}
+                    <span class="sr-only">{{
+                      t("panel.logs.card.filterById")
+                    }}</span>
+                  </button>
+                  <template v-else>
+                    {{ value }}
+                  </template>
                 </dd>
               </template>
             </dl>

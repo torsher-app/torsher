@@ -324,9 +324,12 @@ get<LogsResponse>('/api/logs', ({ query }) => {
     entry =>
       LEVELS.indexOf(entry.level) >= Math.max(minimum, 0)
       && (!sources || sources.includes(entry.source))
-      && (!needle || entry.message.toLowerCase().includes(needle))
-      && (before === undefined || entry.seq < before)
-      && (after === undefined || entry.seq > after),
+      && (!needle
+        || [entry.message, ...Object.values(entry.context ?? {})].some(value =>
+          String(value).toLowerCase().includes(needle),
+        ))
+        && (before === undefined || entry.seq < before)
+        && (after === undefined || entry.seq > after),
   )
 
   // С `after` — ближайшие к курсору, иначе — самые новые; новые сверху

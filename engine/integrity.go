@@ -75,7 +75,7 @@ func (a *api) verifyHoles(t *torrent.Torrent) int {
 	a.verifyPieces(t, pieces)
 
 	a.logger.Warn("pieces marked complete over file holes were rechecked",
-		"hash", t.InfoHash().HexString(), "pieces", len(pieces))
+		"infoHash", t.InfoHash().HexString(), "pieces", len(pieces))
 
 	return len(pieces)
 }
@@ -94,7 +94,7 @@ func (a *api) verifyPieces(t *torrent.Torrent, pieces []*torrent.Piece) {
 			defer wg.Done()
 			for piece := range queue {
 				if err := piece.VerifyData(); err != nil {
-					a.logger.Warn("verify piece", "hash", t.InfoHash().HexString(), "err", err)
+					a.logger.Warn("verify piece", "infoHash", t.InfoHash().HexString(), "err", err)
 					continue
 				}
 				waitPieceSettled(piece)

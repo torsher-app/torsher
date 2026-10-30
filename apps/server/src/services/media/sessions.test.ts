@@ -7,6 +7,7 @@ import { getDb, migrateDb } from '../../db/index.ts'
 import { torrents } from '../../db/schema.ts'
 import { setEngineDown, setEngineReady } from '../engine/index.ts'
 import { isStreaming } from '../storage/index.ts'
+import type { SessionLog } from './sessions.ts'
 import { createSession, stopAllSessions, stopSession } from './sessions.ts'
 
 const probe = vi.hoisted(() => ({
@@ -64,7 +65,12 @@ const chrome: DeviceProfile = {
   hls: true,
 }
 
-const log = { info: () => {}, debug: () => {}, warn: () => {} }
+const log: SessionLog = {
+  info: () => {},
+  debug: () => {},
+  warn: () => {},
+  child: () => log,
+}
 
 function torrentOf(id: string) {
   return {

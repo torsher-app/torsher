@@ -156,10 +156,15 @@ export interface HlsInput {
   ahead?: { seconds: number, checkMs: number }
   /** Ожидание сегмента; меньше — только в тестах */
   segmentWaitMs?: number
+  /** Сессия воспроизведения — префикс записей журнала */
+  session?: string
 }
 
 export interface HlsLog {
-  debug: (message: string) => void
+  debug: {
+    (message: string): void
+    (fields: { details?: string }, message: string): void
+  }
   warn: {
     (message: string): void
     (fields: { details?: string }, message: string): void
@@ -244,6 +249,7 @@ export class HlsTranscode {
   readonly dir: string
   private readonly input: HlsInput
   private readonly log: HlsLog
+  private readonly tag: string
   private run: Run | null = null
   private runs = 0
   private stopped = false
@@ -263,6 +269,7 @@ export class HlsTranscode {
     this.input = input
     this.log = log
     this.plan = input.encode ?? null
+    this.tag = input.session ? `hls ${input.session}` : 'hls'
   }
 
   /** Как сейчас перекодируется видео; null — копией */
@@ -308,7 +315,8 @@ export class HlsTranscode {
 
     // Свой запуск: заменивший его — чужая перемотка, его не трогаем
     let own = this.run
-    let deadline = Date.now() + (this.input.segmentWaitMs ?? SEGMENT_WAIT_MS)
+    const waitMs = this.input.segmentWaitMs ?? SEGMENT_WAIT_MS
+    let deadline = Date.now() + waitMs
 
     while (!this.stopped && !signal?.aborted) {
       await this.refreshReady()
@@ -339,7 +347,7 @@ export class HlsTranscode {
         if (run.failure && this.fallBack(run)) {
           await this.serialize(() => this.ensureRunFor(index))
           own = this.run
-          deadline = Date.now() + (this.input.segmentWaitMs ?? SEGMENT_WAIT_MS)
+          deadline = Date.now() + waitMs
           continue
         }
 
@@ -352,9 +360,14 @@ export class HlsTranscode {
         if (own && own === run && !own.superseded && own.head < index) {
           own.stalled = true
           this.log.warn(
-            `hls: ffmpeg run ${own.id} stalled before segment ${index}, killed`,
+            `${this.tag}: ffmpeg run ${own.id} stalled before segment ${index}, killed`,
           )
           this.kill()
+        }
+        else {
+          this.log.warn(
+            `${this.tag}: segment ${index} not ready after ${Math.round(waitMs / 1000)}s, head=${run?.head ?? -1}`,
+          )
         }
 
         throw new SegmentTimeoutError()
@@ -385,7 +398,7 @@ export class HlsTranscode {
     this.plan = next
     this.log.warn(
       run.details ? { details: run.details } : {},
-      `hls: transcoding with ${describePlan(current)} failed, retrying with ${describePlan(next)}`,
+      `${this.tag}: transcoding with ${describePlan(current)} failed, retrying with ${describePlan(next)}`,
     )
     return true
   }
@@ -514,7 +527,7 @@ export class HlsTranscode {
     if (run.slowReports >= SLOW_REPORTS && !run.warnedSlow && this.plan) {
       run.warnedSlow = true
       this.log.warn(
-        `hls: transcoding is slower than playback (${speed.toFixed(2)}x, ${describePlan(this.plan)})`,
+        `${this.tag}: transcoding is slower than playback (${speed.toFixed(2)}x, ${describePlan(this.plan)})`,
       )
     }
   }
@@ -593,7 +606,7 @@ export class HlsTranscode {
       }
       catch (err) {
         this.log.warn(
-          `hls: cannot lower ffmpeg priority: ${(err as Error).message}`,
+          `${this.tag}: cannot lower ffmpeg priority: ${(err as Error).message}`,
         )
       }
     }
@@ -624,9 +637,12 @@ export class HlsTranscode {
     child.stderr?.on('data', (chunk: Buffer) => {
       stderr = (stderr + chunk.toString()).slice(-2000)
     })
-    child.on('error', (err) => {
+    child.on('error', (err: NodeJS.ErrnoException) => {
       run.exited = true
       run.failure = err.message
+      this.log.warn(
+        `${this.tag}: ffmpeg did not start: ${err.code ?? err.message}`,
+      )
     })
     child.on('exit', (code, signal) => {
       run.exited = true
@@ -644,21 +660,23 @@ export class HlsTranscode {
         run.details = details || undefined
         this.log.warn(
           details ? { details } : {},
-          `ffmpeg run ${id} failed (exit code ${code})`,
+          `${this.tag}: ffmpeg run ${id} failed (exit code ${code})`,
         )
       }
     })
 
     this.run = run
+    // Команда — в подробности: по ней запуск повторяют руками
     this.log.debug(
-      `hls: ffmpeg run ${id} from segment ${from}${plan ? ` (${describePlan(plan)})` : ''}`,
+      { details: `${config.ffmpegPath} ${args.join(' ')}` },
+      `${this.tag}: ffmpeg run ${id} from segment ${from}${plan ? ` (${describePlan(plan)})` : ''}`,
     )
 
     if (!this.throttleTimer) {
       this.throttleTimer = setInterval(
         () =>
           void this.throttle().catch((err: Error) =>
-            this.log.warn(`hls: throttle check failed: ${err.message}`),
+            this.log.warn(`${this.tag}: throttle check failed: ${err.message}`),
           ),
         this.input.ahead?.checkMs ?? THROTTLE_CHECK_MS,
       )
@@ -821,7 +839,7 @@ export class HlsTranscode {
       catch (err) {
         // Файл с данными вернёт в готовые следующее чтение списка
         this.log.warn(
-          `hls: cannot remove segment ${index}: ${(err as Error).message}`,
+          `${this.tag}: cannot remove segment ${index}: ${(err as Error).message}`,
         )
       }
     }

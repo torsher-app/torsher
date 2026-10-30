@@ -46,6 +46,17 @@ export const logSourceLabels: Record<LogSource, string> = {
 
 export const LOG_SOURCES = Object.keys(logSourceLabels) as LogSource[]
 
+/** Поля записи с id: по значению панель собирает все записи одного случая */
+export const LOG_ID_KEYS = new Set([
+  'infoHash',
+  'torrentId',
+  'session',
+  'libraryId',
+  'titleId',
+  'indexerId',
+  'deviceId',
+])
+
 export function isLogSource(value: unknown): value is LogSource {
   return LOG_SOURCES.includes(value as LogSource)
 }

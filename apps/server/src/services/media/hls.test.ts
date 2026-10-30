@@ -366,6 +366,7 @@ describe.runIf(hasFfmpeg())('hlsTranscode на ffmpeg', () => {
     await pending
 
     expect(debug).not.toHaveBeenCalledWith(
+      expect.anything(),
       expect.stringContaining('ffmpeg run'),
     )
     expect(existsSync(transcode.dir)).toBe(false)
@@ -453,7 +454,7 @@ describe.runIf(hasFfmpeg())('hlsTranscode на ffmpeg', () => {
         duration: 40,
       },
       {
-        debug: message => runs.push(message),
+        debug: (...args: unknown[]) => runs.push(String(args.at(-1))),
         warn: () => {},
       },
     )
@@ -544,7 +545,7 @@ describe.runIf(hasFfmpeg())('hlsTranscode на ffmpeg', () => {
         duration: 40,
         segmentWaitMs: 3000,
       },
-      { debug: message => runs.push(message), warn },
+      { debug: (...args: unknown[]) => runs.push(String(args.at(-1))), warn },
     )
 
     transcodes.push(transcode)

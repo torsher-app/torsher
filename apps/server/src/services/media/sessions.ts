@@ -60,7 +60,18 @@ export interface PlaybackSession {
   hls: HlsTranscode | null
   /** Ожидание пробы: ответ `POST /playback` ждёт его недолго */
   ready: Promise<void>
+  /** Записи сессии несут её id и раздачу полями: поиск журнала по ним собирает весь случай */
+  log: SessionLog
+  startedAt: number
   touchedAt: number
+}
+
+export interface SessionLog extends HlsLog {
+  info: {
+    (message: string): void
+    (fields: Record<string, string | number | boolean>, message: string): void
+  }
+  child: (bindings: Record<string, string | number>) => SessionLog
 }
 
 export interface SessionInput {
@@ -75,7 +86,7 @@ export interface SessionInput {
   preference: AudioPreference
   audioStream?: number
   subtitle?: string
-  log: HlsLog & { info: (message: string) => void }
+  log: SessionLog
 }
 
 // Плеер ходит в сессию постоянно (сегменты, субтитры, статус); тишина —
@@ -206,7 +217,8 @@ async function prepare(
   input: SessionInput,
   signal: AbortSignal,
 ) {
-  const { torrent, library, fileIndex, device, log } = input
+  const { torrent, library, fileIndex, device } = input
+  const { log } = session
   const tools = await mediaTools()
 
   if (!isOpen(session))
@@ -379,6 +391,7 @@ async function prepare(
         starts: segmentStarts(media.duration, cues),
         duration: media.duration,
         encode,
+        session: session.id,
       },
       log,
     )
@@ -402,7 +415,7 @@ function ensureSweeper() {
 
     for (const session of sessions.values()) {
       if (now - session.touchedAt > IDLE_MS)
-        void stopSession(session.id)
+        void stopSession(session.id, 'idle')
     }
   }, SWEEP_MS)
   sweeper.unref()
@@ -430,10 +443,48 @@ function describeMedia(session: PlaybackSession) {
   ].join(' ')
 }
 
+/**
+ * Что за файл — фактами вместо названия: по ним видно «4K HEVC 60 Мбит/с»
+ * или «кусок 16 МБ», а журнал, приложенный к публичному issue, не говорит,
+ * что смотрели
+ */
+function fileFacts(session: PlaybackSession) {
+  const video = session.media?.video
+  const facts: Record<string, string | number | boolean> = {
+    size: fileSizeOf(session),
+  }
+
+  if (video?.width && video.height)
+    facts.resolution = `${video.width}x${video.height}`
+  if (video?.bitrate)
+    facts.bitrate = video.bitrate
+  if (video?.hdr)
+    facts.hdr = true
+  if (session.torrent?.pieceLength)
+    facts.pieceLength = session.torrent.pieceLength
+  if (session.torrent?.files)
+    facts.files = session.torrent.files.filter(file => !file.padding).length
+
+  return facts
+}
+
+function formatDuration(ms: number) {
+  const seconds = Math.round(ms / 1000)
+  const minutes = Math.floor(seconds / 60)
+  const hours = Math.floor(minutes / 60)
+
+  if (hours)
+    return `${hours}h${String(minutes % 60).padStart(2, '0')}m`
+  if (minutes)
+    return `${minutes}m${String(seconds % 60).padStart(2, '0')}s`
+  return `${seconds}s`
+}
+
 /** Новая сессия: проба и решение идут в фоне, `ready` — их окончание */
 export function createSession(input: SessionInput) {
+  const id = randomUUID()
   const session: PlaybackSession = {
-    id: randomUUID(),
+    id,
     subject: input.subject,
     torrent: input.torrent ?? null,
     library: input.library ?? null,
@@ -447,6 +498,16 @@ export function createSession(input: SessionInput) {
     decision: DIRECT,
     hls: null,
     ready: Promise.resolve(),
+    log: input.log.child(
+      input.torrent
+        ? {
+            session: id,
+            infoHash: input.torrent.infoHash,
+            fileIndex: input.fileIndex,
+          }
+        : { session: id, libraryId: input.library!.id },
+    ),
+    startedAt: Date.now(),
     touchedAt: Date.now(),
   }
 
@@ -454,7 +515,7 @@ export function createSession(input: SessionInput) {
 
   session.ready = prepare(session, input, closer.signal)
     .catch((err: Error) => {
-      input.log.warn(`playback ${session.id}: ${err.message}`)
+      session.log.warn(`playback ${session.id}: ${err.message}`)
       session.decision = { ...DIRECT, reasons: ['ProbeFailed'] }
     })
     .finally(() => {
@@ -463,7 +524,8 @@ export function createSession(input: SessionInput) {
       const { decision } = session
       const encode = session.hls?.encode
 
-      input.log.info(
+      session.log.info(
+        fileFacts(session),
         `playback ${session.id}: ${decision.mode}${
           decision.reasons.length
             ? `, reasons=[${decision.reasons.join(', ')}]`
@@ -498,13 +560,23 @@ export function getSession(id: string, subject: string | undefined) {
   return session
 }
 
-export async function stopSession(id: string) {
+/**
+ * Закрыть сессию. `client` — плеер закрыл её сам, `idle` — плеер пропал без
+ * `DELETE`, `shutdown` — сервер останавливается
+ */
+export async function stopSession(
+  id: string,
+  reason: 'client' | 'idle' | 'shutdown' = 'client',
+) {
   const session = sessions.get(id)
 
   if (!session)
     return
 
   sessions.delete(id)
+  session.log.info(
+    `playback ${id}: closed after ${formatDuration(Date.now() - session.startedAt)}, reason=${reason}`,
+  )
   // Пробу не отменяем: она общая в кэше для всех сессий этого файла
   closers.get(id)?.abort()
   closers.delete(id)
@@ -518,7 +590,9 @@ export async function stopSession(id: string) {
 }
 
 export async function stopAllSessions() {
-  await Promise.all([...sessions.keys()].map(stopSession))
+  await Promise.all(
+    [...sessions.keys()].map(id => stopSession(id, 'shutdown')),
+  )
 }
 
 /** Сегменты прошлого запуска сервера никому не нужны */

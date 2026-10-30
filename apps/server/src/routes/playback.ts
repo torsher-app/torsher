@@ -52,7 +52,7 @@ import {
 } from '../services/torrents/index.ts'
 import { sessionVersionOf } from '../services/users/session.ts'
 import { signToken } from '../utils/token.ts'
-import { sendEngineError } from './engineResponses.ts'
+import { engineFailureOf, sendEngineError } from './engineResponses.ts'
 
 const guardResponses = {
   401: messageResponse,
@@ -99,6 +99,17 @@ function clientOf(request: FastifyRequest) {
   return device
     ? `${device.type} "${device.name}"`
     : `owner ${deviceTypeOf(request.headers['user-agent'])}`
+}
+
+/** Отказ открыть просмотр: клиенту уходит код, в журнал — причина */
+function logRejection(
+  request: FastifyRequest,
+  reason: string,
+  fields: Record<string, string | number>,
+) {
+  request.log
+    .child({ source: 'playback' })
+    .warn(fields, `playback rejected: ${reason}`)
 }
 
 // Текст плеера идёт в журнал одной строкой
@@ -247,8 +258,10 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
       if (mediaFileId) {
         const found = playableMediaFile(mediaFileId, request.profileId)
 
-        if (!found || (title && !parseCatalogId(title.id)))
+        if (!found || (title && !parseCatalogId(title.id))) {
+          logRejection(request, 'file not found', { libraryId: mediaFileId })
           return reply.code(404).send({ message: 'File not found' })
+        }
 
         // Серия файла библиотеки известна из сопоставления
         title ??= found.file.titleId
@@ -272,10 +285,22 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
         const found = getTorrent(torrentId!)
         const file = found && playableFile(found, fileIndex!)
 
-        if (!found || !file || (title && !parseCatalogId(title.id)))
+        const fields = {
+          torrentId: torrentId!,
+          ...(found && { infoHash: found.infoHash }),
+          fileIndex: fileIndex!,
+        }
+
+        if (!found || !file || (title && !parseCatalogId(title.id))) {
+          logRejection(request, 'file not found', fields)
           return reply.code(404).send({ message: 'File not found' })
+        }
 
         if (found.status !== 'ready') {
+          logRejection(request, 'metadata not ready', {
+            ...fields,
+            status: found.status,
+          })
           return reply
             .code(409)
             .send({ message: 'Torrent metadata is not ready' })
@@ -288,6 +313,14 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
           }
         }
         catch (err) {
+          const failure = engineFailureOf(err)
+
+          if (failure) {
+            logRejection(request, failure.reason, {
+              ...fields,
+              ...failure.fields,
+            })
+          }
           return sendEngineError(reply, err)
         }
 
@@ -467,15 +500,13 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
           )
         : undefined
 
-      request.log
-        .child({ source: 'playback' })
-        .warn(
-          `playback ${session.id}: player error ${error}${
-            mediaError ? `, mediaError=${mediaError}` : ''
-          }${detail ? `, detail="${oneLine(detail)}"` : ''}${
-            position !== undefined ? `, at=${Math.round(position)}s` : ''
-          }${badPieces !== undefined ? `, badPieces=${badPieces}` : ''}`,
-        )
+      session.log.warn(
+        `playback ${session.id}: player error ${error}${
+          mediaError ? `, mediaError=${mediaError}` : ''
+        }${detail ? `, detail="${oneLine(detail)}"` : ''}${
+          position !== undefined ? `, at=${Math.round(position)}s` : ''
+        }${badPieces !== undefined ? `, badPieces=${badPieces}` : ''}`,
+      )
 
       return { message: 'Error logged' }
     },
@@ -509,11 +540,9 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
         result = await sessionCues(session, request.params.trackId)
       }
       catch (err) {
-        request.log
-          .child({ source: 'playback' })
-          .warn(
-            `subtitles ${request.params.trackId}: ${(err as Error).message}`,
-          )
+        session.log.warn(
+          `playback ${session.id}: subtitles ${request.params.trackId}: ${(err as Error).message}`,
+        )
         return reply.code(502).send({ message: 'Subtitles are not available' })
       }
 

@@ -10,7 +10,8 @@ export const logsQuery = z.object({
   level: z.enum(LOG_LEVELS).optional(),
   // Один или несколько источников через запятую
   source: z.string().regex(sourceList).optional(),
-  // Подстрока сообщения без учёта регистра
+  // Подстрока сообщения или значения поля (id раздачи, сессии, тайтла) без
+  // учёта регистра
   q: z.string().max(200).optional(),
   // Курсоры по `seq`: `before` — страница старше, `after` — новые записи
   before: z.coerce.number().int().min(0).optional(),

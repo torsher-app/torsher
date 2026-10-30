@@ -182,6 +182,11 @@ export function useLogs() {
     setQuery({ level: undefined, source: undefined, q: undefined })
   }
 
+  /** Все записи с этим id, любого уровня и источника */
+  function filterById(value: string) {
+    setQuery({ level: undefined, source: undefined, q: value })
+  }
+
   function baseQuery(q = loadedSearch): Query {
     // «Все» при обычном журнале — без отладочных записей, оставшихся от
     // включённого ранее подробного журнала
@@ -479,6 +484,7 @@ export function useLogs() {
     download,
     copyEntry,
     resetFilters,
+    filterById,
   }
 }
 
