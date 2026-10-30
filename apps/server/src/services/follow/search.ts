@@ -15,6 +15,7 @@ import { cachedSearch, peekSearch, SEARCH_TTL_MS } from '../sources/cache.ts'
 import { isViewerSearching, searchReleases } from '../sources/search.ts'
 import { getTitleIdentity } from '../tmdb/index.ts'
 import { recordHistory } from './history.ts'
+import { withPendingReleases } from './feed.ts'
 import { followById } from './index.ts'
 import { announceMissing } from './notify.ts'
 import { followSettings } from './settings.ts'
@@ -404,7 +405,11 @@ async function runSearch(due: DueSearch, now: Date) {
   const searched = { ...follow, lastSearchAt: now }
 
   setSchedule(follow, { lastSearchAt: now })
-  await decideFollow(searched, outcome.releases, now)
+  await decideFollow(
+    searched,
+    await withPendingReleases(follow, outcome.releases),
+    now,
+  )
 
   const { next } = await evaluate(searched, now)
 
