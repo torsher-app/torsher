@@ -1603,6 +1603,8 @@ export interface TorrentFileInput {
   isVideo: boolean;
   downloaded: number;
   selected: boolean;
+  first: boolean;
+  downloadingFirst: boolean;
   inLibrary: boolean;
 }
 
@@ -1671,6 +1673,11 @@ export interface DownloadTorrentInput {
    * @maxItems 10000
    * @minItems 1
    */
+  files: number[];
+}
+
+export interface UpdateTorrentFirstInput {
+  /** @maxItems 10000 */
   files: number[];
 }
 
@@ -6392,6 +6399,8 @@ export interface TorrentFile {
   isVideo: boolean;
   downloaded: number;
   selected: boolean;
+  first: boolean;
+  downloadingFirst: boolean;
   inLibrary: boolean;
 }
 
@@ -6460,6 +6469,11 @@ export interface DownloadTorrent {
    * @maxItems 10000
    * @minItems 1
    */
+  files: number[];
+}
+
+export interface UpdateTorrentFirst {
+  /** @maxItems 10000 */
   files: number[];
 }
 
@@ -9747,6 +9761,8 @@ export type PostTorrentRetryError = MessageResponse | EngineUnavailableResponse;
 export type PostTorrentDownloadError =
   MessageResponse | EngineUnavailableResponse;
 
+export type PutTorrentFirstError = MessageResponse | EngineUnavailableResponse;
+
 export type PostTorrentPauseError = MessageResponse | EngineUnavailableResponse;
 
 export type PostTorrentResumeError =
@@ -11979,6 +11995,27 @@ export class Api<
       this.request<Torrent, PostTorrentDownloadError>({
         path: `/api/torrents/${id}/download`,
         method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Torrents
+     * @name PutTorrentFirst
+     * @request PUT:/api/torrents/{id}/first
+     */
+    putTorrentFirst: (
+      id: string,
+      data: UpdateTorrentFirstInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<Torrent, PutTorrentFirstError>({
+        path: `/api/torrents/${id}/first`,
+        method: "PUT",
         body: data,
         type: ContentType.Json,
         format: "json",

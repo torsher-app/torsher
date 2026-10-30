@@ -490,7 +490,7 @@ func (a *api) reopen(mi *metainfo.MetaInfo, dir string, saved savedTorrent, comp
 		return nil
 	}
 
-	return setFiles(t, saved.Selected)
+	return setFiles(t, saved.Selected, nil)
 }
 
 type movePair struct {

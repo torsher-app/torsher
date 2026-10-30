@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -320,7 +321,8 @@ func TestTorrentsSurviveRestart(t *testing.T) {
 		t.Fatalf("selection was not restored: %v", state.Selected)
 	}
 
-	if priority := restored.Files()[0].Priority(); priority != torrent.PiecePriorityNormal {
+	// Единственный недокачанный файл выбора идёт первым
+	if priority := restored.Files()[0].Priority(); priority != torrent.PiecePriorityHigh {
 		t.Fatalf("restored selection does not download: priority %v", priority)
 	}
 }
@@ -843,6 +845,68 @@ func TestNeighbourDownloadKeepsFinishedFile(t *testing.T) {
 	}
 	if !bytes.Equal(data, first) {
 		t.Fatal("finished file was overwritten while the neighbour downloaded")
+	}
+}
+
+func filePriorities(added *torrent.Torrent) []torrent.PiecePriority {
+	var priorities []torrent.PiecePriority
+	for _, file := range added.Files() {
+		priorities = append(priorities, file.Priority())
+	}
+
+	return priorities
+}
+
+// Выбор качается по порядку, в котором его прислали: первым — первый
+// недокачанный файл, а файлы, поднятые владельцем, — раньше порядка
+func TestSelectionDownloadsInOrder(t *testing.T) {
+	fx, _, _ := newTwoFileFixture(t)
+	engine, server := newTestEngine(t, t.TempDir())
+	hash := fx.meta.HashInfoBytes()
+
+	post(t, server.URL+"/torrents?files=1,0", fx.raw).Body.Close()
+	added, _ := engine.client.Torrent(hash)
+
+	high, normal := torrent.PiecePriorityHigh, torrent.PiecePriorityNormal
+	if got := filePriorities(added); !slices.Equal(got, []torrent.PiecePriority{normal, high}) {
+		t.Fatalf("order of the selection is ignored: %v", got)
+	}
+	if got := engine.stateOf(added).High; !slices.Equal(got, []int{1}) {
+		t.Fatalf("state reports %v first", got)
+	}
+
+	put(t, server.URL+"/torrents/"+hash.HexString()+"/files", `{"files":[1,0],"first":[0]}`).Body.Close()
+
+	if got := filePriorities(added); !slices.Equal(got, []torrent.PiecePriority{high, normal}) {
+		t.Fatalf("raised file does not go first: %v", got)
+	}
+}
+
+// Докачанный файл уступает место следующему по порядку, и поднятый
+// владельцем — тоже
+func TestFinishedFileHandsOverToNext(t *testing.T) {
+	fx, first, _ := newTwoFileFixture(t)
+	dataDir := t.TempDir()
+	engine, server := newTestEngine(t, dataDir)
+	hash := fx.meta.HashInfoBytes()
+
+	post(t, server.URL+"/torrents?files=0", fx.raw).Body.Close()
+	added, _ := engine.client.Torrent(hash)
+	added.AddClientPeer(fx.seeder)
+
+	waitFor(t, 30*time.Second, func() bool {
+		data, err := os.ReadFile(filepath.Join(dataDir, "downloads", "Show", "E01.mkv"))
+		return err == nil && bytes.Equal(data, first)
+	})
+
+	if got := highFiles(added, []int{0, 1}, nil); !slices.Equal(got, []int{1}) {
+		t.Fatalf("next file is not first: %v", got)
+	}
+	if got := highFiles(added, []int{0, 1}, []int{0}); !slices.Equal(got, []int{1}) {
+		t.Fatalf("finished raised file keeps the order: %v", got)
+	}
+	if got := highFiles(added, []int{0}, nil); got != nil {
+		t.Fatalf("finished selection still has a first file: %v", got)
 	}
 }
 

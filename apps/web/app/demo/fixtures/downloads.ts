@@ -34,6 +34,8 @@ export function releaseOf(title: DemoTitle, options: ReleaseOptions) {
       isVideo,
       downloaded: 0,
       selected: false,
+      first: false,
+      downloadingFirst: false,
       inLibrary: false,
     }) satisfies TorrentFile
 

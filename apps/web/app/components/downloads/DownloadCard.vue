@@ -2,6 +2,7 @@
 import type { Torrent } from '@torsher/api-client'
 import {
   ArrowDownToLineIcon,
+  ChevronsUpIcon,
   CircleXIcon,
   FileIcon,
   FilmIcon,
@@ -99,6 +100,13 @@ const release = computed(() =>
   shown.value ? releaseMetaOf(shown.value) : null,
 )
 const isBusy = computed(() => !!shown.value && actions.isBusy(shown.value.id))
+// Порядок закачки есть, только когда недокачанных выбранных файлов больше одного
+const pendingFiles = computed(
+  () =>
+    shown.value?.files.filter(
+      file => file.selected && file.downloaded < file.size,
+    ).length ?? 0,
+)
 const hasLibraryFiles = computed(
   () => !!shown.value?.files.some(file => file.inLibrary),
 )
@@ -511,6 +519,30 @@ function onInteractOutside(event: Event) {
                 </label>
                 <span class="flex items-center justify-end">
                   <Button
+                    v-if="
+                      pendingFiles > 1
+                        && file.selected
+                        && file.downloaded < file.size
+                    "
+                    variant="ghost"
+                    size="icon-sm"
+                    class="size-7"
+                    :class="
+                      file.first ? 'text-primary' : 'text-muted-foreground'
+                    "
+                    :disabled="isBusy"
+                    :aria-pressed="file.first"
+                    :aria-label="
+                      t('panel.torrents.downloadFirst', { name: file.path })
+                    "
+                    :title="
+                      t('panel.torrents.downloadFirst', { name: file.path })
+                    "
+                    @click="actions.toggleFirst(shown, file.index)"
+                  >
+                    <ChevronsUpIcon />
+                  </Button>
+                  <Button
                     v-if="file.isVideo"
                     as="a"
                     variant="ghost"
@@ -537,6 +569,12 @@ function onInteractOutside(event: Event) {
                         value: filePercent(file.downloaded, file.size),
                       })
                     }}
+                  </template>
+                  <template v-if="file.downloadingFirst && pendingFiles > 1">
+                    ·
+                    <span class="text-foreground">{{
+                      t("panel.torrents.downloadingFirst")
+                    }}</span>
                   </template>
                   <template v-if="file.inLibrary">
                     ·

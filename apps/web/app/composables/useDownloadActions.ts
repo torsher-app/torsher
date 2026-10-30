@@ -91,6 +91,18 @@ export function useDownloadActions() {
     })
   }
 
+  // Итог виден в строке файла: тост здесь был бы шумом
+  function toggleFirst(torrent: Torrent, fileIndex: number) {
+    const first = torrent.files
+      .filter(file => file.first)
+      .map(file => file.index)
+    const next = first.includes(fileIndex)
+      ? first.filter(index => index !== fileIndex)
+      : [...first, fileIndex]
+
+    return run(torrent, () => torrents.setFirstFiles(torrent.id, next))
+  }
+
   // «Да, это он»: подсказку распознавания подтверждает владелец
   function confirmMatch(torrent: Torrent) {
     return run(torrent, async () => {
@@ -113,6 +125,7 @@ export function useDownloadActions() {
     togglePause,
     toggleKeep,
     download,
+    toggleFirst,
     confirmMatch,
     retry,
   }

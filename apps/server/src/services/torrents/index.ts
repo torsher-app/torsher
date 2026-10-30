@@ -33,6 +33,7 @@ import { isMovingTorrent } from '../storage/moving.ts'
 import { downloadDirValue, storagePath, torrentDir } from '../storage/paths.ts'
 import { parseMagnet } from './magnet.ts'
 import { isVideoFile } from './media.ts'
+import { downloadOrder } from './order.ts'
 import { bufferedAheadBytes, fileOffsetOf } from './playback.ts'
 
 export { InsufficientStorageError } from '../storage/index.ts'
@@ -399,6 +400,15 @@ function streamSelection(torrent: Torrent, fileIndex: number) {
     : (torrent.selectedFiles ?? [])
 }
 
+/** Поднятые владельцем файлы — только из выбора: снятый с выбора выпадает */
+function firstWithin(torrent: Torrent, selected: number[]) {
+  const first = (torrent.firstFiles ?? []).filter(index =>
+    selected.includes(index),
+  )
+
+  return first.length ? first : null
+}
+
 /** Раздачу убрали из движка мимо базы: менять выбор не у кого */
 async function ignoreMissing(action: Promise<void>) {
   try {
@@ -461,8 +471,9 @@ async function addToEngine(
 
   await addTorrent(
     torrent.torrentFile!,
-    files,
+    downloadOrder(torrent, files),
     torrent.downloadDir ? torrentDir(torrent) : undefined,
+    firstWithin(torrent, files) ?? [],
   )
 }
 
@@ -491,6 +502,7 @@ export async function downloadFiles(
   update(torrent.id, {
     inEngine: true,
     selectedFiles: files,
+    firstFiles: firstWithin(torrent, files),
     retention: 'keep',
     pauseReason: null,
   })
@@ -519,6 +531,22 @@ export async function resumeDownload(torrent: Torrent) {
   await enforceStorage()
 
   return getTorrent(torrent.id) ?? torrent
+}
+
+/**
+ * «Качать первым»: файлы выбора, которые движок качает раньше порядка серий.
+ * Файлы не из выбора не качаются вовсе — их отбрасываем.
+ */
+export async function setFirstFiles(torrent: Torrent, files: number[]) {
+  if (!torrent.inEngine)
+    throw new NotInEngineError()
+
+  const selected = torrent.selectedFiles ?? []
+  const first = [...new Set(files)].filter(index => selected.includes(index))
+
+  await selectFiles(torrent.infoHash, downloadOrder(torrent, selected), first)
+
+  return update(torrent.id, { firstFiles: first.length ? first : null })
 }
 
 /** Видеофайлы, которые начали смотреть: на диске уже что-то есть */
@@ -565,12 +593,22 @@ export async function setRetention(
         )
       : []
 
-  if (torrent.inEngine)
-    await ignoreMissing(selectFiles(torrent.infoHash, selected))
+  const first = firstWithin(torrent, selected)
+
+  if (torrent.inEngine) {
+    await ignoreMissing(
+      selectFiles(
+        torrent.infoHash,
+        downloadOrder(torrent, selected),
+        first ?? [],
+      ),
+    )
+  }
 
   const updated = update(torrent.id, {
     retention,
     selectedFiles: selected.length ? selected : null,
+    firstFiles: first,
   })
 
   await enforceStorage()
@@ -605,7 +643,7 @@ export async function clearStreamSelections() {
       }
     }
 
-    update(row.id, { selectedFiles: null })
+    update(row.id, { selectedFiles: null, firstFiles: null })
   }
 }
 
@@ -640,6 +678,7 @@ export async function prepareStream(torrent: Torrent, fileIndex: number) {
   return update(torrent.id, {
     inEngine: true,
     selectedFiles: selected.length ? selected : null,
+    firstFiles: firstWithin(torrent, selected),
     pauseReason: null,
     lastAccessAt: new Date(),
   })

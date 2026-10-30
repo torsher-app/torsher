@@ -78,6 +78,8 @@ export function toTorrentResponse(
     .map((file, index) => ({ file, index }))
     .filter(({ file }) => !file.padding)
   const selected = new Set(live?.selected ?? torrent.selectedFiles ?? [])
+  const first = new Set(torrent.firstFiles ?? [])
+  const high = new Set(live?.high ?? [])
   const streaming = isStreaming(torrent.id)
   const waiting = files.some(
     ({ file, index }) =>
@@ -98,6 +100,8 @@ export function toTorrentResponse(
       isVideo: isVideoFile(file.path),
       downloaded: live?.fileProgress[index] ?? 0,
       selected: selected.has(index),
+      first: first.has(index),
+      downloadingFirst: high.has(index),
       inLibrary: placed.has(index),
     })),
     totalSize: files.reduce((sum, { file }) => sum + file.size, 0),

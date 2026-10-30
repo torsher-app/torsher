@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { parseMagnet } from './magnet.ts'
 import { contentTypeOf, isVideoFile } from './media.ts'
+import { downloadOrder } from './order.ts'
 import {
   bufferedAheadBytes,
   fileOffsetOf,
@@ -195,5 +196,45 @@ describe('окно просмотра', () => {
 
   it('без длительности — окно по умолчанию', () => {
     expect(streamWindowOf(4500 * MIB, null)).toBe(128 * MIB)
+  })
+})
+
+describe('порядок закачки', () => {
+  const file = (path: string) => ({ path, size: 500 * 1024 * 1024 })
+
+  it('серии по сезону и номеру, хоть индексы в раздаче вперемешку', () => {
+    const torrent = {
+      name: 'Show.S01.1080p.WEB-DL',
+      files: [
+        file('Show.S01/Show.S01E10.mkv'),
+        file('Show.S01/Show.S01E02.mkv'),
+        file('Show.S01/Show.S01E01.mkv'),
+      ],
+    }
+
+    expect(downloadOrder(torrent, [0, 1, 2])).toEqual([2, 1, 0])
+  })
+
+  it('субтитры рядом со своей серией, файлы без номера — в конце по пути', () => {
+    const torrent = {
+      name: 'Show.S01.1080p.WEB-DL',
+      files: [
+        file('Show.S01/Extras/Making.Of.mkv'),
+        file('Show.S01/Show.S01E02.mkv'),
+        { path: 'Show.S01/Show.S01E01.srt', size: 20_480 },
+        file('Show.S01/Show.S01E01.mkv'),
+      ],
+    }
+
+    expect(downloadOrder(torrent, [0, 1, 2, 3])).toEqual([3, 2, 1, 0])
+  })
+
+  it('без номеров — естественный порядок путей', () => {
+    const torrent = {
+      name: 'Some.Collection',
+      files: [file('Part 10.mkv'), file('Part 2.mkv'), file('Part 1.mkv')],
+    }
+
+    expect(downloadOrder(torrent, [0, 1, 2, 2])).toEqual([2, 1, 0])
   })
 })

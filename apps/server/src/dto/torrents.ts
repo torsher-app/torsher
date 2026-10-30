@@ -51,6 +51,10 @@ export const torrentFile = z
     downloaded: z.number(),
     // Качается целиком (выбран для скачивания или его смотрели)
     selected: z.boolean(),
+    // Владелец поднял файл вперёд порядка закачки
+    first: z.boolean(),
+    // Движок качает файл раньше остальных выбранных: по порядку серий или поднятый
+    downloadingFirst: z.boolean(),
     // Лежит в своей раскладке библиотеки
     inLibrary: z.boolean(),
   })
@@ -128,6 +132,12 @@ export const downloadTorrent = z
     files: z.array(z.number().int().min(0).max(99_999)).min(1).max(10_000),
   })
   .meta({ id: 'downloadTorrent' })
+
+export const updateTorrentFirst = z
+  .object({
+    files: z.array(z.number().int().min(0).max(99_999)).max(10_000),
+  })
+  .meta({ id: 'updateTorrentFirst' })
 
 export const updateTorrentTitle = z
   .object({
