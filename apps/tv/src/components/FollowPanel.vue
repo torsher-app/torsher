@@ -156,18 +156,14 @@ function studioOption(id: string): PanelOption {
   }
 }
 
+// Правило другого языка одно на весь список: оно в подзаголовке шага, а не
+// повтором под каждым языком
 function languageOption(audio: string): PanelOption {
-  const hint
-    = audio === 'original'
-      ? t('follow.panel.voiceOriginalHint')
-      : audio === 'ru'
-        ? undefined
-        : t('follow.panel.voiceLanguageHint')
-
   return {
     id: audio,
     label: audioName(audio),
-    hint,
+    hint:
+      audio === 'original' ? t('follow.panel.voiceOriginalHint') : undefined,
     selected: follow.value.audio === audio,
   }
 }
@@ -250,6 +246,13 @@ const panelTitle = computed(() =>
 const subtitle = computed(() => {
   if (step.value === 'wait')
     return t('follow.panel.waitHint')
+
+  if (
+    step.value === 'language'
+    || (step.value === 'voice' && follow.value.audioEffective !== 'ru')
+  ) {
+    return t('follow.panel.voiceLanguageHint')
+  }
 
   if (step.value !== 'main')
     return props.title

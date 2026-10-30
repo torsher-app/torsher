@@ -3836,7 +3836,7 @@
       "voiceServerHint": "The server language is set in the panel: Settings → Following",
       "voiceOriginalHint": "Take releases with the original audio track",
       "voiceOtherLanguage": "Other language",
-      "voiceLanguageHint": "Wait for it until “Wait for better” runs out, then take the original"
+      "voiceLanguageHint": "Waits for audio in the chosen language until “Wait for better” runs out, then takes the original"
     },
     "errors": {
       "follow": "Couldn't start following. Try again",
