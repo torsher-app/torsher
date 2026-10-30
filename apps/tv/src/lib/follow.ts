@@ -8,6 +8,50 @@ export const WAIT_HOURS = [0, 12, 24, 72]
 
 export const QUALITY_PRESETS = ['best', 'uhd', 'compact'] as const
 
+export type FollowAudio = TitleFollow['audioEffective']
+
+/**
+ * Языки озвучки, как у сервера: оригинал и языки дорожек, которые узнаёт
+ * парсер названий
+ */
+export const FOLLOW_AUDIOS = [
+  'original',
+  'ru',
+  'en',
+  'uk',
+  'ja',
+  'de',
+  'fr',
+  'es',
+  'it',
+  'ko',
+  'zh',
+] as const satisfies readonly FollowAudio[]
+
+/**
+ * Пункты шага «Озвучка»: первым — «как у сервера». У русской — студии
+ * сезона, оригинал и вложенный шаг с другими языками; у остальных — сразу
+ * список языков: студий у них нет
+ */
+export function voiceChoices(
+  follow: Pick<TitleFollow, 'audioEffective'>,
+  studio: string | undefined,
+): string[] {
+  if (follow.audioEffective !== 'ru')
+    return ['server', ...FOLLOW_AUDIOS]
+
+  const studios = studio ? ['prefer', 'only', 'any'] : ['any']
+
+  return ['server', ...studios, 'original', 'languages']
+}
+
+/** Языки вложенного шага «Другой язык»: оригинал уже есть уровнем выше */
+export const OTHER_AUDIOS = FOLLOW_AUDIOS.filter(id => id !== 'original')
+
+export function isFollowAudio(id: string): id is FollowAudio {
+  return (FOLLOW_AUDIOS as readonly string[]).includes(id)
+}
+
 /** Лестницы пресетов, как у решателя на сервере: первое — верхняя ступень */
 export const QUALITY_LADDERS: Record<
   (typeof QUALITY_PRESETS)[number],

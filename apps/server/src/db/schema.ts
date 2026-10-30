@@ -1010,10 +1010,27 @@ export const followQualityPresets = ['best', 'uhd', 'compact'] as const
 // `download` — новая серия качается в библиотеку; `notify` — раздача только
 // запоминается за серией, о ней приходит уведомление, смотрят её стримом
 export const followModes = ['download', 'notify'] as const
+// Язык озвучки: оригинал или язык дорожки, который распознаёт парсер названий
+// (ISO 639-1). Для `ru` действуют студии и типы перевода, для остальных —
+// только тег языка в названии
+export const followAudios = [
+  'original',
+  'ru',
+  'en',
+  'uk',
+  'ja',
+  'de',
+  'fr',
+  'es',
+  'it',
+  'ko',
+  'zh',
+] as const
 
 export type FollowState = (typeof followStates)[number]
 export type FollowQualityPreset = (typeof followQualityPresets)[number]
 export type FollowMode = (typeof followModes)[number]
+export type FollowAudio = (typeof followAudios)[number]
 
 // «Следить» — одно на тайтл на весь сервер: диск и библиотека общие, и два
 // профиля с разными правилами скачали бы сериал дважды. Профили подписываются
@@ -1043,6 +1060,8 @@ export const follows = sqliteTable(
       .notNull()
       .default('best'),
     mode: text('mode', { enum: followModes }).notNull().default('download'),
+    // Язык озвучки; null — как у сервера на момент прохода
+    audio: text('audio', { enum: followAudios }),
     createdByProfileId: text('created_by_profile_id').references(
       () => profiles.id,
       { onDelete: 'set null' },

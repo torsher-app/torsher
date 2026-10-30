@@ -23,6 +23,8 @@ const REJECTIONS = new Set([
   'title_unsure',
   'screen_copy',
   'no_russian',
+  'no_original',
+  'no_language',
   'quality',
   'size',
   'blocklisted',
@@ -66,7 +68,7 @@ export function useFollowText() {
     return episodesLabel(season, list) || t('panel.follow.movieLabel')
   }
 
-  /** «Студия и 1080p»: что ждём, в порядке решателя */
+  /** «Студия и 1080p», «немецкую озвучку»: что ждём, в порядке решателя */
   function target(wait: WaitTarget) {
     const parts = [
       wait.studio,
@@ -74,6 +76,10 @@ export function useFollowText() {
       && (te(`sources.voiceTypes.${wait.voiceType}`)
         ? t(`sources.voiceTypes.${wait.voiceType}`)
         : wait.voiceType),
+      wait.language
+      && (te(`audioTargets.${wait.language}`)
+        ? t(`audioTargets.${wait.language}`)
+        : wait.language),
       wait.quality,
     ].filter(Boolean)
 
@@ -85,11 +91,14 @@ export function useFollowText() {
 
     parts.push(
       t(`panel.follow.policy.${follow.mode}`),
-      follow.voiceStudio
-        ? follow.voiceStrict
-          ? t('panel.follow.policy.strict', { studio: follow.voiceStudio })
-          : follow.voiceStudio
-        : t('panel.follow.policy.anyVoice'),
+      // Студии есть только у русской озвучки, у остальных — сам язык
+      follow.audioEffective !== 'ru'
+        ? t(`audioLanguages.${follow.audioEffective}`)
+        : follow.voiceStudio
+          ? follow.voiceStrict
+            ? t('panel.follow.policy.strict', { studio: follow.voiceStudio })
+            : follow.voiceStudio
+          : t('panel.follow.policy.anyVoice'),
       t(`panel.follow.presets.${follow.qualityPreset}.short`),
       follow.waitHours
         ? t(
@@ -153,6 +162,14 @@ export function useFollowText() {
       return wait
         ? t('panel.follow.rejections.wait', { target: wait, until: at })
         : t('panel.follow.rejections.waitPlain', { until: at })
+    }
+
+    if (item.code === 'no_language' && typeof params.language === 'string') {
+      return t('panel.follow.rejections.no_language', {
+        language: te(`audioLanguages.${params.language}`)
+          ? t(`audioLanguages.${params.language}`)
+          : params.language,
+      })
     }
 
     if (item.code === 'size' && typeof params.size === 'number')

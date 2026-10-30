@@ -232,6 +232,13 @@
       "when": 1793064473531,
       "tag": "0032_big_hulk",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "6",
+      "when": 1793375143663,
+      "tag": "0033_right_terror",
+      "breakpoints": true
     }
   ]
 }

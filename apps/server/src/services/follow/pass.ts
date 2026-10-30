@@ -26,6 +26,7 @@ import { DEFAULT_PROFILE } from '../sources/profile.ts'
 import { rankReleases } from '../sources/rank.ts'
 import { knownResolutions } from '../sources/resolution.ts'
 import { getTitleIdentity } from '../tmdb/index.ts'
+import { followAudio } from './audio.ts'
 import { movieAvailableFrom } from './availability.ts'
 import { blockedReleases } from './blocklist.ts'
 import {
@@ -398,6 +399,8 @@ export async function upgradeNeeded(
     return !isAtCutoff(
       positionOf(version, seasonCtx, {
         russianOriginal: identity?.originalLanguage === 'ru',
+        audio: followAudio(follow),
+        originalLanguage: identity?.originalLanguage,
         profile: DEFAULT_PROFILE,
         preset: follow.qualityPreset,
       }),
@@ -494,6 +497,9 @@ export async function decideFollow(
     requireRussian: follow.requireRussian,
     waitHours: follow.waitHours,
     russianOriginal: identity?.originalLanguage === 'ru',
+    // Слежение без своего правила — по языку сервера на этот проход
+    audio: followAudio(follow),
+    originalLanguage: identity?.originalLanguage,
     profile: DEFAULT_PROFILE,
     episodeCounts: identity?.episodeCounts,
     wanted: new Set(wanted.map(episodeKey)),

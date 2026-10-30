@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import {
   blocklistReasons,
+  followAudios,
   followHistoryKinds,
   followModes,
   followQualityPresets,
@@ -36,6 +37,8 @@ const rules = {
   qualityPreset: z.enum(followQualityPresets).optional(),
   // Новая серия: качать в библиотеку или только уведомить и смотреть стримом
   mode: z.enum(followModes).optional(),
+  // Язык озвучки; null — как у сервера
+  audio: z.enum(followAudios).nullable().optional(),
 }
 
 // Курсора в правилах нет: слежение всегда с первой невышедшей серии
@@ -67,6 +70,12 @@ const followView = {
   waitHours: z.number().int(),
   qualityPreset: z.enum(followQualityPresets),
   mode: z.enum(followModes),
+  // Правило слежения; null — как у сервера
+  audio: z.enum(followAudios).nullable(),
+  // Действующий язык: правило или язык сервера сейчас
+  audioEffective: z.enum(followAudios),
+  // Язык сервера: что значит «как у сервера»
+  audioServer: z.enum(followAudios),
   // Ближайшая невышедшая серия с курсора; у фильма и без анонса — null
   next: titleNextEpisode.nullable(),
 }
@@ -292,11 +301,12 @@ export const followQueueItem = z
     releaseTitle: z.string(),
     // Конец окна ожидания, ISO; у `pending`
     until: z.string().optional(),
-    // Чего ждём: своя студия, тип озвучки, ступень качества
+    // Чего ждём: своя студия, тип озвучки, дорожка языка, ступень качества
     waitFor: z
       .object({
         studio: z.string().optional(),
         voiceType: z.string().optional(),
+        language: z.string().optional(),
         quality: z.string().optional(),
       })
       .optional(),
@@ -367,6 +377,14 @@ export const followSettingsResponse = z
     rssIntervalMin: z.number().int(),
     searchesPerHour: z.number().int(),
     defaults: followDefaults,
+    // Язык озвучки сервера: `auto` — подобран по языку браузера, `user` —
+    // выбран владельцем; null — ещё не известен, действует `ru`
+    audio: z
+      .object({
+        value: z.enum(followAudios),
+        source: z.enum(['auto', 'user']),
+      })
+      .nullable(),
   })
   .meta({ id: 'followSettings' })
 
@@ -375,6 +393,8 @@ export const updateFollowSettings = z
     rssIntervalMin: rssInterval.optional(),
     searchesPerHour: z.number().int().min(1).max(60).optional(),
     defaults: followDefaults.partial().optional(),
+    // Выбор владельца: подбор по языку браузера его не перезапишет
+    audio: z.enum(followAudios).optional(),
   })
   .meta({ id: 'updateFollowSettings' })
 

@@ -170,11 +170,21 @@ export function voiceOf(voices: AudioTrack[], ctx: RankContext) {
   return pinned ?? voices[0]
 }
 
-function hasOriginalAudio(parsed: ParsedRelease) {
+/**
+ * Есть оригинальная дорожка: `Original` или дорожка на языке оригинала, а
+ * без него — любая нерусская
+ */
+export function hasOriginalAudio(
+  parsed: Pick<ParsedRelease, 'audio'>,
+  originalLanguage?: string,
+) {
   return parsed.audio.some(
     track =>
       track.type === 'Original'
-      || (!!track.language && track.language !== 'ru'),
+      || (!!track.language
+        && (originalLanguage
+          ? track.language === originalLanguage
+          : track.language !== 'ru')),
   )
 }
 

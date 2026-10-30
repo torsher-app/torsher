@@ -1,5 +1,5 @@
 import type { VideoClass } from '@torsher/release-parser'
-import type { FollowQualityPreset } from '../../db/schema.ts'
+import type { FollowAudio, FollowQualityPreset } from '../../db/schema.ts'
 import type { RankingProfile, VoiceRef } from '../sources/profile.ts'
 import type { RankedRelease } from '../sources/rank.ts'
 import type { BlockedReleases } from './blocklist.ts'
@@ -12,6 +12,7 @@ import type {
 } from './upgrade.ts'
 import type { EpisodeRef } from './wanted.ts'
 import {
+  hasOriginalAudio,
   RESOLUTION_RANK,
   SCREEN_COPIES,
   SIZE_CORRIDOR,
@@ -41,6 +42,8 @@ export type RejectionCode
   = | 'title_unsure'
     | 'screen_copy'
     | 'no_russian'
+    | 'no_original'
+    | 'no_language'
     | 'quality'
     | 'size'
     | 'blocklisted'
@@ -92,6 +95,13 @@ export interface DecideContext {
   waitHours: number
   /** Оригинал на русском: озвучка не нужна, любая раздача «своя» */
   russianOriginal: boolean
+  /**
+   * Язык озвучки; нет — `ru`. Студии, типы перевода и «нужна русская
+   * дорожка» работают только для `ru`
+   */
+  audio?: FollowAudio
+  /** Язык оригинала тайтла, ISO 639-1 */
+  originalLanguage?: string
   profile: RankingProfile
   /** Серий в сезонах по TMDB: что в паке без диапазона */
   episodeCounts?: Record<number, number>
@@ -214,15 +224,57 @@ function hasOwnVoice(release: ReleaseVersion, voice: VoiceRef | undefined) {
   return !!voice && release.voices.some(track => voiceMatches(track, voice))
 }
 
+type AudioContext = Pick<
+  DecideContext,
+  'russianOriginal' | 'profile' | 'audio' | 'originalLanguage'
+>
+
+/**
+ * Раздача годится как оригинал: есть оригинальная дорожка или не распознано
+ * ни одной — англоязычные трекеры язык обычно не пишут
+ */
+function fitsOriginal(release: ReleaseVersion, originalLanguage?: string) {
+  return (
+    release.parsed.audio.length === 0
+    || hasOriginalAudio(release.parsed, originalLanguage)
+  )
+}
+
+/**
+ * Своя дорожка не русского языка: тег языка или, когда оригинал на нём,
+ * раздача годится как оригинал. Одного совпадения языков мало: раздача
+ * только с русским дубляжом у такого тайтла не своя.
+ */
+function hasOwnLanguage(
+  release: ReleaseVersion,
+  ctx: Pick<DecideContext, 'originalLanguage'>,
+  language: string,
+) {
+  return (
+    release.parsed.audio.some(track => track.language === language)
+    || (ctx.originalLanguage === language
+      && fitsOriginal(release, ctx.originalLanguage))
+  )
+}
+
 /**
  * Озвучка в cutoff: своя студия сезона; без неё — лучший тип профиля; у
- * тайтла с русским оригиналом — любая.
+ * тайтла с русским оригиналом — любая. Оригиналу озвучка не нужна, другому
+ * языку нужна дорожка на нём.
  */
 function isVoiceAtCutoff(
   release: ReleaseVersion,
   season: SeasonContext,
-  ctx: Pick<DecideContext, 'russianOriginal' | 'profile'>,
+  ctx: AudioContext,
 ) {
+  const audio = ctx.audio ?? 'ru'
+
+  if (audio === 'original')
+    return true
+
+  if (audio !== 'ru')
+    return hasOwnLanguage(release, ctx, audio)
+
   if (ctx.russianOriginal)
     return true
 
@@ -236,7 +288,7 @@ function isVoiceAtCutoff(
 export function positionOf(
   version: ReleaseVersion,
   season: SeasonContext,
-  ctx: Pick<DecideContext, 'russianOriginal' | 'profile' | 'preset'>,
+  ctx: AudioContext & Pick<DecideContext, 'preset'>,
 ): VersionPosition {
   return {
     voiceAtCutoff: isVoiceAtCutoff(version, season, ctx),
@@ -277,9 +329,12 @@ export function checkCandidate(
   ctx: DecideContext,
 ): CheckedCandidate {
   const rejections: Rejection[] = []
+  const audio = ctx.audio ?? 'ru'
   const step = ladderStep(release.resolution?.value, ctx.preset)
-  const ownVoice = hasOwnVoice(release, season.voice)
   const voiceAtCutoff = isVoiceAtCutoff(release, season, ctx)
+  // У другого языка «своя» — раздача с дорожкой на нём
+  const ownVoice
+    = audio === 'ru' ? hasOwnVoice(release, season.voice) : voiceAtCutoff
   const position = {
     voiceAtCutoff,
     step: step ?? Number.POSITIVE_INFINITY,
@@ -350,8 +405,18 @@ export function checkCandidate(
     )
   }
 
-  if (ctx.requireRussian && release.voices.length === 0)
-    rejections.push(reject('no_russian'))
+  if (audio === 'ru') {
+    if (ctx.requireRussian && release.voices.length === 0)
+      rejections.push(reject('no_russian'))
+  }
+  else if (audio === 'original') {
+    if (!fitsOriginal(release, ctx.originalLanguage))
+      rejections.push(reject('no_original'))
+  }
+  // После окна вместо своего языка берём оригинал, а не чужую озвучку
+  else if (!voiceAtCutoff && !fitsOriginal(release, ctx.originalLanguage)) {
+    rejections.push(reject('no_language', { language: audio }))
+  }
 
   if (step === undefined) {
     rejections.push(
@@ -368,7 +433,7 @@ export function checkCandidate(
   if (blocked === null || (blockedEpisodes && episodes.length === 0))
     rejections.push(reject('blocklisted'))
 
-  if (ctx.voiceStrict && season.voice?.studio && !ownVoice)
+  if (audio === 'ru' && ctx.voiceStrict && season.voice?.studio && !ownVoice)
     rejections.push(reject('voice_strict', { studio: season.voice.studio }))
 
   if (episodes.length === 0 && !blockedEpisodes) {
@@ -475,7 +540,12 @@ function waitParams(
     until: until.toISOString(),
   }
 
-  if (!candidate.voiceAtCutoff) {
+  const audio = ctx.audio ?? 'ru'
+
+  if (!candidate.voiceAtCutoff && audio !== 'ru') {
+    params.language = audio
+  }
+  else if (!candidate.voiceAtCutoff) {
     if (season.voice?.studio)
       params.studio = season.voice.studio
     else params.voiceType = season.voice?.type ?? ctx.profile.voiceTypes[0]!
@@ -534,7 +604,13 @@ export function planSeason(
     return new Date(seen.getTime() + ctx.waitHours * HOUR_MS)
   }
   const sorted = [...checked].sort((a, b) =>
-    compareCandidates(a, b, ctx.profile, ctx.kind),
+    compareCandidates(
+      a,
+      b,
+      ctx.profile,
+      ctx.kind,
+      (ctx.audio ?? 'ru') === 'ru',
+    ),
   )
   const uncovered = new Set(ctx.wanted)
 

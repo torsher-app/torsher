@@ -104,12 +104,20 @@ export function useFollowTexts() {
     return t(`sources.voiceTypes.${type}`)
   }
 
-  /** Чего ждём: «LostFilm», «1080p», «LostFilm в 1080p»; ничего — пусто */
+  /**
+   * Чего ждём: «LostFilm», «немецкую озвучку», «1080p», «LostFilm в 1080p»;
+   * ничего — пусто
+   */
   function waitTarget(
-    wait: Pick<FollowWait, 'studio' | 'voiceType' | 'quality'>,
+    wait: Pick<FollowWait, 'studio' | 'voiceType' | 'language' | 'quality'>,
   ) {
     const voice
-      = wait.studio ?? (wait.voiceType ? voiceTypeName(wait.voiceType) : '')
+      = wait.studio
+        ?? (wait.voiceType
+          ? voiceTypeName(wait.voiceType)
+          : wait.language
+            ? t(`audioTargets.${wait.language}`)
+            : '')
     const quality = wait.quality ? qualityName(wait.quality) : ''
 
     if (voice && quality)
@@ -131,6 +139,10 @@ export function useFollowTexts() {
   }
 
   function voicePart(follow: TitleFollow) {
+    // У оригинала и других языков нет студий: подпись — сам язык
+    if (follow.audioEffective !== 'ru')
+      return t(`audioLanguages.${follow.audioEffective}`)
+
     const studio = follow.voice?.studio
 
     if (studio)

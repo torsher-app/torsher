@@ -735,6 +735,35 @@ describe('апгрейд серии', () => {
     })
   })
 
+  it('слежение на английском: английский 720p не заменяется русским дубляжом, английским 1080p — заменяется', async () => {
+    const follow = insertFollow({ audio: 'en' })
+
+    await seedOld(follow)
+    getDb()
+      .update(followEpisodes)
+      .set({ grabbedTitle: 'Quiet.Harbor.S02E07-08.720p.WEB-DL.x264' })
+      .where(eq(followEpisodes.followId, follow.id))
+      .run()
+    requestFollowSearch(follow.id)
+    await followAutomation(new Date())
+
+    expect(torrentByHash(NEW)).toBeUndefined()
+    expect(episodeRow(follow.id, 8).decisions![0]).toMatchObject({
+      infoHash: NEW,
+      verdict: 'rejected',
+    })
+
+    items = [{ title: 'Quiet.Harbor.S02E08.1080p.WEB-DL.x264', hash: NEW }]
+    clearSearchCache()
+    requestFollowSearch(follow.id)
+    await followAutomation(new Date())
+
+    expect(episodeRow(follow.id, 8)).toMatchObject({
+      torrentId: torrentByHash(NEW)!.id,
+      upgradeFrom: expect.objectContaining({ fileIndex: 1 }),
+    })
+  })
+
   it('через 7 дней после закачки серию не заменяем и не ищем', async () => {
     const follow = insertFollow()
 

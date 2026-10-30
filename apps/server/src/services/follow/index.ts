@@ -1,5 +1,6 @@
 import type {
   Follow,
+  FollowAudio,
   FollowMode,
   FollowQualityPreset,
 } from '../../db/schema.ts'
@@ -15,6 +16,7 @@ import {
 } from '../../db/schema.ts'
 import { getTitleSummary } from '../tmdb/index.ts'
 import { parseCatalogId } from '../tmdb/mappers.ts'
+import { followAudio, forgetAudioPending } from './audio.ts'
 import { applyModeChange } from './pick.ts'
 import { followSettings } from './settings.ts'
 import { firstUnaired } from './wanted.ts'
@@ -36,6 +38,8 @@ export interface FollowRules {
   waitHours?: number
   qualityPreset?: FollowQualityPreset
   mode?: FollowMode
+  /** null — как у сервера */
+  audio?: FollowAudio | null
 }
 
 export function followOf(titleId: string) {
@@ -302,6 +306,13 @@ export function updateFollow(id: string, patch: FollowPatch) {
 
   if (rules.mode && rules.mode !== follow.mode)
     applyModeChange(follow, rules.mode)
+
+  if (
+    rules.audio !== undefined
+    && followAudio({ audio: rules.audio }) !== followAudio(follow)
+  ) {
+    forgetAudioPending([id])
+  }
 
   return getDb()
     .update(follows)

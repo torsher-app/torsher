@@ -1,4 +1,8 @@
-import type { FollowMode, FollowQualityPreset } from '../../db/schema.ts'
+import type {
+  FollowAudio,
+  FollowMode,
+  FollowQualityPreset,
+} from '../../db/schema.ts'
 import { getSetting, setSetting } from '../settings/index.ts'
 
 const SETTINGS_KEY = 'follow'
@@ -15,6 +19,15 @@ export interface FollowDefaults {
   mode: FollowMode
 }
 
+/**
+ * Язык озвучки сервера: `auto` — подобран по языку браузера первого
+ * запроса, `user` — выбран владельцем, подбор его больше не трогает
+ */
+export interface ServerAudio {
+  value: FollowAudio
+  source: 'auto' | 'user'
+}
+
 export interface FollowSettings {
   /** Раз в сколько минут читать ленты индексаторов; 0 — не читать */
   rssIntervalMin: number
@@ -22,12 +35,15 @@ export interface FollowSettings {
   searchesPerHour: number
   /** Правила новых слежений */
   defaults: FollowDefaults
+  /** Нет — сервер ещё не знает языка зрителей */
+  audio?: ServerAudio
 }
 
 export interface FollowSettingsPatch {
   rssIntervalMin?: number
   searchesPerHour?: number
   defaults?: Partial<FollowDefaults>
+  audio?: ServerAudio
 }
 
 export const DEFAULT_FOLLOW_SETTINGS: FollowSettings = {
@@ -63,8 +79,27 @@ export function saveFollowSettings(patch: FollowSettingsPatch) {
     rssIntervalMin: patch.rssIntervalMin ?? current.rssIntervalMin,
     searchesPerHour: patch.searchesPerHour ?? current.searchesPerHour,
     defaults: { ...current.defaults, ...patch.defaults },
+    ...((patch.audio ?? current.audio) && {
+      audio: patch.audio ?? current.audio,
+    }),
   }
 
   setSetting(SETTINGS_KEY, next)
   return next
+}
+
+/**
+ * Только язык озвучки поверх сохранённого: остальные ключи не трогаются, и
+ * умолчания в базу не попадают — их новые значения дойдут до сервера
+ */
+export function saveServerAudio(audio: ServerAudio) {
+  setSetting(SETTINGS_KEY, {
+    ...getSetting<StoredSettings>(SETTINGS_KEY),
+    audio,
+  } satisfies StoredSettings)
+}
+
+/** Настройки для API: язык озвучки, которого нет, — `null` */
+export function followSettingsView(settings: FollowSettings) {
+  return { ...settings, audio: settings.audio ?? null }
 }

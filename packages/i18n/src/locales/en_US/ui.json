@@ -636,6 +636,31 @@
     "hin": "Hindi",
     "tha": "Thai"
   },
+  "audioLanguages": {
+    "original": "Original",
+    "ru": "Russian",
+    "en": "English",
+    "uk": "Ukrainian",
+    "ja": "Japanese",
+    "de": "German",
+    "fr": "French",
+    "es": "Spanish",
+    "it": "Italian",
+    "ko": "Korean",
+    "zh": "Chinese"
+  },
+  "audioTargets": {
+    "ru": "Russian audio",
+    "en": "English audio",
+    "uk": "Ukrainian audio",
+    "ja": "Japanese audio",
+    "de": "German audio",
+    "fr": "French audio",
+    "es": "Spanish audio",
+    "it": "Italian audio",
+    "ko": "Korean audio",
+    "zh": "Chinese audio"
+  },
   "shell": {
     "tagline": "Connect the TV to your Torsher server",
     "addressLabel": "Server address",
@@ -877,6 +902,10 @@
           "importText": "Prowlarr or Jackett already runs at another address: enter the address and the API key.",
           "composeTitle": "Start Prowlarr next to it",
           "composeText": "The install example has Prowlarr under its own profile. Start it in the folder with docker-compose.yml, add indexers in it and check again."
+        },
+        "audio": {
+          "title": "Audio language",
+          "text": "Which audio “Follow” looks for. Picked by your browser language; change it if you watch in another one."
         }
       },
       "done": {
@@ -1595,6 +1624,12 @@
           "hint": "“Search now” doesn't count toward the limit.",
           "error": "From 1 to 60"
         },
+        "audio": {
+          "title": "Audio language",
+          "description": "Which audio follows look for unless a follow has its own. Russian gets studios and translation types; other languages only the language tag in the release name.",
+          "auto": "Picked by your browser language",
+          "unset": "Not chosen yet: Russian applies"
+        },
         "defaults": {
           "title": "Rules for new follows",
           "description": "What a follow gets when it's turned on from the TV. Each follow's rules can be changed later.",
@@ -1614,7 +1649,8 @@
               "title": "Not required",
               "text": "Any release"
             }
-          }
+          },
+          "russianScope": "Applies when the audio language is Russian."
         }
       }
     },
@@ -3312,6 +3348,9 @@
       "rules": {
         "title": "Rules",
         "mode": "New episode",
+        "audio": "Audio",
+        "audioServer": "Server default ({language})",
+        "audioHint": "Original takes releases with the original audio track. Another language is awaited until “Wait for better” runs out, then the original is taken.",
         "voice": "Voice-over studio",
         "voicePlaceholder": "Any",
         "voiceHint": "Used when the season has no pinned voice-over. The voice-over picked on the TV wins.",
@@ -3359,6 +3398,8 @@
         "title_unsure": "not sure it's this title",
         "screen_copy": "screen recording",
         "no_russian": "no Russian audio track",
+        "no_original": "no original audio track",
+        "no_language": "neither the original nor {language} audio",
         "quality": "{quality} isn't in the chosen quality",
         "qualityUnknown": "quality isn't in the chosen ones",
         "size": "size doesn't look like an episode: {size}",
@@ -3788,7 +3829,13 @@
         "best": "1080p",
         "uhd": "4K",
         "compact": "720p"
-      }
+      },
+      "language": "Audio language",
+      "voiceServer": "Server default ({language})",
+      "voiceServerHint": "The server language is set in the panel: Settings → Following",
+      "voiceOriginalHint": "Take releases with the original audio track",
+      "voiceOtherLanguage": "Other language",
+      "voiceLanguageHint": "Wait for it until “Wait for better” runs out, then take the original"
     },
     "errors": {
       "follow": "Couldn't start following. Try again",

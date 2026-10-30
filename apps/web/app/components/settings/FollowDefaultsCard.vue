@@ -200,8 +200,13 @@ const choiceClass
         </fieldset>
 
         <fieldset class="grid gap-2">
-          <legend class="mb-2 text-sm font-medium">
-            {{ t("panel.follow.rules.russian") }}
+          <legend class="mb-2 grid gap-1">
+            <span class="text-sm font-medium">
+              {{ t("panel.follow.rules.russian") }}
+            </span>
+            <span class="text-[12.5px] text-muted-foreground">
+              {{ t("panel.settings.follow.defaults.russianScope") }}
+            </span>
           </legend>
           <RadioGroup
             v-model="requireRussian"

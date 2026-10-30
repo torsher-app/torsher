@@ -69,6 +69,7 @@ function follow(overrides: Partial<Follow> = {}): Follow {
     waitHours: 24,
     qualityPreset: 'best',
     mode: 'download',
+    audio: null,
     createdByProfileId: null,
     nextSearchAt: null,
     lastSearchAt: null,

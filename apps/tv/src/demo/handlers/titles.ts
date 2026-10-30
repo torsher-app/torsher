@@ -195,7 +195,10 @@ const DEFAULT_FOLLOW: Required<FollowTitleInput> = {
   waitHours: 24,
   qualityPreset: 'best',
   mode: 'download',
+  audio: null,
 }
+
+const DEMO_SERVER_AUDIO = 'ru'
 
 function followOf(title: DemoTitle): TitleFollowResponse {
   if (!follows.has(title.id))
@@ -215,6 +218,9 @@ function followOf(title: DemoTitle): TitleFollowResponse {
     waitHours: settings.waitHours,
     qualityPreset: settings.qualityPreset,
     mode: settings.mode,
+    audio: settings.audio,
+    audioEffective: settings.audio ?? DEMO_SERVER_AUDIO,
+    audioServer: DEMO_SERVER_AUDIO,
     next: next ?? null,
     subscribed: true,
     profileCount: 1,

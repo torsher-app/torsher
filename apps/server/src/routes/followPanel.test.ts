@@ -24,6 +24,8 @@ import {
   torrents,
   users,
 } from '../db/schema.ts'
+import { resetServerAudioGuess } from '../services/follow/audio.ts'
+import { getSetting } from '../services/settings/index.ts'
 import { recordHistory } from '../services/follow/history.ts'
 import {
   requestedSearch,
@@ -205,6 +207,7 @@ beforeEach(() => {
   getDb().delete(torrents).run()
   getDb().delete(metaCache).run()
   getDb().delete(serverSettings).run()
+  resetServerAudioGuess()
   resetFollowSearch()
   fetchMock.mockReset()
   fetchMock.mockImplementation(async (input) => {
@@ -244,6 +247,7 @@ describe('настройки «Слежу»', () => {
         requireRussian: 'auto',
         mode: 'download',
       },
+      audio: null,
     })
 
     const saved = await app.inject({
@@ -310,6 +314,160 @@ describe('настройки «Слежу»', () => {
       waitHours: 12,
       qualityPreset: 'compact',
       requireRussian: false,
+    })
+  })
+})
+
+describe('язык озвучки', () => {
+  async function settings(headers: Record<string, string> = {}) {
+    const res = await app.inject({
+      url: '/api/settings/follow',
+      cookies: owner,
+      headers,
+    })
+
+    return res.json().audio
+  }
+
+  it('подбирается по первому языку браузера', async () => {
+    for (const [header, value] of [
+      ['de-DE,de;q=0.9,en;q=0.8', 'de'],
+      ['pt-BR,pt;q=0.9', 'original'],
+      ['en-US,en;q=0.9', 'original'],
+      ['ru', 'ru'],
+      ['en;q=0.5, fr-CA', 'fr'],
+    ]) {
+      getDb().delete(serverSettings).run()
+      resetServerAudioGuess()
+
+      expect(await settings({ 'accept-language': header! })).toEqual({
+        value,
+        source: 'auto',
+      })
+    }
+  })
+
+  it('пока языка нет, действует `ru`; подбор не трогает выбор', async () => {
+    expect(await settings()).toBeNull()
+
+    const id = await followSeries()
+    const brief = await app.inject({
+      url: `/api/follows/${id}?language=ru-RU`,
+      cookies: owner,
+    })
+
+    expect(brief.json()).toMatchObject({
+      audio: null,
+      audioEffective: 'ru',
+      audioServer: 'ru',
+    })
+
+    await app.inject({
+      method: 'PUT',
+      url: '/api/settings/follow',
+      cookies: owner,
+      payload: { audio: 'ja' },
+    })
+    resetServerAudioGuess()
+
+    expect(await settings({ 'accept-language': 'de-DE' })).toEqual({
+      value: 'ja',
+      source: 'user',
+    })
+
+    // Догадка не перезаписывает и прежнюю догадку
+    getDb().delete(serverSettings).run()
+    resetServerAudioGuess()
+    await settings({ 'accept-language': 'fr-FR' })
+    resetServerAudioGuess()
+
+    expect(await settings({ 'accept-language': 'de-DE' })).toEqual({
+      value: 'fr',
+      source: 'auto',
+    })
+  })
+
+  it('подбор пишет в базу только язык: умолчания остаются умолчаниями', async () => {
+    getDb().delete(serverSettings).run()
+    resetServerAudioGuess()
+    await settings({ 'accept-language': 'de-DE' })
+
+    expect(getSetting('follow')).toEqual({
+      audio: { value: 'de', source: 'auto' },
+    })
+
+    await app.inject({
+      method: 'PUT',
+      url: '/api/settings/follow',
+      cookies: owner,
+      payload: { audio: 'ja' },
+    })
+
+    expect(getSetting('follow')).toEqual({
+      audio: { value: 'ja', source: 'user' },
+    })
+  })
+
+  it('язык, которого нет в списке, — 400', async () => {
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/api/settings/follow',
+      cookies: owner,
+      payload: { audio: 'pt' },
+    })
+
+    expect(res.statusCode).toBe(400)
+  })
+
+  it('слежение без своего правила идёт за сервером, своё правило главнее', async () => {
+    const id = await followSeries()
+    const row = () =>
+      getDb().select().from(follows).where(eq(follows.id, id)).get()
+
+    // Новое слежение и прежние после миграции — «как у сервера»
+    expect(row()?.audio).toBeNull()
+
+    await app.inject({
+      method: 'PUT',
+      url: '/api/settings/follow',
+      cookies: owner,
+      payload: { audio: 'original' },
+    })
+
+    const server = await app.inject({
+      url: `/api/follows/${id}?language=ru-RU`,
+      cookies: owner,
+    })
+
+    expect(server.json()).toMatchObject({
+      audio: null,
+      audioEffective: 'original',
+    })
+
+    const own = await app.inject({
+      method: 'PATCH',
+      url: `/api/follows/${id}?language=ru-RU`,
+      cookies: owner,
+      payload: { audio: 'de' },
+    })
+
+    expect(own.json()).toMatchObject({
+      audio: 'de',
+      audioEffective: 'de',
+      audioServer: 'original',
+    })
+    expect(row()?.audio).toBe('de')
+
+    const back = await app.inject({
+      method: 'PATCH',
+      url: `/api/follows/${id}?language=ru-RU`,
+      cookies: owner,
+      payload: { audio: null },
+    })
+
+    expect(back.json()).toMatchObject({
+      audio: null,
+      audioEffective: 'original',
     })
   })
 })
