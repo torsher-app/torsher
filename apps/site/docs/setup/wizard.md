@@ -67,6 +67,8 @@ Where to find the API key and how to start Prowlarr: [Indexers](/docs/setup/inde
 
 Without sources the catalog works, but there is nothing to watch from.
 
+The step also asks for the <Ui k="panel.wizard.sources.audio.title" />: which audio [Follow](/docs/watch/follow#audio-language) looks for. It is preselected from your browser language; change it if you watch in another one. <Ui k="panel.wizard.actions.next" /> saves it, and it can be changed later in <Ui k="panel.nav.settings panel.settings.nav.follow" />.
+
 ## 5. Done
 
 The last step lists what is set up and what you skipped. Under <Ui k="panel.wizard.done.deviceTitle" /> it shows the address to open on the TV or a computer: in the Torsher app for [LG webOS](/docs/tv/lg-webos) or [Android TV](/docs/tv/android-tv), or in a browser. The TV shows a six-character code; enter it right there.

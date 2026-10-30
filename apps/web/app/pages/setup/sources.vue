@@ -1,13 +1,18 @@
 <script setup lang="ts">
 import type { DiscoveredManager } from '@torsher/api-client'
 import type { WizardCheck } from '~/lib/wizardChecks'
+import type { FollowAudio } from '~/lib/follow'
 import { useI18n } from 'vue-i18n'
+import { Card } from '@/components/ui/card'
+import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
+import AudioLanguageSelect from '~/components/follow/AudioLanguageSelect.vue'
 import ImportManagerDialog from '~/components/sources/ImportManagerDialog.vue'
 import ConnectManagerCard from '~/components/wizard/ConnectManagerCard.vue'
 import NoManagersCard from '~/components/wizard/NoManagersCard.vue'
 import WizardActions from '~/components/wizard/WizardActions.vue'
 import WizardChecks from '~/components/wizard/WizardChecks.vue'
+import { audioFromLanguage } from '~/lib/follow'
 
 definePageMeta({
   layout: 'wizard',
@@ -18,6 +23,24 @@ definePageMeta({
 const { t } = useI18n()
 const { discoverManagers } = useWizard()
 const sources = useSources()
+const followSettings = useFollowSettings()
+
+// Язык озвучки сервера: выбор владельца, иначе по языку этого браузера.
+// «Дальше» сохраняет его как выбор, догадка сервера больше не нужна
+const audio = ref<FollowAudio>(audioFromLanguage(navigator.language))
+
+watch(
+  () => followSettings.settings.value?.audio,
+  (value) => {
+    if (value?.source === 'user')
+      audio.value = value.value
+  },
+  { immediate: true },
+)
+
+function saveAudio() {
+  return followSettings.save({ audio: audio.value })
+}
 
 const found = shallowRef<DiscoveredManager[] | null>(null)
 const isDiscovering = ref(false)
@@ -130,7 +153,10 @@ function retry() {
   discover()
 }
 
-onMounted(retry)
+onMounted(() => {
+  retry()
+  followSettings.load()
+})
 onBeforeUnmount(sources.stopPolling)
 </script>
 
@@ -166,7 +192,25 @@ onBeforeUnmount(sources.stopPolling)
     {{ t("panel.sources.empty.foot") }}
   </p>
 
-  <WizardActions step="sources" :next-label="nextLabel" />
+  <Card class="gap-3 p-5">
+    <div class="grid gap-1">
+      <Label for="wizard-audio" class="text-base font-semibold tracking-tight">
+        {{ t("panel.wizard.sources.audio.title") }}
+      </Label>
+      <p class="text-[13.5px] text-pretty text-muted-foreground">
+        {{ t("panel.wizard.sources.audio.text") }}
+      </p>
+    </div>
+    <div class="max-w-80">
+      <AudioLanguageSelect id="wizard-audio" v-model="audio" />
+    </div>
+  </Card>
+
+  <WizardActions
+    step="sources"
+    :next-label="nextLabel"
+    :before-next="saveAudio"
+  />
 
   <ImportManagerDialog v-model:open="isImportOpen" />
 </template>

@@ -18,8 +18,14 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import AudioLanguageSelect from '~/components/follow/AudioLanguageSelect.vue'
 import LoadingButton from '~/components/LoadingButton.vue'
-import { FOLLOW_MODES, QUALITY_PRESETS, waitOptionsFor } from '~/lib/follow'
+import {
+  FOLLOW_AUDIOS,
+  FOLLOW_MODES,
+  QUALITY_PRESETS,
+  waitOptionsFor,
+} from '~/lib/follow'
 
 type Preset = FollowSummary['qualityPreset']
 type Mode = FollowSummary['mode']
@@ -35,6 +41,8 @@ const store = useFollows()
 const schema = toTypedSchema(
   z.object({
     mode: z.enum(['download', 'notify']),
+    // `server` — как у сервера
+    audio: z.enum(['server', ...FOLLOW_AUDIOS]),
     voiceStudio: z.string().trim().max(100),
     voiceStrict: z.boolean(),
     waitHours: z.string(),
@@ -46,6 +54,7 @@ const schema = toTypedSchema(
 function valuesOf(follow: FollowSummary) {
   return {
     mode: follow.mode as Mode,
+    audio: follow.audio ?? ('server' as const),
     voiceStudio: follow.voiceStudio ?? '',
     voiceStrict: follow.voiceStrict,
     waitHours: String(follow.waitHours),
@@ -68,6 +77,7 @@ const {
 })
 
 const [mode] = defineField('mode')
+const [audio] = defineField('audio')
 const [voiceStudio, voiceStudioProps] = defineField('voiceStudio')
 const [voiceStrict] = defineField('voiceStrict')
 const [waitHours] = defineField('waitHours')
@@ -75,6 +85,13 @@ const [qualityPreset] = defineField('qualityPreset')
 const [requireRussian] = defineField('requireRussian')
 
 const formError = ref('')
+
+// Студии, «только эта студия» и русская дорожка — правила русской озвучки
+const russian = computed(
+  () =>
+    (values.audio === 'server' ? props.follow.audioServer : values.audio)
+    === 'ru',
+)
 
 function waitLabel(hours: number) {
   return hours
@@ -111,6 +128,7 @@ function bodyOf(form: typeof values): UpdateFollowInput {
   const studio = form.voiceStudio?.trim() ?? ''
   const body: UpdateFollowInput = {
     mode: form.mode,
+    audio: !form.audio || form.audio === 'server' ? null : form.audio,
     voiceStudio: studio || null,
     voiceStrict: !!studio && !!form.voiceStrict,
     waitHours: Number(form.waitHours),
@@ -171,6 +189,18 @@ const choiceClass
     </fieldset>
 
     <div class="grid gap-2">
+      <Label for="follow-audio">{{ t("panel.follow.rules.audio") }}</Label>
+      <AudioLanguageSelect
+        id="follow-audio"
+        v-model="audio"
+        :server-language="follow.audioServer"
+      />
+      <p class="text-[12.5px] text-muted-foreground">
+        {{ t("panel.follow.rules.audioHint") }}
+      </p>
+    </div>
+
+    <div v-if="russian" class="grid gap-2">
       <Label for="follow-studio">{{ t("panel.follow.rules.voice") }}</Label>
       <Input
         id="follow-studio"
@@ -185,7 +215,7 @@ const choiceClass
       </p>
     </div>
 
-    <div class="flex items-start justify-between gap-4">
+    <div v-if="russian" class="flex items-start justify-between gap-4">
       <div class="grid gap-1">
         <Label for="follow-strict">{{ t("panel.follow.rules.strict") }}</Label>
         <p class="text-[12.5px] text-muted-foreground">
@@ -243,7 +273,7 @@ const choiceClass
       </RadioGroup>
     </fieldset>
 
-    <div class="flex items-start justify-between gap-4">
+    <div v-if="russian" class="flex items-start justify-between gap-4">
       <div class="grid gap-1">
         <Label for="follow-russian">{{
           t("panel.follow.rules.russian")

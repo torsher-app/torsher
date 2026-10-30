@@ -54,6 +54,8 @@ type DemoFollow = Omit<
   | 'first'
   | 'unsure'
   | 'waitUntil'
+  | 'audioEffective'
+  | 'audioServer'
 >
 
 const WANTED: ReadonlySet<EpisodeState> = new Set([
@@ -170,6 +172,7 @@ function followOf(
     waitHours: 24,
     qualityPreset: 'best',
     mode: 'download',
+    audio: null,
     profiles: [PROFILES.alex],
     createdAt: ago(90 * DAY),
     updatedAt: ago(20 * DAY),
@@ -482,6 +485,7 @@ const DEFAULT_SETTINGS: FollowSettings = {
     requireRussian: 'auto',
     mode: 'download',
   },
+  audio: { value: 'ru', source: 'user' },
 }
 
 let settings: FollowSettings = structuredClone(DEFAULT_SETTINGS)
@@ -555,8 +559,12 @@ function detailsOf(follow: DemoFollow): FollowDetails {
     .filter((value): value is string => Boolean(value))
     .sort()
 
+  const server = settings.audio?.value ?? 'ru'
+
   return {
     ...follow,
+    audioEffective: follow.audio ?? server,
+    audioServer: server,
     title: title?.title ?? null,
     poster: title && posterOf(title),
     year: title?.year,
@@ -940,6 +948,9 @@ put<FollowSettings, UpdateFollowSettingsInput>(
       rssIntervalMin: body.rssIntervalMin ?? settings.rssIntervalMin,
       searchesPerHour: body.searchesPerHour ?? settings.searchesPerHour,
       defaults: { ...settings.defaults, ...body.defaults },
+      audio: body.audio
+        ? { value: body.audio, source: 'user' }
+        : settings.audio,
     }
 
     return settings

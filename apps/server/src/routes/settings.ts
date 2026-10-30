@@ -24,6 +24,7 @@ import {
 } from '../services/engine/index.ts'
 import {
   followSettings,
+  followSettingsView,
   saveFollowSettings,
 } from '../services/follow/settings.ts'
 import { logFor } from '../services/logs/index.ts'
@@ -335,7 +336,7 @@ export const settingsRoutes: FastifyPluginAsyncZod = async (app) => {
         response: { 200: followSettingsResponse, ...guardResponses },
       },
     },
-    async () => followSettings(),
+    async () => followSettingsView(followSettings()),
   )
 
   app.put(
@@ -352,6 +353,15 @@ export const settingsRoutes: FastifyPluginAsyncZod = async (app) => {
         },
       },
     },
-    async request => saveFollowSettings(request.body),
+    async (request) => {
+      const { audio, ...patch } = request.body
+
+      return followSettingsView(
+        saveFollowSettings({
+          ...patch,
+          ...(audio && { audio: { value: audio, source: 'user' as const } }),
+        }),
+      )
+    },
   )
 }

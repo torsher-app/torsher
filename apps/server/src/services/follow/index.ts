@@ -1,5 +1,6 @@
 import type {
   Follow,
+  FollowAudio,
   FollowMode,
   FollowQualityPreset,
 } from '../../db/schema.ts'
@@ -36,6 +37,8 @@ export interface FollowRules {
   waitHours?: number
   qualityPreset?: FollowQualityPreset
   mode?: FollowMode
+  /** null — как у сервера */
+  audio?: FollowAudio | null
 }
 
 export function followOf(titleId: string) {

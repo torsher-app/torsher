@@ -260,7 +260,7 @@ export interface NewPending {
   episodes: EpisodeRef[]
   candidate: FollowPendingCandidate
   until: Date
-  /** Параметры отказа `wait`: студия или тип озвучки и качество */
+  /** Параметры отказа `wait`: студия, тип озвучки или язык и качество */
   wait: Record<string, unknown>
 }
 
@@ -292,6 +292,7 @@ export async function announceWaiting(
       wait: {
         ...(pick('studio') && { studio: pick('studio') }),
         ...(pick('voiceType') && { voiceType: pick('voiceType') }),
+        ...(pick('language') && { language: pick('language') }),
         ...(pick('quality') && { quality: pick('quality') }),
       },
       until: soonest.until.toISOString(),

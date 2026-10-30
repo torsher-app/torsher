@@ -190,10 +190,11 @@ export function episodesLabel(season: number | null, episodes: number[]) {
   return parts.length ? `S${season}${parts.join(', ')}` : `S${season}`
 }
 
-/** Студия → тип озвучки → качество: чего ждёт отложенный кандидат */
+/** Студия → тип озвучки или язык → качество: чего ждёт отложенный кандидат */
 export interface WaitTarget {
   studio?: string
   voiceType?: string
+  language?: string
   quality?: string
 }
 
@@ -205,6 +206,7 @@ export function waitTargetOf(params: Record<string, unknown> | undefined) {
   return {
     studio: pick('studio'),
     voiceType: pick('voiceType'),
+    language: pick('language'),
     quality: pick('quality'),
   }
 }
@@ -257,6 +259,39 @@ export const QUALITY_PRESETS = ['best', 'uhd', 'compact'] as const
 
 /** «Новая серия»: скачать в библиотеку или только уведомить */
 export const FOLLOW_MODES = ['download', 'notify'] as const
+
+export type FollowAudio = FollowSummary['audioEffective']
+
+/**
+ * Языки озвучки, как у сервера: оригинал и языки дорожек, которые узнаёт
+ * парсер названий
+ */
+export const FOLLOW_AUDIOS = [
+  'original',
+  'ru',
+  'en',
+  'uk',
+  'ja',
+  'de',
+  'fr',
+  'es',
+  'it',
+  'ko',
+  'zh',
+] as const satisfies readonly FollowAudio[]
+
+/**
+ * Озвучка по языку браузера — то же правило, что у сервера для
+ * `Accept-Language`: язык, который узнаёт парсер, — он, остальные — оригинал
+ */
+export function audioFromLanguage(tag: string | undefined): FollowAudio {
+  const language = tag?.split('-')[0]?.toLowerCase()
+
+  return (
+    FOLLOW_AUDIOS.find(audio => audio !== 'original' && audio === language)
+    ?? 'original'
+  )
+}
 
 // «Ждать лучшее»: от «не ждать» до недели, как предел DTO
 const WAIT_OPTIONS = [0, 6, 12, 24, 48, 72, 168]

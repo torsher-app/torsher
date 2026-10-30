@@ -9,6 +9,7 @@ import {
   relativeDay,
   scheduleDays,
   untilDay,
+  voiceChoices,
   waitChoices,
   waitingStatusKey,
 } from './follow.ts'
@@ -25,6 +26,9 @@ function follow(patch: Partial<TitleFollow> = {}): TitleFollow {
     waitHours: 24,
     qualityPreset: 'best',
     mode: 'download',
+    audio: null,
+    audioEffective: 'ru',
+    audioServer: 'ru',
     next: null,
     subscribed: true,
     profileCount: 1,
@@ -236,5 +240,32 @@ describe('untilDay', () => {
     expect(untilDay(new Date(2026, 9, 28, 9, 0).toISOString(), now)).toBe(
       '2026-10-28',
     )
+  })
+})
+
+describe('шаг «Озвучка»', () => {
+  it('русская: как у сервера, студии, оригинал и другой язык', () => {
+    expect(voiceChoices({ audioEffective: 'ru' }, 'LostFilm')).toEqual([
+      'server',
+      'prefer',
+      'only',
+      'any',
+      'original',
+      'languages',
+    ])
+    expect(voiceChoices({ audioEffective: 'ru' }, undefined)).toEqual([
+      'server',
+      'any',
+      'original',
+      'languages',
+    ])
+  })
+
+  it('другой язык и оригинал: сразу список языков без студий', () => {
+    const choices = voiceChoices({ audioEffective: 'original' }, 'LostFilm')
+
+    expect(choices.slice(0, 4)).toEqual(['server', 'original', 'ru', 'en'])
+    expect(choices).not.toContain('prefer')
+    expect(voiceChoices({ audioEffective: 'de' }, undefined)).toContain('de')
   })
 })

@@ -33,7 +33,7 @@ export function ladderStep(
 export interface OrderedCandidate {
   release: RankedRelease
   step: number
-  /** Своя студия сезона среди дорожек */
+  /** Своя студия сезона среди дорожек, у другого языка — дорожка на нём */
   ownVoice: boolean
   /** Сколько нужных серий раздача закрывает */
   wantedCount: number
@@ -63,18 +63,23 @@ function sizeDistance(release: RankedRelease, kind: 'movie' | 'series') {
  * точное разрешение выше выведенного), тип озвучки, продолжение темы сезона,
  * число нужных серий, сиды по порядку величины, размер ближе к середине
  * коридора, счёт ранжирования. Озвучка раньше качества: для русского зрителя
- * она важнее.
+ * она важнее. Типы перевода русские: у других языков озвучки они не участвуют.
  */
 export function compareCandidates(
   a: OrderedCandidate,
   b: OrderedCandidate,
   profile: RankingProfile,
   kind: 'movie' | 'series',
+  byVoiceType = true,
 ) {
-  const voice = (item: OrderedCandidate) =>
-    item.release.voice
+  const voice = (item: OrderedCandidate) => {
+    if (!byVoiceType)
+      return 0
+
+    return item.release.voice
       ? voiceRank(item.release.voice, profile)
       : profile.voiceTypes.length + 1
+  }
 
   return (
     Number(b.ownVoice) - Number(a.ownVoice)

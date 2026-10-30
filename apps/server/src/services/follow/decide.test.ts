@@ -775,3 +775,109 @@ describe('чёрный список по сериям', () => {
     ])
   })
 })
+
+describe('язык озвучки', () => {
+  // Без студий: в режимах кроме `ru` своей студии у сезона нет
+  const noVoice: SeasonContext = { season: 2, cutoffStep: 0 }
+  const english = (tail: string, extra: Partial<FoundRelease> = {}) =>
+    found(`en-${tail}`, `Quiet.Harbor.S02E05.${tail}`, extra)
+  const original = { audio: 'original' as const, originalLanguage: 'en' }
+  const german = { audio: 'de' as const, originalLanguage: 'en' }
+  const afterWindow = new Map([
+    ['2:5', new Date(NOW.getTime() - 25 * HOUR_MS)],
+  ])
+
+  it('оригинал: раздача без дорожек берётся сразу, «нужна русская» не действует', () => {
+    const plain = english('1080p.WEB-DL.x264')
+    const result = plan([plain], original, noVoice)
+
+    expect(grabbed(result)).toEqual([{ id: plain.id, episodes: [5] }])
+  })
+
+  it('оригинал: русский дубляж без оригинала — `no_original`, с ним — берётся', () => {
+    const dub = episode(5, 'WEB-DL 1080p | Дубляж', { seeders: 900 })
+    const withOriginal = episode(5, 'WEB-DL 1080p | Дубляж + Original')
+    const withEnglish = episode(5, 'WEB-DL 1080p | LostFilm + Eng')
+    const result = plan([dub, withOriginal], original, noVoice)
+
+    expect(codes(result, dub.id)).toEqual(['no_original'])
+    expect(grabbed(result)).toEqual([{ id: withOriginal.id, episodes: [5] }])
+    expect(grabbed(plan([withEnglish], original, noVoice))).toHaveLength(1)
+  })
+
+  it('оригинал: тип перевода не ранжирует, озвучку не ждём', () => {
+    const avo = episode(5, 'WEB-DL 1080p | AVO + Original', { seeders: 900 })
+    const dub = episode(5, 'WEB-DL 1080p | Дубляж + Original', { seeders: 9 })
+    const result = plan([dub, avo], original, noVoice)
+
+    expect(grabbed(result)).toEqual([{ id: avo.id, episodes: [5] }])
+    expect(result.pending).toEqual([])
+  })
+
+  it('другой язык: дорожка на нём — своя, берётся сразу', () => {
+    const own = english('GER.1080p.WEB-DL.x264')
+    const plain = english('1080p.WEB-DL.x264', { seeders: 900 })
+    const result = plan([plain, own], german, noVoice)
+
+    expect(grabbed(result)).toEqual([{ id: own.id, episodes: [5] }])
+  })
+
+  it('другой язык: без своей дорожки ждём окно, цель ожидания — язык', () => {
+    const plain = english('1080p.WEB-DL.x264')
+    const result = plan([plain], german, noVoice)
+
+    expect(result.grabs).toEqual([])
+    expect(result.pending).toHaveLength(1)
+    expect(result.candidates[0]!.rejections).toEqual([
+      {
+        code: 'wait',
+        type: 'temporary',
+        params: {
+          until: new Date(NOW.getTime() + 24 * HOUR_MS).toISOString(),
+          language: 'de',
+        },
+      },
+    ])
+  })
+
+  it('другой язык: после окна берём оригинал, а не русскую озвучку', () => {
+    const dub = episode(5, 'WEB-DL 1080p | Дубляж', { seeders: 900 })
+    const plain = english('1080p.WEB-DL.x264')
+    const result = plan(
+      [dub, plain],
+      { ...german, firstSeen: afterWindow },
+      noVoice,
+    )
+
+    expect(codes(result, dub.id)).toEqual(['no_language'])
+    expect(
+      result.candidates.find(item => item.release.id === dub.id)!
+        .rejections[0]!.params,
+    ).toEqual({ language: 'de' })
+    expect(grabbed(result)).toEqual([{ id: plain.id, episodes: [5] }])
+  })
+
+  it('другой язык совпадает с языком оригинала: любая раздача своя', () => {
+    const plain = english('1080p.WEB-DL.x264')
+    const result = plan(
+      [plain],
+      { audio: 'de', originalLanguage: 'de' },
+      noVoice,
+    )
+
+    expect(grabbed(result)).toHaveLength(1)
+  })
+
+  it('оригинал в библиотеке озвучкой не заменяется', () => {
+    const current = ranked([english('720p.WEB-DL.x264')])[0]!
+    const dub = episode(5, 'WEB-DL 1080p | Дубляж')
+    const better = english('1080p.WEB-DL.x264')
+    const upgrades = new Map([['2:5', { current }]])
+    const ctx = { ...original, wanted: new Set<string>(), upgrades }
+
+    expect(grabbed(plan([dub], ctx, noVoice))).toEqual([])
+    expect(grabbed(plan([better], ctx, noVoice))).toEqual([
+      { id: better.id, episodes: [5] },
+    ])
+  })
+})

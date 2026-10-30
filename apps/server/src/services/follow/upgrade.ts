@@ -1,4 +1,8 @@
-import type { AudioTrack, VideoResolution } from '@torsher/release-parser'
+import type {
+  AudioTrack,
+  ParsedRelease,
+  VideoResolution,
+} from '@torsher/release-parser'
 import type {
   Follow,
   FollowEpisode,
@@ -31,6 +35,8 @@ const STARTED_SHARE = 0.05
 
 /** Версия серии: по чему её сравнивают с кандидатом */
 export interface ReleaseVersion {
+  /** Все дорожки по названию: язык озвучки и оригинал */
+  parsed: Pick<ParsedRelease, 'audio'>
   voice?: AudioTrack
   voices: AudioTrack[]
   resolution?: VideoResolution
@@ -263,6 +269,7 @@ export function versionOf(
   const voices = russianVoices(parsed, ctx)
 
   return {
+    parsed,
     voice: voiceOf(voices, ctx),
     voices,
     resolution:

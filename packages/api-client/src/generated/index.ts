@@ -326,6 +326,7 @@ export interface FollowWaitInput {
   until: string;
   studio?: string;
   voiceType?: string;
+  language?: string;
   quality?: string;
 }
 
@@ -1718,6 +1719,19 @@ export interface FollowTitleInput {
   waitHours?: number;
   qualityPreset?: "best" | "uhd" | "compact";
   mode?: "download" | "notify";
+  audio?:
+    | "original"
+    | "ru"
+    | "en"
+    | "uk"
+    | "ja"
+    | "de"
+    | "fr"
+    | "es"
+    | "it"
+    | "ko"
+    | "zh"
+    | null;
 }
 
 export interface OpenFollowPickInput {
@@ -1748,6 +1762,19 @@ export interface UpdateFollowInput {
   waitHours?: number;
   qualityPreset?: "best" | "uhd" | "compact";
   mode?: "download" | "notify";
+  audio?:
+    | "original"
+    | "ru"
+    | "en"
+    | "uk"
+    | "ja"
+    | "de"
+    | "fr"
+    | "es"
+    | "it"
+    | "ko"
+    | "zh"
+    | null;
   state?: "active" | "paused";
 }
 
@@ -1773,6 +1800,43 @@ export interface TitleFollowInput {
   waitHours: number;
   qualityPreset: "best" | "uhd" | "compact";
   mode: "download" | "notify";
+  audio:
+    | "original"
+    | "ru"
+    | "en"
+    | "uk"
+    | "ja"
+    | "de"
+    | "fr"
+    | "es"
+    | "it"
+    | "ko"
+    | "zh"
+    | null;
+  audioEffective:
+    | "original"
+    | "ru"
+    | "en"
+    | "uk"
+    | "ja"
+    | "de"
+    | "fr"
+    | "es"
+    | "it"
+    | "ko"
+    | "zh";
+  audioServer:
+    | "original"
+    | "ru"
+    | "en"
+    | "uk"
+    | "ja"
+    | "de"
+    | "fr"
+    | "es"
+    | "it"
+    | "ko"
+    | "zh";
   next: TitleNextEpisodeInput | null;
   subscribed: boolean;
   /**
@@ -1798,6 +1862,7 @@ export interface TitleFollowInput {
     until: string;
     studio?: string;
     voiceType?: string;
+    language?: string;
     quality?: string;
     /**
      * @min -9007199254740991
@@ -1947,6 +2012,43 @@ export interface FollowSummaryInput {
   waitHours: number;
   qualityPreset: "best" | "uhd" | "compact";
   mode: "download" | "notify";
+  audio:
+    | "original"
+    | "ru"
+    | "en"
+    | "uk"
+    | "ja"
+    | "de"
+    | "fr"
+    | "es"
+    | "it"
+    | "ko"
+    | "zh"
+    | null;
+  audioEffective:
+    | "original"
+    | "ru"
+    | "en"
+    | "uk"
+    | "ja"
+    | "de"
+    | "fr"
+    | "es"
+    | "it"
+    | "ko"
+    | "zh";
+  audioServer:
+    | "original"
+    | "ru"
+    | "en"
+    | "uk"
+    | "ja"
+    | "de"
+    | "fr"
+    | "es"
+    | "it"
+    | "ko"
+    | "zh";
   next: TitleNextEpisodeInput | null;
   titleId: string;
   title: string | null;
@@ -1993,6 +2095,43 @@ export interface FollowDetailsInput {
   waitHours: number;
   qualityPreset: "best" | "uhd" | "compact";
   mode: "download" | "notify";
+  audio:
+    | "original"
+    | "ru"
+    | "en"
+    | "uk"
+    | "ja"
+    | "de"
+    | "fr"
+    | "es"
+    | "it"
+    | "ko"
+    | "zh"
+    | null;
+  audioEffective:
+    | "original"
+    | "ru"
+    | "en"
+    | "uk"
+    | "ja"
+    | "de"
+    | "fr"
+    | "es"
+    | "it"
+    | "ko"
+    | "zh";
+  audioServer:
+    | "original"
+    | "ru"
+    | "en"
+    | "uk"
+    | "ja"
+    | "de"
+    | "fr"
+    | "es"
+    | "it"
+    | "ko"
+    | "zh";
   next: TitleNextEpisodeInput | null;
   titleId: string;
   title: string | null;
@@ -2104,6 +2243,7 @@ export interface FollowQueueItemInput {
   waitFor?: {
     studio?: string;
     voiceType?: string;
+    language?: string;
     quality?: string;
   };
   size?: number;
@@ -2183,6 +2323,21 @@ export interface FollowSettingsInput {
     requireRussian: "auto" | "always" | "never";
     mode: "download" | "notify";
   };
+  audio: {
+    value:
+      | "original"
+      | "ru"
+      | "en"
+      | "uk"
+      | "ja"
+      | "de"
+      | "fr"
+      | "es"
+      | "it"
+      | "ko"
+      | "zh";
+    source: "auto" | "user";
+  } | null;
 }
 
 export interface UpdateFollowSettingsInput {
@@ -2211,6 +2366,18 @@ export interface UpdateFollowSettingsInput {
     requireRussian?: "auto" | "always" | "never";
     mode?: "download" | "notify";
   };
+  audio?:
+    | "original"
+    | "ru"
+    | "en"
+    | "uk"
+    | "ja"
+    | "de"
+    | "fr"
+    | "es"
+    | "it"
+    | "ko"
+    | "zh";
 }
 
 export interface ScheduleItemInput {
@@ -4936,6 +5103,7 @@ export interface FollowWait {
   until: string;
   studio?: string;
   voiceType?: string;
+  language?: string;
   quality?: string;
 }
 
@@ -6327,6 +6495,19 @@ export interface FollowTitle {
   waitHours?: number;
   qualityPreset?: "best" | "uhd" | "compact";
   mode?: "download" | "notify";
+  audio?:
+    | "original"
+    | "ru"
+    | "en"
+    | "uk"
+    | "ja"
+    | "de"
+    | "fr"
+    | "es"
+    | "it"
+    | "ko"
+    | "zh"
+    | null;
 }
 
 export interface OpenFollowPick {
@@ -6357,6 +6538,19 @@ export interface UpdateFollow {
   waitHours?: number;
   qualityPreset?: "best" | "uhd" | "compact";
   mode?: "download" | "notify";
+  audio?:
+    | "original"
+    | "ru"
+    | "en"
+    | "uk"
+    | "ja"
+    | "de"
+    | "fr"
+    | "es"
+    | "it"
+    | "ko"
+    | "zh"
+    | null;
   state?: "active" | "paused";
 }
 
@@ -6382,6 +6576,43 @@ export interface TitleFollow {
   waitHours: number;
   qualityPreset: "best" | "uhd" | "compact";
   mode: "download" | "notify";
+  audio:
+    | "original"
+    | "ru"
+    | "en"
+    | "uk"
+    | "ja"
+    | "de"
+    | "fr"
+    | "es"
+    | "it"
+    | "ko"
+    | "zh"
+    | null;
+  audioEffective:
+    | "original"
+    | "ru"
+    | "en"
+    | "uk"
+    | "ja"
+    | "de"
+    | "fr"
+    | "es"
+    | "it"
+    | "ko"
+    | "zh";
+  audioServer:
+    | "original"
+    | "ru"
+    | "en"
+    | "uk"
+    | "ja"
+    | "de"
+    | "fr"
+    | "es"
+    | "it"
+    | "ko"
+    | "zh";
   next: TitleNextEpisode | null;
   subscribed: boolean;
   /**
@@ -6407,6 +6638,7 @@ export interface TitleFollow {
     until: string;
     studio?: string;
     voiceType?: string;
+    language?: string;
     quality?: string;
     /**
      * @min -9007199254740991
@@ -6556,6 +6788,43 @@ export interface FollowSummary {
   waitHours: number;
   qualityPreset: "best" | "uhd" | "compact";
   mode: "download" | "notify";
+  audio:
+    | "original"
+    | "ru"
+    | "en"
+    | "uk"
+    | "ja"
+    | "de"
+    | "fr"
+    | "es"
+    | "it"
+    | "ko"
+    | "zh"
+    | null;
+  audioEffective:
+    | "original"
+    | "ru"
+    | "en"
+    | "uk"
+    | "ja"
+    | "de"
+    | "fr"
+    | "es"
+    | "it"
+    | "ko"
+    | "zh";
+  audioServer:
+    | "original"
+    | "ru"
+    | "en"
+    | "uk"
+    | "ja"
+    | "de"
+    | "fr"
+    | "es"
+    | "it"
+    | "ko"
+    | "zh";
   next: TitleNextEpisode | null;
   titleId: string;
   title: string | null;
@@ -6602,6 +6871,43 @@ export interface FollowDetails {
   waitHours: number;
   qualityPreset: "best" | "uhd" | "compact";
   mode: "download" | "notify";
+  audio:
+    | "original"
+    | "ru"
+    | "en"
+    | "uk"
+    | "ja"
+    | "de"
+    | "fr"
+    | "es"
+    | "it"
+    | "ko"
+    | "zh"
+    | null;
+  audioEffective:
+    | "original"
+    | "ru"
+    | "en"
+    | "uk"
+    | "ja"
+    | "de"
+    | "fr"
+    | "es"
+    | "it"
+    | "ko"
+    | "zh";
+  audioServer:
+    | "original"
+    | "ru"
+    | "en"
+    | "uk"
+    | "ja"
+    | "de"
+    | "fr"
+    | "es"
+    | "it"
+    | "ko"
+    | "zh";
   next: TitleNextEpisode | null;
   titleId: string;
   title: string | null;
@@ -6713,6 +7019,7 @@ export interface FollowQueueItem {
   waitFor?: {
     studio?: string;
     voiceType?: string;
+    language?: string;
     quality?: string;
   };
   size?: number;
@@ -6792,6 +7099,21 @@ export interface FollowSettings {
     requireRussian: "auto" | "always" | "never";
     mode: "download" | "notify";
   };
+  audio: {
+    value:
+      | "original"
+      | "ru"
+      | "en"
+      | "uk"
+      | "ja"
+      | "de"
+      | "fr"
+      | "es"
+      | "it"
+      | "ko"
+      | "zh";
+    source: "auto" | "user";
+  } | null;
 }
 
 export interface UpdateFollowSettings {
@@ -6820,6 +7142,18 @@ export interface UpdateFollowSettings {
     requireRussian?: "auto" | "always" | "never";
     mode?: "download" | "notify";
   };
+  audio?:
+    | "original"
+    | "ru"
+    | "en"
+    | "uk"
+    | "ja"
+    | "de"
+    | "fr"
+    | "es"
+    | "it"
+    | "ko"
+    | "zh";
 }
 
 export interface ScheduleItem {

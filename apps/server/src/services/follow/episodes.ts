@@ -170,6 +170,7 @@ export function waitTargets(followId: string) {
       until: row.waitUntil.toISOString(),
       studio: textParam(params?.studio),
       voiceType: textParam(params?.voiceType),
+      language: textParam(params?.language),
       quality: textParam(params?.quality),
     })
   }

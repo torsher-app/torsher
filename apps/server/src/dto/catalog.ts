@@ -146,13 +146,15 @@ export const followEpisodeStates = [
   'ready',
 ] as const
 
-// Чего ждёт отложенная серия «Следить»: свою студию или тип озвучки и
-// ступень качества — до конца окна ожидания (ISO)
+// Чего ждёт отложенная серия «Следить»: свою студию, тип озвучки или
+// дорожку на языке озвучки (ISO 639-1) и ступень качества — до конца окна
+// ожидания (ISO)
 export const followWait = z
   .object({
     until: z.string(),
     studio: z.string().optional(),
     voiceType: z.string().optional(),
+    language: z.string().optional(),
     quality: z.string().optional(),
   })
   .meta({ id: 'followWait' })

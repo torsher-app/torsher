@@ -9,6 +9,8 @@ const props = defineProps<{
   step: WizardStep
   /** Подпись «Дальше»: при ошибке проверки она называет последствие */
   nextLabel?: string
+  /** Сохранить выбор шага перед переходом: ошибка оставляет на шаге */
+  beforeNext?: () => Promise<unknown>
 }>()
 
 const { t } = useI18n()
@@ -20,11 +22,16 @@ async function run(action: 'next' | 'skip' | 'later') {
   pending.value = action
 
   try {
-    if (action === 'next')
+    if (action === 'next') {
+      await props.beforeNext?.()
       await next(props.step)
-    else if (action === 'skip')
+    }
+    else if (action === 'skip') {
       await skip(props.step)
-    else await skipAll(props.step)
+    }
+    else {
+      await skipAll(props.step)
+    }
   }
   finally {
     pending.value = null

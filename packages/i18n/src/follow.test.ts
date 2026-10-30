@@ -105,6 +105,28 @@ describe('followNotificationText', () => {
     )
   })
 
+  it('ждём дорожку на языке озвучки', () => {
+    const result = followNotificationText(
+      textOf('ru_RU'),
+      'ru_RU',
+      'follow_waiting',
+      {
+        names,
+        episodes: 'S2E5',
+        count: 1,
+        quality: '1080p',
+        wait: { language: 'de' },
+        until: new Date(now + 60 * 60 * 1000).toISOString(),
+      },
+      now,
+    )
+
+    expect(result.title).toBe('Ждём вашу озвучку')
+    expect(result.text).toMatch(
+      /^«Синтетика» · S2E5 вышла в 1080p, ждём немецкую озвучку до /,
+    )
+  })
+
   it('«не нашли»: дни у одной серии, без них — общая фраза', () => {
     expect(
       followNotificationText(textOf('ru_RU'), 'ru_RU', 'follow_missing', {

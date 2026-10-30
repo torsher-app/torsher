@@ -3,6 +3,7 @@ import { CircleAlertIcon, RefreshCwIcon } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import FollowAudioCard from '~/components/settings/FollowAudioCard.vue'
 import FollowDefaultsCard from '~/components/settings/FollowDefaultsCard.vue'
 import FollowNumberCard from '~/components/settings/FollowNumberCard.vue'
 
@@ -34,6 +35,7 @@ onMounted(load)
     <div v-if="loading" class="grid gap-5" aria-busy="true">
       <Skeleton class="h-50 rounded-xl" />
       <Skeleton class="h-50 rounded-xl" />
+      <Skeleton class="h-50 rounded-xl" />
       <Skeleton class="h-120 rounded-xl" />
     </div>
 
@@ -61,6 +63,7 @@ onMounted(load)
     </section>
 
     <template v-else>
+      <FollowAudioCard :audio="settings.audio" />
       <FollowNumberCard
         field="rssIntervalMin"
         :value="settings.rssIntervalMin"

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { followStatusKey } from './follow'
+import { audioFromLanguage, followStatusKey } from './follow'
 
 const series = { kind: 'series', mode: 'download' } as const
 const movie = { kind: 'movie', mode: 'download' } as const
@@ -34,5 +34,14 @@ describe('followStatusKey', () => {
         { status: 'done', count: 0 },
       ),
     ).toBe('panel.follow.status.series.doneNotify')
+  })
+})
+
+describe('audioFromLanguage', () => {
+  it('язык, который узнаёт парсер, — он, остальные — оригинал', () => {
+    expect(audioFromLanguage('de-DE')).toBe('de')
+    expect(audioFromLanguage('ru')).toBe('ru')
+    expect(audioFromLanguage('pt-BR')).toBe('original')
+    expect(audioFromLanguage(undefined)).toBe('original')
   })
 })

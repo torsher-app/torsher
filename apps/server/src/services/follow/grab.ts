@@ -35,6 +35,7 @@ import {
 } from './blocklist.ts'
 import { recordHistory } from './history.ts'
 import { followById } from './index.ts'
+import { followAudio } from './audio.ts'
 import { announceOtherVoice } from './notify.ts'
 import {
   refreshTargets,
@@ -328,6 +329,7 @@ export function filesFor(
 /**
  * Первая закачка автоматики закрепляет студию за сезоном без закрепления —
  * если она не спорит со студией сезона из правил или прошлого сезона.
+ * Студии закрепляются только у русской озвучки.
  */
 export function pinFirstVoice(
   follow: Follow,
@@ -335,8 +337,13 @@ export function pinFirstVoice(
   candidate: FollowPendingCandidate,
   ownStudio: string | undefined,
 ) {
-  if (!candidate.studio || getPinnedVoice(follow.titleId, season))
+  if (
+    !candidate.studio
+    || followAudio(follow) !== 'ru'
+    || getPinnedVoice(follow.titleId, season)
+  ) {
     return
+  }
 
   if (ownStudio && ownStudio.toLowerCase() !== candidate.studio.toLowerCase())
     return

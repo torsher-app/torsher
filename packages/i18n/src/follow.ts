@@ -10,6 +10,8 @@ type Translate = (
 export interface FollowReleaseFacts {
   studio?: string
   voiceType?: string
+  /** Язык озвучки, которого ждём (ISO 639-1): у других языков нет студий */
+  language?: string
   quality?: string
 }
 
@@ -101,6 +103,9 @@ export function followNotificationText(
     const voiceType = value?.voiceType
       ? t(`sources.voiceTypes.${value.voiceType}`)
       : undefined
+    const language = value?.language
+      ? t(`audioTargets.${value.language}`)
+      : undefined
 
     return [
       value?.studio,
@@ -108,6 +113,9 @@ export function followNotificationText(
       voiceType && !voiceType.startsWith('sources.')
         ? voiceType
         : value?.voiceType,
+      language && !language.startsWith('audioTargets.')
+        ? language
+        : value?.language,
       value?.quality,
     ]
       .filter(Boolean)
@@ -152,7 +160,7 @@ export function followNotificationText(
 
       return {
         title: title(
-          wait.studio || wait.voiceType
+          wait.studio || wait.voiceType || wait.language
             ? 'waiting.titleVoice'
             : 'waiting.titleQuality',
         ),

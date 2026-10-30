@@ -173,6 +173,7 @@ function waitFor(row: FollowEpisode) {
   return {
     studio: pick('studio'),
     voiceType: pick('voiceType'),
+    language: pick('language'),
     quality: pick('quality'),
   }
 }
