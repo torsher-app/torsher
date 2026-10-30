@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.2.0 (2026-10-30)
+
+### Features
+
+- **sources:** rank sources and "Watch" by the audio language (#143) ([a291df3](https://github.com/torsher-app/torsher/commit/a291df311bcde7e80ae8d8e99c0c19589f738bfc))
+- **follow:** choose the audio language for following (#142) ([1ce0ef3](https://github.com/torsher-app/torsher/commit/1ce0ef3755346b2e6043685b6255228f2f63f45f))
+- **web:** name the episode in follow statuses in the panel (#141) ([49eb244](https://github.com/torsher-app/torsher/commit/49eb24460221b5cd0b6fee96102729e6dbd8137d))
+- **tv:** name the episode in follow statuses and clarify follow rules (#140) ([083653b](https://github.com/torsher-app/torsher/commit/083653b3c7f331d4782f9b0b4a4f5195356ad359))
+- **logs:** trace a playback case by torrent or session id (#135) ([c08dab4](https://github.com/torsher-app/torsher/commit/c08dab4cbb0d91be5de3278b073006bd5be3ae20))
+- live panel and showcase demos on torsher.app (#131) ([c9eb8b9](https://github.com/torsher-app/torsher/commit/c9eb8b9f7bcda8b850e6dfd9fd8a6f6fb2a51de0))
+
+### Bug Fixes
+
+- **catalog:** find titles regardless of е and ё in search (#146) ([60b9b59](https://github.com/torsher-app/torsher/commit/60b9b59d3ffc983ad4f854e9238745ad2f5505f3))
+- **web:** show the download arrow next to torrent speed (#145) ([670f69c](https://github.com/torsher-app/torsher/commit/670f69c888bf098fe822689808b13b2be339c309))
+- **web:** show toasts at the top center (#144) ([275e337](https://github.com/torsher-app/torsher/commit/275e3374d093f529f91708398a2e3ab4a56e4230))
+- **tv:** open sources from the top on a new visit (#139) ([38a27a2](https://github.com/torsher-app/torsher/commit/38a27a25f3da682b34e9c809a6f29a4069e147c5))
+- **follow:** keep pending candidates in targeted search decisions (#138) ([b7d8d67](https://github.com/torsher-app/torsher/commit/b7d8d6786ae709050f4caba681f4b84875c185f5))
+- **sources:** explain localhost and .local manager addresses (#137) ([96f9a15](https://github.com/torsher-app/torsher/commit/96f9a150047762b43d2639503467c591ae56bfc4))
+- **player:** retry streams that received corrupt torrent pieces (#134) ([932b1e6](https://github.com/torsher-app/torsher/commit/932b1e6e2f39c0731a5b50acadeda22af48c74fe))
+- **docker:** explain write errors when the container runs as a fixed user (#133) ([fd6dadd](https://github.com/torsher-app/torsher/commit/fd6dadd0bc5830660c31bfbdcdb84ccf7510dc0f))
+
+### Other
+
+- **install:** install on Unraid from Community Applications (#132) ([56b1633](https://github.com/torsher-app/torsher/commit/56b1633d01217fd3db347726961f98ae0f86a5e5))
+- **server:** wait for the log file stream instead of a fixed sleep (#130) ([094b7a6](https://github.com/torsher-app/torsher/commit/094b7a6c56d3d7e5b82accb74e52313a310370a7))
+- **docker-hub:** sync the repository overview from the repo (#129) ([fe3ef37](https://github.com/torsher-app/torsher/commit/fe3ef3721e9b0b56fa46928492032a33e5969ca0))
+- **android-tv:** bundle third-party licenses in the APK (#127) ([8fc2c81](https://github.com/torsher-app/torsher/commit/8fc2c81a69a80beb61f076b220b61b47d3e6b318))
+
 ## 1.1.0 (2026-10-27)
 
 ### Features
