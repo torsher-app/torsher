@@ -112,7 +112,7 @@ export function useDownloadStatus() {
   }
 
   /**
-   * «62 % · 8,4 МБ/с · ↑ 120 кБ/с · 23 пира · ≈ 2 мин». Без выбора процент
+   * «62 % · ↓ 8,4 МБ/с · ↑ 120 кБ/с · 23 пира · ≈ 2 мин». Без выбора процент
    * от всей раздачи ничего не говорит — вместо него сколько на диске.
    * Отдачу показываем, пока она идёт: так видно, откуда общая ↑ в сводке.
    */
@@ -138,7 +138,7 @@ export function useDownloadStatus() {
 
     return [
       percent,
-      speed(torrent.downloadSpeed),
+      `↓ ${speed(torrent.downloadSpeed)}`,
       uploading,
       t('panel.torrents.peers', torrent.peers.connected),
       eta === null
