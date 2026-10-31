@@ -16,6 +16,15 @@ export function formatDateTime(iso: string, locale: string) {
   }).format(new Date(iso))
 }
 
+/** «14:05» — когда день уже указан рядом, например в заголовке группы */
+export function formatTime(iso: string, locale: string) {
+  return new Intl.DateTimeFormat(locale.replace('_', '-'), {
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(new Date(iso))
+}
+
 export function formatDate(iso: string, locale: string) {
   return new Intl.DateTimeFormat(locale.replace('_', '-'), {
     dateStyle: 'medium',

@@ -9,21 +9,12 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import { Skeleton } from '@/components/ui/skeleton'
-import LoadingButton from '~/components/LoadingButton.vue'
+import { BELL_SIZE } from '~/composables/useNotifications'
 import NotificationRow from './NotificationRow.vue'
 
 const { t } = useI18n()
-const {
-  unread,
-  items,
-  hasMore,
-  state,
-  isLoadingMore,
-  load,
-  loadMore,
-  markRead,
-  markAllRead,
-} = useNotifications()
+const { unread, items, hasMore, state, load, markRead, markAllRead }
+  = useNotifications()
 
 useUnreadPolling()
 
@@ -40,15 +31,6 @@ watch(open, (isOpen) => {
   if (isOpen)
     void load()
 })
-
-async function onMore() {
-  try {
-    await loadMore()
-  }
-  catch {
-    // Ошибку запроса уже показал тостом клиент API
-  }
-}
 
 function onOpenItem(id: string) {
   open.value = false
@@ -152,30 +134,38 @@ function onReadAll() {
               />
             </li>
           </ul>
-          <div v-if="hasMore" class="border-t p-2">
-            <LoadingButton
-              variant="ghost"
-              size="sm"
-              class="w-full"
-              :loading="isLoadingMore"
-              @click="onMore"
-            >
-              {{ t("panel.notifications.more") }}
-            </LoadingButton>
-          </div>
         </template>
       </div>
 
-      <footer class="border-t px-2 py-1.5">
+      <!-- Подпись видна и без прокрутки до последней строки. -->
+      <p
+        v-if="!loading && state === 'ready' && items.length && hasMore"
+        class="border-t px-4 py-2 text-center text-[12px] text-muted-foreground"
+      >
+        {{ t("panel.notifications.latest", { n: BELL_SIZE }) }}
+      </p>
+
+      <footer class="grid grid-cols-2 gap-1 border-t px-2 py-1.5">
         <Button
           variant="ghost"
           size="sm"
-          class="w-full justify-center text-[12.5px]"
+          class="justify-center text-[12.5px]"
+          as-child
+          @click="open = false"
+        >
+          <NuxtLink to="/notifications">
+            {{ t("panel.notifications.viewAll") }}
+          </NuxtLink>
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          class="justify-center text-[12.5px]"
           as-child
           @click="open = false"
         >
           <NuxtLink to="/settings/notifications">
-            {{ t("panel.notifications.settings") }}
+            {{ t("panel.notifications.settingsShort") }}
           </NuxtLink>
         </Button>
       </footer>

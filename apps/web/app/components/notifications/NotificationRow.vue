@@ -14,17 +14,22 @@ import {
   SearchXIcon,
 } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
-import { formatDateTime, formatRelative } from '~/lib/format'
+import { formatDateTime, formatRelative, formatTime } from '~/lib/format'
 import {
   notificationLink,
   notificationText,
   notificationTitle,
 } from '~/lib/notifications'
 
-const props = defineProps<{
-  item: NotificationItem
-  now: number
-}>()
+const props = withDefaults(
+  defineProps<{
+    item: NotificationItem
+    now: number
+    /** В ленте по дням дата уже в заголовке группы: хватает часов и минут */
+    timeFormat?: 'relative' | 'clock'
+  }>(),
+  { timeFormat: 'relative' },
+)
 
 const emit = defineEmits<{
   open: []
@@ -78,7 +83,9 @@ const title = computed(() => notificationTitle(t, locale.value, props.item))
 const text = computed(() => notificationText(t, locale.value, props.item))
 const link = computed(() => notificationLink(props.item))
 const time = computed(() =>
-  formatRelative(props.item.createdAt, locale.value, props.now),
+  props.timeFormat === 'clock'
+    ? formatTime(props.item.createdAt, locale.value)
+    : formatRelative(props.item.createdAt, locale.value, props.now),
 )
 </script>
 

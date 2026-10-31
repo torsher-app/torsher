@@ -23,6 +23,7 @@ import {
   unavailable,
 } from '@torsher/demo/router'
 import { ago, DAY, HOUR, isFresh, MINUTE, nextId } from '@torsher/demo/state'
+import { notificationFeedGroups } from '../../lib/notifications'
 
 // --- Центр уведомлений ---
 
@@ -196,14 +197,20 @@ function unreadCount() {
 get<NotificationList>('/api/notifications', ({ query }) => {
   const limit = Number(query.get('limit')) || 20
   const before = query.get('before')
-  const start = before
-    ? items.findIndex(entry => entry.id === before) + 1
-    : 0
-  const page = items.slice(start, start + limit)
+  const group = query.get('group')
+  const cursor = before ? items.findIndex(entry => entry.id === before) : -1
+  const matching = items
+    .slice(cursor + 1)
+    .filter(
+      entry =>
+        (!group || notificationFeedGroups[entry.kind] === group)
+        && (query.get('unread') !== '1' || !entry.readAt),
+    )
+  const page = matching.slice(0, limit)
 
   return {
     items: page,
-    nextCursor: start + limit < items.length ? page.at(-1)?.id : undefined,
+    nextCursor: limit < matching.length ? page.at(-1)?.id : undefined,
     unread: unreadCount(),
   }
 })
