@@ -63,8 +63,16 @@ Six tiles show the state of the server. Each one opens its section.
 
 - **The sidebar.** A red number next to <Ui k="panel.nav.torrents" />, <Ui k="panel.nav.follow" /> or <Ui k="panel.nav.sources" /> counts the items there that need attention. An amber dot next to <Ui k="panel.nav.torrents" /> means something is downloading.
 - **<Ui k="panel.nav.links" />.** <Ui k="panel.nav.showcase" /> opens the TV showcase in a new browser tab, <Ui k="panel.nav.docs" /> opens this site, <Ui k="panel.nav.donate" /> opens the donation page.
-- **The bell.** The bell in the top bar is the notification center: problems, updates, finished downloads, new devices and followed episodes. It always gets every event, whether or not you set up channels. Click a notification to open its section, or select <Ui k="panel.notifications.readAll" />.
+- **The bell.** The bell in the top bar is the notification center: problems, updates, finished downloads, new devices and followed episodes. It always gets every event, whether or not you set up channels. It shows the latest 20. Click a notification to open its section, or select <Ui k="panel.notifications.readAll" />. <Ui k="panel.notifications.viewAll" /> opens the full list grouped by day, with filters by type and for unread ones. <Ui k="panel.notifications.settingsShort" /> opens channel settings. Notifications are kept for 90 days, up to 1000; unresolved problems stay until they are resolved.
 - **The account menu.** At the bottom of the sidebar: the panel <Ui k="panel.account.language" />, the <Ui k="panel.account.theme" />, <Ui k="panel.account.settings" /> and <Ui k="panel.account.logout" />.
+
+## Notification history
+
+Open the bell and select <Ui k="panel.notifications.viewAll" /> to browse the history grouped by day. The page loads 50 notifications at a time; <Ui k="panel.notifications.more" /> loads the next batch.
+
+Choose a group and combine it with <Ui k="panel.notifications.feed.unread" /> to narrow the list. <Ui k="panel.notifications.feed.groups.problems" /> includes followed episodes for which no release was found. Filters stay in the page address, so reloading or sharing the link preserves your view. The unread number covers the whole history and is hidden when a group is selected.
+
+Opening a notification marks it as read and updates the bell counter. <Ui k="panel.notifications.readAll" /> marks the entire history as read, including notifications outside the current filter. Read rows stay in place until the list reloads.
 
 ## If something went wrong
 
