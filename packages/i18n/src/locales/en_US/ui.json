@@ -2734,6 +2734,28 @@
       "settings": "Notification settings",
       "resolved": "resolved",
       "unreadMark": "Unread",
+      "viewAll": "All notifications",
+      "settingsShort": "Settings",
+      "latest": "Showing the latest {n}",
+      "feed": {
+        "filtersLabel": "Notification filters",
+        "all": "All",
+        "unread": "Unread",
+        "groups": {
+          "problems": "Problems",
+          "downloads": "Downloads",
+          "follow": "Following",
+          "updates": "Updates",
+          "devices": "Devices"
+        },
+        "emptyTitle": "No notifications yet",
+        "emptyText": "Server problems, finished downloads, new episodes and updates will show up here.",
+        "nothingUnread": "All caught up",
+        "nothingInGroup": "No notifications in “{group}”",
+        "nothingUnreadInGroup": "No unread notifications in “{group}”",
+        "showAll": "Show all",
+        "loadMoreFailed": "Couldn't load more"
+      },
       "description": "Where the server tells you about problems, updates, finished downloads and new episodes.",
       "channels": "Channels",
       "add": "Add channel",

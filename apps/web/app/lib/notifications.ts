@@ -4,6 +4,40 @@ import type { RouteLocationRaw } from 'vue-router'
 import { followNotificationText, isFollowNotification } from '@torsher/i18n'
 import { attentionText } from '~/lib/attentionText'
 import { attentionLinks } from '~/lib/overview'
+import type { api } from '~/services/api'
+
+export type FeedGroup = NonNullable<
+  NonNullable<Parameters<typeof api.notifications.getNotifications>[0]>['group']
+>
+
+// Порядок чипов на странице «Уведомления»: проблемы — первыми
+export const FEED_GROUPS = [
+  'problems',
+  'downloads',
+  'follow',
+  'updates',
+  'devices',
+] as const satisfies readonly FeedGroup[]
+
+/** Группы ленты для демо без сервера; новые виды обязаны получить группу. */
+export const notificationFeedGroups: Record<
+  NotificationItem['kind'],
+  FeedGroup
+> = {
+  problem: 'problems',
+  channel_failing: 'problems',
+  follow_missing: 'problems',
+  download_completed: 'downloads',
+  follow_downloaded: 'follow',
+  follow_ready: 'follow',
+  follow_waiting: 'follow',
+  follow_other_voice: 'follow',
+  follow_upgraded: 'follow',
+  follow_topic_updated: 'follow',
+  update_available: 'updates',
+  server_updated: 'updates',
+  device_paired: 'devices',
+}
 
 type Translate = (
   key: string,

@@ -36,7 +36,16 @@ import { telegram } from './channels/telegram.ts'
 import { webhookFormatOf } from './channels/webhook.ts'
 import { deliveryTiming, idleDelivery, resetDelivery } from './delivery.ts'
 import { createDownloadWatcher } from './downloads.ts'
-import { listNotifications } from './inbox.ts'
+import {
+  feedGroupKinds,
+  feedGroups,
+  notificationKinds,
+} from '../../dto/notifications.ts'
+import {
+  addNotification,
+  listNotifications,
+  markNotificationsRead,
+} from './inbox.ts'
 import {
   createProblemMonitor,
   RECHECK_TIMEOUT_MS,
@@ -873,6 +882,77 @@ describe('доставка', () => {
   })
 })
 
+describe('лента', () => {
+  function add(kind: (typeof notificationKinds)[number], at: number) {
+    return addNotification(
+      { kind, severity: 'info', params: { name: kind } },
+      new Date(at),
+    )
+  }
+
+  it('у каждого события ровно одна группа', () => {
+    const grouped = feedGroups.flatMap(group => feedGroupKinds(group))
+
+    expect(grouped.toSorted()).toEqual([...notificationKinds].toSorted())
+  })
+
+  it('«не нашли раздачу» — в проблемах', () => {
+    expect(feedGroupKinds('problems')).toContain('follow_missing')
+    expect(feedGroupKinds('follow')).not.toContain('follow_missing')
+  })
+
+  it('фильтрует по группе и непрочитанным', () => {
+    const done = add('download_completed', 1000)
+    add('download_completed', 2000)
+    add('follow_downloaded', 3000)
+    add('follow_missing', 4000)
+    markNotificationsRead([done.id])
+
+    const kinds = (options: Parameters<typeof listNotifications>[0]) =>
+      listNotifications(options).items.map(item => item.kind)
+
+    expect(kinds({ limit: 10, kinds: feedGroupKinds('downloads') })).toEqual([
+      'download_completed',
+      'download_completed',
+    ])
+    expect(kinds({ limit: 10, kinds: feedGroupKinds('problems') })).toEqual([
+      'follow_missing',
+    ])
+    expect(
+      kinds({ limit: 10, kinds: feedGroupKinds('downloads'), unread: true }),
+    ).toHaveLength(1)
+    expect(listNotifications({ limit: 10, unread: true }).items).toHaveLength(
+      3,
+    )
+  })
+
+  it('курсор с фильтром не теряет и не повторяет строки одного времени', () => {
+    for (let i = 0; i < 5; i++) add('download_completed', 5000)
+    add('follow_downloaded', 5000)
+
+    const first = listNotifications({
+      limit: 2,
+      kinds: feedGroupKinds('downloads'),
+    })
+    const ids = first.items.map(item => item.id)
+    let cursor = first.nextCursor
+
+    while (cursor) {
+      const page = listNotifications({
+        limit: 2,
+        kinds: feedGroupKinds('downloads'),
+        before: cursor,
+      })
+
+      ids.push(...page.items.map(item => item.id))
+      cursor = page.nextCursor
+    }
+
+    expect(ids).toHaveLength(5)
+    expect(new Set(ids).size).toBe(5)
+  })
+})
+
 describe('routes /api/notifications', () => {
   const input = {
     kind: 'telegram',
@@ -890,6 +970,36 @@ describe('routes /api/notifications', () => {
     const res = await app.inject({ url: '/api/notifications' })
 
     expect(res.statusCode).toBe(401)
+  })
+
+  it('отдаёт ленту с фильтром группы', async () => {
+    addNotification({
+      kind: 'device_paired',
+      severity: 'info',
+      params: { type: 'tv' },
+    })
+    addNotification({
+      kind: 'server_updated',
+      severity: 'info',
+      params: { version: '1.1.0' },
+    })
+
+    const res = await app.inject({
+      url: '/api/notifications?group=devices&unread=1',
+      cookies: owner,
+    })
+
+    expect(res.statusCode).toBe(200)
+    expect(res.json().items.map((item: { kind: string }) => item.kind)).toEqual(
+      ['device_paired'],
+    )
+
+    const bad = await app.inject({
+      url: '/api/notifications?group=other',
+      cookies: owner,
+    })
+
+    expect(bad.statusCode).toBe(400)
   })
 
   it('хранит секрет шифртекстом и не отдаёт его', async () => {

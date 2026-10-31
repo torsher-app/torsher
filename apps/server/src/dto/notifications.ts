@@ -35,6 +35,50 @@ export const notificationGroups = [
 
 export type NotificationGroup = (typeof notificationGroups)[number]
 
+// Фильтр ленты в панели: в отличие от групп каналов, тут у каждого события
+// есть ровно одна группа
+export const feedGroups = [
+  'problems',
+  'downloads',
+  'follow',
+  'updates',
+  'devices',
+] as const
+
+export type FeedGroup = (typeof feedGroups)[number]
+
+/**
+ * Без `default`: новое событие без группы не соберётся. «Не нашли раздачу» —
+ * в проблемах, а не в «Следить»: из событий автоматики только оно просит
+ * действия.
+ */
+export function feedGroupOf(kind: NotificationKind): FeedGroup {
+  switch (kind) {
+    case 'problem':
+    case 'channel_failing':
+    case 'follow_missing':
+      return 'problems'
+    case 'download_completed':
+      return 'downloads'
+    case 'follow_downloaded':
+    case 'follow_ready':
+    case 'follow_waiting':
+    case 'follow_other_voice':
+    case 'follow_upgraded':
+    case 'follow_topic_updated':
+      return 'follow'
+    case 'update_available':
+    case 'server_updated':
+      return 'updates'
+    case 'device_paired':
+      return 'devices'
+  }
+}
+
+export function feedGroupKinds(group: FeedGroup): NotificationKind[] {
+  return notificationKinds.filter(kind => feedGroupOf(kind) === group)
+}
+
 export const notificationSections = [
   ...attentionSections,
   'about',
@@ -104,6 +148,8 @@ export const notificationListQuery = z.object({
   // Курсор — `id` последней показанной строки: лента «свежее сверху»
   before: z.string().optional(),
   limit: z.coerce.number().int().min(1).max(100).default(20),
+  group: z.enum(feedGroups).optional(),
+  unread: z.enum(['1']).optional(),
 })
 
 export const notificationList = z
