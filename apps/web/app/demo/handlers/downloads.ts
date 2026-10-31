@@ -7,7 +7,7 @@ import type {
   Torrent,
   TorrentList,
   UpdateRetentionInput,
-  UpdateTorrentFirstInput,
+  UpdateTorrentPriorityInput,
   UpdateTorrentSeedingInput,
   UpdateTorrentTitleInput,
 } from '@torsher/api-client'
@@ -290,8 +290,9 @@ function targetsOf(entry: Entry) {
   const selected = files.filter(file => file.selected)
 
   return [
-    ...selected.filter(file => file.first),
-    ...selected.filter(file => !file.first),
+    ...selected.filter(file => file.priority === 'high'),
+    ...selected.filter(file => file.priority === 'medium'),
+    ...selected.filter(file => file.priority === 'low'),
   ]
 }
 
@@ -299,7 +300,7 @@ function markFirst(entry: Entry) {
   const pending = entry.flow
     ? targetsOf(entry).filter(file => file.downloaded < file.size)
     : []
-  const raised = pending.filter(file => file.first)
+  const raised = pending.filter(file => file.priority === 'high')
   const ahead = new Set(raised.length ? raised : pending.slice(0, 1))
 
   for (const file of entry.torrent.files)
@@ -617,9 +618,11 @@ post<Torrent, DownloadTorrentInput>(
       throw new DemoError(400, { message: 'Unknown file index' })
 
     advance(entry)
-    files.forEach((file) => {
-      file.selected = true
-    })
+    for (const file of torrent.files) {
+      file.selected = wanted.has(file.index)
+      if (!file.selected)
+        file.priority = 'medium'
+    }
     torrent.retention = 'keep'
 
     // Просмотр докачивает уже выбранное: файл просмотра больше не особый
@@ -633,15 +636,17 @@ post<Torrent, DownloadTorrentInput>(
   },
 )
 
-put<Torrent, UpdateTorrentFirstInput>(
-  '/api/torrents/:id/first',
+put<Torrent, UpdateTorrentPriorityInput>(
+  '/api/torrents/:id/priority',
   ({ params, body }) => {
     const entry = entryById(params.id!)
-    const raised = new Set(body.files)
+    const changed = new Set(body.files)
 
     advance(entry)
-    for (const file of entry.torrent.files)
-      file.first = file.selected && raised.has(file.index)
+    for (const file of entry.torrent.files) {
+      if (file.selected && changed.has(file.index))
+        file.priority = body.priority
+    }
 
     return respond(entry)
   },

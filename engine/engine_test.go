@@ -882,6 +882,86 @@ func TestSelectionDownloadsInOrder(t *testing.T) {
 	}
 }
 
+// Новый ручной приоритет и старая сессия без first восстанавливают
+// порядок выбора, не сбрасывая его в порядок индексов.
+func TestRestoredDownloadOrder(t *testing.T) {
+	for _, manual := range []bool{false, true} {
+		t.Run(fmt.Sprintf("manual=%v", manual), func(t *testing.T) {
+			fx, _, _ := newTwoFileFixture(t)
+			dataDir := t.TempDir()
+			sess, err := newSession(filepath.Join(dataDir, "torrents"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := sess.save(fx.meta, func(saved *savedTorrent) {
+				saved.Selected = []int{1, 0}
+				if manual {
+					saved.First = []int{0}
+				}
+			}); err != nil {
+				t.Fatal(err)
+			}
+
+			engine, server := newTestEngine(t, dataDir)
+			engine.restore(context.Background())
+			hash := fx.meta.HashInfoBytes()
+			want := []int{1}
+			if manual {
+				want = []int{0}
+			}
+			waitFor(t, 5*time.Second, func() bool {
+				state := stateOfHash(t, engine, hash)
+				return slices.Equal(state.Selected, []int{1, 0}) && slices.Equal(state.High, want)
+			})
+
+			post(t, server.URL+"/torrents/"+hash.HexString()+"/pause", nil).Body.Close()
+			engine.reschedule()
+			if got := stateOfHash(t, engine, hash).High; len(got) != 0 {
+				t.Fatalf("paused torrent reports first files: %v", got)
+			}
+			post(t, server.URL+"/torrents/"+hash.HexString()+"/resume", nil).Body.Close()
+			if got := stateOfHash(t, engine, hash).High; !slices.Equal(got, want) {
+				t.Fatalf("resume lost priority: %v, want %v", got, want)
+			}
+		})
+	}
+}
+
+func TestLowPriorityWaitsForRegularFiles(t *testing.T) {
+	fx, _, _ := newTwoFileFixture(t)
+	engine, server := newTestEngine(t, t.TempDir())
+	hash := fx.meta.HashInfoBytes()
+	post(t, server.URL+"/torrents?files=0,1&low=0", fx.raw).Body.Close()
+	added, _ := engine.client.Torrent(hash)
+	if got := filePriorities(added); !slices.Equal(got, []torrent.PiecePriority{torrent.PiecePriorityNone, torrent.PiecePriorityHigh}) {
+		t.Fatalf("low file does not wait for medium: %v", got)
+	}
+	if saved := engine.session.get(hash); !slices.Equal(saved.Low, []int{0}) {
+		t.Fatalf("low priority not saved: %v", saved.Low)
+	}
+
+	// Восстановление читает low из JSON, не из памяти API.
+	restartDir := t.TempDir()
+	copyDir(t, filepath.Join(engine.session.dir), filepath.Join(restartDir, "torrents"))
+	restarted, _ := newTestEngine(t, restartDir)
+	restarted.restore(context.Background())
+	if got := stateOfHash(t, restarted, hash).High; !slices.Equal(got, []int{1}) {
+		t.Fatalf("restore lost low priority: %v", got)
+	}
+
+	// Средний вместо низкого возвращает автоматический порядок.
+	put(t, server.URL+"/torrents/"+hash.HexString()+"/files", `{"files":[0,1]}`).Body.Close()
+	if got := engine.stateOf(added).High; !slices.Equal(got, []int{0}) {
+		t.Fatalf("reset to medium did not restore order: %v", got)
+	}
+
+	// Оба уровня остаются подмножествами выбора, высокий побеждает low.
+	put(t, server.URL+"/torrents/"+hash.HexString()+"/files", `{"files":[1],"first":[0,1],"low":[0,1]}`).Body.Close()
+	if saved := engine.session.get(hash); !slices.Equal(saved.First, []int{1}) || len(saved.Low) != 0 {
+		t.Fatalf("priorities outside selection: first=%v, low=%v", saved.First, saved.Low)
+	}
+}
+
 // Докачанный файл уступает место следующему по порядку, и поднятый
 // владельцем — тоже
 func TestFinishedFileHandsOverToNext(t *testing.T) {
@@ -899,14 +979,21 @@ func TestFinishedFileHandsOverToNext(t *testing.T) {
 		return err == nil && bytes.Equal(data, first)
 	})
 
-	if got := highFiles(added, []int{0, 1}, nil); !slices.Equal(got, []int{1}) {
+	if got := highFiles(added, []int{0, 1}, nil, nil); !slices.Equal(got, []int{1}) {
 		t.Fatalf("next file is not first: %v", got)
 	}
-	if got := highFiles(added, []int{0, 1}, []int{0}); !slices.Equal(got, []int{1}) {
+	if got := highFiles(added, []int{0, 1}, []int{0}, nil); !slices.Equal(got, []int{1}) {
 		t.Fatalf("finished raised file keeps the order: %v", got)
 	}
-	if got := highFiles(added, []int{0}, nil); got != nil {
+	if got := highFiles(added, []int{0}, nil, nil); got != nil {
 		t.Fatalf("finished selection still has a first file: %v", got)
+	}
+	if got := highFiles(added, []int{0, 1}, nil, []int{1}); !slices.Equal(got, []int{1}) {
+		t.Fatalf("low file is not promoted after regular files finish: %v", got)
+	}
+	put(t, server.URL+"/torrents/"+hash.HexString()+"/files", `{"files":[0,1],"low":[1]}`).Body.Close()
+	if got := engine.stateOf(added).High; !slices.Equal(got, []int{1}) {
+		t.Fatalf("scheduler did not start the low file: %v", got)
 	}
 }
 

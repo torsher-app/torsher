@@ -400,13 +400,17 @@ function streamSelection(torrent: Torrent, fileIndex: number) {
     : (torrent.selectedFiles ?? [])
 }
 
-/** Поднятые владельцем файлы — только из выбора: снятый с выбора выпадает */
-function firstWithin(torrent: Torrent, selected: number[]) {
-  const first = (torrent.firstFiles ?? []).filter(index =>
+/** Ручные уровни — только для выбранных файлов. */
+function priorityWithin(
+  torrent: Torrent,
+  selected: number[],
+  key: 'firstFiles' | 'lowFiles',
+) {
+  const indices = (torrent[key] ?? []).filter(index =>
     selected.includes(index),
   )
 
-  return first.length ? first : null
+  return indices.length ? indices : null
 }
 
 /** Раздачу убрали из движка мимо базы: менять выбор не у кого */
@@ -473,7 +477,8 @@ async function addToEngine(
     torrent.torrentFile!,
     downloadOrder(torrent, files),
     torrent.downloadDir ? torrentDir(torrent) : undefined,
-    firstWithin(torrent, files) ?? [],
+    priorityWithin(torrent, files, 'firstFiles') ?? [],
+    priorityWithin(torrent, files, 'lowFiles') ?? [],
   )
 }
 
@@ -502,7 +507,8 @@ export async function downloadFiles(
   update(torrent.id, {
     inEngine: true,
     selectedFiles: files,
-    firstFiles: firstWithin(torrent, files),
+    firstFiles: priorityWithin(torrent, files, 'firstFiles'),
+    lowFiles: priorityWithin(torrent, files, 'lowFiles'),
     retention: 'keep',
     pauseReason: null,
   })
@@ -533,20 +539,37 @@ export async function resumeDownload(torrent: Torrent) {
   return getTorrent(torrent.id) ?? torrent
 }
 
-/**
- * «Качать первым»: файлы выбора, которые движок качает раньше порядка серий.
- * Файлы не из выбора не качаются вовсе — их отбрасываем.
- */
-export async function setFirstFiles(torrent: Torrent, files: number[]) {
+/** Приоритет меняется сразу, только у выбранных файлов. */
+export async function setFilePriority(
+  torrent: Torrent,
+  files: number[],
+  priority: 'high' | 'medium' | 'low',
+) {
   if (!torrent.inEngine)
     throw new NotInEngineError()
 
   const selected = torrent.selectedFiles ?? []
-  const first = [...new Set(files)].filter(index => selected.includes(index))
+  const changed = new Set(files.filter(index => selected.includes(index)))
+  const first = selected.filter(index =>
+    changed.has(index)
+      ? priority === 'high'
+      : torrent.firstFiles?.includes(index),
+  )
+  const low = selected.filter(index =>
+    changed.has(index) ? priority === 'low' : torrent.lowFiles?.includes(index),
+  )
 
-  await selectFiles(torrent.infoHash, downloadOrder(torrent, selected), first)
+  await selectFiles(
+    torrent.infoHash,
+    downloadOrder(torrent, selected),
+    first,
+    low,
+  )
 
-  return update(torrent.id, { firstFiles: first.length ? first : null })
+  return update(torrent.id, {
+    firstFiles: first.length ? first : null,
+    lowFiles: low.length ? low : null,
+  })
 }
 
 /** Видеофайлы, которые начали смотреть: на диске уже что-то есть */
@@ -593,7 +616,8 @@ export async function setRetention(
         )
       : []
 
-  const first = firstWithin(torrent, selected)
+  const first = priorityWithin(torrent, selected, 'firstFiles')
+  const low = priorityWithin(torrent, selected, 'lowFiles')
 
   if (torrent.inEngine) {
     await ignoreMissing(
@@ -601,6 +625,7 @@ export async function setRetention(
         torrent.infoHash,
         downloadOrder(torrent, selected),
         first ?? [],
+        low ?? [],
       ),
     )
   }
@@ -609,6 +634,7 @@ export async function setRetention(
     retention,
     selectedFiles: selected.length ? selected : null,
     firstFiles: first,
+    lowFiles: low,
   })
 
   await enforceStorage()
@@ -643,7 +669,7 @@ export async function clearStreamSelections() {
       }
     }
 
-    update(row.id, { selectedFiles: null, firstFiles: null })
+    update(row.id, { selectedFiles: null, firstFiles: null, lowFiles: null })
   }
 }
 
@@ -678,7 +704,8 @@ export async function prepareStream(torrent: Torrent, fileIndex: number) {
   return update(torrent.id, {
     inEngine: true,
     selectedFiles: selected.length ? selected : null,
-    firstFiles: firstWithin(torrent, selected),
+    firstFiles: priorityWithin(torrent, selected, 'firstFiles'),
+    lowFiles: priorityWithin(torrent, selected, 'lowFiles'),
     pauseReason: null,
     lastAccessAt: new Date(),
   })

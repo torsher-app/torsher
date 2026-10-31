@@ -14,7 +14,7 @@ import {
   torrentStats,
   torrentStatsQuery,
   updateRetention,
-  updateTorrentFirst,
+  updateTorrentPriority,
   updateTorrentSeeding,
   updateTorrentTitle,
 } from '../dto/torrents.ts'
@@ -42,7 +42,7 @@ import {
   playableFile,
   resumeDownload,
   retryTorrent,
-  setFirstFiles,
+  setFilePriority,
   setRetention,
   streamStats,
 } from '../services/torrents/index.ts'
@@ -297,15 +297,15 @@ export const torrentRoutes: FastifyPluginAsyncZod = async (app) => {
     },
   )
 
-  // «Качать первым»: файлы выбора, которые качаются раньше порядка серий
+  // Приоритет выбранных файлов применяется сразу
   app.put(
-    '/:id/first',
+    '/:id/priority',
     {
       schema: {
-        operationId: 'putTorrentFirst',
+        operationId: 'putTorrentPriority',
         tags: ['Torrents'],
         params: torrentIdParams,
-        body: updateTorrentFirst,
+        body: updateTorrentPriority,
         response: {
           200: torrent,
           404: messageResponse,
@@ -322,7 +322,13 @@ export const torrentRoutes: FastifyPluginAsyncZod = async (app) => {
         return reply.code(404).send({ message: 'Torrent not found' })
 
       try {
-        return await respond(await setFirstFiles(found, request.body.files))
+        return await respond(
+          await setFilePriority(
+            found,
+            request.body.files,
+            request.body.priority,
+          ),
+        )
       }
       catch (err) {
         if (err instanceof NotInEngineError)

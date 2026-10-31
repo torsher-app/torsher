@@ -375,6 +375,8 @@ export const torrents = sqliteTable('torrents', {
   selectedFiles: text('selected_files', { mode: 'json' }).$type<number[]>(),
   // Файлы выбора, которые владелец поднял вперёд порядка закачки
   firstFiles: text('first_files', { mode: 'json' }).$type<number[]>(),
+  // Файлы низкого приоритета — после среднего уровня
+  lowFiles: text('low_files', { mode: 'json' }).$type<number[]>(),
   pauseReason: text('pause_reason', { enum: torrentPauseReasons }),
   // Своё правило раздачи закреплённой загрузки; null — как в настройках
   seedRule: text('seed_rule', { mode: 'json' }).$type<SeedRule>(),

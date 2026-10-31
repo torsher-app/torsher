@@ -1603,7 +1603,7 @@ export interface TorrentFileInput {
   isVideo: boolean;
   downloaded: number;
   selected: boolean;
-  first: boolean;
+  priority: "high" | "medium" | "low";
   downloadingFirst: boolean;
   inLibrary: boolean;
 }
@@ -1676,7 +1676,8 @@ export interface DownloadTorrentInput {
   files: number[];
 }
 
-export interface UpdateTorrentFirstInput {
+export interface UpdateTorrentPriorityInput {
+  priority: "high" | "medium" | "low";
   /** @maxItems 10000 */
   files: number[];
 }
@@ -6399,7 +6400,7 @@ export interface TorrentFile {
   isVideo: boolean;
   downloaded: number;
   selected: boolean;
-  first: boolean;
+  priority: "high" | "medium" | "low";
   downloadingFirst: boolean;
   inLibrary: boolean;
 }
@@ -6472,7 +6473,8 @@ export interface DownloadTorrent {
   files: number[];
 }
 
-export interface UpdateTorrentFirst {
+export interface UpdateTorrentPriority {
+  priority: "high" | "medium" | "low";
   /** @maxItems 10000 */
   files: number[];
 }
@@ -9761,7 +9763,8 @@ export type PostTorrentRetryError = MessageResponse | EngineUnavailableResponse;
 export type PostTorrentDownloadError =
   MessageResponse | EngineUnavailableResponse;
 
-export type PutTorrentFirstError = MessageResponse | EngineUnavailableResponse;
+export type PutTorrentPriorityError =
+  MessageResponse | EngineUnavailableResponse;
 
 export type PostTorrentPauseError = MessageResponse | EngineUnavailableResponse;
 
@@ -12005,16 +12008,16 @@ export class Api<
      * No description
      *
      * @tags Torrents
-     * @name PutTorrentFirst
-     * @request PUT:/api/torrents/{id}/first
+     * @name PutTorrentPriority
+     * @request PUT:/api/torrents/{id}/priority
      */
-    putTorrentFirst: (
+    putTorrentPriority: (
       id: string,
-      data: UpdateTorrentFirstInput,
+      data: UpdateTorrentPriorityInput,
       params: RequestParams = {},
     ) =>
-      this.request<Torrent, PutTorrentFirstError>({
-        path: `/api/torrents/${id}/first`,
+      this.request<Torrent, PutTorrentPriorityError>({
+        path: `/api/torrents/${id}/priority`,
         method: "PUT",
         body: data,
         type: ContentType.Json,

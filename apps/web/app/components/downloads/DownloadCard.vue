@@ -2,7 +2,6 @@
 import type { Torrent } from '@torsher/api-client'
 import {
   ArrowDownToLineIcon,
-  ChevronsUpIcon,
   CircleXIcon,
   FileIcon,
   FilmIcon,
@@ -27,6 +26,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import LoadingButton from '~/components/LoadingButton.vue'
+import DownloadFilePriority from './DownloadFilePriority.vue'
 import { formatDateTime, formatRelative } from '~/lib/format'
 import { releaseMetaOf } from '~/lib/releaseMeta'
 import { playerUrl, videoIndexes } from '~/lib/torrents'
@@ -519,30 +519,6 @@ function onInteractOutside(event: Event) {
                 </label>
                 <span class="flex items-center justify-end">
                   <Button
-                    v-if="
-                      pendingFiles > 1
-                        && file.selected
-                        && file.downloaded < file.size
-                    "
-                    variant="ghost"
-                    size="icon-sm"
-                    class="size-7"
-                    :class="
-                      file.first ? 'text-primary' : 'text-muted-foreground'
-                    "
-                    :disabled="isBusy"
-                    :aria-pressed="file.first"
-                    :aria-label="
-                      t('panel.torrents.downloadFirst', { name: file.path })
-                    "
-                    :title="
-                      t('panel.torrents.downloadFirst', { name: file.path })
-                    "
-                    @click="actions.toggleFirst(shown, file.index)"
-                  >
-                    <ChevronsUpIcon />
-                  </Button>
-                  <Button
                     v-if="file.isVideo"
                     as="a"
                     variant="ghost"
@@ -585,6 +561,15 @@ function onInteractOutside(event: Event) {
                     {{ t("panel.torrents.inLibrary") }}
                   </template>
                 </span>
+                <DownloadFilePriority
+                  v-if="file.selected && file.downloaded < file.size"
+                  class="col-start-4 justify-self-end"
+                  :file="file"
+                  :disabled="isBusy"
+                  @update:model-value="
+                    actions.setPriority(shown, file.index, $event)
+                  "
+                />
               </li>
             </ul>
           </section>

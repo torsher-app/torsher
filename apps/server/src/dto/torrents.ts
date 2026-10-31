@@ -51,8 +51,8 @@ export const torrentFile = z
     downloaded: z.number(),
     // Качается целиком (выбран для скачивания или его смотрели)
     selected: z.boolean(),
-    // Владелец поднял файл вперёд порядка закачки
-    first: z.boolean(),
+    // Ручной уровень закачки; средний — по умолчанию
+    priority: z.enum(['high', 'medium', 'low']),
     // Движок качает файл раньше остальных выбранных: по порядку серий или поднятый
     downloadingFirst: z.boolean(),
     // Лежит в своей раскладке библиотеки
@@ -133,11 +133,12 @@ export const downloadTorrent = z
   })
   .meta({ id: 'downloadTorrent' })
 
-export const updateTorrentFirst = z
+export const updateTorrentPriority = z
   .object({
+    priority: z.enum(['high', 'medium', 'low']),
     files: z.array(z.number().int().min(0).max(99_999)).max(10_000),
   })
-  .meta({ id: 'updateTorrentFirst' })
+  .meta({ id: 'updateTorrentPriority' })
 
 export const updateTorrentTitle = z
   .object({

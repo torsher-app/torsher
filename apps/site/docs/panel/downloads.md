@@ -70,7 +70,7 @@ Click a row to open its card on the right.
 - **<Ui k="panel.torrents.card.storage" />.** Whether the torrent is in the cache, kept, or already in the library.
 - **<Ui k="panel.torrents.card.added" />** and **<Ui k="panel.torrents.card.watched" />.**
 - **<Ui k="panel.torrents.card.files" />.** Check files and select <Ui k="panel.torrents.download" />: checked files download in full and the torrent becomes kept, the rest download only while watched. The play button next to a video opens it in the showcase.
-- **Download order.** Episodes download one after another, so the first episode is ready to watch long before the season finishes. To get another file sooner, select the up arrows next to it: raised files download before the rest, then the order picks up again. The file that is downloading now is marked <Ui k="panel.torrents.downloadingFirst" />.
+- **Download order.** Episodes download one after another, so the first episode is ready to watch long before the season finishes. Use the priority dropdown below a selected file: <Ui k="panel.torrents.priorityHigh" /> downloads it sooner, <Ui k="panel.torrents.priorityMedium" /> follows episode order (the default), and <Ui k="panel.torrents.priorityLow" /> waits until the other selected files finish. Changes apply immediately and survive a restart. Playback can still read a file at any priority. The file that is downloading now is marked <Ui k="panel.torrents.downloadingFirst" />.
 
 Buttons at the bottom:
 

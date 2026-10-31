@@ -123,7 +123,11 @@ describe('клиент движка', () => {
     ])
 
     expect(calls).toEqual([
-      ['PUT', `/torrents/${INFO_HASH}/files`, '{"files":[0,2],"first":[]}'],
+      [
+        'PUT',
+        `/torrents/${INFO_HASH}/files`,
+        '{"files":[0,2],"first":[],"low":[]}',
+      ],
       ['POST', `/torrents/${INFO_HASH}/pause`, undefined],
       ['POST', `/torrents/${INFO_HASH}/resume`, undefined],
     ])

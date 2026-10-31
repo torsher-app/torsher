@@ -147,14 +147,14 @@ func selectionComplete(t *torrent.Torrent, selected []int) bool {
 }
 
 // Что из выбора качается первым: недокачанные файлы из `first`, а без них —
-// первый недокачанный по порядку выбора (сервер присылает выбор по порядку
-// серий). При одном приоритете библиотека берёт редкие куски первыми по всем
+// первый недокачанный среднего уровня, затем низкого, по порядку выбора
+// (сервер присылает выбор по порядку серий). При одном приоритете библиотека берёт редкие куски первыми по всем
 // файлам сразу, и серии сезона докачивались бы почти одновременно. Кусков
 // первого файла ни у кого нет — библиотека запрашивает остальные, закачка не встаёт
-func highFiles(t *torrent.Torrent, selected, first []int) []int {
+func highFiles(t *torrent.Torrent, selected, first, low []int) []int {
 	files := t.Files()
 	undone := func(index int) bool {
-		return index < len(files) && files[index].BytesCompleted() < files[index].Length()
+		return index >= 0 && index < len(files) && files[index].BytesCompleted() < files[index].Length()
 	}
 
 	var high []int
@@ -165,6 +165,12 @@ func highFiles(t *torrent.Torrent, selected, first []int) []int {
 	}
 	if len(high) > 0 {
 		return high
+	}
+
+	for _, index := range selected {
+		if !slices.Contains(low, index) && undone(index) {
+			return []int{index}
+		}
 	}
 
 	for _, index := range selected {
@@ -249,12 +255,12 @@ func (a *api) reschedule() {
 
 		var high []int
 		if len(files) > 0 && !item.complete {
-			high = highFiles(item.t, files, item.saved.First)
+			high = highFiles(item.t, files, item.saved.First, item.saved.Low)
 			highs[hash] = high
 		}
 
-		if key := filesKey(files) + "/" + filesKey(high); key != state.files || !seen {
-			if err := setFiles(item.t, files, high); err != nil {
+		if key := filesKey(files) + "/" + filesKey(high) + "/" + filesKey(item.saved.Low); key != state.files || !seen {
+			if err := setFiles(item.t, files, high, item.saved.Low); err != nil {
 				a.logger.Warn("schedule files", "infoHash", hash.HexString(), "err", err)
 			}
 			state.files = key

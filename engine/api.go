@@ -353,15 +353,27 @@ func parseFiles(raw string) ([]int, error) {
 
 // Выбранные файлы качаются целиком сразу, `high` из них — раньше остальных,
 // невыбранные — только окнами потоков
-func setFiles(t *torrent.Torrent, selected, high []int) error {
+func setFiles(t *torrent.Torrent, selected, high, low []int) error {
 	files := t.Files()
 	wanted := map[int]torrent.PiecePriority{}
+	// У библиотеки нет Low: низкий уровень ждёт обычные файлы,
+	// затем включается с тем же автоматическим порядком серий.
+	var regular []int
+	for _, index := range selected {
+		if !slices.Contains(low, index) {
+			regular = append(regular, index)
+		}
+	}
+	deferLow := !selectionComplete(t, regular)
 
 	for _, index := range selected {
-		if index >= len(files) {
+		if index < 0 || index >= len(files) {
 			return fmt.Errorf("file index %d out of range", index)
 		}
 		wanted[index] = torrent.PiecePriorityNormal
+		if deferLow && slices.Contains(low, index) {
+			wanted[index] = torrent.PiecePriorityNone
+		}
 	}
 
 	for _, index := range high {
@@ -396,13 +408,13 @@ func (a *api) setPaused(t *torrent.Torrent, paused bool, selected []int) {
 		return
 	}
 
-	_ = setFiles(t, nil, nil)
+	_ = setFiles(t, nil, nil, nil)
 	a.windows.release(t.InfoHash())
 
 	t.DisallowDataDownload()
 	t.DisallowDataUpload()
 
-	if err := setFiles(t, selected, nil); err != nil {
+	if err := setFiles(t, selected, nil, a.session.get(t.InfoHash()).Low); err != nil {
 		a.logger.Warn("pause files", "infoHash", t.InfoHash().HexString(), "err", err)
 	}
 }
@@ -477,6 +489,12 @@ func (a *api) add(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	low, err := parseFiles(r.URL.Query().Get("low"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_files", err)
+		return
+	}
+
 	dir := a.downloads
 	if raw := r.URL.Query().Get("dir"); raw != "" {
 		if !filepath.IsAbs(raw) {
@@ -538,14 +556,14 @@ func (a *api) add(w http.ResponseWriter, r *http.Request) {
 		a.verifyHoles(t)
 	}
 
-	if err := checkFiles(t, slices.Concat(selected, first)); err != nil {
+	if err := checkFiles(t, slices.Concat(selected, first, low)); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_files", err)
 		return
 	}
 
 	sessionDir := a.sessionDir(dir)
 	err = a.session.save(mi, func(saved *savedTorrent) {
-		queue(saved, selected, first)
+		queue(saved, selected, first, low)
 		saved.Background = nil
 		saved.Dir = sessionDir
 	})
@@ -560,12 +578,20 @@ func (a *api) add(w http.ResponseWriter, r *http.Request) {
 }
 
 // Новый выбор: раздача, у которой его не было, встаёт в конец очереди
-func queue(saved *savedTorrent, selected, first []int) {
+func queue(saved *savedTorrent, selected, first, low []int) {
 	if len(selected) > 0 && (len(saved.Selected) == 0 || saved.QueuedAt == 0) {
 		saved.QueuedAt = time.Now().UnixMilli()
 	}
 	saved.Selected = selected
-	saved.First = first
+	saved.First = nil
+	saved.Low = nil
+	for _, index := range selected {
+		if slices.Contains(first, index) {
+			saved.First = append(saved.First, index)
+		} else if slices.Contains(low, index) {
+			saved.Low = append(saved.Low, index)
+		}
+	}
 }
 
 // Выбор сохранён: на паузе он ставится, как раньше (см. `setPaused`), иначе
@@ -573,7 +599,7 @@ func queue(saved *savedTorrent, selected, first []int) {
 func (a *api) applySelection(t *torrent.Torrent) {
 	if saved := a.session.get(t.InfoHash()); saved.Paused {
 		a.sched.forget(t)
-		if err := setFiles(t, saved.Selected, nil); err != nil {
+		if err := setFiles(t, saved.Selected, nil, saved.Low); err != nil {
 			a.logger.Warn("pause files", "infoHash", t.InfoHash().HexString(), "err", err)
 		}
 		return
@@ -586,7 +612,7 @@ func checkFiles(t *torrent.Torrent, selected []int) error {
 	count := len(t.Files())
 
 	for _, index := range selected {
-		if index >= count {
+		if index < 0 || index >= count {
 			return fmt.Errorf("file index %d out of range", index)
 		}
 	}
@@ -628,6 +654,7 @@ func (a *api) selectFiles(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Files []int `json:"files"`
 		First []int `json:"first"`
+		Low   []int `json:"low"`
 	}
 
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&body); err != nil {
@@ -635,13 +662,13 @@ func (a *api) selectFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := checkFiles(t, slices.Concat(body.Files, body.First)); err != nil {
+	if err := checkFiles(t, slices.Concat(body.Files, body.First, body.Low)); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_files", err)
 		return
 	}
 
 	err := a.session.update(t.InfoHash(), func(saved *savedTorrent) {
-		queue(saved, body.Files, body.First)
+		queue(saved, body.Files, body.First, body.Low)
 		saved.Background = nil
 	})
 	if err != nil {

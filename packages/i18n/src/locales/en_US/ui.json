@@ -2219,7 +2219,10 @@
       "selectedFiles": "{n} file | {n} files",
       "onDisk": "{size} on disk",
       "inLibrary": "In library",
-      "downloadFirst": "Download “{name}” first",
+      "filePriority": "Priority for “{name}”",
+      "priorityHigh": "High",
+      "priorityMedium": "Medium",
+      "priorityLow": "Low",
       "downloadingFirst": "Downloading first",
       "removeLibrary": "Remove from library",
       "removeDialog": {

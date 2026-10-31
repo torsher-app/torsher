@@ -26,6 +26,8 @@ type savedTorrent struct {
 	Selected []int `json:"selected"`
 	// Файлы выбора, которые владелец поднял вперёд порядка
 	First []int `json:"first,omitempty"`
+	// Файлы низкого приоритета: после среднего уровня
+	Low []int `json:"low,omitempty"`
 	// Пауза владельца или сервера: раздача не качает и не раздаёт
 	Paused bool `json:"paused"`
 	// Каталог файлов раздачи; пусто — каталог загрузок по умолчанию

@@ -875,7 +875,7 @@ describe('автоматика «Следить»', () => {
     })
     expect(enginePuts).toContainEqual({
       path: `/torrents/${PACK_HASH}/files`,
-      body: { files: [], first: [] },
+      body: { files: [], first: [], low: [] },
     })
     expect(requestedSearch(follow.id)).toBe('retry')
     expect(historyKinds(follow.id)).toContain('failed')

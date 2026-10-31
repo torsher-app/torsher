@@ -158,10 +158,14 @@ async function downloadFiles(id: string, files: number[]) {
   return updated
 }
 
-/** «Качать первым»: файлы выбора, которые качаются раньше порядка серий */
-async function setFirstFiles(id: string, files: number[]) {
+/** Приоритет файлов применяется сразу. */
+async function setFilePriority(
+  id: string,
+  files: number[],
+  priority: Torrent['files'][number]['priority'],
+) {
   const updated = await withErrorMode('silent', () =>
-    api.torrents.putTorrentFirst(id, { files }))
+    api.torrents.putTorrentPriority(id, { files, priority }))
 
   replaceTorrent(updated)
 
@@ -252,7 +256,7 @@ export function useTorrents() {
     retryTorrent,
     deleteTorrent,
     downloadFiles,
-    setFirstFiles,
+    setFilePriority,
     setPaused,
     setKept,
     removeFromLibrary,

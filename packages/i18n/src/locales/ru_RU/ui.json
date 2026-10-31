@@ -2219,7 +2219,10 @@
       "selectedFiles": "{n} файл | {n} файла | {n} файлов",
       "onDisk": "{size} на диске",
       "inLibrary": "В библиотеке",
-      "downloadFirst": "Качать «{name}» первым",
+      "filePriority": "Приоритет «{name}»",
+      "priorityHigh": "Высокий",
+      "priorityMedium": "Средний",
+      "priorityLow": "Низкий",
       "downloadingFirst": "Качается первым",
       "removeLibrary": "Убрать из библиотеки",
       "removeDialog": {

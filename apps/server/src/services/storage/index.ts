@@ -239,6 +239,7 @@ async function evict(row: Torrent) {
     inEngine: false,
     selectedFiles: null,
     firstFiles: null,
+    lowFiles: null,
     pauseReason: null,
   })
   return true
