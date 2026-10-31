@@ -139,21 +139,30 @@ export function unreadNotifications() {
 }
 
 /** Лента «свежее сверху»; курсор — последняя показанная строка */
-export function listNotifications(options: { before?: string, limit: number }) {
+export function listNotifications(options: {
+  before?: string
+  limit: number
+  kinds?: NotificationKind[]
+  unread?: boolean
+}) {
   const cursor = options.before ? getNotification(options.before) : undefined
   const rows = getDb()
     .select()
     .from(notifications)
     .where(
-      cursor
-        ? or(
-            lt(notifications.createdAt, cursor.createdAt),
-            and(
-              eq(notifications.createdAt, cursor.createdAt),
-              lt(notifications.id, cursor.id),
-            ),
-          )
-        : undefined,
+      and(
+        cursor
+          ? or(
+              lt(notifications.createdAt, cursor.createdAt),
+              and(
+                eq(notifications.createdAt, cursor.createdAt),
+                lt(notifications.id, cursor.id),
+              ),
+            )
+          : undefined,
+        options.kinds ? inArray(notifications.kind, options.kinds) : undefined,
+        options.unread ? isNull(notifications.readAt) : undefined,
+      ),
     )
     .orderBy(desc(notifications.createdAt), desc(notifications.id))
     .limit(options.limit + 1)

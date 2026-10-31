@@ -13,6 +13,7 @@ import {
   channelResponse,
   channelTestBody,
   channelTestResult,
+  feedGroupKinds,
   markReadBody,
   notificationList,
   notificationListQuery,
@@ -83,7 +84,13 @@ export const notificationRoutes: FastifyPluginAsyncZod = async (app) => {
         response: { 200: notificationList, ...guard },
       },
     },
-    request => listNotifications(request.query),
+    ({ query }) =>
+      listNotifications({
+        before: query.before,
+        limit: query.limit,
+        kinds: query.group ? feedGroupKinds(query.group) : undefined,
+        unread: query.unread === '1',
+      }),
   )
 
   app.get(

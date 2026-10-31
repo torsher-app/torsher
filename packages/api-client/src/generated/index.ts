@@ -10393,6 +10393,8 @@ export class Api<
          * @default 20
          */
         limit?: number;
+        group?: "problems" | "downloads" | "follow" | "updates" | "devices";
+        unread?: "1";
       },
       params: RequestParams = {},
     ) =>
