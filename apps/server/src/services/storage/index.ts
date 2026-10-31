@@ -235,7 +235,13 @@ async function evict(row: Torrent) {
       throw err
   }
 
-  update(row.id, { inEngine: false, selectedFiles: null, pauseReason: null })
+  update(row.id, {
+    inEngine: false,
+    selectedFiles: null,
+    firstFiles: null,
+    lowFiles: null,
+    pauseReason: null,
+  })
   return true
 }
 

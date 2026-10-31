@@ -91,6 +91,16 @@ export function useDownloadActions() {
     })
   }
 
+  // Итог виден в строке файла: тост здесь был бы шумом
+  function setPriority(
+    torrent: Torrent,
+    fileIndex: number,
+    priority: Torrent['files'][number]['priority'],
+  ) {
+    return run(torrent, () =>
+      torrents.setFilePriority(torrent.id, [fileIndex], priority))
+  }
+
   // «Да, это он»: подсказку распознавания подтверждает владелец
   function confirmMatch(torrent: Torrent) {
     return run(torrent, async () => {
@@ -113,6 +123,7 @@ export function useDownloadActions() {
     togglePause,
     toggleKeep,
     download,
+    setPriority,
     confirmMatch,
     retry,
   }

@@ -228,6 +228,8 @@ function torrentView(torrent: DemoTorrent, titleId: string | null): Torrent {
       isVideo: true,
       downloaded: 0,
       selected: false,
+      priority: 'medium',
+      downloadingFirst: false,
       inLibrary: false,
     })),
     totalSize,

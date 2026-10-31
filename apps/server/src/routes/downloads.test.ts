@@ -357,8 +357,92 @@ describe('действия', () => {
 
     expect(unkept.json().retention).toBe('cache')
     expect(rowOf(torrent.id)?.selectedFiles).toBeNull()
-    expect(bodies).toEqual([{ files: [0] }, { files: [] }])
+    expect(bodies).toEqual([
+      { files: [0], first: [], low: [] },
+      { files: [], first: [], low: [] },
+    ])
     expect((await retention('forever')).statusCode).toBe(400)
+  })
+
+  it('приоритет: только файлы выбора, сразу в движок', async () => {
+    const torrent = insertTorrent({
+      inEngine: true,
+      retention: 'keep',
+      selectedFiles: [2, 0],
+    })
+    const bodies: unknown[] = []
+    engine([{ ...liveState, selected: [0, 2], high: [2] }], {
+      [`PUT /torrents/${INFO_HASH}/files`]: (_url, init) => {
+        bodies.push(JSON.parse(String(init.body)))
+        return noContent()
+      },
+    })
+
+    const priority = (files: number[], priority: 'high' | 'medium' | 'low') =>
+      app.inject({
+        method: 'PUT',
+        url: `/api/torrents/${torrent.id}/priority`,
+        cookies: owner,
+        payload: { files, priority },
+      })
+
+    const raised = await priority([2, 1], 'high')
+
+    expect(raised.statusCode).toBe(200)
+    expect(
+      raised.json().files.find((file: { index: number }) => file.index === 2),
+    ).toMatchObject({ priority: 'high', downloadingFirst: true })
+    expect(rowOf(torrent.id)?.firstFiles).toEqual([2])
+
+    await priority([2], 'low')
+    expect(rowOf(torrent.id)?.firstFiles).toBeNull()
+    expect(rowOf(torrent.id)?.lowFiles).toEqual([2])
+    await priority([2], 'medium')
+    expect(rowOf(torrent.id)?.lowFiles).toBeNull()
+
+    expect(rowOf(torrent.id)?.firstFiles).toBeNull()
+    expect(bodies).toEqual([
+      { files: [0, 2], first: [2], low: [] },
+      { files: [0, 2], first: [], low: [2] },
+      { files: [0, 2], first: [], low: [] },
+    ])
+  })
+
+  it('приоритет у раздачи не в движке — 409', async () => {
+    const torrent = insertTorrent()
+    engine([])
+
+    const response = await app.inject({
+      method: 'PUT',
+      url: `/api/torrents/${torrent.id}/priority`,
+      cookies: owner,
+      payload: { files: [0], priority: 'low' },
+    })
+
+    expect(response.statusCode).toBe(409)
+    expect(engineCalls()).toEqual([])
+  })
+
+  it('новый выбор оставляет в «Качать первым» только выбранное', async () => {
+    const torrent = insertTorrent({
+      selectedFiles: [0, 2],
+      firstFiles: [2],
+      lowFiles: [0],
+    })
+    engine([], {
+      'POST /torrents': () => json(movieDetails),
+    })
+
+    await app.inject({
+      method: 'POST',
+      url: `/api/torrents/${torrent.id}/download`,
+      cookies: owner,
+      payload: { files: [2] },
+    })
+
+    expect(engineCalls()).toEqual(['POST /torrents?files=2&first=2'])
+    expect(rowOf(torrent.id)?.firstFiles).toEqual([2])
+    expect(rowOf(torrent.id)?.lowFiles).toBeNull()
   })
 
   it('после старта движка выбор, накопленный просмотром, снимается у кэша', async () => {
@@ -675,7 +759,8 @@ describe('просмотр и место', () => {
 
   it.each([
     ['cache', 'POST /torrents?files=2', [2]],
-    ['keep', 'POST /torrents?files=2,0', [2, 0]],
+    // Движку выбор уходит в порядке закачки: видео раньше субтитров
+    ['keep', 'POST /torrents?files=0,2', [2, 0]],
   ] as const)(
     'просмотр раздачи %s: выбор %s, пауза снимается',
     async (retention, call, selected) => {

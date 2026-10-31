@@ -218,6 +218,7 @@ function liveOf(hash: string, wantedCompleted: number): EngineTorrentState {
     infoHash: hash,
     paused: false,
     selected: [5, 6, 7],
+    high: [],
     bytesCompleted: wantedCompleted,
     bytesWanted: 4.5 * GB,
     wantedCompleted,
@@ -874,7 +875,7 @@ describe('автоматика «Следить»', () => {
     })
     expect(enginePuts).toContainEqual({
       path: `/torrents/${PACK_HASH}/files`,
-      body: { files: [] },
+      body: { files: [], first: [], low: [] },
     })
     expect(requestedSearch(follow.id)).toBe('retry')
     expect(historyKinds(follow.id)).toContain('failed')

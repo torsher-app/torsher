@@ -1603,6 +1603,8 @@ export interface TorrentFileInput {
   isVideo: boolean;
   downloaded: number;
   selected: boolean;
+  priority: "high" | "medium" | "low";
+  downloadingFirst: boolean;
   inLibrary: boolean;
 }
 
@@ -1671,6 +1673,12 @@ export interface DownloadTorrentInput {
    * @maxItems 10000
    * @minItems 1
    */
+  files: number[];
+}
+
+export interface UpdateTorrentPriorityInput {
+  priority: "high" | "medium" | "low";
+  /** @maxItems 10000 */
   files: number[];
 }
 
@@ -6392,6 +6400,8 @@ export interface TorrentFile {
   isVideo: boolean;
   downloaded: number;
   selected: boolean;
+  priority: "high" | "medium" | "low";
+  downloadingFirst: boolean;
   inLibrary: boolean;
 }
 
@@ -6460,6 +6470,12 @@ export interface DownloadTorrent {
    * @maxItems 10000
    * @minItems 1
    */
+  files: number[];
+}
+
+export interface UpdateTorrentPriority {
+  priority: "high" | "medium" | "low";
+  /** @maxItems 10000 */
   files: number[];
 }
 
@@ -9747,6 +9763,9 @@ export type PostTorrentRetryError = MessageResponse | EngineUnavailableResponse;
 export type PostTorrentDownloadError =
   MessageResponse | EngineUnavailableResponse;
 
+export type PutTorrentPriorityError =
+  MessageResponse | EngineUnavailableResponse;
+
 export type PostTorrentPauseError = MessageResponse | EngineUnavailableResponse;
 
 export type PostTorrentResumeError =
@@ -11981,6 +12000,27 @@ export class Api<
       this.request<Torrent, PostTorrentDownloadError>({
         path: `/api/torrents/${id}/download`,
         method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Torrents
+     * @name PutTorrentPriority
+     * @request PUT:/api/torrents/{id}/priority
+     */
+    putTorrentPriority: (
+      id: string,
+      data: UpdateTorrentPriorityInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<Torrent, PutTorrentPriorityError>({
+        path: `/api/torrents/${id}/priority`,
+        method: "PUT",
         body: data,
         type: ContentType.Json,
         format: "json",

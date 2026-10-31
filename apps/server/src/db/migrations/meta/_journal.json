@@ -239,6 +239,20 @@
       "when": 1793375143663,
       "tag": "0033_right_terror",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "6",
+      "when": 1793378942051,
+      "tag": "0034_brown_maestro",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "6",
+      "when": 1793427786802,
+      "tag": "0035_rich_aaron_stack",
+      "breakpoints": true
     }
   ]
 }

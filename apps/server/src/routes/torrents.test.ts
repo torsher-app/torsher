@@ -249,6 +249,8 @@ describe('добавление раздачи', () => {
         isVideo: true,
         downloaded: 0,
         selected: false,
+        priority: 'medium',
+        downloadingFirst: false,
         inLibrary: false,
       },
       {
@@ -258,6 +260,8 @@ describe('добавление раздачи', () => {
         isVideo: false,
         downloaded: 0,
         selected: false,
+        priority: 'medium',
+        downloadingFirst: false,
         inLibrary: false,
       },
     ])

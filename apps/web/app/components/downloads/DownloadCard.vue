@@ -26,6 +26,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import LoadingButton from '~/components/LoadingButton.vue'
+import DownloadFilePriority from './DownloadFilePriority.vue'
 import { formatDateTime, formatRelative } from '~/lib/format'
 import { releaseMetaOf } from '~/lib/releaseMeta'
 import { playerUrl, videoIndexes } from '~/lib/torrents'
@@ -99,6 +100,13 @@ const release = computed(() =>
   shown.value ? releaseMetaOf(shown.value) : null,
 )
 const isBusy = computed(() => !!shown.value && actions.isBusy(shown.value.id))
+// Порядок закачки есть, только когда недокачанных выбранных файлов больше одного
+const pendingFiles = computed(
+  () =>
+    shown.value?.files.filter(
+      file => file.selected && file.downloaded < file.size,
+    ).length ?? 0,
+)
 const hasLibraryFiles = computed(
   () => !!shown.value?.files.some(file => file.inLibrary),
 )
@@ -538,6 +546,12 @@ function onInteractOutside(event: Event) {
                       })
                     }}
                   </template>
+                  <template v-if="file.downloadingFirst && pendingFiles > 1">
+                    ·
+                    <span class="text-foreground">{{
+                      t("panel.torrents.downloadingFirst")
+                    }}</span>
+                  </template>
                   <template v-if="file.inLibrary">
                     ·
                     <LibraryIcon
@@ -547,6 +561,15 @@ function onInteractOutside(event: Event) {
                     {{ t("panel.torrents.inLibrary") }}
                   </template>
                 </span>
+                <DownloadFilePriority
+                  v-if="file.selected && file.downloaded < file.size"
+                  class="col-start-4 justify-self-end"
+                  :file="file"
+                  :disabled="isBusy"
+                  @update:model-value="
+                    actions.setPriority(shown, file.index, $event)
+                  "
+                />
               </li>
             </ul>
           </section>

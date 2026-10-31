@@ -88,6 +88,44 @@ func TestStreamDownloadsOnlyTheWindowAhead(t *testing.T) {
 	}
 }
 
+// Окно другого файла не уступает фоновой серии с High, а позиция
+// чтения получает срочный приоритет ридера поверх обоих.
+func TestStreamWindowKeepsUpWithFirstFile(t *testing.T) {
+	fx, _, _ := newTwoFileFixture(t)
+	engine, server := newTestEngine(t, t.TempDir())
+	post(t, server.URL+"/torrents?files=0,1", fx.raw).Body.Close()
+	added, _ := engine.client.Torrent(fx.meta.HashInfoBytes())
+	file := added.Files()[1]
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	reader := newStreamReader(ctx, file)
+	reader.SetReadahead(1)
+	window := engine.windows.open(added, file, reader, file.Length())
+	defer window.Close()
+	done := make(chan struct{})
+	go func() {
+		_, _ = window.Read(make([]byte, 1))
+		close(done)
+	}()
+	defer func() {
+		cancel()
+		<-done
+	}()
+
+	// Последний кусок второго файла вне readahead и не пересекается с первым.
+	waitFor(t, 5*time.Second, func() bool {
+		return added.Piece(added.NumPieces()-1).State().Priority == torrent.PiecePriorityHigh
+	})
+	last := added.Piece(added.NumPieces() - 1).State().Priority
+	if last != torrent.PiecePriorityHigh {
+		t.Fatalf("stream window priority %v, want High", last)
+	}
+	position := added.Piece(int(file.Offset() / added.Info().PieceLength)).State().Priority
+	if position <= torrent.PiecePriorityHigh {
+		t.Fatalf("reader priority %v does not beat the background file", position)
+	}
+}
+
 func TestClosedStreamStopsDownloading(t *testing.T) {
 	engine, added, _ := streamFixture(t)
 	file := added.Files()[0]

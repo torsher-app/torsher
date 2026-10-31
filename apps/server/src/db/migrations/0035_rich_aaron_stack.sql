@@ -1,0 +1,1 @@
+ALTER TABLE `torrents` ADD `low_files` text;

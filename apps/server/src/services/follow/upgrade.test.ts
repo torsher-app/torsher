@@ -250,6 +250,7 @@ function stateOf(
     infoHash: torrent.infoHash,
     paused: false,
     selected: torrent.selectedFiles ?? [],
+    high: [],
     bytesCompleted: progress.reduce((sum, size) => sum + size, 0),
     bytesWanted,
     wantedCompleted: progress.reduce((sum, size) => sum + size, 0),

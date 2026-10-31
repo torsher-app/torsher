@@ -91,6 +91,8 @@ const engineTorrentState = z.object({
   paused: z.boolean(),
   // Файлы, которые качаются целиком; остальное качают только окна потоков
   selected: z.array(z.number()).nullable(),
+  // Файлы выбора, которые качаются раньше остальных; у движков прежних версий поля нет
+  high: z.array(z.number()).nullable().optional(),
   // Скачано всего, включая куски вне выбора, прочитанные потоком
   bytesCompleted: z.number(),
   bytesWanted: z.number(),
@@ -134,6 +136,8 @@ export interface EngineTorrentState {
   infoHash: string
   paused: boolean
   selected: number[]
+  /** Файлы выбора, которые качаются раньше остальных */
+  high: number[]
   bytesCompleted: number
   bytesWanted: number
   wantedCompleted: number
@@ -157,6 +161,7 @@ function toState(raw: z.infer<typeof engineTorrentState>): EngineTorrentState {
     infoHash: raw.infoHash.toLowerCase(),
     paused: raw.paused,
     selected: raw.selected ?? [],
+    high: raw.high ?? [],
     bytesCompleted: raw.bytesCompleted,
     bytesWanted: raw.bytesWanted,
     wantedCompleted: raw.wantedCompleted,
@@ -310,14 +315,23 @@ export async function inspectTorrent(
 /**
  * Добавляет раздачу (уже добавленную движок возвращает как есть) и выбирает
  * файлы. Целиком выбранный файл докачивается после начала просмотра, до этого
- * движок качает только куски, которые читает поток.
+ * движок качает только куски, которые читает поток. Выбор качается в его
+ * порядке, `first` — раньше порядка, `low` — после остальных.
  */
 export async function addTorrent(
   bytes: Uint8Array,
   onlyFiles: number[],
   dir?: string,
+  first: number[] = [],
+  low: number[] = [],
 ) {
   const query = new URLSearchParams({ files: onlyFiles.join(',') })
+
+  if (first.length)
+    query.set('first', first.join(','))
+
+  if (low.length)
+    query.set('low', low.join(','))
 
   // Без каталога — каталог загрузок по умолчанию (`--downloads`)
   if (dir)
@@ -341,13 +355,18 @@ async function engineEmpty(path: string, request: EngineRequest) {
 }
 
 /**
- * Меняет выбор файлов. `now` — качать выбранные целиком сразу; без него
- * движок ждёт начала просмотра (у раздачи, которая уже докачивается, — сразу).
+ * Меняет выбор файлов: выбранные качаются целиком сразу, в порядке выбора,
+ * `first` — раньше порядка, `low` — после остальных. `[]` — полная закачка встаёт.
  */
-export async function selectFiles(infoHash: string, files: number[]) {
+export async function selectFiles(
+  infoHash: string,
+  files: number[],
+  first: number[] = [],
+  low: number[] = [],
+) {
   await engineEmpty(`/torrents/${infoHash}/files`, {
     method: 'PUT',
-    body: JSON.stringify({ files }),
+    body: JSON.stringify({ files, first, low }),
     headers: { 'Content-Type': 'application/json' },
   })
 }

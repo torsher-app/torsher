@@ -43,6 +43,7 @@ type scheduler struct {
 
 	stateMu sync.Mutex
 	queued  map[metainfo.Hash]bool
+	high    map[metainfo.Hash][]int
 	marks   map[metainfo.Hash]uploadMark
 
 	kick chan struct{}
@@ -52,6 +53,7 @@ func newScheduler() *scheduler {
 	return &scheduler{
 		applied: map[*torrent.Torrent]applied{},
 		queued:  map[metainfo.Hash]bool{},
+		high:    map[metainfo.Hash][]int{},
 		marks:   map[metainfo.Hash]uploadMark{},
 		kick:    make(chan struct{}, 1),
 	}
@@ -70,6 +72,13 @@ func (s *scheduler) isQueued(hash metainfo.Hash) bool {
 	defer s.stateMu.Unlock()
 
 	return s.queued[hash]
+}
+
+func (s *scheduler) highOf(hash metainfo.Hash) []int {
+	s.stateMu.Lock()
+	defer s.stateMu.Unlock()
+
+	return s.high[hash]
 }
 
 // Выбор применён мимо планировщика (пауза): следующий пересчёт применит его заново
@@ -137,6 +146,42 @@ func selectionComplete(t *torrent.Torrent, selected []int) bool {
 	return true
 }
 
+// Что из выбора качается первым: недокачанные файлы из `first`, а без них —
+// первый недокачанный среднего уровня, затем низкого, по порядку выбора
+// (сервер присылает выбор по порядку серий). При одном приоритете библиотека берёт редкие куски первыми по всем
+// файлам сразу, и серии сезона докачивались бы почти одновременно. Кусков
+// первого файла ни у кого нет — библиотека запрашивает остальные, закачка не встаёт
+func highFiles(t *torrent.Torrent, selected, first, low []int) []int {
+	files := t.Files()
+	undone := func(index int) bool {
+		return index >= 0 && index < len(files) && files[index].BytesCompleted() < files[index].Length()
+	}
+
+	var high []int
+	for _, index := range first {
+		if slices.Contains(selected, index) && undone(index) {
+			high = append(high, index)
+		}
+	}
+	if len(high) > 0 {
+		return high
+	}
+
+	for _, index := range selected {
+		if !slices.Contains(low, index) && undone(index) {
+			return []int{index}
+		}
+	}
+
+	for _, index := range selected {
+		if undone(index) {
+			return []int{index}
+		}
+	}
+
+	return nil
+}
+
 // Что из выбора качается сейчас, кому разрешена отдача и сколько соединений
 // у раздачи. Раздачи на паузе не трогаем: их приоритеты расставляет
 // `setPaused` (см. обход паники библиотеки там)
@@ -192,6 +237,7 @@ func (a *api) reschedule() {
 	})
 
 	queued := map[metainfo.Hash]bool{}
+	highs := map[metainfo.Hash][]int{}
 	for index, item := range waiting {
 		if settings.ActiveDownloads > 0 && index >= settings.ActiveDownloads {
 			queued[item.t.InfoHash()] = true
@@ -207,8 +253,14 @@ func (a *api) reschedule() {
 			files = nil
 		}
 
-		if key := filesKey(files); key != state.files || !seen {
-			if err := setFiles(item.t, files); err != nil {
+		var high []int
+		if len(files) > 0 && !item.complete {
+			high = highFiles(item.t, files, item.saved.First, item.saved.Low)
+			highs[hash] = high
+		}
+
+		if key := filesKey(files) + "/" + filesKey(high) + "/" + filesKey(item.saved.Low); key != state.files || !seen {
+			if err := setFiles(item.t, files, high, item.saved.Low); err != nil {
 				a.logger.Warn("schedule files", "infoHash", hash.HexString(), "err", err)
 			}
 			state.files = key
@@ -252,6 +304,7 @@ func (a *api) reschedule() {
 
 	a.sched.stateMu.Lock()
 	a.sched.queued = queued
+	a.sched.high = highs
 	a.sched.stateMu.Unlock()
 }
 

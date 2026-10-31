@@ -47,6 +47,68 @@ describe('журнал миграций', () => {
   })
 })
 
+describe('миграция порядка закачки', () => {
+  it('сохраняет старый выбор и добавляет пустой ручной приоритет', () => {
+    const idx = journal.entries.findIndex(entry =>
+      readFileSync(join(MIGRATIONS_DIR, `${entry.tag}.sql`), 'utf8').includes(
+        'ADD `first_files`',
+      ),
+    )
+
+    expect(idx).toBeGreaterThan(0)
+
+    const sqlite = new Database(':memory:')
+    const db = drizzle(sqlite)
+
+    try {
+      migrate(db, { migrationsFolder: migrationsBefore(idx) })
+      sqlite
+        .prepare(
+          'INSERT INTO torrents (id, info_hash, name, source, status, added_at, selected_files, in_engine) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        )
+        .run(
+          'old',
+          'a'.repeat(40),
+          'Sample.S01',
+          'file',
+          'ready',
+          1,
+          '[2,0,1]',
+          1,
+        )
+
+      migrate(db, { migrationsFolder: MIGRATIONS_DIR })
+
+      const read = () =>
+        sqlite
+          .prepare(
+            'SELECT selected_files, first_files, low_files, in_engine FROM torrents WHERE id = ?',
+          )
+          .get('old')
+
+      expect(read()).toEqual({
+        selected_files: '[2,0,1]',
+        first_files: null,
+        low_files: null,
+        in_engine: 1,
+      })
+      sqlite
+        .prepare('UPDATE torrents SET first_files = ? WHERE id = ?')
+        .run('[0]', 'old')
+      migrate(db, { migrationsFolder: MIGRATIONS_DIR })
+      expect(read()).toEqual({
+        selected_files: '[2,0,1]',
+        first_files: '[0]',
+        low_files: null,
+        in_engine: 1,
+      })
+    }
+    finally {
+      sqlite.close()
+    }
+  })
+})
+
 describe('миграция профилей', () => {
   it('создаёт профиль владельца и переносит в него позиции и прогресс', () => {
     const sqlite = new Database(':memory:')

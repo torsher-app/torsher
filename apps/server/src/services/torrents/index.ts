@@ -33,6 +33,7 @@ import { isMovingTorrent } from '../storage/moving.ts'
 import { downloadDirValue, storagePath, torrentDir } from '../storage/paths.ts'
 import { parseMagnet } from './magnet.ts'
 import { isVideoFile } from './media.ts'
+import { downloadOrder } from './order.ts'
 import { bufferedAheadBytes, fileOffsetOf } from './playback.ts'
 
 export { InsufficientStorageError } from '../storage/index.ts'
@@ -399,6 +400,19 @@ function streamSelection(torrent: Torrent, fileIndex: number) {
     : (torrent.selectedFiles ?? [])
 }
 
+/** Ручные уровни — только для выбранных файлов. */
+function priorityWithin(
+  torrent: Torrent,
+  selected: number[],
+  key: 'firstFiles' | 'lowFiles',
+) {
+  const indices = (torrent[key] ?? []).filter(index =>
+    selected.includes(index),
+  )
+
+  return indices.length ? indices : null
+}
+
 /** Раздачу убрали из движка мимо базы: менять выбор не у кого */
 async function ignoreMissing(action: Promise<void>) {
   try {
@@ -461,8 +475,10 @@ async function addToEngine(
 
   await addTorrent(
     torrent.torrentFile!,
-    files,
+    downloadOrder(torrent, files),
     torrent.downloadDir ? torrentDir(torrent) : undefined,
+    priorityWithin(torrent, files, 'firstFiles') ?? [],
+    priorityWithin(torrent, files, 'lowFiles') ?? [],
   )
 }
 
@@ -491,6 +507,8 @@ export async function downloadFiles(
   update(torrent.id, {
     inEngine: true,
     selectedFiles: files,
+    firstFiles: priorityWithin(torrent, files, 'firstFiles'),
+    lowFiles: priorityWithin(torrent, files, 'lowFiles'),
     retention: 'keep',
     pauseReason: null,
   })
@@ -519,6 +537,39 @@ export async function resumeDownload(torrent: Torrent) {
   await enforceStorage()
 
   return getTorrent(torrent.id) ?? torrent
+}
+
+/** Приоритет меняется сразу, только у выбранных файлов. */
+export async function setFilePriority(
+  torrent: Torrent,
+  files: number[],
+  priority: 'high' | 'medium' | 'low',
+) {
+  if (!torrent.inEngine)
+    throw new NotInEngineError()
+
+  const selected = torrent.selectedFiles ?? []
+  const changed = new Set(files.filter(index => selected.includes(index)))
+  const first = selected.filter(index =>
+    changed.has(index)
+      ? priority === 'high'
+      : torrent.firstFiles?.includes(index),
+  )
+  const low = selected.filter(index =>
+    changed.has(index) ? priority === 'low' : torrent.lowFiles?.includes(index),
+  )
+
+  await selectFiles(
+    torrent.infoHash,
+    downloadOrder(torrent, selected),
+    first,
+    low,
+  )
+
+  return update(torrent.id, {
+    firstFiles: first.length ? first : null,
+    lowFiles: low.length ? low : null,
+  })
 }
 
 /** Видеофайлы, которые начали смотреть: на диске уже что-то есть */
@@ -565,12 +616,25 @@ export async function setRetention(
         )
       : []
 
-  if (torrent.inEngine)
-    await ignoreMissing(selectFiles(torrent.infoHash, selected))
+  const first = priorityWithin(torrent, selected, 'firstFiles')
+  const low = priorityWithin(torrent, selected, 'lowFiles')
+
+  if (torrent.inEngine) {
+    await ignoreMissing(
+      selectFiles(
+        torrent.infoHash,
+        downloadOrder(torrent, selected),
+        first ?? [],
+        low ?? [],
+      ),
+    )
+  }
 
   const updated = update(torrent.id, {
     retention,
     selectedFiles: selected.length ? selected : null,
+    firstFiles: first,
+    lowFiles: low,
   })
 
   await enforceStorage()
@@ -605,7 +669,7 @@ export async function clearStreamSelections() {
       }
     }
 
-    update(row.id, { selectedFiles: null })
+    update(row.id, { selectedFiles: null, firstFiles: null, lowFiles: null })
   }
 }
 
@@ -640,6 +704,8 @@ export async function prepareStream(torrent: Torrent, fileIndex: number) {
   return update(torrent.id, {
     inEngine: true,
     selectedFiles: selected.length ? selected : null,
+    firstFiles: priorityWithin(torrent, selected, 'firstFiles'),
+    lowFiles: priorityWithin(torrent, selected, 'lowFiles'),
     pauseReason: null,
     lastAccessAt: new Date(),
   })

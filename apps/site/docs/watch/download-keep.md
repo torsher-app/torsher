@@ -42,7 +42,7 @@ Download ahead of time, for a trip or for a weak connection:
 
 1. On the title page, select <Ui k="download.movie" />. For a series, pick the season chip first: the button downloads that season, and its second line says how many episodes it has or how many are already in the library.
 2. <Ui k="download.sourcesTitle" /> opens: the same [Sources](/docs/watch/sources) screen, already filtered to the season. Pick a release.
-3. <Ui k="files.title" /> opens with the season's episodes, or the movie, already ticked. Change the selection if you want, and select <Ui k="files.downloadSelected" />.
+3. <Ui k="files.title" /> opens with the season's episodes, or the movie, already ticked. Change the selection if you want, and select <Ui k="files.downloadSelected" />. Episodes download in order, so you can start the first one while the rest are still downloading. To change the order, open the download in the [panel](/docs/panel/downloads).
 
 To pick files yourself in any release, open it on <Ui k="files.title" /> and select <Ui k="files.select" />. OK now ticks a file instead of playing it. A season heading ticks the whole season. <Ui k="files.selectAll" />, <Ui k="files.clearAll" /> and <Ui k="files.cancel" /> are next to it, and Back leaves the selection. Files that are already downloading or in the library can't be ticked.
 

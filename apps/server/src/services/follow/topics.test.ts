@@ -439,6 +439,7 @@ function completeState(torrent: Torrent): EngineTorrentState {
     infoHash: torrent.infoHash,
     paused: false,
     selected: torrent.selectedFiles ?? [],
+    high: [],
     bytesCompleted: sizes.reduce((sum, size) => sum + size, 0),
     bytesWanted: 0,
     wantedCompleted: 0,

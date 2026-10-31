@@ -14,6 +14,7 @@ import {
   torrentStats,
   torrentStatsQuery,
   updateRetention,
+  updateTorrentPriority,
   updateTorrentSeeding,
   updateTorrentTitle,
 } from '../dto/torrents.ts'
@@ -41,6 +42,7 @@ import {
   playableFile,
   resumeDownload,
   retryTorrent,
+  setFilePriority,
   setRetention,
   streamStats,
 } from '../services/torrents/index.ts'
@@ -288,6 +290,48 @@ export const torrentRoutes: FastifyPluginAsyncZod = async (app) => {
       }
       catch (err) {
         if (err instanceof NotReadyError)
+          return reply.code(409).send({ message: err.message })
+
+        return sendEngineError(reply, err)
+      }
+    },
+  )
+
+  // Приоритет выбранных файлов применяется сразу
+  app.put(
+    '/:id/priority',
+    {
+      schema: {
+        operationId: 'putTorrentPriority',
+        tags: ['Torrents'],
+        params: torrentIdParams,
+        body: updateTorrentPriority,
+        response: {
+          200: torrent,
+          404: messageResponse,
+          409: messageResponse,
+          ...guardResponses,
+          ...engineResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const found = getTorrent(request.params.id)
+
+      if (!found)
+        return reply.code(404).send({ message: 'Torrent not found' })
+
+      try {
+        return await respond(
+          await setFilePriority(
+            found,
+            request.body.files,
+            request.body.priority,
+          ),
+        )
+      }
+      catch (err) {
+        if (err instanceof NotInEngineError)
           return reply.code(409).send({ message: err.message })
 
         return sendEngineError(reply, err)

@@ -49,6 +49,7 @@ export const liveState = {
   infoHash: INFO_HASH,
   paused: false,
   selected: [0],
+  high: [0],
   bytesCompleted: 3_145_728,
   bytesWanted: 9_437_184,
   wantedCompleted: 3_145_728,

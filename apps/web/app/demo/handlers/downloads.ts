@@ -7,6 +7,7 @@ import type {
   Torrent,
   TorrentList,
   UpdateRetentionInput,
+  UpdateTorrentPriorityInput,
   UpdateTorrentSeedingInput,
   UpdateTorrentTitleInput,
 } from '@torsher/api-client'
@@ -285,7 +286,25 @@ function targetsOf(entry: Entry) {
   if (entry.streamFile !== undefined)
     return files.filter(file => file.index === entry.streamFile)
 
-  return files.filter(file => file.selected)
+  // Как в движке: поднятые владельцем — раньше, остальные по порядку
+  const selected = files.filter(file => file.selected)
+
+  return [
+    ...selected.filter(file => file.priority === 'high'),
+    ...selected.filter(file => file.priority === 'medium'),
+    ...selected.filter(file => file.priority === 'low'),
+  ]
+}
+
+function markFirst(entry: Entry) {
+  const pending = entry.flow
+    ? targetsOf(entry).filter(file => file.downloaded < file.size)
+    : []
+  const raised = pending.filter(file => file.priority === 'high')
+  const ahead = new Set(raised.length ? raised : pending.slice(0, 1))
+
+  for (const file of entry.torrent.files)
+    file.downloadingFirst = ahead.has(file)
 }
 
 function isDone(entry: Entry) {
@@ -394,6 +413,7 @@ function seedingOf(torrent: Torrent, uploaded: number): Torrent['seeding'] {
 /** Раздача, как её отдаёт сервер: цифры прогресса и скорости — на сейчас */
 function view(entry: Entry, position: number): Torrent {
   advance(entry)
+  markFirst(entry)
 
   const torrent = structuredClone(entry.torrent)
   const selected = torrent.files.filter(file => file.selected)
@@ -598,9 +618,11 @@ post<Torrent, DownloadTorrentInput>(
       throw new DemoError(400, { message: 'Unknown file index' })
 
     advance(entry)
-    files.forEach((file) => {
-      file.selected = true
-    })
+    for (const file of torrent.files) {
+      file.selected = wanted.has(file.index)
+      if (!file.selected)
+        file.priority = 'medium'
+    }
     torrent.retention = 'keep'
 
     // Просмотр докачивает уже выбранное: файл просмотра больше не особый
@@ -609,6 +631,22 @@ post<Torrent, DownloadTorrentInput>(
 
     if (torrent.state !== 'paused' && torrent.state !== 'stalled')
       startFlow(entry)
+
+    return respond(entry)
+  },
+)
+
+put<Torrent, UpdateTorrentPriorityInput>(
+  '/api/torrents/:id/priority',
+  ({ params, body }) => {
+    const entry = entryById(params.id!)
+    const changed = new Set(body.files)
+
+    advance(entry)
+    for (const file of entry.torrent.files) {
+      if (file.selected && changed.has(file.index))
+        file.priority = body.priority
+    }
 
     return respond(entry)
   },

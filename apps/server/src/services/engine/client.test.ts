@@ -74,6 +74,7 @@ describe('клиент движка', () => {
       infoHash: INFO_HASH,
       paused: false,
       selected: [0],
+      high: [0],
       bytesCompleted: 3_145_728,
       bytesWanted: 9_437_184,
       wantedCompleted: 3_145_728,
@@ -122,7 +123,11 @@ describe('клиент движка', () => {
     ])
 
     expect(calls).toEqual([
-      ['PUT', `/torrents/${INFO_HASH}/files`, '{"files":[0,2]}'],
+      [
+        'PUT',
+        `/torrents/${INFO_HASH}/files`,
+        '{"files":[0,2],"first":[],"low":[]}',
+      ],
       ['POST', `/torrents/${INFO_HASH}/pause`, undefined],
       ['POST', `/torrents/${INFO_HASH}/resume`, undefined],
     ])
