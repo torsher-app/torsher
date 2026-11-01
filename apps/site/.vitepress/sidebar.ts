@@ -9,6 +9,7 @@ export const sidebar: DefaultTheme.SidebarItem[] = [
     text: 'Getting started',
     items: [
       { text: 'What is Torsher', link: '/docs/' },
+      { text: 'Torsher and alternatives', link: '/docs/alternatives' },
       { text: 'Quick start', link: '/docs/quick-start' },
     ],
   },

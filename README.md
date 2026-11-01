@@ -78,9 +78,9 @@ What you watch stays in a cache that cleans itself up. **Keep** moves the file i
 
 ### Follow
 
-**Follow** a series on the TV, and new episodes download into your library on their own.
+**Follow** a series on the TV, and new episodes download automatically when matching releases become available.
 
-- From the episode you choose, in your voice-over and the best quality released
+- In your voice-over and the best quality released
 - The same voice-over for the whole season
 - A followed movie downloads once it is out digitally
 - The control panel lists every follow with its episodes and the releases found for each
