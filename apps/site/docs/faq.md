@@ -23,6 +23,8 @@ No. The image comes with an app key for the catalog. Your own key is optional, f
 
 Yes, side by side. Torsher lays out the files you keep by title, with the TMDB ID in folder names, so Jellyfin, Plex and Kodi can read the library folder too. And Torsher can add the folders you already have, read-only. See [Storage and library](/docs/setup/storage).
 
+For a comparison with Jellyfin, Stremio and other setups, see [Torsher and alternatives](/docs/alternatives).
+
 ## Which TVs work?
 
 LG TVs with webOS and Android TV or Google TV devices through the Torsher app, and any TV or computer with a recent browser. The LG app is tested on an LG C4; older webOS versions are targeted but not tested yet. The Android TV app is tested in the Google TV emulator, not on devices yet. Apps for other platforms are planned. See [Requirements](/docs/install/requirements#tvs-and-browsers), [LG webOS](/docs/tv/lg-webos) and [Android TV](/docs/tv/android-tv).
