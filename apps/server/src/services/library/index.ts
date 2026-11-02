@@ -9,6 +9,7 @@ import { managedFolders, torrentLibraryFiles } from './files.ts'
 import { removeFile } from './link.ts'
 import { syncLibrary } from './linker.ts'
 import { rememberUserAlias } from './recognize.ts'
+import { removeThumbs } from './thumbs.ts'
 
 export {
   checkManagedFiles,
@@ -49,7 +50,12 @@ async function unplaceFiles(torrent: Torrent) {
     const base = absolute.slice(0, absolute.lastIndexOf('.'))
 
     await removeFile(absolute, folder.path, `${base}.`)
-    getDb().delete(mediaFiles).where(eq(mediaFiles.id, file.id)).run()
+    const deleted = getDb()
+      .delete(mediaFiles)
+      .where(eq(mediaFiles.id, file.id))
+      .returning({ thumb: mediaFiles.thumb })
+      .get()
+    await removeThumbs([deleted?.thumb ?? null])
   }
 
   if (files.length) {

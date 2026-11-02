@@ -1,3 +1,4 @@
+import { localTitleImages } from '../services/library/images.ts'
 import type { FastifyReply } from 'fastify'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import {
@@ -154,14 +155,24 @@ export const catalogRoutes: FastifyPluginAsyncZod = async (app) => {
       const { id, number } = request.params
 
       try {
-        const season = await getSeason(
+        const cachedSeason = await getSeason(
           id,
           Number(number),
           request.query.language,
         )
 
-        if (!season)
+        if (!cachedSeason)
           return reply.code(404).send({ message: 'Season not found' })
+
+        const localImage = localTitleImages(request.profileId, id)
+        const season = {
+          ...cachedSeason,
+          episodes: cachedSeason.episodes.map(episode => ({
+            ...episode,
+            still:
+              episode.still ?? localImage(cachedSeason.number, episode.number),
+          })),
+        }
 
         const follow = followOf(id)
 

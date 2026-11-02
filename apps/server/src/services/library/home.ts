@@ -1,3 +1,5 @@
+import { thumbUrl } from './thumbs.ts'
+import { localTitleImage } from './images.ts'
 import type {
   CatalogRow,
   FileCard,
@@ -114,7 +116,7 @@ export function fileCardsOf(rows: MediaFile[], profileId: string): FileCard[] {
       capturedAt: row.capturedAt?.toISOString() ?? null,
       duration,
       share: seen && duration ? Math.min(1, seen.position / duration) : 0,
-      thumb: `/api/library/files/${row.id}/thumb`,
+      thumb: thumbUrl(row),
     }
   })
 }
@@ -199,6 +201,7 @@ export interface HomeAlbum {
   from: string | null
   to: string | null
   coverId: string
+  thumb?: string
 }
 
 /** Альбомы — папки домашнего видео: по самой поздней дате внутри, обложка — первое видео */
@@ -230,6 +233,7 @@ export function homeAlbums(profileId: string): HomeAlbum[] {
       from: at,
       to: at,
       coverId: row.id,
+      thumb: thumbUrl(row),
     })
   }
 
@@ -329,7 +333,12 @@ export async function libraryHomeRows(
         id: spec.id,
         kind: 'posters' as const,
         title: `home.rows.${spec.id}`,
-        items: ids.length ? await cardsOf(ids, language) : [],
+        items: ids.length
+          ? (await cardsOf(ids, language)).map(card => ({
+              ...card,
+              poster: card.poster ?? localTitleImage(profileId, card.id),
+            }))
+          : [],
       }
     }),
   )

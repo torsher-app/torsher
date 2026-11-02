@@ -1,3 +1,13 @@
+import {
+  thumbnailSettings,
+  updateThumbnailSettings,
+} from '../dto/thumbnails.ts'
+import {
+  queueUnprobed,
+  regenerateThumbnails,
+  thumbnailStatus,
+} from '../services/library/probe.ts'
+import { setAutomaticThumbnails } from '../services/library/thumbnailSettings.ts'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { messageResponse } from '../dto/common.ts'
 import {
@@ -110,6 +120,46 @@ const LIVE_KEYS = new Set([
 /** Настройки сервера: только сессия аккаунта. Ключи в ответы не попадают */
 export const settingsRoutes: FastifyPluginAsyncZod = async (app) => {
   app.addHook('onRequest', requireOwner)
+
+  app.get(
+    '/thumbnails',
+    {
+      schema: {
+        operationId: 'getThumbnailSettings',
+        tags: ['Settings'],
+        response: { 200: thumbnailSettings, ...guardResponses },
+      },
+    },
+    async () => thumbnailStatus(),
+  )
+  app.put(
+    '/thumbnails',
+    {
+      schema: {
+        operationId: 'putThumbnailSettings',
+        tags: ['Settings'],
+        body: updateThumbnailSettings,
+        response: { 200: thumbnailSettings, ...guardResponses },
+      },
+    },
+    async (request) => {
+      setAutomaticThumbnails(request.body.automatic)
+      if (request.body.automatic)
+        queueUnprobed()
+      return thumbnailStatus()
+    },
+  )
+  app.post(
+    '/thumbnails/regenerate',
+    {
+      schema: {
+        operationId: 'postThumbnailRegenerate',
+        tags: ['Settings'],
+        response: { 202: thumbnailSettings, ...guardResponses },
+      },
+    },
+    async (_request, reply) => reply.code(202).send(regenerateThumbnails()),
+  )
 
   app.get(
     '/metadata',

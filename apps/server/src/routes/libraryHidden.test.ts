@@ -16,11 +16,17 @@ import { setEngineDown } from '../services/engine/index.ts'
 import { createOwner } from '../services/users/index.ts'
 import { signToken } from '../utils/token.ts'
 
-const thumb = vi.hoisted(() => ({ path: '' }))
+const thumb = vi.hoisted(() => ({
+  path: '',
+  available: true,
+  render: vi.fn(),
+}))
 
 // Кадр-превью без ffmpeg: путь к готовому файлу
-vi.mock('../services/library/thumbs.ts', () => ({
-  ensureThumb: async () => thumb.path,
+vi.mock('../services/library/thumbs.ts', async importOriginal => ({
+  ...(await importOriginal<typeof import('../services/library/thumbs.ts')>()),
+  cachedThumb: async () => (thumb.available ? thumb.path : undefined),
+  ensureThumb: thumb.render,
 }))
 
 const app = createApp()
@@ -158,4 +164,14 @@ describe('files of a library hidden from the profile', () => {
 
     expect(res.statusCode).toBe(200)
   })
+})
+
+it('thumbnail HTTP requests read the cache without starting a renderer', async () => {
+  thumb.render.mockClear()
+  expect((await thumbOf(visibleFor)).statusCode).toBe(200)
+  thumb.available = false
+  expect((await thumbOf(visibleFor)).statusCode).toBe(404)
+  expect((await thumbOf(visibleFor)).statusCode).toBe(404)
+  expect(thumb.render).not.toHaveBeenCalled()
+  thumb.available = true
 })

@@ -1,3 +1,5 @@
+import { localTitleImages } from '../library/images.ts'
+import { playableMediaFile } from '../library/folders.ts'
 import type { ScheduleItem } from '../../dto/follow.ts'
 import type { Follow } from '../../db/schema.ts'
 import type { ScheduledEpisode } from './wanted.ts'
@@ -49,7 +51,11 @@ export async function profileSchedule(
 
   const items = (
     await mapLimit(ids, DETAILS_CONCURRENCY, id =>
-      titleItems(id, followed.get(id), language, { since, until, today }))
+      titleItems(profileId, id, followed.get(id), language, {
+        since,
+        until,
+        today,
+      }))
   ).flat()
 
   return {
@@ -65,6 +71,7 @@ export async function profileSchedule(
 }
 
 async function titleItems(
+  profileId: string,
   titleId: string,
   follow: Follow | undefined,
   language: string,
@@ -123,7 +130,13 @@ async function titleItems(
       )
     : undefined
 
-  const files = libraryEpisodeFiles(titleId)
+  const files = new Map(
+    [...libraryEpisodeFiles(titleId)].filter(([, id]) =>
+      playableMediaFile(id, profileId),
+    ),
+  )
+
+  const localImage = localTitleImages(profileId, titleId)
 
   return episodes.map(item => ({
     titleId,
@@ -132,7 +145,10 @@ async function titleItems(
     episode: item.number,
     episodeTitle: item.title || undefined,
     airDate: item.airDate,
-    image: item.still ?? summary.details.backdrop,
+    image:
+      item.still
+      ?? localImage(item.season, item.number)
+      ?? summary.details.backdrop,
     followed: !!follow,
     state:
       states?.get(episodeKey({ season: item.season, episode: item.number }))

@@ -1253,7 +1253,7 @@ export interface FileCardInput {
   capturedAt: string | null;
   duration: number | null;
   share: number;
-  thumb: string;
+  thumb?: string;
 }
 
 export interface FilesRowInput {
@@ -1279,6 +1279,7 @@ export interface HomeAlbumInput {
   from: string | null;
   to: string | null;
   coverId: string;
+  thumb?: string;
 }
 
 export interface HomeVideoSectionInput {
@@ -3907,6 +3908,30 @@ export interface PinErrorResponseInput {
   retryAfter: number | null;
 }
 
+export interface ThumbnailSettingsInput {
+  automatic: boolean;
+  running: boolean;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  total: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  completed: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  generated: number;
+}
+
+export interface UpdateThumbnailSettingsInput {
+  automatic: boolean;
+}
+
 export interface WizardStateInput {
   active: boolean;
   step: "storage" | "network" | "sources" | "done";
@@ -6051,7 +6076,7 @@ export interface FileCard {
   capturedAt: string | null;
   duration: number | null;
   share: number;
-  thumb: string;
+  thumb?: string;
 }
 
 export interface FilesRow {
@@ -6077,6 +6102,7 @@ export interface HomeAlbum {
   from: string | null;
   to: string | null;
   coverId: string;
+  thumb?: string;
 }
 
 export interface HomeVideoSection {
@@ -8704,6 +8730,30 @@ export interface PinErrorResponse {
   retryAfter: number | null;
 }
 
+export interface ThumbnailSettings {
+  automatic: boolean;
+  running: boolean;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  total: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  completed: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  generated: number;
+}
+
+export interface UpdateThumbnailSettings {
+  automatic: boolean;
+}
+
 export interface WizardState {
   active: boolean;
   step: "storage" | "network" | "sources" | "done";
@@ -9869,6 +9919,12 @@ export type GetNetDnsProvidersError = MessageResponse;
 export type GetNetCheckError = MessageResponse;
 
 export type PostNetCheckError = MessageResponse;
+
+export type GetThumbnailSettingsError = MessageResponse;
+
+export type PutThumbnailSettingsError = MessageResponse;
+
+export type PostThumbnailRegenerateError = MessageResponse;
 
 export type GetMetadataSettingsError = MessageResponse;
 
@@ -12926,6 +12982,56 @@ export class Api<
       }),
   };
   settings = {
+    /**
+     * No description
+     *
+     * @tags Settings
+     * @name GetThumbnailSettings
+     * @request GET:/api/settings/thumbnails
+     */
+    getThumbnailSettings: (params: RequestParams = {}) =>
+      this.request<ThumbnailSettings, GetThumbnailSettingsError>({
+        path: `/api/settings/thumbnails`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Settings
+     * @name PutThumbnailSettings
+     * @request PUT:/api/settings/thumbnails
+     */
+    putThumbnailSettings: (
+      data: UpdateThumbnailSettingsInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<ThumbnailSettings, PutThumbnailSettingsError>({
+        path: `/api/settings/thumbnails`,
+        method: "PUT",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Settings
+     * @name PostThumbnailRegenerate
+     * @request POST:/api/settings/thumbnails/regenerate
+     */
+    postThumbnailRegenerate: (params: RequestParams = {}) =>
+      this.request<ThumbnailSettings, PostThumbnailRegenerateError>({
+        path: `/api/settings/thumbnails/regenerate`,
+        method: "POST",
+        format: "json",
+        ...params,
+      }),
+
     /**
      * No description
      *

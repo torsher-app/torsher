@@ -1,3 +1,5 @@
+import { queueProbe } from '../services/library/probe.ts'
+import { resetMediaTools } from '../services/media/tools.ts'
 import { Buffer } from 'node:buffer'
 import { execFile, execFileSync } from 'node:child_process'
 import { mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises'
@@ -14,7 +16,7 @@ import {
   vi,
 } from 'vitest'
 import { createApp } from '../app.ts'
-import { ACCESS_TOKEN_COOKIE } from '../config.ts'
+import { ACCESS_TOKEN_COOKIE, config } from '../config.ts'
 import { getDb, migrateDb } from '../db/index.ts'
 import {
   libraries,
@@ -135,6 +137,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'torsher-folders-'))
+  vi.spyOn(config, 'dataDir', 'get').mockReturnValue(join(root, 'data'))
   await mkdir(join(root, 'media'), { recursive: true })
   vi.stubEnv('TMDB_ACCESS_TOKEN', 'test-token')
   searchResults = {}
@@ -167,6 +170,8 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await matchIdle()
+  await Promise.all(rows().map(row => queueProbe(row.id)))
+  vi.restoreAllMocks()
   vi.unstubAllGlobals()
   vi.unstubAllEnvs()
   installLogger(pino({ level: 'silent' }))
@@ -645,7 +650,6 @@ describe('домашнее видео', () => {
     expect(row.items).toEqual([
       expect.objectContaining({
         name: 'Concert.Live',
-        thumb: expect.stringContaining('/thumb'),
       }),
     ])
   })
@@ -672,10 +676,14 @@ describe('домашнее видео', () => {
         )
       })
       vi.stubEnv('FFMPEG_PATH', 'ffmpeg')
+      vi.stubEnv('FFPROBE_PATH', 'ffprobe')
+      resetMediaTools()
 
       const res = await addLibrary({ kind: 'home', name: 'Семья' })
 
       await scanFolder(res.json().folders[0].id)
+
+      await queueProbe(rows()[0]!.id)
 
       const thumb = await app.inject({
         url: `/api/library/files/${rows()[0]!.id}/thumb`,

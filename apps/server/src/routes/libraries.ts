@@ -161,7 +161,7 @@ export const librariesRoutes: FastifyPluginAsyncZod = async (app) => {
     },
     async (request, reply) => {
       try {
-        removeLibrary(request.params.id)
+        await removeLibrary(request.params.id)
 
         return reply.code(204).send(null)
       }
@@ -212,7 +212,7 @@ export const librariesRoutes: FastifyPluginAsyncZod = async (app) => {
     },
     async (request, reply) => {
       try {
-        removeFolder(request.params.folderId)
+        await removeFolder(request.params.folderId)
 
         return reply.code(204).send(null)
       }

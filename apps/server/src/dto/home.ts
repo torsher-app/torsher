@@ -137,7 +137,7 @@ export const fileCard = z
     duration: z.number().nullable(),
     // Доля просмотренного, 0–1
     share: z.number(),
-    thumb: z.string(),
+    thumb: z.string().optional(),
   })
   .meta({ id: 'fileCard' })
 
@@ -163,6 +163,7 @@ export const homeAlbum = z
     to: z.string().nullable(),
     // Обложка — кадр самого позднего видео
     coverId: z.string(),
+    thumb: z.string().optional(),
   })
   .meta({ id: 'homeAlbum' })
 
