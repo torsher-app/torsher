@@ -4,8 +4,9 @@ import { openTitleActions } from '../titleActions.ts'
 import DownloadBadge from './DownloadBadge.vue'
 import FollowBadge from './FollowBadge.vue'
 import PosterRatingBadge from './PosterRatingBadge.vue'
-import { computed, onActivated, ref, watch } from 'vue'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useImageError } from '../composables/useImageError.ts'
 import WatchedMark from './WatchedMark.vue'
 
 const props = withDefaults(
@@ -43,20 +44,7 @@ function openActions() {
 
 const { t } = useI18n()
 
-// Постер не загрузился (прокси не достал его из TMDB) — заглушка с названием,
-// а не значок битой картинки. Возврат на экран из KeepAlive пробует снова:
-// тот же `src` в старом `<img>` браузер не перезапрашивает, а новый — да
-const broken = ref(false)
-
-watch(
-  () => props.card.poster,
-  () => {
-    broken.value = false
-  },
-)
-onActivated(() => {
-  broken.value = false
-})
+const broken = useImageError(() => props.card.poster)
 
 // Подпись в сетке поиска: «2024 · фильм»
 const meta = computed(() => {
