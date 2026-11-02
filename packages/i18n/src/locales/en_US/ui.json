@@ -1223,6 +1223,14 @@
             "no_space": "The new volume doesn’t have enough space for the move.",
             "unknown": "The server didn’t respond. Try again."
           }
+        },
+        "thumbnails": {
+          "title": "Video previews",
+          "description": "Use a frame from local video when catalog artwork is missing. Turning this off keeps existing previews.",
+          "automatic": "Create previews automatically",
+          "regenerate": "Regenerate previews",
+          "progress": "Processing {completed} of {total} files…",
+          "done": "Updated {generated} of {total} previews."
         }
       },
       "network": {

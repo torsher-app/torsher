@@ -6,11 +6,13 @@ import type {
   MetadataKeyCheck,
   MetadataSettings,
   PlaybackSettings,
+  ThumbnailSettings,
   TorrentSettings,
   TorrentSettingValues,
   UpdateImdbSettingsInput,
   UpdateMetadataSettingsInput,
   UpdatePlaybackSettingsInput,
+  UpdateThumbnailSettingsInput,
   UpdateTorrentSettingsInput,
 } from '@torsher/api-client'
 import { DemoError, get, post, put } from '@torsher/demo/router'
@@ -278,3 +280,32 @@ function restartEngine(): MessageResponse {
 
 post<MessageResponse>('/api/settings/torrent/restart', restartEngine)
 post<MessageResponse>('/api/engine/restart', restartEngine)
+
+let thumbnailsAutomatic = true
+let thumbnailStartedAt: number | undefined
+function thumbnailStatus(): ThumbnailSettings {
+  const completed
+    = thumbnailStartedAt === undefined
+      ? 0
+      : Math.min(10, Math.floor((Date.now() - thumbnailStartedAt) / 500))
+  return {
+    automatic: thumbnailsAutomatic,
+    running: thumbnailStartedAt !== undefined && completed < 10,
+    total: thumbnailStartedAt === undefined ? 0 : 10,
+    completed,
+    generated: completed,
+  }
+}
+get<ThumbnailSettings>('/api/settings/thumbnails', thumbnailStatus)
+put<ThumbnailSettings, UpdateThumbnailSettingsInput>(
+  '/api/settings/thumbnails',
+  ({ body }) => {
+    thumbnailsAutomatic = body.automatic
+    return thumbnailStatus()
+  },
+)
+post<ThumbnailSettings>('/api/settings/thumbnails/regenerate', () => {
+  if (!thumbnailStatus().running)
+    thumbnailStartedAt = Date.now()
+  return thumbnailStatus()
+})
