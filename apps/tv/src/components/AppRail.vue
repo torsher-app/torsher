@@ -4,6 +4,7 @@ import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { useFocus } from '../focus/index.ts'
+import { railAction } from '../lib/navigation.ts'
 import { session } from '../session.ts'
 import AppIcon from './AppIcon.vue'
 import FocusSection from './FocusSection.vue'
@@ -24,7 +25,7 @@ const props = defineProps<{
   current: RailItemId
   // У каждого экрана своя секция рейла: KeepAlive держит несколько экранов сразу
   section: string
-  // Секция контента экрана: вправо из рейла и OK на текущем пункте ведут туда
+  // Вправо из рейла и OK на пункте уже открытого корня ведут в контент
   content?: string
 }>()
 
@@ -71,8 +72,17 @@ const bottom = computed<RailItem[]>(() => [
 // Back с любого раздела ведёт на главную, а не по кругу через прошлые разделы.
 // «Вперёд» от прежнего раздела к новому не относится
 function select(item: RailItem) {
-  if (item.id !== props.current)
-    void router.replace({ path: item.path, state: { forward: null } })
+  // Подсвечен весь раздел, включая вложенные экраны; пункт ведёт в его корень.
+  const action = railAction(
+    router.currentRoute.value.path,
+    item.path,
+    router.options.history.state.back,
+  )
+
+  if (action.kind === 'history')
+    router.back()
+  else if (action.kind === 'replace')
+    void router.replace({ path: action.path, state: { forward: null } })
   else if (props.content)
     focus.activate(props.content)
 }

@@ -1,5 +1,42 @@
 import { describe, expect, it } from 'vitest'
-import { backAction, openedForward, returnedBack } from './navigation.ts'
+import {
+  backAction,
+  openedForward,
+  railAction,
+  returnedBack,
+} from './navigation.ts'
+
+describe('railAction', () => {
+  it('возвращается к предыдущему корню без второй записи Library', () => {
+    expect(railAction('/home-video', '/library', '/library')).toEqual({
+      kind: 'history',
+    })
+    expect(railAction('/library/pick', '/library', '/library')).toEqual({
+      kind: 'history',
+    })
+  })
+
+  it('прямой вход и другой предыдущий экран — замена текущей записи', () => {
+    for (const back of [
+      undefined,
+      null,
+      '/',
+      '/home-video',
+      '/library?filter=x',
+    ]) {
+      expect(railAction('/home-video/album', '/library', back)).toEqual({
+        kind: 'replace',
+        path: '/library',
+      })
+    }
+  })
+
+  it('в корне остаётся в контенте, даже если история содержит дубль', () => {
+    expect(railAction('/library', '/library', '/library')).toEqual({
+      kind: 'none',
+    })
+  })
+})
 
 const ID = 'tmdb:tv:1399'
 

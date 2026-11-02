@@ -11,6 +11,20 @@ export interface RouteLike {
 export type BackAction
   = { kind: 'history' } | { kind: 'replace', path: string } | { kind: 'none' }
 
+/** Рейл возвращает к существующему корню, не дублируя его в истории. */
+export function railAction(
+  currentPath: string,
+  target: string,
+  back: unknown,
+): BackAction {
+  if (currentPath === target)
+    return { kind: 'none' }
+
+  return back === target
+    ? { kind: 'history' }
+    : { kind: 'replace', path: target }
+}
+
 function pathOf(location: string) {
   return location.split('?')[0] ?? ''
 }
