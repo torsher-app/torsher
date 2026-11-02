@@ -1,3 +1,4 @@
+import { localTitleImage } from '../library/images.ts'
 import type { TitleDetails } from '../../dto/catalog.ts'
 import type { EpisodeCard } from '../../dto/home.ts'
 import type { TitleState } from './index.ts'
@@ -95,6 +96,7 @@ export function pickNewEpisodes(
 
 /** Карточки 16:9: кадр серии из сезона TMDB, без него — бэкдроп тайтла */
 export async function newEpisodeCards(
+  profileId: string,
   states: TitleState[],
   language: string,
   limit: number,
@@ -126,7 +128,10 @@ export async function newEpisodeCards(
       season: pick.season,
       episode: pick.episode,
       episodeTitle: episode?.title,
-      image: episode?.still ?? details.backdrop,
+      image:
+        episode?.still
+        ?? localTitleImage(profileId, details.id, pick.season, pick.episode)
+        ?? details.backdrop,
       airDate: pick.airDate,
       newCount: pick.newCount,
     }

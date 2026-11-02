@@ -25,7 +25,7 @@ import {
   vi,
 } from 'vitest'
 import { createApp } from '../app.ts'
-import { ACCESS_TOKEN_COOKIE, DEVICE_TOKEN_COOKIE } from '../config.ts'
+import { ACCESS_TOKEN_COOKIE, config, DEVICE_TOKEN_COOKIE } from '../config.ts'
 import { getDb, migrateDb } from '../db/index.ts'
 import {
   devices,
@@ -117,6 +117,7 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), 'torsher-library-'))
+  vi.spyOn(config, 'dataDir', 'get').mockReturnValue(join(root, 'data'))
   vi.stubEnv('DOWNLOADS_PATH', join(root, 'torrents'))
   vi.stubEnv('LIBRARY_PATH', join(root, 'library'))
   vi.stubEnv('TMDB_ACCESS_TOKEN', 'test-token')

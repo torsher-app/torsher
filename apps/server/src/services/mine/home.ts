@@ -30,6 +30,7 @@ export async function personalHomeRows(
     profileStates(profileId, language)
       .then(states =>
         newEpisodeCards(
+          profileId,
           states.filter(state => !followed.has(state.titleId)),
           language,
           ROW_LIMIT,

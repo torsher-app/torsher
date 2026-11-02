@@ -38,6 +38,7 @@ import { setScrubDownloads } from './services/logs/scrub.ts'
 import { applyHomeVideoFields } from './services/library/homeVideo.ts'
 import { queueMatch, queueUnmatched } from './services/library/match.ts'
 import { onFolderScanned, scanAllFolders } from './services/library/scan.ts'
+import { cleanupOrphanThumbs } from './services/library/thumbs.ts'
 import { watchFolder } from './services/library/watch.ts'
 import { RequestLogController } from './services/logs/requestLog.ts'
 import {
@@ -174,6 +175,7 @@ setInterval(purgeTmdbData, DAY_MS).unref()
 purgeImports()
 setInterval(purgeImports, DAY_MS).unref()
 await cleanTranscodes()
+await cleanupOrphanThumbs()
 
 // Своя раскладка: строка библиотеки, проверка хардлинков и сверка с диском
 managedFolder()

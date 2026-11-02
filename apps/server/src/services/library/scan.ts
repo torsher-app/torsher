@@ -299,7 +299,14 @@ async function scan(
     error: null,
   })
 
-  for (const id of [...result.added, ...result.changed]) void queueProbe(id)
+  for (const row of getDb()
+    .select({ id: mediaFiles.id })
+    .from(mediaFiles)
+    .where(
+      and(eq(mediaFiles.folderId, folder.id), eq(mediaFiles.state, 'present')),
+    )
+    .all())
+    void queueProbe(row.id)
 
   return { status, ...result }
 }

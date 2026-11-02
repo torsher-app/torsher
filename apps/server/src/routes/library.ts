@@ -15,7 +15,7 @@ import {
   homeAlbums,
   homeVideos,
 } from '../services/library/home.ts'
-import { ensureThumb } from '../services/library/thumbs.ts'
+import { cachedThumb } from '../services/library/thumbs.ts'
 import { contentTypeOf } from '../services/torrents/index.ts'
 
 /** `bytes=start-end` → границы; `undefined` — заголовка нет, `null` — вне файла */
@@ -96,7 +96,7 @@ export const libraryRoutes: FastifyPluginAsyncZod = async (app) => {
     },
   )
 
-  // Кадр-превью файла библиотеки для карточек витрины; делается по первому запросу
+  // Кадр-превью файла библиотеки для карточек витрины; только готовый кэш
   app.get(
     '/files/:id/thumb',
     {
@@ -108,14 +108,20 @@ export const libraryRoutes: FastifyPluginAsyncZod = async (app) => {
     },
     async (request, reply) => {
       const found = playableMediaFile(request.params.id, request.profileId)
-      const path = found && (await ensureThumb(found.file, found.path))
+      const available
+        = found?.folder.status === 'ok'
+          && (await stat(found.path).then(
+            info => info.isFile(),
+            () => false,
+          ))
+      const path = found && available && (await cachedThumb(found.file))
 
       if (!path)
         return reply.code(404).send({ message: 'Thumbnail not found' })
 
       return reply
         .header('Content-Type', 'image/jpeg')
-        .header('Cache-Control', 'private, max-age=86400')
+        .header('Cache-Control', 'private, no-cache')
         .send(createReadStream(path))
     },
   )

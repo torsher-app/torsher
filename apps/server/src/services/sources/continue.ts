@@ -1,3 +1,4 @@
+import { localTitleImage } from '../library/images.ts'
 import type { ContinueCard, ContinueRow, HomeMode } from '../../dto/home.ts'
 import type { MineKind } from '../../dto/mine.ts'
 import type { FollowNewEpisode } from '../follow/badges.ts'
@@ -107,7 +108,18 @@ async function continueCard(
     originalTitle: details.originalTitle,
     year: details.year,
     poster: details.poster,
-    image: episode?.still ?? backdrop,
+    image: target.season
+      ? (episode?.still
+        ?? localTitleImage(
+          profileId,
+          titleId,
+          target.season,
+          target.episode,
+          target.mediaFileId,
+        )
+        ?? backdrop)
+      : (backdrop
+        ?? localTitleImage(profileId, titleId, null, null, target.mediaFileId)),
     season: target.season,
     episode: target.episode,
     episodeTitle: episode?.title || undefined,

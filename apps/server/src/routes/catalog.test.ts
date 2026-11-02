@@ -10,7 +10,15 @@ import {
 import { createApp } from '../app.ts'
 import { ACCESS_TOKEN_COOKIE } from '../config.ts'
 import { getDb, migrateDb } from '../db/index.ts'
-import { indexers, titleProgress, users } from '../db/schema.ts'
+import {
+  indexers,
+  libraries,
+  libraryFolders,
+  libraryHiddenProfiles,
+  mediaFiles,
+  titleProgress,
+  users,
+} from '../db/schema.ts'
 import { defaultProfile } from '../services/profiles/index.ts'
 import {
   collection,
@@ -498,5 +506,60 @@ describe('get /api/catalog/backdrops', () => {
         backdrop: '/api/img/w1280/matrix.jpg',
       },
     ])
+  })
+})
+
+describe('profile-specific local season images', () => {
+  it('fills absent stills, preserves catalog stills, and does not contaminate cached metadata', async () => {
+    const titleId = 'tmdb:tv:998812'
+    fetchMock.mockResolvedValue(
+      json({
+        ...season,
+        episodes: season.episodes.map((episode, index) => ({
+          ...episode,
+          still_path: index === 0 ? null : '/catalog.jpg',
+        })),
+      }),
+    )
+    const db = getDb()
+    const library = db
+      .insert(libraries)
+      .values({ kind: 'video', name: 'Frames' })
+      .returning()
+      .get()
+    const folder = db
+      .insert(libraryFolders)
+      .values({ libraryId: library.id, path: '/test/frames' })
+      .returning()
+      .get()
+    for (const episode of season.episodes) {
+      db.insert(mediaFiles)
+        .values({
+          folderId: folder.id,
+          relPath: `${episode.episode_number}.mp4`,
+          size: 1,
+          mtime: new Date(),
+          titleId,
+          season: season.season_number,
+          episode: episode.episode_number,
+          thumb: 'frame.jpg',
+        })
+        .run()
+    }
+    const request = () =>
+      app.inject({
+        url: `/api/catalog/titles/${titleId}/seasons/${season.season_number}?language=en-US`,
+        cookies: authed(),
+      })
+    const visible = (await request()).json()
+    expect(visible.episodes[0].still).toContain('/api/library/files/')
+    expect(visible.episodes[1].still).toContain('/catalog.jpg')
+    db.insert(libraryHiddenProfiles)
+      .values({ libraryId: library.id, profileId: defaultProfile().id })
+      .run()
+    const hidden = (await request()).json()
+    expect(hidden.episodes[0].still).toBeUndefined()
+    expect(hidden.episodes[1].still).toBe(visible.episodes[1].still)
+    db.delete(libraries).run()
   })
 })

@@ -284,10 +284,13 @@ let isActive = false
 onActivated(() => {
   isActive = true
 
+  // После повторного входа подтянуть готовые кадры и прогресс, сохранив сетку.
+  // Первую загрузку уже запустил useResource.
+  if (current.value.status.value === 'ready')
+    void current.value.refresh()
+
   if (returnedBack(router.options.history.state) && lastCard?.isConnected) {
     focus.focusOn(lastCard)
-    // Из плеера — с новой полосой просмотра
-    void current.value.refresh()
     return
   }
 

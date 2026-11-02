@@ -15,6 +15,7 @@ import {
 import { envStoragePath, storagePath } from '../storage/paths.ts'
 import { getMediaFile, managedFolders } from './files.ts'
 import { isScanning, scanFolder } from './scan.ts'
+import { removeThumbs } from './thumbs.ts'
 import { unwatchFolder, watcherState, watchFolder } from './watch.ts'
 
 export class LibraryNotFoundError extends Error {
@@ -244,23 +245,42 @@ function foldersOf(libraryId: string) {
 }
 
 /** Библиотека уходит из Torsher вместе с индексом; файлы на диске не трогаем */
-export function removeLibrary(id: string) {
+export async function removeLibrary(id: string) {
   ownLibrary(id)
 
   for (const folder of foldersOf(id)) unwatchFolder(folder.id)
 
-  getDb().delete(libraries).where(eq(libraries.id, id)).run()
+  const thumbs = getDb().transaction((tx) => {
+    const rows = tx
+      .select({ thumb: mediaFiles.thumb })
+      .from(mediaFiles)
+      .innerJoin(libraryFolders, eq(libraryFolders.id, mediaFiles.folderId))
+      .where(eq(libraryFolders.libraryId, id))
+      .all()
+    tx.delete(libraries).where(eq(libraries.id, id)).run()
+    return rows.map(row => row.thumb)
+  })
+  await removeThumbs(thumbs)
 }
 
 /** «Отключить папку»: индекс её файлов удаляется, сами файлы остаются */
-export function removeFolder(folderId: string) {
+export async function removeFolder(folderId: string) {
   const found = folderWithLibrary(folderId)
 
   if (!found || found.library.managed)
     throw new LibraryNotFoundError()
 
   unwatchFolder(folderId)
-  getDb().delete(libraryFolders).where(eq(libraryFolders.id, folderId)).run()
+  const thumbs = getDb().transaction((tx) => {
+    const rows = tx
+      .select({ thumb: mediaFiles.thumb })
+      .from(mediaFiles)
+      .where(eq(mediaFiles.folderId, folderId))
+      .all()
+    tx.delete(libraryFolders).where(eq(libraryFolders.id, folderId)).run()
+    return rows.map(row => row.thumb)
+  })
+  await removeThumbs(thumbs)
 }
 
 export function folderWithLibrary(folderId: string) {

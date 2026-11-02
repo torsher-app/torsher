@@ -115,6 +115,9 @@ const selectedSeason = ref<number>()
 const requestedSeason = ref<number>()
 let seasonTimer: ReturnType<typeof setTimeout> | undefined
 
+// Новое открытие карточки: кэш прошлого посещения мог остаться без превью.
+forgetSeasons(props.id)
+
 const {
   season,
   status: seasonStatus,
@@ -1248,11 +1251,8 @@ const followPanel = ref(false)
 const followButton = ref<ComponentPublicInstance>()
 const followToast = ref('')
 
-// Состояния серий приходят с сезоном из кэша: после правки — заново
+// Состояния серий и локальные превью могли измениться, даже без слежения.
 function refreshSeasonStates() {
-  if (!followView.value?.follow)
-    return
-
   forgetSeasons(props.id)
   void refreshSeason()
 }

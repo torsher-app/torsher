@@ -41,6 +41,7 @@ export interface ResumeTarget {
   /** Файл серии в уже известной раздаче; null — раздачу ещё искать */
   file: EpisodeFile | null
   updatedAt: Date
+  mediaFileId?: string | null
 }
 
 /**
@@ -159,6 +160,7 @@ export async function resumeTarget(
       duration: last.duration,
       next: false,
       file: fileOf(last),
+      mediaFileId: last.mediaFileId,
       updatedAt: last.updatedAt,
     }
   }

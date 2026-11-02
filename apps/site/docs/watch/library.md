@@ -36,6 +36,8 @@ Empty rows are hidden. On <Ui k="nav.home" />, the <Ui k="home.rows.library" /> 
 
 Library titles open the usual title page. When the episode you're up to is in the library, <Ui k="title.watch" /> plays it from the disk at once, and its second line says <Ui k="title.fromLibraryShort" />. The <Ui k="title.sources" /> icon next to it still lets you stream another release.
 
+When a catalog image is missing, cards can use a frame from the local video. Frames are prepared in the background, so they may appear after the scan finishes. Leave the screen and open it again to load newly created previews; there is no need to reload the app. The owner controls this in [Video previews](/docs/setup/storage#video-previews). Removing a file from the Torsher library, disconnecting its folder, or removing the library also clears its cached preview. If a file or disk is temporarily unavailable, its preview is kept.
+
 Episodes in the library have a shelf icon on their still. On the <Ui k="sources.title" /> screen, the library file comes first, marked <Ui k="sources.libraryHint" />.
 
 The player works as usual, with the next episode taken from the library when it's there. See [Player](/docs/watch/player).

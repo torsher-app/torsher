@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { HomeAlbum } from '@torsher/api-client'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { albumName, formatMonth } from '../lib/homeVideo.ts'
 import { useCatalogLanguage } from '../composables/useCatalogLanguage.ts'
@@ -18,6 +18,12 @@ const { t } = useI18n()
 // Даты — в формате языка каталога (`ru-RU`), а не кода интерфейса
 const locale = useCatalogLanguage()
 const broken = ref(false)
+watch(
+  () => props.album.thumb,
+  () => {
+    broken.value = false
+  },
+)
 
 const name = computed(() =>
   props.album.album ? albumName(props.album.album) : t('homeVideo.noAlbum'),
@@ -52,9 +58,9 @@ const meta = computed(() => {
   >
     <span class="album-card__frame">
       <img
-        v-if="loadImage && !broken"
+        v-if="loadImage && album.thumb && !broken"
         class="album-card__image"
-        :src="`/api/library/files/${album.coverId}/thumb`"
+        :src="album.thumb"
         alt=""
         decoding="async"
         @error="broken = true"

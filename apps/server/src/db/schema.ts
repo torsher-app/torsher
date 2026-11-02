@@ -983,6 +983,8 @@ export const mediaFiles = sqliteTable(
     // Альбом домашнего видео — относительный путь папки, '' — без альбома
     album: text('album'),
     thumb: text('thumb'),
+    thumbKey: text('thumb_key'),
+    thumbAttemptKey: text('thumb_attempt_key'),
     addedAt: integer('added_at', { mode: 'timestamp_ms' })
       .notNull()
       .$defaultFn(() => new Date()),

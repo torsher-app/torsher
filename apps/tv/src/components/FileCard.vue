@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { FileCard } from '@torsher/api-client'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { albumName, formatCaptured } from '../lib/homeVideo.ts'
 import { formatDuration } from '../lib/player.ts'
 import { useCatalogLanguage } from '../composables/useCatalogLanguage.ts'
@@ -9,7 +9,7 @@ import ProgressTrack from './ProgressTrack.vue'
 
 /**
  * Файл библиотеки без тайтла (домашнее видео, «Без описания»): кадр 16:9,
- * имя файла и дата съёмки или длительность. Кадр делает сервер по запросу
+ * имя файла и дата съёмки или длительность. Кадр готовится сервером в фоне
  */
 const props = withDefaults(
   defineProps<{ file: FileCard, loadImage?: boolean, dated?: boolean }>(),
@@ -20,6 +20,12 @@ defineEmits<{ select: [] }>()
 
 const locale = useCatalogLanguage()
 const broken = ref(false)
+watch(
+  () => props.file.thumb,
+  () => {
+    broken.value = false
+  },
+)
 
 const meta = computed(() => {
   const { capturedAt, duration } = props.file
@@ -44,7 +50,7 @@ const meta = computed(() => {
   >
     <span class="file-card__frame">
       <img
-        v-if="loadImage && !broken"
+        v-if="loadImage && file.thumb && !broken"
         class="file-card__image"
         :src="file.thumb"
         alt=""

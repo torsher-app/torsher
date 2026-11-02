@@ -1,3 +1,4 @@
+import { localTitleImage } from '../services/library/images.ts'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import type { EngineTorrentState } from '../services/engine/index.ts'
 import type { RankedRelease, TitleSources } from '../services/sources/index.ts'
@@ -435,7 +436,9 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
           next: {
             ...next,
             title: episode?.title ?? '',
-            still: episode?.still,
+            still:
+              episode?.still
+              ?? localTitleImage(request.profileId, id, next.season, next.episode),
             file: torrentId
               ? episodeFileIn(torrentId, {
                   profileId: request.profileId,

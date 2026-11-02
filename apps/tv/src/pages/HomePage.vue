@@ -149,7 +149,8 @@ function isRelease(item: RowItem): item is ReleaseItem {
 }
 
 function isFile(item: RowItem): item is FileItem {
-  return 'thumb' in item
+  // album обязателен у файла (может быть null), а превью ещё может не быть.
+  return 'album' in item
 }
 
 function isTile(item: RowItem): item is Tile {

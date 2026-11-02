@@ -8,6 +8,7 @@ import {
   LoaderCircleIcon,
   PlusIcon,
   RefreshCwIcon,
+  UnplugIcon,
   VideoIcon,
 } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
@@ -149,12 +150,11 @@ function notes(folder: LibraryFolder) {
         :key="folder.id"
         class="grid grid-cols-[32px_minmax(0,1fr)_auto] items-start gap-3 px-5 py-3"
       >
-        <FolderIcon
-          class="mt-0.5 size-4 justify-self-center text-muted-foreground"
-          aria-hidden="true"
-        />
+        <span class="grid size-8 place-items-center" aria-hidden="true">
+          <FolderIcon class="size-4 text-muted-foreground" />
+        </span>
         <div class="grid min-w-0 gap-1">
-          <div class="flex min-w-0 items-center gap-2">
+          <div class="flex min-h-8 min-w-0 items-center gap-2">
             <span class="truncate font-mono text-xs" :title="folder.path">{{
               folder.path
             }}</span>
@@ -196,11 +196,12 @@ function notes(folder: LibraryFolder) {
           </Button>
           <Button
             variant="ghost"
-            size="sm"
-            class="text-muted-foreground"
+            size="icon-sm"
+            :aria-label="t('panel.library.folder.remove')"
+            :title="t('panel.library.folder.remove')"
             @click="emit('removeFolder', folder)"
           >
-            {{ t("panel.library.folder.remove") }}
+            <UnplugIcon aria-hidden="true" />
           </Button>
         </div>
       </li>
