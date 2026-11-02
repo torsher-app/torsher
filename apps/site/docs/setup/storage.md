@@ -144,6 +144,14 @@ Movies and series you already have don't need to be copied. Mount the folder rea
 
 Torsher indexes the folder in place and never writes to it. If the disk is disconnected, the folder shows <Ui k="panel.library.status.offline" />, its files are hidden on the showcase but not deleted, and they come back with the disk. Scans, matching and hiding a library from profiles: [Library](/docs/panel/library).
 
+## Video previews
+
+The <Ui k="panel.settings.storage.thumbnails.title" /> card controls frames from local video. <Ui k="panel.settings.storage.thumbnails.automatic" /> is on by default: new and changed files get a preview in the background after scanning. Existing files are processed after a server restart or a scan. Files that haven't changed keep their preview.
+
+Turn the switch off to stop automatic generation; existing previews stay available. Select <Ui k="panel.settings.storage.thumbnails.regenerate" /> to rebuild previews for all available library files, even when automatic generation is off. The card shows progress. If a new frame cannot be created, the previous one is kept.
+
+Previews live in the server's data folder. Connected folders remain read-only. Catalog artwork takes priority; a local frame fills in when an image is missing.
+
 ## Check
 
 - The <Ui k="panel.settings.storage.library.title" /> card says hard link or reflink under <Ui k="panel.settings.storage.library.links" />.
