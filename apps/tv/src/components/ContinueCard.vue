@@ -2,6 +2,7 @@
 import type { ContinueCard } from '@torsher/api-client'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useImageError } from '../composables/useImageError.ts'
 import { useResumeLabels } from '../composables/useResumeLabels.ts'
 import { watchedShare } from '../lib/continue.ts'
 import { openTitleActions } from '../titleActions.ts'
@@ -21,6 +22,8 @@ defineEmits<{ select: [] }>()
 
 const { t } = useI18n()
 const { resumeLine } = useResumeLabels()
+
+const broken = useImageError(() => props.item.image)
 
 // Долгий OK — меню тайтла («Брошено» убирает его из ряда)
 function openActions() {
@@ -45,13 +48,17 @@ const share = computed(() => watchedShare(props.item))
   >
     <span class="continue-card__frame">
       <img
-        v-if="item.image && loadImage"
+        v-if="item.image && loadImage && !broken"
         class="continue-card__image"
         :src="item.image"
         alt=""
         decoding="async"
+        @error="broken = true"
       >
-      <span v-else-if="!item.image" class="continue-card__placeholder">
+      <span
+        v-else-if="!item.image || broken"
+        class="continue-card__placeholder"
+      >
         {{ item.title }}
       </span>
       <!-- Новая серия «Следить»: колокольчик поверх кадра, кадр не сдвигается -->
