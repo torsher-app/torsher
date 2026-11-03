@@ -348,6 +348,70 @@ describe('post /api/titles/:id/watch', () => {
 })
 
 describe('экран «Источники» и «Файлы»', () => {
+  it.each([
+    { query: undefined, confidence: 'medium' },
+    { query: 'Harbor archives', confidence: 'medium' },
+    { query: undefined, confidence: 'low' },
+    { query: 'Harbor archives', confidence: 'low' },
+  ])(
+    '$confidence виден при query=$query, открывается только явным выбором',
+    async ({ query, confidence }) => {
+      let labelled = searchXml
+        .replaceAll('<title>Тихая гавань', '<title>Channel One: Тихая гавань')
+        .replaceAll(' / Quiet Harbor', ' / Studio Two: Quiet Harbor')
+        .replaceAll('<title>Quiet', '<title>Channel Three: Quiet')
+      // Год входит в общий допуск сериала, но не подтверждает второй сезон.
+      // Вместе с префиксом это low, доступный для явного выбора.
+      if (confidence === 'low') {
+        labelled = labelled
+          .replaceAll('(2024)', '(2026)')
+          .replaceAll('S02E05.', 'S02E05.2026.')
+      }
+      overrides['GET a.indexer.example/torznab/api'] = url =>
+        new Response(
+          query && url.searchParams.get('q') !== query
+            ? '<rss><channel /></rss>'
+            : labelled,
+        )
+      const list = await app.inject({
+        url: `/api/titles/${TITLE}/sources?all=1${query ? `&query=${encodeURIComponent(query)}` : ''}`,
+        cookies: owner,
+      })
+      expect(list.statusCode).toBe(200)
+      const body = list.json()
+      expect(body.candidates.length).toBeGreaterThan(0)
+      expect(
+        body.candidates.every(
+          (item: { confidence: string }) => item.confidence === confidence,
+        ),
+      ).toBe(true)
+      expect(body.top).toEqual([])
+      const auto = await watch({ season: 2, episode: 1 })
+      expect(auto.statusCode).toBe(422)
+      expect(auto.json().kind).toBe('no_sources')
+      const download = await app.inject({
+        method: 'POST',
+        url: `/api/titles/${TITLE}/download`,
+        cookies: owner,
+        payload: { season: 2 },
+      })
+      expect(download.statusCode).toBe(422)
+      expect(download.json().kind).toBe('no_sources')
+      expect(getDb().select().from(torrents).all()).toHaveLength(0)
+      const open = await app.inject({
+        method: 'POST',
+        url: `/api/titles/${TITLE}/open`,
+        cookies: owner,
+        payload: {
+          candidateId: body.candidates[0].id,
+          ...(query && { query }),
+        },
+      })
+      expect(open.statusCode).toBe(200)
+      expect(getDb().select().from(torrents).all()).toHaveLength(1)
+    },
+  )
+
   it('open находит кандидата в поиске по строке зрителя', async () => {
     const query = encodeURIComponent('Quiet Harbor')
     const list = await app.inject({

@@ -124,6 +124,7 @@ export async function recognizeRelease(
       aliases: syncTitleAliases(id, identity).map(alias => alias.value),
       year: identity.year,
       endYear: identity.endYear,
+      seasonYears: identity.seasonYears,
     })
 
     if (match.confidence === 'high')

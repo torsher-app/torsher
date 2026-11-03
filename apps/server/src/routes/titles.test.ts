@@ -248,6 +248,25 @@ describe('get /api/titles/:id/sources', () => {
     ).toEqual(['1080p'])
   })
 
+  it('поиск зрителя добавляет ровно один точный запрос с годом', async () => {
+    const res = await app.inject({
+      url: '/api/titles/tmdb:tv:101/sources?all=1',
+      cookies: authed(),
+    })
+    expect(res.statusCode).toBe(200)
+    const queries = requested.filter(
+      url =>
+        url.hostname === 'a.indexer.example'
+        && url.searchParams.get('t') === 'search',
+    )
+    expect(queries.map(url => url.searchParams.get('q'))).toEqual([
+      'Тихая гавань 2023',
+      'Тихая гавань',
+      'Quiet Harbor',
+      'tikhaya gavan',
+    ])
+  })
+
   it('строка зрителя ищется одна, текстом, и приходит в ответе', async () => {
     const res = await app.inject({
       url: `/api/titles/tmdb:tv:101/sources?all=1&query=${encodeURIComponent('Гавань 2023')}`,

@@ -161,10 +161,7 @@ function toCandidate(
         }
       : null,
     isPack: parsed.isPack,
-    confidence:
-      release.match.confidence === 'high'
-        ? ('high' as const)
-        : ('medium' as const),
+    confidence: release.match.confidence,
     pickReason: release.reason ?? null,
     publishedAt: release.publishedAt?.toISOString() ?? null,
     lastWatched,

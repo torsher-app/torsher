@@ -49,6 +49,75 @@ const movie: SearchQuery = {
 }
 
 describe('buildSearchRequests', () => {
+  it.each([undefined, 1])(
+    'сериал season=%s: ID, один вариант с годом, затем все названия без года',
+    (season) => {
+      const requests = buildSearchRequests(
+        capsWith({
+          tvSearch: { available: true, params: ['tvdbid', 'season'] },
+        }),
+        { ...series, season, seriesYearQuery: true },
+      )
+      expect(requests).toEqual([
+        {
+          t: 'tvsearch',
+          tvdbid: '202',
+          ...(season !== undefined && { season: String(season) }),
+        },
+        { t: 'search', q: 'Тихая гавань 2023' },
+        { t: 'search', q: 'Тихая гавань' },
+        { t: 'search', q: 'Quiet Harbor' },
+      ])
+    },
+  )
+
+  it('поздний сезон не получает запрос с годом начала', () => {
+    expect(
+      buildSearchRequests(capsWith(), { ...series, seriesYearQuery: true }),
+    ).toEqual([
+      { t: 'search', q: 'Тихая гавань' },
+      { t: 'search', q: 'Quiet Harbor' },
+    ])
+  })
+
+  it('по умолчанию фоновые запросы не дополняются годом', () => {
+    expect(
+      buildSearchRequests(capsWith(), { ...series, season: undefined }),
+    ).toEqual([
+      { t: 'search', q: 'Тихая гавань' },
+      { t: 'search', q: 'Quiet Harbor' },
+    ])
+  })
+
+  it('без года или названий дополнительного запроса нет', () => {
+    expect(
+      buildSearchRequests(capsWith(), {
+        ...series,
+        season: 1,
+        seriesYearQuery: true,
+        year: undefined,
+      }),
+    ).toHaveLength(2)
+    expect(
+      buildSearchRequests(capsWith(), {
+        ...series,
+        season: 1,
+        seriesYearQuery: true,
+        titles: [],
+      }),
+    ).toEqual([])
+  })
+
+  it('ручной query без year передаётся буквально один раз', () => {
+    expect(
+      buildSearchRequests(capsWith(), {
+        kind: 'series',
+        ids: {},
+        titles: ['Quiet Harbor 2023'],
+      }),
+    ).toEqual([{ t: 'search', q: 'Quiet Harbor 2023' }])
+  })
+
   it('без ID-параметров в caps ищет только текстом', () => {
     expect(buildSearchRequests(capsWith(), series)).toEqual([
       { t: 'search', q: 'Тихая гавань' },

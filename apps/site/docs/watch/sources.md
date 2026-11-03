@@ -20,7 +20,7 @@ At least one indexer is connected. See [Indexers](/docs/setup/indexers). Without
 - On a title page, select <Ui k="title.watch" />. When it reads <Ui k="title.resume" /> and plays right away, use the <Ui k="title.sources" /> icon next to it.
 - In the player, select <Ui k="player.source.button" /> to switch releases without stopping. See [Player](/docs/watch/player#switch-the-release).
 
-Torsher searches all your indexers by every name of the title: the translated one, the original and other names from TMDB. It keeps only releases that match the title. The header shows how many releases were found and when, and how many indexers didn't answer. <Ui k="sources.refresh" /> at the end of the list searches again.
+Torsher searches all your indexers by every name of the title: the translated one, the original and other names from TMDB. For a series, it also tries the first name with the start year, then keeps searching without the year so later seasons can be found. Results with an unconfirmed match are shown when a complete known title appears in the release name and its year does not conflict with the title. The header shows how many releases were found and when, and how many indexers didn't answer. <Ui k="sources.refresh" /> at the end of the list searches again.
 
 Under the header is your history: what you watched last and from which release. OK on it opens that release on the same episode.
 
@@ -29,7 +29,7 @@ Under the header is your history: what you watched last and from which release. 
 Each row has three lines:
 
 1. **The release name**, as the indexer has it.
-2. **Badges.** First the resolution: 4K, 1080p, 720p or SD. A question mark means it was guessed from other hints in the name, and a lone `?` means unknown. Then what the release covers, such as `S1 · 1–8` or `S1–3`, the source (Remux, Blu-ray, Web, TV, DVD; <Ui k="sources.sourceKinds.cam" /> is a recording from a cinema screen), HDR, the codec and the audio channels. Then the audio. When the server's audio language is Russian, it's the voice-over studio or language and its type, such as <Ui k="sources.voiceTypes.D" />, <Ui k="sources.voiceTypes.MVO" /> or <Ui k="sources.voiceTypes.Original" />, and other audio tracks after it. With any other audio language, it's the tracks named in the release, such as <Ui k="audioLanguages.en" />, <Ui k="audioLanguages.original" /> or <Ui k="audioLanguages.ru" /> for a Russian voice-over; a release that names none shows nothing here, and that's normal for most English-language indexers. <Ui k="sources.unsure" /> warns that the name only partly matches the title.
+2. **Badges.** First the resolution: 4K, 1080p, 720p or SD. A question mark means it was guessed from other hints in the name, and a lone `?` means unknown. Then what the release covers, such as `S1 · 1–8` or `S1–3`, the source (Remux, Blu-ray, Web, TV, DVD; <Ui k="sources.sourceKinds.cam" /> is a recording from a cinema screen), HDR, the codec and the audio channels. Then the audio. When the server's audio language is Russian, it's the voice-over studio or language and its type, such as <Ui k="sources.voiceTypes.D" />, <Ui k="sources.voiceTypes.MVO" /> or <Ui k="sources.voiceTypes.Original" />, and other audio tracks after it. With any other audio language, it's the tracks named in the release, such as <Ui k="audioLanguages.en" />, <Ui k="audioLanguages.original" /> or <Ui k="audioLanguages.ru" /> for a Russian voice-over; a release that names none shows nothing here, and that's normal for most English-language indexers. <Ui k="sources.unsure" /> warns about an uncertain match. <Ui k="sources.unmatched" /> means Torsher could not match the result to this title; check the release name before opening it.
 3. **Details.** A mark on the left, then the publish date, subtitles and the indexer. On the right, the bitrate, seeders (green from 10, amber below, red at 0), leechers and the size of the whole release.
 
 For example, a row could read:
@@ -48,6 +48,7 @@ By profile · Oct 12, 2026 · subtitles: ENG · My indexer      6 Mbps  ↑ 42  
   - **<Ui k="audioLanguages.original" />**: releases with the original track or with no tracks named come first. Releases that name only voice-overs in other languages go down and are picked only when nothing else is found.
   - **Another language**, such as <Ui k="audioLanguages.de" />: releases with a track in that language first, then the original, then voice-overs in other languages, picked only when nothing else is found. For a title originally in that language, a release with the original track or with no tracks named counts as one in that language too.
 - Next to the best one there may be a release with the original track (<Ui k="audioLanguages.original" /> first for any audio language but Russian), a better quality or a smaller size.
+- With <Ui k="sources.sortBest" />, unconfirmed matches follow matched results. Torsher never picks them automatically; select a row to open one yourself.
 - The rest follow the sort order. A series sorts <Ui k="sources.sortSeasons" /> by default: the newest season and more episodes first.
 
 ## Filters and sorting
@@ -67,6 +68,8 @@ If the indexers name the title differently, for example by a short name or a spe
 
 1. Select the <Ui k="sources.panel.query" /> chip, the first one. It shows the current query or `auto`. On an empty result, <Ui k="sources.query.action" /> opens the same panel.
 2. Type a title in <Ui k="sources.query.placeholder" /> and press OK, or pick one of the suggested names below.
+
+Your own query keeps the indexers' results even when Torsher cannot match their names or years to this title. Check results marked <Ui k="sources.unmatched" /> before opening them.
 
 The query is remembered for this title. <Ui k="sources.query.auto" /> goes back to searching by the names from TMDB.
 

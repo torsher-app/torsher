@@ -1173,6 +1173,59 @@ describe('распознавание раздач, добавленных в п�
     expect(rows()).toEqual([])
   })
 
+  it.each(['PC RePack', 'OST FLAC', 'WEBRip | Trailer'])(
+    'не связывает сопутствующий контент %s с фильмом',
+    async (suffix) => {
+      const { recognizeRelease } = await import('../services/library/index.ts')
+      searchResults['example movie'] = [movieResult]
+      expect(await recognizeRelease(`Example Movie (2008) ${suffix}`)).toEqual({
+        status: 'unmatched',
+      })
+    },
+  )
+
+  it('использует даты сезонов при распознавании позднего сезона', async () => {
+    const { recognizeRelease } = await import('../services/library/index.ts')
+    const originalFetch = fetchMock.getMockImplementation()!
+    fetchMock.mockImplementation(async (input, init) => {
+      if (new URL(String(input)).pathname === '/3/tv/1396') {
+        return json({
+          ...identities['/3/tv/1396'],
+          seasons: [
+            { season_number: 1, episode_count: 7, air_date: '2008-01-20' },
+            { season_number: 2, episode_count: 13, air_date: '2015-01-01' },
+            { season_number: 3, episode_count: 10, air_date: '2018-01-01' },
+          ],
+        })
+      }
+      return originalFetch(input, init)
+    })
+    searchResults['example show'] = [
+      {
+        id: 1396,
+        media_type: 'tv',
+        name: 'Example Show',
+        first_air_date: '2008-01-20',
+      },
+    ]
+    expect(await recognizeRelease('Example Show S02 (2017) WEBRip')).toEqual({
+      status: 'matched',
+      titleId: 'tmdb:tv:1396',
+    })
+    expect(await recognizeRelease('Example Show S02 (2023) WEBRip')).toEqual({
+      status: 'unsure',
+      suggestion: 'tmdb:tv:1396',
+    })
+  })
+
+  it('префикс издателя не связывает библиотеку без подтверждения', async () => {
+    const { recognizeRelease } = await import('../services/library/index.ts')
+    searchResults['publisher: example movie'] = [movieResult]
+    expect(
+      await recognizeRelease('Publisher: Example Movie (2008) WEBRip'),
+    ).toEqual({ status: 'unsure', suggestion: 'tmdb:movie:603' })
+  })
+
   it('год не сошёлся — «похоже», ждём подтверждения', async () => {
     const { recognizeRelease } = await import('../services/library/index.ts')
 

@@ -7,7 +7,7 @@ import { parseCatalogId } from './mappers.ts'
 
 const IDENTITY_TTL_MS = 7 * 24 * 60 * 60 * 1000
 // Новая версия — когда в урезанный ответ добавляется поле: старые записи его не знают
-const IDENTITY_KEY_VERSION = 'v2'
+const IDENTITY_KEY_VERSION = 'v3'
 // Языки, на которых названия встречаются в именах раздач
 const NAME_LANGUAGES = new Set(['ru', 'en', 'uk'])
 const READABLE_TITLE
@@ -37,7 +37,11 @@ export interface TmdbIdentityResponse {
   alternative_titles?: { titles?: TmdbAltTitle[], results?: TmdbAltTitle[] }
   translations?: { translations?: TmdbTranslation[] }
   // Только у сериала: сколько серий в сезоне — для размера на серию у пака
-  seasons?: { season_number: number, episode_count: number }[]
+  seasons?: {
+    season_number: number
+    episode_count: number
+    air_date?: string | null
+  }[]
 }
 
 export type TitleNameKind = 'official' | 'original' | 'alternative'
@@ -58,6 +62,8 @@ export interface TitleIdentity {
   year?: number
   /** Год последнего эфира завершённого сериала. */
   endYear?: number
+  /** Годы начала сезонов из общего ответа TMDB. */
+  seasonYears?: Record<number, number>
   /** Язык оригинала, ISO 639-1. */
   originalLanguage?: string
   /** Число серий по номеру сезона, только у сериала. */
@@ -100,6 +106,7 @@ export function trimIdentity(
     seasons: response.seasons?.map(season => ({
       season_number: season.season_number,
       episode_count: season.episode_count,
+      air_date: season.air_date,
     })),
   }
 }
@@ -162,6 +169,14 @@ export function identityOf(
       !isMovie && response.status && ENDED_STATUSES.has(response.status)
         ? yearOf(response.last_air_date)
         : undefined,
+    seasonYears:
+      response.seasons
+      && Object.fromEntries(
+        response.seasons.flatMap((season) => {
+          const year = yearOf(season.air_date ?? undefined)
+          return year === undefined ? [] : [[season.season_number, year]]
+        }),
+      ),
     originalLanguage: response.original_language || undefined,
     episodeCounts:
       response.seasons

@@ -399,6 +399,7 @@ async function titleTarget(
     aliases: aliases.map(alias => alias.value),
     year: identity.year,
     endYear: identity.endYear,
+    seasonYears: identity.seasonYears,
   }
 }
 

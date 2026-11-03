@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { cachedSearch, clearSearchCache, peekSearch } from './cache.ts'
 
 function outcome(indexerCount: number): SearchOutcome {
-  return { releases: [], indexerCount, failed: [] }
+  return { releases: [], unmatched: [], indexerCount, failed: [] }
 }
 
 beforeEach(() => {

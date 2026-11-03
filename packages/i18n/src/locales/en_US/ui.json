@@ -250,6 +250,7 @@
       "gb": "{amount} GB",
       "mb": "{amount} MB"
     },
+    "unmatched": "Match not confirmed",
     "unsure": "May be another title",
     "unknownQuality": "unknown",
     "unknownQualityOption": "Unknown",

@@ -145,7 +145,9 @@ async function viewerSearch(target: SearchTarget) {
   const all = listSearchableIndexers()
   const { available } = availableForBackground(all)
   const asked = available.length > 0 ? available : all
-  const outcome = await searchReleases(target, asked)
+  const outcome = await searchReleases(target, asked, {
+    seriesYearQuery: true,
+  })
 
   recordBackgroundOutcome(asked, outcome.failed)
 
@@ -191,12 +193,11 @@ export async function getTitleSources(
   if (identity.kind === 'series')
     await recordTrackerEpisodes(titleId, search.outcome.releases)
 
+  const found = [...search.outcome.releases, ...search.outcome.unmatched]
   const releases
     = episode === undefined
-      ? search.outcome.releases
-      : search.outcome.releases.filter(release =>
-          coversEpisode(release.parsed, episode),
-        )
+      ? found
+      : found.filter(release => coversEpisode(release.parsed, episode))
   // Раздачи всех сезонов: советуем для сезона, который смотрят, без
   // просмотра — для первого
   const focusSeason
