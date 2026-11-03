@@ -1,4 +1,19 @@
 import {
+  createSourcePreset as createSourcePresetBody,
+  sourcePresetParams,
+  sourceSettings,
+  updateSourcePreset as updateSourcePresetBody,
+  updateSourceSettings,
+} from '../dto/sourceSettings.ts'
+import {
+  createSourcePreset,
+  deleteSourcePreset,
+  sourceSettings as getSourceSettings,
+  setDefaultSourcePreset,
+  SourcePresetError,
+  updateSourcePreset,
+} from '../services/sources/profile.ts'
+import {
   thumbnailSettings,
   updateThumbnailSettings,
 } from '../dto/thumbnails.ts'
@@ -120,6 +135,116 @@ const LIVE_KEYS = new Set([
 /** Настройки сервера: только сессия аккаунта. Ключи в ответы не попадают */
 export const settingsRoutes: FastifyPluginAsyncZod = async (app) => {
   app.addHook('onRequest', requireOwner)
+
+  app.get(
+    '/sources',
+    {
+      schema: {
+        operationId: 'getSourceSettings',
+        tags: ['Settings'],
+        response: { 200: sourceSettings, ...guardResponses },
+      },
+    },
+    async () => getSourceSettings(),
+  )
+  app.put(
+    '/sources',
+    {
+      schema: {
+        operationId: 'putSourceSettings',
+        tags: ['Settings'],
+        body: updateSourceSettings,
+        response: {
+          200: sourceSettings,
+          400: messageResponse,
+          404: messageResponse,
+          409: messageResponse,
+          ...guardResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return setDefaultSourcePreset(request.body.defaultPresetId)
+      }
+      catch (err) {
+        if (err instanceof SourcePresetError)
+          return reply.code(err.status).send({ message: err.message })
+        throw err
+      }
+    },
+  )
+
+  app.post(
+    '/sources/presets',
+    {
+      schema: {
+        operationId: 'postSourcePreset',
+        tags: ['Settings'],
+        body: createSourcePresetBody,
+        response: {
+          200: sourceSettings,
+          400: messageResponse,
+          ...guardResponses,
+        },
+      },
+    },
+    async request => createSourcePreset(request.body.name),
+  )
+  app.patch(
+    '/sources/presets/:presetId',
+    {
+      schema: {
+        operationId: 'patchSourcePreset',
+        tags: ['Settings'],
+        params: sourcePresetParams,
+        body: updateSourcePresetBody,
+        response: {
+          200: sourceSettings,
+          400: messageResponse,
+          404: messageResponse,
+          409: messageResponse,
+          ...guardResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return updateSourcePreset(request.params.presetId, request.body)
+      }
+      catch (err) {
+        if (err instanceof SourcePresetError)
+          return reply.code(err.status).send({ message: err.message })
+        throw err
+      }
+    },
+  )
+  app.delete(
+    '/sources/presets/:presetId',
+    {
+      schema: {
+        operationId: 'deleteSourcePreset',
+        tags: ['Settings'],
+        params: sourcePresetParams,
+        response: {
+          200: sourceSettings,
+          404: messageResponse,
+          409: messageResponse,
+          ...guardResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return deleteSourcePreset(request.params.presetId)
+      }
+      catch (err) {
+        if (err instanceof SourcePresetError)
+          return reply.code(err.status).send({ message: err.message })
+        throw err
+      }
+    },
+  )
 
   app.get(
     '/thumbnails',

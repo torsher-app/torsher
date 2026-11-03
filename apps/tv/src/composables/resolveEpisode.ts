@@ -4,6 +4,8 @@ import type {
   TitleFiles,
 } from '@torsher/api-client'
 import { api } from '../api.ts'
+import { session } from '../session.ts'
+import { selectedSourcePreset, sourcePresetStore } from '../sourcePreset.ts'
 import { episodeCandidates, episodeFileOf } from '../lib/episodes.ts'
 import { FILES_POLL_INTERVAL_MS, FILES_POLL_LIMIT_MS } from '../lib/files.ts'
 import { noteHasSources } from '../serverSources.ts'
@@ -24,6 +26,7 @@ export type ResolveOutcome
     | { kind: 'cancelled' }
 
 export interface ResolveOptions {
+  presetId?: string
   /** Раздача, выбранная зрителем: подключаем её, ждём файлы и дальше не ищем */
   candidateId?: string
   /** Раздачи, где серию ищем первой: та, что смотрят, и раздача сезона */
@@ -141,9 +144,13 @@ export async function resolveEpisode(
   let noSources = false
 
   try {
+    const profileId = session.profile?.id
+    const presetId = options.presetId ?? selectedSourcePreset.value
     const sources = await api.titles.getTitleSources(target.titleId, {
       all: '1',
+      presetId,
     })
+    sourcePresetStore.reconcile(profileId, presetId, sources.presets)
 
     noSources = sources.indexers.total === 0
     noteHasSources(!noSources)

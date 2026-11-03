@@ -1,10 +1,9 @@
 import type { VideoClass, VoiceType } from '@torsher/release-parser'
 import type { FollowAudio } from '../../db/schema.ts'
 import type { TitleIdentity } from '../tmdb/index.ts'
-import type { VoiceRef } from './profile.ts'
+import type { RankingProfile, VoiceRef } from './profile.ts'
 import type { RankedRelease, Ranking } from './rank.ts'
 import type { IndexerFailure, SearchTarget } from './search.ts'
-import { serverAudio } from '../follow/audio.ts'
 import { recordTrackerEpisodes } from '../follow/trackerEpisodes.ts'
 import {
   availableForBackground,
@@ -15,7 +14,7 @@ import { getTitleIdentity } from '../tmdb/index.ts'
 import { normalizeTitle } from '@torsher/release-parser'
 import { queryCombos, syncTitleAliases } from './aliases.ts'
 import { cachedSearch } from './cache.ts'
-import { DEFAULT_PROFILE } from './profile.ts'
+import { resolveSourcePreset } from './profile.ts'
 import { coversEpisode, rankReleases, RESOLUTION_RANK } from './rank.ts'
 import { knownResolutions } from './resolution.ts'
 import { asViewerSearch, searchReleases } from './search.ts'
@@ -25,11 +24,11 @@ import { seasonReleases } from './seasonRelease.ts'
 import { getTorrent } from '../torrents/index.ts'
 
 export type { RankingProfile, VoiceRef } from './profile.ts'
-export { DEFAULT_PROFILE } from './profile.ts'
 export type { RankedRelease, SourceReason } from './rank.ts'
 export { pinVoice } from './voices.ts'
 
 export interface SourcesRequest {
+  presetId?: string
   season?: number
   episode?: number
   /** Раздачи всех сезонов сериала: экран «Источники» */
@@ -58,7 +57,9 @@ export interface TitleSources {
   episode?: number
   updatedAt: Date
   ranking: Ranking
-  /** Язык озвучки дома, по которому ранжировали */
+  profile: RankingProfile
+  presets: ReturnType<typeof resolveSourcePreset>['presets']
+  /** Действующий язык пресета, по которому ранжировали */
   audio: FollowAudio
   /** Студии и типы перевода: только у русского языка озвучки */
   voices: VoiceOption[]
@@ -207,7 +208,8 @@ export async function getTitleSources(
           : undefined) ?? 1)
       : undefined
   const voiceSeason = season ?? focusSeason
-  const audio = serverAudio()
+  const { profile, presets } = resolveSourcePreset(request.presetId)
+  const audio = profile.audioLanguages[0]!
   // Выбор в панели «Озвучка» сильнее студии, которой смотрели прошлые серии.
   // Студии — русские: у другого языка озвучки закреплять нечего
   const pinned
@@ -219,10 +221,9 @@ export async function getTitleSources(
           : lastVoiceOfSeason(request.profileId, titleId, voiceSeason)))
   const ranking = rankReleases(releases, {
     kind: identity.kind,
-    audio,
     originalLanguage: identity.originalLanguage,
     episodeCounts: identity.episodeCounts,
-    profile: DEFAULT_PROFILE,
+    profile,
     pinned,
     known: knownResolutions(releases),
     focusSeason,
@@ -260,12 +261,20 @@ export async function getTitleSources(
     episode,
     updatedAt: search.updatedAt,
     ranking,
+    profile,
+    presets,
     seasonCandidate,
     lastWatchedId,
     query,
     querySuggestions: queryCombos(aliases, identity.year),
     audio,
-    voices: audio === 'ru' ? voiceOptions(ranking.ranked, pinned) : [],
+    voices:
+      audio === 'ru'
+        ? voiceOptions(
+            ranking.ranked.filter(release => release.audioLanguage === 'ru'),
+            pinned,
+          )
+        : [],
     pinned,
     indexerCount: search.outcome.indexerCount,
     failed: search.outcome.failed,

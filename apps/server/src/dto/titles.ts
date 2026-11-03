@@ -66,6 +66,7 @@ export const titleParams = z.object({
 })
 
 export const titleSourcesQuery = z.object({
+  presetId: z.string().min(1).max(100).optional(),
   // Сезон 0 — спецвыпуски: их раздачи не ищем
   season: number(999).optional(),
   episode: number(9999).optional(),
@@ -166,9 +167,17 @@ export const titleSources = z
     // перевода и `profile.voiceTypes` действуют только у `ru`
     audio: z.enum(followAudios),
     profile: z.object({
+      audioLanguages: z.array(z.enum(followAudios)).optional(),
       qualities: z.array(z.enum(videoClasses)),
       voiceTypes: z.array(z.enum(voiceTypes)),
     }),
+    presets: z
+      .object({
+        defaultId: z.string(),
+        effectiveId: z.string(),
+        items: z.array(z.object({ id: z.string(), name: z.string() })),
+      })
+      .optional(),
     pinnedVoice: voiceRef.nullable(),
     // Кандидат, который и есть раздача сезона (по infohash); null — такой нет
     seasonCandidate: z.string().nullable(),
@@ -209,6 +218,7 @@ export type SourceCandidate = z.output<typeof sourceCandidate>
 
 export const watchTitle = z
   .object({
+    presetId: z.string().min(1).max(100).optional(),
     season: z.number().int().min(1).max(999).optional(),
     episode: z.number().int().min(1).max(9999).optional(),
     candidateId: z.string().min(1).max(64).optional(),
@@ -282,6 +292,7 @@ export const titleFile = z
 
 export const downloadTitle = z
   .object({
+    presetId: z.string().min(1).max(100).optional(),
     season: z.number().int().min(1).max(999).optional(),
     // Раздача, которая ждала метаданные: повтор после `resolving`
     candidateId: z.string().min(1).max(64).optional(),

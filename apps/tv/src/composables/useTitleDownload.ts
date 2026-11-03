@@ -9,6 +9,7 @@ import { getErrorBody, getErrorStatus } from '@torsher/api-client'
 import { computed, onScopeDispose } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { api } from '../api.ts'
+import { selectedSourcePreset } from '../sourcePreset.ts'
 import { FILES_POLL_INTERVAL_MS, FILES_POLL_LIMIT_MS } from '../lib/files.ts'
 import type { ActiveDownload } from '../lib/downloadSlot.ts'
 import { downloadPercent } from '../lib/download.ts'
@@ -69,7 +70,10 @@ export async function startDownload(
   cancelled: () => boolean,
   onStep?: (step: DownloadStep) => void,
 ): Promise<TitleDownloadStart | undefined> {
-  let request = body
+  let request = {
+    ...body,
+    presetId: body.presetId ?? selectedSourcePreset.value,
+  }
 
   for (;;) {
     onStep?.('connecting')
@@ -84,7 +88,7 @@ export async function startDownload(
     if (!(await waitFiles(titleId, result.torrentId, cancelled)))
       return undefined
 
-    request = { ...body, candidateId: result.candidateId }
+    request = { ...request, candidateId: result.candidateId }
   }
 }
 

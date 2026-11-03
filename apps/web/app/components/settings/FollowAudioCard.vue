@@ -22,7 +22,7 @@ const schema = toTypedSchema(z.object({ audio: z.enum(FOLLOW_AUDIOS) }))
 
 // Языка ещё нет — на сервере действует русская
 function valuesOf(audio: FollowSettings['audio']) {
-  return { audio: audio?.value ?? ('ru' as const) }
+  return { audio: audio?.value ?? ('original' as const) }
 }
 
 const { handleSubmit, defineField, isSubmitting, meta, resetForm } = useForm({

@@ -273,7 +273,7 @@ const choiceClass
       </RadioGroup>
     </fieldset>
 
-    <div v-if="russian" class="flex items-start justify-between gap-4">
+    <div v-if="audio === 'ru'" class="flex items-start justify-between gap-4">
       <div class="grid gap-1">
         <Label for="follow-russian">{{
           t("panel.follow.rules.russian")

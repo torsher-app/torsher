@@ -13,7 +13,6 @@ import {
   markStreaming,
   touchDevice,
 } from '../services/devices/index.ts'
-import { guessServerAudio } from '../services/follow/audio.ts'
 import { defaultProfile, getProfile } from '../services/profiles/index.ts'
 import { needsSetup } from '../services/users/index.ts'
 import { verifySession } from '../services/users/session.ts'
@@ -150,7 +149,6 @@ export async function requireOwner(
     return crossSiteRejected(reply)
 
   request.userId = userId
-  guessServerAudio(request.headers['accept-language'])
 }
 
 /**
@@ -217,7 +215,6 @@ export async function requireViewer(
       if (!request.profileId && !request.routeOptions.config.allowNoProfile)
         return profileRequired(reply)
 
-      guessServerAudio(request.headers['accept-language'])
       return
     }
 
@@ -231,7 +228,6 @@ export async function requireViewer(
 
   request.userId = userId
   setProfile(request, request.cookies[PROFILE_COOKIE])
-  guessServerAudio(request.headers['accept-language'])
 }
 
 /**

@@ -22,11 +22,11 @@ import {
   mediaFiles,
 } from '../../db/schema.ts'
 import { summaryOf } from '../mine/cards.ts'
-import { DEFAULT_PROFILE } from '../sources/profile.ts'
+import { sameSourceProfile } from '../sources/profile.ts'
 import { rankReleases } from '../sources/rank.ts'
 import { knownResolutions } from '../sources/resolution.ts'
 import { getTitleIdentity } from '../tmdb/index.ts'
-import { followAudio } from './audio.ts'
+import { followSourceProfile } from './audio.ts'
 import { movieAvailableFrom } from './availability.ts'
 import { blockedReleases } from './blocklist.ts'
 import {
@@ -375,6 +375,7 @@ export async function upgradeNeeded(
 
   const identity = await getTitleIdentity(follow.titleId)
   const rows = episodeRows(follow.id)
+  const profile = followSourceProfile(follow)
 
   return targets.some(([key, target]) => {
     const season = Number(key.split(':')[0])
@@ -392,16 +393,15 @@ export async function upgradeNeeded(
     const version = versionOf(target.current!, {
       kind: follow.kind,
       originalLanguage: identity?.originalLanguage,
-      profile: DEFAULT_PROFILE,
+      profile,
       pinned: voice,
     })
 
     return !isAtCutoff(
       positionOf(version, seasonCtx, {
         russianOriginal: identity?.originalLanguage === 'ru',
-        audio: followAudio(follow),
         originalLanguage: identity?.originalLanguage,
-        profile: DEFAULT_PROFILE,
+        profile,
         preset: follow.qualityPreset,
       }),
       seasonCtx,
@@ -448,7 +448,7 @@ function takeCandidate(
   follow: Follow,
   candidate: FollowPendingCandidate,
   episodes: EpisodeRef[],
-  options: { ownStudio?: string, now: Date },
+  options: { ownStudio?: string, now: Date, isCurrent: () => boolean },
 ) {
   const mode = followById(follow.id)?.mode ?? follow.mode
 
@@ -490,17 +490,17 @@ export async function decideFollow(
   const rows = new Map(
     episodeRows(follow.id).map(row => [episodeKey(row), row]),
   )
+  const profile = followSourceProfile(follow)
   const ctx: DecideContext = {
     kind: follow.kind,
     preset: follow.qualityPreset,
     voiceStrict: follow.voiceStrict,
-    requireRussian: follow.requireRussian,
+    requireRussian: follow.audio === 'ru' && follow.requireRussian,
     waitHours: follow.waitHours,
     russianOriginal: identity?.originalLanguage === 'ru',
     // Слежение без своего правила — по языку сервера на этот проход
-    audio: followAudio(follow),
     originalLanguage: identity?.originalLanguage,
-    profile: DEFAULT_PROFILE,
+    profile,
     episodeCounts: identity?.episodeCounts,
     wanted: new Set(wanted.map(episodeKey)),
     downloading: new Set(
@@ -541,10 +541,9 @@ export async function decideFollow(
     const voice = seasonVoice(follow, season)
     const rankCtx = {
       kind: follow.kind,
-      audio: followAudio(follow),
       originalLanguage: identity?.originalLanguage,
       episodeCounts: identity?.episodeCounts,
-      profile: DEFAULT_PROFILE,
+      profile,
       pinned: voice,
     }
     const { ranked } = rankReleases(inSeason, {
@@ -591,6 +590,8 @@ export async function decideFollow(
 
   for (const { plan, voice } of grabs) {
     for (const grab of plan.grabs) {
+      if (!sameSourceProfile(profile, followSourceProfile(follow)))
+        return
       await takeCandidate(
         follow,
         pendingOf(
@@ -601,6 +602,8 @@ export async function decideFollow(
         {
           ownStudio: voice?.studio,
           now,
+          isCurrent: () =>
+            sameSourceProfile(profile, followSourceProfile(follow)),
         },
       )
     }
@@ -613,6 +616,7 @@ export async function decideFollow(
  * оставили перед курсором, кандидата больше не ждут.
  */
 export async function grabPending(follow: Follow, now = new Date()) {
+  const profile = followSourceProfile(follow)
   const rows = getDb()
     .select()
     .from(followEpisodes)
@@ -664,9 +668,12 @@ export async function grabPending(follow: Follow, now = new Date()) {
   }
 
   for (const { candidate, episodes } of groups.values()) {
+    if (!sameSourceProfile(profile, followSourceProfile(follow)))
+      return
     await takeCandidate(follow, candidate, episodes, {
       ownStudio: seasonVoice(follow, episodes[0]!.season)?.studio,
       now,
+      isCurrent: () => sameSourceProfile(profile, followSourceProfile(follow)),
     })
   }
 }

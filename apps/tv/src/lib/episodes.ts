@@ -39,31 +39,25 @@ export function lastVoiceKey(releases: SeasonRelease[], season: number) {
 }
 
 /**
- * Раздачи, в которых есть серия: сначала с той же озвучкой, дальше порядок
- * сервера (ранжирование по профилю), но раздачи только с чужими озвучками
- * (`audioFit: 'foreign'`) — в конце; не больше `EPISODE_ATTEMPTS`
+ * Подходящие раздачи серии в порядке сервера: без чужих языков, экранных
+ * копий и раздач без сидов; не больше `EPISODE_ATTEMPTS`.
  */
 export function episodeCandidates(
   candidates: SourceCandidate[],
   target: { season: number, episode: number },
-  voiceKey?: string,
+  _voiceKey?: string,
 ) {
-  const covering = candidates.filter(
-    item =>
-      item.confidence === 'high'
-      && coversEpisode(item, target.season, target.episode),
-  )
-  const sameVoice = voiceKey
-    ? covering.filter(item => item.voiceKeys.includes(voiceKey))
-    : []
-  const rest = covering.filter(item => !sameVoice.includes(item))
-  const foreign = rest.filter(item => item.audioFit === 'foreign')
-
-  return [
-    ...sameVoice,
-    ...rest.filter(item => !foreign.includes(item)),
-    ...foreign,
-  ].slice(0, EPISODE_ATTEMPTS)
+  return candidates
+    .filter(
+      item =>
+        item.confidence === 'high'
+        && item.seeders > 0
+        && item.source !== 'CAMRip'
+        && item.source !== 'TS'
+        && item.audioFit !== 'foreign'
+        && coversEpisode(item, target.season, target.episode),
+    )
+    .slice(0, EPISODE_ATTEMPTS)
 }
 
 /** Файл серии среди файлов раздачи; у фильма — самое большое видео */

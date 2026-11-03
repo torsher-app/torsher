@@ -23,7 +23,7 @@ definePageMeta({
 const { t } = useI18n()
 const { discoverManagers } = useWizard()
 const sources = useSources()
-const followSettings = useFollowSettings()
+const sourceSettings = useSourceSettings()
 
 // Язык озвучки сервера: выбор владельца, иначе по языку этого браузера.
 // «Дальше» сохраняет его как выбор, догадка сервера больше не нужна. Смена в
@@ -32,16 +32,23 @@ const followSettings = useFollowSettings()
 const audio = ref<FollowAudio>(audioFromLanguage(navigator.language))
 
 watch(
-  () => followSettings.settings.value?.audio,
+  () => sourceSettings.settings.value,
   (value) => {
-    if (value?.source === 'user')
-      audio.value = value.value
+    const preset = value?.presets.find(
+      item => item.id === value.defaultPresetId,
+    )
+    if (preset)
+      audio.value = preset.audioLanguages[0]!
   },
   { immediate: true },
 )
 
-function saveAudio() {
-  return followSettings.save({ audio: audio.value })
+async function saveAudio() {
+  if (!sourceSettings.settings.value)
+    await sourceSettings.load()
+  const id = sourceSettings.settings.value?.defaultPresetId
+  if (id)
+    return sourceSettings.save(id, { audioLanguages: [audio.value] })
 }
 
 function chooseAudio(value: string | undefined) {
@@ -163,7 +170,7 @@ function retry() {
 
 onMounted(() => {
   retry()
-  followSettings.load()
+  sourceSettings.load()
 })
 onBeforeUnmount(sources.stopPolling)
 </script>

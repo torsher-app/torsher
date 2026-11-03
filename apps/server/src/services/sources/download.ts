@@ -28,6 +28,7 @@ import {
 } from './watch.ts'
 
 export interface DownloadRequest {
+  presetId?: string
   /** Сезон сериала для «Скачать сезон»; без него — первый */
   season?: number
   /** Раздача, которая ждала метаданные: повтор после `resolving` */
@@ -120,11 +121,22 @@ async function remainingBytes(torrent: Torrent, files: number[]) {
  * лимит кэша не занимает, только запас свободного места), выбор раздачи
  * дополняется — уже качающиеся файлы остаются. Нехватка места —
  * `InsufficientStorageError`. Общий путь «Скачать» и «Следить».
+ * Устаревшее решение автоматики отменяется до выбора файлов (`undefined`).
  */
-export async function startDownload(torrent: Torrent, files: number[]) {
+export async function startDownload(
+  torrent: Torrent,
+  files: number[],
+  isCurrent: () => boolean = () => true,
+) {
   const bytes = await remainingBytes(torrent, files)
 
+  if (!isCurrent())
+    return undefined
+
   await ensureSpaceFor({ torrent: { ...torrent, retention: 'keep' }, bytes })
+
+  if (!isCurrent())
+    return undefined
 
   const selected
     = torrent.retention === 'keep'
@@ -199,14 +211,14 @@ export async function downloadTitle(
   const sources = await getTitleSources(titleId, {
     season: kind === 'series' ? season : undefined,
     profileId,
+    presetId: request.presetId,
   })
 
   if (!sources)
     return undefined
 
-  const { ranked, top } = sources.ranking
+  const { ranked } = sources.ranking
   const byId = new Map(ranked.map(release => [release.id, release]))
-  const seasonEpisodes = sources.identity.episodeCounts?.[season]
   let queue: RankedRelease[]
 
   if (request.candidateId) {
@@ -218,17 +230,19 @@ export async function downloadTitle(
     queue = [chosen]
   }
   else {
-    const best = top.flatMap(id => byId.get(id) ?? [])
-
-    queue
-      = kind === 'series'
-        ? [
-            ...best.filter(item => coversSeason(item.parsed, seasonEpisodes)),
-            ...best.filter(
-              item => !coversSeason(item.parsed, seasonEpisodes),
-            ),
-          ]
-        : best
+    queue = ranked.filter(
+      release => release.eligible && release.audioFit !== 'foreign',
+    )
+    if (kind === 'series') {
+      const count = sources.identity.episodeCounts?.[season]
+      queue.sort(
+        (a, b) =>
+          (a.audioPriority ?? 0) - (b.audioPriority ?? 0)
+          || (a.typePriority ?? 0) - (b.typePriority ?? 0)
+          || Number(coversSeason(b.parsed, count))
+          - Number(coversSeason(a.parsed, count)),
+      )
+    }
   }
 
   if (queue.length === 0)

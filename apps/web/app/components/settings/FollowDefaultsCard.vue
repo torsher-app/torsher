@@ -27,15 +27,12 @@ const props = defineProps<{
 const { t } = useI18n()
 const { save } = useFollowSettings()
 
-const RUSSIAN = ['auto', 'always', 'never'] as const
-
 const schema = toTypedSchema(
   z.object({
     mode: z.enum(FOLLOW_MODES),
     waitHours: z.string(),
     movieWaitHours: z.string(),
     qualityPreset: z.enum(QUALITY_PRESETS),
-    requireRussian: z.enum(RUSSIAN),
   }),
 )
 
@@ -45,7 +42,6 @@ function valuesOf(defaults: Defaults) {
     waitHours: String(defaults.waitHours),
     movieWaitHours: String(defaults.movieWaitHours),
     qualityPreset: defaults.qualityPreset,
-    requireRussian: defaults.requireRussian,
   }
 }
 
@@ -58,7 +54,6 @@ const [mode] = defineField('mode')
 const [waitHours] = defineField('waitHours')
 const [movieWaitHours] = defineField('movieWaitHours')
 const [qualityPreset] = defineField('qualityPreset')
-const [requireRussian] = defineField('requireRussian')
 
 const seriesOptions = computed(() => waitOptionsFor(props.defaults.waitHours))
 const movieOptions = computed(() =>
@@ -80,7 +75,6 @@ const onSubmit = handleSubmit(async (values) => {
       waitHours: Number(values.waitHours),
       movieWaitHours: Number(values.movieWaitHours),
       qualityPreset: values.qualityPreset,
-      requireRussian: values.requireRussian,
     },
   })
 
@@ -193,35 +187,6 @@ const choiceClass
                 </span>
                 <span class="text-[12.5px] font-normal text-muted-foreground">
                   {{ t(`panel.follow.presets.${preset}.text`) }}
-                </span>
-              </span>
-            </Label>
-          </RadioGroup>
-        </fieldset>
-
-        <fieldset class="grid gap-2">
-          <legend class="mb-2 grid gap-1">
-            <span class="text-sm font-medium">
-              {{ t("panel.follow.rules.russian") }}
-            </span>
-            <span class="text-[12.5px] text-muted-foreground">
-              {{ t("panel.settings.follow.defaults.russianScope") }}
-            </span>
-          </legend>
-          <RadioGroup
-            v-model="requireRussian"
-            class="grid gap-2 md:grid-cols-3"
-          >
-            <Label v-for="item in RUSSIAN" :key="item" :class="choiceClass">
-              <RadioGroupItem :value="item" class="mt-0.5" />
-              <span class="grid gap-0.5">
-                <span class="font-medium">
-                  {{
-                    t(`panel.settings.follow.defaults.russian.${item}.title`)
-                  }}
-                </span>
-                <span class="text-[12.5px] font-normal text-muted-foreground">
-                  {{ t(`panel.settings.follow.defaults.russian.${item}.text`) }}
                 </span>
               </span>
             </Label>

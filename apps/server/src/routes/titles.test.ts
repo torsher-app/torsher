@@ -1,3 +1,4 @@
+import { deleteSetting, setSetting } from '../services/settings/index.ts'
 import {
   afterEach,
   beforeAll,
@@ -13,7 +14,6 @@ import { getDb, migrateDb } from '../db/index.ts'
 import { indexers, users } from '../db/schema.ts'
 import { saveFollowSettings } from '../services/follow/settings.ts'
 import { encryptSecret } from '../services/secrets/index.ts'
-import { deleteSetting } from '../services/settings/index.ts'
 import { clearSearchCache } from '../services/sources/cache.ts'
 import { tvIdentity } from '../services/tmdb/fixtures/index.ts'
 import {
@@ -79,6 +79,12 @@ beforeAll(async () => {
 })
 
 beforeEach(() => {
+  // These fixtures exercise Russian studio continuity explicitly.
+  setSetting('sources.profile', {
+    qualities: ['1080p', '2160p', '720p', 'SD'],
+    audioLanguages: ['ru'],
+    voiceTypes: ['D', 'MVO', 'DVO', 'AVO', 'VO', 'L'],
+  })
   clearSearchCache()
   getDb()
     .update(indexers)
@@ -109,6 +115,120 @@ afterEach(() => {
 })
 
 describe('get /api/titles/:id/sources', () => {
+  it.each(['de', 'ja', 'original', 'ru'])(
+    'uses preset audio %s when ranking cached sources',
+    async (audio) => {
+      const original = fetchMock.getMockImplementation()!
+      const tag = { de: 'GER', ja: 'JPN', original: 'ENG', ru: 'RUS' }[audio]!
+      fetchMock.mockImplementation(async (input, init) =>
+        new URL(String(input)).hostname === 'a.indexer.example'
+          ? new Response(
+              searchXml
+                .replace(' | LostFilm', ` | ${tag}`)
+                .replace('S02E05.2160p', 'S02E05.1080p')
+                .replace('H.265-GRP', 'H.265.FRE-GRP'),
+            )
+          : original(input, init),
+      )
+      const patch = await app.inject({
+        method: 'PATCH',
+        url: '/api/settings/sources/presets/default-1080p',
+        cookies: authed(),
+        payload: { audioLanguages: [audio], voiceTypes: [] },
+      })
+      expect(patch.statusCode).toBe(200)
+      const result = (
+        await app.inject({
+          url: '/api/titles/tmdb:tv:101/sources?season=2&presetId=default-1080p',
+          cookies: authed(),
+        })
+      ).json()
+      expect(result.audio).toBe(audio)
+      expect(result.candidates[0].title).toContain(tag)
+      if (audio !== 'ru') {
+        expect(result.pinnedVoice).toBeNull()
+        expect(result.voices).toEqual([])
+      }
+    },
+  )
+
+  it('пересортировывает кэш по выбранному пресету, наследует дефолт и заменяет удалённый', async () => {
+    const original = fetchMock.getMockImplementation()!
+    fetchMock.mockImplementation(async (input, init) => {
+      const response = await original(input, init)
+      return new URL(String(input)).hostname === 'a.indexer.example'
+        ? new Response(
+            searchXml
+              .replace(' | LostFilm', '')
+              .replace('name="seeders" value="7"', 'name="seeders" value="42"'),
+          )
+        : response
+    })
+    const url = '/api/titles/tmdb:tv:101/sources?season=2'
+    const initial = (await app.inject({ url, cookies: authed() })).json()
+    const searches = requested.length
+    const chosen = (
+      await app.inject({ url: `${url}&presetId=default-4k`, cookies: authed() })
+    ).json()
+    expect(initial.candidates[0].quality).toBe('1080p')
+    expect(chosen.candidates[0].quality).toBe('2160p')
+    expect(chosen.presets).toMatchObject({
+      defaultId: 'default-1080p',
+      effectiveId: 'default-4k',
+    })
+    expect(requested.length).toBe(searches)
+    expect(
+      (await app.inject({ url, cookies: authed() })).json().presets.effectiveId,
+    ).toBe('default-1080p')
+    await app.inject({
+      method: 'PUT',
+      url: '/api/settings/sources',
+      cookies: authed(),
+      payload: { defaultPresetId: 'default-4k' },
+    })
+    await app.inject({
+      method: 'DELETE',
+      url: '/api/settings/sources/presets/default-1080p',
+      cookies: authed(),
+    })
+    const fallback = (
+      await app.inject({
+        url: `${url}&presetId=default-1080p`,
+        cookies: authed(),
+      })
+    ).json()
+    expect(fallback.presets.effectiveId).toBe('default-4k')
+    expect(fallback.profile.qualities[0]).toBe('2160p')
+    expect(
+      (await app.inject({ url, cookies: authed() })).json().presets.effectiveId,
+    ).toBe('default-4k')
+    expect(requested.length).toBe(searches)
+  })
+
+  it('показывает сохранённый профиль на кэшированной выдаче без нового поиска', async () => {
+    const url = '/api/titles/tmdb:tv:101/sources?season=2'
+    const initial = await app.inject({ url, cookies: authed() })
+    const searches = requested.length
+    const qualities = ['2160p', '720p', '1080p', 'SD']
+    const voiceTypes = ['MVO', 'D', 'DVO', 'AVO', 'VO', 'L']
+    const saved = await app.inject({
+      method: 'PATCH',
+      url: '/api/settings/sources/presets/default-1080p',
+      cookies: authed(),
+      payload: { qualities, voiceTypes },
+    })
+    expect(saved.statusCode).toBe(200)
+    const changed = await app.inject({ url, cookies: authed() })
+    expect(changed.statusCode).toBe(200)
+    expect(changed.json().profile).toEqual({
+      qualities,
+      voiceTypes,
+      audioLanguages: ['ru'],
+    })
+    expect(changed.json().updatedAt).toBe(initial.json().updatedAt)
+    expect(requested.length).toBe(searches)
+  })
+
   it('отвечает 401 без входа', async () => {
     const res = await app.inject({ url: '/api/titles/tmdb:tv:101/sources' })
 
@@ -297,6 +417,7 @@ describe('get /api/titles/:id/sources', () => {
   })
 
   it('язык озвучки дома не `ru`: ранжирует по нему, без русских студий и фильтра', async () => {
+    deleteSetting('sources.profile')
     saveFollowSettings({ audio: { value: 'original', source: 'user' } })
 
     try {

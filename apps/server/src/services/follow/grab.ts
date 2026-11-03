@@ -361,7 +361,7 @@ export async function startGrab(
   torrent: Torrent,
   candidate: FollowPendingCandidate,
   episodes: EpisodeRef[],
-  options: { ownStudio?: string, now?: Date } = {},
+  options: { ownStudio?: string, now?: Date, isCurrent?: () => boolean } = {},
 ): Promise<GrabResult> {
   const now = options.now ?? new Date()
   const files = filesFor(torrent, candidate.title, follow.kind, episodes)
@@ -390,11 +390,22 @@ export async function startGrab(
   const upgrading = new Set(upgrades.map(episodeKey))
 
   try {
-    await startDownload(torrent, [...new Set(files.values())])
+    const started = await startDownload(
+      torrent,
+      [...new Set(files.values())],
+      options.isCurrent,
+    )
+    if (!started) {
+      restoreUpgrades(follow, upgrades)
+      return 'later'
+    }
   }
   catch (err) {
     // Апгрейд подождёт следующего поиска, серия остаётся в библиотеке
     restoreUpgrades(follow, upgrades)
+
+    if (options.isCurrent && !options.isCurrent())
+      return 'later'
 
     if (!(err instanceof InsufficientStorageError))
       throw err
@@ -500,12 +511,15 @@ export async function grabCandidate(
   follow: Follow,
   candidate: FollowPendingCandidate,
   episodes: EpisodeRef[],
-  options: { ownStudio?: string, now?: Date } = {},
+  options: { ownStudio?: string, now?: Date, isCurrent?: () => boolean } = {},
 ): Promise<GrabResult> {
   const now = options.now ?? new Date()
+  const isCurrent = () =>
+    followById(follow.id)?.state === 'active'
+    && (options.isCurrent?.() ?? true)
 
   // Проход начался раньше: слежение могли остановить или удалить
-  if (followById(follow.id)?.state !== 'active')
+  if (!isCurrent())
     return 'later'
 
   const blocks = blockedReleases(follow.titleId, now)
@@ -543,9 +557,13 @@ export async function grabCandidate(
       },
       () => true,
       'follow',
+      isCurrent,
     )
   }
   catch (err) {
+    if (!isCurrent())
+      return 'later'
+
     if (!isSkippable(err))
       throw err
 
@@ -561,6 +579,9 @@ export async function grabCandidate(
       backOffIndexer(candidate, err, now),
     )
   }
+
+  if (!isCurrent())
+    return 'later'
 
   if (!torrent)
     return retryLater(follow, candidate, episodes, now)
@@ -626,6 +647,7 @@ export async function grabCandidate(
     return await startGrab(follow, torrent, candidate, episodes, {
       ...options,
       now,
+      isCurrent,
     })
   }
   catch (err) {
