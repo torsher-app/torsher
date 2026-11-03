@@ -348,13 +348,25 @@ describe('post /api/titles/:id/watch', () => {
 })
 
 describe('экран «Источники» и «Файлы»', () => {
-  it.each([undefined, 'Harbor archives'])(
-    'low виден при query=%s, открывается только явным выбором',
-    async (query) => {
-      const labelled = searchXml
+  it.each([
+    { query: undefined, confidence: 'medium' },
+    { query: 'Harbor archives', confidence: 'medium' },
+    { query: undefined, confidence: 'low' },
+    { query: 'Harbor archives', confidence: 'low' },
+  ])(
+    '$confidence виден при query=$query, открывается только явным выбором',
+    async ({ query, confidence }) => {
+      let labelled = searchXml
         .replaceAll('<title>Тихая гавань', '<title>Channel One: Тихая гавань')
         .replaceAll(' / Quiet Harbor', ' / Studio Two: Quiet Harbor')
         .replaceAll('<title>Quiet', '<title>Channel Three: Quiet')
+      // Год входит в общий допуск сериала, но не подтверждает второй сезон.
+      // Вместе с префиксом это low, доступный для явного выбора.
+      if (confidence === 'low') {
+        labelled = labelled
+          .replaceAll('(2024)', '(2026)')
+          .replaceAll('S02E05.', 'S02E05.2026.')
+      }
       overrides['GET a.indexer.example/torznab/api'] = url =>
         new Response(
           query && url.searchParams.get('q') !== query
@@ -370,7 +382,7 @@ describe('экран «Источники» и «Файлы»', () => {
       expect(body.candidates.length).toBeGreaterThan(0)
       expect(
         body.candidates.every(
-          (item: { confidence: string }) => item.confidence === 'low',
+          (item: { confidence: string }) => item.confidence === confidence,
         ),
       ).toBe(true)
       expect(body.top).toEqual([])
