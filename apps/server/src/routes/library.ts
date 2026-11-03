@@ -1,3 +1,4 @@
+import { trackPlayback } from '../services/segments/activity.ts'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { createReadStream } from 'node:fs'
 import { stat } from 'node:fs/promises'
@@ -67,6 +68,8 @@ export const libraryRoutes: FastifyPluginAsyncZod = async (app) => {
       if (!found || !info?.isFile())
         return reply.code(404).send({ message: 'File not found' })
 
+      const releasePlayback = trackPlayback()
+      reply.raw.once('close', releasePlayback)
       const size = info.size
       const range = parseRange(request.headers.range, size)
 

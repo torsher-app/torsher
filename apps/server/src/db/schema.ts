@@ -1,3 +1,4 @@
+import type { AnalysisData } from '../services/segments/model.ts'
 import type { TorznabCaps } from '../services/torznab/caps.ts'
 import type { MediaInfo } from '../services/media/probe.ts'
 import { randomUUID } from 'node:crypto'
@@ -1514,3 +1515,15 @@ export const notificationChannels = sqliteTable('notification_channels', {
 })
 
 export type NotificationChannel = typeof notificationChannels.$inferSelect
+
+/** Disposable, versioned media analysis. Never contains decoded audio or video. */
+export const mediaAnalysis = sqliteTable('media_analysis', {
+  fileId: text('file_id')
+    .primaryKey()
+    .references(() => mediaFiles.id, { onDelete: 'cascade' }),
+  revision: text('revision').notNull(),
+  version: integer('version').notNull(),
+  identity: text('identity').notNull(),
+  data: text('data', { mode: 'json' }).$type<AnalysisData>().notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+})

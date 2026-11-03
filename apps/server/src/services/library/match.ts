@@ -1,3 +1,4 @@
+import { queueAnalysis } from '../segments/index.ts'
 import type { LibraryFolder, MediaFile } from '../../db/schema.ts'
 import type { KindHint } from './recognize.ts'
 import { readdir, readFile } from 'node:fs/promises'
@@ -352,6 +353,7 @@ export function assignFiles(
       })
       .where(eq(mediaFiles.id, row.id))
       .run()
+    queueAnalysis(row.id)
   }
 }
 

@@ -1,8 +1,10 @@
+import { trackPlayback } from '../segments/activity.ts'
 // Открытые потоки по раздачам: что смотрят сейчас, вытеснять нельзя
 const open = new Map<string, number>()
 
 /** Отмечает открытый поток; вызвать возвращённую функцию при закрытии */
 export function trackStream(torrentId: string) {
+  const releasePlayback = trackPlayback()
   open.set(torrentId, (open.get(torrentId) ?? 0) + 1)
 
   let released = false
@@ -12,6 +14,7 @@ export function trackStream(torrentId: string) {
       return
 
     released = true
+    releasePlayback()
     const left = (open.get(torrentId) ?? 1) - 1
 
     if (left > 0)

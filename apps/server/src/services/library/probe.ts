@@ -1,3 +1,4 @@
+import { queueAnalysis } from '../segments/index.ts'
 import { stat } from 'node:fs/promises'
 import { eq } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
@@ -123,6 +124,7 @@ async function drain() {
           regeneration.generated++
         regeneration.running = forced.size > 0
       }
+      queueAnalysis(id)
       currentId = undefined
     }
   }

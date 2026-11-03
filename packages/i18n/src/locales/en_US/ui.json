@@ -618,7 +618,9 @@
       "link": "Video link",
       "linkHint": "Open it in VLC or Infuse. The link works for 12 h",
       "copied": "Copied"
-    }
+    },
+    "skipIntro": "Skip intro",
+    "skipCredits": "Skip credits"
   },
   "languages": {
     "rus": "Russian",

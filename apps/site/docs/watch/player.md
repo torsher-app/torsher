@@ -45,6 +45,14 @@ The controls hide after 4 seconds of playback. They show the title and the file 
 
 With a pointer or a mouse, moving shows the controls, a click on the picture pauses, and a click on the timeline jumps there.
 
+## Skip intros and credits
+
+For analyzed videos in your library, <Ui k="player.skipIntro" /> or <Ui k="player.skipCredits" /> appears during a detected section. With the controls hidden, press **OK** to skip or **Back** to dismiss it. With the controls visible, choose the skip button. Skipping keeps the video paused if you paused it, and never happens automatically.
+
+Intro detection needs at least three different episodes from the same season in your library. Credits detection supports light text on a dark background. Analysis runs while nobody is watching and stops when playback starts. New files may need idle time before a button appears; streamed torrents, unsupported credits and uncertain matches show no button. Conservative boundaries can leave a short part of the section to play.
+
+Skipping credits seeks only across a confirmed section, preserving gaps that may contain scenes. The usual next-episode setting still applies.
+
 ## Audio
 
 <Ui k="player.audio" /> appears when the file has two or more audio tracks. Its second line is the voice-over or language that's playing. The panel lists each track by language and studio, with its type, codec and channels.

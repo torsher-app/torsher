@@ -1,3 +1,7 @@
+import type { SkipSegment } from '../segments/model.ts'
+import { trackPlayback } from '../segments/activity.ts'
+import { readySegments } from '../segments/index.ts'
+import { open, readdir, rm, stat } from 'node:fs/promises'
 import type { Torrent } from '../../db/schema.ts'
 import type {
   AudioPreference,
@@ -9,7 +13,6 @@ import type { MediaInfo } from './probe.ts'
 import type { ExternalSubtitle } from './subtitles.ts'
 import type { Cue } from './webvtt.ts'
 import { randomUUID } from 'node:crypto'
-import { open, readdir, rm } from 'node:fs/promises'
 import { basename, dirname, join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { config } from '../../config.ts'
@@ -52,6 +55,7 @@ export interface PlaybackSession {
   fileIndex: number
   fileName: string
   status: 'probing' | 'ready'
+  skipSegments?: SkipSegment[]
   media: MediaInfo | null
   external: ExternalSubtitle[]
   audioStream: number | null
@@ -218,6 +222,9 @@ async function prepare(
   signal: AbortSignal,
 ) {
   const { torrent, library, fileIndex, device } = input
+  const libraryStat = library ? await stat(library.path) : undefined
+  if (library)
+    session.skipSegments = await readySegments(library.id)
   const { log } = session
   const tools = await mediaTools()
 
@@ -257,7 +264,9 @@ async function prepare(
           ? readCueTimes(readerOf(url)).catch(() => null)
           : undefined
       session.media = await probeMedia(
-        library ? `library:${library.id}` : `${torrent!.infoHash}:${fileIndex}`,
+        library
+          ? `library:${library.id}:${libraryStat!.size}:${libraryStat!.mtimeMs}`
+          : `${torrent!.infoHash}:${fileIndex}`,
         url,
         session.fileName,
       )
@@ -482,6 +491,9 @@ function formatDuration(ms: number) {
 
 /** Новая сессия: проба и решение идут в фоне, `ready` — их окончание */
 export function createSession(input: SessionInput) {
+  const releasePlayback = input.torrent
+    ? trackStream(input.torrent.id)
+    : trackPlayback()
   const id = randomUUID()
   const session: PlaybackSession = {
     id,
@@ -542,8 +554,7 @@ export function createSession(input: SessionInput) {
   closers.set(session.id, closer)
   // Пока сессия открыта, раздачу не вытесняют и не ставят на паузу — и до
   // конца пробы, и в прямом режиме, где плеер переоткрывает поток при перемотке
-  if (input.torrent)
-    releases.set(session.id, trackStream(input.torrent.id))
+  releases.set(session.id, releasePlayback)
   ensureSweeper()
 
   return session

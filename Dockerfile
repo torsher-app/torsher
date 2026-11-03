@@ -99,7 +99,7 @@ FROM node:${NODE_VERSION}-trixie-slim
 # в контейнер монтирует NVIDIA Container Toolkit хоста
 ARG TARGETARCH
 RUN apt-get update \
- && apt-get install -y --no-install-recommends tini ca-certificates ffmpeg \
+ && apt-get install -y --no-install-recommends tini ca-certificates ffmpeg libchromaprint-tools \
       mesa-va-drivers mesa-vulkan-drivers \
       $([ "$TARGETARCH" = amd64 ] && echo intel-media-va-driver) \
  && rm -f /usr/share/vulkan/icd.d/lvp_icd*.json \
@@ -112,6 +112,7 @@ ENV NODE_ENV=production \
     LIBRARY_PATH=/data/library \
     ENGINE_PATH=/usr/local/bin/torsher-engine \
     FFMPEG_PATH=/usr/bin/ffmpeg \
+    FPCALC_PATH=/usr/bin/fpcalc \
     FFPROBE_PATH=/usr/bin/ffprobe \
     NVIDIA_VISIBLE_DEVICES=all \
     NVIDIA_DRIVER_CAPABILITIES=compute,video,utility,graphics \
