@@ -144,6 +144,10 @@ export const config = {
     return process.env.FFMPEG_PATH || 'ffmpeg'
   },
 
+  get fpcalcPath() {
+    return process.env.FPCALC_PATH || 'fpcalc'
+  },
+
   get ffprobePath() {
     return process.env.FFPROBE_PATH || 'ffprobe'
   },

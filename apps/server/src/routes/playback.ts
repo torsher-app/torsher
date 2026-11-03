@@ -133,6 +133,7 @@ function toPlaybackResponse(
 
   return {
     sessionId: session.id,
+    skipSegments: session.skipSegments,
     status: session.status,
     mode: ready ? decision.mode : null,
     streamUrl: ready ? streamUrlOf(session, token) : null,

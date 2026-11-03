@@ -199,6 +199,18 @@ https://sources.debian.org/src/ffmpeg/ and, for the exact version in a given
 image, https://snapshot.debian.org/package/ffmpeg/. Torsher runs FFmpeg as a
 separate program and does not link it.
 
+Chromaprint (fpcalc for local audio fingerprints, Debian package libchromaprint-tools)
+https://github.com/acoustid/chromaprint
+Upstream source: MIT with included FFmpeg code under LGPL 2.1; the complete
+library is distributed under LGPL 2.1. Linked FFmpeg and FFT libraries retain
+their own licenses. Exact Debian build notices and license texts are in
+/usr/share/doc/libchromaprint-tools/copyright and
+/usr/share/doc/libchromaprint1/copyright inside the image.
+Corresponding source: https://sources.debian.org/src/chromaprint/ and
+https://snapshot.debian.org/package/chromaprint/ for the packaged version.
+Torsher runs fpcalc as a separate program and does not link it or contact
+AcoustID. No Intro Skipper source code is included.
+
 Mesa (VAAPI and Vulkan drivers for AMD and Intel graphics, Debian packages
 mesa-va-drivers and mesa-vulkan-drivers)
 https://mesa3d.org

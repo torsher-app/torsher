@@ -2559,6 +2559,18 @@ export interface MediaInfoInput {
 
 export interface PlaybackInput {
   sessionId: string;
+  skipSegments?: {
+    id: string;
+    kind: "intro" | "credits";
+    /** @min 0 */
+    start: number;
+    /**
+     * @min 0
+     * @exclusiveMin true
+     */
+    end: number;
+    source: "audio" | "visual";
+  }[];
   status: "probing" | "ready";
   mode: "direct" | "hls" | null;
   streamUrl: string | null;
@@ -7499,6 +7511,18 @@ export interface MediaInfo {
 
 export interface Playback {
   sessionId: string;
+  skipSegments?: {
+    id: string;
+    kind: "intro" | "credits";
+    /** @min 0 */
+    start: number;
+    /**
+     * @min 0
+     * @exclusiveMin true
+     */
+    end: number;
+    source: "audio" | "visual";
+  }[];
   status: "probing" | "ready";
   mode: "direct" | "hls" | null;
   streamUrl: string | null;

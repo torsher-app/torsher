@@ -1,3 +1,4 @@
+import { startAnalysis, stopAnalysis } from './services/segments/index.ts'
 import type { LogLevel } from './services/logs/index.ts'
 import process from 'node:process'
 import { createApp } from './app.ts'
@@ -196,6 +197,8 @@ onStoragePathsChanged(refreshScrub)
 
 const FOLDER_SCAN_MS = 12 * 60 * 60 * 1000
 
+startAnalysis()
+
 function checkLibrary() {
   checkManagedFiles()
     .then(queueUnprobed)
@@ -332,6 +335,7 @@ const shutdown = createShutdown({
     async () => stopBackupScheduler(),
     async () => stopFollowScheduler(),
     // ffmpeg перепаковки тоже дочерний: его сегменты после выхода не нужны
+    stopAnalysis,
     stopAllSessions,
     () => engine.stop(),
     () => app.close(),

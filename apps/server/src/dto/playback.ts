@@ -115,6 +115,17 @@ const mediaInfo = z
 export const playback = z
   .object({
     sessionId: z.string(),
+    skipSegments: z
+      .array(
+        z.object({
+          id: z.string(),
+          kind: z.enum(['intro', 'credits']),
+          start: z.number().nonnegative(),
+          end: z.number().positive(),
+          source: z.enum(['audio', 'visual']),
+        }),
+      )
+      .optional(),
     // `probing` — сервер ещё читает файл: клиент спрашивает `GET /playback/:id`
     status: z.enum(['probing', 'ready']),
     mode: z.enum(['direct', 'hls']).nullable(),
