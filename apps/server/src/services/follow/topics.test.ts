@@ -45,6 +45,7 @@ import { managedFolder } from '../library/files.ts'
 import { checkLinkMode } from '../library/link.ts'
 import { syncLibrary } from '../library/linker.ts'
 import { clearSearchCache } from '../sources/cache.ts'
+import { saveSourceProfile } from '../sources/profile.ts'
 import { pinVoice } from '../sources/voices.ts'
 import { tvOngoing } from '../tmdb/fixtures/index.ts'
 import { carryMap } from '../torrents/refresh.ts'
@@ -499,6 +500,8 @@ beforeEach(async () => {
   ])
     getDb().delete(table).run()
 
+  // These fixtures exercise Russian studio continuity explicitly.
+  saveSourceProfile({ audioLanguages: ['ru'] })
   clearSearchCache()
   resetFollowSearch(0)
   resetGrabRetries()

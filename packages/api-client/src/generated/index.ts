@@ -881,8 +881,29 @@ export interface TitleSourcesInput {
     | "ko"
     | "zh";
   profile: {
+    audioLanguages?: (
+      | "original"
+      | "ru"
+      | "en"
+      | "uk"
+      | "ja"
+      | "de"
+      | "fr"
+      | "es"
+      | "it"
+      | "ko"
+      | "zh"
+    )[];
     qualities: ("2160p" | "1080p" | "720p" | "SD")[];
     voiceTypes: ("D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original")[];
+  };
+  presets?: {
+    defaultId: string;
+    effectiveId: string;
+    items: {
+      id: string;
+      name: string;
+    }[];
   };
   pinnedVoice: VoiceRefInput | null;
   seasonCandidate: string | null;
@@ -919,6 +940,11 @@ export interface PinTitleVoiceInput {
 }
 
 export interface WatchTitleInput {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  presetId?: string;
   /**
    * @min 1
    * @max 999
@@ -989,6 +1015,11 @@ export interface TitleFileInput {
 }
 
 export interface DownloadTitleInput {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  presetId?: string;
   /**
    * @min 1
    * @max 999
@@ -3908,6 +3939,91 @@ export interface PinErrorResponseInput {
   retryAfter: number | null;
 }
 
+export interface SourcePresetInput {
+  id: string;
+  /**
+   * @minLength 1
+   * @maxLength 64
+   */
+  name: string;
+  /**
+   * @maxItems 4
+   * @minItems 4
+   */
+  qualities: ("1080p" | "2160p" | "720p" | "SD")[];
+  voiceTypes: ("D" | "MVO" | "DVO" | "AVO" | "VO" | "L")[];
+  /**
+   * @maxItems 11
+   * @minItems 1
+   */
+  audioLanguages: (
+    | "original"
+    | "ru"
+    | "en"
+    | "uk"
+    | "ja"
+    | "de"
+    | "fr"
+    | "es"
+    | "it"
+    | "ko"
+    | "zh"
+  )[];
+}
+
+export interface SourceSettingsInput {
+  defaultPresetId: string;
+  presets: SourcePresetInput[];
+}
+
+export interface UpdateSourceSettingsInput {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  defaultPresetId: string;
+}
+
+export interface CreateSourcePresetInput {
+  /**
+   * @minLength 1
+   * @maxLength 64
+   */
+  name: string;
+}
+
+export interface UpdateSourcePresetInput {
+  /**
+   * @maxItems 11
+   * @minItems 1
+   */
+  audioLanguages?: (
+    | "original"
+    | "ru"
+    | "en"
+    | "uk"
+    | "ja"
+    | "de"
+    | "fr"
+    | "es"
+    | "it"
+    | "ko"
+    | "zh"
+  )[];
+  /**
+   * @minLength 1
+   * @maxLength 64
+   */
+  name?: string;
+  makeDefault?: boolean;
+  /**
+   * @maxItems 4
+   * @minItems 4
+   */
+  qualities?: ("1080p" | "2160p" | "720p" | "SD")[];
+  voiceTypes?: ("D" | "MVO" | "DVO" | "AVO" | "VO" | "L")[];
+}
+
 export interface ThumbnailSettingsInput {
   automatic: boolean;
   running: boolean;
@@ -5704,8 +5820,29 @@ export interface TitleSources {
     | "ko"
     | "zh";
   profile: {
+    audioLanguages?: (
+      | "original"
+      | "ru"
+      | "en"
+      | "uk"
+      | "ja"
+      | "de"
+      | "fr"
+      | "es"
+      | "it"
+      | "ko"
+      | "zh"
+    )[];
     qualities: ("2160p" | "1080p" | "720p" | "SD")[];
     voiceTypes: ("D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original")[];
+  };
+  presets?: {
+    defaultId: string;
+    effectiveId: string;
+    items: {
+      id: string;
+      name: string;
+    }[];
   };
   pinnedVoice: VoiceRef | null;
   seasonCandidate: string | null;
@@ -5742,6 +5879,11 @@ export interface PinTitleVoice {
 }
 
 export interface WatchTitle {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  presetId?: string;
   /**
    * @min 1
    * @max 999
@@ -5812,6 +5954,11 @@ export interface TitleFile {
 }
 
 export interface DownloadTitle {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  presetId?: string;
   /**
    * @min 1
    * @max 999
@@ -8730,6 +8877,91 @@ export interface PinErrorResponse {
   retryAfter: number | null;
 }
 
+export interface SourcePreset {
+  id: string;
+  /**
+   * @minLength 1
+   * @maxLength 64
+   */
+  name: string;
+  /**
+   * @maxItems 4
+   * @minItems 4
+   */
+  qualities: ("1080p" | "2160p" | "720p" | "SD")[];
+  voiceTypes: ("D" | "MVO" | "DVO" | "AVO" | "VO" | "L")[];
+  /**
+   * @maxItems 11
+   * @minItems 1
+   */
+  audioLanguages: (
+    | "original"
+    | "ru"
+    | "en"
+    | "uk"
+    | "ja"
+    | "de"
+    | "fr"
+    | "es"
+    | "it"
+    | "ko"
+    | "zh"
+  )[];
+}
+
+export interface SourceSettings {
+  defaultPresetId: string;
+  presets: SourcePreset[];
+}
+
+export interface UpdateSourceSettings {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  defaultPresetId: string;
+}
+
+export interface CreateSourcePreset {
+  /**
+   * @minLength 1
+   * @maxLength 64
+   */
+  name: string;
+}
+
+export interface UpdateSourcePreset {
+  /**
+   * @maxItems 11
+   * @minItems 1
+   */
+  audioLanguages?: (
+    | "original"
+    | "ru"
+    | "en"
+    | "uk"
+    | "ja"
+    | "de"
+    | "fr"
+    | "es"
+    | "it"
+    | "ko"
+    | "zh"
+  )[];
+  /**
+   * @minLength 1
+   * @maxLength 64
+   */
+  name?: string;
+  makeDefault?: boolean;
+  /**
+   * @maxItems 4
+   * @minItems 4
+   */
+  qualities?: ("1080p" | "2160p" | "720p" | "SD")[];
+  voiceTypes?: ("D" | "MVO" | "DVO" | "AVO" | "VO" | "L")[];
+}
+
 export interface ThumbnailSettings {
   automatic: boolean;
   running: boolean;
@@ -9919,6 +10151,16 @@ export type GetNetDnsProvidersError = MessageResponse;
 export type GetNetCheckError = MessageResponse;
 
 export type PostNetCheckError = MessageResponse;
+
+export type GetSourceSettingsError = MessageResponse;
+
+export type PutSourceSettingsError = MessageResponse;
+
+export type PostSourcePresetError = MessageResponse;
+
+export type PatchSourcePresetError = MessageResponse;
+
+export type DeleteSourcePresetError = MessageResponse;
 
 export type GetThumbnailSettingsError = MessageResponse;
 
@@ -11302,6 +11544,11 @@ export class Api<
     getTitleSources: (
       id: string,
       query?: {
+        /**
+         * @minLength 1
+         * @maxLength 100
+         */
+        presetId?: string;
         /** @pattern ^[1-9]\d{0,2}$ */
         season?: string;
         /** @pattern ^[1-9]\d{0,3}$ */
@@ -12982,6 +13229,97 @@ export class Api<
       }),
   };
   settings = {
+    /**
+     * No description
+     *
+     * @tags Settings
+     * @name GetSourceSettings
+     * @request GET:/api/settings/sources
+     */
+    getSourceSettings: (params: RequestParams = {}) =>
+      this.request<SourceSettings, GetSourceSettingsError>({
+        path: `/api/settings/sources`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Settings
+     * @name PutSourceSettings
+     * @request PUT:/api/settings/sources
+     */
+    putSourceSettings: (
+      data: UpdateSourceSettingsInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<SourceSettings, PutSourceSettingsError>({
+        path: `/api/settings/sources`,
+        method: "PUT",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Settings
+     * @name PostSourcePreset
+     * @request POST:/api/settings/sources/presets
+     */
+    postSourcePreset: (
+      data: CreateSourcePresetInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<SourceSettings, PostSourcePresetError>({
+        path: `/api/settings/sources/presets`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Settings
+     * @name PatchSourcePreset
+     * @request PATCH:/api/settings/sources/presets/{presetId}
+     */
+    patchSourcePreset: (
+      presetId: string,
+      data: UpdateSourcePresetInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<SourceSettings, PatchSourcePresetError>({
+        path: `/api/settings/sources/presets/${presetId}`,
+        method: "PATCH",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Settings
+     * @name DeleteSourcePreset
+     * @request DELETE:/api/settings/sources/presets/{presetId}
+     */
+    deleteSourcePreset: (presetId: string, params: RequestParams = {}) =>
+      this.request<SourceSettings, DeleteSourcePresetError>({
+        path: `/api/settings/sources/presets/${presetId}`,
+        method: "DELETE",
+        format: "json",
+        ...params,
+      }),
+
     /**
      * No description
      *

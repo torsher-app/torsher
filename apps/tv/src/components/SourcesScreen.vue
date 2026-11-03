@@ -18,6 +18,12 @@ import {
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { api } from '../api.ts'
+import { session } from '../session.ts'
+import {
+  selectedSourcePreset,
+  selectSourcePreset,
+  sourcePresetStore,
+} from '../sourcePreset.ts'
 import type { PanelOption } from './OptionsPanel.vue'
 import ActionButton from './ActionButton.vue'
 import AppIcon from './AppIcon.vue'
@@ -123,17 +129,29 @@ const seasonFilter = computed(() =>
 const nonce = ref(0)
 let forceRefresh = false
 const { data: sources, status } = useResource<TitleSources>(
-  computed(() => `${id.value}:${nonce.value}:${query.value ?? ''}`),
-  (_, signal) => {
+  computed(
+    () =>
+      `${id.value}:${nonce.value}:${query.value ?? ''}:${session.profile?.id ?? ''}:${selectedSourcePreset.value ?? ''}`,
+  ),
+  async (_, signal) => {
+    const profileId = session.profile?.id
+    const presetId = selectedSourcePreset.value
     const refresh = forceRefresh
 
     forceRefresh = false
 
-    return api.titles.getTitleSources(
+    const result = await api.titles.getTitleSources(
       id.value,
-      { all: '1', refresh: refresh ? '1' : undefined, query: query.value },
+      {
+        all: '1',
+        refresh: refresh ? '1' : undefined,
+        query: query.value,
+        presetId,
+      },
       { signal },
     )
+    sourcePresetStore.reconcile(profileId, presetId, result.presets)
+    return result
   },
 )
 
@@ -252,7 +270,7 @@ const SORT_LABEL: Record<SourceSort, string> = {
 
 // Сортировка и фильтры — одной строкой кнопок, выбор — в правой панели: список
 // остаётся на весь экран
-type Control = 'query' | 'sort' | 'season' | 'voice' | 'quality'
+type Control = 'preset' | 'query' | 'sort' | 'season' | 'voice' | 'quality'
 
 const panel = ref<Control>()
 let panelOpener: HTMLElement | undefined
@@ -274,6 +292,17 @@ const controls = computed(() => {
       }),
     },
   ]
+
+  if (sources.value?.presets) {
+    const metadata = sources.value.presets
+    const effective = metadata.items.find(
+      item => item.id === metadata.effectiveId,
+    )
+    list.push({
+      id: 'preset',
+      label: t('sources.controlPreset', { name: effective?.name ?? '' }),
+    })
+  }
 
   if (candidates.value.length === 0)
     return list
@@ -364,6 +393,26 @@ function submitDraft() {
 
 const panelOptions = computed<PanelOption[]>(() => {
   switch (panel.value) {
+    case 'preset': {
+      const metadata = sources.value?.presets
+      if (!metadata)
+        return []
+      const defaultName
+        = metadata.items.find(item => item.id === metadata.defaultId)?.name
+          ?? ''
+      return [
+        {
+          id: 'default',
+          label: t('sources.presetDefault', { name: defaultName }),
+          selected: !selectedSourcePreset.value,
+        },
+        ...metadata.items.map(item => ({
+          id: `preset:${item.id}`,
+          label: item.name,
+          selected: selectedSourcePreset.value === item.id,
+        })),
+      ]
+    }
     case 'query':
       return queryOptions.value
     case 'sort':
@@ -439,6 +488,9 @@ function choose(id: string) {
   const all = id === 'all'
 
   switch (panel.value) {
+    case 'preset':
+      selectSourcePreset(id === 'default' ? undefined : id.slice(7))
+      break
     case 'query':
       setView({ query: all || id === 'auto' ? undefined : id.slice(2) })
       break
@@ -530,18 +582,12 @@ const profileLine = computed(() => {
     sources.value.profile,
   )
 
-  // Типы перевода — русские: у другого языка озвучки профиль — сам язык
-  if (sources.value.audio !== 'ru') {
-    return t('sources.profileAudio', {
-      qualities: qualities.join(' → '),
-      audio: t(`audioLanguages.${sources.value.audio}`),
-    })
-  }
-
   const voices = voiceTypes.map(type => t(`sources.voiceTypes.${type}`))
-
-  return t('sources.profile', {
+  return t('sources.profilePreferences', {
     qualities: qualities.join(' → '),
+    languages: (sources.value.profile.audioLanguages ?? [sources.value.audio])
+      .map(language => t(`audioLanguages.${language}`))
+      .join(' → '),
     voices: [...voices, ...(moreVoices ? ['…'] : [])].join(' → '),
   })
 })

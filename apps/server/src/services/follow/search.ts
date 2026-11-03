@@ -1,7 +1,7 @@
 import type { Follow } from '../../db/schema.ts'
 import type { SearchOutcome } from '../sources/search.ts'
 import type { EpisodeWithState } from './wanted.ts'
-import { eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import { follows } from '../../db/schema.ts'
 import {
@@ -259,7 +259,20 @@ export function followSearchStarted(now: Date) {
 }
 
 function setSchedule(follow: Follow, values: Partial<Follow>) {
-  getDb().update(follows).set(values).where(eq(follows.id, follow.id)).run()
+  // Изменение предпочтений обнуляет lastSearchAt. Старый проход после await
+  // не должен вернуть отменённое расписание поверх этого сигнала переоценки.
+  getDb()
+    .update(follows)
+    .set(values)
+    .where(
+      and(
+        eq(follows.id, follow.id),
+        follow.lastSearchAt
+          ? eq(follows.lastSearchAt, follow.lastSearchAt)
+          : isNull(follows.lastSearchAt),
+      ),
+    )
+    .run()
 }
 
 /** Состояние слежения для планировщика: пора ли искать и когда смотреть снова */
@@ -413,7 +426,7 @@ async function runSearch(due: DueSearch, now: Date) {
 
   const { next } = await evaluate(searched, now)
 
-  setSchedule(follow, { nextSearchAt: next })
+  setSchedule(searched, { nextSearchAt: next })
   return true
 }
 

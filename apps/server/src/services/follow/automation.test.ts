@@ -1,3 +1,9 @@
+import { deleteSetting, setSetting } from '../settings/index.ts'
+import * as picks from './pick.ts'
+import * as watch from '../sources/watch.ts'
+import * as storage from '../storage/index.ts'
+import * as notify from './notify.ts'
+import { saveSourceProfile } from '../sources/profile.ts'
 import type { Follow } from '../../db/schema.ts'
 import type { EngineTorrentState } from '../engine/index.ts'
 import { Buffer } from 'node:buffer'
@@ -48,10 +54,14 @@ import {
   pendingOf,
   resetGrabRetries,
 } from './grab.ts'
-import { deleteSetting } from '../settings/index.ts'
 import { purgeHistory } from './history.ts'
 import { followById, updateFollow } from './index.ts'
-import { followStates, grabPending, reportMissing } from './pass.ts'
+import {
+  decideFollow,
+  followStates,
+  grabPending,
+  reportMissing,
+} from './pass.ts'
 import { followNewEpisodes } from './badges.ts'
 import { openPick, PickError, settlePicks } from './pick.ts'
 import { followAutomation, followTick, underFollowLock } from './schedule.ts'
@@ -59,6 +69,7 @@ import {
   requestedSearch,
   requestFollowSearch,
   resetFollowSearch,
+  searchPass,
 } from './search.ts'
 import { setServerAudio } from './audio.ts'
 import { saveFollowSettings } from './settings.ts'
@@ -336,6 +347,12 @@ beforeAll(async () => {
 })
 
 beforeEach(() => {
+  // These fixtures exercise Russian studio continuity explicitly.
+  setSetting('sources.profile', {
+    qualities: ['1080p', '2160p', '720p', 'SD'],
+    audioLanguages: ['ru'],
+    voiceTypes: ['D', 'MVO', 'DVO', 'AVO', 'VO', 'L'],
+  })
   for (const table of [
     follows,
     followHistory,
@@ -381,6 +398,28 @@ beforeEach(() => {
   fetchMock.mockImplementation(async (input, init = {}) => {
     const url = new URL(String(input))
     const method = init.method ?? 'GET'
+
+    if (url.pathname === '/3/movie/3001') {
+      return json({
+        id: 3001,
+        title: 'The Paper Lantern',
+        original_title: 'The Paper Lantern',
+        original_language: 'en',
+        release_date: '2021-06-11',
+        status: 'Released',
+        runtime: 90,
+        genres: [],
+        overview: '',
+        vote_average: 0,
+        vote_count: 0,
+        poster_path: null,
+        backdrop_path: null,
+        alternative_titles: { titles: [] },
+        translations: { translations: [] },
+        external_ids: {},
+        release_dates: { results: [] },
+      })
+    }
 
     if (url.pathname === '/3/tv/3000')
       return json(series())
@@ -451,6 +490,301 @@ afterEach(() => {
 })
 
 describe('автоматика «Следить»', () => {
+  it.each([
+    { kind: 'series' as const, state: 'active' as const },
+    { kind: 'series' as const, state: 'paused' as const },
+    { kind: 'movie' as const, state: 'active' as const },
+  ])(
+    'переоценивает pending следующим поисковым проходом после смены профиля: $kind/$state',
+    async ({ kind, state }) => {
+      const now = new Date()
+      const firstSeenAt = new Date(now.getTime() - HOUR_MS)
+      const follow = insertFollow({
+        kind,
+        state,
+        titleId: kind === 'movie' ? 'tmdb:movie:3001' : SERIES,
+        startSeason: kind === 'movie' ? 0 : 2,
+        startEpisode: kind === 'movie' ? 0 : 8,
+        mode: 'notify',
+        lastSearchAt: now,
+        nextSearchAt: new Date(now.getTime() + DAY_MS),
+      })
+      getDb()
+        .insert(followEpisodes)
+        .values({
+          followId: follow.id,
+          season: follow.startSeason,
+          episode: follow.startEpisode,
+          firstSeenAt,
+          waitUntil: new Date(now.getTime() + HOUR_MS),
+          pending: { id: 'old', title: 'The.Paper.Lantern.720p', seeders: 1 },
+        })
+        .run()
+      // nextSearchAt сам по себе не делает поиск due при недавнем lastSearchAt.
+      getDb()
+        .update(follows)
+        .set({ nextSearchAt: null })
+        .where(eq(follows.id, follow.id))
+        .run()
+      expect(await searchPass([followById(follow.id)!], now)).toBe(false)
+      expect(indexerSearches).toBe(0)
+
+      saveSourceProfile({ qualities: ['2160p', '1080p', '720p', 'SD'] })
+      if (state === 'paused')
+        updateFollow(follow.id, { state: 'active' })
+      expect(await searchPass([followById(follow.id)!], now)).toBe(true)
+      expect(indexerSearches).toBeGreaterThan(0)
+      expect(followById(follow.id)!.lastSearchAt).toEqual(now)
+      expect(rows(follow.id)[0]!.firstSeenAt).toEqual(firstSeenAt)
+    },
+  )
+
+  it('завершающийся поиск не восстанавливает расписание после смены профиля', async () => {
+    const follow = insertFollow({ mode: 'notify', audio: 'ru', waitHours: 0 })
+    items = [{ title: PACK_TITLE, hash: PACK_HASH }]
+    const now = new Date()
+    const spy = vi
+      .spyOn(notify, 'announceWaiting')
+      .mockImplementationOnce(async () => {
+        saveSourceProfile({ qualities: ['2160p', '1080p', '720p', 'SD'] })
+      })
+    try {
+      expect(await searchPass([follow], now)).toBe(true)
+      expect(spy).toHaveBeenCalled()
+      expect(followById(follow.id)).toMatchObject({
+        lastSearchAt: null,
+        nextSearchAt: null,
+      })
+      const next = new Date(now.getTime() + 60_000)
+      expect(await searchPass([followById(follow.id)!], next)).toBe(true)
+      expect(followById(follow.id)!.lastSearchAt).toEqual(next)
+      expect(rows(follow.id).some(row => row.picked)).toBe(true)
+    }
+    finally {
+      spy.mockRestore()
+    }
+  })
+
+  it('после смены профиля не продолжает старую очередь pending', async () => {
+    const follow = insertFollow({ mode: 'notify' })
+    for (const episode of [1, 2]) {
+      getDb()
+        .insert(followEpisodes)
+        .values({
+          followId: follow.id,
+          season: 2,
+          episode,
+          firstSeenAt: new Date(Date.now() - 2 * HOUR_MS),
+          waitUntil: new Date(Date.now() - HOUR_MS),
+          pending: {
+            id: `candidate-${episode}`,
+            title: `Quiet.Harbor.S02E0${episode}.1080p`,
+            seeders: 40,
+          },
+        })
+        .run()
+    }
+    const spy = vi
+      .spyOn(picks, 'pickCandidate')
+      .mockImplementationOnce(async () => {
+        saveSourceProfile({ qualities: ['2160p', '1080p', '720p', 'SD'] })
+        return 'picked'
+      })
+    try {
+      await grabPending(follow)
+      expect(spy).toHaveBeenCalledTimes(1)
+      expect(rows(follow.id).every(row => !row.pending)).toBe(true)
+    }
+    finally {
+      spy.mockRestore()
+    }
+  })
+
+  it.each([
+    { path: 'pending', outcome: 'file', changed: true },
+    { path: 'pending', outcome: 'error', changed: true },
+    { path: 'pending', outcome: 'empty', changed: true },
+    { path: 'pending', outcome: 'ready', changed: true },
+    { path: 'pending', outcome: 'live', changed: true },
+    { path: 'pending', outcome: 'space', changed: true },
+    { path: 'pending', outcome: 'no_space', changed: true },
+    { path: 'pending', outcome: 'started', changed: true },
+    { path: 'decision', outcome: 'file', changed: true },
+    { path: 'decision', outcome: 'error', changed: true },
+    { path: 'decision', outcome: 'empty', changed: true },
+    { path: 'decision', outcome: 'ready', changed: true },
+    { path: 'decision', outcome: 'live', changed: true },
+    { path: 'decision', outcome: 'space', changed: true },
+    { path: 'decision', outcome: 'no_space', changed: true },
+    { path: 'decision', outcome: 'started', changed: true },
+    { path: 'pending', outcome: 'file', changed: false },
+    { path: 'decision', outcome: 'file', changed: false },
+  ])(
+    'проверяет профиль при асинхронном захвате: $path/$outcome/changed=$changed',
+    async ({ path, outcome, changed }) => {
+      const follow = insertFollow({ waitHours: 0, audio: 'ru' })
+      const release = {
+        id: 'delayed-candidate',
+        title: PACK_TITLE,
+        infoHash: PACK_HASH,
+        link: {
+          url: `https://a.indexer.example/download/${PACK_HASH}`,
+          indexerId: getDb().select().from(indexers).get()!.id,
+          indexerOrigin: 'https://a.indexer.example',
+        },
+        indexers: [],
+        seeders: 40,
+        size: 12 * GB,
+        parsed: parseRelease(PACK_TITLE),
+        match: { confidence: 'high' as const, issues: [] },
+      }
+      if (path === 'pending') {
+        getDb()
+          .insert(followEpisodes)
+          .values({
+            followId: follow.id,
+            season: 2,
+            episode: 1,
+            firstSeenAt: new Date(Date.now() - 2 * HOUR_MS),
+            waitUntil: new Date(Date.now() - HOUR_MS),
+            pending: pendingOf(release),
+          })
+          .run()
+      }
+      const entered = Promise.withResolvers<void>()
+      const resume = Promise.withResolvers<void>()
+      const originalFetch = fetchMock.getMockImplementation()!
+      const hasMetadata = [
+        'ready',
+        'live',
+        'space',
+        'no_space',
+        'started',
+      ].includes(outcome)
+      const originalEnsureSpace = storage.ensureSpaceFor
+      const spaceSpy
+        = outcome === 'space' || outcome === 'no_space'
+          ? vi
+              .spyOn(storage, 'ensureSpaceFor')
+              .mockImplementationOnce(async (...args) => {
+                entered.resolve()
+                await resume.promise
+                if (outcome === 'no_space')
+                  disk.free = 0
+                return originalEnsureSpace(...args)
+              })
+          : undefined
+      const originalAcquire = watch.acquire
+      const spy
+        = outcome === 'empty' || outcome === 'ready'
+          ? vi
+              .spyOn(watch, 'acquire')
+              .mockImplementationOnce(async (...args) => {
+                const torrent
+                  = outcome === 'ready'
+                    ? await originalAcquire(...args)
+                    : undefined
+                entered.resolve()
+                await resume.promise
+                return torrent
+              })
+          : undefined
+      fetchMock.mockImplementation(async (input, init) => {
+        if (
+          (!hasMetadata
+            && new URL(String(input)).pathname.startsWith('/download/'))
+          || (outcome === 'live'
+            && engineAdds.length > 0
+            && new URL(String(input)).pathname === '/torrents'
+            && (init?.method ?? 'GET') === 'GET')
+          || (outcome === 'started'
+            && new URL(String(input)).pathname === '/torrents'
+            && init?.method === 'POST')
+        ) {
+          entered.resolve()
+          await resume.promise
+          if (outcome === 'error')
+            return new Response('unavailable', { status: 503 })
+        }
+        return originalFetch(input, init)
+      })
+      try {
+        const running
+          = path === 'pending'
+            ? grabPending(follow)
+            : decideFollow(follow, [release])
+        await entered.promise
+        if (changed)
+          saveSourceProfile({ qualities: ['2160p', '1080p', '720p', 'SD'] })
+        resume.resolve()
+        await running
+
+        if (changed && outcome !== 'started') {
+          expect(
+            rows(follow.id).every(row => !row.pending && !row.torrentId),
+          ).toBe(true)
+          // A completed acquire may keep metadata, but never selects files.
+          expect(engineAdds).toHaveLength(hasMetadata ? 1 : 0)
+          expect(enginePuts).toHaveLength(0)
+          expect(getDb().select().from(torrents).all()).toHaveLength(
+            hasMetadata ? 1 : 0,
+          )
+        }
+        else {
+          // Inspect and add are separate engine requests.
+          expect(engineAdds).toHaveLength(2)
+          expect(
+            rows(follow.id).some(
+              row => row.torrentId && row.fileIndex !== null,
+            ),
+          ).toBe(true)
+        }
+      }
+      finally {
+        resume.resolve()
+        spy?.mockRestore()
+        spaceSpy?.mockRestore()
+      }
+    },
+  )
+
+  it('не захватывает старое решение после смены профиля во время уведомления', async () => {
+    const follow = insertFollow({
+      waitHours: 0,
+      mode: 'notify',
+      audio: 'original',
+    })
+    const title = 'Quiet.Harbor.S02E01.2024.WEB-DL.1080p'
+    const spy = vi
+      .spyOn(notify, 'announceWaiting')
+      .mockImplementationOnce(async () => {
+        saveSourceProfile({ qualities: ['2160p', '1080p', '720p', 'SD'] })
+      })
+    try {
+      await decideFollow(follow, [
+        {
+          id: 'candidate',
+          title,
+          indexers: [],
+          seeders: 40,
+          size: 2 * GB,
+          parsed: parseRelease(title),
+          match: { confidence: 'high', issues: [] },
+        },
+      ])
+      expect(spy).toHaveBeenCalled()
+      expect(
+        rows(follow.id).every(
+          row => !row.picked && !row.torrentId && !row.pending,
+        ),
+      ).toBe(true)
+      expect(engineAdds).toHaveLength(0)
+    }
+    finally {
+      spy.mockRestore()
+    }
+  })
+
   it('ищет при включении и качает из пака только нужные серии своей студии', async () => {
     // Озвучка прошлого сезона переходит в новый
     pinVoice(SERIES, 1, { studio: 'LostFilm' })
@@ -1516,6 +1850,9 @@ describe('автоматика «Следить»', () => {
 })
 
 describe('язык озвучки', () => {
+  beforeEach(() => {
+    saveSourceProfile({ audioLanguages: ['ru'] })
+  })
   const ENGLISH = 'Quiet.Harbor.S02E08.1080p.WEB-DL.x264'
   const RUSSIAN
     = 'Тихая гавань / Quiet Harbor / Сезон: 2 / Серии: 8 из 12 (2024) WEB-DL 1080p | LostFilm'
@@ -1525,7 +1862,7 @@ describe('язык озвучки', () => {
   })
 
   it('сервер на оригинале: английская раздача без дорожек берётся сразу', async () => {
-    saveFollowSettings({ audio: { value: 'original', source: 'auto' } })
+    setServerAudio({ value: 'original', source: 'user' })
     pinVoice(SERIES, 1, { studio: 'LostFilm' })
     libraryEpisodes(1, 2, 3, 4, 5, 6, 7)
     items = [{ title: ENGLISH, hash: SINGLE_HASH, size: 1.5 * GB }]
@@ -1625,8 +1962,8 @@ describe('язык озвучки', () => {
     expect(getDb().select().from(torrents).all()).toEqual([])
   })
 
-  it('язык сервера сменился на `ru`: отложенный английский 720p после окна не качается', async () => {
-    saveFollowSettings({ audio: { value: 'original', source: 'auto' } })
+  it('пресет стал только русским: отложенный английский 720p после окна не качается', async () => {
+    setServerAudio({ value: 'original', source: 'user' })
     libraryEpisodes(1, 2, 3, 4, 5, 6, 7)
     items = [
       {
@@ -1644,14 +1981,14 @@ describe('язык озвучки', () => {
       pending: expect.objectContaining({ infoHash: SINGLE_HASH }),
     })
 
-    setServerAudio({ value: 'ru', source: 'user' })
+    saveSourceProfile({ audioLanguages: ['ru'] })
     await followAutomation(new Date(now.getTime() + 24 * HOUR_MS))
 
     expect(getDb().select().from(torrents).all()).toEqual([])
   })
 
   it('свой язык слежения сменился — отложенный кандидат снимается; тот же язык сервера — остаётся', async () => {
-    saveFollowSettings({ audio: { value: 'original', source: 'auto' } })
+    setServerAudio({ value: 'original', source: 'user' })
     libraryEpisodes(1, 2, 3, 4, 5, 6, 7)
     items = [
       {

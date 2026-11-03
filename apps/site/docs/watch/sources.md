@@ -29,7 +29,7 @@ Under the header is your history: what you watched last and from which release. 
 Each row has three lines:
 
 1. **The release name**, as the indexer has it.
-2. **Badges.** First the resolution: 4K, 1080p, 720p or SD. A question mark means it was guessed from other hints in the name, and a lone `?` means unknown. Then what the release covers, such as `S1 · 1–8` or `S1–3`, the source (Remux, Blu-ray, Web, TV, DVD; <Ui k="sources.sourceKinds.cam" /> is a recording from a cinema screen), HDR, the codec and the audio channels. Then the audio. When the server's audio language is Russian, it's the voice-over studio or language and its type, such as <Ui k="sources.voiceTypes.D" />, <Ui k="sources.voiceTypes.MVO" /> or <Ui k="sources.voiceTypes.Original" />, and other audio tracks after it. With any other audio language, it's the tracks named in the release, such as <Ui k="audioLanguages.en" />, <Ui k="audioLanguages.original" /> or <Ui k="audioLanguages.ru" /> for a Russian voice-over; a release that names none shows nothing here, and that's normal for most English-language indexers. <Ui k="sources.unsure" /> warns about an uncertain match. <Ui k="sources.unmatched" /> means Torsher could not match the result to this title; check the release name before opening it.
+2. **Badges.** First the resolution: 4K, 1080p, 720p or SD. A question mark means it was guessed from other hints in the name, and a lone `?` means unknown. Then what the release covers, such as `S1 · 1–8` or `S1–3`, the source (Remux, Blu-ray, Web, TV, DVD; <Ui k="sources.sourceKinds.cam" /> is a recording from a cinema screen), HDR, the codec and the audio channels. Then the audio. When the selected preset's first audio language is Russian, it's the voice-over studio or language and its type, such as <Ui k="sources.voiceTypes.D" />, <Ui k="sources.voiceTypes.MVO" /> or <Ui k="sources.voiceTypes.Original" />, and other audio tracks after it. With any other audio language, it's the tracks named in the release, such as <Ui k="audioLanguages.en" />, <Ui k="audioLanguages.original" /> or <Ui k="audioLanguages.ru" /> for a Russian voice-over; a release that names none shows nothing here, and that's normal for most English-language indexers. <Ui k="sources.unsure" /> warns about an uncertain match. <Ui k="sources.unmatched" /> means Torsher could not match the result to this title; check the release name before opening it.
 3. **Details.** A mark on the left, then the publish date, subtitles and the indexer. On the right, the bitrate, seeders (green from 10, amber below, red at 0), leechers and the size of the whole release.
 
 For example, a row could read:
@@ -43,21 +43,29 @@ By profile · Oct 12, 2026 · subtitles: ENG · My indexer      6 Mbps  ↑ 42  
 ## Which release comes first
 
 - The release you watched last is always first, marked <Ui k="sources.lastWatched" />.
-- The best one for the profile comes next, marked <Ui k="sources.byProfile" />. <Ui k="title.watch" /> plays it when you don't pick one. The profile is shown in the header: quality 1080p, then 4K, then 720p, and the audio. The profile is the same for the whole server; only its audio follows the server's audio language (see [Audio language](/docs/watch/follow#audio-language)):
-  - **Russian**: voice-over types from dubbing down, and the studio you picked or watched last for the season.
-  - **<Ui k="audioLanguages.original" />**: releases with the original track or with no tracks named come first. Releases that name only voice-overs in other languages go down and are picked only when nothing else is found.
-  - **Another language**, such as <Ui k="audioLanguages.de" />: releases with a track in that language first, then the original, then voice-overs in other languages, picked only when nothing else is found. For a title originally in that language, a release with the original track or with no tracks named counts as one in that language too.
+- The best one for the profile comes next, marked <Ui k="sources.byProfile" />. <Ui k="title.watch" /> uses the selected preset when you do not pick a release. The preset orders video quality, audio languages and translation types. Language priority comes first; translation types are compared within the same language priority. Original means the title's original language. Releases without audio tags remain eligible when Original is included, without claiming a known language. Other unlisted languages stay available for manual selection but are not tried automatically.
 - Next to the best one there may be a release with the original track (<Ui k="audioLanguages.original" /> first for any audio language but Russian), a better quality or a smaller size.
 - With <Ui k="sources.sortBest" />, unconfirmed matches follow matched results. Torsher never picks them automatically; select a row to open one yourself.
 - The rest follow the sort order. A series sorts <Ui k="sources.sortSeasons" /> by default: the newest season and more episodes first.
+
+## Set source preferences
+
+Open <Ui k="panel.nav.settings panel.settings.nav.sources" /> in the control panel. Select a preset or use <Ui k="panel.settings.sources.create" /> to copy the server default. Drag quality, language and translation-type options by their handles, or focus a handle and use the Up and Down keys. Add only the languages you want and remove unwanted ones. For example, German → English → Original prefers German before English regardless of translation type; within German, dubbing can rank above multi-voice translation. Types apply only when known from the release name.
+
+One <Ui k="panel.common.save" /> applies all orders and the optional <Ui k="panel.settings.sources.serverDefault" /> selection together. A badge marks unsaved changes; save or cancel before switching presets. Presets can be renamed or deleted after choosing another default. Fresh settings use Original; older saved preferences are preserved. Player audio-track selection is separate from source ranking.
+
+In the showcase, open <Ui k="sources.panel.preset" /> and select a preset or the server default. An explicit choice is remembered for this viewer on this device; other viewers and devices keep their own choices. Without an explicit choice, changes to the server default apply automatically. Deleting a selected preset returns that viewer to the server default. The choice also applies to automatic source selection for playback, the next episode and downloads; an explicitly chosen release, a known torrent or a release picked by Following keeps priority.
+
+Switching presets reorders cached search results without asking indexers again. Automatic follows use the server default and keep their own quality rule; a viewer's selection does not change automation. Changing the effective preferences of the server default clears pending choices so they can be evaluated again, without restarting their waiting window. Renaming a preset or editing another preset does not reset waiting. Already picked releases and downloads are kept.
 
 ## Filters and sorting
 
 Chips above the list narrow it down. OK on a chip opens a panel of choices:
 
+- **<Ui k="sources.panel.preset" />**: the preset for this viewer and device, or the server default.
 - **<Ui k="sources.panel.sort" />**: <Ui k="sources.sortBest" />, <Ui k="sources.sortSeeders" />, <Ui k="sources.sortSize" />, <Ui k="sources.sortDate" />, and <Ui k="sources.sortSeasons" /> for a series.
 - **<Ui k="sources.panel.season" />**: releases with this season, when a series has more than one.
-- **<Ui k="sources.panel.voice" />**: one voice-over studio or type. Only when the server's audio language is Russian.
+- **<Ui k="sources.panel.voice" />**: one voice-over studio or type. Only when the selected preset's first audio language is Russian.
 - **<Ui k="sources.panel.quality" />**: 4K, 1080p, 720p, SD or <Ui k="sources.unknownQualityOption" />.
 
 The round chip with a cross resets the filters. This TV remembers the sort and filters for each title.

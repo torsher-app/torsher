@@ -45,7 +45,6 @@ import {
   updateMine,
 } from '../services/mine/index.ts'
 import {
-  DEFAULT_PROFILE,
   getTitleSources,
   pinVoice,
   voiceKeysOf,
@@ -149,8 +148,12 @@ function toCandidate(
     subs: parsed.subs,
     // Основная озвучка и её ключи — русские: у другого языка озвучки строку
     // подписывают дорожки из `audio`
-    voice: russian ? (release.voice ?? null) : null,
-    voiceKeys: russian ? voiceKeysOf(release) : [],
+    voice:
+      russian && release.audioLanguage === 'ru'
+        ? (release.voice ?? null)
+        : null,
+    voiceKeys:
+      russian && release.audioLanguage === 'ru' ? voiceKeysOf(release) : [],
     audioFit: release.audioFit ?? null,
     seasons: parsed.seasons,
     episodes: parsed.episodes
@@ -176,9 +179,11 @@ export function toSourcesResponse(sources: TitleSources) {
     updatedAt: sources.updatedAt.toISOString(),
     audio: sources.audio,
     profile: {
-      qualities: DEFAULT_PROFILE.qualities,
-      voiceTypes: DEFAULT_PROFILE.voiceTypes,
+      qualities: sources.profile.qualities,
+      voiceTypes: sources.profile.voiceTypes,
+      audioLanguages: sources.profile.audioLanguages ?? [sources.audio],
     },
+    presets: sources.presets,
     pinnedVoice: sources.pinned ?? null,
     seasonCandidate: sources.seasonCandidate ?? null,
     top: sources.ranking.top,
@@ -221,7 +226,7 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
       },
     },
     async (request, reply) => {
-      const { season, episode, refresh, all, query } = request.query
+      const { season, episode, refresh, all, query, presetId } = request.query
 
       try {
         const sources = await getTitleSources(request.params.id, {
@@ -231,6 +236,7 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
           allSeasons: all === '1',
           profileId: request.profileId,
           query,
+          presetId,
         })
 
         if (!sources)

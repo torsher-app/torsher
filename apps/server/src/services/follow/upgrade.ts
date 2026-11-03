@@ -17,7 +17,7 @@ import { and, eq, inArray, isNotNull } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import { followEpisodes, mediaFiles, titleProgress } from '../../db/schema.ts'
 import { managedFolders, setReplacement } from '../library/files.ts'
-import { russianVoices, voiceOf } from '../sources/rank.ts'
+import { preferredAudio } from '../sources/rank.ts'
 import { torrentResolution } from '../sources/resolution.ts'
 import { getTorrent } from '../torrents/index.ts'
 import { recordHistory } from './history.ts'
@@ -45,6 +45,8 @@ export interface ReleaseVersion {
 /** Где версия относительно cutoff сезона: озвучка и ступень лестницы */
 export interface VersionPosition {
   voiceAtCutoff: boolean
+  audioPriority?: number
+  typePriority?: number
   step: number
 }
 
@@ -57,8 +59,24 @@ export function isUpgrade(
   candidate: VersionPosition,
   current: VersionPosition,
 ) {
+  if (
+    candidate.audioPriority !== undefined
+    && current.audioPriority !== undefined
+    && candidate.audioPriority !== current.audioPriority
+  ) {
+    return candidate.audioPriority < current.audioPriority
+  }
+
   if (candidate.voiceAtCutoff !== current.voiceAtCutoff)
     return candidate.voiceAtCutoff
+
+  if (
+    candidate.typePriority !== undefined
+    && current.typePriority !== undefined
+    && candidate.typePriority !== current.typePriority
+  ) {
+    return candidate.typePriority < current.typePriority
+  }
 
   return candidate.step < current.step
 }
@@ -266,12 +284,12 @@ export function versionOf(
   ctx: RankContext,
 ): ReleaseVersion {
   const parsed = parseRelease(current.title)
-  const voices = russianVoices(parsed, ctx)
+  const preference = preferredAudio(parsed, ctx)
 
   return {
     parsed,
-    voice: voiceOf(voices, ctx),
-    voices,
+    voice: preference?.voice,
+    voices: preference?.voices ?? [],
     resolution:
       (current.torrent && torrentResolution(current.torrent))
       ?? videoResolution(parsed),

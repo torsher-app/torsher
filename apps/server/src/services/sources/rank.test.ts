@@ -27,8 +27,16 @@ function release(
   }
 }
 
-const series: RankContext = { kind: 'series', profile: DEFAULT_PROFILE }
-const movie: RankContext = { kind: 'movie', profile: DEFAULT_PROFILE }
+const series: RankContext = {
+  kind: 'series',
+  audio: 'ru',
+  profile: DEFAULT_PROFILE,
+}
+const movie: RankContext = {
+  kind: 'movie',
+  audio: 'ru',
+  profile: DEFAULT_PROFILE,
+}
 
 describe('rankReleases', () => {
   it('low ниже high и medium независимо от счёта и никогда не входит в top', () => {
@@ -103,7 +111,7 @@ describe('rankReleases', () => {
     expect(top).toEqual(['ok'])
   })
 
-  it('без русской дорожки — только если других нет', () => {
+  it('не запускает неподходящий язык автоматически', () => {
     const mixed = rankReleases(
       [
         release('eng', 'Lantern.2021.1080p.WEB-DL-GRP', 300, 8 * GB),
@@ -119,7 +127,7 @@ describe('rankReleases', () => {
       movie,
     )
 
-    expect(only.top).toEqual(['eng'])
+    expect(only.top).toEqual([])
   })
 
   it('закреплённая студия второй дорожкой делает её основной', () => {
@@ -194,10 +202,9 @@ describe('rankReleases', () => {
     })
 
     expect(russian.top).toEqual(['plain'])
-    expect(russian.ranked.find(item => item.id === 'plain')!.voice).toEqual({
-      type: 'Original',
-      language: 'ru',
-    })
+    expect(
+      russian.ranked.find(item => item.id === 'plain')!.voice,
+    ).toBeUndefined()
     // Указана чужая дорожка — это не русский оригинал
     expect(
       russian.ranked.find(item => item.id === 'ukr')!.voice,
@@ -307,7 +314,11 @@ describe('rankReleases: язык озвучки', () => {
     audio: 'original',
     originalLanguage: 'en',
   }
-  const german: RankContext = { ...movie, audio: 'de', originalLanguage: 'en' }
+  const german: RankContext = {
+    kind: 'movie',
+    profile: { ...DEFAULT_PROFILE, audioLanguages: ['de', 'original'] },
+    originalLanguage: 'en',
+  }
 
   it('оригинал: озвучка не даёт очков, раздача только с озвучками — ниже и вне тройки', () => {
     const { ranked, top } = rankReleases(
@@ -324,13 +335,13 @@ describe('rankReleases: язык озвучки', () => {
     expect(ranked.find(item => item.id === 'both')!.reason).toBe('profile')
   })
 
-  it('оригинал: без подходящих раздач тройка — из остальных', () => {
+  it('оригинал: чужой дубляж не становится автоматическим выбором', () => {
     const { top } = rankReleases(
       [release('dub', 'Фонарь (2021) WEB-DL 1080p | D', 300, 8 * GB)],
       original,
     )
 
-    expect(top).toEqual(['dub'])
+    expect(top).toEqual([])
   })
 
   it('оригинал: раздача с явной оригинальной дорожкой — главная альтернатива', () => {
@@ -386,7 +397,11 @@ describe('rankReleases: язык озвучки', () => {
         release('dub', 'Фонарь (2021) WEB-DL 1080p | D', 300, 8 * GB),
         release('plain', 'Lantern.2021.1080p.WEB-DL-GRP', 5, 8 * GB),
       ],
-      { ...movie, audio: 'en', originalLanguage: 'en' },
+      {
+        kind: 'movie',
+        profile: { ...DEFAULT_PROFILE, audioLanguages: ['en', 'original'] },
+        originalLanguage: 'en',
+      },
     )
 
     expect(ranked.map(item => item.id)).toEqual(['plain', 'dub'])
@@ -495,6 +510,14 @@ describe('rankReleases: разрешение', () => {
 })
 
 describe('russianVoices и voiceOf', () => {
+  const movie: RankContext = {
+    kind: 'movie',
+    audio: 'ru',
+    profile: {
+      ...DEFAULT_PROFILE,
+      voiceTypes: ['D', 'MVO', 'DVO', 'AVO', 'VO', 'L'],
+    },
+  }
   const parsed = parseRelease('Фонарь (2021) BDRip 1080p | L, MVO, Original')
 
   it('все русские дорожки по профилю, без оригинала', () => {
@@ -539,4 +562,66 @@ it('префикс издателя не даёт рекомендации да�
   )
   expect(result.ranked[0]?.match.confidence).toBe('medium')
   expect(result.top).toEqual([])
+})
+
+describe('ordered language and translation preferences', () => {
+  const profile = {
+    ...DEFAULT_PROFILE,
+    audioLanguages: [
+      'de',
+      'en',
+      'original',
+    ] as import('../../db/schema.ts').FollowAudio[],
+  }
+  const ctx: RankContext = { kind: 'movie', originalLanguage: 'ja', profile }
+  const releases = [
+    release('de-mvo', 'Lantern.2024.1080p.WEB-DL | MVO GER', 20, 8 * GB),
+    release('en-dub', 'Lantern.2024.1080p.WEB-DL | Dub ENG', 20, 8 * GB),
+    release('de-dub', 'Lantern.2024.1080p.WEB-DL | Dub GER', 20, 8 * GB),
+    release('original', 'Lantern.2024.1080p.WEB-DL | JPN', 20, 8 * GB),
+    release('unknown', 'Lantern.2024.1080p.WEB-DL', 20, 8 * GB),
+    release('foreign', 'Lantern.2024.1080p.WEB-DL | FRE', 20, 8 * GB),
+  ]
+  it('language order takes priority; German dub beats German multi-voice', () => {
+    const result = rankReleases(releases, ctx)
+    expect(result.ranked.slice(0, 3).map(item => item.id)).toEqual([
+      'de-dub',
+      'de-mvo',
+      'en-dub',
+    ])
+    expect(result.ranked[0]?.voice).toMatchObject({
+      language: 'de',
+      type: 'D',
+    })
+    expect(result.top).not.toContain('foreign')
+  })
+  it('reordering types changes only releases at the same language priority', () => {
+    const result = rankReleases(releases, {
+      ...ctx,
+      profile: {
+        ...profile,
+        voiceTypes: ['MVO', 'D', 'DVO', 'AVO', 'VO', 'L'],
+      },
+    })
+    expect(result.ranked.slice(0, 3).map(item => item.id)).toEqual([
+      'de-mvo',
+      'de-dub',
+      'en-dub',
+    ])
+  })
+  it('unknown metadata is not a German or English track; original keeps the untagged fallback', () => {
+    const unknown = releases.filter(
+      item => item.id === 'unknown' || item.id === 'foreign',
+    )
+    expect(
+      rankReleases(unknown, {
+        ...ctx,
+        profile: { ...profile, audioLanguages: ['de', 'en'] },
+      }).top,
+    ).toEqual([])
+    const original = rankReleases(unknown, ctx)
+    expect(original.top).toEqual(['unknown'])
+    expect(original.ranked[0]?.voice).toBeUndefined()
+    expect(original.ranked[0]?.parsed.audio).toEqual([])
+  })
 })

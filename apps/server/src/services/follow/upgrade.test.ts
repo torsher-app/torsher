@@ -1,3 +1,4 @@
+import { setSetting } from '../settings/index.ts'
 import type { Follow, Torrent } from '../../db/schema.ts'
 import type { EngineTorrentState } from '../engine/index.ts'
 import { Buffer } from 'node:buffer'
@@ -467,6 +468,12 @@ beforeAll(async () => {
 })
 
 beforeEach(async () => {
+  // These fixtures explicitly exercise Russian studio continuity.
+  setSetting('sources.profile', {
+    qualities: ['1080p', '2160p', '720p', 'SD'],
+    audioLanguages: ['ru'],
+    voiceTypes: ['D', 'MVO', 'DVO', 'AVO', 'VO', 'L'],
+  })
   root = await mkdtemp(join(tmpdir(), 'torsher-upgrade-'))
   vi.stubEnv('DOWNLOADS_PATH', join(root, 'torrents'))
   vi.stubEnv('LIBRARY_PATH', join(root, 'library'))

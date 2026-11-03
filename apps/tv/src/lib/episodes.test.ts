@@ -47,7 +47,19 @@ describe('coversEpisode', () => {
 })
 
 describe('episodeCandidates', () => {
-  it('сначала та же озвучка, дальше порядок сервера, не больше трёх', () => {
+  it('skips unavailable and screen-copy releases before limiting automatic attempts', () => {
+    const list = [
+      candidate('no-peers', { seeders: 0 }),
+      candidate('cam', { source: 'CAMRip' }),
+      candidate('ts', { source: 'TS' }),
+      candidate('available'),
+    ]
+    expect(
+      episodeCandidates(list, { season: 2, episode: 3 }).map(item => item.id),
+    ).toEqual(['available'])
+  })
+
+  it('сохраняет порядок языков сервера, не поднимает прежнюю студию, не больше трёх', () => {
     const list = [
       candidate('best'),
       candidate('other-season', { seasons: [1] }),
@@ -65,12 +77,12 @@ describe('episodeCandidates', () => {
       episodeCandidates(list, { season: 2, episode: 3 }, 'studio:LostFilm').map(
         item => item.id,
       ),
-    ).toEqual(['same', 'best', 'third'])
+    ).toEqual(['best', 'same', 'third'])
   })
 })
 
 describe('episodeCandidates: язык озвучки не русский', () => {
-  it('раздачи только с чужими озвучками — после подходящих, но не выпадают', () => {
+  it('раздачи с неподходящим языком не попадают в автовоспроизведение', () => {
     const list = [
       candidate('dub', { audioFit: 'foreign' }),
       candidate('plain', { audioFit: 'original' }),
@@ -80,12 +92,12 @@ describe('episodeCandidates: язык озвучки не русский', () =>
 
     expect(
       episodeCandidates(list, { season: 2, episode: 3 }).map(item => item.id),
-    ).toEqual(['plain', 'own', 'dub'])
+    ).toEqual(['plain', 'own'])
     expect(
       episodeCandidates([list[0]!], { season: 2, episode: 3 }).map(
         item => item.id,
       ),
-    ).toEqual(['dub'])
+    ).toEqual([])
   })
 })
 

@@ -44,6 +44,7 @@ export class WatchError extends Error {
 }
 
 export interface WatchRequest {
+  presetId?: string
   season?: number
   episode?: number
   /** Раздача из листа источников; без неё — лучшая по профилю. */
@@ -90,6 +91,7 @@ export async function acquire(
   release: AcquirableRelease,
   hasTime: () => boolean,
   origin: TorrentOrigin = 'search',
+  isCurrent: () => boolean = () => true,
 ): Promise<Torrent | undefined> {
   const magnet = magnetOf(release)
 
@@ -101,6 +103,9 @@ export async function acquire(
         { trustedOrigin: release.link.indexerOrigin },
       )
 
+      if (!isCurrent())
+        return undefined
+
       return downloaded.kind === 'file'
         ? (await addTorrentFile(downloaded.bytes, origin)).torrent
         : (await addMagnet(downloaded.magnet, origin)).torrent
@@ -111,7 +116,9 @@ export async function acquire(
     }
   }
 
-  return magnet ? (await addMagnet(magnet, origin)).torrent : undefined
+  return magnet && isCurrent()
+    ? (await addMagnet(magnet, origin)).torrent
+    : undefined
 }
 
 export function seasonOfFile(
@@ -286,12 +293,13 @@ export async function watchTitle(
     season: request.season,
     episode: request.episode ?? 1,
     profileId,
+    presetId: request.presetId,
   })
 
   if (!sources)
     return undefined
 
-  const { ranked, top } = sources.ranking
+  const { ranked } = sources.ranking
   const byId = new Map(ranked.map(release => [release.id, release]))
   let queue: RankedRelease[]
 
@@ -304,7 +312,9 @@ export async function watchTitle(
     queue = [chosen]
   }
   else {
-    queue = top.flatMap(id => byId.get(id) ?? [])
+    queue = ranked.filter(
+      release => release.eligible && release.audioFit !== 'foreign',
+    )
   }
 
   if (queue.length === 0)
@@ -355,7 +365,11 @@ export async function watchTitle(
 
     rememberChoice(
       { profileId, titleId, season: target.season, episode: target.episode },
-      { torrentId: torrent.id, fileIndex, voice: release.voice },
+      {
+        torrentId: torrent.id,
+        fileIndex,
+        voice: release.audioLanguage === 'ru' ? release.voice : undefined,
+      },
     )
 
     return {

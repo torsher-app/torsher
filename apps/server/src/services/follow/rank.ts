@@ -63,8 +63,8 @@ function sizeDistance(release: RankedRelease, kind: 'movie' | 'series') {
  * точное разрешение выше выведенного), тип озвучки, продолжение темы сезона,
  * число нужных серий, сиды по порядку величины, размер ближе к середине
  * коридора, счёт ранжирования. Озвучка раньше качества: для русского зрителя
- * она важнее. Типы перевода русские: у других языков озвучки они не участвуют,
- * а счёт ранжирован по языку слежения (`RankContext.audio`).
+ * она важнее. Языковой приоритет сравнивается первым; тип перевода —
+ * только внутри одного языка.
  */
 export function compareCandidates(
   a: OrderedCandidate,
@@ -74,7 +74,7 @@ export function compareCandidates(
   byVoiceType = true,
 ) {
   const voice = (item: OrderedCandidate) => {
-    if (!byVoiceType)
+    if (!byVoiceType || profile.voiceTypes.length === 0)
       return 0
 
     return item.release.voice
@@ -83,7 +83,8 @@ export function compareCandidates(
   }
 
   return (
-    Number(b.ownVoice) - Number(a.ownVoice)
+    (a.release.audioPriority ?? 0) - (b.release.audioPriority ?? 0)
+    || Number(b.ownVoice) - Number(a.ownVoice)
     || a.step - b.step
     || Number(!!b.release.resolution?.sure)
     - Number(!!a.release.resolution?.sure)

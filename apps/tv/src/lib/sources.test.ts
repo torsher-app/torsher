@@ -276,6 +276,7 @@ describe('подписи', () => {
   it('профиль для шапки: лестница качества и первые типы озвучки', () => {
     expect(
       profileParts({
+        audioLanguages: ['ru'],
         qualities: ['1080p', '2160p', '720p'],
         voiceTypes: ['D', 'MVO', 'DVO', 'AVO', 'VO', 'L'],
       }),

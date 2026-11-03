@@ -1,21 +1,25 @@
 import type {
   AttentionItem,
   CheckMetadataKeyInput,
+  CreateSourcePresetInput,
   ImdbDatasetStatus,
   MessageResponse,
   MetadataKeyCheck,
   MetadataSettings,
   PlaybackSettings,
+  SourceSettings,
   ThumbnailSettings,
   TorrentSettings,
   TorrentSettingValues,
   UpdateImdbSettingsInput,
   UpdateMetadataSettingsInput,
   UpdatePlaybackSettingsInput,
+  UpdateSourcePresetInput,
+  UpdateSourceSettingsInput,
   UpdateThumbnailSettingsInput,
   UpdateTorrentSettingsInput,
 } from '@torsher/api-client'
-import { DemoError, get, post, put } from '@torsher/demo/router'
+import { del, DemoError, get, patch, post, put } from '@torsher/demo/router'
 import {
   ago,
   DAY,
@@ -308,4 +312,79 @@ post<ThumbnailSettings>('/api/settings/thumbnails/regenerate', () => {
   if (!thumbnailStatus().running)
     thumbnailStartedAt = Date.now()
   return thumbnailStatus()
+})
+
+let sourceSettings: SourceSettings = {
+  defaultPresetId: 'default-1080p',
+  presets: [
+    {
+      id: 'default-1080p',
+      name: '1080p',
+      qualities: ['1080p', '2160p', '720p', 'SD'],
+      audioLanguages: ['original'],
+      voiceTypes: ['D', 'MVO', 'DVO', 'AVO', 'VO', 'L'],
+    },
+    {
+      id: 'default-4k',
+      name: '4K',
+      qualities: ['2160p', '1080p', '720p', 'SD'],
+      audioLanguages: ['original'],
+      voiceTypes: ['D', 'MVO', 'DVO', 'AVO', 'VO', 'L'],
+    },
+  ],
+}
+let presetCounter = 0
+get<SourceSettings>('/api/settings/sources', () => sourceSettings)
+put<SourceSettings, UpdateSourceSettingsInput>(
+  '/api/settings/sources',
+  ({ body }) => {
+    sourceSettings = {
+      ...sourceSettings,
+      defaultPresetId: body.defaultPresetId,
+    }
+    return sourceSettings
+  },
+)
+post<SourceSettings, CreateSourcePresetInput>(
+  '/api/settings/sources/presets',
+  ({ body }) => {
+    const current = sourceSettings.presets.find(
+      item => item.id === sourceSettings.defaultPresetId,
+    )!
+    sourceSettings = {
+      ...sourceSettings,
+      presets: [
+        ...sourceSettings.presets,
+        { ...current, id: `preset-${++presetCounter}`, name: body.name },
+      ],
+    }
+    return sourceSettings
+  },
+)
+patch<SourceSettings, UpdateSourcePresetInput>(
+  '/api/settings/sources/presets/:presetId',
+  ({ body, params }) => {
+    const { makeDefault, ...changes } = body
+    sourceSettings = {
+      ...sourceSettings,
+      defaultPresetId: makeDefault
+        ? params.presetId!
+        : sourceSettings.defaultPresetId,
+      presets: sourceSettings.presets.map(item =>
+        item.id === params.presetId ? { ...item, ...changes } : item,
+      ),
+    }
+    return sourceSettings
+  },
+)
+del<SourceSettings>('/api/settings/sources/presets/:presetId', ({ params }) => {
+  if (params.presetId === sourceSettings.defaultPresetId)
+    throw new DemoError(409, { message: 'Choose another default first' })
+  sourceSettings = {
+    ...sourceSettings,
+    presets: sourceSettings.presets.filter(
+      item => item.id !== params.presetId,
+    ),
+  }
+  return sourceSettings
 })

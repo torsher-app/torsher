@@ -12,7 +12,7 @@ import { followEpisodes } from '../../db/schema.ts'
 import { mapLimit } from '../../utils/mapLimit.ts'
 import { DETAILS_CONCURRENCY, summaryOf } from '../mine/cards.ts'
 import { episodeProgress, isProgressWatched } from '../sources/progress.ts'
-import { followAudio, serverAudio } from './audio.ts'
+import { followAudio } from './audio.ts'
 import { followEpisodeStates, movieState } from './episodes.ts'
 import {
   followById,
@@ -47,7 +47,7 @@ function rulesView(follow: Follow, next: NextEpisode) {
     mode: follow.mode,
     audio: follow.audio,
     audioEffective: followAudio(follow),
-    audioServer: serverAudio(),
+    audioServer: followAudio({ audio: null }),
     next,
   }
 }

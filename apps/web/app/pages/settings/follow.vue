@@ -3,7 +3,6 @@ import { CircleAlertIcon, RefreshCwIcon } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-import FollowAudioCard from '~/components/settings/FollowAudioCard.vue'
 import FollowDefaultsCard from '~/components/settings/FollowDefaultsCard.vue'
 import FollowNumberCard from '~/components/settings/FollowNumberCard.vue'
 
@@ -63,7 +62,12 @@ onMounted(load)
     </section>
 
     <template v-else>
-      <FollowAudioCard :audio="settings.audio" />
+      <NuxtLink
+        to="/settings/sources"
+        class="text-sm text-primary underline underline-offset-4"
+      >
+        {{ t("panel.settings.follow.sourcePreferences") }}
+      </NuxtLink>
       <FollowNumberCard
         field="rssIntervalMin"
         :value="settings.rssIntervalMin"

@@ -324,7 +324,8 @@
       "sort": "Sort",
       "season": "Season",
       "voice": "Voice-over",
-      "quality": "Quality"
+      "quality": "Quality",
+      "preset": "Source preset"
     },
     "query": {
       "action": "Refine query",
@@ -335,7 +336,10 @@
       "note": "Type your own title and press OK, or pick an option below"
     },
     "libraryHint": "From the server disk, no peers",
-    "libraryPlay": "Watch"
+    "libraryPlay": "Watch",
+    "controlPreset": "Preset: {name}",
+    "presetDefault": "Server default — {name}",
+    "profilePreferences": "Quality: {qualities} · Languages: {languages} · Translation: {voices}"
   },
   "files": {
     "title": "Files",
@@ -907,7 +911,7 @@
         },
         "audio": {
           "title": "Audio language",
-          "text": "Which audio “Follow” looks for. Picked by your browser language; change it if you watch in another one."
+          "text": "Initial language for the default source preset. You can order multiple languages and translation types in Settings → Sources."
         }
       },
       "done": {
@@ -1073,7 +1077,8 @@
         "network": "Network",
         "metadata": "Metadata",
         "playback": "Playback",
-        "notifications": "Notifications"
+        "notifications": "Notifications",
+        "sources": "Source selection"
       },
       "account": {
         "description": "The server owner account. A second one can't be created: the household watches through profiles.",
@@ -1636,9 +1641,9 @@
         },
         "audio": {
           "title": "Audio language",
-          "description": "Which audio follows look for unless a follow has its own. Russian gets studios and translation types; other languages only the language tag in the release name.",
+          "description": "Used by source presets that inherit this setting. A follow’s own language takes priority over the default preset.",
           "auto": "Picked by your browser language",
-          "unset": "Not chosen yet: Russian applies"
+          "unset": "No server language is set. The fallback is original audio."
         },
         "defaults": {
           "title": "Rules for new follows",
@@ -1661,7 +1666,50 @@
             }
           },
           "russianScope": "Applies when the audio language is Russian."
-        }
+        },
+        "sourcePreferences": "Language and translation preferences: Source presets"
+      },
+      "sources": {
+        "description": "Create source presets and choose the server default. Viewers can select a preset on each device.",
+        "loadError": "Could not load source preferences",
+        "saved": "Source preferences saved",
+        "invalidOrder": "Include each option once.",
+        "moveUp": "Move {name} up",
+        "moveDown": "Move {name} down",
+        "orderHint": "Drag by the handle. Higher items have priority.",
+        "qualities": {
+          "title": "Video quality",
+          "description": "Preferred order for source recommendations. Seeders, audio and other factors also affect the choice. Automatic follows use their own quality rule first."
+        },
+        "voiceTypes": {
+          "title": "Translation type priority",
+          "description": "Applies within the same language priority when the release specifies a translation type."
+        },
+        "presetsTitle": "Presets",
+        "presetsDescription": "Select a preset to edit its preferences below. New presets copy the server default.",
+        "create": "Create preset",
+        "rename": "Rename",
+        "name": "Name",
+        "nameRequired": "Enter a name.",
+        "nameLong": "Use up to 64 characters.",
+        "nameHint": "Choose a name viewers will recognize, such as 4K or Small screen.",
+        "serverDefault": "Server default",
+        "makeDefault": "Use as default",
+        "defaultHint": "Automatic follows use the server default. Viewer choices do not change it.",
+        "deleteTitle": "Delete {name}?",
+        "deleteHint": "Viewers using this preset will inherit the server default.",
+        "unsaved": "Unsaved changes",
+        "saveHint": "Save applies preset preferences and the server default together.",
+        "move": "Move {name}",
+        "keyboardOrder": "Use the Up and Down arrow keys to change the order.",
+        "audio": "Audio",
+        "audioLanguages": {
+          "title": "Language priority",
+          "description": "Add the languages you want, then drag to order them. Original means the title’s original language."
+        },
+        "addLanguage": "Add language",
+        "removeLanguage": "Remove {language}",
+        "enableTypes": "Set translation type order"
       }
     },
     "sources": {

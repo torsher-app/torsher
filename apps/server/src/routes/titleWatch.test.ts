@@ -1,3 +1,5 @@
+import { setSetting } from '../services/settings/index.ts'
+import * as sources from '../services/sources/index.ts'
 import { Buffer } from 'node:buffer'
 import {
   afterEach,
@@ -126,6 +128,12 @@ beforeAll(async () => {
 })
 
 beforeEach(() => {
+  // These fixtures exercise Russian studio continuity explicitly.
+  setSetting('sources.profile', {
+    qualities: ['1080p', '2160p', '720p', 'SD'],
+    audioLanguages: ['ru'],
+    voiceTypes: ['D', 'MVO', 'DVO', 'AVO', 'VO', 'L'],
+  })
   clearSearchCache()
   overrides = {}
   getDb().delete(torrents).run()
@@ -175,6 +183,155 @@ function watch(payload: object) {
 }
 
 describe('post /api/titles/:id/watch', () => {
+  it.each(['watch', 'download'])(
+    '%s retries the next preferred-language release before display alternatives',
+    async (action) => {
+      const snapshot = await sources.getTitleSources(TITLE, {
+        season: 2,
+        episode: 5,
+      })
+      const base = snapshot!.ranking.ranked[0]!
+      const first = {
+        ...base,
+        id: 'de-first',
+        audioPriority: 0,
+        audioFit: 'own' as const,
+        infoHash: undefined,
+        magnet: undefined,
+        link: {
+          ...base.link!,
+          url: 'https://indexer.example/download/missing',
+        },
+      }
+      const second = {
+        ...base,
+        id: 'de-second',
+        audioPriority: 0,
+        audioFit: 'own' as const,
+      }
+      const other = {
+        ...base,
+        id: 'en-alternative',
+        audioPriority: 1,
+        audioFit: 'own' as const,
+        infoHash: undefined,
+        magnet: undefined,
+        link: {
+          ...base.link!,
+          url: 'https://indexer.example/download/wrong-language',
+        },
+      }
+      const attempts: string[] = []
+      overrides['GET indexer.example/download/missing'] = () => {
+        attempts.push('first')
+        return new Response('', { status: 404 })
+      }
+      overrides['GET indexer.example/download/101'] = () => {
+        attempts.push('second')
+        return new Response(sampleTorrentFile())
+      }
+      overrides['GET indexer.example/download/wrong-language'] = () => {
+        attempts.push('other')
+        return new Response('', { status: 404 })
+      }
+      const spy = vi
+        .spyOn(sources, 'getTitleSources')
+        .mockResolvedValue({
+          ...snapshot!,
+          ranking: {
+            ranked: [first, second, other],
+            top: [first.id, other.id, second.id],
+          },
+        })
+      try {
+        const response
+          = action === 'watch'
+            ? await watch({ season: 2, episode: 5 })
+            : await app.inject({
+                method: 'POST',
+                url: `/api/titles/${TITLE}/download`,
+                cookies: owner,
+                payload: { season: 2 },
+              })
+        expect(response.statusCode).toBe(200)
+        expect(attempts).toEqual(['first', 'second'])
+      }
+      finally {
+        spy.mockRestore()
+      }
+    },
+  )
+
+  it.each(['de', 'ja', 'original', 'ru'])(
+    'watch and download select using preset audio %s',
+    async (audio) => {
+      const tag = { de: 'GER', ja: 'JPN', original: 'ENG', ru: 'RUS' }[audio]!
+      overrides['GET a.indexer.example/torznab/api'] = () =>
+        new Response(searchXml.replace(' | LostFilm', ` | ${tag}`))
+      const patch = await app.inject({
+        method: 'PATCH',
+        url: '/api/settings/sources/presets/default-1080p',
+        cookies: owner,
+        payload: { audioLanguages: [audio], voiceTypes: [] },
+      })
+      expect(patch.statusCode).toBe(200)
+      const spy = vi.spyOn(sources, 'getTitleSources')
+      try {
+        const watched = await watch({
+          season: 2,
+          episode: 5,
+          presetId: 'default-1080p',
+        })
+        expect(watched.statusCode).toBe(200)
+        expect(watched.json().status).toBe('ready')
+        const watchSources = await spy.mock.results[0]!.value
+        expect(watchSources.audio).toBe(audio)
+        expect(watchSources.ranking.ranked[0].title).toContain(tag)
+        spy.mockClear()
+        getDb().delete(torrents).run()
+        const downloaded = await app.inject({
+          method: 'POST',
+          url: `/api/titles/${TITLE}/download`,
+          cookies: owner,
+          payload: { season: 2, presetId: 'default-1080p' },
+        })
+        expect(downloaded.statusCode).toBe(200)
+        expect(downloaded.json().status).toBe('started')
+        const downloadSources = await spy.mock.results[0]!.value
+        expect(downloadSources.audio).toBe(audio)
+        expect(downloadSources.ranking.ranked[0].title).toContain(tag)
+      }
+      finally {
+        spy.mockRestore()
+      }
+    },
+  )
+
+  it('передаёт выбранный пресет при автовыборе просмотра и скачивания', async () => {
+    const spy = vi.spyOn(sources, 'getTitleSources')
+    try {
+      await watch({ season: 2, episode: 5, presetId: 'default-4k' })
+      expect(spy).toHaveBeenCalledWith(
+        TITLE,
+        expect.objectContaining({ presetId: 'default-4k' }),
+      )
+      spy.mockClear()
+      await app.inject({
+        method: 'POST',
+        url: `/api/titles/${TITLE}/download`,
+        cookies: owner,
+        payload: { season: 2, presetId: 'default-4k' },
+      })
+      expect(spy).toHaveBeenCalledWith(
+        TITLE,
+        expect.objectContaining({ presetId: 'default-4k' }),
+      )
+    }
+    finally {
+      spy.mockRestore()
+    }
+  })
+
   it('отвечает 401 без входа', async () => {
     const res = await app.inject({
       method: 'POST',

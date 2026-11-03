@@ -16,7 +16,7 @@ import {
 } from '../../db/schema.ts'
 import { getTitleSummary } from '../tmdb/index.ts'
 import { parseCatalogId } from '../tmdb/mappers.ts'
-import { followAudio, forgetAudioPending } from './audio.ts'
+import { followSourceProfile, forgetAudioPending } from './audio.ts'
 import { applyModeChange } from './pick.ts'
 import { followSettings } from './settings.ts'
 import { firstUnaired } from './wanted.ts'
@@ -308,8 +308,9 @@ export function updateFollow(id: string, patch: FollowPatch) {
     applyModeChange(follow, rules.mode)
 
   if (
-    rules.audio !== undefined
-    && followAudio({ audio: rules.audio }) !== followAudio(follow)
+    (rules.audio !== undefined || rules.requireRussian !== undefined)
+    && followSourceProfile({ ...follow, ...rules }).audioLanguages.join(',')
+    !== followSourceProfile(follow).audioLanguages.join(',')
   ) {
     forgetAudioPending([id])
   }

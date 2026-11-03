@@ -5,18 +5,32 @@ import type { BlockedReleases } from './blocklist.ts'
 import type { DecideContext, SeasonContext } from './decide.ts'
 import { parseRelease } from '@torsher/release-parser'
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_PROFILE } from '../sources/profile.ts'
+import { DEFAULT_PROFILE as NEUTRAL_PROFILE } from '../sources/profile.ts'
 import { rankReleases } from '../sources/rank.ts'
 import {
   bestQualitySeen,
   checkCandidate,
   cutoffStepOf,
   planSeason,
+  positionOf,
 } from './decide.ts'
 import { listedKey } from './blocklist.ts'
 import { ladderStep } from './rank.ts'
 import { isUpgrade } from './upgrade.ts'
 import { episodeKey, episodeStates, wantedEpisodes } from './wanted.ts'
+
+const DEFAULT_PROFILE = {
+  ...NEUTRAL_PROFILE,
+  audioLanguages: ['ru'] as import('../../db/schema.ts').FollowAudio[],
+  voiceTypes: [
+    'D',
+    'MVO',
+    'DVO',
+    'AVO',
+    'VO',
+    'L',
+  ] as import('@torsher/release-parser').VoiceType[],
+}
 
 const GB = 1024 ** 3
 const HOUR_MS = 60 * 60 * 1000
@@ -100,7 +114,19 @@ function plan(
   ctx: Partial<DecideContext> = {},
   season: SeasonContext = season2,
 ) {
-  return planSeason(ranked(releases, season.voice), season, context(ctx))
+  const effective = context(ctx)
+  return planSeason(
+    rankReleases(releases, {
+      kind: effective.kind,
+      profile: effective.profile,
+      audio: effective.audio,
+      originalLanguage: effective.originalLanguage,
+      pinned: season.voice,
+      episodeCounts: effective.episodeCounts,
+    }).ranked,
+    season,
+    effective,
+  )
 }
 
 function grabbed(result: ReturnType<typeof plan>) {
@@ -118,6 +144,55 @@ function codes(result: ReturnType<typeof plan>, id: string) {
 }
 
 describe('решатель «Следить»', () => {
+  it('без приоритета типов берёт распознанный русский перевод без ожидания дубляжа', () => {
+    const result = planSeason(
+      ranked([episode(5, 'WEB-DL 1080p | MVO')]),
+      { season: 2, cutoffStep: 0 },
+      context({
+        audio: 'ru',
+        profile: { ...NEUTRAL_PROFILE, audioLanguages: ['ru'], voiceTypes: [] },
+      }),
+    )
+    expect(result.grabs).toHaveLength(1)
+    expect(result.pending).toHaveLength(0)
+  })
+
+  it('порядок озвучки меняет выбор, но qualityPreset остаётся главным правилом качества', () => {
+    const releases = [
+      episode(5, 'WEB-DL 1080p | D'),
+      episode(5, 'WEB-DL 1080p | MVO'),
+      episode(5, 'WEB-DL 2160p | MVO'),
+    ]
+    const profile = {
+      qualities: ['2160p', '1080p', '720p', 'SD'] as const,
+      voiceTypes: ['MVO', 'D', 'DVO', 'AVO', 'VO', 'L'] as const,
+    }
+    const changed = {
+      qualities: [...profile.qualities],
+      voiceTypes: [...profile.voiceTypes],
+    }
+    const rankedReleases = rankReleases(releases, {
+      kind: 'series',
+      profile: changed,
+    }).ranked
+    const result = planSeason(
+      rankedReleases,
+      { season: 2, cutoffStep: 0 },
+      context({ profile: changed }),
+    )
+    expect(grabbed(result)).toEqual([
+      { id: 'e5-WEB-DL 1080p | MVO', episodes: [5] },
+    ])
+    const old = planSeason(
+      ranked(releases),
+      { season: 2, cutoffStep: 0 },
+      context(),
+    )
+    expect(grabbed(old)).toEqual([
+      { id: 'e5-WEB-DL 1080p | D', episodes: [5] },
+    ])
+  })
+
   it('своя студия в верхней ступени качается сразу', () => {
     const result = plan([episode(5, 'WEB-DL 1080p | LostFilm')])
 
@@ -401,7 +476,7 @@ describe('решатель «Следить»', () => {
     const result = plan(
       [episode(5, 'WEB-DL 1080p')],
       // У тайтла с русским оригиналом «нужна русская дорожка» выключено
-      { russianOriginal: true, requireRussian: false },
+      { russianOriginal: true, originalLanguage: 'ru', requireRussian: false },
       { season: 2, cutoffStep: 0 },
     )
 
@@ -782,7 +857,16 @@ describe('язык озвучки', () => {
   const english = (tail: string, extra: Partial<FoundRelease> = {}) =>
     found(`en-${tail}`, `Quiet.Harbor.S02E05.${tail}`, extra)
   const original = { audio: 'original' as const, originalLanguage: 'en' }
-  const german = { audio: 'de' as const, originalLanguage: 'en' }
+  const german = {
+    profile: {
+      ...DEFAULT_PROFILE,
+      audioLanguages: [
+        'de',
+        'original',
+      ] as import('../../db/schema.ts').FollowAudio[],
+    },
+    originalLanguage: 'en',
+  }
   const afterWindow = new Map([
     ['2:5', new Date(NOW.getTime() - 25 * HOUR_MS)],
   ])
@@ -857,7 +941,7 @@ describe('язык озвучки', () => {
     expect(grabbed(result)).toEqual([{ id: plain.id, episodes: [5] }])
   })
 
-  it('другой язык совпадает с языком оригинала: своя — годная как оригинал', () => {
+  it('явный язык без тегов не считается подтверждённой дорожкой', () => {
     const plain = english('1080p.WEB-DL.x264')
     const result = plan(
       [plain],
@@ -865,7 +949,7 @@ describe('язык озвучки', () => {
       noVoice,
     )
 
-    expect(grabbed(result)).toHaveLength(1)
+    expect(grabbed(result)).toHaveLength(0)
   })
 
   it.each(['en', 'de'] as const)(
@@ -912,4 +996,47 @@ describe('язык озвучки', () => {
       expect(grabbed(plan([dub], ctx, noVoice))).toEqual([])
     },
   )
+})
+
+describe('ordered audio upgrades', () => {
+  const profile = {
+    ...NEUTRAL_PROFILE,
+    audioLanguages: [
+      'de',
+      'en',
+      'original',
+    ] as import('../../db/schema.ts').FollowAudio[],
+  }
+  const ctx = context({ profile, originalLanguage: 'ja' })
+  const season = { season: 2, cutoffStep: 0 }
+  const version = (audio: string, quality: string) =>
+    rankReleases([episode(5, `WEB-DL ${quality} | ${audio}`)], {
+      kind: 'series',
+      originalLanguage: 'ja',
+      profile,
+    }).ranked[0]!
+  it('upgrades original to the earlier English fallback at the same quality', () => {
+    expect(
+      isUpgrade(
+        positionOf(version('ENG', '1080p'), season, ctx),
+        positionOf(version('JPN', '1080p'), season, ctx),
+      ),
+    ).toBe(true)
+  })
+  it('does not trade an earlier language for higher quality in a later fallback', () => {
+    expect(
+      isUpgrade(
+        positionOf(version('JPN', '1080p'), season, ctx),
+        positionOf(version('ENG', '720p'), season, ctx),
+      ),
+    ).toBe(false)
+  })
+  it('preserves type priority for German upgrades', () => {
+    expect(
+      isUpgrade(
+        positionOf(version('Dub GER', '1080p'), season, ctx),
+        positionOf(version('MVO GER', '1080p'), season, ctx),
+      ),
+    ).toBe(true)
+  })
 })

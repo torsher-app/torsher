@@ -47,9 +47,12 @@ export type SourceReason
 
 export interface RankedRelease extends FoundRelease {
   score: number
-  /** Основная русская дорожка или русский оригинал (`voiceOf`). */
+  audioLanguage?: FollowAudio
+  audioPriority?: number
+  typePriority?: number
+  /** Лучшая распознанная дорожка по языку и типу перевода. */
   voice?: AudioTrack
-  /** Все русские дорожки (`russianVoices`): основная среди них. */
+  /** Распознанные дорожки выбранного языкового приоритета. */
   voices: AudioTrack[]
   /** Разрешение: проба или файлы добавленной раздачи, иначе по названию. */
   resolution?: VideoResolution
@@ -65,8 +68,8 @@ export interface RankedRelease extends FoundRelease {
 export interface RankContext {
   kind: 'movie' | 'series'
   /**
-   * Язык озвучки, под который ранжируем; без него — `ru`. Студии, типы
-   * перевода и закреплённая озвучка дают очки только у `ru`.
+   * Явный одиночный override для внутренних вызовов; обычно используется
+   * упорядоченный profile.audioLanguages. Закреплённые студии сохраняют RU-семантику.
    */
   audio?: FollowAudio
   profile: RankingProfile
@@ -184,7 +187,7 @@ export function voiceOf(voices: AudioTrack[], ctx: RankContext) {
 
 /**
  * Есть оригинальная дорожка: `Original` или дорожка на языке оригинала, а
- * без него — любая нерусская
+ * без него — только явный Original
  */
 export function hasOriginalAudio(
   parsed: Pick<ParsedRelease, 'audio'>,
@@ -194,9 +197,7 @@ export function hasOriginalAudio(
     track =>
       track.type === 'Original'
       || (!!track.language
-        && (originalLanguage
-          ? track.language === originalLanguage
-          : track.language !== 'ru')),
+        && (originalLanguage ? track.language === originalLanguage : false)),
   )
 }
 
@@ -251,6 +252,64 @@ const AUDIO_FIT_SCORE: Record<AudioFit, number> = {
   own: WEIGHTS.ownLanguage,
   original: 0,
   foreign: WEIGHTS.foreignVoices,
+}
+
+/** Ordered language match; original deliberately retains the existing untagged-release fallback. */
+export function audioLanguagesOf(
+  ctx: Pick<RankContext, 'audio' | 'profile'>,
+): FollowAudio[] {
+  return ctx.audio ? [ctx.audio] : (ctx.profile.audioLanguages ?? ['ru'])
+}
+
+export function preferredAudio(
+  parsed: Pick<ParsedRelease, 'audio'>,
+  ctx: Pick<RankContext, 'audio' | 'profile' | 'originalLanguage' | 'pinned'>,
+) {
+  const languages = audioLanguagesOf(ctx)
+  for (const [priority, language] of languages.entries()) {
+    const tracks = parsed.audio
+      .filter((track) => {
+        if (language === 'original') {
+          return (
+            track.type === 'Original'
+            || (!!ctx.originalLanguage && track.language === ctx.originalLanguage)
+          )
+        }
+        return (
+          track.language === language
+          || (track.type === 'Original' && ctx.originalLanguage === language)
+          // Untagged translation/studio conventions are specific to Russian releases.
+          || (language === 'ru' && isRussian(track))
+        )
+      })
+      .sort((a, b) => voiceRank(a, ctx.profile) - voiceRank(b, ctx.profile))
+    const originalFallback
+      = language === 'original' && parsed.audio.length === 0
+    const russianOriginal
+      = language === 'ru'
+        && ctx.originalLanguage === 'ru'
+        && parsed.audio.length === 0
+    if (!tracks.length && !originalFallback && !russianOriginal)
+      continue
+    const pinned
+      = language === 'ru' && ctx.pinned
+        ? tracks.find(track => voiceMatches(track, ctx.pinned!))
+        : undefined
+    const voice = pinned ?? tracks[0]
+    return {
+      priority,
+      language,
+      voice,
+      voices: tracks,
+      typePriority:
+        pinned || language === 'original' || !ctx.profile.voiceTypes.length
+          ? 0
+          : voice
+            ? voiceRank(voice, ctx.profile)
+            : ctx.profile.voiceTypes.length,
+    }
+  }
+  return undefined
 }
 
 export function voiceMatches(track: AudioTrack | undefined, pinned: VoiceRef) {
@@ -417,6 +476,8 @@ function compareRanked(a: RankedRelease, b: RankedRelease) {
   return (
     Number(a.match.confidence === 'low')
     - Number(b.match.confidence === 'low')
+    || (a.audioPriority ?? 0) - (b.audioPriority ?? 0)
+    || (a.typePriority ?? 0) - (b.typePriority ?? 0)
     || b.score - a.score
     || b.seeders - a.seeders
     || a.id.localeCompare(b.id)
@@ -438,7 +499,9 @@ function pickTop(eligible: RankedRelease[], ctx: RankContext) {
     {
       ...best,
       reason:
-        ctx.pinned && voiceMatches(best.voice, ctx.pinned)
+        ctx.pinned
+        && best.audioLanguage === 'ru'
+        && voiceMatches(best.voice, ctx.pinned)
           ? 'pinnedVoice'
           : 'profile',
     },
@@ -469,9 +532,8 @@ function pickTop(eligible: RankedRelease[], ctx: RankContext) {
   const seeded = rest()
     .filter(item => item.seeders > Math.max(best.seeders * 2, 10))
     .sort((a, b) => b.seeders - a.seeders)[0]
-  const russian = (ctx.audio ?? 'ru') === 'ru'
-  // У русского «оригинал» — любая нерусская дорожка, у остальных — по языку тайтла
-  const originalLanguage = russian ? undefined : ctx.originalLanguage
+  const russian = audioLanguagesOf(ctx)[0] === 'ru'
+  const originalLanguage = ctx.originalLanguage
   const original = hasOriginalAudio(best.parsed, originalLanguage)
     ? undefined
     : rest().find(item => hasOriginalAudio(item.parsed, originalLanguage))
@@ -504,15 +566,10 @@ export interface Ranking {
   top: string[]
 }
 
-/** Раздача годится в тройку по озвучке: русская дорожка, а у других языков — не только чужие озвучки */
-function fitsAudio(release: RankedRelease) {
-  return release.audioFit ? release.audioFit !== 'foreign' : !!release.voice
-}
-
 /**
  * Счёт по профилю и тройка с причинами. В тройку идут только уверенные
- * совпадения с сидами и с подходящей озвучкой (`fitsAudio`); если таких нет
- * ни одной — без неё (откат, а не пустой экран).
+ * совпадения с сидами и с подходящей дорожкой. Остальные остаются
+ * доступными для явного ручного выбора.
  */
 export function rankReleases(
   releases: FoundRelease[],
@@ -520,12 +577,17 @@ export function rankReleases(
 ): Ranking {
   const ranked = releases
     .map((release) => {
-      const voices = russianVoices(release.parsed, ctx)
-      const voice = voiceOf(voices, ctx)
-      const audioFit
-        = ctx.audio && ctx.audio !== 'ru'
-          ? audioFitOf(release.parsed, ctx.audio, ctx.originalLanguage)
-          : undefined
+      const preference = preferredAudio(release.parsed, ctx)
+      const voices = preference?.voices ?? []
+      const voice = preference?.voice
+      const audioFit: AudioFit | undefined
+        = preference?.language === 'ru'
+          ? undefined
+          : preference
+            ? preference.language === 'original'
+              ? 'original'
+              : 'own'
+            : 'foreign'
       const episodeSize = episodeSizeOf(release, ctx.kind, ctx.episodeCounts)
       const resolution
         = ctx.known?.get(release.id) ?? videoResolution(release.parsed)
@@ -537,6 +599,9 @@ export function rankReleases(
         voice,
         voices,
         audioFit,
+        audioLanguage: preference?.language,
+        audioPriority: preference?.priority ?? Number.MAX_SAFE_INTEGER,
+        typePriority: preference?.typePriority ?? Number.MAX_SAFE_INTEGER,
         episodeSize,
         resolution,
         score: scoreOf(release, voice, audioFit, episodeSize, resolution, ctx),
@@ -555,8 +620,10 @@ export function rankReleases(
       ? allEligible
       : allEligible.filter(item => item.parsed.seasons.includes(focus))
   const eligible = inSeason.length > 0 ? inSeason : allEligible
-  const voiced = eligible.filter(fitsAudio)
-  const top = pickTop(voiced.length > 0 ? voiced : eligible, ctx)
+  const voiced = eligible.filter(
+    item => item.audioPriority !== Number.MAX_SAFE_INTEGER,
+  )
+  const top = pickTop(voiced, ctx)
   const reasons = new Map(top.map(item => [item.id, item.reason]))
 
   return {

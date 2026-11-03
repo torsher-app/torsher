@@ -12,9 +12,10 @@ import type {
 } from './upgrade.ts'
 import type { EpisodeRef } from './wanted.ts'
 import {
-  fitsOriginal,
-  hasOwnLanguage,
+  audioLanguagesOf,
+  preferredAudio,
   RESOLUTION_RANK,
+  russianVoices,
   SCREEN_COPIES,
   SIZE_CORRIDOR,
   voiceMatches,
@@ -240,21 +241,24 @@ function isVoiceAtCutoff(
   season: SeasonContext,
   ctx: AudioContext,
 ) {
-  const audio = ctx.audio ?? 'ru'
+  const audio = audioLanguagesOf(ctx)[0]!
 
-  if (audio === 'original')
+  const match = preferredAudio(release.parsed, {
+    ...ctx,
+    pinned: season.voice,
+  })
+  if (!match || match.priority !== 0)
+    return false
+  if (audio === 'original' || (audio === 'ru' && ctx.russianOriginal))
     return true
-
-  if (audio !== 'ru')
-    return hasOwnLanguage(release.parsed, audio, ctx.originalLanguage)
-
-  if (ctx.russianOriginal)
-    return true
-
-  if (season.voice)
+  if (audio === 'ru' && season.voice)
     return hasOwnVoice(release, season.voice)
-
-  return release.voice?.type === ctx.profile.voiceTypes[0]
+  return (
+    ctx.profile.voiceTypes.length === 0
+    || match.voice?.type === ctx.profile.voiceTypes[0]
+    // A language tag without a translation type is not evidence of a worse translation.
+    || !match.voice?.type
+  )
 }
 
 /** Где версия относительно cutoff сезона */
@@ -263,7 +267,13 @@ export function positionOf(
   season: SeasonContext,
   ctx: AudioContext & Pick<DecideContext, 'preset'>,
 ): VersionPosition {
+  const preference = preferredAudio(version.parsed, {
+    ...ctx,
+    pinned: season.voice,
+  })
   return {
+    audioPriority: preference?.priority ?? Number.MAX_SAFE_INTEGER,
+    typePriority: preference?.typePriority ?? Number.MAX_SAFE_INTEGER,
     voiceAtCutoff: isVoiceAtCutoff(version, season, ctx),
     step:
       ladderStep(version.resolution?.value, ctx.preset)
@@ -302,16 +312,13 @@ export function checkCandidate(
   ctx: DecideContext,
 ): CheckedCandidate {
   const rejections: Rejection[] = []
-  const audio = ctx.audio ?? 'ru'
+  const audio = audioLanguagesOf(ctx)[0]!
   const step = ladderStep(release.resolution?.value, ctx.preset)
   const voiceAtCutoff = isVoiceAtCutoff(release, season, ctx)
   // У другого языка «своя» — раздача с дорожкой на нём
   const ownVoice
     = audio === 'ru' ? hasOwnVoice(release, season.voice) : voiceAtCutoff
-  const position = {
-    voiceAtCutoff,
-    step: step ?? Number.POSITIVE_INFINITY,
-  }
+  const position = positionOf(release, season, ctx)
   const named = releaseEpisodes(release, season.season, ctx)
   const episodes: EpisodeRef[] = []
   const upgrades = new Set<string>()
@@ -378,20 +385,24 @@ export function checkCandidate(
     )
   }
 
-  if (audio === 'ru') {
-    if (ctx.requireRussian && release.voices.length === 0)
-      rejections.push(reject('no_russian'))
-  }
-  else if (audio === 'original') {
-    if (!fitsOriginal(release.parsed, ctx.originalLanguage))
-      rejections.push(reject('no_original'))
-  }
-  // После окна вместо своего языка берём оригинал, а не чужую озвучку
-  else if (
-    !voiceAtCutoff
-    && !fitsOriginal(release.parsed, ctx.originalLanguage)
+  if (
+    audio === 'ru'
+    && ctx.requireRussian
+    && russianVoices(release.parsed, ctx).length === 0
   ) {
-    rejections.push(reject('no_language', { language: audio }))
+    rejections.push(reject('no_russian'))
+  }
+  else if (!preferredAudio(release.parsed, ctx)) {
+    rejections.push(
+      reject(
+        audio === 'original'
+          ? 'no_original'
+          : audio === 'ru'
+            ? 'no_russian'
+            : 'no_language',
+        { language: audio },
+      ),
+    )
   }
 
   if (step === undefined) {
@@ -516,15 +527,21 @@ function waitParams(
     until: until.toISOString(),
   }
 
-  const audio = ctx.audio ?? 'ru'
+  const audio = audioLanguagesOf(ctx)[0]!
 
   if (!candidate.voiceAtCutoff && audio !== 'ru') {
     params.language = audio
   }
   else if (!candidate.voiceAtCutoff) {
-    if (season.voice?.studio)
+    if (season.voice?.studio) {
       params.studio = season.voice.studio
-    else params.voiceType = season.voice?.type ?? ctx.profile.voiceTypes[0]!
+    }
+    else {
+      const voiceType = season.voice?.type ?? ctx.profile.voiceTypes[0]
+      if (voiceType)
+        params.voiceType = voiceType
+      else params.language = 'ru'
+    }
   }
 
   if (candidate.step > season.cutoffStep)
@@ -580,13 +597,7 @@ export function planSeason(
     return new Date(seen.getTime() + ctx.waitHours * HOUR_MS)
   }
   const sorted = [...checked].sort((a, b) =>
-    compareCandidates(
-      a,
-      b,
-      ctx.profile,
-      ctx.kind,
-      (ctx.audio ?? 'ru') === 'ru',
-    ),
+    compareCandidates(a, b, ctx.profile, ctx.kind, true),
   )
   const uncovered = new Set(ctx.wanted)
 

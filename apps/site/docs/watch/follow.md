@@ -31,22 +31,22 @@ Following is shared by the whole server: one set of rules per title, so a series
 ## The rules
 
 - **<Ui k="follow.panel.mode" />.** <Ui k="follow.panel.modes.download" /> (the default) or <Ui k="follow.panel.modes.notify" />. See [Download or notify](#download-or-notify). The default for new follows is set in the panel.
-- **<Ui k="follow.panel.voice" />.** Which audio to look for. The first choice follows the server's audio language, set in the panel (see [Audio language](#audio-language)). <Ui k="audioLanguages.original" /> takes releases with the original audio track; <Ui k="follow.panel.voiceOtherLanguage" /> picks a language for this title only. For Russian you also pick the voice-over studio of the season, <Ui k="follow.panel.voiceAny" />, or only that studio. If the season has no studio yet, the first episode Torsher takes or your pick on the <Ui k="sources.title" /> screen sets it, and the next episodes keep it.
+- **<Ui k="follow.panel.voice" />.** Which audio to look for. The first choice follows the default source preset's ordered audio preferences (see [Audio language](#audio-language)). <Ui k="audioLanguages.original" /> takes releases with the original audio track; <Ui k="follow.panel.voiceOtherLanguage" /> picks a language for this title only. For Russian you also pick the voice-over studio of the season, <Ui k="follow.panel.voiceAny" />, or only that studio. If the season has no studio yet, the first episode Torsher takes or your pick on the <Ui k="sources.title" /> screen sets it, and the next episodes keep it.
 - **<Ui k="follow.panel.wait" />.** <Ui k="follow.panel.waitNone" />, 12 hours, a day or 3 days. The wait starts when an episode first appears. During it, Torsher holds back releases in another voice-over or a lower quality; a release in your voice-over and top quality is taken at once. When the wait is over, the best release so far is taken.
 - **<Ui k="follow.panel.quality" />.** The top quality to wait for: <Ui k="follow.panel.qualities.best" /> (then 720p and SD), <Ui k="follow.panel.qualities.uhd" /> (then 1080p and 720p) or <Ui k="follow.panel.qualities.compact" /> (then SD). If a show never comes out in the top quality, Torsher stops waiting for it.
 - **<Ui k="follow.panel.stop" />.** Unsubscribes only your profile: other profiles that follow the title keep following it. When the last profile stops, nothing new is searched or downloaded. Downloaded episodes stay in the library.
 
 Whether a Russian audio track is required is set in the panel. See [Following](/docs/panel/follow).
 
+Following uses the Russian voice-type order of the server default preset, which can be changed in <Ui k="panel.nav.settings panel.settings.nav.sources" />. A pinned studio takes priority. Each follow keeps its own quality rule, even when the source quality order changes. Presets selected by viewers in the showcase do not change these rules. See [Source preferences](/docs/watch/sources#set-source-preferences).
+
 ### Audio language {#audio-language}
 
-Torsher reads the audio language from tags in the release name.
+Torsher reads language and translation-type tags from the release name. Without an explicit rule on the follow, it uses the default source preset's ordered languages and translation types. A viewer choosing a different preset does not change automation.
 
-- **<Ui k="audioLanguages.original" />.** A release with the original audio track is taken, and so is a release whose name lists no audio at all: English-language indexers rarely write it. A release with only dubs in other languages is not taken. Torsher doesn't wait for a voice-over, only for the quality.
-- **Russian.** Voice-over studios and translation types, as described above.
-- **Another language** (German, French and others the release names tag). A release with an audio track in that language is taken at once. Without one, Torsher waits until <Ui k="follow.panel.wait" /> runs out, then takes the original, not a dub in another language. If the title's original language is the one you picked, a release that fits as the original is taken too; a release with only a dub in another language still isn't.
+The first language is preferred; lower languages in the preset can be taken after the waiting window. Translation types are compared within the same language. Original matches the title's original language and retains the fallback for releases that name no audio tracks. Unlisted languages are not selected automatically.
 
-The server's audio language applies to every follow without its own choice. Until you set it, Torsher picks it from the language of the first browser or TV that connects: Russian for Russian, a language from the list above for that language, the original for English and any other. English itself is only a manual choice: with it, an anime or a K-drama would wait out the window for an English-tagged release. A choice you make in the setup wizard, in the panel or on a follow is never changed by that guess.
+An explicit language on a follow overrides the preset's language list. Existing single-language rules keep their original-audio fallback after the waiting window. Russian studio pins and the explicit rule requiring a Russian track are preserved. Quality still follows each follow's own quality rule.
 
 Following starts from the first episode that hasn't aired yet and includes every season after it.
 

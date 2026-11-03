@@ -3,24 +3,46 @@ import type { ServerAudio } from './settings.ts'
 import { and, inArray, isNotNull, isNull } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import { followAudios, followEpisodes, follows } from '../../db/schema.ts'
-import { followSettings, saveServerAudio } from './settings.ts'
+import {
+  legacyAudioLanguages,
+  saveSourceProfile,
+  sourceProfile,
+} from '../sources/profile.ts'
+import { saveServerAudio } from './settings.ts'
 
-// Пока сервер не знает языка зрителей, действует прежняя русская модель
-const FALLBACK_AUDIO: FollowAudio = 'ru'
-
-// Значение сервера уже есть: подстановке на запросах в базу ходить незачем
-let serverAudioKnown = false
+// Без настройки предпочитаем оригинальную дорожку
+const FALLBACK_AUDIO: FollowAudio = 'original'
 
 function isFollowAudio(value: string): value is FollowAudio {
   return (followAudios as readonly string[]).includes(value)
 }
 
-/** Язык озвучки сервера: заданный или подобранный, иначе `ru` */
+/** Язык озвучки сервера: заданный или подобранный, иначе `original` */
 export function serverAudio(): FollowAudio {
-  return followSettings().audio?.value ?? FALLBACK_AUDIO
+  return sourceProfile().audioLanguages[0] ?? FALLBACK_AUDIO
 }
 
 /** Действующий язык слежения: своё правило, иначе язык сервера на сейчас */
+export function followSourceProfile(
+  follow: Pick<Follow, 'audio' | 'requireRussian'>,
+) {
+  const profile = sourceProfile()
+  const audioLanguages = follow.audio
+    ? follow.audio === 'original' || follow.audio === 'ru'
+      ? [follow.audio]
+      : [follow.audio, 'original' as const]
+    : [...profile.audioLanguages]
+  // Explicit legacy rule permits original fallback when Russian is not required.
+  if (
+    follow.audio === 'ru'
+    && !follow.requireRussian
+    && !audioLanguages.includes('original')
+  ) {
+    audioLanguages.push('original')
+  }
+  return { ...profile, audioLanguages }
+}
+
 export function followAudio(follow: Pick<Follow, 'audio'>): FollowAudio {
   return follow.audio ?? serverAudio()
 }
@@ -74,57 +96,18 @@ export function forgetAudioPending(followIds: string[]) {
         inArray(followEpisodes.followId, followIds),
         isNotNull(followEpisodes.pending),
         isNull(followEpisodes.torrentId),
+        isNull(followEpisodes.picked),
       ),
     )
     .run()
   db.update(follows)
-    .set({ nextSearchAt: null })
+    .set({ lastSearchAt: null, nextSearchAt: null })
     .where(inArray(follows.id, followIds))
     .run()
 }
 
 /** Язык сервера; слежения без своего правила, чей язык сменился, решают заново */
 export function setServerAudio(audio: ServerAudio) {
-  const before = serverAudio()
-
+  saveSourceProfile({ audioLanguages: legacyAudioLanguages(audio.value) })
   saveServerAudio(audio)
-
-  if (audio.value === before)
-    return
-
-  forgetAudioPending(
-    getDb()
-      .select({ id: follows.id })
-      .from(follows)
-      .where(isNull(follows.audio))
-      .all()
-      .map(row => row.id),
-  )
-}
-
-/**
- * Первый авторизованный запрос подбирает язык озвучки сервера по языку
- * браузера или устройства. Только если значения ещё нет: выбор владельца и
- * прежняя догадка не перезаписываются.
- */
-export function guessServerAudio(acceptLanguage: string | undefined) {
-  if (serverAudioKnown)
-    return
-
-  if (!followSettings().audio) {
-    if (!acceptLanguage)
-      return
-
-    setServerAudio({
-      value: audioFromLanguage(acceptLanguage),
-      source: 'auto',
-    })
-  }
-
-  serverAudioKnown = true
-}
-
-/** Для тестов: следующий запрос снова проверит настройку */
-export function resetServerAudioGuess() {
-  serverAudioKnown = false
 }

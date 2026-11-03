@@ -34,16 +34,26 @@ const PICKS: NonNullable<SourceCandidate['pickReason']>[] = [
   'smaller',
 ]
 
-get<TitleSources>('/api/titles/:id/sources', ({ params }) => {
+get<TitleSources>('/api/titles/:id/sources', ({ params, query }) => {
+  const presetId
+    = query.get('presetId') === 'default-4k' ? 'default-4k' : 'default-1080p'
+  const qualities: TitleSources['profile']['qualities']
+    = presetId === 'default-4k'
+      ? ['2160p', '1080p', '720p', 'SD']
+      : ['1080p', '2160p', '720p', 'SD']
   const title = titleById(params.id!)
   const watchedFrom = lastProgress(title.id)?.torrentId
   const watchedCandidate = watchedFrom && torrentById(watchedFrom)?.candidateId
-  const list = releasesFor(title).map(item => item.candidate)
-  const top = [
-    list.find(item => item.quality === '1080p'),
-    list.find(item => item.quality === '2160p'),
-    list.find(item => item.quality === '720p'),
-  ].flatMap(item => item ?? [])
+  const list = releasesFor(title)
+    .map(item => item.candidate)
+    .sort(
+      (a, b) =>
+        qualities.indexOf(a.resolution?.value ?? 'SD')
+        - qualities.indexOf(b.resolution?.value ?? 'SD'),
+    )
+  const top = qualities
+    .flatMap(quality => list.find(item => item.quality === quality) ?? [])
+    .slice(0, 3)
   const candidates = list.map(item => ({
     ...item,
     pickReason: top.includes(item) ? PICKS[top.indexOf(item)]! : null,
@@ -55,8 +65,20 @@ get<TitleSources>('/api/titles/:id/sources', ({ params }) => {
     season: null,
     episode: null,
     updatedAt: new Date().toISOString(),
-    audio: 'ru',
-    profile: { qualities: ['1080p', '2160p'], voiceTypes: ['Original'] },
+    audio: 'original',
+    profile: {
+      qualities,
+      audioLanguages: ['original'],
+      voiceTypes: ['D', 'MVO', 'DVO', 'AVO', 'VO', 'L'],
+    },
+    presets: {
+      defaultId: 'default-1080p',
+      effectiveId: presetId,
+      items: [
+        { id: 'default-1080p', name: '1080p' },
+        { id: 'default-4k', name: '4K' },
+      ],
+    },
     pinnedVoice: null,
     seasonCandidate: seasons
       ? (list.find(item => item.isPack && item.seasons[0] === seasons)?.id

@@ -9,6 +9,7 @@ import {
 defineProps<{
   title: string
   description: string
+  stickyFooter?: boolean
 }>()
 </script>
 
@@ -31,6 +32,9 @@ defineProps<{
       <slot />
     </div>
     <CardFooter
+      :class="
+        stickyFooter ? 'sticky bottom-0 z-10 bg-card shadow-sm' : undefined
+      "
       class="flex-wrap justify-between gap-3 border-t bg-muted/50 px-5 py-3 text-[13px] text-muted-foreground [.border-t]:pt-3"
     >
       <span class="min-w-0"><slot name="hint" /></span>
