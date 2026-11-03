@@ -4057,5 +4057,9 @@
     "narrowText": "It is laid out for a TV or a desktop screen. On a phone everything is tiny, but it works.",
     "openAnyway": "Open anyway",
     "backToSite": "Back to torsher.app"
+  },
+  "libraryVersions": {
+    "title": "Choose version",
+    "version": "Version {number}"
   }
 }

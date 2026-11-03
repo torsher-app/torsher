@@ -29,6 +29,8 @@ import ActionButton from './ActionButton.vue'
 import AppIcon from './AppIcon.vue'
 import AppLoader from './AppLoader.vue'
 import LibraryRow from './LibraryRow.vue'
+import LibraryVersionPicker from './LibraryVersionPicker.vue'
+import { useLibraryPicker } from '../composables/useLibraryPicker.ts'
 import FocusSection from './FocusSection.vue'
 import OptionsPanel from './OptionsPanel.vue'
 import SourceRow from './SourceRow.vue'
@@ -52,7 +54,7 @@ import {
   seasonOptions,
   videoClassLabel,
 } from '../lib/sources.ts'
-import { libraryTarget } from '../lib/library.ts'
+import { libraryChoices } from '../lib/library.ts'
 import { loadSourceView, saveSourceView } from '../lib/sourceView.ts'
 import { formatYears } from '../lib/titleInfo.ts'
 import { noteHasSources } from '../serverSources.ts'
@@ -64,6 +66,7 @@ export interface PlayingSource {
   episode?: number
   // Файл библиотеки, а не раздача
   library: boolean
+  mediaFileId?: string
 }
 
 /** С чем выбрана раздача: «Файлы» встают на сезон фильтра */
@@ -515,12 +518,16 @@ function choose(id: string) {
 // есть; из плеера — файл этой серии
 const { libraryFiles } = useTitleLibrary(id)
 const libraryRowFiles = computed(() => {
-  const season = props.playing?.season ?? seasonFilter.value
+  const season = props.playing
+    ? props.playing.episode === undefined
+      ? undefined
+      : (props.playing.season ?? null)
+    : seasonFilter.value
   const episode = props.playing?.episode
 
   return libraryFiles.value.filter(
     file =>
-      (season === undefined || file.season === season)
+      (season === undefined || (file.season ?? 0) === (season ?? 0))
       && (episode === undefined
         || (file.episode !== null
           && episode >= file.episode
@@ -631,35 +638,28 @@ const runtime = computed(() =>
     : title.value?.runtime,
 )
 
-// Строку «В библиотеке» выбрали сами: файл серии продолжения, без неё — первый
+const libraryPicker = useLibraryPicker((fileId, target) => {
+  emit('library', fileId, target)
+})
+const librarySelection = libraryPicker.selection
+
+// Версии только целевого фильма/эпизода, а не все серии сезона.
 function playLibrary() {
-  if (props.playing) {
-    const file = libraryRowFiles.value[0]
-
-    if (file) {
-      emit('library', file.id, {
-        season: file.season,
-        episode: props.playing.episode,
-      })
-    }
-
-    return
-  }
-
   const resume = progress.value?.resume
-  const own = libraryTarget(libraryRowFiles.value, isSeries.value, resume)
-  const target = own ?? libraryRowFiles.value[0]
+  // В libraryRoute сезон спецвыпуска опущен, но номер эпизода сохранён.
+  const target = props.playing
+    ? { season: props.playing.season ?? null, episode: props.playing.episode }
+    : resume
+  const choice = libraryChoices(
+    libraryRowFiles.value,
+    isSeries.value,
+    target,
+    !props.playing,
+  )
 
-  if (!target)
-    return
-
-  emit('library', target.id, {
-    season: target.season,
-    episode: target.season
-      ? own
-        ? resume?.episode
-        : target.episode
-      : undefined,
+  libraryPicker.open({
+    ...choice,
+    currentId: props.playing?.mediaFileId ?? resume?.mediaFileId,
   })
 }
 
@@ -982,6 +982,14 @@ const meta = computed(() => {
         </template>
       </FocusSection>
     </section>
+
+    <LibraryVersionPicker
+      v-if="librarySelection"
+      :files="librarySelection.files"
+      :current-id="librarySelection.currentId"
+      @select="libraryPicker.select"
+      @close="libraryPicker.close"
+    />
 
     <OptionsPanel
       v-if="panel"

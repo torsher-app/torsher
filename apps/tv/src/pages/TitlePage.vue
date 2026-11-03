@@ -28,6 +28,8 @@ import EpisodeListCard from '../components/EpisodeListCard.vue'
 import FocusSection from '../components/FocusSection.vue'
 import FollowPanel from '../components/FollowPanel.vue'
 import OptionsPanel from '../components/OptionsPanel.vue'
+import LibraryVersionPicker from '../components/LibraryVersionPicker.vue'
+import { useLibraryPicker } from '../composables/useLibraryPicker.ts'
 import PersonCard from '../components/PersonCard.vue'
 import PosterCard from '../components/PosterCard.vue'
 import RatingList from '../components/RatingList.vue'
@@ -74,11 +76,7 @@ import { libraryRoute, resolveRoute, resumeRoute } from '../lib/continue.ts'
 import { downloadSlot } from '../lib/downloadSlot.ts'
 import { titleOffer } from '../lib/titleOffer.ts'
 import { isFollowed } from '../lib/follow.ts'
-import {
-  firstLibraryFile,
-  libraryFileFor,
-  libraryTarget,
-} from '../lib/library.ts'
+import { libraryChoices, libraryFileFor } from '../lib/library.ts'
 import { crewCaption } from '../lib/people.ts'
 import {
   formatAirDate,
@@ -386,21 +384,20 @@ const nextEpisode = computed(() => {
   return first ? { season: first.number, episode: 1 } : null
 })
 
-// Потом — откуда: эта серия (фильм) есть в библиотеке — плеер с диска сразу
-const fromLibrary = computed(() => {
-  const own = libraryTarget(
+// Сначала цель (фильм/серия), затем все доступные версии этой цели.
+const libraryChoice = computed(() =>
+  libraryChoices(
     libraryFiles.value,
     isSeries.value,
     nextEpisode.value,
-  )
-
-  // Без источников серию продолжения не найти: «Смотреть» начинает с того,
-  // что есть в библиотеке
-  if (own || resume.value || title.value?.hasSources !== false)
-    return own
-
-  return firstLibraryFile(libraryFiles.value)
+    !resume.value && title.value?.hasSources === false,
+  ),
+)
+const fromLibrary = computed(() => libraryChoice.value.files[0])
+const libraryPicker = useLibraryPicker((fileId, target) => {
+  void router.push(libraryRoute(fileId, { id: props.id, ...target }))
 })
+const librarySelection = libraryPicker.selection
 
 // Вторая строка главной кнопки: что продолжим или что смотрели последний раз
 const primaryHint = computed(() => {
@@ -413,10 +410,12 @@ const primaryHint = computed(() => {
   }
 
   if (own) {
+    const { season, episode } = libraryChoice.value.target
+
     return [
-      own.season && own.episode ? `S${own.season}E${own.episode}` : '',
+      season && episode ? `S${season}E${episode}` : '',
       t('title.fromLibrary'),
-      own.quality,
+      libraryChoice.value.files.length === 1 ? own.quality : '',
     ]
       .filter(Boolean)
       .join(' · ')
@@ -492,15 +491,10 @@ function onPrimary() {
   const own = fromLibrary.value
 
   if (own) {
-    router.push(
-      libraryRoute(own.id, {
-        id: props.id,
-        season: own.season,
-        episode: own.season
-          ? (resume.value?.episode ?? own.episode)
-          : undefined,
-      }),
-    )
+    libraryPicker.open({
+      ...libraryChoice.value,
+      currentId: resume.value?.mediaFileId,
+    })
   }
   else if (resume.value) {
     router.push(resumeRoute(props.id, resume.value))
@@ -1345,7 +1339,7 @@ const {
   order,
   active,
   // Колесо над открытым списком серий не листает карточку под ним
-  wheelHeld: () => showEpisodeList.value,
+  wheelHeld: () => showEpisodeList.value || !!librarySelection.value,
 })
 
 // Лента чипов: у долгих сериалов десятки сезонов, фокусный чип держим в окне
@@ -2026,6 +2020,14 @@ onBeforeUnmount(() => {
       @close="closeFollowPanel"
       @save="onFollowSave"
       @stop="onFollowStop"
+    />
+
+    <LibraryVersionPicker
+      v-if="librarySelection"
+      :files="librarySelection.files"
+      :current-id="librarySelection.currentId"
+      @select="libraryPicker.select"
+      @close="libraryPicker.close"
     />
 
     <OptionsPanel

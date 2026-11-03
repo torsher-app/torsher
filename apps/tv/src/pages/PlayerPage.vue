@@ -23,6 +23,9 @@ import PlayerStage from '../components/player/PlayerStage.vue'
 import AppIcon from '../components/AppIcon.vue'
 import FocusSection from '../components/FocusSection.vue'
 import SourcesScreen from '../components/SourcesScreen.vue'
+import LibraryVersionPicker from '../components/LibraryVersionPicker.vue'
+import { useLibraryPicker } from '../composables/useLibraryPicker.ts'
+import { libraryChoices, libraryFilesFor } from '../lib/library.ts'
 import type { SourceChoice } from '../components/SourcesScreen.vue'
 import PlayerEpisodes from '../components/player/PlayerEpisodes.vue'
 import PlayerSettings from '../components/player/PlayerSettings.vue'
@@ -130,18 +133,20 @@ if (isLibrary && props.titleId) {
 }
 
 function libraryFileOf(season: number, episode: number) {
-  return libraryFiles.value.find(
-    file =>
-      file.season === season
-      && file.episode !== null
-      && episode >= file.episode
-      && episode <= (file.episodeTo ?? file.episode),
-  )
+  return libraryFilesFor(libraryFiles.value, { season, episode })[0]
 }
 
 // Экран подготовки: кадр, логотип и серия тайтла — если плеер открыт из карточки
 const season = props.season ? Number(props.season) : undefined
 const episode = props.episode ? Number(props.episode) : undefined
+// Даже без индексаторов библиотечному видео можно сменить версию.
+const hasLibraryVersions = computed(
+  () =>
+    libraryChoices(libraryFiles.value, episode !== undefined, {
+      season: season ?? null,
+      episode,
+    }).files.length > 1,
+)
 const {
   art,
   episodeOverview,
@@ -179,7 +184,8 @@ const paused = ref(false)
 const position = ref(0)
 const tracks = usePlayerTracks(playback, video, position, restartWith)
 const duration = ref(Number.NaN)
-type Panel = 'audio' | 'subtitles' | 'episodes' | 'source' | 'settings'
+type Panel
+  = 'audio' | 'subtitles' | 'episodes' | 'source' | 'settings' | 'versions'
 
 const panel = ref<Panel | null>(null)
 const settingsPanel = ref<InstanceType<typeof PlayerSettings>>()
@@ -589,6 +595,16 @@ function save() {
   return Promise.resolve()
 }
 
+const libraryPicker = useLibraryPicker((fileId, target) => {
+  void switchToLibrary(fileId, target)
+})
+const librarySelection = libraryPicker.selection
+
+function closeLibraryPicker() {
+  libraryPicker.close()
+  closePanel()
+}
+
 /**
  * Другая серия, не выходя из плеера: позиция этой сохраняется до перехода,
  * иначе новый запуск прочитал бы старую. Файл в этой раздаче — сразу плеер,
@@ -602,6 +618,23 @@ async function switchTo(target: {
   if (leaving || !props.titleId)
     return
 
+  const files = isLibrary ? libraryFilesFor(libraryFiles.value, target) : []
+
+  if (files.length) {
+    if (files.length > 1) {
+      if (librarySelection.value)
+        return
+
+      // Отмена выбора не должна повторно запускать окончившийся отсчёт.
+      upNextDismissed.value = true
+      panel.value = 'versions'
+      osd.show()
+    }
+
+    libraryPicker.open({ files, target, currentId: props.mediaFileId })
+    return
+  }
+
   leaving = true
   await save()
 
@@ -611,16 +644,6 @@ async function switchTo(target: {
     episode: target.episode,
   }
   const next = upNext.value
-  // Файл библиотеки — следующую серию тоже берём из библиотеки, если она там
-  const own = isLibrary
-    ? libraryFileOf(target.season, target.episode)
-    : undefined
-
-  if (own) {
-    void router.replace(libraryRoute(own.id, title))
-    return
-  }
-
   const file
     = target.fileIndex !== undefined && props.torrentId
       ? { torrentId: props.torrentId, fileIndex: target.fileIndex }
@@ -676,7 +699,11 @@ async function switchToLibrary(
   fileId: string,
   title: { season?: number | null, episode?: number | null },
 ) {
-  if (isLibrary) {
+  if (
+    fileId === props.mediaFileId
+    && (title.season ?? undefined) === season
+    && (title.episode ?? undefined) === episode
+  ) {
     closePanel()
     return
   }
@@ -746,6 +773,7 @@ function hasLeftInPanel() {
 }
 
 function closePanel() {
+  librarySelection.value = undefined
   panel.value = null
   focus.activate('player-buttons')
   osd.scheduleHide()
@@ -1553,7 +1581,7 @@ onBeforeUnmount(() => {
         :audio-label="tracks.audioLabel.value"
         :subtitles-label="tracks.subtitlesLabel.value"
         :from-start="fromStart"
-        :titled="!!titleId && !lacksSources()"
+        :titled="!!titleId && (!lacksSources() || hasLibraryVersions)"
         :series="!!(titleId && season && episode)"
         :source-label="tracks.caption.value ?? ''"
         :has-next="!!upNext"
@@ -1599,10 +1627,17 @@ onBeforeUnmount(() => {
         v-else-if="panel === 'source' && titleId"
         :id="titleId"
         class="player__sources"
-        :playing="{ season, episode, library: isLibrary }"
+        :playing="{ season, episode, library: isLibrary, mediaFileId }"
         @select="switchSource"
         @library="switchToLibrary"
         @back="closePanel"
+      />
+      <LibraryVersionPicker
+        v-else-if="panel === 'versions' && librarySelection"
+        :files="librarySelection.files"
+        :current-id="librarySelection.currentId"
+        @select="libraryPicker.select"
+        @close="closeLibraryPicker"
       />
       <PlayerSettings
         v-else-if="panel === 'settings'"
