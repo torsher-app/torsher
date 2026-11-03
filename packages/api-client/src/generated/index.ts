@@ -1052,6 +1052,7 @@ export interface TitleDownloadStartInput {
 
 export interface LibraryFileInput {
   id: string;
+  name?: string;
   season: number | null;
   episode: number | null;
   episodeTo: number | null;
@@ -1144,6 +1145,7 @@ export interface ResumeTargetInput {
   duration: number | null;
   next: boolean;
   file: EpisodeFileInput | null;
+  mediaFileId?: string | null;
 }
 
 export interface TitleProgressInput {
@@ -5991,6 +5993,7 @@ export interface TitleDownloadStart {
 
 export interface LibraryFile {
   id: string;
+  name?: string;
   season: number | null;
   episode: number | null;
   episodeTo: number | null;
@@ -6083,6 +6086,7 @@ export interface ResumeTarget {
   duration: number | null;
   next: boolean;
   file: EpisodeFile | null;
+  mediaFileId?: string | null;
 }
 
 export interface TitleProgress {

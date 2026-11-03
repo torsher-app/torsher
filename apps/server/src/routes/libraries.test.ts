@@ -6,6 +6,9 @@ import { mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import pino from 'pino'
+import { eq } from 'drizzle-orm'
+import { defaultProfile } from '../services/profiles/index.ts'
+import { saveTitleProgress } from '../services/sources/progress.ts'
 import {
   afterEach,
   beforeAll,
@@ -695,4 +698,70 @@ describe('домашнее видео', () => {
       expect(thumb.rawPayload.length).toBeGreaterThan(1000)
     },
   )
+})
+
+describe('library versions exposed to the showcase', () => {
+  it('returns basenames and the resumed ID, hiding both when the library is hidden', async () => {
+    await file('Movies/Example.Extended.1080p.mkv')
+    await file('Movies/Example.Theatrical.2160p.mkv')
+    const library = await addLibrary()
+    await scanned(library)
+    await matchIdle()
+    const files = rows()
+    for (const item of files) {
+      getDb()
+        .update(mediaFiles)
+        .set({ titleId: 'tmdb:movie:603' })
+        .where(eq(mediaFiles.id, item.id))
+        .run()
+    }
+    const selected = files[0]!
+    saveTitleProgress(
+      { profileId: defaultProfile().id, titleId: 'tmdb:movie:603' },
+      {
+        position: 120,
+        duration: 1200,
+        torrentId: null,
+        fileIndex: null,
+        mediaFileId: selected.id,
+      },
+    )
+    const list = () =>
+      app.inject({ url: '/api/titles/tmdb:movie:603/library', cookies: owner })
+    const progress = () =>
+      app.inject({
+        url: '/api/titles/tmdb:movie:603/progress',
+        cookies: owner,
+      })
+    expect(
+      (await list())
+        .json()
+        .files.map((item: { name: string }) => item.name)
+        .sort(),
+    ).toEqual(['Example.Extended.1080p.mkv', 'Example.Theatrical.2160p.mkv'])
+    expect((await progress()).json().resume).toMatchObject({
+      mediaFileId: selected.id,
+      position: 120,
+    })
+
+    getDb()
+      .update(mediaFiles)
+      .set({ state: 'missing' })
+      .where(eq(mediaFiles.id, selected.id))
+      .run()
+    expect((await progress()).json().resume.mediaFileId).toBeNull()
+    getDb()
+      .update(mediaFiles)
+      .set({ state: 'present' })
+      .where(eq(mediaFiles.id, selected.id))
+      .run()
+    await app.inject({
+      method: 'PATCH',
+      url: `/api/libraries/${library.json().id}`,
+      cookies: owner,
+      payload: { hiddenProfiles: [defaultProfile().id] },
+    })
+    expect((await list()).json().files).toEqual([])
+    expect((await progress()).json().resume.mediaFileId).toBeNull()
+  })
 })

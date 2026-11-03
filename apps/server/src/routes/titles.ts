@@ -36,7 +36,10 @@ import {
   syncLibrary,
   titleLibraryFiles,
 } from '../services/library/index.ts'
-import { visibleFolderIds } from '../services/library/folders.ts'
+import {
+  playableMediaFile,
+  visibleFolderIds,
+} from '../services/library/folders.ts'
 import { titleDownload as titleDownloadOf } from '../services/library/status.ts'
 import {
   getTitleMine,
@@ -363,6 +366,11 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
               duration: resume.duration,
               next: resume.next,
               file: resume.file,
+              mediaFileId:
+                resume.mediaFileId
+                && playableMediaFile(resume.mediaFileId, request.profileId)
+                  ? resume.mediaFileId
+                  : null,
             }
           : null,
         last: last
@@ -576,6 +584,7 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
           visibleFolderIds(request.profileId),
         ).map(file => ({
           id: file.id,
+          name: file.relPath.split('/').pop()!,
           season: file.season || null,
           episode: file.episode || null,
           episodeTo: file.episodeTo,
