@@ -148,6 +148,9 @@ const seedersTone = computed(() => {
       >
         {{ resolutionBadge(candidate.resolution) }}
       </span>
+      <span v-if="candidate.confidence === 'low'" class="source__unsure">
+        {{ t("sources.unmatched") }}
+      </span>
       <span
         v-for="badge in badges"
         :key="badge.text"

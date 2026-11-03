@@ -52,6 +52,10 @@ describe('episodeCandidates', () => {
       candidate('best'),
       candidate('other-season', { seasons: [1] }),
       candidate('unsure', { confidence: 'medium' }),
+      candidate('unmatched', {
+        confidence: 'low',
+        voiceKeys: ['studio:LostFilm'],
+      }),
       candidate('same', { voiceKeys: ['studio:LostFilm'] }),
       candidate('third'),
       candidate('fourth'),

@@ -73,3 +73,19 @@ describe('identityOf', () => {
     })
   })
 })
+
+it('сохраняет годы начала сезонов при обрезке ответа и пропускает пустые даты', () => {
+  const response = trimIdentity({
+    ...tvIdentity,
+    seasons: [
+      { season_number: 1, episode_count: 8, air_date: '1999-10-20' },
+      { season_number: 2, episode_count: 10, air_date: '2002-03-01' },
+      { season_number: 3, episode_count: 10, air_date: null },
+      { season_number: 4, episode_count: 10, air_date: '' },
+    ],
+  })
+  expect(response.seasons?.[1]?.air_date).toBe('2002-03-01')
+  expect(identityOf(response, { type: 'tv', tmdbId: 101 }).seasonYears).toEqual(
+    { 1: 1999, 2: 2002 },
+  )
+})

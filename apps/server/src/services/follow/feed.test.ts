@@ -507,6 +507,69 @@ describe('проход ленты', () => {
     expect(history()).toEqual([])
   })
 
+  it.each(['PC RePack', 'OST FLAC', 'WEBRip | Trailer'])(
+    'сопутствующий контент %s не попадает в решатель',
+    async (suffix) => {
+      libraryEpisodes(1, 2, 3, 4, 5, 6, 7)
+      insertIndexer('Indexer A', 'a.indexer.example')
+      const follow = insertFollow()
+      feeds.set('a.indexer.example', [
+        {
+          title: `Quiet Harbor S02E08 (2024) ${suffix}`,
+          hash: hash(1),
+          age: 5,
+        },
+      ])
+      await feedPass(activeFollows(), new Date(), { wait: noWait })
+      expect(episodeRows(follow.id)).toEqual([])
+      expect(history()).toEqual([])
+    },
+  )
+
+  it('год чужой экранизации вызывает unsure по датам сезонов', async () => {
+    const originalFetch = fetchMock.getMockImplementation()!
+    fetchMock.mockImplementation(async (input, init) => {
+      if (new URL(String(input)).pathname === '/3/tv/3000') {
+        return json({
+          ...series(),
+          first_air_date: '1999-01-01',
+          seasons: [
+            { season_number: 1, episode_count: 8, air_date: '1999-01-01' },
+            { season_number: 2, episode_count: 12, air_date: '2001-01-01' },
+            { season_number: 3, episode_count: 12, air_date: '2003-01-01' },
+          ],
+        })
+      }
+      return originalFetch(input, init)
+    })
+    libraryEpisodes(1, 2, 3, 4, 5, 6, 7)
+    insertIndexer('Indexer A', 'a.indexer.example')
+    const follow = insertFollow()
+    feeds.set('a.indexer.example', [
+      { title: 'Quiet Harbor S02E08 (2024) WEBRip', hash: hash(1), age: 5 },
+    ])
+    await feedPass(activeFollows(), new Date(), { wait: noWait })
+    expect(episodeRows(follow.id)).toEqual([])
+    expect(history().filter(row => row.kind === 'unsure')).toHaveLength(1)
+  })
+
+  it('префикс издателя не запускает решатель через ленту', async () => {
+    libraryEpisodes(1, 2, 3, 4, 5, 6, 7)
+    insertIndexer('Indexer A', 'a.indexer.example')
+    const follow = insertFollow()
+    feeds.set('a.indexer.example', [
+      {
+        title: 'Publisher: Quiet Harbor S02E08 (2024) WEB-DL 1080p | NewStudio',
+        hash: hash(1),
+        age: 5,
+      },
+    ])
+    await feedPass(activeFollows(), new Date(), { wait: noWait })
+    expect(episodeRows(follow.id)).toEqual([])
+    // Индекс ленты отсекает такой префикс ещё до матчера.
+    expect(history()).toEqual([])
+  })
+
   it('похоже, но не уверены — запись, «Это он» запоминает алиас и решает', async () => {
     libraryEpisodes(1, 2, 3, 4, 5, 6, 7)
     insertIndexer('Indexer A', 'a.indexer.example')

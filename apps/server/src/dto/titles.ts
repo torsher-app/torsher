@@ -136,7 +136,7 @@ export const sourceCandidate = z
       .nullable(),
     isPack: z.boolean(),
     // medium — похоже на этот тайтл, но есть сомнение
-    confidence: z.enum(['high', 'medium']),
+    confidence: z.enum(['high', 'medium', 'low']),
     // Причина выбора у кандидатов тройки
     pickReason: z.enum(sourceReasons).nullable(),
     publishedAt: z.string().nullable(),

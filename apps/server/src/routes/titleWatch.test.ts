@@ -348,6 +348,58 @@ describe('post /api/titles/:id/watch', () => {
 })
 
 describe('экран «Источники» и «Файлы»', () => {
+  it.each([undefined, 'Harbor archives'])(
+    'low виден при query=%s, открывается только явным выбором',
+    async (query) => {
+      const labelled = searchXml
+        .replaceAll('<title>Тихая гавань', '<title>Channel One: Тихая гавань')
+        .replaceAll(' / Quiet Harbor', ' / Studio Two: Quiet Harbor')
+        .replaceAll('<title>Quiet', '<title>Channel Three: Quiet')
+      overrides['GET a.indexer.example/torznab/api'] = url =>
+        new Response(
+          query && url.searchParams.get('q') !== query
+            ? '<rss><channel /></rss>'
+            : labelled,
+        )
+      const list = await app.inject({
+        url: `/api/titles/${TITLE}/sources?all=1${query ? `&query=${encodeURIComponent(query)}` : ''}`,
+        cookies: owner,
+      })
+      expect(list.statusCode).toBe(200)
+      const body = list.json()
+      expect(body.candidates.length).toBeGreaterThan(0)
+      expect(
+        body.candidates.every(
+          (item: { confidence: string }) => item.confidence === 'low',
+        ),
+      ).toBe(true)
+      expect(body.top).toEqual([])
+      const auto = await watch({ season: 2, episode: 1 })
+      expect(auto.statusCode).toBe(422)
+      expect(auto.json().kind).toBe('no_sources')
+      const download = await app.inject({
+        method: 'POST',
+        url: `/api/titles/${TITLE}/download`,
+        cookies: owner,
+        payload: { season: 2 },
+      })
+      expect(download.statusCode).toBe(422)
+      expect(download.json().kind).toBe('no_sources')
+      expect(getDb().select().from(torrents).all()).toHaveLength(0)
+      const open = await app.inject({
+        method: 'POST',
+        url: `/api/titles/${TITLE}/open`,
+        cookies: owner,
+        payload: {
+          candidateId: body.candidates[0].id,
+          ...(query && { query }),
+        },
+      })
+      expect(open.statusCode).toBe(200)
+      expect(getDb().select().from(torrents).all()).toHaveLength(1)
+    },
+  )
+
   it('open находит кандидата в поиске по строке зрителя', async () => {
     const query = encodeURIComponent('Quiet Harbor')
     const list = await app.inject({

@@ -17,6 +17,8 @@ export interface SearchQuery {
   titles: string[]
   year?: number
   season?: number
+  /** Дополнительный точный запрос для интерактивной выдачи; фон его не включает. */
+  seriesYearQuery?: boolean
 }
 
 export type SearchParams = Record<string, string>
@@ -111,6 +113,18 @@ export function buildSearchRequests(
     requests.push(byId)
 
   if (supportsText(caps.search)) {
+    // Точный запрос первым: без года первая страница может быть занята
+    // одноимёнными новыми сериалами. Варианты без года сохраняют поздние сезоны.
+    if (
+      query.seriesYearQuery
+      && query.kind === 'series'
+      && query.year !== undefined
+      && (query.season === undefined || query.season === 1)
+      && query.titles[0]
+    ) {
+      requests.push({ t: 'search', q: `${query.titles[0]} ${query.year}` })
+    }
+
     for (const title of query.titles) {
       const q
         = query.kind === 'movie' && query.year ? `${title} ${query.year}` : title

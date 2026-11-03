@@ -1,6 +1,6 @@
 import type { TitleMatch } from '@torsher/release-parser'
 import type { FoundRelease, RankContext } from './rank.ts'
-import { parseRelease } from '@torsher/release-parser'
+import { matchTitle, parseRelease } from '@torsher/release-parser'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_PROFILE } from './profile.ts'
 import { coversEpisode, rankReleases, russianVoices, voiceOf } from './rank.ts'
@@ -31,6 +31,25 @@ const series: RankContext = { kind: 'series', profile: DEFAULT_PROFILE }
 const movie: RankContext = { kind: 'movie', profile: DEFAULT_PROFILE }
 
 describe('rankReleases', () => {
+  it('low ниже high и medium независимо от счёта и никогда не входит в top', () => {
+    const { ranked, top } = rankReleases(
+      [
+        release('low', 'Unknown S01 1080p WEB-DL | D', 1000, 8 * GB, {
+          match: { confidence: 'low', issues: ['title'] },
+        }),
+        release('high', 'Harbor S01 720p WEB-DL', 0, GB),
+        release('medium', 'Harbor S01 720p WEB-DL', 0, GB, {
+          match: { confidence: 'medium', issues: ['year'] },
+        }),
+      ],
+      series,
+    )
+    expect(ranked[2]?.id).toBe('low')
+    expect(ranked[2]?.score).toBeGreaterThan(ranked[0]!.score)
+    expect(top).toEqual([])
+    expect(ranked[2]?.eligible).toBe(false)
+  })
+
   it('лестница качества: 1080p выше 2160p и 720p', () => {
     const { top, ranked } = rankReleases(
       [
@@ -505,4 +524,19 @@ describe('coversEpisode', () => {
       true,
     )
   })
+})
+
+it('префикс издателя не даёт рекомендации даже при большом числе сидов', () => {
+  const title = 'Publisher: Paper Lantern (2023) WEB-DL 1080p | D'
+  const match = matchTitle(parseRelease(title), {
+    kind: 'movie',
+    aliases: ['Paper Lantern'],
+    year: 2023,
+  })
+  const result = rankReleases(
+    [release('prefixed', title, 1000, 8 * GB, { match })],
+    movie,
+  )
+  expect(result.ranked[0]?.match.confidence).toBe('medium')
+  expect(result.top).toEqual([])
 })

@@ -841,7 +841,7 @@ export interface SourceCandidateInput {
     total?: number;
   } | null;
   isPack: boolean;
-  confidence: "high" | "medium";
+  confidence: "high" | "medium" | "low";
   pickReason:
     | "pinnedVoice"
     | "profile"
@@ -5664,7 +5664,7 @@ export interface SourceCandidate {
     total?: number;
   } | null;
   isPack: boolean;
-  confidence: "high" | "medium";
+  confidence: "high" | "medium" | "low";
   pickReason:
     | "pinnedVoice"
     | "profile"

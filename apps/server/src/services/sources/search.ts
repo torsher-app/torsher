@@ -58,10 +58,15 @@ export interface SearchOptions {
   concurrency?: number
   /** Текстовых запросов на индексатор, кроме запроса по ID */
   textQueries?: number
+  /** Дополнительный запрос сериала с годом начала только для выдачи зрителя. */
+  seriesYearQuery?: boolean
 }
 
 export interface SearchOutcome {
+  /** Сопоставленные раздачи: только они доступны автоматизации. */
   releases: FoundRelease[]
+  /** Ответы индексаторов без подтверждённого совпадения, для ручного выбора. */
+  unmatched: FoundRelease[]
   /** Сколько индексаторов участвовало в поиске. */
   indexerCount: number
   failed: IndexerFailure[]
@@ -190,9 +195,55 @@ export function mergeHits(hits: Hit[]) {
 }
 
 /**
+ * Автопоиск сохраняет для ручного выбора полную фразу названия без
+ * известного противоречия году. Ручной запрос эту проверку не использует.
+ * Это не подтверждает совпадение: уверенность и причины матчера не меняются.
+ */
+function relevantUnmatched(
+  parsed: FoundRelease['parsed'],
+  identity: TitleIdentity,
+  aliases: string[],
+) {
+  if (parsed.year !== undefined) {
+    if (identity.kind === 'movie') {
+      if (
+        identity.year !== undefined
+        && Math.abs(parsed.year - identity.year) > 1
+      ) {
+        return false
+      }
+    }
+    else if (
+      (identity.year !== undefined && parsed.year < identity.year - 1)
+      || (identity.endYear !== undefined && parsed.year > identity.endYear + 1)
+    ) {
+      return false
+    }
+  }
+
+  const { ru, orig, translit, alt = [] } = parsed.titles
+
+  return [ru, orig, translit, ...alt].some(
+    name =>
+      name
+      && aliases.some(
+        alias =>
+          normalizeTitle(name) === alias
+          || [...name.matchAll(/[:|]\s*|\.\s+|\s+[-–—]\s+/gu)].some(
+            boundary =>
+              normalizeTitle(
+                name.slice(boundary.index + boundary[0].length),
+              ) === alias,
+          ),
+      ),
+  )
+}
+
+/**
  * Поиск раздач тайтла по всем индексаторам: запросы по ID и названиям,
- * склейка повторов, разбор названий и матчер. Чужие раздачи (`low`)
- * отбрасываются. Индексатор, не ответивший к сроку, попадает в `failed`.
+ * склейка повторов, разбор названий и матчер. Несопоставленные раздачи
+ * (`low`) сохраняются отдельно для ручного выбора. Индексатор, не ответивший
+ * к сроку, попадает в `failed`.
  */
 export async function searchReleases(
   target: SearchTarget,
@@ -203,6 +254,7 @@ export async function searchReleases(
     deadlineMs = SEARCH_DEADLINE_MS,
     concurrency = SEARCH_CONCURRENCY,
     textQueries,
+    seriesYearQuery = false,
   } = options
   const { identity, aliases, season } = target
   const manual = target.query?.trim()
@@ -218,6 +270,7 @@ export async function searchReleases(
         titles: textQueriesOf(aliases, textQueries),
         year: identity.year,
         season,
+        seriesYearQuery,
       }
   const tasks = indexers.flatMap(indexer =>
     buildSearchRequests(indexer.caps, query).map(params => ({
@@ -319,17 +372,33 @@ export async function searchReleases(
       : aliases.map(alias => alias.value),
     year: identity.year,
     endYear: identity.endYear,
+    seasonYears: identity.seasonYears,
     season,
   }
-  const releases = mergeHits(hits)
-    .flatMap((release) => {
+  const found = mergeHits(hits)
+    .map((release) => {
       const parsed = parseRelease(release.title)
       const match = matchTitle(parsed, titleTarget)
 
-      return match.confidence === 'low' ? [] : [{ ...release, parsed, match }]
+      return { ...release, parsed, match }
     })
     .sort((a, b) => b.seeders - a.seeders)
+  // Шум не вытесняет сопоставленные раздачи даже при большем числе сидов.
+  const releases = found
+    .filter(release => release.match.confidence !== 'low')
     .slice(0, MAX_RELEASES)
+  const discoveryAliases = aliases
+    .map(alias => normalizeTitle(alias.value))
+    .filter(Boolean)
+  const unmatched = found
+    .filter(
+      release =>
+        release.match.confidence === 'low'
+        && (manual
+          || (!release.match.issues.includes('content')
+            && relevantUnmatched(release.parsed, identity, discoveryAliases))),
+    )
+    .slice(0, MAX_RELEASES - releases.length)
 
-  return { releases, indexerCount: indexers.length, failed }
+  return { releases, unmatched, indexerCount: indexers.length, failed }
 }

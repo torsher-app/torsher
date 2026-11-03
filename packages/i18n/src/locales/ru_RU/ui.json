@@ -250,6 +250,7 @@
       "gb": "{amount} ГБ",
       "mb": "{amount} МБ"
     },
+    "unmatched": "Совпадение не подтверждено",
     "unsure": "Возможно, другой тайтл",
     "unknownQuality": "не указано",
     "unknownQualityOption": "Не указано",

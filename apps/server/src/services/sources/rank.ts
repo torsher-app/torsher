@@ -9,7 +9,7 @@ import type { FollowAudio } from '../../db/schema.ts'
 import type { RankingProfile, VoiceRef } from './profile.ts'
 import { videoResolution } from '@torsher/release-parser'
 
-/** Раздача после поиска, склейки повторов и матчера; `low` сюда не попадает */
+/** Раздача после поиска, склейки повторов и матчера */
 export interface FoundRelease {
   /** Стабильный между поисками: по infohash, без него — по названию и размеру. */
   id: string
@@ -414,7 +414,13 @@ function resolutionRank(release: RankedRelease) {
 }
 
 function compareRanked(a: RankedRelease, b: RankedRelease) {
-  return b.score - a.score || b.seeders - a.seeders || a.id.localeCompare(b.id)
+  return (
+    Number(a.match.confidence === 'low')
+    - Number(b.match.confidence === 'low')
+    || b.score - a.score
+    || b.seeders - a.seeders
+    || a.id.localeCompare(b.id)
+  )
 }
 
 /**
@@ -492,7 +498,7 @@ function pickTop(eligible: RankedRelease[], ctx: RankContext) {
 }
 
 export interface Ranking {
-  /** Все кандидаты по убыванию счёта; у вошедших в тройку — причина. */
+  /** Сначала сопоставленные кандидаты, затем low; внутри — по убыванию счёта; у вошедших в тройку — причина. */
   ranked: RankedRelease[]
   /** ID тройки по порядку показа. */
   top: string[]
