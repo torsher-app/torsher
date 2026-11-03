@@ -22,6 +22,7 @@ Torsher keeps its settings in the database and changes them in the control panel
 | `ENGINE_PEER_PORT` | a random port chosen once | Port the torrent engine accepts peer connections on. Publish it to be reachable from outside. A port changed in <Ui k="panel.nav.settings panel.settings.nav.torrent" /> takes precedence: publish that one instead |
 | `DOWNLOADS_PATH`, `LIBRARY_PATH` | `/data/torrents`, `/data/library` | Default downloads and library folders. A folder chosen in <Ui k="panel.nav.settings panel.settings.nav.storage" /> takes precedence |
 | `TORSHER_SKIP_PRE_UPDATE_BACKUP` | — | Set to `1` to let an update change the database even when the backup before the update fails. Without that backup a failed update can't be undone |
+| `FPCALC_PATH` | `/usr/bin/fpcalc` in the image | Chromaprint executable for library intro detection. The image includes it; a missing executable disables intro analysis without affecting playback |
 | `LOG_LEVEL` | `info`, or the level chosen in the panel | `error`, `warn`, `info` or `debug`. When set, the <Ui k="panel.logs.verbose.label" /> switch in the panel is unavailable |
 
 ::: warning Keep the key files
