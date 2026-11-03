@@ -36,6 +36,7 @@ import {
 } from '../services/follow/tmdbRefresh.ts'
 import { withPosterRatings } from '../services/mine/index.ts'
 import { createProfile, deleteProfile } from '../services/profiles/index.ts'
+import { saveSourceProfile } from '../services/sources/profile.ts'
 import { pinVoice } from '../services/sources/voices.ts'
 import { tvOngoing } from '../services/tmdb/fixtures/index.ts'
 import { signToken } from '../utils/token.ts'
@@ -559,6 +560,7 @@ describe('состояния серий', () => {
   })
 
   it('карточка: чего ждёт отложенная серия, закреплённая студия', async () => {
+    saveSourceProfile({ audioLanguages: ['ru'] })
     const until = new Date(Date.now() + 6 * 60 * 60 * 1000)
 
     pendingEpisode(3, until)
@@ -756,6 +758,7 @@ describe('gET /schedule', () => {
   })
 
   it('своя студия сезона и файл серии из библиотеки', async () => {
+    saveSourceProfile({ audioLanguages: ['ru'] })
     await follow(owner)
     setCursor(2, 1)
     pinVoice(SERIES, 2, { studio: 'Studio One' })

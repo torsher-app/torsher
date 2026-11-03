@@ -24,6 +24,7 @@ import {
 } from '../../db/schema.ts'
 import { setSetting } from '../settings/index.ts'
 import { clearSearchCache } from '../sources/cache.ts'
+import { saveSourceProfile } from '../sources/profile.ts'
 import { tvOngoing } from '../tmdb/fixtures/index.ts'
 import {
   confirmUnsure,
@@ -269,6 +270,8 @@ beforeEach(() => {
   ])
     getDb().delete(table).run()
 
+  // These fixtures exercise Russian studio continuity explicitly.
+  saveSourceProfile({ audioLanguages: ['ru'] })
   clearSearchCache()
   resetFollowSearch(0)
   resetFollowIndex()

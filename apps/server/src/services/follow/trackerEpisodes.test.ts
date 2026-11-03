@@ -325,7 +325,7 @@ describe('серии с трекера', () => {
   })
 
   it('решатель видит серию с трекера нужной в той же раздаче', async () => {
-    const follow = insertFollow()
+    const follow = insertFollow({ audio: 'ru' })
     const now = new Date()
 
     await decideFollow(
