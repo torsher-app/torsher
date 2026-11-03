@@ -1005,6 +1005,7 @@ describe('библиотека на витрине', () => {
       files: [
         {
           id: file.id,
+          name: file.relPath.split('/').pop(),
           season: null,
           episode: null,
           episodeTo: null,

@@ -325,6 +325,8 @@ export const libraryFile = z
   .object({
     // `media_files.id`: им запускают воспроизведение
     id: z.string(),
+    // Только имя файла, без пути на сервере
+    name: z.string().optional(),
     // У фильма сезона и серии нет
     season: z.number().nullable(),
     episode: z.number().nullable(),
@@ -448,6 +450,8 @@ export const resumeTarget = z
     next: z.boolean(),
     // Файл серии в известной раздаче; null — раздачу ещё искать
     file: episodeFile.nullable(),
+    // Доступный профилю файл библиотеки, который он продолжает
+    mediaFileId: z.string().nullable().optional(),
   })
   .meta({ id: 'resumeTarget' })
 

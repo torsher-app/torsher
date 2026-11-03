@@ -6,6 +6,7 @@ import InputDebug from './components/InputDebug.vue'
 import TitleActions from './components/TitleActions.vue'
 import { useScreensaver } from './composables/useScreensaver.ts'
 import { inputDebug } from './inputDebug.ts'
+import { screenComponentKey } from './lib/screenKeys.ts'
 import { isStacked, screenKey } from './router.ts'
 import { session } from './session.ts'
 
@@ -51,7 +52,11 @@ const { active: screensaverActive, resting: screensaverResting }
         'CatalogPage',
       ]"
     >
-      <component :is="Component" v-if="!isStacked(route)" :key="route.path" />
+      <component
+        :is="Component"
+        v-if="!isStacked(route)"
+        :key="screenComponentKey(route)"
+      />
     </KeepAlive>
     <KeepAlive
       :key="`stack-${cacheKey}`"

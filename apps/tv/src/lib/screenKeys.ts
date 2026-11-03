@@ -1,3 +1,5 @@
+import type { RouteLocationNormalized } from 'vue-router'
+
 /**
  * Ключ экрана в стеке KeepAlive — запись истории, а не путь. Возврат по
  * истории (`popstate`) получает экран этой записи, переход вперёд и `replace` —
@@ -33,4 +35,25 @@ export function createScreenKeys() {
 
     return key
   }
+}
+
+/**
+ * Объединённый библиотечный файл может содержать несколько серий: смена
+ * контекста должна создать новый плеер с новой позицией и ключом прогресса.
+ * Остальные экраны по-прежнему сохраняют ключ пути, независимо от фильтров.
+ */
+export function screenComponentKey(
+  route: Pick<RouteLocationNormalized, 'path' | 'query'>,
+) {
+  if (!route.path.startsWith('/play/library/'))
+    return route.path
+
+  return JSON.stringify([
+    route.path,
+    ...['title', 'season', 'episode'].map((key) => {
+      const value = route.query[key]
+
+      return typeof value === 'string' ? value : null
+    }),
+  ])
 }

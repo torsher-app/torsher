@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createScreenKeys } from './screenKeys.ts'
+import { createScreenKeys, screenComponentKey } from './screenKeys.ts'
 
 const TITLE = '/title/tmdb:movie:27205'
 const PERSON = '/person/tmdb:person:6193'
@@ -56,5 +56,64 @@ describe('createScreenKeys', () => {
     const title = keyOf(0, TITLE, false)
 
     expect(keyOf(0, PERSON, true)).not.toBe(title)
+  })
+})
+
+describe('screenComponentKey', () => {
+  it('remounts the same library file for a different episode or title', () => {
+    const path = '/play/library/combined'
+    const query = { title: 'show', season: '1', episode: '2' }
+    const first = screenComponentKey({ path, query })
+
+    expect(
+      screenComponentKey({ path, query: { ...query, episode: '3' } }),
+    ).not.toBe(first)
+    expect(
+      screenComponentKey({ path, query: { ...query, season: '2' } }),
+    ).not.toBe(first)
+    expect(
+      screenComponentKey({ path, query: { ...query, title: 'other-show' } }),
+    ).not.toBe(first)
+    expect(
+      screenComponentKey({ path, query: { ...query, debug: 'keys' } }),
+    ).toBe(first)
+    expect(screenComponentKey({ path: '/play/library/other', query })).not.toBe(
+      first,
+    )
+  })
+
+  it('uses the same scalar query values as library player route props', () => {
+    const path = '/play/library/home-video'
+
+    expect(screenComponentKey({ path, query: {} })).toBe(
+      screenComponentKey({
+        path,
+        query: { title: null, season: ['1', '2'] },
+      }),
+    )
+  })
+
+  it('preserves existing keys for cached screens and other routes', () => {
+    for (const path of [
+      '/',
+      '/catalog',
+      '/home-video/album',
+      '/mine',
+      '/search',
+      '/play/torrent/0',
+    ]) {
+      expect(
+        screenComponentKey({
+          path,
+          query: { season: '1', episode: '2', genre: 'first' },
+        }),
+      ).toBe(path)
+      expect(
+        screenComponentKey({
+          path,
+          query: { season: '2', episode: '3', genre: 'other' },
+        }),
+      ).toBe(path)
+    }
   })
 })

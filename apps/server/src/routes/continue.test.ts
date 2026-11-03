@@ -470,6 +470,7 @@ describe('get /api/titles/:id/progress', () => {
       duration: null,
       next: true,
       file: { torrentId: 's2', fileIndex: 1 },
+      mediaFileId: null,
     })
   })
 })
