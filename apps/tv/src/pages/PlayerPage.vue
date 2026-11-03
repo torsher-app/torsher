@@ -16,6 +16,8 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import PlayerBuffering from '../components/player/PlayerBuffering.vue'
 import PlayerLamp from '../components/player/PlayerLamp.vue'
+import PlayerSkip from '../components/player/PlayerSkip.vue'
+import { currentSkip } from '../lib/skipSegments.ts'
 import PlayerOsd from '../components/player/PlayerOsd.vue'
 import PlayerPauseScreen from '../components/player/PlayerPauseScreen.vue'
 import PlayerPrompt from '../components/player/PlayerPrompt.vue'
@@ -452,6 +454,67 @@ const backVisible = computed(
   () => !showsError.value && (phase.value !== 'playing' || osd.visible.value),
 )
 
+const dismissedSkip = ref<string | null>(null)
+const activeSkip = computed(() =>
+  currentSkip(
+    playback.value?.skipSegments,
+    position.value,
+    knownDuration.value,
+  ),
+)
+const showsSkip = computed(
+  () =>
+    phase.value === 'playing'
+    && !restarting.value
+    && !showsError.value
+    && !panel.value
+    && !!activeSkip.value
+    && dismissedSkip.value !== activeSkip.value.id,
+)
+const skipLabel = computed(() =>
+  showsSkip.value
+    ? t(
+        activeSkip.value!.kind === 'intro'
+          ? 'player.skipIntro'
+          : 'player.skipCredits',
+      )
+    : undefined,
+)
+watch(
+  () => activeSkip.value?.id,
+  () => {
+    dismissedSkip.value = null
+  },
+)
+watch(
+  showsSkip,
+  (visible) => {
+    if (
+      !visible
+      && !panel.value
+      && osd.visible.value
+      && focus.current()?.closest('.player-skip-action')
+    ) {
+      void nextTick(() => {
+        if (!panel.value && osd.visible.value)
+          focus.activate('player-timeline')
+      })
+    }
+  },
+  { flush: 'sync' },
+)
+
+function skipCurrent() {
+  const segment = currentSkip(
+    playback.value?.skipSegments,
+    video.value?.currentTime ?? position.value,
+    knownDuration.value,
+  )
+  if (!segment || !showsSkip.value || segment.id !== activeSkip.value?.id)
+    return
+  seekTo(segment.end)
+}
+
 const showsUpNext = computed(
   () =>
     phase.value === 'playing'
@@ -819,6 +882,11 @@ function onKey(action: KeyAction, event: KeyboardEvent) {
     if (panel.value === 'settings' && settingsPanel.value?.back())
       return true
 
+    if (showsSkip.value && !osd.visible.value) {
+      dismissedSkip.value = activeSkip.value!.id
+      return true
+    }
+
     if (showsUpNext.value && !osd.visible.value) {
       upNextDismissed.value = true
       return true
@@ -881,7 +949,9 @@ function onKey(action: KeyAction, event: KeyboardEvent) {
 
   // Плашка «Следующая серия»: OK — сразу к ней
   if (hidden && action.type === 'enter') {
-    if (showsUpNext.value)
+    if (showsSkip.value)
+      skipCurrent()
+    else if (showsUpNext.value)
       void playNext()
     else toggle()
 
@@ -1585,6 +1655,8 @@ onBeforeUnmount(() => {
         :series="!!(titleId && season && episode)"
         :source-label="tracks.caption.value ?? ''"
         :has-next="!!upNext"
+        :skip-label="skipLabel"
+        @skip="skipCurrent"
         @toggle="toggle"
         @seek="seekTo($event * knownDuration)"
         @tracks="openPanel"
@@ -1593,8 +1665,13 @@ onBeforeUnmount(() => {
         @from-start="playFromStart"
       />
 
+      <PlayerSkip
+        v-if="showsSkip && !osd.visible.value"
+        :label="skipLabel!"
+        @skip="skipCurrent"
+      />
       <PlayerUpNext
-        v-if="showsUpNext && upNext"
+        v-if="showsUpNext && upNext && !showsSkip"
         :code="episodeCode(upNext.season, upNext.episode)"
         :title="upNext.title"
         :still="upNext.still"

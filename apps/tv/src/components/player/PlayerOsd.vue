@@ -45,6 +45,7 @@ const props = defineProps<{
   sourceLabel: string
   /** Есть следующая вышедшая серия */
   hasNext: boolean
+  skipLabel?: string
 }>()
 
 const emit = defineEmits<{
@@ -54,6 +55,7 @@ const emit = defineEmits<{
   panel: [kind: 'episodes' | 'source' | 'settings']
   next: []
   fromStart: []
+  skip: []
 }>()
 
 const { t, locale } = useI18n()
@@ -185,6 +187,14 @@ const networkText = computed(() => {
         <ButtonRow class="osd__buttons">
           <!-- Выделена, но фокус остаётся на таймлайне: OK там — пауза, а
                сюда переходят ↓, если правда нужно с начала -->
+          <ActionButton
+            v-if="skipLabel"
+            v-focusable
+            class="player-skip-action"
+            icon="next"
+            :label="skipLabel"
+            @click="emit('skip')"
+          />
           <ActionButton
             v-if="fromStart"
             v-focusable
