@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.3.0 (2026-11-04)
+
+### Features
+
+- **server:** add Jellyfin-compatible library playback (#159) ([8e6df0c](https://github.com/torsher-app/torsher/commit/8e6df0c3039c95ae0d2eaacf4519be0ccbc0bb8b))
+- **library:** add retention rules for watched downloads (#157) ([326f2cc](https://github.com/torsher-app/torsher/commit/326f2cc17b0d4056857fe292a5c73cf26dea8c8b))
+- **player:** add detected intro and credits skipping (#156) ([6d4f9b0](https://github.com/torsher-app/torsher/commit/6d4f9b0524b0b6cacde792552e29e4a271929f54))
+- **sources:** add configurable source selection presets (#154) ([63c99df](https://github.com/torsher-app/torsher/commit/63c99df8555651c4954868e8c29651e6212787e7))
+- **library:** generate cached video previews (#151) ([c0df7c1](https://github.com/torsher-app/torsher/commit/c0df7c1296a8703041ed52bd69a457abace8fb68))
+- **downloads:** download episodes in order with file priorities (#147) ([5f7b42c](https://github.com/torsher-app/torsher/commit/5f7b42cc32df237258ae5a991a6f66542ab53651))
+- **web:** add notification history with filters ([1c824eb](https://github.com/torsher-app/torsher/commit/1c824eb6ae53fb5329a1e00ceb8cfd1eaae845df))
+
+### Bug Fixes
+
+- **web:** align control heights in library and transfer forms (#158) ([1c5aa1b](https://github.com/torsher-app/torsher/commit/1c5aa1b689ec622412d51fd44527cde613dd55d8))
+- **library:** let viewers choose video versions (#155) ([2f737c6](https://github.com/torsher-app/torsher/commit/2f737c608e2c03041f28c350f028a5a94d8ae1b3))
+- **sources:** improve source discovery and matching (#153) ([e5b7838](https://github.com/torsher-app/torsher/commit/e5b7838e40ece8f8e400319a821fa9971707138e))
+- **tv:** recover failed continue card images (#150) ([97f893b](https://github.com/torsher-app/torsher/commit/97f893b30d00437250af8a776b2263053059dc35))
+
 ## 1.2.0 (2026-10-30)
 
 ### Features
