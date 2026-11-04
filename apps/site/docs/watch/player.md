@@ -49,7 +49,9 @@ With a pointer or a mouse, moving shows the controls, a click on the picture pau
 
 For analyzed videos in your library, <Ui k="player.skipIntro" /> or <Ui k="player.skipCredits" /> appears during a detected section. With the controls hidden, press **OK** to skip or **Back** to dismiss it. With the controls visible, choose the skip button. Skipping keeps the video paused if you paused it, and never happens automatically.
 
-Intro detection needs at least three different episodes from the same season in your library. Credits detection supports light text on a dark background. Analysis runs while nobody is watching and stops when playback starts. New files may need idle time before a button appears; streamed torrents, unsupported credits and uncertain matches show no button. Conservative boundaries can leave a short part of the section to play.
+After you add videos to your library, you may notice higher CPU usage on the server while nobody is watching. Torsher uses FFmpeg to look for intros and credits in the background. It pauses this work when playback starts and tries again once nobody is watching. The skip button uses the timestamps saved by that analysis. Pressing it simply seeks to the end of the detected section.
+
+New files may need some idle time before a button appears. Intro detection needs at least three different episodes from the same season in your library. Credits detection supports light text on a dark background. Streamed torrents, unsupported credits and uncertain matches show no button. Conservative boundaries can leave a short part of the section to play.
 
 Skipping credits seeks only across a confirmed section, preserving gaps that may contain scenes. The usual next-episode setting still applies.
 
