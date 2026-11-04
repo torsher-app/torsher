@@ -30,6 +30,7 @@ import ContentRow from '../components/ContentRow.vue'
 import ContinueCard from '../components/ContinueCard.vue'
 import FocusSection from '../components/FocusSection.vue'
 import HeroPanel from '../components/HeroPanel.vue'
+import LibraryVersionPicker from '../components/LibraryVersionPicker.vue'
 import NewEpisodeCard from '../components/NewEpisodeCard.vue'
 import PosterCard from '../components/PosterCard.vue'
 import PosterSkeleton from '../components/PosterSkeleton.vue'
@@ -40,13 +41,14 @@ import ReleaseCard from '../components/ReleaseCard.vue'
 import ReleasePanel from '../components/ReleasePanel.vue'
 import ScreenState from '../components/ScreenState.vue'
 import TopCard from '../components/TopCard.vue'
+import { useContinuePlayback } from '../composables/useContinuePlayback.ts'
 import { useHero } from '../composables/useHero.ts'
 import { useHeldLoading } from '../composables/useHeldLoading.ts'
 import { useHome } from '../composables/useHome.ts'
 import { useReleaseTexts } from '../composables/useReleaseTexts.ts'
 import { useStackScroll } from '../composables/useStackScroll.ts'
 import { useFocus } from '../focus/index.ts'
-import { continueOrder, libraryRoute, resumeRoute } from '../lib/continue.ts'
+import { continueOrder, libraryRoute } from '../lib/continue.ts'
 import {
   noteReleaseOutcome,
   releaseMatch,
@@ -77,6 +79,10 @@ const { status, rows, loads, error, retry, refresh, refreshContinue } = useHome(
 )
 const { hero, show, clear: clearHero } = useHero()
 const releaseTexts = useReleaseTexts()
+const screen = ref<HTMLElement>()
+const { picker: libraryPicker, resume: continuePlayback }
+  = useContinuePlayback(screen)
+const librarySelection = libraryPicker.selection
 
 const railItem = computed(() => RAIL_ITEM[props.mode])
 const railSection = computed(() => `rail-${railItem.value}`)
@@ -95,7 +101,9 @@ const {
   onScroll: onRowsScroll,
   onWheel: onScreenWheel,
   transform: rowsTransform,
-} = useStackScroll(rowsElement, { wheelHeld: () => !!release.value })
+} = useStackScroll(rowsElement, {
+  wheelHeld: () => !!release.value || !!librarySelection.value,
+})
 const lastSection = ref<string>()
 const rowElements: (HTMLElement | undefined)[] = []
 
@@ -310,9 +318,8 @@ function openAll(row: HomeRow) {
     router.push({ path: '/mine', query: mineQueryOf(target) })
 }
 
-// «Продолжить» запускает просмотр сразу, без карточки тайтла
 function resume(item: ContinueItem) {
-  router.push(resumeRoute(item.id, item))
+  void continuePlayback(item.id, item)
 }
 
 const heroResume = computed(() => !!hero.value && 'next' in hero.value.card)
@@ -460,6 +467,9 @@ const stopWheel = focus.onWheel((direction) => {
   if (!isActive || rows.value.length === 0)
     return false
 
+  if (librarySelection.value)
+    return true
+
   if (direction !== 'up' && direction !== 'down')
     return true
 
@@ -480,7 +490,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main class="home" @wheel.passive="onScreenWheel">
+  <main ref="screen" class="home" @wheel.passive="onScreenWheel">
     <BackdropLayer :src="hero?.details?.backdrop" />
 
     <div class="home__hero">
@@ -602,6 +612,13 @@ onBeforeUnmount(() => {
     <AppRail :current="railItem" :section="railSection" :content="content" />
 
     <AppToast :message="releaseToast" @hide="releaseToast = ''" />
+    <LibraryVersionPicker
+      v-if="librarySelection"
+      :files="librarySelection.files"
+      :current-id="librarySelection.currentId"
+      @select="libraryPicker.select"
+      @close="libraryPicker.close"
+    />
     <ReleasePanel
       v-if="release"
       :release="release"

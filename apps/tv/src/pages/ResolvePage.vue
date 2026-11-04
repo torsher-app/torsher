@@ -104,7 +104,11 @@ async function run() {
     candidateId: props.candidate,
     torrents: [
       props.torrent,
-      releases.find(item => item.season === season)?.torrentId,
+      releases.find(
+        item =>
+          item.season === season
+          && (!target.episode || item.episodes.includes(target.episode)),
+      )?.torrentId,
     ],
     voiceKey: lastVoiceKey(releases, season),
     cancelled: () => cancelled,
