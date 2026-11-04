@@ -417,6 +417,83 @@ describe('revisioned background analysis', () => {
     )
     expect(await readySegments(files[0].id)).toEqual([])
   })
+  it('never re-certifies an old intro after a changed reference fails to decode', async () => {
+    const target = await add(1)
+    const ref = await add(2)
+    await add(3)
+    const credit = { start: 270, end: 290 }
+    vi.mocked(credits).mockResolvedValue([credit])
+    async function analyzeSeason() {
+      queueAnalysis(target.id)
+      await vi.advanceTimersByTimeAsync(30_000)
+      await wait(() => expect(segmentAnalysisStatus()).toBeNull())
+    }
+    await analyzeSeason()
+    expect(await readySegments(target.id)).toHaveLength(2)
+
+    const path = join(root, ref.relPath)
+    await writeFile(path, 'new revision')
+    const info = await stat(path)
+    getDb()
+      .update(mediaFiles)
+      .set({ probeKey: `${info.size}:${info.mtimeMs}` })
+      .where(eq(mediaFiles.id, ref.id))
+      .run()
+    const creditsOnly = [
+      { ...credit, kind: 'credits', source: 'visual', id: 'credits-0' },
+    ]
+    expect(await readySegments(target.id)).toEqual(creditsOnly)
+    vi.mocked(fingerprint).mockRejectedValue(
+      new Error('undecodable reference'),
+    )
+    await analyzeSeason()
+    expect(await readySegments(target.id)).toEqual(creditsOnly)
+  })
+
+  it('ignores and rebuilds version 3 segments on existing probed files', async () => {
+    const file = await add(1)
+    await add(2)
+    await add(3)
+    // Version 3 also included the detector version in the serialized identity.
+    const legacyIdentity = JSON.parse(identity(file)) as unknown[]
+    legacyIdentity[0] = 3
+    getDb()
+      .insert(mediaAnalysis)
+      .values({
+        fileId: file.id,
+        revision: file.probeKey!,
+        identity: JSON.stringify(legacyIdentity),
+        version: 3,
+        updatedAt: new Date(),
+        data: {
+          status: 'ready',
+          fingerprint: null,
+          audioTrack: 1,
+          window: 150,
+          visualDone: true,
+          references: [],
+          segments: [
+            {
+              id: 'intro',
+              kind: 'intro',
+              source: 'audio',
+              start: 100,
+              end: 140,
+            },
+          ],
+        },
+      })
+      .run()
+    expect(await readySegments(file.id)).toEqual([])
+    queueAnalysis(file.id)
+    await vi.advanceTimersByTimeAsync(30_000)
+    await wait(() => expect(segmentAnalysisStatus()).toBeNull())
+    const rebuilt = await readySegments(file.id)
+    expect(rebuilt).toHaveLength(1)
+    expect(rebuilt[0].kind).toBe('intro')
+    expect(rebuilt[0].end).toBeLessThan(100)
+  })
+
   it('keeps confirmed credits when the optional fingerprint tool fails', async () => {
     const file = await add(1)
     vi.mocked(credits).mockResolvedValue([{ start: 270, end: 290 }])

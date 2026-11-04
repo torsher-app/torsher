@@ -7,7 +7,7 @@ export interface SkipSegment {
 }
 
 // Increment when extraction, matching, or boundary rules change.
-export const ANALYSIS_VERSION = 3
+export const ANALYSIS_VERSION = 4
 export const FINGERPRINT_WINDOW = 600
 export const FINGERPRINT_STEP = 4096 / 33075
 export const FRAME_WIDTH = 320

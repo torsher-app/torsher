@@ -250,7 +250,13 @@ async function analyzeInput(input: Input, signal: AbortSignal, onWork: OnWork) {
   const id = input.file.id
   const existing = cached(input)
   const data: AnalysisData = existing
-    ? { ...existing, segments: [...existing.segments] }
+    ? {
+        ...existing,
+        segments: existing.segments.filter(
+          segment => segment.kind === 'credits',
+        ),
+        references: [],
+      }
     : {
         status: 'insufficient',
         visualDone: false,
@@ -311,9 +317,6 @@ async function analyzeInput(input: Input, signal: AbortSignal, onWork: OnWork) {
             cores.push(core)
         }
       }
-      data.segments = data.segments.filter(
-        segment => segment.kind !== 'intro',
-      )
       if (
         !ambiguous
         && cores.length
@@ -330,6 +333,11 @@ async function analyzeInput(input: Input, signal: AbortSignal, onWork: OnWork) {
           start: Math.max(...cores.map(core => core[0])),
           end: Math.min(...cores.map(core => core[1])),
         })
+        data.references = inputs.slice(1).map(item => ({
+          id: item.file.id,
+          revision: item.revision,
+          identity: item.identity,
+        }))
       }
       data.status = !data.fingerprint
         ? 'unsupported'
@@ -353,11 +361,6 @@ async function analyzeInput(input: Input, signal: AbortSignal, onWork: OnWork) {
     if (!(await unchanged(item)))
       return
   }
-  data.references = inputs.slice(1).map(item => ({
-    id: item.file.id,
-    revision: item.revision,
-    identity: item.identity,
-  }))
   if (data.segments.length)
     data.status = 'ready'
   if (await save(input, data, signal))
