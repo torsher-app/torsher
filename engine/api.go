@@ -36,15 +36,20 @@ const (
 )
 
 type api struct {
-	client  *torrent.Client
-	session *session
-	logger  *slog.Logger
+	maintenanceToken string
+	maintenance      *maintenanceFences
+	lifecycle        *storageLifecycle
+	metadataOnly     sync.Map
+	client           *torrent.Client
+	session          *session
+	logger           *slog.Logger
 	// Каталог загрузок по умолчанию и отметки скачанных кусков: удаление с
 	// файлами убирает и то и другое
 	downloads  string
 	completion storage.PieceCompletion
 	// Каталог каждой раздачи (`metainfo.Hash` → путь); нет записи — по
 	// умолчанию. Хранилища других каталогов создаются по первой раздаче в них
+	guarded  sync.Map // hash → конкретный incarnation с pinned storage
 	dirs     sync.Map
 	storesMu sync.Mutex
 	stores   map[string]storage.ClientImpl
@@ -69,18 +74,21 @@ type api struct {
 
 func newAPI(client *torrent.Client, session *session, parts clientParts, logger *slog.Logger) *api {
 	a := &api{
-		client:     client,
-		session:    session,
-		logger:     logger,
-		downloads:  parts.downloads,
-		completion: parts.completion,
-		stores:     map[string]storage.ClientImpl{},
-		moves:      map[metainfo.Hash]*moveJob{},
-		speeds:     newSpeedTracker(),
-		windows:    parts.windows,
-		limits:     parts.limits,
-		sched:      newScheduler(),
-		exit:       os.Exit,
+		maintenanceToken: os.Getenv("TORSHER_ENGINE_MAINTENANCE_TOKEN"),
+		maintenance:      loadMaintenance(filepath.Join(filepath.Dir(session.dir), "maintenance")),
+		lifecycle:        parts.lifecycle,
+		client:           client,
+		session:          session,
+		logger:           logger,
+		downloads:        parts.downloads,
+		completion:       parts.completion,
+		stores:           map[string]storage.ClientImpl{},
+		moves:            map[metainfo.Hash]*moveJob{},
+		speeds:           newSpeedTracker(),
+		windows:          parts.windows,
+		limits:           parts.limits,
+		sched:            newScheduler(),
+		exit:             os.Exit,
 
 		watchEvery:    watchdogInterval,
 		lockStuckFrom: watchdogTimeout,
@@ -98,6 +106,12 @@ func newAPI(client *torrent.Client, session *session, parts clientParts, logger 
 
 func (a *api) routes() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("POST /maintenance/{id}/prepare", a.maintenancePrepare)
+	mux.HandleFunc("GET /maintenance", a.maintenanceInventory)
+	mux.HandleFunc("GET /maintenance/{id}", a.maintenanceStatus)
+	mux.HandleFunc("POST /maintenance/{id}/unlink", a.maintenanceUnlink)
+	mux.HandleFunc("POST /maintenance/{id}/finalize", a.maintenanceFinish)
+	mux.HandleFunc("POST /maintenance/{id}/cancel", a.maintenanceFinish)
 
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
 		if a.lockStuck() {
@@ -128,7 +142,7 @@ func (a *api) routes() http.Handler {
 	mux.HandleFunc("GET /settings", a.getSettings)
 	mux.HandleFunc("PUT /settings", a.putSettings)
 
-	return a.crashOnPanic(mux)
+	return a.crashOnPanic(a.maintenanceRoute(mux))
 }
 
 // Паника в обработчике завершает движок, супервизор сервера запустит его
@@ -312,7 +326,27 @@ func (a *api) resolve(w http.ResponseWriter, r *http.Request) {
 		timeout = time.Duration(ms) * time.Millisecond
 	}
 
-	t, err := a.client.AddMagnet(strings.TrimSpace(string(body)))
+	spec, err := torrent.TorrentSpecFromMagnetUri(strings.TrimSpace(string(body)))
+	if err != nil {
+		writeError(w, 400, "invalid_magnet", err)
+		return
+	}
+	release, err := a.maintenanceLease(spec.InfoHash, nil)
+	if err != nil {
+		writeError(w, 409, "maintenance_held", err)
+		return
+	}
+	defer release()
+	_, known := a.client.Torrent(spec.InfoHash)
+	if !known && len(a.session.get(spec.InfoHash).GuardedPaths) > 0 {
+		writeError(w, 409, "source_identity_guarded", errors.New("Guarded files require maintenance recovery before reopening the download."))
+		return
+	}
+	spec.Storage = metadataOnlyStorage{}
+	t, _, err := a.client.AddTorrentSpec(spec)
+	if err == nil && !known {
+		a.metadataOnly.Store(t.InfoHash(), true)
+	}
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_magnet", err)
 		return
@@ -421,6 +455,10 @@ func (a *api) setPaused(t *torrent.Torrent, paused bool, selected []int) {
 
 // Раздачи прошлого запуска: выбор файлов и пауза — как были
 func (a *api) restore(ctx context.Context) {
+	if a.maintenance.loadErr != nil {
+		return
+	}
+	a.recoverMaintenanceReattachments()
 	restored, errs := a.session.load()
 
 	for _, err := range errs {
@@ -433,7 +471,14 @@ func (a *api) restore(ctx context.Context) {
 			return
 		}
 
+		// Guarded sessions восстанавливаются отдельно: долгий rehash не задерживает чужие.
+		if len(item.saved.GuardedPaths) > 0 {
+			continue
+		}
 		dir := a.dirOrDefault(item.saved.Dir)
+		if a.maintenanceBlocked(item.meta.HashInfoBytes(), metadataPaths(item.meta, dir)) {
+			continue
+		}
 
 		if info, err := item.meta.UnmarshalInfo(); err == nil {
 			a.finishMove(item.meta.HashInfoBytes(), &info, dir, &item.saved)
@@ -517,6 +562,12 @@ func (a *api) add(w http.ResponseWriter, r *http.Request) {
 	}
 
 	hash := mi.HashInfoBytes()
+	release, err := a.maintenanceLease(hash, metadataPaths(mi, dir))
+	if err != nil {
+		writeError(w, 409, "maintenance_held", err)
+		return
+	}
+	defer release()
 
 	if a.isMoving(hash) {
 		writeMoving(w)
@@ -524,13 +575,22 @@ func (a *api) add(w http.ResponseWriter, r *http.Request) {
 	}
 
 	existing, known := a.client.Torrent(hash)
+	if len(a.session.get(hash).GuardedPaths) > 0 {
+		guarded, _ := a.guarded.Load(hash)
+		if !known || guarded != existing {
+			writeError(w, 409, "source_identity_guarded", errors.New("Guarded files require maintenance recovery before reopening the download."))
+			return
+		}
+	}
 
 	// Раздачу, у которой только искали метаданные, клиент держит в каталоге по
 	// умолчанию: она ничего не записала и открывается заново в своём.
 	// Добавленная раньше остаётся в своём каталоге — сменить его может только
 	// перенос
-	if known && !a.session.has(hash) && !samePath(a.dirOf(hash), dir) {
+	_, metadataOnly := a.metadataOnly.Load(hash)
+	if known && !a.session.has(hash) && (metadataOnly || !samePath(a.dirOf(hash), dir)) {
 		existing.Drop()
+		a.metadataOnly.Delete(hash)
 		a.dirs.Delete(hash)
 		known = false
 	}
@@ -783,11 +843,16 @@ func (a *api) forget(w http.ResponseWriter, r *http.Request) {
 	}
 
 	deleteFiles := r.URL.Query().Get("delete_files") == "true"
+	if deleteFiles && len(a.session.get(t.InfoHash()).GuardedPaths) > 0 {
+		writeError(w, 409, "source_identity_guarded", errors.New("Files are protected after maintenance cancellation. Remove the download while keeping files, or use library maintenance after checking the source."))
+		return
+	}
 	info := t.Info()
 	hash := t.InfoHash()
 	dir := a.dirOf(hash)
 
 	t.Drop()
+	a.guarded.Delete(hash)
 	a.dirs.Delete(hash)
 	a.forgetMove(hash)
 

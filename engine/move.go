@@ -115,7 +115,7 @@ func (a *api) storageFor(dir string) storage.ClientImpl {
 		return found
 	}
 
-	created := fileStorage(key, a.completion)
+	created := trackedStorage{ClientImplCloser: fileStorage(key, a.completion), lifecycle: a.lifecycle}
 	a.stores[key] = created
 
 	return created
@@ -123,6 +123,18 @@ func (a *api) storageFor(dir string) storage.ClientImpl {
 
 // Добавляет раздачу в клиент с хранилищем её каталога
 func (a *api) addIn(mi *metainfo.MetaInfo, dir string) (*torrent.Torrent, error) {
+	if a.maintenanceBlocked(mi.HashInfoBytes(), metadataPaths(mi, dir)) {
+		return nil, errMaintenance
+	}
+	if len(a.session.get(mi.HashInfoBytes()).GuardedPaths) > 0 {
+		if t, ok := a.client.Torrent(mi.HashInfoBytes()); ok && samePath(a.dirOf(mi.HashInfoBytes()), dir) {
+			if guarded, ok := a.guarded.Load(mi.HashInfoBytes()); ok && guarded == t {
+				return t, nil
+			}
+		}
+		return nil, errors.New("guarded session requires maintenance recovery")
+	}
+
 	spec, err := torrent.TorrentSpecFromMetaInfoErr(mi)
 	if err != nil {
 		return nil, err
@@ -230,12 +242,21 @@ func (a *api) startMove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	metaForFence := t.Metainfo()
+	if a.maintenanceBlocked(hash, metadataPaths(&metaForFence, body.Dir)) {
+		reject(409, "maintenance_held", errMaintenance)
+		return
+	}
 	// Раздача только из поиска метаданных: `.torrent` для повторного открытия нет
 	if !a.session.has(hash) {
 		reject(http.StatusNotFound, "torrent_not_found", errors.New("torrent is not in the engine"))
 		return
 	}
 
+	if len(a.session.get(hash).GuardedPaths) > 0 {
+		reject(409, "source_identity_guarded", errors.New("Files are protected after maintenance cancellation. To move them, remove the download while keeping files, then add it again after checking the source."))
+		return
+	}
 	from := a.dirOf(hash)
 	to := filepath.Clean(body.Dir)
 	job.update(func(state *moveState) { state.Dir = to })
