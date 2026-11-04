@@ -13,6 +13,7 @@ import {
 } from 'fastify-type-provider-zod'
 import { config } from './config.ts'
 import { apiRoutes } from './routes/api.ts'
+import { jellyfinRoutes } from './routes/jellyfin.ts'
 import { registerClients } from './static.ts'
 
 /**
@@ -86,6 +87,7 @@ export function createApp(
   // Весь API — под /api: корень и /panel/ занимают витрина и панель,
   // которые сервер отдаёт с того же origin
   app.register(apiRoutes, { prefix: '/api' })
+  app.register(jellyfinRoutes)
 
   if (clients)
     registerClients(app, clients)

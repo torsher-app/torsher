@@ -8,7 +8,7 @@ const REDACTED = '[redacted]'
 // на `&`, пробеле, кавычке или `\` экранирования JSON. `jackett_apikey` —
 // ключ в ссылках прокси Jackett на `.torrent`
 const SECRET_PARAM
-  = /((?:[?&#]|&amp;|%3F|%26)(?:token|access_token|refresh_token|apikey|jackett_apikey|api_key|passkey|password|sig|key)(?:=|%3D))[^&\s"\\]+/gi
+  = /((?:[?&#]|&amp;|%3F|%26)(?:token|access_token|refresh_token|apikey|jackett_apikey|api_key|passkey|password|pw|accesstoken|sig|key)(?:=|%3D))[^&\s"\\]+/gi
 
 // Заголовок, попавший в текст ошибки. Значение не выходит за строку JSON
 const SECRET_AUTHORIZATION
@@ -18,7 +18,7 @@ const SECRET_AUTHORIZATION
 const URL_CREDENTIALS = /\b([a-z][a-z\d+.-]*:\/\/)[^\s/@"\\]+@/gi
 
 const SECRET_HEADER
-  = /("(?:authorization|cookie|set-cookie|x-api-key)":)(?:"(?:[^"\\]|\\.)*"|\[(?:"(?:[^"\\]|\\.)*",?)*\])/gi
+  = /("(?:authorization|x-emby-authorization|x-emby-token|x-mediabrowser-token|cookie|set-cookie|x-api-key|pw|password|accesstoken)":)(?:"(?:[^"\\]|\\.)*"|\[(?:"(?:[^"\\]|\\.)*",?)*\])/gi
 
 let downloadsPattern: RegExp | null | undefined
 
@@ -104,6 +104,12 @@ export function scrubText(text: string) {
     .replace(SECRET_PARAM, `$1${REDACTED}`)
     .replace(URL_CREDENTIALS, `$1${REDACTED}@`)
     .replace(SECRET_HEADER, `$1"${REDACTED}"`)
+    .replace(
+      /((?:x-emby-token|x-mediabrowser-token):\s*)[^\s"\\]+/gi,
+      `$1${REDACTED}`,
+    )
+    .replace(/(Token\s*=\s*)\\"[^\\]*\\"/gi, `$1\\"${REDACTED}\\"`)
+    .replace(/(Token\s*=\s*)"[^"]*"/gi, `$1"${REDACTED}"`)
     .replace(SECRET_AUTHORIZATION, `$1: ${REDACTED}`)
 
   const downloads = downloadsRegExp()

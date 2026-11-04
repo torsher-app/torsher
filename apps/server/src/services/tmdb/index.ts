@@ -203,6 +203,19 @@ function detailsKey(ref: TmdbRef, language: string) {
   return `tmdb:${ref.type}:${ref.tmdbId}:${language}:${DETAILS_KEY_VERSION}`
 }
 
+/** Local metadata for library filtering; never triggers a network request. */
+export function cachedTitleDetails(id: string, language: string) {
+  const ref = parseCatalogId(id)
+  if (!ref)
+    return undefined
+  if (ref.type === 'movie') {
+    const movie = readMetaCache<TmdbMovie>(detailsKey(ref, language))
+    return movie ? movieToDetails(movie, language) : undefined
+  }
+  const tv = readMetaCache<TmdbTv>(detailsKey(ref, language))
+  return tv ? tvToDetails(tv, language) : undefined
+}
+
 async function loadTitle(ref: TmdbRef, language: string): Promise<LoadedTitle> {
   const key = detailsKey(ref, language)
   const params = detailsParams(ref, language)

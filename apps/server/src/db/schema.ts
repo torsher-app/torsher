@@ -156,6 +156,10 @@ export const devices = sqliteTable('devices', {
   name: text('name').notNull(),
   type: text('type', { enum: deviceTypes }).notNull(),
   tokenHash: text('token_hash').notNull().unique(),
+  purpose: text('purpose', { enum: ['viewer', 'jellyfin'] })
+    .notNull()
+    .default('viewer'),
+  ownerSessionVersion: integer('owner_session_version'),
   // null — профиль на устройстве ещё не выбран
   profileId: text('profile_id').references(() => profiles.id, {
     onDelete: 'set null',

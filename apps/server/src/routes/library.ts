@@ -1,6 +1,4 @@
-import { trackPlayback } from '../services/segments/activity.ts'
 import { acquireMaintenanceLease } from '../services/libraryMaintenance/admission.ts'
-import { recordMediaActivity } from '../services/libraryMaintenance/provenance.ts'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { createReadStream } from 'node:fs'
 import { stat } from 'node:fs/promises'
@@ -19,33 +17,9 @@ import {
   homeVideos,
 } from '../services/library/home.ts'
 import { cachedThumb } from '../services/library/thumbs.ts'
-import { contentTypeOf } from '../services/torrents/index.ts'
+import { sendLibraryFile } from '../services/library/stream.ts'
 
-/** `bytes=start-end` → границы; `undefined` — заголовка нет, `null` — вне файла */
-export function parseRange(header: string | undefined, size: number) {
-  if (!header)
-    return undefined
-
-  const match = /^bytes=(\d*)-(\d*)$/.exec(header.trim())
-
-  if (!match || (!match[1] && !match[2]))
-    return null
-
-  let start: number
-  let end: number
-
-  if (!match[1]) {
-    // `bytes=-500` — последние 500 байт
-    start = Math.max(0, size - Number(match[2]))
-    end = size - 1
-  }
-  else {
-    start = Number(match[1])
-    end = match[2] ? Math.min(Number(match[2]), size - 1) : size - 1
-  }
-
-  return start <= end && start < size ? { start, end } : null
-}
+export { parseRange } from '../services/library/stream.ts'
 
 /**
  * Файлы библиотеки: поток с диска для плеера. Движок здесь не участвует — файл
@@ -64,45 +38,12 @@ export const libraryRoutes: FastifyPluginAsyncZod = async (app) => {
       },
     },
     async (request, reply) => {
-      const releaseMaintenance = acquireMaintenanceLease({
-        mediaFileId: request.params.id,
-      })
-      reply.raw.once('close', releaseMaintenance)
-      const found = playableMediaFile(request.params.id, request.profileId)
-      const info = found && (await stat(found.path).catch(() => undefined))
-
-      if (!found || !info?.isFile())
-        return reply.code(404).send({ message: 'File not found' })
-
-      const releasePlayback = trackPlayback()
-      reply.raw.once('close', releasePlayback)
-      const size = info.size
-      const range = parseRange(request.headers.range, size)
-
-      if (range === null) {
-        return reply
-          .code(416)
-          .header('Content-Range', `bytes */${size}`)
-          .send({ message: 'Range not satisfiable' })
-      }
-
-      recordMediaActivity(found.file.id)
-      reply
-        .header('Accept-Ranges', 'bytes')
-        .header('Content-Type', contentTypeOf(found.file.relPath))
-        .header('Cache-Control', 'no-store')
-
-      if (!range) {
-        return reply
-          .header('Content-Length', size)
-          .send(createReadStream(found.path))
-      }
-
-      return reply
-        .code(206)
-        .header('Content-Range', `bytes ${range.start}-${range.end}/${size}`)
-        .header('Content-Length', range.end - range.start + 1)
-        .send(createReadStream(found.path, range))
+      return sendLibraryFile(
+        request,
+        reply,
+        request.params.id,
+        request.profileId,
+      )
     },
   )
 
