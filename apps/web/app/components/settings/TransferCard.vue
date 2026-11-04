@@ -29,11 +29,11 @@ const importOpen = ref(false)
     </template>
     <template #action>
       <div class="flex flex-wrap gap-2">
-        <Button variant="outline" @click="exportOpen = true">
+        <Button variant="outline" size="sm" @click="exportOpen = true">
           <FileDownIcon aria-hidden="true" />
           {{ t(`${base}.exportAction`) }}
         </Button>
-        <Button variant="outline" @click="importOpen = true">
+        <Button variant="outline" size="sm" @click="importOpen = true">
           <FileUpIcon aria-hidden="true" />
           {{ t(`${base}.importAction`) }}
         </Button>

@@ -164,7 +164,7 @@ async function save(item: LibraryFileItem, value: string | null) {
               <Input
                 v-model="draft"
                 type="datetime-local"
-                class="w-auto font-mono text-xs"
+                class="h-8 w-auto font-mono text-xs"
               />
               <LoadingButton
                 size="sm"
