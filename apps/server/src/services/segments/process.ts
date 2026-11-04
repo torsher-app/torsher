@@ -76,6 +76,8 @@ export async function fingerprint(
       '-filter_threads',
       '1',
       ...untrustedInputArgs(path),
+      '-t',
+      String(window),
       '-i',
       path,
       '-t',
@@ -83,6 +85,10 @@ export async function fingerprint(
       '-map',
       `0:${track}`,
       '-vn',
+      // Raw PCM has no timestamps. Pad a late track and gaps on the file timeline
+      // before fpcalc counts samples; never pad a timestamp beyond our window.
+      '-af',
+      `atrim=end=${window},aresample=11025:async=1:first_pts=0`,
       '-ac',
       '1',
       '-ar',
