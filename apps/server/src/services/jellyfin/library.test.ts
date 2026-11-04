@@ -1,4 +1,3 @@
-import type { MediaFile } from '../../db/schema.ts'
 import { stat } from 'node:fs/promises'
 import process from 'node:process'
 import { beforeAll, expect, it, vi } from 'vitest'
@@ -9,7 +8,7 @@ import {
   mediaFiles,
   profiles,
 } from '../../db/schema.ts'
-import { itemId, projectLibrary, selectItems } from './library.ts'
+import { projectLibrary, selectItems } from './library.ts'
 
 vi.mock('node:fs/promises', async original => ({
   ...(await original<typeof import('node:fs/promises')>()),
@@ -43,10 +42,13 @@ it('counts beyond 10,000 entries and only stats the chosen item for playback', a
     size: 1,
     mtime: new Date(),
   }))
-  let target: MediaFile | undefined
+  const batchSize = 100
   db.transaction(() => {
-    for (const row of rows)
-      target = db.insert(mediaFiles).values(row).returning().get()
+    for (let offset = 0; offset < rows.length; offset += batchSize) {
+      db.insert(mediaFiles)
+        .values(rows.slice(offset, offset + batchSize))
+        .run()
+    }
   })
   vi.mocked(stat).mockClear()
   const started = performance.now()
@@ -63,10 +65,7 @@ it('counts beyond 10,000 entries and only stats the chosen item for playback', a
   expect(stat).toHaveBeenCalledTimes(count)
   vi.mocked(stat).mockClear()
   const directStarted = performance.now()
-  const direct = await projectLibrary(
-    profile.id,
-    itemId('Video', library.id, target!.id),
-  )
+  const direct = await projectLibrary(profile.id, page.items[0]!.id)
   expect(stat).toHaveBeenCalledTimes(1)
   expect(
     [...direct.items.values()].filter(item => item.type === 'Video'),
