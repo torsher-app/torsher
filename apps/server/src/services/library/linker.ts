@@ -74,7 +74,7 @@ export interface PlannedVideo {
 export function planVideos(
   torrent: Pick<Torrent, 'name' | 'files'>,
   kind: 'movie' | 'series',
-  seasonCount?: number[],
+  options: { seasonCount?: number[], allowSingleEpisode?: boolean } = {},
 ): PlannedVideo[] {
   const entries = (torrent.files ?? [])
     .map((file, index) => ({ ...file, index }))
@@ -98,15 +98,49 @@ export function planVideos(
   const onlySeason
     = parsed.seasons.length === 1
       ? parsed.seasons[0]
-      : seasonCount?.length === 1
-        ? seasonCount[0]
+      : options.seasonCount?.length === 1
+        ? options.seasonCount[0]
         : undefined
 
   return entries.flatMap((file, i) => {
     const match = matches[i]
 
-    if (match?.kind !== 'video' || match.episode === undefined)
+    if (match?.kind !== 'video')
       return []
+
+    if (match.episode === undefined) {
+      const season = parsed.seasons[0]
+      const range = parsed.episodes
+      if (
+        !options.allowSingleEpisode
+        || videos.length !== 1
+        || match.absolute !== undefined
+        || parsed.seasons.length !== 1
+        || season === undefined
+        || !range
+        || range.from !== range.to
+      ) {
+        return []
+      }
+
+      // matchFiles не сохраняет сезон папки, если у файла нет номера серии.
+      const parts = file.path.replace(/\.[^./\\]+$/, '').split(/[/\\]/)
+      for (const part of parts) {
+        const label = parseRelease(part)
+        if (
+          label.seasons.some(value => value !== season)
+          || label.absolute
+          || (label.episodes
+            && (label.episodes.from !== range.from
+              || label.episodes.to !== range.to))
+        ) {
+          return []
+        }
+      }
+      return [
+        { fileIndex: file.index, episode: { season, episode: range.from } },
+      ]
+    }
 
     const season = match.season ?? onlySeason
 
@@ -210,7 +244,7 @@ export async function sourcePathOf(torrent: Torrent, fileIndex: number) {
   return undefined
 }
 
-function isComplete(
+export function isComplete(
   torrent: Torrent,
   state: EngineTorrentState,
   fileIndex: number,
@@ -747,7 +781,7 @@ async function linkTorrentImpl(
         .map(Number)
         .filter(season => season > 0)
 
-      planned = planVideos(torrent, kind, seasons)
+      planned = planVideos(torrent, kind, { seasonCount: seasons })
     }
 
     const title = layoutTitleOf(identity, language)

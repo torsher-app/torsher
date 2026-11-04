@@ -29,7 +29,7 @@ import FocusSection from '../components/FocusSection.vue'
 import FollowPanel from '../components/FollowPanel.vue'
 import OptionsPanel from '../components/OptionsPanel.vue'
 import LibraryVersionPicker from '../components/LibraryVersionPicker.vue'
-import { useLibraryPicker } from '../composables/useLibraryPicker.ts'
+import { useContinuePlayback } from '../composables/useContinuePlayback.ts'
 import PersonCard from '../components/PersonCard.vue'
 import PosterCard from '../components/PosterCard.vue'
 import RatingList from '../components/RatingList.vue'
@@ -72,7 +72,7 @@ import {
   queryOf as catalogQueryOf,
   ORIGINAL_LANGUAGES,
 } from '../lib/catalogFilter.ts'
-import { libraryRoute, resolveRoute, resumeRoute } from '../lib/continue.ts'
+import { resolveRoute } from '../lib/continue.ts'
 import { downloadSlot } from '../lib/downloadSlot.ts'
 import { titleOffer } from '../lib/titleOffer.ts'
 import { isFollowed } from '../lib/follow.ts'
@@ -394,9 +394,12 @@ const libraryChoice = computed(() =>
   ),
 )
 const fromLibrary = computed(() => libraryChoice.value.files[0])
-const libraryPicker = useLibraryPicker((fileId, target) => {
-  void router.push(libraryRoute(fileId, { id: props.id, ...target }))
-})
+const screen = ref<HTMLElement>()
+const {
+  picker: libraryPicker,
+  openLibrary,
+  resume: continuePlayback,
+} = useContinuePlayback(screen)
 const librarySelection = libraryPicker.selection
 
 // Вторая строка главной кнопки: что продолжим или что смотрели последний раз
@@ -491,13 +494,10 @@ function onPrimary() {
   const own = fromLibrary.value
 
   if (own) {
-    libraryPicker.open({
-      ...libraryChoice.value,
-      currentId: resume.value?.mediaFileId,
-    })
+    openLibrary(props.id, libraryChoice.value, resume.value?.mediaFileId)
   }
   else if (resume.value) {
-    router.push(resumeRoute(props.id, resume.value))
+    void continuePlayback(props.id, resume.value)
   }
   else if (followReady.value) {
     const { season, episode } = followReady.value
@@ -984,7 +984,6 @@ function edgesOf(name: string): SectionEdges {
 // Экран в стеке KeepAlive: по Back из персоны, «Похожего» или «Источников»
 // фокус и позиция те же, а прогресс после плеера — свежий
 const stack = ref<HTMLElement>()
-const screen = ref<HTMLElement>()
 const { active } = useStackedScreen(screen, {
   fallback: () =>
     order.value.includes('title-actions') ? 'title-actions' : order.value[0],

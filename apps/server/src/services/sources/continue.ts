@@ -13,6 +13,7 @@ import {
   excludedFromContinue,
   playedBefore,
   resumeTarget,
+  visibleResumeSource,
   watchedTitles,
 } from './resume.ts'
 
@@ -59,6 +60,7 @@ function followTarget(
     position: row?.position ?? 0,
     duration: row?.duration ?? null,
     next: !movie,
+    mediaFileId: row?.mediaFileId,
     file:
       fresh.file
       ?? (row?.torrentId && row.fileIndex !== null
@@ -126,7 +128,7 @@ async function continueCard(
     position: target.position,
     duration: target.duration ?? (runtime ? runtime * 60 : null),
     next: target.next,
-    file: target.file,
+    ...visibleResumeSource(profileId, target),
     ...(fresh && { followNewEpisode: true }),
   }
 }

@@ -44,6 +44,8 @@ When a catalog image is missing, cards can use a frame from the local video. Fra
 
 Episodes in the library have a shelf icon on their still. On the <Ui k="sources.title" /> screen, the library file comes first, marked <Ui k="sources.libraryHint" />.
 
+From the <Ui k="home.rows.continue" /> row, select the series to play the next episode from your library. If several versions are available, choose one. Torsher can also play a finished download before it appears in the library, even if the previous episode came from a different release.
+
 The player takes the next episode from the library when it's there, asking you to choose if several versions cover that episode. See [Player](/docs/watch/player).
 
 ## No description

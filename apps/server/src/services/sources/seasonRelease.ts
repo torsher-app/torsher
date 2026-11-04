@@ -4,6 +4,10 @@ import { matchFiles, parseRelease } from '@torsher/release-parser'
 import { and, desc, eq, isNotNull } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import { titleProgress } from '../../db/schema.ts'
+import {
+  playableMediaFile,
+  unavailableTorrentFiles,
+} from '../library/folders.ts'
 import { getTorrent, isVideoFile } from '../torrents/index.ts'
 import { torrentResolution } from './resolution.ts'
 
@@ -22,16 +26,25 @@ export interface SeasonRelease {
 }
 
 /** Серии сезона в раздаче — по именам файлов, как `pickFile` при просмотре */
-export function episodesInTorrent(torrent: Torrent, season: number) {
+export function episodesInTorrent(
+  torrent: Torrent,
+  season: number,
+  blocked: Set<number>,
+) {
   const parsed = parseRelease(torrent.name)
   const entries = (torrent.files ?? [])
+    .map((file, index) => ({ ...file, index }))
     .filter(file => !file.padding)
-    .map(({ path, size }) => ({ path, size }))
   const found = new Set<number>()
 
-  for (const match of matchFiles(entries, parsed)) {
-    if (match.kind !== 'video' || match.episode === undefined)
+  for (const [i, match] of matchFiles(entries, parsed).entries()) {
+    if (
+      match.kind !== 'video'
+      || match.episode === undefined
+      || blocked.has(entries[i]!.index)
+    ) {
       continue
+    }
 
     const fileSeason
       = match.season
@@ -55,8 +68,14 @@ export function episodesInTorrent(torrent: Torrent, season: number) {
       ? parsed.episodes?.from
       : undefined
 
-  if (found.size === 0 && single !== undefined && videos.length === 1)
+  if (
+    found.size === 0
+    && single !== undefined
+    && videos.length === 1
+    && !blocked.has(videos[0]!.index)
+  ) {
     found.add(single)
+  }
 
   return [...found].sort((a, b) => a - b)
 }
@@ -84,13 +103,23 @@ export function seasonReleases(
     if (seen.has(row.season))
       continue
 
-    seen.add(row.season)
+    if (row.mediaFileId && !playableMediaFile(row.mediaFileId, profileId))
+      continue
 
     const torrent = getTorrent(row.torrentId!)
 
     if (!torrent || torrent.status === 'failed')
       continue
 
+    const blocked = unavailableTorrentFiles(profileId, torrent.id)
+    if (row.fileIndex !== null && blocked.has(row.fileIndex))
+      continue
+
+    const episodes = episodesInTorrent(torrent, row.season, blocked)
+    if (blocked.size && row.season && !episodes.length)
+      continue
+
+    seen.add(row.season)
     releases.push({
       season: row.season,
       torrent,
@@ -102,7 +131,7 @@ export function seasonReleases(
               type: (row.voiceType as VoiceType | null) ?? undefined,
             }
           : undefined,
-      episodes: episodesInTorrent(torrent, row.season),
+      episodes,
     })
   }
 

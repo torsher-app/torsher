@@ -8,7 +8,7 @@ import { useResource } from './useResource.ts'
 export function useTitleLibrary(id: Ref<string>) {
   const { data, status, refresh } = useResource<TitleLibrary>(
     computed(() => id.value),
-    (key, signal) => api.titles.getTitleLibrary(key, { signal }),
+    (key, signal) => api.titles.getTitleLibrary(key, undefined, { signal }),
   )
 
   return {

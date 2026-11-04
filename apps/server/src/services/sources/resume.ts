@@ -2,6 +2,10 @@ import type { TitleProgress } from '../../db/schema.ts'
 import { and, desc, eq, gte, isNotNull, lt, max, or } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import { titleProgress } from '../../db/schema.ts'
+import {
+  playableMediaFile,
+  unavailableTorrentFiles,
+} from '../library/folders.ts'
 import { droppedSince } from '../mine/index.ts'
 import { getTorrent } from '../torrents/index.ts'
 import { resumePosition } from '../torrents/playback.ts'
@@ -42,6 +46,27 @@ export interface ResumeTarget {
   file: EpisodeFile | null
   updatedAt: Date
   mediaFileId?: string | null
+}
+
+/** У записи библиотечного просмотра раздача — происхождение того же файла. */
+export function visibleResumeSource(
+  profileId: string,
+  target: Pick<ResumeTarget, 'mediaFileId' | 'file'>,
+) {
+  const mediaFileId = target.mediaFileId ?? null
+  if (mediaFileId && !playableMediaFile(mediaFileId, profileId))
+    return { file: null, mediaFileId: null }
+
+  const file = target.file
+  if (
+    !mediaFileId
+    && file
+    && unavailableTorrentFiles(profileId, file.torrentId).has(file.fileIndex)
+  ) {
+    return { file: null, mediaFileId }
+  }
+
+  return { file, mediaFileId }
 }
 
 /**
@@ -185,12 +210,16 @@ export async function resumeTarget(
 
   return {
     ...next,
+    mediaFileId: row?.mediaFileId,
     position: row?.position ?? 0,
     duration: row?.duration ?? null,
     next: true,
     file:
       (row && fileOf(row))
-      ?? (last.torrentId ? episodeFileIn(last.torrentId, ref) : null),
+      ?? (last.torrentId
+        && (!last.mediaFileId || playableMediaFile(last.mediaFileId, profileId))
+        ? episodeFileIn(last.torrentId, ref)
+        : null),
     updatedAt: last.updatedAt,
   }
 }

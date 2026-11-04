@@ -2,9 +2,11 @@ import type { ParsedRelease } from '@torsher/release-parser'
 import type { Torrent } from '../../db/schema.ts'
 import type { RankedRelease } from './rank.ts'
 import { matchFiles } from '@torsher/release-parser'
-import { eq } from 'drizzle-orm'
+import { and, desc, eq } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import { torrents } from '../../db/schema.ts'
+import { heldFileIndexes } from '../library/files.ts'
+import { isComplete, planVideos } from '../library/linker.ts'
 import { isKeepable } from '../library/status.ts'
 import { ensureSpaceFor } from '../storage/index.ts'
 import { parseCatalogId } from '../tmdb/mappers.ts'
@@ -64,6 +66,47 @@ export class NothingToKeepError extends Error {
   constructor() {
     super('Nothing to keep')
     this.name = 'NothingToKeepError'
+  }
+}
+
+/** Скачанный файл серии, который ещё не разложен в библиотеку. */
+export async function downloadedEpisode(
+  titleId: string,
+  season: number,
+  episode: number,
+) {
+  const rows = getDb()
+    .select()
+    .from(torrents)
+    .where(and(eq(torrents.titleId, titleId), eq(torrents.status, 'ready')))
+    .orderBy(desc(torrents.addedAt), torrents.id)
+    .all()
+
+  if (!rows.length)
+    return undefined
+
+  const live = await liveTorrents()
+  for (const row of rows) {
+    const state = live.get(row.infoHash)
+    if (!state)
+      continue
+
+    const candidates = planVideos(row, 'series', {
+      allowSingleEpisode: true,
+    }).filter(
+      video =>
+        video.episode?.season === season
+        && video.episode.episode <= episode
+        && episode <= (video.episode.episodeTo ?? video.episode.episode)
+        && isComplete(row, state, video.fileIndex),
+    )
+    if (!candidates.length)
+      continue
+
+    const held = heldFileIndexes(row.id)
+    const video = candidates.find(item => !held.has(item.fileIndex))
+    if (video)
+      return { torrentId: row.id, fileIndex: video.fileIndex }
   }
 }
 

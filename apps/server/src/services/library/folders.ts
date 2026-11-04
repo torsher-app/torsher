@@ -412,6 +412,31 @@ export function hiddenLibraryIds(profileId: string) {
     .map(row => row.id)
 }
 
+/** Файлы пака, все библиотечные копии которых отсутствуют или скрыты от профиля. */
+export function unavailableTorrentFiles(profileId: string, torrentId: string) {
+  const rows = getDb()
+    .select({ index: mediaFiles.fileIndex })
+    .from(mediaFiles)
+    .innerJoin(libraryFolders, eq(libraryFolders.id, mediaFiles.folderId))
+    .leftJoin(
+      libraryHiddenProfiles,
+      and(
+        eq(libraryHiddenProfiles.libraryId, libraryFolders.libraryId),
+        eq(libraryHiddenProfiles.profileId, profileId),
+      ),
+    )
+    .where(
+      and(eq(mediaFiles.torrentId, torrentId), isNotNull(mediaFiles.fileIndex)),
+    )
+    .groupBy(mediaFiles.fileIndex)
+    .having(
+      sql`max(case when ${mediaFiles.state} = 'present' and ${libraryHiddenProfiles.profileId} is null then 1 else 0 end) = 0`,
+    )
+    .all()
+
+  return new Set(rows.map(row => row.index!))
+}
+
 /** Папки библиотек, которые профиль видит, с их библиотекой */
 export function visibleFolderLibraries(
   profileId: string,
