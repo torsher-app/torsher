@@ -60,6 +60,19 @@ export const attentionItem = z
 
 export type AttentionItem = z.infer<typeof attentionItem>
 
+export const historyRange = z.enum(['1m', '15m', '1h', '24h', '7d', '14d'])
+export type HistoryRange = z.infer<typeof historyRange>
+
+export const loadPoint = z.object({
+  time: z.number(),
+  cpuPeak: z.number().nullable().optional(),
+  cpuCores: z.number().nullable(),
+  memoryBytes: z.number().nullable(),
+  receiveBps: z.number().nullable(),
+  sendBps: z.number().nullable(),
+})
+export type LoadPoint = z.infer<typeof loadPoint>
+
 export const overviewResponse = z
   .object({
     startedAt: z.string(),
@@ -68,6 +81,35 @@ export const overviewResponse = z
     attention: z.array(attentionItem),
     // Новая версия, пока владелец её не скрыл
     update: overviewUpdate.optional(),
+    load: z.object({
+      cpuCores: z.number().nullable(),
+      cpuCapacity: z.number().nullable(),
+      memoryBytes: z.number().nullable(),
+      memoryLimit: z.number().nullable(),
+      receiveBps: z.number().nullable(),
+      sendBps: z.number().nullable(),
+      history: z.array(loadPoint),
+      historyRange,
+      historyStepMs: z.number(),
+      historyEnd: z.number(),
+      playbackActive: z.boolean(),
+      analysis: z
+        .object({
+          stage: z.enum([
+            'credits',
+            'fingerprint',
+            'matching',
+            'waiting',
+            'paused',
+          ]),
+          checked: z.number(),
+          total: z.number(),
+        })
+        .nullable(),
+      thumbnails: z
+        .object({ checked: z.number(), total: z.number() })
+        .nullable(),
+    }),
     downloads: z.object({
       total: z.number(),
       // Качаются сейчас, в том числе без пиров

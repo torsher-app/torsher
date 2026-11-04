@@ -1,5 +1,9 @@
+import { playbackActive } from '../segments/activity.ts'
+import { segmentAnalysisStatus } from '../segments/index.ts'
+import { thumbnailStatus } from '../library/probe.ts'
+import { containerResources } from './monitor.ts'
 import { maintenanceAttention } from '../libraryMaintenance/status.ts'
-import type { AttentionItem } from '../../dto/overview.ts'
+import type { AttentionItem, HistoryRange } from '../../dto/overview.ts'
 import type { EngineTorrentState } from '../engine/index.ts'
 import type { AccelState } from '../media/index.ts'
 import { performance } from 'node:perf_hooks'
@@ -370,8 +374,10 @@ export async function serverAttention(live?: Map<string, EngineTorrentState>) {
  * Состояние сервера одним ответом: из того, что сервисы уже знают, без
  * новых запросов наружу. Без движка цифры загрузок — нули, том — всё равно.
  */
-export async function getOverview() {
+export async function getOverview(range: HistoryRange = '15m') {
   const { storage, downloads, accel, attention } = await collect()
+  const resources = containerResources(range)
+  const thumbnails = thumbnailStatus()
   const enabled = listIndexers().filter(indexer => indexer.enabled)
   const devices = listDevices()
 
@@ -379,6 +385,14 @@ export async function getOverview() {
     // Время старта процесса, а не модуля: модуль грузится позже
     startedAt: new Date(performance.timeOrigin).toISOString(),
     version: config.version,
+    load: {
+      ...resources,
+      analysis: segmentAnalysisStatus(),
+      playbackActive: playbackActive(),
+      thumbnails: thumbnails.running
+        ? { checked: thumbnails.completed, total: thumbnails.total }
+        : null,
+    },
     attention,
     update: overviewUpdate(),
     downloads: downloads.tile,

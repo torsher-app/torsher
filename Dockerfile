@@ -106,6 +106,7 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production \
+    TORSHER_CONTAINER=1 \
     API_PORT=8080 \
     DATABASE_PATH=/data/db/torsher.db \
     DOWNLOADS_PATH=/data/torrents \

@@ -1,3 +1,7 @@
+import {
+  startResourceMonitor,
+  stopResourceMonitor,
+} from './services/overview/monitor.ts'
 import { startAnalysis, stopAnalysis } from './services/segments/index.ts'
 import {
   createMaintenanceStartup,
@@ -403,6 +407,7 @@ const shutdown = createShutdown({
     async () => stopFollowScheduler(),
     async () => stopMaintenanceScheduler(),
     // ffmpeg перепаковки тоже дочерний: его сегменты после выхода не нужны
+    stopResourceMonitor,
     stopAnalysis,
     stopAllSessions,
     () => engine.stop(),
@@ -427,6 +432,7 @@ onRestartRequested((reason) => {
 process.once('exit', () => engine.kill())
 
 await app.listen({ port: config.port, host: config.host })
+startResourceMonitor()
 
 logFor('server').info(
   {

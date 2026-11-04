@@ -3664,6 +3664,35 @@ export interface OverviewResponseInput {
   version: string;
   attention: AttentionItemInput[];
   update?: OverviewUpdateInput;
+  load: {
+    cpuCores: number | null;
+    cpuCapacity: number | null;
+    memoryBytes: number | null;
+    memoryLimit: number | null;
+    receiveBps: number | null;
+    sendBps: number | null;
+    history: {
+      time: number;
+      cpuPeak?: number | null;
+      cpuCores: number | null;
+      memoryBytes: number | null;
+      receiveBps: number | null;
+      sendBps: number | null;
+    }[];
+    historyRange: "1m" | "15m" | "1h" | "24h" | "7d" | "14d";
+    historyStepMs: number;
+    historyEnd: number;
+    playbackActive: boolean;
+    analysis: {
+      stage: "credits" | "fingerprint" | "matching" | "waiting" | "paused";
+      checked: number;
+      total: number;
+    } | null;
+    thumbnails: {
+      checked: number;
+      total: number;
+    } | null;
+  };
   downloads: {
     total: number;
     active: number;
@@ -8894,6 +8923,35 @@ export interface OverviewResponse {
   version: string;
   attention: AttentionItem[];
   update?: OverviewUpdate;
+  load: {
+    cpuCores: number | null;
+    cpuCapacity: number | null;
+    memoryBytes: number | null;
+    memoryLimit: number | null;
+    receiveBps: number | null;
+    sendBps: number | null;
+    history: {
+      time: number;
+      cpuPeak?: number | null;
+      cpuCores: number | null;
+      memoryBytes: number | null;
+      receiveBps: number | null;
+      sendBps: number | null;
+    }[];
+    historyRange: "1m" | "15m" | "1h" | "24h" | "7d" | "14d";
+    historyStepMs: number;
+    historyEnd: number;
+    playbackActive: boolean;
+    analysis: {
+      stage: "credits" | "fingerprint" | "matching" | "waiting" | "paused";
+      checked: number;
+      total: number;
+    } | null;
+    thumbnails: {
+      checked: number;
+      total: number;
+    } | null;
+  };
   downloads: {
     total: number;
     active: number;
@@ -11283,10 +11341,16 @@ export class Api<
      * @name GetOverview
      * @request GET:/api/overview
      */
-    getOverview: (params: RequestParams = {}) =>
+    getOverview: (
+      query?: {
+        range?: "1m" | "15m" | "1h" | "24h" | "7d" | "14d";
+      },
+      params: RequestParams = {},
+    ) =>
       this.request<OverviewResponse, GetOverviewError>({
         path: `/api/overview`,
         method: "GET",
+        query: query,
         format: "json",
         ...params,
       }),
