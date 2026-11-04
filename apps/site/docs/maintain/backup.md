@@ -77,6 +77,10 @@ Without the password, backups made with it are useless on another server. Existi
 
 Restoring replaces all the server's data with the data from the backup. Everything changed since it was made is lost.
 
+Automatic library changes, including follow downloads and [library cleanup](/docs/panel/follow#library-maintenance), pause after a restore, including a restore made with the command below. Review the restored state in <Ui k="panel.nav.settings panel.settings.nav.storage" /> and select <Ui k="panel.maintenance.acknowledge" /> after reviewing operations and files. Cleanup remains switched off after that review and needs separate enabling. An unfinished cleanup operation may need attention first. Restoring a database does not bring back deleted video files.
+
+An older backup can also lose the record that an episode was deliberately removed. The review shows cleanup history still known to the server. Once you confirm the review and resume automation, following may download those episodes again. Review this warning before resuming; watch history and cleanup decisions made after the backup are not restored by that backup.
+
 ### In the panel
 
 1. In the <Ui k="panel.backups.list.title" /> list, open the menu of a backup and select <Ui k="panel.backups.list.restore" />.

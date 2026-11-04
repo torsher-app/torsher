@@ -38,6 +38,8 @@ Following is shared by the whole server: one set of rules per title, so a series
 
 Whether a Russian audio track is required is set in the panel. See [Following](/docs/panel/follow).
 
+The owner can also configure optional [automatic cleanup of watched downloads](/docs/panel/follow#library-maintenance) in the panel. It is off by default, waits for the selected profiles to finish watching and can protect the latest episodes. A new follow on the TV inherits an enabled default rule. The owner can exclude it in the panel.
+
 Following uses the Russian voice-type order of the server default preset, which can be changed in <Ui k="panel.nav.settings panel.settings.nav.sources" />. A pinned studio takes priority. Each follow keeps its own quality rule, even when the source quality order changes. Presets selected by viewers in the showcase do not change these rules. See [Source preferences](/docs/watch/sources#set-source-preferences).
 
 ### Audio language {#audio-language}

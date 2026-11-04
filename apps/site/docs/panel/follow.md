@@ -35,6 +35,28 @@ Each row shows the rules in a phrase, the next episode and the state. Click a ro
 - **<Ui k="panel.follow.actions.searchNow" />.** Searches your indexers within a minute, outside the hourly limit. The card shows when the last search was and when the next one is due.
 - **<Ui k="panel.follow.actions.pause" />** stops searching and downloading but keeps the rules and the profiles. **<Ui k="panel.follow.actions.delete" />** removes the follow and unsubscribes the profiles. In both cases downloaded files stay in the library.
 
+## Remove watched downloads automatically {#library-maintenance}
+
+Set up <Ui k="panel.maintenance.commonRule" /> once in <Ui k="panel.nav.settings panel.settings.nav.storage" />. It covers all current and future followed titles. Use <Ui k="panel.maintenance.preview" /> to see which groups qualify before saving. Automatic deletion requires the separate <Ui k="panel.maintenance.execution" /> switch, initially off.
+
+To keep one series indefinitely or give it a different retention period, select <Ui k="panel.maintenance.addRule" /> in Storage. The follow card’s <Ui k="panel.maintenance.configure" /> opens the same form for that title. An exception with deletion off protects the title. <Ui k="panel.maintenance.useCommon" /> removes the exception after confirmation.
+
+Set <Ui k="panel.maintenance.days" /> and <Ui k="panel.maintenance.profiles" />, initially all profiles. Every selected profile must have marked the movie or every episode in a file as watched. The period starts from the latest of those watched dates and any profile's last playback. Watching again postpones removal. Adding or removing a profile pauses the rule until the owner reviews its selection.
+
+For series, <Ui k="panel.maintenance.keepLast" /> can protect the latest N available episodes. This keeps a minimum, rather than limiting the library to N episodes: unwatched episodes stay too. Episodes still downloading do not displace available ones. Specials and uncertain matches are excluded.
+
+Only new files automatically downloaded by following, with a known history, can qualify. Existing collections, manual downloads, connected folders and home videos are excluded. A favorite in any profile protects the whole title. <Ui k="panel.maintenance.protect" /> protects an automatically saved group of files, including one whose torrent has already left the cache.
+
+The preview lists every reason a group is kept. Cleanup removes whole eligible torrent groups: one protected or unwatched episode keeps the entire pack. Seeding goals must be met; unlimited seeding prevents cleanup. Pausing or removing a follow prevents new cleanup operations.
+
+Eligible groups wait at least 24 hours before removal. Changing a rule, removing protection or watching again restarts eligibility checks. Cleanup preserves watch history and prevents the removed episodes from being downloaded automatically again. <Ui k="panel.follow.actions.searchNow" /> does not clear that choice; use <Ui k="panel.maintenance.redownload" /> for an episode to allow it again.
+
+::: warning Removal is permanent
+There is no trash or undo. A database backup does not contain the video files. Torsher protects its own active playback, including paused sessions, but cannot see playback through another application such as Jellyfin or Plex. Keep automatic cleanup off if those applications need uninterrupted access to the shared files.
+:::
+
+Sizes in the preview are estimates by volume. Hard links, shared blocks and files open in other applications can change how much disk space is actually freed. Cleanup is independent of the cache limit and does not guarantee a maximum library size.
+
 ## Activity
 
 <Ui k="panel.follow.activity.title" /> opens from the button at the top of <Ui k="panel.nav.follow" />. Filter it by title and by event.

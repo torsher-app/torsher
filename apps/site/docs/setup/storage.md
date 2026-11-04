@@ -37,6 +37,14 @@ Subtitles and extra audio tracks lie next to the video with the same base name. 
 
 At the top of the page, a bar shows the downloads volume: <Ui k="panel.torrents.zones.keep" />, <Ui k="panel.torrents.zones.cache" />, library files not shared with torrents, other files on the disk, and free space. The <Ui k="panel.settings.storage.library.title" /> card below it shows how much the library takes and how files get there.
 
+### Automatic library cleanup
+
+In <Ui k="panel.maintenance.title" />, select <Ui k="panel.maintenance.configureDefault" /> to set a retention period and choose the profiles that must watch. Preview and save the rule, then separately enable <Ui k="panel.maintenance.execution" />. The default covers current and future follows. Use <Ui k="panel.maintenance.addRule" /> to change the period or keep a particular title. Existing title rules appear as exceptions. See [Remove watched downloads automatically](/docs/panel/follow#library-maintenance) for the protections and 24-hour grace period.
+
+The storage settings show operations that need attention. If an operation stops after removing some files, its results are kept so a retry checks the remaining files safely. Do not move or replace those files to work around the error; first check the reason shown. After restoring a database backup, cleanup remains paused until the owner reviews the restored state.
+
+When cleanup is cancelled before deletion, Torsher checks the original files before resuming the torrent. Changed or missing files keep the operation paused. A torrent restored this way cannot be moved or removed with its files through ordinary torrent actions or cache cleanup. It can still be forgotten while keeping its files, or removed by a later library maintenance operation that rechecks them. Other torrents are unaffected.
+
 ## Set the cache limit
 
 The <Ui k="panel.settings.storage.cacheTitle" /> card sets how much space the cache may take, in gigabytes, at least 1.
