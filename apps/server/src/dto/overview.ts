@@ -85,6 +85,7 @@ export const overviewResponse = z
       cpuCores: z.number().nullable(),
       cpuCapacity: z.number().nullable(),
       memoryBytes: z.number().nullable(),
+      memoryCacheBytes: z.number().nullable(),
       memoryLimit: z.number().nullable(),
       receiveBps: z.number().nullable(),
       sendBps: z.number().nullable(),

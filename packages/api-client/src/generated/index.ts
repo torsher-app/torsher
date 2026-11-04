@@ -3670,6 +3670,7 @@ export interface OverviewResponseInput {
     cpuCores: number | null;
     cpuCapacity: number | null;
     memoryBytes: number | null;
+    memoryCacheBytes: number | null;
     memoryLimit: number | null;
     receiveBps: number | null;
     sendBps: number | null;
@@ -8931,6 +8932,7 @@ export interface OverviewResponse {
     cpuCores: number | null;
     cpuCapacity: number | null;
     memoryBytes: number | null;
+    memoryCacheBytes: number | null;
     memoryLimit: number | null;
     receiveBps: number | null;
     sendBps: number | null;

@@ -17,6 +17,7 @@ export const emptyCounters = {
   cpuCapacity: null,
   memoryBytes: null,
   memoryLimit: null,
+  memoryCacheBytes: null,
 }
 
 function integer(text?: string | null) {
@@ -133,39 +134,59 @@ export async function readCounters(get: Read = read) {
       )?.[1],
     )
   }
-  const [cpuUsec, cpuQuota, allowed, memoryBytes, memoryLimit]
-    = await Promise.all([
-      cpuTime(),
-      cap && limits(cap, dir => quota(dir, cap.v2, get)),
-      get('/proc/self/status').then(affinity),
-      mem
-      && get(
-        join(mem.dir, mem.v2 ? 'memory.current' : 'memory.usage_in_bytes'),
-      ).then(integer),
-      mem
-      && limits(mem, async (dir) => {
-        const value = await get(
-          join(dir, mem.v2 ? 'memory.max' : 'memory.limit_in_bytes'),
-        )
-        // v1 uses a page-aligned LONG_MAX sentinel for an unlimited group.
-        if (
-          value === 'max'
-          || (!mem.v2
-            && value
-            && /^\d+$/.test(value)
-            && BigInt(value) >= 0x7FFFFFFFFFFFF000n)
-        ) {
-          return Infinity
-        }
-        return integer(value)
-      }),
-    ])
+  const [
+    cpuUsec,
+    cpuQuota,
+    allowed,
+    memoryBytes,
+    memoryCacheBytes,
+    memoryLimit,
+  ] = await Promise.all([
+    cpuTime(),
+    cap && limits(cap, dir => quota(dir, cap.v2, get)),
+    get('/proc/self/status').then(affinity),
+    mem
+    && get(
+      join(mem.dir, mem.v2 ? 'memory.current' : 'memory.usage_in_bytes'),
+    ).then(integer),
+    mem
+    && get(join(mem.dir, 'memory.stat')).then((stat) => {
+      const field = mem.v2
+        ? /^inactive_file (\d+)$/m
+        : /^total_inactive_file (\d+)$/m
+      return integer(field.exec(stat ?? '')?.[1])
+    }),
+    mem
+    && limits(mem, async (dir) => {
+      const value = await get(
+        join(dir, mem.v2 ? 'memory.max' : 'memory.limit_in_bytes'),
+      )
+      // v1 uses a page-aligned LONG_MAX sentinel for an unlimited group.
+      if (
+        value === 'max'
+        || (!mem.v2
+          && value
+          && /^\d+$/.test(value)
+          && BigInt(value) >= 0x7FFFFFFFFFFFF000n)
+      ) {
+        return Infinity
+      }
+      return integer(value)
+    }),
+  ])
   const capacity
     = cpuQuota != null && allowed !== null ? Math.min(cpuQuota, allowed) : null
   return {
     cpuUsec,
     cpuCapacity: capacity,
     memoryBytes: memoryBytes ?? null,
+    // Counters are sampled separately. Discard an inconsistent breakdown.
+    memoryCacheBytes:
+      memoryCacheBytes != null
+      && memoryBytes != null
+      && memoryCacheBytes <= memoryBytes
+        ? memoryCacheBytes
+        : null,
     memoryLimit:
       memoryLimit != null && Number.isFinite(memoryLimit) ? memoryLimit : null,
   }

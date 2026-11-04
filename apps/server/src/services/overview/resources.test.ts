@@ -8,6 +8,8 @@ const v2 = {
   '/proc/self/mountinfo': `10 1 0:3 /docker ${mount} ro - cgroup2 cgroup rw`,
   '/proc/self/status': 'Name: node\nCpus_allowed_list:\t0-1,4-5',
   [`${mount}/torsher/cpu.max`]: 'max 100000',
+  [`${mount}/torsher/memory.stat`]:
+    'file 60000\ninactive_file 48000\nactive_file 12000',
   [`${mount}/torsher/memory.current`]: '123456',
   [`${mount}/torsher/memory.max`]: 'max',
 }
@@ -36,6 +38,7 @@ describe('container resources', () => {
       cpuCores: 1,
       cpuCapacity: 4,
       memoryBytes: 123456,
+      memoryCacheBytes: 48000,
       memoryLimit: null,
     })
   })
@@ -53,6 +56,7 @@ describe('container resources', () => {
       cpuCores: 0,
       cpuCapacity: 1.5,
       memoryBytes: 123456,
+      memoryCacheBytes: 48000,
       memoryLimit: 200000,
     })
   })
@@ -63,6 +67,7 @@ describe('container resources', () => {
       '/proc/self/mountinfo': `${v2['/proc/self/mountinfo']}\n11 1 0:4 /docker/t /cg/cpu ro - cgroup cgroup rw,cpu,cpuacct\n12 1 0:5 /docker/t /cg/mem ro - cgroup cgroup rw,memory`,
       '/cg/cpu/cpu.cfs_quota_us': '50000',
       '/cg/cpu/cpu.cfs_period_us': '100000',
+      '/cg/mem/memory.stat': 'inactive_file 600\ntotal_inactive_file 1500',
       '/cg/mem/memory.usage_in_bytes': '5000',
       '/cg/mem/memory.limit_in_bytes': '9223372036854771712',
     }
@@ -75,9 +80,26 @@ describe('container resources', () => {
       cpuCores: 0.5,
       cpuCapacity: 0.5,
       memoryBytes: 5000,
+      memoryCacheBytes: 1500,
       memoryLimit: null,
     })
   })
+  it.each([
+    ['', null],
+    ['anon 0', null],
+    ['inactive_file invalid', null],
+    ['inactive_file 123457', null],
+    ['inactive_file 0', 0],
+  ] as const)(
+    'reports cache only for a valid current breakdown: %s',
+    async (stat, expected) => {
+      const files = { ...v2, [`${mount}/torsher/memory.stat`]: stat }
+      expect(await from(files, '', [])).toMatchObject({
+        memoryBytes: 123456,
+        memoryCacheBytes: expected,
+      })
+    },
+  )
   it('keeps memory if CPU is unavailable or reset, never substituting zero', async () => {
     for (const values of [[], ['usage_usec 500', 'usage_usec 400'], ['bad']]) {
       expect(await from(v2, `${mount}/torsher/cpu.stat`, values)).toMatchObject(
@@ -88,6 +110,7 @@ describe('container resources', () => {
       cpuCores: null,
       cpuCapacity: null,
       memoryBytes: null,
+      memoryCacheBytes: null,
       memoryLimit: null,
     })
   })
