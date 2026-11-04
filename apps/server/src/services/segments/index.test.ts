@@ -19,6 +19,12 @@ import {
   mediaAnalysis,
   mediaFiles,
 } from '../../db/schema.ts'
+import {
+  closeLogFiles,
+  createLogger,
+  installLogger,
+  queryLogs,
+} from '../logs/index.ts'
 import { trackStream } from '../storage/streams.ts'
 import { deleteSetting, setSetting } from '../settings/index.ts'
 import { playbackActive, trackPlayback } from './activity.ts'
@@ -26,6 +32,7 @@ import {
   identity,
   queueAnalysis,
   readySegments,
+  segmentAnalysisStatus,
   startAnalysis,
   stopAnalysis,
 } from './index.ts'
@@ -93,6 +100,13 @@ beforeEach(async () => {
   vi.clearAllMocks()
   getDb().delete(libraries).run()
   root = await mkdtemp(join(tmpdir(), 'torsher-segments-'))
+  installLogger(
+    createLogger({
+      level: 'info',
+      logsDir: join(root, 'logs'),
+      stdout: { write: () => true },
+    }),
+  )
   const library = getDb()
     .insert(libraries)
     .values({ kind: 'video', name: 'Synthetic' })
@@ -108,12 +122,15 @@ beforeEach(async () => {
   vi.mocked(fingerprint).mockResolvedValue(
     Array.from({ length: 300 }, (_, i) => Math.imul(i + 1, 2654435761) >>> 0),
   )
-  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+  vi.useFakeTimers({
+    toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'],
+  })
   startAnalysis()
 })
 afterEach(async () => {
   await stopAnalysis()
   vi.useRealTimers()
+  await closeLogFiles()
   await rm(root, { recursive: true, force: true })
 })
 
@@ -121,6 +138,142 @@ afterEach(async () => {
 const wait = vi.waitFor
 
 describe('revisioned background analysis', () => {
+  const journal = () =>
+    queryLogs({ level: 'info', sources: ['storage'] }).entries
+  it('shows real work, bounded progress and completion in the panel journal, but stays quiet on a cache hit', async () => {
+    const first = await add(1)
+    const second = await add(2)
+    getDb().update(mediaFiles).set({ titleId: 'tmdb:movie:1' }).run()
+    const scan = Promise.withResolvers<{ start: number, end: number }[]>()
+    vi.mocked(credits).mockImplementationOnce((_path, _duration, signal) => {
+      signal.addEventListener(
+        'abort',
+        () => scan.reject(new Error('cancelled')),
+        { once: true },
+      )
+      return scan.promise
+    })
+    queueAnalysis(first.id)
+    queueAnalysis(second.id)
+    expect(journal()).toHaveLength(0)
+    expect(segmentAnalysisStatus()).toEqual({
+      stage: 'waiting',
+      checked: 0,
+      total: 2,
+    })
+    await vi.advanceTimersByTimeAsync(30_000)
+    await wait(() => expect(credits).toHaveBeenCalledOnce())
+    expect(journal()).toMatchObject([
+      {
+        level: 'info',
+        context: {
+          mediaFileId: first.id,
+          stage: 'credits',
+          checked: 0,
+          total: 2,
+        },
+      },
+    ])
+    expect(segmentAnalysisStatus()).toEqual({
+      stage: 'credits',
+      checked: 0,
+      total: 2,
+    })
+    await vi.advanceTimersByTimeAsync(25_000)
+    expect(journal()).toHaveLength(1)
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(journal()[0].message).toContain('in progress')
+    scan.resolve([{ start: 270, end: 290 }])
+    await wait(() => expect(journal()).toHaveLength(6))
+    expect(journal()[0]).toMatchObject({
+      message: expect.stringContaining('queue finished'),
+      context: { checked: 2, total: 2 },
+    })
+    expect(journal()[1]).toMatchObject({
+      message: expect.stringContaining('finished'),
+      context: { mediaFileId: second.id, checked: 2, total: 2, segments: 0 },
+    })
+    expect(journal()[3]).toMatchObject({
+      message: expect.stringContaining('finished'),
+      context: { mediaFileId: first.id, checked: 1, total: 2, segments: 1 },
+    })
+    expect(JSON.stringify(journal())).not.toContain(root)
+    expect(JSON.stringify(journal())).not.toContain(first.relPath)
+    queueAnalysis(first.id)
+    await vi.advanceTimersByTimeAsync(60_000)
+    await wait(() => expect(segmentAnalysisStatus()).toBeNull())
+    expect(credits).toHaveBeenCalledTimes(2)
+    expect(journal()).toHaveLength(6)
+  })
+  it('reports CPU matching on cached season fingerprints without claiming ffmpeg ran again', async () => {
+    const file = await add(1)
+    await add(2)
+    await add(3)
+    vi.mocked(fingerprint).mockImplementation(async () => {
+      expect(segmentAnalysisStatus()?.stage).toBe('fingerprint')
+      return Array.from({ length: 300 }, (_, i) => i)
+    })
+    queueAnalysis(file.id)
+    await vi.advanceTimersByTimeAsync(30_000)
+    await wait(() => expect(segmentAnalysisStatus()).toBeNull())
+    expect(fingerprint).toHaveBeenCalledTimes(3)
+    expect(credits).toHaveBeenCalledTimes(3)
+    const previous = journal().length
+    queueAnalysis(file.id)
+    await vi.advanceTimersByTimeAsync(30_000)
+    await wait(() => expect(segmentAnalysisStatus()).toBeNull())
+    expect(fingerprint).toHaveBeenCalledTimes(3)
+    expect(credits).toHaveBeenCalledTimes(3)
+    const pass = journal().slice(0, journal().length - previous)
+    expect(
+      pass
+        .filter(entry => entry.message.includes('started'))
+        .map(entry => entry.context?.stage),
+    ).toEqual(['matching', 'matching', 'matching'])
+  })
+  it('reports a playback pause and restarts the interrupted file after the idle delay', async () => {
+    const file = await add(1)
+    vi.mocked(credits).mockImplementationOnce(
+      (_path, _duration, signal) =>
+        new Promise((_resolve, reject) =>
+          signal.addEventListener(
+            'abort',
+            () => reject(new Error('cancelled')),
+            { once: true },
+          ),
+        ),
+    )
+    queueAnalysis(file.id)
+    await vi.advanceTimersByTimeAsync(30_000)
+    await wait(() => expect(credits).toHaveBeenCalledOnce())
+    const release = trackPlayback()
+    try {
+      await wait(() =>
+        expect(journal()[0].message).toContain('paused for playback'),
+      )
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(journal()).toHaveLength(2)
+      expect(segmentAnalysisStatus()).toEqual({
+        stage: 'paused',
+        checked: 0,
+        total: 1,
+      })
+    }
+    finally {
+      release()
+    }
+    expect(segmentAnalysisStatus()).toEqual({
+      stage: 'waiting',
+      checked: 0,
+      total: 1,
+    })
+    await vi.advanceTimersByTimeAsync(29_999)
+    expect(credits).toHaveBeenCalledOnce()
+    await vi.advanceTimersByTimeAsync(1)
+    await wait(() => expect(journal()[0].message).toContain('queue finished'))
+    expect(journal()).toHaveLength(5)
+    expect(credits).toHaveBeenCalledTimes(2)
+  })
   it('defers media analysis until the owner clears a maintenance restore hold', async () => {
     const file = await add(1)
     setSetting('maintenanceRestoreHold', true)
@@ -128,6 +281,13 @@ describe('revisioned background analysis', () => {
       queueAnalysis(file.id)
       await vi.advanceTimersByTimeAsync(30_000)
       expect(credits).not.toHaveBeenCalled()
+      expect(journal()).toHaveLength(0)
+      queueAnalysis(file.id)
+      expect(segmentAnalysisStatus()).toEqual({
+        stage: 'waiting',
+        checked: 0,
+        total: 1,
+      })
     }
     finally {
       deleteSetting('maintenanceRestoreHold')

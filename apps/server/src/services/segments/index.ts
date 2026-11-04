@@ -17,12 +17,42 @@ import { ANALYSIS_VERSION, introWindow } from './model.ts'
 import { credits, fingerprint } from './process.ts'
 
 const pending = new Set<string>()
+const deferred = new Set<string>()
+const stages = {
+  credits: 'credits scan (ffmpeg)',
+  fingerprint: 'intro fingerprint (ffmpeg)',
+  matching: 'intro matching',
+}
+type Stage = keyof typeof stages
+let stage: Stage | 'waiting' = 'waiting'
+let checking = false
+let checked = 0
+let hadWork = false
 let enabled = false
 let timer: ReturnType<typeof setTimeout> | undefined
 let controller: AbortController | undefined
 let running: Promise<void> | undefined
 let unsubscribe: (() => void) | undefined
 const IDLE_DELAY = 30_000
+
+function queueProgress() {
+  let remaining = pending.size
+  for (const id of deferred) {
+    if (!pending.has(id))
+      remaining++
+  }
+  if (checking)
+    remaining++
+  return { checked, total: checked + remaining }
+}
+
+export function segmentAnalysisStatus() {
+  if (!enabled || (!checking && !pending.size && !deferred.size))
+    return null
+  const currentStage: Stage | 'waiting' | 'paused'
+    = playbackActive() || controller?.signal.aborted ? 'paused' : stage
+  return { stage: currentStage, ...queueProgress() }
+}
 
 export function identity(file: MediaFile) {
   return JSON.stringify([
@@ -104,7 +134,7 @@ async function unchanged(input: Input) {
 async function save(input: Input, data: AnalysisData, signal: AbortSignal) {
   signal.throwIfAborted()
   if (!(await unchanged(input)))
-    return
+    return false
   signal.throwIfAborted()
   const values = {
     fileId: input.file.id,
@@ -133,6 +163,7 @@ async function save(input: Input, data: AnalysisData, signal: AbortSignal) {
       .where(eq(mediaAnalysis.fileId, row.fileId))
       .run()
   }
+  return true
 }
 
 function serialEpisode(file: MediaFile) {
@@ -180,7 +211,9 @@ function neighbors(input: { file: MediaFile }) {
     .slice(0, 4)
 }
 
-async function audio(input: Input, signal: AbortSignal) {
+type OnWork = (stage: Stage, mediaFileId: string) => void
+
+async function audio(input: Input, signal: AbortSignal, onWork: OnWork) {
   const existing = cached(input)
   if (existing?.fingerprint)
     return existing
@@ -198,6 +231,7 @@ async function audio(input: Input, signal: AbortSignal) {
     references: [],
   }
   if (track) {
+    onWork('fingerprint', input.file.id)
     data.fingerprint = await fingerprint(
       input.path,
       track.index,
@@ -212,7 +246,7 @@ async function audio(input: Input, signal: AbortSignal) {
   return data
 }
 
-async function analyzeInput(input: Input, signal: AbortSignal) {
+async function analyzeInput(input: Input, signal: AbortSignal, onWork: OnWork) {
   const id = input.file.id
   const existing = cached(input)
   const data: AnalysisData = existing
@@ -228,6 +262,7 @@ async function analyzeInput(input: Input, signal: AbortSignal) {
       }
   // Visual results are immutable for a revision, including a successful empty result.
   if (!existing?.visualDone) {
+    onWork('credits', id)
     data.segments = (
       await credits(input.path, input.file.duration!, signal)
     ).map((run, i) => ({
@@ -243,7 +278,7 @@ async function analyzeInput(input: Input, signal: AbortSignal) {
   let ambiguous = false
   if (serialEpisode(input.file)) {
     try {
-      const base = await audio(input, signal)
+      const base = await audio(input, signal, onWork)
       data.fingerprint = base.fingerprint
       data.audioTrack = base.audioTrack
       for (const neighbor of neighbors(input)) {
@@ -255,13 +290,14 @@ async function analyzeInput(input: Input, signal: AbortSignal) {
       points[0] = data.fingerprint
       for (let i = 1; i < inputs.length; i++) {
         if (!points[i])
-          points[i] = (await audio(inputs[i], signal)).fingerprint
+          points[i] = (await audio(inputs[i], signal, onWork)).fingerprint
       }
       for (let i = 1; i < points.length; i++) {
         for (let j = i + 1; j < points.length; j++) {
           signal.throwIfAborted()
           if (!points[0] || !points[i] || !points[j])
             continue
+          onWork('matching', id)
           const ab = match(points[0]!, points[i]!)
           await setImmediate()
           const ac = match(points[0]!, points[j]!)
@@ -324,17 +360,74 @@ async function analyzeInput(input: Input, signal: AbortSignal) {
   }))
   if (data.segments.length)
     data.status = 'ready'
-  await save(input, data, signal)
+  if (await save(input, data, signal))
+    return data
 }
 
 async function analyze(id: string, signal: AbortSignal) {
   const input = await snapshot(id)
   if (!input)
     return
+  let started = 0
+  let progress: ReturnType<typeof setInterval> | undefined
+  let stageFileId: string
+  const context = () => ({
+    mediaFileId: id,
+    stage,
+    stageFileId,
+    ...queueProgress(),
+    elapsedMs: Math.round(performance.now() - started),
+  })
+  const onWork: OnWork = (nextStage, fileId) => {
+    signal.throwIfAborted()
+    stage = nextStage
+    stageFileId = fileId
+    if (progress)
+      return
+    started = performance.now()
+    hadWork = true
+    logFor('storage').info(
+      context(),
+      `Intro/credits analysis started: ${stages[nextStage]}`,
+    )
+    progress = setInterval(() => {
+      if (!signal.aborted && stage !== 'waiting') {
+        const fields = context()
+        logFor('storage').info(
+          fields,
+          `Intro/credits analysis in progress: ${stages[stage]}, ${fields.checked}/${fields.total} files checked`,
+        )
+      }
+    }, 30_000)
+    progress.unref()
+  }
   try {
-    await analyzeInput(input, signal)
+    const result = await analyzeInput(input, signal, onWork)
+    if (progress) {
+      const fields = context()
+      fields.checked++
+      logFor('storage').info(
+        {
+          ...fields,
+          status: result?.status,
+          audioStatus: result?.audioStatus,
+          segments: result?.segments.length,
+        },
+        result
+          ? `Intro/credits analysis finished: ${fields.checked}/${fields.total} files checked, segments found: ${result.segments.length}`
+          : 'Intro/credits analysis discarded: input changed',
+      )
+    }
   }
   catch (err) {
+    if (progress && signal.aborted) {
+      logFor('storage').info(
+        context(),
+        enabled
+          ? 'Intro/credits analysis paused for playback; file will be retried'
+          : 'Intro/credits analysis stopped for shutdown',
+      )
+    }
     const previous = cached(input)
     const data: AnalysisData = previous ?? {
       status: 'error',
@@ -351,6 +444,9 @@ async function analyze(id: string, signal: AbortSignal) {
       new AbortController().signal,
     )
     throw err
+  }
+  finally {
+    clearInterval(progress)
   }
 }
 
@@ -394,10 +490,11 @@ function schedule() {
     controller = new AbortController()
     const signal = controller.signal
     running = (async () => {
-      const deferred: string[] = []
       while (!signal.aborted && !playbackActive() && pending.size) {
         const id = pending.values().next().value!
         pending.delete(id)
+        deferred.delete(id)
+        checking = true
         try {
           await withMaintenanceLease({ mediaFileId: id, producer: true }, () =>
             analyze(id, signal))
@@ -408,13 +505,32 @@ function schedule() {
             break
           }
           if (error instanceof MaintenanceBusyError) {
-            deferred.push(id)
+            deferred.add(id)
             continue
           }
-          logFor('storage').warn({ mediaFileId: id }, 'Media analysis failed')
+          logFor('storage').warn(
+            { mediaFileId: id },
+            'Intro/credits analysis failed',
+          )
         }
+        finally {
+          checking = false
+          stage = 'waiting'
+        }
+        checked++
       }
       for (const id of deferred) pending.add(id)
+      deferred.clear()
+      if (!pending.size) {
+        if (hadWork && enabled) {
+          logFor('storage').info(
+            queueProgress(),
+            `Intro/credits analysis queue finished: ${checked} files checked`,
+          )
+        }
+        checked = 0
+        hadWork = false
+      }
     })().finally(() => {
       running = undefined
       controller = undefined
@@ -467,4 +583,6 @@ export async function stopAnalysis() {
   controller?.abort()
   await running
   pending.clear()
+  checked = 0
+  hadWork = false
 }
