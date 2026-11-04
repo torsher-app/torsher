@@ -28,6 +28,7 @@ export const notificationFeedGroups: Record<
   channel_failing: 'problems',
   follow_missing: 'problems',
   download_completed: 'downloads',
+  maintenance_completed: 'downloads',
   follow_downloaded: 'follow',
   follow_ready: 'follow',
   follow_waiting: 'follow',

@@ -58,7 +58,11 @@ export async function snapshotDb(source: string, target: string) {
 }
 
 /** Копия без лишнего места: на APFS, Btrfs и XFS — клон, иначе — байты */
-export async function cloneDir(source: string, target: string) {
+export async function cloneDir(
+  source: string,
+  target: string,
+  excludedPath?: string,
+) {
   if (!existsSync(source))
     return
 
@@ -66,6 +70,7 @@ export async function cloneDir(source: string, target: string) {
     recursive: true,
     mode: constants.COPYFILE_FICLONE,
     preserveTimestamps: true,
+    filter: path => path !== excludedPath,
   })
 }
 
@@ -107,6 +112,7 @@ export async function copyData(
     await cloneDir(
       join(source.dataDir, 'engine', 'state'),
       join(stand.dataDir, 'engine', 'state'),
+      join(source.dataDir, 'engine', 'state', 'maintenance'),
     )
   }
 }
@@ -218,6 +224,18 @@ export function sanitizeDb(
       if (hasTable(db, 'torrents'))
         db.prepare('UPDATE torrents SET download_dir = NULL').run()
 
+      // Ownership и fence относятся к исходным inode/томам, а не к копии.
+      for (const table of [
+        'maintenance_suppressions',
+        'maintenance_operations',
+        'maintenance_files',
+        'maintenance_groups',
+        'maintenance_rules',
+      ]) {
+        if (hasTable(db, table))
+          db.prepare(`DELETE FROM ${table}`).run()
+      }
+
       if (hasTable(db, 'storage_moves'))
         db.prepare('DELETE FROM storage_moves').run()
 
@@ -242,6 +260,18 @@ export function sanitizeDb(
       }
 
       if (hasTable(db, 'server_settings')) {
+        db.prepare(
+          'DELETE FROM server_settings WHERE key LIKE \'maintenance%\'',
+        ).run()
+        const maintenanceSetting = db.prepare(
+          'INSERT INTO server_settings (key,value,updated_at) VALUES (?,?,?)',
+        )
+        maintenanceSetting.run(
+          'maintenanceExecutionEnabled',
+          'false',
+          Date.now(),
+        )
+        maintenanceSetting.run('maintenanceRestoreHold', 'true', Date.now())
         db.prepare(
           `DELETE FROM server_settings WHERE key = 'storage.paths'`,
         ).run()

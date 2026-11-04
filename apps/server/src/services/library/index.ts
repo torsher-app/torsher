@@ -1,3 +1,4 @@
+import { withMaintenanceLease } from '../libraryMaintenance/admission.ts'
 import type { Torrent } from '../../db/schema.ts'
 import { join } from 'node:path'
 import { eq } from 'drizzle-orm'
@@ -71,12 +72,18 @@ async function unplaceFiles(torrent: Torrent) {
  * рядом. Раздача возвращается в кэш: она раздаётся, пока её не вытеснят, а
  * без движка файл в библиотеке был последней копией.
  */
-export async function removeFromLibrary(torrent: Torrent) {
+async function removeFromLibraryImpl(torrent: Torrent) {
   await unplaceFiles(torrent)
 
   return torrent.retention === 'keep'
     ? setRetention(torrent, 'cache')
     : torrent
+}
+export function removeFromLibrary(
+  ...args: Parameters<typeof removeFromLibraryImpl>
+) {
+  return withMaintenanceLease({ torrentId: args[0].id }, () =>
+    removeFromLibraryImpl(...args))
 }
 
 /**
@@ -86,10 +93,7 @@ export async function removeFromLibrary(torrent: Torrent) {
  * `null` — «не фильм и не сериал»: раздача остаётся без тайтла и в
  * библиотеку не попадает.
  */
-export async function setTorrentTitle(
-  torrent: Torrent,
-  titleId: string | null,
-) {
+async function setTorrentTitleImpl(torrent: Torrent, titleId: string | null) {
   // Файлы прежнего тайтла или из `other/` («не фильм») ложатся заново
   const placed = !!torrent.titleId || torrent.matchStatus === 'ignored'
 
@@ -112,4 +116,10 @@ export async function setTorrentTitle(
   void syncLibrary()
 
   return getTorrent(torrent.id) ?? torrent
+}
+export function setTorrentTitle(
+  ...args: Parameters<typeof setTorrentTitleImpl>
+) {
+  return withMaintenanceLease({ torrentId: args[0].id, titleId: args[1] }, () =>
+    setTorrentTitleImpl(...args))
 }

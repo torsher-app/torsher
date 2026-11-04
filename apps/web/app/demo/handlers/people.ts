@@ -57,7 +57,7 @@ const profileNotFound = { message: 'Profile not found' }
  * Профили по порядку; первый — профиль по умолчанию. Как и сервер, без
  * профилей создаёт его с именем владельца
  */
-function listProfiles() {
+export function listProfiles() {
   if (!profiles.length) {
     profiles = [
       demoProfile({

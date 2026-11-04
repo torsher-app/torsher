@@ -288,6 +288,22 @@ function onInteractOutside(event: Event) {
 
           <!-- Подробности грузятся отдельно: правила видны сразу из строки списка -->
           <FollowRulesForm :follow="details ?? shown" />
+          <Button
+            as-child
+            variant="outline"
+            size="sm"
+            class="justify-self-start"
+          >
+            <NuxtLink
+              :to="{
+                path: '/settings/storage',
+                query: { rule: shown.titleId },
+                hash: '#auto-delete',
+              }"
+            >
+              {{ t("panel.maintenance.configure") }}
+            </NuxtLink>
+          </Button>
 
           <section class="grid gap-2">
             <div>

@@ -3,6 +3,8 @@ import { playbackSettings } from './media.ts'
 import { overviewUpdate } from './updates.ts'
 
 export const attentionKinds = [
+  'maintenance_failed',
+  'maintenance_restore_hold',
   'engine_down',
   'engine_crashed',
   'storage_low',

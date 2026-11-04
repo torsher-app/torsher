@@ -3,6 +3,7 @@ import { CircleAlertIcon, RefreshCwIcon } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import StorageMaintenanceCard from '~/components/settings/StorageMaintenanceCard.vue'
 import StorageThumbnailsCard from '~/components/settings/StorageThumbnailsCard.vue'
 import StorageDiskCard from '~/components/settings/StorageDiskCard.vue'
 import StorageFoldersCard from '~/components/settings/StorageFoldersCard.vue'
@@ -74,6 +75,8 @@ onMounted(load)
       <StorageLibraryCard :library="overview.library" />
 
       <StorageThumbnailsCard />
+
+      <StorageMaintenanceCard />
 
       <StoragePolicyCards :overview="overview" />
 

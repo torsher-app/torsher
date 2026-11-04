@@ -127,6 +127,7 @@ export async function startDownload(
   torrent: Torrent,
   files: number[],
   isCurrent: () => boolean = () => true,
+  origin: 'follow' | 'manual' = 'manual',
 ) {
   const bytes = await remainingBytes(torrent, files)
 
@@ -145,7 +146,7 @@ export async function startDownload(
           ...files.filter(index => !torrent.selectedFiles?.includes(index)),
         ]
       : files
-  const updated = await downloadFiles(torrent, selected)
+  const updated = await downloadFiles(torrent, selected, { origin })
 
   return {
     status: 'started' as const,

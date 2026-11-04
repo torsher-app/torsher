@@ -1,3 +1,4 @@
+import { assertMaintenancePolicyChange } from '../libraryMaintenance/admission.ts'
 import type {
   ImportProgressUndoEntry,
   ImportUndoEntry,
@@ -424,6 +425,7 @@ export function applyProfileMerge(
   now: Date,
 ) {
   const db = getDb()
+  assertMaintenancePolicyChange({ global: true })
   const undo: Array<ImportUndoEntry | ImportProgressUndoEntry> = []
 
   for (const { incoming, current } of plan.progress) {
@@ -501,6 +503,7 @@ export function undoProgress(
 
   const { watchedAt, ...before } = entry.before
 
+  assertMaintenancePolicyChange({ global: true })
   db.update(titleProgress)
     .set({
       ...before,

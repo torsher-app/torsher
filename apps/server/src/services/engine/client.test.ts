@@ -1,13 +1,16 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   addTorrent,
+  cancelMaintenanceDetach,
   EngineError,
+  finalizeMaintenanceDetach,
   forgetTorrent,
+  getMaintenanceOperation,
   inspectTorrent,
   listEngineTorrents,
   moveTorrent,
   openStream,
   pauseTorrent,
+  prepareMaintenanceDetach,
   putEngineSettings,
   resolveMagnet,
   resumeTorrent,
@@ -17,16 +20,20 @@ import {
   setTorrentSeed,
   torrentMoveState,
   torrentStats,
+  unlinkMaintenanceFile,
 } from './client.ts'
 import {
   comparedDetails,
+  detachedMaintenance,
   engineError,
   INFO_HASH,
   liveState,
   liveStats,
+  maintenanceManifest,
   moveState,
   movieDetails,
 } from './fixtures/index.ts'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const fetchMock = vi.fn<typeof fetch>()
 
@@ -341,5 +348,64 @@ describe('клиент движка', () => {
     await expect(torrentStats(INFO_HASH)).rejects.toMatchObject({
       kind: 'unavailable',
     })
+  })
+})
+
+describe('maintenance detach protocol', () => {
+  it('uses a private capability and validates the complete response', async () => {
+    fetchMock.mockImplementation(async () => json(detachedMaintenance))
+    expect(
+      await prepareMaintenanceDetach(
+        'synthetic-operation',
+        maintenanceManifest,
+      ),
+    ).toEqual(detachedMaintenance)
+    const [url, options] = fetchMock.mock.calls[0]!
+    expect(String(url)).toBe(
+      'http://127.0.0.1:4000/maintenance/synthetic-operation/prepare',
+    )
+    expect(options?.headers).toMatchObject({
+      'Content-Type': 'application/json',
+      'X-Torsher-Maintenance-Token': expect.stringMatching(/^[a-f0-9]{64}$/),
+    })
+    expect(JSON.parse(String(options?.body))).toEqual(maintenanceManifest)
+  })
+  it('never treats absence, timeout or malformed acknowledgment as detached', async () => {
+    fetchMock.mockResolvedValue(
+      json({ kind: 'operation_not_found', message: 'missing' }, 404),
+    )
+    await expect(getMaintenanceOperation('missing')).rejects.toMatchObject({
+      kind: 'not_found',
+      engineCode: 'operation_not_found',
+    })
+    fetchMock.mockResolvedValue(
+      json({ kind: 'timeout', message: 'timeout' }, 504),
+    )
+    await expect(
+      prepareMaintenanceDetach('op', maintenanceManifest),
+    ).rejects.toMatchObject({ kind: 'timeout' })
+    fetchMock.mockResolvedValue(json({ state: 'detached' }))
+    await expect(
+      prepareMaintenanceDetach('op', maintenanceManifest),
+    ).rejects.toMatchObject({ kind: 'failed' })
+  })
+  it('keeps precise failure codes and uses explicit unlink/finalize/cancel operations', async () => {
+    fetchMock.mockResolvedValue(
+      json({ kind: 'operation_partial', message: 'partial' }, 409),
+    )
+    await expect(cancelMaintenanceDetach('op')).rejects.toMatchObject({
+      kind: 'rejected',
+      engineCode: 'operation_partial',
+    })
+    fetchMock.mockImplementation(async () => json(detachedMaintenance))
+    await unlinkMaintenanceFile('op', 1)
+    expect(fetchMock.mock.calls.at(-1)?.[1]?.body).toBe('{"index":1}')
+    await finalizeMaintenanceDetach('op')
+    expect(String(fetchMock.mock.calls.at(-1)?.[0])).toMatch(
+      /\/maintenance\/op\/finalize$/,
+    )
+    expect(fetchMock.mock.calls.at(-1)?.[1]?.headers).toHaveProperty(
+      'X-Torsher-Maintenance-Token',
+    )
   })
 })

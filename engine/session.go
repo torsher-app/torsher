@@ -22,6 +22,9 @@ type session struct {
 }
 
 type savedTorrent struct {
+	// После cancel пути остаются привязаны к исходным объектам и при restart.
+	GuardedPaths       []maintenancePath `json:"guardedPaths,omitempty"`
+	GuardedOperationID string            `json:"guardedOperationId,omitempty"`
 	// Файлы, которые качаются целиком, в порядке закачки
 	Selected []int `json:"selected"`
 	// Файлы выбора, которые владелец поднял вперёд порядка

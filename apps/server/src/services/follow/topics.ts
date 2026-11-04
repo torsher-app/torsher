@@ -1,3 +1,9 @@
+import { withMaintenanceLease } from '../libraryMaintenance/admission.ts'
+import {
+  hasSuppressed,
+  suppressedFileIndexes,
+} from '../libraryMaintenance/suppression.ts'
+import { protectReplacement } from '../libraryMaintenance/provenance.ts'
 import type { ParsedRelease, VideoClass } from '@torsher/release-parser'
 import type {
   Follow,
@@ -314,6 +320,8 @@ export async function startRefresh(
   episodes: EpisodeRef[],
   now: Date,
 ): Promise<GrabResult> {
+  if (hasSuppressed(follow.titleId, episodes))
+    return 'blocked'
   // Тема уже подменяется другой версией: эта подождёт её конца
   if (topic.refresh && topic.refresh.torrentId !== next.id)
     return retryLater(follow, candidate, episodes, now)
@@ -398,6 +406,7 @@ function announceUpdate(
 async function restoreOld(refresh: TopicRefresh, old: Torrent | undefined) {
   if (refresh.forgotten && old?.retention === 'keep') {
     await downloadFiles(old, old.selectedFiles ?? [], {
+      origin: 'preserve',
       dir: old.downloadDir,
     })
   }
@@ -595,6 +604,7 @@ function relink(ctx: RefreshContext, now: Date) {
   const db = getDb()
 
   db.transaction(() => {
+    protectReplacement(old.id, next.id)
     relinkMediaFiles(old.id, next.id, map, new Set(refresh.redownload ?? []))
     relinkTitleProgress(old.id, next.id, map)
     moveWatchStates(old.id, next.id, map)
@@ -692,6 +702,7 @@ async function addNext(topic: TrackedTopic, refresh: TopicRefresh) {
 
   if (next) {
     await downloadFiles(next, refresh.selection ?? next.selectedFiles ?? [], {
+      origin: 'preserve',
       dir: refresh.downloadDir ?? null,
     })
   }
@@ -704,7 +715,7 @@ async function addNext(topic: TrackedTopic, refresh: TopicRefresh) {
  * видны по строкам и диску, поэтому каждый шаг можно пройти ещё раз.
  * `undefined` — подмена закончена или снята.
  */
-export async function runRefresh(
+async function runRefreshImpl(
   topicId: string,
   now = new Date(),
 ): Promise<GrabResult | undefined> {
@@ -713,6 +724,15 @@ export async function runRefresh(
 
   if (!topic || !refresh)
     return undefined
+  if (hasSuppressed(topic.titleId, refresh.episodes))
+    return 'blocked'
+  const refreshTorrent = getTorrent(refresh.torrentId)
+  if (
+    refreshTorrent
+    && suppressedFileIndexes(refreshTorrent, refresh.title).size
+  ) {
+    return 'blocked'
+  }
 
   if (refresh.retryAt && new Date(refresh.retryAt) > now)
     return 'later'
@@ -797,6 +817,12 @@ export async function runRefresh(
   relink(ctx, now)
   await announceUpdate(follow, topic, refresh)
   return runRefresh(topic.id, now)
+}
+export function runRefresh(...args: Parameters<typeof runRefreshImpl>) {
+  return withMaintenanceLease(
+    { titleId: topicById(args[0])?.titleId, producer: true },
+    () => runRefreshImpl(...args),
+  )
 }
 
 /** Сбой посреди подмены — повтор позже с того же этапа */

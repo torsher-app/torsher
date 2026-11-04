@@ -1,3 +1,4 @@
+import { assertMaintenancePolicyChange } from '../libraryMaintenance/admission.ts'
 import type { ProfileTitle } from '../../db/schema.ts'
 import type {
   MineKind,
@@ -76,6 +77,8 @@ export function updateMine(
   titleId: string,
   patch: MinePatch,
 ) {
+  assertMaintenancePolicyChange({ titleId })
+
   const db = getDb()
   const now = new Date()
 

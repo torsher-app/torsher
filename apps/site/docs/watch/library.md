@@ -19,6 +19,8 @@ Where library files show up on the TV, how to fix a release Torsher didn't recog
 
 The owner can hide a connected library from some profiles in its settings, under <Ui k="panel.library.settings.visible" />.
 
+Automatically downloaded follows can have an optional [retention rule](/docs/panel/follow#library-maintenance) set by the owner. It removes eligible watched downloads after a waiting period and preserves watch history. Manual downloads, files explicitly kept and connected folders are protected; automatic cleanup is off by default.
+
 ## The Library section
 
 <Ui k="nav.library" /> in the side menu shows only your own files, in rows:

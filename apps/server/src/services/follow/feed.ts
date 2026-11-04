@@ -1,3 +1,4 @@
+import { withMaintenanceLease } from '../libraryMaintenance/admission.ts'
 import type {
   FeedCursor,
   Follow,
@@ -646,7 +647,11 @@ function unsureRecorded(followId: string, releaseTitle: string) {
 }
 
 /** «Похоже на тайтл, не уверены»: одна запись на раздачу и слежение */
-async function recordUnsure(follow: Follow, release: FoundRelease, now: Date) {
+async function recordUnsureImpl(
+  follow: Follow,
+  release: FoundRelease,
+  now: Date,
+) {
   if (unsureRecorded(follow.id, release.title))
     return
 
@@ -667,6 +672,12 @@ async function recordUnsure(follow: Follow, release: FoundRelease, now: Date) {
       },
     },
     now,
+  )
+}
+function recordUnsure(...args: Parameters<typeof recordUnsureImpl>) {
+  return withMaintenanceLease(
+    { titleId: args[0].titleId, producer: true },
+    () => recordUnsureImpl(...args),
   )
 }
 

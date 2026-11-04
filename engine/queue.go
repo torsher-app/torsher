@@ -186,6 +186,8 @@ func highFiles(t *torrent.Torrent, selected, first, low []int) []int {
 // у раздачи. Раздачи на паузе не трогаем: их приоритеты расставляет
 // `setPaused` (см. обход паники библиотеки там)
 func (a *api) reschedule() {
+	a.maintenance.mu.Lock()
+	defer a.maintenance.mu.Unlock()
 	a.sched.mu.Lock()
 	defer a.sched.mu.Unlock()
 
@@ -205,7 +207,7 @@ func (a *api) reschedule() {
 		live[t] = true
 		hash := t.InfoHash()
 
-		if a.isMoving(hash) {
+		if a.isMoving(hash) || a.maintenance.blocked(hash.HexString(), nil) {
 			continue
 		}
 

@@ -1,3 +1,4 @@
+import { withMaintenanceLease } from '../libraryMaintenance/admission.ts'
 import type { ParsedRelease } from '@torsher/release-parser'
 import type { Torrent } from '../../db/schema.ts'
 import { matchTitle, parseRelease, titleKey } from '@torsher/release-parser'
@@ -147,7 +148,7 @@ const queue: string[] = []
 let draining: Promise<void> | undefined
 let onMatched: (() => void) | undefined
 
-async function recognizeOne(id: string) {
+async function recognizeOneImpl(id: string) {
   const torrent = getTorrent(id)
 
   // Тайтл уже есть (раздачу выбрали из карточки) или владелец уже решил
@@ -178,6 +179,10 @@ async function recognizeOne(id: string) {
       matchSuggestion: result.status === 'unsure' ? result.suggestion : null,
     })
   }
+}
+function recognizeOne(...args: Parameters<typeof recognizeOneImpl>) {
+  return withMaintenanceLease({ torrentId: args[0], producer: true }, () =>
+    recognizeOneImpl(...args))
 }
 
 function setMatch(

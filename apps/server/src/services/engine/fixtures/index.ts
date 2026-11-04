@@ -136,3 +136,26 @@ export function moveState(
     ...(kind ? { kind } : {}),
   }
 }
+
+export const maintenanceManifest = {
+  infoHash: INFO_HASH,
+  pieceCount: 2,
+  paths: [
+    {
+      root: '/synthetic/library',
+      path: '/synthetic/library/Sample.mkv',
+      rootDevice: '1',
+      rootInode: 2,
+      device: '1',
+      inode: 3,
+      size: 16,
+      mtime: 1000,
+    },
+  ],
+}
+export const detachedMaintenance = {
+  id: 'synthetic-operation',
+  manifest: maintenanceManifest,
+  state: 'detached',
+  results: {},
+}

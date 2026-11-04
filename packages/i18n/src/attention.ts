@@ -36,6 +36,7 @@ export function attentionMessage(
       return { key, params: {}, count }
     case 'storage_low':
       return { key, params: { free, minFree } }
+    case 'maintenance_restore_hold':
     case 'library_copies':
     case 'media_accel_failed':
     case 'backup_dir_unavailable':

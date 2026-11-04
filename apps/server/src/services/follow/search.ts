@@ -1,3 +1,5 @@
+import { withMaintenanceLease } from '../libraryMaintenance/admission.ts'
+import { suppressedEpisodes } from '../libraryMaintenance/suppression.ts'
 import type { Follow } from '../../db/schema.ts'
 import type { SearchOutcome } from '../sources/search.ts'
 import type { EpisodeWithState } from './wanted.ts'
@@ -281,7 +283,12 @@ async function evaluate(follow: Follow, now: Date) {
 
   await announceMissing(follow, reportMissing(follow, states, now), now)
 
-  const wanted = states.filter(item => WANTED_STATES.has(item.state))
+  const suppressed = suppressedEpisodes(follow.titleId)
+  const wanted = states.filter(
+    item =>
+      WANTED_STATES.has(item.state)
+      && !suppressed.has(`${item.season}:${item.episode}`),
+  )
   const plan = searchPlan({
     kind: follow.kind,
     wanted: wanted.map(item => ({ airDate: item.airDate })),
@@ -369,7 +376,7 @@ export async function followReleases(
 }
 
 /** Целевой поиск по слежению и прогон решателя по найденному */
-async function runSearch(due: DueSearch, now: Date) {
+async function runSearchImpl(due: DueSearch, now: Date) {
   const { follow } = due
   const found = await followReleases(follow, now, due.request === 'manual')
 
@@ -428,6 +435,12 @@ async function runSearch(due: DueSearch, now: Date) {
 
   setSchedule(searched, { nextSearchAt: next })
   return true
+}
+function runSearch(...args: Parameters<typeof runSearchImpl>) {
+  return withMaintenanceLease(
+    { titleId: args[0].follow.titleId, producer: true },
+    () => runSearchImpl(...args),
+  )
 }
 
 /**

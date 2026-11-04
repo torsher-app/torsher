@@ -1,3 +1,17 @@
+import {
+  groupForTorrent,
+  protectTorrent,
+  reconcileSourceEviction,
+  recordActivity,
+  recordDownload,
+  recordTitleLink,
+} from '../libraryMaintenance/provenance.ts'
+import {
+  acquireMaintenanceLease,
+  assertMaintenanceMutation,
+  MaintenanceBusyError,
+  withMaintenanceLease,
+} from '../libraryMaintenance/admission.ts'
 import type {
   Torrent,
   TorrentFileEntry,
@@ -137,7 +151,7 @@ function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
 
-async function runResolve(id: string) {
+async function runResolveImpl(id: string) {
   const torrent = getTorrent(id)
 
   if (!torrent?.magnet || torrent.status !== 'resolving')
@@ -182,6 +196,10 @@ async function runResolve(id: string) {
     })
   }
 }
+function runResolve(...args: Parameters<typeof runResolveImpl>) {
+  return withMaintenanceLease({ torrentId: args[0], producer: true }, () =>
+    runResolveImpl(...args))
+}
 
 /** Одна загрузка метаданных на раздачу, сколько бы раз её ни запускали */
 export function resolveTorrent(id: string) {
@@ -221,6 +239,7 @@ export async function addMagnet(
   if (!magnet)
     throw new InvalidMagnetError()
 
+  assertMaintenanceMutation({ infoHash: magnet.infoHash })
   const existing = findByInfoHash(magnet.infoHash)
 
   if (existing && existing.status !== 'failed')
@@ -268,6 +287,7 @@ export async function addTorrentFile(
 ): Promise<AddResult> {
   const details = await inspectTorrent(bytes)
   const infoHash = details.infoHash.toLowerCase()
+  assertMaintenanceMutation({ infoHash })
   const existing = findByInfoHash(infoHash)
   const name = details.name || infoHash
 
@@ -302,7 +322,7 @@ export async function addTorrentFile(
  * Убирает раздачу из списка и из движка. С `deleteFiles` движок удаляет и её
  * файлы, иначе скачанное остаётся на диске.
  */
-export async function deleteTorrent(
+async function deleteTorrentImpl(
   torrent: Torrent,
   options: { deleteFiles?: boolean } = {},
 ) {
@@ -316,7 +336,13 @@ export async function deleteTorrent(
     }
   }
 
+  if (options.deleteFiles)
+    await reconcileSourceEviction(torrent.id)
   getDb().delete(torrents).where(eq(torrents.id, torrent.id)).run()
+}
+export function deleteTorrent(...args: Parameters<typeof deleteTorrentImpl>) {
+  return withMaintenanceLease({ torrentId: args[0].id }, () =>
+    deleteTorrentImpl(...args))
 }
 
 let lastLive = new Map<string, EngineTorrentState>()
@@ -442,6 +468,8 @@ export class NotInEngineError extends Error {
 
 /** Раздача выбрана из карточки тайтла: «Загрузки» показывают его постер и название */
 export function linkTitle(torrent: Torrent, titleId: string) {
+  assertMaintenanceMutation({ torrentId: torrent.id, titleId })
+  recordTitleLink(torrent.id, titleId)
   return torrent.titleId === titleId
     ? torrent
     : update(torrent.id, { titleId })
@@ -452,7 +480,7 @@ export function linkTitle(torrent: Torrent, titleId: string) {
  * на диске ничего не хранит и получает действующий каталог загрузок: так
  * выбранная в панели папка действует с первой новой закачки.
  */
-async function addToEngine(
+async function addToEngineImpl(
   torrent: Torrent,
   files: number[],
   dir?: Torrent['downloadDir'],
@@ -481,6 +509,10 @@ async function addToEngine(
     priorityWithin(torrent, files, 'lowFiles') ?? [],
   )
 }
+function addToEngine(...args: Parameters<typeof addToEngineImpl>) {
+  return withMaintenanceLease({ torrentId: args[0].id }, () =>
+    addToEngineImpl(...args))
+}
 
 /**
  * Скачать выбранные файлы целиком сейчас. Скачанное руками закрепляется
@@ -489,15 +521,21 @@ async function addToEngine(
  * свой каталог раздачи (`download_dir`): новая версия обновлённой темы
  * ложится туда, где лежит старая.
  */
-export async function downloadFiles(
+async function downloadFilesImpl(
   torrent: Torrent,
   chosen: number[],
-  options: { dir?: Torrent['downloadDir'] } = {},
+  options: {
+    dir?: Torrent['downloadDir']
+    origin?: 'follow' | 'manual' | 'preserve'
+  } = {},
 ) {
   if (!torrent.torrentFile)
     throw new NotReadyError()
 
   const files = withSubtitles(torrent, chosen)
+  const origin = options.origin ?? 'manual'
+  if (origin === 'manual')
+    protectTorrent(torrent.id)
 
   await addToEngine(torrent, files, options.dir)
 
@@ -513,12 +551,22 @@ export async function downloadFiles(
     pauseReason: null,
   })
 
+  const updated = getTorrent(torrent.id) ?? torrent
+  if (origin !== 'preserve') {
+    const legacyKeep
+      = torrent.retention === 'keep' && !groupForTorrent(torrent.id)
+    recordDownload(updated, legacyKeep ? 'manual' : origin)
+  }
   await enforceStorage()
 
   return getTorrent(torrent.id) ?? torrent
 }
+export function downloadFiles(...args: Parameters<typeof downloadFilesImpl>) {
+  return withMaintenanceLease({ torrentId: args[0].id }, () =>
+    downloadFilesImpl(...args))
+}
 
-export async function pauseDownload(torrent: Torrent) {
+async function pauseDownloadImpl(torrent: Torrent) {
   if (!torrent.inEngine)
     throw new NotInEngineError()
 
@@ -526,9 +574,13 @@ export async function pauseDownload(torrent: Torrent) {
 
   return update(torrent.id, { pauseReason: 'user' })
 }
+export function pauseDownload(...args: Parameters<typeof pauseDownloadImpl>) {
+  return withMaintenanceLease({ torrentId: args[0].id }, () =>
+    pauseDownloadImpl(...args))
+}
 
 /** Снимает любую паузу; если места всё ещё мало, сервер поставит свою снова */
-export async function resumeDownload(torrent: Torrent) {
+async function resumeDownloadImpl(torrent: Torrent) {
   if (!torrent.inEngine)
     throw new NotInEngineError()
 
@@ -538,9 +590,13 @@ export async function resumeDownload(torrent: Torrent) {
 
   return getTorrent(torrent.id) ?? torrent
 }
+export function resumeDownload(...args: Parameters<typeof resumeDownloadImpl>) {
+  return withMaintenanceLease({ torrentId: args[0].id }, () =>
+    resumeDownloadImpl(...args))
+}
 
 /** Приоритет меняется сразу, только у выбранных файлов. */
-export async function setFilePriority(
+async function setFilePriorityImpl(
   torrent: Torrent,
   files: number[],
   priority: 'high' | 'medium' | 'low',
@@ -570,6 +626,12 @@ export async function setFilePriority(
     firstFiles: first.length ? first : null,
     lowFiles: low.length ? low : null,
   })
+}
+export function setFilePriority(
+  ...args: Parameters<typeof setFilePriorityImpl>
+) {
+  return withMaintenanceLease({ torrentId: args[0].id }, () =>
+    setFilePriorityImpl(...args))
 }
 
 /** Видеофайлы, которые начали смотреть: на диске уже что-то есть */
@@ -601,10 +663,12 @@ async function startedVideos(torrent: Torrent) {
  * видеофайлы. «Не оставлять» возвращает её в кэш и останавливает полную
  * закачку: скачанное остаётся в кэше до вытеснения.
  */
-export async function setRetention(
+async function setRetentionImpl(
   torrent: Torrent,
   retention: Torrent['retention'],
 ) {
+  if (retention === 'keep')
+    recordDownload(torrent, 'manual')
   if (!isEngineReady())
     return update(torrent.id, { retention })
 
@@ -641,6 +705,10 @@ export async function setRetention(
 
   return getTorrent(torrent.id) ?? updated
 }
+export function setRetention(...args: Parameters<typeof setRetentionImpl>) {
+  return withMaintenanceLease({ torrentId: args[0].id }, () =>
+    setRetentionImpl(...args))
+}
 
 /**
  * Выбор, накопленный просмотром до окна просмотра: раньше просмотр добавлял
@@ -656,20 +724,37 @@ export async function clearStreamSelections() {
     .filter(row => row.selectedFiles?.length)
 
   for (const row of rows) {
-    if (row.inEngine) {
-      try {
-        await ignoreMissing(selectFiles(row.infoHash, []))
-      }
-      catch (err) {
-        // Раздача переезжает: выбор снимется при следующем старте движка
-        if (err instanceof EngineError && err.kind === 'moving')
-          continue
-
-        throw err
-      }
+    let maintenanceRelease: () => void
+    try {
+      maintenanceRelease = acquireMaintenanceLease({
+        torrentId: row.id,
+        producer: true,
+      })
     }
+    catch (error) {
+      if (error instanceof MaintenanceBusyError)
+        continue
+      throw error
+    }
+    try {
+      if (row.inEngine) {
+        try {
+          await ignoreMissing(selectFiles(row.infoHash, []))
+        }
+        catch (err) {
+          // Раздача переезжает: выбор снимется при следующем старте движка
+          if (err instanceof EngineError && err.kind === 'moving')
+            continue
 
-    update(row.id, { selectedFiles: null, firstFiles: null, lowFiles: null })
+          throw err
+        }
+      }
+
+      update(row.id, { selectedFiles: null, firstFiles: null, lowFiles: null })
+    }
+    finally {
+      maintenanceRelease()
+    }
   }
 }
 
@@ -685,7 +770,7 @@ export function playableFile(torrent: Torrent, fileIndex: number) {
  * из кэша качает только окно впереди позиции, закреплённой — файл целиком
  * (`streamSelection`). Просмотр снимает паузу: смотреть — значит качать.
  */
-export async function prepareStream(torrent: Torrent, fileIndex: number) {
+async function prepareStreamImpl(torrent: Torrent, fileIndex: number) {
   if (!torrent.torrentFile)
     throw new EngineError('rejected', 'Torrent metadata is not ready')
 
@@ -709,6 +794,10 @@ export async function prepareStream(torrent: Torrent, fileIndex: number) {
     pauseReason: null,
     lastAccessAt: new Date(),
   })
+}
+export function prepareStream(...args: Parameters<typeof prepareStreamImpl>) {
+  return withMaintenanceLease({ torrentId: args[0].id }, () =>
+    prepareStreamImpl(...args))
 }
 
 /**
@@ -742,6 +831,7 @@ export async function openFileStream(
 }
 
 export function touchTorrent(id: string) {
+  recordActivity(id)
   getDb()
     .update(torrents)
     .set({ lastAccessAt: new Date() })

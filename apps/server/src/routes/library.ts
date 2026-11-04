@@ -1,4 +1,6 @@
 import { trackPlayback } from '../services/segments/activity.ts'
+import { acquireMaintenanceLease } from '../services/libraryMaintenance/admission.ts'
+import { recordMediaActivity } from '../services/libraryMaintenance/provenance.ts'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { createReadStream } from 'node:fs'
 import { stat } from 'node:fs/promises'
@@ -62,6 +64,10 @@ export const libraryRoutes: FastifyPluginAsyncZod = async (app) => {
       },
     },
     async (request, reply) => {
+      const releaseMaintenance = acquireMaintenanceLease({
+        mediaFileId: request.params.id,
+      })
+      reply.raw.once('close', releaseMaintenance)
       const found = playableMediaFile(request.params.id, request.profileId)
       const info = found && (await stat(found.path).catch(() => undefined))
 
@@ -80,6 +86,7 @@ export const libraryRoutes: FastifyPluginAsyncZod = async (app) => {
           .send({ message: 'Range not satisfiable' })
       }
 
+      recordMediaActivity(found.file.id)
       reply
         .header('Accept-Ranges', 'bytes')
         .header('Content-Type', contentTypeOf(found.file.relPath))
@@ -110,6 +117,10 @@ export const libraryRoutes: FastifyPluginAsyncZod = async (app) => {
       },
     },
     async (request, reply) => {
+      const releaseMaintenance = acquireMaintenanceLease({
+        mediaFileId: request.params.id,
+      })
+      reply.raw.once('close', releaseMaintenance)
       const found = playableMediaFile(request.params.id, request.profileId)
       const available
         = found?.folder.status === 'ok'

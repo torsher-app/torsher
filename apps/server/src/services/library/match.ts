@@ -1,4 +1,5 @@
 import { queueAnalysis } from '../segments/index.ts'
+import { assertMaintenanceMutation } from '../libraryMaintenance/admission.ts'
 import type { LibraryFolder, MediaFile } from '../../db/schema.ts'
 import type { KindHint } from './recognize.ts'
 import { readdir, readFile } from 'node:fs/promises'
@@ -313,6 +314,8 @@ export function assignFiles(
   overrides?: Map<string, PlannedEpisode | null>,
 ) {
   const db = getDb()
+  for (const row of rows)
+    assertMaintenanceMutation({ mediaFileId: row.id, titleId })
   const series = titleId.startsWith('tmdb:tv:')
 
   for (const { row, video, episode: planned } of planFiles(
@@ -595,6 +598,8 @@ export function setGroupTitle(
   overrides?: Map<string, PlannedEpisode | null>,
 ) {
   const rows = groupRows(folderId, group)
+  for (const row of rows)
+    assertMaintenanceMutation({ mediaFileId: row.id, titleId })
 
   if (!rows.length)
     return 0

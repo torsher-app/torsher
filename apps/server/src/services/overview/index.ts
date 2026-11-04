@@ -1,3 +1,4 @@
+import { maintenanceAttention } from '../libraryMaintenance/status.ts'
 import type { AttentionItem } from '../../dto/overview.ts'
 import type { EngineTorrentState } from '../engine/index.ts'
 import type { AccelState } from '../media/index.ts'
@@ -340,6 +341,7 @@ async function collect(known?: Map<string, EngineTorrentState>) {
   const accel = accelSnapshot()
   const attention = [
     ...engineAttention(),
+    ...maintenanceAttention(),
     ...storageAttention(storage, downloads.pausedForStorage),
     ...backupAttention(),
     ...libraryAttention(),

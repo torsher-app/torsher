@@ -1,3 +1,4 @@
+import { assertMaintenancePolicyChange } from '../libraryMaintenance/admission.ts'
 import type { SeedRule } from '../../db/schema.ts'
 import type { EngineLiveSettings } from '../engine/client.ts'
 import { randomInt } from 'node:crypto'
@@ -98,6 +99,8 @@ export function customTorrentKeys() {
 
 /** Сохраняет только переданные поля: у каждой карточки панели — свои */
 export function saveTorrentSettings(values: Partial<TorrentSettings>) {
+  if (values.seedRule !== undefined)
+    assertMaintenancePolicyChange({ global: true })
   setSetting(SETTINGS_KEY, { ...savedSettings(), ...values })
 
   return getTorrentSettings()

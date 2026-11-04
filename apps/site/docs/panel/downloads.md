@@ -16,7 +16,7 @@ What each state means, how to add a torrent from the panel, the difference betwe
 Every torrent is either in the cache or kept:
 
 - **In the cache.** Something you only watched. Only the parts you watch are downloaded. When the cache is full or space runs out, the torrent opened longest ago is removed first. The order is in <Ui k="panel.nav.settings panel.settings.nav.storage" />, card <Ui k="panel.settings.storage.queue.title" />.
-- **Kept.** Started files download in full and the torrent is never removed automatically. Finished files go to the library, so the showcase shows them as yours.
+- **Kept.** Started files download in full and are protected from cache eviction. Finished files go to the library, so the showcase shows them as yours. Manual downloads and explicit keep actions are also protected from [automatic library cleanup](/docs/panel/follow#library-maintenance); new downloads saved by following can have an owner-enabled retention rule.
 
 The TV does the same with its download and keep actions, see [Download and keep](/docs/watch/download-keep).
 

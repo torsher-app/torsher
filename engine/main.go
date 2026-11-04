@@ -20,6 +20,7 @@ import (
 
 	g "github.com/anacrolix/generics"
 	"github.com/anacrolix/torrent"
+	"github.com/anacrolix/torrent/metainfo"
 	"github.com/anacrolix/torrent/mse"
 	"github.com/anacrolix/torrent/storage"
 )
@@ -123,6 +124,7 @@ func (o engineOptions) validate() error {
 // Части клиента, которые нужны API: каталог загрузок и отметки скачанных
 // кусков (удаление), лимиты и окна потоков (их колбэк вшит в конфиг клиента)
 type clientParts struct {
+	lifecycle  *storageLifecycle
 	downloads  string
 	completion storage.PieceCompletion
 	limits     *limits
@@ -188,11 +190,12 @@ func newClientConfig(downloads, dataDir string, opts engineOptions) (*torrent.Cl
 	cfg.DownloadRateLimiter = speedLimits.download
 	cfg.UploadRateLimiter = speedLimits.upload
 	cfg.Callbacks.ReceivedUsefulData = append(cfg.Callbacks.ReceivedUsefulData, speedLimits.received)
-	cfg.DefaultStorage = fileStorage(downloads, completion)
+	lifecycle := &storageLifecycle{torrents: map[metainfo.Hash]*storageLifetime{}}
+	cfg.DefaultStorage = trackedStorage{ClientImplCloser: fileStorage(downloads, completion), lifecycle: lifecycle}
 	// Сообщения библиотеки — только предупреждения и ошибки: остальное шумит в журнале сервера
 	cfg.Slogger = slog.New(withoutCanceled{slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn})})
 
-	return cfg, clientParts{downloads: downloads, completion: completion, limits: speedLimits, windows: streams}, nil
+	return cfg, clientParts{lifecycle: lifecycle, downloads: downloads, completion: completion, limits: speedLimits, windows: streams}, nil
 }
 
 func run(listen, downloads, dataDir string, opts engineOptions, logger *slog.Logger) error {

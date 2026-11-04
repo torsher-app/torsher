@@ -1,3 +1,8 @@
+import { restoreHeld } from '../libraryMaintenance/restore.ts'
+import {
+  acquireMaintenanceLease,
+  MaintenanceBusyError,
+} from '../libraryMaintenance/admission.ts'
 import { logFor } from '../logs/index.ts'
 import { liveTorrents } from '../torrents/index.ts'
 import { purgeBlocklist } from './blocklist.ts'
@@ -38,6 +43,8 @@ let purgedAt = 0
  * которую нельзя оставить забытой.
  */
 export async function followAutomation(now = new Date()) {
+  if (restoreHeld())
+    return
   if (now.getTime() - purgedAt >= PURGE_EVERY_MS) {
     purgedAt = now.getTime()
     purgeHistory(now)
@@ -47,31 +54,52 @@ export async function followAutomation(now = new Date()) {
 
   await continueRefreshes(now)
 
-  const active = activeFollows()
+  const releases: Array<() => void> = []
+  const active = activeFollows().filter((follow) => {
+    try {
+      releases.push(
+        acquireMaintenanceLease({ titleId: follow.titleId, producer: true }),
+      )
+      return true
+    }
+    catch (error) {
+      if (error instanceof MaintenanceBusyError)
+        return false
+      throw error
+    }
+  })
+  try {
+    // Без слежений автоматика никуда не ходит; после старта сервера — пауза
+    if (!active.length || isQuietAfterStart(now))
+      return
 
-  // Без слежений автоматика никуда не ходит; после старта сервера — пауза
-  if (!active.length || isQuietAfterStart(now))
-    return
+    const activeOf = (id: string) => active.find(follow => follow.id === id)
 
-  const activeOf = (id: string) => active.find(follow => follow.id === id)
+    if (hasActiveGrabs())
+      await checkStalled(await liveTorrents(), followById, now.getTime())
 
-  if (hasActiveGrabs())
-    await checkStalled(await liveTorrents(), followById, now.getTime())
+    await continueGrabs(activeOf, now)
 
-  await continueGrabs(activeOf, now)
+    for (const follow of active) {
+      await grabPending(follow, now)
+      await announceUpgraded(follow, settleUpgrades(follow, now))
+      markDownloaded(follow, now)
+      await announceLibrary(follow, now)
+      settlePicks(follow)
+      await announceReady(follow, now)
+      await completeMovie(follow, now)
+    }
 
-  for (const follow of active) {
-    await grabPending(follow, now)
-    await announceUpgraded(follow, settleUpgrades(follow, now))
-    markDownloaded(follow, now)
-    await announceLibrary(follow, now)
-    settlePicks(follow)
-    await announceReady(follow, now)
-    await completeMovie(follow, now)
+    if (restoreHeld())
+      return
+    await feedPass(active, now)
+    if (restoreHeld())
+      return
+    await searchPass(active, now)
   }
-
-  await feedPass(activeFollows(), now)
-  await searchPass(activeFollows(), now)
+  finally {
+    for (const release of releases) release()
+  }
 }
 
 /** Один проход планировщика; во время прохода новый не начинается */

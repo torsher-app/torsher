@@ -1,3 +1,4 @@
+import { assertMaintenancePolicyChange } from '../libraryMaintenance/admission.ts'
 import type { AudioTrack, VoiceType } from '@torsher/release-parser'
 import type { MediaFileRef, TitleProgress } from '../../db/schema.ts'
 import type { VoiceRef } from './profile.ts'
@@ -61,10 +62,12 @@ export function saveTitleProgress(
     'position' | 'duration' | 'torrentId' | 'fileIndex'
   > & { mediaFileId?: string | null },
 ) {
+  assertMaintenancePolicyChange({ titleId: ref.titleId })
+
   const updatedAt = new Date()
   const set = isWatched(values.position, values.duration)
-    ? { ...values, watchedAt: updatedAt, updatedAt }
-    : { ...values, updatedAt }
+    ? { ...values, watchedAt: updatedAt, lastPlayedAt: updatedAt, updatedAt }
+    : { ...values, lastPlayedAt: updatedAt, updatedAt }
 
   return getDb()
     .insert(titleProgress)
@@ -216,6 +219,8 @@ export function rememberVoice(ref: TitleRef, voice: AudioTrack) {
  * серии не трогает — по ним работает «как в прошлых сериях».
  */
 export function markWatched(ref: TitleRef, watched: boolean) {
+  assertMaintenancePolicyChange({ titleId: ref.titleId })
+
   const values = watched
     ? { position: 0, watchedAt: new Date() }
     : { position: 0, duration: null, watchedAt: null }

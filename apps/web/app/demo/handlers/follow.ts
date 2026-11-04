@@ -961,6 +961,10 @@ put<FollowSettings, UpdateFollowSettingsInput>(
  * Проблемы «Следить» для «Требует внимания»: серии действующих слежений,
  * которые ждут места. Без действующих слежений проблем нет: фон не качает.
  */
+export function demoFollowTitleIds() {
+  return follows.map(item => item.titleId)
+}
+
 export function followAttention(): AttentionItem[] {
   const active = follows.filter(item => item.state === 'active')
   const waiting = active.flatMap(follow =>

@@ -1,3 +1,4 @@
+import { engineMaintenanceHeaders } from './maintenanceAuth.ts'
 import { z } from 'zod'
 
 /**
@@ -20,16 +21,21 @@ export type EngineErrorKind
 export class EngineError extends Error {
   readonly kind: EngineErrorKind
   readonly unavailable?: EngineUnavailableKind
+  readonly engineCode?: string
 
   constructor(
     kind: EngineErrorKind,
     message: string,
-    options?: ErrorOptions & { unavailable?: EngineUnavailableKind },
+    options?: ErrorOptions & {
+      unavailable?: EngineUnavailableKind
+      engineCode?: string
+    },
   ) {
     super(message, options)
     this.name = 'EngineError'
     this.kind = kind
     this.unavailable = options?.unavailable
+    this.engineCode = options?.engineCode
   }
 }
 
@@ -195,18 +201,18 @@ async function errorOf(response: Response) {
   const message = body.message ?? `Engine responded ${response.status}`
 
   if (response.status === 404)
-    return new EngineError('not_found', 'Torrent is not in the engine')
+    return new EngineError('not_found', message, { engineCode: body.kind })
 
   if (response.status === 504)
-    return new EngineError('timeout', message)
+    return new EngineError('timeout', message, { engineCode: body.kind })
 
   if (response.status === 409 && body.kind === 'torrent_moving')
     return new EngineError('moving', message)
 
   if (response.status >= 400 && response.status < 500)
-    return new EngineError('rejected', message)
+    return new EngineError('rejected', message, { engineCode: body.kind })
 
-  return new EngineError('failed', message)
+  return new EngineError('failed', message, { engineCode: body.kind })
 }
 
 interface EngineRequest {
@@ -512,4 +518,93 @@ export async function openStream(
     throw await errorOf(response)
 
   return response
+}
+
+/** Точная идентичность собственного файла и тома для механического detach/unlink. */
+export const engineMaintenancePath = z.object({
+  root: z.string(),
+  path: z.string(),
+  rootDevice: z.string(),
+  rootInode: z.number().int().max(Number.MAX_SAFE_INTEGER),
+  device: z.string(),
+  inode: z.number().int().max(Number.MAX_SAFE_INTEGER),
+  size: z.number().int(),
+  mtime: z.number(),
+})
+export const engineDetachManifest = z.object({
+  infoHash: z.string(),
+  pieceCount: z.number().int().positive(),
+  paths: z.array(engineMaintenancePath).min(1),
+})
+const engineMaintenanceOperation = z.object({
+  id: z.string(),
+  manifest: engineDetachManifest,
+  state: z.enum([
+    'pending',
+    'detached',
+    'deleting',
+    'reattaching',
+    'finalized',
+    'cancelled',
+  ]),
+  results: z.record(z.string(), z.enum(['staged', 'removed'])),
+  error: z.string().optional(),
+})
+export type EngineDetachManifest = z.infer<typeof engineDetachManifest>
+export type EngineMaintenanceOperation = z.infer<
+  typeof engineMaintenanceOperation
+>
+
+/** 404/таймаут/неожиданный ответ — ошибка, никогда не подтверждение detach. */
+export function prepareMaintenanceDetach(
+  id: string,
+  manifest: EngineDetachManifest,
+) {
+  return engineJson(
+    `/maintenance/${encodeURIComponent(id)}/prepare`,
+    engineMaintenanceOperation,
+    {
+      method: 'POST',
+      headers: engineMaintenanceHeaders,
+      body: JSON.stringify(manifest),
+    },
+  )
+}
+export function getMaintenanceOperation(id: string) {
+  return engineJson(
+    `/maintenance/${encodeURIComponent(id)}`,
+    engineMaintenanceOperation,
+    { headers: engineMaintenanceHeaders },
+  )
+}
+export function unlinkMaintenanceFile(id: string, index: number) {
+  return engineJson(
+    `/maintenance/${encodeURIComponent(id)}/unlink`,
+    engineMaintenanceOperation,
+    {
+      method: 'POST',
+      headers: engineMaintenanceHeaders,
+      body: JSON.stringify({ index }),
+    },
+  )
+}
+export function finalizeMaintenanceDetach(id: string) {
+  return engineJson(
+    `/maintenance/${encodeURIComponent(id)}/finalize`,
+    engineMaintenanceOperation,
+    { method: 'POST', headers: engineMaintenanceHeaders },
+  )
+}
+export function cancelMaintenanceDetach(id: string) {
+  return engineJson(
+    `/maintenance/${encodeURIComponent(id)}/cancel`,
+    engineMaintenanceOperation,
+    { method: 'POST', headers: engineMaintenanceHeaders },
+  )
+}
+
+export function listMaintenanceOperations() {
+  return engineJson('/maintenance', z.array(engineMaintenanceOperation), {
+    headers: engineMaintenanceHeaders,
+  })
 }

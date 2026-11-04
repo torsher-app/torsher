@@ -17,6 +17,7 @@ export const notificationKinds = [
   'update_available',
   'server_updated',
   'download_completed',
+  'maintenance_completed',
   'device_paired',
   'channel_failing',
   ...followNotificationKinds,
@@ -59,6 +60,7 @@ export function feedGroupOf(kind: NotificationKind): FeedGroup {
     case 'follow_missing':
       return 'problems'
     case 'download_completed':
+    case 'maintenance_completed':
       return 'downloads'
     case 'follow_downloaded':
     case 'follow_ready':

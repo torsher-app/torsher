@@ -10,6 +10,344 @@
  * ---------------------------------------------------------------
  */
 
+export enum MaintenanceReason {
+  Disabled = "disabled",
+  Legacy = "legacy",
+  ManualProtection = "manual_protection",
+  Favorite = "favorite",
+  FollowInactive = "follow_inactive",
+  ProfilesChanged = "profiles_changed",
+  ProfileMissing = "profile_missing",
+  NotWatched = "not_watched",
+  RetentionPeriod = "retention_period",
+  LatestEpisodes = "latest_episodes",
+  UnknownIdentity = "unknown_identity",
+  AmbiguousVersions = "ambiguous_versions",
+  ExternalLibrary = "external_library",
+  FileUnavailable = "file_unavailable",
+  IdentityChanged = "identity_changed",
+  SeedingUnknown = "seeding_unknown",
+  SeedingAlways = "seeding_always",
+  SeedingIncomplete = "seeding_incomplete",
+  GroupIncomplete = "group_incomplete",
+  ActiveOperation = "active_operation",
+  ClockInvalid = "clock_invalid",
+  GracePeriod = "grace_period",
+  ActivePlayback = "active_playback",
+}
+
+export enum MaintenanceReasonInput {
+  Disabled = "disabled",
+  Legacy = "legacy",
+  ManualProtection = "manual_protection",
+  Favorite = "favorite",
+  FollowInactive = "follow_inactive",
+  ProfilesChanged = "profiles_changed",
+  ProfileMissing = "profile_missing",
+  NotWatched = "not_watched",
+  RetentionPeriod = "retention_period",
+  LatestEpisodes = "latest_episodes",
+  UnknownIdentity = "unknown_identity",
+  AmbiguousVersions = "ambiguous_versions",
+  ExternalLibrary = "external_library",
+  FileUnavailable = "file_unavailable",
+  IdentityChanged = "identity_changed",
+  SeedingUnknown = "seeding_unknown",
+  SeedingAlways = "seeding_always",
+  SeedingIncomplete = "seeding_incomplete",
+  GroupIncomplete = "group_incomplete",
+  ActiveOperation = "active_operation",
+  ClockInvalid = "clock_invalid",
+  GracePeriod = "grace_period",
+  ActivePlayback = "active_playback",
+}
+
+export interface MaintenanceRuleOptionsInput {
+  enabled: boolean;
+  /**
+   * @min 1
+   * @max 36500
+   */
+  days: number;
+  /**
+   * @min 1
+   * @max 10000
+   */
+  keepLast: number | null;
+  /**
+   * @maxItems 1000
+   * @minItems 1
+   */
+  profileIds: string[];
+}
+
+export interface MaintenanceRuleInput {
+  enabled: boolean;
+  /**
+   * @min 1
+   * @max 36500
+   */
+  days: number;
+  /**
+   * @min 1
+   * @max 10000
+   */
+  keepLast: number | null;
+  /**
+   * @maxItems 1000
+   * @minItems 1
+   */
+  profileIds: string[];
+  titleId: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  revision: number;
+  rosterChanged: boolean;
+}
+
+export interface MaintenanceConfigInput {
+  rule: MaintenanceRuleInput;
+  inherited: boolean;
+  profiles: {
+    id: string;
+    name: string;
+  }[];
+  executorAvailable: boolean;
+}
+
+export interface MaintenanceSaveInput {
+  enabled: boolean;
+  /**
+   * @min 1
+   * @max 36500
+   */
+  days: number;
+  /**
+   * @min 1
+   * @max 10000
+   */
+  keepLast: number | null;
+  /**
+   * @maxItems 1000
+   * @minItems 1
+   */
+  profileIds: string[];
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  expectedRevision: number;
+}
+
+export interface MaintenanceGroupInput {
+  id: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  revision: number;
+  titleId: string;
+  protected: boolean;
+  candidate: boolean;
+  reasons: MaintenanceReasonInput[];
+  eligibleAt: string | null;
+  eligibleSince: string | null;
+  episodes: {
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    season: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    episode: number;
+  }[];
+  files: {
+    name: string;
+    kind: "source" | "library" | "sidecar";
+    size: number;
+    volume: string | null;
+  }[];
+  logicalBytes: number;
+}
+
+export interface MaintenancePreviewInput {
+  evaluatedAt: string;
+  executorAvailable: boolean;
+  estimate: true;
+  groups: MaintenanceGroupInput[];
+  volumes: {
+    volume: string | null;
+    logicalBytes: number;
+  }[];
+}
+
+export interface MaintenanceDefaultPreviewInput {
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  titleCount: number;
+  items: {
+    titleId: string;
+    preview: MaintenancePreviewInput;
+  }[];
+}
+
+export interface MaintenanceProtectionInput {
+  protected: boolean;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  expectedRevision: number;
+}
+
+export interface MaintenanceUnsuppressInput {
+  /**
+   * @maxItems 1000
+   * @minItems 1
+   */
+  episodes: {
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    season: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    episode: number;
+  }[];
+}
+
+export interface MaintenanceOperationInput {
+  id: string;
+  groupId: string;
+  titleId: string;
+  titleName: string | null;
+  episodes: {
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    season: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    episode: number;
+  }[];
+  state:
+    | "pending"
+    | "detached"
+    | "deleting"
+    | "partial"
+    | "cleaned"
+    | "blocked"
+    | "cancelled";
+  engineStage: string;
+  error: string | null;
+  action: "none" | "retry" | "inspect_files";
+  createdAt: string;
+  updatedAt: string;
+  volumes: {
+    volume: string;
+    beforeFree: number | null;
+    afterFree: number | null;
+    observedFreeChange: number | null;
+  }[];
+  files: {
+    name: string;
+    path: string;
+    kind: "source" | "library" | "sidecar";
+    result: "pending" | "staged" | "removed";
+  }[];
+}
+
+export interface MaintenanceExternalFenceInput {
+  id: string;
+  state: string;
+  action: "inspect_files" | "cancel_preserve_files" | "review_history";
+  files: {
+    name: string;
+    path: string;
+    result: "pending" | "staged" | "removed";
+  }[];
+}
+
+export interface MaintenanceExecutionInput {
+  enabled: boolean;
+}
+
+export interface MaintenanceStatusInput {
+  executorAvailable: boolean;
+  executorEnabled: boolean;
+  restoreHold: boolean;
+  lostCleanupHistory: boolean;
+  nextRunAt: string | null;
+  operations: MaintenanceOperationInput[];
+  externalFences: MaintenanceExternalFenceInput[];
+  defaultRule: MaintenanceRuleInput;
+  rules: {
+    titleId: string;
+    enabled: boolean;
+    /**
+     * @min 1
+     * @max 36500
+     */
+    days: number;
+    /**
+     * @min 1
+     * @max 10000
+     */
+    keepLast: number | null;
+    rosterChanged: boolean;
+  }[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  rulesEnabled: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  groups: number;
+  suppressions: {
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    season: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    episode: number;
+    titleId: string;
+    status: "pending" | "cleaned";
+  }[];
+}
+
+export interface MessageResponseInput {
+  message: string;
+}
+
+export interface TooManyAttemptsResponseInput {
+  message: "too_many_attempts";
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  retryAfter: number;
+}
+
 export interface AboutResponseInput {
   version: string;
   commit?: string;
@@ -37,19 +375,6 @@ export interface SetupResponseInput {
 export interface SigninInput {
   username: string;
   password: string;
-}
-
-export interface MessageResponseInput {
-  message: string;
-}
-
-export interface TooManyAttemptsResponseInput {
-  message: "too_many_attempts";
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  retryAfter: number;
 }
 
 export interface BackupItemInput {
@@ -3292,6 +3617,8 @@ export interface OverviewUpdateInput {
 
 export interface AttentionItemInput {
   kind:
+    | "maintenance_failed"
+    | "maintenance_restore_hold"
     | "engine_down"
     | "engine_crashed"
     | "storage_low"
@@ -3405,6 +3732,7 @@ export interface NotificationItemInput {
     | "update_available"
     | "server_updated"
     | "download_completed"
+    | "maintenance_completed"
     | "device_paired"
     | "channel_failing"
     | "follow_downloaded"
@@ -3415,6 +3743,8 @@ export interface NotificationItemInput {
     | "follow_topic_updated"
     | "follow_missing";
   problem?:
+    | "maintenance_failed"
+    | "maintenance_restore_hold"
     | "engine_down"
     | "engine_crashed"
     | "storage_low"
@@ -4963,6 +5293,292 @@ export interface WrongPasswordResponseInput {
   field: "currentPassword";
 }
 
+export interface MaintenanceRuleOptions {
+  enabled: boolean;
+  /**
+   * @min 1
+   * @max 36500
+   */
+  days: number;
+  /**
+   * @min 1
+   * @max 10000
+   */
+  keepLast: number | null;
+  /**
+   * @maxItems 1000
+   * @minItems 1
+   */
+  profileIds: string[];
+}
+
+export interface MaintenanceRule {
+  enabled: boolean;
+  /**
+   * @min 1
+   * @max 36500
+   */
+  days: number;
+  /**
+   * @min 1
+   * @max 10000
+   */
+  keepLast: number | null;
+  /**
+   * @maxItems 1000
+   * @minItems 1
+   */
+  profileIds: string[];
+  titleId: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  revision: number;
+  rosterChanged: boolean;
+}
+
+export interface MaintenanceConfig {
+  rule: MaintenanceRule;
+  inherited: boolean;
+  profiles: {
+    id: string;
+    name: string;
+  }[];
+  executorAvailable: boolean;
+}
+
+export interface MaintenanceSave {
+  enabled: boolean;
+  /**
+   * @min 1
+   * @max 36500
+   */
+  days: number;
+  /**
+   * @min 1
+   * @max 10000
+   */
+  keepLast: number | null;
+  /**
+   * @maxItems 1000
+   * @minItems 1
+   */
+  profileIds: string[];
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  expectedRevision: number;
+}
+
+export interface MaintenanceGroup {
+  id: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  revision: number;
+  titleId: string;
+  protected: boolean;
+  candidate: boolean;
+  reasons: MaintenanceReason[];
+  eligibleAt: string | null;
+  eligibleSince: string | null;
+  episodes: {
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    season: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    episode: number;
+  }[];
+  files: {
+    name: string;
+    kind: "source" | "library" | "sidecar";
+    size: number;
+    volume: string | null;
+  }[];
+  logicalBytes: number;
+}
+
+export interface MaintenancePreview {
+  evaluatedAt: string;
+  executorAvailable: boolean;
+  estimate: true;
+  groups: MaintenanceGroup[];
+  volumes: {
+    volume: string | null;
+    logicalBytes: number;
+  }[];
+}
+
+export interface MaintenanceDefaultPreview {
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  titleCount: number;
+  items: {
+    titleId: string;
+    preview: MaintenancePreview;
+  }[];
+}
+
+export interface MaintenanceProtection {
+  protected: boolean;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  expectedRevision: number;
+}
+
+export interface MaintenanceUnsuppress {
+  /**
+   * @maxItems 1000
+   * @minItems 1
+   */
+  episodes: {
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    season: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    episode: number;
+  }[];
+}
+
+export interface MaintenanceOperation {
+  id: string;
+  groupId: string;
+  titleId: string;
+  titleName: string | null;
+  episodes: {
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    season: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    episode: number;
+  }[];
+  state:
+    | "pending"
+    | "detached"
+    | "deleting"
+    | "partial"
+    | "cleaned"
+    | "blocked"
+    | "cancelled";
+  engineStage: string;
+  error: string | null;
+  action: "none" | "retry" | "inspect_files";
+  createdAt: string;
+  updatedAt: string;
+  volumes: {
+    volume: string;
+    beforeFree: number | null;
+    afterFree: number | null;
+    observedFreeChange: number | null;
+  }[];
+  files: {
+    name: string;
+    path: string;
+    kind: "source" | "library" | "sidecar";
+    result: "pending" | "staged" | "removed";
+  }[];
+}
+
+export interface MaintenanceExternalFence {
+  id: string;
+  state: string;
+  action: "inspect_files" | "cancel_preserve_files" | "review_history";
+  files: {
+    name: string;
+    path: string;
+    result: "pending" | "staged" | "removed";
+  }[];
+}
+
+export interface MaintenanceExecution {
+  enabled: boolean;
+}
+
+export interface MaintenanceStatus {
+  executorAvailable: boolean;
+  executorEnabled: boolean;
+  restoreHold: boolean;
+  lostCleanupHistory: boolean;
+  nextRunAt: string | null;
+  operations: MaintenanceOperation[];
+  externalFences: MaintenanceExternalFence[];
+  defaultRule: MaintenanceRule;
+  rules: {
+    titleId: string;
+    enabled: boolean;
+    /**
+     * @min 1
+     * @max 36500
+     */
+    days: number;
+    /**
+     * @min 1
+     * @max 10000
+     */
+    keepLast: number | null;
+    rosterChanged: boolean;
+  }[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  rulesEnabled: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  groups: number;
+  suppressions: {
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    season: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    episode: number;
+    titleId: string;
+    status: "pending" | "cleaned";
+  }[];
+}
+
+export interface MessageResponse {
+  message: string;
+}
+
+export interface TooManyAttemptsResponse {
+  message: "too_many_attempts";
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  retryAfter: number;
+}
+
 export interface AboutResponse {
   version: string;
   commit?: string;
@@ -4990,19 +5606,6 @@ export interface SetupResponse {
 export interface Signin {
   username: string;
   password: string;
-}
-
-export interface MessageResponse {
-  message: string;
-}
-
-export interface TooManyAttemptsResponse {
-  message: "too_many_attempts";
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  retryAfter: number;
 }
 
 export interface BackupItem {
@@ -8244,6 +8847,8 @@ export interface OverviewUpdate {
 
 export interface AttentionItem {
   kind:
+    | "maintenance_failed"
+    | "maintenance_restore_hold"
     | "engine_down"
     | "engine_crashed"
     | "storage_low"
@@ -8357,6 +8962,7 @@ export interface NotificationItem {
     | "update_available"
     | "server_updated"
     | "download_completed"
+    | "maintenance_completed"
     | "device_paired"
     | "channel_failing"
     | "follow_downloaded"
@@ -8367,6 +8973,8 @@ export interface NotificationItem {
     | "follow_topic_updated"
     | "follow_missing";
   problem?:
+    | "maintenance_failed"
+    | "maintenance_restore_hold"
     | "engine_down"
     | "engine_crashed"
     | "storage_low"
@@ -10092,6 +10700,36 @@ export type DeleteTorrentLibraryError =
   MessageResponse | EngineUnavailableResponse;
 
 export type GetTorrentStatsError = MessageResponse | EngineUnavailableResponse;
+
+export type GetDefaultMaintenanceRuleError = MessageResponse;
+
+export type SaveDefaultMaintenanceRuleError = MessageResponse;
+
+export type PreviewDefaultMaintenanceRuleError = MessageResponse;
+
+export type PreviewInheritedMaintenanceRuleError = MessageResponse;
+
+export type InheritMaintenanceRuleError = MessageResponse;
+
+export type GetLibraryMaintenanceConfigError = MessageResponse;
+
+export type SaveLibraryMaintenanceConfigError = MessageResponse;
+
+export type PreviewLibraryMaintenanceError = MessageResponse;
+
+export type ProtectLibraryMaintenanceGroupError = MessageResponse;
+
+export type UnsuppressLibraryMaintenanceError = MessageResponse;
+
+export type GetLibraryMaintenanceStatusError = MessageResponse;
+
+export type SetLibraryMaintenanceExecutionError = MessageResponse;
+
+export type RetryLibraryMaintenanceOperationError = MessageResponse;
+
+export type AcknowledgeLibraryMaintenanceRestoreError = MessageResponse;
+
+export type CancelLibraryMaintenanceExternalFenceError = MessageResponse;
 
 export type GetHomeVideoError = MessageResponse;
 
@@ -12487,6 +13125,319 @@ export class Api<
         path: `/api/torrents/${id}/stats`,
         method: "GET",
         query: query,
+        format: "json",
+        ...params,
+      }),
+  };
+  libraryMaintenance = {
+    /**
+     * No description
+     *
+     * @tags Library maintenance
+     * @name GetDefaultMaintenanceRule
+     * @request GET:/api/library-maintenance/default
+     */
+    getDefaultMaintenanceRule: (params: RequestParams = {}) =>
+      this.request<MaintenanceConfig, GetDefaultMaintenanceRuleError>({
+        path: `/api/library-maintenance/default`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Library maintenance
+     * @name SaveDefaultMaintenanceRule
+     * @request PATCH:/api/library-maintenance/default
+     */
+    saveDefaultMaintenanceRule: (
+      data: MaintenanceSaveInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<MaintenanceConfig, SaveDefaultMaintenanceRuleError>({
+        path: `/api/library-maintenance/default`,
+        method: "PATCH",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Library maintenance
+     * @name PreviewDefaultMaintenanceRule
+     * @request POST:/api/library-maintenance/default/preview
+     */
+    previewDefaultMaintenanceRule: (
+      data: MaintenanceRuleOptionsInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<
+        MaintenanceDefaultPreview,
+        PreviewDefaultMaintenanceRuleError
+      >({
+        path: `/api/library-maintenance/default/preview`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Library maintenance
+     * @name PreviewInheritedMaintenanceRule
+     * @request POST:/api/library-maintenance/titles/{titleId}/inherit/preview
+     */
+    previewInheritedMaintenanceRule: (
+      titleId: string,
+      params: RequestParams = {},
+    ) =>
+      this.request<MaintenancePreview, PreviewInheritedMaintenanceRuleError>({
+        path: `/api/library-maintenance/titles/${titleId}/inherit/preview`,
+        method: "POST",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Library maintenance
+     * @name InheritMaintenanceRule
+     * @request POST:/api/library-maintenance/titles/{titleId}/inherit
+     */
+    inheritMaintenanceRule: (
+      titleId: string,
+      data: {
+        /**
+         * @min -9007199254740991
+         * @max 9007199254740991
+         */
+        expectedRevision: number;
+        /**
+         * @min -9007199254740991
+         * @max 9007199254740991
+         */
+        defaultRevision: number;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<MaintenanceConfig, InheritMaintenanceRuleError>({
+        path: `/api/library-maintenance/titles/${titleId}/inherit`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Library maintenance
+     * @name GetLibraryMaintenanceConfig
+     * @request GET:/api/library-maintenance/titles/{titleId}
+     */
+    getLibraryMaintenanceConfig: (
+      titleId: string,
+      params: RequestParams = {},
+    ) =>
+      this.request<MaintenanceConfig, GetLibraryMaintenanceConfigError>({
+        path: `/api/library-maintenance/titles/${titleId}`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Library maintenance
+     * @name SaveLibraryMaintenanceConfig
+     * @request PATCH:/api/library-maintenance/titles/{titleId}
+     */
+    saveLibraryMaintenanceConfig: (
+      titleId: string,
+      data: MaintenanceSaveInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<MaintenanceConfig, SaveLibraryMaintenanceConfigError>({
+        path: `/api/library-maintenance/titles/${titleId}`,
+        method: "PATCH",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Library maintenance
+     * @name PreviewLibraryMaintenance
+     * @request POST:/api/library-maintenance/titles/{titleId}/preview
+     */
+    previewLibraryMaintenance: (
+      titleId: string,
+      data: MaintenanceRuleOptionsInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<MaintenancePreview, PreviewLibraryMaintenanceError>({
+        path: `/api/library-maintenance/titles/${titleId}/preview`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Library maintenance
+     * @name ProtectLibraryMaintenanceGroup
+     * @request PATCH:/api/library-maintenance/groups/{id}/protection
+     */
+    protectLibraryMaintenanceGroup: (
+      id: string,
+      data: MaintenanceProtectionInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<
+        {
+          id: string;
+          /**
+           * @min -9007199254740991
+           * @max 9007199254740991
+           */
+          revision: number;
+        },
+        ProtectLibraryMaintenanceGroupError
+      >({
+        path: `/api/library-maintenance/groups/${id}/protection`,
+        method: "PATCH",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Library maintenance
+     * @name UnsuppressLibraryMaintenance
+     * @request POST:/api/library-maintenance/titles/{titleId}/unsuppress
+     */
+    unsuppressLibraryMaintenance: (
+      titleId: string,
+      data: MaintenanceUnsuppressInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<MessageResponse, UnsuppressLibraryMaintenanceError>({
+        path: `/api/library-maintenance/titles/${titleId}/unsuppress`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Library maintenance
+     * @name GetLibraryMaintenanceStatus
+     * @request GET:/api/library-maintenance/status
+     */
+    getLibraryMaintenanceStatus: (params: RequestParams = {}) =>
+      this.request<MaintenanceStatus, GetLibraryMaintenanceStatusError>({
+        path: `/api/library-maintenance/status`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Library maintenance
+     * @name SetLibraryMaintenanceExecution
+     * @request PATCH:/api/library-maintenance/execution
+     */
+    setLibraryMaintenanceExecution: (
+      data: MaintenanceExecutionInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<MaintenanceStatus, SetLibraryMaintenanceExecutionError>({
+        path: `/api/library-maintenance/execution`,
+        method: "PATCH",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Library maintenance
+     * @name RetryLibraryMaintenanceOperation
+     * @request POST:/api/library-maintenance/operations/{id}/retry
+     */
+    retryLibraryMaintenanceOperation: (
+      id: string,
+      params: RequestParams = {},
+    ) =>
+      this.request<MaintenanceStatus, RetryLibraryMaintenanceOperationError>({
+        path: `/api/library-maintenance/operations/${id}/retry`,
+        method: "POST",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Library maintenance
+     * @name AcknowledgeLibraryMaintenanceRestore
+     * @request POST:/api/library-maintenance/restore/acknowledge
+     */
+    acknowledgeLibraryMaintenanceRestore: (params: RequestParams = {}) =>
+      this.request<
+        MaintenanceStatus,
+        AcknowledgeLibraryMaintenanceRestoreError
+      >({
+        path: `/api/library-maintenance/restore/acknowledge`,
+        method: "POST",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Library maintenance
+     * @name CancelLibraryMaintenanceExternalFence
+     * @request POST:/api/library-maintenance/external-fences/{id}/cancel
+     */
+    cancelLibraryMaintenanceExternalFence: (
+      id: string,
+      params: RequestParams = {},
+    ) =>
+      this.request<
+        MaintenanceStatus,
+        CancelLibraryMaintenanceExternalFenceError
+      >({
+        path: `/api/library-maintenance/external-fences/${id}/cancel`,
+        method: "POST",
         format: "json",
         ...params,
       }),

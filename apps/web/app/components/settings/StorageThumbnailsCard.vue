@@ -44,6 +44,7 @@ const { settings, failed, busy, load, toggle, regenerate }
       <div class="flex flex-wrap items-center gap-3">
         <Button
           variant="outline"
+          size="sm"
           :disabled="busy || settings.running"
           @click="regenerate"
         >

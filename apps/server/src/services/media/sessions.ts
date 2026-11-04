@@ -2,6 +2,7 @@ import type { SkipSegment } from '../segments/model.ts'
 import { trackPlayback } from '../segments/activity.ts'
 import { readySegments } from '../segments/index.ts'
 import { open, readdir, rm, stat } from 'node:fs/promises'
+import { acquireMaintenanceLease } from '../libraryMaintenance/admission.ts'
 import type { Torrent } from '../../db/schema.ts'
 import type {
   AudioPreference,
@@ -490,7 +491,13 @@ function formatDuration(ms: number) {
 }
 
 /** Новая сессия: проба и решение идут в фоне, `ready` — их окончание */
+const maintenanceReleases = new Map<string, () => void>()
+
 export function createSession(input: SessionInput) {
+  const maintenanceRelease = acquireMaintenanceLease({
+    torrentId: input.torrent?.id,
+    mediaFileId: input.library?.id,
+  })
   const releasePlayback = input.torrent
     ? trackStream(input.torrent.id)
     : trackPlayback()
@@ -550,6 +557,7 @@ export function createSession(input: SessionInput) {
       )
     })
 
+  maintenanceReleases.set(session.id, maintenanceRelease)
   sessions.set(session.id, session)
   closers.set(session.id, closer)
   // Пока сессия открыта, раздачу не вытесняют и не ставят на паузу — и до
@@ -597,7 +605,17 @@ export async function stopSession(
   // отсчитывает недавнее использование от закрытия сессии
   if (session.torrent)
     touchTorrent(session.torrent.id)
-  await session.hls?.stop()
+  try {
+    await session.hls?.stop()
+  }
+  finally {
+    // Закрытие клиента не ждёт общей пробы, но maintenance аренда живёт
+    // до закрытия всех её чтений. Это также покрывает abort во время prepare.
+    void session.ready.finally(() => {
+      maintenanceReleases.get(id)?.()
+      maintenanceReleases.delete(id)
+    })
+  }
 }
 
 export async function stopAllSessions() {
@@ -669,4 +687,12 @@ export async function sessionCues(
 /** Только для тестов */
 export function sessionCount() {
   return sessions.size
+}
+
+/** Read-only activity snapshot for maintenance; includes probing and paused players. */
+export function playbackResources() {
+  return [...sessions.values()].map(session => ({
+    torrentId: session.torrent?.id ?? null,
+    mediaFileId: session.library?.id ?? null,
+  }))
 }

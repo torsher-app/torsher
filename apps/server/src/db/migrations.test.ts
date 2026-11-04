@@ -472,3 +472,39 @@ describe('миграция отметки «просмотрено»', () => {
     ])
   })
 })
+
+describe('maintenance provenance migration', () => {
+  it('preserves old progress and does not adopt legacy content; applying twice is safe', () => {
+    const sqlite = new Database(':memory:')
+    sqlite.pragma('foreign_keys = ON')
+    const db = drizzle(sqlite)
+    const maintenanceIdx = journal.entries.findIndex(entry =>
+      readFileSync(join(MIGRATIONS_DIR, `${entry.tag}.sql`), 'utf8').includes(
+        'CREATE TABLE `maintenance_groups`',
+      ),
+    )
+    migrate(db, { migrationsFolder: migrationsBefore(maintenanceIdx) })
+    sqlite.exec(
+      'INSERT INTO profiles (id,name,color,position,created_at) VALUES (\'maintenance-profile\',\'Synthetic\',\'violet\',0,1000)',
+    )
+    sqlite.exec(
+      'INSERT INTO title_progress (profile_id,title_id,season,episode,position,watched_at,updated_at) VALUES (\'maintenance-profile\',\'tmdb:tv:901\',1,1,42,1000,1000)',
+    )
+    migrate(db, { migrationsFolder: MIGRATIONS_DIR })
+    migrate(db, { migrationsFolder: MIGRATIONS_DIR })
+    expect(
+      sqlite
+        .prepare(
+          'SELECT position,watched_at,last_played_at FROM title_progress',
+        )
+        .get(),
+    ).toEqual({ position: 42, watched_at: 1000, last_played_at: null })
+    expect(
+      sqlite.prepare('SELECT COUNT(*) AS count FROM maintenance_groups').get(),
+    ).toEqual({ count: 0 })
+    expect(
+      sqlite.prepare('SELECT COUNT(*) AS count FROM maintenance_rules').get(),
+    ).toEqual({ count: 0 })
+    sqlite.close()
+  })
+})
