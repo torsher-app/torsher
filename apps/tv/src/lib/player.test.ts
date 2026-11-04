@@ -23,6 +23,7 @@ import {
   mediaFailureAction,
   networkState,
   nextRetry,
+  playerPrompt,
   pressScrub,
   RETRY_RESET_MS,
   RETRY_WINDOW_MS,
@@ -480,6 +481,16 @@ describe('следующая серия', () => {
       false,
     )
     expect(upNextVisible({ ...base, remaining: Number.NaN })).toBe(false)
+  })
+
+  it('при активных титрах пульт управляет видимой подсказкой', () => {
+    const prompt = (remaining: number, override: Partial<typeof base> = {}) =>
+      playerPrompt(upNextVisible({ ...base, remaining, ...override }), true)
+
+    expect(prompt(31)).toBe('skip')
+    expect(prompt(30)).toBe('upNext')
+    expect(prompt(10, { dismissed: true })).toBe('skip')
+    expect(prompt(10, { available: false })).toBe('skip')
   })
 
   it('отсчёт — остаток целыми вверх', () => {

@@ -29,7 +29,7 @@ const { t } = useI18n()
       type="button"
       tabindex="-1"
       @mousedown.prevent
-      @click="emit('play')"
+      @click.stop="emit('play')"
     >
       <span class="up-next__frame">
         <img
@@ -64,7 +64,7 @@ const { t } = useI18n()
       type="button"
       tabindex="-1"
       @mousedown.prevent
-      @click="emit('cancel')"
+      @click.stop="emit('cancel')"
     >
       {{ t("player.upNext.cancel") }}
     </button>

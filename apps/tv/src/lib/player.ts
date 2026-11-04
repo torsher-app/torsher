@@ -538,6 +538,14 @@ export function upNextVisible(input: {
   return input.ended || input.remaining <= UP_NEXT_SECONDS
 }
 
+/** У карточки следующей серии приоритет над контекстной кнопкой пропуска. */
+export function playerPrompt(showsUpNext: boolean, showsSkip: boolean) {
+  if (showsUpNext)
+    return 'upNext'
+
+  return showsSkip ? 'skip' : null
+}
+
 /** Секунды отсчёта до следующей серии — остаток до конца, целыми вверх */
 export function countdownOf(remaining: number) {
   return Number.isFinite(remaining) ? Math.max(0, Math.ceil(remaining)) : 0
