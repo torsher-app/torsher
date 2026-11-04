@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.4.0 (2026-11-04)
+
+### Features
+
+- **overview:** show container load and resource history (#164) ([6521547](https://github.com/torsher-app/torsher/commit/6521547bf76c1e363d789e05b60a772db6858577))
+- **server:** log background intro and credits analysis (#161) ([3e70925](https://github.com/torsher-app/torsher/commit/3e70925063b4b01aac1f6ef11a97c3bd6c12de10))
+
+### Bug Fixes
+
+- **server:** align intro timestamps and reject stale segments (#167) ([124463b](https://github.com/torsher-app/torsher/commit/124463be4101b2ec7d5cb97d122bb8673aba35b4))
+- **tv:** prioritize the next episode card during credits (#165) ([d47f23d](https://github.com/torsher-app/torsher/commit/d47f23dfffd9b064ef3a64e8cc37180bdb33001e))
+- **tv:** continue playback from downloaded episodes (#166) ([2326265](https://github.com/torsher-app/torsher/commit/232626505c3cc3d2531fba1e923b24d669910a8e))
+
+### Other
+
+- **server:** batch inserts in the Jellyfin library scale test (#162) ([cd82fdb](https://github.com/torsher-app/torsher/commit/cd82fdb7fd524b3e130fb12b99a183c4c72b43b7))
+
 ## 1.3.0 (2026-11-04)
 
 ### Features
