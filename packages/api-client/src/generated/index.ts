@@ -1386,8 +1386,14 @@ export interface LibraryFileInput {
   duration: number | null;
 }
 
+export interface EpisodeFileInput {
+  torrentId: string;
+  fileIndex: number;
+}
+
 export interface TitleLibraryInput {
   files: LibraryFileInput[];
+  downloadedFile?: EpisodeFileInput;
 }
 
 export interface TitleDownloadInput {
@@ -1456,11 +1462,6 @@ export interface SeasonReleaseInput {
   quality: "2160p" | "1080p" | "720p" | "SD" | null;
   voice: VoiceRefInput | null;
   episodes: number[];
-}
-
-export interface EpisodeFileInput {
-  torrentId: string;
-  fileIndex: number;
 }
 
 export interface ResumeTargetInput {
@@ -1682,6 +1683,7 @@ export interface ContinueCardInput {
   duration: number | null;
   next: boolean;
   file: EpisodeFileInput | null;
+  mediaFileId?: string | null;
   followNewEpisode?: boolean;
 }
 
@@ -6646,8 +6648,14 @@ export interface LibraryFile {
   duration: number | null;
 }
 
+export interface EpisodeFile {
+  torrentId: string;
+  fileIndex: number;
+}
+
 export interface TitleLibrary {
   files: LibraryFile[];
+  downloadedFile?: EpisodeFile;
 }
 
 export interface TitleDownload {
@@ -6716,11 +6724,6 @@ export interface SeasonRelease {
   quality: "2160p" | "1080p" | "720p" | "SD" | null;
   voice: VoiceRef | null;
   episodes: number[];
-}
-
-export interface EpisodeFile {
-  torrentId: string;
-  fileIndex: number;
 }
 
 export interface ResumeTarget {
@@ -6942,6 +6945,7 @@ export interface ContinueCard {
   duration: number | null;
   next: boolean;
   file: EpisodeFile | null;
+  mediaFileId?: string | null;
   followNewEpisode?: boolean;
 }
 
@@ -12451,10 +12455,20 @@ export class Api<
      * @name GetTitleLibrary
      * @request GET:/api/titles/{id}/library
      */
-    getTitleLibrary: (id: string, params: RequestParams = {}) =>
+    getTitleLibrary: (
+      id: string,
+      query?: {
+        /** @pattern ^[1-9]\d{0,2}$ */
+        season?: string;
+        /** @pattern ^[1-9]\d{0,3}$ */
+        episode?: string;
+      },
+      params: RequestParams = {},
+    ) =>
       this.request<TitleLibrary, GetTitleLibraryError>({
         path: `/api/titles/${id}/library`,
         method: "GET",
+        query: query,
         format: "json",
         ...params,
       }),

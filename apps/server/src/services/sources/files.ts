@@ -3,6 +3,7 @@ import { matchFiles, parseRelease } from '@torsher/release-parser'
 import { and, eq } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import { titleProgress } from '../../db/schema.ts'
+import { unavailableTorrentFiles } from '../library/folders.ts'
 import { isVideoFile } from '../torrents/index.ts'
 import { isProgressWatched } from './progress.ts'
 
@@ -37,6 +38,7 @@ export function titleFiles(
   const entries = (torrent.files ?? [])
     .map((file, index) => ({ ...file, index }))
     .filter(file => !file.padding)
+  const blocked = unavailableTorrentFiles(ref.profileId, torrent.id)
   const parsed = parseRelease(torrent.name)
   // `kind` отделяет серии от сэмплов и допов; номер серии нужен только сериалу
   const matches = matchFiles(
@@ -88,8 +90,10 @@ export function titleFiles(
         },
       }
     })
-    .filter(({ file }, i) =>
-      matches[i] ? matches[i]!.kind === 'video' : isVideoFile(file.path),
+    .filter(
+      ({ file }, i) =>
+        !blocked.has(file.index)
+        && (matches[i] ? matches[i]!.kind === 'video' : isVideoFile(file.path)),
     )
     .sort((a, b) =>
       a.file.path.localeCompare(b.file.path, undefined, {

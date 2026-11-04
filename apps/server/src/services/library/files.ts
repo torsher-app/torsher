@@ -12,7 +12,7 @@ import type {
 } from '../../db/schema.ts'
 import { stat } from 'node:fs/promises'
 import { join } from 'node:path'
-import { and, desc, eq, inArray, isNotNull } from 'drizzle-orm'
+import { and, desc, eq, gte, inArray, isNotNull, lte, or } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import {
   libraries,
@@ -423,7 +423,11 @@ export function qualityOf(probe: MediaFile['probe']) {
 }
 
 /** Файлы библиотеки тайтла, что лежат на месте: фильм и серии по порядку */
-export function titleLibraryFiles(titleId: string, folders?: string[]) {
+export function titleLibraryFiles(
+  titleId: string,
+  folders?: string[],
+  target?: { season: number, episode: number },
+) {
   return getDb()
     .select()
     .from(mediaFiles)
@@ -432,6 +436,15 @@ export function titleLibraryFiles(titleId: string, folders?: string[]) {
         eq(mediaFiles.titleId, titleId),
         eq(mediaFiles.state, 'present'),
         folders ? inArray(mediaFiles.folderId, folders) : undefined,
+        target && eq(mediaFiles.season, target.season),
+        target
+        && or(
+          eq(mediaFiles.episode, target.episode),
+          and(
+            lte(mediaFiles.episode, target.episode),
+            gte(mediaFiles.episodeTo, target.episode),
+          ),
+        ),
       ),
     )
     .orderBy(mediaFiles.season, mediaFiles.episode, desc(mediaFiles.addedAt))

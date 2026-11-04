@@ -26,6 +26,7 @@ import {
   mediaFiles,
   metaCache,
   titleAliases,
+  torrents,
   users,
 } from '../db/schema.ts'
 import {
@@ -42,6 +43,7 @@ import {
 } from '../services/library/match.ts'
 import { scanFolder } from '../services/library/scan.ts'
 import { installLogger } from '../services/logs/index.ts'
+import { movie } from '../services/tmdb/fixtures/index.ts'
 import { signToken } from '../utils/token.ts'
 
 const ffmpegAvailable = (() => {
@@ -64,6 +66,7 @@ let searchResults: Record<string, object[]> = {}
 
 const identities: Record<string, object> = {
   '/3/movie/603': {
+    ...movie,
     id: 603,
     title: 'Example Movie',
     original_title: 'Example Movie',
@@ -701,6 +704,51 @@ describe('домашнее видео', () => {
 })
 
 describe('library versions exposed to the showcase', () => {
+  it('returns only visible versions that cover the requested episode', async () => {
+    await file('Shows/Example.S01E01.mkv')
+    await file('Shows/Example.S01E02.mkv')
+    await file('Shows/Example.S01E03.mkv')
+    const library = await addLibrary()
+    await scanned(library)
+    await matchIdle()
+    const files = rows()
+    expect(files).toHaveLength(3)
+    const titleId = 'tmdb:tv:1396'
+    for (const [index, item] of files.entries()) {
+      getDb()
+        .update(mediaFiles)
+        .set({
+          titleId,
+          season: 1,
+          episode: index + 1,
+          episodeTo: index === 0 ? 2 : null,
+        })
+        .where(eq(mediaFiles.id, item.id))
+        .run()
+    }
+
+    const list = () =>
+      app.inject({
+        url: `/api/titles/${titleId}/library?season=1&episode=2`,
+        cookies: owner,
+      })
+    const res = await list()
+    expect(res.statusCode).toBe(200)
+    expect(
+      res
+        .json()
+        .files.map((item: { id: string }) => item.id)
+        .sort(),
+    ).toEqual([files[0]!.id, files[1]!.id].sort())
+    await app.inject({
+      method: 'PATCH',
+      url: `/api/libraries/${library.json().id}`,
+      cookies: owner,
+      payload: { hiddenProfiles: [defaultProfile().id] },
+    })
+    expect((await list()).json()).toEqual({ files: [] })
+  })
+
   it('returns basenames and the resumed ID, hiding both when the library is hidden', async () => {
     await file('Movies/Example.Extended.1080p.mkv')
     await file('Movies/Example.Theatrical.2160p.mkv')
@@ -716,13 +764,23 @@ describe('library versions exposed to the showcase', () => {
         .run()
     }
     const selected = files[0]!
+    const origin = getDb()
+      .insert(torrents)
+      .values({
+        infoHash: '1'.repeat(40),
+        name: 'Example Movie',
+        source: 'magnet',
+        status: 'ready',
+      })
+      .returning()
+      .get()
     saveTitleProgress(
       { profileId: defaultProfile().id, titleId: 'tmdb:movie:603' },
       {
         position: 120,
         duration: 1200,
-        torrentId: null,
-        fileIndex: null,
+        torrentId: origin.id,
+        fileIndex: 0,
         mediaFileId: selected.id,
       },
     )
@@ -733,6 +791,20 @@ describe('library versions exposed to the showcase', () => {
         url: '/api/titles/tmdb:movie:603/progress',
         cookies: owner,
       })
+    const card = async () =>
+      (
+        await app.inject({
+          url: '/api/home/continue',
+          cookies: owner,
+        })
+      )
+        .json()
+        .items
+        .find((item: { id: string }) => item.id === 'tmdb:movie:603')
+    expect(await card()).toMatchObject({
+      mediaFileId: selected.id,
+      file: { torrentId: origin.id, fileIndex: 0 },
+    })
     expect(
       (await list())
         .json()
@@ -749,7 +821,11 @@ describe('library versions exposed to the showcase', () => {
       .set({ state: 'missing' })
       .where(eq(mediaFiles.id, selected.id))
       .run()
-    expect((await progress()).json().resume.mediaFileId).toBeNull()
+    expect((await progress()).json().resume).toMatchObject({
+      mediaFileId: null,
+      file: null,
+    })
+    expect(await card()).toMatchObject({ mediaFileId: null, file: null })
     getDb()
       .update(mediaFiles)
       .set({ state: 'present' })
@@ -762,6 +838,10 @@ describe('library versions exposed to the showcase', () => {
       payload: { hiddenProfiles: [defaultProfile().id] },
     })
     expect((await list()).json().files).toEqual([])
-    expect((await progress()).json().resume.mediaFileId).toBeNull()
+    expect((await progress()).json().resume).toMatchObject({
+      mediaFileId: null,
+      file: null,
+    })
+    expect(await card()).toMatchObject({ mediaFileId: null, file: null })
   })
 })

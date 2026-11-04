@@ -338,8 +338,25 @@ export const libraryFile = z
   })
   .meta({ id: 'libraryFile' })
 
+export const episodeFile = z
+  .object({
+    torrentId: z.string(),
+    fileIndex: z.number(),
+  })
+  .meta({ id: 'episodeFile' })
+
+export const titleLibraryQuery = z
+  .object({
+    season: number(999).optional(),
+    episode: number(9999).optional(),
+  })
+  .refine(query => !!query.season === !!query.episode)
+
 export const titleLibrary = z
-  .object({ files: z.array(libraryFile) })
+  .object({
+    files: z.array(libraryFile),
+    downloadedFile: episodeFile.optional(),
+  })
   .meta({ id: 'titleLibrary' })
 
 // Отмена одной раздачи; без неё — всех закачек тайтла
@@ -426,13 +443,6 @@ export const seasonRelease = z
     episodes: z.array(z.number()),
   })
   .meta({ id: 'seasonRelease' })
-
-export const episodeFile = z
-  .object({
-    torrentId: z.string(),
-    fileIndex: z.number(),
-  })
-  .meta({ id: 'episodeFile' })
 
 export const titleProgressQuery = z.object({
   // Язык деталей TMDB: по ним ищется следующая вышедшая серия, кэш общий с карточкой

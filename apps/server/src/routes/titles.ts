@@ -16,6 +16,7 @@ import {
   titleFiles,
   titleFilesParams,
   titleLibrary,
+  titleLibraryQuery,
   titleOpen,
   titleParams,
   titleProgress,
@@ -36,10 +37,7 @@ import {
   syncLibrary,
   titleLibraryFiles,
 } from '../services/library/index.ts'
-import {
-  playableMediaFile,
-  visibleFolderIds,
-} from '../services/library/folders.ts'
+import { visibleFolderIds } from '../services/library/folders.ts'
 import { titleDownload as titleDownloadOf } from '../services/library/status.ts'
 import {
   getTitleMine,
@@ -54,6 +52,7 @@ import {
 } from '../services/sources/index.ts'
 import {
   cancelTitleDownload,
+  downloadedEpisode,
   DownloadNotFoundError,
   downloadTitle,
   keepTitle,
@@ -71,6 +70,7 @@ import {
   episodeFileIn,
   nextEpisodeFor,
   resumeTarget,
+  visibleResumeSource,
 } from '../services/sources/resume.ts'
 import { seasonReleases } from '../services/sources/seasonRelease.ts'
 import {
@@ -365,12 +365,7 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
               position: resume.position,
               duration: resume.duration,
               next: resume.next,
-              file: resume.file,
-              mediaFileId:
-                resume.mediaFileId
-                && playableMediaFile(resume.mediaFileId, request.profileId)
-                  ? resume.mediaFileId
-                  : null,
+              ...visibleResumeSource(request.profileId, resume),
             }
           : null,
         last: last
@@ -566,6 +561,7 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
         operationId: 'getTitleLibrary',
         tags: ['Titles'],
         params: titleParams,
+        querystring: titleLibraryQuery,
         response: {
           200: titleLibrary,
           404: messageResponse,
@@ -574,15 +570,28 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
       },
     },
     async (request, reply) => {
-      if (!parseCatalogId(request.params.id))
+      const id = request.params.id
+      const ref = parseCatalogId(id)
+      if (!ref)
         return reply.code(404).send({ message: 'Title not found' })
 
+      const { season, episode } = request.query
+      const target
+        = season && episode
+          ? { season: Number(season), episode: Number(episode) }
+          : undefined
+      const files = titleLibraryFiles(
+        id,
+        visibleFolderIds(request.profileId),
+        target,
+      )
+
       return {
-        // Файлы из библиотек, скрытых от профиля, не показываем
-        files: titleLibraryFiles(
-          request.params.id,
-          visibleFolderIds(request.profileId),
-        ).map(file => ({
+        downloadedFile:
+          target && ref.type === 'tv' && !files.length
+            ? await downloadedEpisode(id, target.season, target.episode)
+            : undefined,
+        files: files.map(file => ({
           id: file.id,
           name: file.relPath.split('/').pop()!,
           season: file.season || null,

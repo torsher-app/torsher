@@ -201,6 +201,7 @@ export const continueCard = card
     next: z.boolean(),
     // Файл серии в известной раздаче; null — раздачу ещё искать
     file: episodeFile.nullable(),
+    mediaFileId: z.string().nullable().optional(),
     // Новая серия «Следить», которую профиль ещё не смотрел: колокольчик
     followNewEpisode: z.boolean().optional(),
   })
