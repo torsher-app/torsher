@@ -7,11 +7,12 @@ import { Skeleton } from '@/components/ui/skeleton'
 import PageBar from '~/components/shell/PageBar.vue'
 import { uptimeOf } from '~/lib/overview'
 import OverviewAttention from './OverviewAttention.vue'
+import OverviewLoad from './OverviewLoad.vue'
 import OverviewTiles from './OverviewTiles.vue'
 import OverviewUpdate from './OverviewUpdate.vue'
 
 const { t } = useI18n()
-const { overview, state, load, refresh } = useOverview()
+const { overview, state, load, refresh, loadFresh } = useOverview()
 
 useOverviewPolling()
 
@@ -103,6 +104,7 @@ const meta = computed(() => {
           v-if="overview.attention.length"
           :items="overview.attention"
         />
+        <OverviewLoad :overview="overview" :fresh="loadFresh" />
         <OverviewTiles :overview="overview" />
       </template>
     </div>
