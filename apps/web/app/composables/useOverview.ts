@@ -1,4 +1,5 @@
 import type { OverviewResponse } from '@torsher/api-client'
+import type { LoadRange } from '~/lib/loadRanges'
 import { useDocumentVisibility } from '@vueuse/core'
 import { api } from '~/services/api'
 
@@ -9,12 +10,27 @@ const POLL_INTERVAL_MS = 5000
 
 const overview = shallowRef<OverviewResponse | null>(null)
 const state = ref<LoadState>('idle')
+const loadFresh = ref(false)
+const range = ref<LoadRange>('15m')
+let requestId = 0
 
 let pollTimer: ReturnType<typeof setTimeout> | undefined
+let pollGeneration = 0
 
 async function fetchOverview() {
-  overview.value = await withErrorMode('silent', () =>
-    api.overview.getOverview())
+  const id = ++requestId
+  try {
+    const response = await withErrorMode('silent', () =>
+      api.overview.getOverview({ range: range.value }))
+    if (id === requestId) {
+      overview.value = response
+      loadFresh.value = true
+    }
+  }
+  catch (err) {
+    if (id === requestId)
+      throw err
+  }
 }
 
 async function load() {
@@ -27,6 +43,7 @@ async function load() {
     state.value = 'ready'
   }
   catch {
+    loadFresh.value = false
     if (state.value === 'loading')
       state.value = 'error'
   }
@@ -38,10 +55,13 @@ async function refresh() {
     await fetchOverview()
     state.value = 'ready'
   }
-  catch {}
+  catch {
+    loadFresh.value = false
+  }
 }
 
 function stopPolling() {
+  pollGeneration++
   clearTimeout(pollTimer)
   pollTimer = undefined
 }
@@ -49,9 +69,11 @@ function stopPolling() {
 function startPolling() {
   stopPolling()
 
+  const generation = pollGeneration
   const tick = async () => {
     await refresh()
-    pollTimer = setTimeout(tick, POLL_INTERVAL_MS)
+    if (generation === pollGeneration)
+      pollTimer = setTimeout(tick, POLL_INTERVAL_MS)
   }
 
   pollTimer = setTimeout(tick, POLL_INTERVAL_MS)
@@ -61,6 +83,14 @@ export function useOverview() {
   return {
     overview: computed(() => overview.value),
     state: readonly(state),
+    loadFresh: readonly(loadFresh),
+    range: readonly(range),
+    selectRange: (next: LoadRange) => {
+      if (range.value === next)
+        return
+      range.value = next
+      void refresh()
+    },
     load,
     refresh,
   }
@@ -82,6 +112,7 @@ export function useOverviewPolling() {
 
   onMounted(async () => {
     mounted = true
+    loadFresh.value = false
 
     // Повторный заход показывает прошлые цифры, пока идёт запрос
     await (overview.value ? refresh() : load())
@@ -89,6 +120,7 @@ export function useOverviewPolling() {
   })
 
   watch(visibility, (value) => {
+    loadFresh.value = false
     if (value === 'visible' && mounted)
       void refresh()
 

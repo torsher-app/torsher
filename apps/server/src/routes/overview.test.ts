@@ -36,6 +36,7 @@ import {
   sampleTorrentFile,
 } from '../services/engine/fixtures/index.ts'
 import { checkDeps, waitForCheck } from '../services/net/check.ts'
+import { trackPlayback } from '../services/segments/activity.ts'
 import { routesChanged } from '../services/net/index.ts'
 import { saveTmdbKey } from '../services/tmdb/credentials.ts'
 import { createOwner } from '../services/users/index.ts'
@@ -202,6 +203,7 @@ beforeEach(() => {
   setEngineReady(ENGINE)
   engineCrashes.count = 0
   getDb().delete(follows).run()
+  vi.stubEnv('TORSHER_CONTAINER', '')
   getDb().delete(torrents).run()
   getDb().delete(indexers).run()
   getDb().delete(storagePolicy).run()
@@ -240,6 +242,21 @@ describe('обзор', () => {
       startedAt: expect.any(String),
       version: expect.stringMatching(/^\d+\.\d+\.\d+/),
       attention: [],
+      load: {
+        cpuCores: null,
+        cpuCapacity: null,
+        memoryBytes: null,
+        memoryLimit: null,
+        analysis: null,
+        receiveBps: null,
+        sendBps: null,
+        history: [],
+        historyRange: '15m',
+        historyStepMs: 5000,
+        historyEnd: expect.any(Number),
+        playbackActive: false,
+        thumbnails: null,
+      },
       downloads: { total: 0, active: 0, downloadSpeed: 0, uploadSpeed: 0 },
       storage: {
         usedByCache: 0,
@@ -254,6 +271,45 @@ describe('обзор', () => {
       backups: { enabled: true, failing: false },
     })
     expect(Date.parse(body.startedAt)).toBeLessThanOrEqual(Date.now())
+  })
+
+  it('принимает только шесть поддерживаемых диапазонов истории', async () => {
+    for (const [range, step] of Object.entries({
+      '1m': 5000,
+      '15m': 5000,
+      '1h': 60_000,
+      '24h': 300_000,
+      '7d': 1_800_000,
+      '14d': 3_600_000,
+    })) {
+      const res = await app.inject({
+        url: `/api/overview?range=${range}`,
+        cookies: owner,
+      })
+      expect(res.statusCode).toBe(200)
+      expect(res.json().load).toMatchObject({
+        historyRange: range,
+        historyStepMs: step,
+      })
+    }
+    expect(
+      (await app.inject({ url: '/api/overview?range=365d', cookies: owner }))
+        .statusCode,
+    ).toBe(400)
+  })
+
+  it('видит поток без метрик контейнера и снимает статус после закрытия', async () => {
+    const release = trackPlayback()
+    try {
+      expect((await overview()).load).toMatchObject({
+        playbackActive: true,
+        cpuCores: null,
+      })
+    }
+    finally {
+      release()
+    }
+    expect((await overview()).load.playbackActive).toBe(false)
   })
 
   it('плитки: загрузки, кэш, индексаторы и «смотрит сейчас»', async () => {

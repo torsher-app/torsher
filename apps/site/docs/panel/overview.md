@@ -48,6 +48,30 @@ See [Update and roll back](/docs/maintain/update).
 
 A line disappears by itself once the problem is gone. The same problems can reach you outside the panel through notification channels, see [Notifications](/docs/panel/settings#notifications).
 
+## Container load
+
+<Ui k="panel.overview.load.title" /> shows CPU and memory for the whole Torsher container, including the torrent engine and ffmpeg. CPU uses the scale from Docker stats: **100%** means one fully used core; **200%** means two. The line below shows how many CPU cores are available to the container. With four cores available, **100% CPU** means **1 of 4 cores**. Select the info button beside **CPU** to see what full usage means for your container. Memory includes the container’s file cache. A memory limit appears only when one is set and visible to the server.
+
+The default view shows the last **15 minutes**. Choose another range to investigate a spike or compare busy periods.
+
+| Range | One point covers |
+| --- | --- |
+| 1 minute or 15 minutes | 5 seconds |
+| 1 hour | 1 minute |
+| 24 hours | 5 minutes |
+| 7 days | 30 minutes |
+| 14 days | 1 hour |
+
+Torsher samples even when the panel is closed. Longer views show the average of the available measurements in each interval. On the CPU chart the dashed **Peak** line shows the highest five-second reading in the interval. Hover or tap to see the timestamp and values. Intervals without measurements stay empty.
+
+History is kept for 14 days in `load-history.sqlite` next to the server database (normally in `/data/db`). Restarting or replacing the container preserves history when it uses the same persistent data directory. A new installation starts with an empty chart. Samples are written about once a minute and on a normal shutdown. An abrupt power loss can drop the last unflushed samples.
+
+The live receive and send readings each use a unit suited to their speed, such as 400 B/s or 2.8 kB/s. The chart uses one shared axis in MB/s (1 MB = 1,000,000 bytes) for both lines and their tooltips across all time ranges. It measures the visible non-loopback interfaces in the container’s network namespace. It includes playback and panel traffic as well as torrents. Containers sharing a network namespace share its counters; Torsher skips the initial host network namespace.
+
+The activity line can show, for example, **Scanning for credits (ffmpeg) · Files checked: 6 of 10**. The count describes this pass through the queue; new files can increase the total. Analysis pauses for playback. Thumbnail regeneration, torrent transfers and open playback streams can appear alongside analysis. CPU and memory are totals across processes; the panel doesn’t assign them to individual tasks.
+
+A missing counter reads **<Ui k="panel.overview.load.unavailable" />**. This can happen outside the container or when a Linux resource controller isn’t readable. Known tasks still appear, and an empty activity list doesn’t imply zero CPU.
+
 ## The tiles
 
 Six tiles show the state of the server. Each one opens its section.
