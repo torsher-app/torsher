@@ -114,6 +114,21 @@ On the machine itself, `http://localhost:8080/panel/` works too.
 
 The panel asks you to create the owner account and starts the [setup wizard](/docs/setup/wizard).
 
+## Limit memory on a shared server
+
+The default Compose file leaves Torsher’s RAM uncapped. If the host runs out of available memory, Linux can stop a process in Torsher or another service. To leave room for other services, add the `mem_limit` line to your existing `docker-compose.yml`, at the same indentation as `image`:
+
+```yaml
+services:
+  torsher:
+    image: ghcr.io/torsher-app/torsher:latest
+    mem_limit: 2g
+```
+
+Here, `2g` is an example limit of 2 GiB. To choose a limit for your server, check [container load](/docs/panel/overview#container-load) during your busiest mix of downloads and playback, including transcoding if you use it. A limit that is too low can interrupt playback or cause Torsher to restart.
+
+Apply the change with `docker compose up -d torsher`. This recreates the container, so wait until active playback has finished. See [Docker’s memory limits](https://docs.docker.com/engine/containers/resource_constraints/#limit-a-containers-access-to-memory).
+
 ## Update
 
 When a new version is out, the panel shows it on <Ui k="panel.nav.overview" /> and under <Ui k="panel.nav.settings panel.settings.nav.about" />. To update, run in the folder with `docker-compose.yml`:
