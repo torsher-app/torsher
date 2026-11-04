@@ -357,7 +357,6 @@ const policies: Policy[] = ['newer', 'keep', 'replace']
               <LoadingButton
                 type="submit"
                 variant="outline"
-                size="sm"
                 :loading="busy === 'preview'"
               >
                 {{ t(`${base}.secrets.check`) }}
@@ -567,9 +566,7 @@ const policies: Policy[] = ['newer', 'keep', 'replace']
         <Alert v-if="result.backup" variant="info">
           <InfoIcon />
           <AlertDescription>
-            {{
-              t(`${base}.result.undoHint`)
-            }}
+            {{ t(`${base}.result.undoHint`) }}
           </AlertDescription>
         </Alert>
       </div>
