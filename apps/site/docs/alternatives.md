@@ -30,7 +30,7 @@ Choose Torsher if you want to manage the path from finding a title to watching a
 
 You run the server and provide storage. For release search, connect **any Torznab indexer, for example Prowlarr or Jackett**. Torsher includes no content or sources, and you are responsible for the sources you connect.
 
-Check [supported devices](/docs/tv/other-devices) before switching. The LG app is tested on an LG C4; the Android TV app is tested in an emulator, not on physical devices yet. Support for existing Jellyfin client apps is planned, not available yet. Torsher is not a drop-in replacement for every feature of the apps below.
+Check [supported devices](/docs/tv/other-devices) before switching. The LG app is tested on an LG C4; the Android TV app is tested in an emulator, not on physical devices yet. A [limited Jellyfin-compatible connection](/docs/tv/jellyfin-compatible) provides local-library direct play and shared progress. Home video playback and shared progress have been checked with Infuse and VidHub on macOS. Torsher is not a drop-in replacement for every feature of the apps below.
 
 ## Jellyfin
 
