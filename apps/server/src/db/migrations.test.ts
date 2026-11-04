@@ -508,3 +508,44 @@ describe('maintenance provenance migration', () => {
     sqlite.close()
   })
 })
+
+describe('device purpose migration', () => {
+  it('preserves paired devices and defaults them to native viewer access', () => {
+    const idx = journal.entries.findIndex(entry =>
+      readFileSync(join(MIGRATIONS_DIR, `${entry.tag}.sql`), 'utf8').includes(
+        'ADD `purpose`',
+      ),
+    )
+    expect(idx).toBeGreaterThan(0)
+    const sqlite = new Database(':memory:')
+    try {
+      const db = drizzle(sqlite)
+      migrate(db, { migrationsFolder: migrationsBefore(idx) })
+      sqlite
+        .prepare(
+          'INSERT INTO devices (id, name, type, token_hash, created_at) VALUES (?, ?, ?, ?, ?)',
+        )
+        .run('existing-device', 'TV', 'tv', 'existing-hash', 123)
+      migrate(db, { migrationsFolder: MIGRATIONS_DIR })
+      migrate(db, { migrationsFolder: MIGRATIONS_DIR })
+      expect(
+        sqlite
+          .prepare(
+            'SELECT id, name, token_hash, purpose, owner_session_version FROM devices',
+          )
+          .all(),
+      ).toEqual([
+        {
+          id: 'existing-device',
+          name: 'TV',
+          token_hash: 'existing-hash',
+          purpose: 'viewer',
+          owner_session_version: null,
+        },
+      ])
+    }
+    finally {
+      sqlite.close()
+    }
+  })
+})

@@ -5,7 +5,7 @@ description: "Which devices Torsher works on today, which are planned, and how t
 
 # Other devices
 
-Torsher has three clients today: the apps for LG TVs and Android TV, and the showcase in a browser. Apps for other platforms are planned but not available yet. This page lists what works now and how to watch on other devices in the meantime.
+Torsher has three clients today: the apps for LG TVs and Android TV, and the showcase in a browser. Apps for other platforms are planned. A limited Jellyfin-compatible connection is also available for the local library. This page lists what works now and how to watch on other devices in the meantime.
 
 ::: tip What you'll learn
 Whether your device can run Torsher today, and how to play a video on it if it can't.
@@ -23,12 +23,16 @@ Whether your device can run Torsher today, and how to play a video on it if it c
 
 These are not available yet, and there are no dates:
 
-- **Apple TV, iPhone, iPad and Android phones:** through apps that already work with Jellyfin servers, once Torsher can talk to them as a Jellyfin-compatible server.
+- **Native apps for Apple TV, iPhone, iPad and Android phones:** not available yet. Support for additional Jellyfin clients is also planned.
 - **Samsung TVs (Tizen):** later.
 
 Follow the [releases on GitHub](https://github.com/torsher-app/torsher/releases) to see when one of them arrives.
 
-## Until then
+## Connect a Jellyfin-compatible player
+
+For local-library browsing, direct play and shared progress, see [Jellyfin-compatible players](/docs/tv/jellyfin-compatible). Home video playback and shared progress have been tested with both players on macOS. This connection does not transcode or play incomplete torrents; Android Jellyfin clients are outside its initial scope.
+
+## Other ways to watch
 
 ### Open the showcase in the device's browser
 

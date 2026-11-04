@@ -195,6 +195,9 @@ export async function requireViewer(
   if (token) {
     const device = deviceByToken(token)
 
+    if (device?.purpose === 'jellyfin')
+      return unauthorized(reply)
+
     if (device) {
       const stale
         = !device.lastSeenAt
@@ -288,7 +291,7 @@ export async function requireStream(
     if (subject.startsWith(DEVICE_SUBJECT_PREFIX)) {
       const device = getDevice(subject.slice(DEVICE_SUBJECT_PREFIX.length))
 
-      if (!device)
+      if (!device || device.purpose !== 'viewer')
         return unauthorized(reply)
 
       asDevice(request, device)

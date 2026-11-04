@@ -185,3 +185,47 @@ describe('очистка записей журнала', () => {
     expect(scrubText(text)).toBe(text)
   })
 })
+
+it('redacts Jellyfin credentials in structured bodies, headers and URLs', () => {
+  const input = JSON.stringify({
+    headers: {
+      'x-emby-token': 'device-secret',
+      'x-mediabrowser-token': 'media-secret',
+      'x-emby-authorization': 'MediaBrowser Token="auth-secret"',
+    },
+    body: { Username: 'Owner', Pw: 'password-secret' },
+    result: { AccessToken: 'response-secret' },
+    url: '/Videos/example/stream?api_key=query-secret',
+  })
+  const result = scrubText(input)
+  for (const secret of [
+    'device-secret',
+    'media-secret',
+    'auth-secret',
+    'password-secret',
+    'response-secret',
+    'query-secret',
+  ])
+    expect(result).not.toContain(secret)
+  expect(scrubText('x-emby-token: raw-secret')).not.toContain('raw-secret')
+  expect(
+    scrubText(
+      'Authorization: MediaBrowser Token="quoted-secret", Client="test"',
+    ),
+  ).not.toContain('quoted-secret')
+})
+
+it('preserves valid JSON when an error message contains escaped protocol authorization', () => {
+  const result = scrubText(
+    JSON.stringify({
+      msg: 'Request headers: Authorization: MediaBrowser Token="escaped-secret", Client="Example"',
+    }),
+  )
+  expect(result).not.toContain('escaped-secret')
+  expect(() => JSON.parse(result)).not.toThrow()
+  const header = scrubText(
+    JSON.stringify({ msg: 'x-emby-token: token-in-message' }),
+  )
+  expect(header).not.toContain('token-in-message')
+  expect(() => JSON.parse(header)).not.toThrow()
+})

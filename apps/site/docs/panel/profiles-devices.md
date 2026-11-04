@@ -38,7 +38,7 @@ The only profile can't be deleted. When you delete one, choose what happens to i
 - <Ui k="panel.people.deleteDialog.move" />: positions and episode progress go to the profile you pick.
 - <Ui k="panel.people.deleteDialog.drop" />.
 
-Devices that used it switch to the default profile, or ask who's watching if the default profile has a PIN.
+Devices that used it switch to the default profile, or ask who's watching if the default profile has a PIN. [Jellyfin-compatible connections](/docs/tv/jellyfin-compatible) instead lose access when their attached profile is deleted.
 
 ## A profile's card
 

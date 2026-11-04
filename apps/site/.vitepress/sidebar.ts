@@ -47,6 +47,10 @@ export const sidebar: DefaultTheme.SidebarItem[] = [
       { text: 'Connect a device', link: '/docs/tv/connect' },
       { text: 'Browser', link: '/docs/tv/browser' },
       { text: 'Other devices', link: '/docs/tv/other-devices' },
+      {
+        text: 'Jellyfin-compatible players',
+        link: '/docs/tv/jellyfin-compatible',
+      },
     ],
   },
   {

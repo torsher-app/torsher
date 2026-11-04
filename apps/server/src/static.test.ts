@@ -117,3 +117,19 @@ describe('api', () => {
     expect(res.headers['content-type']).toContain('application/json')
   })
 })
+
+it('keeps exact compatibility routes separate from the showcase and panel', async () => {
+  expect((await app.inject({ url: '/System/Ping' })).body).toBe(
+    'Jellyfin Server',
+  )
+  expect((await app.inject({ url: '/emby/System/Ping' })).body).toBe(
+    'Jellyfin Server',
+  )
+  expect((await app.inject({ url: '/emby/UnknownEndpoint' })).statusCode).toBe(
+    404,
+  )
+  expect((await app.inject({ url: '/' })).body).toContain('<title>tv</title>')
+  expect((await app.inject({ url: '/panel/' })).body).toContain(
+    '<title>panel</title>',
+  )
+})
