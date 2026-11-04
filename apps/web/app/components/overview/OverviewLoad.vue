@@ -275,9 +275,30 @@ const activity = computed(() => {
         >
           <MemoryStickIcon class="size-4 text-chart-2" aria-hidden="true" />
           {{ t(`${key}.memory`) }}
+          <Popover>
+            <PopoverTrigger as-child>
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                class="-my-1 -ml-1"
+                :aria-label="t(`${key}.memoryHelp`)"
+              >
+                <InfoIcon class="size-3.5" aria-hidden="true" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="start" :aria-label="t(`${key}.memoryHelp`)">
+              {{ t(`${key}.memoryExplanation`) }}
+            </PopoverContent>
+          </Popover>
         </h3>
-        <p :class="metricClass">
-          {{ value(load.memoryBytes, bytes) }}
+        <p class="flex flex-wrap items-baseline gap-x-1.5" :class="metricClass">
+          <span>{{ value(load.memoryBytes, bytes) }}</span>
+          <small
+            v-if="load.memoryCacheBytes != null"
+            class="text-xs font-normal tracking-normal text-muted-foreground"
+          >{{
+            t(`${key}.memoryCache`, { size: bytes(load.memoryCacheBytes) })
+          }}</small>
         </p>
         <p class="min-h-4 text-xs text-muted-foreground tabular-nums">
           <template v-if="load.memoryBytes !== null && load.memoryLimit">

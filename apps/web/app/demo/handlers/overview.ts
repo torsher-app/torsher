@@ -51,6 +51,7 @@ function demoLoad(range: LoadRange): OverviewResponse['load'] {
     cpuCores: sample.cpuCores,
     memoryBytes: sample.memoryBytes,
     cpuCapacity: 4,
+    memoryCacheBytes: Math.round(sample.memoryBytes * 0.65),
     memoryLimit: 2 * 1024 ** 3,
     receiveBps: sample.receiveBps,
     sendBps: sample.sendBps,

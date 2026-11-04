@@ -246,6 +246,7 @@ describe('обзор', () => {
         cpuCores: null,
         cpuCapacity: null,
         memoryBytes: null,
+        memoryCacheBytes: null,
         memoryLimit: null,
         analysis: null,
         receiveBps: null,

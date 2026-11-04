@@ -247,6 +247,7 @@ export function containerResources(range: HistoryRange = '15m') {
     cpuCores: last?.cpuCores ?? null,
     cpuCapacity: previous?.counters.cpuCapacity ?? null,
     memoryBytes: last?.memoryBytes ?? null,
+    memoryCacheBytes: previous?.counters.memoryCacheBytes ?? null,
     memoryLimit: previous?.counters.memoryLimit ?? null,
     receiveBps: last?.receiveBps ?? null,
     sendBps: last?.sendBps ?? null,
