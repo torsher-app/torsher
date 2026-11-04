@@ -545,6 +545,7 @@ export const titleProgress = sqliteTable(
     // Досмотр в плеере или отметка с карточки. Не выводится из позиции:
     // пересмотр досмотренной серии отметку не снимает
     watchedAt: integer('watched_at', { mode: 'timestamp_ms' }),
+    lastPlayedAt: integer('last_played_at', { mode: 'timestamp_ms' }),
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
       .notNull()
       .$defaultFn(() => new Date()),
@@ -1526,4 +1527,186 @@ export const mediaAnalysis = sqliteTable('media_analysis', {
   identity: text('identity').notNull(),
   data: text('data', { mode: 'json' }).$type<AnalysisData>().notNull(),
   updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+})
+
+// Независимое доказательство владения переживает удаление раздачи, media и follow.
+export const maintenanceRules = sqliteTable('maintenance_rules', {
+  inherits: integer('inherits', { mode: 'boolean' }).notNull().default(false),
+  titleId: text('title_id').primaryKey(),
+  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(false),
+  revision: integer('revision').notNull().default(1),
+  days: integer('days').notNull(),
+  keepLast: integer('keep_last'),
+  profileIds: text('profile_ids', { mode: 'json' }).$type<string[]>().notNull(),
+  rosterFingerprint: text('roster_fingerprint').notNull(),
+})
+
+export const maintenanceGroups = sqliteTable(
+  'maintenance_groups',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => randomUUID()),
+    titleId: text('title_id').notNull(),
+    initialInfoHash: text('initial_info_hash').notNull(),
+    torrentFiles: text('torrent_files', { mode: 'json' })
+      .$type<TorrentFileEntry[]>()
+      .notNull(),
+    pieceCount: integer('piece_count'),
+    sourceRoot: text('source_root').notNull(),
+    sourceRootDevice: text('source_root_device'),
+    sourceRootInode: integer('source_root_inode'),
+    sourceEvictedAt: integer('source_evicted_at', { mode: 'timestamp_ms' }),
+    torrentId: text('torrent_id').references(() => torrents.id, {
+      onDelete: 'set null',
+    }),
+    origin: text('origin', { enum: ['follow', 'manual'] }).notNull(),
+    revision: integer('revision').notNull().default(1),
+    identityUncertain: integer('identity_uncertain', { mode: 'boolean' })
+      .notNull()
+      .default(false),
+    manualProtection: integer('manual_protection', { mode: 'boolean' })
+      .notNull()
+      .default(false),
+    selectedFiles: text('selected_files', { mode: 'json' })
+      .$type<number[]>()
+      .notNull(),
+    seedRule: text('seed_rule', { mode: 'json' }).$type<SeedRule>(),
+    completedAt: integer('completed_at', { mode: 'timestamp_ms' }),
+    uploaded: integer('uploaded'),
+    denominator: integer('denominator'),
+    lastActivityAt: integer('last_activity_at', { mode: 'timestamp_ms' }),
+    eligibleSince: integer('eligible_since', { mode: 'timestamp_ms' }),
+    eligibilityFingerprint: text('eligibility_fingerprint'),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  table => [
+    index('maintenance_groups_hash_idx').on(table.initialInfoHash),
+    index('maintenance_groups_torrent_idx').on(table.torrentId),
+    index('maintenance_groups_title_idx').on(table.titleId),
+  ],
+)
+
+export interface MaintenanceEpisode {
+  season: number
+  episode: number
+}
+
+export const maintenanceFiles = sqliteTable(
+  'maintenance_files',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => randomUUID()),
+    groupId: text('group_id')
+      .notNull()
+      .references(() => maintenanceGroups.id, { onDelete: 'cascade' }),
+    kind: text('kind', { enum: ['source', 'library', 'sidecar'] }).notNull(),
+    root: text('root').notNull(),
+    rootDevice: text('root_device'),
+    rootInode: integer('root_inode'),
+    path: text('path').notNull(),
+    device: text('device').notNull(),
+    inode: integer('inode').notNull(),
+    size: integer('size').notNull(),
+    mtime: integer('mtime').notNull(),
+    mediaFileId: text('media_file_id'),
+    fileIndex: integer('file_index').notNull(),
+    episodes: text('episodes', { mode: 'json' })
+      .$type<MaintenanceEpisode[]>()
+      .notNull(),
+    linkMode: text('link_mode', { enum: mediaLinkModes }),
+  },
+  table => [
+    index('maintenance_files_media_idx').on(table.mediaFileId),
+    uniqueIndex('maintenance_files_group_path_idx').on(
+      table.groupId,
+      table.path,
+    ),
+  ],
+)
+
+export const maintenanceSuppressions = sqliteTable(
+  'maintenance_suppressions',
+  {
+    titleId: text('title_id').notNull(),
+    season: integer('season').notNull(),
+    episode: integer('episode').notNull(),
+    status: text('status', { enum: ['pending', 'cleaned'] }).notNull(),
+    operationId: text('operation_id').notNull(),
+  },
+  table => [
+    primaryKey({ columns: [table.titleId, table.season, table.episode] }),
+  ],
+)
+
+export interface MaintenanceManifestPath {
+  root: string
+  path: string
+  rootDevice: string
+  rootInode: number
+  device: string
+  inode: number
+  size: number
+  mtime: number
+  fileId: string
+  mediaFileId: string | null
+  kind: 'source' | 'library' | 'sidecar'
+}
+export interface MaintenanceManifest {
+  infoHash: string
+  pieceCount: number
+  paths: MaintenanceManifestPath[]
+}
+export interface MaintenanceVolumeObservation {
+  volume: string
+  root: string
+  rootInode: number
+  beforeFree: number | null
+  afterFree: number | null
+}
+export const maintenanceOperations = sqliteTable('maintenance_operations', {
+  id: text('id')
+    .primaryKey()
+    .$defaultFn(() => randomUUID()),
+  groupId: text('group_id').notNull(),
+  titleId: text('title_id').notNull(),
+  groupRevision: integer('group_revision').notNull(),
+  ruleRevision: integer('rule_revision').notNull(),
+  fingerprint: text('fingerprint').notNull(),
+  manifest: text('manifest', { mode: 'json' })
+    .$type<MaintenanceManifest>()
+    .notNull(),
+  episodes: text('episodes', { mode: 'json' })
+    .$type<MaintenanceEpisode[]>()
+    .notNull(),
+  state: text('state', {
+    enum: [
+      'pending',
+      'detached',
+      'deleting',
+      'partial',
+      'cleaned',
+      'blocked',
+      'cancelled',
+    ],
+  }).notNull(),
+  volumes: text('volumes', { mode: 'json' })
+    .$type<MaintenanceVolumeObservation[]>()
+    .notNull()
+    .$defaultFn(() => []),
+  engineStage: text('engine_stage').notNull().default('unknown'),
+  results: text('results', { mode: 'json' })
+    .$type<Record<string, 'staged' | 'removed'>>()
+    .notNull()
+    .$defaultFn(() => ({})),
+  error: text('error'),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+    .notNull()
+    .$defaultFn(() => new Date()),
 })

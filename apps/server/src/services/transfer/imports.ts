@@ -1,3 +1,4 @@
+import { assertMaintenancePolicyChange } from '../libraryMaintenance/admission.ts'
 import type {
   ImportSummary,
   ImportUndoEntry,
@@ -489,6 +490,7 @@ function writeMine(
   values: MineValues,
   now: Date,
 ) {
+  assertMaintenancePolicyChange({ titleId })
   const row = { profileId, titleId, ...values, updatedAt: now }
 
   getDb()

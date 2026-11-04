@@ -1,3 +1,5 @@
+import { protectTorrent } from '../services/libraryMaintenance/provenance.ts'
+import { assertMaintenanceMutation } from '../services/libraryMaintenance/admission.ts'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { Buffer } from 'node:buffer'
 import { messageResponse } from '../dto/common.ts'
@@ -202,6 +204,9 @@ export const torrentRoutes: FastifyPluginAsyncZod = async (app) => {
         return reply.code(404).send({ message: 'Torrent not found' })
 
       try {
+        // Явный owner forget сохраняет оставшуюся библиотеку вне автоматики.
+        assertMaintenanceMutation({ torrentId: found.id })
+        protectTorrent(found.id)
         await deleteTorrent(found, {
           deleteFiles: request.query.files === 'delete',
         })

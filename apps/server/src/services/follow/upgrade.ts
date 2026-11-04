@@ -1,3 +1,4 @@
+import { suppressedEpisodes } from '../libraryMaintenance/suppression.ts'
 import type {
   AudioTrack,
   ParsedRelease,
@@ -196,6 +197,8 @@ export function upgradeTargets(
   states: EpisodeWithState[],
   now = new Date(),
 ) {
+  const suppressed = suppressedEpisodes(follow.titleId)
+  states = states.filter(item => !suppressed.has(episodeKey(item)))
   if (follow.mode === 'notify')
     return pickTargets(follow, states, now)
 

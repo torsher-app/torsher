@@ -1,3 +1,9 @@
+import {
+  acquireMaintenanceLease,
+  assertMaintenancePolicyChange,
+  MaintenanceBusyError,
+} from '../libraryMaintenance/admission.ts'
+import { recordSeeding } from '../libraryMaintenance/provenance.ts'
 import type { SeedRule, Torrent } from '../../db/schema.ts'
 import type { EngineTorrentState } from '../engine/index.ts'
 import type { TorrentSettings } from './settings.ts'
@@ -111,55 +117,75 @@ export async function enforceSeeding(live: Map<string, EngineTorrentState>) {
   const now = Date.now()
 
   for (const row of rows) {
-    const state = live.get(row.infoHash)
-
-    if (!state || state.paused)
-      continue
-
-    const done
-      = state.bytesWanted > 0 && state.wantedCompleted >= state.bytesWanted
-    let torrent = row
-
-    if (done && !row.completedAt) {
-      torrent = { ...row, completedAt: new Date(now) }
-      setCompletedAt(row.id, torrent.completedAt)
-    }
-    else if (!done && row.completedAt) {
-      torrent = { ...row, completedAt: null }
-      setCompletedAt(row.id, null)
-    }
-
-    const { seed } = seedingOf(torrent, state, settings, now)
-
-    if (sent.get(row.id) === seed)
-      continue
-
+    let maintenanceRelease: () => void
     try {
-      await setTorrentSeed(row.infoHash, seed)
-      sent.set(row.id, seed)
+      maintenanceRelease = acquireMaintenanceLease({
+        torrentId: row.id,
+        producer: true,
+      })
     }
-    catch (err) {
-      // Раздача переезжает или пропала из движка: следующий проход повторит
-      if (
-        err instanceof EngineError
-        && ['not_found', 'moving'].includes(err.kind)
-      ) {
+    catch (error) {
+      if (error instanceof MaintenanceBusyError)
         continue
+      throw error
+    }
+    try {
+      const state = live.get(row.infoHash)
+
+      if (!state || state.paused)
+        continue
+
+      const done
+        = state.bytesWanted > 0 && state.wantedCompleted >= state.bytesWanted
+      let torrent = row
+
+      if (done && !row.completedAt) {
+        torrent = { ...row, completedAt: new Date(now) }
+        setCompletedAt(row.id, torrent.completedAt)
+      }
+      else if (!done && row.completedAt) {
+        torrent = { ...row, completedAt: null }
+        setCompletedAt(row.id, null)
       }
 
-      if (err instanceof EngineError && err.kind === 'unavailable')
-        return
+      recordSeeding(torrent, state)
+      const { seed } = seedingOf(torrent, state, settings, now)
 
-      logFor('engine').warn(
-        { err, torrentId: row.id },
-        'Seeding rule not applied',
-      )
+      if (sent.get(row.id) === seed)
+        continue
+
+      try {
+        await setTorrentSeed(row.infoHash, seed)
+        sent.set(row.id, seed)
+      }
+      catch (err) {
+        // Раздача переезжает или пропала из движка: следующий проход повторит
+        if (
+          err instanceof EngineError
+          && ['not_found', 'moving'].includes(err.kind)
+        ) {
+          continue
+        }
+
+        if (err instanceof EngineError && err.kind === 'unavailable')
+          return
+
+        logFor('engine').warn(
+          { err, torrentId: row.id },
+          'Seeding rule not applied',
+        )
+      }
+    }
+    finally {
+      maintenanceRelease()
     }
   }
 }
 
 /** Своё правило раздачи у закреплённой загрузки; null — как в настройках */
 export function setSeedRule(torrent: Torrent, rule: SeedRule | null) {
+  assertMaintenancePolicyChange({ torrentId: torrent.id })
+
   return getDb()
     .update(torrents)
     .set({ seedRule: rule })

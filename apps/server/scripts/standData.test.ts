@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -248,4 +249,77 @@ describe('copy and sanitize', () => {
     ).toBe(JSON.stringify({ enabled: false }))
     copy.close()
   })
+})
+
+it('drops source maintenance ownership and engine fences even with copied files', async () => {
+  const source = dataAt(join(root, 'source'))
+  const stand = dataAt(join(root, 'stand'))
+  mkdirSync(source.dataDir, { recursive: true })
+  const db = createSourceDb(source.databasePath)
+  for (const table of [
+    'maintenance_rules',
+    'maintenance_groups',
+    'maintenance_files',
+    'maintenance_operations',
+    'maintenance_suppressions',
+  ]) {
+    db.exec(`CREATE TABLE ${table} (id TEXT PRIMARY KEY, path TEXT)`)
+    db.prepare(`INSERT INTO ${table} VALUES (?,?)`).run(
+      'synthetic',
+      '/original/private/file',
+    )
+  }
+  db.prepare('INSERT INTO server_settings VALUES (?,?,0)').run(
+    'maintenanceExecutionEnabled',
+    'true',
+  )
+  db.prepare('INSERT INTO server_settings VALUES (?,?,0)').run(
+    'maintenanceExternalFences',
+    '[{"path":"/original/private/file"}]',
+  )
+  db.close()
+  const fence = join(source.dataDir, 'engine', 'state', 'maintenance')
+  mkdirSync(fence, { recursive: true })
+  writeFileSync(join(fence, 'operation.json'), 'synthetic-fence')
+  await copyData(source, stand, true)
+  sanitizeDb(stand.databasePath, source, stand, 'stand')
+  const copied = new Database(stand.databasePath, { readonly: true })
+  for (const table of [
+    'maintenance_rules',
+    'maintenance_groups',
+    'maintenance_files',
+    'maintenance_operations',
+    'maintenance_suppressions',
+  ])
+    expect(copied.prepare(`SELECT * FROM ${table}`).all()).toEqual([])
+  expect(
+    copied
+      .prepare(
+        'SELECT value FROM server_settings WHERE key=\'maintenanceExecutionEnabled\'',
+      )
+      .pluck()
+      .get(),
+  ).toBe('false')
+  expect(
+    copied
+      .prepare(
+        'SELECT value FROM server_settings WHERE key=\'maintenanceRestoreHold\'',
+      )
+      .pluck()
+      .get(),
+  ).toBe('true')
+  expect(
+    copied
+      .prepare(
+        'SELECT value FROM server_settings WHERE key=\'maintenanceExternalFences\'',
+      )
+      .get(),
+  ).toBeUndefined()
+  copied.close()
+  expect(
+    existsSync(join(stand.dataDir, 'engine', 'state', 'maintenance')),
+  ).toBe(false)
+  expect(readFileSync(join(fence, 'operation.json'), 'utf8')).toBe(
+    'synthetic-fence',
+  )
 })

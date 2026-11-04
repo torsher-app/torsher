@@ -6,6 +6,10 @@ import { and, asc, eq } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import { libraryFolders, mediaAnalysis, mediaFiles } from '../../db/schema.ts'
 import { absolutePathOf } from '../library/files.ts'
+import {
+  MaintenanceBusyError,
+  withMaintenanceLease,
+} from '../libraryMaintenance/admission.ts'
 import { logFor } from '../logs/index.ts'
 import { onPlaybackActivity, playbackActive } from './activity.ts'
 import { consensus, match } from './match.ts'
@@ -390,20 +394,27 @@ function schedule() {
     controller = new AbortController()
     const signal = controller.signal
     running = (async () => {
+      const deferred: string[] = []
       while (!signal.aborted && !playbackActive() && pending.size) {
         const id = pending.values().next().value!
         pending.delete(id)
         try {
-          await analyze(id, signal)
+          await withMaintenanceLease({ mediaFileId: id, producer: true }, () =>
+            analyze(id, signal))
         }
-        catch {
+        catch (error) {
           if (signal.aborted) {
             pending.add(id)
             break
           }
+          if (error instanceof MaintenanceBusyError) {
+            deferred.push(id)
+            continue
+          }
           logFor('storage').warn({ mediaFileId: id }, 'Media analysis failed')
         }
       }
+      for (const id of deferred) pending.add(id)
     })().finally(() => {
       running = undefined
       controller = undefined

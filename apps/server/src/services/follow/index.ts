@@ -1,3 +1,4 @@
+import { assertMaintenancePolicyChange } from '../libraryMaintenance/admission.ts'
 import type {
   Follow,
   FollowAudio,
@@ -253,6 +254,8 @@ export async function followTitle(
  * ищется и не качается, начатые закачки и библиотека остаются.
  */
 export function unfollowTitle(titleId: string, profileId: string) {
+  assertMaintenancePolicyChange({ titleId })
+
   const follow = followOf(titleId)
 
   if (!follow)
@@ -294,6 +297,8 @@ export interface FollowPatch {
 
 /** Правка из панели */
 export function updateFollow(id: string, patch: FollowPatch) {
+  assertMaintenancePolicyChange({ titleId: followById(id)?.titleId })
+
   const follow = followById(id)
 
   if (!follow)
@@ -331,6 +336,8 @@ export function updateFollow(id: string, patch: FollowPatch) {
 
 /** Удаление слежения целиком; скачанное и библиотека остаются */
 export function deleteFollow(id: string) {
+  assertMaintenancePolicyChange({ titleId: followById(id)?.titleId })
+
   return getDb().delete(follows).where(eq(follows.id, id)).run().changes > 0
 }
 

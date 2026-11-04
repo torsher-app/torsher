@@ -1,3 +1,7 @@
+import {
+  acquireMaintenanceLease,
+  MaintenanceBusyError,
+} from '../libraryMaintenance/admission.ts'
 import type { Torrent } from '../../db/schema.ts'
 import { constants } from 'node:fs'
 import { access, stat } from 'node:fs/promises'
@@ -163,24 +167,38 @@ export async function reconcileTorrentsAfterRestore(): Promise<ReconcileResult> 
   }
 
   for (const row of missing) {
-    const inEngine = live.has(row.infoHash)
-
-    if (row.retention === 'cache') {
-      await deleteTorrent({ ...row, inEngine })
-      counts.deleted++
-      continue
+    let release: () => void
+    try {
+      release = acquireMaintenanceLease({ torrentId: row.id, producer: true })
     }
+    catch (error) {
+      if (error instanceof MaintenanceBusyError)
+        continue
+      throw error
+    }
+    try {
+      const inEngine = live.has(row.infoHash)
 
-    if (!inEngine)
-      continue
+      if (row.retention === 'cache') {
+        await deleteTorrent({ ...row, inEngine })
+        counts.deleted++
+        continue
+      }
 
-    await ignoreNotFound(pauseTorrent(row.infoHash))
-    getDb()
-      .update(torrents)
-      .set({ pauseReason: 'user', inEngine: true })
-      .where(eq(torrents.id, row.id))
-      .run()
-    counts.paused++
+      if (!inEngine)
+        continue
+
+      await ignoreNotFound(pauseTorrent(row.infoHash))
+      getDb()
+        .update(torrents)
+        .set({ pauseReason: 'user', inEngine: true })
+        .where(eq(torrents.id, row.id))
+        .run()
+      counts.paused++
+    }
+    finally {
+      release()
+    }
   }
 
   return counts

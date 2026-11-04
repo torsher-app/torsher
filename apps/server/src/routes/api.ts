@@ -1,3 +1,4 @@
+import { libraryMaintenanceRoutes } from './libraryMaintenance.ts'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
 import { aboutRoutes } from './about.ts'
@@ -72,6 +73,7 @@ export const apiRoutes: FastifyPluginAsyncZod = async (app) => {
   app.register(collectionRoutes, { prefix: '/collections' })
   app.register(torrentRoutes, { prefix: '/torrents' })
   app.register(streamRoutes, { prefix: '/stream' })
+  app.register(libraryMaintenanceRoutes, { prefix: '/library-maintenance' })
   app.register(libraryRoutes, { prefix: '/library' })
   app.register(librariesRoutes, { prefix: '/libraries' })
   app.register(hlsRoutes, { prefix: '/hls' })

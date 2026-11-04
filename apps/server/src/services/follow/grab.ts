@@ -1,3 +1,8 @@
+import { withMaintenanceLease } from '../libraryMaintenance/admission.ts'
+import {
+  hasSuppressed,
+  suppressedFileIndexes,
+} from '../libraryMaintenance/suppression.ts'
 import type {
   Follow,
   FollowEpisode,
@@ -356,7 +361,7 @@ export function pinFirstVoice(
  * что «Скачать». Серий из названия нет в файлах — раздача в чёрный список
  * навсегда, по этим сериям или целиком: её список файлов не изменится.
  */
-export async function startGrab(
+async function startGrabImpl(
   follow: Follow,
   torrent: Torrent,
   candidate: FollowPendingCandidate,
@@ -364,7 +369,12 @@ export async function startGrab(
   options: { ownStudio?: string, now?: Date, isCurrent?: () => boolean } = {},
 ): Promise<GrabResult> {
   const now = options.now ?? new Date()
+  if (hasSuppressed(follow.titleId, episodes))
+    return 'blocked'
   const files = filesFor(torrent, candidate.title, follow.kind, episodes)
+  const held = suppressedFileIndexes(torrent, candidate.title)
+  if ([...files.values()].some(index => held.has(index)))
+    return 'blocked'
   const present = episodes.filter(item => files.has(episodeKey(item)))
   const absent = episodes.filter(item => !files.has(episodeKey(item)))
 
@@ -393,7 +403,10 @@ export async function startGrab(
     const started = await startDownload(
       torrent,
       [...new Set(files.values())],
-      options.isCurrent,
+      () =>
+        !hasSuppressed(follow.titleId, episodes)
+        && (options.isCurrent?.() ?? true),
+      'follow',
     )
     if (!started) {
       restoreUpgrades(follow, upgrades)
@@ -501,13 +514,19 @@ export async function startGrab(
 
   return 'started'
 }
+export function startGrab(...args: Parameters<typeof startGrabImpl>) {
+  return withMaintenanceLease(
+    { titleId: args[0].titleId, torrentId: args[1].id, producer: true },
+    () => startGrabImpl(...args),
+  )
+}
 
 /**
  * Захват кандидата для серий: `.torrent` по ссылке индексатора или magnet,
  * тайтл, выбор файлов, место. Magnet без метаданных — серии «качаются», файлы
  * выберутся на тике, когда раздача будет готова (`continueGrabs`).
  */
-export async function grabCandidate(
+async function grabCandidateImpl(
   follow: Follow,
   candidate: FollowPendingCandidate,
   episodes: EpisodeRef[],
@@ -515,7 +534,8 @@ export async function grabCandidate(
 ): Promise<GrabResult> {
   const now = options.now ?? new Date()
   const isCurrent = () =>
-    followById(follow.id)?.state === 'active'
+    !hasSuppressed(follow.titleId, episodes)
+    && followById(follow.id)?.state === 'active'
     && (options.isCurrent?.() ?? true)
 
   // Проход начался раньше: слежение могли остановить или удалить
@@ -656,6 +676,12 @@ export async function grabCandidate(
     restoreUpgrades(follow, upgradingRows(follow, episodes))
     throw err
   }
+}
+export function grabCandidate(...args: Parameters<typeof grabCandidateImpl>) {
+  return withMaintenanceLease(
+    { titleId: args[0].titleId, producer: true },
+    () => grabCandidateImpl(...args),
+  )
 }
 
 /** Серии, у которых идёт пауза после нехватки места */

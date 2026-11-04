@@ -1,3 +1,5 @@
+import { withMaintenanceLease } from '../libraryMaintenance/admission.ts'
+import { suppressedEpisodes } from '../libraryMaintenance/suppression.ts'
 import type {
   Follow,
   FollowDecision,
@@ -415,7 +417,7 @@ export async function upgradeNeeded(
  * слежение завершается само.
  * Пока идёт захват или апгрейд, слежение ждёт его.
  */
-export async function completeMovie(follow: Follow, now = new Date()) {
+async function completeMovieImpl(follow: Follow, now = new Date()) {
   if (follow.kind !== 'movie' || follow.state !== 'active')
     return false
 
@@ -438,6 +440,12 @@ export async function completeMovie(follow: Follow, now = new Date()) {
     .where(eq(follows.id, follow.id))
     .run()
   return true
+}
+export function completeMovie(...args: Parameters<typeof completeMovieImpl>) {
+  return withMaintenanceLease(
+    { titleId: args[0].titleId, producer: true },
+    () => completeMovieImpl(...args),
+  )
 }
 
 /**
@@ -464,7 +472,7 @@ function takeCandidate(
  * апгрейд серии в библиотеке. Серии раздач, которых нет в TMDB, сначала
  * записываются с трекера — и становятся нужными в том же прогоне.
  */
-export async function decideFollow(
+async function decideFollowImpl(
   follow: Follow,
   releases: FoundRelease[],
   now = new Date(),
@@ -479,7 +487,12 @@ export async function decideFollow(
   forgetRemoved(follow)
 
   const states = await followStates(follow, now)
-  const wanted = states.filter(item => WANTED_STATES.has(item.state))
+  const suppressed = suppressedEpisodes(follow.titleId)
+  const wanted = states.filter(
+    item =>
+      WANTED_STATES.has(item.state)
+      && !suppressed.has(`${item.season}:${item.episode}`),
+  )
   const targets = upgradeTargets(follow, states, now)
 
   if (!wanted.length && !targets.size)
@@ -609,13 +622,19 @@ export async function decideFollow(
     }
   }
 }
+export function decideFollow(...args: Parameters<typeof decideFollowImpl>) {
+  return withMaintenanceLease(
+    { titleId: args[0].titleId, producer: true },
+    () => decideFollowImpl(...args),
+  )
+}
 
 /**
  * Окно кончилось или пауза после нехватки места прошла: отложенные кандидаты
  * захватываются без нового поиска. Серии, которые за это время скачали или
  * оставили перед курсором, кандидата больше не ждут.
  */
-export async function grabPending(follow: Follow, now = new Date()) {
+async function grabPendingImpl(follow: Follow, now = new Date()) {
   const profile = followSourceProfile(follow)
   const rows = getDb()
     .select()
@@ -676,6 +695,12 @@ export async function grabPending(follow: Follow, now = new Date()) {
       isCurrent: () => sameSourceProfile(profile, followSourceProfile(follow)),
     })
   }
+}
+export function grabPending(...args: Parameters<typeof grabPendingImpl>) {
+  return withMaintenanceLease(
+    { titleId: args[0].titleId, producer: true },
+    () => grabPendingImpl(...args),
+  )
 }
 
 /** Серии, чей файл пропал вместе с недоступной папкой библиотеки */

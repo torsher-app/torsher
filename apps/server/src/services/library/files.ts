@@ -1,3 +1,10 @@
+import {
+  acquireMaintenanceLease,
+  assertMaintenanceMutation,
+  MaintenanceBusyError,
+} from '../libraryMaintenance/admission.ts'
+import { suppressedFileIndexes } from '../libraryMaintenance/suppression.ts'
+import { groupForTorrent } from '../libraryMaintenance/provenance.ts'
 import type {
   LibraryFolder,
   MediaFile,
@@ -120,7 +127,15 @@ export function replacementLibraryFiles(torrentId: string) {
  * Скачанный файл закреплённой раздачи иначе лёг бы второй версией.
  */
 export function heldFileIndexes(torrentId: string) {
-  const held = new Set<number>()
+  const torrent = getDb()
+    .select()
+    .from(torrents)
+    .where(eq(torrents.id, torrentId))
+    .get()
+  const held
+    = torrent && !groupForTorrent(torrentId)?.manualProtection
+      ? suppressedFileIndexes(torrent)
+      : new Set<number>()
 
   for (const row of torrentLibraryFiles(torrentId)) {
     if (row.fileIndex !== null)
@@ -151,6 +166,7 @@ export function heldFileIndexes(torrentId: string) {
  * целиком; `null` — замена снята, остаётся прежний файл.
  */
 export function setReplacement(mediaFileId: string, ref: MediaFileRef | null) {
+  assertMaintenanceMutation({ mediaFileId })
   getDb()
     .update(mediaFiles)
     .set({
@@ -175,6 +191,8 @@ export function relinkMediaFiles(
 ) {
   const db = getDb()
 
+  assertMaintenanceMutation({ torrentId: oldId })
+  assertMaintenanceMutation({ torrentId: newId })
   for (const row of torrentLibraryFiles(oldId)) {
     const fileIndex
       = row.fileIndex === null ? undefined : map.get(row.fileIndex)
@@ -319,26 +337,43 @@ export async function checkManagedFiles() {
   let missing = 0
 
   for (const row of rows) {
-    const folder = folders.get(row.folderId)!
-    const exists = await stat(absolutePathOf(folder, row)).then(
-      () => true,
-      () => false,
-    )
-
-    if (exists && row.state === 'missing') {
-      getDb()
-        .update(mediaFiles)
-        .set({ state: 'present', missingSince: null })
-        .where(eq(mediaFiles.id, row.id))
-        .run()
+    let maintenanceRelease: () => void
+    try {
+      maintenanceRelease = acquireMaintenanceLease({
+        mediaFileId: row.id,
+        producer: true,
+      })
     }
-    else if (!exists && row.state === 'present') {
-      missing++
-      getDb()
-        .update(mediaFiles)
-        .set({ state: 'missing', missingSince: new Date() })
-        .where(eq(mediaFiles.id, row.id))
-        .run()
+    catch (error) {
+      if (error instanceof MaintenanceBusyError)
+        continue
+      throw error
+    }
+    try {
+      const folder = folders.get(row.folderId)!
+      const exists = await stat(absolutePathOf(folder, row)).then(
+        () => true,
+        () => false,
+      )
+
+      if (exists && row.state === 'missing') {
+        getDb()
+          .update(mediaFiles)
+          .set({ state: 'present', missingSince: null })
+          .where(eq(mediaFiles.id, row.id))
+          .run()
+      }
+      else if (!exists && row.state === 'present') {
+        missing++
+        getDb()
+          .update(mediaFiles)
+          .set({ state: 'missing', missingSince: new Date() })
+          .where(eq(mediaFiles.id, row.id))
+          .run()
+      }
+    }
+    finally {
+      maintenanceRelease()
     }
   }
 

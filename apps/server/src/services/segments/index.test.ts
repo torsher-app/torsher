@@ -20,6 +20,7 @@ import {
   mediaFiles,
 } from '../../db/schema.ts'
 import { trackStream } from '../storage/streams.ts'
+import { deleteSetting, setSetting } from '../settings/index.ts'
 import { playbackActive, trackPlayback } from './activity.ts'
 import {
   identity,
@@ -120,6 +121,20 @@ afterEach(async () => {
 const wait = vi.waitFor
 
 describe('revisioned background analysis', () => {
+  it('defers media analysis until the owner clears a maintenance restore hold', async () => {
+    const file = await add(1)
+    setSetting('maintenanceRestoreHold', true)
+    try {
+      queueAnalysis(file.id)
+      await vi.advanceTimersByTimeAsync(30_000)
+      expect(credits).not.toHaveBeenCalled()
+    }
+    finally {
+      deleteSetting('maintenanceRestoreHold')
+    }
+    await vi.advanceTimersByTimeAsync(30_000)
+    await wait(() => expect(credits).toHaveBeenCalled())
+  })
   it('reads only current version, bytes and identity, with cascade deletion', async () => {
     const file = await add(1)
     getDb()

@@ -1,3 +1,16 @@
+import {
+  MaintenanceBusyError,
+  withMaintenanceLease,
+} from '../libraryMaintenance/admission.ts'
+import {
+  episodesOf,
+  groupForTorrent,
+  protectReplacement,
+  recordPlaced,
+  recordSeeding,
+  recordSourceInventory,
+} from '../libraryMaintenance/provenance.ts'
+import { hasSuppressed } from '../libraryMaintenance/suppression.ts'
 import type {
   LibraryFolder,
   MediaFileRef,
@@ -327,6 +340,20 @@ async function placeVideo(
   if (!row)
     return
 
+  if (!target.adopt) {
+    await recordPlaced({
+      torrent,
+      source,
+      sourceRoot: torrentDir(torrent),
+      path: absolute,
+      root: folder.path,
+      fileIndex: planned.fileIndex,
+      mediaFileId: row.id,
+      episodes: episodesOf(row),
+      linkMode,
+    })
+  }
+
   logFor('storage').info(
     { torrentId: torrent.id, fileIndex: planned.fileIndex, linkMode },
     'Library file added',
@@ -364,7 +391,7 @@ async function releaseReplaced(ref: MediaFileRef) {
   )
 
   if (rest.length)
-    await downloadFiles(torrent, rest)
+    await downloadFiles(torrent, rest, { origin: 'preserve' })
   else await setRetention(torrent, 'cache')
 }
 
@@ -407,6 +434,9 @@ async function replaceVersions(torrent: Torrent, state: EngineTorrentState) {
         && row.fileIndex !== null
         ? { torrentId: row.torrentId, fileIndex: row.fileIndex }
         : undefined
+    if (torrent.titleId && hasSuppressed(torrent.titleId, episodesOf(row)))
+      continue
+    protectReplacement(row.torrentId, torrent.id)
     const upgrade = row.torrentId !== torrent.id
     const extension = extensionOf(torrent.files![fileIndex]!.path)
     const relPath
@@ -486,8 +516,15 @@ async function placeSidecars(torrent: Torrent, state: EngineTorrentState) {
   for (const video of torrentLibraryFiles(torrent.id)) {
     const folder = folders.get(video.folderId)
 
-    if (video.fileIndex === null || !folder)
+    if (
+      video.fileIndex === null
+      || !folder
+      || (!groupForTorrent(torrent.id)?.manualProtection
+        && torrent.titleId
+        && hasSuppressed(torrent.titleId, episodesOf(video)))
+    ) {
       continue
+    }
 
     const taken = new Set<string>()
 
@@ -528,7 +565,19 @@ async function placeSidecars(torrent: Torrent, state: EngineTorrentState) {
         if (!source)
           continue
 
-        await placeFile(source, absolute)
+        const linkMode = await placeFile(source, absolute)
+        await recordPlaced({
+          torrent,
+          source,
+          sourceRoot: torrentDir(torrent),
+          path: absolute,
+          root: folder.path,
+          fileIndex: sidecar.fileIndex,
+          mediaFileId: video.id,
+          episodes: episodesOf(video),
+          linkMode,
+          sidecar: true,
+        })
       }
       catch (err) {
         logFor('storage').warn(
@@ -647,7 +696,7 @@ async function linkOther(
 }
 
 /** Раскладывает раздачу; `false` — каталог недоступен, пройти её ещё раз */
-async function linkTorrent(
+async function linkTorrentImpl(
   folder: LibraryFolder,
   torrent: Torrent,
   state: EngineTorrentState,
@@ -663,7 +712,16 @@ async function linkTorrent(
     items.filter(
       item =>
         !placed.has(item.fileIndex)
-        && isComplete(torrent, state, item.fileIndex),
+        && (groupForTorrent(torrent.id)?.manualProtection
+          || !hasSuppressed(
+            torrent.titleId!,
+            episodesOf({
+              season: item.episode?.season ?? 0,
+              episode: item.episode?.episode ?? 0,
+              episodeTo: item.episode?.episodeTo ?? null,
+            }),
+          ))
+          && isComplete(torrent, state, item.fileIndex),
     )
 
   if (ready(planned).length || (kind === 'series' && !planned.length)) {
@@ -700,8 +758,18 @@ async function linkTorrent(
 
   await replaceVersions(torrent, state)
   await placeSidecars(torrent, state)
+  await recordSourceInventory(torrent, state)
+  recordSeeding(torrent, state)
   await releaseCopies(torrent, planned)
   return true
+}
+function linkTorrent(...args: Parameters<typeof linkTorrentImpl>) {
+  return withMaintenanceLease({ torrentId: args[1].id, producer: true }, () =>
+    linkTorrentImpl(...args)).catch((error) => {
+    if (error instanceof MaintenanceBusyError)
+      return false
+    throw error
+  })
 }
 
 // Что было у раздачи на прошлом удачном проходе: не изменилось — разбирать

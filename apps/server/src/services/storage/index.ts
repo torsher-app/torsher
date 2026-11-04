@@ -1,3 +1,9 @@
+import { reconcileSourceEviction } from '../libraryMaintenance/provenance.ts'
+import {
+  acquireMaintenanceLease,
+  MaintenanceBusyError,
+  withMaintenanceLease,
+} from '../libraryMaintenance/admission.ts'
 import type { Torrent } from '../../db/schema.ts'
 import type { EngineTorrentState } from '../engine/index.ts'
 import type {
@@ -222,7 +228,7 @@ function update(id: string, values: Partial<typeof torrents.$inferInsert>) {
 }
 
 /** Убирает раздачу из движка вместе с файлами; строка и позиция просмотра остаются */
-async function evict(row: Torrent) {
+async function evictImpl(row: Torrent) {
   // План строился по снимку, а поток мог открыться, пока вытеснялись другие
   if (isStreaming(row.id) || isMovingTorrent(row.id))
     return false
@@ -235,6 +241,7 @@ async function evict(row: Torrent) {
       throw err
   }
 
+  await reconcileSourceEviction(row.id)
   update(row.id, {
     inEngine: false,
     selectedFiles: null,
@@ -243,6 +250,14 @@ async function evict(row: Torrent) {
     pauseReason: null,
   })
   return true
+}
+function evict(...args: Parameters<typeof evictImpl>) {
+  return withMaintenanceLease({ torrentId: args[0].id, producer: true }, () =>
+    evictImpl(...args)).catch((error) => {
+    if (error instanceof MaintenanceBusyError)
+      return false
+    throw error
+  })
 }
 
 /**
@@ -281,31 +296,48 @@ async function balanceDownloads(
   const resumed: string[] = []
 
   for (const row of rows) {
-    const live = lives.get(row.infoHash)
+    let maintenanceRelease: () => void
+    try {
+      maintenanceRelease = acquireMaintenanceLease({
+        torrentId: row.id,
+        producer: true,
+      })
+    }
+    catch (error) {
+      if (error instanceof MaintenanceBusyError)
+        continue
+      throw error
+    }
+    try {
+      const live = lives.get(row.infoHash)
 
-    if (!live || evicted.has(row.id))
-      continue
+      if (!live || evicted.has(row.id))
+        continue
 
-    // Просмотру место уже выделено перед стартом: его поток не останавливаем
-    const downloading
-      = !live.paused
-        && live.wantedCompleted < live.bytesWanted
-        && !isStreaming(row.id)
+      // Просмотру место уже выделено перед стартом: его поток не останавливаем
+      const downloading
+        = !live.paused
+          && live.wantedCompleted < live.bytesWanted
+          && !isStreaming(row.id)
 
-    if (free < minFree && downloading) {
-      if (await ignoreMissing(pauseTorrent(row.infoHash))) {
-        update(row.id, { pauseReason: 'storage' })
-        paused.push(row.id)
+      if (free < minFree && downloading) {
+        if (await ignoreMissing(pauseTorrent(row.infoHash))) {
+          update(row.id, { pauseReason: 'storage' })
+          paused.push(row.id)
+        }
+      }
+      else if (
+        free >= minFree + RESUME_MARGIN
+        && row.pauseReason === 'storage'
+      ) {
+        if (await ignoreMissing(resumeTorrent(row.infoHash))) {
+          update(row.id, { pauseReason: null })
+          resumed.push(row.id)
+        }
       }
     }
-    else if (
-      free >= minFree + RESUME_MARGIN
-      && row.pauseReason === 'storage'
-    ) {
-      if (await ignoreMissing(resumeTorrent(row.infoHash))) {
-        update(row.id, { pauseReason: null })
-        resumed.push(row.id)
-      }
+    finally {
+      maintenanceRelease()
     }
   }
 

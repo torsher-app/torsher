@@ -90,7 +90,7 @@ async function deselect(torrentId: string, files: Set<number>) {
   )
 
   if (rest.length)
-    await downloadFiles(torrent, rest)
+    await downloadFiles(torrent, rest, { origin: 'preserve' })
   else await setRetention(torrent, 'cache')
 }
 

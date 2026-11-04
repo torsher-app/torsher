@@ -1,4 +1,18 @@
 import { startAnalysis, stopAnalysis } from './services/segments/index.ts'
+import {
+  createMaintenanceStartup,
+  libraryStartupWithoutEngine,
+} from './services/libraryMaintenance/startup.ts'
+import {
+  initializeMaintenanceRestoreHold,
+  onMaintenanceReviewed,
+  restoreHeld,
+} from './services/libraryMaintenance/restore.ts'
+import {
+  recoverMaintenance,
+  startMaintenanceScheduler,
+  stopMaintenanceScheduler,
+} from './services/libraryMaintenance/executor.ts'
 import type { LogLevel } from './services/logs/index.ts'
 import process from 'node:process'
 import { createApp } from './app.ts'
@@ -117,6 +131,8 @@ catch (err) {
   throw err
 }
 
+initializeMaintenanceRestoreHold(restoreResult.applied)
+
 function savedLogLevel() {
   const saved = getSetting<string>('logLevel')
 
@@ -175,16 +191,14 @@ purgeTmdbData()
 setInterval(purgeTmdbData, DAY_MS).unref()
 purgeImports()
 setInterval(purgeImports, DAY_MS).unref()
-await cleanTranscodes()
-await cleanupOrphanThumbs()
+// Файловые producers запускаются после recovery barrier.
 
 // Своя раскладка: строка библиотеки, проверка хардлинков и сверка с диском
-managedFolder()
-await checkLinkMode()
+// managedFolder/checkLinkMode также выполняются после сверки.
 
 // Перенос папок, прерванный остановкой, продолжается с того же места. Не по
 // готовности движка: перенос библиотеки его не ждёт, загрузки ждут сами
-resumeMoves()
+// Запускается после восстановления maintenance fence в startLibraryProducers().
 
 // Каталоги загрузок из панели и прежние каталоги раздач прячутся в журнале,
 // как каталог окружения
@@ -195,9 +209,8 @@ function refreshScrub() {
 refreshScrub()
 onStoragePathsChanged(refreshScrub)
 
+let producersStarted = false
 const FOLDER_SCAN_MS = 12 * 60 * 60 * 1000
-
-startAnalysis()
 
 function checkLibrary() {
   checkManagedFiles()
@@ -205,8 +218,10 @@ function checkLibrary() {
     .catch(err => logFor('storage').error({ err }, 'Library check failed'))
 }
 
-checkLibrary()
-setInterval(checkLibrary, DAY_MS).unref()
+setInterval(() => {
+  if (!restoreHeld() && producersStarted)
+    checkLibrary()
+}, DAY_MS).unref()
 
 // Раздачи без тайтла (добавленные в панели) узнаются по имени: новые — когда
 // пришёл список файлов, прежние — сейчас; узнанные ложатся в библиотеку
@@ -214,7 +229,7 @@ onTorrentReady((torrent) => {
   if (!torrent.titleId)
     void queueRecognition(torrent.id)
 })
-startRecognition(() => void syncLibrary())
+// Recognition запускается за recovery barrier.
 
 // Подключённые папки: скан при старте и раз в 12 ч — страховка к
 // наблюдателю; новые файлы «Фильмов и сериалов» идут на сопоставление,
@@ -230,8 +245,39 @@ onFolderScanned((folder, library, result) => {
 
   void watchFolder(folder, library)
 })
-void scanAllFolders().then(queueUnmatched)
-setInterval(() => void scanAllFolders(), FOLDER_SCAN_MS).unref()
+setInterval(() => {
+  if (!restoreHeld() && producersStarted)
+    void scanAllFolders()
+}, FOLDER_SCAN_MS).unref()
+async function startLibraryProducers() {
+  if (producersStarted || restoreHeld())
+    return
+  producersStarted = true
+  try {
+    await cleanTranscodes()
+    await cleanupOrphanThumbs()
+    if (restoreHeld()) {
+      producersStarted = false
+      return
+    }
+    managedFolder()
+    await checkLinkMode()
+    if (restoreHeld()) {
+      producersStarted = false
+      return
+    }
+  }
+  catch (error) {
+    producersStarted = false
+    throw error
+  }
+  startAnalysis()
+  resumeMoves()
+  checkLibrary()
+  startRecognition(() => void syncLibrary())
+  void scanAllFolders().then(queueUnmatched)
+  startFollowScheduler()
+}
 
 // Пробы видеокарты и замер процессора — в фоне: первому перекодированию они
 // уже готовы, а прямой просмотр их не ждёт
@@ -256,9 +302,10 @@ const app = createApp(
 // Заодно раскладывает докачанное в библиотеку и применяет правила раздачи:
 // докачанный выбор начинает отсчёт «раздавать N часов»
 function checkStorage() {
-  if (!isEngineReady())
+  if (!isEngineReady() || !producersStarted || restoreHeld())
     return
 
+  resumeMoves()
   enforceStorage()
     .catch(err => logFor('storage').error({ err }, 'Storage check failed'))
     .finally(() => {
@@ -276,38 +323,58 @@ function checkStorage() {
 // места: иначе пауза из-за места считала бы его закачкой
 let reconcilePending = restoreResult.applied
 
-const engine = createEngine(logFor('engine'), () => {
-  // Сессия движка новее восстановленной базы: сверяем один раз
-  if (reconcilePending) {
-    reconcilePending = false
-    reconcileTorrentsAfterRestore()
-      .then((result) => {
-        if (result.skipped) {
-          addRestoreWarningsNow([{ kind: result.skipped }])
-          logFor('backups').warn(
-            'Torrents not reconciled after restore: downloads folder is unavailable',
-          )
-          return
-        }
-
+const maintenanceStartup = createMaintenanceStartup({
+  ready: isEngineReady,
+  held: restoreHeld,
+  recover: recoverMaintenance,
+  library: startLibraryProducers,
+  safeWithoutEngine: libraryStartupWithoutEngine,
+  resume: async () => {
+    if (reconcilePending) {
+      const result = await reconcileTorrentsAfterRestore()
+      reconcilePending = false
+      if (result.skipped) {
+        addRestoreWarningsNow([{ kind: result.skipped }])
+        logFor('backups').warn(
+          'Torrents not reconciled after restore: downloads folder is unavailable',
+        )
+      }
+      else {
         const { skipped: _skipped, ...counts } = result
-
         addRestoreWarningsNow([
           { kind: 'torrents_reconciled', params: counts },
         ])
         logFor('backups').info(counts, 'Torrents reconciled after restore')
-      })
-      .catch(err =>
-        logFor('backups').error({ err }, 'Torrent reconcile failed'),
-      )
-  }
-
-  resumeResolving().catch(err =>
-    logFor('engine').error({ err }, 'Resolve failed'),
+      }
+    }
+    if (restoreHeld())
+      return
+    await startLibraryProducers()
+    if (restoreHeld())
+      return
+    startMaintenanceScheduler()
+    await resumeResolving().catch(err =>
+      logFor('engine').error({ err }, 'Resolve failed'),
+    )
+    if (restoreHeld())
+      return
+    await clearStreamSelections().catch(err =>
+      logFor('engine').error({ err }, 'Selection cleanup failed'),
+    )
+    checkStorage()
+  },
+})
+function startupFailed() {
+  logFor('storage').error(
+    'Maintenance recovery unavailable; producers remain held',
   )
-  clearStreamSelections()
-    .catch(err => logFor('engine').error({ err }, 'Selection cleanup failed'))
-    .finally(checkStorage)
+}
+void maintenanceStartup.initialize().catch(startupFailed)
+onMaintenanceReviewed(() => {
+  void maintenanceStartup.reviewed().catch(startupFailed)
+})
+const engine = createEngine(logFor('engine'), () => {
+  void maintenanceStartup.engineReady().catch(startupFailed)
 })
 
 setInterval(checkStorage, STORAGE_CHECK_MS).unref()
@@ -334,6 +401,7 @@ const shutdown = createShutdown({
     async () => logFor('server').info('Server is stopping'),
     async () => stopBackupScheduler(),
     async () => stopFollowScheduler(),
+    async () => stopMaintenanceScheduler(),
     // ffmpeg перепаковки тоже дочерний: его сегменты после выхода не нужны
     stopAnalysis,
     stopAllSessions,
@@ -374,7 +442,6 @@ if (restoreResult.applied)
   finalizeRestoreNow()
 
 startBackupScheduler()
-startFollowScheduler()
 void engine.start()
 startNotificationMonitor()
 checkHosts()

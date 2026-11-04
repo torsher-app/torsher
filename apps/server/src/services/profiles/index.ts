@@ -1,3 +1,4 @@
+import { assertMaintenancePolicyChange } from '../libraryMaintenance/admission.ts'
 import type { PlayerSettings, Profile } from '../../db/schema.ts'
 import { and, asc, desc, eq, inArray, lt, notExists, sql } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
@@ -87,6 +88,8 @@ export function ensureDefaultProfile(name: string) {
 }
 
 export function createProfile(input: ProfileInput & { pinHash?: string }) {
+  assertMaintenancePolicyChange({ global: true })
+
   const last = getDb()
     .select({ position: profiles.position })
     .from(profiles)
@@ -160,6 +163,8 @@ export function verifyPin(profile: Profile, pin: string | undefined) {
  * удаляются вместе с профилем (каскад).
  */
 export function deleteProfile(id: string, moveTo?: string) {
+  assertMaintenancePolicyChange({ global: true })
+
   getDb().transaction((tx) => {
     const count = tx
       .select({ count: sql<number>`count(*)` })

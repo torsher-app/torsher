@@ -1014,7 +1014,12 @@
         "follow_feed_limited": {
           "one": "Indexer “{name}” has been limiting or failing requests for over 6 hours: Following can't see new releases",
           "many": "{n} indexer has been limiting or failing requests for over 6 hours: Following can't see new releases | {n} indexers have been limiting or failing requests for over 6 hours: Following can't see new releases"
-        }
+        },
+        "maintenance_failed": {
+          "one": "Library maintenance needs review: {name}",
+          "many": "Library maintenance: {count} operations need review"
+        },
+        "maintenance_restore_hold": "Review library maintenance operations after restoring the backup."
       },
       "tiles": {
         "downloads": {
@@ -4000,6 +4005,10 @@
       "test": {
         "title": "Torsher test notification",
         "text": "This channel works: Torsher notifications will arrive here."
+      },
+      "maintenance_completed": {
+        "title": "Library maintenance completed",
+        "text": "Deleted file groups: {count}."
       }
     },
     "overflow": {

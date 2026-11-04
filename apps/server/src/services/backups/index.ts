@@ -1,3 +1,7 @@
+import {
+  assertMaintenancePolicyChange,
+  MaintenanceBusyError,
+} from '../libraryMaintenance/admission.ts'
 import type { Readable } from 'node:stream'
 import type { BackupSecret } from './restore-request.ts'
 import type { RestoreWarning } from './restore-state.ts'
@@ -371,12 +375,18 @@ export async function requestRestore(
     paths: backupPaths(),
     preRestore: () =>
       options.firstRun ? Promise.resolve() : createBackupNow('pre-restore'),
-    beforePending: options.firstRun
-      ? () => {
-          if (!needsSetup())
-            throw new BackupError('account_created')
-        }
-      : undefined,
+    beforePending: () => {
+      try {
+        assertMaintenancePolicyChange({ global: true })
+      }
+      catch (error) {
+        if (error instanceof MaintenanceBusyError)
+          throw new BackupError('busy')
+        throw error
+      }
+      if (options.firstRun && !needsSetup())
+        throw new BackupError('account_created')
+    },
   }).then(
     () => {
       runtime.restore = { state: 'pending', backup: backupName }

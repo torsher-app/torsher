@@ -1,3 +1,4 @@
+import { acquireMaintenanceLease } from '../services/libraryMaintenance/admission.ts'
 import type { FastifyRequest } from 'fastify'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { Readable } from 'node:stream'
@@ -78,6 +79,10 @@ export const streamRoutes: FastifyPluginAsyncZod = async (app) => {
           .send({ message: 'Torrent metadata is not ready' })
       }
 
+      const releaseMaintenance = acquireMaintenanceLease({
+        torrentId: torrent.id,
+      })
+      reply.raw.once('close', releaseMaintenance)
       const controller = new AbortController()
       // Пока поток открыт, раздачу не вытесняют и не ставят на паузу из-за места
       const release = trackStream(torrent.id)

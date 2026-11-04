@@ -1,3 +1,4 @@
+import { engineMaintenanceToken } from './maintenanceAuth.ts'
 import type { FastifyBaseLogger } from 'fastify'
 import type { ChildProcess } from 'node:child_process'
 import type { EngineUnavailableKind } from './client.ts'
@@ -150,7 +151,11 @@ function crashDetails(tail: string[]) {
 function defaultSpawn(command: string, args: string[]) {
   return spawn(command, args, {
     stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, NO_COLOR: '1' },
+    env: {
+      ...process.env,
+      NO_COLOR: '1',
+      TORSHER_ENGINE_MAINTENANCE_TOKEN: engineMaintenanceToken,
+    },
   })
 }
 

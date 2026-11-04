@@ -1,3 +1,8 @@
+import {
+  assertMaintenanceMutation,
+  MaintenanceBusyError,
+  withMaintenanceLease,
+} from '../libraryMaintenance/admission.ts'
 import type {
   LibraryFolder,
   MediaFile,
@@ -236,7 +241,7 @@ function managedFolderFor(target: string) {
  * Сменить папку. «Только новые» — новое пишется в новую папку, старое
  * работает на месте. «Перенести» — фоновое задание переносит всё в новую.
  */
-export async function changeStoragePath(
+async function changeStoragePathImpl(
   kind: StorageKind,
   path: string | null,
   mode: 'new_only' | 'move',
@@ -252,6 +257,12 @@ export async function changeStoragePath(
   finally {
     starting = false
   }
+}
+export function changeStoragePath(
+  ...args: Parameters<typeof changeStoragePathImpl>
+) {
+  return withMaintenanceLease({ global: true, producer: true }, () =>
+    changeStoragePathImpl(...args))
 }
 
 async function applyStoragePath(
@@ -287,7 +298,7 @@ async function applyStoragePath(
 }
 
 /** Перенести в действующую папку всё, что лежит в прежних */
-export async function startMove(kind: StorageKind) {
+async function startMoveImpl(kind: StorageKind) {
   if (isBusy())
     throw new StorageMoveError('busy')
 
@@ -299,6 +310,10 @@ export async function startMove(kind: StorageKind) {
   finally {
     starting = false
   }
+}
+export function startMove(...args: Parameters<typeof startMoveImpl>) {
+  return withMaintenanceLease({ global: true, producer: true }, () =>
+    startMoveImpl(...args))
 }
 
 async function beginMove(kind: StorageKind) {
@@ -346,6 +361,14 @@ export function cancelMove() {
 
 /** Задания, прерванные остановкой сервера, продолжаются с того же места */
 export function resumeMoves() {
+  try {
+    assertMaintenanceMutation({ global: true, producer: true })
+  }
+  catch (error) {
+    if (error instanceof MaintenanceBusyError)
+      return
+    throw error
+  }
   if (isBusy())
     return
 
@@ -383,7 +406,7 @@ function run(id: string) {
   })
 }
 
-async function runMove(state: Running) {
+async function runMoveImpl(state: Running) {
   const row = moveRow(state.id)
 
   if (!row)
@@ -418,6 +441,10 @@ async function runMove(state: Running) {
     forgetLibraryPasses()
     void syncLibrary()
   }
+}
+function runMove(...args: Parameters<typeof runMoveImpl>) {
+  return withMaintenanceLease({ global: true, producer: true }, () =>
+    runMoveImpl(...args))
 }
 
 function itemDone(state: Running, bytes: number) {

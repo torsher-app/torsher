@@ -1,3 +1,4 @@
+import { writeMaintenanceRestoreHold } from '../libraryMaintenance/restore.ts'
 import type { Buffer } from 'node:buffer'
 import type { EncHeader, KeyMaterial } from './crypto.ts'
 import type { SnapshotFacts } from './snapshot.worker.ts'
@@ -243,6 +244,7 @@ export async function prepareRestore(input: {
       await restoreRequestDeps.checkpoint()
       // Синхронно с записью `pending`: между проверкой и записью ничего не вклинится
       input.beforePending?.()
+      writeMaintenanceRestoreHold(paths.dataDir)
 
       writeRestoreState(paths.statePath, {
         state: 'pending',
