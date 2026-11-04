@@ -1,9 +1,14 @@
 name: Deploy site
 
 # Builds torsher.app (landing and docs) and uploads it to the web server.
-# Runs only by hand: publishing the site is a deliberate step
+# Stable releases supply their commit; manual runs use the selected main revision
 on:
   workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Commit of the latest stable release (leave empty to deploy main)
+        type: string
+        required: false
 
 permissions:
   contents: read
@@ -13,13 +18,46 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  release-source:
+    if: inputs.release_sha != ''
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.source.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ inputs.release_sha }}
+        run: |
+          # A newer release may have shipped while this deployment was queued.
+          latest=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)
+          sha=$(git rev-parse --verify "refs/tags/$latest^{commit}")
+          if [ "$sha" != "$RELEASE_SHA" ]; then
+            echo "Skipping site deployment: the latest release is $latest ($sha)." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          # Only code already merged into main may run with the production environment.
+          git merge-base --is-ancestor "$sha" "$GITHUB_SHA"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
   deploy:
+    needs: release-source
+    if: >-
+      !cancelled() && github.ref == 'refs/heads/main'
+      && (inputs.release_sha == '' || needs.release-source.outputs.sha != '')
     runs-on: ubuntu-latest
     # The deploy secrets live in an environment allowed only for main:
     # a run from any other branch never gets the server key
     environment: site-production
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release-source.outputs.sha || github.sha }}
+          persist-credentials: false
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
