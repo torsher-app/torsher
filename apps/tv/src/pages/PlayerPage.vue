@@ -64,6 +64,7 @@ import {
   mediaFailureAction,
   nextRetry,
   PAUSED_METADATA_MS,
+  playerPrompt,
   settleBudget,
   stallAction,
   streamLive,
@@ -529,6 +530,9 @@ const showsUpNext = computed(
     }),
 )
 
+// Одна и та же подсказка рисуется поверх видео и принимает OK/Back пульта.
+const prompt = computed(() => playerPrompt(showsUpNext.value, showsSkip.value))
+
 // Без автоперехода отсчёта нет: плашка ждёт OK
 const upNextCountdown = computed(() => {
   if (!playerSettings.value.autoNext)
@@ -882,12 +886,12 @@ function onKey(action: KeyAction, event: KeyboardEvent) {
     if (panel.value === 'settings' && settingsPanel.value?.back())
       return true
 
-    if (showsSkip.value && !osd.visible.value) {
+    if (prompt.value === 'skip' && !osd.visible.value) {
       dismissedSkip.value = activeSkip.value!.id
       return true
     }
 
-    if (showsUpNext.value && !osd.visible.value) {
+    if (prompt.value === 'upNext' && !osd.visible.value) {
       upNextDismissed.value = true
       return true
     }
@@ -949,9 +953,9 @@ function onKey(action: KeyAction, event: KeyboardEvent) {
 
   // Плашка «Следующая серия»: OK — сразу к ней
   if (hidden && action.type === 'enter') {
-    if (showsSkip.value)
+    if (prompt.value === 'skip')
       skipCurrent()
-    else if (showsUpNext.value)
+    else if (prompt.value === 'upNext')
       void playNext()
     else toggle()
 
@@ -1666,12 +1670,12 @@ onBeforeUnmount(() => {
       />
 
       <PlayerSkip
-        v-if="showsSkip && !osd.visible.value"
+        v-if="prompt === 'skip' && !osd.visible.value"
         :label="skipLabel!"
         @skip="skipCurrent"
       />
       <PlayerUpNext
-        v-if="showsUpNext && upNext && !showsSkip"
+        v-if="prompt === 'upNext' && upNext"
         :code="episodeCode(upNext.season, upNext.episode)"
         :title="upNext.title"
         :still="upNext.still"
