@@ -1,6 +1,6 @@
 ---
 title: Logs
-description: "The server log in the panel: levels, sources, search, live updates, verbose logs and downloading the log for a bug report."
+description: "Read and filter server logs, download a problem report, and manage viewer action diagnostics."
 ---
 
 # Logs
@@ -15,7 +15,7 @@ What the page shows and how to narrow it down. How to collect a log for a bug re
 
 Entries are grouped by day. A red mark is an error, a yellow one is a warning. An entry that repeats is shown once with how many times it repeated. Click an entry to see its time, source, level and details, and to copy it.
 
-The page keeps only recent entries. Earlier ones are in the downloaded log.
+The page shows recent entries. The downloaded log may include older ones that are no longer visible in the list.
 
 ## Follow one case
 
@@ -32,12 +32,35 @@ When you scroll down the list, new entries don't push it: a button at the top sa
 
 A problem in <Ui k="panel.nav.overview" /> about engine crashes opens this page already filtered to the engine's warnings.
 
-## Download and verbose logs
+## Download a problem report
 
-- **<Ui k="panel.logs.download.action" />** saves the whole log as a text file.
-- **<Ui k="panel.logs.verbose.label" />,** in the <Ui k="panel.logs.more" /> menu, also records requests and internal steps. Turn it on, reproduce the problem, download the log, and turn it off again. When the `LOG_LEVEL` variable is set, it decides the level and the switch is unavailable.
+Choose <Ui k="panel.logs.download.menu panel.logs.report.action" /> when you need help with a problem. It saves one text file containing:
 
-See [Logs and diagnostics](/docs/maintain/logs) for where the log is kept, the container log, and what to put in a bug report.
+- Server and app versions, along with available device and playback details.
+- Recent viewer actions, such as choosing what to watch, seeking and moving to the next episode.
+- Errors and related server events, grouped to help follow what happened.
+
+The report includes available history from the last seven days. Older entries can be removed sooner if the log fills up. If some history could not be included, the download shows a warning and the file explains what is missing. Some device details may also be unavailable.
+
+Only the server owner can download reports. Nothing is sent automatically. Passwords, typed input, file names and raw error messages are excluded, but episode numbers and playback positions can reveal viewing activity. Review the file before sharing it.
+
+You do not need to enable verbose logs to create a report. If the report option is missing on an older server, download the regular log instead. See [what to include in a bug report](/docs/maintain/logs#what-to-put-in-a-bug-report).
+
+## Regular and verbose logs
+
+<Ui k="panel.logs.download.menu panel.logs.download.action" /> saves the regular log. Use it when you want to read the server's messages or have been asked for more detail about a problem.
+
+<Ui k="panel.logs.verbose.label" /> in the <Ui k="panel.logs.more" /> menu adds requests and internal steps to new entries. Turn it on before reproducing a problem, then turn it off again. See [how to collect more detail](/docs/maintain/logs#see-more-detail), including what to do when the switch is unavailable.
+
+## Viewer action diagnostics
+
+<Ui k="panel.logs.diagnostics.label" /> in the <Ui k="panel.logs.more" /> menu is on by default. It records actions from the TV showcase on your own server, helping explain problems such as resuming at the wrong position or choosing an unexpected next episode.
+
+Turn it off to stop recording new viewer actions. Existing entries and previously downloaded files are kept. A brief notification confirms the change; the checkbox shows the current setting.
+
+To inspect these events, select <Ui k="panel.logs.sources.client" /> in the source filter. Click an entry's id to follow related events. <Ui k="panel.logs.diagnostics.duplicate" /> means the same event was delivered again, rather than another action by the viewer.
+
+Warnings above the list explain when collection or storage is not working, or when events are missing. A report can help reconstruct a problem, but it may not contain every action before a connection failure or sudden shutdown.
 
 ## Next
 
