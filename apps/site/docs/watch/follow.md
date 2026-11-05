@@ -82,7 +82,7 @@ Want to watch an episode before Torsher takes it? <Ui k="title.watch" /> streams
 
 ## Check
 
-- A new episode you haven't watched yet shows up first in <Ui k="home.rows.continue" /> on the home screen, with a bell and <Ui k="follow.newEpisode" />. Select it to start watching. If you remove the card from the row, it comes back with the next new episode.
+- A title with a new episode appears first in <Ui k="home.rows.continue" />, with a bell. If you have watched it in Torsher, the card resumes your unfinished episode or the next unwatched episode in order. The bell reports an update; it does not skip intervening episodes. Without playback history, it opens the new episode. If you remove the card, it comes back with the next update.
 - The line under the buttons on the title page shows what Torsher is doing and names the episode by its code, such as S2E6: an episode that is out and being searched for, an episode ready to watch, the next episode and its date, what is downloading from which episode on, or what release an episode is waiting for and until when.
 - Episodes on the title page show their state: <Ui k="follow.episode.in_library" />, <Ui k="follow.episode.ready" />, <Ui k="follow.episode.downloading" />, <Ui k="follow.episode.searching" />, <Ui k="follow.episode.waitingBetter" />, <Ui k="follow.episode.no_space" /> or <Ui k="follow.episode.missing" />.
 - Posters of followed titles have a bell badge, with the number of new episodes downloaded or ready and not watched yet.
