@@ -1073,6 +1073,8 @@ it('requires known positive duration for the five-percent preference', () => {
   ).toBe(true)
 })
 
+// Two full runs exercise HTTP, SQLite and disk logs; the budget is records/bytes,
+// not wall time on a shared CI runner. Keep all 720 checkpoints in each run.
 it('keeps 720 checkpoint commits unchanged with bounded two-hour diagnostic output', async () => {
   const { createLogger, installLogger, closeLogFiles }
     = await import('../services/logs/index.ts')
@@ -1199,7 +1201,7 @@ it('keeps 720 checkpoint commits unchanged with bounded two-hour diagnostic outp
     vi.useRealTimers()
     rmSync(dir, { recursive: true, force: true })
   }
-})
+}, 20_000)
 
 it('summarizes watched skips in the same next-episode traversal', async () => {
   const { episodeSkips } = await import('../services/diagnostics/episodes.ts')
