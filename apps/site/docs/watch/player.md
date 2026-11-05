@@ -77,6 +77,8 @@ The size and the background of subtitles are in <Ui k="player.settings.button" /
 
 ## Episodes
 
+You can also start a specific episode from the title page: press OK on it, then select <Ui k="title.watch" />, <Ui k="title.resume" /> or <Ui k="player.fromStart" />. See [Episode actions](/docs/watch/showcase#episode-actions).
+
 <Ui k="player.episodes.button" /> lists the aired episodes of a season, with season chips on top. Each episode shows its progress: <Ui k="player.episodes.current" />, <Ui k="player.episodes.watched" />, the time left, and <Ui k="player.episodes.inTorrent" /> when this release has it.
 
 An episode from this release starts at once. For another one, Torsher looks for it in the releases you watched and then in the search results, with your voice-over first. The screen says <Ui k="resolve.searching" /> meanwhile.
