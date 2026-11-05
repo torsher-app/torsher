@@ -172,3 +172,21 @@ describe('continue playback', () => {
     expect(push).not.toHaveBeenCalled()
   })
 })
+
+it('routes an explicit ready action to the pick before library or known-file selection', async () => {
+  await useContinuePlayback(shallowRef()).resume(
+    'show',
+    { ...next, file: { torrentId: 'old', fileIndex: 0 } },
+    'follow-ready',
+  )
+  expect(library).not.toHaveBeenCalled()
+  expect(push).toHaveBeenCalledExactlyOnceWith({
+    path: '/title/show/play',
+    query: {
+      intent: 'follow-ready',
+      automatic: '1',
+      season: '2',
+      episode: '1',
+    },
+  })
+})

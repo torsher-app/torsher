@@ -20,6 +20,11 @@ import { parseCatalogId } from '../tmdb/mappers.ts'
 import { followSourceProfile, forgetAudioPending } from './audio.ts'
 import { applyModeChange } from './pick.ts'
 import { followSettings } from './settings.ts'
+import { invalidateVoicePicks } from './invalidation.ts'
+import { normalizeRules } from './rules.ts'
+import { savedVoicePolicy } from './voice.ts'
+import type { z } from 'zod'
+import type { voicePolicy } from '../../dto/follow.ts'
 import { firstUnaired } from './wanted.ts'
 
 export type {
@@ -33,6 +38,7 @@ const HOUR_MS = 60 * 60 * 1000
 export class FollowNotFoundError extends Error {}
 
 export interface FollowRules {
+  voicePolicy?: z.output<typeof voicePolicy>
   voiceStudio?: string | null
   voiceStrict?: boolean
   requireRussian?: boolean
@@ -154,10 +160,16 @@ function defaultRules(kind: Follow['kind'], originalLanguage?: string) {
   }
 }
 
-function rulesOf(rules: FollowRules = {}) {
-  return Object.fromEntries(
-    Object.entries(rules).filter(([, value]) => value !== undefined),
-  ) as FollowRules
+function invalidateRules(before: Follow, after: Follow) {
+  if (
+    JSON.stringify(savedVoicePolicy(before))
+    !== JSON.stringify(savedVoicePolicy(after))
+    || followSourceProfile(before).audioLanguages.join(',')
+    !== followSourceProfile(after).audioLanguages.join(',')
+  ) {
+    forgetAudioPending([before.id])
+    invalidateVoicePicks(after)
+  }
 }
 
 /**
@@ -188,7 +200,7 @@ export async function followTitle(
   const schedule
     = kind === 'series' && summary ? scheduleOf(summary) : undefined
   const start = restart ? startOf(schedule) : undefined
-  const rules = rulesOf(input.rules)
+  const rules = normalizeRules(input.rules, existing)
   const now = new Date()
 
   const saved = getDb().transaction((tx) => {
@@ -223,6 +235,7 @@ export async function followTitle(
             state: 'active',
             startSeason: start?.season ?? 0,
             startEpisode: start?.episode ?? 0,
+            voiceMode: 'auto',
             ...defaultRules(kind, summary?.details.originalLanguage),
             ...rules,
             createdByProfileId: profileId,
@@ -242,6 +255,9 @@ export async function followTitle(
 
     return row
   })
+
+  if (existing)
+    invalidateRules(existing, saved)
 
   if (existing && rules.mode && rules.mode !== existing.mode)
     applyModeChange(saved, rules.mode)
@@ -304,7 +320,7 @@ export function updateFollow(id: string, patch: FollowPatch) {
   if (!follow)
     return undefined
 
-  const rules = rulesOf(patch.rules)
+  const rules = normalizeRules(patch.rules, follow)
 
   if (rules.waitHours !== undefined)
     rescheduleWaits(getDb(), id, rules.waitHours)
@@ -312,13 +328,7 @@ export function updateFollow(id: string, patch: FollowPatch) {
   if (rules.mode && rules.mode !== follow.mode)
     applyModeChange(follow, rules.mode)
 
-  if (
-    (rules.audio !== undefined || rules.requireRussian !== undefined)
-    && followSourceProfile({ ...follow, ...rules }).audioLanguages.join(',')
-    !== followSourceProfile(follow).audioLanguages.join(',')
-  ) {
-    forgetAudioPending([id])
-  }
+  invalidateRules(follow, { ...follow, ...rules })
 
   return getDb()
     .update(follows)

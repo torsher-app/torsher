@@ -1,0 +1,1 @@
+ALTER TABLE `follows` ADD `voice_mode` text;

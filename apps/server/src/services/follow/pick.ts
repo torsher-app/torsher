@@ -28,6 +28,8 @@ import { stateInputs } from './episodes.ts'
 import { recordHistory } from './history.ts'
 import { followById, followOf } from './index.ts'
 import { announceOtherVoice, announceUpgraded } from './notify.ts'
+import { protectedVoiceEpisodes } from './invalidation.ts'
+import { permitsCandidate, voiceGuard } from './voice.ts'
 import { releaseFacts } from './upgrade.ts'
 import { episodeKey } from './wanted.ts'
 
@@ -49,13 +51,22 @@ export async function pickCandidate(
   follow: Follow,
   candidate: FollowPendingCandidate,
   episodes: EpisodeRef[],
-  options: { ownStudio?: string, now?: Date } = {},
+  options: { ownStudio?: string, now?: Date, isCurrent?: () => boolean } = {},
 ) {
   const now = options.now ?? new Date()
 
   // Проход начался раньше: слежение могли остановить или удалить
-  if (followById(follow.id)?.state !== 'active')
+  if (
+    followById(follow.id)?.state !== 'active'
+    || !(options.isCurrent?.() ?? true)
+    || !voiceGuard(
+      follow,
+      episodes.map(item => item.season),
+    )()
+    || !episodes.every(item => permitsCandidate(follow, candidate, item.season))
+  ) {
     return 'later'
+  }
 
   // Режим сменили посреди прохода: серии, которые уже скачаны или качаются,
   // выбирать незачем
@@ -214,9 +225,9 @@ export function applyModeChange(follow: Pick<Follow, 'id'>, mode: FollowMode) {
 }
 
 export class PickError extends Error {
-  readonly kind: 'no_pick' | 'not_playable'
+  readonly kind: 'no_pick' | 'not_playable' | 'follow_pick_unavailable'
 
-  constructor(kind: 'no_pick' | 'not_playable') {
+  constructor(kind: 'no_pick' | 'not_playable' | 'follow_pick_unavailable') {
     super(kind === 'no_pick' ? 'No picked release' : 'Release is not playable')
     this.name = 'PickError'
     this.kind = kind
@@ -345,14 +356,22 @@ export function settlePicks(follow: Follow) {
  */
 export async function openPick(
   titleId: string,
-  episode: EpisodeRef,
+  episode: EpisodeRef & { intent?: 'follow-ready' },
 ): Promise<{ status: 'ready' | 'resolving', torrentId: string }> {
   const found = pickOf(titleId, episode)
 
   if (!found)
-    throw new PickError('no_pick')
+    throw new PickError(episode.intent ? 'follow_pick_unavailable' : 'no_pick')
 
   const { follow, candidate } = found
+  const guard = voiceGuard(follow, [episode.season])
+  const isCurrent = () =>
+    guard()
+    && pickOf(titleId, episode)?.candidate.id === candidate.id
+    && (protectedVoiceEpisodes(follow).has(episodeKey(episode))
+      || permitsCandidate(follow, candidate, episode.season))
+  if (!isCurrent())
+    throw new PickError(episode.intent ? 'follow_pick_unavailable' : 'no_pick')
   let torrent: Torrent | undefined
 
   try {
@@ -364,9 +383,16 @@ export async function openPick(
         infoHash: candidate.infoHash,
       },
       () => true,
+      'search',
+      isCurrent,
     )
   }
   catch (err) {
+    if (!isCurrent()) {
+      throw new PickError(
+        episode.intent ? 'follow_pick_unavailable' : 'no_pick',
+      )
+    }
     if (!isSkippable(err))
       throw err
 
@@ -374,6 +400,8 @@ export async function openPick(
     throw new PickError('not_playable')
   }
 
+  if (!isCurrent())
+    throw new PickError(episode.intent ? 'follow_pick_unavailable' : 'no_pick')
   if (!torrent)
     throw new PickError('not_playable')
 

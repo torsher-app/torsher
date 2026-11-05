@@ -1061,6 +1061,7 @@ export const follows = sqliteTable(
     startSeason: integer('start_season').notNull(),
     startEpisode: integer('start_episode').notNull(),
     // Студия из правил: действует, если за сезоном не закреплена своя
+    voiceMode: text('voice_mode', { enum: ['auto', 'prefer', 'only', 'any'] }),
     voiceStudio: text('voice_studio'),
     voiceStrict: integer('voice_strict', { mode: 'boolean' })
       .notNull()
@@ -1124,12 +1125,13 @@ export const followProfiles = sqliteTable(
  * новую, её осталось добавить в движок, `added` — осталась уборка старой папки.
  */
 export interface TopicRefresh {
+  rulesFingerprint?: string
   followId: string
   torrentId: string
   title: string
   episodes: { season: number, episode: number }[]
   candidate: FollowPendingCandidate
-  stage: 'prepare' | 'relinked' | 'added'
+  stage: 'prepare' | 'committing' | 'relinked' | 'added'
   /** Старую раздачу забыли в движке: запасному пути вернуть её обратно */
   forgotten?: boolean
   /** Выбор файлов новой раздачи: перенесённые и новые нужные */
@@ -1208,6 +1210,7 @@ export const followSeasons = sqliteTable(
  * и passkey трекера.
  */
 export interface FollowPendingCandidate {
+  rulesFingerprint?: string
   id: string
   title: string
   infoHash?: string

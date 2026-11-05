@@ -1,7 +1,7 @@
 import type { TmdbRef } from './mappers.ts'
 import type { TmdbAltTitle } from './types.ts'
 import { rememberImdbIdIfChanged } from '../ratings/externalIds.ts'
-import { withMetaCache } from './cache.ts'
+import { readMetaCache, withMetaCache } from './cache.ts'
 import { tmdbGet } from './client.ts'
 import { parseCatalogId } from './mappers.ts'
 
@@ -215,4 +215,15 @@ export async function getTitleIdentity(
   rememberImdbIdIfChanged(ref, identity.imdbId)
 
   return identity
+}
+
+/** Read identity already obtained by search; never fetch or update aliases. */
+export function peekTitleIdentity(id: string): TitleIdentity | undefined {
+  const ref = parseCatalogId(id)
+  if (!ref)
+    return undefined
+  const response = readMetaCache<TmdbIdentityResponse>(
+    `tmdb:${ref.type}:${ref.tmdbId}:identity:${IDENTITY_KEY_VERSION}`,
+  )
+  return response ? identityOf(response, ref) : undefined
 }

@@ -96,7 +96,6 @@ export function forgetAudioPending(followIds: string[]) {
         inArray(followEpisodes.followId, followIds),
         isNotNull(followEpisodes.pending),
         isNull(followEpisodes.torrentId),
-        isNull(followEpisodes.picked),
       ),
     )
     .run()

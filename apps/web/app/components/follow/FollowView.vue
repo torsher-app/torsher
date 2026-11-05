@@ -15,6 +15,7 @@ import DeleteFollowDialog from './DeleteFollowDialog.vue'
 import FollowFilters from './FollowFilters.vue'
 import FollowRow from './FollowRow.vue'
 import FollowSheet from './FollowSheet.vue'
+import FollowShowcaseLink from './FollowShowcaseLink.vue'
 
 const { t, locale } = useI18n()
 const { follows, state, load, refresh } = useFollows()
@@ -136,12 +137,16 @@ onMounted(load)
     <p class="max-w-[52ch] text-pretty text-muted-foreground">
       {{ t("panel.follow.empty.text") }}
     </p>
+    <FollowShowcaseLink />
     <p class="mt-1.5 max-w-[56ch] text-[12.5px] text-muted-foreground">
       {{ t("panel.follow.empty.foot") }}
     </p>
   </section>
 
   <template v-else>
+    <div class="flex shrink-0 border-b px-4 py-2">
+      <FollowShowcaseLink />
+    </div>
     <FollowFilters />
 
     <div class="min-h-0 flex-1 overflow-y-auto" data-follow-list>

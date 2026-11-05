@@ -74,7 +74,6 @@ import {
   queryOf as catalogQueryOf,
   ORIGINAL_LANGUAGES,
 } from '../lib/catalogFilter.ts'
-import { resolveRoute } from '../lib/continue.ts'
 import { downloadSlot } from '../lib/downloadSlot.ts'
 import { titleOffer } from '../lib/titleOffer.ts'
 import { isFollowed } from '../lib/follow.ts'
@@ -517,12 +516,10 @@ function onPrimary() {
   else if (followReady.value) {
     const { season, episode } = followReady.value
 
-    router.push(
-      season
-        ? resolveRoute(props.id, season, episode, undefined, {
-            kind: 'continuation',
-          })
-        : { path: `/title/${props.id}/play` },
+    void continuePlayback(
+      props.id,
+      { season, episode, position: 0, duration: null, next: false, file: null },
+      'follow-ready',
     )
   }
   else {
@@ -1240,6 +1237,12 @@ async function onFollow() {
   }
 
   if (await saveFollow({})) {
+    if (
+      followView.value?.follow?.subscribed
+      && followView.value.follow.state === 'paused'
+    ) {
+      followToast.value = t('follow.subscribedPaused')
+    }
     followPanel.value = true
     refreshSeasonStates()
   }
@@ -1249,9 +1252,10 @@ async function onFollow() {
 }
 
 async function onFollowSave(body: FollowTitleInput) {
-  if (await saveFollow(body))
+  const saved = await saveFollow(body)
+  if (saved)
     refreshSeasonStates()
-  else followToast.value = t('follow.errors.save')
+  return saved
 }
 
 // Фокус — на кнопку, с которой открыли; ушла (фильм в библиотеке больше не
@@ -1998,10 +2002,12 @@ onBeforeUnmount(() => {
 
     <FollowPanel
       v-if="followPanel && title && active && followPanelView"
+      :key="id"
       :title="title.title"
       :view="followPanelView"
+      :title-id="id"
+      :save="onFollowSave"
       @close="closeFollowPanel"
-      @save="onFollowSave"
       @stop="onFollowStop"
     />
 

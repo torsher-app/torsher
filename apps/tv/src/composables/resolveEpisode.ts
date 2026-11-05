@@ -1,8 +1,10 @@
 import type {
   EpisodeFile,
+  OpenFollowPickError,
   SourceCandidate,
   TitleFiles,
 } from '@torsher/api-client'
+import { getErrorBody, getErrorStatus } from '@torsher/api-client'
 import { api } from '../api.ts'
 import { session } from '../session.ts'
 import { selectedSourcePreset, sourcePresetStore } from '../sourcePreset.ts'
@@ -24,8 +26,10 @@ export type ResolveOutcome
   // `noSources` — искать было негде: на сервере нет источников раздач
     | { kind: 'notFound', noSources?: boolean }
     | { kind: 'cancelled' }
+    | { kind: 'followUnavailable' | 'followOpenFailed' | 'followUnsupported' }
 
 export interface ResolveOptions {
+  intent?: 'follow-ready'
   presetId?: string
   /** Раздача, выбранная зрителем: подключаем её, ждём файлы и дальше не ищем */
   candidateId?: string
@@ -93,10 +97,13 @@ async function pickedFile(target: EpisodeTarget, options: ResolveOptions) {
       await api.titles.openFollowPick(target.titleId, {
         season: target.season ?? 0,
         episode: target.episode ?? 0,
+        ...(options.intent ? { intent: options.intent } : {}),
       })
     ).torrentId
   }
-  catch {
+  catch (error) {
+    if (options.intent === 'follow-ready')
+      throw error
     return undefined
   }
 
@@ -115,6 +122,31 @@ export async function resolveEpisode(
   target: EpisodeTarget,
   options: ResolveOptions,
 ): Promise<ResolveOutcome> {
+  if (options.intent === 'follow-ready') {
+    if (options.cancelled())
+      return { kind: 'cancelled' }
+    try {
+      const picked = await pickedFile(target, options)
+      if (options.cancelled() || picked === 'cancelled')
+        return { kind: 'cancelled' }
+      return picked
+        ? { kind: 'found', file: picked }
+        : { kind: 'followOpenFailed' }
+    }
+    catch (error) {
+      if (options.cancelled())
+        return { kind: 'cancelled' }
+      const status = getErrorStatus(error)
+      if (status === 409) {
+        const body = await getErrorBody<OpenFollowPickError>(error)
+        if (body && 'kind' in body && body.kind === 'follow_pick_unavailable')
+          return { kind: 'followUnavailable' }
+      }
+      return {
+        kind: status === 404 ? 'followUnsupported' : 'followOpenFailed',
+      }
+    }
+  }
   const known = [...new Set(options.torrents?.filter(Boolean) as string[])]
 
   if (options.candidateId)

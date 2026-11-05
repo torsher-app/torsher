@@ -62,7 +62,13 @@ export function useContinuePlayback(screen: Ref<EventTarget | undefined>) {
   async function resume(
     titleId: string,
     item: ResumeLike & { mediaFileId?: string | null },
+    intent?: 'follow-ready',
   ) {
+    if (intent) {
+      lookup.cancel()
+      void router.push(resumeRoute(titleId, item, intent))
+      return
+    }
     if (
       item.file
       && !item.mediaFileId

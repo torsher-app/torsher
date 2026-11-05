@@ -56,7 +56,12 @@ import {
   upgradingRows,
 } from './upgrade.ts'
 import { episodeKey } from './wanted.ts'
-import { seasonVoice } from './voice.ts'
+import {
+  permitsCandidate,
+  seasonVoice,
+  voiceFingerprint,
+  voiceGuard,
+} from './voice.ts'
 
 // Ссылка индексатора не ответила: следующая попытка того же кандидата — не
 // на каждом тике, скачивание `.torrent` у Prowlarr считается в его лимит.
@@ -342,6 +347,16 @@ export function pinFirstVoice(
   candidate: FollowPendingCandidate,
   ownStudio: string | undefined,
 ) {
+  const current = followById(follow.id)
+  if (
+    !current
+    || (current.voiceMode && current.voiceMode !== 'auto')
+    || !voiceGuard(follow, [season])()
+  ) {
+    return
+  }
+  follow = current
+  ownStudio = seasonVoice(current, season)?.studio ?? ownStudio
   if (
     !candidate.studio
     || followAudio(follow) !== 'ru'
@@ -371,6 +386,8 @@ async function startGrabImpl(
   const now = options.now ?? new Date()
   if (hasSuppressed(follow.titleId, episodes))
     return 'blocked'
+  if (options.isCurrent && !options.isCurrent())
+    return 'later'
   const files = filesFor(torrent, candidate.title, follow.kind, episodes)
   const held = suppressedFileIndexes(torrent, candidate.title)
   if ([...files.values()].some(index => held.has(index)))
@@ -533,8 +550,23 @@ async function grabCandidateImpl(
   options: { ownStudio?: string, now?: Date, isCurrent?: () => boolean } = {},
 ): Promise<GrabResult> {
   const now = options.now ?? new Date()
+  const currentRules = voiceGuard(
+    follow,
+    episodes.map(item => item.season),
+  )
+  candidate = {
+    ...candidate,
+    rulesFingerprint: voiceFingerprint(
+      follow,
+      episodes.map(item => item.season),
+    ),
+  }
   const isCurrent = () =>
-    !hasSuppressed(follow.titleId, episodes)
+    currentRules()
+    && episodes.every(item =>
+      permitsCandidate(follow, candidate, item.season),
+    )
+    && !hasSuppressed(follow.titleId, episodes)
     && followById(follow.id)?.state === 'active'
     && (options.isCurrent?.() ?? true)
 
@@ -821,7 +853,26 @@ export async function continueGrabs(
       continue
     }
 
+    const currentRules = voiceGuard(
+      follow,
+      episodes.map(item => item.season),
+    )
+    if (
+      (candidate.rulesFingerprint
+        && candidate.rulesFingerprint
+        !== voiceFingerprint(
+          follow,
+          episodes.map(item => item.season),
+        ))
+        || !episodes.every(item =>
+          permitsCandidate(follow, candidate, item.season),
+        )
+    ) {
+      resetEpisodes(follow, episodes)
+      continue
+    }
     await startGrab(follow, torrent, candidate, episodes, {
+      isCurrent: currentRules,
       ownStudio: seasonVoice(follow, episodes[0]!.season)?.studio,
       now,
     })

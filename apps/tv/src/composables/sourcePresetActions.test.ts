@@ -11,6 +11,11 @@ const requests = vi.hoisted(() => ({
   postTitleDownload: vi.fn(),
 }))
 vi.mock('../api.ts', () => ({ api: { titles: requests } }))
+vi.mock('@torsher/api-client', async original => ({
+  ...(await original<typeof import('@torsher/api-client')>()),
+  getErrorStatus: (error: { status?: number }) => error.status,
+  getErrorBody: async (error: { body?: unknown }) => error.body,
+}))
 vi.mock('../session.ts', () => ({ session: { profile: { id: 'viewer' } } }))
 
 beforeEach(() => {
@@ -85,5 +90,91 @@ describe('source preset in playback and download', () => {
       presetId: 'default-4k',
       candidateId: 'candidate',
     })
+  })
+})
+
+describe('explicit ready selection', () => {
+  it('does not replace a rejected pick with a known torrent, candidate or search', async () => {
+    requests.openFollowPick.mockRejectedValue({
+      status: 409,
+      body: { kind: 'follow_pick_unavailable' },
+    })
+    const result = await resolveEpisode(
+      { titleId: 'title', season: 1, episode: 2 },
+      {
+        intent: 'follow-ready',
+        torrents: ['known'],
+        candidateId: 'explicit',
+        cancelled: () => false,
+      },
+    )
+    expect(result).toEqual({ kind: 'followUnavailable' })
+    expect(requests.openFollowPick).toHaveBeenCalledWith('title', {
+      season: 1,
+      episode: 2,
+      intent: 'follow-ready',
+    })
+    expect(requests.getTitleFiles).not.toHaveBeenCalled()
+    expect(requests.getTitleSources).not.toHaveBeenCalled()
+    expect(requests.postTitleOpen).not.toHaveBeenCalled()
+  })
+  it('opens only the ready pick when available', async () => {
+    requests.openFollowPick.mockResolvedValue({ torrentId: 'ready' })
+    expect(
+      await resolveEpisode(
+        { titleId: 'title', season: 1, episode: 2 },
+        { intent: 'follow-ready', torrents: ['known'], cancelled: () => false },
+      ),
+    ).toEqual({ kind: 'found', file: { torrentId: 'ready', fileIndex: 0 } })
+    expect(requests.getTitleFiles).toHaveBeenCalledWith('title', 'ready')
+    expect(requests.getTitleSources).not.toHaveBeenCalled()
+  })
+})
+
+describe('ready selection failures', () => {
+  it.each([
+    [new Error('offline'), 'followOpenFailed'],
+    [{ status: 503 }, 'followOpenFailed'],
+    [{ status: 422 }, 'followOpenFailed'],
+    [{ status: 409, body: { kind: 'another_conflict' } }, 'followOpenFailed'],
+    [{ status: 404 }, 'followUnsupported'],
+  ])(
+    'keeps errors retryable without a hidden fallback: %o',
+    async (error, kind) => {
+      requests.openFollowPick.mockRejectedValue(error)
+      expect(
+        await resolveEpisode(
+          { titleId: 'title', season: 1, episode: 2 },
+          { intent: 'follow-ready', torrents: ['old'], cancelled: () => false },
+        ),
+      ).toEqual({ kind })
+      expect(requests.getTitleSources).not.toHaveBeenCalled()
+      expect(requests.getTitleFiles).not.toHaveBeenCalled()
+      expect(requests.postTitleOpen).not.toHaveBeenCalled()
+    },
+  )
+  it('treats an opened pick without readable files as an opening failure', async () => {
+    requests.openFollowPick.mockResolvedValue({ torrentId: 'ready' })
+    requests.getTitleFiles.mockRejectedValue(new Error('offline'))
+    expect(
+      await resolveEpisode(
+        { titleId: 'title', season: 1, episode: 2 },
+        { intent: 'follow-ready', cancelled: () => false },
+      ),
+    ).toEqual({ kind: 'followOpenFailed' })
+    expect(requests.getTitleSources).not.toHaveBeenCalled()
+  })
+  it('can retry the same ready intent after a temporary error', async () => {
+    requests.openFollowPick
+      .mockRejectedValueOnce({ status: 503 })
+      .mockResolvedValueOnce({ torrentId: 'ready' })
+    const target = { titleId: 'title', season: 1, episode: 2 }
+    const options = { intent: 'follow-ready' as const, cancelled: () => false }
+    expect((await resolveEpisode(target, options)).kind).toBe(
+      'followOpenFailed',
+    )
+    expect((await resolveEpisode(target, options)).kind).toBe('found')
+    expect(requests.openFollowPick).toHaveBeenCalledTimes(2)
+    expect(requests.getTitleSources).not.toHaveBeenCalled()
   })
 })

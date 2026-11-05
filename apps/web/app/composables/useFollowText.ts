@@ -86,19 +86,50 @@ export function useFollowText() {
     return parts.join(t('panel.follow.and'))
   }
 
-  function policy(follow: FollowSummary) {
+  function policyVoice(
+    follow: Pick<
+      FollowSummary,
+      'audioEffective' | 'voicePolicy' | 'voiceStudio' | 'voiceStrict'
+    >,
+  ) {
+    if (follow.audioEffective !== 'ru')
+      return t(`audioLanguages.${follow.audioEffective}`)
+
+    const policy = follow.voicePolicy
+    if (policy) {
+      if (policy.mode === 'prefer' || policy.mode === 'only') {
+        return t(`follow.studio.${policy.mode}Value`, {
+          studio: policy.studio,
+        })
+      }
+      return t(`follow.studio.${policy.mode}`)
+    }
+
+    if (follow.voiceStudio) {
+      return follow.voiceStrict
+        ? t('panel.follow.policy.strict', { studio: follow.voiceStudio })
+        : follow.voiceStudio
+    }
+    return t('panel.follow.policy.anyVoice')
+  }
+
+  function policy(
+    follow: Pick<
+      FollowSummary,
+      | 'mode'
+      | 'audioEffective'
+      | 'voicePolicy'
+      | 'voiceStudio'
+      | 'voiceStrict'
+      | 'qualityPreset'
+      | 'waitHours'
+    >,
+  ) {
     const parts: string[] = []
 
     parts.push(
       t(`panel.follow.policy.${follow.mode}`),
-      // Студии есть только у русской озвучки, у остальных — сам язык
-      follow.audioEffective !== 'ru'
-        ? t(`audioLanguages.${follow.audioEffective}`)
-        : follow.voiceStudio
-          ? follow.voiceStrict
-            ? t('panel.follow.policy.strict', { studio: follow.voiceStudio })
-            : follow.voiceStudio
-          : t('panel.follow.policy.anyVoice'),
+      policyVoice(follow),
       t(`panel.follow.presets.${follow.qualityPreset}.short`),
       follow.waitHours
         ? t(

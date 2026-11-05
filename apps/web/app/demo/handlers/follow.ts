@@ -14,6 +14,7 @@ import type {
   FollowQueueResponse,
   FollowSettings,
   FollowSummary,
+  FollowVoicesResponse,
   MessageResponse,
   UpdateFollowInput,
   UpdateFollowSettingsInput,
@@ -180,6 +181,11 @@ function followOf(
     nextSearchAt: inFuture(3 * HOUR),
     searchRequested: false,
     ...fields,
+    voicePolicy: fields.voicePolicy ?? {
+      mode: 'legacy',
+      studio: fields.voiceStudio ?? null,
+      strict: fields.voiceStrict ?? false,
+    },
   }
 }
 
@@ -983,3 +989,41 @@ export function followAttention(): AttentionItem[] {
     },
   ]
 }
+
+const voiceSearches = new Map<string, string>()
+
+get<FollowVoicesResponse>(
+  '/api/titles/:id/follow/voices',
+  ({ params, query }) => {
+    const follow = follows.find(item => item.titleId === params.id)
+    const policy = follow?.voicePolicy
+    const studio = policy && 'studio' in policy ? policy.studio : null
+    const key = `${params.id}|${query.get('season') ?? 0}`
+    if (query.get('refresh') === '1')
+      voiceSearches.set(key, new Date().toISOString())
+    const updatedAt = voiceSearches.get(key) ?? null
+    const refresh = updatedAt !== null
+    return {
+      season: Number(query.get('season') ?? 0),
+      updatedAt,
+      stale: !refresh,
+      cache: refresh ? 'hit' : 'miss',
+      indexerCount: 1,
+      failed: [],
+      items: [
+        ...new Set([
+          ...(studio ? [studio] : []),
+          ...(refresh ? [STUDIO_A, STUDIO_B] : []),
+        ]),
+      ].map(name => ({
+        studio: name,
+        types: ['MVO'],
+        count: refresh ? 2 : 0,
+        seeders: refresh ? 10 : 0,
+        found: refresh,
+        saved: name === studio,
+        inherited: false,
+      })),
+    }
+  },
+)

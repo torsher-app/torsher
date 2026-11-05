@@ -143,6 +143,15 @@ export function useFollowTexts() {
     if (follow.audioEffective !== 'ru')
       return t(`audioLanguages.${follow.audioEffective}`)
 
+    const policy = follow.voicePolicy
+    if (policy) {
+      if (policy.mode === 'prefer' || policy.mode === 'only') {
+        return t(`follow.studio.${policy.mode}Value`, {
+          studio: policy.studio,
+        })
+      }
+      return t(`follow.studio.${policy.mode}`)
+    }
     const studio = follow.voice?.studio
 
     if (studio)

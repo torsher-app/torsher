@@ -35,6 +35,7 @@ const props = defineProps<{
   torrent?: string
   candidate?: string
   query?: string
+  intent?: string
   // Озвучка, которую слушали в прошлой раздаче: плеер возьмёт её дорожку
   voice?: string
   automatic?: AutomaticPlayback
@@ -55,6 +56,10 @@ const step = ref<ResolveStep>('searching')
 const notFound = ref(false)
 // Серии не нашлось, а искать было негде: источников на сервере нет
 const noSources = ref(false)
+const followFailure = ref<
+  'followUnavailable' | 'followOpenFailed' | 'followUnsupported'
+>()
+let running = false
 let cancelled = false
 const mountedAt = performance.now()
 let offKey: (() => void) | undefined
@@ -62,10 +67,20 @@ let offKey: (() => void) | undefined
 const label = computed(() => t(`resolve.${step.value}`))
 // Выбранная раздача не открылась — другое объяснение, чем «серии нигде нет»;
 // без источников — серии просто нет в библиотеке, и «Источников» тоже нет
-const failure = computed(() =>
-  props.candidate ? 'failed' : noSources.value ? 'notInLibrary' : 'notFound',
+const failure = computed(
+  () =>
+    followFailure.value
+    ?? (props.candidate
+      ? 'failed'
+      : noSources.value
+        ? 'notInLibrary'
+        : 'notFound'),
 )
 const actions = computed(() => [
+  ...(followFailure.value === 'followOpenFailed'
+    || followFailure.value === 'followUnsupported'
+    ? [{ id: 'retry' as const, label: t('resolve.retry') }]
+    : []),
   ...(noSources.value
     ? []
     : [{ id: 'sources' as const, label: t('resolve.toSources') }]),
@@ -86,7 +101,11 @@ function onKey(action: KeyAction) {
   return true
 }
 
-function onChoice(choice: 'sources' | 'back') {
+function onChoice(choice: 'sources' | 'back' | 'retry') {
+  if (choice === 'retry') {
+    void run()
+    return
+  }
   if (choice === 'back') {
     back()
     return
@@ -108,63 +127,87 @@ function onChoice(choice: 'sources' | 'back') {
 }
 
 async function run() {
-  // Раздача сезона и озвучка прошлых серий — из прогресса; без него ищем по
-  // порядку сервера
-  const progress = await api.titles
-    .getTitleProgress(props.id, {
-      language: language.value,
-      season: props.season,
-      episode: props.episode,
-    })
-    .catch(() => undefined)
-  const releases = progress?.seasonReleases ?? []
-  const season = target.season ?? 0
-  const outcome = await resolveEpisode(target, {
-    candidateId: props.candidate,
-    query: props.query,
-    torrents: [
-      props.automatic && progress?.continuation !== undefined
-        ? progress.continuation.preferredTorrent?.torrentId
-        : props.torrent,
-      props.automatic && progress?.continuation !== undefined
-        ? undefined
-        : releases.find(
-          item =>
-            item.season === season
-            && (!target.episode || item.episodes.includes(target.episode)),
-        )?.torrentId,
-    ],
-    voiceKey: lastVoiceKey(releases, season),
-    cancelled: () => cancelled,
-    onStep: (next) => {
-      step.value = next
-    },
-  })
-
-  if (outcome.kind === 'found') {
-    // Торшер уже на экране — плеер не прячет его на вторую задержку
-    void router.replace({
-      ...withStartPosition(
-        playerRoute(
-          outcome.file,
-          {
-            id: props.id,
-            season: target.season,
-            episode: target.episode,
-          },
-          props.voice,
-          props.candidate ? undefined : props.automatic,
-        ),
-        props.start === '0',
-      ),
-      state: {
-        loaderShown: performance.now() - mountedAt >= LOADER_DELAY_MS,
+  if (running || cancelled)
+    return
+  running = true
+  notFound.value = false
+  followFailure.value = undefined
+  try {
+    // Раздача сезона и озвучка прошлых серий — из прогресса; без него ищем по
+    // порядку сервера
+    const progress = await api.titles
+      .getTitleProgress(props.id, {
+        language: language.value,
+        season: props.season,
+        episode: props.episode,
+      })
+      .catch(() => undefined)
+    const releases = progress?.seasonReleases ?? []
+    const season = target.season ?? 0
+    const outcome = await resolveEpisode(target, {
+      candidateId: props.candidate,
+      query: props.query,
+      intent: props.intent === 'follow-ready' ? 'follow-ready' : undefined,
+      torrents: [
+        props.automatic && progress?.continuation !== undefined
+          ? progress.continuation.preferredTorrent?.torrentId
+          : props.torrent,
+        props.automatic && progress?.continuation !== undefined
+          ? undefined
+          : releases.find(
+            item =>
+              item.season === season
+              && (!target.episode || item.episodes.includes(target.episode)),
+          )?.torrentId,
+      ],
+      voiceKey: lastVoiceKey(releases, season),
+      cancelled: () => cancelled,
+      onStep: (next) => {
+        step.value = next
       },
     })
+
+    if (outcome.kind === 'found') {
+      // Торшер уже на экране — плеер не прячет его на вторую задержку
+      void router.replace({
+        ...withStartPosition(
+          playerRoute(
+            outcome.file,
+            {
+              id: props.id,
+              season: target.season,
+              episode: target.episode,
+            },
+            props.voice,
+            props.candidate ? undefined : props.automatic,
+          ),
+          props.start === '0',
+        ),
+        state: {
+          loaderShown: performance.now() - mountedAt >= LOADER_DELAY_MS,
+        },
+      })
+    }
+    else if (
+      outcome.kind === 'followUnavailable'
+      || outcome.kind === 'followOpenFailed'
+      || outcome.kind === 'followUnsupported'
+    ) {
+      followFailure.value = outcome.kind
+      notFound.value = true
+      if (outcome.kind === 'followUnavailable') {
+        await api.titles
+          .getTitleFollow(props.id, { language: language.value })
+          .catch(() => undefined)
+      }
+    }
+    else if (outcome.kind === 'notFound') {
+      noSources.value = !!outcome.noSources
+      notFound.value = true
+    }
   }
-  else if (outcome.kind === 'notFound') {
-    noSources.value = !!outcome.noSources
-    notFound.value = true
+  finally {
+    running = false
   }
 }
 

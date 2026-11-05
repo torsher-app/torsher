@@ -1,3 +1,5 @@
+import { followOf } from './index.ts'
+import { voiceGuard } from './voice.ts'
 import type { Language } from '@torsher/i18n'
 import type { Follow, FollowPendingCandidate } from '../../db/schema.ts'
 import type {
@@ -111,21 +113,36 @@ async function announce(
   episodes: EpisodeRef[],
   params: NotificationParams,
   severity: 'info' | 'warning' = 'info',
+  commit?: () => boolean,
 ) {
   try {
-    notify({
-      kind,
-      severity,
-      section: 'follow',
-      params: {
-        titleId: follow.titleId,
-        names: await titleNames(follow.titleId),
-        ...(episodes.length && {
-          episodes: episodesText(episodes),
-          count: episodes.length,
-        }),
-        ...params,
-      },
+    const current = followOf(follow.titleId)
+    const guard
+      = current
+        && ['follow_ready', 'follow_waiting', 'follow_other_voice'].includes(kind)
+        ? voiceGuard(
+            current,
+            episodes.map(item => item.season),
+          )
+        : () => true
+    const names = await titleNames(follow.titleId)
+    getDb().transaction(() => {
+      if (!guard() || (commit && !commit()))
+        return
+      notify({
+        kind,
+        severity,
+        section: 'follow',
+        params: {
+          titleId: follow.titleId,
+          names,
+          ...(episodes.length && {
+            episodes: episodesText(episodes),
+            count: episodes.length,
+          }),
+          ...params,
+        },
+      })
     })
   }
   catch (err) {
@@ -235,24 +252,48 @@ export async function announceReady(
   if (!ready.length)
     return
 
-  for (const row of ready) {
-    db.update(followEpisodes)
-      .set({ notifiedAt: now })
-      .where(
-        and(
-          eq(followEpisodes.followId, follow.id),
-          eq(followEpisodes.season, row.season),
-          eq(followEpisodes.episode, row.episode),
-        ),
-      )
-      .run()
-  }
-
   await announce(
     'follow_ready',
     follow,
     ready,
     commonFacts(ready.map(row => candidateFacts(row.picked!))),
+    'info',
+    () => {
+      // Names may take seconds. Commit only the unchanged, still-unannounced
+      // choices, atomically with the notification; a skipped send leaves no mark.
+      const current = db
+        .select()
+        .from(followEpisodes)
+        .where(eq(followEpisodes.followId, follow.id))
+        .all()
+      if (
+        !ready.every(row =>
+          current.some(
+            item =>
+              item.season === row.season
+              && item.episode === row.episode
+              && !item.notifiedAt
+              && JSON.stringify(item.picked) === JSON.stringify(row.picked)
+              && item.pickedAt?.getTime() === row.pickedAt?.getTime(),
+          ),
+        )
+      ) {
+        return false
+      }
+      for (const row of ready) {
+        db.update(followEpisodes)
+          .set({ notifiedAt: now })
+          .where(
+            and(
+              eq(followEpisodes.followId, follow.id),
+              eq(followEpisodes.season, row.season),
+              eq(followEpisodes.episode, row.episode),
+            ),
+          )
+          .run()
+      }
+      return true
+    },
   )
 }
 
@@ -319,6 +360,13 @@ export async function announceOtherVoice(
     return
   }
 
+  const current = followOf(follow.titleId)
+  const guard = current
+    ? voiceGuard(
+        current,
+        episodes.map(item => item.season),
+      )
+    : () => true
   try {
     if ((await getTitleIdentity(follow.titleId))?.originalLanguage === 'ru')
       return
@@ -327,6 +375,8 @@ export async function announceOtherVoice(
     // Без деталей тайтла событие всё равно полезно
   }
 
+  if (!guard())
+    return
   await announce('follow_other_voice', follow, episodes, {
     ...candidateFacts(candidate),
     own: ownStudio,

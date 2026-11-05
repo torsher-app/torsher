@@ -1,3 +1,4 @@
+import { invalidateVoicePicks } from '../follow/invalidation.ts'
 import type { FollowAudio } from '../../db/schema.ts'
 import { randomUUID } from 'node:crypto'
 import type { VideoClass, VoiceType } from '@torsher/release-parser'
@@ -260,7 +261,6 @@ function saveSourceSettings(next: SourceSettings): SourceSettings {
           inArray(followEpisodes.followId, unfinished),
           isNotNull(followEpisodes.pending),
           isNull(followEpisodes.torrentId),
-          isNull(followEpisodes.picked),
         ),
       )
       .run()
@@ -269,5 +269,7 @@ function saveSourceSettings(next: SourceSettings): SourceSettings {
       .where(inArray(follows.id, unfinished))
       .run()
   })
+  for (const follow of getDb().select().from(follows).all().filter(affected))
+    invalidateVoicePicks(follow)
   return next
 }

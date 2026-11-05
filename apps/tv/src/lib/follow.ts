@@ -194,7 +194,7 @@ export function followNote(follow: TitleFollow): FollowNote | undefined {
   if (follow.quality.lowered)
     return { kind: 'bestQuality', quality: follow.quality.value }
 
-  if (follow.voice?.pinned && follow.voice.studio)
+  if (!follow.voicePolicy && follow.voice?.pinned && follow.voice.studio)
     return { kind: 'pinned', studio: follow.voice.studio }
 
   return undefined
