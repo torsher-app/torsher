@@ -147,6 +147,10 @@ export interface CheckedCandidate extends OrderedCandidate {
   /** Озвучка уже та, которую ждём */
   voiceAtCutoff: boolean
   rejections: Rejection[]
+  upgradeComparisons?: Map<
+    string,
+    { candidate: VersionPosition, current: VersionPosition }
+  >
 }
 
 /** Сезоны раздачи; сериал без сезона в названии — первый, фильм — 0 */
@@ -300,11 +304,13 @@ function upgradeRejection(
   candidate: VersionPosition,
   season: SeasonContext,
   ctx: DecideContext,
+  compared?: (current: VersionPosition) => void,
 ) {
   if (check.blocked)
     return reject(check.blocked)
 
   const current = positionOf(check.current!, season, ctx)
+  compared?.(current)
 
   return isAtCutoff(current, season) || !isUpgrade(candidate, current)
     ? reject('not_better')
@@ -331,6 +337,10 @@ export function checkCandidate(
   const named = releaseEpisodes(release, season.season, ctx)
   const episodes: EpisodeRef[] = []
   const upgrades = new Set<string>()
+  const upgradeComparisons = new Map<
+    string,
+    { candidate: VersionPosition, current: VersionPosition }
+  >()
   const considered: EpisodeRef[] = []
   const episodeRejections = new Map<string, Rejection>()
   const blocked = blockedPart(release, ctx.blocked)
@@ -361,7 +371,15 @@ export function checkCandidate(
     if (!check)
       continue
 
-    const rejection = upgradeRejection(check, position, season, ctx)
+    const rejection = upgradeRejection(
+      check,
+      position,
+      season,
+      ctx,
+      (current) => {
+        upgradeComparisons.set(key, { candidate: position, current })
+      },
+    )
 
     considered.push(item)
 
@@ -457,6 +475,7 @@ export function checkCandidate(
     upgrades,
     considered,
     episodeRejections,
+    ...(upgradeComparisons.size && { upgradeComparisons }),
     voiceAtCutoff,
     rejections,
   }
@@ -506,7 +525,38 @@ export function bestQualitySeen(
   return best
 }
 
+export interface FollowChoiceDiagnostics {
+  selectionHistory: 'current_decision' | 'unavailable'
+  selectionReason:
+    'cutoff' | 'window_expired' | 'upgrade' | 'mixed' | 'pending_ready'
+  preset?: FollowQualityPreset
+  cutoffStep?: number
+  candidateStep?: number
+  voiceAtCutoff?: boolean
+  ownVoice?: boolean
+  sameTopic?: boolean
+  waitHours?: number
+  score?: number
+  seeders?: number
+  audioPriority?: number
+  typePriority?: number
+  cutoffEpisodes?: number
+  expiredEpisodes?: number
+  upgradeEpisodes?: number
+  noSpaceEpisodes?: number
+  windowTotal?: number
+  upgradeTotal?: number
+  windows?: { season: number, episode: number, until: string }[]
+  upgrades?: {
+    season: number
+    episode: number
+    candidate: VersionPosition
+    current: VersionPosition
+  }[]
+}
+
 export interface PlannedGrab {
+  diagnostics?: FollowChoiceDiagnostics
   candidate: CheckedCandidate
   episodes: EpisodeRef[]
 }
@@ -634,6 +684,11 @@ export function planSeason(
     const atCutoff
       = candidate.voiceAtCutoff && candidate.step <= season.cutoffStep
     const ready: EpisodeRef[] = []
+    let cutoffEpisodes = 0
+    let expiredEpisodes = 0
+    let upgradeEpisodes = 0
+    const windows: NonNullable<FollowChoiceDiagnostics['windows']> = []
+    const upgrades: NonNullable<FollowChoiceDiagnostics['upgrades']> = []
     let waitUntil: Date | undefined
 
     for (const episode of claimed) {
@@ -648,6 +703,18 @@ export function planSeason(
         || candidate.upgrades.has(episodeKey(episode))
       ) {
         ready.push(episode)
+        if (atCutoff)
+          cutoffEpisodes++
+        else if (until <= ctx.now)
+          expiredEpisodes++
+        else upgradeEpisodes++
+        if (windows.length < 3)
+          windows.push({ ...episode, until: until.toISOString() })
+        const comparison = candidate.upgradeComparisons?.get(
+          episodeKey(episode),
+        )
+        if (comparison && upgrades.length < 3)
+          upgrades.push({ ...episode, ...comparison })
         continue
       }
 
@@ -656,7 +723,46 @@ export function planSeason(
     }
 
     if (ready.length) {
-      grabs.push({ candidate, episodes: ready })
+      const reasons = [
+        cutoffEpisodes > 0,
+        expiredEpisodes > 0,
+        upgradeEpisodes > 0,
+      ].filter(Boolean).length
+      grabs.push({
+        candidate,
+        episodes: ready,
+        diagnostics: {
+          selectionHistory: 'current_decision',
+          selectionReason:
+            reasons > 1
+              ? 'mixed'
+              : cutoffEpisodes
+                ? 'cutoff'
+                : expiredEpisodes
+                  ? 'window_expired'
+                  : 'upgrade',
+          preset: ctx.preset,
+          cutoffStep: season.cutoffStep,
+          candidateStep: candidate.step,
+          voiceAtCutoff: candidate.voiceAtCutoff,
+          ownVoice: candidate.ownVoice,
+          sameTopic: candidate.sameTopic,
+          waitHours: ctx.waitHours,
+          score: candidate.release.score,
+          seeders: candidate.release.seeders,
+          audioPriority: candidate.release.audioPriority,
+          typePriority: candidate.release.typePriority,
+          cutoffEpisodes,
+          expiredEpisodes,
+          upgradeEpisodes,
+          windows,
+          upgrades,
+          windowTotal: ready.length,
+          upgradeTotal: ready.filter(item =>
+            candidate.upgrades.has(episodeKey(item)),
+          ).length,
+        },
+      })
     }
     else if (waitUntil) {
       candidate.rejections.push(

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import {
   ArrowUpIcon,
+  ChevronDownIcon,
   CircleAlertIcon,
   DownloadIcon,
   EllipsisIcon,
@@ -8,17 +9,22 @@ import {
   ScrollTextIcon,
 } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
+import { toast } from 'vue-sonner'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import ListGroup from '~/components/ListGroup.vue'
 import LoadingButton from '~/components/LoadingButton.vue'
 import PageBar from '~/components/shell/PageBar.vue'
-import { logSourceLabels } from '~/lib/logs'
+import { duplicateDiagnosticEvents, logSourceLabels } from '~/lib/logs'
+import DiagnosticsStatus from './DiagnosticsStatus.vue'
+import { api } from '~/services/api'
+import type { DiagnosticStatus } from '@torsher/api-client'
 import LogEntrySheet from './LogEntrySheet.vue'
 import LogRow from './LogRow.vue'
 import LogsFilters from './LogsFilters.vue'
@@ -39,11 +45,94 @@ const {
   levelLocked,
   isLevelBusy,
   isDownloading,
+  isDownloadingReport,
   levelFilter,
   source,
   search,
   isFiltered,
 } = logs
+
+const downloadBusy = computed(
+  () => isDownloading.value || isDownloadingReport.value,
+)
+const supportsReport = computed(
+  () => logs.reportCapability.value?.version === 1,
+)
+
+const diagnostics = shallowRef<DiagnosticStatus>()
+const diagnosticsBusy = ref(false)
+const diagnosticsLoading = ref(true)
+const diagnosticsFailed = ref(false)
+let diagnosticGeneration = 0
+const duplicates = computed(() => duplicateDiagnosticEvents(entries.value))
+let diagnosticTimer: ReturnType<typeof setInterval> | undefined
+async function loadDiagnostics() {
+  const generation = ++diagnosticGeneration
+  diagnosticsLoading.value = true
+  try {
+    const response = await withErrorMode('silent', () =>
+      api.diagnostics.getDiagnostics())
+    if (generation !== diagnosticGeneration)
+      return
+    diagnostics.value = response
+    diagnosticsFailed.value = false
+  }
+  catch {
+    if (generation !== diagnosticGeneration)
+      return
+    diagnostics.value = undefined
+    diagnosticsFailed.value = true
+  }
+  finally {
+    if (generation === diagnosticGeneration)
+      diagnosticsLoading.value = false
+  }
+}
+async function setDiagnostics(enabled: boolean | 'indeterminate') {
+  if (diagnosticsBusy.value)
+    return
+  diagnosticsBusy.value = true
+  try {
+    const response = await withErrorMode('silent', () =>
+      api.diagnostics.putDiagnosticSettings({ enabled: enabled === true }))
+    await loadDiagnostics()
+    toast.success(
+      t(
+        response.enabled
+          ? 'panel.logs.diagnostics.enabled'
+          : 'panel.logs.diagnostics.disabled',
+      ),
+      {
+        description: t(
+          !response.enabled
+            ? 'panel.logs.diagnostics.disabledText'
+            : !diagnostics.value
+                ? 'panel.logs.diagnostics.unknown'
+                : diagnostics.value.collecting
+                  ? 'panel.logs.diagnostics.enabledText'
+                  : 'panel.logs.diagnostics.filtered',
+        ),
+      },
+    )
+  }
+  catch {
+    toast.error(t('panel.logs.diagnostics.error'))
+  }
+  finally {
+    diagnosticsBusy.value = false
+  }
+}
+onMounted(() => {
+  void loadDiagnostics()
+  diagnosticTimer = setInterval(() => {
+    if (!diagnosticsLoading.value && !diagnosticsBusy.value)
+      void loadDiagnostics()
+  }, 30000)
+})
+onBeforeUnmount(() => {
+  clearInterval(diagnosticTimer)
+  diagnosticGeneration++
+})
 
 const loading = useHeldLoading(
   () => state.value === 'loading' || state.value === 'idle',
@@ -109,6 +198,18 @@ function onVerbose(value: boolean | 'indeterminate') {
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" class="w-72">
           <DropdownMenuCheckboxItem
+            :model-value="diagnostics?.enabled ?? false"
+            :disabled="!diagnostics || diagnosticsBusy || diagnosticsLoading"
+            @update:model-value="setDiagnostics"
+          >
+            <span class="grid gap-0.5">
+              <span>{{ t("panel.logs.diagnostics.label") }}</span>
+              <span class="text-xs text-muted-foreground">{{
+                t("panel.logs.diagnostics.hint")
+              }}</span>
+            </span>
+          </DropdownMenuCheckboxItem>
+          <DropdownMenuCheckboxItem
             :model-value="journalLevel === 'debug'"
             :disabled="levelLocked || isLevelBusy"
             class="items-start"
@@ -127,19 +228,51 @@ function onVerbose(value: boolean | 'indeterminate') {
           </DropdownMenuCheckboxItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <LoadingButton
-        size="sm"
-        :loading="isDownloading"
-        :aria-label="t('panel.logs.download.action')"
-        @click="logs.download"
-      >
-        <DownloadIcon aria-hidden="true" />
-        <span class="hidden md:inline">{{
-          t("panel.logs.download.action")
-        }}</span>
-      </LoadingButton>
+      <DropdownMenu>
+        <DropdownMenuTrigger as-child>
+          <LoadingButton
+            size="sm"
+            :loading="downloadBusy"
+            :aria-label="t('panel.logs.download.menu')"
+          >
+            <DownloadIcon aria-hidden="true" />
+            <span class="hidden md:inline">{{
+              t("panel.logs.download.menu")
+            }}</span>
+            <ChevronDownIcon aria-hidden="true" />
+          </LoadingButton>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" class="min-w-52">
+          <DropdownMenuItem
+            v-if="supportsReport"
+            :disabled="downloadBusy"
+            @select="logs.downloadReport"
+          >
+            {{ t("panel.logs.report.action") }}
+          </DropdownMenuItem>
+          <DropdownMenuItem :disabled="downloadBusy" @select="logs.download">
+            {{ t("panel.logs.download.action") }}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </template>
   </PageBar>
+
+  <p
+    v-if="!loading && state === 'ready' && supportsReport"
+    class="shrink-0 border-b px-4 py-3 text-xs text-muted-foreground"
+  >
+    {{ t("panel.logs.report.description") }}
+  </p>
+
+  <DiagnosticsStatus
+    v-if="!loading"
+    :status="diagnostics"
+    :failed="diagnosticsFailed"
+    :loading="diagnosticsLoading"
+    :entries="entries"
+    @retry="loadDiagnostics"
+  />
 
   <LogsSkeleton v-if="loading" />
 
@@ -230,6 +363,7 @@ function onVerbose(value: boolean | 'indeterminate') {
               v-for="entry in group.items"
               :key="entry.id"
               :entry="entry"
+              :duplicate="duplicates.has(entry.id)"
               :selected="entry.id === selectedId"
               @open="selectedId = entry.id"
             />

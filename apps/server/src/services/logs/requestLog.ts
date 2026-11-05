@@ -16,6 +16,10 @@ function requestFields(request: FastifyRequest, reply: FastifyReply) {
  * отдаёт сам (движок перезапускается и т. п.), идёт обычной записью запроса.
  */
 export class RequestLogController extends LogController {
+  constructor() {
+    super({ requestIdLogLabel: 'requestId' })
+  }
+
   override incomingRequest() {}
 
   override requestCompleted(

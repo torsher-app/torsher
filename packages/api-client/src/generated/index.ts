@@ -62,6 +62,2206 @@ export enum MaintenanceReasonInput {
   ActivePlayback = "active_playback",
 }
 
+export interface CandidateDiagnosticsInput {
+  /**
+   * @min 0
+   * @max 1000000
+   */
+  rank: number;
+  decisiveKey?:
+    | "no_comparison"
+    | "confidence"
+    | "audioPriority"
+    | "typePriority"
+    | "score"
+    | "seeders"
+    | "id";
+  /**
+   * @min -1000000000
+   * @max 1000000000
+   */
+  score: number;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  audioPriority?: number;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  typePriority?: number;
+}
+
+export interface DiagnosticMediaSnapshotInput {
+  state: "available" | "unsupported" | "unknown";
+  source: "html_video" | "native";
+  /**
+   * @min 0
+   * @max 31536000
+   */
+  position?: number;
+  /**
+   * @min 0
+   * @max 31536000
+   */
+  duration?: number;
+  paused?: boolean;
+  ended?: boolean;
+  seeking?: boolean;
+  /**
+   * @min 0
+   * @max 4
+   */
+  readyState?: number;
+  /**
+   * @min 0
+   * @max 3
+   */
+  networkState?: number;
+  /** @maxItems 4 */
+  buffered?: {
+    /**
+     * @min 0
+     * @max 31536000
+     */
+    start: number;
+    /**
+     * @min 0
+     * @max 31536000
+     */
+    end: number;
+  }[];
+  /**
+   * @min 0
+   * @max 16384
+   */
+  width?: number;
+  /**
+   * @min 0
+   * @max 16384
+   */
+  height?: number;
+  /**
+   * @min 0
+   * @max 1000000
+   */
+  droppedFrames?: number;
+  /**
+   * @min 0
+   * @max 1000000
+   */
+  totalFrames?: number;
+  /**
+   * @min -1
+   * @max 1000
+   */
+  audioTrack?: number;
+  /**
+   * @min -1
+   * @max 1000
+   */
+  subtitleTrack?: number;
+  audioCodec?:
+    | "aac"
+    | "ac3"
+    | "eac3"
+    | "dts"
+    | "truehd"
+    | "mp3"
+    | "flac"
+    | "opus"
+    | "vorbis"
+    | "pcm"
+    | "unknown";
+  audioLanguage?:
+    | "en"
+    | "ru"
+    | "de"
+    | "fr"
+    | "es"
+    | "it"
+    | "pt"
+    | "ja"
+    | "ko"
+    | "zh"
+    | "uk"
+    | "und"
+    | "unknown";
+  mode?: "direct" | "hls" | "unknown";
+  video?: "copy" | "encode";
+  audio?: "copy" | "aac";
+  /** @maxItems 10 */
+  reasons?: (
+    | "ContainerNotSupported"
+    | "VideoCodecNotSupported"
+    | "VideoBitDepthNotSupported"
+    | "AudioCodecNotSupported"
+    | "AudioTrackSwitchNotSupported"
+    | "SubtitleCodecNotSupported"
+    | "HlsNotSupported"
+    | "ToolsMissing"
+    | "ProbeFailed"
+    | "DurationUnknown"
+  )[];
+  hls?:
+    | "unsupported"
+    | "idle"
+    | "loading"
+    | "playing"
+    | "recovering"
+    | "error"
+    | "unknown";
+  native?:
+    | "unsupported"
+    | "idle"
+    | "loading"
+    | "playing"
+    | "paused"
+    | "buffering"
+    | "ended"
+    | "error"
+    | "unknown";
+}
+
+export type DiagnosticEventInput =
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "client.environment";
+      /** @pattern ^[\w.-]{1,80}$ */
+      tvBuildId: string;
+      clientKind: "browser" | "webos" | "android";
+      /** @pattern ^[\w.-]{1,40}$ */
+      shellVersion?: string;
+      browserFamily: "chromium" | "firefox" | "safari" | "unknown";
+      /** @pattern ^\d{1,4}(?:\.\d{1,4}){0,3}$ */
+      browserVersion?: string;
+      osFamily:
+        "webos" | "android" | "windows" | "macos" | "linux" | "ios" | "unknown";
+      /** @pattern ^\d{1,4}(?:\.\d{1,4}){0,3}$ */
+      osVersion?: string;
+      deviceModel: "unsupported";
+      assetManifest: "available" | "unavailable";
+      autoNext?: boolean;
+      /**
+       * @min 0
+       * @max 16384
+       */
+      maxHeight?: number;
+      /**
+       * @min 0
+       * @max 1000000000
+       */
+      maxBitrate?: number;
+      playerMode?: "browser" | "native" | "auto";
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "client.error";
+      /** @pattern ^[\w.-]{1,80}$ */
+      tvBuildId: string;
+      source: "runtime" | "promise" | "media" | "hls" | "native";
+      code:
+        | "unknown"
+        | "type_error"
+        | "range_error"
+        | "reference_error"
+        | "syntax_error"
+        | "uri_error"
+        | "eval_error"
+        | "abort_error"
+        | "network_error"
+        | "not_allowed"
+        | "not_supported"
+        | "media_aborted"
+        | "media_network"
+        | "media_decode"
+        | "media_source"
+        | "hls_network"
+        | "hls_media"
+        | "hls_mux"
+        | "hls_other"
+        | "native_playback";
+      /** @maxItems 4 */
+      locations: {
+        /** @pattern ^[a-f0-9]{64}$ */
+        assetId: string;
+        /**
+         * @min 1
+         * @max 10000000
+         */
+        line: number;
+        /**
+         * @min 0
+         * @max 10000000
+         */
+        column: number;
+      }[];
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      droppedLocations: number;
+      media?: DiagnosticMediaSnapshotInput;
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "client.error_summary";
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      suppressed: number;
+      reason: "rate_limit" | "deduplicated" | "mixed";
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "playback.snapshot";
+      trigger: "transition" | "buffering" | "heartbeat" | "error";
+      media: DiagnosticMediaSnapshotInput;
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      pollId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      decisionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      rankingDecisionId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      generation?: number;
+      /** @pattern ^tmdb:(?:tv|movie):[1-9]\d{0,12}$ */
+      titleId?: string;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      season?: number;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      episode?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      torrentId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fileIndex?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      mediaFileId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "client.started";
+      /** @pattern ^[\w.-]{1,80}$ */
+      tvBuildId: string;
+      clientKind: "browser" | "webos" | "android";
+      /** @pattern ^[\w.-]{1,40}$ */
+      shellVersion?: string;
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      pollId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      decisionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      rankingDecisionId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      generation?: number;
+      /** @pattern ^tmdb:(?:tv|movie):[1-9]\d{0,12}$ */
+      titleId?: string;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      season?: number;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      episode?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      torrentId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fileIndex?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      mediaFileId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "navigation.completed";
+      route:
+        | "home"
+        | "title"
+        | "resolve"
+        | "player"
+        | "sources"
+        | "files"
+        | "library"
+        | "profile"
+        | "other";
+      previousRoute?:
+        | "home"
+        | "title"
+        | "resolve"
+        | "player"
+        | "sources"
+        | "files"
+        | "library"
+        | "profile"
+        | "other";
+      method: "push" | "replace" | "back";
+      trigger: "remote" | "pointer" | "automatic" | "back";
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      pollId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      decisionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      rankingDecisionId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      generation?: number;
+      /** @pattern ^tmdb:(?:tv|movie):[1-9]\d{0,12}$ */
+      titleId?: string;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      season?: number;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      episode?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      torrentId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fileIndex?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      mediaFileId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "selection.activated";
+      slot: "continue" | "title" | "episode" | "source" | "libraryVersion";
+      trigger: "remote" | "pointer" | "automatic";
+      /** @pattern ^[a-f0-9]{16,64}$ */
+      candidateId?: string;
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      pollId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      decisionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      rankingDecisionId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      generation?: number;
+      /** @pattern ^tmdb:(?:tv|movie):[1-9]\d{0,12}$ */
+      titleId?: string;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      season?: number;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      episode?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      torrentId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fileIndex?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      mediaFileId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "continue.presented" | "continue.selected";
+      /**
+       * @min 0
+       * @max 31536000
+       */
+      position: number;
+      /**
+       * @min 0
+       * @max 31536000
+       */
+      duration: number | null;
+      next: boolean;
+      followNewEpisode: boolean;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      snapshotAgeMs: number;
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      pollId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      decisionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      rankingDecisionId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      generation?: number;
+      /** @pattern ^tmdb:(?:tv|movie):[1-9]\d{0,12}$ */
+      titleId?: string;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      season?: number;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      episode?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      torrentId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fileIndex?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      mediaFileId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "continue.refresh";
+      outcome:
+        | "accepted"
+        | "failed"
+        | "stale"
+        | "cancelled"
+        | "unknown"
+        | "http_error"
+        | "network_error"
+        | "timeout";
+      retained: boolean;
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      pollId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      decisionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      rankingDecisionId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      generation?: number;
+      /** @pattern ^tmdb:(?:tv|movie):[1-9]\d{0,12}$ */
+      titleId?: string;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      season?: number;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      episode?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      torrentId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fileIndex?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      mediaFileId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "continue.route";
+      branch:
+        | "direct_file"
+        | "library_lookup"
+        | "library_single"
+        | "library_picker"
+        | "downloaded_file"
+        | "previous_file"
+        | "resolve"
+        | "sources";
+      outcome?:
+        | "accepted"
+        | "failed"
+        | "stale"
+        | "cancelled"
+        | "unknown"
+        | "http_error"
+        | "network_error"
+        | "timeout";
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      pollId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      decisionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      rankingDecisionId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      generation?: number;
+      /** @pattern ^tmdb:(?:tv|movie):[1-9]\d{0,12}$ */
+      titleId?: string;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      season?: number;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      episode?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      torrentId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fileIndex?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      mediaFileId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "upnext.received";
+      outcome:
+        | "accepted"
+        | "failed"
+        | "stale"
+        | "cancelled"
+        | "unknown"
+        | "http_error"
+        | "network_error"
+        | "timeout";
+      available: boolean;
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      pollId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      decisionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      rankingDecisionId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      generation?: number;
+      /** @pattern ^tmdb:(?:tv|movie):[1-9]\d{0,12}$ */
+      titleId?: string;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      season?: number;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      episode?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      torrentId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fileIndex?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      mediaFileId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "upnext.visibility" | "upnext.selected" | "upnext.dismissed";
+      available: boolean;
+      displayed: boolean;
+      gate:
+        | "no_target"
+        | "no_sources_or_library"
+        | "before_threshold"
+        | "duration_unknown"
+        | "panel"
+        | "restarting"
+        | "error"
+        | "not_playing"
+        | "credits"
+        | "remaining"
+        | "dismissed"
+        | "ended";
+      /**
+       * @min 0
+       * @max 31536000
+       */
+      position?: number;
+      /**
+       * @min 0
+       * @max 31536000
+       */
+      duration?: number;
+      /**
+       * @min 0
+       * @max 31536000
+       */
+      remaining?: number;
+      /**
+       * @min 0
+       * @max 31536000
+       */
+      thresholdSeconds?: number;
+      /**
+       * @min 0
+       * @max 31536000
+       */
+      countdownSeconds?: number;
+      summary?: boolean;
+      everDisplayed?: boolean;
+      autoNext?: boolean;
+      trigger?:
+        "remote" | "pointer" | "countdown" | "ended" | "OSD_next" | "exit";
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      pollId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      decisionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      rankingDecisionId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      generation?: number;
+      /** @pattern ^tmdb:(?:tv|movie):[1-9]\d{0,12}$ */
+      titleId?: string;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      season?: number;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      episode?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      torrentId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fileIndex?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      mediaFileId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "player.back";
+      outcome:
+        | "wake_osd"
+        | "settings_step"
+        | "close_panel"
+        | "hide_osd"
+        | "dismiss_skip"
+        | "dismiss_upnext"
+        | "exit";
+      /**
+       * @min 0
+       * @max 31536000
+       */
+      position?: number;
+      /**
+       * @min 0
+       * @max 31536000
+       */
+      remaining?: number;
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      pollId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      decisionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      rankingDecisionId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      generation?: number;
+      /** @pattern ^tmdb:(?:tv|movie):[1-9]\d{0,12}$ */
+      titleId?: string;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      season?: number;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      episode?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      torrentId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fileIndex?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      mediaFileId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "library.choice";
+      outcome: "auto_single" | "selected" | "cancelled" | "deactivated";
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      versions: number;
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      pollId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      decisionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      rankingDecisionId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      generation?: number;
+      /** @pattern ^tmdb:(?:tv|movie):[1-9]\d{0,12}$ */
+      titleId?: string;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      season?: number;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      episode?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      torrentId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fileIndex?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      mediaFileId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "source.resolve" | "source.attempt" | "source.selected";
+      branch:
+        "requested" | "known_torrent" | "follow_pick" | "ranked_candidate";
+      outcome:
+        | "ready"
+        | "resolving"
+        | "file_found"
+        | "episode_absent"
+        | "metadata_timeout"
+        | "open_rejected"
+        | "search_failed"
+        | "cancelled"
+        | "stale";
+      /** @pattern ^[\w-]{8,80}$ */
+      presetId?: string;
+      /** @pattern ^[a-f0-9]{16,64}$ */
+      candidateId?: string;
+      /**
+       * @min 0
+       * @max 3
+       */
+      attemptIndex?: number;
+      /** @maxItems 3 */
+      candidates?: {
+        /** @pattern ^[a-f0-9]{16,64}$ */
+        candidateId: string;
+        diagnostics?: CandidateDiagnosticsInput;
+        confidence: "high" | "medium" | "low";
+        /**
+         * @min 0
+         * @max 1000000
+         */
+        seeders: number;
+        quality:
+          | "2160p"
+          | "1440p"
+          | "1080p"
+          | "1080i"
+          | "720p"
+          | "576p"
+          | "480p"
+          | "360p"
+          | null;
+        resolution: {
+          value: "2160p" | "1080p" | "720p" | "SD";
+          basis: "probe" | "file" | "title" | "source" | "codec";
+          sure: boolean;
+        } | null;
+        coversEpisode: boolean;
+      }[];
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      found?: number;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      eligible?: number;
+      rankingApplied?: boolean;
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      pollId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      decisionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      rankingDecisionId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      generation?: number;
+      /** @pattern ^tmdb:(?:tv|movie):[1-9]\d{0,12}$ */
+      titleId?: string;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      season?: number;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      episode?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      torrentId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fileIndex?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      mediaFileId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event:
+        | "playback.requested"
+        | "playback.ready"
+        | "playback.playing"
+        | "playback.retry"
+        | "playback.error"
+        | "playback.closed";
+      mode?: "direct" | "remux" | "transcode";
+      outcome?:
+        | "accepted"
+        | "failed"
+        | "stale"
+        | "cancelled"
+        | "unknown"
+        | "http_error"
+        | "network_error"
+        | "timeout";
+      /**
+       * @min 0
+       * @max 31536000
+       */
+      position?: number;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      width?: number;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      height?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      previousSession?: string;
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      pollId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      decisionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      rankingDecisionId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      generation?: number;
+      /** @pattern ^tmdb:(?:tv|movie):[1-9]\d{0,12}$ */
+      titleId?: string;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      season?: number;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      episode?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      torrentId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fileIndex?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      mediaFileId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "progress.requested" | "progress.result";
+      outcome:
+        | "accepted"
+        | "failed"
+        | "stale"
+        | "cancelled"
+        | "unknown"
+        | "http_error"
+        | "network_error"
+        | "timeout";
+      /**
+       * @min 0
+       * @max 31536000
+       */
+      position: number;
+      /**
+       * @min 0
+       * @max 31536000
+       */
+      duration: number | null;
+      reason: "exit" | "next" | "source_switch" | "pause" | "checkpoint";
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      pollId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      decisionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      rankingDecisionId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      generation?: number;
+      /** @pattern ^tmdb:(?:tv|movie):[1-9]\d{0,12}$ */
+      titleId?: string;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      season?: number;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      episode?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      torrentId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fileIndex?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      mediaFileId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "operation.cancelled" | "operation.stale";
+      reason:
+        | "superseded"
+        | "back"
+        | "profile_changed"
+        | "deactivated"
+        | "user_interaction"
+        | "unmounted"
+        | "timeout";
+      applied?: boolean;
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      pollId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      decisionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      rankingDecisionId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      generation?: number;
+      /** @pattern ^tmdb:(?:tv|movie):[1-9]\d{0,12}$ */
+      titleId?: string;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      season?: number;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      episode?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      torrentId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fileIndex?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      mediaFileId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "poll.summary";
+      kind: "files" | "probe";
+      outcome:
+        | "accepted"
+        | "failed"
+        | "stale"
+        | "cancelled"
+        | "unknown"
+        | "http_error"
+        | "network_error"
+        | "timeout";
+      observationsComplete: boolean;
+      incompleteReason?: "ttl" | "capacity" | "not_instrumented";
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      requests: number;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      attempts: number;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      errors: number;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      durationMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      firstRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      lastRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      errorRequestId?: string;
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      pollId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      decisionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      rankingDecisionId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      generation?: number;
+      /** @pattern ^tmdb:(?:tv|movie):[1-9]\d{0,12}$ */
+      titleId?: string;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      season?: number;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      episode?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      torrentId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fileIndex?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      mediaFileId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "request.result";
+      outcome:
+        | "accepted"
+        | "failed"
+        | "stale"
+        | "cancelled"
+        | "unknown"
+        | "http_error"
+        | "network_error"
+        | "timeout";
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      attempt: number;
+      /**
+       * @min 100
+       * @max 599
+       */
+      statusCode?: number;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      durationMs: number;
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      pollId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      decisionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      rankingDecisionId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      generation?: number;
+      /** @pattern ^tmdb:(?:tv|movie):[1-9]\d{0,12}$ */
+      titleId?: string;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      season?: number;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      episode?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      torrentId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fileIndex?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      mediaFileId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "continuation.consent";
+      outcome:
+        | "detected"
+        | "accepted"
+        | "sources"
+        | "exit"
+        | "stale"
+        | "unknown"
+        | "same_file"
+        | "manual"
+        | "not_lower"
+        | "cancelled"
+        | "quality_checked"
+        | "opened";
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      baselineHeight?: number;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      candidateHeight?: number;
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      pollId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      decisionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      rankingDecisionId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      generation?: number;
+      /** @pattern ^tmdb:(?:tv|movie):[1-9]\d{0,12}$ */
+      titleId?: string;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      season?: number;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      episode?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      torrentId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fileIndex?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      mediaFileId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "playback.buffering";
+      state: "started" | "ended" | "summary";
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      durationMs?: number;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      count?: number;
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      pollId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      decisionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      rankingDecisionId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      generation?: number;
+      /** @pattern ^tmdb:(?:tv|movie):[1-9]\d{0,12}$ */
+      titleId?: string;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      season?: number;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      episode?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      torrentId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fileIndex?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      mediaFileId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "playback.seek";
+      /**
+       * @min 0
+       * @max 31536000
+       */
+      from: number;
+      /**
+       * @min 0
+       * @max 31536000
+       */
+      to: number;
+      trigger: "remote" | "pointer" | "automatic";
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      pollId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      decisionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      rankingDecisionId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      generation?: number;
+      /** @pattern ^tmdb:(?:tv|movie):[1-9]\d{0,12}$ */
+      titleId?: string;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      season?: number;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      episode?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      torrentId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fileIndex?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      mediaFileId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "player.summary";
+      /**
+       * @min 0
+       * @max 31536000
+       */
+      position?: number;
+      /**
+       * @min 0
+       * @max 31536000
+       */
+      duration?: number;
+      upnextAvailable: boolean;
+      upnextDisplayed: boolean;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      bufferingMs: number;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      bufferingCount: number;
+      reason: "exit" | "next" | "source_switch" | "unmounted" | "error";
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      pollId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      decisionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      rankingDecisionId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      generation?: number;
+      /** @pattern ^tmdb:(?:tv|movie):[1-9]\d{0,12}$ */
+      titleId?: string;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      season?: number;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      episode?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      torrentId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fileIndex?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      mediaFileId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "diagnostics.loss";
+      reason:
+        | "overflow"
+        | "expiry"
+        | "auth"
+        | "storage"
+        | "rate_limit"
+        | "invalid_event";
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      count: number;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fromSeq?: number;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      toSeq?: number;
+    };
+
+export interface DiagnosticBatchInput {
+  schemaVersion: 1;
+  /** @pattern ^[\w-]{8,80}$ */
+  deviceId: string | null;
+  /** @pattern ^[\w-]{8,80}$ */
+  profileId: string;
+  /**
+   * @maxItems 16
+   * @minItems 1
+   */
+  events: DiagnosticEventInput[];
+}
+
+export interface DiagnosticStatusInput {
+  enabled: boolean;
+  collecting: boolean;
+  supportFacts?: 1;
+  schemaVersion: 1;
+  serverVersion: string;
+  serverInstance: string;
+  serverTime: string;
+  deviceId: string | null;
+  profileId: string;
+  fileSinkState: "enabled" | "disabled";
+  retentionState: "ok" | "degraded";
+}
+
+export interface DiagnosticAckInput {
+  accepted: string[];
+  duplicate: string[];
+  rejected: {
+    eventId: string;
+    code:
+      "disabled" | "level_filtered" | "invalid_event" | "journal_unavailable";
+  }[];
+  serverInstance: string;
+  fileSinkState: "enabled" | "disabled";
+}
+
+export interface DiagnosticSettingsInput {
+  enabled: boolean;
+}
+
+export interface MessageResponseInput {
+  message: string;
+}
+
+export interface TooManyAttemptsResponseInput {
+  message: "too_many_attempts";
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  retryAfter: number;
+}
+
 export interface MaintenanceRuleOptionsInput {
   enabled: boolean;
   /**
@@ -333,19 +2533,6 @@ export interface MaintenanceStatusInput {
     titleId: string;
     status: "pending" | "cleaned";
   }[];
-}
-
-export interface MessageResponseInput {
-  message: string;
-}
-
-export interface TooManyAttemptsResponseInput {
-  message: "too_many_attempts";
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  retryAfter: number;
 }
 
 export interface AboutResponseInput {
@@ -1133,6 +3320,7 @@ export interface AudioTrackInput {
 
 export interface SourceCandidateInput {
   id: string;
+  diagnostics?: CandidateDiagnosticsInput;
   title: string;
   indexers: string[];
   size: number | null;
@@ -1190,6 +3378,7 @@ export interface VoiceOptionInput {
 }
 
 export interface TitleSourcesInput {
+  rankingDecisionId?: string;
   season: number | null;
   episode: number | null;
   updatedAt: string;
@@ -1465,6 +3654,7 @@ export interface SeasonReleaseInput {
 }
 
 export interface ContinuationInput {
+  decisionId?: string;
   target: {
     season: number;
     episode: number;
@@ -1490,6 +3680,7 @@ export interface ContinuationInput {
 }
 
 export interface ResumeTargetInput {
+  decisionId?: string;
   season: number | null;
   episode: number | null;
   position: number;
@@ -1702,6 +3893,7 @@ export interface ContinueCardInput {
    * @max 9007199254740991
    */
   followNew?: number;
+  decisionId?: string;
   image?: string;
   season: number | null;
   episode: number | null;
@@ -1732,10 +3924,7 @@ export interface ContinueRowInput {
 }
 
 export type HomeRowInput =
-  | ContinueRowInput
-  | ReleasesRowInput
-  | FilesRowInput
-  | CatalogRowInput;
+  ContinueRowInput | ReleasesRowInput | FilesRowInput | CatalogRowInput;
 
 export interface HomeResponseInput {
   rows: HomeRowInput[];
@@ -3380,7 +5569,8 @@ export interface LogEntryInput {
     | "network"
     | "notifications"
     | "auth"
-    | "backups";
+    | "backups"
+    | "client";
   message: string;
   details?: string;
   context?: Record<string, string | number | boolean>;
@@ -3389,10 +5579,29 @@ export interface LogEntryInput {
 
 export interface LogsResponseInput {
   entries: LogEntryInput[];
+  reportCapability?: {
+    version: 1;
+  };
   level: "debug" | "info" | "warn" | "error";
   levelLocked: boolean;
   hasMore: boolean;
   instance: string;
+  window?: {
+    oldest: string | null;
+    newest: string | null;
+    /**
+     * @min 0
+     * @exclusiveMin true
+     * @max 9007199254740991
+     */
+    capacity: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    retained: number;
+    evicted: boolean;
+  };
 }
 
 export interface LogLevelBodyInput {
@@ -5474,6 +7683,2206 @@ export interface WrongPasswordResponseInput {
   field: "currentPassword";
 }
 
+export interface CandidateDiagnostics {
+  /**
+   * @min 0
+   * @max 1000000
+   */
+  rank: number;
+  decisiveKey?:
+    | "no_comparison"
+    | "confidence"
+    | "audioPriority"
+    | "typePriority"
+    | "score"
+    | "seeders"
+    | "id";
+  /**
+   * @min -1000000000
+   * @max 1000000000
+   */
+  score: number;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  audioPriority?: number;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  typePriority?: number;
+}
+
+export interface DiagnosticMediaSnapshot {
+  state: "available" | "unsupported" | "unknown";
+  source: "html_video" | "native";
+  /**
+   * @min 0
+   * @max 31536000
+   */
+  position?: number;
+  /**
+   * @min 0
+   * @max 31536000
+   */
+  duration?: number;
+  paused?: boolean;
+  ended?: boolean;
+  seeking?: boolean;
+  /**
+   * @min 0
+   * @max 4
+   */
+  readyState?: number;
+  /**
+   * @min 0
+   * @max 3
+   */
+  networkState?: number;
+  /** @maxItems 4 */
+  buffered?: {
+    /**
+     * @min 0
+     * @max 31536000
+     */
+    start: number;
+    /**
+     * @min 0
+     * @max 31536000
+     */
+    end: number;
+  }[];
+  /**
+   * @min 0
+   * @max 16384
+   */
+  width?: number;
+  /**
+   * @min 0
+   * @max 16384
+   */
+  height?: number;
+  /**
+   * @min 0
+   * @max 1000000
+   */
+  droppedFrames?: number;
+  /**
+   * @min 0
+   * @max 1000000
+   */
+  totalFrames?: number;
+  /**
+   * @min -1
+   * @max 1000
+   */
+  audioTrack?: number;
+  /**
+   * @min -1
+   * @max 1000
+   */
+  subtitleTrack?: number;
+  audioCodec?:
+    | "aac"
+    | "ac3"
+    | "eac3"
+    | "dts"
+    | "truehd"
+    | "mp3"
+    | "flac"
+    | "opus"
+    | "vorbis"
+    | "pcm"
+    | "unknown";
+  audioLanguage?:
+    | "en"
+    | "ru"
+    | "de"
+    | "fr"
+    | "es"
+    | "it"
+    | "pt"
+    | "ja"
+    | "ko"
+    | "zh"
+    | "uk"
+    | "und"
+    | "unknown";
+  mode?: "direct" | "hls" | "unknown";
+  video?: "copy" | "encode";
+  audio?: "copy" | "aac";
+  /** @maxItems 10 */
+  reasons?: (
+    | "ContainerNotSupported"
+    | "VideoCodecNotSupported"
+    | "VideoBitDepthNotSupported"
+    | "AudioCodecNotSupported"
+    | "AudioTrackSwitchNotSupported"
+    | "SubtitleCodecNotSupported"
+    | "HlsNotSupported"
+    | "ToolsMissing"
+    | "ProbeFailed"
+    | "DurationUnknown"
+  )[];
+  hls?:
+    | "unsupported"
+    | "idle"
+    | "loading"
+    | "playing"
+    | "recovering"
+    | "error"
+    | "unknown";
+  native?:
+    | "unsupported"
+    | "idle"
+    | "loading"
+    | "playing"
+    | "paused"
+    | "buffering"
+    | "ended"
+    | "error"
+    | "unknown";
+}
+
+export type DiagnosticEvent =
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "client.environment";
+      /** @pattern ^[\w.-]{1,80}$ */
+      tvBuildId: string;
+      clientKind: "browser" | "webos" | "android";
+      /** @pattern ^[\w.-]{1,40}$ */
+      shellVersion?: string;
+      browserFamily: "chromium" | "firefox" | "safari" | "unknown";
+      /** @pattern ^\d{1,4}(?:\.\d{1,4}){0,3}$ */
+      browserVersion?: string;
+      osFamily:
+        "webos" | "android" | "windows" | "macos" | "linux" | "ios" | "unknown";
+      /** @pattern ^\d{1,4}(?:\.\d{1,4}){0,3}$ */
+      osVersion?: string;
+      deviceModel: "unsupported";
+      assetManifest: "available" | "unavailable";
+      autoNext?: boolean;
+      /**
+       * @min 0
+       * @max 16384
+       */
+      maxHeight?: number;
+      /**
+       * @min 0
+       * @max 1000000000
+       */
+      maxBitrate?: number;
+      playerMode?: "browser" | "native" | "auto";
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "client.error";
+      /** @pattern ^[\w.-]{1,80}$ */
+      tvBuildId: string;
+      source: "runtime" | "promise" | "media" | "hls" | "native";
+      code:
+        | "unknown"
+        | "type_error"
+        | "range_error"
+        | "reference_error"
+        | "syntax_error"
+        | "uri_error"
+        | "eval_error"
+        | "abort_error"
+        | "network_error"
+        | "not_allowed"
+        | "not_supported"
+        | "media_aborted"
+        | "media_network"
+        | "media_decode"
+        | "media_source"
+        | "hls_network"
+        | "hls_media"
+        | "hls_mux"
+        | "hls_other"
+        | "native_playback";
+      /** @maxItems 4 */
+      locations: {
+        /** @pattern ^[a-f0-9]{64}$ */
+        assetId: string;
+        /**
+         * @min 1
+         * @max 10000000
+         */
+        line: number;
+        /**
+         * @min 0
+         * @max 10000000
+         */
+        column: number;
+      }[];
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      droppedLocations: number;
+      media?: DiagnosticMediaSnapshot;
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "client.error_summary";
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      suppressed: number;
+      reason: "rate_limit" | "deduplicated" | "mixed";
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "playback.snapshot";
+      trigger: "transition" | "buffering" | "heartbeat" | "error";
+      media: DiagnosticMediaSnapshot;
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      pollId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      decisionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      rankingDecisionId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      generation?: number;
+      /** @pattern ^tmdb:(?:tv|movie):[1-9]\d{0,12}$ */
+      titleId?: string;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      season?: number;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      episode?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      torrentId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fileIndex?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      mediaFileId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "client.started";
+      /** @pattern ^[\w.-]{1,80}$ */
+      tvBuildId: string;
+      clientKind: "browser" | "webos" | "android";
+      /** @pattern ^[\w.-]{1,40}$ */
+      shellVersion?: string;
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      pollId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      decisionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      rankingDecisionId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      generation?: number;
+      /** @pattern ^tmdb:(?:tv|movie):[1-9]\d{0,12}$ */
+      titleId?: string;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      season?: number;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      episode?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      torrentId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fileIndex?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      mediaFileId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "navigation.completed";
+      route:
+        | "home"
+        | "title"
+        | "resolve"
+        | "player"
+        | "sources"
+        | "files"
+        | "library"
+        | "profile"
+        | "other";
+      previousRoute?:
+        | "home"
+        | "title"
+        | "resolve"
+        | "player"
+        | "sources"
+        | "files"
+        | "library"
+        | "profile"
+        | "other";
+      method: "push" | "replace" | "back";
+      trigger: "remote" | "pointer" | "automatic" | "back";
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      pollId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      decisionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      rankingDecisionId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      generation?: number;
+      /** @pattern ^tmdb:(?:tv|movie):[1-9]\d{0,12}$ */
+      titleId?: string;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      season?: number;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      episode?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      torrentId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fileIndex?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      mediaFileId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "selection.activated";
+      slot: "continue" | "title" | "episode" | "source" | "libraryVersion";
+      trigger: "remote" | "pointer" | "automatic";
+      /** @pattern ^[a-f0-9]{16,64}$ */
+      candidateId?: string;
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      pollId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      decisionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      rankingDecisionId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      generation?: number;
+      /** @pattern ^tmdb:(?:tv|movie):[1-9]\d{0,12}$ */
+      titleId?: string;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      season?: number;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      episode?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      torrentId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fileIndex?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      mediaFileId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "continue.presented" | "continue.selected";
+      /**
+       * @min 0
+       * @max 31536000
+       */
+      position: number;
+      /**
+       * @min 0
+       * @max 31536000
+       */
+      duration: number | null;
+      next: boolean;
+      followNewEpisode: boolean;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      snapshotAgeMs: number;
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      pollId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      decisionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      rankingDecisionId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      generation?: number;
+      /** @pattern ^tmdb:(?:tv|movie):[1-9]\d{0,12}$ */
+      titleId?: string;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      season?: number;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      episode?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      torrentId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fileIndex?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      mediaFileId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "continue.refresh";
+      outcome:
+        | "accepted"
+        | "failed"
+        | "stale"
+        | "cancelled"
+        | "unknown"
+        | "http_error"
+        | "network_error"
+        | "timeout";
+      retained: boolean;
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      pollId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      decisionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      rankingDecisionId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      generation?: number;
+      /** @pattern ^tmdb:(?:tv|movie):[1-9]\d{0,12}$ */
+      titleId?: string;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      season?: number;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      episode?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      torrentId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fileIndex?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      mediaFileId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "continue.route";
+      branch:
+        | "direct_file"
+        | "library_lookup"
+        | "library_single"
+        | "library_picker"
+        | "downloaded_file"
+        | "previous_file"
+        | "resolve"
+        | "sources";
+      outcome?:
+        | "accepted"
+        | "failed"
+        | "stale"
+        | "cancelled"
+        | "unknown"
+        | "http_error"
+        | "network_error"
+        | "timeout";
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      pollId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      decisionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      rankingDecisionId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      generation?: number;
+      /** @pattern ^tmdb:(?:tv|movie):[1-9]\d{0,12}$ */
+      titleId?: string;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      season?: number;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      episode?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      torrentId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fileIndex?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      mediaFileId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "upnext.received";
+      outcome:
+        | "accepted"
+        | "failed"
+        | "stale"
+        | "cancelled"
+        | "unknown"
+        | "http_error"
+        | "network_error"
+        | "timeout";
+      available: boolean;
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      pollId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      decisionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      rankingDecisionId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      generation?: number;
+      /** @pattern ^tmdb:(?:tv|movie):[1-9]\d{0,12}$ */
+      titleId?: string;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      season?: number;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      episode?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      torrentId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fileIndex?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      mediaFileId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "upnext.visibility" | "upnext.selected" | "upnext.dismissed";
+      available: boolean;
+      displayed: boolean;
+      gate:
+        | "no_target"
+        | "no_sources_or_library"
+        | "before_threshold"
+        | "duration_unknown"
+        | "panel"
+        | "restarting"
+        | "error"
+        | "not_playing"
+        | "credits"
+        | "remaining"
+        | "dismissed"
+        | "ended";
+      /**
+       * @min 0
+       * @max 31536000
+       */
+      position?: number;
+      /**
+       * @min 0
+       * @max 31536000
+       */
+      duration?: number;
+      /**
+       * @min 0
+       * @max 31536000
+       */
+      remaining?: number;
+      /**
+       * @min 0
+       * @max 31536000
+       */
+      thresholdSeconds?: number;
+      /**
+       * @min 0
+       * @max 31536000
+       */
+      countdownSeconds?: number;
+      summary?: boolean;
+      everDisplayed?: boolean;
+      autoNext?: boolean;
+      trigger?:
+        "remote" | "pointer" | "countdown" | "ended" | "OSD_next" | "exit";
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      pollId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      decisionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      rankingDecisionId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      generation?: number;
+      /** @pattern ^tmdb:(?:tv|movie):[1-9]\d{0,12}$ */
+      titleId?: string;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      season?: number;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      episode?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      torrentId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fileIndex?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      mediaFileId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "player.back";
+      outcome:
+        | "wake_osd"
+        | "settings_step"
+        | "close_panel"
+        | "hide_osd"
+        | "dismiss_skip"
+        | "dismiss_upnext"
+        | "exit";
+      /**
+       * @min 0
+       * @max 31536000
+       */
+      position?: number;
+      /**
+       * @min 0
+       * @max 31536000
+       */
+      remaining?: number;
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      pollId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      decisionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      rankingDecisionId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      generation?: number;
+      /** @pattern ^tmdb:(?:tv|movie):[1-9]\d{0,12}$ */
+      titleId?: string;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      season?: number;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      episode?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      torrentId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fileIndex?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      mediaFileId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "library.choice";
+      outcome: "auto_single" | "selected" | "cancelled" | "deactivated";
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      versions: number;
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      pollId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      decisionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      rankingDecisionId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      generation?: number;
+      /** @pattern ^tmdb:(?:tv|movie):[1-9]\d{0,12}$ */
+      titleId?: string;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      season?: number;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      episode?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      torrentId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fileIndex?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      mediaFileId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "source.resolve" | "source.attempt" | "source.selected";
+      branch:
+        "requested" | "known_torrent" | "follow_pick" | "ranked_candidate";
+      outcome:
+        | "ready"
+        | "resolving"
+        | "file_found"
+        | "episode_absent"
+        | "metadata_timeout"
+        | "open_rejected"
+        | "search_failed"
+        | "cancelled"
+        | "stale";
+      /** @pattern ^[\w-]{8,80}$ */
+      presetId?: string;
+      /** @pattern ^[a-f0-9]{16,64}$ */
+      candidateId?: string;
+      /**
+       * @min 0
+       * @max 3
+       */
+      attemptIndex?: number;
+      /** @maxItems 3 */
+      candidates?: {
+        /** @pattern ^[a-f0-9]{16,64}$ */
+        candidateId: string;
+        diagnostics?: CandidateDiagnostics;
+        confidence: "high" | "medium" | "low";
+        /**
+         * @min 0
+         * @max 1000000
+         */
+        seeders: number;
+        quality:
+          | "2160p"
+          | "1440p"
+          | "1080p"
+          | "1080i"
+          | "720p"
+          | "576p"
+          | "480p"
+          | "360p"
+          | null;
+        resolution: {
+          value: "2160p" | "1080p" | "720p" | "SD";
+          basis: "probe" | "file" | "title" | "source" | "codec";
+          sure: boolean;
+        } | null;
+        coversEpisode: boolean;
+      }[];
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      found?: number;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      eligible?: number;
+      rankingApplied?: boolean;
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      pollId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      decisionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      rankingDecisionId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      generation?: number;
+      /** @pattern ^tmdb:(?:tv|movie):[1-9]\d{0,12}$ */
+      titleId?: string;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      season?: number;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      episode?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      torrentId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fileIndex?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      mediaFileId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event:
+        | "playback.requested"
+        | "playback.ready"
+        | "playback.playing"
+        | "playback.retry"
+        | "playback.error"
+        | "playback.closed";
+      mode?: "direct" | "remux" | "transcode";
+      outcome?:
+        | "accepted"
+        | "failed"
+        | "stale"
+        | "cancelled"
+        | "unknown"
+        | "http_error"
+        | "network_error"
+        | "timeout";
+      /**
+       * @min 0
+       * @max 31536000
+       */
+      position?: number;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      width?: number;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      height?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      previousSession?: string;
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      pollId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      decisionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      rankingDecisionId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      generation?: number;
+      /** @pattern ^tmdb:(?:tv|movie):[1-9]\d{0,12}$ */
+      titleId?: string;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      season?: number;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      episode?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      torrentId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fileIndex?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      mediaFileId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "progress.requested" | "progress.result";
+      outcome:
+        | "accepted"
+        | "failed"
+        | "stale"
+        | "cancelled"
+        | "unknown"
+        | "http_error"
+        | "network_error"
+        | "timeout";
+      /**
+       * @min 0
+       * @max 31536000
+       */
+      position: number;
+      /**
+       * @min 0
+       * @max 31536000
+       */
+      duration: number | null;
+      reason: "exit" | "next" | "source_switch" | "pause" | "checkpoint";
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      pollId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      decisionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      rankingDecisionId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      generation?: number;
+      /** @pattern ^tmdb:(?:tv|movie):[1-9]\d{0,12}$ */
+      titleId?: string;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      season?: number;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      episode?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      torrentId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fileIndex?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      mediaFileId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "operation.cancelled" | "operation.stale";
+      reason:
+        | "superseded"
+        | "back"
+        | "profile_changed"
+        | "deactivated"
+        | "user_interaction"
+        | "unmounted"
+        | "timeout";
+      applied?: boolean;
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      pollId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      decisionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      rankingDecisionId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      generation?: number;
+      /** @pattern ^tmdb:(?:tv|movie):[1-9]\d{0,12}$ */
+      titleId?: string;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      season?: number;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      episode?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      torrentId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fileIndex?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      mediaFileId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "poll.summary";
+      kind: "files" | "probe";
+      outcome:
+        | "accepted"
+        | "failed"
+        | "stale"
+        | "cancelled"
+        | "unknown"
+        | "http_error"
+        | "network_error"
+        | "timeout";
+      observationsComplete: boolean;
+      incompleteReason?: "ttl" | "capacity" | "not_instrumented";
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      requests: number;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      attempts: number;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      errors: number;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      durationMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      firstRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      lastRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      errorRequestId?: string;
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      pollId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      decisionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      rankingDecisionId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      generation?: number;
+      /** @pattern ^tmdb:(?:tv|movie):[1-9]\d{0,12}$ */
+      titleId?: string;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      season?: number;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      episode?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      torrentId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fileIndex?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      mediaFileId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "request.result";
+      outcome:
+        | "accepted"
+        | "failed"
+        | "stale"
+        | "cancelled"
+        | "unknown"
+        | "http_error"
+        | "network_error"
+        | "timeout";
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      attempt: number;
+      /**
+       * @min 100
+       * @max 599
+       */
+      statusCode?: number;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      durationMs: number;
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      pollId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      decisionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      rankingDecisionId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      generation?: number;
+      /** @pattern ^tmdb:(?:tv|movie):[1-9]\d{0,12}$ */
+      titleId?: string;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      season?: number;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      episode?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      torrentId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fileIndex?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      mediaFileId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "continuation.consent";
+      outcome:
+        | "detected"
+        | "accepted"
+        | "sources"
+        | "exit"
+        | "stale"
+        | "unknown"
+        | "same_file"
+        | "manual"
+        | "not_lower"
+        | "cancelled"
+        | "quality_checked"
+        | "opened";
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      baselineHeight?: number;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      candidateHeight?: number;
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      pollId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      decisionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      rankingDecisionId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      generation?: number;
+      /** @pattern ^tmdb:(?:tv|movie):[1-9]\d{0,12}$ */
+      titleId?: string;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      season?: number;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      episode?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      torrentId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fileIndex?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      mediaFileId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "playback.buffering";
+      state: "started" | "ended" | "summary";
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      durationMs?: number;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      count?: number;
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      pollId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      decisionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      rankingDecisionId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      generation?: number;
+      /** @pattern ^tmdb:(?:tv|movie):[1-9]\d{0,12}$ */
+      titleId?: string;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      season?: number;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      episode?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      torrentId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fileIndex?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      mediaFileId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "playback.seek";
+      /**
+       * @min 0
+       * @max 31536000
+       */
+      from: number;
+      /**
+       * @min 0
+       * @max 31536000
+       */
+      to: number;
+      trigger: "remote" | "pointer" | "automatic";
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      pollId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      decisionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      rankingDecisionId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      generation?: number;
+      /** @pattern ^tmdb:(?:tv|movie):[1-9]\d{0,12}$ */
+      titleId?: string;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      season?: number;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      episode?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      torrentId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fileIndex?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      mediaFileId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "player.summary";
+      /**
+       * @min 0
+       * @max 31536000
+       */
+      position?: number;
+      /**
+       * @min 0
+       * @max 31536000
+       */
+      duration?: number;
+      upnextAvailable: boolean;
+      upnextDisplayed: boolean;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      bufferingMs: number;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      bufferingCount: number;
+      reason: "exit" | "next" | "source_switch" | "unmounted" | "error";
+    }
+  | {
+      /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
+      eventId: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientSessionId: string;
+      /**
+       * @min 1
+       * @max 999999999999
+       */
+      clientSeq: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      clientTime: string;
+      /**
+       * @min 0
+       * @max 31536000000
+       */
+      elapsedMs: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      actionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      parentActionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      clientRequestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      pollId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      requestId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      decisionId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      rankingDecisionId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      generation?: number;
+      /** @pattern ^tmdb:(?:tv|movie):[1-9]\d{0,12}$ */
+      titleId?: string;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      season?: number;
+      /**
+       * @min 0
+       * @max 9999
+       */
+      episode?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      torrentId?: string;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fileIndex?: number;
+      /** @pattern ^[\w-]{8,80}$ */
+      mediaFileId?: string;
+      /** @pattern ^[\w-]{8,80}$ */
+      session?: string;
+      event: "diagnostics.loss";
+      reason:
+        | "overflow"
+        | "expiry"
+        | "auth"
+        | "storage"
+        | "rate_limit"
+        | "invalid_event";
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      count: number;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      fromSeq?: number;
+      /**
+       * @min 0
+       * @max 1000000
+       */
+      toSeq?: number;
+    };
+
+export interface DiagnosticBatch {
+  schemaVersion: 1;
+  /** @pattern ^[\w-]{8,80}$ */
+  deviceId: string | null;
+  /** @pattern ^[\w-]{8,80}$ */
+  profileId: string;
+  /**
+   * @maxItems 16
+   * @minItems 1
+   */
+  events: DiagnosticEvent[];
+}
+
+export interface DiagnosticStatus {
+  enabled: boolean;
+  collecting: boolean;
+  supportFacts?: 1;
+  schemaVersion: 1;
+  serverVersion: string;
+  serverInstance: string;
+  serverTime: string;
+  deviceId: string | null;
+  profileId: string;
+  fileSinkState: "enabled" | "disabled";
+  retentionState: "ok" | "degraded";
+}
+
+export interface DiagnosticAck {
+  accepted: string[];
+  duplicate: string[];
+  rejected: {
+    eventId: string;
+    code:
+      "disabled" | "level_filtered" | "invalid_event" | "journal_unavailable";
+  }[];
+  serverInstance: string;
+  fileSinkState: "enabled" | "disabled";
+}
+
+export interface DiagnosticSettings {
+  enabled: boolean;
+}
+
+export interface MessageResponse {
+  message: string;
+}
+
+export interface TooManyAttemptsResponse {
+  message: "too_many_attempts";
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  retryAfter: number;
+}
+
 export interface MaintenanceRuleOptions {
   enabled: boolean;
   /**
@@ -5745,19 +10154,6 @@ export interface MaintenanceStatus {
     titleId: string;
     status: "pending" | "cleaned";
   }[];
-}
-
-export interface MessageResponse {
-  message: string;
-}
-
-export interface TooManyAttemptsResponse {
-  message: "too_many_attempts";
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  retryAfter: number;
 }
 
 export interface AboutResponse {
@@ -6545,6 +10941,7 @@ export interface AudioTrack {
 
 export interface SourceCandidate {
   id: string;
+  diagnostics?: CandidateDiagnostics;
   title: string;
   indexers: string[];
   size: number | null;
@@ -6602,6 +10999,7 @@ export interface VoiceOption {
 }
 
 export interface TitleSources {
+  rankingDecisionId?: string;
   season: number | null;
   episode: number | null;
   updatedAt: string;
@@ -6877,6 +11275,7 @@ export interface SeasonRelease {
 }
 
 export interface Continuation {
+  decisionId?: string;
   target: {
     season: number;
     episode: number;
@@ -6902,6 +11301,7 @@ export interface Continuation {
 }
 
 export interface ResumeTarget {
+  decisionId?: string;
   season: number | null;
   episode: number | null;
   position: number;
@@ -7114,6 +11514,7 @@ export interface ContinueCard {
    * @max 9007199254740991
    */
   followNew?: number;
+  decisionId?: string;
   image?: string;
   season: number | null;
   episode: number | null;
@@ -8788,7 +13189,8 @@ export interface LogEntry {
     | "network"
     | "notifications"
     | "auth"
-    | "backups";
+    | "backups"
+    | "client";
   message: string;
   details?: string;
   context?: Record<string, string | number | boolean>;
@@ -8797,10 +13199,29 @@ export interface LogEntry {
 
 export interface LogsResponse {
   entries: LogEntry[];
+  reportCapability?: {
+    version: 1;
+  };
   level: "debug" | "info" | "warn" | "error";
   levelLocked: boolean;
   hasMore: boolean;
   instance: string;
+  window?: {
+    oldest: string | null;
+    newest: string | null;
+    /**
+     * @min 0
+     * @exclusiveMin true
+     * @max 9007199254740991
+     */
+    capacity: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    retained: number;
+    evicted: boolean;
+  };
 }
 
 export interface LogLevelBody {
@@ -10901,12 +15322,10 @@ export type MarkNotificationsReadError = MessageResponse;
 export type GetNotificationChannelsError = MessageResponse;
 
 export type CreateNotificationChannelError =
-  | MessageResponse
-  | NotificationChannelConfigError;
+  MessageResponse | NotificationChannelConfigError;
 
 export type UpdateNotificationChannelError =
-  | MessageResponse
-  | NotificationChannelConfigError;
+  MessageResponse | NotificationChannelConfigError;
 
 export type SetNotificationChannelEnabledError = MessageResponse;
 
@@ -10915,8 +15334,7 @@ export type DeleteNotificationChannelError = MessageResponse;
 export type TestNotificationChannelError = MessageResponse;
 
 export type TestNotificationChannelDraftError =
-  | MessageResponse
-  | NotificationChannelConfigError;
+  MessageResponse | NotificationChannelConfigError;
 
 export type FindTelegramChatsError = MessageResponse;
 
@@ -10929,14 +15347,10 @@ export type PostAuthRefreshError = MessageResponse;
 export type GetUsersMeError = MessageResponse;
 
 export type PutUsersMePasswordError =
-  | MessageResponse
-  | WrongPasswordResponse
-  | TooManyAttemptsResponse;
+  MessageResponse | WrongPasswordResponse | TooManyAttemptsResponse;
 
 export type PutUsersMeUsernameError =
-  | MessageResponse
-  | WrongPasswordResponse
-  | TooManyAttemptsResponse;
+  MessageResponse | WrongPasswordResponse | TooManyAttemptsResponse;
 
 export type GetCatalogSearchError = MessageResponse;
 
@@ -10983,18 +15397,14 @@ export type GetTitleSourcesError = MessageResponse;
 export type PutTitleVoiceError = MessageResponse;
 
 export type PostTitleWatchError =
-  | MessageResponse
-  | WatchErrorResponse
-  | EngineUnavailableResponse;
+  MessageResponse | WatchErrorResponse | EngineUnavailableResponse;
 
 export type GetTitleProgressError = MessageResponse;
 
 export type GetTitleUpNextError = MessageResponse;
 
 export type PostTitleOpenError =
-  | MessageResponse
-  | WatchErrorResponse
-  | EngineUnavailableResponse;
+  MessageResponse | WatchErrorResponse | EngineUnavailableResponse;
 
 export type GetTitleFilesError = MessageResponse;
 
@@ -11009,13 +15419,10 @@ export type PostTitleDownloadError =
   | InsufficientStorageResponse;
 
 export type DeleteTitleDownloadError =
-  | MessageResponse
-  | EngineUnavailableResponse;
+  MessageResponse | EngineUnavailableResponse;
 
 export type PostTitleKeepError =
-  | MessageResponse
-  | EngineUnavailableResponse
-  | InsufficientStorageResponse;
+  MessageResponse | EngineUnavailableResponse | InsufficientStorageResponse;
 
 export type PutTitleWatchedError = MessageResponse;
 
@@ -11052,30 +15459,25 @@ export type DeleteTorrentError = MessageResponse | EngineUnavailableResponse;
 export type PostTorrentRetryError = MessageResponse | EngineUnavailableResponse;
 
 export type PostTorrentDownloadError =
-  | MessageResponse
-  | EngineUnavailableResponse;
+  MessageResponse | EngineUnavailableResponse;
 
 export type PutTorrentPriorityError =
-  | MessageResponse
-  | EngineUnavailableResponse;
+  MessageResponse | EngineUnavailableResponse;
 
 export type PostTorrentPauseError = MessageResponse | EngineUnavailableResponse;
 
 export type PostTorrentResumeError =
-  | MessageResponse
-  | EngineUnavailableResponse;
+  MessageResponse | EngineUnavailableResponse;
 
 export type PutTorrentRetentionError =
-  | MessageResponse
-  | EngineUnavailableResponse;
+  MessageResponse | EngineUnavailableResponse;
 
 export type PutTorrentSeedingError = MessageResponse;
 
 export type PutTorrentTitleError = MessageResponse;
 
 export type DeleteTorrentLibraryError =
-  | MessageResponse
-  | EngineUnavailableResponse;
+  MessageResponse | EngineUnavailableResponse;
 
 export type GetTorrentStatsError = MessageResponse | EngineUnavailableResponse;
 
@@ -11146,18 +15548,13 @@ export type GetStorageBrowseError = MessageResponse;
 export type PostStorageCheckError = MessageResponse;
 
 export type PutStoragePathError =
-  | MessageResponse
-  | StoragePathErrorResponse
-  | EngineUnavailableResponse;
+  MessageResponse | StoragePathErrorResponse | EngineUnavailableResponse;
 
 export type PostStorageMoveError =
-  | MessageResponse
-  | StoragePathErrorResponse
-  | EngineUnavailableResponse;
+  MessageResponse | StoragePathErrorResponse | EngineUnavailableResponse;
 
 export type PostStorageMoveCancelError =
-  | MessageResponse
-  | EngineUnavailableResponse;
+  MessageResponse | EngineUnavailableResponse;
 
 export type GetBackupsError = MessageResponse;
 
@@ -11180,12 +15577,10 @@ export type PostBackupRestoreError = MessageResponse | BackupErrorResponse;
 export type PostTransferExportError = MessageResponse;
 
 export type PostTransferImportPreviewError =
-  | TransferErrorResponse
-  | MessageResponse;
+  TransferErrorResponse | MessageResponse;
 
 export type PostTransferImportApplyError =
-  | MessageResponse
-  | BackupErrorResponse;
+  MessageResponse | BackupErrorResponse;
 
 export type GetNetRoutesError = MessageResponse;
 
@@ -11254,9 +15649,7 @@ export type GetSetupStorageCheckError = MessageResponse;
 export type PostSetupDiscoverManagersError = MessageResponse;
 
 export type PostPlaybackError =
-  | MessageResponse
-  | EngineUnavailableResponse
-  | InsufficientStorageResponse;
+  MessageResponse | EngineUnavailableResponse | InsufficientStorageResponse;
 
 export type GetPlaybackError = MessageResponse;
 
@@ -11334,8 +15727,7 @@ export type PostProfileSelectError = MessageResponse | PinErrorResponse;
 export type GetProfileImportsError = MessageResponse;
 
 export type PostProfileImportError =
-  | ImportFormatErrorResponse
-  | MessageResponse;
+  ImportFormatErrorResponse | MessageResponse;
 
 export type GetProfileImportUnmatchedError = MessageResponse;
 
@@ -11356,8 +15748,7 @@ export type PostDevicePairingError = MessageResponse;
 export type GetDevicePairingError = MessageResponse;
 
 export type PostDevicePairingConfirmError =
-  | MessageResponse
-  | PairingErrorResponse;
+  MessageResponse | PairingErrorResponse;
 
 export type GetDevicesError = MessageResponse;
 
@@ -11370,6 +15761,12 @@ export type RestartEngineError = MessageResponse | EngineUnavailableResponse;
 export type GetLogsError = MessageResponse;
 
 export type PutLogLevelError = MessageResponse;
+
+export type GetDiagnosticsError = MessageResponse;
+
+export type PutDiagnosticSettingsError = MessageResponse;
+
+export type PostDiagnosticEventsError = MessageResponse;
 
 export type QueryParamsType = Record<string | number, any>;
 export type ResponseFormat = keyof Omit<Body, "body" | "bodyUsed">;
@@ -11407,8 +15804,10 @@ export interface ApiConfig<SecurityDataType = unknown> {
   customFetch?: typeof fetch;
 }
 
-export interface HttpResponse<D extends unknown, E extends unknown = unknown>
-  extends Response {
+export interface HttpResponse<
+  D extends unknown,
+  E extends unknown = unknown,
+> extends Response {
   data: D;
   error: E;
 }
@@ -16024,7 +20423,7 @@ export class Api<
     getLogs: (
       query?: {
         level?: "debug" | "info" | "warn" | "error";
-        /** @pattern ^(?:server|engine|playback|storage|sources|catalog|network|notifications|auth|backups)(?:,(?:server|engine|playback|storage|sources|catalog|network|notifications|auth|backups))*$ */
+        /** @pattern ^(?:server|engine|playback|storage|sources|catalog|network|notifications|auth|backups|client)(?:,(?:server|engine|playback|storage|sources|catalog|network|notifications|auth|backups|client))*$ */
         source?: string;
         /** @maxLength 200 */
         q?: string;
@@ -16065,6 +20464,62 @@ export class Api<
       this.request<LogLevelResponse, PutLogLevelError>({
         path: `/api/logs/level`,
         method: "PUT",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+  };
+  diagnostics = {
+    /**
+     * No description
+     *
+     * @tags Diagnostics
+     * @name GetDiagnostics
+     * @request GET:/api/diagnostics
+     */
+    getDiagnostics: (params: RequestParams = {}) =>
+      this.request<DiagnosticStatus, GetDiagnosticsError>({
+        path: `/api/diagnostics`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Diagnostics
+     * @name PutDiagnosticSettings
+     * @request PUT:/api/diagnostics/settings
+     */
+    putDiagnosticSettings: (
+      data: DiagnosticSettingsInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<DiagnosticSettings, PutDiagnosticSettingsError>({
+        path: `/api/diagnostics/settings`,
+        method: "PUT",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Diagnostics
+     * @name PostDiagnosticEvents
+     * @request POST:/api/diagnostics/events
+     */
+    postDiagnosticEvents: (
+      data: DiagnosticBatchInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<DiagnosticAck, PostDiagnosticEventsError>({
+        path: `/api/diagnostics/events`,
+        method: "POST",
         body: data,
         type: ContentType.Json,
         format: "json",

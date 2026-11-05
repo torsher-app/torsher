@@ -1,3 +1,4 @@
+import { diagnosticContext } from '../services/diagnostics/index.ts'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { messageResponse } from '../dto/common.ts'
 import { continueRow, homeQuery, homeResponse } from '../dto/home.ts'
@@ -40,7 +41,7 @@ export const homeRoutes: FastifyPluginAsyncZod = async (app) => {
       const [catalog, resume, unmatched, library, personal]
         = await Promise.allSettled([
           mode === 'library' ? [] : getHomeRows(mode, language),
-          getContinueRow(profileId, mode, language),
+          getContinueRow(profileId, mode, language, diagnosticContext(request)),
           unmatchedHomeRow(mode, language, canManageLibrary(request)),
           libraryHomeRows(mode, language, profileId),
           mode === 'all' ? personalHomeRows(profileId, language) : [],
@@ -107,7 +108,12 @@ export const homeRoutes: FastifyPluginAsyncZod = async (app) => {
     async (request) => {
       const { mode, language } = request.query
 
-      return getContinueRow(request.profileId, mode, language)
+      return getContinueRow(
+        request.profileId,
+        mode,
+        language,
+        diagnosticContext(request),
+      )
     },
   )
 }

@@ -432,6 +432,11 @@ describe('журнал движка', () => {
     expect(crashes[0]).toEqual([
       {
         code: 2,
+        exitCode: 2,
+        event: 'server.failure',
+        origin: 'server',
+        failureCode: 'engine_exited',
+        serverInstance: expect.any(String),
         uptimeMs: 192_000,
         details: [
           'panic: runtime error: invalid memory address',

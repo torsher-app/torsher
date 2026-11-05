@@ -17,12 +17,13 @@ import process from 'node:process'
 import { createInterface } from 'node:readline'
 import { Readable } from 'node:stream'
 import { config } from '../../config.ts'
-import { parseLine } from './ring.ts'
+import { LOG_RETENTION_MS, parseLine, retainedTime } from './ring.ts'
 
 const FILE_NAME = 'torsher.log'
 const MAX_BYTES = 5 * 1024 * 1024
 // Текущий файл и четыре архива: не больше 25 МБ на томе
 const ARCHIVES = 4
+const DAY_MS = 24 * 60 * 60 * 1000
 
 export function logFileName(index: number) {
   return index === 0 ? FILE_NAME : `torsher.${index}.log`
@@ -58,6 +59,10 @@ export class RotatingFile {
   private stream: WriteStream | undefined
   private bytes = 0
   private disabled = false
+  private closing = new Set<Promise<void>>()
+  private oldest: number | undefined
+  private timer: ReturnType<typeof setInterval> | undefined
+  private retentionOk = true
   private readonly path: string
   private readonly dir: string
   private readonly maxBytes: number
@@ -72,9 +77,17 @@ export class RotatingFile {
 
     try {
       mkdirSync(dir, { recursive: true })
+      this.cleanup(true)
       this.open()
+      if (this.oldest !== undefined && Date.now() - this.oldest >= DAY_MS)
+        this.rotate()
+      this.timer = setInterval(() => {
+        void this.maintain()
+      }, DAY_MS)
+      this.timer.unref()
     }
     catch (err) {
+      this.retentionOk = false
       this.disable(err)
     }
   }
@@ -84,6 +97,55 @@ export class RotatingFile {
   }
 
   // Файл открывается синхронно: ротация сразу после старта должна его видеть
+  get retentionState(): 'ok' | 'degraded' {
+    return this.retentionOk ? 'ok' : 'degraded'
+  }
+
+  // At most five bounded files, once at startup/daily; never rewrite mixed logs.
+  private cleanup(includeActive = false) {
+    for (const path of existingFiles(this.dir)) {
+      if (!includeActive && path === this.path)
+        continue
+      const lines = readFileSync(path, 'utf8').split('\n').filter(Boolean)
+      const times = lines
+        .map(line => parseLine(line)?.time)
+        .map(time => (time ? Date.parse(time) : NaN))
+      const oldest = times.length
+        ? times.reduce((min, at) => Math.min(min, at), Infinity)
+        : undefined
+      if (
+        times.some(at => !Number.isFinite(at) || at > Date.now())
+        || (oldest !== undefined && oldest <= Date.now() - LOG_RETENTION_MS)
+      ) {
+        rmSync(path, { force: true })
+        if (path === this.path)
+          this.oldest = undefined
+      }
+      else if (path === this.path) {
+        this.oldest = oldest
+      }
+    }
+  }
+
+  async maintain() {
+    if (this.disabled)
+      return
+    try {
+      // Rotate before cleanup: pending writes belong to the archived inode.
+      if (this.oldest !== undefined && Date.now() - this.oldest >= DAY_MS)
+        this.rotate()
+      while (this.closing.size) await Promise.all(this.closing)
+      if (this.disabled)
+        return
+      this.cleanup()
+      this.retentionOk = true
+    }
+    catch {
+      this.retentionOk = false
+      this.warn('Log retention cleanup failed')
+    }
+  }
+
   private open() {
     const fd = openSync(this.path, 'a')
 
@@ -96,6 +158,7 @@ export class RotatingFile {
   }
 
   private disable(err: unknown) {
+    this.retentionOk = false
     this.stream?.destroy()
     this.stream = undefined
 
@@ -112,7 +175,15 @@ export class RotatingFile {
   // Переименование открытого файла на POSIX безопасно: недописанное старым
   // потоком уходит в тот же файл уже под архивным именем
   private rotate() {
-    this.stream?.end()
+    const stream = this.stream
+    if (stream) {
+      const done = new Promise<void>((resolve) => {
+        stream.once('error', () => resolve())
+        stream.end(() => resolve())
+      })
+      this.closing.add(done)
+      void done.then(() => this.closing.delete(done))
+    }
     this.stream = undefined
     rmSync(join(this.dir, logFileName(ARCHIVES)), { force: true })
 
@@ -123,6 +194,7 @@ export class RotatingFile {
         renameSync(from, join(this.dir, logFileName(index + 1)))
     }
 
+    this.oldest = undefined
     this.open()
   }
 
@@ -133,19 +205,26 @@ export class RotatingFile {
     const size = Buffer.byteLength(line)
 
     try {
-      if (this.bytes > 0 && this.bytes + size > this.maxBytes)
+      if (
+        this.bytes > 0
+        && (this.bytes + size > this.maxBytes
+          || (this.oldest !== undefined && Date.now() - this.oldest >= DAY_MS))
+      ) {
         this.rotate()
+      }
     }
     catch (err) {
       this.disable(err)
       return
     }
 
+    this.oldest ??= Date.now()
     this.bytes += size
     this.stream?.write(line)
   }
 
   close() {
+    clearInterval(this.timer)
     const stream = this.stream
 
     this.stream = undefined
@@ -157,6 +236,8 @@ export class RotatingFile {
       }
 
       stream.end(() => resolve())
+    }).then(async () => {
+      await Promise.all(this.closing)
     })
   }
 }
@@ -174,7 +255,13 @@ export function readTail(dir: string, max: number) {
     try {
       const text = readFileSync(path, 'utf8')
 
-      lines = [...text.split('\n').filter(Boolean), ...lines]
+      lines = [
+        ...text.split('\n').filter((line) => {
+          const entry = parseLine(line)
+          return entry && retainedTime(entry.time)
+        }),
+        ...lines,
+      ]
     }
     catch {
       break
@@ -240,7 +327,7 @@ async function* exportLines(dir: string | undefined, header: ExportHeader) {
       for await (const line of rl) {
         const entry = parseLine(line)
 
-        if (entry)
+        if (entry && retainedTime(entry.time))
           yield formatEntry(entry)
       }
     }

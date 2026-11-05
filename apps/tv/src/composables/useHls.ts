@@ -1,3 +1,4 @@
+import type { DiagnosticMediaSnapshot } from '@torsher/api-client'
 import type Hls from 'hls.js'
 import { onScopeDispose } from 'vue'
 import { mediaErrorAction } from '../lib/player.ts'
@@ -20,20 +21,25 @@ export type HlsFailure = 'network' | 'media' | 'other'
  */
 export function useHls(onFatal: (kind: HlsFailure, detail?: string) => void) {
   let hls: Hls | undefined
+  let diagnosticState: DiagnosticMediaSnapshot['hls'] = 'idle'
 
   function detach() {
     hls?.destroy()
     hls = undefined
+    diagnosticState = 'idle'
   }
 
   async function attach(video: HTMLVideoElement, url: string, start: number) {
     detach()
+    diagnosticState = 'loading'
 
     const { default: HlsPlayer } = await import('hls.js')
 
     if (!HlsPlayer.isSupported()) {
-      if (video.canPlayType(HLS_NATIVE) === '')
+      if (video.canPlayType(HLS_NATIVE) === '') {
+        diagnosticState = 'unsupported'
         return false
+      }
 
       video.src = url
       return true
@@ -73,6 +79,7 @@ export function useHls(onFatal: (kind: HlsFailure, detail?: string) => void) {
         && data.response?.code === TRANSCODE_FAILED
       ) {
         detach()
+        diagnosticState = 'error'
         onFatal('network')
         return
       }
@@ -81,6 +88,7 @@ export function useHls(onFatal: (kind: HlsFailure, detail?: string) => void) {
         return
 
       if (data.type !== HlsPlayer.ErrorTypes.MEDIA_ERROR) {
+        diagnosticState = 'error'
         onFatal(
           data.type === HlsPlayer.ErrorTypes.NETWORK_ERROR
             ? 'network'
@@ -97,13 +105,18 @@ export function useHls(onFatal: (kind: HlsFailure, detail?: string) => void) {
 
       if (action === 'fail') {
         detach()
+        diagnosticState = 'error'
         onFatal('media', data.details)
         return
       }
 
+      diagnosticState = 'recovering'
       if (action === 'swapAndRecover')
         player.swapAudioCodec()
       player.recoverMediaError()
+    })
+    player.on(HlsPlayer.Events.FRAG_BUFFERED, () => {
+      diagnosticState = 'playing'
     })
     player.loadSource(url)
     player.attachMedia(video)
@@ -114,5 +127,5 @@ export function useHls(onFatal: (kind: HlsFailure, detail?: string) => void) {
 
   onScopeDispose(detach)
 
-  return { attach, detach }
+  return { attach, detach, diagnosticState: () => diagnosticState }
 }

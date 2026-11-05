@@ -188,6 +188,7 @@ export type ReleasesRow = z.infer<typeof releasesRow>
 /** Тайтл с незаконченным просмотром: что продолжать и с какого места */
 export const continueCard = card
   .extend({
+    decisionId: z.string().optional(),
     // Кадр серии, у фильма и без кадра — бэкдроп
     image: z.string().optional(),
     // У фильма сезона и серии нет

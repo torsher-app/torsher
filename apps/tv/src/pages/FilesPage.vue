@@ -31,6 +31,15 @@ import {
 import { useTitleMeta } from '../composables/useTitleMeta.ts'
 import { loadSeason } from '../composables/useTitleSections.ts'
 import { NATIVE_WHEEL_ATTRIBUTE, useFocus } from '../focus/index.ts'
+import {
+  activationTrigger,
+  currentDiagnosticContext,
+  diagnostic,
+  diagnosticAction,
+  diagnosticParams,
+  diagnosticPoll,
+  diagnosticRoute,
+} from '../diagnostics/index.ts'
 import { playerRoute, withStartPosition } from '../lib/continue.ts'
 import {
   downloadPercent,
@@ -72,6 +81,7 @@ const props = defineProps<{
 
 const { t } = useI18n()
 const router = useRouter()
+const fileDiagnosticContext = currentDiagnosticContext()
 // Сразу в плеер — только когда раздачу выбрали в «Источниках»: экран,
 // открытый ссылкой или подставленный Back из плеера, показывает список, иначе
 // Back из плеера снова вёл бы в плеер
@@ -151,56 +161,79 @@ async function loadEpisodes(items: TitleFile[]) {
 }
 
 async function load() {
-  const until = Date.now() + FILES_POLL_LIMIT_MS
+  const poll = diagnosticPoll(
+    'files',
+    { titleId: props.id, torrentId: props.torrentId },
+    fileDiagnosticContext,
+  )
+  let pollOutcome: 'accepted' | 'failed' | 'cancelled' | 'timeout' = 'failed'
+  try {
+    const until = Date.now() + FILES_POLL_LIMIT_MS
 
-  for (;;) {
-    if (stopped)
-      return
-
-    if (Date.now() >= until) {
-      phase.value = 'timeout'
-
-      return
-    }
-
-    try {
-      const result = await api.titles.getTitleFiles(props.id, props.torrentId)
-
-      if (stopped)
+    for (;;) {
+      if (stopped) {
+        pollOutcome = 'cancelled'
         return
+      }
 
-      releaseName.value = result.name
-
-      if (result.status === 'ready') {
-        // Выбирать не из чего: плеер встаёт на место экрана, и Back из него
-        // ведёт в «Источники». До перехода остаётся лоадер
-        if (result.files.length === 1 && skipAllowed) {
-          play(result.files[0]!, true)
-
-          return
-        }
-
-        // Серии TMDB до показа списка: иначе строки перерисуются с имён файлов
-        await loadEpisodes(result.files)
-
-        if (stopped)
-          return
-
-        files.value = result.files
-        phase.value = 'ready'
+      if (Date.now() >= until) {
+        pollOutcome = 'timeout'
+        phase.value = 'timeout'
 
         return
       }
 
-      phase.value = 'waiting'
-    }
-    catch {
-      phase.value = 'error'
+      try {
+        const result = await api.titles.getTitleFiles(
+          props.id,
+          props.torrentId,
+          poll.params(),
+        )
 
-      return
-    }
+        if (stopped) {
+          pollOutcome = 'cancelled'
+          return
+        }
 
-    await sleep(FILES_POLL_INTERVAL_MS)
+        releaseName.value = result.name
+
+        if (result.status === 'ready') {
+          pollOutcome = 'accepted'
+          // Выбирать не из чего: плеер встаёт на место экрана, и Back из него
+          // ведёт в «Источники». До перехода остаётся лоадер
+          if (result.files.length === 1 && skipAllowed) {
+            play(result.files[0]!, true)
+
+            return
+          }
+
+          // Серии TMDB до показа списка: иначе строки перерисуются с имён файлов
+          await loadEpisodes(result.files)
+
+          if (stopped) {
+            pollOutcome = 'cancelled'
+            return
+          }
+
+          files.value = result.files
+          phase.value = 'ready'
+
+          return
+        }
+
+        phase.value = 'waiting'
+      }
+      catch {
+        phase.value = 'error'
+
+        return
+      }
+
+      await sleep(FILES_POLL_INTERVAL_MS)
+    }
+  }
+  finally {
+    poll.finish(stopped ? 'cancelled' : pollOutcome)
   }
 }
 
@@ -304,16 +337,32 @@ function imageOf(file: TitleFile) {
 }
 
 function play(file: TitleFile, replace = false) {
-  const to = withStartPosition(
-    playerRoute(
-      { torrentId: props.torrentId, fileIndex: file.fileIndex },
-      { id: props.id, season: file.season, episode: file.episode },
-    ),
-    props.start === '0'
-    && String(file.season) === props.season
-    && String(file.episode) === props.episode,
+  const parent = currentDiagnosticContext()
+  const context = replace ? parent : diagnosticAction(parent)
+  diagnostic(
+    {
+      event: 'selection.activated',
+      slot: 'episode',
+      trigger: replace ? 'automatic' : activationTrigger(),
+      titleId: props.id,
+      torrentId: props.torrentId,
+      fileIndex: file.fileIndex,
+    },
+    context,
+    true,
   )
-
+  const to = diagnosticRoute(
+    withStartPosition(
+      playerRoute(
+        { torrentId: props.torrentId, fileIndex: file.fileIndex },
+        { id: props.id, season: file.season, episode: file.episode },
+      ),
+      props.start === '0'
+      && String(file.season) === props.season
+      && String(file.episode) === props.episode,
+    ),
+    context,
+  )
   if (replace)
     void router.replace(to)
   else void router.push(to)
@@ -382,7 +431,11 @@ function stopSelecting(refocus: boolean) {
 // Файлы перечитываются без лоадера: значки загрузки и прогресс свежие
 async function refreshFiles() {
   try {
-    const result = await api.titles.getTitleFiles(props.id, props.torrentId)
+    const result = await api.titles.getTitleFiles(
+      props.id,
+      props.torrentId,
+      diagnosticParams(fileDiagnosticContext),
+    )
 
     if (!stopped && result.status === 'ready')
       files.value = result.files

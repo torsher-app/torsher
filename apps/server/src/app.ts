@@ -1,3 +1,9 @@
+import { randomUUID } from 'node:crypto'
+import {
+  diagnosticContext,
+  recordDecision,
+  recordFailure,
+} from './services/diagnostics/index.ts'
 import type { FastifyServerOptions } from 'fastify'
 import type { ClientDirs } from './static.ts'
 import type { ZodTypeProvider } from 'fastify-type-provider-zod'
@@ -25,7 +31,67 @@ export function createApp(
   options: FastifyServerOptions = {},
   clients?: ClientDirs,
 ) {
-  const app = Fastify(options).withTypeProvider<ZodTypeProvider>()
+  const app = Fastify({
+    ...options,
+    genReqId: () => randomUUID(),
+    requestIdHeader: false,
+  }).withTypeProvider<ZodTypeProvider>()
+
+  app.addHook('onRequest', async (request, reply) => {
+    reply.header('X-Torsher-Request-Id', request.id)
+  })
+  app.addHook('onResponse', async (request, reply) => {
+    if (reply.statusCode >= 500 && (request.userId || request.deviceId)) {
+      recordFailure('server', 'request_failed', diagnosticContext(request), {
+        statusCode: reply.statusCode,
+      })
+    }
+    const operation = request.routeOptions.schema?.operationId
+    const operations = new Set([
+      'getHome',
+      'getHomeContinue',
+      'getTitleProgress',
+      'getTitleUpNext',
+      'getTitleSources',
+      'postTitleOpen',
+      'postTitleWatch',
+      'openFollowPick',
+      'postPlayback',
+      'putWatchState',
+      'deletePlayback',
+    ])
+    if (
+      operation
+      && operations.has(operation)
+      && (request.userId || request.deviceId)
+    ) {
+      if (operation === 'putWatchState') {
+        const context = diagnosticContext(request)
+        if (
+          reply.statusCode < 400
+          && (!context.saveReason || context.saveReason === 'checkpoint')
+        ) {
+          return
+        }
+        recordDecision('playback', 'request.completed', context, {
+          operationId: operation,
+          statusCode: reply.statusCode,
+          ms: Math.round(reply.elapsedTime),
+        })
+        return
+      }
+      recordDecision(
+        'catalog',
+        'request.completed',
+        diagnosticContext(request),
+        {
+          operationId: operation,
+          statusCode: reply.statusCode,
+          ms: Math.round(reply.elapsedTime),
+        },
+      )
+    }
+  })
 
   app.setValidatorCompiler(validatorCompiler)
   app.setSerializerCompiler(serializerCompiler)
@@ -37,6 +103,7 @@ export function createApp(
   app.register(cors, {
     origin: config.clientUrl ?? false,
     credentials: true,
+    exposedHeaders: ['X-Torsher-Request-Id'],
   })
   app.register(cookie)
   app.register(swagger, {

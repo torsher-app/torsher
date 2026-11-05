@@ -1,11 +1,22 @@
+import { readFileSync } from 'node:fs'
 import { shallowRef } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useContinuePlayback } from './useContinuePlayback.ts'
 
-const { library, push, deactivate } = vi.hoisted(() => ({
-  library: vi.fn(),
-  push: vi.fn(),
-  deactivate: [] as (() => void)[],
+const { library, push, deactivate, unmount, diagnostic, action } = vi.hoisted(
+  () => ({
+    library: vi.fn(),
+    diagnostic: vi.fn(),
+    action: vi.fn(() => ({})),
+    push: vi.fn(),
+    deactivate: [] as (() => void)[],
+    unmount: [] as (() => void)[],
+  }),
+)
+vi.mock('../diagnostics/index.ts', async original => ({
+  ...(await original<typeof import('../diagnostics/index.ts')>()),
+  diagnostic,
+  diagnosticAction: action,
 }))
 vi.mock('../api.ts', () => ({ api: { titles: { getTitleLibrary: library } } }))
 vi.mock('../focus/index.ts', () => ({
@@ -14,7 +25,7 @@ vi.mock('../focus/index.ts', () => ({
 vi.mock('vue-router', () => ({ useRouter: () => ({ push }) }))
 vi.mock('vue', async original => ({
   ...(await original<typeof import('vue')>()),
-  onBeforeUnmount: vi.fn(),
+  onBeforeUnmount: (fn: () => void) => unmount.push(fn),
   onDeactivated: (fn: () => void) => deactivate.push(fn),
 }))
 
@@ -32,6 +43,8 @@ const query = { title: 'show', season: '2', episode: '1' }
 beforeEach(() => {
   vi.resetAllMocks()
   deactivate.length = 0
+  unmount.length = 0
+  action.mockReturnValue({})
 })
 
 describe('continue playback', () => {
@@ -190,3 +203,162 @@ it('routes an explicit ready action to the pick before library or known-file sel
     },
   })
 })
+it('captures the selected snapshot before lookup resolves and keeps business routes equivalent', async () => {
+  const item = { ...next, decisionId: 'decision-001' }
+  const target = { ...version, id: 'file-00001' }
+  library.mockResolvedValue({ files: [target] })
+  await useContinuePlayback(shallowRef()).resume('tmdb:tv:100', item)
+  const without = push.mock.calls[0]![0]
+  push.mockClear()
+  action.mockReturnValue({
+    actionId: 'action-0001',
+    clientSessionId: 'session-001',
+  })
+  let finish!: (value: unknown) => void
+  library.mockReturnValue(
+    new Promise((resolve) => {
+      finish = resolve
+    }),
+  )
+  const pending = useContinuePlayback(shallowRef()).resume(
+    'tmdb:tv:100',
+    item,
+    undefined,
+    'pointer',
+  )
+  expect(
+    diagnostic.mock.calls.some(
+      ([event]) =>
+        event.event === 'continue.selected'
+        && event.decisionId === 'decision-001',
+    ),
+  ).toBe(true)
+  expect(push).not.toHaveBeenCalled()
+  finish({ files: [target] })
+  await pending
+  const withDiagnostics = push.mock.calls[0]![0]
+  expect(withDiagnostics.path).toBe(without.path)
+  expect(withDiagnostics.query).toEqual(without.query)
+  expect(withDiagnostics.state.diagnostic.actionId).toBe('action-0001')
+})
+it('distinguishes failed library lookup from an empty successful response', async () => {
+  library.mockRejectedValueOnce(new Error('offline'))
+  await useContinuePlayback(shallowRef()).resume('tmdb:tv:100', next)
+  expect(
+    diagnostic.mock.calls.some(
+      ([event]) =>
+        event.event === 'continue.route'
+        && event.branch === 'library_lookup'
+        && event.outcome === 'failed',
+    ),
+  ).toBe(true)
+  diagnostic.mockClear()
+  library.mockResolvedValueOnce({ files: [] })
+  await useContinuePlayback(shallowRef()).resume('tmdb:tv:100', next)
+  expect(
+    diagnostic.mock.calls.some(
+      ([event]) =>
+        event.event === 'continue.route'
+        && event.branch === 'library_lookup'
+        && event.outcome === 'accepted',
+    ),
+  ).toBe(true)
+})
+
+it.each(['deactivated', 'unmounted'] as const)(
+  'records the actual %s lookup cancellation once',
+  async (reason) => {
+    const reply = Promise.withResolvers<{ files: (typeof version)[] }>()
+    library.mockReturnValue(reply.promise)
+    const pending = useContinuePlayback(shallowRef()).resume('show', next);
+    (reason === 'deactivated' ? deactivate : unmount).forEach(fn => fn())
+    // A second lifecycle notification cannot overwrite the original cause.
+    unmount.forEach(fn => fn())
+    reply.resolve({ files: [version] })
+    await pending
+    expect(push).not.toHaveBeenCalled()
+    expect(
+      diagnostic.mock.calls
+        .filter(([event]) => event.event === 'operation.cancelled')
+        .map(([event]) => event.reason),
+    ).toEqual([reason])
+  },
+)
+
+it('keeps cancellation reasons with overlapping lookup operations', async () => {
+  const a = Promise.withResolvers<{ files: (typeof version)[] }>()
+  const b = Promise.withResolvers<{ files: (typeof version)[] }>()
+  library.mockReturnValueOnce(a.promise).mockReturnValueOnce(b.promise)
+  const playback = useContinuePlayback(shallowRef())
+  const first = playback.resume('first', next)
+  const second = playback.resume('second', next)
+  deactivate.forEach(fn => fn())
+  b.resolve({ files: [version] })
+  await second
+  a.resolve({ files: [version] })
+  await first
+  expect(push).not.toHaveBeenCalled()
+  expect(
+    diagnostic.mock.calls
+      .filter(([event]) => event.event === 'operation.cancelled')
+      .map(([event]) => event.reason),
+  ).toEqual(['deactivated', 'superseded'])
+})
+
+it.each(['back', 'generic', 'selection'] as const)(
+  'keeps capture cancellation truthful for a bubbling %s click',
+  async (kind) => {
+    const screen = new EventTarget()
+    const pendingReply = Promise.withResolvers<{ files: (typeof version)[] }>()
+    library
+      .mockReturnValueOnce(pendingReply.promise)
+      .mockResolvedValue({ files: [] })
+    const playback = useContinuePlayback(shallowRef(screen))
+    const pending = playback.resume('first', next)
+    const signal = library.mock.calls[0]![2].signal as AbortSignal
+    let selected: Promise<void> | undefined
+    // Equivalent to the TitlePage button's bubbling @click: the screen capture
+    // listener runs first, then navigation deactivates, or a new selection starts.
+    screen.addEventListener('click', () => {
+      expect(signal.aborted).toBe(true)
+      if (kind === 'selection')
+        selected = playback.resume('second', next)
+      else deactivate.forEach(fn => fn())
+    })
+    const click = new Event('click', { bubbles: true })
+    const titleSource = readFileSync(
+      new URL('../pages/TitlePage.vue', import.meta.url),
+      'utf8',
+    )
+    const backButton = titleSource.match(
+      /<button\b[^>]*@click="back"[^>]*>/,
+    )?.[0]
+    expect(backButton).toContain('data-diagnostic-action="back"')
+    const closest = vi.fn((selector: string) =>
+      kind === 'back'
+      && selector === '[data-diagnostic-action="back"]'
+      && backButton?.includes('data-diagnostic-action="back"')
+        ? {}
+        : null,
+    )
+    Object.defineProperty(click, 'target', { value: { closest } })
+    screen.dispatchEvent(click)
+    pendingReply.resolve({ files: [version] })
+    await pending
+    await selected
+    expect(closest).toHaveBeenCalledWith('[data-diagnostic-action="back"]')
+    const cancelled = diagnostic.mock.calls.filter(
+      ([event]) => event.event === 'operation.cancelled',
+    )
+    expect(cancelled).toHaveLength(1)
+    expect(cancelled[0]![0].reason).toBe(
+      kind === 'back'
+        ? 'back'
+        : kind === 'selection'
+          ? 'superseded'
+          : 'user_interaction',
+    )
+    if (kind !== 'selection')
+      expect(push).not.toHaveBeenCalled()
+  },
+)

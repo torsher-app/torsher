@@ -12,6 +12,17 @@ function apis(code: string) {
 }
 
 describe('findLegacyApis', () => {
+  it('allows guarded PromiseRejectionEvent.reason only for the same receiver', () => {
+    expect(
+      apis('e.type===`unhandledrejection`&&m(`promise`,e.reason)'),
+    ).toEqual([])
+    expect(
+      apis('e.type===`unhandledrejection`&&m(`promise`,signal.reason)'),
+    ).toEqual(['AbortSignal.reason'])
+    expect(apis('e.type===`unhandledrejection`;m(e.reason)')).toEqual([
+      'AbortSignal.reason',
+    ])
+  })
   it.each([
     ['AbortSignal.any', 'n.signal=AbortSignal.any(o)'],
     ['AbortSignal.timeout', 'fetch(u,{signal:AbortSignal.timeout(1e4)})'],

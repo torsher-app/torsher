@@ -2,12 +2,56 @@ import { Api } from './generated'
 
 export type ErrorMode = 'global' | 'toast' | 'silent'
 
+export interface ApiRequestContext {
+  actionId?: string
+  parentActionId?: string
+  clientSessionId?: string
+  clientRequestId?: string
+  decisionId?: string
+  rankingDecisionId?: string
+  /** Explicit diagnostic polling scope, never an ambient current operation. */
+  pollId?: string
+  saveReason?: 'exit' | 'next' | 'source_switch' | 'pause' | 'checkpoint'
+}
+
+export interface ApiRequestObservation {
+  context: ApiRequestContext
+  attempt: number
+  requestId?: string
+  statusCode?: number
+  durationMs: number
+  outcome:
+    'accepted' | 'http_error' | 'network_error' | 'timeout' | 'cancelled'
+}
+
+/** Explicit per-operation context travels in RequestParams.headers. */
+export function correlationHeaders(
+  context: ApiRequestContext,
+): Record<string, string> {
+  const headers: Record<string, string> = {}
+  for (const key of Object.keys(context) as (keyof ApiRequestContext)[]) {
+    const value = context[key]
+    if (value && (key === 'saveReason' || /^[\w-]{8,80}$/.test(value))) {
+      headers[
+        `X-Torsher-${key.replace(/[A-Z]/g, char => `-${char.toLowerCase()}`)}`
+      ] = value
+    }
+  }
+  return headers
+}
+
 export interface ApiClientOptions {
   /**
    * Адрес сервера. По умолчанию — тот же origin: витрину и панель отдаёт сам
    * сервер, а в разработке их dev-серверы проксируют `/api`
    */
   baseUrl?: string
+  /** Called once before sending; callbacks must not mutate application control flow. */
+  getRequestContext?: (
+    url: string,
+    init: RequestInit,
+  ) => ApiRequestContext | undefined
+  onRequestResult?: (observation: ApiRequestObservation) => void
   /** Как показывать ошибку текущего запроса */
   getErrorMode: () => ErrorMode
   /** Refresh не удался — сессия мертва */
@@ -78,7 +122,91 @@ export function createApiClient(options: ApiClientOptions) {
     // Режим берём при старте запроса: к ответу окно `withErrorMode`, в
     // котором запрос начался, уже может закончиться
     const mode = options.getErrorMode()
-    let response = await sendWithRetry(url, init)
+    let captured: ApiRequestContext | undefined
+    try {
+      captured = options.getRequestContext?.(url, init)
+    }
+    catch {}
+    const headers = new Headers(init.headers)
+    const context: ApiRequestContext = { ...captured }
+    for (const key of [
+      'actionId',
+      'parentActionId',
+      'clientSessionId',
+      'clientRequestId',
+      'decisionId',
+      'rankingDecisionId',
+      'pollId',
+    ] as const) {
+      const value = headers.get(
+        `x-torsher-${key.replace(/[A-Z]/g, char => `-${char.toLowerCase()}`)}`,
+      )
+      if (value && /^[\w-]{8,80}$/.test(value))
+        context[key] = value
+    }
+    const saveReason = headers.get('x-torsher-save-reason')
+    if (
+      saveReason
+      && ['exit', 'next', 'source_switch', 'pause', 'checkpoint'].includes(
+        saveReason,
+      )
+    ) {
+      context.saveReason = saveReason as ApiRequestContext['saveReason']
+    }
+    const correlated = Object.keys(context).length > 0
+    let attempt = 0
+    const sendAttempt = async () => {
+      const currentAttempt = ++attempt
+      const started = Date.now()
+      const observe = (
+        result: Omit<
+          ApiRequestObservation,
+          'context' | 'attempt' | 'durationMs'
+        >,
+      ) => {
+        if (!correlated)
+          return
+        try {
+          options.onRequestResult?.({
+            ...result,
+            context: { ...context },
+            attempt: currentAttempt,
+            durationMs: Date.now() - started,
+          })
+        }
+        catch {}
+      }
+      const attemptHeaders = new Headers(headers)
+      if (correlated) {
+        for (const [key, value] of Object.entries(correlationHeaders(context)))
+          attemptHeaders.set(key, value)
+        attemptHeaders.set('X-Torsher-Attempt', String(currentAttempt))
+      }
+      try {
+        const response = await send(
+          url,
+          correlated ? { ...init, headers: attemptHeaders } : init,
+        )
+        observe({
+          outcome: response.ok ? 'accepted' : 'http_error',
+          statusCode: response.status,
+          requestId: response.headers.get('X-Torsher-Request-Id') ?? undefined,
+        })
+        return response
+      }
+      catch (error) {
+        observe({
+          outcome:
+            error instanceof TimeoutError
+              ? 'timeout'
+              : init.signal?.aborted
+                ? 'cancelled'
+                : 'network_error',
+        })
+        throw error
+      }
+    }
+    let response = await sendWithRetry(url, init, sendAttempt)
 
     if (response.status === UNAUTHORIZED && !url.includes(REFRESH_PATH)) {
       try {
@@ -91,7 +219,7 @@ export function createApiClient(options: ApiClientOptions) {
       }
 
       // Повтор исходного запроса уже с новой cookie
-      response = await sendWithRetry(url, init)
+      response = await sendWithRetry(url, init, sendAttempt)
     }
 
     if (response.ok)
@@ -109,20 +237,29 @@ export function createApiClient(options: ApiClientOptions) {
       options.onFatal(response.status)
   }
 
-  return new Api({
+  const api = new Api({
     baseUrl,
     // Сгенерированный клиент всегда передаёт URL строкой
     customFetch: (input, init = {}) => request(String(input), init),
   })
+  return Object.assign(api, {
+    /** Same authenticated transport, for downloads that validate response headers. */
+    requestResponse: (path: string, init: RequestInit = {}) =>
+      request(`${baseUrl}${path}`, init),
+  })
 }
 
-async function sendWithRetry(url: string, init: RequestInit) {
+async function sendWithRetry(
+  url: string,
+  init: RequestInit,
+  sendAttempt = () => send(url, init),
+) {
   const isRetryable = RETRY_METHODS.includes(
     (init.method ?? 'GET').toUpperCase(),
   )
 
   try {
-    const response = await send(url, init)
+    const response = await sendAttempt()
 
     if (!isRetryable || !RETRY_STATUSES.includes(response.status))
       return response
@@ -135,7 +272,7 @@ async function sendWithRetry(url: string, init: RequestInit) {
 
   await delay(RETRY_DELAY_MS)
 
-  return send(url, init)
+  return sendAttempt()
 }
 
 /**
@@ -216,4 +353,22 @@ export async function getErrorBody<T>(err: unknown): Promise<T | undefined> {
 /** HTTP-статус ошибки запроса; `undefined` — ответа от сервера не было */
 export function getErrorStatus(err: unknown) {
   return err instanceof HttpError ? err.status : undefined
+}
+
+/** Transport failure class, shared with attempt observations. */
+export function getErrorOutcome(
+  error: unknown,
+): Exclude<ApiRequestObservation['outcome'], 'accepted'> {
+  if (error instanceof HttpError)
+    return 'http_error'
+  if (error instanceof TimeoutError)
+    return 'timeout'
+  if (error instanceof Error && error.name === 'AbortError')
+    return 'cancelled'
+  return 'network_error'
+}
+export function getErrorRequestId(error: unknown): string | undefined {
+  return error instanceof HttpError
+    ? (error.response.headers.get('X-Torsher-Request-Id') ?? undefined)
+    : undefined
 }

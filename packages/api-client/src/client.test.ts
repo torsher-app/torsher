@@ -373,3 +373,107 @@ describe('getErrorBody', () => {
     ).resolves.toBeUndefined()
   })
 })
+
+describe('request correlation', () => {
+  it('keeps context through retry and refresh, increments attempts and isolates callbacks', async () => {
+    const observations: import('./client.ts').ApiRequestObservation[] = []
+    const api = createApiClient({
+      getErrorMode: () => 'silent',
+      onSessionExpired: () => {},
+      onError: () => {},
+      onFatal: () => {},
+      onRequestResult: (event) => {
+        observations.push(event)
+        throw new Error('observer failed')
+      },
+    })
+    fetchMock
+      .mockResolvedValueOnce(json(500))
+      .mockResolvedValueOnce(json(401))
+      .mockResolvedValueOnce(json(200))
+      .mockResolvedValueOnce(
+        new Response('{"ok":true}', {
+          headers: { 'X-Torsher-Request-Id': 'server-request-123' },
+        }),
+      )
+    const result = await api.users.getUsersMe({
+      headers: {
+        'X-Torsher-Action-Id': 'action-12345678',
+        'X-Torsher-Client-Request-Id': 'request-12345678',
+      },
+    })
+    expect(result).toEqual({ ok: true })
+    expect(observations.map(item => item.attempt)).toEqual([1, 2, 3])
+    expect(observations.map(item => item.context.actionId)).toEqual(
+      Array.from({ length: 3 }).fill('action-12345678'),
+    )
+    expect(observations[2]!.requestId).toBe('server-request-123')
+    expect(
+      new Headers(fetchMock.mock.calls[3]![1]?.headers).get(
+        'X-Torsher-Attempt',
+      ),
+    ).toBe('3')
+  })
+  it('does not observe requests without explicit context', async () => {
+    const observed = vi.fn()
+    fetchMock.mockResolvedValue(json(200))
+    const api = createApiClient({
+      getErrorMode: () => 'silent',
+      onSessionExpired: () => {},
+      onError: () => {},
+      onFatal: () => {},
+      onRequestResult: observed,
+    })
+    await api.users.getUsersMe()
+    expect(observed).not.toHaveBeenCalled()
+  })
+})
+
+describe('raw response downloads use the authenticated core', () => {
+  it('preserves headers and the unread body after a 401 refresh and 429 retry', async () => {
+    const { api } = setup()
+    fetchMock
+      .mockResolvedValueOnce(json(401))
+      .mockResolvedValueOnce(json(200))
+      .mockResolvedValueOnce(json(429))
+      .mockResolvedValueOnce(
+        new Response('report-body', {
+          headers: { 'X-Torsher-Report-Version': '1' },
+        }),
+      )
+    const response = await api.requestResponse(
+      '/api/logs/download?format=report',
+      { method: 'GET' },
+    )
+    expect(response.headers.get('X-Torsher-Report-Version')).toBe('1')
+    expect(response.bodyUsed).toBe(false)
+    expect(await response.text()).toBe('report-body')
+    expect(requestedUrls()).toEqual([
+      'GET /api/logs/download?format=report',
+      'POST /api/auth/refresh',
+      'GET /api/logs/download?format=report',
+      'GET /api/logs/download?format=report',
+    ])
+  })
+  it('retains errors and cancellation without a second transport pipeline', async () => {
+    const { api, options } = setup('toast')
+    fetchMock.mockResolvedValueOnce(json(403, { message: 'Owner only' }))
+    const error = await catchError(
+      api.requestResponse('/api/logs/download?format=report', {
+        method: 'GET',
+      }),
+    )
+    expect(getErrorStatus(error)).toBe(403)
+    expect(options.onError).toHaveBeenCalledWith('Owner only', 403)
+    fetchMock.mockImplementation(hangingFetch())
+    const controller = new AbortController()
+    const result = catchError(
+      api.requestResponse('/api/logs/download?format=report', {
+        method: 'GET',
+        signal: controller.signal,
+      }),
+    )
+    controller.abort()
+    expect(await result).toHaveProperty('name', 'AbortError')
+  })
+})

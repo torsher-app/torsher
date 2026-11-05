@@ -1,12 +1,17 @@
 import '@torsher/tokens/tokens.css'
 import './styles/fonts.css'
 import './styles/app.css'
-import { createApp } from 'vue'
+import { createApp, watch } from 'vue'
 import { onProfileRequired, onSessionExpired } from './api.ts'
+import {
+  diagnosticProfileChanged,
+  startDiagnostics,
+  stopDiagnostics,
+} from './diagnostics/index.ts'
 import App from './App.vue'
 import { createFocus } from './focus/index.ts'
 import { i18n } from './i18n.ts'
-import { connectAndroidShell } from './platform/android.ts'
+import { connectAndroidShell, hasNativePlayer } from './platform/android.ts'
 import { platform } from './platform/index.ts'
 import { exitApp } from './platform/shell.ts'
 import { goBack } from './lib/navigation.ts'
@@ -69,6 +74,29 @@ function start() {
 
 // Демо подменяет `fetch` до первого запроса витрины; в обычной сборке ветка
 // и её чанк вырезаются
-if (__DEMO__)
+if (__DEMO__) {
   void import('./demo/index.ts').then(({ installDemo }) => installDemo(start))
-else start()
+}
+else {
+  startDiagnostics(
+    window.TorsherShell?.platform === 'android'
+      ? 'android'
+      : platform === 'tv'
+        ? 'webos'
+        : 'browser',
+    window.TorsherShell?.version,
+    () => ({
+      autoNext: session.profile?.player.autoNext,
+      playerMode: hasNativePlayer ? 'native' : 'browser',
+    }),
+  )
+  watch(
+    () => session.profile?.id,
+    (id) => {
+      if (id)
+        diagnosticProfileChanged(id)
+      else stopDiagnostics()
+    },
+  )
+  start()
+}

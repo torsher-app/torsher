@@ -13,7 +13,7 @@ import { listSearchableIndexers } from '../indexers/index.ts'
 import { getTitleIdentity } from '../tmdb/index.ts'
 import { normalizeTitle } from '@torsher/release-parser'
 import { queryCombos, syncTitleAliases } from './aliases.ts'
-import { cachedSearch } from './cache.ts'
+import { cachedSearch, peekSearch, SEARCH_TTL_MS } from './cache.ts'
 import { resolveSourcePreset } from './profile.ts'
 import { coversEpisode, rankReleases, RESOLUTION_RANK } from './rank.ts'
 import { knownResolutions } from './resolution.ts'
@@ -52,6 +52,7 @@ export interface VoiceOption {
 }
 
 export interface TitleSources {
+  cacheHit?: boolean
   identity: TitleIdentity
   season?: number
   episode?: number
@@ -187,8 +188,16 @@ export async function getTitleSources(
   const aliases = syncTitleAliases(titleId, identity)
   const query = request.query?.trim() || undefined
   const scope = `${titleId}:${request.allSeasons ? 'all' : (season ?? 0)}`
+  const searchKey = query
+    ? `${scope}:q:${normalizeTitle(query) || query}`
+    : scope
+  const cached = peekSearch(searchKey)
+  const cacheHit
+    = !!cached
+      && !request.refresh
+      && Date.now() - cached.updatedAt.getTime() < SEARCH_TTL_MS
   const search = await cachedSearch(
-    query ? `${scope}:q:${normalizeTitle(query) || query}` : scope,
+    searchKey,
     () =>
       asViewerSearch(() => viewerSearch({ identity, aliases, season, query })),
     { refresh: request.refresh },
@@ -263,6 +272,7 @@ export async function getTitleSources(
     season,
     episode,
     updatedAt: search.updatedAt,
+    cacheHit,
     ranking,
     profile,
     presets,

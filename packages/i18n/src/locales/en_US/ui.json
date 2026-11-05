@@ -2369,7 +2369,8 @@
     "logs": {
       "title": "Logs",
       "download": {
-        "action": "Download logs",
+        "menu": "Download",
+        "action": "Logs",
         "error": "Couldn't download the logs",
         "errorText": "Check the connection to the server and try again"
       },
@@ -2409,7 +2410,8 @@
         "network": "Network",
         "auth": "Sign-in",
         "notifications": "Notifications",
-        "backups": "Backups"
+        "backups": "Backups",
+        "client": "TV showcase"
       },
       "levels": {
         "debug": "Debug",
@@ -2452,6 +2454,29 @@
         "copied": "Entry copied",
         "copyError": "Couldn't copy the entry",
         "filterById": "Show all entries with this id"
+      },
+      "diagnostics": {
+        "enabledText": "New viewer actions are recorded on your server",
+        "disabledText": "New actions are not recorded. Existing log entries are kept",
+        "enabled": "Viewer diagnostics on",
+        "disabled": "Viewer diagnostics off",
+        "error": "Couldn't change diagnostics settings",
+        "label": "Viewer action diagnostics",
+        "hint": "Stored on your server. No external reporting.",
+        "unknown": "Could not check whether viewer actions are being recorded.",
+        "filtered": "Diagnostics are enabled, but the log level filters out the events.",
+        "degraded": "File logging or retention cleanup is unavailable. Recent accepted events may be lost after a restart.",
+        "losses": "Known lost client events in the loaded entries: {count}.",
+        "duplicate": "Repeated delivery"
+      },
+      "report": {
+        "action": "Problem report",
+        "description": "Includes technical details and available action and playback history, up to seven days. Nothing is sent automatically; you choose who to share the file with.",
+        "partial": "Report downloaded with incomplete history",
+        "partialText": "Some records could not be included. The file lists the available history and its limitations.",
+        "error": "Could not download the report",
+        "errorText": "The download did not complete. Try again. You can still download the regular log.",
+        "unsupported": "This server does not support problem reports. Update the server or download the regular log."
       }
     },
     "collections": {

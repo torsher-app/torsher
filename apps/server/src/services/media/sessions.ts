@@ -1,3 +1,5 @@
+import type { DiagnosticContext } from '../diagnostics/index.ts'
+import { recordDecision, recordFailure } from '../diagnostics/index.ts'
 import type { SkipSegment } from '../segments/model.ts'
 import { trackPlayback } from '../segments/activity.ts'
 import { readySegments } from '../segments/index.ts'
@@ -47,6 +49,7 @@ export interface LibrarySource {
 }
 
 export interface PlaybackSession {
+  diagnosticContext?: DiagnosticContext
   id: string
   /** Чей поток: устройство или владелец, как у токена потока */
   subject: string
@@ -80,6 +83,7 @@ export interface SessionLog extends HlsLog {
 }
 
 export interface SessionInput {
+  diagnosticContext?: DiagnosticContext
   subject: string
   torrent?: Torrent
   library?: LibrarySource
@@ -504,6 +508,7 @@ export function createSession(input: SessionInput) {
   const id = randomUUID()
   const session: PlaybackSession = {
     id,
+    diagnosticContext: input.diagnosticContext,
     subject: input.subject,
     torrent: input.torrent ?? null,
     library: input.library ?? null,
@@ -530,10 +535,19 @@ export function createSession(input: SessionInput) {
     touchedAt: Date.now(),
   }
 
+  recordDecision('playback', 'playback.requested', input.diagnosticContext, {
+    session: id,
+    torrentId: session.torrent?.id,
+    fileIndex: session.fileIndex,
+    mediaFileId: session.library?.id,
+  })
   const closer = new AbortController()
 
   session.ready = prepare(session, input, closer.signal)
     .catch((err: Error) => {
+      recordFailure('playback', 'probe_failed', session.diagnosticContext, {
+        session: id,
+      })
       session.log.warn(`playback ${session.id}: ${err.message}`)
       session.decision = { ...DIRECT, reasons: ['ProbeFailed'] }
     })
@@ -542,6 +556,28 @@ export function createSession(input: SessionInput) {
 
       const { decision } = session
       const encode = session.hls?.encode
+      recordDecision(
+        'playback',
+        'playback.ready',
+        session.diagnosticContext,
+        {
+          session: id,
+          torrentId: session.torrent?.id,
+          fileIndex: session.fileIndex,
+          mediaFileId: session.library?.id,
+          mode: decision.mode,
+          outcome: sessions.has(id) ? 'ready' : 'stale',
+          width: session.media?.video?.width,
+          height: session.media?.video?.height,
+          elapsedMs: Date.now() - session.startedAt,
+        },
+        {
+          reasons: decision.reasons,
+          encode: encode
+            ? { width: encode.width, height: encode.height }
+            : undefined,
+        },
+      )
 
       session.log.info(
         fileFacts(session),
@@ -586,6 +622,7 @@ export function getSession(id: string, subject: string | undefined) {
 export async function stopSession(
   id: string,
   reason: 'client' | 'idle' | 'shutdown' = 'client',
+  context?: DiagnosticContext,
 ) {
   const session = sessions.get(id)
 
@@ -593,6 +630,12 @@ export async function stopSession(
     return
 
   sessions.delete(id)
+  recordDecision(
+    'playback',
+    'playback.closed',
+    context ?? session.diagnosticContext,
+    { session: id, reason, elapsedMs: Date.now() - session.startedAt },
+  )
   session.log.info(
     `playback ${id}: closed after ${formatDuration(Date.now() - session.startedAt)}, reason=${reason}`,
   )
@@ -695,4 +738,17 @@ export function playbackResources() {
     torrentId: session.torrent?.id ?? null,
     mediaFileId: session.library?.id ?? null,
   }))
+}
+
+/** Diagnostic binding does not touch/extend a playback session or expose its data. */
+export function diagnosticSessionState(
+  id: string,
+  subject: string,
+): 'owned' | 'foreign' | 'closed' {
+  const session = sessions.get(id)
+  return session
+    ? session.subject === subject
+      ? 'owned'
+      : 'foreign'
+    : 'closed'
 }

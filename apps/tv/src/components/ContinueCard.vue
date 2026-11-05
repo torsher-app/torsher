@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import type { ContinueCard } from '@torsher/api-client'
-import { computed } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { continueSnapshot } from '../diagnostics/continue.ts'
 import { useImageError } from '../composables/useImageError.ts'
 import { useResumeLabels } from '../composables/useResumeLabels.ts'
 import { watchedShare } from '../lib/continue.ts'
@@ -18,8 +19,32 @@ const props = withDefaults(
   { loadImage: true },
 )
 
-defineEmits<{ select: [] }>()
+defineEmits<{ select: [event: MouseEvent] }>()
 
+const element = ref<HTMLElement>()
+let observer: IntersectionObserver | undefined
+let visible = false
+let presented: ContinueCard | undefined
+function present() {
+  if (visible && presented !== props.item) {
+    presented = props.item
+    continueSnapshot('continue.presented', props.item.id, props.item)
+  }
+}
+onMounted(() => {
+  if (typeof IntersectionObserver === 'undefined')
+    return
+  observer = new IntersectionObserver((entries) => {
+    visible = entries.some(
+      entry => entry.isIntersecting && entry.intersectionRatio > 0,
+    )
+    present()
+  })
+  if (element.value)
+    observer.observe(element.value)
+})
+watch(() => props.item, present, { flush: 'post' })
+onBeforeUnmount(() => observer?.disconnect())
 const { t } = useI18n()
 const { resumeLine } = useResumeLabels()
 
@@ -39,11 +64,12 @@ const share = computed(() => watchedShare(props.item))
 
 <template>
   <button
+    ref="element"
     v-focusable
     class="card continue-card"
     type="button"
     data-long-press
-    @click="$emit('select')"
+    @click="$emit('select', $event)"
     @longpress="openActions"
   >
     <span class="continue-card__frame">

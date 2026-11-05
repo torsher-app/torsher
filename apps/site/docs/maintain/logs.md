@@ -13,26 +13,21 @@ Where the server writes what it does, how to see more detail, and how to tell wh
 
 ## The log in the panel
 
-Open <Ui k="panel.nav.logs" />. The newest entries are at the top and new ones appear as they happen.
+Open <Ui k="panel.nav.logs" /> to see recent server events. Filter by level or source, search for text, and pause live updates while you read. Select an entry to inspect or copy its details. See [the panel guide](/docs/panel/logs) for the available filters.
 
-- <Ui k="panel.logs.filters.all" />, <Ui k="panel.logs.filters.warn" /> and <Ui k="panel.logs.filters.error" /> narrow the list by level.
-- <Ui k="panel.logs.filters.source" /> shows one part of the server, for example <Ui k="panel.logs.sources.engine" />, <Ui k="panel.logs.sources.playback" />, <Ui k="panel.logs.sources.sources" /> or <Ui k="panel.logs.sources.network" />.
-- <Ui k="panel.logs.filters.search" /> finds text in messages.
-- <Ui k="panel.logs.filters.pause" /> stops live updates while you read.
+To ask for help, choose <Ui k="panel.logs.download.menu panel.logs.report.action" />. The report brings together technical details and the available action, playback and error history. You do not need to enable verbose logs first. [Read about its contents and privacy](/docs/panel/logs#download-a-problem-report).
 
-Select an entry to see its details and <Ui k="panel.logs.card.copy" />.
-
-The panel shows recent entries. <Ui k="panel.logs.download.action" /> saves the whole log as a text file, `torsher-<date>.log`.
+<Ui k="panel.logs.download.menu panel.logs.download.action" /> downloads the regular server log as `torsher-<date>.log`, including entries that may no longer be visible in the panel.
 
 ### See more detail
 
-By default, the log keeps information, warnings and errors. To find a problem that doesn't show there, open the <Ui k="panel.logs.more" /> menu next to <Ui k="panel.logs.download.action" /> and turn on <Ui k="panel.logs.verbose.label" />: it also records requests and internal steps. Reproduce the problem, download the log, and turn it off again.
+By default, the log keeps information, warnings and errors. To find a problem that doesn't show there, open the <Ui k="panel.logs.more" /> menu and turn on <Ui k="panel.logs.verbose.label" />: it also records requests and internal steps. Reproduce the problem, download the log, and turn it off again.
 
 If the `LOG_LEVEL` variable is set in `docker-compose.yml`, it decides the level and the switch is unavailable. See [Configuration](/docs/install/configuration).
 
 ## Where the log is kept
 
-The server writes its log to `/data/db/logs`: up to 25 MB in five rotating files, kept across restarts. API keys, tokens, passwords and paths inside the downloads folder are masked before an entry is written.
+The server writes its log to `/data/db/logs`: up to 25 MiB in five rotating files, kept across restarts. The panel and exports cover up to seven days; size limits can remove history sooner. API keys, tokens, passwords and paths inside the downloads folder are masked before an entry is written.
 
 ## The container log
 
@@ -66,14 +61,13 @@ From another device in your network, open `http://<server-address>:8080/api/heal
 
 Report problems on [GitHub Issues](https://github.com/torsher-app/torsher/issues). Include:
 
-1. The version and commit from <Ui k="panel.nav.settings panel.settings.nav.about" />.
-2. Where Torsher runs: the machine, the operating system, the Docker version (`docker version`), and whether it is behind a reverse proxy.
-3. The device you watch on, if the problem is with playback or a TV.
-4. What you did, what you expected and what happened instead.
-5. The log file from <Ui k="panel.logs.download.action" />, ideally with <Ui k="panel.logs.verbose.label" /> on while you reproduce the problem.
+1. What you did, what you expected and what happened instead. Give the approximate time if you know it.
+2. The file from <Ui k="panel.logs.download.menu panel.logs.report.action" />. Available versions and technical details are already included.
 
-::: info Look through the log before you post it
-Secrets are masked, but the log can still contain titles you watched, release names and the addresses of your devices. Remove what you don't want to share in a public issue.
+If the report option is unavailable, attach the regular log and the version from <Ui k="panel.nav.settings panel.settings.nav.about" />. If the panel cannot open, use the container log above. Include your device model or network setup if it seems relevant: the report cannot identify every part of your setup.
+
+::: info Review the file before sharing it
+Reports can reveal viewing activity, and regular logs contain more detailed server messages. Check the file before attaching it to a public issue. Share only what you are comfortable making public.
 :::
 
 ## Next

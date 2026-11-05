@@ -1,3 +1,11 @@
+import type { DiagnosticContext } from '../diagnostics/index.ts'
+import {
+  diagnostic,
+  diagnosticAction,
+  diagnosticParams,
+  diagnosticRoute,
+} from '../diagnostics/index.ts'
+import { continueSnapshot } from '../diagnostics/continue.ts'
 import type { Ref } from 'vue'
 import type { ResumeLike } from '../lib/continue.ts'
 import { onBeforeUnmount, onDeactivated, watch } from 'vue'
@@ -17,6 +25,26 @@ import { useLibraryPicker } from './useLibraryPicker.ts'
 export function useContinuePlayback(screen: Ref<EventTarget | undefined>) {
   const router = useRouter()
   const lookup = createLatest()
+  type CancelReason
+    = 'superseded' | 'back' | 'user_interaction' | 'deactivated' | 'unmounted'
+  let pending: { cancelCause?: CancelReason } | undefined
+  function cancel(reason: CancelReason = 'superseded') {
+    if (
+      pending
+      && (!pending.cancelCause
+        || (pending.cancelCause === 'user_interaction' && reason === 'superseded'))
+    ) {
+      pending.cancelCause = reason
+    }
+    lookup.cancel()
+  }
+  function interaction(event: Event) {
+    const target = event.target as Element | null
+    const back
+      = typeof target?.closest === 'function'
+        && target.closest('[data-diagnostic-action="back"]')
+    cancel(back ? 'back' : 'user_interaction')
+  }
   // OK и мышь посылают click, меню удержания — longpress. Перехватываем их
   // до действия карточки, в том числе до запуска нового «Продолжить».
   watch(
@@ -25,24 +53,28 @@ export function useContinuePlayback(screen: Ref<EventTarget | undefined>) {
       if (!element)
         return
 
-      element.addEventListener('click', lookup.cancel, true)
-      element.addEventListener(LONG_PRESS_EVENT, lookup.cancel, true)
+      element.addEventListener('click', interaction, true)
+      element.addEventListener(LONG_PRESS_EVENT, interaction, true)
       onCleanup(() => {
-        element.removeEventListener('click', lookup.cancel, true)
-        element.removeEventListener(LONG_PRESS_EVENT, lookup.cancel, true)
+        element.removeEventListener('click', interaction, true)
+        element.removeEventListener(LONG_PRESS_EVENT, interaction, true)
       })
     },
     { immediate: true },
   )
 
+  let selectedContext: DiagnosticContext = {}
   let selectedTitle = ''
   let automatic = false
   const picker = useLibraryPicker((fileId, target, explicit) => {
     void router.push(
-      libraryRoute(
-        fileId,
-        { id: selectedTitle, ...target },
-        automatic && !explicit ? automaticPlayback : undefined,
+      diagnosticRoute(
+        libraryRoute(
+          fileId,
+          { id: selectedTitle, ...target },
+          automatic && !explicit ? automaticPlayback : undefined,
+        ),
+        selectedContext,
       ),
     )
   })
@@ -52,21 +84,48 @@ export function useContinuePlayback(screen: Ref<EventTarget | undefined>) {
     choice: ReturnType<typeof libraryChoices>,
     currentId?: string | null,
     isAutomatic = false,
+    context = diagnosticAction(),
   ) {
-    lookup.cancel()
+    cancel()
+    selectedContext = context
+    diagnostic(
+      {
+        event: 'continue.route',
+        titleId,
+        branch: choice.files.length === 1 ? 'library_single' : 'library_picker',
+      },
+      context,
+    )
     selectedTitle = titleId
     automatic = isAutomatic
-    picker.open({ ...choice, currentId })
+    picker.open({ ...choice, currentId, titleId }, context)
   }
 
   async function resume(
     titleId: string,
     item: ResumeLike & { mediaFileId?: string | null },
     intent?: 'follow-ready',
+    trigger: 'remote' | 'pointer' = 'remote',
   ) {
+    const context = Object.freeze({
+      ...diagnosticAction(),
+      decisionId: item.decisionId,
+    })
+    diagnostic(
+      {
+        event: 'selection.activated',
+        slot: 'continue',
+        trigger,
+        titleId,
+      },
+      context,
+    )
+    continueSnapshot('continue.selected', titleId, item, context)
     if (intent) {
-      lookup.cancel()
-      void router.push(resumeRoute(titleId, item, intent))
+      cancel()
+      void router.push(
+        diagnosticRoute(resumeRoute(titleId, item, intent), context),
+      )
       return
     }
     if (
@@ -74,8 +133,12 @@ export function useContinuePlayback(screen: Ref<EventTarget | undefined>) {
       && !item.mediaFileId
       && (!item.next || item.followNewEpisode)
     ) {
-      lookup.cancel()
-      void router.push(resumeRoute(titleId, item))
+      cancel()
+      diagnostic(
+        { event: 'continue.route', titleId, branch: 'direct_file' },
+        context,
+      )
+      void router.push(diagnosticRoute(resumeRoute(titleId, item), context))
       return
     }
 
@@ -84,12 +147,41 @@ export function useContinuePlayback(screen: Ref<EventTarget | undefined>) {
       = item.season && item.episode
         ? { season: String(item.season), episode: String(item.episode) }
         : undefined
+    diagnostic(
+      { event: 'continue.route', titleId, branch: 'library_lookup' },
+      context,
+    )
+    cancel()
+    const operation: { cancelCause?: CancelReason } = {}
+    pending = operation
     const result = await lookup.run(signal =>
-      api.titles.getTitleLibrary(titleId, query, { signal }),
+      api.titles.getTitleLibrary(titleId, query, {
+        signal,
+        ...diagnosticParams(context),
+      }),
     )
 
-    if (result.status === 'cancelled')
+    if (pending === operation)
+      pending = undefined
+    if (result.status === 'cancelled') {
+      diagnostic(
+        {
+          event: 'operation.cancelled',
+          reason: operation.cancelCause ?? 'superseded',
+        },
+        context,
+      )
       return
+    }
+    diagnostic(
+      {
+        event: 'continue.route',
+        titleId,
+        branch: 'library_lookup',
+        outcome: result.status === 'done' ? 'accepted' : 'failed',
+      },
+      context,
+    )
 
     if (result.status === 'done') {
       // Старый сервер возвращает весь тайтл, даже если передана серия.
@@ -100,6 +192,7 @@ export function useContinuePlayback(screen: Ref<EventTarget | undefined>) {
           choice,
           item.mediaFileId,
           item.next && !item.position,
+          context,
         )
         return
       }
@@ -112,10 +205,25 @@ export function useContinuePlayback(screen: Ref<EventTarget | undefined>) {
     const file = item.next
       ? (downloaded ?? previous)
       : (previous ?? downloaded ?? null)
-    void router.push(resumeRoute(titleId, { ...item, file }))
+    const route = resumeRoute(titleId, { ...item, file })
+    diagnostic(
+      {
+        event: 'continue.route',
+        titleId,
+        branch: file
+          ? file === downloaded
+            ? 'downloaded_file'
+            : 'previous_file'
+          : route.path.endsWith('/sources')
+            ? 'sources'
+            : 'resolve',
+      },
+      context,
+    )
+    void router.push(diagnosticRoute(route, context))
   }
 
-  onDeactivated(lookup.cancel)
-  onBeforeUnmount(lookup.cancel)
+  onDeactivated(() => cancel('deactivated'))
+  onBeforeUnmount(() => cancel('unmounted'))
   return { picker, openLibrary, resume }
 }

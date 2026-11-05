@@ -5,7 +5,7 @@ import {
 } from '@torsher/release-parser/resolution'
 
 /** Compare source frames, never release names or transcoded output dimensions. */
-export function lowerContinuationQuality(
+export function continuationQualityCheck(
   baseline: Continuation['baseline'] | undefined,
   candidate: { width: number | null, height: number | null } | null | undefined,
   file: NonNullable<Continuation['baseline']>['file'],
@@ -16,14 +16,14 @@ export function lowerContinuationQuality(
     || !candidate.height
     || baseline.video.basis !== 'probe'
   ) {
-    return null
+    return { quality: null, outcome: 'unknown' as const }
   }
   if (
     baseline.file.kind === 'library'
     && file.kind === 'library'
     && baseline.file.mediaFileId === file.mediaFileId
   ) {
-    return null
+    return { quality: null, outcome: 'same_file' as const }
   }
   if (
     baseline.file.kind === 'torrent'
@@ -31,7 +31,7 @@ export function lowerContinuationQuality(
     && baseline.file.torrentId === file.torrentId
     && baseline.file.fileIndex === file.fileIndex
   ) {
-    return null
+    return { quality: null, outcome: 'same_file' as const }
   }
   if (
     ![
@@ -41,7 +41,7 @@ export function lowerContinuationQuality(
       candidate.height,
     ].every(value => Number.isFinite(value) && value > 0)
   ) {
-    return null
+    return { quality: null, outcome: 'unknown' as const }
   }
   const before = videoClassOf(
     frameResolution(baseline.video.width, baseline.video.height),
@@ -50,7 +50,17 @@ export function lowerContinuationQuality(
     frameResolution(candidate.width, candidate.height),
   )
   const order = ['SD', '720p', '1080p', '2160p']
-  return order.indexOf(after) < order.indexOf(before) ? after : null
+  const quality = order.indexOf(after) < order.indexOf(before) ? after : null
+  return {
+    quality,
+    outcome: quality ? ('detected' as const) : ('not_lower' as const),
+  }
+}
+
+export function lowerContinuationQuality(
+  ...args: Parameters<typeof continuationQualityCheck>
+) {
+  return continuationQualityCheck(...args).quality
 }
 
 /** A running session may fill an evicted probe only for the server-selected exact file. */

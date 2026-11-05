@@ -75,6 +75,7 @@ export interface PlayingSource {
 
 /** С чем выбрана раздача: «Файлы» встают на сезон фильтра */
 export interface SourceChoice {
+  rankingDecisionId?: string
   query?: string
   season?: number
   // Озвучка раздачи, которую играет плеер: по ней узнаём студию дорожки без названия
@@ -682,6 +683,7 @@ function playLibrary() {
 
 function select(candidate: SourceCandidate) {
   emit('select', candidate, {
+    rankingDecisionId: sources.value?.rankingDecisionId,
     query: query.value,
     season: seasonFilter.value,
     playingVoice: candidates.value.find(isCurrent)?.voice,

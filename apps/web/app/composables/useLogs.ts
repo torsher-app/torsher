@@ -1,3 +1,4 @@
+import { readSupportReport, SupportReportError } from '~/lib/supportReport'
 import type { LogEntry, LogsResponse } from '@torsher/api-client'
 import type { LogLevel, LogsLevelFilter, LogSource } from '~/lib/logs'
 import { refDebounced, useDocumentVisibility, useNow } from '@vueuse/core'
@@ -36,9 +37,12 @@ const isReloading = ref(false)
 const hasMore = ref(false)
 const isLoadingMore = ref(false)
 const journalLevel = ref<LogLevel>('info')
+const journalWindow = shallowRef<LogsResponse['window']>()
 const levelLocked = ref(false)
 const isLevelBusy = ref(false)
 const isDownloading = ref(false)
+const isDownloadingReport = ref(false)
+const reportCapability = shallowRef<LogsResponse['reportCapability']>()
 const isPaused = ref(false)
 const isAtTop = ref(true)
 
@@ -78,6 +82,8 @@ function track(list: LogEntry[]) {
 }
 
 function applyMeta(response: LogsResponse) {
+  journalWindow.value = response.window
+  reportCapability.value = response.reportCapability
   journalLevel.value = response.level
   levelLocked.value = response.levelLocked
 }
@@ -446,6 +452,45 @@ export function useLogs() {
     }
   }
 
+  async function downloadReport() {
+    if (isDownloadingReport.value || reportCapability.value?.version !== 1)
+      return
+    isDownloadingReport.value = true
+    try {
+      const response = await withErrorMode('silent', () =>
+        api.requestResponse('/api/logs/download?format=report', {
+          method: 'GET',
+        }))
+      const { blob, partial } = await readSupportReport(response)
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `torsher-report-${new Date().toISOString().slice(0, 10)}.txt`
+      document.body.append(link)
+      link.click()
+      link.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 0)
+      if (partial) {
+        toast.warning(t('panel.logs.report.partial'), {
+          description: t('panel.logs.report.partialText'),
+          duration: 10000,
+        })
+      }
+    }
+    catch (error) {
+      toast.error(t('panel.logs.report.error'), {
+        description: t(
+          error instanceof SupportReportError && error.code === 'unsupported'
+            ? 'panel.logs.report.unsupported'
+            : 'panel.logs.report.errorText',
+        ),
+      })
+    }
+    finally {
+      isDownloadingReport.value = false
+    }
+  }
+
   async function copyEntry(entry: LogEntry) {
     try {
       await copyText(formatLogEntry(entry))
@@ -465,9 +510,12 @@ export function useLogs() {
     hasMore: readonly(hasMore),
     isLoadingMore: readonly(isLoadingMore),
     journalLevel: readonly(journalLevel),
+    journalWindow: readonly(journalWindow),
     levelLocked: readonly(levelLocked),
     isLevelBusy: readonly(isLevelBusy),
     isDownloading: readonly(isDownloading),
+    isDownloadingReport: readonly(isDownloadingReport),
+    reportCapability: readonly(reportCapability),
     isPaused: readonly(isPaused),
     levelFilter,
     source,
@@ -482,6 +530,7 @@ export function useLogs() {
     setPaused,
     setLevel,
     download,
+    downloadReport,
     copyEntry,
     resetFilters,
     filterById,

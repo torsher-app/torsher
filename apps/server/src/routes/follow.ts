@@ -1,3 +1,7 @@
+import {
+  diagnosticContext,
+  recordDecision,
+} from '../services/diagnostics/index.ts'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { messageResponse } from '../dto/common.ts'
 import {
@@ -239,7 +243,16 @@ export const followRoutes: FastifyPluginAsyncZod = async (app) => {
         return reply.code(404).send(titleNotFound)
 
       try {
-        return await openPick(id, request.body)
+        const context = diagnosticContext(request)
+        const result = await openPick(id, request.body)
+        recordDecision('sources', 'source.follow_pick', context, {
+          titleId: id,
+          season: request.body.season,
+          episode: request.body.episode,
+          torrentId: result.torrentId,
+          outcome: result.status,
+        })
+        return result
       }
       catch (err) {
         if (err instanceof PickError) {

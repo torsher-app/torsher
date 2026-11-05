@@ -1,3 +1,7 @@
+import type { EpisodeSkips } from '../diagnostics/episodes.ts'
+import { episodeSkips, skippedEpisode } from '../diagnostics/episodes.ts'
+import type { DiagnosticContext } from '../diagnostics/index.ts'
+import { decisionSnapshot } from '../diagnostics/index.ts'
 import type { TitleProgress } from '../../db/schema.ts'
 import { and, desc, eq, gte, isNotNull, lt, max, or } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
@@ -35,6 +39,7 @@ export interface EpisodeFile {
 
 /** Что продолжать: начатая серия (фильм) или следующая после досмотренной */
 export interface ResumeTarget {
+  decisionId?: string
   /** У фильма сезона и серии нет */
   season: number | null
   episode: number | null
@@ -137,13 +142,17 @@ export function nextEpisodeFor(
   titleId: string,
   seasons: AiredSeason[],
   after: EpisodeRef,
+  skipped?: EpisodeSkips,
 ) {
   const rows = episodeRows(profileId, titleId)
 
   return nextAiredEpisode(seasons, after, (ref) => {
     const row = rows.get(`${ref.season}:${ref.episode}`)
 
-    return !!row && isProgressWatched(row)
+    const watched = !!row && isProgressWatched(row)
+    if (watched && skipped)
+      skippedEpisode(skipped, ref, 'watched')
+    return watched
   })
 }
 
@@ -163,11 +172,18 @@ export async function resumeTarget(
   profileId: string,
   titleId: string,
   loadSeasons: () => Promise<AiredSeason[] | undefined>,
+  context?: DiagnosticContext,
 ): Promise<ResumeTarget | undefined> {
   const last = lastTitleProgress(profileId, titleId)
 
-  if (!last)
+  if (!last) {
+    decisionSnapshot('resume.decided', `${profileId}:${titleId}`, context, {
+      profileId,
+      titleId,
+      reason: 'no_history',
+    })
     return undefined
+  }
 
   const position = resumePosition(last.position, last.duration)
 
@@ -178,7 +194,30 @@ export async function resumeTarget(
     if (position === null && last.season === 0)
       return undefined
 
+    const decisionId = decisionSnapshot(
+      'resume.decided',
+      `${profileId}:${titleId}`,
+      context,
+      {
+        profileId,
+        titleId,
+        season: last.season,
+        episode: last.episode,
+        reason: isProgressWatched(last)
+          ? 'resume_rewatch'
+          : 'resume_incomplete',
+        position: position ?? 0,
+        duration: last.duration,
+        watched: isProgressWatched(last),
+        previousPosition: last.position,
+        selectionHistory: 'unavailable',
+        torrentId: last.torrentId,
+        fileIndex: last.fileIndex,
+        mediaFileId: last.mediaFileId,
+      },
+    )
     return {
+      ...(decisionId && { decisionId }),
       season: last.season || null,
       episode: last.episode || null,
       position: position ?? 0,
@@ -195,31 +234,79 @@ export async function resumeTarget(
 
   const seasons = await loadSeasons()
 
-  if (!seasons)
+  if (!seasons) {
+    decisionSnapshot('resume.decided', `${profileId}:${titleId}`, context, {
+      profileId,
+      titleId,
+      reason: 'metadata_unavailable',
+      previousSeason: last.season,
+      previousEpisode: last.episode,
+    })
     return undefined
+  }
 
-  const next = nextEpisodeFor(profileId, titleId, seasons, last)
+  const skipped = episodeSkips()
+  const next = nextEpisodeFor(profileId, titleId, seasons, last, skipped)
 
-  if (!next)
+  if (!next) {
+    decisionSnapshot(
+      'resume.decided',
+      `${profileId}:${titleId}`,
+      context,
+      {
+        profileId,
+        titleId,
+        reason: 'no_aired_unwatched',
+        previousSeason: last.season,
+        previousEpisode: last.episode,
+      },
+      { skipped },
+    )
     return undefined
+  }
 
   const row = episodeRows(profileId, titleId).get(
     `${next.season}:${next.episode}`,
   )
   const ref = { profileId, titleId, ...next }
 
+  const file
+    = (row && fileOf(row))
+      ?? (last.torrentId
+        && (!last.mediaFileId || playableMediaFile(last.mediaFileId, profileId))
+        ? episodeFileIn(last.torrentId, ref)
+        : null)
+  const decisionId = decisionSnapshot(
+    'resume.decided',
+    `${profileId}:${titleId}`,
+    context,
+    {
+      profileId,
+      titleId,
+      ...next,
+      reason: 'next_unwatched',
+      previousSeason: last.season,
+      previousEpisode: last.episode,
+      previousWatched: isProgressWatched(last),
+      previousPosition: last.position,
+      previousDuration: last.duration,
+      torrentId: file?.torrentId,
+      fileIndex: file?.fileIndex,
+      mediaFileId: row?.mediaFileId,
+      position: row?.position ?? 0,
+      duration: row?.duration,
+      selectionHistory: 'unavailable',
+    },
+    { skipped },
+  )
   return {
+    ...(decisionId && { decisionId }),
     ...next,
     mediaFileId: row?.mediaFileId,
     position: row?.position ?? 0,
     duration: row?.duration ?? null,
     next: true,
-    file:
-      (row && fileOf(row))
-      ?? (last.torrentId
-        && (!last.mediaFileId || playableMediaFile(last.mediaFileId, profileId))
-        ? episodeFileIn(last.torrentId, ref)
-        : null),
+    file,
     updatedAt: last.updatedAt,
   }
 }

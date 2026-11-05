@@ -9,6 +9,7 @@ import LogLevelIcon from './LogLevelIcon.vue'
 const props = defineProps<{
   entry: LogEntry
   selected: boolean
+  duplicate?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -58,6 +59,10 @@ const repeat = computed(() => props.entry.repeat ?? 1)
       @click="emit('open')"
     >
       {{ entry.message }}
+      <span v-if="duplicate" class="text-muted-foreground">
+        · {{ t("panel.logs.diagnostics.duplicate") }}</span>
+      <span v-if="entry.context?.clientSeq" class="text-muted-foreground">
+        · #{{ entry.context.clientSeq }}</span>
     </button>
     <span
       class="col-start-4 row-start-1 flex items-center justify-end gap-2 text-xs text-muted-foreground tabular-nums sm:col-start-5"

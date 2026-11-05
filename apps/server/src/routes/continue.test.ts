@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer'
 import { stat as statFile } from 'node:fs/promises'
 import { mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -1070,4 +1071,274 @@ it('requires known positive duration for the five-percent preference', () => {
   expect(
     meaningfulProgress({ position: 0, duration: null, watchedAt: new Date() }),
   ).toBe(true)
+})
+
+it('keeps 720 checkpoint commits unchanged with bounded two-hour diagnostic output', async () => {
+  const { createLogger, installLogger, closeLogFiles }
+    = await import('../services/logs/index.ts')
+  const { setSetting } = await import('../services/settings/index.ts')
+  const { default: pino } = await import('pino')
+  const dir = mkdtempSync(join(tmpdir(), 'diagnostic-budget-'))
+  const lines: string[] = []
+  const start = new Date('2026-11-05T00:00:00Z').getTime()
+  vi.useFakeTimers({ toFake: ['Date'] })
+  installLogger(
+    createLogger({
+      level: 'info',
+      logsDir: dir,
+      stdout: {
+        write: (line: string) => {
+          lines.push(String(line))
+          return true
+        },
+      },
+    }),
+  )
+  const plain = (value: unknown) =>
+    JSON.parse(
+      JSON.stringify(value, (key, entry) =>
+        key === 'decisionId' ? undefined : entry),
+    )
+  async function run(enabled: boolean) {
+    setSetting('userActionDiagnostics', enabled)
+    getDb().delete(titleProgress).run()
+    const responses: unknown[] = []
+    for (let i = 1; i <= 720; i++) {
+      vi.setSystemTime(start + i * 10_000)
+      const saved = await app.inject({
+        method: 'PUT',
+        url: '/api/watch-state',
+        cookies: owner,
+        headers: { 'x-torsher-save-reason': 'checkpoint' },
+        payload: {
+          torrentId: 's2',
+          fileIndex: 0,
+          position: i * 10,
+          duration: 10_800,
+          title: { id: SERIES, season: 2, episode: 1 },
+        },
+      })
+      expect(saved.statusCode).toBe(200)
+      responses.push(saved.json())
+      // Ten real Home reads, twenty actual title-progress actions, forty client summaries.
+      if (i % 72 === 0)
+        responses.push(plain(await continueItems()))
+      if (i % 36 === 0) {
+        const result = await app.inject({
+          url: `/api/titles/${SERIES}/progress`,
+          cookies: owner,
+        })
+        expect(result.statusCode).toBe(200)
+        responses.push(plain(result.json()))
+        const next = await app.inject({
+          url: `/api/titles/${SERIES}/up-next?season=2&episode=1&torrentId=s2`,
+          cookies: owner,
+        })
+        expect(next.statusCode).toBe(200)
+        responses.push(next.json())
+      }
+      if (i % 18 === 0) {
+        const seq = i / 18
+        const response = await app.inject({
+          method: 'POST',
+          url: '/api/diagnostics/events',
+          cookies: owner,
+          payload: {
+            schemaVersion: 1,
+            deviceId: null,
+            profileId,
+            events: [
+              {
+                event: 'progress.result',
+                eventId: `budget-session:${seq}`,
+                clientSessionId: 'budget-session',
+                clientSeq: seq,
+                clientTime: new Date().toISOString(),
+                elapsedMs: i * 10_000,
+                outcome: 'accepted',
+                position: i * 10,
+                duration: 10_800,
+                reason: 'checkpoint',
+              },
+            ],
+          },
+        })
+        expect(response.statusCode).toBe(200)
+        expect(response.json().accepted).toHaveLength(enabled ? 1 : 0)
+      }
+    }
+    expect(getDb().select().from(titleProgress).get()?.position).toBe(7200)
+    return responses
+  }
+  try {
+    const disabled = await run(false)
+    lines.length = 0
+    expect(await run(true)).toEqual(disabled)
+    const info = lines
+      .flatMap(line => line.trim().split('\n'))
+      .map(line => JSON.parse(line))
+      .filter(row => row.level === 30)
+    expect(info.length).toBeGreaterThanOrEqual(160)
+    expect(info.length).toBeLessThanOrEqual(500)
+    expect(Buffer.byteLength(lines.join(''))).toBeLessThanOrEqual(1024 * 1024)
+    expect(
+      info.filter(row => row.event === 'progress.file_saved'),
+    ).toHaveLength(0)
+    expect(
+      info.filter(
+        row =>
+          row.event === 'request.completed'
+          && row.operationId === 'putWatchState',
+      ),
+    ).toHaveLength(0)
+  }
+  finally {
+    await closeLogFiles()
+    installLogger(pino({ level: 'silent' }))
+    setSetting('userActionDiagnostics', true)
+    vi.useRealTimers()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+it('summarizes watched skips in the same next-episode traversal', async () => {
+  const { episodeSkips } = await import('../services/diagnostics/episodes.ts')
+  const { nextEpisodeFor } = await import('../services/sources/resume.ts')
+  const skips = episodeSkips()
+  watched(SERIES, 2, 2, EPISODE, new Date())
+  watched(SERIES, 2, 3, EPISODE, new Date())
+  const next = nextEpisodeFor(
+    profileId,
+    SERIES,
+    [{ number: 2, airedEpisodeCount: 4 }],
+    { season: 2, episode: 1 },
+    skips,
+  )
+  expect(next).toEqual({ season: 2, episode: 4 })
+  expect(skips).toEqual({
+    total: 2,
+    truncated: false,
+    ranges: [{ season: 2, from: 2, to: 3, reason: 'watched' }],
+  })
+})
+
+it('keeps critical saves and titleless file checkpoints observable', async () => {
+  const { createLogger, installLogger, closeLogFiles, queryLogs }
+    = await import('../services/logs/index.ts')
+  const { setSetting } = await import('../services/settings/index.ts')
+  const { default: pino } = await import('pino')
+  const dir = mkdtempSync(join(tmpdir(), 'diagnostic-critical-'))
+  installLogger(
+    createLogger({
+      level: 'info',
+      logsDir: dir,
+      stdout: { write: () => true },
+    }),
+  )
+  setSetting('userActionDiagnostics', true)
+  try {
+    for (const reason of ['pause', 'exit', 'next', 'source_switch']) {
+      const response = await app.inject({
+        method: 'PUT',
+        url: '/api/watch-state',
+        cookies: owner,
+        headers: { 'x-torsher-save-reason': reason },
+        payload: {
+          torrentId: 's2',
+          fileIndex: 0,
+          position: 250,
+          duration: EPISODE,
+          title: { id: SERIES, season: 2, episode: 1 },
+        },
+      })
+      expect(response.statusCode).toBe(200)
+      expect(
+        queryLogs({ q: 'progress.saved' }).entries.some(
+          entry => entry.context?.saveReason === reason,
+        ),
+      ).toBe(true)
+      expect(
+        queryLogs({ q: 'request.completed' }).entries.some(
+          entry => entry.context?.saveReason === reason,
+        ),
+      ).toBe(true)
+    }
+    const response = await app.inject({
+      method: 'PUT',
+      url: '/api/watch-state',
+      cookies: owner,
+      headers: { 'x-torsher-save-reason': 'checkpoint' },
+      payload: {
+        torrentId: 's2',
+        fileIndex: 1,
+        position: 250,
+        duration: EPISODE,
+      },
+    })
+    expect(response.statusCode).toBe(200)
+    expect(
+      queryLogs({ q: 'progress.file_saved' }).entries.some(
+        entry => entry.context?.fileIndex === 1,
+      ),
+    ).toBe(true)
+    const failure = await app.inject({
+      method: 'PUT',
+      url: '/api/watch-state',
+      cookies: owner,
+      headers: { 'x-torsher-save-reason': 'checkpoint' },
+      payload: { torrentId: 'missing', fileIndex: 0, position: 250 },
+    })
+    expect(failure.statusCode).toBe(404)
+    expect(
+      queryLogs({ q: 'request.completed' }).entries.some(
+        entry => entry.context?.statusCode === 404,
+      ),
+    ).toBe(true)
+  }
+  finally {
+    await closeLogFiles()
+    installLogger(pino({ level: 'silent' }))
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+it('records unavailable preference skips from actual file checks', async () => {
+  const { createLogger, installLogger, closeLogFiles, queryLogs }
+    = await import('../services/logs/index.ts')
+  const { default: pino } = await import('pino')
+  const dir = mkdtempSync(join(tmpdir(), 'diagnostic-preference-'))
+  installLogger(
+    createLogger({
+      level: 'info',
+      logsDir: dir,
+      stdout: { write: () => true },
+    }),
+  )
+  try {
+    watched(SERIES, 2, 2, 500, new Date(), 's2')
+    getDb()
+      .update(torrents)
+      .set({ status: 'failed' })
+      .where(eq(torrents.id, 's2'))
+      .run()
+    const result = await continuationFor(profileId, SERIES, {
+      season: 2,
+      episode: 3,
+    })
+    expect(result.baseline).toBeNull()
+    const entry = queryLogs({ q: 'continuation.preference' }).entries[0]!
+    expect(JSON.parse(entry.details!)).toMatchObject({
+      unavailable: {
+        total: 1,
+        truncated: false,
+        ranges: [{ season: 2, from: 2, to: 2, reason: 'unavailable' }],
+      },
+      selectionHistory: 'unavailable',
+    })
+  }
+  finally {
+    await closeLogFiles()
+    installLogger(pino({ level: 'silent' }))
+    rmSync(dir, { recursive: true, force: true })
+  }
 })

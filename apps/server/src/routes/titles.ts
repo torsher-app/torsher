@@ -1,3 +1,12 @@
+import { episodeSkips } from '../services/diagnostics/episodes.ts'
+import { rankDecisiveKey } from '../services/sources/rank.ts'
+import type { DiagnosticContext } from '../services/diagnostics/index.ts'
+import {
+  diagnosticContext,
+  diagnosticsCollecting,
+  newDecisionId,
+  recordDecision,
+} from '../services/diagnostics/index.ts'
 import { continuationFor } from '../services/sources/continuation.ts'
 import { getPinnedVoice } from '../services/sources/voices.ts'
 import { followOf } from '../services/follow/index.ts'
@@ -180,8 +189,66 @@ function toCandidate(
 }
 
 /** Ссылки индексаторов и infohash наружу не уходят: ответ собирается явно */
-export function toSourcesResponse(sources: TitleSources) {
+export function toSourcesResponse(
+  sources: TitleSources,
+  context?: DiagnosticContext,
+  titleId?: string,
+) {
+  const rankingDecisionId = diagnosticsCollecting()
+    ? newDecisionId()
+    : undefined
+  const candidates = sources.ranking.ranked.map((release, index) => ({
+    ...toCandidate(
+      release,
+      release.id === sources.lastWatchedId,
+      sources.audio === 'ru',
+    ),
+    ...(rankingDecisionId && {
+      diagnostics: {
+        rank: index + 1,
+        decisiveKey: rankDecisiveKey(
+          release,
+          sources.ranking.ranked[index + 1],
+        ),
+        score: release.score,
+        audioPriority: release.audioPriority,
+        typePriority: release.typePriority,
+      },
+    }),
+  }))
+  if (rankingDecisionId) {
+    recordDecision(
+      'sources',
+      'source.ranked',
+      context,
+      {
+        rankingDecisionId,
+        titleId,
+        presetId: sources.presets?.effectiveId,
+        cacheHit: sources.cacheHit,
+        found: candidates.length,
+        lowConfidence: candidates.filter(item => item.confidence !== 'high')
+          .length,
+        noSeeders: candidates.filter(item => item.seeders <= 0).length,
+        foreignAudio: candidates.filter(item => item.audioFit === 'foreign')
+          .length,
+        eligible: sources.ranking.ranked.filter(item => item.eligible).length,
+        cacheAgeMs: Math.max(0, Date.now() - sources.updatedAt.getTime()),
+      },
+      {
+        candidates: candidates.slice(0, 3).map(item => ({
+          candidateId: item.id,
+          diagnostics: item.diagnostics,
+          confidence: item.confidence,
+          seeders: item.seeders,
+          quality: item.quality,
+          resolution: item.resolution,
+        })),
+      },
+    )
+  }
   return {
+    ...(rankingDecisionId && { rankingDecisionId }),
     season: sources.season ?? null,
     episode: sources.episode ?? null,
     updatedAt: sources.updatedAt.toISOString(),
@@ -195,13 +262,7 @@ export function toSourcesResponse(sources: TitleSources) {
     pinnedVoice: sources.pinned ?? null,
     seasonCandidate: sources.seasonCandidate ?? null,
     top: sources.ranking.top,
-    candidates: sources.ranking.ranked.map(release =>
-      toCandidate(
-        release,
-        release.id === sources.lastWatchedId,
-        sources.audio === 'ru',
-      ),
-    ),
+    candidates,
     voices: sources.voices,
     query: {
       current: sources.query ?? null,
@@ -250,7 +311,11 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
         if (!sources)
           return reply.code(404).send({ message: 'Title not found' })
 
-        return toSourcesResponse(sources)
+        return toSourcesResponse(
+          sources,
+          diagnosticContext(request),
+          request.params.id,
+        )
       }
       catch (err) {
         return sendTmdbError(reply, err)
@@ -318,6 +383,7 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
       },
     },
     async (request, reply) => {
+      const context = diagnosticContext(request)
       let result
 
       try {
@@ -325,6 +391,7 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
           request.params.id,
           request.body,
           request.profileId,
+          context,
         )
       }
       catch (err) {
@@ -344,6 +411,13 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
         return reply.code(202).send({ ...result, fileIndex: null })
       }
 
+      recordDecision('sources', 'source.selected', context, {
+        titleId: request.params.id,
+        candidateId: request.body.candidateId,
+        torrentId: result.torrentId,
+        outcome: result.status,
+        rankingLinkOrigin: 'client',
+      })
       return result
     },
   )
@@ -370,8 +444,12 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
       const { id } = request.params
       const last = lastTitleProgress(request.profileId, id)
       // Без TMDB следующей серии не найти: кнопка остаётся «Смотреть»
-      const resume = await resumeTarget(request.profileId, id, () =>
-        airedSeasons(id, request.query.language).catch(() => undefined))
+      const resume = await resumeTarget(
+        request.profileId,
+        id,
+        () => airedSeasons(id, request.query.language).catch(() => undefined),
+        diagnosticContext(request),
+      )
 
       const target
         = request.query.season && request.query.episode
@@ -383,7 +461,12 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
             ? { season: resume.season, episode: resume.episode }
             : undefined
       const continuation = target
-        ? await continuationFor(request.profileId, id, target)
+        ? await continuationFor(
+            request.profileId,
+            id,
+            target,
+            diagnosticContext(request),
+          )
         : undefined
       if (
         resume?.next
@@ -398,6 +481,7 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
         continuation,
         resume: resume
           ? {
+              decisionId: resume.decisionId,
               season: resume.season,
               episode: resume.episode,
               position: resume.position,
@@ -467,13 +551,39 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
       if (parseCatalogId(id)?.type !== 'tv')
         return reply.code(404).send({ message: 'Series not found' })
 
+      const context = diagnosticContext(request)
       try {
+        const skipped = episodeSkips()
         const seasons = await airedSeasons(id, language)
-        const next = nextEpisodeFor(request.profileId, id, seasons ?? [], {
-          season: Number(request.query.season),
-          episode: Number(request.query.episode),
-        })
+        const next = nextEpisodeFor(
+          request.profileId,
+          id,
+          seasons ?? [],
+          {
+            season: Number(request.query.season),
+            episode: Number(request.query.episode),
+          },
+          skipped,
+        )
 
+        recordDecision(
+          'catalog',
+          'upnext.decided',
+          context,
+          {
+            titleId: id,
+            fromSeason: Number(request.query.season),
+            fromEpisode: Number(request.query.episode),
+            season: next?.season,
+            episode: next?.episode,
+            reason: !seasons
+              ? 'metadata_unavailable'
+              : next
+                ? 'next_unwatched'
+                : 'no_aired_unwatched',
+          },
+          { skipped },
+        )
         if (!next)
           return { next: null }
 
@@ -499,6 +609,10 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
         }
       }
       catch (err) {
+        recordDecision('catalog', 'upnext.decided', context, {
+          titleId: id,
+          reason: 'metadata_error',
+        })
         return sendTmdbError(reply, err)
       }
     },
@@ -524,6 +638,7 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
       },
     },
     async (request, reply) => {
+      const context = diagnosticContext(request)
       let result
 
       try {
@@ -547,6 +662,13 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
       if (!result)
         return reply.code(404).send({ message: 'Title not found' })
 
+      recordDecision('sources', 'source.opened', context, {
+        titleId: request.params.id,
+        candidateId: request.body.candidateId,
+        torrentId: result.torrentId,
+        outcome: result.status,
+        rankingLinkOrigin: 'client',
+      })
       return result
     },
   )

@@ -44,12 +44,23 @@ export const logsResponse = z
   .object({
     // Новые сверху
     entries: z.array(logEntry),
+    reportCapability: z.object({ version: z.literal(1) }).optional(),
     level: z.enum(LOG_LEVELS),
     // Уровень задан переменной LOG_LEVEL: из панели не меняется
     levelLocked: z.boolean(),
     hasMore: z.boolean(),
     // Id журнала процесса: сменился — курсоры `seq` от прошлого запуска не годятся
     instance: z.string(),
+    // Unfiltered in-memory viewer window. Files may contain earlier entries.
+    window: z
+      .object({
+        oldest: z.string().nullable(),
+        newest: z.string().nullable(),
+        capacity: z.number().int().positive(),
+        retained: z.number().int().nonnegative(),
+        evicted: z.boolean(),
+      })
+      .optional(),
   })
   .meta({ id: 'logsResponse' })
 

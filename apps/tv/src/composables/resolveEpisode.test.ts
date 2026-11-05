@@ -49,10 +49,14 @@ describe('explicit episode source', () => {
         cancelled: () => false,
       },
     )
-    expect(mocks.open).toHaveBeenCalledExactlyOnceWith('show', {
-      candidateId: 'refined-candidate',
-      query: 'Alternate series title S02',
-    })
+    expect(mocks.open).toHaveBeenCalledExactlyOnceWith(
+      'show',
+      {
+        candidateId: 'refined-candidate',
+        query: 'Alternate series title S02',
+      },
+      {},
+    )
     expect(result).toEqual({
       kind: 'found',
       file: { torrentId: 'refined-pack', fileIndex: 5 },
@@ -72,10 +76,14 @@ describe('explicit episode source', () => {
       kind: 'found',
       file: { torrentId: 'default-pack', fileIndex: 5 },
     })
-    expect(mocks.open).toHaveBeenCalledExactlyOnceWith('show', {
-      candidateId: 'default',
-      query: undefined,
-    })
+    expect(mocks.open).toHaveBeenCalledExactlyOnceWith(
+      'show',
+      {
+        candidateId: 'default',
+        query: undefined,
+      },
+      {},
+    )
     expect(
       await resolveEpisode(target, {
         candidateId: 'refined',

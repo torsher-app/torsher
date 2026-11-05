@@ -1,3 +1,12 @@
+import { diagnosticPlaybackMode } from '../diagnostics/player.ts'
+import type { DiagnosticContext } from '../diagnostics/index.ts'
+import {
+  currentDiagnosticContext,
+  diagnostic,
+  diagnosticParams,
+  diagnosticPoll,
+  diagnosticRequest,
+} from '../diagnostics/index.ts'
 import type {
   CreatePlaybackInput,
   EngineUnavailableResponse,
@@ -6,7 +15,13 @@ import type {
   PlaybackErrorInput,
   TorrentStats,
 } from '@torsher/api-client'
-import { getErrorBody, getErrorStatus } from '@torsher/api-client'
+import {
+  correlationHeaders,
+  getErrorBody,
+  getErrorOutcome,
+  getErrorRequestId,
+  getErrorStatus,
+} from '@torsher/api-client'
 import { onScopeDispose, ref, shallowRef } from 'vue'
 import type { PlaybackTitle } from '../lib/sources.ts'
 import { api } from '../api.ts'
@@ -149,7 +164,15 @@ export function usePlayback(
   title?: PlaybackTitle,
   // Озвучка, которую слушали в прошлой раздаче: сервер возьмёт её дорожку
   voiceStudio?: string,
+  context: DiagnosticContext = currentDiagnosticContext(),
 ) {
+  const diagnosticTarget = {
+    ...source,
+    titleId: title?.id,
+    season: title?.season,
+    episode: title?.episode,
+  }
+  let checkpointAt = -Infinity
   const library = 'mediaFileId' in source
   const status = ref<'loading' | 'ready' | 'error'>('loading')
   const playback = shallowRef<Playback>()
@@ -176,7 +199,33 @@ export function usePlayback(
       return
 
     closed.add(id)
-    api.playback.deletePlayback(id).catch(() => {})
+    const request = context.actionId
+      ? api.playback.deletePlayback(id, diagnosticParams(context))
+      : api.playback.deletePlayback(id)
+    request.then(
+      () =>
+        diagnostic(
+          {
+            event: 'playback.closed',
+            ...diagnosticTarget,
+            session: id,
+            outcome: 'accepted',
+          },
+          context,
+          true,
+        ),
+      () =>
+        diagnostic(
+          {
+            event: 'playback.closed',
+            ...diagnosticTarget,
+            session: id,
+            outcome: 'unknown',
+          },
+          context,
+          true,
+        ),
+    )
   }
 
   /** Закрыть сессию на сервере: перепаковка и её сегменты больше не нужны */
@@ -211,34 +260,51 @@ export function usePlayback(
     current: Playback,
     isCurrent: () => boolean,
   ): Promise<Playback | 'lost'> {
-    const startedAt = Date.now()
-    let result = current
-    let failures = 0
+    const poll = diagnosticPoll(
+      'probe',
+      { ...diagnosticTarget, session: current.sessionId },
+      context,
+    )
+    let pollOutcome: 'accepted' | 'failed' | 'cancelled' | 'timeout' = 'failed'
+    try {
+      const startedAt = Date.now()
+      let result = current
+      let failures = 0
 
-    while (result.status === 'probing' && isCurrent()) {
-      if (Date.now() - startedAt >= PROBE_LIMIT_MS)
-        return 'lost'
-
-      pending.value = result
-      await new Promise(resolve => setTimeout(resolve, PROBE_POLL_MS))
-
-      if (!isCurrent())
-        break
-
-      try {
-        result = await api.playback.getPlayback(result.sessionId)
-        failures = 0
-      }
-      catch (err) {
-        if (getErrorStatus(err) === 404)
+      while (result.status === 'probing' && isCurrent()) {
+        if (Date.now() - startedAt >= PROBE_LIMIT_MS) {
+          pollOutcome = 'timeout'
           return 'lost'
+        }
 
-        if (++failures > PROBE_FAILURES)
-          throw err
+        pending.value = result
+        await new Promise(resolve => setTimeout(resolve, PROBE_POLL_MS))
+
+        if (!isCurrent())
+          break
+
+        try {
+          result = await api.playback.getPlayback(
+            result.sessionId,
+            poll.params(),
+          )
+          failures = 0
+        }
+        catch (err) {
+          if (getErrorStatus(err) === 404)
+            return 'lost'
+
+          if (++failures > PROBE_FAILURES)
+            throw err
+        }
       }
-    }
 
-    return result
+      pollOutcome = isCurrent() ? 'accepted' : 'cancelled'
+      return result
+    }
+    finally {
+      poll.finish(!isCurrent() ? 'cancelled' : pollOutcome)
+    }
   }
 
   /**
@@ -247,6 +313,53 @@ export function usePlayback(
    * повторе после ошибки тоже.
    */
   async function start(restart?: PlaybackRestart): Promise<StartOutcome> {
+    const run = generation + 1
+    const previousSession = playback.value?.sessionId
+    diagnostic(
+      {
+        event: previousSession ? 'playback.retry' : 'playback.requested',
+        ...diagnosticTarget,
+        generation: run,
+        previousSession,
+      },
+      context,
+    )
+    const outcome = await startInternal(restart)
+    if (outcome === 'stale') {
+      diagnostic(
+        {
+          event: 'operation.stale',
+          generation: run,
+          reason: 'superseded',
+          applied: false,
+        },
+        context,
+      )
+    }
+    else {
+      diagnostic(
+        {
+          event:
+            outcome === 'ready'
+              ? 'playback.ready'
+              : outcome === 'retry'
+                ? 'playback.retry'
+                : 'playback.error',
+          ...diagnosticTarget,
+          generation: run,
+          session: playback.value?.sessionId,
+          mode: diagnosticPlaybackMode(playback.value),
+          outcome: outcome === 'ready' ? 'accepted' : 'failed',
+        },
+        context,
+      )
+    }
+    return outcome
+  }
+
+  async function startInternal(
+    restart?: PlaybackRestart,
+  ): Promise<StartOutcome> {
     const run = ++generation
 
     status.value = 'loading'
@@ -256,14 +369,17 @@ export function usePlayback(
     let created: Playback | undefined
 
     try {
-      created = await api.playback.postPlayback({
-        ...source,
-        title,
-        device: deviceProfile(),
-        language: i18n.global.locale.value as CreatePlaybackInput['language'],
-        voiceStudio,
-        ...restart,
-      })
+      created = await api.playback.postPlayback(
+        {
+          ...source,
+          title,
+          device: deviceProfile(),
+          language: i18n.global.locale.value as CreatePlaybackInput['language'],
+          voiceStudio,
+          ...restart,
+        },
+        diagnosticParams(context),
+      )
       const ready = await waitProbe(created, () => run === generation)
 
       if (run !== generation) {
@@ -343,7 +459,33 @@ export function usePlayback(
       })
       .catch(() => {})
       .finally(() => {
-        api.playback.deletePlayback(id).catch(() => {})
+        const request = context.actionId
+          ? api.playback.deletePlayback(id, diagnosticParams(context))
+          : api.playback.deletePlayback(id)
+        request.then(
+          () =>
+            diagnostic(
+              {
+                event: 'playback.closed',
+                ...diagnosticTarget,
+                session: id,
+                outcome: 'accepted',
+              },
+              context,
+              true,
+            ),
+          () =>
+            diagnostic(
+              {
+                event: 'playback.closed',
+                ...diagnosticTarget,
+                session: id,
+                outcome: 'unknown',
+              },
+              context,
+              true,
+            ),
+        )
       })
   }
 
@@ -401,21 +543,72 @@ export function usePlayback(
 
   /** Позиция не критична: не сохранилась — сохранится в следующий раз */
   /** Ошибка сохранения молча пропускается; промис — чтобы дождаться записи */
-  function saveWatchState(position: number, duration: number) {
+  function saveWatchState(
+    position: number,
+    duration: number,
+    reason:
+      'exit' | 'next' | 'source_switch' | 'pause' | 'checkpoint' = 'checkpoint',
+    captured: DiagnosticContext = context,
+  ) {
     if (!Number.isFinite(position))
       return Promise.resolve()
 
+    const trace
+      = reason !== 'checkpoint' || Date.now() - checkpointAt >= 180_000
+    if (trace && reason === 'checkpoint')
+      checkpointAt = Date.now()
+    const operation = diagnosticRequest({
+      ...captured,
+      saveReason: reason,
+    }) ?? { ...captured, saveReason: reason }
+    const details = {
+      ...diagnosticTarget,
+      position,
+      duration: Number.isFinite(duration) && duration > 0 ? duration : null,
+      reason,
+    }
+    if (trace && reason !== 'checkpoint') {
+      diagnostic(
+        { event: 'progress.requested', ...details, outcome: 'unknown' },
+        operation,
+        true,
+      )
+    }
     return api.watchState
-      .putWatchState({
-        ...source,
-        position,
-        duration:
-          Number.isFinite(duration) && duration > 0 ? duration : undefined,
-        title,
-      })
+      .putWatchState(
+        {
+          ...source,
+          position,
+          duration:
+            Number.isFinite(duration) && duration > 0 ? duration : undefined,
+          title,
+        },
+        operation.clientRequestId
+          ? { headers: correlationHeaders(operation) }
+          : {},
+      )
       .then(
-        () => {},
-        () => {},
+        () => {
+          if (trace) {
+            diagnostic(
+              { event: 'progress.result', ...details, outcome: 'accepted' },
+              operation,
+              reason !== 'checkpoint',
+            )
+          }
+        },
+        (error) => {
+          diagnostic(
+            {
+              event: 'progress.result',
+              ...details,
+              outcome: getErrorOutcome(error),
+              requestId: getErrorRequestId(error),
+            },
+            operation,
+            true,
+          )
+        },
       )
   }
 

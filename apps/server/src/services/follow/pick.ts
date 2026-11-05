@@ -1,3 +1,5 @@
+import type { FollowChoiceDiagnostics } from './decide.ts'
+import { newDecisionId, recordDecision } from '../diagnostics/index.ts'
 import type {
   Follow,
   FollowMode,
@@ -51,7 +53,12 @@ export async function pickCandidate(
   follow: Follow,
   candidate: FollowPendingCandidate,
   episodes: EpisodeRef[],
-  options: { ownStudio?: string, now?: Date, isCurrent?: () => boolean } = {},
+  options: {
+    ownStudio?: string
+    now?: Date
+    isCurrent?: () => boolean
+    diagnostics?: FollowChoiceDiagnostics
+  } = {},
 ) {
   const now = options.now ?? new Date()
 
@@ -176,6 +183,30 @@ export async function pickCandidate(
     }
   }
 
+  recordDecision(
+    'sources',
+    'follow.choice',
+    { actorKind: 'system', actionId: newDecisionId() },
+    {
+      followId: follow.id,
+      titleId: follow.titleId,
+      candidateId: candidate.id,
+      mode: 'pick',
+      selectionHistory: options.diagnostics?.selectionHistory ?? 'unavailable',
+      selectionReason: options.diagnostics?.selectionReason ?? 'unavailable',
+      upgraded: replaced.length,
+      picked: fresh.length,
+      quality: candidate.quality,
+    },
+    {
+      decision: options.diagnostics,
+      episodes: episodes
+        .slice(0, 20)
+        .map(item => ({ season: item.season, episode: item.episode })),
+      total: episodes.length,
+      truncated: episodes.length > 20,
+    },
+  )
   await announceOtherVoice(follow, candidate, fresh, options.ownStudio)
   await announceUpgraded(
     follow,

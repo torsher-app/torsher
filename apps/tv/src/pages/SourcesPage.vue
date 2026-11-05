@@ -5,6 +5,13 @@ import { getErrorBody, getErrorStatus } from '@torsher/api-client'
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
+import {
+  activationTrigger,
+  diagnostic,
+  diagnosticAction,
+  diagnosticParams,
+  diagnosticRoute,
+} from '../diagnostics/index.ts'
 import { api } from '../api.ts'
 import AppToast from '../components/AppToast.vue'
 import SourcesScreen from '../components/SourcesScreen.vue'
@@ -56,6 +63,21 @@ async function open(candidate: SourceCandidate, choice: SourceChoice) {
   if (opening.value)
     return
 
+  const context = Object.freeze({
+    ...diagnosticAction(),
+    rankingDecisionId: choice.rankingDecisionId,
+  })
+  diagnostic(
+    {
+      event: 'selection.activated',
+      slot: 'source',
+      trigger: activationTrigger(),
+      titleId: props.id,
+      candidateId: candidate.id,
+    },
+    context,
+    true,
+  )
   if (
     props.season !== undefined
     && props.episode !== undefined
@@ -67,12 +89,15 @@ async function open(candidate: SourceCandidate, choice: SourceChoice) {
       Number(props.episode),
     )
     void router.push(
-      withStartPosition(
-        {
-          ...route,
-          query: { ...route.query, candidate: candidate.id, q: choice.query },
-        },
-        props.start === '0',
+      diagnosticRoute(
+        withStartPosition(
+          {
+            ...route,
+            query: { ...route.query, candidate: candidate.id, q: choice.query },
+          },
+          props.start === '0',
+        ),
+        context,
       ),
     )
     return
@@ -82,10 +107,14 @@ async function open(candidate: SourceCandidate, choice: SourceChoice) {
   openError.value = ''
 
   try {
-    const result = await api.titles.postTitleOpen(props.id, {
-      candidateId: candidate.id,
-      query: choice.query,
-    })
+    const result = await api.titles.postTitleOpen(
+      props.id,
+      {
+        candidateId: candidate.id,
+        query: choice.query,
+      },
+      diagnosticParams(context),
+    )
 
     // Выбран сезон — «Файлы» встают на его первую серию; при «Скачать» —
     // отмечают его серии
@@ -98,6 +127,7 @@ async function open(candidate: SourceCandidate, choice: SourceChoice) {
 
     router.push({
       path: `/title/${props.id}/files/${result.torrentId}`,
+      state: { diagnostic: { ...context } },
       query: { season, download: props.download ? '1' : undefined },
     })
   }
@@ -113,12 +143,27 @@ function playLibrary(
   fileId: string,
   title: { season?: number | null, episode?: number | null },
 ) {
+  const context = diagnosticAction()
+  diagnostic(
+    {
+      event: 'selection.activated',
+      slot: 'libraryVersion',
+      trigger: activationTrigger(),
+      titleId: props.id,
+      mediaFileId: fileId,
+    },
+    context,
+    true,
+  )
   router.push(
-    withStartPosition(
-      libraryRoute(fileId, { id: props.id, ...title }),
-      props.start === '0'
-      && String(title.season) === props.season
-      && String(title.episode) === props.episode,
+    diagnosticRoute(
+      withStartPosition(
+        libraryRoute(fileId, { id: props.id, ...title }),
+        props.start === '0'
+        && String(title.season) === props.season
+        && String(title.episode) === props.episode,
+      ),
+      context,
     ),
   )
 }

@@ -1,3 +1,4 @@
+import { recordFailure } from '../services/diagnostics/index.ts'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -19,13 +20,14 @@ import { serverSettings } from '../db/schema.ts'
 import {
   closeLogFiles,
   createLogger,
+  exportSupportReport,
   installLogger,
   logFor,
   setLogLevel,
 } from '../services/logs/index.ts'
 import { RequestLogController } from '../services/logs/requestLog.ts'
 import { resetScrub } from '../services/logs/scrub.ts'
-import { getSetting } from '../services/settings/index.ts'
+import { getSetting, setSetting } from '../services/settings/index.ts'
 import { createOwner } from '../services/users/index.ts'
 import { signToken } from '../utils/token.ts'
 
@@ -366,3 +368,148 @@ describe('запросы в журнале', () => {
     expect(failed.details).toContain('Error: boom')
   })
 })
+
+describe('support report download', () => {
+  it('advertises the owner capability and keeps the old log contract', async () => {
+    expect((await logs()).reportCapability).toEqual({ version: 1 })
+    const old = await app.inject({ url: '/api/logs/download', cookies: owner })
+    expect(old.headers['x-torsher-report-version']).toBeUndefined()
+    expect(old.headers['content-disposition']).toContain('.log')
+    const report = await app.inject({
+      url: '/api/logs/download?format=report',
+      cookies: owner,
+    })
+    expect(report.statusCode).toBe(200)
+    expect(report.headers['x-torsher-report-version']).toBe('1')
+    expect(report.headers['cache-control']).toBe('no-store')
+    expect(report.headers['content-disposition']).toContain('torsher-report-')
+    const rows = report.body
+      .trim()
+      .split('\n')
+      .map(line => JSON.parse(line))
+    expect(rows[0].type).toBe('manifest')
+    expect(rows.at(-1)).toMatchObject({ type: 'footer', exportComplete: true })
+  })
+
+  it('requires owner access to the report variant', async () => {
+    for (const cookies of [{}, device]) {
+      expect(
+        (await app.inject({ url: '/api/logs/download?format=report', cookies }))
+          .statusCode,
+      ).toBe(401)
+    }
+  })
+})
+
+it('returns a controlled busy response and records current collection separately', async () => {
+  const held = exportSupportReport()
+  const busy = await app.inject({
+    url: '/api/logs/download?format=report',
+    cookies: owner,
+  })
+  expect(busy.statusCode).toBe(429)
+  expect(busy.headers['retry-after']).toBe('30')
+  await new Promise<void>((resolve) => {
+    held.once('close', resolve)
+    held.destroy()
+  })
+  setSetting('userActionDiagnostics', false)
+  const response = await app.inject({
+    url: '/api/logs/download?format=report',
+    cookies: owner,
+  })
+  const manifest = JSON.parse(response.body.split('\n')[0]!)
+  expect(manifest.environment.diagnostics).toMatchObject({
+    enabled: false,
+    collecting: false,
+    source: 'current_server',
+    observedAt: expect.any(String),
+  })
+})
+
+it('includes pending suppression counters as read-only current facts even after level filtering', async () => {
+  const context = { profileId: 'profile-0001', actorKind: 'owner' as const }
+  recordFailure('playback', 'transcode_failed', context, {
+    session: 'playback-0001',
+  })
+  recordFailure('playback', 'transcode_failed', context, {
+    session: 'playback-0001',
+  })
+  const before = await logs()
+  setLogLevel('warn')
+  const response = await app.inject({
+    url: '/api/logs/download?format=report',
+    cookies: owner,
+  })
+  const manifest = JSON.parse(response.body.split('\n')[0]!)
+  expect(
+    manifest.environment.pendingFailureSuppression.records[0].facts,
+  ).toMatchObject({
+    suppressed: 1,
+    failureSource: 'playback',
+    suppressionReason: 'repeated',
+    windowStartedAt: expect.any(String),
+    windowEndedAt: expect.any(String),
+  })
+  expect((await logs()).entries).toEqual(before.entries)
+})
+
+it.each(['main.m3u8', '0.ts'])(
+  'accounts for every unknown HLS observation without trusting the reported session: %s',
+  async (segment) => {
+    const reportedSession = 'unknown-playback-0001'
+    const headers = { 'x-torsher-client-session-id': 'client-unknown-0001' }
+    for (const cookies of [owner, owner, device]) {
+      const response = await app.inject({
+        url: `/api/hls/${reportedSession}/${segment}`,
+        cookies,
+        headers,
+      })
+      expect(response.statusCode).toBe(404)
+    }
+    const report = await app.inject({
+      url: '/api/logs/download?format=report',
+      cookies: owner,
+    })
+    const rows = report.body
+      .trim()
+      .split('\n')
+      .map(line => JSON.parse(line))
+    const failures = rows.filter(
+      row => row.type === 'event' && row.event === 'server.failure',
+    )
+    expect(failures).toHaveLength(2)
+    expect(new Set(failures.map(row => row.facts.actorKind))).toEqual(
+      new Set(['owner', 'device']),
+    )
+    for (const failure of failures) {
+      expect(failure.facts).toMatchObject({
+        code: 'playback_not_found',
+        reportedSession,
+      })
+      expect(failure.facts.session).toBeUndefined()
+    }
+    const pending = rows[0].environment.pendingFailureSuppression.records
+    expect(pending).toHaveLength(1)
+    expect(pending[0].facts).toMatchObject({
+      suppressed: 1,
+      actorKind: 'owner',
+      reportedSession,
+    })
+    expect(pending[0].facts.session).toBeUndefined()
+    const summary = rows.find(row => row.type === 'summary')
+    expect(summary.sessions).toHaveLength(2)
+    expect(
+      summary.sessions.every(
+        (session: { hasServerPlayback: boolean }) => !session.hasServerPlayback,
+      ),
+    ).toBe(true)
+    expect(
+      summary.recentErrors.every(
+        (error: { session?: string, reportedSession?: string }) =>
+          error.session === undefined
+          && error.reportedSession === reportedSession,
+      ),
+    ).toBe(true)
+  },
+)

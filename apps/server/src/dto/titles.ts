@@ -1,3 +1,4 @@
+import { candidateDiagnostics } from './diagnostics.ts'
 import { z } from 'zod'
 import { followAudios } from '../db/schema.ts'
 import { titleDownloadStates, tmdbLanguage } from './catalog.ts'
@@ -96,6 +97,7 @@ export const sourceCandidate = z
   .object({
     // Непрозрачный ID: ссылка на раздачу остаётся на сервере
     id: z.string(),
+    diagnostics: candidateDiagnostics.optional(),
     // Исходное имя раздачи
     title: z.string(),
     indexers: z.array(z.string()),
@@ -160,6 +162,7 @@ export const voiceOption = z
 
 export const titleSources = z
   .object({
+    rankingDecisionId: z.string().optional(),
     season: z.number().nullable(),
     episode: z.number().nullable(),
     updatedAt: z.string(),
@@ -446,6 +449,7 @@ export const seasonRelease = z
 
 export const continuation = z
   .object({
+    decisionId: z.string().optional(),
     target: z.object({ season: z.number(), episode: z.number() }),
     preferredTorrent: episodeFile.nullable(),
     baseline: z
@@ -479,6 +483,7 @@ export const titleProgressQuery = z.object({
 
 export const resumeTarget = z
   .object({
+    decisionId: z.string().optional(),
     // У фильма сезона и серии нет
     season: z.number().nullable(),
     episode: z.number().nullable(),

@@ -28,7 +28,7 @@
     "start:server": "pnpm --filter @torsher/server start",
     "seed": "pnpm --filter @torsher/server seed",
     "openapi": "pnpm --filter @torsher/server openapi",
-    "generate:api": "pnpm --filter @torsher/api-client generate",
+    "generate:api": "pnpm --filter @torsher/api-client generate && node apps/tv/build/generateDiagnostics.mjs",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "typecheck": "pnpm -r typecheck",
