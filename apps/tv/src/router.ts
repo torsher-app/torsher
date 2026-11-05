@@ -1,3 +1,4 @@
+import { automaticFromQuery } from './lib/continue.ts'
 import type { LocationQueryValue, RouteLocationNormalized } from 'vue-router'
 import { ref } from 'vue'
 import { createRouter, createWebHashHistory } from 'vue-router'
@@ -109,6 +110,10 @@ export const router = createRouter({
         torrent: queryOf(route.query.torrent),
         candidate: queryOf(route.query.candidate),
         voice: queryOf(route.query.voice),
+        automatic: automaticFromQuery(
+          route.query.automatic,
+          route.query.reference,
+        ),
       }),
     },
     { path: '/about', component: AboutPage },
@@ -121,6 +126,10 @@ export const router = createRouter({
       component: PlayerPage,
       props: route => ({
         mediaFileId: route.params.mediaFileId,
+        automatic: automaticFromQuery(
+          route.query.automatic,
+          route.query.reference,
+        ),
         titleId: queryOf(route.query.title),
         season: queryOf(route.query.season),
         episode: queryOf(route.query.episode),
@@ -137,6 +146,10 @@ export const router = createRouter({
         season: queryOf(route.query.season),
         episode: queryOf(route.query.episode),
         voice: queryOf(route.query.voice),
+        automatic: automaticFromQuery(
+          route.query.automatic,
+          route.query.reference,
+        ),
       }),
     },
   ],

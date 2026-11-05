@@ -1,3 +1,4 @@
+import { continuationFor } from './continuation.ts'
 import { localTitleImage } from '../library/images.ts'
 import type { ContinueCard, ContinueRow, HomeMode } from '../../dto/home.ts'
 import type { MineKind } from '../../dto/mine.ts'
@@ -8,7 +9,7 @@ import { libraryTitleSet } from '../library/home.ts'
 import { droppedSince, watchingTotal } from '../mine/index.ts'
 import { getSeason, getTitle } from '../tmdb/index.ts'
 import { parseCatalogId, withImageSize } from '../tmdb/mappers.ts'
-import { episodeProgress } from './progress.ts'
+import { episodeProgress, lastTitleProgress } from './progress.ts'
 import {
   excludedFromContinue,
   playedBefore,
@@ -82,7 +83,8 @@ async function continueCard(
   if (!details)
     return undefined
 
-  const target = fresh
+  const fromFollow = !!fresh && !lastTitleProgress(profileId, titleId)
+  const target = fromFollow
     ? followTarget(profileId, titleId, fresh)
     : await resumeTarget(profileId, titleId, async () =>
         details.seasons?.map(season => ({
@@ -92,6 +94,24 @@ async function continueCard(
 
   if (!target)
     return undefined
+
+  const continuation
+    = target.season && target.episode
+      ? await continuationFor(profileId, titleId, {
+          season: target.season,
+          episode: target.episode,
+        })
+      : undefined
+  if (target.next && !target.position && continuation?.preferredTorrent)
+    target.file = continuation.preferredTorrent
+
+  if (
+    !target.file
+    && fresh?.season === target.season
+    && fresh.episode === target.episode
+  ) {
+    target.file = fresh.file ?? null
+  }
 
   const episode = target.season
     ? (
@@ -128,8 +148,12 @@ async function continueCard(
     position: target.position,
     duration: target.duration ?? (runtime ? runtime * 60 : null),
     next: target.next,
+    continuation,
     ...visibleResumeSource(profileId, target),
-    ...(fresh && { followNewEpisode: true }),
+    ...(fresh && {
+      followUpdate: { season: fresh.season, episode: fresh.episode },
+    }),
+    ...(fromFollow && { followNewEpisode: true }),
   }
 }
 

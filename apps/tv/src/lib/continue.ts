@@ -1,4 +1,9 @@
-import type { ContinueRow, EpisodeFile, HomeRow } from '@torsher/api-client'
+import type {
+  Continuation,
+  ContinueRow,
+  EpisodeFile,
+  HomeRow,
+} from '@torsher/api-client'
 
 /** Что продолжать: карточка ряда «Продолжить» и `resume` прогресса тайтла */
 export interface ResumeLike {
@@ -10,6 +15,7 @@ export interface ResumeLike {
   file: EpisodeFile | null
   /** Новая серия «Следить»: её раздачу выбрал слежение */
   followNewEpisode?: boolean
+  continuation?: Continuation
 }
 
 /** «S2E5»; у фильма — пусто */
@@ -45,11 +51,63 @@ export interface ScreenRoute {
   query?: Record<string, string | undefined>
 }
 
+export interface AutomaticPlayback {
+  kind: 'continuation'
+  current?: NonNullable<Continuation['baseline']>
+}
+export const automaticPlayback: AutomaticPlayback = { kind: 'continuation' }
+export function automaticFromQuery(
+  value: unknown,
+  reference?: unknown,
+): AutomaticPlayback | undefined {
+  if (value !== '1')
+    return undefined
+  if (typeof reference !== 'string' || reference.length > 4096)
+    return automaticPlayback
+  try {
+    const current = JSON.parse(reference)
+    const file = current?.file
+    const video = current?.video
+    const validFile
+      = file?.kind === 'library'
+        ? typeof file.mediaFileId === 'string' && !!file.mediaFileId
+        : file?.kind === 'torrent'
+          && typeof file.torrentId === 'string'
+          && !!file.torrentId
+          && Number.isInteger(file.fileIndex)
+          && file.fileIndex >= 0
+    if (
+      validFile
+      && video?.basis === 'probe'
+      && typeof video.width === 'number'
+      && typeof video.height === 'number'
+      && Number.isFinite(video.width)
+      && Number.isFinite(video.height)
+      && video.width > 0
+      && video.height > 0
+    ) {
+      return { kind: 'continuation', current: { file, video } }
+    }
+  }
+  catch {
+    /* Old or malformed context does not change playback access. */
+  }
+  return automaticPlayback
+}
+
+function automaticQuery(automatic?: AutomaticPlayback) {
+  return {
+    automatic: automatic ? '1' : undefined,
+    ...(automatic?.current && { reference: JSON.stringify(automatic.current) }),
+  }
+}
+
 /** Плеер файла раздачи; тайтл и серия — чтобы позиция писалась по серии */
 export function playerRoute(
   file: EpisodeFile,
   title?: { id: string, season?: number | null, episode?: number | null },
   voice?: string,
+  automatic?: AutomaticPlayback,
 ): ScreenRoute {
   return {
     path: `/play/${file.torrentId}/${file.fileIndex}`,
@@ -58,6 +116,7 @@ export function playerRoute(
       season: title.season ? String(title.season) : undefined,
       episode: title.episode ? String(title.episode) : undefined,
       voice,
+      ...automaticQuery(automatic),
     },
   }
 }
@@ -66,6 +125,7 @@ export function playerRoute(
 export function libraryRoute(
   mediaFileId: string,
   title?: { id: string, season?: number | null, episode?: number | null },
+  automatic?: AutomaticPlayback,
 ): ScreenRoute {
   return {
     path: `/play/library/${mediaFileId}`,
@@ -73,6 +133,7 @@ export function libraryRoute(
       title: title.id,
       season: title.season ? String(title.season) : undefined,
       episode: title.episode ? String(title.episode) : undefined,
+      ...automaticQuery(automatic),
     },
   }
 }
@@ -83,6 +144,7 @@ export function resolveRoute(
   season: number,
   episode: number,
   torrentId?: string,
+  automatic?: AutomaticPlayback,
 ): ScreenRoute {
   return {
     path: `/title/${titleId}/play`,
@@ -90,8 +152,27 @@ export function resolveRoute(
       season: String(season),
       episode: String(episode),
       torrent: torrentId,
+      ...automaticQuery(automatic),
     },
   }
+}
+
+/** Both branches of a player episode switch must preserve automatic intent. */
+export function automaticEpisodeRoute(
+  title: { id: string, season: number, episode: number },
+  file: EpisodeFile | null,
+  previousTorrent: string | undefined,
+  automatic: AutomaticPlayback,
+): ScreenRoute {
+  return file
+    ? playerRoute(file, title, undefined, automatic)
+    : resolveRoute(
+        title.id,
+        title.season,
+        title.episode,
+        previousTorrent,
+        automatic,
+      )
 }
 
 /**
@@ -100,16 +181,29 @@ export function resolveRoute(
  * «Следить» — тоже экран подготовки: раздачу выбрал слежение
  */
 export function resumeRoute(titleId: string, item: ResumeLike): ScreenRoute {
+  const automatic = item.next && !item.position ? automaticPlayback : undefined
   if (item.file) {
-    return playerRoute(item.file, {
-      id: titleId,
-      season: item.season,
-      episode: item.episode,
-    })
+    return playerRoute(
+      item.file,
+      {
+        id: titleId,
+        season: item.season,
+        episode: item.episode,
+      },
+      undefined,
+      automatic,
+    )
   }
 
-  if (item.season && item.episode)
-    return resolveRoute(titleId, item.season, item.episode)
+  if (item.season && item.episode) {
+    return resolveRoute(
+      titleId,
+      item.season,
+      item.episode,
+      undefined,
+      automatic,
+    )
+  }
 
   if (item.followNewEpisode)
     return { path: `/title/${titleId}/play` }

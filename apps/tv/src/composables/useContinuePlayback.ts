@@ -4,7 +4,11 @@ import { onBeforeUnmount, onDeactivated, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { LONG_PRESS_EVENT } from '../focus/longPress.ts'
 import { api } from '../api.ts'
-import { libraryRoute, resumeRoute } from '../lib/continue.ts'
+import {
+  automaticPlayback,
+  libraryRoute,
+  resumeRoute,
+} from '../lib/continue.ts'
 import { createLatest } from '../lib/latest.ts'
 import { libraryChoices } from '../lib/library.ts'
 import { useLibraryPicker } from './useLibraryPicker.ts'
@@ -32,17 +36,26 @@ export function useContinuePlayback(screen: Ref<EventTarget | undefined>) {
   )
 
   let selectedTitle = ''
-  const picker = useLibraryPicker((fileId, target) => {
-    void router.push(libraryRoute(fileId, { id: selectedTitle, ...target }))
+  let automatic = false
+  const picker = useLibraryPicker((fileId, target, explicit) => {
+    void router.push(
+      libraryRoute(
+        fileId,
+        { id: selectedTitle, ...target },
+        automatic && !explicit ? automaticPlayback : undefined,
+      ),
+    )
   })
 
   function openLibrary(
     titleId: string,
     choice: ReturnType<typeof libraryChoices>,
     currentId?: string | null,
+    isAutomatic = false,
   ) {
     lookup.cancel()
     selectedTitle = titleId
+    automatic = isAutomatic
     picker.open({ ...choice, currentId })
   }
 
@@ -76,7 +89,12 @@ export function useContinuePlayback(screen: Ref<EventTarget | undefined>) {
       // Старый сервер возвращает весь тайтл, даже если передана серия.
       const choice = libraryChoices(result.value.files, !!item.episode, target)
       if (choice.files.length) {
-        openLibrary(titleId, choice, item.mediaFileId)
+        openLibrary(
+          titleId,
+          choice,
+          item.mediaFileId,
+          item.next && !item.position,
+        )
         return
       }
     }

@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { card, tmdbLanguage } from './catalog.ts'
-import { episodeFile } from './titles.ts'
+import { continuation, episodeFile } from './titles.ts'
 
 // `library` — раздел «Библиотека»: только свои ряды, без каталога
 export const homeModes = ['all', 'movies', 'series', 'library'] as const
@@ -204,6 +204,10 @@ export const continueCard = card
     mediaFileId: z.string().nullable().optional(),
     // Новая серия «Следить», которую профиль ещё не смотрел: колокольчик
     followNewEpisode: z.boolean().optional(),
+    continuation: continuation.optional(),
+    followUpdate: z
+      .object({ season: z.number(), episode: z.number() })
+      .optional(),
   })
   .meta({ id: 'continueCard' })
 

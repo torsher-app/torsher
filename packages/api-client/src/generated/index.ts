@@ -1464,6 +1464,31 @@ export interface SeasonReleaseInput {
   episodes: number[];
 }
 
+export interface ContinuationInput {
+  target: {
+    season: number;
+    episode: number;
+  };
+  preferredTorrent: EpisodeFileInput | null;
+  baseline: {
+    file:
+      | {
+          kind: "torrent";
+          torrentId: string;
+          fileIndex: number;
+        }
+      | {
+          kind: "library";
+          mediaFileId: string;
+        };
+    video: {
+      width: number;
+      height: number;
+      basis: "probe";
+    } | null;
+  } | null;
+}
+
 export interface ResumeTargetInput {
   season: number | null;
   episode: number | null;
@@ -1472,10 +1497,12 @@ export interface ResumeTargetInput {
   next: boolean;
   file: EpisodeFileInput | null;
   mediaFileId?: string | null;
+  continuation?: ContinuationInput;
 }
 
 export interface TitleProgressInput {
   resume: ResumeTargetInput | null;
+  continuation?: ContinuationInput;
   last: {
     season: number | null;
     episode: number | null;
@@ -1685,6 +1712,11 @@ export interface ContinueCardInput {
   file: EpisodeFileInput | null;
   mediaFileId?: string | null;
   followNewEpisode?: boolean;
+  continuation?: ContinuationInput;
+  followUpdate?: {
+    season: number;
+    episode: number;
+  };
 }
 
 export interface ContinueRowInput {
@@ -6727,6 +6759,31 @@ export interface SeasonRelease {
   episodes: number[];
 }
 
+export interface Continuation {
+  target: {
+    season: number;
+    episode: number;
+  };
+  preferredTorrent: EpisodeFile | null;
+  baseline: {
+    file:
+      | {
+          kind: "torrent";
+          torrentId: string;
+          fileIndex: number;
+        }
+      | {
+          kind: "library";
+          mediaFileId: string;
+        };
+    video: {
+      width: number;
+      height: number;
+      basis: "probe";
+    } | null;
+  } | null;
+}
+
 export interface ResumeTarget {
   season: number | null;
   episode: number | null;
@@ -6735,10 +6792,12 @@ export interface ResumeTarget {
   next: boolean;
   file: EpisodeFile | null;
   mediaFileId?: string | null;
+  continuation?: Continuation;
 }
 
 export interface TitleProgress {
   resume: ResumeTarget | null;
+  continuation?: Continuation;
   last: {
     season: number | null;
     episode: number | null;
@@ -6948,6 +7007,11 @@ export interface ContinueCard {
   file: EpisodeFile | null;
   mediaFileId?: string | null;
   followNewEpisode?: boolean;
+  continuation?: Continuation;
+  followUpdate?: {
+    season: number;
+    episode: number;
+  };
 }
 
 export interface ContinueRow {
@@ -12359,6 +12423,10 @@ export class Api<
     getTitleProgress: (
       id: string,
       query?: {
+        /** @pattern ^[1-9]\d{0,2}$ */
+        season?: string;
+        /** @pattern ^[1-9]\d{0,3}$ */
+        episode?: string;
         /**
          * @default "en-US"
          * @pattern ^[a-z]{2}-[A-Z]{2}$

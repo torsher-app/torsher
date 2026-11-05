@@ -1,3 +1,11 @@
+import { stat as statFile } from 'node:fs/promises'
+import { mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import {
+  continuationFor,
+  meaningfulProgress,
+} from '../services/sources/continuation.ts'
 import type { TorrentFileEntry } from '../db/schema.ts'
 import {
   afterEach,
@@ -39,6 +47,22 @@ import {
   tvOngoing,
 } from '../services/tmdb/fixtures/index.ts'
 import { signToken } from '../utils/token.ts'
+
+vi.mock('node:fs/promises', async (original) => {
+  const fs = await original<typeof import('node:fs/promises')>()
+  return { ...fs, stat: vi.fn(fs.stat) }
+})
+
+const probeFrames = vi.hoisted(() => new Map())
+vi.mock('../services/media/probe.ts', async original => ({
+  ...(await original<typeof import('../services/media/probe.ts')>()),
+  peekMediaProbe: (key: string) => probeFrames.get(key),
+}))
+const freshEpisodes = vi.hoisted(() => new Map())
+vi.mock('../services/follow/badges.ts', async original => ({
+  ...(await original<typeof import('../services/follow/badges.ts')>()),
+  followNewEpisodes: () => freshEpisodes,
+}))
 
 const app = createApp()
 const fetchMock = vi.fn<typeof fetch>()
@@ -137,6 +161,8 @@ beforeAll(async () => {
 })
 
 beforeEach(() => {
+  probeFrames.clear()
+  freshEpisodes.clear()
   tmdbDown = false
   getDb().delete(titleProgress).run()
   getDb().delete(profileTitles).run()
@@ -335,10 +361,10 @@ describe('get /api/home/continue', () => {
       .run()
     expect((await continueItems())[0]).toMatchObject({
       episode: 2,
-      file: null,
+      file: { torrentId: 'other', fileIndex: 1 },
     })
     expect(await progress()).toMatchObject({
-      resume: { episode: 2, file: null },
+      resume: { episode: 2, file: { torrentId: 'other', fileIndex: 1 } },
       seasonReleases: [{ torrentId: 's2', episodes: [1, 3, 4] }],
     })
   })
@@ -771,7 +797,7 @@ describe('get /api/titles/:id/progress', () => {
       cookies: owner,
     })
 
-    expect(res.json().resume).toEqual({
+    expect(res.json().resume).toMatchObject({
       season: 2,
       episode: 2,
       position: 0,
@@ -818,4 +844,230 @@ describe('get /api/titles/:id/up-next', () => {
     expect((await upNext('?season=1&episode=1', MOVIE)).statusCode).toBe(404)
     expect((await upNext('?season=0&episode=1')).statusCode).toBe(400)
   })
+})
+
+describe('follow news does not replace the resume target', () => {
+  beforeEach(() => {
+    freshEpisodes.set(SERIES, {
+      season: 1,
+      episode: 7,
+      at: new Date(),
+      file: { torrentId: 's1', fileIndex: 6 },
+    })
+  })
+
+  it('continues E5 after watched E4 even with fresh E7', async () => {
+    watched(SERIES, 1, 4, EPISODE, new Date(), 's1')
+    const [card] = await continueItems()
+    expect(card).toMatchObject({
+      season: 1,
+      episode: 5,
+      file: { torrentId: 's1', fileIndex: 4 },
+      followUpdate: { season: 1, episode: 7 },
+    })
+    expect(card.followNewEpisode).toBeUndefined()
+  })
+
+  it('resumes unfinished E4, while showing news of E7', async () => {
+    watched(SERIES, 1, 4, 1000, new Date(), 's1')
+    expect((await continueItems())[0]).toMatchObject({
+      season: 1,
+      episode: 4,
+      position: 1000,
+      file: { torrentId: 's1', fileIndex: 3 },
+    })
+  })
+
+  it('skips explicitly watched E5 and E6', async () => {
+    watched(SERIES, 1, 4, EPISODE, new Date(), 's1')
+    for (const episode of [5, 6])
+      markWatched({ profileId, titleId: SERIES, season: 1, episode }, true)
+    expect((await continueItems())[0]).toMatchObject({ season: 1, episode: 7 })
+  })
+
+  it('keeps the fresh episode fallback without playback history', async () => {
+    expect((await continueItems())[0]).toMatchObject({
+      season: 1,
+      episode: 7,
+      followNewEpisode: true,
+    })
+  })
+
+  it('does not substitute fresh when the catalog is unavailable', async () => {
+    watched(SERIES, 1, 4, EPISODE, new Date(), 's1')
+    tmdbDown = true
+    expect(await continueItems()).toEqual([])
+  })
+})
+
+describe('continuation preference preserves factual history', () => {
+  it('keeps meaningful HD after a short SD opening, with exact per-file dimensions', async () => {
+    addTorrent('sd', 'Long.Orbit.S01.SD', packFiles(1, 8))
+    watched(SERIES, 1, 4, EPISODE, new Date(Date.now() - 1000), 's1')
+    watched(SERIES, 1, 7, 4.636, new Date(), 'sd')
+    probeFrames.set(`${'s1'.padEnd(40, '0')}:3`, {
+      video: { width: 1920, height: 800 },
+    })
+    probeFrames.set(`${'s1'.padEnd(40, '0')}:6`, {
+      video: { width: 720, height: 304 },
+    })
+    const result = await app.inject({
+      url: `/api/titles/${SERIES}/progress?season=1&episode=5`,
+      cookies: owner,
+    })
+    expect(result.statusCode).toBe(200)
+    expect(result.json()).toMatchObject({
+      resume: { episode: 7, file: { torrentId: 'sd', fileIndex: 6 } },
+      seasonReleases: [{ season: 1, torrentId: 'sd' }],
+      continuation: {
+        target: { season: 1, episode: 5 },
+        preferredTorrent: { torrentId: 's1', fileIndex: 4 },
+        baseline: {
+          file: { kind: 'torrent', torrentId: 's1', fileIndex: 3 },
+          video: { width: 1920, height: 800, basis: 'probe' },
+        },
+      },
+    })
+    probeFrames.delete(`${'s1'.padEnd(40, '0')}:3`)
+    expect(
+      (await continuationFor(profileId, SERIES, { season: 1, episode: 5 }))
+        .baseline
+        ?.video,
+    ).toBeNull()
+  })
+
+  it('uses a previous season only as the baseline, never as the target source', async () => {
+    watched(SERIES, 1, 8, EPISODE, new Date(), 's1')
+    expect(
+      await continuationFor(profileId, SERIES, { season: 2, episode: 1 }),
+    ).toMatchObject({
+      preferredTorrent: null,
+      baseline: { file: { kind: 'torrent', torrentId: 's1', fileIndex: 7 } },
+    })
+  })
+
+  it('reads only a fresh probe of the exact visible library file', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'continuation-'))
+    try {
+      writeFileSync(join(dir, 'episode.mkv'), 'fixture')
+      const info = statSync(join(dir, 'episode.mkv'))
+      const db = getDb()
+      const library = db
+        .insert(libraries)
+        .values({ name: 'Test', kind: 'video' })
+        .returning()
+        .get()
+      const folder = db
+        .insert(libraryFolders)
+        .values({ libraryId: library.id, path: dir })
+        .returning()
+        .get()
+      const file = db
+        .insert(mediaFiles)
+        .values({
+          folderId: folder.id,
+          relPath: 'episode.mkv',
+          size: info.size,
+          mtime: info.mtime,
+          probeKey: `${info.size}:${info.mtimeMs}`,
+          probe: {
+            duration: EPISODE,
+            container: 'mkv',
+            video: {
+              index: 0,
+              codec: 'h264',
+              profile: null,
+              width: 1920,
+              height: 1080,
+              hdr: false,
+              highBitDepth: false,
+              frameRate: 24,
+              interlaced: false,
+              bitrate: null,
+              pixelAspect: 1,
+            },
+            audio: [],
+            subtitles: [],
+          },
+        })
+        .returning()
+        .get()
+      db.insert(titleProgress)
+        .values({
+          profileId,
+          titleId: SERIES,
+          season: 1,
+          episode: 4,
+          position: 200,
+          duration: EPISODE,
+          mediaFileId: file.id,
+        })
+        .run()
+      // These older files must not be read once the newest meaningful source
+      // already resolves both preference and baseline.
+      for (let episode = 10; episode < 60; episode++) {
+        const old = db
+          .insert(mediaFiles)
+          .values({
+            folderId: folder.id,
+            relPath: `old-${episode}.mkv`,
+            size: 1,
+            mtime: info.mtime,
+          })
+          .returning()
+          .get()
+        db.insert(titleProgress)
+          .values({
+            profileId,
+            titleId: SERIES,
+            season: 1,
+            episode,
+            position: 200,
+            duration: EPISODE,
+            mediaFileId: old.id,
+            updatedAt: new Date(0),
+          })
+          .run()
+      }
+      vi.mocked(statFile).mockClear()
+      const target = { season: 1, episode: 5 }
+      expect(
+        (await continuationFor(profileId, SERIES, target)).baseline,
+      ).toMatchObject({
+        file: { kind: 'library', mediaFileId: file.id },
+        video: { width: 1920, height: 1080, basis: 'probe' },
+      })
+      expect(vi.mocked(statFile)).toHaveBeenCalledTimes(1)
+      writeFileSync(join(dir, 'episode.mkv'), 'changed fixture')
+      expect(
+        (await continuationFor(profileId, SERIES, target)).baseline?.video,
+      ).toBeNull()
+      db.insert(libraryHiddenProfiles)
+        .values({ libraryId: library.id, profileId })
+        .run()
+      expect(
+        (await continuationFor(profileId, SERIES, target)).baseline,
+      ).toBeNull()
+    }
+    finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+it('requires known positive duration for the five-percent preference', () => {
+  expect(
+    meaningfulProgress({ position: 50, duration: 1000, watchedAt: null }),
+  ).toBe(true)
+  expect(
+    meaningfulProgress({ position: 49.99, duration: 1000, watchedAt: null }),
+  ).toBe(false)
+  for (const duration of [null, 0, -1]) {
+    expect(
+      meaningfulProgress({ position: 100, duration, watchedAt: null }),
+    ).toBe(false)
+  }
+  expect(
+    meaningfulProgress({ position: 0, duration: null, watchedAt: new Date() }),
+  ).toBe(true)
 })

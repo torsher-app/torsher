@@ -1,5 +1,17 @@
 <script setup lang="ts">
-import type { LibraryFile, SourceCandidate, UpNext } from '@torsher/api-client'
+import type {
+  Continuation,
+  LibraryFile,
+  SourceCandidate,
+  UpNext,
+} from '@torsher/api-client'
+import type { AutomaticPlayback } from '../lib/continue.ts'
+import { useContinuationConsent } from '../composables/useContinuationConsent.ts'
+import {
+  continuationBaseline,
+  lowerContinuationQuality,
+} from '../lib/continuationQuality.ts'
+import OptionsPanel from '../components/OptionsPanel.vue'
 import type { KeyAction } from '../focus/index.ts'
 import type { StageStep } from '../lib/player.ts'
 import {
@@ -73,10 +85,9 @@ import {
   videoTimePolicy,
 } from '../lib/player.ts'
 import {
+  automaticEpisodeRoute,
   episodeCode,
   libraryRoute,
-  playerRoute,
-  resolveRoute,
 } from '../lib/continue.ts'
 import {
   LOADER_DELAY_MS,
@@ -102,6 +113,7 @@ const props = defineProps<{
   episode?: string
   // Озвучка, которую слушали в прошлой раздаче: после смены раздачи
   voice?: string
+  automatic?: AutomaticPlayback
 }>()
 
 // Позиция сохраняется по ходу просмотра, а не только на выходе: ТВ могут выключить
@@ -352,6 +364,8 @@ const ended = ref(false)
 const upNextDismissed = ref(false)
 // Уходим к другой серии или раздаче: второй переход не начинаем
 let leaving = false
+const consent = useContinuationConsent(run => run === launch && !leaving)
+const qualityChoice = consent.pending
 
 if (props.titleId && season && episode) {
   api.titles
@@ -574,7 +588,9 @@ watch(showsStage, (shown) => {
  * Торшер и статус на сцене: с какого момента и с какой задержкой проявляются.
  * По ним решается, уйти в видео сразу или подержать сцену (`loaderHoldMs`)
  */
-const showsLoader = computed(() => showsStage.value && !showsError.value)
+const showsLoader = computed(
+  () => showsStage.value && !showsError.value && !qualityChoice.value,
+)
 let loaderSince = 0
 let loaderDelay = LOADER_DELAY_MS
 // Сколько файла было скачано, когда подготовка началась: от него считается
@@ -599,7 +615,7 @@ const stageStep = ref<StageStep>(step.value)
 const stageStats = shallowRef(shownStats.value)
 
 watchEffect(() => {
-  if (!showsStage.value)
+  if (!showsLoader.value)
     return
 
   stageStep.value = step.value
@@ -669,8 +685,37 @@ function save() {
   return Promise.resolve()
 }
 
-const libraryPicker = useLibraryPicker((fileId, target) => {
-  void switchToLibrary(fileId, target)
+function automaticContext(): AutomaticPlayback {
+  const video = playback.value?.media?.video
+  return {
+    kind: 'continuation',
+    ...(video?.width
+      && video.height && {
+      current: {
+        file: props.mediaFileId
+          ? { kind: 'library' as const, mediaFileId: props.mediaFileId }
+          : {
+              kind: 'torrent' as const,
+              torrentId: props.torrentId!,
+              fileIndex: Number(props.fileIndex),
+            },
+        video: {
+          width: video.width,
+          height: video.height,
+          basis: 'probe' as const,
+        },
+      },
+    }),
+  }
+}
+
+let automaticLibrary = false
+const libraryPicker = useLibraryPicker((fileId, target, explicit) => {
+  void switchToLibrary(
+    fileId,
+    target,
+    automaticLibrary && !explicit ? automaticContext() : undefined,
+  )
 })
 const librarySelection = libraryPicker.selection
 
@@ -705,35 +750,44 @@ async function switchTo(target: {
       osd.show()
     }
 
+    automaticLibrary = true
     libraryPicker.open({ files, target, currentId: props.mediaFileId })
     return
   }
 
   leaving = true
+  const run = ++launch
   await save()
+  if (run !== launch)
+    return
 
   const title = {
     id: props.titleId,
     season: target.season,
     episode: target.episode,
   }
+  const progress = await api.titles
+    .getTitleProgress(props.titleId, {
+      language: language.value,
+      season: String(target.season),
+      episode: String(target.episode),
+    })
+    .catch(() => undefined)
+  if (run !== launch)
+    return
+  const preference = progress?.continuation
   const next = upNext.value
   const file
-    = target.fileIndex !== undefined && props.torrentId
-      ? { torrentId: props.torrentId, fileIndex: target.fileIndex }
-      : next?.season === target.season && next.episode === target.episode
-        ? next.file
-        : null
+    = preference !== undefined
+      ? preference.preferredTorrent
+      : target.fileIndex !== undefined && props.torrentId
+        ? { torrentId: props.torrentId, fileIndex: target.fileIndex }
+        : next?.season === target.season && next.episode === target.episode
+          ? next.file
+          : null
 
   void router.replace(
-    file
-      ? playerRoute(file, title)
-      : resolveRoute(
-          props.titleId,
-          target.season,
-          target.episode,
-          props.torrentId,
-        ),
+    automaticEpisodeRoute(title, file, props.torrentId, automaticContext()),
   )
 }
 
@@ -756,7 +810,10 @@ async function switchSource(candidate: SourceCandidate, choice: SourceChoice) {
     return
 
   leaving = true
+  const run = ++launch
   await save()
+  if (run !== launch)
+    return
   void router.replace({
     path: `/title/${props.titleId}/play`,
     query: {
@@ -772,6 +829,7 @@ async function switchSource(candidate: SourceCandidate, choice: SourceChoice) {
 async function switchToLibrary(
   fileId: string,
   title: { season?: number | null, episode?: number | null },
+  automatic?: AutomaticPlayback,
 ) {
   if (
     fileId === props.mediaFileId
@@ -786,11 +844,20 @@ async function switchToLibrary(
     return
 
   leaving = true
+  const run = ++launch
   await save()
-  void router.replace(libraryRoute(fileId, { id: props.titleId, ...title }))
+  if (run !== launch)
+    return
+  void router.replace(
+    libraryRoute(fileId, { id: props.titleId, ...title }, automatic),
+  )
 }
 
 function exit() {
+  launch++
+  leaving = true
+  consent.cancel()
+  player.close()
   save()
 
   goBack(router, () => void router.replace('/'))
@@ -873,6 +940,8 @@ function onMedia(
  * фокус на таймлайне, OK при скрытом OSD — пауза, Back — в два шага.
  */
 function onKey(action: KeyAction, event: KeyboardEvent) {
+  if (qualityChoice.value)
+    return false
   if (phase.value !== 'playing' || restarting.value || showsError.value) {
     if (action.type !== 'back')
       return false
@@ -1117,8 +1186,13 @@ async function restartWith(change: PlaybackRestart) {
  * исчерпан — ошибка экрана (`cause`; без неё — ошибка последнего запуска)
  */
 function recover(cause?: PlayerError, failure: PlayerFailure = {}) {
-  if (retryTimer !== undefined || player.status.value === 'error')
+  if (
+    qualityChoice.value
+    || retryTimer !== undefined
+    || player.status.value === 'error'
+  ) {
     return
+  }
 
   const next = nextRetry(budget, Date.now())
 
@@ -1148,6 +1222,8 @@ function recover(cause?: PlayerError, failure: PlayerFailure = {}) {
  * тратил бы бюджет, и зритель вернулся бы к ошибке
  */
 function onMetadataTimeout() {
+  if (qualityChoice.value)
+    return
   const el = video.value
 
   if (document.hidden) {
@@ -1176,6 +1252,7 @@ function watchProgress() {
   const at = Date.now()
   const active
     = !!el
+      && !qualityChoice.value
       && player.status.value === 'ready'
       && (phase.value === 'buffering' || phase.value === 'playing')
       && !paused.value
@@ -1509,6 +1586,37 @@ function startStats() {
   }))
 }
 
+const qualityOptions = computed(() => [
+  {
+    id: 'watch',
+    label: t('player.quality.watch', { quality: qualityChoice.value?.quality }),
+    selected: false,
+  },
+  { id: 'sources', label: t('player.quality.sources'), selected: false },
+  { id: 'back', label: t('player.back'), selected: false },
+])
+function chooseQuality(choice: string) {
+  const pending = qualityChoice.value
+  if (!pending || pending.run !== launch || leaving)
+    return
+  if (choice === 'watch') {
+    consent.accept()
+  }
+  else if (choice === 'sources' && props.titleId) {
+    launch++
+    leaving = true
+    consent.cancel()
+    player.close()
+    void router.replace({
+      path: `/title/${props.titleId}/sources`,
+      query: { season: props.season, episode: props.episode },
+    })
+  }
+  else {
+    exit()
+  }
+}
+
 async function start() {
   const run = ++launch
 
@@ -1516,9 +1624,22 @@ async function start() {
   // Каждый запуск и повтор заодно перезапрашивает тайтл, сорвавшийся вместе
   // с сервером: иначе сцена так и осталась бы без кадра и названия
   reloadArt()
+  let continuation: Continuation | undefined
+  if (props.automatic && props.titleId && props.season && props.episode) {
+    const progress = await api.titles
+      .getTitleProgress(props.titleId, {
+        language: language.value,
+        season: props.season,
+        episode: props.episode,
+      })
+      .catch(() => undefined)
+    continuation = progress?.continuation
+  }
+  if (run !== launch || leaving)
+    return
   const outcome = await player.start()
 
-  if (run !== launch)
+  if (run !== launch || leaving)
     return
 
   if (outcome === 'retry')
@@ -1527,12 +1648,26 @@ async function start() {
   if (outcome !== 'ready')
     return
 
-  startStats()
-
   // Сервер не даёт позицию в самом начале и в хвосте файла: там с начала
   const from = playback.value?.startPosition ?? 0
 
   fromStart.value = from > 0
+  const quality = props.automatic
+    ? lowerContinuationQuality(
+        continuationBaseline(continuation, props.automatic.current),
+        playback.value?.media?.video,
+        props.mediaFileId
+          ? { kind: 'library', mediaFileId: props.mediaFileId }
+          : {
+              kind: 'torrent',
+              torrentId: props.torrentId!,
+              fileIndex: Number(props.fileIndex),
+            },
+      )
+    : null
+  if (!(await consent.confirm(quality, run)) || run !== launch || leaving)
+    return
+  startStats()
   void begin(from)
 }
 
@@ -1552,6 +1687,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  consent.cancel()
   save()
   offKey?.()
   clearInterval(clockTimer)
@@ -1621,7 +1757,7 @@ onBeforeUnmount(() => {
           @choose="onPromptChoice"
         />
 
-        <template v-else>
+        <template v-else-if="showsLoader">
           <PlayerLamp
             :step="stageStep"
             :connected="stageStats?.peers.connected ?? 0"
@@ -1775,6 +1911,14 @@ onBeforeUnmount(() => {
       </button>
     </FocusSection>
   </main>
+  <OptionsPanel
+    v-if="qualityChoice"
+    :title="t('player.quality.title')"
+    :subtitle="t('player.quality.text')"
+    :options="qualityOptions"
+    @select="chooseQuality"
+    @close="exit"
+  />
 </template>
 
 <style scoped>

@@ -11,7 +11,7 @@ interface Selection {
 
 /** Один файл играет сразу; несколько ждут явного выбора с пульта или мышью. */
 export function useLibraryPicker(
-  play: (fileId: string, target: LibraryEpisode) => void,
+  play: (fileId: string, target: LibraryEpisode, explicit: boolean) => void,
 ) {
   const focus = useFocus()
   const selection = shallowRef<Selection>()
@@ -19,7 +19,7 @@ export function useLibraryPicker(
 
   function open(value: Selection) {
     if (value.files.length === 1) {
-      play(value.files[0]!.id, value.target)
+      play(value.files[0]!.id, value.target, false)
     }
     else if (value.files.length > 1 && !selection.value) {
       opener = focus.current() ?? undefined
@@ -42,7 +42,7 @@ export function useLibraryPicker(
       return
 
     selection.value = undefined
-    play(id, value.target)
+    play(id, value.target, true)
   }
 
   onDeactivated(() => {

@@ -63,7 +63,7 @@ const share = computed(() => watchedShare(props.item))
       </span>
       <!-- Новая серия «Следить»: колокольчик поверх кадра, кадр не сдвигается -->
       <span
-        v-if="item.followNewEpisode"
+        v-if="item.followUpdate || item.followNewEpisode"
         class="continue-card__bell"
         :aria-label="t('follow.newEpisode')"
         role="img"

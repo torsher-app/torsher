@@ -299,7 +299,15 @@ function runProbe(url: string, signal?: AbortSignal) {
 }
 
 const CACHE_SIZE = 200
-const cache = new Map<string, Promise<MediaInfo>>()
+const cache = new Map<
+  string,
+  { promise: Promise<MediaInfo>, ready?: MediaInfo }
+>()
+
+/** Already completed exact-file probe only; never starts or waits for IO. */
+export function peekMediaProbe(key: string) {
+  return cache.get(key)?.ready
+}
 
 /**
  * Проба файла раздачи по потоку движка. Результат кэшируется на процесс:
@@ -313,13 +321,24 @@ export function probeMedia(key: string, url: string, fileName: string) {
     // Свежий доступ поднимает запись в конец очереди вытеснения
     cache.delete(key)
     cache.set(key, cached)
-    return cached
+    return cached.promise
   }
 
   const probe = runProbe(url).then(output => parseProbe(output, fileName))
 
-  cache.set(key, probe)
-  probe.catch(() => cache.delete(key))
+  const entry: { promise: Promise<MediaInfo>, ready?: MediaInfo } = {
+    promise: probe,
+  }
+  cache.set(key, entry)
+  void probe.then(
+    (media) => {
+      entry.ready = media
+    },
+    () => {
+      if (cache.get(key) === entry)
+        cache.delete(key)
+    },
+  )
 
   while (cache.size > CACHE_SIZE) {
     const oldest = cache.keys().next().value
