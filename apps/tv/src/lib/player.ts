@@ -520,10 +520,11 @@ export const PLAYBACK_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const
 
 // Плашка «Следующая серия» — за столько секунд до конца серии
 export const UP_NEXT_SECONDS = 30
+export const UP_NEXT_SHOW_SECONDS = 60
 
 /**
  * Показывать ли плашку «Следующая серия»: следующая есть, зритель её не
- * отменил, а до конца ≤ 30 с или видео кончилось. Перемотка назад прячет её
+ * отменил, а до конца ≤ 60 с или видео кончилось. Перемотка назад прячет её
  * сама, без отмены.
  */
 export function upNextVisible(input: {
@@ -531,11 +532,14 @@ export function upNextVisible(input: {
   dismissed: boolean
   ended: boolean
   remaining: number
+  credits?: boolean
 }) {
   if (!input.available || input.dismissed)
     return false
 
-  return input.ended || input.remaining <= UP_NEXT_SECONDS
+  return (
+    input.ended || !!input.credits || input.remaining <= UP_NEXT_SHOW_SECONDS
+  )
 }
 
 /** У карточки следующей серии приоритет над контекстной кнопкой пропуска. */

@@ -527,6 +527,7 @@ const showsUpNext = computed(
       dismissed: upNextDismissed.value,
       ended: ended.value,
       remaining: remaining.value,
+      credits: activeSkip.value?.kind === 'credits',
     }),
 )
 
@@ -540,6 +541,12 @@ const upNextCountdown = computed(() => {
 
   return ended.value ? 0 : countdownOf(remaining.value)
 })
+
+const visibleUpNextCountdown = computed(() =>
+  upNextCountdown.value !== null && upNextCountdown.value <= UP_NEXT_SECONDS
+    ? upNextCountdown.value
+    : null,
+)
 
 const upNextElapsed = computed(() =>
   Math.min(1, Math.max(0, 1 - remaining.value / UP_NEXT_SECONDS)),
@@ -1679,7 +1686,7 @@ onBeforeUnmount(() => {
         :code="episodeCode(upNext.season, upNext.episode)"
         :title="upNext.title"
         :still="upNext.still"
-        :countdown="upNextCountdown"
+        :countdown="visibleUpNextCountdown"
         :elapsed="upNextElapsed"
         @play="playNext"
         @cancel="upNextDismissed = true"
