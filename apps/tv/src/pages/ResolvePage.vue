@@ -14,10 +14,10 @@ import { resolveEpisode } from '../composables/resolveEpisode.ts'
 import { useCatalogLanguage } from '../composables/useCatalogLanguage.ts'
 import { usePlayerArt } from '../composables/usePlayerArt.ts'
 import { useFocus } from '../focus/index.ts'
-import { playerRoute } from '../lib/continue.ts'
+import { playerRoute, withStartPosition } from '../lib/continue.ts'
 import { lastVoiceKey } from '../lib/episodes.ts'
 import { LOADER_DELAY_MS } from '../lib/loader.ts'
-import { goBack } from '../lib/navigation.ts'
+import { goBack, sourcesAfterResolve } from '../lib/navigation.ts'
 
 /**
  * Экран подготовки: серия, файла которой ещё нет, — следующая после
@@ -30,9 +30,11 @@ const props = defineProps<{
   // У фильма сезона и серии нет
   season?: string
   episode?: string
+  start?: string
   // Раздача, где серию ищем первой: та, которой смотрели прошлую
   torrent?: string
   candidate?: string
+  query?: string
   // Озвучка, которую слушали в прошлой раздаче: плеер возьмёт её дорожку
   voice?: string
   automatic?: AutomaticPlayback
@@ -91,7 +93,18 @@ function onChoice(choice: 'sources' | 'back') {
   }
 
   cancelled = true
-  void router.replace(`/title/${props.id}/sources`)
+  const action = sourcesAfterResolve(
+    props.id,
+    router.options.history.state.back,
+  )
+  if (action.kind === 'history') {
+    router.back()
+    return
+  }
+  void router.replace({
+    path: `/title/${props.id}/sources`,
+    query: { season: props.season, episode: props.episode, start: props.start },
+  })
 }
 
 async function run() {
@@ -108,6 +121,7 @@ async function run() {
   const season = target.season ?? 0
   const outcome = await resolveEpisode(target, {
     candidateId: props.candidate,
+    query: props.query,
     torrents: [
       props.automatic && progress?.continuation !== undefined
         ? progress.continuation.preferredTorrent?.torrentId
@@ -130,15 +144,18 @@ async function run() {
   if (outcome.kind === 'found') {
     // Торшер уже на экране — плеер не прячет его на вторую задержку
     void router.replace({
-      ...playerRoute(
-        outcome.file,
-        {
-          id: props.id,
-          season: target.season,
-          episode: target.episode,
-        },
-        props.voice,
-        props.candidate ? undefined : props.automatic,
+      ...withStartPosition(
+        playerRoute(
+          outcome.file,
+          {
+            id: props.id,
+            season: target.season,
+            episode: target.episode,
+          },
+          props.voice,
+          props.candidate ? undefined : props.automatic,
+        ),
+        props.start === '0',
       ),
       state: {
         loaderShown: performance.now() - mountedAt >= LOADER_DELAY_MS,

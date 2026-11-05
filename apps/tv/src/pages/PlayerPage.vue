@@ -111,6 +111,7 @@ const props = defineProps<{
   titleId?: string
   season?: string
   episode?: string
+  start?: string
   // Озвучка, которую слушали в прошлой раздаче: после смены раздачи
   voice?: string
   automatic?: AutomaticPlayback
@@ -1637,7 +1638,9 @@ async function start() {
   }
   if (run !== launch || leaving)
     return
-  const outcome = await player.start()
+  const outcome = await player.start(
+    props.start === '0' ? { startPosition: 0 } : undefined,
+  )
 
   if (run !== launch || leaving)
     return
@@ -1649,7 +1652,7 @@ async function start() {
     return
 
   // Сервер не даёт позицию в самом начале и в хвосте файла: там с начала
-  const from = playback.value?.startPosition ?? 0
+  const from = props.start === '0' ? 0 : (playback.value?.startPosition ?? 0)
 
   fromStart.value = from > 0
   const quality = props.automatic

@@ -54,7 +54,11 @@ import {
   seasonOptions,
   videoClassLabel,
 } from '../lib/sources.ts'
-import { libraryChoices } from '../lib/library.ts'
+import {
+  libraryChoices,
+  libraryFilesFor,
+  sourceLibraryChoice,
+} from '../lib/library.ts'
 import { loadSourceView, saveSourceView } from '../lib/sourceView.ts'
 import { formatYears } from '../lib/titleInfo.ts'
 import { noteHasSources } from '../serverSources.ts'
@@ -88,6 +92,7 @@ const props = defineProps<{
   // Открыли с «Скачать»: выбранная раздача откроет «Файлы» с отметками
   download?: boolean
   season?: string
+  episode?: string
   playing?: PlayingSource
   // Раздачу подключают: лоадер на её строке
   opening?: string
@@ -115,6 +120,12 @@ const prefix = props.playing ? 'player-sources' : 'sources'
 const sectionName = (part: string) => `${prefix}-${part}`
 
 const isSeries = computed(() => title.value?.kind === 'series')
+// Явная серия из карточки остаётся целью после неудачного поиска.
+const explicitEpisode = computed(() =>
+  props.season !== undefined && props.episode !== undefined
+    ? { season: Number(props.season), episode: Number(props.episode) }
+    : undefined,
+)
 
 const storedView = loadSourceView(props.id)
 // Вид, сохранённый до классов разрешения (`1080i`, `480p`), — на «любое»
@@ -125,7 +136,7 @@ const view = ref<Partial<SourceView>>({
 const query = computed(() => view.value.query)
 // Из плеера сезон задан серией: фильтр сезона экрана тайтла здесь не действует
 const seasonFilter = computed(() =>
-  props.playing ? undefined : view.value.season,
+  props.playing || explicitEpisode.value ? undefined : view.value.season,
 )
 
 // Обновить — мимо кэша сервера; ключ меняется, и запрос уходит заново
@@ -223,8 +234,8 @@ const searching = useHeldLoading(
 // Из плеера — только раздачи, где есть эта серия
 const candidates = computed(() => {
   const all = sources.value?.candidates ?? []
-  const season = props.playing?.season
-  const episode = props.playing?.episode
+  const season = props.playing?.season ?? explicitEpisode.value?.season
+  const episode = props.playing?.episode ?? explicitEpisode.value?.episode
 
   return season === undefined || episode === undefined
     ? all
@@ -242,7 +253,9 @@ const rows = computed(() =>
   }),
 )
 const seasons = computed(() =>
-  isSeries.value && !props.playing ? seasonOptions(candidates.value) : [],
+  isSeries.value && !props.playing && !explicitEpisode.value
+    ? seasonOptions(candidates.value)
+    : [],
 )
 const qualities = computed<Quality[]>(() => qualityOptions(candidates.value))
 
@@ -518,6 +531,8 @@ function choose(id: string) {
 // есть; из плеера — файл этой серии
 const { libraryFiles } = useTitleLibrary(id)
 const libraryRowFiles = computed(() => {
+  if (explicitEpisode.value)
+    return libraryFilesFor(libraryFiles.value, explicitEpisode.value)
   const season = props.playing
     ? props.playing.episode === undefined
       ? undefined
@@ -650,12 +665,14 @@ function playLibrary() {
   const target = props.playing
     ? { season: props.playing.season ?? null, episode: props.playing.episode }
     : resume
-  const choice = libraryChoices(
-    libraryRowFiles.value,
-    isSeries.value,
-    target,
-    !props.playing,
-  )
+  const choice = props.playing
+    ? libraryChoices(libraryRowFiles.value, isSeries.value, target)
+    : sourceLibraryChoice(
+        libraryRowFiles.value,
+        isSeries.value,
+        resume,
+        explicitEpisode.value,
+      )
 
   libraryPicker.open({
     ...choice,
@@ -673,7 +690,7 @@ function select(candidate: SourceCandidate) {
 
 // История — на экране тайтла; в плеере на её месте подпись о позиции
 const showsHistory = computed(
-  () => !props.playing && !!history.value?.torrentId,
+  () => !props.playing && !explicitEpisode.value && !!history.value?.torrentId,
 )
 
 // Порядок секций сверху вниз: из него — переходы стрелками вверх и вниз

@@ -29,6 +29,8 @@ import FocusSection from '../components/FocusSection.vue'
 import FollowPanel from '../components/FollowPanel.vue'
 import OptionsPanel from '../components/OptionsPanel.vue'
 import LibraryVersionPicker from '../components/LibraryVersionPicker.vue'
+import { useEpisodeActions } from '../composables/useEpisodeActions.ts'
+import { useInitialSeason } from '../composables/useInitialSeason.ts'
 import { useContinuePlayback } from '../composables/useContinuePlayback.ts'
 import PersonCard from '../components/PersonCard.vue'
 import PosterCard from '../components/PosterCard.vue'
@@ -151,37 +153,6 @@ watch(
   },
 )
 
-// Первая загрузка сериала: сезон по умолчанию — первый
-watch(
-  seasons,
-  (list) => {
-    if (selectedSeason.value === undefined && list[0]) {
-      selectedSeason.value = list[0].number
-      requestedSeason.value = list[0].number
-    }
-  },
-  { immediate: true },
-)
-
-function selectSeason(number: number, immediate: boolean) {
-  if (selectedSeason.value === number)
-    return
-
-  selectedSeason.value = number
-  focusedEpisode.value = 0
-  clearTimeout(seasonTimer)
-
-  if (immediate) {
-    requestedSeason.value = number
-
-    return
-  }
-
-  seasonTimer = setTimeout(() => {
-    requestedSeason.value = number
-  }, SEASON_DELAY_MS)
-}
-
 const episodes = computed<Episode[]>(() =>
   season.value && season.value.number === selectedSeason.value
     ? season.value.episodes
@@ -189,7 +160,8 @@ const episodes = computed<Episode[]>(() =>
 )
 const episodesLoading = useHeldLoading(
   () =>
-    requestedSeason.value !== selectedSeason.value
+    selectedSeason.value === undefined
+    || requestedSeason.value !== selectedSeason.value
     || seasonStatus.value === 'loading',
 )
 const currentSeason = computed(() =>
@@ -324,8 +296,49 @@ const actionsPending = computed(
 )
 const resume = computed(() => progress.value?.resume ?? null)
 
-// Отметки «просмотрено», поставленные сейчас: сразу видны, без перезапроса прогресса
-const marks = ref(new Map<string, boolean>())
+// Начальный сезон ждёт каталог и прогресс; ручной выбор принадлежит зрителю.
+const initialSeasonSelection = useInitialSeason(
+  seasons,
+  progressStatus,
+  () => resume.value?.season,
+  (number) => {
+    clearTimeout(seasonTimer)
+    selectedSeason.value = number
+    requestedSeason.value = number
+  },
+)
+
+function selectSeason(number: number, immediate: boolean) {
+  initialSeasonSelection.manual()
+  if (selectedSeason.value === number)
+    return
+
+  selectedSeason.value = number
+  focusedEpisode.value = 0
+  clearTimeout(seasonTimer)
+
+  if (immediate) {
+    requestedSeason.value = number
+
+    return
+  }
+
+  seasonTimer = setTimeout(() => {
+    requestedSeason.value = number
+  }, SEASON_DELAY_MS)
+}
+
+const episodeActions = useEpisodeActions(
+  id,
+  selectedSeason,
+  progress,
+  () => progressStatus.value !== 'loading',
+)
+const episodeContext = episodeActions.context
+const episodeOptions = episodeActions.options
+const episodeActionFocus = episodeActions.focusOption
+const episodeError = episodeActions.error
+const episodeVersions = episodeActions.picker.selection
 
 function progressKey(season: number | undefined, episode: number) {
   return `${season ?? 0}:${episode}`
@@ -344,9 +357,6 @@ const episodeProgress = computed(() => {
           : 0,
     })
   }
-
-  for (const [key, watched] of marks.value)
-    map.set(key, { watched, share: watched ? 1 : 0 })
 
   return map
 })
@@ -520,43 +530,7 @@ function onPrimary() {
   }
 }
 
-// OK на серии ставит или снимает «просмотрено»: смотреть — через «Смотреть»
-const okHint = computed(() => {
-  const item = episode.value
-
-  if (!item || isUpcoming(item.airDate))
-    return ''
-
-  return progressOfEpisode(item)?.watched
-    ? t('title.okUnmark')
-    : t('title.okMark')
-})
-
-async function toggleWatched(item: Episode) {
-  const number = selectedSeason.value
-
-  if (number === undefined || isUpcoming(item.airDate))
-    return
-
-  const watched = !progressOfEpisode(item)?.watched
-
-  try {
-    await api.titles.putTitleWatched(props.id, {
-      season: number,
-      episode: item.number,
-      watched,
-    })
-  }
-  catch {
-    // Не сохранилось — отметка остаётся прежней
-    return
-  }
-
-  marks.value = new Map(marks.value).set(
-    progressKey(number, item.number),
-    watched,
-  )
-}
+const okHint = computed(() => (episode.value ? listHint(episode.value) : ''))
 
 function countryName(code: string) {
   const key = `countries.${code}`
@@ -1345,7 +1319,8 @@ const {
   order,
   active,
   // Колесо над открытым списком серий не листает карточку под ним
-  wheelHeld: () => showEpisodeList.value || !!librarySelection.value,
+  wheelHeld: () =>
+    showEpisodeList.value || !!librarySelection.value || !!episodeContext.value,
 })
 
 // Лента чипов: у долгих сериалов десятки сезонов, фокусный чип держим в окне
@@ -1382,7 +1357,7 @@ const stopFocus = focus.onFocus((el, via) => {
     // Под пультом фокус на чипе сразу переключает серии; указка только подсвечивает
     const number = Number(el.dataset.season)
 
-    if (!entered && via === 'nav' && number)
+    if (!entered && via === 'nav' && Number.isFinite(number))
       selectSeason(number, false)
   }
 
@@ -1757,7 +1732,8 @@ onBeforeUnmount(() => {
                     episode: item.number,
                   })
                 "
-                @select="toggleWatched(item)"
+                @select="episodeActions.open(item)"
+                @hold="episodeActions.hold(item)"
               />
             </template>
           </ContentRow>
@@ -2001,6 +1977,7 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </div>
+    <AppToast :message="episodeError" @hide="episodeError = ''" />
     <AppToast :message="mineError" @hide="mineError = ''" />
     <AppToast :message="downloadToast" @hide="downloadToast = ''" />
     <AppToast :message="followToast" @hide="followToast = ''" />
@@ -2064,6 +2041,7 @@ onBeforeUnmount(() => {
     <Teleport to="body">
       <EpisodeList
         v-if="showEpisodeList && title"
+        v-show="active"
         :name="title.title"
         :poster="title.poster"
         :meta="meta.join(' · ')"
@@ -2078,9 +2056,27 @@ onBeforeUnmount(() => {
         :progress-of="(item) => progressOfEpisode(item)?.share ?? 0"
         :watched-of="(item) => !!progressOfEpisode(item)?.watched"
         :hint-of="listHint"
-        @toggle="toggleWatched"
+        :blocked="!!episodeContext || !active"
+        @select="episodeActions.open"
+        @hold="episodeActions.hold"
         @season="(number) => selectSeason(number, true)"
         @close="closeEpisodeList"
+      />
+      <OptionsPanel
+        v-if="episodeContext && !episodeVersions && active"
+        :title="`S${episodeContext.season}E${episodeContext.episode.number} · ${episodeContext.episode.title}`"
+        :subtitle="episodeError"
+        :options="episodeOptions"
+        :focus-selected="false"
+        :focus-option="episodeActionFocus"
+        @select="episodeActions.select"
+        @close="episodeActions.close"
+      />
+      <LibraryVersionPicker
+        v-if="episodeVersions && active"
+        :files="episodeVersions.files"
+        @select="episodeActions.picker.select"
+        @close="episodeActions.picker.close"
       />
     </Teleport>
   </main>

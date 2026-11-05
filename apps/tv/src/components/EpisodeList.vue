@@ -11,7 +11,7 @@ import OptionsPanel from './OptionsPanel.vue'
 
 /**
  * Полный список серий сезона поверх карточки тайтла: строки по порядку, OK
- * отмечает серию просмотренной (как в ряду), плеер не запускается. Карточка под
+ * открывает действия серии (как в ряду). Карточка под
  * панелью остаётся как была, Back возвращает на неё.
  */
 const props = defineProps<{
@@ -25,6 +25,7 @@ const props = defineProps<{
   seasonOptions: PanelOption[]
   episodes: Episode[]
   loading: boolean
+  blocked?: boolean
   // Серия, на которой открыть список
   focusNumber?: number
   detailOf: (episode: Episode) => string
@@ -36,7 +37,8 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  toggle: [episode: Episode]
+  select: [episode: Episode]
+  hold: [episode: Episode]
   season: [number: number]
   close: []
 }>()
@@ -83,7 +85,7 @@ const stopFocus = focus.onFocus((el, via) => {
 })
 
 const stopKey = focus.onKey((action) => {
-  if (action.type !== 'back')
+  if (props.blocked || seasonPanel.value || action.type !== 'back')
     return false
 
   emit('close')
@@ -203,7 +205,8 @@ function chooseSeason(id: string) {
             :status="statusOf(item)"
             :progress="progressOf(item)"
             :watched="watchedOf(item)"
-            @select="emit('toggle', item)"
+            @select="emit('select', item)"
+            @hold="emit('hold', item)"
           />
         </template>
       </FocusSection>

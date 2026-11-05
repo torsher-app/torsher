@@ -4,6 +4,14 @@ export const LONG_PRESS_MS = 500
 /** Элемент с долгим нажатием: OK кликает на отпускании, удержание открывает меню */
 export const LONG_PRESS_ATTRIBUTE = 'data-long-press'
 export const LONG_PRESS_EVENT = 'longpress'
+export type LongPressSource = 'hold' | 'menu' | 'contextmenu'
+
+export function isHold(event: Event) {
+  return (
+    (event as CustomEvent<{ source: LongPressSource }>).detail?.source
+    === 'hold'
+  )
+}
 
 export interface LongPressTimers {
   set: (fn: () => void, ms: number) => number

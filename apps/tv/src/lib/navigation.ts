@@ -250,3 +250,14 @@ export function returnedBack(state: { forward?: unknown }) {
 export function openedForward(state: { back?: unknown, forward?: unknown }) {
   return Boolean(stringOf(state.back)) && !returnedBack(state)
 }
+
+/** Неудачная выбранная раздача возвращает существующий экран источников. */
+export function sourcesAfterResolve(
+  titleId: string,
+  back: unknown,
+): BackAction {
+  const path = `/title/${titleId}/sources`
+  return typeof back === 'string' && pathOf(back) === path
+    ? { kind: 'history' }
+    : { kind: 'replace', path }
+}

@@ -31,7 +31,7 @@ import {
 import { useTitleMeta } from '../composables/useTitleMeta.ts'
 import { loadSeason } from '../composables/useTitleSections.ts'
 import { NATIVE_WHEEL_ATTRIBUTE, useFocus } from '../focus/index.ts'
-import { playerRoute } from '../lib/continue.ts'
+import { playerRoute, withStartPosition } from '../lib/continue.ts'
 import {
   downloadPercent,
   isSelectable,
@@ -63,6 +63,7 @@ const props = defineProps<{
   // С какой серии пришли (история): на неё встаёт фокус
   season?: string
   episode?: string
+  start?: string
   // Пришли с «Скачать»: выбор файлов сразу включён, серии сезона отмечены
   download?: boolean
 }>()
@@ -303,9 +304,14 @@ function imageOf(file: TitleFile) {
 }
 
 function play(file: TitleFile, replace = false) {
-  const to = playerRoute(
-    { torrentId: props.torrentId, fileIndex: file.fileIndex },
-    { id: props.id, season: file.season, episode: file.episode },
+  const to = withStartPosition(
+    playerRoute(
+      { torrentId: props.torrentId, fileIndex: file.fileIndex },
+      { id: props.id, season: file.season, episode: file.episode },
+    ),
+    props.start === '0'
+    && String(file.season) === props.season
+    && String(file.episode) === props.episode,
   )
 
   if (replace)

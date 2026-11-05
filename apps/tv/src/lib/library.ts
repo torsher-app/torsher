@@ -77,3 +77,18 @@ export function libraryTarget(
 
   return next ? libraryFileFor(files, next) : undefined
 }
+
+/** Общие источники могут выбрать первую серию; явная цель никогда не меняется. */
+export function sourceLibraryChoice(
+  files: LibraryFile[],
+  series: boolean,
+  resume?: LibraryEpisode | null,
+  explicitEpisode?: LibraryEpisode,
+) {
+  return libraryChoices(
+    files,
+    series,
+    explicitEpisode ?? resume,
+    !explicitEpisode,
+  )
+}

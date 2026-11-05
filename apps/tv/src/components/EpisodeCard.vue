@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Episode } from '@torsher/api-client'
+import { isHold } from '../focus/longPress.ts'
 import AppIcon from './AppIcon.vue'
 import ProgressTrack from './ProgressTrack.vue'
 import WatchedMark from './WatchedMark.vue'
@@ -19,14 +20,16 @@ withDefaults(
   { meta: '', loadImage: true, progress: 0, watched: false, inLibrary: false },
 )
 
-defineEmits<{ select: [] }>()
+defineEmits<{ select: [], hold: [] }>()
 </script>
 
 <template>
   <button
     v-focusable
+    data-long-press
     class="card episode-card"
     type="button"
+    @longpress="isHold($event) ? $emit('hold') : $emit('select')"
     @click="$emit('select')"
   >
     <span class="episode-card__frame">

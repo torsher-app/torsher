@@ -72,10 +72,20 @@ Until the server has an indexer, the showcase works as a media library. Titles f
 
 Press down for the rest of the page:
 
-- **<Ui k="title.episodes" />** of a series: season chips and a row of episodes. OK on an episode marks it watched or clears the mark; episodes are watched through <Ui k="title.watch" />. The first tile, <Ui k="title.episodeList.open" />, opens the season as a list with descriptions.
+- **<Ui k="title.episodes" />** of a series: season chips and a row of episodes. The season of your next episode is selected when you open the title; choosing another season keeps your selection. The first tile, <Ui k="title.episodeList.open" />, opens the season as a list with descriptions. Both views offer the same [episode actions](#episode-actions).
 - **<Ui k="title.aboutMovie" />** or **<Ui k="title.aboutSeries" />**: release dates, budget, countries, studios and other facts, plus chips of genres, studios and tags.
 - **<Ui k="title.cast" />** and **<Ui k="title.crew" />**. OK opens a person with their photo, biography and films by role.
 - **<Ui k="title.franchise" />** for a movie from a series of films, and **<Ui k="title.similar" />**.
+
+### Episode actions {#episode-actions}
+
+1. Focus an aired episode in the row or the full list and press OK. Its actions open on the right.
+2. Press OK again on <Ui k="title.watch" /> or <Ui k="title.resume" /> to play that episode. If it has a saved position, <Ui k="player.fromStart" /> starts it at the beginning.
+3. To change its watched mark, choose <Ui k="actions.markWatched" /> or <Ui k="actions.unmarkWatched" />. Holding OK for half a second does this directly. Releasing after the hold does not open the panel.
+
+A file in your library plays first; if several versions are available, choose one. Otherwise Torsher searches your connected sources for this episode. Back from the version picker returns to its actions. Back from the actions returns to the same episode; in the full list, another Back closes the list.
+
+The menu key or a right click also opens episode actions. Holding the left mouse button toggles the watched mark. Episodes that have not aired have no playback or watched actions. Replaying an episode does not clear its watched mark.
 
 ## The remote
 
@@ -83,7 +93,7 @@ Press down for the rest of the page:
 |---|---|
 | Arrows | Move the focus. Left from the content opens the side menu |
 | **OK** | Open or select what's in focus |
-| Hold **OK** | Open the actions menu of a poster |
+| Hold **OK** | Open the actions menu of a poster; toggle the watched mark of an episode |
 | **Back** | Go one screen up |
 | Page Up, Page Down | Scroll the grid in <Ui k="nav.mine" /> a screen at a time, on a keyboard or a remote that has them |
 | Digits | Rate a title, enter a PIN |
