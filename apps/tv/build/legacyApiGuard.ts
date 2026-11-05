@@ -123,6 +123,15 @@ function isPlainReason(code: string, index: number) {
 
   const before = code.slice(Math.max(0, index - SETTLED_LOOKBEHIND), index)
 
+  // PromiseRejectionEvent.reason predates Chromium 68; require the exact event guard.
+  if (
+    /([\w$]+)\.type\s*===?\s*["'`]unhandledrejection["'`]\s*&&[^;{}]*\b\1$/.test(
+      before,
+    )
+  ) {
+    return true
+  }
+
   return /\.status\s*[!=]==?\s*["'`]rejected["'`]/.test(before)
 }
 

@@ -199,6 +199,12 @@ describe('решатель «Следить»', () => {
     expect(grabbed(result)).toEqual([
       { id: 'e5-WEB-DL 1080p | LostFilm', episodes: [5] },
     ])
+    expect(result.grabs[0]?.diagnostics).toMatchObject({
+      selectionHistory: 'current_decision',
+      selectionReason: 'cutoff',
+      cutoffEpisodes: 1,
+      expiredEpisodes: 0,
+    })
     expect(result.pending).toEqual([])
     expect([...result.found.keys()]).toEqual(['2:5'])
   })
@@ -239,6 +245,17 @@ describe('решатель «Следить»', () => {
     })
 
     expect(grabbed(after)).toEqual([{ id: other.id, episodes: [5] }])
+    expect(after.grabs[0]?.diagnostics).toMatchObject({
+      selectionReason: 'window_expired',
+      expiredEpisodes: 1,
+      windows: [
+        {
+          season: 2,
+          episode: 5,
+          until: new Date(NOW.getTime() + 24 * HOUR_MS).toISOString(),
+        },
+      ],
+    })
   })
 
   it('своя студия, пришедшая во время окна, берётся сразу', () => {
@@ -581,6 +598,8 @@ describe('апгрейд серии в библиотеке', () => {
 
     expect(grabbed(result)).toEqual([{ id: own.id, episodes: [5] }])
     expect(result.found.size).toBe(0)
+    expect(result.grabs[0]?.diagnostics?.upgrades).toHaveLength(1)
+    expect(result.grabs[0]?.diagnostics?.upgradeTotal).toBe(1)
   })
 
   it('своя студия ниже ступенью — тоже шаг: озвучка раньше качества', () => {

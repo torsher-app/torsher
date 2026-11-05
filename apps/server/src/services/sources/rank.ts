@@ -633,3 +633,20 @@ export function rankReleases(
     top: top.map(item => item.id),
   }
 }
+
+/** The first differing key against the next ranked candidate. */
+export function rankDecisiveKey(a: RankedRelease, b?: RankedRelease) {
+  if (!b)
+    return 'no_comparison' as const
+  if ((a.match.confidence === 'low') !== (b.match.confidence === 'low'))
+    return 'confidence' as const
+  if ((a.audioPriority ?? 0) !== (b.audioPriority ?? 0))
+    return 'audioPriority' as const
+  if ((a.typePriority ?? 0) !== (b.typePriority ?? 0))
+    return 'typePriority' as const
+  if (a.score !== b.score)
+    return 'score' as const
+  if (a.seeders !== b.seeders)
+    return 'seeders' as const
+  return 'id' as const
+}

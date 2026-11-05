@@ -1,6 +1,11 @@
+import {
+  diagnosticContext,
+  recordFailure,
+} from '../services/diagnostics/index.ts'
 import type { FastifyRequest } from 'fastify'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import type { FileHandle } from 'node:fs/promises'
+import { diagnosticId } from '../dto/diagnostics.ts'
 import { hlsParams, hlsSegmentParams, streamQuery } from '../dto/playback.ts'
 import { requireStream, streamSubjectOf } from '../middleware/auth.ts'
 import { EngineError } from '../services/engine/index.ts'
@@ -17,6 +22,11 @@ const REPEAT_LOG_MS = 60 * 1000
 // Сессия истекла или сервер перезапущен: телевизор видит это как сбой
 // перекодирования. Плеер повторяет запрос, поэтому запись — раз в минуту
 function logUnknownSession(request: FastifyRequest, id: string) {
+  const reported = diagnosticId.safeParse(id)
+  recordFailure('playback', 'playback_not_found', diagnosticContext(request), {
+    ...(reported.success ? { reportedSession: reported.data } : {}),
+    statusCode: 404,
+  })
   if (throttleLog(`hls-unknown:${id}`, REPEAT_LOG_MS)) {
     request.log
       .child({ source: 'playback', session: id })
@@ -100,10 +110,23 @@ export const hlsRoutes: FastifyPluginAsyncZod = async (app) => {
         if (controller.signal.aborted)
           return reply
 
-        if (err instanceof SegmentTimeoutError)
+        if (err instanceof SegmentTimeoutError) {
+          recordFailure(
+            'playback',
+            'segment_timeout',
+            session.diagnosticContext,
+            { session: session.id, statusCode: 504 },
+          )
           return reply.code(504).send({ message: 'Segment is not ready' })
+        }
 
         if (err instanceof EngineError && err.kind === 'unavailable') {
+          recordFailure(
+            'playback',
+            'engine_unavailable',
+            session.diagnosticContext,
+            { session: session.id, statusCode: 503 },
+          )
           if (throttleLog(`hls-engine:${session.id}`, REPEAT_LOG_MS))
             session.log.warn(`hls ${session.id}: engine unavailable`)
           return reply
@@ -112,6 +135,12 @@ export const hlsRoutes: FastifyPluginAsyncZod = async (app) => {
         }
 
         if (err instanceof TranscodeFailedError) {
+          recordFailure(
+            'playback',
+            'transcode_failed',
+            session.diagnosticContext,
+            { session: session.id, statusCode: 502 },
+          )
           session.log.warn(
             `hls ${session.id}: transcoding failed at segment ${index}: ${lastLine(err.message)}`,
           )

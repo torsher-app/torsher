@@ -1,3 +1,5 @@
+import type { DiagnosticContext } from '../diagnostics/index.ts'
+import { recordCheckpoint } from '../diagnostics/index.ts'
 import { assertMaintenancePolicyChange } from '../libraryMaintenance/admission.ts'
 import type { AudioTrack, VoiceType } from '@torsher/release-parser'
 import type { MediaFileRef, TitleProgress } from '../../db/schema.ts'
@@ -61,15 +63,17 @@ export function saveTitleProgress(
     TitleProgress,
     'position' | 'duration' | 'torrentId' | 'fileIndex'
   > & { mediaFileId?: string | null },
+  context?: DiagnosticContext,
 ) {
   assertMaintenancePolicyChange({ titleId: ref.titleId })
 
+  const before = getTitleProgress(ref)
   const updatedAt = new Date()
   const set = isWatched(values.position, values.duration)
     ? { ...values, watchedAt: updatedAt, lastPlayedAt: updatedAt, updatedAt }
     : { ...values, lastPlayedAt: updatedAt, updatedAt }
 
-  return getDb()
+  const saved = getDb()
     .insert(titleProgress)
     .values({
       profileId: ref.profileId,
@@ -88,6 +92,20 @@ export function saveTitleProgress(
     })
     .returning()
     .get()
+  recordCheckpoint('progress.saved', context, {
+    ...ref,
+    position: saved.position,
+    duration: saved.duration,
+    torrentId: saved.torrentId,
+    fileIndex: saved.fileIndex,
+    mediaFileId: saved.mediaFileId,
+    previousTorrentId: before?.torrentId,
+    previousFileIndex: before?.fileIndex,
+    watchedBefore: before ? isProgressWatched(before) : false,
+    watchedAfter: isProgressWatched(saved),
+    committedAt: updatedAt.toISOString(),
+  })
+  return saved
 }
 
 /**

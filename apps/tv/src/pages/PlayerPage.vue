@@ -9,7 +9,7 @@ import type { AutomaticPlayback } from '../lib/continue.ts'
 import { useContinuationConsent } from '../composables/useContinuationConsent.ts'
 import {
   continuationBaseline,
-  lowerContinuationQuality,
+  continuationQualityCheck,
 } from '../lib/continuationQuality.ts'
 import OptionsPanel from '../components/OptionsPanel.vue'
 import type { KeyAction } from '../focus/index.ts'
@@ -53,6 +53,23 @@ import type {
 import { api } from '../api.ts'
 import { useCatalogLanguage } from '../composables/useCatalogLanguage.ts'
 import { useHls } from '../composables/useHls.ts'
+import type {
+  DiagnosticContext,
+  DiagnosticInput,
+} from '../diagnostics/index.ts'
+import {
+  activationTrigger,
+  currentDiagnosticContext,
+  diagnostic,
+  diagnosticAction,
+  diagnosticError,
+  diagnosticMedia,
+  diagnosticParams,
+  diagnosticRoute,
+  diagnosticSnapshot,
+} from '../diagnostics/index.ts'
+import { mediaSnapshot } from '../diagnostics/media.ts'
+import { diagnosticPlaybackMode, upNextGate } from '../diagnostics/player.ts'
 import { usePlayback } from '../composables/usePlayback.ts'
 import { usePlayerTracks } from '../composables/usePlayerTracks.ts'
 import { usePlayerOsd } from '../composables/usePlayerOsd.ts'
@@ -122,6 +139,7 @@ const SAVE_EVERY_S = 10
 
 const { t, locale } = useI18n()
 const router = useRouter()
+const diagnosticContext = currentDiagnosticContext()
 const focus = useFocus()
 const isLibrary = !!props.mediaFileId
 const player = usePlayback(
@@ -130,6 +148,7 @@ const player = usePlayback(
     : { torrentId: props.torrentId!, fileIndex: Number(props.fileIndex) },
   titleRefOf(props.titleId, props.season, props.episode),
   props.voice,
+  diagnosticContext,
 )
 const { playback, stats } = player
 // Пиры и скорость — только у раздачи: файл библиотеки играется с диска
@@ -182,6 +201,16 @@ const stageTitle = computed(
 const video = ref<HTMLVideoElement>()
 // Ошибка сети — повтор; разбор сегментов не удался — ошибка медиа
 const hls = useHls((kind, detail) => {
+  diagnosticError(
+    'hls',
+    undefined,
+    kind === 'network'
+      ? 'hls_network'
+      : kind === 'media'
+        ? 'hls_media'
+        : 'hls_other',
+    { ...diagnosticContext, session: playback.value?.sessionId },
+  )
   if (kind === 'network')
     recover('unknown')
   else if (kind === 'media')
@@ -336,6 +365,20 @@ const playerSettings = computed(
       subtitleBackground: 'box' as const,
     },
 )
+const stopDiagnosticMedia = diagnosticMedia(() => ({
+  media: mediaSnapshot(
+    video.value,
+    hasNativePlayer,
+    playback.value,
+    hls.diagnosticState(),
+    tracks.selection(),
+  ),
+  context: { ...diagnosticContext, session: playback.value?.sessionId },
+  active: phase.value === 'playing' && !paused.value && !document.hidden,
+  stalled: stalled.value,
+}))
+watch([phase, paused, stalled], () =>
+  diagnosticSnapshot(stalled.value ? 'buffering' : 'transition'))
 const language = useCatalogLanguage()
 
 watch(speed, (value) => {
@@ -365,23 +408,49 @@ const ended = ref(false)
 const upNextDismissed = ref(false)
 // Уходим к другой серии или раздаче: второй переход не начинаем
 let leaving = false
-const consent = useContinuationConsent(run => run === launch && !leaving)
+const consent = useContinuationConsent(
+  run => run === launch && !leaving,
+  diagnosticContext,
+)
 const qualityChoice = consent.pending
 
 if (props.titleId && season && episode) {
   api.titles
-    .getTitleUpNext(props.titleId, {
-      season: String(season),
-      episode: String(episode),
-      torrentId: props.torrentId,
-      language: language.value,
-    })
+    .getTitleUpNext(
+      props.titleId,
+      {
+        season: String(season),
+        episode: String(episode),
+        torrentId: props.torrentId,
+        language: language.value,
+      },
+      diagnosticParams(diagnosticContext),
+    )
     .then((result) => {
+      diagnostic(
+        {
+          event: 'upnext.received',
+          outcome: leaving ? 'stale' : 'accepted',
+          available: !!result.next,
+        },
+        diagnosticContext,
+      )
       nextAired.value = result.next
     })
     .catch(() => {
+      diagnostic(
+        { event: 'upnext.received', outcome: 'failed', available: false },
+        diagnosticContext,
+      )
       // Без ответа плашки нет: серию можно выбрать в «Сериях»
     })
+}
+
+if (!(props.titleId && season && episode)) {
+  diagnostic(
+    { event: 'upnext.received', outcome: 'unknown', available: false },
+    diagnosticContext,
+  )
 }
 
 const remaining = computed(() => knownDuration.value - position.value)
@@ -546,6 +615,145 @@ const showsUpNext = computed(
     }),
 )
 
+let everDisplayed = false
+let summarySent = false
+let bufferingAt: number | undefined
+let bufferingMs = 0
+let bufferingCount = 0
+const playedSessions = new Set<string>()
+const nextGate = computed(() =>
+  upNextGate({
+    available: !!upNext.value,
+    hasTarget: !!nextAired.value,
+    displayed: showsUpNext.value,
+    dismissed: upNextDismissed.value,
+    playing: phase.value === 'playing',
+    restarting: restarting.value,
+    error: showsError.value,
+    panel: !!panel.value,
+    credits: activeSkip.value?.kind === 'credits',
+    ended: ended.value,
+    duration: knownDuration.value,
+  }),
+)
+function nextSnapshot() {
+  return {
+    available: !!upNext.value,
+    displayed: showsUpNext.value,
+    gate: nextGate.value,
+    position: Math.max(0, position.value),
+    duration: Math.max(0, knownDuration.value),
+    remaining: Math.max(0, remaining.value),
+    thresholdSeconds: 60,
+    countdownSeconds: 30,
+    autoNext: playerSettings.value.autoNext,
+  }
+}
+function dismissNext(trigger: 'pointer' | 'remote') {
+  diagnostic(
+    { event: 'upnext.dismissed', ...nextSnapshot(), trigger },
+    diagnosticContext,
+  )
+  upNextDismissed.value = true
+}
+watch(
+  [showsUpNext, nextGate],
+  () => {
+    everDisplayed ||= showsUpNext.value
+    diagnostic(
+      { event: 'upnext.visibility', ...nextSnapshot() },
+      diagnosticContext,
+    )
+  },
+  { immediate: true },
+)
+watch(stalled, (value) => {
+  if (value) {
+    bufferingAt = Date.now()
+    bufferingCount++
+    diagnostic(
+      {
+        event: 'playback.buffering',
+        state: 'started',
+        session: playback.value?.sessionId,
+      },
+      diagnosticContext,
+    )
+  }
+  else if (bufferingAt !== undefined) {
+    const durationMs = Math.min(1_000_000, Date.now() - bufferingAt)
+    bufferingMs += durationMs
+    bufferingAt = undefined
+    diagnostic(
+      {
+        event: 'playback.buffering',
+        state: 'ended',
+        durationMs,
+        session: playback.value?.sessionId,
+      },
+      diagnosticContext,
+    )
+  }
+})
+function playerSummary(
+  reason: Extract<DiagnosticInput, { event: 'player.summary' }>['reason'],
+) {
+  if (summarySent)
+    return
+  summarySent = true
+  const total = Math.min(
+    1_000_000,
+    bufferingMs + (bufferingAt === undefined ? 0 : Date.now() - bufferingAt),
+  )
+  diagnostic(
+    {
+      event: 'upnext.visibility',
+      ...nextSnapshot(),
+      summary: true,
+      everDisplayed,
+      trigger: 'exit',
+    },
+    diagnosticContext,
+  )
+  diagnostic(
+    {
+      event: 'playback.buffering',
+      state: 'summary',
+      durationMs: total,
+      count: bufferingCount,
+    },
+    diagnosticContext,
+  )
+  diagnostic(
+    {
+      event: 'player.summary',
+      reason,
+      position: Math.max(0, position.value),
+      duration: Math.max(0, knownDuration.value),
+      upnextAvailable: !!upNext.value,
+      upnextDisplayed: everDisplayed,
+      bufferingMs: total,
+      bufferingCount,
+    },
+    diagnosticContext,
+    true,
+  )
+}
+function backDiagnostic(
+  outcome: Extract<DiagnosticInput, { event: 'player.back' }>['outcome'],
+) {
+  diagnostic(
+    {
+      event: 'player.back',
+      outcome,
+      position: Math.max(0, position.value),
+      remaining: Math.max(0, remaining.value),
+    },
+    diagnosticAction(diagnosticContext),
+    true,
+  )
+}
+
 // Одна и та же подсказка рисуется поверх видео и принимает OK/Back пульта.
 const prompt = computed(() => playerPrompt(showsUpNext.value, showsSkip.value))
 
@@ -571,7 +779,7 @@ const upNextElapsed = computed(() =>
 // прямом потоке кончают файл не всегда
 watch(upNextCountdown, (value) => {
   if (value === 0 && showsUpNext.value && !paused.value)
-    void playNext()
+    void playNext('countdown')
 })
 
 const showsStage = computed(
@@ -673,13 +881,19 @@ function onStageGone() {
   osdAfterStage = false
 }
 
-function save() {
+function save(
+  reason:
+    'exit' | 'next' | 'source_switch' | 'pause' | 'checkpoint' = 'checkpoint',
+  context: DiagnosticContext = diagnosticContext,
+) {
   if (
     videoTimePolicy({ phase: phase.value, restarting: restarting.value }).save
   ) {
     return player.saveWatchState(
       osd.scrub.value?.target ?? position.value,
       knownDuration.value,
+      reason,
+      context,
     )
   }
 
@@ -711,16 +925,19 @@ function automaticContext(): AutomaticPlayback {
 }
 
 let automaticLibrary = false
+let libraryDiagnosticContext: DiagnosticContext = diagnosticContext
 const libraryPicker = useLibraryPicker((fileId, target, explicit) => {
   void switchToLibrary(
     fileId,
     target,
     automaticLibrary && !explicit ? automaticContext() : undefined,
+    libraryDiagnosticContext,
   )
 })
 const librarySelection = libraryPicker.selection
 
 function closeLibraryPicker() {
+  backDiagnostic('close_panel')
   libraryPicker.close()
   closePanel()
 }
@@ -730,11 +947,14 @@ function closeLibraryPicker() {
  * иначе новый запуск прочитал бы старую. Файл в этой раздаче — сразу плеер,
  * иначе экран подготовки ищет раздачу с той же озвучкой
  */
-async function switchTo(target: {
-  season: number
-  episode: number
-  fileIndex?: number
-}) {
+async function switchTo(
+  target: {
+    season: number
+    episode: number
+    fileIndex?: number
+  },
+  context: DiagnosticContext = diagnosticAction(diagnosticContext),
+) {
   if (leaving || !props.titleId)
     return
 
@@ -752,13 +972,18 @@ async function switchTo(target: {
     }
 
     automaticLibrary = true
-    libraryPicker.open({ files, target, currentId: props.mediaFileId })
+    libraryDiagnosticContext = context
+    libraryPicker.open(
+      { files, target, currentId: props.mediaFileId, titleId: props.titleId },
+      context,
+    )
     return
   }
 
   leaving = true
   const run = ++launch
-  await save()
+  playerSummary('next')
+  await save('next', context)
   if (run !== launch)
     return
 
@@ -768,11 +993,15 @@ async function switchTo(target: {
     episode: target.episode,
   }
   const progress = await api.titles
-    .getTitleProgress(props.titleId, {
-      language: language.value,
-      season: String(target.season),
-      episode: String(target.episode),
-    })
+    .getTitleProgress(
+      props.titleId,
+      {
+        language: language.value,
+        season: String(target.season),
+        episode: String(target.episode),
+      },
+      diagnosticParams(context),
+    )
     .catch(() => undefined)
   if (run !== launch)
     return
@@ -788,13 +1017,31 @@ async function switchTo(target: {
           : null
 
   void router.replace(
-    automaticEpisodeRoute(title, file, props.torrentId, automaticContext()),
+    diagnosticRoute(
+      automaticEpisodeRoute(title, file, props.torrentId, automaticContext()),
+      context,
+    ),
   )
 }
 
-function playNext() {
-  if (upNext.value)
-    return switchTo(upNext.value)
+function playNext(
+  trigger: 'remote' | 'pointer' | 'countdown' | 'ended' | 'OSD_next' = 'remote',
+) {
+  if (!upNext.value || leaving)
+    return
+  const context = diagnosticAction(diagnosticContext)
+  diagnostic(
+    {
+      event: 'upnext.selected',
+      ...nextSnapshot(),
+      trigger,
+      season: upNext.value.season,
+      episode: upNext.value.episode,
+    },
+    context,
+    true,
+  )
+  return switchTo(upNext.value, context)
 }
 
 /**
@@ -810,13 +1057,30 @@ async function switchSource(candidate: SourceCandidate, choice: SourceChoice) {
   if (leaving || !props.titleId)
     return
 
+  const context = Object.freeze({
+    ...diagnosticAction(diagnosticContext),
+    rankingDecisionId: choice.rankingDecisionId,
+  })
+  diagnostic(
+    {
+      event: 'selection.activated',
+      slot: 'source',
+      trigger: activationTrigger(),
+      titleId: props.titleId,
+      candidateId: candidate.id,
+    },
+    context,
+    true,
+  )
   leaving = true
   const run = ++launch
-  await save()
+  playerSummary('source_switch')
+  await save('source_switch', context)
   if (run !== launch)
     return
   void router.replace({
     path: `/title/${props.titleId}/play`,
+    state: { diagnostic: { ...context } },
     query: {
       season: props.season,
       episode: props.episode,
@@ -831,6 +1095,7 @@ async function switchToLibrary(
   fileId: string,
   title: { season?: number | null, episode?: number | null },
   automatic?: AutomaticPlayback,
+  context: DiagnosticContext = diagnosticAction(diagnosticContext),
 ) {
   if (
     fileId === props.mediaFileId
@@ -846,20 +1111,26 @@ async function switchToLibrary(
 
   leaving = true
   const run = ++launch
-  await save()
+  playerSummary(automatic ? 'next' : 'source_switch')
+  await save(automatic ? 'next' : 'source_switch', context)
   if (run !== launch)
     return
   void router.replace(
-    libraryRoute(fileId, { id: props.titleId, ...title }, automatic),
+    diagnosticRoute(
+      libraryRoute(fileId, { id: props.titleId, ...title }, automatic),
+      context,
+    ),
   )
 }
 
 function exit() {
+  backDiagnostic('exit')
+  playerSummary('exit')
   launch++
   leaving = true
   consent.cancel()
   player.close()
-  save()
+  save('exit')
 
   goBack(router, () => void router.replace('/'))
 }
@@ -881,7 +1152,26 @@ function toggle() {
   osd.show()
 }
 
-function seekTo(seconds: number) {
+let pendingSeek:
+  | { from: number, to: number, trigger: 'remote' | 'pointer' | 'automatic' }
+  | undefined
+function onSeeked() {
+  if (!pendingSeek)
+    return
+  diagnostic(
+    {
+      event: 'playback.seek',
+      ...pendingSeek,
+      to: Math.max(0, video.value?.currentTime ?? pendingSeek.to),
+    },
+    diagnosticContext,
+  )
+  pendingSeek = undefined
+}
+function seekTo(
+  seconds: number,
+  trigger: 'remote' | 'pointer' | 'automatic' = 'remote',
+) {
   const el = video.value
 
   if (!el || !Number.isFinite(seconds))
@@ -889,6 +1179,7 @@ function seekTo(seconds: number) {
 
   const target = clampTime(seconds, knownDuration.value)
 
+  pendingSeek = { from: Math.max(0, el.currentTime), to: target, trigger }
   el.currentTime = target
   position.value = target
   fromStart.value = false
@@ -914,6 +1205,10 @@ function hasLeftInPanel() {
   )
 }
 
+function closePanelFromScreen() {
+  backDiagnostic('close_panel')
+  closePanel()
+}
 function closePanel() {
   librarySelection.value = undefined
   panel.value = null
@@ -954,22 +1249,28 @@ function onKey(action: KeyAction, event: KeyboardEvent) {
   // Затемнённая пауза: первое нажатие только возвращает OSD с прежним фокусом.
   // Медиакнопки — явное действие и работают сразу
   if (osd.dimmed.value && action.type !== 'media') {
+    if (action.type === 'back')
+      backDiagnostic('wake_osd')
     osd.wake()
     return true
   }
 
   if (action.type === 'back') {
     // Из выбора настройки — к списку, а не из панели
-    if (panel.value === 'settings' && settingsPanel.value?.back())
+    if (panel.value === 'settings' && settingsPanel.value?.back()) {
+      backDiagnostic('settings_step')
       return true
+    }
 
     if (prompt.value === 'skip' && !osd.visible.value) {
+      backDiagnostic('dismiss_skip')
       dismissedSkip.value = activeSkip.value!.id
       return true
     }
 
     if (prompt.value === 'upNext' && !osd.visible.value) {
-      upNextDismissed.value = true
+      backDiagnostic('dismiss_upnext')
+      dismissNext('remote')
       return true
     }
 
@@ -978,11 +1279,17 @@ function onKey(action: KeyAction, event: KeyboardEvent) {
       osdVisible: osd.visible.value,
     })
 
-    if (next === 'closePanel')
+    if (next === 'closePanel') {
+      backDiagnostic('close_panel')
       closePanel()
-    else if (next === 'hideOsd')
+    }
+    else if (next === 'hideOsd') {
+      backDiagnostic('hide_osd')
       osd.hide()
-    else exit()
+    }
+    else {
+      exit()
+    }
 
     return true
   }
@@ -1379,6 +1686,22 @@ function onPlay() {
 }
 
 function onPlaying() {
+  const id = playback.value?.sessionId
+  if (id && !playedSessions.has(id)) {
+    playedSessions.add(id)
+    diagnostic(
+      {
+        event: 'playback.playing',
+        session: id,
+        mode: diagnosticPlaybackMode(playback.value),
+        position: Math.max(0, position.value),
+        width: video.value?.videoWidth,
+        height: video.value?.videoHeight,
+      },
+      diagnosticContext,
+      true,
+    )
+  }
   if (holding)
     return
 
@@ -1428,7 +1751,7 @@ function onPause() {
 
   paused.value = true
   osd.show()
-  save()
+  save('pause')
 }
 
 function onTimeUpdate() {
@@ -1459,6 +1782,20 @@ function onError() {
   clearTimeout(metadataTimer)
 
   const error = video.value?.error
+  diagnosticError(
+    hasNativePlayer ? 'native' : 'media',
+    undefined,
+    error?.code === 1
+      ? 'media_aborted'
+      : error?.code === 2
+        ? 'media_network'
+        : error?.code === 3
+          ? 'media_decode'
+          : error?.code === 4
+            ? 'media_source'
+            : 'unknown',
+    { ...diagnosticContext, session: playback.value?.sessionId },
+  )
 
   if (error?.code === 2)
     recover('unknown')
@@ -1491,6 +1828,16 @@ async function onMediaFailure(failure: PlayerFailure) {
 
 /** Ошибка экрана с позицией: сервер запишет, на какой секунде встало */
 function failAt(kind: PlayerError | undefined, failure: PlayerFailure) {
+  diagnostic(
+    {
+      event: 'playback.error',
+      session: playback.value?.sessionId,
+      outcome: 'failed',
+      position: Math.max(0, position.value),
+    },
+    diagnosticContext,
+    true,
+  )
   player.fail(kind, { ...failure, position: position.value })
 }
 
@@ -1510,7 +1857,7 @@ function onEnded() {
   ended.value = true
 
   if (upNext.value && playerSettings.value.autoNext && !upNextDismissed.value)
-    void playNext()
+    void playNext('ended')
   else osd.show()
 }
 
@@ -1604,6 +1951,15 @@ function chooseQuality(choice: string) {
     consent.accept()
   }
   else if (choice === 'sources' && props.titleId) {
+    diagnostic(
+      {
+        event: 'continuation.consent',
+        outcome: 'sources',
+        generation: pending.run,
+      },
+      diagnosticContext,
+      true,
+    )
     launch++
     leaving = true
     consent.cancel()
@@ -1614,6 +1970,15 @@ function chooseQuality(choice: string) {
     })
   }
   else {
+    diagnostic(
+      {
+        event: 'continuation.consent',
+        outcome: 'exit',
+        generation: pending.run,
+      },
+      diagnosticContext,
+      true,
+    )
     exit()
   }
 }
@@ -1655,8 +2020,19 @@ async function start() {
   const from = props.start === '0' ? 0 : (playback.value?.startPosition ?? 0)
 
   fromStart.value = from > 0
-  const quality = props.automatic
-    ? lowerContinuationQuality(
+  diagnostic(
+    {
+      event: 'continuation.consent',
+      outcome: props.automatic ? 'quality_checked' : 'manual',
+      generation: run,
+      baselineHeight:
+        continuationBaseline(continuation, props.automatic?.current)?.video?.height ?? undefined,
+      candidateHeight: playback.value?.media?.video?.height ?? undefined,
+    },
+    diagnosticContext,
+  )
+  const qualityCheck = props.automatic
+    ? continuationQualityCheck(
         continuationBaseline(continuation, props.automatic.current),
         playback.value?.media?.video,
         props.mediaFileId
@@ -1667,9 +2043,22 @@ async function start() {
               fileIndex: Number(props.fileIndex),
             },
       )
-    : null
-  if (!(await consent.confirm(quality, run)) || run !== launch || leaving)
+    : { quality: null, outcome: 'manual' as const }
+  diagnostic(
+    {
+      event: 'continuation.consent',
+      outcome: qualityCheck.outcome,
+      generation: run,
+    },
+    diagnosticContext,
+  )
+  if (
+    !(await consent.confirm(qualityCheck.quality, run))
+    || run !== launch
+    || leaving
+  ) {
     return
+  }
   startStats()
   void begin(from)
 }
@@ -1690,6 +2079,8 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  stopDiagnosticMedia()
+  playerSummary('unmounted')
   consent.cancel()
   save()
   offKey?.()
@@ -1725,6 +2116,7 @@ onBeforeUnmount(() => {
       @loadedmetadata="onLoadedMetadata"
       @play="onPlay"
       @playing="onPlaying"
+      @seeked="onSeeked"
       @waiting="onWaiting"
       @pause="onPause"
       @timeupdate="onTimeUpdate"
@@ -1808,10 +2200,10 @@ onBeforeUnmount(() => {
         :skip-label="skipLabel"
         @skip="skipCurrent"
         @toggle="toggle"
-        @seek="seekTo($event * knownDuration)"
+        @seek="seekTo($event * knownDuration, 'pointer')"
         @tracks="openPanel"
         @panel="openPanel"
-        @next="playNext"
+        @next="playNext('OSD_next')"
         @from-start="playFromStart"
       />
 
@@ -1827,8 +2219,8 @@ onBeforeUnmount(() => {
         :still="upNext.still"
         :countdown="visibleUpNextCountdown"
         :elapsed="upNextElapsed"
-        @play="playNext"
-        @cancel="upNextDismissed = true"
+        @play="playNext('pointer')"
+        @cancel="dismissNext(activationTrigger())"
       />
 
       <PlayerTracks
@@ -1838,7 +2230,7 @@ onBeforeUnmount(() => {
         :caption="tracks.caption.value"
         :hint="tracksHint"
         @select="onTracksSelect"
-        @close="closePanel"
+        @close="closePanelFromScreen"
       />
       <PlayerEpisodes
         v-else-if="panel === 'episodes' && titleId && season && episode"
@@ -1848,7 +2240,7 @@ onBeforeUnmount(() => {
         :episode="episode"
         :torrent-id="torrentId"
         @select="switchTo"
-        @close="closePanel"
+        @close="closePanelFromScreen"
       />
       <SourcesScreen
         v-else-if="panel === 'source' && titleId"
@@ -1857,7 +2249,7 @@ onBeforeUnmount(() => {
         :playing="{ season, episode, library: isLibrary, mediaFileId }"
         @select="switchSource"
         @library="switchToLibrary"
-        @back="closePanel"
+        @back="closePanelFromScreen"
       />
       <LibraryVersionPicker
         v-else-if="panel === 'versions' && librarySelection"
@@ -1874,7 +2266,7 @@ onBeforeUnmount(() => {
         :link="externalLink"
         @speed="speed = $event"
         @update="updatePlayerSettings"
-        @close="closePanel"
+        @close="closePanelFromScreen"
       />
     </template>
 

@@ -48,6 +48,12 @@ import { useHome } from '../composables/useHome.ts'
 import { useReleaseTexts } from '../composables/useReleaseTexts.ts'
 import { useStackScroll } from '../composables/useStackScroll.ts'
 import { useFocus } from '../focus/index.ts'
+import {
+  activationTrigger,
+  diagnostic,
+  diagnosticAction,
+  diagnosticRoute,
+} from '../diagnostics/index.ts'
 import { continueOrder, libraryRoute } from '../lib/continue.ts'
 import {
   noteReleaseOutcome,
@@ -308,7 +314,19 @@ function playFile(item: FileItem) {
 }
 
 function open(item: Exclude<RowItem, ReleaseItem | FileItem | Tile>) {
-  router.push(`/title/${isEpisode(item) ? item.titleId : item.id}`)
+  const context = diagnosticAction()
+  const titleId = isEpisode(item) ? item.titleId : item.id
+  diagnostic(
+    {
+      event: 'selection.activated',
+      slot: isEpisode(item) ? 'episode' : 'title',
+      trigger: activationTrigger(),
+      titleId,
+    },
+    context,
+    true,
+  )
+  router.push(diagnosticRoute({ path: `/title/${titleId}` }, context))
 }
 
 function openAll(row: HomeRow) {
@@ -318,8 +336,13 @@ function openAll(row: HomeRow) {
     router.push({ path: '/mine', query: mineQueryOf(target) })
 }
 
-function resume(item: ContinueItem) {
-  void continuePlayback(item.id, item)
+function resume(item: ContinueItem, event?: MouseEvent) {
+  void continuePlayback(
+    item.id,
+    item,
+    undefined,
+    event?.detail ? 'pointer' : 'remote',
+  )
 }
 
 const heroResume = computed(() => !!hero.value && 'next' in hero.value.card)
@@ -542,7 +565,7 @@ onBeforeUnmount(() => {
             v-else-if="row.kind === 'continue'"
             :item="item as ContinueItem"
             :load-image="isNear(index)"
-            @select="resume(item as ContinueItem)"
+            @select="resume(item as ContinueItem, $event)"
           />
           <EpisodeListCard
             v-else-if="isTile(item)"

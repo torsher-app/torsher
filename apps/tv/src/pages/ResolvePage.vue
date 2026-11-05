@@ -5,6 +5,11 @@ import type { KeyAction } from '../focus/index.ts'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
+import {
+  currentDiagnosticContext,
+  diagnostic,
+  diagnosticParams,
+} from '../diagnostics/index.ts'
 import { api } from '../api.ts'
 import PlayerBuffering from '../components/player/PlayerBuffering.vue'
 import PlayerLamp from '../components/player/PlayerLamp.vue'
@@ -43,6 +48,7 @@ const props = defineProps<{
 
 const { t } = useI18n()
 const router = useRouter()
+const diagnosticContext = currentDiagnosticContext()
 const focus = useFocus()
 const language = useCatalogLanguage()
 const target = {
@@ -61,6 +67,13 @@ const followFailure = ref<
 >()
 let running = false
 let cancelled = false
+let operation: 'pending' | 'completed' | 'cancelled' = 'pending'
+function cancelOperation(reason: 'back' | 'unmounted' | 'superseded') {
+  if (operation !== 'pending')
+    return
+  operation = 'cancelled'
+  diagnostic({ event: 'operation.cancelled', reason }, diagnosticContext, true)
+}
 const mountedAt = performance.now()
 let offKey: (() => void) | undefined
 
@@ -88,6 +101,7 @@ const actions = computed(() => [
 ])
 
 function back() {
+  cancelOperation('back')
   cancelled = true
   goBack(router, () => void router.replace('/'))
 }
@@ -111,6 +125,7 @@ function onChoice(choice: 'sources' | 'back' | 'retry') {
     return
   }
 
+  cancelOperation('superseded')
   cancelled = true
   const action = sourcesAfterResolve(
     props.id,
@@ -130,21 +145,27 @@ async function run() {
   if (running || cancelled)
     return
   running = true
+  operation = 'pending'
   notFound.value = false
   followFailure.value = undefined
   try {
     // Раздача сезона и озвучка прошлых серий — из прогресса; без него ищем по
     // порядку сервера
     const progress = await api.titles
-      .getTitleProgress(props.id, {
-        language: language.value,
-        season: props.season,
-        episode: props.episode,
-      })
+      .getTitleProgress(
+        props.id,
+        {
+          language: language.value,
+          season: props.season,
+          episode: props.episode,
+        },
+        diagnosticParams(diagnosticContext),
+      )
       .catch(() => undefined)
     const releases = progress?.seasonReleases ?? []
     const season = target.season ?? 0
     const outcome = await resolveEpisode(target, {
+      diagnosticContext,
       candidateId: props.candidate,
       query: props.query,
       intent: props.intent === 'follow-ready' ? 'follow-ready' : undefined,
@@ -167,6 +188,8 @@ async function run() {
       },
     })
 
+    if (operation === 'pending' && outcome.kind !== 'cancelled')
+      operation = 'completed'
     if (outcome.kind === 'found') {
       // Торшер уже на экране — плеер не прячет его на вторую задержку
       void router.replace({
@@ -184,6 +207,7 @@ async function run() {
           props.start === '0',
         ),
         state: {
+          diagnostic: { ...diagnosticContext },
           loaderShown: performance.now() - mountedAt >= LOADER_DELAY_MS,
         },
       })
@@ -217,6 +241,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  cancelOperation('unmounted')
   cancelled = true
   offKey?.()
 })

@@ -1,4 +1,5 @@
 import { createApiClient, getErrorStatus } from '@torsher/api-client'
+import { observeDiagnosticRequest } from './diagnostics/index.ts'
 import { toLoadError } from './lib/loadError.ts'
 
 let sessionExpired = () => {}
@@ -26,6 +27,7 @@ export function onProfileRequired(handler: () => void) {
 // в `onError`: так витрина узнаёт ответ «выберите профиль»
 export const api = createApiClient({
   getErrorMode: () => 'toast',
+  onRequestResult: observeDiagnosticRequest,
   onSessionExpired: () => sessionExpired(),
   onError: (message, status) => {
     if (status === 403 && message === 'profile_required')

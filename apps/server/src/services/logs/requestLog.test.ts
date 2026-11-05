@@ -1,5 +1,9 @@
 import type { FastifyReply, FastifyRequest } from 'fastify'
+import pino from 'pino'
 import { describe, expect, it, vi } from 'vitest'
+import { createApp } from '../../app.ts'
+import { formatEntry } from './files.ts'
+import { LogRing } from './ring.ts'
 import { RequestLogController } from './requestLog.ts'
 
 function fakes() {
@@ -40,4 +44,62 @@ describe('ошибки потока ответа', () => {
     expect(log.warn).toHaveBeenCalledWith({ err: error }, expect.any(String))
     expect(log.debug).not.toHaveBeenCalled()
   })
+})
+
+it('indexes the response UUID in error and ordinary debug request logs', async () => {
+  const ring = new LogRing()
+  const lines: string[] = []
+  const logger = pino(
+    { level: 'debug' },
+    {
+      write(line: string) {
+        lines.push(line)
+        ring.push(line)
+      },
+    },
+  )
+  const app = createApp({
+    loggerInstance: logger,
+    logController: new RequestLogController(),
+  })
+  // This operation is deliberately outside the selective info summary list.
+  app.get(
+    '/request-log-failure',
+    { schema: { operationId: 'getPlayback' } },
+    async () => {
+      throw new Error('request log fixture failure')
+    },
+  )
+  app.get(
+    '/request-log-success',
+    { schema: { operationId: 'getPlaybackFiles' } },
+    async () => ({ ok: true }),
+  )
+  try {
+    for (const [url, status, levels] of [
+      ['/request-log-failure', 500, ['error', 'debug']],
+      ['/request-log-success', 200, ['debug']],
+    ] as const) {
+      const response = await app.inject({ url })
+      expect(response.statusCode).toBe(status)
+      const requestId = response.headers['x-torsher-request-id'] as string
+      expect(requestId).toMatch(
+        /^[\da-f]{8}-[\da-f]{4}-4[\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{12}$/,
+      )
+      expect(lines.some(line => line.includes(requestId))).toBe(true)
+      const entries = ring.query({ q: requestId }).entries
+      expect(entries.map(entry => entry.level).sort()).toEqual(
+        [...levels].sort(),
+      )
+      expect(
+        entries.every(entry => entry.context?.requestId === requestId),
+      ).toBe(true)
+      expect(entries.map(formatEntry).join('')).toContain(
+        `requestId=${requestId}`,
+      )
+    }
+  }
+  finally {
+    await app.close()
+  }
 })

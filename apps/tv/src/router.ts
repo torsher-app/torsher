@@ -1,3 +1,8 @@
+import { diagnostic, diagnosticAction } from './diagnostics/index.ts'
+import type {
+  DiagnosticContext,
+  DiagnosticInput,
+} from './diagnostics/index.ts'
 import { automaticFromQuery } from './lib/continue.ts'
 import type { LocationQueryValue, RouteLocationNormalized } from 'vue-router'
 import { ref } from 'vue'
@@ -189,8 +194,43 @@ router.options.history.listen(() => {
 })
 
 // afterEach идёт до отрисовки нового маршрута: ключ готов к рендеру RouterView
-router.afterEach((to, _from, failure) => {
+function diagnosticRouteType(
+  path: string,
+): Extract<DiagnosticInput, { event: 'navigation.completed' }>['route'] {
+  if (path === '/')
+    return 'home'
+  if (path.startsWith('/play/'))
+    return 'player'
+  if (path.endsWith('/play'))
+    return 'resolve'
+  if (path.endsWith('/sources'))
+    return 'sources'
+  if (path.includes('/files'))
+    return 'files'
+  if (path.startsWith('/title/'))
+    return 'title'
+  if (path.startsWith('/library'))
+    return 'library'
+  if (path.startsWith('/profiles'))
+    return 'profile'
+  return 'other'
+}
+router.afterEach((to, from, failure) => {
   if (!failure) {
+    const state = router.options.history.state
+    const context = popped
+      ? diagnosticAction()
+      : (state.diagnostic as DiagnosticContext | undefined)
+    diagnostic(
+      {
+        event: 'navigation.completed',
+        route: diagnosticRouteType(to.path),
+        previousRoute: diagnosticRouteType(from.path),
+        method: popped ? 'back' : state.replaced ? 'replace' : 'push',
+        trigger: popped ? 'back' : 'automatic',
+      },
+      context,
+    )
     const position = router.options.history.state.position
 
     screenKey.value = keyOf(

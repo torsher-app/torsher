@@ -1,5 +1,12 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { LogRing, parseLine } from './ring.ts'
+
+const NOW = Date.UTC(2026, 9, 22, 12)
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(NOW)
+})
+afterEach(() => vi.useRealTimers())
 
 function line(fields: Record<string, unknown>) {
   return JSON.stringify({
@@ -78,9 +85,9 @@ describe('кольцевой буфер', () => {
   it('склеивает подряд идущие одинаковые записи без деталей', () => {
     const ring = new LogRing()
 
-    ring.push(line({ msg: 'same', time: 1 }))
-    ring.push(line({ msg: 'same', time: 2 }))
-    ring.push(line({ msg: 'same', time: 3 }))
+    ring.push(line({ msg: 'same', time: NOW - 10 + 1 }))
+    ring.push(line({ msg: 'same', time: NOW - 10 + 2 }))
+    ring.push(line({ msg: 'same', time: NOW - 10 + 3 }))
     ring.push(line({ msg: 'same', level: 40 }))
     ring.push(line({ msg: 'same', level: 40, details: 'd' }))
     ring.push(line({ msg: 'same', level: 40, details: 'd' }))
@@ -95,7 +102,7 @@ describe('кольцевой буфер', () => {
       ['same', 'warn', undefined],
       ['same', 'info', 3],
     ])
-    expect(entries[3]!.time).toBe(new Date(3).toISOString())
+    expect(entries[3]!.time).toBe(new Date(NOW - 7).toISOString())
   })
 
   it('не склеивает записи с разным контекстом', () => {
@@ -194,5 +201,39 @@ describe('кольцевой буфер', () => {
     expect(seqs({ limit: 3, after: 5 })).toEqual([[8, 7, 6], true])
     expect(seqs({ limit: 3, after: 8 })).toEqual([[10, 9], false])
     expect(seqs({ limit: 1000 })[0]).toHaveLength(10)
+  })
+})
+
+it('expires records by server time, never renews invalid timestamps', () => {
+  const ring = new LogRing()
+  ring.push(line({ msg: 'fresh', time: NOW }))
+  ring.push(line({ msg: 'invalid', time: 'bad' }))
+  ring.push(line({ msg: 'future', time: NOW + 1000 }))
+  expect(ring.query().entries.map(item => item.message)).toEqual(['fresh'])
+  vi.setSystemTime(NOW + 7 * 86400000)
+  expect(ring.query().entries).toEqual([])
+})
+
+it('reports the unfiltered viewer window and capacity eviction independently of a page filter', () => {
+  const ring = new LogRing(2)
+  const now = Date.now()
+  for (let i = 0; i < 3; i++) {
+    ring.push(
+      JSON.stringify({
+        time: now - 3000 + i * 1000,
+        level: 30,
+        msg: `entry-${i}`,
+        source: 'client',
+      }),
+    )
+  }
+  const result = ring.query({ q: 'not-present', limit: 1 })
+  expect(result.entries).toHaveLength(0)
+  expect(result.window).toEqual({
+    oldest: new Date(now - 2000).toISOString(),
+    newest: new Date(now - 1000).toISOString(),
+    capacity: 2,
+    retained: 2,
+    evicted: true,
   })
 })

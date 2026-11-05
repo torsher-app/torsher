@@ -1,3 +1,5 @@
+import type { DiagnosticContext } from '../diagnostics/index.ts'
+import { recordCheckpoint } from '../diagnostics/index.ts'
 import {
   groupForTorrent,
   protectTorrent,
@@ -956,10 +958,12 @@ export function saveWatchState(
     WatchState,
     'profileId' | 'torrentId' | 'fileIndex' | 'position' | 'duration'
   >,
+  context?: DiagnosticContext,
+  titleProgressSaved = false,
 ) {
   const updatedAt = new Date()
 
-  return getDb()
+  const saved = getDb()
     .insert(watchStates)
     .values({ ...values, updatedAt })
     .onConflictDoUpdate({
@@ -972,4 +976,14 @@ export function saveWatchState(
     })
     .returning()
     .get()
+  if (
+    !titleProgressSaved
+    || (context?.saveReason && context.saveReason !== 'checkpoint')
+  ) {
+    recordCheckpoint('progress.file_saved', context, {
+      ...values,
+      committedAt: updatedAt.toISOString(),
+    })
+  }
+  return saved
 }

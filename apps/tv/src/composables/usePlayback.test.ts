@@ -7,15 +7,22 @@ const mocks = vi.hoisted(() => ({
   post: vi.fn(),
   remove: vi.fn(),
   get: vi.fn(),
+  save: vi.fn(),
+  diagnostic: vi.fn(),
 }))
 vi.mock('../api.ts', () => ({
   api: {
+    watchState: { putWatchState: mocks.save },
     playback: {
       postPlayback: mocks.post,
       deletePlayback: mocks.remove,
       getPlayback: mocks.get,
     },
   },
+}))
+vi.mock('../diagnostics/index.ts', async original => ({
+  ...(await original<typeof import('../diagnostics/index.ts')>()),
+  diagnostic: mocks.diagnostic,
 }))
 vi.mock('../i18n.ts', () => ({
   i18n: { global: { locale: { value: 'en_US' } } },
@@ -70,4 +77,43 @@ it('unmount cancels a pending launch and closes its late server response', async
   expect(await start).toBe('stale')
   expect(player.playback.value).toBeUndefined()
   expect(mocks.remove).toHaveBeenCalledExactlyOnceWith('A')
+})
+
+it('keeps every business save but bounds successful checkpoint observations over two hours', async () => {
+  mocks.save.mockResolvedValue(undefined)
+  const scope = effectScope()
+  const player = scope.run(() => usePlayback({ mediaFileId: 'file-00001' }))!
+  for (let i = 0; i < 720; i++) {
+    await player.saveWatchState(i * 10, 7200)
+    vi.advanceTimersByTime(10_000)
+  }
+  expect(mocks.save).toHaveBeenCalledTimes(720)
+  const progress = mocks.diagnostic.mock.calls.filter(([event]) =>
+    event.event.startsWith('progress.'),
+  )
+  expect(progress).toHaveLength(40)
+  await player.saveWatchState(7190, 7200, 'exit')
+  expect(
+    mocks.diagnostic.mock.calls.slice(-2).map(([event]) => event.event),
+  ).toEqual(['progress.requested', 'progress.result'])
+  scope.stop()
+})
+it('observes swallowed checkpoint failures even between throttled successful snapshots', async () => {
+  mocks.save
+    .mockResolvedValueOnce(undefined)
+    .mockRejectedValueOnce(new Error('offline'))
+  const scope = effectScope()
+  const player = scope.run(() => usePlayback({ mediaFileId: 'file-00001' }))!
+  await player.saveWatchState(10, 100)
+  await expect(player.saveWatchState(20, 100)).resolves.toBeUndefined()
+  expect(mocks.diagnostic).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      event: 'progress.result',
+      outcome: 'network_error',
+      position: 20,
+    }),
+    expect.any(Object),
+    true,
+  )
+  scope.stop()
 })

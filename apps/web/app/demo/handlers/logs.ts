@@ -351,5 +351,27 @@ put<LogLevelResponse, LogLevelBodyInput>('/api/logs/level', ({ body }) => {
   return { level }
 })
 
+// No report capability in the offline demo: real retained history needs a server.
 // Файл журнала собирает сервер
 get('/api/logs/download', () => unavailable())
+
+let diagnosticEnabled = true
+get('/api/diagnostics', () => ({
+  enabled: diagnosticEnabled,
+  collecting: diagnosticEnabled,
+  schemaVersion: 1,
+  serverVersion: DEMO_VERSION,
+  serverInstance: 'demo',
+  serverTime: new Date().toISOString(),
+  deviceId: null,
+  profileId: 'demo-profile',
+  fileSinkState: 'enabled',
+  retentionState: 'ok',
+}))
+put<{ enabled: boolean }, { enabled: boolean }>(
+  '/api/diagnostics/settings',
+  ({ body }) => {
+    diagnosticEnabled = body.enabled
+    return { enabled: diagnosticEnabled }
+  },
+)

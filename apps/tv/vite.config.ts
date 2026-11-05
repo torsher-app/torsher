@@ -2,6 +2,7 @@ import type { Plugin } from 'vite'
 import process from 'node:process'
 import vue from '@vitejs/plugin-vue'
 import { defineConfig } from 'vite'
+import { supportManifest } from './build/supportManifest.ts'
 import { legacyApiGuard } from './build/legacyApiGuard.ts'
 
 // Свои адреса задаёт стенд ветки (`pnpm dev:stand`): он поднимает всё на других портах
@@ -85,14 +86,21 @@ export default defineConfig(({ mode }) => {
   // (`src/demo/`). Его открывают на компьютере, а не на ТВ, поэтому проверка
   // API старых браузеров — только для обычной сборки
   const isDemo = mode === 'demo'
+  const tvBuildId
+    = process.env.TORSHER_TV_BUILD_ID || `tv-${Date.now().toString(36)}`
 
   return {
     plugins: [
       vue(),
-      ...(isDemo ? [demoHead()] : [legacyApiGuard()]),
+      ...(isDemo
+        ? [demoHead()]
+        : [legacyApiGuard(), supportManifest(tvBuildId)]),
       devPanelRedirect(),
     ],
-    define: { __DEMO__: JSON.stringify(isDemo) },
+    define: {
+      __DEMO__: JSON.stringify(isDemo),
+      __TV_BUILD_ID__: JSON.stringify(tvBuildId),
+    },
     // Относительные пути: витрину открывают и с сервера, и из обёртки webOS
     base: './',
     build: {
@@ -105,7 +113,8 @@ export default defineConfig(({ mode }) => {
       // Тот же origin для API и картинок: cookie сессии, выданные панелью
       // на localhost, доходят до сервера и отсюда
       proxy: {
-        '/api': API_URL,
+        // Preserve the browser host for the diagnostic receiver's same-origin check.
+        '/api': { target: API_URL, changeOrigin: false },
       },
     },
   }

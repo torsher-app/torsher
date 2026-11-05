@@ -2,6 +2,7 @@ import type { PlayerSettings, Profile, ProfileList } from '@torsher/api-client'
 import type { SessionStatus } from './lib/session.ts'
 import { getErrorStatus } from '@torsher/api-client'
 import { reactive, readonly } from 'vue'
+import { beforeDiagnosticProfileChange } from './diagnostics/index.ts'
 import { api } from './api.ts'
 import { applyLanguage } from './i18n.ts'
 import { autoProfile } from './lib/session.ts'
@@ -42,6 +43,7 @@ export async function loadProfiles(): Promise<ProfileList | undefined> {
  * Ошибки PIN (403, 429) разбирает экран выбора.
  */
 export async function chooseProfile(id: string, pin?: string) {
+  beforeDiagnosticProfileChange(id)
   enter(await api.profiles.postProfileSelect(id, pin ? { pin } : {}))
 }
 

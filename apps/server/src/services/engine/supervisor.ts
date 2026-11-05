@@ -1,3 +1,4 @@
+import { logStorageStatus } from '../logs/index.ts'
 import { engineMaintenanceToken } from './maintenanceAuth.ts'
 import type { FastifyBaseLogger } from 'fastify'
 import type { ChildProcess } from 'node:child_process'
@@ -300,13 +301,20 @@ export function createEngineSupervisor(options: EngineSupervisorOptions) {
   function logExit(code: number | null, signal: NodeJS.Signals | null) {
     const uptimeMs = Date.now() - spawnedAt
     const uptime = formatUptime(uptimeMs)
+    const failure = {
+      event: 'server.failure',
+      origin: 'server',
+      failureCode: 'engine_exited',
+      serverInstance: logStorageStatus().serverInstance,
+      ...(code === null ? {} : { exitCode: code }),
+    }
 
     if (killReason) {
       if (killReason !== 'restart')
         noteCrash()
 
       log.warn(
-        { uptimeMs },
+        { uptimeMs, ...(killReason === 'restart' ? {} : failure) },
         `Engine killed by supervisor (${killReason}) after ${uptime}`,
       )
       return
@@ -315,7 +323,10 @@ export function createEngineSupervisor(options: EngineSupervisorOptions) {
     noteCrash()
 
     if (code === 0) {
-      log.warn({ uptimeMs }, `Engine exited unexpectedly after ${uptime}`)
+      log.warn(
+        { uptimeMs, ...failure },
+        `Engine exited unexpectedly after ${uptime}`,
+      )
       return
     }
 
@@ -324,6 +335,7 @@ export function createEngineSupervisor(options: EngineSupervisorOptions) {
 
     log.error(
       {
+        ...failure,
         ...(code !== null ? { code } : {}),
         ...(signal ? { signal } : {}),
         uptimeMs,
@@ -452,7 +464,15 @@ export function createEngineSupervisor(options: EngineSupervisorOptions) {
     pipeLogs(proc.stderr)
 
     proc.on('error', (err) => {
-      log.error(`Engine process error: ${err.message}`)
+      log.error(
+        {
+          event: 'server.failure',
+          origin: 'server',
+          failureCode: 'engine_process_error',
+          serverInstance: logStorageStatus().serverInstance,
+        },
+        `Engine process error: ${err.message}`,
+      )
     })
     proc.on('exit', () => {
       if (child === proc) {

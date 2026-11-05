@@ -1,3 +1,4 @@
+import { diagnosticRoutes } from './diagnostics.ts'
 import { libraryMaintenanceRoutes } from './libraryMaintenance.ts'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { z } from 'zod'
@@ -90,4 +91,5 @@ export const apiRoutes: FastifyPluginAsyncZod = async (app) => {
   app.register(deviceRoutes, { prefix: '/devices' })
   app.register(engineRoutes, { prefix: '/engine' })
   app.register(logRoutes, { prefix: '/logs' })
+  app.register(diagnosticRoutes, { prefix: '/diagnostics' })
 }

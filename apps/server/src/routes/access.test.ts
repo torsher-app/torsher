@@ -27,6 +27,8 @@ const PUBLIC = new Set([
 ])
 
 const VIEWER = new Set([
+  'GET /api/diagnostics',
+  'POST /api/diagnostics/events',
   'GET /api/home',
   'GET /api/home/continue',
   'GET /api/catalog/search',

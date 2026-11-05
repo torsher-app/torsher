@@ -1,3 +1,5 @@
+import type { FollowChoiceDiagnostics } from './decide.ts'
+import { newDecisionId, recordDecision } from '../diagnostics/index.ts'
 import { withMaintenanceLease } from '../libraryMaintenance/admission.ts'
 import {
   hasSuppressed,
@@ -381,7 +383,12 @@ async function startGrabImpl(
   torrent: Torrent,
   candidate: FollowPendingCandidate,
   episodes: EpisodeRef[],
-  options: { ownStudio?: string, now?: Date, isCurrent?: () => boolean } = {},
+  options: {
+    ownStudio?: string
+    now?: Date
+    isCurrent?: () => boolean
+    diagnostics?: FollowChoiceDiagnostics
+  } = {},
 ): Promise<GrabResult> {
   const now = options.now ?? new Date()
   if (hasSuppressed(follow.titleId, episodes))
@@ -519,6 +526,32 @@ async function startGrabImpl(
     }
   }
 
+  recordDecision(
+    'sources',
+    'follow.choice',
+    { actorKind: 'system', actionId: newDecisionId() },
+    {
+      followId: follow.id,
+      titleId: follow.titleId,
+      candidateId: candidate.id,
+      torrentId: torrent.id,
+      mode: 'grab',
+      selectionHistory: options.diagnostics?.selectionHistory ?? 'unavailable',
+      selectionReason: options.diagnostics?.selectionReason ?? 'unavailable',
+      upgraded: upgrades.length,
+      quality: candidate.quality,
+    },
+    {
+      decision: options.diagnostics,
+      episodes: present.slice(0, 20).map(item => ({
+        season: item.season,
+        episode: item.episode,
+        fileIndex: files.get(episodeKey(item)),
+      })),
+      total: present.length,
+      truncated: present.length > 20,
+    },
+  )
   await announceOtherVoice(
     follow,
     candidate,
@@ -547,7 +580,12 @@ async function grabCandidateImpl(
   follow: Follow,
   candidate: FollowPendingCandidate,
   episodes: EpisodeRef[],
-  options: { ownStudio?: string, now?: Date, isCurrent?: () => boolean } = {},
+  options: {
+    ownStudio?: string
+    now?: Date
+    isCurrent?: () => boolean
+    diagnostics?: FollowChoiceDiagnostics
+  } = {},
 ): Promise<GrabResult> {
   const now = options.now ?? new Date()
   const currentRules = voiceGuard(

@@ -1,3 +1,4 @@
+import { diagnosticContext } from '../services/diagnostics/index.ts'
 import type { FastifyRequest } from 'fastify'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import type { PlaybackSession } from '../services/media/index.ts'
@@ -368,6 +369,12 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
             : undefined)
 
       const session = createSession({
+        diagnosticContext: {
+          ...diagnosticContext(request),
+          titleId: title?.id,
+          season: title?.season,
+          episode: title?.episode,
+        },
         subject: streamSubjectOf(request)!,
         ...source,
         fileName,
@@ -466,7 +473,7 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
       if (!session)
         return reply.code(404).send({ message: 'Playback not found' })
 
-      await stopSession(session.id)
+      await stopSession(session.id, 'client', diagnosticContext(request))
       return { message: 'Playback stopped' }
     },
   )
@@ -574,6 +581,7 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
       },
     },
     async (request, reply) => {
+      const context = diagnosticContext(request)
       const { torrentId, fileIndex, mediaFileId, position, duration }
         = request.body
       let { title } = request.body
@@ -615,6 +623,7 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
             fileIndex: fileIndex ?? library?.file.fileIndex ?? null,
             mediaFileId: mediaFileId ?? null,
           },
+          context,
         )
 
         if (title.season === undefined && isWatched(position, duration ?? null))
@@ -633,6 +642,7 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
             fileIndex: library.file.fileIndex,
             mediaFileId: library.file.id,
           },
+          context,
         )
       }
 
@@ -647,13 +657,17 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
         }
       }
 
-      const saved = saveWatchState({
-        profileId: request.profileId,
-        torrentId,
-        fileIndex: fileIndex!,
-        position,
-        duration: duration ?? null,
-      })
+      const saved = saveWatchState(
+        {
+          profileId: request.profileId,
+          torrentId,
+          fileIndex: fileIndex!,
+          position,
+          duration: duration ?? null,
+        },
+        context,
+        !!(title || library),
+      )
 
       return {
         torrentId: saved.torrentId,

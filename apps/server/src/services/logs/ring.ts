@@ -13,6 +13,7 @@ export const LOG_SOURCES = [
   'notifications',
   'auth',
   'backups',
+  'client',
 ] as const
 
 export type LogSource = (typeof LOG_SOURCES)[number]
@@ -48,7 +49,13 @@ const DEFAULT_LIMIT = 200
 const MAX_LIMIT = 500
 const MAX_DETAILS = 64 * 1024
 const MAX_CONTEXT_VALUE = 500
-const MAX_CONTEXT_KEYS = 20
+const MAX_CONTEXT_KEYS = 32
+export const LOG_RETENTION_MS = 7 * 24 * 60 * 60 * 1000
+
+export function retainedTime(time: string, now = Date.now()) {
+  const at = Date.parse(time)
+  return Number.isFinite(at) && at <= now && at > now - LOG_RETENTION_MS
+}
 
 // Служебные поля pino и Fastify и то, что запись уже несёт отдельно
 const RESERVED = new Set([
@@ -181,15 +188,13 @@ export function parseLine(
     return undefined
 
   const fields = record as Record<string, unknown>
-  const time = new Date(
-    typeof fields.time === 'number' || typeof fields.time === 'string'
-      ? fields.time
-      : Date.now(),
-  )
+  if (typeof fields.time !== 'number' && typeof fields.time !== 'string')
+    return undefined
+  const time = new Date(fields.time)
+  if (!Number.isFinite(time.getTime()))
+    return undefined
   const entry: Omit<LogEntry, 'id' | 'seq'> = {
-    time: Number.isNaN(time.getTime())
-      ? new Date().toISOString()
-      : time.toISOString(),
+    time: time.toISOString(),
     level: levelOf(fields.level),
     source: sourceOf(fields.source),
     message: typeof fields.msg === 'string' ? fields.msg : '',
@@ -211,6 +216,7 @@ export function parseLine(
  */
 export class LogRing {
   private entries: LogEntry[] = []
+  private evicted = false
   private nextSeq = 1
   private readonly capacity: number
 
@@ -221,8 +227,8 @@ export class LogRing {
   push(line: string) {
     const parsed = parseLine(line)
 
-    if (!parsed)
-      return
+    if (!parsed || !retainedTime(parsed.time))
+      return false
 
     const last = this.entries.at(-1)
 
@@ -241,15 +247,32 @@ export class LogRing {
       last.repeat = (last.repeat ?? 1) + 1
       last.time = parsed.time
       last.seq = this.nextSeq++
-      return
+      return true
     }
 
     const seq = this.nextSeq++
 
     this.entries.push({ id: seq, seq, ...parsed })
 
-    if (this.entries.length > this.capacity)
+    if (this.entries.length > this.capacity) {
+      this.evicted = true
       this.entries.splice(0, this.entries.length - this.capacity)
+    }
+    return true
+  }
+
+  /** No raw snapshot copy: the report projects one entry at a time, newest first. */
+  visitNewest(visit: (entry: LogEntry) => void) {
+    for (let index = this.entries.length - 1; index >= 0; index--)
+      visit(this.entries[index]!)
+  }
+
+  get version() {
+    return this.nextSeq
+  }
+
+  hasEvent(eventId: string) {
+    return this.entries.some(entry => entry.context?.eventId === eventId)
   }
 
   /**
@@ -258,6 +281,9 @@ export class LogRing {
    * Без него — самые новые до `before`, и `hasMore` — «есть старше».
    */
   query(query: LogQuery = {}) {
+    const retained = this.entries.filter(entry => retainedTime(entry.time))
+    this.evicted ||= retained.length !== this.entries.length
+    this.entries = retained
     const limit = Math.min(
       Math.max(query.limit ?? DEFAULT_LIMIT, 1),
       MAX_LIMIT,
@@ -304,6 +330,17 @@ export class LogRing {
       }
     }
 
-    return { entries: found.map(entry => ({ ...entry })), hasMore }
+    const times = this.entries.map(entry => entry.time)
+    return {
+      entries: found.map(entry => ({ ...entry })),
+      hasMore,
+      window: {
+        oldest: times.length ? times.reduce((a, b) => (a < b ? a : b)) : null,
+        newest: times.length ? times.reduce((a, b) => (a > b ? a : b)) : null,
+        capacity: this.capacity,
+        retained: this.entries.length,
+        evicted: this.evicted,
+      },
+    }
   }
 }

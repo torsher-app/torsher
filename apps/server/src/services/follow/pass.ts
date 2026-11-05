@@ -1,3 +1,9 @@
+import type {
+  CheckedCandidate,
+  DecideContext,
+  FollowChoiceDiagnostics,
+  SeasonPlan,
+} from './decide.ts'
 import { withMaintenanceLease } from '../libraryMaintenance/admission.ts'
 import { suppressedEpisodes } from '../libraryMaintenance/suppression.ts'
 import type {
@@ -9,7 +15,6 @@ import type {
 } from '../../db/schema.ts'
 import type { VoiceRef } from '../sources/profile.ts'
 import type { FoundRelease, RankContext } from '../sources/rank.ts'
-import type { CheckedCandidate, DecideContext, SeasonPlan } from './decide.ts'
 import type { NewPending } from './notify.ts'
 import type { UpgradeCheck, UpgradeTarget } from './upgrade.ts'
 import type { EpisodeRef, EpisodeWithState } from './wanted.ts'
@@ -461,7 +466,12 @@ function takeCandidate(
   follow: Follow,
   candidate: FollowPendingCandidate,
   episodes: EpisodeRef[],
-  options: { ownStudio?: string, now: Date, isCurrent: () => boolean },
+  options: {
+    ownStudio?: string
+    now: Date
+    isCurrent: () => boolean
+    diagnostics?: FollowChoiceDiagnostics
+  },
 ) {
   const mode = followById(follow.id)?.mode ?? follow.mode
 
@@ -629,6 +639,7 @@ async function decideFollowImpl(
         grab.episodes,
         {
           ownStudio: voice?.studio,
+          diagnostics: grab.diagnostics,
           now,
           isCurrent: currentRules,
         },
@@ -679,7 +690,12 @@ async function grabPendingImpl(follow: Follow, now = new Date()) {
   const cursor = { season: follow.startSeason, episode: follow.startEpisode }
   const groups = new Map<
     string,
-    { candidate: FollowPendingCandidate, episodes: EpisodeRef[] }
+    {
+      candidate: FollowPendingCandidate
+      episodes: EpisodeRef[]
+      expired: number
+      noSpace: number
+    }
   >()
 
   for (const row of rows) {
@@ -705,16 +721,28 @@ async function grabPendingImpl(follow: Follow, now = new Date()) {
     const group = groups.get(row.pending!.id) ?? {
       candidate: row.pending!,
       episodes: [],
+      expired: 0,
+      noSpace: 0,
     }
 
     group.episodes.push({ season: row.season, episode: row.episode })
+    if (row.waitUntil && row.waitUntil <= now)
+      group.expired++
+    if (row.stateNote === 'no_space')
+      group.noSpace++
     groups.set(row.pending!.id, group)
   }
 
-  for (const { candidate, episodes } of groups.values()) {
+  for (const { candidate, episodes, expired, noSpace } of groups.values()) {
     if (!currentRules())
       return
     await takeCandidate(follow, candidate, episodes, {
+      diagnostics: {
+        selectionHistory: 'unavailable',
+        selectionReason: 'pending_ready',
+        expiredEpisodes: expired,
+        noSpaceEpisodes: noSpace,
+      },
       ownStudio: seasonVoice(follow, episodes[0]!.season)?.studio,
       now,
       isCurrent: currentRules,

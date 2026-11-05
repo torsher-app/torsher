@@ -1,3 +1,5 @@
+import type { DiagnosticContext } from '../diagnostics/index.ts'
+import { newDecisionId, recordDecision } from '../diagnostics/index.ts'
 import type { ParsedRelease } from '@torsher/release-parser'
 import type { Torrent, TorrentOrigin } from '../../db/schema.ts'
 import type { RankedRelease } from './rank.ts'
@@ -279,8 +281,15 @@ export async function watchTitle(
   titleId: string,
   request: WatchRequest,
   profileId: string,
+  context?: DiagnosticContext,
 ): Promise<WatchResult | undefined> {
   if (request.torrentId) {
+    recordDecision('sources', 'source.resolve', context, {
+      titleId,
+      branch: 'known_torrent',
+      rankingApplied: false,
+      torrentId: request.torrentId,
+    })
     return watchTorrent(
       titleId,
       { ...request, torrentId: request.torrentId },
@@ -326,6 +335,27 @@ export async function watchTitle(
     episode: sources.episode,
   }
 
+  const rankingDecisionId = newDecisionId()
+  const operation = { ...context, rankingDecisionId }
+  recordDecision(
+    'sources',
+    'source.ranked',
+    operation,
+    { titleId, found: ranked.length, eligible: queue.length },
+    {
+      candidates: queue.slice(0, MAX_WATCH_ATTEMPTS).map(release => ({
+        candidateId: release.id,
+        rank: ranked.indexOf(release) + 1,
+        score: release.score,
+        audioPriority: release.audioPriority,
+        typePriority: release.typePriority,
+        confidence: release.match.confidence,
+        seeders: release.seeders,
+        quality: release.parsed.quality,
+        resolution: release.resolution,
+      })),
+    },
+  )
   const startedAt = Date.now()
   const hasTime = () => Date.now() - startedAt < WATCH_BUDGET_MS
 
@@ -333,24 +363,48 @@ export async function watchTitle(
     if (!hasTime())
       break
 
+    const facts = {
+      titleId,
+      candidateId: release.id,
+      attemptIndex: queue.indexOf(release) + 1,
+    }
+    recordDecision('sources', 'source.attempt', operation, {
+      ...facts,
+      outcome: 'started',
+    })
     let torrent: Torrent | undefined
 
     try {
       torrent = await acquire(release, hasTime)
     }
     catch (err) {
-      if (isSkippable(err))
+      if (isSkippable(err)) {
+        recordDecision('sources', 'source.attempt', operation, {
+          ...facts,
+          outcome: 'open_rejected',
+        })
         continue
+      }
 
       throw err
     }
 
-    if (!torrent || torrent.status === 'failed')
+    if (!torrent || torrent.status === 'failed') {
+      recordDecision('sources', 'source.attempt', operation, {
+        ...facts,
+        outcome: 'open_rejected',
+      })
       continue
+    }
 
     torrent = linkTitle(torrent, titleId)
 
     if (torrent.status === 'resolving') {
+      recordDecision('sources', 'source.selected', operation, {
+        ...facts,
+        torrentId: torrent.id,
+        outcome: 'resolving',
+      })
       return {
         status: 'resolving',
         torrentId: torrent.id,
@@ -360,8 +414,14 @@ export async function watchTitle(
 
     const fileIndex = pickFile(torrent, release.parsed, target)
 
-    if (fileIndex === undefined)
+    if (fileIndex === undefined) {
+      recordDecision('sources', 'source.attempt', operation, {
+        ...facts,
+        torrentId: torrent.id,
+        outcome: 'episode_absent',
+      })
       continue
+    }
 
     rememberChoice(
       { profileId, titleId, season: target.season, episode: target.episode },
@@ -372,6 +432,12 @@ export async function watchTitle(
       },
     )
 
+    recordDecision('sources', 'source.selected', operation, {
+      ...facts,
+      torrentId: torrent.id,
+      fileIndex,
+      outcome: 'file_found',
+    })
     return {
       status: 'ready',
       torrentId: torrent.id,

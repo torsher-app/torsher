@@ -1,3 +1,9 @@
+import {
+  diagnostic,
+  diagnosticAction,
+  diagnosticParams,
+} from '../diagnostics/index.ts'
+import { noteContinueReceived } from '../diagnostics/continue.ts'
 import type { ContinueRow, HomeRow } from '@torsher/api-client'
 import type { Ref } from 'vue'
 import type { LoadError } from '../lib/loadError.ts'
@@ -48,6 +54,10 @@ export function useHome(mode: Ref<HomeMode>) {
     }
 
     noteHasSources(outcome.value.hasSources)
+    for (const row of outcome.value.rows) {
+      if (row.kind === 'continue')
+        noteContinueReceived(row.items)
+    }
     rows.value = outcome.value.rows
     status.value = 'ready'
 
@@ -64,21 +74,41 @@ export function useHome(mode: Ref<HomeMode>) {
     if (status.value !== 'ready')
       return
 
+    const context = diagnosticAction()
     let row: ContinueRow
 
     try {
-      row = await api.home.getHomeContinue({
-        mode: mode.value,
-        language: language.value,
-      })
+      row = await api.home.getHomeContinue(
+        {
+          mode: mode.value,
+          language: language.value,
+        },
+        diagnosticParams(context),
+      )
     }
     catch {
+      diagnostic(
+        { event: 'continue.refresh', outcome: 'failed', retained: true },
+        context,
+      )
       return
     }
 
     // Пока шёл запрос, главная могла начать грузиться заново
-    if (status.value === 'ready')
+    if (status.value === 'ready') {
+      noteContinueReceived(row.items)
       rows.value = replaceContinueRow(rows.value, row)
+      diagnostic(
+        { event: 'continue.refresh', outcome: 'accepted', retained: false },
+        context,
+      )
+    }
+    else {
+      diagnostic(
+        { event: 'continue.refresh', outcome: 'stale', retained: true },
+        context,
+      )
+    }
   }
 
   watch([mode, language], () => load(), { immediate: true })

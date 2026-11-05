@@ -7,6 +7,7 @@ import type {
 
 /** Что продолжать: карточка ряда «Продолжить» и `resume` прогресса тайтла */
 export interface ResumeLike {
+  decisionId?: string
   season: number | null
   episode: number | null
   position: number

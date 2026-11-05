@@ -74,6 +74,8 @@ import {
   queryOf as catalogQueryOf,
   ORIGINAL_LANGUAGES,
 } from '../lib/catalogFilter.ts'
+import { diagnostic, diagnosticAction } from '../diagnostics/index.ts'
+import { noteContinueReceived } from '../diagnostics/continue.ts'
 import { downloadSlot } from '../lib/downloadSlot.ts'
 import { titleOffer } from '../lib/titleOffer.ts'
 import { isFollowed } from '../lib/follow.ts'
@@ -410,6 +412,14 @@ const {
   resume: continuePlayback,
 } = useContinuePlayback(screen)
 const librarySelection = libraryPicker.selection
+watch(
+  resume,
+  (item) => {
+    if (item)
+      noteContinueReceived([item])
+  },
+  { immediate: true },
+)
 
 // Вторая строка главной кнопки: что продолжим или что смотрели последний раз
 const primaryHint = computed(() => {
@@ -499,27 +509,54 @@ async function toggleWatchlist() {
 }
 
 // «Продолжить» запускает просмотр сразу; выбрать раздачу — кнопкой «Источники»
-function onPrimary() {
+function onPrimary(event?: MouseEvent) {
+  const trigger = event?.detail ? ('pointer' as const) : ('remote' as const)
+  const context = diagnosticAction()
   const own = fromLibrary.value
 
   if (own) {
+    diagnostic(
+      {
+        event: 'selection.activated',
+        slot: 'libraryVersion',
+        trigger,
+        titleId: props.id,
+        mediaFileId: own.id,
+      },
+      context,
+      true,
+    )
     openLibrary(
       props.id,
       libraryChoice.value,
       resume.value?.mediaFileId,
       resume.value?.next !== false && !resume.value?.position,
+      context,
     )
   }
   else if (resume.value) {
-    void continuePlayback(props.id, resume.value)
+    void continuePlayback(props.id, resume.value, undefined, trigger)
   }
   else if (followReady.value) {
     const { season, episode } = followReady.value
+    diagnostic(
+      {
+        event: 'selection.activated',
+        slot: 'episode',
+        trigger,
+        titleId: props.id,
+        season: season ?? undefined,
+        episode: episode ?? undefined,
+      },
+      context,
+      true,
+    )
 
     void continuePlayback(
       props.id,
       { season, episode, position: 0, duration: null, next: false, file: null },
       'follow-ready',
+      trigger,
     )
   }
   else {
@@ -1465,7 +1502,13 @@ onBeforeUnmount(() => {
       пропадает при переходе на пульт, выглядит сломанной
     -->
     <FocusSection name="title-back" :edges="{ down: order[0] }">
-      <button v-focusable class="screen-back" type="button" @click="back">
+      <button
+        v-focusable
+        class="screen-back"
+        type="button"
+        data-diagnostic-action="back"
+        @click="back"
+      >
         <AppIcon name="chevronLeft" />
         <span class="screen-back__label">{{ t("common.back") }}</span>
       </button>

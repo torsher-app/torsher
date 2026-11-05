@@ -1,14 +1,27 @@
 <script setup lang="ts">
-import { ref, watchEffect } from 'vue'
+import { onErrorCaptured, ref, watchEffect } from 'vue'
 import { useRoute } from 'vue-router'
 import AppScreensaver from './components/AppScreensaver.vue'
 import InputDebug from './components/InputDebug.vue'
 import TitleActions from './components/TitleActions.vue'
 import { useScreensaver } from './composables/useScreensaver.ts'
+import { diagnosticError } from './diagnostics/index.ts'
 import { inputDebug } from './inputDebug.ts'
 import { screenComponentKey } from './lib/screenKeys.ts'
 import { isStacked, screenKey } from './router.ts'
 import { session } from './session.ts'
+
+// Observe descendant Vue errors without consuming Vue's default error handling.
+if (!__DEMO__) {
+  onErrorCaptured((error) => {
+    try {
+      diagnosticError('runtime', error)
+    }
+    catch {
+      /* Diagnostics must never replace the original component error. */
+    }
+  })
+}
 
 // Глубже стек не помнит: экран, вытесненный из кэша, откроется с начала
 const STACK_DEPTH = 10

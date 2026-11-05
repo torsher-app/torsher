@@ -94,6 +94,16 @@ export function followBadges(profileId: string, titleIds: string[]) {
 
 /** Новая серия слежения, которую профиль ещё не досмотрел */
 export interface FollowNewEpisode {
+  diagnostic?: {
+    followId: string
+    basis: 'picked' | 'downloaded' | 'upgrade_from'
+    candidateId?: string
+    farthestSeason?: number
+    farthestEpisode?: number
+    farthestWatched?: boolean
+    farthestPosition?: number
+    farthestDuration?: number | null
+  }
   season: number
   episode: number
   /** Когда серия стала готова или легла в библиотеку */
@@ -196,6 +206,20 @@ export function followNewEpisodes(profileId: string) {
     const from = first.upgradeFrom
 
     fresh.set(titleId, {
+      diagnostic: {
+        followId: id,
+        basis: from
+          ? 'upgrade_from'
+          : first.downloadedAt
+            ? 'downloaded'
+            : 'picked',
+        candidateId: first.picked?.id,
+        farthestSeason: farthest?.season,
+        farthestEpisode: farthest?.episode,
+        farthestWatched: farthest ? isProgressWatched(farthest) : undefined,
+        farthestPosition: farthest?.position,
+        farthestDuration: farthest?.duration,
+      },
       season: first.season,
       episode: first.episode,
       at: new Date(Math.max(...times)),

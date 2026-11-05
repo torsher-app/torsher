@@ -1,3 +1,5 @@
+import type { DiagnosticContext } from '../diagnostics/index.ts'
+import { decisionSnapshot } from '../diagnostics/index.ts'
 import { continuationFor } from './continuation.ts'
 import { localTitleImage } from '../library/images.ts'
 import type { ContinueCard, ContinueRow, HomeMode } from '../../dto/home.ts'
@@ -75,6 +77,7 @@ async function continueCard(
   titleId: string,
   language: string,
   fresh?: FollowNewEpisode,
+  context?: DiagnosticContext,
 ): Promise<ContinueCard | undefined> {
   // Детали и сезоны — из кэша TMDB: без сети ряд собирается из него, а тайтл
   // без кэша пропускается
@@ -86,21 +89,31 @@ async function continueCard(
   const fromFollow = !!fresh && !lastTitleProgress(profileId, titleId)
   const target = fromFollow
     ? followTarget(profileId, titleId, fresh)
-    : await resumeTarget(profileId, titleId, async () =>
-        details.seasons?.map(season => ({
-          number: season.number,
-          airedEpisodeCount: season.airedEpisodeCount,
-        })))
+    : await resumeTarget(
+        profileId,
+        titleId,
+        async () =>
+          details.seasons?.map(season => ({
+            number: season.number,
+            airedEpisodeCount: season.airedEpisodeCount,
+          })),
+        context,
+      )
 
   if (!target)
     return undefined
 
   const continuation
     = target.season && target.episode
-      ? await continuationFor(profileId, titleId, {
-          season: target.season,
-          episode: target.episode,
-        })
+      ? await continuationFor(
+          profileId,
+          titleId,
+          {
+            season: target.season,
+            episode: target.episode,
+          },
+          context,
+        )
       : undefined
   if (target.next && !target.position && continuation?.preferredTorrent)
     target.file = continuation.preferredTorrent
@@ -123,7 +136,36 @@ async function continueCard(
     ? withImageSize(details.backdrop, CARD_BACKDROP_SIZE)
     : undefined
 
+  const visible = visibleResumeSource(profileId, target)
+  const decisionId = decisionSnapshot(
+    'continue.decided',
+    `${profileId}:${titleId}`,
+    context,
+    {
+      profileId,
+      titleId,
+      season: target.season,
+      episode: target.episode,
+      reason: fromFollow
+        ? 'follow_new'
+        : target.next
+          ? 'next_unwatched'
+          : 'resume',
+      resumeDecisionId: target.decisionId,
+      position: target.position,
+      duration: target.duration,
+      next: target.next,
+      followNewEpisode: fromFollow,
+      torrentId: visible.file?.torrentId,
+      fileIndex: visible.file?.fileIndex,
+      mediaFileId: visible.mediaFileId,
+      continuationDecisionId: continuation?.decisionId,
+      selectionHistory: 'unavailable',
+    },
+    { follow: fresh?.diagnostic, followTargetUsed: fromFollow },
+  )
   return {
+    ...(decisionId && { decisionId }),
     id: details.id,
     kind: details.kind,
     title: details.title,
@@ -149,7 +191,7 @@ async function continueCard(
     duration: target.duration ?? (runtime ? runtime * 60 : null),
     next: target.next,
     continuation,
-    ...visibleResumeSource(profileId, target),
+    ...visible,
     ...(fresh && {
       followUpdate: { season: fresh.season, episode: fresh.episode },
     }),
@@ -184,6 +226,7 @@ export async function getContinueRow(
   profileId: string,
   mode: HomeMode,
   language: string,
+  context?: DiagnosticContext,
 ): Promise<ContinueRow> {
   const excluded = excludedFromContinue(profileId)
   const type = MODE_TYPE[mode]
@@ -203,8 +246,12 @@ export async function getContinueRow(
     id => fits(id) && !excluded.has(id) && !freshIds.has(id),
   )
   const results = await Promise.allSettled([
-    ...fresh.map(([id, item]) => continueCard(profileId, id, language, item)),
-    ...ids.map(id => continueCard(profileId, id, language)),
+    ...fresh.map(([id, item]) =>
+      continueCard(profileId, id, language, item, context),
+    ),
+    ...ids.map(id =>
+      continueCard(profileId, id, language, undefined, context),
+    ),
   ])
   const items = results
     .flatMap(result =>

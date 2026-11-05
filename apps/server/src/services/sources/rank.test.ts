@@ -3,7 +3,13 @@ import type { FoundRelease, RankContext } from './rank.ts'
 import { matchTitle, parseRelease } from '@torsher/release-parser'
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_PROFILE } from './profile.ts'
-import { coversEpisode, rankReleases, russianVoices, voiceOf } from './rank.ts'
+import {
+  coversEpisode,
+  rankDecisiveKey,
+  rankReleases,
+  russianVoices,
+  voiceOf,
+} from './rank.ts'
 
 const GB = 1024 ** 3
 const high: TitleMatch = { confidence: 'high', issues: [] }
@@ -624,4 +630,16 @@ describe('ordered language and translation preferences', () => {
     expect(original.ranked[0]?.voice).toBeUndefined()
     expect(original.ranked[0]?.parsed.audio).toEqual([])
   })
+})
+
+it('marks the final candidate as having no next comparison', () => {
+  const { ranked } = rankReleases(
+    [
+      release('a', 'Harbor S01 1080p WEB-DL', 10, GB),
+      release('b', 'Harbor S01 720p WEB-DL', 1, GB),
+    ],
+    series,
+  )
+  expect(rankDecisiveKey(ranked[1]!)).toBe('no_comparison')
+  expect(rankDecisiveKey(ranked[0]!, ranked[1])).not.toBe('no_comparison')
 })

@@ -42,6 +42,7 @@ export const logSourceLabels: Record<LogSource, string> = {
   notifications: 'panel.logs.sources.notifications',
   auth: 'panel.logs.sources.auth',
   backups: 'panel.logs.sources.backups',
+  client: 'panel.logs.sources.client',
 }
 
 export const LOG_SOURCES = Object.keys(logSourceLabels) as LogSource[]
@@ -55,6 +56,21 @@ export const LOG_ID_KEYS = new Set([
   'titleId',
   'indexerId',
   'deviceId',
+  'profileId',
+  'actionId',
+  'parentActionId',
+  'clientSessionId',
+  'clientRequestId',
+  'requestId',
+  'pollId',
+  'firstRequestId',
+  'lastRequestId',
+  'errorRequestId',
+  'reportedRequestId',
+  'decisionId',
+  'rankingDecisionId',
+  'eventId',
+  'mediaFileId',
 ])
 
 export function isLogSource(value: unknown): value is LogSource {
@@ -129,4 +145,19 @@ export function formatLogDay(date: Date, locale: string, now: Date) {
 /** Имя скачанного файла — по дате у пользователя, а не на сервере */
 export function logFileName(now = new Date()) {
   return `torsher-${dayKeyOf(now)}.log`
+}
+
+/** Replayed client events are the same event, even after server dedupe was lost. */
+export function duplicateDiagnosticEvents(entries: LogEntry[]) {
+  const seen = new Set<string>()
+  const duplicates = new Set<number>()
+  for (const entry of entries.slice().reverse()) {
+    const id = entry.context?.eventId
+    if (typeof id !== 'string')
+      continue
+    if (seen.has(id))
+      duplicates.add(entry.id)
+    else seen.add(id)
+  }
+  return duplicates
 }

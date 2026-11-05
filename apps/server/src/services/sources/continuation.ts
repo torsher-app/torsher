@@ -1,3 +1,6 @@
+import { episodeSkips, skippedEpisode } from '../diagnostics/episodes.ts'
+import type { DiagnosticContext } from '../diagnostics/index.ts'
+import { decisionSnapshot } from '../diagnostics/index.ts'
 import { stat } from 'node:fs/promises'
 import { and, desc, eq } from 'drizzle-orm'
 import type { Continuation } from '../../dto/titles.ts'
@@ -29,6 +32,7 @@ export async function continuationFor(
   profileId: string,
   titleId: string,
   target: { season: number, episode: number },
+  context?: DiagnosticContext,
 ): Promise<Continuation> {
   const rows = getDb()
     .select()
@@ -89,10 +93,16 @@ export async function continuationFor(
     }
     return torrentFiles.get(key)!
   }
+  const unavailable = episodeSkips()
+  const unavailableSeen = new Set<TitleProgress>()
   async function first(candidates: TitleProgress[]) {
     for (const row of candidates) {
       if (await available(row))
         return row
+      if (!unavailableSeen.has(row)) {
+        unavailableSeen.add(row)
+        skippedEpisode(unavailable, row, 'unavailable')
+      }
     }
     return undefined
   }
@@ -105,8 +115,34 @@ export async function continuationFor(
   const preferredTorrent = preference?.torrentId
     ? episodeFileIn(preference.torrentId, { profileId, titleId, ...target })
     : null
+  const snapshot = (result: Continuation): Continuation => {
+    const decisionId = decisionSnapshot(
+      'continuation.preference',
+      `${profileId}:${titleId}`,
+      context,
+      {
+        profileId,
+        titleId,
+        ...target,
+        preferenceReason: seasonMeaningful
+          ? 'season_meaningful'
+          : preference
+            ? 'season_recent'
+            : 'unavailable',
+        baselineReason: !baseline
+          ? 'unavailable'
+          : baseline === seasonMeaningful
+            ? 'season_meaningful'
+            : meaningful.includes(baseline)
+              ? 'meaningful'
+              : 'recent',
+      },
+      { ...result, unavailable, selectionHistory: 'unavailable' },
+    )
+    return decisionId ? { ...result, decisionId } : result
+  }
   if (!baseline)
-    return { target, preferredTorrent, baseline: null }
+    return snapshot({ target, preferredTorrent, baseline: null })
   let video: NonNullable<Continuation['baseline']>['video'] = null
   const file: NonNullable<Continuation['baseline']>['file']
     = baseline.mediaFileId
@@ -148,5 +184,5 @@ export async function continuationFor(
   }
   if (video && (!(video.width > 0) || !(video.height > 0)))
     video = null
-  return { target, preferredTorrent, baseline: { file, video } }
+  return snapshot({ target, preferredTorrent, baseline: { file, video } })
 }
