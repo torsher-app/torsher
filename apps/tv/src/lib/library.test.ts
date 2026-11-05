@@ -6,6 +6,7 @@ import {
   libraryFileFor,
   libraryFilesFor,
   libraryTarget,
+  sourceLibraryChoice,
 } from './library.ts'
 
 function file(
@@ -125,4 +126,39 @@ it('keeps special-only library fallback and groups only versions covering that s
       item => item.id,
     ),
   ).toEqual(['special', 'combined-specials'])
+})
+
+describe('sources after exact episode resolution fails', () => {
+  it('does not replace S2E6 with the title resume or first library episode', () => {
+    const files = [file('first', 2, 1), file('resume', 2, 3)]
+    const requested = { season: 2, episode: 6 }
+    const choice = sourceLibraryChoice(
+      files,
+      true,
+      { season: 2, episode: 3 },
+      requested,
+    )
+    expect(choice).toEqual({ files: [], target: requested })
+    expect(
+      sourceLibraryChoice(
+        [...files, file('combined', 2, 5, 7)],
+        true,
+        { season: 2, episode: 3 },
+        requested,
+      ),
+    ).toEqual({
+      files: [file('combined', 2, 5, 7)],
+      target: requested,
+    })
+  })
+
+  it('preserves the existing fallback for sources opened without an episode', () => {
+    const first = file('first', 2, 1)
+    expect(
+      sourceLibraryChoice([first], true, { season: 2, episode: 3 }),
+    ).toEqual({
+      files: [first],
+      target: { season: 2, episode: 1 },
+    })
+  })
 })

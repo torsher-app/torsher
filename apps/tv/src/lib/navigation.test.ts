@@ -1,10 +1,12 @@
-import { describe, expect, it } from 'vitest'
 import {
   backAction,
   openedForward,
   railAction,
   returnedBack,
+  sourcesAfterResolve,
 } from './navigation.ts'
+import { createScreenKeys } from './screenKeys.ts'
+import { describe, expect, it } from 'vitest'
 
 describe('railAction', () => {
   it('возвращается к предыдущему корню без второй записи Library', () => {
@@ -291,5 +293,36 @@ describe('openedForward', () => {
   it('запись подставил goBack или экран открыт по ссылке', () => {
     expect(openedForward({ back: null, forward: null })).toBe(false)
     expect(openedForward({})).toBe(false)
+  })
+})
+
+describe('failed episode source navigation', () => {
+  it('reuses Sources and then the original Title after repeated resolution failures', () => {
+    const keyOf = createScreenKeys()
+    const title = '/title/show'
+    const sources = `${title}/sources?season=2&episode=6&start=0`
+    const originalTitleKey = keyOf(10, title, false)
+    keyOf(11, `${title}/play`, false)
+    expect(sourcesAfterResolve('show', title)).toEqual({
+      kind: 'replace',
+      path: `${title}/sources`,
+    })
+    const originalSourcesKey = keyOf(11, `${title}/sources`, false)
+    for (let attempt = 0; attempt < 2; attempt++) {
+      keyOf(12, `${title}/play`, false)
+      expect(sourcesAfterResolve('show', sources)).toEqual({ kind: 'history' })
+      expect(keyOf(11, `${title}/sources`, true)).toBe(originalSourcesKey)
+    }
+    expect(
+      backAction(route('/title/:id/sources', { id: 'show' }), title),
+    ).toEqual({ kind: 'history' })
+    expect(keyOf(10, title, true)).toBe(originalTitleKey)
+  })
+
+  it('does not return to another title sources', () => {
+    expect(sourcesAfterResolve('show', '/title/other/sources')).toEqual({
+      kind: 'replace',
+      path: '/title/show/sources',
+    })
   })
 })

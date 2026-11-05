@@ -8,7 +8,11 @@ import { useRouter } from 'vue-router'
 import { api } from '../api.ts'
 import AppToast from '../components/AppToast.vue'
 import SourcesScreen from '../components/SourcesScreen.vue'
-import { libraryRoute } from '../lib/continue.ts'
+import {
+  libraryRoute,
+  resolveRoute,
+  withStartPosition,
+} from '../lib/continue.ts'
 import { goBack } from '../lib/navigation.ts'
 
 defineOptions({ name: 'SourcesPage' })
@@ -21,6 +25,8 @@ const props = defineProps<{
   // Открыли с «Скачать»: выбранная раздача откроет «Файлы» с отметками
   download?: boolean
   season?: string
+  episode?: string
+  start?: string
 }>()
 
 const { t } = useI18n()
@@ -49,6 +55,28 @@ async function openErrorKey(err: unknown) {
 async function open(candidate: SourceCandidate, choice: SourceChoice) {
   if (opening.value)
     return
+
+  if (
+    props.season !== undefined
+    && props.episode !== undefined
+    && !props.download
+  ) {
+    const route = resolveRoute(
+      props.id,
+      Number(props.season),
+      Number(props.episode),
+    )
+    void router.push(
+      withStartPosition(
+        {
+          ...route,
+          query: { ...route.query, candidate: candidate.id, q: choice.query },
+        },
+        props.start === '0',
+      ),
+    )
+    return
+  }
 
   opening.value = candidate.id
   openError.value = ''
@@ -85,7 +113,14 @@ function playLibrary(
   fileId: string,
   title: { season?: number | null, episode?: number | null },
 ) {
-  router.push(libraryRoute(fileId, { id: props.id, ...title }))
+  router.push(
+    withStartPosition(
+      libraryRoute(fileId, { id: props.id, ...title }),
+      props.start === '0'
+      && String(title.season) === props.season
+      && String(title.episode) === props.episode,
+    ),
+  )
 }
 
 function back() {
@@ -99,6 +134,7 @@ function back() {
       :id="id"
       :download="download"
       :season="season"
+      :episode="episode"
       :opening="opening"
       @select="open"
       @library="playLibrary"

@@ -198,8 +198,9 @@
     },
     "left": "{n} min left",
     "history": "You watched: {line}",
-    "okMark": "OK — mark as watched",
-    "okUnmark": "OK — clear watched mark",
+    "episodeActionsLoading": "Loading episode progress…",
+    "okMark": "OK — actions · hold OK — mark watched",
+    "okUnmark": "OK — actions · hold OK — clear watched mark",
     "episodeList": {
       "open": "All episodes",
       "count": "{n} episode | {n} episodes",

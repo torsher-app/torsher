@@ -82,8 +82,13 @@ export function createFocus(options: FocusOptions) {
 
   root.setAttribute(INPUT_ATTRIBUTE, engine.mode)
 
-  function longPress(el: HTMLElement) {
-    el.dispatchEvent(new CustomEvent(LONG_PRESS_EVENT, { bubbles: true }))
+  function longPress(
+    el: HTMLElement,
+    source: 'hold' | 'menu' | 'contextmenu' = 'hold',
+  ) {
+    el.dispatchEvent(
+      new CustomEvent(LONG_PRESS_EVENT, { bubbles: true, detail: { source } }),
+    )
   }
 
   // Короткое нажатие — то же, что OK движка: тихий фокус сначала показывается
@@ -118,7 +123,7 @@ export function createFocus(options: FocusOptions) {
       const el = engine.current()
 
       if (el?.hasAttribute(LONG_PRESS_ATTRIBUTE))
-        longPress(el)
+        longPress(el, 'menu')
     }
     else if (action.type === 'back') {
       options.onBack()
@@ -144,7 +149,7 @@ export function createFocus(options: FocusOptions) {
       return
 
     event.preventDefault()
-    longPress(target)
+    longPress(target, 'contextmenu')
   }
 
   // Где курсор в окне: после нативной прокрутки под ним оказывается другой элемент

@@ -82,6 +82,8 @@ export const router = createRouter({
       props: route => ({
         id: route.params.id,
         download: route.query.download === '1',
+        episode: queryOf(route.query.episode),
+        start: queryOf(route.query.start),
         season: queryOf(route.query.season),
       }),
     },
@@ -94,6 +96,7 @@ export const router = createRouter({
         torrentId: route.params.torrentId,
         season: queryOf(route.query.season),
         episode: queryOf(route.query.episode),
+        start: queryOf(route.query.start),
         download: route.query.download === '1',
       }),
     },
@@ -107,8 +110,10 @@ export const router = createRouter({
         id: route.params.id,
         season: queryOf(route.query.season),
         episode: queryOf(route.query.episode),
+        start: queryOf(route.query.start),
         torrent: queryOf(route.query.torrent),
         candidate: queryOf(route.query.candidate),
+        query: queryOf(route.query.q),
         voice: queryOf(route.query.voice),
         automatic: automaticFromQuery(
           route.query.automatic,
@@ -133,6 +138,7 @@ export const router = createRouter({
         titleId: queryOf(route.query.title),
         season: queryOf(route.query.season),
         episode: queryOf(route.query.episode),
+        start: queryOf(route.query.start),
       }),
     },
     {
@@ -145,6 +151,7 @@ export const router = createRouter({
         titleId: queryOf(route.query.title),
         season: queryOf(route.query.season),
         episode: queryOf(route.query.episode),
+        start: queryOf(route.query.start),
         voice: queryOf(route.query.voice),
         automatic: automaticFromQuery(
           route.query.automatic,

@@ -113,7 +113,7 @@ export function playerRoute(
     path: `/play/${file.torrentId}/${file.fileIndex}`,
     query: title && {
       title: title.id,
-      season: title.season ? String(title.season) : undefined,
+      season: title.season != null ? String(title.season) : undefined,
       episode: title.episode ? String(title.episode) : undefined,
       voice,
       ...automaticQuery(automatic),
@@ -131,7 +131,7 @@ export function libraryRoute(
     path: `/play/library/${mediaFileId}`,
     query: title && {
       title: title.id,
-      season: title.season ? String(title.season) : undefined,
+      season: title.season != null ? String(title.season) : undefined,
       episode: title.episode ? String(title.episode) : undefined,
       ...automaticQuery(automatic),
     },
@@ -173,6 +173,16 @@ export function automaticEpisodeRoute(
         previousTorrent,
         automatic,
       )
+}
+
+/** Явное намерение запуска относится только к выбранной серии. */
+export function withStartPosition(
+  route: ScreenRoute,
+  fromStart: boolean,
+): ScreenRoute {
+  return fromStart
+    ? { ...route, query: { ...route.query, start: '0' } }
+    : route
 }
 
 /**

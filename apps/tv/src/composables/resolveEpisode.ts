@@ -29,6 +29,8 @@ export interface ResolveOptions {
   presetId?: string
   /** Раздача, выбранная зрителем: подключаем её, ждём файлы и дальше не ищем */
   candidateId?: string
+  /** Уточнённый поисковый запрос, из которого выбран кандидат. */
+  query?: string
   /** Раздачи, где серию ищем первой: та, что смотрят, и раздача сезона */
   torrents?: (string | undefined)[]
   /** Озвучка прошлых серий: раздачи с ней пробуются первыми */
@@ -194,7 +196,10 @@ async function openAndFind(
 
   try {
     torrentId = (
-      await api.titles.postTitleOpen(target.titleId, { candidateId })
+      await api.titles.postTitleOpen(target.titleId, {
+        candidateId,
+        query: options.query,
+      })
     ).torrentId
   }
   catch {
