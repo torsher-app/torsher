@@ -28,6 +28,10 @@ The player continues from your last position, by episode rather than by file: yo
 
 When it continues, <Ui k="player.fromStart" /> appears first among the buttons. Press down to reach it.
 
+When automatically opening another episode, Torsher prefers a source you watched for at least 5% of its duration or marked watched with a saved source. A brief opening does not replace that preference. Resuming an unfinished episode keeps its own file.
+
+If the prepared episode has a confirmed lower resolution than the previous viewing, the player asks before starting. You can accept that resolution, select <Ui k="player.quality.sources" />, or go back. This compares the original files, not transcoded output. It needs a current probe of both files; if the earlier probe is unavailable, there is no warning. An explicit source or version choice plays without this extra confirmation.
+
 ## Keys
 
 | Key | Controls hidden | On the timeline |
@@ -85,7 +89,7 @@ Pick another release and the player continues from the same position, with the v
 
 ## Next episode
 
-Thirty seconds before the end of an episode, a card shows the next one with a countdown. When it reaches zero or the episode ends, the next episode starts.
+The next-episode card appears during detected credits or in the last 60 seconds. The countdown appears only in the last 30 seconds. Automatic playback starts at the end of the file; showing the card early does not skip the ending. After a detected credits section ends, the early card disappears until the last minute.
 
 - **OK** starts it right away, while the controls are hidden.
 - **Back** cancels it until the end of this episode.

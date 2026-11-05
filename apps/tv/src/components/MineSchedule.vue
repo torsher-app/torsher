@@ -209,12 +209,18 @@ function open(item: ScheduleItem) {
 
   router.push(
     item.mediaFileId
-      ? libraryRoute(item.mediaFileId, {
-          id: item.titleId,
-          season: item.season,
-          episode: item.episode,
-        })
-      : resolveRoute(item.titleId, item.season, item.episode),
+      ? libraryRoute(
+          item.mediaFileId,
+          {
+            id: item.titleId,
+            season: item.season,
+            episode: item.episode,
+          },
+          { kind: 'continuation' },
+        )
+      : resolveRoute(item.titleId, item.season, item.episode, undefined, {
+          kind: 'continuation',
+        }),
   )
 }
 

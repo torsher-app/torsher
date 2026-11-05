@@ -48,7 +48,7 @@ describe('continue playback', () => {
     )
     expect(push).toHaveBeenCalledExactlyOnceWith({
       path: '/play/library/local',
-      query,
+      query: { ...query, automatic: '1' },
     })
   })
 
@@ -80,7 +80,7 @@ describe('continue playback', () => {
     await useContinuePlayback(shallowRef()).resume('show', next)
     expect(push).toHaveBeenCalledExactlyOnceWith({
       path: '/play/second/3',
-      query,
+      query: { ...query, automatic: '1' },
     })
   })
 
@@ -89,7 +89,7 @@ describe('continue playback', () => {
     await useContinuePlayback(shallowRef()).resume('show', next)
     expect(push).toHaveBeenCalledExactlyOnceWith({
       path: '/title/show/play',
-      query: { season: '2', episode: '1', torrent: undefined },
+      query: { season: '2', episode: '1', torrent: undefined, automatic: '1' },
     })
   })
 
@@ -108,7 +108,7 @@ describe('continue playback', () => {
       expect(library).toHaveBeenCalledTimes(1)
       expect(push).toHaveBeenCalledExactlyOnceWith({
         path: '/play/original/2',
-        query,
+        query: { ...query, automatic: flags.next ? '1' : undefined },
       })
     },
   )
@@ -123,7 +123,12 @@ describe('continue playback', () => {
     })
     expect(push).toHaveBeenCalledExactlyOnceWith({
       path: '/title/show/play',
-      query: { season: '2', episode: '1', torrent: undefined },
+      query: {
+        season: '2',
+        episode: '1',
+        torrent: undefined,
+        automatic: undefined,
+      },
     })
   })
 

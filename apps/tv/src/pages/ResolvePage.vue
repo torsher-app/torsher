@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { AutomaticPlayback } from '../lib/continue.ts'
 import type { ResolveStep } from '../composables/resolveEpisode.ts'
 import type { KeyAction } from '../focus/index.ts'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
@@ -34,6 +35,7 @@ const props = defineProps<{
   candidate?: string
   // Озвучка, которую слушали в прошлой раздаче: плеер возьмёт её дорожку
   voice?: string
+  automatic?: AutomaticPlayback
 }>()
 
 const { t } = useI18n()
@@ -96,19 +98,27 @@ async function run() {
   // Раздача сезона и озвучка прошлых серий — из прогресса; без него ищем по
   // порядку сервера
   const progress = await api.titles
-    .getTitleProgress(props.id, { language: language.value })
+    .getTitleProgress(props.id, {
+      language: language.value,
+      season: props.season,
+      episode: props.episode,
+    })
     .catch(() => undefined)
   const releases = progress?.seasonReleases ?? []
   const season = target.season ?? 0
   const outcome = await resolveEpisode(target, {
     candidateId: props.candidate,
     torrents: [
-      props.torrent,
-      releases.find(
-        item =>
-          item.season === season
-          && (!target.episode || item.episodes.includes(target.episode)),
-      )?.torrentId,
+      props.automatic && progress?.continuation !== undefined
+        ? progress.continuation.preferredTorrent?.torrentId
+        : props.torrent,
+      props.automatic && progress?.continuation !== undefined
+        ? undefined
+        : releases.find(
+          item =>
+            item.season === season
+            && (!target.episode || item.episodes.includes(target.episode)),
+        )?.torrentId,
     ],
     voiceKey: lastVoiceKey(releases, season),
     cancelled: () => cancelled,
@@ -128,6 +138,7 @@ async function run() {
           episode: target.episode,
         },
         props.voice,
+        props.candidate ? undefined : props.automatic,
       ),
       state: {
         loaderShown: performance.now() - mountedAt >= LOADER_DELAY_MS,

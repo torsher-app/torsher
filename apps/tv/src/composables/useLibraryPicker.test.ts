@@ -68,10 +68,14 @@ describe('library version selection', () => {
     picker.select('hidden-or-removed')
     expect(play).not.toHaveBeenCalled()
     picker.select('previous')
-    expect(play).toHaveBeenCalledExactlyOnceWith('previous', {
-      season: 1,
-      episode: 2,
-    })
+    expect(play).toHaveBeenCalledExactlyOnceWith(
+      'previous',
+      {
+        season: 1,
+        episode: 2,
+      },
+      true,
+    )
     expect(picker.selection.value).toBeUndefined()
   })
 

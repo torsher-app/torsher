@@ -444,7 +444,35 @@ export const seasonRelease = z
   })
   .meta({ id: 'seasonRelease' })
 
+export const continuation = z
+  .object({
+    target: z.object({ season: z.number(), episode: z.number() }),
+    preferredTorrent: episodeFile.nullable(),
+    baseline: z
+      .object({
+        file: z.discriminatedUnion('kind', [
+          z.object({
+            kind: z.literal('torrent'),
+            torrentId: z.string(),
+            fileIndex: z.number(),
+          }),
+          z.object({ kind: z.literal('library'), mediaFileId: z.string() }),
+        ]),
+        video: z
+          .object({
+            width: z.number(),
+            height: z.number(),
+            basis: z.literal('probe'),
+          })
+          .nullable(),
+      })
+      .nullable(),
+  })
+  .meta({ id: 'continuation' })
+
 export const titleProgressQuery = z.object({
+  season: number(999).optional(),
+  episode: number(9999).optional(),
   // Язык деталей TMDB: по ним ищется следующая вышедшая серия, кэш общий с карточкой
   language: tmdbLanguage,
 })
@@ -462,6 +490,7 @@ export const resumeTarget = z
     file: episodeFile.nullable(),
     // Доступный профилю файл библиотеки, который он продолжает
     mediaFileId: z.string().nullable().optional(),
+    continuation: continuation.optional(),
   })
   .meta({ id: 'resumeTarget' })
 
@@ -469,6 +498,7 @@ export const titleProgress = z
   .object({
     // Что продолжать: начатая серия или следующая; null — продолжать нечего
     resume: resumeTarget.nullable(),
+    continuation: continuation.optional(),
     // Последняя начатая серия; у фильма сезон и серия — null
     last: z
       .object({
@@ -520,3 +550,5 @@ export const playbackTitle = z
     episode: z.number().int().min(1).max(9999).optional(),
   })
   .meta({ id: 'playbackTitle' })
+
+export type Continuation = z.infer<typeof continuation>

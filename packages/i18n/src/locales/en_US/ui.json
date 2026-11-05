@@ -620,7 +620,13 @@
       "copied": "Copied"
     },
     "skipIntro": "Skip intro",
-    "skipCredits": "Skip credits"
+    "skipCredits": "Skip credits",
+    "quality": {
+      "title": "Lower source quality",
+      "text": "This episode has a lower resolution than your previous viewing.",
+      "watch": "Watch in {quality}",
+      "sources": "Choose a source"
+    }
   },
   "languages": {
     "rus": "Russian",

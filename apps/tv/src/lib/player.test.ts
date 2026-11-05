@@ -470,9 +470,16 @@ describe('canDimPause', () => {
 describe('следующая серия', () => {
   const base = { available: true, dismissed: false, ended: false }
 
-  it('за 30 с до конца и в конце, если не отменили', () => {
-    expect(upNextVisible({ ...base, remaining: 31 })).toBe(false)
-    expect(upNextVisible({ ...base, remaining: 30 })).toBe(true)
+  it('за 60 с до конца и в конце, если не отменили', () => {
+    expect(upNextVisible({ ...base, remaining: 61 })).toBe(false)
+    for (const remaining of [60, 41.322, 30, 0])
+      expect(upNextVisible({ ...base, remaining })).toBe(true)
+    expect(upNextVisible({ ...base, remaining: 300, credits: true })).toBe(
+      true,
+    )
+    expect(upNextVisible({ ...base, remaining: 300, credits: false })).toBe(
+      false,
+    )
     expect(upNextVisible({ ...base, remaining: 600, ended: true })).toBe(true)
     expect(upNextVisible({ ...base, remaining: 10, dismissed: true })).toBe(
       false,
@@ -487,7 +494,7 @@ describe('следующая серия', () => {
     const prompt = (remaining: number, override: Partial<typeof base> = {}) =>
       playerPrompt(upNextVisible({ ...base, remaining, ...override }), true)
 
-    expect(prompt(31)).toBe('skip')
+    expect(prompt(61)).toBe('skip')
     expect(prompt(30)).toBe('upNext')
     expect(prompt(10, { dismissed: true })).toBe('skip')
     expect(prompt(10, { available: false })).toBe('skip')

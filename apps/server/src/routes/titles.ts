@@ -1,3 +1,4 @@
+import { continuationFor } from '../services/sources/continuation.ts'
 import { localTitleImage } from '../services/library/images.ts'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import type { EngineTorrentState } from '../services/engine/index.ts'
@@ -357,7 +358,29 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
       const resume = await resumeTarget(request.profileId, id, () =>
         airedSeasons(id, request.query.language).catch(() => undefined))
 
+      const target
+        = request.query.season && request.query.episode
+          ? {
+              season: Number(request.query.season),
+              episode: Number(request.query.episode),
+            }
+          : resume?.season && resume.episode
+            ? { season: resume.season, episode: resume.episode }
+            : undefined
+      const continuation = target
+        ? await continuationFor(request.profileId, id, target)
+        : undefined
+      if (
+        resume?.next
+        && !resume.position
+        && continuation?.preferredTorrent
+        && resume.season === target?.season
+        && resume.episode === target?.episode
+      ) {
+        resume.file = continuation.preferredTorrent
+      }
       return {
+        continuation,
         resume: resume
           ? {
               season: resume.season,
@@ -365,6 +388,11 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
               position: resume.position,
               duration: resume.duration,
               next: resume.next,
+              continuation:
+                resume.season === target?.season
+                && resume.episode === target?.episode
+                  ? continuation
+                  : undefined,
               ...visibleResumeSource(request.profileId, resume),
             }
           : null,

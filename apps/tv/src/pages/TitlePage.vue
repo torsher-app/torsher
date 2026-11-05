@@ -494,7 +494,12 @@ function onPrimary() {
   const own = fromLibrary.value
 
   if (own) {
-    openLibrary(props.id, libraryChoice.value, resume.value?.mediaFileId)
+    openLibrary(
+      props.id,
+      libraryChoice.value,
+      resume.value?.mediaFileId,
+      resume.value?.next !== false && !resume.value?.position,
+    )
   }
   else if (resume.value) {
     void continuePlayback(props.id, resume.value)
@@ -504,7 +509,9 @@ function onPrimary() {
 
     router.push(
       season
-        ? resolveRoute(props.id, season, episode)
+        ? resolveRoute(props.id, season, episode, undefined, {
+            kind: 'continuation',
+          })
         : { path: `/title/${props.id}/play` },
     )
   }
