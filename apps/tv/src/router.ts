@@ -114,6 +114,7 @@ export const router = createRouter({
         torrent: queryOf(route.query.torrent),
         candidate: queryOf(route.query.candidate),
         query: queryOf(route.query.q),
+        intent: queryOf(route.query.intent),
         voice: queryOf(route.query.voice),
         automatic: automaticFromQuery(
           route.query.automatic,

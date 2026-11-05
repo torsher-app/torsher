@@ -1,3 +1,5 @@
+import { updateFollow } from './index.ts'
+import { pickCandidate } from './pick.ts'
 import type { Follow } from '../../db/schema.ts'
 import { and, eq } from 'drizzle-orm'
 import {
@@ -34,6 +36,7 @@ import {
   announceLibrary,
   announceMissing,
   announceOtherVoice,
+  announceReady,
   announceWaiting,
   episodesText,
   LIBRARY_HOLD_MS,
@@ -469,4 +472,67 @@ describe('проблемы «Следить» через монитор', () => 
     expect(state()).toMatchObject({ failureCount: 0, backoffSince: null })
     expect(followAttention()).toEqual([])
   })
+})
+
+it('ready notification commits no marker when policy changes while title names load', async () => {
+  const follow = insertFollow({
+    mode: 'notify',
+    audio: 'ru',
+    voiceMode: 'only',
+    voiceStudio: 'LostFilm',
+    voiceStrict: true,
+  })
+  const episode = { season: 2, episode: 8 }
+  const firstSeenAt = new Date()
+  getDb()
+    .insert(followEpisodes)
+    .values({
+      followId: follow.id,
+      ...episode,
+      firstSeenAt,
+      picked: {
+        id: 'old',
+        title: 'Quiet Harbor S02E08 1080p LostFilm',
+        studio: 'LostFilm',
+        seeders: 10,
+      },
+      pickedAt: firstSeenAt,
+    })
+    .run()
+  const entered = Promise.withResolvers<void>()
+  const resume = Promise.withResolvers<void>()
+  const originalFetch = fetchMock.getMockImplementation()!
+  let held = false
+  fetchMock.mockImplementation(async (input, init) => {
+    if (!held && new URL(String(input)).hostname === 'api.themoviedb.org') {
+      held = true
+      entered.resolve()
+      await resume.promise
+    }
+    return originalFetch(input, init)
+  })
+  const announcing = announceReady(follow)
+  await entered.promise
+  const current = updateFollow(follow.id, {
+    rules: { voicePolicy: { mode: 'only', studio: 'NewStudio' } },
+  })!
+  resume.resolve()
+  await announcing
+  expect(inbox().filter(row => row.kind === 'follow_ready')).toHaveLength(0)
+  expect(getDb().select().from(followEpisodes).get()?.notifiedAt).toBeNull()
+  await pickCandidate(
+    current,
+    {
+      id: 'new',
+      title: 'Quiet Harbor S02E08 1080p NewStudio',
+      studio: 'NewStudio',
+      seeders: 10,
+    },
+    [episode],
+  )
+  await Promise.all([announceReady(current), announceReady(current)])
+  expect(inbox().filter(row => row.kind === 'follow_ready')).toHaveLength(1)
+  expect(
+    getDb().select().from(followEpisodes).get()?.notifiedAt,
+  ).not.toBeNull()
 })

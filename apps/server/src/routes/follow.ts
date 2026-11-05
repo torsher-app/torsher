@@ -12,8 +12,11 @@ import {
   followLanguageQuery,
   followListResponse,
   followParams,
+  followPickUnavailable,
   followQueueResponse,
   followTitle as followTitleBody,
+  followVoicesQuery,
+  followVoicesResponse,
   openFollowPick,
   scheduleResponse,
   titleFollowResponse,
@@ -44,6 +47,7 @@ import {
   followQueue,
 } from '../services/follow/panel.ts'
 import { openPick, PickError } from '../services/follow/pick.ts'
+import { followVoiceOptions } from '../services/follow/voiceOptions.ts'
 import { requestFollowSearch } from '../services/follow/search.ts'
 import {
   followDetailsOf,
@@ -107,6 +111,31 @@ export const followRoutes: FastifyPluginAsyncZod = async (app) => {
         request.profileId,
         canManageLibrary(request),
         request.query.language,
+      )
+    },
+  )
+
+  app.get(
+    '/titles/:id/follow/voices',
+    {
+      onRequest: requireViewer,
+      schema: {
+        operationId: 'getFollowVoices',
+        tags: ['Follow'],
+        params: titleParams,
+        querystring: followVoicesQuery,
+        response: { 200: followVoicesResponse, ...viewerErrors, ...tmdbErrors },
+      },
+    },
+    async (request, reply) => {
+      if (!parseCatalogId(request.params.id))
+        return reply.code(404).send(titleNotFound)
+      if (request.query.refresh && !canManageLibrary(request))
+        return reply.code(403).send({ message: 'follow_rules_forbidden' })
+      return followVoiceOptions(
+        request.params.id,
+        request.query.season,
+        request.query.refresh === '1',
       )
     },
   )
@@ -196,6 +225,7 @@ export const followRoutes: FastifyPluginAsyncZod = async (app) => {
         response: {
           200: titleOpen,
           ...viewerErrors,
+          409: followPickUnavailable,
           422: watchErrorResponse,
           503: engineUnavailableResponse,
           504: messageResponse,
@@ -213,6 +243,11 @@ export const followRoutes: FastifyPluginAsyncZod = async (app) => {
       }
       catch (err) {
         if (err instanceof PickError) {
+          if (err.kind === 'follow_pick_unavailable') {
+            return reply
+              .code(409)
+              .send({ message: err.message, kind: err.kind })
+          }
           return err.kind === 'no_pick'
             ? reply.code(404).send({ message: err.message })
             : reply

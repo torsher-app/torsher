@@ -1,3 +1,4 @@
+import { durableSqlite } from '../libraryMaintenance/durable.ts'
 import { withMaintenanceLease } from '../libraryMaintenance/admission.ts'
 import {
   hasSuppressed,
@@ -58,6 +59,7 @@ import {
 import { recordHistory } from './history.ts'
 import { announceTopicUpdated } from './notify.ts'
 import { followById } from './index.ts'
+import { permitsCandidate, voiceFingerprint, voiceGuard } from './voice.ts'
 import { episodeKey } from './wanted.ts'
 
 // Сверка читает сезон целиком: после сбоя движка или диска подмена ждёт, а
@@ -333,6 +335,10 @@ export async function startRefresh(
     episodes,
     candidate,
     stage: 'prepare',
+    rulesFingerprint: voiceFingerprint(
+      follow,
+      episodes.map(item => item.season),
+    ),
   })
   updateEpisodes(follow, episodes, {
     torrentId: next.id,
@@ -347,6 +353,7 @@ export async function startRefresh(
 }
 
 interface RefreshContext {
+  isCurrent: () => boolean
   topic: TrackedTopic
   refresh: TopicRefresh
   follow: Follow
@@ -412,6 +419,15 @@ async function restoreOld(refresh: TopicRefresh, old: Torrent | undefined) {
   }
 }
 
+async function cancelRefresh(ctx: RefreshContext): Promise<GrabResult> {
+  // Never clear durable recovery before restoring the forgotten old torrent.
+  await restoreOld(ctx.refresh, ctx.old)
+  await unlinkCarried(ctx.old, ctx.next, ctx.map, ctx.dir)
+  setRefresh(ctx.topic.id, null)
+  resetEpisodes(ctx.follow, ctx.refresh.episodes)
+  return 'later'
+}
+
 /**
  * Запасной путь: новая версия качается рядом обычным захватом только с
  * сериями кандидата, старая остаётся. Поставленные ссылки убираются, а
@@ -420,8 +436,12 @@ async function restoreOld(refresh: TopicRefresh, old: Torrent | undefined) {
 async function fallBack(ctx: RefreshContext, now: Date) {
   const { topic, refresh, follow, next, old, dir, map } = ctx
 
+  if (!ctx.isCurrent())
+    return cancelRefresh(ctx)
   await unlinkCarried(old, next, map, dir)
   await restoreOld(refresh, old)
+  if (!ctx.isCurrent())
+    return cancelRefresh(ctx)
   setRefresh(topic.id, null)
 
   const result = await startGrab(
@@ -429,7 +449,7 @@ async function fallBack(ctx: RefreshContext, now: Date) {
     next,
     refresh.candidate,
     refresh.episodes,
-    { now },
+    { now, isCurrent: ctx.isCurrent },
   )
 
   if (result === 'started') {
@@ -461,10 +481,14 @@ async function prepare(
 ): Promise<GrabResult | undefined> {
   const { topic, refresh, follow, next, old, dir, map } = ctx
   const sameName = old.name === next.name
+  if (!ctx.isCurrent())
+    return cancelRefresh(ctx)
 
   // Новую версию уже смотрели: в движке она лежит в чужом каталоге
   if (next.inEngine)
     await forgetKeepingFiles(next)
+  if (!ctx.isCurrent())
+    return cancelRefresh(ctx)
 
   if (!sameName) {
     try {
@@ -478,6 +502,8 @@ async function prepare(
     }
   }
 
+  if (!ctx.isCurrent())
+    return cancelRefresh(ctx)
   let onDisk: string[]
 
   try {
@@ -504,6 +530,8 @@ async function prepare(
     return fallBack(ctx, now)
   }
 
+  if (!ctx.isCurrent())
+    return cancelRefresh(ctx)
   const files = filesFor(next, refresh.title, follow.kind, refresh.episodes)
   const absent = refresh.episodes.filter(
     item => !files.has(episodeKey(item)),
@@ -548,7 +576,11 @@ async function prepare(
     if (!(err instanceof InsufficientStorageError))
       throw err
 
+    if (!ctx.isCurrent())
+      return cancelRefresh(ctx)
     await unlinkCarried(old, next, map, dir)
+    if (!ctx.isCurrent())
+      return cancelRefresh(ctx)
     setRefresh(topic.id, null)
     updateEpisodes(follow, refresh.episodes, {
       torrentId: null,
@@ -561,25 +593,27 @@ async function prepare(
     return 'no_space'
   }
 
+  if (!ctx.isCurrent())
+    return cancelRefresh(ctx)
   if (old.inEngine) {
     await forgetKeepingFiles(old)
     refresh.forgotten = true
     setRefresh(topic.id, refresh)
   }
 
-  // Не сошедшееся anacrolix переписал бы на месте, а файл загрузок бывает
-  // хардлинком файла библиотеки: новая версия ляжет в новый inode
-  await removeFiles(
-    changed.flatMap(index => diskPathOf(next, index, dir) ?? []),
-    join(dir, next.name),
-  )
+  if (!ctx.isCurrent())
+    return cancelRefresh(ctx)
 
+  // This durable boundary precedes the first destructive unlink. From here
+  // recovery must finish the accepted replacement even if policy changes.
   Object.assign(refresh, {
+    stage: 'committing',
     selection,
     downloadDir: old.downloadDir,
     redownload: changed,
   })
   delete refresh.retryAt
+  durableSqlite(getDb().$client, () => setRefresh(topic.id, refresh))
   return undefined
 }
 
@@ -603,7 +637,7 @@ function relink(ctx: RefreshContext, now: Date) {
   })
   const db = getDb()
 
-  db.transaction(() => {
+  durableSqlite(db.$client, () => {
     protectReplacement(old.id, next.id)
     relinkMediaFiles(old.id, next.id, map, new Set(refresh.redownload ?? []))
     relinkTitleProgress(old.id, next.id, map)
@@ -696,6 +730,22 @@ function relink(ctx: RefreshContext, now: Date) {
   )
 }
 
+/** Replayable commit: unlink only the persisted changed paths, then relink. */
+async function commitRefresh(ctx: RefreshContext, now: Date) {
+  const { topic, refresh, follow, next, dir } = ctx
+  // Shared names point to the old bytes. Cancellation after this await would
+  // leave the old torrent incomplete; the committing journal must survive errors.
+  await removeFiles(
+    (refresh.redownload ?? []).flatMap(
+      index => diskPathOf(next, index, dir) ?? [],
+    ),
+    join(dir, next.name),
+  )
+  relink(ctx, now)
+  await announceUpdate(follow, topic, refresh)
+  return runRefresh(topic.id, now)
+}
+
 /** Новая версия — в движок, в каталог старой, с сохранённым выбором */
 async function addNext(topic: TrackedTopic, refresh: TopicRefresh) {
   const next = getTorrent(refresh.torrentId)
@@ -761,6 +811,8 @@ async function runRefreshImpl(
 
   // Слежение или новую версию удалили: подменять нечем
   if (!follow || !next) {
+    if (refresh.stage === 'committing')
+      return 'later'
     await restoreOld(refresh, old)
     setRefresh(topic.id, null)
 
@@ -770,6 +822,44 @@ async function runRefreshImpl(
     return undefined
   }
 
+  const guard = voiceGuard(
+    follow,
+    refresh.episodes.map(item => item.season),
+  )
+  const isCurrent = () =>
+    guard()
+    && follow.state === 'active'
+    && (!refresh.rulesFingerprint
+      || refresh.rulesFingerprint
+      === voiceFingerprint(
+        follow,
+        refresh.episodes.map(item => item.season),
+      ))
+      && refresh.episodes.every(item =>
+        permitsCandidate(follow, refresh.candidate, item.season),
+      )
+  const ctx = old?.files
+    ? ({
+        topic,
+        refresh,
+        follow,
+        next,
+        old,
+        isCurrent,
+        dir: resolve(torrentDir(old)),
+        map: carryMap(old, next),
+      } satisfies RefreshContext)
+    : undefined
+  if (refresh.stage === 'committing')
+    return ctx ? commitRefresh(ctx, now) : 'later'
+  if (!isCurrent()) {
+    if (ctx)
+      return cancelRefresh(ctx)
+    await restoreOld(refresh, old)
+    setRefresh(topic.id, null)
+    resetEpisodes(follow, refresh.episodes)
+    return 'later'
+  }
   if (next.status === 'resolving')
     return 'resolving'
 
@@ -785,6 +875,7 @@ async function runRefreshImpl(
     setRefresh(topic.id, null)
     return startGrab(follow, next, refresh.candidate, refresh.episodes, {
       now,
+      isCurrent,
     })
   }
 
@@ -797,16 +888,7 @@ async function runRefreshImpl(
     return 'later'
   }
 
-  const ctx: RefreshContext = {
-    topic,
-    refresh,
-    follow,
-    next,
-    old,
-    dir: resolve(torrentDir(old)),
-    map: carryMap(old, next),
-  }
-  const result = await prepare(ctx, now)
+  const result = await prepare(ctx!, now)
 
   if (result)
     return result
@@ -814,9 +896,7 @@ async function runRefreshImpl(
   if (!topicById(topic.id)?.refresh)
     return undefined
 
-  relink(ctx, now)
-  await announceUpdate(follow, topic, refresh)
-  return runRefresh(topic.id, now)
+  return commitRefresh(ctx!, now)
 }
 export function runRefresh(...args: Parameters<typeof runRefreshImpl>) {
   return withMaintenanceLease(

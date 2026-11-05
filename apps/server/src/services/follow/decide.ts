@@ -92,6 +92,7 @@ function reject(code: RejectionCode, params?: Rejection['params']): Rejection {
 export interface DecideContext {
   kind: 'movie' | 'series'
   preset: FollowQualityPreset
+  voiceMode?: 'auto' | 'prefer' | 'only' | 'any' | null
   voiceStrict: boolean
   requireRussian: boolean
   waitHours: number
@@ -228,7 +229,7 @@ function hasOwnVoice(release: ReleaseVersion, voice: VoiceRef | undefined) {
 
 type AudioContext = Pick<
   DecideContext,
-  'russianOriginal' | 'profile' | 'audio' | 'originalLanguage'
+  'russianOriginal' | 'profile' | 'audio' | 'originalLanguage' | 'voiceMode'
 >
 
 /**
@@ -249,8 +250,13 @@ function isVoiceAtCutoff(
   })
   if (!match || match.priority !== 0)
     return false
-  if (audio === 'original' || (audio === 'ru' && ctx.russianOriginal))
+  if (
+    (audio === 'ru' && ctx.voiceMode === 'any')
+    || audio === 'original'
+    || (audio === 'ru' && ctx.russianOriginal)
+  ) {
     return true
+  }
   if (audio === 'ru' && season.voice)
     return hasOwnVoice(release, season.voice)
   return (
@@ -273,7 +279,10 @@ export function positionOf(
   })
   return {
     audioPriority: preference?.priority ?? Number.MAX_SAFE_INTEGER,
-    typePriority: preference?.typePriority ?? Number.MAX_SAFE_INTEGER,
+    typePriority:
+      ctx.voiceMode === 'any' && audioLanguagesOf(ctx)[0] === 'ru'
+        ? 0
+        : (preference?.typePriority ?? Number.MAX_SAFE_INTEGER),
     voiceAtCutoff: isVoiceAtCutoff(version, season, ctx),
     step:
       ladderStep(version.resolution?.value, ctx.preset)

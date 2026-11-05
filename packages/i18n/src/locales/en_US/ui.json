@@ -3330,6 +3330,7 @@
     },
     "follow": {
       "title": "Following",
+      "chooseInShowcase": "Choose a title in the showcase",
       "movieLabel": "Movie",
       "and": " and ",
       "noDate": "date unknown",
@@ -3356,8 +3357,8 @@
         "reset": "Reset filters"
       },
       "empty": {
-        "title": "Follow a series on the TV",
-        "text": "Press “Follow” on a title page on the TV: Torsher finds new episodes on its own, in your voice-over and the best quality released.",
+        "title": "Follow a title in the showcase",
+        "text": "Open a movie or series in the showcase and select “Follow”. Torsher finds new releases according to the shared rules.",
         "foot": "Rules, found releases and history of every follow will show up here."
       },
       "policy": {
@@ -3938,7 +3939,20 @@
       "title": "Not in your library",
       "text": "Your library has no file of this episode."
     },
-    "toSources": "To sources"
+    "toSources": "To sources",
+    "followUnavailable": {
+      "title": "Ready selection is no longer available",
+      "text": "This selection no longer meets the following rules. Return to the title for its updated status or choose a source yourself."
+    },
+    "retry": "Retry",
+    "followOpenFailed": {
+      "title": "Could not open the ready selection",
+      "text": "The server or playback engine could not open this selection. Retry, return to the title, or choose a source yourself."
+    },
+    "followUnsupported": {
+      "title": "Ready selection could not be found",
+      "text": "The server could not find this selection or does not support opening it. Retry, return to the title, or choose a source yourself."
+    }
   },
   "crew": {
     "jobs": {
@@ -4057,7 +4071,9 @@
       "date": "{date}, {time}"
     },
     "voiceQuality": "{voice} in {quality}",
+    "subscribedPaused": "You’re subscribed. Following remains paused by the owner.",
     "panel": {
+      "sharedRules": "Rules are shared by all subscribed profiles.",
       "mode": "New episode",
       "voice": "Audio",
       "wait": "Wait for better",
@@ -4125,7 +4141,53 @@
     },
     "badge": "Following",
     "badgeNew": "Following · {n} new episodes",
-    "newEpisode": "New episode"
+    "newEpisode": "New episode",
+    "studio": {
+      "title": "Studio",
+      "auto": "Automatic",
+      "prefer": "Prefer a studio",
+      "only": "Only one studio",
+      "any": "Any studio",
+      "legacy": "Previous rule",
+      "preferValue": "Prefer {studio}",
+      "onlyValue": "Only {studio}",
+      "autoHint": "Use this season’s studio, then the previous season, then server preferences.",
+      "preferHint": "Wait for the selected studio, then allow another suitable release.",
+      "onlyHint": "Accept only releases that include the selected studio.",
+      "anyHint": "Do not wait for a studio or translation type. Language and quality rules still apply.",
+      "trackHint": "Selects releases, not the audio track in the player. Your selected track is preserved.",
+      "oldServer": "Update the server to choose a studio policy. Previous studio rules remain in effect.",
+      "inactive": "Saved studio policy is inactive outside Russian audio.",
+      "find": "Find studios",
+      "refresh": "Refresh studios",
+      "searching": "Finding studios…",
+      "saving": "Saving…",
+      "found": "Found in cached releases",
+      "saved": "Saved or current studio; availability is not confirmed",
+      "context": "Studios for season {season}",
+      "error": "Could not load studios. Your saved choice is unchanged; try again.",
+      "partial": "Some indexers did not respond",
+      "cacheMiss": "No cached search. Choose Find studios to search.",
+      "updated": "Updated {date}",
+      "stale": "Cached results are out of date",
+      "noIndexers": "No indexers configured",
+      "empty": "No studios found",
+      "choose": "Choose a studio",
+      "manual": "Or enter a studio name",
+      "manualHint": "Enter the full studio name. Known aliases are recognized.",
+      "required": "Enter a studio name",
+      "sources": {
+        "explicit": "Current result: {studio} (explicit rule)",
+        "season_pin": "Current result: {studio} (season {season})",
+        "inherited_pin": "Current result: {studio} (inherited from season {season})",
+        "profile": "Current result uses server preferences",
+        "none": "No studio resolved"
+      },
+      "contextMovie": "Studios for this movie",
+      "missingStudio": "Studio not listed?",
+      "chooseFromList": "Choose from the list",
+      "unknown": "Studio not recognized. Choose a listed studio or enter its full name."
+    }
   },
   "release": {
     "unsure": "Looks like “{title}”",

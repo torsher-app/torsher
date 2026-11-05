@@ -10,11 +10,17 @@ import { cutoffStepOf } from './decide.ts'
 import { waitTargets } from './episodes.ts'
 import { QUALITY_LADDERS } from './rank.ts'
 import { compareEpisodes, episodeKey, WANTED_STATES } from './wanted.ts'
-import { seasonVoice } from './voice.ts'
+import { resolveVoice, seasonVoice } from './voice.ts'
 
 type FollowStatus = Pick<
   NonNullable<TitleFollowResponse['follow']>,
-  'season' | 'voice' | 'quality' | 'waiting' | 'counts' | 'first'
+  | 'season'
+  | 'voice'
+  | 'voiceResolution'
+  | 'quality'
+  | 'waiting'
+  | 'counts'
+  | 'first'
 >
 
 const FIRST_KEYS: Partial<
@@ -41,7 +47,7 @@ export function firstEpisodes(states: EpisodeWithState[]) {
 }
 
 /** Сезон статуса: первой нужной серии, иначе следующей невышедшей, иначе курсора */
-function statusSeason(follow: Follow, states: EpisodeWithState[]) {
+export function statusSeason(follow: Follow, states: EpisodeWithState[]) {
   if (follow.kind === 'movie')
     return 0
 
@@ -104,6 +110,7 @@ export function followStatus(
 
   return {
     season,
+    voiceResolution: resolveVoice(follow, season),
     voice: voice
       ? { ...voice, pinned: !!getPinnedVoice(follow.titleId, season) }
       : null,

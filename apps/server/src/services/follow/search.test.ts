@@ -67,6 +67,7 @@ function follow(overrides: Partial<Follow> = {}): Follow {
     state: 'active',
     startSeason: 1,
     startEpisode: 1,
+    voiceMode: null,
     voiceStudio: null,
     voiceStrict: false,
     requireRussian: true,

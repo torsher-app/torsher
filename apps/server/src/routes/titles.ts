@@ -1,4 +1,8 @@
 import { continuationFor } from '../services/sources/continuation.ts'
+import { getPinnedVoice } from '../services/sources/voices.ts'
+import { followOf } from '../services/follow/index.ts'
+import { forgetAudioPending } from '../services/follow/audio.ts'
+import { invalidateVoicePicks } from '../services/follow/invalidation.ts'
 import { localTitleImage } from '../services/library/images.ts'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import type { EngineTorrentState } from '../services/engine/index.ts'
@@ -276,7 +280,18 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
 
       const { season, voice } = request.body
 
+      const before = getPinnedVoice(request.params.id, season)
       pinVoice(request.params.id, season, voice)
+      const follow = followOf(request.params.id)
+      if (
+        follow
+        && (!follow.voiceMode || follow.voiceMode === 'auto')
+        && JSON.stringify(before)
+        !== JSON.stringify(getPinnedVoice(request.params.id, season))
+      ) {
+        forgetAudioPending([follow.id])
+        invalidateVoicePicks(follow)
+      }
 
       return { season, voice }
     },

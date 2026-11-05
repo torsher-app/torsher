@@ -15,6 +15,7 @@ import {
   titleNextEpisode,
   tmdbLanguage,
 } from './catalog.ts'
+import { sourceErrorKinds } from './sources.ts'
 import { voiceTypes } from './titles.ts'
 
 export const followParams = z.object({
@@ -26,7 +27,77 @@ export const followLanguageQuery = z.object({
   language: tmdbLanguage,
 })
 
+export const voicePolicy = z
+  .discriminatedUnion('mode', [
+    z.object({ mode: z.literal('auto') }),
+    z.object({ mode: z.literal('any') }),
+    z.object({
+      mode: z.literal('prefer'),
+      studio: z.string().trim().min(1).max(100),
+    }),
+    z.object({
+      mode: z.literal('only'),
+      studio: z.string().trim().min(1).max(100),
+    }),
+  ])
+  .meta({ id: 'followVoicePolicy' })
+
+export const voiceResolution = z
+  .object({
+    season: z.number().int(),
+    studio: z.string().optional(),
+    type: z.enum(voiceTypes).optional(),
+    source: z.enum([
+      'explicit',
+      'season_pin',
+      'inherited_pin',
+      'profile',
+      'none',
+    ]),
+    sourceSeason: z.number().int().nullable(),
+    active: z.boolean(),
+  })
+  .meta({ id: 'followVoiceResolution' })
+
+export const followVoicesQuery = z.object({
+  season: z.coerce.number().int().min(0).max(999),
+  refresh: z.literal('1').optional(),
+})
+export const followVoicesResponse = z
+  .object({
+    season: z.number().int(),
+    updatedAt: z.string().nullable(),
+    stale: z.boolean(),
+    cache: z.enum(['miss', 'hit']),
+    indexerCount: z.number().int(),
+    failed: z.array(
+      z.object({
+        id: z.string(),
+        name: z.string(),
+        kind: z.enum([...sourceErrorKinds, 'skipped']),
+      }),
+    ),
+    items: z.array(
+      z.object({
+        studio: z.string(),
+        types: z.array(z.enum(voiceTypes)),
+        count: z.number().int(),
+        seeders: z.number().int(),
+        maxQuality: z.enum(['2160p', '1080p', '720p', 'SD']).optional(),
+        found: z.boolean(),
+        saved: z.boolean(),
+        inherited: z.boolean(),
+      }),
+    ),
+  })
+  .meta({ id: 'followVoicesResponse' })
+export const followPickUnavailable = z.object({
+  message: z.string(),
+  kind: z.literal('follow_pick_unavailable'),
+})
+
 const rules = {
+  voicePolicy: voicePolicy.optional(),
   // Студия, если за сезоном не закреплена своя; null — без студии
   voiceStudio: z.string().trim().min(1).max(100).nullable().optional(),
   // Другую студию не брать совсем
@@ -49,6 +120,7 @@ export const openFollowPick = z
   .object({
     season: z.number().int().min(0).max(999),
     episode: z.number().int().min(0).max(9999),
+    intent: z.literal('follow-ready').optional(),
   })
   .meta({ id: 'openFollowPick' })
 
@@ -64,6 +136,16 @@ const followView = {
   kind: z.enum(['movie', 'series']),
   state: z.enum(followStates),
   start: followCursor,
+  voicePolicy: z
+    .union([
+      voicePolicy,
+      z.object({
+        mode: z.literal('legacy'),
+        studio: z.string().nullable(),
+        strict: z.boolean(),
+      }),
+    ])
+    .optional(),
   voiceStudio: z.string().nullable(),
   voiceStrict: z.boolean(),
   requireRussian: z.boolean(),
@@ -94,6 +176,7 @@ export const followFirstEpisodes = z
 export const titleFollow = z
   .object({
     ...followView,
+    voiceResolution: voiceResolution.optional(),
     subscribed: z.boolean(),
     profileCount: z.number().int(),
     // Сезон, о котором говорит статус: первой нужной серии, иначе следующей
@@ -180,6 +263,7 @@ export const followEpisodeCounts = z
 export const followSummary = z
   .object({
     ...followView,
+    voiceResolution: voiceResolution.optional(),
     titleId: z.string(),
     // Детали TMDB не загрузились — тайтл без названия и постера
     title: z.string().nullable(),

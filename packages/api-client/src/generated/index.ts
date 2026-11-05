@@ -1732,7 +1732,10 @@ export interface ContinueRowInput {
 }
 
 export type HomeRowInput =
-  ContinueRowInput | ReleasesRowInput | FilesRowInput | CatalogRowInput;
+  | ContinueRowInput
+  | ReleasesRowInput
+  | FilesRowInput
+  | CatalogRowInput;
 
 export interface HomeResponseInput {
   rows: HomeRowInput[];
@@ -2118,7 +2121,95 @@ export interface TorrentStatsInput {
   badPieces: number;
 }
 
+export type FollowVoicePolicyInput =
+  | {
+      mode: "auto";
+    }
+  | {
+      mode: "any";
+    }
+  | {
+      mode: "prefer";
+      /**
+       * @minLength 1
+       * @maxLength 100
+       */
+      studio: string;
+    }
+  | {
+      mode: "only";
+      /**
+       * @minLength 1
+       * @maxLength 100
+       */
+      studio: string;
+    };
+
+export interface FollowVoiceResolutionInput {
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  season: number;
+  studio?: string;
+  type?: "D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original";
+  source: "explicit" | "season_pin" | "inherited_pin" | "profile" | "none";
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  sourceSeason: number | null;
+  active: boolean;
+}
+
+export interface FollowVoicesResponseInput {
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  season: number;
+  updatedAt: string | null;
+  stale: boolean;
+  cache: "miss" | "hit";
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  indexerCount: number;
+  failed: {
+    id: string;
+    name: string;
+    kind:
+      | "auth"
+      | "timeout"
+      | "unreachable"
+      | "bad_response"
+      | "remote"
+      | "unsupported"
+      | "skipped";
+  }[];
+  items: {
+    studio: string;
+    types: ("D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original")[];
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    count: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    seeders: number;
+    maxQuality?: "2160p" | "1080p" | "720p" | "SD";
+    found: boolean;
+    saved: boolean;
+    inherited: boolean;
+  }[];
+}
+
 export interface FollowTitleInput {
+  voicePolicy?: FollowVoicePolicyInput;
   /**
    * @minLength 1
    * @maxLength 100
@@ -2159,9 +2250,11 @@ export interface OpenFollowPickInput {
    * @max 9999
    */
   episode: number;
+  intent?: "follow-ready";
 }
 
 export interface UpdateFollowInput {
+  voicePolicy?: FollowVoicePolicyInput;
   /**
    * @minLength 1
    * @maxLength 100
@@ -2204,6 +2297,13 @@ export interface TitleFollowInput {
   kind: "movie" | "series";
   state: "active" | "paused" | "stopped" | "done";
   start: FollowCursorInput;
+  voicePolicy?:
+    | FollowVoicePolicyInput
+    | {
+        mode: "legacy";
+        studio: string | null;
+        strict: boolean;
+      };
   voiceStudio: string | null;
   voiceStrict: boolean;
   requireRussian: boolean;
@@ -2252,6 +2352,7 @@ export interface TitleFollowInput {
     | "ko"
     | "zh";
   next: TitleNextEpisodeInput | null;
+  voiceResolution?: FollowVoiceResolutionInput;
   subscribed: boolean;
   /**
    * @min -9007199254740991
@@ -2416,6 +2517,13 @@ export interface FollowSummaryInput {
   kind: "movie" | "series";
   state: "active" | "paused" | "stopped" | "done";
   start: FollowCursorInput;
+  voicePolicy?:
+    | FollowVoicePolicyInput
+    | {
+        mode: "legacy";
+        studio: string | null;
+        strict: boolean;
+      };
   voiceStudio: string | null;
   voiceStrict: boolean;
   requireRussian: boolean;
@@ -2464,6 +2572,7 @@ export interface FollowSummaryInput {
     | "ko"
     | "zh";
   next: TitleNextEpisodeInput | null;
+  voiceResolution?: FollowVoiceResolutionInput;
   titleId: string;
   title: string | null;
   poster?: string;
@@ -2499,6 +2608,13 @@ export interface FollowDetailsInput {
   kind: "movie" | "series";
   state: "active" | "paused" | "stopped" | "done";
   start: FollowCursorInput;
+  voicePolicy?:
+    | FollowVoicePolicyInput
+    | {
+        mode: "legacy";
+        studio: string | null;
+        strict: boolean;
+      };
   voiceStudio: string | null;
   voiceStrict: boolean;
   requireRussian: boolean;
@@ -2547,6 +2663,7 @@ export interface FollowDetailsInput {
     | "ko"
     | "zh";
   next: TitleNextEpisodeInput | null;
+  voiceResolution?: FollowVoiceResolutionInput;
   titleId: string;
   title: string | null;
   poster?: string;
@@ -7412,7 +7529,95 @@ export interface TorrentStats {
   badPieces: number;
 }
 
+export type FollowVoicePolicy =
+  | {
+      mode: "auto";
+    }
+  | {
+      mode: "any";
+    }
+  | {
+      mode: "prefer";
+      /**
+       * @minLength 1
+       * @maxLength 100
+       */
+      studio: string;
+    }
+  | {
+      mode: "only";
+      /**
+       * @minLength 1
+       * @maxLength 100
+       */
+      studio: string;
+    };
+
+export interface FollowVoiceResolution {
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  season: number;
+  studio?: string;
+  type?: "D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original";
+  source: "explicit" | "season_pin" | "inherited_pin" | "profile" | "none";
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  sourceSeason: number | null;
+  active: boolean;
+}
+
+export interface FollowVoicesResponse {
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  season: number;
+  updatedAt: string | null;
+  stale: boolean;
+  cache: "miss" | "hit";
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  indexerCount: number;
+  failed: {
+    id: string;
+    name: string;
+    kind:
+      | "auth"
+      | "timeout"
+      | "unreachable"
+      | "bad_response"
+      | "remote"
+      | "unsupported"
+      | "skipped";
+  }[];
+  items: {
+    studio: string;
+    types: ("D" | "MVO" | "DVO" | "VO" | "AVO" | "L" | "Original")[];
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    count: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    seeders: number;
+    maxQuality?: "2160p" | "1080p" | "720p" | "SD";
+    found: boolean;
+    saved: boolean;
+    inherited: boolean;
+  }[];
+}
+
 export interface FollowTitle {
+  voicePolicy?: FollowVoicePolicy;
   /**
    * @minLength 1
    * @maxLength 100
@@ -7453,9 +7658,11 @@ export interface OpenFollowPick {
    * @max 9999
    */
   episode: number;
+  intent?: "follow-ready";
 }
 
 export interface UpdateFollow {
+  voicePolicy?: FollowVoicePolicy;
   /**
    * @minLength 1
    * @maxLength 100
@@ -7498,6 +7705,13 @@ export interface TitleFollow {
   kind: "movie" | "series";
   state: "active" | "paused" | "stopped" | "done";
   start: FollowCursor;
+  voicePolicy?:
+    | FollowVoicePolicy
+    | {
+        mode: "legacy";
+        studio: string | null;
+        strict: boolean;
+      };
   voiceStudio: string | null;
   voiceStrict: boolean;
   requireRussian: boolean;
@@ -7546,6 +7760,7 @@ export interface TitleFollow {
     | "ko"
     | "zh";
   next: TitleNextEpisode | null;
+  voiceResolution?: FollowVoiceResolution;
   subscribed: boolean;
   /**
    * @min -9007199254740991
@@ -7710,6 +7925,13 @@ export interface FollowSummary {
   kind: "movie" | "series";
   state: "active" | "paused" | "stopped" | "done";
   start: FollowCursor;
+  voicePolicy?:
+    | FollowVoicePolicy
+    | {
+        mode: "legacy";
+        studio: string | null;
+        strict: boolean;
+      };
   voiceStudio: string | null;
   voiceStrict: boolean;
   requireRussian: boolean;
@@ -7758,6 +7980,7 @@ export interface FollowSummary {
     | "ko"
     | "zh";
   next: TitleNextEpisode | null;
+  voiceResolution?: FollowVoiceResolution;
   titleId: string;
   title: string | null;
   poster?: string;
@@ -7793,6 +8016,13 @@ export interface FollowDetails {
   kind: "movie" | "series";
   state: "active" | "paused" | "stopped" | "done";
   start: FollowCursor;
+  voicePolicy?:
+    | FollowVoicePolicy
+    | {
+        mode: "legacy";
+        studio: string | null;
+        strict: boolean;
+      };
   voiceStudio: string | null;
   voiceStrict: boolean;
   requireRussian: boolean;
@@ -7841,6 +8071,7 @@ export interface FollowDetails {
     | "ko"
     | "zh";
   next: TitleNextEpisode | null;
+  voiceResolution?: FollowVoiceResolution;
   titleId: string;
   title: string | null;
   poster?: string;
@@ -10670,10 +10901,12 @@ export type MarkNotificationsReadError = MessageResponse;
 export type GetNotificationChannelsError = MessageResponse;
 
 export type CreateNotificationChannelError =
-  MessageResponse | NotificationChannelConfigError;
+  | MessageResponse
+  | NotificationChannelConfigError;
 
 export type UpdateNotificationChannelError =
-  MessageResponse | NotificationChannelConfigError;
+  | MessageResponse
+  | NotificationChannelConfigError;
 
 export type SetNotificationChannelEnabledError = MessageResponse;
 
@@ -10682,7 +10915,8 @@ export type DeleteNotificationChannelError = MessageResponse;
 export type TestNotificationChannelError = MessageResponse;
 
 export type TestNotificationChannelDraftError =
-  MessageResponse | NotificationChannelConfigError;
+  | MessageResponse
+  | NotificationChannelConfigError;
 
 export type FindTelegramChatsError = MessageResponse;
 
@@ -10695,10 +10929,14 @@ export type PostAuthRefreshError = MessageResponse;
 export type GetUsersMeError = MessageResponse;
 
 export type PutUsersMePasswordError =
-  MessageResponse | WrongPasswordResponse | TooManyAttemptsResponse;
+  | MessageResponse
+  | WrongPasswordResponse
+  | TooManyAttemptsResponse;
 
 export type PutUsersMeUsernameError =
-  MessageResponse | WrongPasswordResponse | TooManyAttemptsResponse;
+  | MessageResponse
+  | WrongPasswordResponse
+  | TooManyAttemptsResponse;
 
 export type GetCatalogSearchError = MessageResponse;
 
@@ -10745,14 +10983,18 @@ export type GetTitleSourcesError = MessageResponse;
 export type PutTitleVoiceError = MessageResponse;
 
 export type PostTitleWatchError =
-  MessageResponse | WatchErrorResponse | EngineUnavailableResponse;
+  | MessageResponse
+  | WatchErrorResponse
+  | EngineUnavailableResponse;
 
 export type GetTitleProgressError = MessageResponse;
 
 export type GetTitleUpNextError = MessageResponse;
 
 export type PostTitleOpenError =
-  MessageResponse | WatchErrorResponse | EngineUnavailableResponse;
+  | MessageResponse
+  | WatchErrorResponse
+  | EngineUnavailableResponse;
 
 export type GetTitleFilesError = MessageResponse;
 
@@ -10767,10 +11009,13 @@ export type PostTitleDownloadError =
   | InsufficientStorageResponse;
 
 export type DeleteTitleDownloadError =
-  MessageResponse | EngineUnavailableResponse;
+  | MessageResponse
+  | EngineUnavailableResponse;
 
 export type PostTitleKeepError =
-  MessageResponse | EngineUnavailableResponse | InsufficientStorageResponse;
+  | MessageResponse
+  | EngineUnavailableResponse
+  | InsufficientStorageResponse;
 
 export type PutTitleWatchedError = MessageResponse;
 
@@ -10807,25 +11052,30 @@ export type DeleteTorrentError = MessageResponse | EngineUnavailableResponse;
 export type PostTorrentRetryError = MessageResponse | EngineUnavailableResponse;
 
 export type PostTorrentDownloadError =
-  MessageResponse | EngineUnavailableResponse;
+  | MessageResponse
+  | EngineUnavailableResponse;
 
 export type PutTorrentPriorityError =
-  MessageResponse | EngineUnavailableResponse;
+  | MessageResponse
+  | EngineUnavailableResponse;
 
 export type PostTorrentPauseError = MessageResponse | EngineUnavailableResponse;
 
 export type PostTorrentResumeError =
-  MessageResponse | EngineUnavailableResponse;
+  | MessageResponse
+  | EngineUnavailableResponse;
 
 export type PutTorrentRetentionError =
-  MessageResponse | EngineUnavailableResponse;
+  | MessageResponse
+  | EngineUnavailableResponse;
 
 export type PutTorrentSeedingError = MessageResponse;
 
 export type PutTorrentTitleError = MessageResponse;
 
 export type DeleteTorrentLibraryError =
-  MessageResponse | EngineUnavailableResponse;
+  | MessageResponse
+  | EngineUnavailableResponse;
 
 export type GetTorrentStatsError = MessageResponse | EngineUnavailableResponse;
 
@@ -10896,13 +11146,18 @@ export type GetStorageBrowseError = MessageResponse;
 export type PostStorageCheckError = MessageResponse;
 
 export type PutStoragePathError =
-  MessageResponse | StoragePathErrorResponse | EngineUnavailableResponse;
+  | MessageResponse
+  | StoragePathErrorResponse
+  | EngineUnavailableResponse;
 
 export type PostStorageMoveError =
-  MessageResponse | StoragePathErrorResponse | EngineUnavailableResponse;
+  | MessageResponse
+  | StoragePathErrorResponse
+  | EngineUnavailableResponse;
 
 export type PostStorageMoveCancelError =
-  MessageResponse | EngineUnavailableResponse;
+  | MessageResponse
+  | EngineUnavailableResponse;
 
 export type GetBackupsError = MessageResponse;
 
@@ -10925,10 +11180,12 @@ export type PostBackupRestoreError = MessageResponse | BackupErrorResponse;
 export type PostTransferExportError = MessageResponse;
 
 export type PostTransferImportPreviewError =
-  TransferErrorResponse | MessageResponse;
+  | TransferErrorResponse
+  | MessageResponse;
 
 export type PostTransferImportApplyError =
-  MessageResponse | BackupErrorResponse;
+  | MessageResponse
+  | BackupErrorResponse;
 
 export type GetNetRoutesError = MessageResponse;
 
@@ -10997,7 +11254,9 @@ export type GetSetupStorageCheckError = MessageResponse;
 export type PostSetupDiscoverManagersError = MessageResponse;
 
 export type PostPlaybackError =
-  MessageResponse | EngineUnavailableResponse | InsufficientStorageResponse;
+  | MessageResponse
+  | EngineUnavailableResponse
+  | InsufficientStorageResponse;
 
 export type GetPlaybackError = MessageResponse;
 
@@ -11015,8 +11274,16 @@ export type FollowTitleError = MessageResponse;
 
 export type UnfollowTitleError = MessageResponse;
 
+export type GetFollowVoicesError = MessageResponse;
+
 export type OpenFollowPickError =
-  MessageResponse | WatchErrorResponse | EngineUnavailableResponse;
+  | MessageResponse
+  | {
+      message: string;
+      kind: "follow_pick_unavailable";
+    }
+  | WatchErrorResponse
+  | EngineUnavailableResponse;
 
 export type GetScheduleError = MessageResponse;
 
@@ -11067,7 +11334,8 @@ export type PostProfileSelectError = MessageResponse | PinErrorResponse;
 export type GetProfileImportsError = MessageResponse;
 
 export type PostProfileImportError =
-  ImportFormatErrorResponse | MessageResponse;
+  | ImportFormatErrorResponse
+  | MessageResponse;
 
 export type GetProfileImportUnmatchedError = MessageResponse;
 
@@ -11088,7 +11356,8 @@ export type PostDevicePairingError = MessageResponse;
 export type GetDevicePairingError = MessageResponse;
 
 export type PostDevicePairingConfirmError =
-  MessageResponse | PairingErrorResponse;
+  | MessageResponse
+  | PairingErrorResponse;
 
 export type GetDevicesError = MessageResponse;
 
@@ -11138,10 +11407,8 @@ export interface ApiConfig<SecurityDataType = unknown> {
   customFetch?: typeof fetch;
 }
 
-export interface HttpResponse<
-  D extends unknown,
-  E extends unknown = unknown,
-> extends Response {
+export interface HttpResponse<D extends unknown, E extends unknown = unknown>
+  extends Response {
   data: D;
   error: E;
 }
@@ -12780,6 +13047,33 @@ export class Api<
       this.request<TitleFollowResponse, UnfollowTitleError>({
         path: `/api/titles/${id}/follow`,
         method: "DELETE",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Follow
+     * @name GetFollowVoices
+     * @request GET:/api/titles/{id}/follow/voices
+     */
+    getFollowVoices: (
+      id: string,
+      query: {
+        /**
+         * @min 0
+         * @max 999
+         */
+        season: number;
+        refresh?: "1";
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<FollowVoicesResponse, GetFollowVoicesError>({
+        path: `/api/titles/${id}/follow/voices`,
+        method: "GET",
         query: query,
         format: "json",
         ...params,

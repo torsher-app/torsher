@@ -12,6 +12,7 @@ import { followEpisodes } from '../../db/schema.ts'
 import { mapLimit } from '../../utils/mapLimit.ts'
 import { DETAILS_CONCURRENCY, summaryOf } from '../mine/cards.ts'
 import { episodeProgress, isProgressWatched } from '../sources/progress.ts'
+import { resolveVoice, savedVoicePolicy } from './voice.ts'
 import { followAudio } from './audio.ts'
 import { followEpisodeStates, movieState } from './episodes.ts'
 import {
@@ -24,7 +25,7 @@ import {
 } from './index.ts'
 import { unsureCounts } from './panel.ts'
 import { requestedSearch } from './search.ts'
-import { firstEpisodes, followStatus } from './status.ts'
+import { firstEpisodes, followStatus, statusSeason } from './status.ts'
 import { compareEpisodes, episodeKey, wantedEpisodes } from './wanted.ts'
 
 type NextEpisode = FollowSummary['next']
@@ -39,6 +40,7 @@ function rulesView(follow: Follow, next: NextEpisode) {
     kind: follow.kind,
     state: follow.state,
     start: startOf(follow),
+    voicePolicy: savedVoicePolicy(follow),
     voiceStudio: follow.voiceStudio,
     voiceStrict: follow.voiceStrict,
     requireRussian: follow.requireRussian,
@@ -202,6 +204,7 @@ async function summaryView(
     title: summary?.details.title ?? null,
     poster: summary?.details.poster,
     year: summary?.details.year,
+    voiceResolution: resolveVoice(follow, statusSeason(follow, states)),
     profiles: subscribersOf(follow.id),
     wanted: wantedEpisodes(states).length,
     counts: countsOf(states),

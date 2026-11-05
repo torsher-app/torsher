@@ -5,13 +5,14 @@ import type {
   TitleFollowResponse,
 } from '@torsher/api-client'
 import type { PanelOption } from './OptionsPanel.vue'
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { useFollowVoices } from '../composables/useFollowVoices.ts'
 import { useI18n } from 'vue-i18n'
 import { useFollowTexts } from '../composables/useTitleFollow.ts'
 import {
+  FOLLOW_AUDIOS,
   FOLLOW_MODES,
   isFollowAudio,
-  OTHER_AUDIOS,
   QUALITY_LADDERS,
   QUALITY_PRESETS,
   qualityName,
@@ -21,7 +22,8 @@ import {
 import OptionsPanel from './OptionsPanel.vue'
 
 // `language` — вложенный шаг «Озвучки»: другой язык при русской
-type Step = 'main' | 'mode' | 'voice' | 'language' | 'wait' | 'quality'
+type Step
+  = 'main' | 'mode' | 'voice' | 'language' | 'studio' | 'wait' | 'quality'
 
 /**
  * Лист правил «Следить»: пункты со значением справа, OK открывает шаг с
@@ -30,25 +32,79 @@ type Step = 'main' | 'mode' | 'voice' | 'language' | 'wait' | 'quality'
  */
 const props = defineProps<{
   title: string
+  titleId: string
   view: TitleFollowResponse & { follow: TitleFollow }
+  save: (body: FollowTitleInput) => Promise<boolean>
 }>()
 
 const emit = defineEmits<{
   close: []
-  save: [body: FollowTitleInput]
   stop: []
 }>()
 
 const { t } = useI18n()
 const texts = useFollowTexts()
 
-const step = ref<Step>('main')
-// Возврат из шага — на пункт, который его открыл
-const returnTo = ref<string>()
-
 const follow = computed(() => props.view.follow)
 const series = computed(() => follow.value.kind === 'series')
 const editable = computed(() => props.view.canEdit)
+
+const step = ref<Step>('main')
+const saving = ref(false)
+const saveError = ref(false)
+const chosenMode = ref<'prefer' | 'only'>('prefer')
+let alive = true
+onBeforeUnmount(() => {
+  alive = false
+})
+const modern = computed(() => follow.value.voicePolicy !== undefined)
+const season = computed(() =>
+  follow.value.kind === 'movie' ? 0 : follow.value.season,
+)
+const {
+  data: voices,
+  loading,
+  error: searchError,
+  load: loadVoices,
+} = useFollowVoices(
+  computed(() => props.titleId),
+  season,
+  editable,
+)
+watch(
+  () => `${props.titleId}|${season.value}`,
+  () => {
+    if (step.value === 'studio')
+      void loadVoices()
+  },
+)
+async function persist(body: FollowTitleInput) {
+  if (!editable.value || saving.value)
+    return
+  const savedStep = step.value
+  saving.value = true
+  saveError.value = false
+  try {
+    const ok = await props.save(body)
+    if (alive) {
+      saveError.value = !ok
+      if (ok && step.value === savedStep)
+        toMain(savedStep)
+    }
+  }
+  catch {
+    if (alive)
+      saveError.value = true
+  }
+  finally {
+    if (alive)
+      saving.value = false
+  }
+}
+
+// Возврат из шага — на пункт, который его открыл
+const returnTo = ref<string>()
+
 const studio = computed(
   () => follow.value.voice?.studio ?? follow.value.voiceStudio ?? undefined,
 )
@@ -60,6 +116,13 @@ function audioName(audio: string) {
 }
 
 function voiceValue() {
+  const policy = follow.value.voicePolicy
+  if (policy) {
+    return policy.mode === 'prefer' || policy.mode === 'only'
+      ? t(`follow.studio.${policy.mode}Value`, { studio: policy.studio })
+      : t(`follow.studio.${policy.mode}`)
+  }
+
   if (!russian.value)
     return audioName(follow.value.audioEffective)
 
@@ -91,7 +154,12 @@ const mainOptions = computed<PanelOption[]>(() => {
 
   list.push(
     rule('mode', t('follow.panel.mode'), modeLabel(value.mode)),
-    rule('voice', t('follow.panel.voice'), voiceValue()),
+    rule(
+      'language',
+      t('follow.panel.language'),
+      audioName(value.audioEffective),
+    ),
+    rule('voice', t('follow.studio.title'), voiceValue()),
     rule('wait', t('follow.panel.wait'), texts.waitLabel(value.waitHours)),
     rule(
       'quality',
@@ -172,7 +240,7 @@ function languageOption(audio: string): PanelOption {
  * Отметки двух групп независимы: язык — правило слежения, студия — правило
  * русской озвучки. Поэтому у русской «как у сервера» и студия отмечены вместе.
  */
-const voiceOptions = computed<PanelOption[]>(() =>
+const legacyVoiceOptions = computed<PanelOption[]>(() =>
   voiceChoices(follow.value, studio.value).map((id) => {
     if (id === 'server') {
       return {
@@ -198,9 +266,80 @@ const voiceOptions = computed<PanelOption[]>(() =>
   }),
 )
 
-const languageOptions = computed<PanelOption[]>(() =>
-  OTHER_AUDIOS.map(languageOption),
-)
+const languageOptions = computed<PanelOption[]>(() => [
+  {
+    id: 'server',
+    label: t('follow.panel.voiceServer', {
+      language: audioName(follow.value.audioServer),
+    }),
+    selected: follow.value.audio === null,
+  },
+  ...FOLLOW_AUDIOS.map(languageOption),
+])
+const voiceOptions = computed<PanelOption[]>(() => {
+  if (!modern.value)
+    return legacyVoiceOptions.value
+  const policy = follow.value.voicePolicy!
+  return [
+    ...(policy.mode === 'legacy'
+      ? [
+          {
+            id: 'legacy',
+            label: t('follow.studio.legacy'),
+            selected: true,
+            disabled: true,
+          },
+        ]
+      : []),
+    ...(['auto', 'prefer', 'only', 'any'] as const).map(id => ({
+      id,
+      label: t(`follow.studio.${id}`),
+      hint: t(`follow.studio.${id}Hint`),
+      selected: policy.mode === id,
+      detail:
+        (id === 'prefer' || id === 'only') && policy.mode === id
+          ? policy.studio
+          : undefined,
+    })),
+  ]
+})
+const studioOptions = computed<PanelOption[]>(() => {
+  const policy = follow.value.voicePolicy
+  const saved = policy && 'studio' in policy ? policy.studio : undefined
+  const names = [
+    ...new Set(
+      [
+        saved,
+        follow.value.voiceResolution?.studio,
+        ...(voices.value?.items.map(item => item.studio) ?? []),
+      ].filter((name): name is string => !!name),
+    ),
+  ]
+  return [
+    {
+      id: 'refresh',
+      label: t(
+        loading.value
+          ? 'follow.studio.searching'
+          : voices.value?.updatedAt
+            ? 'follow.studio.refresh'
+            : 'follow.studio.find',
+      ),
+      selected: false,
+      disabled: loading.value,
+    },
+    ...names.map((name) => {
+      const item = voices.value?.items.find(item => item.studio === name)
+      return {
+        id: `studio:${name}`,
+        label: name,
+        selected: saved === name && policy?.mode === chosenMode.value,
+        hint: t(item?.found ? 'follow.studio.found' : 'follow.studio.saved'),
+        disabled: saving.value,
+      }
+    }),
+  ]
+})
 
 const waitOptions = computed<PanelOption[]>(() =>
   waitChoices(follow.value.waitHours).map(hours => ({
@@ -230,6 +369,8 @@ const options = computed(() => {
       return voiceOptions.value
     case 'language':
       return languageOptions.value
+    case 'studio':
+      return studioOptions.value
     case 'wait':
       return waitOptions.value
     case 'quality':
@@ -240,32 +381,86 @@ const options = computed(() => {
 })
 
 const panelTitle = computed(() =>
-  step.value === 'main' ? props.title : t(`follow.panel.${step.value}`),
+  step.value === 'main'
+    ? props.title
+    : step.value === 'studio' || step.value === 'voice'
+      ? t('follow.studio.title')
+      : t(`follow.panel.${step.value}`),
 )
 
 const subtitle = computed(() => {
+  if (saveError.value)
+    return t('follow.errors.save')
+  if (saving.value)
+    return t('follow.studio.saving')
+  if (step.value === 'studio') {
+    const data = voices.value
+    return [
+      t(series.value ? 'follow.studio.context' : 'follow.studio.contextMovie', {
+        season: season.value,
+      }),
+      searchError.value ? t('follow.studio.error') : '',
+      data?.failed.length ? t('follow.studio.partial') : '',
+      data?.cache === 'miss' ? t('follow.studio.cacheMiss') : '',
+      data?.updatedAt
+        ? t('follow.studio.updated', {
+            date: new Date(data.updatedAt).toLocaleString(),
+          })
+        : '',
+      data?.stale ? t('follow.studio.stale') : '',
+      data && !data.indexerCount ? t('follow.studio.noIndexers') : '',
+      data?.updatedAt && !data.items.some(item => item.found)
+        ? t('follow.studio.empty')
+        : '',
+    ]
+      .filter(Boolean)
+      .join(' · ')
+  }
+  if (step.value === 'voice') {
+    const resolution = follow.value.voiceResolution
+    return [
+      t('follow.studio.trackHint'),
+      !modern.value ? t('follow.studio.oldServer') : '',
+      !russian.value ? t('follow.studio.inactive') : '',
+      resolution
+        ? t(`follow.studio.sources.${resolution.source}`, {
+            studio:
+              resolution.studio
+              ?? (resolution.type
+                ? t(`sources.voiceTypes.${resolution.type}`)
+                : ''),
+            season: resolution.sourceSeason ?? resolution.season,
+          })
+        : '',
+    ]
+      .filter(Boolean)
+      .join(' · ')
+  }
+
   if (step.value === 'wait')
     return t('follow.panel.waitHint')
 
-  if (
-    step.value === 'language'
-    || (step.value === 'voice' && follow.value.audioEffective !== 'ru')
-  ) {
+  if (step.value === 'language') {
     return t('follow.panel.voiceLanguageHint')
   }
 
   if (step.value !== 'main')
     return props.title
 
-  return editable.value
-    ? texts.statusLine(follow.value) || texts.policyLine(props.view)
-    : t('follow.panel.readOnly')
+  return [
+    t('follow.panel.sharedRules'),
+    editable.value
+      ? texts.statusLine(follow.value) || texts.policyLine(props.view)
+      : t('follow.panel.readOnly'),
+  ]
+    .filter(Boolean)
+    .join(' · ')
 })
 
-function toMain() {
-  if (step.value === 'main')
+function toMain(from = step.value) {
+  if (from === 'main')
     returnTo.value = undefined
-  else returnTo.value = step.value === 'language' ? 'voice' : step.value
+  else returnTo.value = from === 'studio' ? 'voice' : from
 
   step.value = 'main'
 }
@@ -284,6 +479,9 @@ function voiceBody(id: string): FollowTitleInput {
 }
 
 function select(id: string) {
+  if (saving.value || (!editable.value && id !== 'stop'))
+    return
+  saveError.value = false
   switch (step.value) {
     case 'main':
       if (id === 'stop') {
@@ -296,37 +494,58 @@ function select(id: string) {
 
       return
     case 'mode':
-      emit('save', { mode: id as (typeof FOLLOW_MODES)[number] })
+      void persist({ mode: id as (typeof FOLLOW_MODES)[number] })
       break
+    case 'studio':
+      if (id === 'refresh') {
+        void loadVoices(true)
+        return
+      }
+      if (id.startsWith('studio:')) {
+        void persist({
+          voicePolicy: { mode: chosenMode.value, studio: id.slice(7) },
+        })
+      }
+      return
     case 'voice':
+      if (modern.value) {
+        if (id === 'prefer' || id === 'only') {
+          chosenMode.value = id
+          step.value = 'studio'
+          returnTo.value = undefined
+          void loadVoices()
+        }
+        else if (id === 'auto' || id === 'any') {
+          void persist({ voicePolicy: { mode: id } })
+        }
+        return
+      }
       if (id === 'languages') {
         returnTo.value = undefined
         step.value = 'language'
         return
       }
 
-      emit('save', voiceBody(id))
+      void persist(voiceBody(id))
       break
     case 'language':
-      emit('save', voiceBody(id))
+      void persist(voiceBody(id))
       break
     case 'wait':
-      emit('save', { waitHours: Number(id) })
+      void persist({ waitHours: Number(id) })
       break
     case 'quality':
-      emit('save', { qualityPreset: id as (typeof QUALITY_PRESETS)[number] })
+      void persist({ qualityPreset: id as (typeof QUALITY_PRESETS)[number] })
       break
   }
-
-  toMain()
 }
 
 function back() {
   if (step.value === 'main') {
     emit('close')
   }
-  else if (step.value === 'language') {
-    returnTo.value = 'languages'
+  else if (step.value === 'studio') {
+    returnTo.value = chosenMode.value
     step.value = 'voice'
   }
   else {
@@ -342,7 +561,7 @@ function back() {
     :subtitle="subtitle"
     :options="options"
     :focus-selected="step !== 'main'"
-    :focus-option="step === 'main' || step === 'voice' ? returnTo : undefined"
+    :focus-option="returnTo"
     @select="select"
     @close="back"
   />

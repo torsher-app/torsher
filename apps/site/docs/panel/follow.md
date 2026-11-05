@@ -5,7 +5,7 @@ description: "Follows of every profile in the panel: rules, what is waiting, dow
 
 # Following
 
-<Ui k="panel.nav.follow" /> in the panel lists every title followed on the server, by any profile. Here you change rules, see every release found for an episode and why it was rejected, and follow what the automation did. Following itself starts on the TV. See [Follow](/docs/watch/follow).
+<Ui k="panel.nav.follow" /> in the panel lists every title followed on the server, by any profile. Here you change rules, see every release found for an episode and why it was rejected, and follow what the automation did. To start following another title, select <Ui k="panel.follow.chooseInShowcase" />. The showcase opens in a new tab; choose a title and follow it with your profile. See [Follow](/docs/watch/follow).
 
 ::: tip What you'll learn
 Where to look when an episode doesn't arrive, how to change a follow's rules, how to stop a release from being taken, and which notifications following sends.
@@ -13,7 +13,7 @@ Where to look when an episode doesn't arrive, how to change a follow's rules, ho
 
 ## Before you start
 
-- At least one title is followed on the TV. Until then the page shows <Ui k="panel.follow.empty.title" />.
+- To inspect a follow, first subscribe to a title in the showcase. If the list is empty, <Ui k="panel.follow.chooseInShowcase" /> takes you there. The same action stays available above an existing list.
 
 ## The list
 
@@ -28,12 +28,14 @@ Each row shows the rules in a phrase, the next episode and the state. Click a ro
 
 ## A follow's card
 
-- **<Ui k="panel.follow.rules.title" />.** The same rules as on the TV, including <Ui k="panel.follow.rules.mode" />: <Ui k="panel.follow.modes.series.download.title" /> or <Ui k="panel.follow.modes.series.notify.title" /> (see [Download or notify](/docs/watch/follow#download-or-notify)), and <Ui k="panel.follow.rules.audio" />: the default source preset or a language for this title (see [Audio language](/docs/watch/follow#audio-language)). <Ui k="panel.follow.rules.voice" />, <Ui k="panel.follow.rules.strict" /> and <Ui k="panel.follow.rules.russian" /> show up when the audio is Russian; <Ui k="panel.follow.rules.russian" /> is only here. Select <Ui k="panel.follow.rules.save" /> to apply them.
+Rules apply to every subscribed profile, whether changed in this panel or in the showcase. The form states this before its controls; the profiles listed in the card show who shares the follow.
+
+- **<Ui k="panel.follow.rules.title" />.** The same rules as on the TV, including <Ui k="panel.follow.rules.mode" />: <Ui k="panel.follow.modes.series.download.title" /> or <Ui k="panel.follow.modes.series.notify.title" /> (see [Download or notify](/docs/watch/follow#download-or-notify)), and <Ui k="panel.follow.rules.audio" />: the default source preset or a language for this title (see [Audio language](/docs/watch/follow#audio-language)). <Ui k="follow.studio.title" /> selects automatic, preferred, required or any studio (see [Studio](/docs/watch/follow#studio)). Choose a studio from the list. If it is missing, <Ui k="follow.studio.missingStudio" /> accepts a recognized name or alias. The studio rule is active for Russian audio; <Ui k="panel.follow.rules.russian" /> is only here. Select <Ui k="panel.follow.rules.save" /> to apply them.
 - **<Ui k="panel.follow.card.profiles" />.** The profiles subscribed on the TV.
 - **<Ui k="panel.follow.card.episodes" />.** Seasons and episodes the follow covers, with their state: <Ui k="panel.follow.episodeStates.upcoming" />, <Ui k="panel.follow.episodeStates.searching" />, <Ui k="panel.follow.episodeStates.waiting" />, <Ui k="panel.follow.episodeStates.downloading" />, <Ui k="panel.follow.episodeStates.in_library" />, <Ui k="panel.follow.episodeStates.ready" />, <Ui k="panel.follow.episodeStates.no_space" /> or <Ui k="panel.follow.episodeStates.missing" />. Click an episode to see the releases of the last check: <Ui k="panel.follow.candidates.verdicts.grab" /> (<Ui k="panel.follow.candidates.verdicts.picked" /> when the follow only notifies), <Ui k="panel.follow.candidates.verdicts.pending" /> or <Ui k="panel.follow.candidates.verdicts.rejected" />, with the reason in plain words, such as no Russian audio track, no original audio track, a screen recording, or waiting for your voice-over until a set time.
 - **<Ui k="panel.follow.candidates.block" />.** Next to a release in that list that wasn't taken, and next to the picked release when the follow only notifies. Torsher never takes it for this title, it goes to the blocklist, and an episode that lost its picked release gets a new one.
 - **<Ui k="panel.follow.actions.searchNow" />.** Searches your indexers within a minute, outside the hourly limit. The card shows when the last search was and when the next one is due.
-- **<Ui k="panel.follow.actions.pause" />** stops searching and downloading but keeps the rules and the profiles. **<Ui k="panel.follow.actions.delete" />** removes the follow and unsubscribes the profiles. In both cases downloaded files stay in the library.
+- **<Ui k="panel.follow.actions.pause" />** stops searching and downloading but keeps the rules and the profiles. **<Ui k="panel.follow.actions.delete" />** removes the follow and unsubscribes the profiles. In both cases downloaded files stay in the library. A new profile can subscribe while the follow is paused, but only resuming it in the panel restarts automation.
 
 ## Remove watched downloads automatically {#library-maintenance}
 

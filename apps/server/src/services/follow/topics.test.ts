@@ -1,3 +1,5 @@
+import { updateFollow } from './index.ts'
+import * as refreshFiles from '../torrents/refresh.ts'
 import type { Follow, Torrent } from '../../db/schema.ts'
 import type { EngineTorrentState } from '../engine/index.ts'
 import { Buffer } from 'node:buffer'
@@ -859,6 +861,127 @@ describe('подмена раздачи темы', () => {
     })
   })
 
+  it.each([false, true])(
+    'policy changes after shared-path unlink finish committed recovery; restart=%s',
+    async (restart) => {
+      const follow = insertFollow()
+      const { old } = await seedOld(follow)
+      const now = new Date()
+      reuploaded = new Set([7])
+      newVersion()
+      const entered = Promise.withResolvers<void>()
+      const resume = Promise.withResolvers<void>()
+      const original = refreshFiles.removeFiles
+      const spy = vi
+        .spyOn(refreshFiles, 'removeFiles')
+        .mockImplementationOnce(async (...args) => {
+          await original(...args)
+          entered.resolve()
+          await resume.promise
+          if (restart)
+            throw new Error('simulated interruption after unlink')
+        })
+      try {
+        const running = followAutomation(now)
+        await entered.promise
+        expect(topicRow().refresh).toMatchObject({
+          stage: 'committing',
+          redownload: [6],
+          selection: [5, 6, 7, 8],
+        })
+        expect(await readFile(libraryPath(7), 'utf8')).toBe(content(7))
+        await expect(
+          stat(downloadsPath(NAME, episodeFile(7))),
+        ).rejects.toMatchObject({ code: 'ENOENT' })
+        updateFollow(follow.id, {
+          state: 'paused',
+          rules: { voicePolicy: { mode: 'only', studio: 'NewStudio' } },
+        })
+        resume.resolve()
+        await running
+        spy.mockRestore()
+        if (restart) {
+          expect(topicRow().refresh?.stage).toBe('committing')
+          expect(torrentByHash(OLD)).toMatchObject({
+            id: old.id,
+            inEngine: false,
+          })
+          await continueRefreshes(new Date(now.getTime() + 16 * 60_000))
+        }
+        const next = torrentByHash(NEW)!
+        expect(torrentByHash(OLD)).toBeUndefined()
+        expect(next).toMatchObject({
+          inEngine: true,
+          selectedFiles: [5, 6, 7, 8],
+        })
+        expect(topicRow().refresh).toBeNull()
+        expect(await readFile(libraryPath(7), 'utf8')).toBe(content(7))
+        expect(libraryRows().find(row => row.episode === 7)).toMatchObject({
+          torrentId: next.id,
+          stale: true,
+        })
+        expect(getDb().select().from(watchStates).get()).toMatchObject({
+          torrentId: next.id,
+          position: 1200,
+        })
+        await continueRefreshes(new Date(now.getTime() + 32 * 60_000))
+        expect(torrentByHash(NEW)?.selectedFiles).toEqual([5, 6, 7, 8])
+        await writeFile(downloadsPath(NAME, episodeFile(7)), content(7, 2))
+        await writeFile(downloadsPath(NAME, episodeFile(9)), content(9))
+        live = [completeState(next)]
+        await syncLibrary()
+        await syncLibrary()
+        expect(await readFile(libraryPath(7), 'utf8')).toBe(content(7, 2))
+        expect(libraryRows().find(row => row.episode === 7)?.stale).toBe(
+          false,
+        )
+      }
+      finally {
+        resume.resolve()
+        spy.mockRestore()
+      }
+    },
+  )
+
+  it.each([NAME, OTHER_NAME])(
+    'policy changes during disk comparison cancel prepare and fallback: %s',
+    async (name) => {
+      const follow = insertFollow()
+      const { old } = await seedOld(follow)
+      newVersion(name)
+      const original = refreshFiles.compareOnDisk
+      const spy = vi
+        .spyOn(refreshFiles, 'compareOnDisk')
+        .mockImplementationOnce(async (...args) => {
+          updateFollow(follow.id, {
+            rules: { voicePolicy: { mode: 'only', studio: 'NewStudio' } },
+          })
+          return original(...args)
+        })
+      try {
+        await followAutomation(new Date())
+        expect(torrentByHash(OLD)).toMatchObject({
+          id: old.id,
+          inEngine: true,
+        })
+        expect(topicRow().refresh).toBeNull()
+        expect(torrentByHash(NEW)?.selectedFiles).toBeNull()
+        expect(engineCalls).not.toContain(`DELETE /torrents/${OLD}`)
+        expect(
+          await readFile(downloadsPath(NAME, episodeFile(7)), 'utf8'),
+        ).toEqual(content(7))
+        if (name !== NAME) {
+          await expect(
+            stat(downloadsPath(name, episodeFile(7))),
+          ).rejects.toMatchObject({ code: 'ENOENT' })
+        }
+      }
+      finally {
+        spy.mockRestore()
+      }
+    },
+  )
+
   it('сбой сверки при другом имени — запасной путь: рядом только новая серия', async () => {
     const follow = insertFollow()
     const { old } = await seedOld(follow)
@@ -938,6 +1061,10 @@ describe('подмена раздачи темы', () => {
       libraryRows().filter(row => row.torrentId === next.id),
     ).toHaveLength(3)
 
+    updateFollow(follow.id, {
+      rules: { voicePolicy: { mode: 'only', studio: 'NewStudio' } },
+    })
+
     await continueRefreshes(new Date(now.getTime() + 16 * 60_000))
 
     expect(torrentByHash(NEW)).toMatchObject({
@@ -947,82 +1074,105 @@ describe('подмена раздачи темы', () => {
     expect(topicRow().refresh).toBeNull()
   })
 
-  it('перезапуск после `forget`: подмена продолжается по строкам, раздача не теряется', async () => {
-    const follow = insertFollow()
-    const { old, topic } = await seedOld(follow)
+  it.each([false, true])(
+    'перезапуск после forget при смене политики=%s сохраняет согласованность',
+    async (changed) => {
+      const follow = insertFollow()
+      const { old, topic } = await seedOld(follow)
 
-    newVersion()
+      newVersion()
 
-    // Сервер остановился сразу после `forget` старой: новая уже в базе
-    const next = getDb()
-      .insert(torrents)
-      .values({
-        infoHash: NEW,
-        name: NAME,
-        source: 'file',
-        torrentFile: torrentBytes(NEW),
-        files: details(NEW).files.map(file => ({
-          path: file.path,
-          size: file.length,
-          padding: false,
-        })),
-        pieceLength: 16_384,
-        status: 'ready',
-        titleId: SERIES,
-        origin: 'follow',
-      })
-      .returning()
-      .get()
+      // Сервер остановился сразу после `forget` старой: новая уже в базе
+      const next = getDb()
+        .insert(torrents)
+        .values({
+          infoHash: NEW,
+          name: NAME,
+          source: 'file',
+          torrentFile: torrentBytes(NEW),
+          files: details(NEW).files.map(file => ({
+            path: file.path,
+            size: file.length,
+            padding: false,
+          })),
+          pieceLength: 16_384,
+          status: 'ready',
+          titleId: SERIES,
+          origin: 'follow',
+        })
+        .returning()
+        .get()
 
-    getDb()
-      .update(torrents)
-      .set({ inEngine: false })
-      .where(eq(torrents.id, old.id))
-      .run()
-    getDb()
-      .insert(followEpisodes)
-      .values({
-        followId: follow.id,
-        season: 2,
-        episode: 9,
-        firstSeenAt: new Date(),
-        torrentId: next.id,
-        grabbedAt: new Date(),
-      })
-      .run()
-    getDb()
-      .update(trackedTopics)
-      .set({
-        refresh: {
+      getDb()
+        .update(torrents)
+        .set({ inEngine: false })
+        .where(eq(torrents.id, old.id))
+        .run()
+      getDb()
+        .insert(followEpisodes)
+        .values({
           followId: follow.id,
+          season: 2,
+          episode: 9,
+          firstSeenAt: new Date(),
           torrentId: next.id,
-          title: NEW_TITLE,
-          episodes: [{ season: 2, episode: 9 }],
-          candidate: { id: 'next', title: NEW_TITLE, seeders: 30 },
-          stage: 'prepare',
-          forgotten: true,
-        },
+          grabbedAt: new Date(),
+        })
+        .run()
+      getDb()
+        .update(trackedTopics)
+        .set({
+          refresh: {
+            followId: follow.id,
+            torrentId: next.id,
+            title: NEW_TITLE,
+            episodes: [{ season: 2, episode: 9 }],
+            candidate: { id: 'next', title: NEW_TITLE, seeders: 30 },
+            stage: 'prepare',
+            forgotten: true,
+          },
+        })
+        .where(eq(trackedTopics.id, topic.id))
+        .run()
+
+      if (changed) {
+        updateFollow(follow.id, {
+          rules: { voicePolicy: { mode: 'only', studio: 'NewStudio' } },
+        })
+      }
+      await continueRefreshes(new Date())
+
+      if (changed) {
+        expect(torrentByHash(OLD)).toMatchObject({ inEngine: true })
+        expect(torrentByHash(NEW)?.selectedFiles).toBeNull()
+        expect(topicRow().refresh).toBeNull()
+        expect(
+          await readFile(downloadsPath(NAME, episodeFile(7)), 'utf8'),
+        ).toEqual(content(7))
+        expect(getDb().select().from(watchStates).get()?.torrentId).toBe(
+          old.id,
+        )
+        await continueRefreshes(new Date())
+        expect(torrentByHash(OLD)).toMatchObject({ inEngine: true })
+        return
+      }
+
+      // Старую второй раз не забывали, новая добавлена с перенесёнными
+      expect(engineCalls).not.toContain(`DELETE /torrents/${OLD}`)
+      expect(engineCalls).toContain('POST /torrents?files=5,6,7,8')
+      expect(torrentByHash(OLD)).toBeUndefined()
+      expect(torrentByHash(NEW)).toMatchObject({ inEngine: true })
+      expect(getDb().select().from(watchStates).get()).toMatchObject({
+        torrentId: next.id,
+        position: 1200,
       })
-      .where(eq(trackedTopics.id, topic.id))
-      .run()
-
-    await continueRefreshes(new Date())
-
-    // Старую второй раз не забывали, новая добавлена с перенесёнными
-    expect(engineCalls).not.toContain(`DELETE /torrents/${OLD}`)
-    expect(engineCalls).toContain('POST /torrents?files=5,6,7,8')
-    expect(torrentByHash(OLD)).toBeUndefined()
-    expect(torrentByHash(NEW)).toMatchObject({ inEngine: true })
-    expect(getDb().select().from(watchStates).get()).toMatchObject({
-      torrentId: next.id,
-      position: 1200,
-    })
-    expect(episodeRows(follow.id).at(-1)).toMatchObject({
-      episode: 9,
-      fileIndex: 8,
-    })
-    expect(topicRow().refresh).toBeNull()
-  })
+      expect(episodeRows(follow.id).at(-1)).toMatchObject({
+        episode: 9,
+        fileIndex: 8,
+      })
+      expect(topicRow().refresh).toBeNull()
+    },
+  )
 
   it('та же тема с другой студией — не обновление: качается рядом, тема переходит на новую', async () => {
     const follow = insertFollow({ waitHours: 0 })

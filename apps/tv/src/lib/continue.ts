@@ -190,7 +190,23 @@ export function withStartPosition(
  * подготовки ищет серию; фильм без файла — «Источники», а новый фильм
  * «Следить» — тоже экран подготовки: раздачу выбрал слежение
  */
-export function resumeRoute(titleId: string, item: ResumeLike): ScreenRoute {
+export function resumeRoute(
+  titleId: string,
+  item: ResumeLike,
+  intent?: 'follow-ready',
+): ScreenRoute {
+  if (intent === 'follow-ready') {
+    return {
+      path: `/title/${titleId}/play`,
+      query: {
+        intent,
+        ...automaticQuery(item.season ? automaticPlayback : undefined),
+        season: String(item.season ?? 0),
+        episode: String(item.episode ?? 0),
+      },
+    }
+  }
+
   const automatic = item.next && !item.position ? automaticPlayback : undefined
   if (item.file) {
     return playerRoute(

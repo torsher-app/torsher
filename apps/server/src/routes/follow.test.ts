@@ -881,3 +881,171 @@ describe('обновление расписания TMDB', () => {
     expect(isNearAir({}, now)).toBe(false)
   })
 })
+
+describe('voice policy API compatibility', () => {
+  it('new defaults are auto; old full forms preserve modern intent; contradictory payload is 400', async () => {
+    expect((await follow(owner)).json().follow.voicePolicy).toEqual({
+      mode: 'auto',
+    })
+    expect(
+      (
+        await follow(owner, {
+          voiceStudio: null,
+          voiceStrict: false,
+          waitHours: 12,
+        })
+      ).json().follow.voicePolicy,
+    ).toEqual({ mode: 'auto' })
+    const invalid = await follow(owner, {
+      voicePolicy: { mode: 'any' },
+      voiceStudio: 'NewStudio',
+    })
+    expect(invalid.statusCode).toBe(400)
+    expect(
+      (
+        await follow(owner, {
+          voicePolicy: { mode: 'only', studio: ' NewStudio ' },
+        })
+      ).json().follow.voicePolicy,
+    ).toEqual({ mode: 'only', studio: 'NewStudio' })
+  })
+
+  it.each(['PUT', 'PATCH'] as const)(
+    '%s invalidates stale pending and unviewed picks but keeps watched picks and firstSeenAt',
+    async (method) => {
+      await follow(owner, { mode: 'notify', audio: 'ru' })
+      const row = followRow()!
+      const firstSeenAt = new Date(Date.now() - DAY_MS)
+      for (const episode of [1, 2, 3]) {
+        getDb()
+          .insert(followEpisodes)
+          .values({
+            followId: row.id,
+            season: 2,
+            episode,
+            firstSeenAt,
+            pending: {
+              id: 'old',
+              title: 'Quiet Harbor S02E01 1080p LostFilm',
+              seeders: 2,
+            },
+            picked:
+              episode > 1
+                ? {
+                    id: 'old',
+                    title: 'Quiet Harbor S02E01 1080p LostFilm',
+                    seeders: 2,
+                  }
+                : null,
+            pickedAt: episode > 1 ? firstSeenAt : null,
+            waitUntil: new Date(),
+          })
+          .run()
+      }
+      watched(ownerProfile, 2, 3)
+      const result = await app.inject({
+        method,
+        cookies: owner,
+        url:
+          method === 'PUT'
+            ? `/api/titles/${SERIES}/follow?language=ru-RU`
+            : `/api/follows/${row.id}?language=ru-RU`,
+        payload: { voicePolicy: { mode: 'only', studio: 'NewStudio' } },
+      })
+      expect(result.statusCode).toBe(200)
+      const rows = getDb()
+        .select()
+        .from(followEpisodes)
+        .where(eq(followEpisodes.followId, row.id))
+        .all()
+      expect(
+        rows.every(
+          item => item.firstSeenAt.getTime() === firstSeenAt.getTime(),
+        ),
+      ).toBe(true)
+      expect(rows.every(item => !item.pending)).toBe(true)
+      expect(rows.find(item => item.episode === 2)?.picked).toBeNull()
+      expect(rows.find(item => item.episode === 3)?.picked).not.toBeNull()
+    },
+  )
+
+  it('explicit ready open returns a distinct 409 while ordinary absent lookup stays 404', async () => {
+    for (const intent of [undefined, 'follow-ready']) {
+      const result = await app.inject({
+        method: 'POST',
+        url: `/api/titles/${SERIES}/follow/open`,
+        cookies: owner,
+        payload: { season: 2, episode: 1, intent },
+      })
+      expect(result.statusCode).toBe(intent ? 409 : 404)
+      if (intent)
+        expect(result.json().kind).toBe('follow_pick_unavailable')
+    }
+  })
+
+  it('voices cache-only route does not call TMDB, and restricted profiles cannot refresh', async () => {
+    fetchMock.mockClear()
+    const result = await app.inject({
+      url: `/api/titles/${SERIES}/follow/voices?season=2`,
+      cookies: owner,
+    })
+    expect(result.statusCode).toBe(200)
+    expect(result.json().cache).toBe('miss')
+    expect(fetchMock).not.toHaveBeenCalled()
+    const child = tv(12)
+    const denied = await app.inject({
+      url: `/api/titles/${SERIES}/follow/voices?season=2&refresh=1`,
+      cookies: child.cookies,
+    })
+    expect(denied.statusCode).toBe(403)
+  })
+})
+
+it.each(['PUT', 'PATCH'] as const)(
+  '%s voice aliases round-trip canonically and typos do not write',
+  async (method) => {
+    await follow(owner)
+    const id = followRow()!.id
+    const url
+      = method === 'PUT'
+        ? `/api/titles/${SERIES}/follow?language=ru-RU`
+        : `/api/follows/${id}?language=ru-RU`
+    for (const [alias, canonical] of [
+      ['HDRezka', 'HDRezka Studio'],
+      ['RedHeadSound', 'Red Head Sound'],
+    ]) {
+      const result = await app.inject({
+        method,
+        url,
+        cookies: owner,
+        payload: {
+          voicePolicy: { mode: 'only', studio: alias },
+          voiceStudio: canonical,
+          voiceStrict: true,
+        },
+      })
+      expect(result.statusCode).toBe(200)
+      expect(followRow()).toMatchObject({
+        voiceMode: 'only',
+        voiceStudio: canonical,
+        voiceStrict: true,
+      })
+      const body = result.json()
+      expect((method === 'PUT' ? body.follow : body).voicePolicy).toEqual({
+        mode: 'only',
+        studio: canonical,
+      })
+    }
+    for (const studio of ['HDRezka Studo', 'RHS']) {
+      const before = followRow()
+      const result = await app.inject({
+        method,
+        url,
+        cookies: owner,
+        payload: { voicePolicy: { mode: 'only', studio }, waitHours: 1 },
+      })
+      expect(result.statusCode).toBe(400)
+      expect(followRow()).toEqual(before)
+    }
+  },
+)

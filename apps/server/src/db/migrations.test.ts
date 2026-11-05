@@ -549,3 +549,42 @@ describe('device purpose migration', () => {
     }
   })
 })
+
+describe('follow voice policy migration', () => {
+  it('preserves legacy null mode and old studio/strict through repeat migration', () => {
+    const idx = journal.entries.findIndex(entry =>
+      readFileSync(join(MIGRATIONS_DIR, `${entry.tag}.sql`), 'utf8').includes(
+        'ADD `voice_mode`',
+      ),
+    )
+    expect(idx).toBeGreaterThan(0)
+    const sqlite = new Database(':memory:')
+    const db = drizzle(sqlite)
+    try {
+      migrate(db, { migrationsFolder: migrationsBefore(idx) })
+      sqlite
+        .prepare(
+          `INSERT INTO follows (id, title_id, kind, state, start_season, start_episode, voice_studio, voice_strict, require_russian, wait_hours, created_at, updated_at)
+        VALUES ('old', 'tmdb:tv:3000', 'series', 'active', 2, 1, 'LostFilm', 1, 1, 24, 1, 1)`,
+        )
+        .run()
+      for (let pass = 0; pass < 2; pass++) {
+        migrate(db, { migrationsFolder: MIGRATIONS_DIR })
+        expect(
+          sqlite
+            .prepare(
+              'SELECT voice_mode, voice_studio, voice_strict FROM follows',
+            )
+            .get(),
+        ).toEqual({
+          voice_mode: null,
+          voice_studio: 'LostFilm',
+          voice_strict: 1,
+        })
+      }
+    }
+    finally {
+      sqlite.close()
+    }
+  })
+})

@@ -578,7 +578,7 @@ describe('автоматика «Следить»', () => {
           waitUntil: new Date(Date.now() - HOUR_MS),
           pending: {
             id: `candidate-${episode}`,
-            title: `Quiet.Harbor.S02E0${episode}.1080p`,
+            title: `Quiet.Harbor.S02E0${episode}.1080p.MVO`,
             seeders: 40,
           },
         })
@@ -600,28 +600,33 @@ describe('автоматика «Следить»', () => {
     }
   })
 
-  it.each([
-    { path: 'pending', outcome: 'file', changed: true },
-    { path: 'pending', outcome: 'error', changed: true },
-    { path: 'pending', outcome: 'empty', changed: true },
-    { path: 'pending', outcome: 'ready', changed: true },
-    { path: 'pending', outcome: 'live', changed: true },
-    { path: 'pending', outcome: 'space', changed: true },
-    { path: 'pending', outcome: 'no_space', changed: true },
-    { path: 'pending', outcome: 'started', changed: true },
-    { path: 'decision', outcome: 'file', changed: true },
-    { path: 'decision', outcome: 'error', changed: true },
-    { path: 'decision', outcome: 'empty', changed: true },
-    { path: 'decision', outcome: 'ready', changed: true },
-    { path: 'decision', outcome: 'live', changed: true },
-    { path: 'decision', outcome: 'space', changed: true },
-    { path: 'decision', outcome: 'no_space', changed: true },
-    { path: 'decision', outcome: 'started', changed: true },
-    { path: 'pending', outcome: 'file', changed: false },
-    { path: 'decision', outcome: 'file', changed: false },
-  ])(
+  it.each(
+    [
+      { path: 'pending', outcome: 'file', changed: true },
+      { path: 'pending', outcome: 'error', changed: true },
+      { path: 'pending', outcome: 'empty', changed: true },
+      { path: 'pending', outcome: 'ready', changed: true },
+      { path: 'pending', outcome: 'live', changed: true },
+      { path: 'pending', outcome: 'space', changed: true },
+      { path: 'pending', outcome: 'no_space', changed: true },
+      { path: 'pending', outcome: 'started', changed: true },
+      { path: 'decision', outcome: 'file', changed: true },
+      { path: 'decision', outcome: 'error', changed: true },
+      { path: 'decision', outcome: 'empty', changed: true },
+      { path: 'decision', outcome: 'ready', changed: true },
+      { path: 'decision', outcome: 'live', changed: true },
+      { path: 'decision', outcome: 'space', changed: true },
+      { path: 'decision', outcome: 'no_space', changed: true },
+      { path: 'decision', outcome: 'started', changed: true },
+      { path: 'pending', outcome: 'file', changed: false },
+      { path: 'decision', outcome: 'file', changed: false },
+    ].flatMap(item => [
+      { ...item, policy: false },
+      ...(item.changed ? [{ ...item, policy: true }] : []),
+    ]),
+  )(
     'проверяет профиль при асинхронном захвате: $path/$outcome/changed=$changed',
-    async ({ path, outcome, changed }) => {
+    async ({ path, outcome, changed, policy }) => {
       const follow = insertFollow({ waitHours: 0, audio: 'ru' })
       const release = {
         id: 'delayed-candidate',
@@ -714,8 +719,16 @@ describe('автоматика «Следить»', () => {
             ? grabPending(follow)
             : decideFollow(follow, [release])
         await entered.promise
-        if (changed)
-          saveSourceProfile({ qualities: ['2160p', '1080p', '720p', 'SD'] })
+        if (changed) {
+          if (policy) {
+            updateFollow(follow.id, {
+              rules: { voicePolicy: { mode: 'only', studio: 'NewStudio' } },
+            })
+          }
+          else {
+            saveSourceProfile({ qualities: ['2160p', '1080p', '720p', 'SD'] })
+          }
+        }
         resume.resolve()
         await running
 
@@ -784,6 +797,53 @@ describe('автоматика «Следить»', () => {
       spy.mockRestore()
     }
   })
+
+  it.each(['notify', 'download'] as const)(
+    'explicit any ignores old pins and type waiting in %s without auto-pinning',
+    async (mode) => {
+      libraryEpisodes(1, 2, 3, 4, 5, 6, 7)
+      items = [{ title: EPISODE_8_TITLE, hash: SINGLE_HASH, size: 1.5 * GB }]
+      pinVoice(SERIES, 1, { studio: 'NewStudio' })
+      const follow = insertFollow({ mode, voiceMode: 'any', waitHours: 24 })
+      await followAutomation(new Date())
+      expect(rows(follow.id)[0]?.pending).toBeNull()
+      if (mode === 'notify') {
+        expect(rows(follow.id)[0]?.picked?.studio).toBe('LostFilm')
+        expect(getDb().select().from(torrents).all()).toEqual([])
+      }
+      else {
+        expect(rows(follow.id)[0]?.torrentId).not.toBeNull()
+      }
+      expect(
+        getDb()
+          .select()
+          .from(titleVoices)
+          .all()
+          .map(row => row.season),
+      ).toEqual([1])
+    },
+  )
+
+  it.each([0, 24])(
+    'only never falls back at waitHours=%s despite conflicting pin',
+    async (waitHours) => {
+      libraryEpisodes(1, 2, 3, 4, 5, 6, 7)
+      items = [{ title: EPISODE_8_TITLE, hash: SINGLE_HASH, size: 1.5 * GB }]
+      pinVoice(SERIES, 2, { studio: 'LostFilm' })
+      const follow = insertFollow({
+        mode: 'notify',
+        voiceMode: 'only',
+        voiceStudio: 'NewStudio',
+        voiceStrict: true,
+        waitHours,
+      })
+      await followAutomation(new Date())
+      expect(rows(follow.id).every(row => !row.picked && !row.pending)).toBe(
+        true,
+      )
+      expect(getDb().select().from(torrents).all()).toEqual([])
+    },
+  )
 
   it('ищет при включении и качает из пака только нужные серии своей студии', async () => {
     // Озвучка прошлого сезона переходит в новый
@@ -1065,73 +1125,90 @@ describe('автоматика «Следить»', () => {
     }
   })
 
-  it('чужая студия по magnet после окна не закрепляется, когда пришли метаданные', async () => {
-    libraryEpisodes(1, 2, 3, 4, 5, 6, 7)
+  it.each([false, true])(
+    'metadata wait revalidates policy; changed=%s',
+    async (changed) => {
+      libraryEpisodes(1, 2, 3, 4, 5, 6, 7)
 
-    const follow = insertFollow({ voiceStudio: 'LostFilm' })
-    const now = new Date()
-    const magnet = `magnet:?xt=urn:btih:${SINGLE_HASH}`
-    const torrent = getDb()
-      .insert(torrents)
-      .values({
-        infoHash: SINGLE_HASH,
-        name: SINGLE_HASH,
-        source: 'magnet',
-        magnet,
-        status: 'resolving',
-        origin: 'follow',
-        titleId: SERIES,
-      })
-      .returning()
-      .get()
-
-    // Окно ожидания вышло, захват ждёт метаданные magnet
-    getDb()
-      .insert(followEpisodes)
-      .values({
-        followId: follow.id,
-        season: 2,
-        episode: 8,
-        firstSeenAt: new Date(now.getTime() - 24 * HOUR_MS),
-        torrentId: torrent.id,
-        grabbedAt: now,
-        pending: {
-          id: 'magnet-candidate',
-          title:
-            'Тихая гавань / Quiet Harbor / Сезон: 2 / Серии: 8 из 12 (2024) WEB-DL 1080p | NewStudio',
+      const follow = insertFollow({ voiceStudio: 'LostFilm' })
+      const now = new Date()
+      const magnet = `magnet:?xt=urn:btih:${SINGLE_HASH}`
+      const torrent = getDb()
+        .insert(torrents)
+        .values({
           infoHash: SINGLE_HASH,
+          name: SINGLE_HASH,
+          source: 'magnet',
           magnet,
-          seeders: 30,
-          studio: 'NewStudio',
-        },
-      })
-      .run()
+          status: 'resolving',
+          origin: 'follow',
+          titleId: SERIES,
+        })
+        .returning()
+        .get()
 
-    await continueGrabs(followById, now)
-    expect(rows(follow.id)[0]!.fileIndex).toBeNull()
+      // Окно ожидания вышло, захват ждёт метаданные magnet
+      getDb()
+        .insert(followEpisodes)
+        .values({
+          followId: follow.id,
+          season: 2,
+          episode: 8,
+          firstSeenAt: new Date(now.getTime() - 24 * HOUR_MS),
+          torrentId: torrent.id,
+          grabbedAt: now,
+          pending: {
+            id: 'magnet-candidate',
+            title:
+              'Тихая гавань / Quiet Harbor / Сезон: 2 / Серии: 8 из 12 (2024) WEB-DL 1080p | NewStudio',
+            infoHash: SINGLE_HASH,
+            magnet,
+            seeders: 30,
+            studio: 'NewStudio',
+          },
+        })
+        .run()
 
-    inspected = single
-    getDb()
-      .update(torrents)
-      .set({
-        status: 'ready',
-        name: single.name,
-        torrentFile: Buffer.from(sampleTorrentFile()),
-        pieceLength: single.pieceLength,
-        files: single.files.map(file => ({
-          path: file.path,
-          size: file.length,
-          padding: file.padding,
-        })),
-      })
-      .where(eq(torrents.id, torrent.id))
-      .run()
+      await continueGrabs(followById, now)
+      expect(rows(follow.id)[0]!.fileIndex).toBeNull()
 
-    await continueGrabs(followById, new Date(now.getTime() + 60_000))
+      inspected = single
+      getDb()
+        .update(torrents)
+        .set({
+          status: 'ready',
+          name: single.name,
+          torrentFile: Buffer.from(sampleTorrentFile()),
+          pieceLength: single.pieceLength,
+          files: single.files.map(file => ({
+            path: file.path,
+            size: file.length,
+            padding: file.padding,
+          })),
+        })
+        .where(eq(torrents.id, torrent.id))
+        .run()
 
-    expect(rows(follow.id)[0]).toMatchObject({ fileIndex: 0, pending: null })
-    expect(getDb().select().from(titleVoices).all()).toEqual([])
-  })
+      if (changed) {
+        updateFollow(follow.id, {
+          rules: { voicePolicy: { mode: 'only', studio: 'LostFilm' } },
+        })
+      }
+      await continueGrabs(followById, new Date(now.getTime() + 60_000))
+
+      if (changed) {
+        expect(rows(follow.id)[0]).toMatchObject({
+          fileIndex: null,
+          torrentId: null,
+          pending: null,
+        })
+        expect(enginePuts).toHaveLength(0)
+        return
+      }
+      expect(rows(follow.id)[0]).toMatchObject({ fileIndex: 0, pending: null })
+      expect(getDb().select().from(titleVoices).all()).toEqual([])
+    },
+  )
 
   it('нет места — `no_space`, кандидат остаётся; место вернулось — качается', async () => {
     pinVoice(SERIES, 2, { studio: 'LostFilm' })
@@ -2167,6 +2244,67 @@ describe('режим «Только уведомлять»', () => {
       fileIndex: 0,
       notifiedAt: null,
     })
+  })
+
+  it('follow-ready cancels before adding a torrent when rules change during downloadTorrent', async () => {
+    libraryEpisodes(1, 2, 3, 4, 5, 6, 7)
+    items = [{ title: EPISODE_8_TITLE, hash: SINGLE_HASH, size: 1.5 * GB }]
+    const follow = insertFollow({ mode: 'notify', waitHours: 0 })
+    await followAutomation(new Date())
+    const entered = Promise.withResolvers<void>()
+    const resume = Promise.withResolvers<void>()
+    const originalFetch = fetchMock.getMockImplementation()!
+    fetchMock.mockImplementation(async (input, init) => {
+      if (new URL(String(input)).pathname.startsWith('/download/')) {
+        entered.resolve()
+        await resume.promise
+      }
+      return originalFetch(input, init)
+    })
+    const opening = openPick(SERIES, {
+      season: 2,
+      episode: 8,
+      intent: 'follow-ready',
+    })
+    const outcome = expect(opening).rejects.toMatchObject({
+      kind: 'follow_pick_unavailable',
+    })
+    await entered.promise
+    updateFollow(follow.id, {
+      rules: { voicePolicy: { mode: 'only', studio: 'NewStudio' } },
+    })
+    resume.resolve()
+    await outcome
+    expect(getDb().select().from(torrents).all()).toEqual([])
+    expect(engineAdds).toHaveLength(0)
+    expect(enginePuts).toHaveLength(0)
+  })
+
+  it('follow-ready does not return a stale pick after acquire changes rules', async () => {
+    libraryEpisodes(1, 2, 3, 4, 5, 6, 7)
+    items = [{ title: EPISODE_8_TITLE, hash: SINGLE_HASH, size: 1.5 * GB }]
+    const follow = insertFollow({ mode: 'notify', waitHours: 0 })
+    await followAutomation(new Date())
+    const original = watch.acquire
+    const spy = vi
+      .spyOn(watch, 'acquire')
+      .mockImplementationOnce(async (...args) => {
+        const result = await original(...args)
+        updateFollow(follow.id, {
+          rules: { voicePolicy: { mode: 'only', studio: 'NewStudio' } },
+        })
+        return result
+      })
+    try {
+      await expect(
+        openPick(SERIES, { season: 2, episode: 8, intent: 'follow-ready' }),
+      ).rejects.toMatchObject({ kind: 'follow_pick_unavailable' })
+      expect(rows(follow.id)[0]?.picked).toBeNull()
+      expect(enginePuts).toHaveLength(0)
+    }
+    finally {
+      spy.mockRestore()
+    }
   })
 
   it('«Смотреть» добавляет выбор стримом; серии нет в файлах — выбор снимается', async () => {

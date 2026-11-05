@@ -1,5 +1,6 @@
 import type {
   FollowTitleInput,
+  FollowVoicesResponse,
   LibraryFile,
   MarkWatched,
   MarkWatchedInput,
@@ -189,6 +190,7 @@ get<UpNext>('/api/titles/:id/up-next', ({ params, query }) => {
 const followSettings = new Map<string, Required<FollowTitleInput>>()
 
 const DEFAULT_FOLLOW: Required<FollowTitleInput> = {
+  voicePolicy: { mode: 'auto' },
   voiceStudio: null,
   voiceStrict: false,
   requireRussian: false,
@@ -212,6 +214,7 @@ function followOf(title: DemoTitle): TitleFollowResponse {
     kind: title.kind,
     state: next || title.kind === 'movie' ? 'active' : 'done',
     start: { season, episode: 1 },
+    voicePolicy: settings.voicePolicy,
     voiceStudio: settings.voiceStudio,
     voiceStrict: settings.voiceStrict,
     requireRussian: settings.requireRussian,
@@ -271,9 +274,18 @@ del<TitleFollowResponse>('/api/titles/:id/follow', ({ params }) => {
 
 // Раздачи, выбранной «Следить» в режиме «Только уведомлять», в демо нет:
 // витрина ищет серию по раздачам тайтла
-post<TitleOpen, OpenFollowPickInput>('/api/titles/:id/follow/open', () => {
-  throw new DemoError(404, { message: 'Nothing picked' })
-})
+post<TitleOpen, OpenFollowPickInput>(
+  '/api/titles/:id/follow/open',
+  ({ body }) => {
+    if (body.intent === 'follow-ready') {
+      throw new DemoError(409, {
+        message: 'Ready selection is unavailable',
+        kind: 'follow_pick_unavailable',
+      })
+    }
+    throw new DemoError(404, { message: 'Nothing picked' })
+  },
+)
 
 put<MessageResponse>('/api/collections/:id/titles/:titleId', ({ params }) => {
   const collection = collections.find(item => item.id === params.id)
@@ -297,3 +309,41 @@ del<MessageResponse>('/api/collections/:id/titles/:titleId', ({ params }) => {
   collection.titles = collection.titles.filter(id => id !== params.titleId)
   return { message: 'ok' }
 })
+
+const voiceSearches = new Map<string, string>()
+
+get<FollowVoicesResponse>(
+  '/api/titles/:id/follow/voices',
+  ({ params, query }) => {
+    const policy = (followSettings.get(params.id!) ?? DEFAULT_FOLLOW)
+      .voicePolicy
+    const studio = 'studio' in policy ? policy.studio : null
+    const key = `${params.id}|${query.get('season') ?? 0}`
+    if (query.get('refresh') === '1')
+      voiceSearches.set(key, new Date().toISOString())
+    const updatedAt = voiceSearches.get(key) ?? null
+    const refresh = updatedAt !== null
+    return {
+      season: Number(query.get('season') ?? 0),
+      updatedAt,
+      stale: !refresh,
+      cache: refresh ? 'hit' : 'miss',
+      indexerCount: 1,
+      failed: [],
+      items: [
+        ...new Set([
+          ...(studio ? [studio] : []),
+          ...(refresh ? ['Demo Studio A', 'Demo Studio B'] : []),
+        ]),
+      ].map(name => ({
+        studio: name,
+        types: ['MVO'],
+        count: refresh ? 2 : 0,
+        seeders: refresh ? 10 : 0,
+        found: refresh,
+        saved: name === studio,
+        inherited: false,
+      })),
+    }
+  },
+)

@@ -24,7 +24,6 @@ import {
   mediaFiles,
 } from '../../db/schema.ts'
 import { summaryOf } from '../mine/cards.ts'
-import { sameSourceProfile } from '../sources/profile.ts'
 import { rankReleases } from '../sources/rank.ts'
 import { knownResolutions } from '../sources/resolution.ts'
 import { getTitleIdentity } from '../tmdb/index.ts'
@@ -40,7 +39,12 @@ import {
   releaseSeasons,
 } from './decide.ts'
 import { followEpisodeStates, movieState, stateInputs } from './episodes.ts'
-import { grabCandidate, pendingOf, resetEpisodes } from './grab.ts'
+import {
+  grabCandidate,
+  pendingOf,
+  resetEpisodes,
+  updateEpisodes,
+} from './grab.ts'
 import { recordHistory, reportedEpisodes } from './history.ts'
 import { announceWaiting } from './notify.ts'
 import { followById, scheduleOf } from './index.ts'
@@ -53,7 +57,7 @@ import {
 } from './topics.ts'
 import { recordTrackerEpisodes } from './trackerEpisodes.ts'
 import { upgradeTargets, versionOf } from './upgrade.ts'
-import { seasonVoice } from './voice.ts'
+import { permitsCandidate, seasonVoice, voiceGuard } from './voice.ts'
 import { compareEpisodes, episodeKey, WANTED_STATES } from './wanted.ts'
 
 // Фону язык зрителя не нужен: из деталей берётся только расписание, а
@@ -405,6 +409,7 @@ export async function upgradeNeeded(
         originalLanguage: identity?.originalLanguage,
         profile,
         preset: follow.qualityPreset,
+        voiceMode: follow.voiceMode,
       }),
       seasonCtx,
     )
@@ -477,12 +482,19 @@ async function decideFollowImpl(
   releases: FoundRelease[],
   now = new Date(),
 ) {
+  const currentRules = voiceGuard(follow, [
+    ...new Set(releases.flatMap(release => release.parsed.seasons)),
+    follow.startSeason,
+  ])
   // Проход начался раньше: слежение могли остановить или удалить
   if (followById(follow.id)?.state !== 'active')
     return
 
   if (follow.kind === 'series')
     await recordTrackerEpisodes(follow.titleId, releases, now)
+
+  if (!currentRules())
+    return
 
   forgetRemoved(follow)
 
@@ -503,10 +515,13 @@ async function decideFollowImpl(
   const rows = new Map(
     episodeRows(follow.id).map(row => [episodeKey(row), row]),
   )
+  if (!currentRules())
+    return
   const profile = followSourceProfile(follow)
   const ctx: DecideContext = {
     kind: follow.kind,
     preset: follow.qualityPreset,
+    voiceMode: follow.voiceMode,
     voiceStrict: follow.voiceStrict,
     requireRussian: follow.audio === 'ru' && follow.requireRussian,
     waitHours: follow.waitHours,
@@ -603,7 +618,7 @@ async function decideFollowImpl(
 
   for (const { plan, voice } of grabs) {
     for (const grab of plan.grabs) {
-      if (!sameSourceProfile(profile, followSourceProfile(follow)))
+      if (!currentRules())
         return
       await takeCandidate(
         follow,
@@ -615,8 +630,7 @@ async function decideFollowImpl(
         {
           ownStudio: voice?.studio,
           now,
-          isCurrent: () =>
-            sameSourceProfile(profile, followSourceProfile(follow)),
+          isCurrent: currentRules,
         },
       )
     }
@@ -635,7 +649,6 @@ export function decideFollow(...args: Parameters<typeof decideFollowImpl>) {
  * оставили перед курсором, кандидата больше не ждут.
  */
 async function grabPendingImpl(follow: Follow, now = new Date()) {
-  const profile = followSourceProfile(follow)
   const rows = getDb()
     .select()
     .from(followEpisodes)
@@ -657,6 +670,10 @@ async function grabPendingImpl(follow: Follow, now = new Date()) {
 
   if (!rows.length)
     return
+  const currentRules = voiceGuard(
+    follow,
+    rows.map(row => row.season),
+  )
 
   const { library, downloading } = stateInputs(follow, follow.kind)
   const cursor = { season: follow.startSeason, episode: follow.startEpisode }
@@ -677,6 +694,14 @@ async function grabPendingImpl(follow: Follow, now = new Date()) {
       continue
     }
 
+    if (!permitsCandidate(follow, row.pending!, row.season)) {
+      updateEpisodes(follow, [row], {
+        pending: null,
+        waitUntil: null,
+        stateNote: null,
+      })
+      continue
+    }
     const group = groups.get(row.pending!.id) ?? {
       candidate: row.pending!,
       episodes: [],
@@ -687,12 +712,12 @@ async function grabPendingImpl(follow: Follow, now = new Date()) {
   }
 
   for (const { candidate, episodes } of groups.values()) {
-    if (!sameSourceProfile(profile, followSourceProfile(follow)))
+    if (!currentRules())
       return
     await takeCandidate(follow, candidate, episodes, {
       ownStudio: seasonVoice(follow, episodes[0]!.season)?.studio,
       now,
-      isCurrent: () => sameSourceProfile(profile, followSourceProfile(follow)),
+      isCurrent: currentRules,
     })
   }
 }

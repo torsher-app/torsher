@@ -91,7 +91,10 @@ export function voiceKeysOf(release: Pick<RankedRelease, 'voices'>) {
   return [...new Set(release.voices.map(voiceKeyOf))]
 }
 
-function voiceOptions(ranked: RankedRelease[], pinned: VoiceRef | undefined) {
+export function voiceOptions(
+  ranked: RankedRelease[],
+  pinned: VoiceRef | undefined,
+) {
   const options = new Map<string, VoiceOption>()
   const pinnedKey = pinned ? voiceKeyOf(pinned) : undefined
 

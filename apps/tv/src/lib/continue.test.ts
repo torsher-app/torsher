@@ -100,3 +100,13 @@ describe('replaceContinueRow', () => {
     ).toBe('b,a')
   })
 })
+
+it('passes explicit ready intent even if the old torrent is known', () => {
+  expect(resumeRoute('title', started, 'follow-ready')).toEqual({
+    path: '/title/title/play',
+    query: { intent: 'follow-ready', automatic: '1', season: '2', episode: '5' },
+  })
+  expect(resumeRoute('title', { ...started, followNewEpisode: true })).toEqual(
+    resumeRoute('title', started),
+  )
+})
