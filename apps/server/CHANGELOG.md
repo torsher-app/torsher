@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.5.0 (2026-11-05)
+
+### Features
+
+- **diagnostics:** add local viewer diagnostics and support reports (#172) ([95a04b3](https://github.com/torsher-app/torsher/commit/95a04b3a886ec3b4a10942abb7b6673bd9ed14ab))
+- **tv:** add episode actions and resume season selection (#170) ([6b97343](https://github.com/torsher-app/torsher/commit/6b97343128e5d23d161061206021cd5f7238d676))
+- **overview:** show file cache in memory usage (#168) ([f595577](https://github.com/torsher-app/torsher/commit/f5955779721682f19c1b71c27afea2a38cc1923e))
+
+### Bug Fixes
+
+- **follow:** make voice selection explicit across clients (#171) ([3c9ff90](https://github.com/torsher-app/torsher/commit/3c9ff90e3bd004f79f6c2994c7bf4e84e01fef12))
+- **playback:** preserve episode order and confirm quality downgrades (#169) ([9170680](https://github.com/torsher-app/torsher/commit/917068076f415715ea27e2df424f96d7aa4cfb3c))
+
+### Other
+
+- **diagnostics:** set timeout for checkpoint budget scenario (#173) ([497ba6e](https://github.com/torsher-app/torsher/commit/497ba6e7adfa329533356f959dcd151ef6634a75))
+
 ## 1.4.0 (2026-11-04)
 
 ### Features
