@@ -224,7 +224,27 @@ export function useEpisodeActions(
         return
       }
     }
-    navigate(resolveRoute(value.titleId, target.season, target.episode))
+    const release = progress.value?.seasonReleases.find(
+      item =>
+        item.season === target.season && item.episodes.includes(target.episode),
+    )
+    // Без прежнего выбора зритель сам выбирает источник, как на карточке тайтла.
+    navigate(
+      release
+        ? resolveRoute(
+            value.titleId,
+            target.season,
+            target.episode,
+            release.torrentId,
+          )
+        : {
+            path: `/title/${value.titleId}/sources`,
+            query: {
+              season: String(target.season),
+              episode: String(target.episode),
+            },
+          },
+    )
   }
 
   function cancel() {

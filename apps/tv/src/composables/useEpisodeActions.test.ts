@@ -98,7 +98,7 @@ describe('episode actions', () => {
       query: { title: 'show', season: '2', episode: '6', start: '0' },
     })
   })
-  it('preserves the exact goal and zero intent in downloaded-file and resolver routes', async () => {
+  it('preserves the exact goal and zero intent in downloaded-file and source-selection routes', async () => {
     const actions = setup()
     mocks.library.mockResolvedValueOnce({
       files: [],
@@ -111,8 +111,49 @@ describe('episode actions', () => {
     })
     await actions.select('start')
     expect(mocks.push.mock.calls[1]![0]).toMatchObject({
-      path: '/title/show/play',
+      path: '/title/show/sources',
       query: { season: '2', episode: '6', start: '0' },
+    })
+  })
+  it.each([false, true])(
+    'asks for a source without playback history, including manual watched=%s',
+    async (watched) => {
+      const actions = setup()
+      actions.progress.value = {
+        ...actions.progress.value,
+        episodes: watched ? [{ ...point, position: 0, watched: true }] : [],
+      }
+      await actions.select('play')
+      expect(mocks.push).toHaveBeenCalledExactlyOnceWith({
+        path: '/title/show/sources',
+        query: { season: '2', episode: '6' },
+      })
+    },
+  )
+  it('reuses the previous season source only when it contains the selected episode', async () => {
+    const actions = setup()
+    actions.progress.value = {
+      ...actions.progress.value,
+      seasonReleases: [
+        {
+          season: 2,
+          torrentId: 'previous',
+          episodes: [6],
+          quality: null,
+          voice: null,
+        },
+      ],
+    }
+    await actions.select('play')
+    expect(mocks.push.mock.calls[0]![0]).toMatchObject({
+      path: '/title/show/play',
+      query: { season: '2', episode: '6', torrent: 'previous' },
+    })
+    actions.open({ ...episode, number: 7 })
+    await actions.select('play')
+    expect(mocks.push.mock.calls[1]![0]).toEqual({
+      path: '/title/show/sources',
+      query: { season: '2', episode: '7' },
     })
   })
   it.each(['close', 'deactivate'] as const)(
