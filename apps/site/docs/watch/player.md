@@ -81,7 +81,9 @@ You can also start a specific episode from the title page: press OK on it, then 
 
 <Ui k="player.episodes.button" /> lists the aired episodes of a season, with season chips on top. Each episode shows its progress: <Ui k="player.episodes.current" />, <Ui k="player.episodes.watched" />, the time left, and <Ui k="player.episodes.inTorrent" /> when this release has it.
 
-An episode from this release starts at once. For another one, Torsher looks for it in the releases you watched and then in the search results, with your voice-over first. The screen says <Ui k="resolve.searching" /> meanwhile.
+Switching episodes keeps the current release when it contains the episode, even if you watched that episode from another release before. The player also carries over the voice-over studio it can identify, instead of restoring the episode's old choice. This applies to the next episode too; you do not need to watch a minimum amount first.
+
+If the episode is missing from the current release, Torsher checks your viewing history, the release picked by Following, and then search results. The screen says <Ui k="resolve.searching" /> meanwhile. If the audio check cannot confirm the same studio in the selected track, a message asks you to check the audio track. Files without audio metadata cannot be checked this way.
 
 ## Switch the release
 
