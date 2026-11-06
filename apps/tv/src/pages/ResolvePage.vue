@@ -170,18 +170,18 @@ async function run() {
       query: props.query,
       intent: props.intent === 'follow-ready' ? 'follow-ready' : undefined,
       torrents: [
+        props.torrent,
         props.automatic && progress?.continuation !== undefined
           ? progress.continuation.preferredTorrent?.torrentId
-          : props.torrent,
-        props.automatic && progress?.continuation !== undefined
-          ? undefined
           : releases.find(
             item =>
               item.season === season
               && (!target.episode || item.episodes.includes(target.episode)),
           )?.torrentId,
       ],
-      voiceKey: lastVoiceKey(releases, season),
+      voiceKey: props.voice
+        ? `studio:${props.voice}`
+        : lastVoiceKey(releases, season),
       cancelled: () => cancelled,
       onStep: (next) => {
         step.value = next

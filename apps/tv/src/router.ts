@@ -137,6 +137,7 @@ export const router = createRouter({
       component: PlayerPage,
       props: route => ({
         mediaFileId: route.params.mediaFileId,
+        voice: queryOf(route.query.voice),
         automatic: automaticFromQuery(
           route.query.automatic,
           route.query.reference,

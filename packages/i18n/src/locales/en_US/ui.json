@@ -622,6 +622,7 @@
     },
     "skipIntro": "Skip intro",
     "skipCredits": "Skip credits",
+    "voiceUnconfirmed": "Check the audio track: we could not confirm “{studio}” for this episode",
     "quality": {
       "title": "Lower source quality",
       "text": "This episode has a lower resolution than your previous viewing.",

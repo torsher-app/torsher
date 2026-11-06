@@ -197,3 +197,50 @@ it('player episode switching preserves consent context when it falls back to the
     automaticFromQuery(fallback.query?.automatic, fallback.query?.reference),
   ).toEqual(automatic)
 })
+
+it('keeps the current pack and heard studio when returning to a watched episode', () => {
+  const route = automaticEpisodeRoute(
+    { id: 'show', season: 1, episode: 1, fileIndex: 0 },
+    { torrentId: 'old-pack', fileIndex: 8 },
+    'new-pack',
+    automaticPlayback,
+    'New Studio',
+  )
+  expect(route.path).toBe('/play/new-pack/0')
+  expect(route.query).toMatchObject({ voice: 'New Studio', automatic: '1' })
+})
+
+it('checks the current pack before history when its episode file is not loaded yet', () => {
+  const route = automaticEpisodeRoute(
+    { id: 'show', season: 1, episode: 1 },
+    { torrentId: 'old-pack', fileIndex: 8 },
+    'new-pack',
+    automaticPlayback,
+    'New Studio',
+  )
+  expect(route.path).toBe('/title/show/play')
+  expect(route.query).toMatchObject({
+    torrent: 'new-pack',
+    voice: 'New Studio',
+  })
+})
+
+it('keeps the current next-episode file and voice without consulting history', () => {
+  const route = automaticEpisodeRoute(
+    { id: 'show', season: 1, episode: 3 },
+    { torrentId: 'new-pack', fileIndex: 2 },
+    'new-pack',
+    automaticPlayback,
+    'New Studio',
+  )
+  expect(route.path).toBe('/play/new-pack/2')
+  expect(route.query?.voice).toBe('New Studio')
+  expect(
+    libraryRoute(
+      'library-episode',
+      { id: 'show' },
+      automaticPlayback,
+      'New Studio',
+    ).query,
+  ).toMatchObject({ voice: 'New Studio', automatic: '1' })
+})
