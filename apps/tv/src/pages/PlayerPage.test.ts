@@ -1,3 +1,5 @@
+import type { SourceCandidate } from '@torsher/api-client'
+import type { SourceChoice } from '../components/SourcesScreen.vue'
 import type { Ref } from 'vue'
 import type { PlaybackRestart } from '../composables/usePlayback.ts'
 import { createRenderer, nextTick, ref, ssrContextKey } from 'vue'
@@ -5,6 +7,8 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import PlayerPage from './PlayerPage.vue'
 
 const mocks = vi.hoisted(() => ({
+  historyState: {} as Record<string, unknown>,
+  replace: vi.fn(),
   start: vi.fn(),
   saveTracks: vi.fn(),
   selectAudio: vi.fn(),
@@ -33,7 +37,15 @@ vi.mock('../platform/nativeVideo.ts', () => ({
   attachNativeVideo: () => () => {},
 }))
 vi.mock('vue-router', () => ({
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  useRouter: () => ({
+    push: vi.fn(),
+    replace: mocks.replace,
+    options: { history: { state: mocks.historyState } },
+    currentRoute: ref({
+      path: '/play/current/0',
+      query: { title: 'tmdb:tv:100', season: '1', episode: '2' },
+    }),
+  }),
 }))
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({ t: (key: string) => key, locale: ref('en') }),
@@ -140,6 +152,10 @@ const renderer = createRenderer<Element, Element>({
   remove() {},
 })
 interface Controls {
+  switchSource: (
+    candidate: SourceCandidate,
+    choice: SourceChoice,
+  ) => Promise<void>
   onTracksSelect: (id: string) => Promise<void>
   openPanel: (kind: 'audio' | 'subtitles') => void
   closePanel: () => void
@@ -184,6 +200,7 @@ async function mount() {
 beforeEach(() => {
   vi.useFakeTimers()
   vi.clearAllMocks()
+  mocks.historyState = {}
   vi.stubGlobal('history', { state: {} })
   vi.stubGlobal('document', {
     hidden: false,
@@ -299,4 +316,34 @@ it('leaves a failed save unselected and allows retry', async () => {
   expect(mocks.selectAudio).not.toHaveBeenCalled()
   await controls.onTracksSelect('3')
   expect(mocks.selectAudio).toHaveBeenCalledWith('3')
+})
+
+it('switches to a previous source even when history still labels it last watched', async () => {
+  await mount()
+  await controls.switchSource(
+    {
+      id: 'previous',
+      torrentId: 'other',
+      lastWatched: true,
+    } as SourceCandidate,
+    {},
+  )
+  expect(mocks.replace).toHaveBeenCalledWith(
+    expect.objectContaining({
+      path: '/title/tmdb:tv:1/play',
+      query: expect.objectContaining({ candidate: 'previous' }),
+    }),
+  )
+})
+it('closes the source panel for the actual playing torrent even before history catches up', async () => {
+  await mount()
+  await controls.switchSource(
+    {
+      id: 'current',
+      torrentId: 'fixture',
+      lastWatched: false,
+    } as SourceCandidate,
+    {},
+  )
+  expect(mocks.replace).not.toHaveBeenCalled()
 })

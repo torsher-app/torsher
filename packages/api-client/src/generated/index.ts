@@ -3365,6 +3365,7 @@ export interface SourceCandidateInput {
     | null;
   publishedAt: string | null;
   lastWatched: boolean;
+  torrentId?: string | null;
 }
 
 export interface VoiceOptionInput {
@@ -10997,6 +10998,7 @@ export interface SourceCandidate {
     | null;
   publishedAt: string | null;
   lastWatched: boolean;
+  torrentId?: string | null;
 }
 
 export interface VoiceOption {

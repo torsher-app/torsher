@@ -1060,7 +1060,7 @@ function playNext(
  * озвучка — та, что слышно сейчас, если она там есть
  */
 async function switchSource(candidate: SourceCandidate, choice: SourceChoice) {
-  if (candidate.lastWatched && !isLibrary) {
+  if (candidate.torrentId === props.torrentId && !isLibrary) {
     closePanel()
     return
   }
@@ -2314,7 +2314,13 @@ onBeforeUnmount(() => {
         v-else-if="panel === 'source' && titleId"
         :id="titleId"
         class="player__sources"
-        :playing="{ season, episode, library: isLibrary, mediaFileId }"
+        :playing="{
+          season,
+          episode,
+          library: isLibrary,
+          mediaFileId,
+          torrentId,
+        }"
         @select="switchSource"
         @library="switchToLibrary"
         @back="closePanelFromScreen"

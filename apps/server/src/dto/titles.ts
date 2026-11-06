@@ -145,6 +145,8 @@ export const sourceCandidate = z
     publishedAt: z.string().nullable(),
     // Этой раздачей смотрели тайтл последний раз
     lastWatched: z.boolean(),
+    // ID уже добавленной раздачи; история не определяет текущий поток
+    torrentId: z.string().nullable().optional(),
   })
   .meta({ id: 'sourceCandidate' })
 

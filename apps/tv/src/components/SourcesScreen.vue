@@ -71,6 +71,7 @@ export interface PlayingSource {
   // Файл библиотеки, а не раздача
   library: boolean
   mediaFileId?: string
+  torrentId?: string
 }
 
 /** С чем выбрана раздача: «Файлы» встают на сезон фильтра */
@@ -260,9 +261,13 @@ const seasons = computed(() =>
 )
 const qualities = computed<Quality[]>(() => qualityOptions(candidates.value))
 
-// Играющая раздача — раздача прошлого просмотра; у файла библиотеки — его строка
+// История может отставать: текущая раздача определяется ID самого плеера
 function isCurrent(candidate: SourceCandidate) {
-  return !!props.playing && !props.playing.library && candidate.lastWatched
+  return (
+    !!props.playing?.torrentId
+    && !props.playing.library
+    && candidate.torrentId === props.playing.torrentId
+  )
 }
 
 function qualityLabel(quality: Quality) {

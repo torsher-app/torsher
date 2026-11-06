@@ -234,15 +234,13 @@ describe('post /api/titles/:id/watch', () => {
         attempts.push('other')
         return new Response('', { status: 404 })
       }
-      const spy = vi
-        .spyOn(sources, 'getTitleSources')
-        .mockResolvedValue({
-          ...snapshot!,
-          ranking: {
-            ranked: [first, second, other],
-            top: [first.id, other.id, second.id],
-          },
-        })
+      const spy = vi.spyOn(sources, 'getTitleSources').mockResolvedValue({
+        ...snapshot!,
+        ranking: {
+          ranked: [first, second, other],
+          top: [first.id, other.id, second.id],
+        },
+      })
       try {
         const response
           = action === 'watch'
@@ -648,6 +646,16 @@ describe('экран «Источники» и «Файлы»', () => {
         .find((item: { id: string }) => item.id === pack.id)
         .lastWatched
 
+    const linked = await app.inject({
+      url: `/api/titles/${TITLE}/sources?all=1`,
+      cookies: owner,
+    })
+    expect(
+      linked
+        .json()
+        .candidates.find((item: { id: string }) => item.id === pack.id)
+        .torrentId,
+    ).toBe(open.json().torrentId)
     // Только открыли — ещё не смотрели
     expect(await lastWatchedOf()).toBe(false)
 
