@@ -1,3 +1,4 @@
+import type { Router } from 'vue-router'
 import type { ProfileList } from '@torsher/api-client'
 
 /**
@@ -26,6 +27,20 @@ export function safeNext(value: unknown): string | undefined {
     : undefined
 }
 
+/** Смена профиля очищает Back, но сохраняет серию, источник и намерение start=0. */
+export function profileReturnRoute(
+  router: Pick<Router, 'resolve'>,
+  next: unknown,
+) {
+  const target = router.resolve(safeNext(next) ?? '/')
+  return {
+    path: target.path,
+    query: target.query,
+    hash: target.hash,
+    state: { back: null },
+  }
+}
+
 // Экраны подключения передают `next` дальше, остальные сами становятся им
 function nextOf(
   path: string,
@@ -45,7 +60,7 @@ function nextOf(
 export function gateTarget(
   status: SessionStatus,
   route: { path: string, fullPath: string, query: Record<string, unknown> },
-): GateTarget | undefined {
+): GateTarget | string | undefined {
   const { path } = route
 
   if (path === ABOUT || status === 'unknown')
@@ -64,9 +79,7 @@ export function gateTarget(
   }
 
   // Подключённой витрине экран кода не нужен
-  return path === CONNECT
-    ? { path: safeNext(route.query.next) ?? '/' }
-    : undefined
+  return path === CONNECT ? (safeNext(route.query.next) ?? '/') : undefined
 }
 
 /**

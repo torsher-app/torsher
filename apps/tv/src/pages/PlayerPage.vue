@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { playbackResume, sourceReturnState } from '../lib/sourceReturn.ts'
 import type {
   Continuation,
   LibraryFile,
@@ -260,9 +261,12 @@ let launch = 0
 let budget = freshBudget()
 let retryTimer: ReturnType<typeof setTimeout> | undefined
 // Пауза зрителя или свёрнутого приложения, а не остановка потока плеером
-let viewerPaused = false
+const returnedPlayback = playbackResume(
+  router.options.history.state.resumePlayback,
+)
+let viewerPaused = returnedPlayback?.paused ?? false
 // Перезапуск на паузе зрителя: новый поток ждёт на той же паузе
-let keepPaused = false
+let keepPaused = returnedPlayback?.paused ?? false
 // Новый поток ждёт на паузе: на экран плеера он выходит с метаданными, когда
 // видео уже на нужной позиции. По возврату в приложение снимается только пауза
 // от сворачивания (`hidden`), пауза зрителя (`viewer`) остаётся
@@ -1086,12 +1090,17 @@ async function switchSource(candidate: SourceCandidate, choice: SourceChoice) {
   leaving = true
   const run = ++launch
   playerSummary('source_switch')
+  const sourceReturn = sourceReturnState(
+    router.currentRoute.value,
+    position.value,
+    viewerPaused,
+  )
   await save('source_switch', context)
   if (run !== launch)
     return
   void router.replace({
     path: `/title/${props.titleId}/play`,
-    state: { diagnostic: { ...context } },
+    state: { diagnostic: { ...context }, sourceReturn, resumePlayback: null },
     query: {
       season: props.season,
       episode: props.episode,
@@ -2064,7 +2073,11 @@ async function start() {
   if (run !== launch || leaving)
     return
   const outcome = await player.start(
-    props.start === '0' ? { startPosition: 0 } : undefined,
+    returnedPlayback
+      ? { startPosition: returnedPlayback.position }
+      : props.start === '0'
+        ? { startPosition: 0 }
+        : undefined,
   )
 
   if (run !== launch || leaving)
@@ -2077,7 +2090,9 @@ async function start() {
     return
 
   // Сервер не даёт позицию в самом начале и в хвосте файла: там с начала
-  const from = props.start === '0' ? 0 : (playback.value?.startPosition ?? 0)
+  const from
+    = returnedPlayback?.position
+      ?? (props.start === '0' ? 0 : (playback.value?.startPosition ?? 0))
 
   fromStart.value = from > 0
   diagnostic(
@@ -2133,6 +2148,13 @@ async function start() {
 let detachNative: (() => void) | undefined
 
 onMounted(() => {
+  if (returnedPlayback) {
+    void router.replace({
+      path: router.currentRoute.value.path,
+      query: router.currentRoute.value.query,
+      state: { resumePlayback: null },
+    })
+  }
   if (hasNativePlayer && video.value)
     detachNative = attachNativeVideo(video.value)
 

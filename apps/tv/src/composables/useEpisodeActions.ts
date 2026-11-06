@@ -37,6 +37,7 @@ export function useEpisodeActions(
   season: Ref<number | undefined>,
   progress: Ref<TitleProgress | undefined>,
   ready: () => boolean,
+  refreshProgress: () => void,
 ) {
   const { t } = useI18n()
   const router = useRouter()
@@ -164,6 +165,7 @@ export function useEpisodeActions(
           markedEpisode(previous, watched),
         ],
       }
+      refreshProgress()
       if (closeAfter && context.value === value)
         close()
     }

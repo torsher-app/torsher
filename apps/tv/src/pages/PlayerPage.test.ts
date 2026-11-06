@@ -172,7 +172,7 @@ let cleanup: () => void
 async function settle() {
   for (let i = 0; i < 12; i++) await nextTick()
 }
-async function mount() {
+async function mount(playing = true) {
   // SFCs are compiled for SSR in this test environment. Keep the real setup,
   // lifecycle and media handlers;
   // only the DOM and streaming transport are fakes.
@@ -191,7 +191,8 @@ async function mount() {
   cleanup = () => app.unmount()
   await settle()
   controls.onLoadedMetadata()
-  controls.onPlaying()
+  if (playing)
+    controls.onPlaying()
   mocks.media.currentTime = 42
   controls.onTimeUpdate()
   await settle()
@@ -231,6 +232,18 @@ afterEach(() => {
   cleanup?.()
   vi.useRealTimers()
   vi.unstubAllGlobals()
+})
+
+it('restores the position and pause after cancelling a source switch', async () => {
+  mocks.historyState = { resumePlayback: { position: 123.5, paused: true } }
+  await mount(false)
+  expect(mocks.start).toHaveBeenCalledWith({ startPosition: 123.5 })
+  expect(controls.paused).toBe(true)
+  expect(mocks.replace).toHaveBeenCalledWith({
+    path: '/play/current/0',
+    query: { title: 'tmdb:tv:100', season: '1', episode: '2' },
+    state: { resumePlayback: null },
+  })
 })
 
 it.each(['direct', 'hls', 'native'])(

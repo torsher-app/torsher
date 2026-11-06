@@ -13,7 +13,7 @@ import ProfileAvatar from '../components/ProfileAvatar.vue'
 import ScreenState from '../components/ScreenState.vue'
 import { useHeldLoading } from '../composables/useHeldLoading.ts'
 import { useFocus } from '../focus/index.ts'
-import { safeNext } from '../lib/session.ts'
+import { profileReturnRoute } from '../lib/session.ts'
 import {
   chooseProfile,
   loadProfiles,
@@ -45,10 +45,7 @@ const columns = computed(() =>
  * «назад»: Back после смены профиля не возвращает к экранам прежнего зрителя.
  */
 function leave() {
-  void router.replace({
-    path: safeNext(route.query.next) ?? '/',
-    state: { back: null },
-  })
+  void router.replace(profileReturnRoute(router, route.query.next))
 }
 
 function focusCurrent() {
@@ -150,7 +147,10 @@ void load()
       </div>
 
       <FocusSection v-else-if="shown === 'error'" name="profiles-state">
-        <ScreenState :kind="loadError" @retry="load" />
+        <ScreenState
+          :kind="loadError === 'unauthorized' ? loadError : 'unknown'"
+          @retry="load"
+        />
       </FocusSection>
 
       <FocusSection v-else-if="list" name="profiles-grid">

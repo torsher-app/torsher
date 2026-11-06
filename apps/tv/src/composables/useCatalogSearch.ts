@@ -61,6 +61,8 @@ export function useCatalogSearch(query: Ref<string>) {
 
   watch([query, language], () => {
     clearTimeout(timer)
+    // Invalidate immediately: the previous request may finish during debounce.
+    latest.cancel()
 
     if (!query.value.trim()) {
       search()

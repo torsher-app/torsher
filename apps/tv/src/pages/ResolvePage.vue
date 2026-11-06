@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { sourceReturnRoute } from '../lib/sourceReturn.ts'
 import type { AutomaticPlayback } from '../lib/continue.ts'
 import type { ResolveStep } from '../composables/resolveEpisode.ts'
 import type { KeyAction } from '../focus/index.ts'
@@ -62,6 +63,7 @@ const step = ref<ResolveStep>('searching')
 const notFound = ref(false)
 // Серии не нашлось, а искать было негде: источников на сервере нет
 const noSources = ref(false)
+const failureReason = ref<'unsuitable' | 'searchFailed'>()
 const followFailure = ref<
   'followUnavailable' | 'followOpenFailed' | 'followUnsupported'
 >()
@@ -87,10 +89,11 @@ const failure = computed(
       ? 'failed'
       : noSources.value
         ? 'notInLibrary'
-        : 'notFound'),
+        : (failureReason.value ?? 'notFound')),
 )
 const actions = computed(() => [
-  ...(followFailure.value === 'followOpenFailed'
+  ...(failureReason.value === 'searchFailed'
+    || followFailure.value === 'followOpenFailed'
     || followFailure.value === 'followUnsupported'
     ? [{ id: 'retry' as const, label: t('resolve.retry') }]
     : []),
@@ -103,6 +106,13 @@ const actions = computed(() => [
 function back() {
   cancelOperation('back')
   cancelled = true
+  const previous = props.candidate
+    ? sourceReturnRoute(router.options.history.state.sourceReturn, props.id)
+    : undefined
+  if (previous) {
+    void router.replace(previous)
+    return
+  }
   goBack(router, () => void router.replace('/'))
 }
 
@@ -147,6 +157,7 @@ async function run() {
   running = true
   operation = 'pending'
   notFound.value = false
+  failureReason.value = undefined
   followFailure.value = undefined
   try {
     // Раздача сезона и озвучка прошлых серий — из прогресса; без него ищем по
@@ -188,7 +199,9 @@ async function run() {
       },
     })
 
-    if (operation === 'pending' && outcome.kind !== 'cancelled')
+    if (cancelled || outcome.kind === 'cancelled')
+      return
+    if (operation === 'pending')
       operation = 'completed'
     if (outcome.kind === 'found') {
       // Торшер уже на экране — плеер не прячет его на вторую задержку
@@ -207,6 +220,8 @@ async function run() {
           props.start === '0',
         ),
         state: {
+          sourceReturn: null,
+          resumePlayback: null,
           diagnostic: { ...diagnosticContext },
           loaderShown: performance.now() - mountedAt >= LOADER_DELAY_MS,
         },
@@ -227,6 +242,7 @@ async function run() {
     }
     else if (outcome.kind === 'notFound') {
       noSources.value = !!outcome.noSources
+      failureReason.value = outcome.failureKind
       notFound.value = true
     }
   }

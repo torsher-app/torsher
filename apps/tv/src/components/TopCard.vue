@@ -30,6 +30,7 @@ function openActions() {
     v-focusable
     class="card top-card"
     type="button"
+    :aria-label="`${rank}. ${card.title}`"
     data-long-press
     @click="$emit('select')"
     @longpress="openActions"

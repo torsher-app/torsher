@@ -18,7 +18,11 @@ import { getErrorBody, getErrorStatus } from '@torsher/api-client'
 import { api } from '../api.ts'
 import { session } from '../session.ts'
 import { selectedSourcePreset, sourcePresetStore } from '../sourcePreset.ts'
-import { episodeCandidates, episodeFileOf } from '../lib/episodes.ts'
+import {
+  coversEpisode,
+  episodeCandidates,
+  episodeFileOf,
+} from '../lib/episodes.ts'
 import { FILES_POLL_INTERVAL_MS, FILES_POLL_LIMIT_MS } from '../lib/files.ts'
 import { noteHasSources } from '../serverSources.ts'
 
@@ -34,7 +38,11 @@ export type ResolveStep = 'searching' | 'connecting'
 export type ResolveOutcome
   = | { kind: 'found', file: EpisodeFile }
   // `noSources` — искать было негде: на сервере нет источников раздач
-    | { kind: 'notFound', noSources?: boolean }
+    | {
+      kind: 'notFound'
+      noSources?: boolean
+      failureKind?: 'unsuitable' | 'searchFailed'
+    }
     | { kind: 'cancelled' }
     | { kind: 'followUnavailable' | 'followOpenFailed' | 'followUnsupported' }
 
@@ -291,6 +299,7 @@ export async function resolveEpisode(
   // подключить, пока витрина открыта, а без индексаторов поиск мгновенный
   let noSources = false
   let searched = false
+  let unsuitable = false
 
   try {
     const profileId = session.profile?.id
@@ -323,6 +332,11 @@ export async function resolveEpisode(
         { season: target.season, episode: target.episode },
         options.voiceKey,
       )
+      unsuitable
+        = candidates.length === 0
+          && sources.candidates.some(item =>
+            coversEpisode(item, target.season!, target.episode!),
+          )
     }
   }
   catch {
@@ -367,7 +381,15 @@ export async function resolveEpisode(
 
   return options.cancelled()
     ? { kind: 'cancelled' }
-    : { kind: 'notFound', noSources }
+    : {
+        kind: 'notFound',
+        noSources,
+        ...(!searched
+          ? { failureKind: 'searchFailed' as const }
+          : unsuitable
+            ? { failureKind: 'unsuitable' as const }
+            : {}),
+      }
 }
 
 /** Подключает раздачу кандидата и ждёт в ней файл серии */

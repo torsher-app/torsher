@@ -18,7 +18,7 @@ vi.mock('../api.ts', () => ({
 vi.mock('../session.ts', () => ({ session: {} }))
 vi.mock('../sourcePreset.ts', () => ({
   selectedSourcePreset: { value: undefined },
-  sourcePresetStore: {},
+  sourcePresetStore: { reconcile: vi.fn() },
 }))
 vi.mock('../serverSources.ts', () => ({ noteHasSources: vi.fn() }))
 
@@ -131,5 +131,46 @@ describe('explicit episode source', () => {
       }),
     ).toEqual({ kind: 'cancelled' })
     expect(mocks.open).toHaveBeenCalledTimes(1)
+  })
+})
+
+it('explains that an episode exists but is excluded from automatic selection', async () => {
+  mocks.sources.mockResolvedValue({
+    indexers: { total: 1 },
+    candidates: [
+      {
+        id: 'foreign',
+        seasons: [2],
+        episodes: { from: 6, to: 6 },
+        confidence: 'high',
+        seeders: 2,
+        source: 'WEB-DL',
+        audioFit: 'foreign',
+      },
+    ],
+  })
+  const result = await resolveEpisode(
+    { titleId: 'show', season: 2, episode: 6 },
+    { cancelled: () => false },
+  )
+  expect(result).toEqual({
+    kind: 'notFound',
+    noSources: false,
+    failureKind: 'unsuitable',
+  })
+  expect(mocks.open).not.toHaveBeenCalled()
+})
+
+it('does not report an absent episode when the search failed', async () => {
+  mocks.sources.mockRejectedValue(new Error('offline'))
+  expect(
+    await resolveEpisode(
+      { titleId: 'show', season: 2, episode: 6 },
+      { cancelled: () => false },
+    ),
+  ).toEqual({
+    kind: 'notFound',
+    noSources: false,
+    failureKind: 'searchFailed',
   })
 })

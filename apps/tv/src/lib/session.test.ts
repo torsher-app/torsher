@@ -1,6 +1,12 @@
 import type { Profile } from '@torsher/api-client'
 import { describe, expect, it } from 'vitest'
-import { autoProfile, gateTarget, safeNext } from './session.ts'
+import { createMemoryHistory, createRouter } from 'vue-router'
+import {
+  autoProfile,
+  gateTarget,
+  profileReturnRoute,
+  safeNext,
+} from './session.ts'
 
 function route(fullPath: string) {
   const [path = '', search = ''] = fullPath.split('?')
@@ -53,9 +59,7 @@ describe('gateTarget', () => {
   it('готовой витрине открыто всё, кроме экрана кода', () => {
     expect(gateTarget('ready', route('/profiles'))).toBeUndefined()
     expect(gateTarget('ready', route('/series'))).toBeUndefined()
-    expect(gateTarget('ready', route('/connect?next=/series'))).toEqual({
-      path: '/series',
-    })
+    expect(gateTarget('ready', route('/connect?next=/series'))).toBe('/series')
   })
 
   it('«О программе» открыта всегда', () => {
@@ -98,4 +102,26 @@ describe('autoProfile', () => {
       }),
     ).toBeUndefined()
   })
+})
+
+it('preserves the exact playback query after profile selection and the connection gate', () => {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/play/:id/:file', component: {} }],
+  })
+  const next = '/play/fixture/2?title=tmdb%3Atv%3A1&season=2&episode=3&start=0'
+  const destination = profileReturnRoute(router, next)
+  expect(router.resolve(destination).query).toEqual({
+    title: 'tmdb:tv:1',
+    season: '2',
+    episode: '3',
+    start: '0',
+  })
+  expect(destination.state).toEqual({ back: null })
+  const gate = gateTarget('ready', {
+    path: '/connect',
+    fullPath: '/connect',
+    query: { next },
+  })!
+  expect(router.resolve(gate).query).toEqual(router.resolve(destination).query)
 })

@@ -10,6 +10,7 @@ import {
   nextTick,
   onActivated,
   onBeforeUnmount,
+  onDeactivated,
   onMounted,
   ref,
   toRef,
@@ -114,7 +115,11 @@ const router = useRouter()
 const focus = useFocus()
 const id = toRef(props, 'id')
 const { title } = useCatalogTitle(id)
-const { progress, status: progressStatus } = useTitleProgress(id)
+const {
+  progress,
+  status: progressStatus,
+  refresh: refreshProgress,
+} = useTitleProgress(id)
 const { voiceLabel, historyOf } = useSourceLabels()
 
 // Секции слоя плеера — свои: «Источники» в KeepAlive помнят фокус в своих
@@ -127,6 +132,20 @@ const explicitEpisode = computed(() =>
   props.season !== undefined && props.episode !== undefined
     ? { season: Number(props.season), episode: Number(props.episode) }
     : undefined,
+)
+
+const targetEpisode = computed(() => {
+  const season = props.playing?.season ?? explicitEpisode.value?.season
+  const episode = props.playing?.episode ?? explicitEpisode.value?.episode
+  return season !== undefined && episode !== undefined
+    ? { season, episode }
+    : undefined
+})
+const showAllSources = ref(false)
+const scopeLabel = computed(() =>
+  targetEpisode.value
+    ? t('sources.episodeScope', targetEpisode.value)
+    : t('sources.titleScope'),
 )
 
 const storedView = loadSourceView(props.id)
@@ -236,12 +255,10 @@ const searching = useHeldLoading(
 // Из плеера — только раздачи, где есть эта серия
 const candidates = computed(() => {
   const all = sources.value?.candidates ?? []
-  const season = props.playing?.season ?? explicitEpisode.value?.season
-  const episode = props.playing?.episode ?? explicitEpisode.value?.episode
-
-  return season === undefined || episode === undefined
+  const target = targetEpisode.value
+  return !target || showAllSources.value
     ? all
-    : all.filter(item => coversEpisode(item, season, episode))
+    : all.filter(item => coversEpisode(item, target.season, target.episode))
 })
 const voiceFilter = computed(() =>
   activeVoiceFilter(sources.value?.audio, view.value.voice),
@@ -750,7 +767,15 @@ onMounted(() => {
 })
 
 // Возврат из «Файлов»: экран в KeepAlive, фокус — на той же раздаче
+let returning = false
+onDeactivated(() => {
+  returning = true
+})
 onActivated(() => {
+  if (returning) {
+    returning = false
+    void refreshProgress()
+  }
   nextTick(() => {
     focus.activate(sectionName('list'))
     snapRowPitch()
@@ -852,7 +877,8 @@ const meta = computed(() => {
     <section class="sources__main" :[NATIVE_WHEEL_ATTRIBUTE]="true">
       <header class="sources__head">
         <h2 class="sources__title">
-          {{ t(download ? "download.sourcesTitle" : "sources.title") }}
+          {{ t(download ? "download.sourcesTitle" : "sources.title") }} ·
+          {{ scopeLabel }}
         </h2>
         <p class="sources__head-meta">
           <!-- Пустая строка держит высоту, пока раздачи ищутся: ниже ничего не сдвигается -->
@@ -871,7 +897,11 @@ const meta = computed(() => {
           </span>
         </p>
         <p class="sources__head-meta sources__profile">
-          {{ profileLine || "\u00A0" }}
+          {{
+            showAllSources
+              ? t("sources.allForEpisode", targetEpisode!)
+              : profileLine || "\u00A0"
+          }}
         </p>
       </header>
 
@@ -909,6 +939,13 @@ const meta = computed(() => {
         class="sources__controls"
         :edges="edgesOf('controls')"
       >
+        <ActionButton
+          v-if="targetEpisode && !noSources"
+          v-focusable
+          chip
+          :label="t(showAllSources ? 'sources.showEpisode' : 'sources.showAll')"
+          @click="showAllSources = !showAllSources"
+        />
         <!-- Без источников фильтровать нечего: строка пустая, но на месте -->
         <ActionButton
           v-for="control in noSources ? [] : controls"

@@ -340,7 +340,12 @@
     "libraryPlay": "Watch",
     "controlPreset": "Preset: {name}",
     "presetDefault": "Server default — {name}",
-    "profilePreferences": "Quality: {qualities} · Languages: {languages} · Translation: {voices}"
+    "profilePreferences": "Quality: {qualities} · Languages: {languages} · Translation: {voices}",
+    "episodeScope": "Season {season} · Episode {episode}",
+    "titleScope": "Whole title",
+    "showAll": "All torrents",
+    "showEpisode": "Only this episode",
+    "allForEpisode": "All torrents · target: S{season}E{episode}"
   },
   "files": {
     "title": "Files",
@@ -3981,6 +3986,14 @@
     "followUnsupported": {
       "title": "Ready selection could not be found",
       "text": "The server could not find this selection or does not support opening it. Retry, return to the title, or choose a source yourself."
+    },
+    "unsuitable": {
+      "title": "No suitable source",
+      "text": "Torrents for this episode were found, but their language, quality, availability or match confidence prevents automatic selection. Review them in Sources."
+    },
+    "searchFailed": {
+      "title": "Could not check sources",
+      "text": "The search did not respond. Retry or open Sources manually."
     }
   },
   "crew": {

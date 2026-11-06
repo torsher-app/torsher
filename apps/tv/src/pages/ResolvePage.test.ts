@@ -10,6 +10,7 @@ import { beforeEach, expect, it, vi } from 'vitest'
 import ResolvePage from './ResolvePage.vue'
 
 const mocks = vi.hoisted(() => ({
+  historyState: {} as Record<string, unknown>,
   resolve: vi.fn(),
   progress: vi.fn(),
   replace: vi.fn(),
@@ -32,7 +33,10 @@ vi.mock('../diagnostics/index.ts', () => ({
   diagnosticParams: () => ({}),
 }))
 vi.mock('vue-router', () => ({
-  useRouter: () => ({ replace: mocks.replace }),
+  useRouter: () => ({
+    replace: mocks.replace,
+    options: { history: { state: mocks.historyState } },
+  }),
 }))
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 vi.mock('../composables/useCatalogLanguage.ts', () => ({
@@ -112,8 +116,40 @@ function cancellations() {
 }
 beforeEach(() => {
   vi.resetAllMocks()
+  mocks.historyState = {}
   mocks.progress.mockResolvedValue({ seasonReleases: [] })
   mocks.onKey.mockReturnValue(() => {})
+})
+
+it('cancels a pending source switch back to the same paused file and ignores its late success', async () => {
+  let done!: (value: unknown) => void
+  mocks.resolve.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        done = resolve
+      }),
+  )
+  mocks.historyState.sourceReturn = {
+    path: '/play/original/3',
+    query: { title: 'tmdb:tv:100', season: '1', episode: '2' },
+    position: 123.5,
+    paused: true,
+  }
+  const app = await mount({ candidate: 'new-source' })
+  mocks.onKey.mock.calls[0]![0]({ type: 'back' })
+  expect(mocks.replace).toHaveBeenCalledExactlyOnceWith({
+    path: '/play/original/3',
+    query: { title: 'tmdb:tv:100', season: '1', episode: '2' },
+    state: {
+      sourceReturn: null,
+      resumePlayback: { position: 123.5, paused: true },
+    },
+  })
+  done({ kind: 'found', file: { torrentId: 'new-source', fileIndex: 0 } })
+  await settle()
+  expect(mocks.replace).toHaveBeenCalledOnce()
+  expect(mocks.back).not.toHaveBeenCalled()
+  app.unmount()
 })
 
 it('does not cancel a successful resolve when navigation unmounts the screen', async () => {

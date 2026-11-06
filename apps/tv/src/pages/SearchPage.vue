@@ -59,7 +59,12 @@ const pickToast = ref('')
 const shownRecent = computed(() => (isPick.value ? [] : recent.value))
 
 const { status, items, people, error, retry } = useCatalogSearch(query)
-const { trending } = useTrending()
+const {
+  trending,
+  status: trendingStatus,
+  error: trendingError,
+  retry: retryTrending,
+} = useTrending()
 
 const hasQuery = computed(() => query.value.trim().length > 0)
 const isEmpty = computed(
@@ -80,8 +85,25 @@ const shown = computed<Card[]>(() =>
 // Проявившийся скелетон держится минимум: сетка ждёт его
 const showSkeleton = useHeldLoading(
   () =>
-    shown.value.length === 0 && (status.value === 'loading' || !trending.value),
+    shown.value.length === 0
+    && (hasQuery.value
+      ? status.value === 'loading'
+      : trendingStatus.value === 'loading'),
 )
+
+const shownError = computed(() =>
+  hasQuery.value
+    ? status.value === 'error'
+      ? error.value
+      : undefined
+    : trendingStatus.value === 'error'
+      ? trendingError.value
+      : undefined,
+)
+
+function retryShown() {
+  return hasQuery.value ? retry() : retryTrending()
+}
 
 const heading = computed(() => {
   if (!hasQuery.value)
@@ -298,9 +320,9 @@ onBeforeUnmount(stopFocus)
     >
       <FocusSection name="search-results" :edges="resultsEdges" manual-scroll>
         <ScreenState
-          v-if="status === 'error' && error && !showSkeleton"
-          :kind="error"
-          @retry="retry"
+          v-if="shownError && !showSkeleton"
+          :kind="shownError"
+          @retry="retryShown"
         />
         <template v-else>
           <template v-if="shownPeople.length > 0">

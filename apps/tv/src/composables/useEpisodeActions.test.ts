@@ -6,6 +6,7 @@ import { useEpisodeActions } from './useEpisodeActions.ts'
 const mocks = vi.hoisted(() => ({
   library: vi.fn(),
   mark: vi.fn(),
+  refresh: vi.fn(),
   push: vi.fn(),
   focusOn: vi.fn(),
   opener: { isConnected: true },
@@ -47,7 +48,13 @@ function setup(ready = true) {
     seasonReleases: [],
     episodes: [{ ...point }],
   })
-  const actions = useEpisodeActions(ref('show'), season, progress, () => ready)
+  const actions = useEpisodeActions(
+    ref('show'),
+    season,
+    progress,
+    () => ready,
+    mocks.refresh,
+  )
   actions.open(episode)
   return { ...actions, season, progress }
 }
@@ -136,6 +143,7 @@ describe('episode actions', () => {
       position: 0,
       watched: true,
     })
+    expect(mocks.refresh).toHaveBeenCalledOnce()
     expect(actions.context.value).toBeUndefined()
     actions.open(episode)
     expect(actions.options.value.map(option => option.id)).toEqual([
@@ -149,6 +157,7 @@ describe('episode actions', () => {
       duration: null,
     })
     await nextTick()
+    expect(mocks.refresh).toHaveBeenCalledTimes(2)
     expect(mocks.focusOn).toHaveBeenCalledWith(mocks.opener)
   })
   it('a failed mark preserves every field and leaves the panel available for retry', async () => {
