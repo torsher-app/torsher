@@ -6,6 +6,9 @@ import PlayerPage from './PlayerPage.vue'
 
 const mocks = vi.hoisted(() => ({
   start: vi.fn(),
+  saveTracks: vi.fn(),
+  selectAudio: vi.fn(),
+  selectSubtitles: vi.fn(),
   play: vi.fn(),
   pause: vi.fn(),
   attach: vi.fn(),
@@ -13,7 +16,9 @@ const mocks = vi.hoisted(() => ({
   restart: (_change: PlaybackRestart): Promise<void> => Promise.resolve(),
   media: undefined as unknown as HTMLVideoElement,
 }))
-vi.mock('../api.ts', () => ({ api: {} }))
+vi.mock('../api.ts', () => ({
+  api: { playback: { putPlaybackPreferences: mocks.saveTracks } },
+}))
 vi.mock('../session.ts', () => ({
   session: {},
   updatePlayerSettings: vi.fn(),
@@ -73,6 +78,8 @@ let mode = 'direct'
 vi.mock('../composables/usePlayback.ts', () => ({
   usePlayback: () => ({
     playback: ref({
+      sessionId: 'playback-fixture',
+      media: { audio: [], subtitles: [] },
       streamUrl: '/stream',
       mode,
       duration: 180,
@@ -100,7 +107,13 @@ vi.mock('../composables/usePlayerTracks.ts', () => ({
   ) => {
     video.value = mocks.media
     mocks.restart = restart
-    return { selection: () => ({}), refresh: vi.fn() }
+    return {
+      audioTrack: ref(undefined),
+      selection: () => ({}),
+      refresh: vi.fn(),
+      selectAudio: mocks.selectAudio,
+      selectSubtitles: mocks.selectSubtitles,
+    }
   },
 }))
 
@@ -127,6 +140,9 @@ const renderer = createRenderer<Element, Element>({
   remove() {},
 })
 interface Controls {
+  onTracksSelect: (id: string) => Promise<void>
+  openPanel: (kind: 'audio' | 'subtitles') => void
+  closePanel: () => void
   onPause: () => void
   onPlay: () => void
   onPlaying: () => void
@@ -152,7 +168,7 @@ async function mount() {
         return null
       },
     },
-    { torrentId: 'fixture', fileIndex: '0' },
+    { torrentId: 'fixture', fileIndex: '0', titleId: 'tmdb:tv:1' },
   )
   app.provide(ssrContextKey, {})
   app.mount(element())
@@ -175,6 +191,7 @@ beforeEach(() => {
     removeEventListener: vi.fn(),
   })
   vi.stubGlobal('window', { setTimeout, clearTimeout })
+  mocks.saveTracks.mockResolvedValue({ saved: true })
   mocks.native = false
   mocks.start.mockResolvedValue('ready')
   mocks.attach.mockResolvedValue(true)
@@ -244,4 +261,42 @@ it('retains a paused restart while a transient start failure is retried', async 
   expect(mocks.play).not.toHaveBeenCalled()
   controls.onLoadedMetadata()
   expect(controls.paused).toBe(true)
+})
+
+it('saves explicit subtitle Off before applying it', async () => {
+  await mount()
+  controls.openPanel('subtitles')
+  await controls.onTracksSelect('off')
+  expect(mocks.saveTracks).toHaveBeenCalledWith('playback-fixture', {
+    subtitle: null,
+  })
+  expect(mocks.selectSubtitles).toHaveBeenCalledWith('off')
+})
+it('does not apply a pending selection after Back and reopening the same panel', async () => {
+  await mount()
+  let saved!: () => void
+  mocks.saveTracks.mockImplementation(
+    () =>
+      new Promise<void>((resolve) => {
+        saved = resolve
+      }),
+  )
+  controls.openPanel('audio')
+  const pending = controls.onTracksSelect('3')
+  await controls.onTracksSelect('2')
+  controls.closePanel()
+  controls.openPanel('audio')
+  saved()
+  await pending
+  expect(mocks.saveTracks).toHaveBeenCalledOnce()
+  expect(mocks.selectAudio).not.toHaveBeenCalled()
+})
+it('leaves a failed save unselected and allows retry', async () => {
+  await mount()
+  controls.openPanel('audio')
+  mocks.saveTracks.mockRejectedValueOnce(new Error('offline'))
+  await controls.onTracksSelect('3')
+  expect(mocks.selectAudio).not.toHaveBeenCalled()
+  await controls.onTracksSelect('3')
+  expect(mocks.selectAudio).toHaveBeenCalledWith('3')
 })

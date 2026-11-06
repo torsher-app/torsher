@@ -1,3 +1,5 @@
+import type { SavedAudioPreference } from './trackPreferences.ts'
+import { matchesAudio, trackLanguage } from './trackPreferences.ts'
 import type {
   AudioStreamInfo,
   Container,
@@ -141,6 +143,7 @@ export function voiceOfTrack(track: AudioStreamInfo) {
 }
 
 export interface AudioPreference {
+  selected?: SavedAudioPreference | null
   /** Студия, выбранная для серии или закреплённая за сезоном */
   studio?: string | null
   /** Язык профиля в формате витрины (`ru_RU`) */
@@ -172,6 +175,22 @@ export function pickAudioStream(
 
   if (tracks.length === 0)
     return null
+
+  if (preference.selected) {
+    const match = tracks.find(track =>
+      matchesAudio(track, preference.selected!),
+    )
+    if (match)
+      return match.index
+    const sameLanguage = tracks.filter(
+      track =>
+        trackLanguage(track.language) === preference.selected!.language,
+    )
+    const fallback
+      = sameLanguage.find(track => track.default) ?? sameLanguage[0]
+    if (fallback)
+      return fallback.index
+  }
 
   const studio = preference.studio?.toLowerCase()
 

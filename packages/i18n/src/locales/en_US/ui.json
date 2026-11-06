@@ -628,7 +628,10 @@
       "text": "This episode has a lower resolution than your previous viewing.",
       "watch": "Watch in {quality}",
       "sources": "Choose a source"
-    }
+    },
+    "trackScope": "Your choice is saved for this title in your profile",
+    "trackSaveFailed": "Could not save your track choice. Please try again.",
+    "trackUnavailable": "Your preferred track is unavailable in this file. Check audio and subtitles; your preference is kept."
   },
   "languages": {
     "rus": "Russian",

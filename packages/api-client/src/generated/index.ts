@@ -5173,7 +5173,7 @@ export interface CreatePlaybackInput {
    */
   audioStream?: number;
   /** @pattern ^[sf]\d{1,5}$ */
-  subtitle?: string;
+  subtitle?: string | null;
   /**
    * @min 0
    * @max 1000000
@@ -5184,6 +5184,16 @@ export interface CreatePlaybackInput {
    * @maxLength 200
    */
   voiceStudio?: string;
+}
+
+export interface UpdatePlaybackPreferencesInput {
+  /**
+   * @min 0
+   * @max 9999
+   */
+  audioStream?: number;
+  /** @pattern ^[sf]\d{1,5}$ */
+  subtitle?: string | null;
 }
 
 export interface MediaAudioTrackInput {
@@ -5249,6 +5259,7 @@ export interface PlaybackInput {
   audioStream: number | null;
   /** @pattern ^[sf]\d{1,5}$ */
   subtitle: string | null;
+  preferenceMismatch?: ("audio" | "subtitles")[];
   audioSwitch: "platform" | "restart";
   reasons: string[];
   transcode: {
@@ -12793,7 +12804,7 @@ export interface CreatePlayback {
    */
   audioStream?: number;
   /** @pattern ^[sf]\d{1,5}$ */
-  subtitle?: string;
+  subtitle?: string | null;
   /**
    * @min 0
    * @max 1000000
@@ -12804,6 +12815,16 @@ export interface CreatePlayback {
    * @maxLength 200
    */
   voiceStudio?: string;
+}
+
+export interface UpdatePlaybackPreferences {
+  /**
+   * @min 0
+   * @max 9999
+   */
+  audioStream?: number;
+  /** @pattern ^[sf]\d{1,5}$ */
+  subtitle?: string | null;
 }
 
 export interface MediaAudioTrack {
@@ -12869,6 +12890,7 @@ export interface Playback {
   audioStream: number | null;
   /** @pattern ^[sf]\d{1,5}$ */
   subtitle: string | null;
+  preferenceMismatch?: ("audio" | "subtitles")[];
   audioSwitch: "platform" | "restart";
   reasons: string[];
   transcode: {
@@ -15650,6 +15672,8 @@ export type PostSetupDiscoverManagersError = MessageResponse;
 
 export type PostPlaybackError =
   MessageResponse | EngineUnavailableResponse | InsufficientStorageResponse;
+
+export type PutPlaybackPreferencesError = MessageResponse;
 
 export type GetPlaybackError = MessageResponse;
 
@@ -19490,6 +19514,27 @@ export class Api<
       this.request<Playback, PostPlaybackError>({
         path: `/api/playback`,
         method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Playback
+     * @name PutPlaybackPreferences
+     * @request PUT:/api/playback/{id}/preferences
+     */
+    putPlaybackPreferences: (
+      id: string,
+      data: UpdatePlaybackPreferencesInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<MessageResponse, PutPlaybackPreferencesError>({
+        path: `/api/playback/${id}/preferences`,
+        method: "PUT",
         body: data,
         type: ContentType.Json,
         format: "json",

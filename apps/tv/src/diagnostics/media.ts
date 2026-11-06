@@ -15,7 +15,7 @@ export function mediaSnapshot(
   native: boolean,
   playback?: Playback,
   hls: DiagnosticMediaSnapshot['hls'] = 'unsupported',
-  selection?: { audioStream?: number, subtitle?: string },
+  selection?: { audioStream?: number, subtitle?: string | null },
 ): DiagnosticMediaSnapshot {
   const result: DiagnosticMediaSnapshot = {
     source: native ? 'native' : 'html_video',

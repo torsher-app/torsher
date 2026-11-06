@@ -67,6 +67,7 @@ const VIEWER = new Set([
   'DELETE /api/collections/:id/titles/:titleId',
   'POST /api/playback',
   'GET /api/playback/:id',
+  'PUT /api/playback/:id/preferences',
   'DELETE /api/playback/:id',
   'POST /api/playback/:id/error',
   'GET /api/playback/:id/subtitles/:trackId',

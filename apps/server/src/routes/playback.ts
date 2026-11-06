@@ -1,4 +1,13 @@
 import { stat } from 'node:fs/promises'
+import {
+  getPlaybackPreferences,
+  savePlaybackPreferences,
+} from '../services/playbackPreferences.ts'
+import {
+  audioPreferenceOf,
+  trackLanguage,
+} from '../services/media/trackPreferences.ts'
+import type { SavedTrackPreferences } from '../services/media/trackPreferences.ts'
 import { diagnosticContext } from '../services/diagnostics/index.ts'
 import type { FastifyRequest } from 'fastify'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
@@ -14,6 +23,7 @@ import {
   subtitleCues,
   subtitleParams,
   subtitleQuery,
+  updatePlaybackPreferences,
   updateWatchState,
   watchState,
 } from '../dto/playback.ts'
@@ -191,6 +201,7 @@ function toPlaybackResponse(
         })),
       ],
     },
+    preferenceMismatch: session.preferenceMismatch,
     audioStream: session.audioStream,
     subtitle: session.subtitle,
     audioSwitch: decision.audioSwitch,
@@ -217,6 +228,10 @@ function videoTranscodeOf(session: PlaybackSession) {
 
 // Позиция для продолжения не меняется, пока сессия жива: запоминаем её
 const resumes = new WeakMap<PlaybackSession, Resume>()
+const preferenceOwners = new WeakMap<
+  PlaybackSession,
+  { profileId: string, titleId: string }
+>()
 
 export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
   app.addHook('onRequest', requireViewer)
@@ -380,6 +395,13 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
             ? getPinnedVoice(title.id, title.season ?? 0)?.studio
             : undefined)
 
+      const preferenceOwner = ref ?? fileRef
+      const saved = preferenceOwner
+        ? getPlaybackPreferences(
+            preferenceOwner.profileId,
+            preferenceOwner.titleId,
+          )
+        : undefined
       const session = createSession({
         diagnosticContext: {
           ...diagnosticContext(request),
@@ -394,8 +416,10 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
         client: clientOf(request),
         audioStream,
         subtitle,
+        subtitlePreference: saved?.subtitles,
         preference: {
-          studio,
+          selected: saved?.audio,
+          studio: saved?.audio ? undefined : studio,
           locale: language ?? getProfile(request.profileId)?.language,
         },
         log: request.log.child({ source: 'playback' }),
@@ -409,6 +433,8 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
       }
 
       resumes.set(session, resume)
+      if (preferenceOwner)
+        preferenceOwners.set(session, preferenceOwner)
 
       // Дорожку выбрали в плеере: запоминаем её озвучку, когда проба покажет,
       // какая это дорожка
@@ -433,6 +459,63 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
       ])
 
       return toPlaybackResponse(session, request, resume)
+    },
+  )
+
+  app.put(
+    '/playback/:id/preferences',
+    {
+      schema: {
+        operationId: 'putPlaybackPreferences',
+        tags: ['Playback'],
+        params: playbackParams,
+        body: updatePlaybackPreferences,
+        response: {
+          200: messageResponse,
+          400: messageResponse,
+          404: messageResponse,
+          409: messageResponse,
+          ...guardResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const session = getSession(request.params.id, streamSubjectOf(request))
+      const owner = session && preferenceOwners.get(session)
+      if (!session || !owner || owner.profileId !== request.profileId)
+        return reply.code(404).send({ message: 'Playback not found' })
+      if (session.status !== 'ready' || !session.media) {
+        return reply
+          .code(409)
+          .send({ message: 'Tracks are not available yet' })
+      }
+      const change: SavedTrackPreferences = {}
+      if (request.body.audioStream !== undefined) {
+        const track = session.media.audio.find(
+          item => item.index === request.body.audioStream,
+        )
+        if (!track)
+          return reply.code(400).send({ message: 'Audio track not found' })
+        change.audio = audioPreferenceOf(track)
+      }
+      const subtitle = request.body.subtitle
+      if (subtitle !== undefined) {
+        const track
+          = session.media.subtitles.find(
+            item =>
+              `s${item.index}` === subtitle && (item.text || item.image),
+          )
+          ?? session.external.find(item => `f${item.fileIndex}` === subtitle)
+        if (subtitle !== null && !track)
+          return reply.code(400).send({ message: 'Subtitle track not found' })
+        change.subtitles = {
+          enabled: subtitle !== null,
+          language: trackLanguage(track?.language ?? null),
+          forced: track?.forced ?? false,
+        }
+      }
+      savePlaybackPreferences(owner.profileId, owner.titleId, change)
+      return { message: 'Playback preferences saved' }
     },
   )
 

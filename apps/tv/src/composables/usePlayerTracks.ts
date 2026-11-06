@@ -220,7 +220,7 @@ export function usePlayerTracks(
       return
     }
 
-    restart({ audioStream: index, subtitle: subtitle.value ?? undefined })
+    restart({ audioStream: index, subtitle: subtitle.value })
   }
 
   function selectSubtitles(id: string) {
@@ -238,7 +238,7 @@ export function usePlayerTracks(
     if (burnedIn(subtitle.value) || track?.burnIn) {
       restart({
         audioStream: audioStream.value ?? undefined,
-        subtitle: id === OFF ? undefined : id,
+        subtitle: id === OFF ? null : id,
       })
       return
     }
@@ -282,7 +282,7 @@ export function usePlayerTracks(
   function selection(): PlaybackRestart {
     return {
       audioStream: audioStream.value ?? undefined,
-      subtitle: subtitle.value ?? undefined,
+      subtitle: subtitle.value,
     }
   }
 

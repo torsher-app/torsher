@@ -1,3 +1,5 @@
+import type { SavedSubtitlePreference } from './trackPreferences.ts'
+import { matchesAudio, preferredSubtitle } from './trackPreferences.ts'
 import type { DiagnosticContext } from '../diagnostics/index.ts'
 import { recordDecision, recordFailure } from '../diagnostics/index.ts'
 import type { SkipSegment } from '../segments/model.ts'
@@ -27,7 +29,12 @@ import {
   touchTorrent,
 } from '../torrents/index.ts'
 import { encoderCapsOf, mediaAccel } from './accel.ts'
-import { decidePlayback, pickAudioStream, textSubtitles } from './decide.ts'
+import {
+  decidePlayback,
+  pickAudioStream,
+  textSubtitles,
+  voiceOfTrack,
+} from './decide.ts'
 import { describePlan, planEncode } from './encode.ts'
 import { HlsTranscode, segmentStarts } from './hls.ts'
 import { readCueTimes, readSubtitleIndex } from './matroska.ts'
@@ -65,6 +72,7 @@ export interface PlaybackSession {
   external: ExternalSubtitle[]
   audioStream: number | null
   subtitle: string | null
+  preferenceMismatch?: ('audio' | 'subtitles')[]
   decision: PlaybackDecision
   hls: HlsTranscode | null
   /** Ожидание пробы: ответ `POST /playback` ждёт его недолго */
@@ -95,7 +103,8 @@ export interface SessionInput {
   client?: string
   preference: AudioPreference
   audioStream?: number
-  subtitle?: string
+  subtitle?: string | null
+  subtitlePreference?: SavedSubtitlePreference | null
   log: SessionLog
 }
 
@@ -320,17 +329,54 @@ async function prepare(
   session.audioStream
     = requested?.index ?? pickAudioStream(media, input.preference)
 
+  const subtitle
+    = input.subtitle !== undefined
+      ? input.subtitle
+      : preferredSubtitle(media, session.external, input.subtitlePreference)
+  session.preferenceMismatch = []
+  if (
+    input.audioStream === undefined
+    && input.preference.selected
+    && !media.audio.some(
+      track =>
+        track.index === session.audioStream
+        && matchesAudio(track, input.preference.selected!),
+    )
+  ) {
+    session.preferenceMismatch.push('audio')
+  }
+  if (
+    input.audioStream === undefined
+    && !input.preference.selected
+    && input.preference.studio
+    && !media.audio.some(
+      track =>
+        track.index === session.audioStream
+        && voiceOfTrack(track)?.studio?.toLowerCase()
+        === input.preference.studio?.toLowerCase(),
+    )
+  ) {
+    session.preferenceMismatch.push('audio')
+  }
+  if (
+    input.subtitle === undefined
+    && input.subtitlePreference?.enabled
+    && !subtitle
+  ) {
+    session.preferenceMismatch.push('subtitles')
+  }
+
   const embedded = media.subtitles.find(
-    track => track.text && `s${track.index}` === input.subtitle,
+    track => track.text && `s${track.index}` === subtitle,
   )
   const burned = media.subtitles.find(
-    track => track.image && `s${track.index}` === input.subtitle,
+    track => track.image && `s${track.index}` === subtitle,
   )
   const external = session.external.find(
-    track => `f${track.fileIndex}` === input.subtitle,
+    track => `f${track.fileIndex}` === subtitle,
   )
 
-  session.subtitle = embedded || burned || external ? input.subtitle! : null
+  session.subtitle = embedded || burned || external ? subtitle! : null
 
   if (!device) {
     session.decision = DIRECT

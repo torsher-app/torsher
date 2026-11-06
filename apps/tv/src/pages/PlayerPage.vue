@@ -5,6 +5,7 @@ import type {
   SourceCandidate,
   UpNext,
 } from '@torsher/api-client'
+import { getErrorStatus } from '@torsher/api-client'
 import type { AutomaticPlayback } from '../lib/continue.ts'
 import { useContinuationConsent } from '../composables/useContinuationConsent.ts'
 import {
@@ -348,13 +349,14 @@ const trackOptions = computed(() =>
 
 // Смена дорожки, которую плеер не переключит сам, перезапускает поток
 const tracksHint = computed(() => {
+  const hints = []
+  if (playback.value?.media && (props.titleId || props.mediaFileId))
+    hints.push(t('player.trackScope'))
   if (panel.value === 'audio' && playback.value?.audioSwitch === 'restart')
-    return t('player.restartHint')
-
+    hints.push(t('player.restartHint'))
   if (panel.value === 'subtitles' && tracks.hasBurnIn.value)
-    return t('player.burnInHint')
-
-  return undefined
+    hints.push(t('player.burnInHint'))
+  return hints.join(' · ') || undefined
 })
 
 // Настройки профиля — вид субтитров и автопереход; скорость живёт до
@@ -1223,7 +1225,9 @@ function closePanelFromScreen() {
   backDiagnostic('close_panel')
   closePanel()
 }
+let trackSelectionGeneration = 0
 function closePanel() {
+  trackSelectionGeneration++
   librarySelection.value = undefined
   panel.value = null
   focus.activate('player-buttons')
@@ -1636,11 +1640,46 @@ function watchProgress() {
     slow.value = true
 }
 
-function onTracksSelect(id: string) {
-  if (panel.value === 'audio')
+let savingTrack = false
+async function onTracksSelect(id: string) {
+  if (savingTrack)
+    return
+  const current = playback.value
+  const kind = panel.value
+  if (kind !== 'audio' && kind !== 'subtitles')
+    return
+  const generation = trackSelectionGeneration
+  if (current?.media && (props.titleId || props.mediaFileId)) {
+    savingTrack = true
+    try {
+      await api.playback.putPlaybackPreferences(
+        current.sessionId,
+        kind === 'audio'
+          ? { audioStream: Number(id) }
+          : { subtitle: id === 'off' ? null : id },
+      )
+    }
+    catch (error) {
+      voiceNotice.value = t('player.trackSaveFailed')
+      // Older servers have no persistence endpoint; playback still works.
+      if (getErrorStatus(error) !== 404)
+        return
+    }
+    finally {
+      savingTrack = false
+    }
+    if (
+      leaving
+      || generation !== trackSelectionGeneration
+      || current !== playback.value
+      || kind !== panel.value
+    ) {
+      return
+    }
+  }
+  if (kind === 'audio')
     tracks.selectAudio(id)
   else tracks.selectSubtitles(id)
-
   closePanel()
 }
 
@@ -2081,8 +2120,11 @@ async function start() {
     return
   }
   startStats()
-  pendingVoiceNotice
-    = props.automatic && unconfirmedStudio(props.voice, playback.value)
+  pendingVoiceNotice = playback.value?.preferenceMismatch?.length
+    ? t('player.trackUnavailable')
+    : playback.value?.preferenceMismatch === undefined
+      && props.automatic
+      && unconfirmedStudio(props.voice, playback.value)
       ? t('player.voiceUnconfirmed', { studio: props.voice })
       : ''
   void begin(from)
@@ -2104,6 +2146,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  leaving = true
   stopDiagnosticMedia()
   playerSummary('unmounted')
   consent.cancel()
