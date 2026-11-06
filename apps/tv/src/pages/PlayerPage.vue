@@ -260,7 +260,7 @@ let budget = freshBudget()
 let retryTimer: ReturnType<typeof setTimeout> | undefined
 // Пауза зрителя или свёрнутого приложения, а не остановка потока плеером
 let viewerPaused = false
-// Поток оборвался на паузе зрителя: новый ждёт на той же паузе
+// Перезапуск на паузе зрителя: новый поток ждёт на той же паузе
 let keepPaused = false
 // Новый поток ждёт на паузе: на экран плеера он выходит с метаданными, когда
 // видео уже на нужной позиции. По возврату в приложение снимается только пауза
@@ -1482,6 +1482,8 @@ function holdStream() {
  * сбоя: новый поток с этими дорожками с текущего места
  */
 async function restartWith(change: PlaybackRestart) {
+  if (!restarting.value)
+    keepPaused = viewerPaused
   const run = ++launch
   const at = resumeAt()
 
