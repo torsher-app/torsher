@@ -30,7 +30,8 @@ import { encoderCapsOf, mediaAccel } from './accel.ts'
 import { decidePlayback, pickAudioStream, textSubtitles } from './decide.ts'
 import { describePlan, planEncode } from './encode.ts'
 import { HlsTranscode, segmentStarts } from './hls.ts'
-import { readCueTimes } from './matroska.ts'
+import { readCueTimes, readSubtitleIndex } from './matroska.ts'
+import { mergeCues } from './webvtt.ts'
 import { probeMedia } from './probe.ts'
 import {
   findExternalSubtitles,
@@ -103,6 +104,10 @@ export interface SessionInput {
 const IDLE_MS = 2 * 60 * 1000
 const SWEEP_MS = 30 * 1000
 const EXTERNAL_CACHE_SIZE = 50
+const subtitleIndexes = new WeakMap<
+  PlaybackSession,
+  ReturnType<typeof readSubtitleIndex>
+>()
 // Перезапуск движка обрывает пробу на полпути: повтор берёт новый адрес
 const PROBE_RETRIES = 2
 const PROBE_RETRY_MS = 3000
@@ -679,6 +684,7 @@ export async function cleanTranscodes() {
 export async function sessionCues(
   session: PlaybackSession,
   trackId: string,
+  from = 0,
 ): Promise<{ cues: Cue[], done: boolean } | undefined> {
   const index = Number(trackId.slice(1))
 
@@ -721,8 +727,35 @@ export async function sessionCues(
   if (!track)
     return undefined
 
+  let cues = session.hls ? await session.hls.cues(index) : []
+  if (
+    session.hls
+    && session.media?.container === 'mkv'
+    && track.codec === 'subrip'
+    && from > 0
+  ) {
+    let pending = subtitleIndexes.get(session)
+    if (!pending) {
+      const signal = closers.get(session.id)?.signal
+      if (!signal || signal.aborted)
+        return { cues, done: true }
+      const read = session.library
+        ? fileRangeReader(session.library.path)
+        : (start: number, end: number) =>
+            rangeReader(
+              engineStreamUrl(session.torrent!.infoHash, session.fileIndex),
+              signal,
+            )(start, end)
+      pending = readSubtitleIndex(read)
+      subtitleIndexes.set(session, pending)
+      pending.catch(() => subtitleIndexes.delete(session))
+    }
+    const lookup = await pending
+    if (lookup)
+      cues = mergeCues([cues, await lookup(index, from)])
+  }
   return {
-    cues: session.hls ? await session.hls.cues(index) : [],
+    cues,
     done: !session.hls,
   }
 }

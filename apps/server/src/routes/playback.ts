@@ -557,7 +557,11 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
       let result
 
       try {
-        result = await sessionCues(session, request.params.trackId)
+        result = await sessionCues(
+          session,
+          request.params.trackId,
+          Number(request.query.from ?? 0),
+        )
       }
       catch (err) {
         session.log.warn(
