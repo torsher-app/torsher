@@ -22,7 +22,9 @@ At least one indexer is connected. See [Indexers](/docs/setup/indexers). Without
 
 Torsher searches all your indexers by every name of the title: the translated one, the original and other names from TMDB. For a series, it also tries the first name with the start year, then keeps searching without the year so later seasons can be found. Results with an unconfirmed match are shown when a complete known title appears in the release name and its year does not conflict with the title. The header shows how many releases were found and when, and how many indexers didn't answer. <Ui k="sources.refresh" /> at the end of the list searches again.
 
-Under the header is your history: what you watched last and from which release. OK on it opens that release on the same episode.
+When opened for a specific episode, the header names that season and episode. <Ui k="sources.showAll" /> expands the results to the whole title while keeping the episode as the playback target; <Ui k="sources.showEpisode" /> narrows them again. If automatic selection excludes all candidates, the player explains this and offers a manual choice.
+
+Under the header is your history: what you watched last and from which release. When shown as a button, OK opens that release on the same episode. It refreshes when you return from playback, while keeping the source list and filters.
 
 ## Read a release row
 
@@ -74,7 +76,7 @@ The round chip with a cross resets the filters. This TV remembers the sort and f
 
 If the indexers name the title differently, for example by a short name or a spelling of their own, search by your own query:
 
-1. Select the <Ui k="sources.panel.query" /> chip, the first one. It shows the current query or `auto`. On an empty result, <Ui k="sources.query.action" /> opens the same panel.
+1. Select the <Ui k="sources.panel.query" /> chip, above the list. It shows the current query or `auto`. On an empty result, <Ui k="sources.query.action" /> opens the same panel.
 2. Type a title in <Ui k="sources.query.placeholder" /> and press OK, or pick one of the suggested names below.
 
 Your own query keeps the indexers' results even when Torsher cannot match their names or years to this title. Check results marked <Ui k="sources.unmatched" /> before opening them.
