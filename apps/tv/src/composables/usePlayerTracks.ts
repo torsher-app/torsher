@@ -92,7 +92,7 @@ export function usePlayerTracks(
       track.voiceType ? t(`sources.voiceTypes.${track.voiceType}`) : null,
       codecLabel(track.codec),
       channelsLabel(track.channels),
-      rate ? t('player.kbps', { n: rate }) : null,
+      rate ? t('player.kilobytesPerSecond', { n: rate }) : null,
     ]
       .filter(Boolean)
       .join(' · ')
