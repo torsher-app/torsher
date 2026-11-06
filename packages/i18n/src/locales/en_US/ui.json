@@ -466,6 +466,16 @@
     }
   },
   "about": {
+    "dev": {
+      "stand": "Test stand",
+      "branch": "Branch",
+      "snapshot": "Source snapshot",
+      "builtAt": "Built at",
+      "changes": "Local changes",
+      "clean": "None",
+      "dirty": "Included",
+      "uiBuild": "TV build"
+    },
     "title": "About",
     "license": "Torsher is free software: you can use, study, change and share it under the {license} license",
     "version": "Version",

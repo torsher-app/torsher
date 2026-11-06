@@ -2538,6 +2538,13 @@ export interface MaintenanceStatusInput {
 export interface AboutResponseInput {
   version: string;
   commit?: string;
+  devStand?: {
+    name: string;
+    branch?: string;
+    snapshot?: string;
+    builtAt?: string;
+    dirty: boolean;
+  };
   license: string;
   /** @format uri */
   sourceUrl: string;
@@ -10171,6 +10178,13 @@ export interface MaintenanceStatus {
 export interface AboutResponse {
   version: string;
   commit?: string;
+  devStand?: {
+    name: string;
+    branch?: string;
+    snapshot?: string;
+    builtAt?: string;
+    dirty: boolean;
+  };
   license: string;
   /** @format uri */
   sourceUrl: string;
