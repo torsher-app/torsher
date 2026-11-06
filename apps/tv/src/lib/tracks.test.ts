@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { Playback } from '@torsher/api-client'
 import {
   activeCues,
   audioOrder,
@@ -7,6 +8,7 @@ import {
   heardStudio,
   kilobits,
   subtitleHtml,
+  unconfirmedStudio,
 } from './tracks.ts'
 
 describe('студия, которую слышно', () => {
@@ -15,24 +17,70 @@ describe('студия, которую слышно', () => {
 
   it('из названия дорожки', () => {
     expect(
-      heardStudio({ ...track, studio: 'Кубик в Кубе', voiceType: 'MVO' }, lostfilm),
+      heardStudio(
+        { ...track, studio: 'Кубик в Кубе', voiceType: 'MVO' },
+        lostfilm,
+      ),
     ).toBe('Кубик в Кубе')
   })
 
   it('дорожка без названия на языке озвучки — студия раздачи', () => {
     expect(heardStudio(track, lostfilm)).toBe('LostFilm')
     expect(
-      heardStudio({ ...track, language: 'ukr' }, { ...lostfilm, language: 'uk' }),
+      heardStudio(
+        { ...track, language: 'ukr' },
+        { ...lostfilm, language: 'uk' },
+      ),
     ).toBe('LostFilm')
   })
 
   it('оригинал, другой язык или тип в названии — не студия раздачи', () => {
-    expect(heardStudio({ ...track, language: 'eng' }, lostfilm)).toBeUndefined()
+    expect(
+      heardStudio({ ...track, language: 'eng' }, lostfilm),
+    ).toBeUndefined()
     expect(
       heardStudio({ ...track, voiceType: 'Original' }, lostfilm),
     ).toBeUndefined()
     expect(heardStudio(track, { type: 'D' })).toBeUndefined()
     expect(heardStudio(undefined, lostfilm)).toBeUndefined()
+  })
+})
+
+describe('перенос студии между сериями', () => {
+  const playback = (
+    studio: string | null,
+  ): Pick<Playback, 'media' | 'audioStream'> => ({
+    audioStream: 3,
+    media: {
+      container: 'mkv',
+      video: null,
+      subtitles: [],
+      audio: [
+        {
+          index: 3,
+          studio,
+          language: 'rus',
+          voiceType: null,
+          title: null,
+          codec: 'aac',
+          channels: 2,
+          bitrate: null,
+          default: true,
+        },
+      ],
+    },
+  })
+  it('проверяет студию выбранной дорожки, а не её индекс в прошлом файле', () => {
+    expect(unconfirmedStudio('New Studio', playback('New Studio'))).toBe(false)
+    expect(unconfirmedStudio('New Studio', playback('Old Studio'))).toBe(true)
+    expect(unconfirmedStudio('New Studio', playback(null))).toBe(true)
+  })
+  it('не объявляет смену без исходной студии или пробы', () => {
+    expect(unconfirmedStudio(undefined, playback('Old Studio'))).toBe(false)
+    expect(unconfirmedStudio('New Studio', undefined)).toBe(false)
+    expect(
+      unconfirmedStudio('New Studio', { media: null, audioStream: null }),
+    ).toBe(false)
   })
 })
 

@@ -127,6 +127,7 @@ export function libraryRoute(
   mediaFileId: string,
   title?: { id: string, season?: number | null, episode?: number | null },
   automatic?: AutomaticPlayback,
+  voice?: string,
 ): ScreenRoute {
   return {
     path: `/play/library/${mediaFileId}`,
@@ -134,6 +135,7 @@ export function libraryRoute(
       title: title.id,
       season: title.season != null ? String(title.season) : undefined,
       episode: title.episode ? String(title.episode) : undefined,
+      voice,
       ...automaticQuery(automatic),
     },
   }
@@ -146,6 +148,7 @@ export function resolveRoute(
   episode: number,
   torrentId?: string,
   automatic?: AutomaticPlayback,
+  voice?: string,
 ): ScreenRoute {
   return {
     path: `/title/${titleId}/play`,
@@ -153,26 +156,35 @@ export function resolveRoute(
       season: String(season),
       episode: String(episode),
       torrent: torrentId,
+      voice,
       ...automaticQuery(automatic),
     },
   }
 }
 
-/** Both branches of a player episode switch must preserve automatic intent. */
+/** Текущая раздача и слышимая студия сильнее истории другой серии. */
 export function automaticEpisodeRoute(
-  title: { id: string, season: number, episode: number },
+  title: { id: string, season: number, episode: number, fileIndex?: number },
   file: EpisodeFile | null,
   previousTorrent: string | undefined,
   automatic: AutomaticPlayback,
+  voice?: string,
 ): ScreenRoute {
-  return file
-    ? playerRoute(file, title, undefined, automatic)
+  const currentFile
+    = previousTorrent && title.fileIndex !== undefined
+      ? { torrentId: previousTorrent, fileIndex: title.fileIndex }
+      : file?.torrentId === previousTorrent
+        ? file
+        : null
+  return currentFile
+    ? playerRoute(currentFile, title, voice, automatic)
     : resolveRoute(
         title.id,
         title.season,
         title.episode,
         previousTorrent,
         automatic,
+        voice,
       )
 }
 

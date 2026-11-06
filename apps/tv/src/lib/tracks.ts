@@ -1,4 +1,8 @@
-import type { AudioTrack, MediaAudioTrack } from '@torsher/api-client'
+import type {
+  AudioTrack,
+  MediaAudioTrack,
+  Playback,
+} from '@torsher/api-client'
 import { ORIGINAL_LANGUAGES } from './catalogFilter.ts'
 
 const CODECS: Record<string, string> = {
@@ -76,6 +80,19 @@ export function heardStudio(
   return track.language === (ORIGINAL_LANGUAGES[code] ?? code)
     ? release.studio
     : undefined
+}
+
+/** Проба не подтвердила перенос студии; отсутствие пробы не доказывает смену. */
+export function unconfirmedStudio(
+  studio: string | undefined,
+  playback: Pick<Playback, 'media' | 'audioStream'> | undefined,
+) {
+  if (!studio || !playback?.media)
+    return false
+  const selected = playback.media.audio.find(
+    track => track.index === playback.audioStream,
+  )
+  return selected?.studio !== studio
 }
 
 const ALLOWED_TAGS = /^<\/?[ibu]>$/

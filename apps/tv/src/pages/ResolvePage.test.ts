@@ -95,10 +95,10 @@ const renderer = createRenderer<Element, Element>({
 async function settle() {
   for (let i = 0; i < 6; i++) await nextTick()
 }
-async function mount() {
+async function mount(props = {}) {
   const app = renderer.createApp(
     { ...ResolvePage, render: () => null },
-    { id: 'tmdb:tv:100', season: '1', episode: '2' },
+    { id: 'tmdb:tv:100', season: '1', episode: '2', ...props },
   )
   app.provide(ssrContextKey, {})
   app.mount(element())
@@ -169,4 +169,57 @@ it('records an actual pending unmount once', async () => {
   app.unmount()
   expect(cancellations()).toHaveLength(1)
   expect(cancellations()[0]![0].reason).toBe('unmounted')
+})
+
+it.each([true, false])(
+  'keeps player source ahead of history with continuation metadata: %s',
+  async (modern) => {
+    mocks.progress.mockResolvedValue({
+      seasonReleases: [
+        {
+          season: 1,
+          torrentId: 'old-pack',
+          episodes: [1, 2],
+          voice: { studio: 'Old Studio' },
+        },
+      ],
+      ...(modern && {
+        continuation: {
+          preferredTorrent: { torrentId: 'old-pack', fileIndex: 1 },
+        },
+      }),
+    })
+    mocks.resolve.mockResolvedValue({
+      kind: 'found',
+      file: { torrentId: 'new-pack', fileIndex: 1 },
+    })
+    const app = await mount({
+      torrent: 'new-pack',
+      voice: 'New Studio',
+      automatic: { kind: 'continuation' },
+    })
+    const options = mocks.resolve.mock.calls[0]![1]
+    expect(options.torrents.filter(Boolean)).toEqual(['new-pack', 'old-pack'])
+    expect(options.voiceKey).toBe('studio:New Studio')
+    expect(mocks.replace.mock.calls[0]![0].query).toMatchObject({
+      voice: 'New Studio',
+      automatic: '1',
+    })
+    app.unmount()
+  },
+)
+
+it('leaves Home continuation preference ahead of factual history', async () => {
+  mocks.progress.mockResolvedValue({
+    seasonReleases: [{ season: 1, torrentId: 'short-preview', episodes: [2] }],
+    continuation: {
+      preferredTorrent: { torrentId: 'watched-pack', fileIndex: 1 },
+    },
+  })
+  mocks.resolve.mockResolvedValue({ kind: 'notFound' })
+  const app = await mount({ automatic: { kind: 'continuation' } })
+  expect(mocks.resolve.mock.calls[0]![1].torrents.filter(Boolean)).toEqual([
+    'watched-pack',
+  ])
+  app.unmount()
 })

@@ -35,6 +35,7 @@ import PlayerPauseScreen from '../components/player/PlayerPauseScreen.vue'
 import PlayerPrompt from '../components/player/PlayerPrompt.vue'
 import PlayerStage from '../components/player/PlayerStage.vue'
 import AppIcon from '../components/AppIcon.vue'
+import AppToast from '../components/AppToast.vue'
 import FocusSection from '../components/FocusSection.vue'
 import SourcesScreen from '../components/SourcesScreen.vue'
 import LibraryVersionPicker from '../components/LibraryVersionPicker.vue'
@@ -115,7 +116,7 @@ import { goBack } from '../lib/navigation.ts'
 import { titleRefOf } from '../lib/sources.ts'
 import { hasNativePlayer } from '../platform/android.ts'
 import { attachNativeVideo } from '../platform/nativeVideo.ts'
-import { heardStudio } from '../lib/tracks.ts'
+import { heardStudio, unconfirmedStudio } from '../lib/tracks.ts'
 import { lacksSources } from '../serverSources.ts'
 import { session, updatePlayerSettings } from '../session.ts'
 
@@ -228,6 +229,8 @@ const stalled = ref(false)
 const paused = ref(false)
 const position = ref(0)
 const tracks = usePlayerTracks(playback, video, position, restartWith)
+const voiceNotice = ref('')
+let pendingVoiceNotice = ''
 const duration = ref(Number.NaN)
 type Panel
   = 'audio' | 'subtitles' | 'episodes' | 'source' | 'settings' | 'versions'
@@ -991,6 +994,7 @@ async function switchTo(
     id: props.titleId,
     season: target.season,
     episode: target.episode,
+    fileIndex: target.fileIndex,
   }
   const progress = await api.titles
     .getTitleProgress(
@@ -1005,20 +1009,25 @@ async function switchTo(
     .catch(() => undefined)
   if (run !== launch)
     return
-  const preference = progress?.continuation
+  const release = progress?.seasonReleases.find(
+    item => item.season === season && item.torrentId === props.torrentId,
+  )
+  const voice = heardStudio(tracks.audioTrack.value, release?.voice)
   const next = upNext.value
   const file
-    = preference !== undefined
-      ? preference.preferredTorrent
-      : target.fileIndex !== undefined && props.torrentId
-        ? { torrentId: props.torrentId, fileIndex: target.fileIndex }
-        : next?.season === target.season && next.episode === target.episode
-          ? next.file
-          : null
+    = next?.season === target.season && next.episode === target.episode
+      ? next.file
+      : null
 
   void router.replace(
     diagnosticRoute(
-      automaticEpisodeRoute(title, file, props.torrentId, automaticContext()),
+      automaticEpisodeRoute(
+        title,
+        file,
+        props.torrentId,
+        automaticContext(),
+        voice,
+      ),
       context,
     ),
   )
@@ -1117,7 +1126,12 @@ async function switchToLibrary(
     return
   void router.replace(
     diagnosticRoute(
-      libraryRoute(fileId, { id: props.titleId, ...title }, automatic),
+      libraryRoute(
+        fileId,
+        { id: props.titleId, ...title },
+        automatic,
+        automatic ? heardStudio(tracks.audioTrack.value, undefined) : undefined,
+      ),
       context,
     ),
   )
@@ -1705,6 +1719,11 @@ function onPlaying() {
   if (holding)
     return
 
+  if (pendingVoiceNotice) {
+    voiceNotice.value = pendingVoiceNotice
+    pendingVoiceNotice = ''
+  }
+
   if (phase.value !== 'playing') {
     const hold = held
       ? 0
@@ -2060,6 +2079,10 @@ async function start() {
     return
   }
   startStats()
+  pendingVoiceNotice
+    = props.automatic && unconfirmedStudio(props.voice, playback.value)
+      ? t('player.voiceUnconfirmed', { studio: props.voice })
+      : ''
   void begin(from)
 }
 
@@ -2314,6 +2337,7 @@ onBeforeUnmount(() => {
     @select="chooseQuality"
     @close="exit"
   />
+  <AppToast :message="voiceNotice" @hide="voiceNotice = ''" />
 </template>
 
 <style scoped>

@@ -34,6 +34,45 @@ beforeEach(() => {
 })
 
 describe('explicit episode source', () => {
+  it('keeps the current pack when both it and history contain the watched episode', async () => {
+    expect(
+      await resolveEpisode(
+        { titleId: 'show', season: 2, episode: 1 },
+        { torrents: ['current', 'old'], cancelled: () => false },
+      ),
+    ).toEqual({ kind: 'found', file: { torrentId: 'current', fileIndex: 0 } })
+    expect(mocks.files).toHaveBeenCalledTimes(1)
+    expect(mocks.sources).not.toHaveBeenCalled()
+  })
+
+  it.each(['missing', 'unavailable'])(
+    'falls back to history only after the current pack is %s',
+    async (reason) => {
+      mocks.files.mockImplementation(async (_title, torrent) => {
+        if (torrent === 'current') {
+          if (reason === 'unavailable')
+            throw new Error('unavailable')
+          return { status: 'ready', files: [] }
+        }
+        return {
+          status: 'ready',
+          files: [{ season: 2, episode: 1, fileIndex: 0, size: 1000 }],
+        }
+      })
+      expect(
+        await resolveEpisode(
+          { titleId: 'show', season: 2, episode: 1 },
+          { torrents: ['current', 'old'], cancelled: () => false },
+        ),
+      ).toEqual({ kind: 'found', file: { torrentId: 'old', fileIndex: 0 } })
+      expect(mocks.files.mock.calls.map(call => call[1])).toEqual([
+        'current',
+        'old',
+      ])
+      expect(mocks.sources).not.toHaveBeenCalled()
+    },
+  )
+
   it('opens a candidate from a refined search with its query and keeps the exact episode', async () => {
     // The server can only recover this candidate from the matching search cache.
     mocks.open.mockImplementation(async (_title, body) => {
