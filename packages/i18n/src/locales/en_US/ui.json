@@ -528,7 +528,7 @@
       },
       "notFound": {
         "title": "File not found",
-        "text": "The torrent was deleted or the link is outdated. Open the file from Downloads in the panel."
+        "text": "The file is no longer available. Check the library or torrent, or choose another source."
       },
       "notReady": {
         "title": "The torrent isn't ready yet",

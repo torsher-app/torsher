@@ -1,3 +1,4 @@
+import { stat } from 'node:fs/promises'
 import { diagnosticContext } from '../services/diagnostics/index.ts'
 import type { FastifyRequest } from 'fastify'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
@@ -260,7 +261,18 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
       if (mediaFileId) {
         const found = playableMediaFile(mediaFileId, request.profileId)
 
-        if (!found || (title && !parseCatalogId(title.id))) {
+        const available
+          = found
+            && (await stat(found.path).catch((error: NodeJS.ErrnoException) => {
+              if (error.code === 'ENOENT' || error.code === 'ENOTDIR')
+                return null
+              throw error
+            }))
+        if (
+          !found
+          || !available?.isFile()
+          || (title && !parseCatalogId(title.id))
+        ) {
           logRejection(request, 'file not found', { libraryId: mediaFileId })
           return reply.code(404).send({ message: 'File not found' })
         }
