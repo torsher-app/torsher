@@ -67,6 +67,45 @@ function hasFfmpeg() {
   }
 }
 
+// Replace only optional CueTrackPositions children with same-size EBML Void.
+// Offsets and enclosing sizes remain valid; no video or subtitle blocks change.
+function withoutCueFields(source: Uint8Array, ids: number[]) {
+  const bytes = Uint8Array.from(source)
+  const removed = new Set<number>()
+  function visit(from: number, to: number, parent: number) {
+    let offset = from
+    while (offset < to) {
+      const start = offset
+      let idSize = 1
+      while (idSize <= 4 && !(bytes[offset]! & (0x80 >> (idSize - 1))))
+        idSize++
+      expect(idSize).toBeLessThanOrEqual(4)
+      let id = 0
+      for (let i = 0; i < idSize; i++) id = id * 256 + bytes[offset++]!
+      let sizeLength = 1
+      while (sizeLength <= 8 && !(bytes[offset]! & (0x80 >> (sizeLength - 1))))
+        sizeLength++
+      expect(sizeLength).toBeLessThanOrEqual(8)
+      let size = bytes[offset++]! & (0xFF >> sizeLength)
+      for (let i = 1; i < sizeLength; i++) size = size * 256 + bytes[offset++]!
+      const end = offset + size
+      expect(end).toBeLessThanOrEqual(to)
+      if (parent === 0xB7 && ids.includes(id)) {
+        expect(idSize).toBe(1)
+        bytes[start] = 0xEC
+        removed.add(id)
+      }
+      else if ([0x18538067, 0x1C53BB6B, 0xBB, 0xB7].includes(id)) {
+        visit(offset, end, id)
+      }
+      offset = end
+    }
+  }
+  visit(0, bytes.length, 0)
+  expect([...removed].sort()).toEqual([...ids].sort())
+  return bytes
+}
+
 describe.runIf(hasFfmpeg())('indexed subtitle seeking', () => {
   let dir: string
   let bytes: Uint8Array
@@ -100,6 +139,8 @@ describe.runIf(hasFfmpeg())('indexed subtitle seeking', () => {
       '30',
       '-c:s',
       'srt',
+      '-write_crc32',
+      '0',
       join(dir, 'video.mkv'),
     ])
     bytes = await readFile(join(dir, 'video.mkv'))
@@ -127,6 +168,46 @@ describe.runIf(hasFfmpeg())('indexed subtitle seeking', () => {
       ranges.every(([start, end]) => start >= 0 && end - start <= 256 * 1024),
     ).toBe(true)
   })
+  it.each([
+    ['CueDuration', [0xB2]],
+    ['CueRelativePosition', [0xF0]],
+    ['both optional fields', [0xB2, 0xF0]],
+  ] as const)(
+    'keeps the file readable and degrades safely without %s',
+    async (_name, ids) => {
+      const modified = withoutCueFields(bytes, [...ids])
+      const path = join(dir, 'without-optional-cues.mkv')
+      await writeFile(path, modified)
+      const packets = JSON.parse(
+        execFileSync(
+          'ffprobe',
+          [
+            '-v',
+            'error',
+            '-select_streams',
+            's',
+            '-show_entries',
+            'packet=pts_time,duration_time',
+            '-of',
+            'json',
+            path,
+          ],
+          { encoding: 'utf8' },
+        ),
+      )
+      expect(packets.packets).toContainEqual({
+        pts_time: '0.000000',
+        duration_time: '40.000000',
+      })
+      const { read, ranges } = readerOf(modified)
+      const lookup = await readSubtitleIndex(read)
+      expect(lookup).not.toBeNull()
+      const reads = ranges.length
+      expect(await lookup!(1, 25)).toEqual([])
+      expect(ranges).toHaveLength(reads)
+    },
+  )
+
   it('does not invent cues without a readable index', async () => {
     expect(await readSubtitleIndex(readerOf(new Uint8Array()).read)).toBeNull()
     expect(

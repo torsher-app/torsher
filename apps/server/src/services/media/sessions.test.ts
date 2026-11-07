@@ -292,6 +292,23 @@ describe('сессии воспроизведения', () => {
       },
     )
 
+    it('keeps extracted cues when an index has no usable subtitle references', async () => {
+      const lookup = vi.fn().mockResolvedValue([])
+      subtitleIndex.mockReset().mockResolvedValue(lookup)
+      const session = await subtitleSession()
+      try {
+        expect(await sessionCues(session, 's2', 20)).toEqual({
+          cues: extracted,
+          done: false,
+        })
+        expect(lookup).toHaveBeenCalledWith(2, 20)
+        expect(session.log.warn).not.toHaveBeenCalled()
+      }
+      finally {
+        await stopSession(session.id)
+      }
+    })
+
     it('merges overlapping indexed cues with extracted cues', async () => {
       const lookup = vi.fn().mockResolvedValue([overlapping, ...extracted])
       subtitleIndex.mockReset().mockResolvedValue(lookup)
