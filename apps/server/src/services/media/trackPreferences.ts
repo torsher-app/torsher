@@ -54,16 +54,22 @@ export function audioPreferenceOf(
 export function matchesAudio(
   track: AudioStreamInfo,
   preference: SavedAudioPreference,
+  options: { allowUnknownVoiceType?: boolean } = {},
 ) {
   const voice = voiceOfTrack(track)
-  // Unknown metadata cannot confirm a preference across files.
+  // Only fallback selection may tolerate an unknown type for a known studio.
+  // The default remains strict for preferenceMismatch.
   return (
     !!(preference.language || preference.studio || preference.voiceType)
     && (!preference.language
       || trackLanguage(track.language) === preference.language)
     && (!preference.studio
       || voice?.studio?.toLowerCase() === preference.studio.toLowerCase())
-    && (!preference.voiceType || voice?.type === preference.voiceType)
+    && (!preference.voiceType
+      || voice?.type === preference.voiceType
+      || (options.allowUnknownVoiceType === true
+        && !!preference.studio
+        && !voice?.type))
   )
 }
 export function preferredSubtitle(

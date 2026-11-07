@@ -186,6 +186,47 @@ describe('сессии воспроизведения', () => {
     expect(session.hls).toBeNull()
   })
 
+  it('uses the studio fallback without confirming or changing the saved voice type', async () => {
+    const selected = {
+      language: 'rus',
+      studio: 'Red Head Sound',
+      voiceType: 'MVO',
+    }
+    const session = createSession({
+      subject: 'owner',
+      torrent: torrentOf('studio-fallback'),
+      fileIndex: 0,
+      fileName: 'Film.mkv',
+      preference: { selected },
+      log,
+    });
+    (await probeStarted())({
+      ...media,
+      audio: [
+        { ...media.audio[0]!, title: 'MVO NewStudio' },
+        {
+          ...media.audio[0]!,
+          index: 3,
+          title: 'Red Head Sound',
+          default: false,
+        },
+      ],
+    })
+    try {
+      await session.ready
+      expect(session.audioStream).toBe(3)
+      expect(session.preferenceMismatch).toEqual(['audio'])
+      expect(selected).toEqual({
+        language: 'rus',
+        studio: 'Red Head Sound',
+        voiceType: 'MVO',
+      })
+    }
+    finally {
+      await stopSession(session.id)
+    }
+  })
+
   describe('optional subtitle index', () => {
     const extracted = [{ start: 20, end: 25, text: 'Extracted' }]
     const overlapping = { start: 0, end: 40, text: 'Overlapping' }

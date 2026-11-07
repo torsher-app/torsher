@@ -182,6 +182,13 @@ export function pickAudioStream(
     )
     if (match)
       return match.index
+    const sameStudio = tracks.find(track =>
+      matchesAudio(track, preference.selected!, {
+        allowUnknownVoiceType: true,
+      }),
+    )
+    if (sameStudio)
+      return sameStudio.index
     const sameLanguage = tracks.filter(
       track =>
         trackLanguage(track.language) === preference.selected!.language,
