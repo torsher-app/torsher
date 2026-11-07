@@ -60,6 +60,10 @@ export function sourceReturnRoute(value: unknown, titleId: string) {
   return {
     path: state.path,
     query: copy,
-    state: { sourceReturn: null, resumePlayback: resume },
+    state: {
+      sourceReturn: null,
+      sourcePanelReturn: null,
+      resumePlayback: resume,
+    },
   }
 }

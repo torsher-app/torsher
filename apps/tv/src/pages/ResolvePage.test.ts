@@ -142,6 +142,7 @@ it('cancels a pending source switch back to the same paused file and ignores its
     query: { title: 'tmdb:tv:100', season: '1', episode: '2' },
     state: {
       sourceReturn: null,
+      sourcePanelReturn: null,
       resumePlayback: { position: 123.5, paused: true },
     },
   })
@@ -162,8 +163,37 @@ it('does not cancel a successful resolve when navigation unmounts the screen', a
   expect(mocks.replace.mock.calls[0]![0].state.diagnostic.actionId).toBe(
     'action-0001',
   )
+  expect(mocks.replace.mock.calls[0]![0].state.sourcePanelReturn).toBeNull()
   app.unmount()
   expect(cancellations()).toEqual([])
+})
+it('marks a successful player source switch to return to its source overlay', async () => {
+  mocks.historyState.sourceReturn = {
+    path: '/play/original/3',
+    query: { title: 'tmdb:tv:100', season: '1', episode: '2' },
+    position: 123.5,
+    paused: true,
+  }
+  mocks.resolve.mockResolvedValue({
+    kind: 'found',
+    file: { torrentId: 'new-source', fileIndex: 0 },
+  })
+  const app = await mount({ candidate: 'new-source' })
+  expect(mocks.replace.mock.calls[0]![0].state).toMatchObject({
+    sourceReturn: null,
+    sourcePanelReturn: true,
+    resumePlayback: null,
+  })
+  app.unmount()
+})
+it('keeps the ordinary Sources page route as the parent of its player', async () => {
+  mocks.resolve.mockResolvedValue({
+    kind: 'found',
+    file: { torrentId: 'selected-source', fileIndex: 0 },
+  })
+  const app = await mount({ candidate: 'selected-source' })
+  expect(mocks.replace.mock.calls[0]![0].state.sourcePanelReturn).toBeNull()
+  app.unmount()
 })
 it.each([{}, { noSources: true }])(
   'does not cancel a completed unsuccessful resolve %o',
