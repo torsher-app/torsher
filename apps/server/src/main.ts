@@ -91,6 +91,7 @@ import {
   clearStreamSelections,
   liveTorrents,
   onTorrentReady,
+  reconcileEngineStorage,
   resumeResolving,
 } from './services/torrents/index.ts'
 import { enforceSeeding } from './services/torrents/seeding.ts'
@@ -309,6 +310,10 @@ function checkStorage() {
   if (!isEngineReady() || !producersStarted || restoreHeld())
     return
 
+  // Повторяет отложенные изоляции/технические паузы после освобождения места.
+  void reconcileEngineStorage().catch(err =>
+    logFor('engine').error({ err }, 'Storage recovery check failed'),
+  )
   resumeMoves()
   enforceStorage()
     .catch(err => logFor('storage').error({ err }, 'Storage check failed'))
@@ -334,6 +339,9 @@ const maintenanceStartup = createMaintenanceStartup({
   library: startLibraryProducers,
   safeWithoutEngine: libraryStartupWithoutEngine,
   resume: async () => {
+    await reconcileEngineStorage()
+    if (restoreHeld())
+      return
     if (reconcilePending) {
       const result = await reconcileTorrentsAfterRestore()
       reconcilePending = false

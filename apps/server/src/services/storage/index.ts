@@ -103,11 +103,14 @@ async function snapshot(request?: SpaceRequest): Promise<Snapshot> {
       dirOf.set(row.id, resolve(torrentDir(row)))
   }
 
-  // Раздача не в движке ляжет в действующий каталог загрузок
+  // Сохранённый custom/isolated каталог переживает eviction и не зависит
+  // от inEngine. Только новая раздача без своего пути получает текущий.
   if (request && !dirOf.has(request.torrent.id)) {
     dirOf.set(
       request.torrent.id,
-      request.torrent.inEngine ? resolve(torrentDir(request.torrent)) : current,
+      request.torrent.inEngine || request.torrent.downloadDir
+        ? resolve(torrentDir(request.torrent))
+        : current,
     )
   }
 

@@ -349,6 +349,14 @@ func (a *api) maintenancePrepare(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// Не разделяем владение путём с другой живой раздачей или переносом.
+		claims, _ := a.ownership.snapshot()
+		candidate := identities(paths)
+		for hash, claim := range claims {
+			if hash.HexString() != manifest.InfoHash && overlaps(candidate, identities(claim.paths)) {
+				writeError(w, 409, "path_conflict", errStorageConflict)
+				return
+			}
+		}
 		for _, torrent := range a.client.Torrents() {
 			hash := torrent.InfoHash()
 			if a.isMoving(hash) {
@@ -523,6 +531,13 @@ func (a *api) maintenanceFinish(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 500, "journal_failed", errors.New("cannot persist operation result"))
 		return
 	}
+	if next == "finalized" || (next == "cancelled" && fence.RestoreSession == nil) {
+		var hash metainfo.Hash
+		_ = hash.FromHexString(fence.Manifest.InfoHash)
+		if _, live := a.client.Torrent(hash); !live && a.lifecycle.settled(hash) {
+			a.ownership.replace(hash, storageClaim{})
+		}
+	}
 	a.resumeMaintenanceCancelled(fence)
 	writeJSON(w, 200, fence)
 }
@@ -639,6 +654,14 @@ func (a *api) reattachMaintenance(fence *detachFence) error {
 		return err
 	}
 	dir := a.dirOrDefault(saved.Dir)
+	unlock := a.ownership.operation(meta.HashInfoBytes())
+	defer unlock()
+	if a.ownership.blocked(meta.HashInfoBytes()) {
+		return errStorageConflict
+	}
+	if err := a.ownership.reserve(meta.HashInfoBytes(), dir, metadataPaths(meta, dir)); err != nil {
+		return err
+	}
 	pinned, err := openMaintenancePinned(&info, meta.HashInfoBytes(), dir, fence.Manifest.Paths, a.completion)
 	if err != nil {
 		return err

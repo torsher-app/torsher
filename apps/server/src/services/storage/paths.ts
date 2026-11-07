@@ -1,5 +1,5 @@
 import type { Torrent } from '../../db/schema.ts'
-import { resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { config } from '../../config.ts'
 import { deleteSetting, getSetting, setSetting } from '../settings/index.ts'
 
@@ -68,4 +68,16 @@ export function downloadDirValue(dir: string) {
   const value = resolve(dir)
 
   return value === envStoragePath('downloads') ? null : value
+}
+
+/** Детерминированный каталог: повторная попытка не наращивает torsher/hash. */
+export function isolatedTorrentDir(root: string, infoHash: string) {
+  const path = resolve(root)
+  return basename(path) === infoHash && basename(dirname(path)) === 'torsher'
+    ? path
+    : join(path, 'torsher', infoHash)
+}
+
+export function isIsolatedTorrentDir(dir: string, infoHash: string) {
+  return isolatedTorrentDir(dir, infoHash) === resolve(dir)
 }

@@ -282,6 +282,54 @@ describe('пути хранения', () => {
 })
 
 describe('перенос загрузок', () => {
+  it('conflict retries in a hash directory and finishes without moving it again', async () => {
+    const torrent = insertTorrent({ inEngine: true })
+    const target = join(root, 'big')
+    const isolated = join(target, 'torsher', INFO_HASH)
+    const destinations: string[] = []
+    engine([{ ...liveState }], {
+      [`POST /torrents/${INFO_HASH}/move`]: (_url, init) => {
+        const dir = JSON.parse(String(init.body)).dir
+        destinations.push(dir)
+        return dir === target
+          ? json(engineError('storage_path_conflict', 'conflict'), 409)
+          : json(moveState(isolated))
+      },
+    })
+    expect(
+      (await putPath({ kind: 'downloads', path: target, mode: 'move' }))
+        .statusCode,
+    ).toBe(200)
+    await moveIdle()
+    expect(destinations).toEqual([target, isolated])
+    expect(torrentRow(torrent.id).downloadDir).toBe(isolated)
+    expect((await overview()).move).toMatchObject({
+      status: 'done',
+      itemsDone: 1,
+    })
+  })
+
+  it('keeps an isolated torrent isolated on the next storage root', async () => {
+    const torrent = insertTorrent({
+      inEngine: true,
+      downloadDir: join(root, 'old', 'torsher', INFO_HASH),
+    })
+    const target = join(root, 'big')
+    const isolated = join(target, 'torsher', INFO_HASH)
+    engine([{ ...liveState }], {
+      [`POST /torrents/${INFO_HASH}/move`]: (_url, init) => {
+        expect(JSON.parse(String(init.body)).dir).toBe(isolated)
+        return json(moveState(isolated))
+      },
+    })
+    expect(
+      (await putPath({ kind: 'downloads', path: target, mode: 'move' }))
+        .statusCode,
+    ).toBe(200)
+    await moveIdle()
+    expect(torrentRow(torrent.id).downloadDir).toBe(isolated)
+  })
+
   it('раздача переезжает в движке и переключается сразу после переноса', async () => {
     const torrent = insertTorrent({ inEngine: true, selectedFiles: [0] })
     const target = join(root, 'big')

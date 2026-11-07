@@ -551,7 +551,11 @@ func TestMaintenanceBindMountAliases(t *testing.T) {
 	if r := maintenanceRequest(t, a, "POST", "/maintenance/bind/prepare", manifest); r.Code != 409 {
 		t.Fatal("prepare accepted a path alias owned by a live torrent", r.Code, r.Body.String())
 	}
-	live.Drop()
+	// Drop сам по себе не завершает владение: move/maintenance сохраняют
+	// reservation после закрытия storage. Освобождение проходит через forget.
+	if r := maintenanceRequest(t, a, "DELETE", "/torrents/"+live.InfoHash().HexString(), nil); r.Code != 200 {
+		t.Fatal("forget failed", r.Code, r.Body.String())
+	}
 	if r := maintenanceRequest(t, a, "POST", "/maintenance/bind/prepare", manifest); r.Code != 200 {
 		t.Fatal(r.Code, r.Body.String())
 	}

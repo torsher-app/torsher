@@ -9,6 +9,17 @@ import { getSetting } from '../settings/index.ts'
 export async function libraryStartupWithoutEngine() {
   if (getSetting<boolean>('maintenanceExecutionEnabled') === true)
     return false
+  try {
+    const sessions = await readdir(
+      join(config.dataDir, 'engine', 'state', 'torrents'),
+    )
+    if (sessions.some(file => file.endsWith('.torrent')))
+      return false
+  }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT')
+      return false
+  }
   const directory = join(config.dataDir, 'engine', 'state', 'maintenance')
   try {
     const files = await readdir(directory)

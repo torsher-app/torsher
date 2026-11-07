@@ -1,9 +1,15 @@
 import type { ChildProcess } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import type { EngineHealth } from './supervisor.ts'
 import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createEngineSupervisor } from './supervisor.ts'
+
+vi.mock('node:child_process', async original => ({
+  ...(await original<typeof import('node:child_process')>()),
+  spawn: vi.fn(),
+}))
 
 class FakeProcess extends EventEmitter {
   stdout = new PassThrough()
@@ -96,6 +102,37 @@ afterEach(() => {
 })
 
 describe('супервизор движка', () => {
+  it('default spawn overrides inherited mmap mode before upstream initialization', async () => {
+    vi.stubEnv('TORRENT_STORAGE_DEFAULT_FILE_IO', 'mmap')
+    const process = new FakeProcess()
+    vi.mocked(spawn).mockReturnValue(process as unknown as ChildProcess)
+    const supervisor = createEngineSupervisor({
+      binaryPath: '/synthetic/engine',
+      args: () => [],
+      log,
+      onReady: vi.fn(),
+      onDown: vi.fn(),
+      findFreePort: async () => 40000,
+      binaryExists: () => true,
+      checkHealth: async () => 'ok',
+    })
+    try {
+      await supervisor.start()
+      expect(spawn).toHaveBeenCalledWith(
+        '/synthetic/engine',
+        [],
+        expect.objectContaining({
+          env: expect.objectContaining({
+            TORRENT_STORAGE_DEFAULT_FILE_IO: 'classic',
+          }),
+        }),
+      )
+    }
+    finally {
+      await supervisor.stop()
+      vi.unstubAllEnvs()
+    }
+  })
   it('запускает движок на свободном порту и сообщает адрес, когда API ответил', async () => {
     const { supervisor, spawned, onReady, onDown } = setup()
 

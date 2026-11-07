@@ -154,6 +154,8 @@ function defaultSpawn(command: string, args: string[]) {
     stdio: ['ignore', 'pipe', 'pipe'],
     env: {
       ...process.env,
+      // upstream выбирает IO при init процесса; mmap небезопасен для коротких файлов.
+      TORRENT_STORAGE_DEFAULT_FILE_IO: 'classic',
       NO_COLOR: '1',
       TORSHER_ENGINE_MAINTENANCE_TOKEN: engineMaintenanceToken,
     },
