@@ -57,6 +57,9 @@ const target = {
   season: props.season ? Number(props.season) : undefined,
   episode: props.episode ? Number(props.episode) : undefined,
 }
+const sourceReturn = props.candidate
+  ? sourceReturnRoute(router.options.history.state.sourceReturn, props.id)
+  : undefined
 const { art, subtitle } = usePlayerArt(props.id, target.season, target.episode)
 
 const step = ref<ResolveStep>('searching')
@@ -106,11 +109,8 @@ const actions = computed(() => [
 function back() {
   cancelOperation('back')
   cancelled = true
-  const previous = props.candidate
-    ? sourceReturnRoute(router.options.history.state.sourceReturn, props.id)
-    : undefined
-  if (previous) {
-    void router.replace(previous)
+  if (sourceReturn) {
+    void router.replace(sourceReturn)
     return
   }
   goBack(router, () => void router.replace('/'))
@@ -221,6 +221,7 @@ async function run() {
         ),
         state: {
           sourceReturn: null,
+          sourcePanelReturn: sourceReturn ? true : null,
           resumePlayback: null,
           diagnostic: { ...diagnosticContext },
           loaderShown: performance.now() - mountedAt >= LOADER_DELAY_MS,

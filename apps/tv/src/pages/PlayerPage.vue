@@ -264,6 +264,7 @@ let retryTimer: ReturnType<typeof setTimeout> | undefined
 const returnedPlayback = playbackResume(
   router.options.history.state.resumePlayback,
 )
+let sourcePanelReturn = router.options.history.state.sourcePanelReturn === true
 let viewerPaused = returnedPlayback?.paused ?? false
 // Перезапуск на паузе зрителя: новый поток ждёт на той же паузе
 let keepPaused = returnedPlayback?.paused ?? false
@@ -1100,7 +1101,12 @@ async function switchSource(candidate: SourceCandidate, choice: SourceChoice) {
     return
   void router.replace({
     path: `/title/${props.titleId}/play`,
-    state: { diagnostic: { ...context }, sourceReturn, resumePlayback: null },
+    state: {
+      diagnostic: { ...context },
+      sourceReturn,
+      sourcePanelReturn: null,
+      resumePlayback: null,
+    },
     query: {
       season: props.season,
       episode: props.episode,
@@ -1158,6 +1164,22 @@ function exit() {
   save('exit')
 
   goBack(router, () => void router.replace('/'))
+}
+
+function backFromPlayer() {
+  if (!sourcePanelReturn || !props.titleId) {
+    exit()
+    return
+  }
+
+  sourcePanelReturn = false
+  void router.replace({
+    path: router.currentRoute.value.path,
+    query: router.currentRoute.value.query,
+    state: { sourcePanelReturn: null },
+    force: true,
+  })
+  openPanel('source')
 }
 
 function play() {
@@ -1239,7 +1261,13 @@ function closePanel() {
   trackSelectionGeneration++
   librarySelection.value = undefined
   panel.value = null
-  focus.activate('player-buttons')
+  focus.activate(
+    showsError.value
+      ? 'player-prompt'
+      : phase.value === 'playing'
+        ? 'player-buttons'
+        : 'player-back',
+  )
   osd.scheduleHide()
 }
 
@@ -1269,7 +1297,13 @@ function onKey(action: KeyAction, event: KeyboardEvent) {
     if (action.type !== 'back')
       return false
 
-    exit()
+    if (panel.value) {
+      backDiagnostic('close_panel')
+      closePanel()
+    }
+    else {
+      backFromPlayer()
+    }
     return true
   }
 
@@ -1315,7 +1349,7 @@ function onKey(action: KeyAction, event: KeyboardEvent) {
       osd.hide()
     }
     else {
-      exit()
+      backFromPlayer()
     }
 
     return true
@@ -1425,7 +1459,7 @@ async function begin(from: number) {
   }
 
   // Приложение могли свернуть, пока подключался hls.js
-  if (stayPaused || document.hidden)
+  if (stayPaused || paused.value || document.hidden)
     return
 
   // Свернули и вернули за время подключения: пауза по метаданным устарела
@@ -1444,7 +1478,7 @@ async function begin(from: number) {
 
 function onPromptChoice(choice: 'retry' | 'back') {
   if (choice === 'back') {
-    exit()
+    backFromPlayer()
   }
   else {
     holdError()
@@ -1697,8 +1731,26 @@ function openPanel(kind: Panel) {
   osd.hold()
 
   // Источники закрывают фильм целиком: он ждёт на паузе
-  if (kind === 'source')
-    video.value?.pause()
+  if (kind === 'source') {
+    const el = video.value
+    cancelHold()
+    viewerPaused = true
+    paused.value = true
+    el?.pause()
+
+    // Back доступен ещё до старта: на паузе playing не придёт,
+    // поэтому готовый поток выходит из сцены по метаданным.
+    if (phase.value === 'starting' || restarting.value) {
+      keepPaused = true
+    }
+    else if (phase.value === 'buffering') {
+      startPausedBy = 'viewer'
+      clearTimeout(metadataTimer)
+      if (el && el.readyState >= el.HAVE_METADATA)
+        showPaused()
+      else metadataTimer = setTimeout(onMetadataTimeout, PAUSED_METADATA_MS)
+    }
+  }
 }
 
 function onLoadedMetadata() {
@@ -2258,6 +2310,22 @@ onBeforeUnmount(() => {
       </PlayerStage>
     </Transition>
 
+    <SourcesScreen
+      v-if="panel === 'source' && titleId"
+      :id="titleId"
+      class="player__sources"
+      :playing="{
+        season,
+        episode,
+        library: isLibrary,
+        mediaFileId,
+        torrentId,
+      }"
+      @select="switchSource"
+      @library="switchToLibrary"
+      @back="closePanelFromScreen"
+    />
+
     <template
       v-if="playback && phase === 'playing' && !restarting && !showsError"
     >
@@ -2333,21 +2401,6 @@ onBeforeUnmount(() => {
         @select="switchTo"
         @close="closePanelFromScreen"
       />
-      <SourcesScreen
-        v-else-if="panel === 'source' && titleId"
-        :id="titleId"
-        class="player__sources"
-        :playing="{
-          season,
-          episode,
-          library: isLibrary,
-          mediaFileId,
-          torrentId,
-        }"
-        @select="switchSource"
-        @library="switchToLibrary"
-        @back="closePanelFromScreen"
-      />
       <LibraryVersionPicker
         v-else-if="panel === 'versions' && librarySelection"
         :files="librarySelection.files"
@@ -2397,7 +2450,12 @@ onBeforeUnmount(() => {
       :edges="{ down: 'player-timeline' }"
       manual-scroll
     >
-      <button v-focusable class="player__back" type="button" @click="exit">
+      <button
+        v-focusable
+        class="player__back"
+        type="button"
+        @click="backFromPlayer"
+      >
         <AppIcon name="chevronLeft" />
         <span class="player__back-label">{{ t("common.back") }}</span>
       </button>

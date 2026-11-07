@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   selectSubtitles: vi.fn(),
   play: vi.fn(),
   pause: vi.fn(),
+  focus: vi.fn(),
   attach: vi.fn(),
   native: false,
   restart: (_change: PlaybackRestart): Promise<void> => Promise.resolve(),
@@ -53,7 +54,7 @@ vi.mock('vue-i18n', () => ({
 vi.mock('../focus/index.ts', () => ({
   useFocus: () => ({
     onKey: () => () => {},
-    activate: vi.fn(),
+    activate: mocks.focus,
     current: () => null,
   }),
 }))
@@ -157,8 +158,9 @@ interface Controls {
     choice: SourceChoice,
   ) => Promise<void>
   onTracksSelect: (id: string) => Promise<void>
-  openPanel: (kind: 'audio' | 'subtitles') => void
+  openPanel: (kind: 'audio' | 'subtitles' | 'source') => void
   closePanel: () => void
+  onKey: (action: { type: 'back' }, event: KeyboardEvent) => boolean
   onPause: () => void
   onPlay: () => void
   onPlaying: () => void
@@ -166,6 +168,7 @@ interface Controls {
   onTimeUpdate: () => void
   paused: boolean
   phase: string
+  panel: 'source' | null
 }
 let controls: Controls
 let cleanup: () => void
@@ -389,4 +392,93 @@ it('closes the source panel for the actual playing torrent even before history c
     {},
   )
   expect(mocks.replace).not.toHaveBeenCalled()
+})
+it('returns a resolved source switch to the source overlay once', async () => {
+  mocks.historyState = { sourcePanelReturn: true }
+  await mount(false)
+  expect(controls.onKey({ type: 'back' }, {} as KeyboardEvent)).toBe(true)
+  expect(controls.panel).toBe('source')
+  expect(mocks.replace).toHaveBeenCalledWith({
+    path: '/play/current/0',
+    query: { title: 'tmdb:tv:100', season: '1', episode: '2' },
+    state: { sourcePanelReturn: null },
+    force: true,
+  })
+
+  mocks.replace.mockClear()
+  expect(controls.onKey({ type: 'back' }, {} as KeyboardEvent)).toBe(true)
+  expect(controls.panel).toBeNull()
+  expect(mocks.replace).not.toHaveBeenCalled()
+  expect(mocks.focus).toHaveBeenLastCalledWith('player-buttons')
+  expect(controls.phase).toBe('playing')
+  expect(controls.paused).toBe(true)
+
+  controls.openPanel('source')
+  await controls.switchSource(
+    { id: 'another', torrentId: 'another' } as SourceCandidate,
+    {},
+  )
+  expect(mocks.replace).toHaveBeenCalledWith(
+    expect.objectContaining({
+      path: '/title/tmdb:tv:1/play',
+      query: expect.objectContaining({ candidate: 'another' }),
+      state: expect.objectContaining({
+        sourceReturn: expect.any(Object),
+        sourcePanelReturn: null,
+      }),
+    }),
+  )
+})
+
+it('leaves buffering on metadata after Sources paused a stream before its first frame', async () => {
+  mode = 'direct'
+  await mount(false)
+  Object.assign(mocks.media, { readyState: 0 })
+  controls.openPanel('source')
+  controls.closePanel()
+  expect(controls.phase).toBe('buffering')
+  Object.assign(mocks.media, { readyState: 4 })
+  controls.onLoadedMetadata()
+  expect(controls.phase).toBe('playing')
+  expect(controls.paused).toBe(true)
+  expect(mocks.play).not.toHaveBeenCalled()
+})
+
+it('preserves the Sources pause while the playback request is still pending', async () => {
+  mode = 'direct'
+  let ready!: (value: string) => void
+  mocks.start.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        ready = resolve
+      }),
+  )
+  await mount(false)
+  controls.openPanel('source')
+  controls.closePanel()
+  ready('ready')
+  await settle()
+  controls.onLoadedMetadata()
+  expect(controls.phase).toBe('playing')
+  expect(controls.paused).toBe(true)
+  expect(mocks.play).not.toHaveBeenCalled()
+})
+
+it('does not autoplay after Sources closes during an asynchronous HLS attach', async () => {
+  mode = 'hls'
+  let attached!: (value: boolean) => void
+  mocks.attach.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        attached = resolve
+      }),
+  )
+  await mount(false)
+  controls.openPanel('source')
+  controls.closePanel()
+  attached(true)
+  await settle()
+  expect(controls.phase).toBe('playing')
+  expect(controls.paused).toBe(true)
+  expect(mocks.play).not.toHaveBeenCalled()
 })
