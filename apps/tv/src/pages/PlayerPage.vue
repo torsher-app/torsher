@@ -2153,6 +2153,7 @@ onMounted(() => {
       path: router.currentRoute.value.path,
       query: router.currentRoute.value.query,
       state: { resumePlayback: null },
+      force: true,
     })
   }
   if (hasNativePlayer && video.value)

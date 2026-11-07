@@ -243,7 +243,37 @@ it('restores the position and pause after cancelling a source switch', async () 
     path: '/play/current/0',
     query: { title: 'tmdb:tv:100', season: '1', episode: '2' },
     state: { resumePlayback: null },
+    force: true,
   })
+})
+
+it('consumes resume state even when the playback URL stays unchanged', async () => {
+  const { createRouter, createMemoryHistory }
+    = await vi.importActual<typeof import('vue-router')>('vue-router')
+  const history = createMemoryHistory('/')
+  const router = createRouter({
+    history,
+    routes: [{ path: '/play/:torrentId/:fileIndex', component: {} }],
+  })
+  const resumePlayback = { position: 123.5, paused: true }
+  await router.push({
+    path: '/play/current/0',
+    query: { title: 'tmdb:tv:100', season: '1', episode: '2' },
+    state: { resumePlayback },
+  })
+  expect(history.state.resumePlayback).toEqual(resumePlayback)
+  const originalUrl = router.currentRoute.value.fullPath
+  const replace = vi.spyOn(history, 'replace')
+  mocks.historyState = history.state
+  await mount(false)
+
+  const result = await router.replace(mocks.replace.mock.calls[0]![0])
+
+  expect(result).toBeUndefined()
+  expect(replace).toHaveBeenCalledTimes(1)
+  expect(history.state.resumePlayback).toBeNull()
+  expect(router.currentRoute.value.fullPath).toBe(originalUrl)
+  history.destroy()
 })
 
 it.each(['direct', 'hls', 'native'])(
