@@ -781,24 +781,33 @@ export async function sessionCues(
     && from > 0
   ) {
     let pending = subtitleIndexes.get(session)
-    if (!pending) {
-      const signal = closers.get(session.id)?.signal
-      if (!signal || signal.aborted)
-        return { cues, done: true }
-      const read = session.library
-        ? fileRangeReader(session.library.path)
-        : (start: number, end: number) =>
-            rangeReader(
-              engineStreamUrl(session.torrent!.infoHash, session.fileIndex),
-              signal,
-            )(start, end)
-      pending = readSubtitleIndex(read)
-      subtitleIndexes.set(session, pending)
-      pending.catch(() => subtitleIndexes.delete(session))
+    try {
+      if (!pending) {
+        const signal = closers.get(session.id)?.signal
+        if (!signal || signal.aborted)
+          return { cues, done: true }
+        const read = session.library
+          ? fileRangeReader(session.library.path)
+          : (start: number, end: number) =>
+              rangeReader(
+                engineStreamUrl(session.torrent!.infoHash, session.fileIndex),
+                signal,
+              )(start, end)
+        pending = readSubtitleIndex(read)
+        subtitleIndexes.set(session, pending)
+      }
+      const lookup = await pending
+      if (lookup)
+        cues = mergeCues([cues, await lookup(index, from)])
     }
-    const lookup = await pending
-    if (lookup)
-      cues = mergeCues([cues, await lookup(index, from)])
+    catch {
+      // Индекс лишь дополняет ffmpeg: сбой не должен скрывать готовые реплики.
+      // Не повторяем повреждённое/недоступное чтение на каждом опросе.
+      if (subtitleIndexes.get(session) === pending) {
+        subtitleIndexes.set(session, Promise.resolve(null))
+        session.log.warn('Subtitle index unavailable; using extracted cues')
+      }
+    }
   }
   return {
     cues,
