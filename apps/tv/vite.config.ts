@@ -12,8 +12,8 @@ const PANEL_URL = process.env.TORSHER_PANEL_URL || 'http://localhost:3000'
 /**
  * Витрина ведёт в панель по `panel/` рядом с собой, как на сервере. В
  * разработке у панели свой dev-сервер, а здесь `/panel/...` отдал бы саму
- * витрину. Cookie на `localhost` общие для всех портов, и вход в панели
- * авторизует витрину.
+ * витрину. Cookie одного hostname общие для всех портов, и вход в панели
+ * авторизует витрину. Стенд ветки задаёт отдельный `.localhost` hostname.
  */
 function devPanelRedirect(): Plugin {
   return {
@@ -111,7 +111,7 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       // Тот же origin для API и картинок: cookie сессии, выданные панелью
-      // на localhost, доходят до сервера и отсюда
+      // на hostname витрины, доходят до сервера и отсюда
       proxy: {
         // Preserve the browser host for the diagnostic receiver's same-origin check.
         '/api': { target: API_URL, changeOrigin: false },

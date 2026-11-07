@@ -18,6 +18,7 @@ import {
   sanitizeDb,
   savedStoragePath,
   standDirFor,
+  standHostFor,
 } from './standData.ts'
 
 let root: string
@@ -63,6 +64,18 @@ describe('standDirFor', () => {
     expect(a).toMatch(/^\/tmp\/stands\/torsher-app-[0-9a-f]{8}$/)
     expect(b).toMatch(/^\/tmp\/stands\/x-[0-9a-f]{8}$/)
     expect(standDirFor('/tmp/stands', '/work/torsher-app/')).toBe(a)
+  })
+})
+
+describe('standHostFor', () => {
+  it('uses a stable localhost subdomain and keeps worktrees apart', () => {
+    const a = standHostFor('/work/torsher-app')
+    const b = standHostFor('/work/torsher-app/.worktrees/x')
+
+    expect(a).toMatch(/^torsher-[0-9a-f]{8}\.localhost$/)
+    expect(b).toMatch(/^torsher-[0-9a-f]{8}\.localhost$/)
+    expect(b).not.toBe(a)
+    expect(standHostFor('/work/torsher-app/')).toBe(a)
   })
 })
 
