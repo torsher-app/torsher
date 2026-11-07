@@ -8,11 +8,20 @@ import { constants, cp, mkdir, readdir, stat } from 'node:fs/promises'
 import { basename, join, relative, resolve, sep } from 'node:path'
 import Database from 'better-sqlite3'
 
+function checkoutHash(checkout: string) {
+  return createHash('sha256').update(resolve(checkout)).digest('hex')
+}
+
 /** Каталог стенда: один на checkout, у разных worktree — разные */
 export function standDirFor(root: string, checkout: string) {
-  const hash = createHash('sha256').update(resolve(checkout)).digest('hex')
+  const hash = checkoutHash(checkout)
 
   return join(root, `${basename(checkout)}-${hash.slice(0, 8)}`)
+}
+
+/** Отдельный localhost-hostname: cookies разных checkout не накапливаются */
+export function standHostFor(checkout: string) {
+  return `torsher-${checkoutHash(checkout).slice(0, 8)}.localhost`
 }
 
 function isInside(base: string, path: string) {

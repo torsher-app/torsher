@@ -2,7 +2,7 @@
  * Стенд ветки: сервер, панель и витрина текущего checkout на свободных портах
  * и на копии dev-данных из основного checkout. Данные и сессии разработчика
  * не меняются: копия обезврежена, вход в неё — тестовой учёткой из
- * `.env.stand`, у cookie стенда свой префикс.
+ * `.env.stand`, у cookie стенда свои hostname и префикс.
  *
  *   pnpm dev:stand            поднять стенд (уже поднят — напечатать адреса)
  *   pnpm dev:stand --empty    пустая база: мастер первого запуска
@@ -40,6 +40,7 @@ import {
   sanitizeDb,
   savedStoragePath,
   standDirFor,
+  standHostFor,
 } from './standData.ts'
 
 const { values: flags } = parseArgs({
@@ -391,10 +392,11 @@ async function startStand() {
   await mkdir(dataDir, { recursive: true })
 
   const [apiPort, panelPort, tvPort] = await freePorts(3)
+  const browserHost = standHostFor(checkout)
   const urls = {
     api: `http://127.0.0.1:${apiPort}`,
-    panel: `http://localhost:${panelPort}`,
-    tv: `http://localhost:${tvPort}`,
+    panel: `http://${browserHost}:${panelPort}`,
+    tv: `http://${browserHost}:${tvPort}`,
   }
   const state: StandState = {
     checkout,
