@@ -504,7 +504,7 @@
     "screensaverAfter": "After {n} min"
   },
   "player": {
-    "timeline": "Position {position}. OK pauses, left and right seek",
+    "timeline": "Position {position}. OK plays or pauses, left and right seek",
     "peers": "{n} peer | {n} peers",
     "found": "{n} peer found | {n} peers found",
     "speed": "{value} MB/s",
