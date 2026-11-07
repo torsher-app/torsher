@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.1 (2026-11-07)
+
+### Bug Fixes
+
+- **playback:** preserve source and track choices across navigation (#176) ([e4b1ac6](https://github.com/torsher-app/torsher/commit/e4b1ac68fe0cf8d6e0f5cf6948d68dffdb0d2991))
+- **tv:** preserve source and voice across episode switches (#174) ([7e51d64](https://github.com/torsher-app/torsher/commit/7e51d6456e67056912f3819e03c5fc1427f498a7))
+
 ## 1.5.0 (2026-11-05)
 
 ### Features
