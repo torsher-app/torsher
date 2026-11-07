@@ -28,6 +28,7 @@ const RAIL_SECTION = 'rail-about'
 // Сервер выбирают в обёртке ТВ; в браузере адрес и так в строке адреса
 const isTv = platform === 'tv'
 const server = window.location.host
+const uiBuild = __TV_BUILD_ID__
 
 // Пять раз ↑ подряд — журнал ввода поверх экрана. Сверху у кнопок соседей нет,
 // и стрелка сама по себе ничего не делает
@@ -75,6 +76,46 @@ onBeforeUnmount(stopKey)
           <span v-if="about">{{ about.commit ?? t("about.unknown") }}</span>
           <span v-else class="facts__skeleton skeleton" />
         </dd>
+        <template v-if="about?.devStand">
+          <dt class="facts__label">
+            {{ t("about.dev.stand") }}
+          </dt>
+          <dd class="facts__value">
+            {{ `DEV · ${about.devStand.name}` }}
+          </dd>
+          <dt class="facts__label">
+            {{ t("about.dev.branch") }}
+          </dt>
+          <dd class="facts__value">
+            {{ about.devStand.branch ?? t("about.unknown") }}
+          </dd>
+          <dt class="facts__label">
+            {{ t("about.dev.snapshot") }}
+          </dt>
+          <dd class="facts__value">
+            {{ about.devStand.snapshot ?? t("about.unknown") }}
+          </dd>
+          <dt class="facts__label">
+            {{ t("about.dev.builtAt") }}
+          </dt>
+          <dd class="facts__value">
+            {{ about.devStand.builtAt ?? t("about.unknown") }}
+          </dd>
+          <dt class="facts__label">
+            {{ t("about.dev.changes") }}
+          </dt>
+          <dd class="facts__value">
+            {{
+              t(about.devStand.dirty ? "about.dev.dirty" : "about.dev.clean")
+            }}
+          </dd>
+          <dt class="facts__label">
+            {{ t("about.dev.uiBuild") }}
+          </dt>
+          <dd class="facts__value">
+            {{ uiBuild }}
+          </dd>
+        </template>
         <dt class="facts__label">
           {{ t("about.source") }}
         </dt>

@@ -195,6 +195,19 @@ export const config = {
     return process.env.TORSHER_COMMIT || undefined
   },
 
+  // Только явный тестовый стенд раскрывает сведения разработки.
+  get devStand() {
+    if (process.env.TORSHER_DEV_STAND !== '1')
+      return undefined
+    return {
+      name: process.env.TORSHER_STAND_NAME || 'dev',
+      branch: process.env.TORSHER_BUILD_BRANCH || undefined,
+      snapshot: process.env.TORSHER_BUILD_SNAPSHOT || undefined,
+      builtAt: process.env.TORSHER_BUILD_TIME || undefined,
+      dirty: process.env.TORSHER_BUILD_DIRTY === '1',
+    }
+  },
+
   // AGPL требует дать пользователям исходники именно запущенной версии:
   // изменённая сборка указывает свой репозиторий
   get sourceUrl() {

@@ -63,6 +63,7 @@ const meta = computed(() => {
     type="button"
     :data-long-press="actions ? '' : undefined"
     :aria-current="current ? 'true' : undefined"
+    :aria-label="`${card.title} · ${meta}`"
     @click="$emit('select')"
     @longpress="openActions"
   >

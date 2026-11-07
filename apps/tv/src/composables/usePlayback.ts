@@ -377,6 +377,12 @@ export function usePlayback(
           language: i18n.global.locale.value as CreatePlaybackInput['language'],
           voiceStudio,
           ...restart,
+          // До семантических предпочтений Off задавался отсутствием поля.
+          subtitle:
+            restart?.subtitle === null
+            && playback.value?.preferenceMismatch === undefined
+              ? undefined
+              : restart?.subtitle,
         },
         diagnosticParams(context),
       )

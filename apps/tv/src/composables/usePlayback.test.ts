@@ -48,6 +48,26 @@ beforeEach(() => {
 })
 afterEach(() => vi.useRealTimers())
 
+it.each([false, true])(
+  'keeps Off compatible with preference support=%s',
+  async (supported) => {
+    mocks.post.mockResolvedValue({
+      ...ready('A'),
+      ...(supported ? { preferenceMismatch: [] } : {}),
+    })
+    const scope = effectScope()
+    const player = scope.run(() => usePlayback({ mediaFileId: 'file' }))!
+    await player.start()
+    await player.start({ audioStream: 2, subtitle: null, startPosition: 42 })
+    expect(mocks.post.mock.lastCall?.[0]).toMatchObject({
+      audioStream: 2,
+      startPosition: 42,
+      subtitle: supported ? null : undefined,
+    })
+    scope.stop()
+  },
+)
+
 it('a late start A closes only A while the ready replacement B stays alive', async () => {
   const a = deferred<Playback>()
   const b = deferred<Playback>()

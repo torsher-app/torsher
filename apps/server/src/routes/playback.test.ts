@@ -10,9 +10,9 @@ import { eq } from 'drizzle-orm'
 import pino from 'pino'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { createApp } from '../app.ts'
-import { ACCESS_TOKEN_COOKIE } from '../config.ts'
+import { ACCESS_TOKEN_COOKIE, PROFILE_COOKIE } from '../config.ts'
 import { getDb, migrateDb } from '../db/index.ts'
-import { torrents, users } from '../db/schema.ts'
+import { profiles, torrents, users } from '../db/schema.ts'
 import { setEngineDown, setEngineReady } from '../services/engine/index.ts'
 import {
   INFO_HASH,
@@ -609,6 +609,64 @@ describe.runIf(hasFfmpeg())('воспроизведение с пробой и �
       (await start({ device: webos, title: { ...title, episode: 4 } }))
         .audioStream,
     ).toBe(2)
+  })
+
+  it('saves explicit tracks for the title, restores them on another episode and preserves Off', async () => {
+    const title = { id: 'tmdb:tv:909', season: 1, episode: 1 }
+    const first = await start({ device: webos, title })
+    const save = (body: object) =>
+      app.inject({
+        method: 'PUT',
+        url: `/api/playback/${first.sessionId}/preferences`,
+        cookies: owner,
+        payload: body,
+      })
+    expect((await save({ audioStream: 2, subtitle: 'f1' })).statusCode).toBe(
+      200,
+    )
+    const next = await start({
+      device: webos,
+      title: { ...title, episode: 2 },
+      voiceStudio: 'NewStudio',
+    })
+    expect(next.audioStream).toBe(2)
+    expect(next.subtitle).toBe('f1')
+    expect((await save({ subtitle: null })).statusCode).toBe(200)
+    expect((await start({ device: webos, title })).subtitle).toBeNull()
+    expect((await save({ audioStream: 999 })).statusCode).toBe(400)
+    getDb()
+      .insert(profiles)
+      .values({
+        id: 'other-playback-profile',
+        name: 'Other',
+        color: 'violet',
+      })
+      .run()
+    expect(
+      (
+        await app.inject({
+          method: 'PUT',
+          url: `/api/playback/${first.sessionId}/preferences`,
+          cookies: { ...owner, [PROFILE_COOKIE]: 'other-playback-profile' },
+          payload: { audioStream: 1 },
+        })
+      ).statusCode,
+    ).toBe(404)
+    expect(
+      (
+        await app.inject({
+          method: 'PUT',
+          url: `/api/playback/${first.sessionId}/preferences`,
+          payload: { subtitle: null },
+        })
+      ).statusCode,
+    ).toBe(401)
+    await app.inject({
+      method: 'DELETE',
+      url: `/api/playback/${first.sessionId}`,
+      cookies: owner,
+    })
+    expect((await save({ subtitle: 'f1' })).statusCode).toBe(404)
   })
 
   it('смена озвучки перезапуском продолжает с позиции', async () => {

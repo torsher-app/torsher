@@ -37,6 +37,7 @@ export function useEpisodeActions(
   season: Ref<number | undefined>,
   progress: Ref<TitleProgress | undefined>,
   ready: () => boolean,
+  refreshProgress: () => void,
 ) {
   const { t } = useI18n()
   const router = useRouter()
@@ -164,6 +165,7 @@ export function useEpisodeActions(
           markedEpisode(previous, watched),
         ],
       }
+      refreshProgress()
       if (closeAfter && context.value === value)
         close()
     }
@@ -222,7 +224,27 @@ export function useEpisodeActions(
         return
       }
     }
-    navigate(resolveRoute(value.titleId, target.season, target.episode))
+    const release = progress.value?.seasonReleases.find(
+      item =>
+        item.season === target.season && item.episodes.includes(target.episode),
+    )
+    // Без прежнего выбора зритель сам выбирает источник, как на карточке тайтла.
+    navigate(
+      release
+        ? resolveRoute(
+            value.titleId,
+            target.season,
+            target.episode,
+            release.torrentId,
+          )
+        : {
+            path: `/title/${value.titleId}/sources`,
+            query: {
+              season: String(target.season),
+              episode: String(target.episode),
+            },
+          },
+    )
   }
 
   function cancel() {

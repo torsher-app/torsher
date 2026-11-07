@@ -41,6 +41,7 @@ import ReleaseCard from '../components/ReleaseCard.vue'
 import ReleasePanel from '../components/ReleasePanel.vue'
 import ScreenState from '../components/ScreenState.vue'
 import TopCard from '../components/TopCard.vue'
+import { useAbout } from '../composables/useAbout.ts'
 import { useContinuePlayback } from '../composables/useContinuePlayback.ts'
 import { useHero } from '../composables/useHero.ts'
 import { useHeldLoading } from '../composables/useHeldLoading.ts'
@@ -67,6 +68,8 @@ import { firstVisibleRow, stackOffset } from '../lib/rowStack.ts'
 defineOptions({ name: 'HomePage' })
 
 const props = defineProps<{ mode: HomeMode }>()
+
+const { about: serverAbout } = useAbout()
 
 const RAIL_ITEM: Record<HomeMode, RailItemId> = {
   all: 'home',
@@ -515,6 +518,7 @@ onBeforeUnmount(() => {
 <template>
   <main ref="screen" class="home" @wheel.passive="onScreenWheel">
     <BackdropLayer :src="hero?.details?.backdrop" />
+    <span v-if="serverAbout?.devStand" class="home__dev">DEV · {{ serverAbout.devStand.name }}</span>
 
     <div class="home__hero">
       <HeroPanel
@@ -655,6 +659,16 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.home__dev {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-5);
+  z-index: 2;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-s);
+  pointer-events: none;
+}
+
 .home {
   position: fixed;
   top: 0;

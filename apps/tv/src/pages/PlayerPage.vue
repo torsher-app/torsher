@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import { playbackResume, sourceReturnState } from '../lib/sourceReturn.ts'
 import type {
   Continuation,
   LibraryFile,
   SourceCandidate,
   UpNext,
 } from '@torsher/api-client'
+import { getErrorStatus } from '@torsher/api-client'
 import type { AutomaticPlayback } from '../lib/continue.ts'
 import { useContinuationConsent } from '../composables/useContinuationConsent.ts'
 import {
@@ -259,9 +261,12 @@ let launch = 0
 let budget = freshBudget()
 let retryTimer: ReturnType<typeof setTimeout> | undefined
 // Пауза зрителя или свёрнутого приложения, а не остановка потока плеером
-let viewerPaused = false
-// Поток оборвался на паузе зрителя: новый ждёт на той же паузе
-let keepPaused = false
+const returnedPlayback = playbackResume(
+  router.options.history.state.resumePlayback,
+)
+let viewerPaused = returnedPlayback?.paused ?? false
+// Перезапуск на паузе зрителя: новый поток ждёт на той же паузе
+let keepPaused = returnedPlayback?.paused ?? false
 // Новый поток ждёт на паузе: на экран плеера он выходит с метаданными, когда
 // видео уже на нужной позиции. По возврату в приложение снимается только пауза
 // от сворачивания (`hidden`), пауза зрителя (`viewer`) остаётся
@@ -348,13 +353,14 @@ const trackOptions = computed(() =>
 
 // Смена дорожки, которую плеер не переключит сам, перезапускает поток
 const tracksHint = computed(() => {
+  const hints = []
+  if (playback.value?.media && (props.titleId || props.mediaFileId))
+    hints.push(t('player.trackScope'))
   if (panel.value === 'audio' && playback.value?.audioSwitch === 'restart')
-    return t('player.restartHint')
-
+    hints.push(t('player.restartHint'))
   if (panel.value === 'subtitles' && tracks.hasBurnIn.value)
-    return t('player.burnInHint')
-
-  return undefined
+    hints.push(t('player.burnInHint'))
+  return hints.join(' · ') || undefined
 })
 
 // Настройки профиля — вид субтитров и автопереход; скорость живёт до
@@ -1058,7 +1064,7 @@ function playNext(
  * озвучка — та, что слышно сейчас, если она там есть
  */
 async function switchSource(candidate: SourceCandidate, choice: SourceChoice) {
-  if (candidate.lastWatched && !isLibrary) {
+  if (candidate.torrentId === props.torrentId && !isLibrary) {
     closePanel()
     return
   }
@@ -1084,12 +1090,17 @@ async function switchSource(candidate: SourceCandidate, choice: SourceChoice) {
   leaving = true
   const run = ++launch
   playerSummary('source_switch')
+  const sourceReturn = sourceReturnState(
+    router.currentRoute.value,
+    position.value,
+    viewerPaused,
+  )
   await save('source_switch', context)
   if (run !== launch)
     return
   void router.replace({
     path: `/title/${props.titleId}/play`,
-    state: { diagnostic: { ...context } },
+    state: { diagnostic: { ...context }, sourceReturn, resumePlayback: null },
     query: {
       season: props.season,
       episode: props.episode,
@@ -1223,7 +1234,9 @@ function closePanelFromScreen() {
   backDiagnostic('close_panel')
   closePanel()
 }
+let trackSelectionGeneration = 0
 function closePanel() {
+  trackSelectionGeneration++
   librarySelection.value = undefined
   panel.value = null
   focus.activate('player-buttons')
@@ -1482,6 +1495,8 @@ function holdStream() {
  * сбоя: новый поток с этими дорожками с текущего места
  */
 async function restartWith(change: PlaybackRestart) {
+  if (!restarting.value)
+    keepPaused = viewerPaused
   const run = ++launch
   const at = resumeAt()
 
@@ -1634,11 +1649,46 @@ function watchProgress() {
     slow.value = true
 }
 
-function onTracksSelect(id: string) {
-  if (panel.value === 'audio')
+let savingTrack = false
+async function onTracksSelect(id: string) {
+  if (savingTrack)
+    return
+  const current = playback.value
+  const kind = panel.value
+  if (kind !== 'audio' && kind !== 'subtitles')
+    return
+  const generation = trackSelectionGeneration
+  if (current?.media && (props.titleId || props.mediaFileId)) {
+    savingTrack = true
+    try {
+      await api.playback.putPlaybackPreferences(
+        current.sessionId,
+        kind === 'audio'
+          ? { audioStream: Number(id) }
+          : { subtitle: id === 'off' ? null : id },
+      )
+    }
+    catch (error) {
+      voiceNotice.value = t('player.trackSaveFailed')
+      // Older servers have no persistence endpoint; playback still works.
+      if (getErrorStatus(error) !== 404)
+        return
+    }
+    finally {
+      savingTrack = false
+    }
+    if (
+      leaving
+      || generation !== trackSelectionGeneration
+      || current !== playback.value
+      || kind !== panel.value
+    ) {
+      return
+    }
+  }
+  if (kind === 'audio')
     tracks.selectAudio(id)
   else tracks.selectSubtitles(id)
-
   closePanel()
 }
 
@@ -2023,7 +2073,11 @@ async function start() {
   if (run !== launch || leaving)
     return
   const outcome = await player.start(
-    props.start === '0' ? { startPosition: 0 } : undefined,
+    returnedPlayback
+      ? { startPosition: returnedPlayback.position }
+      : props.start === '0'
+        ? { startPosition: 0 }
+        : undefined,
   )
 
   if (run !== launch || leaving)
@@ -2036,7 +2090,9 @@ async function start() {
     return
 
   // Сервер не даёт позицию в самом начале и в хвосте файла: там с начала
-  const from = props.start === '0' ? 0 : (playback.value?.startPosition ?? 0)
+  const from
+    = returnedPlayback?.position
+      ?? (props.start === '0' ? 0 : (playback.value?.startPosition ?? 0))
 
   fromStart.value = from > 0
   diagnostic(
@@ -2079,8 +2135,11 @@ async function start() {
     return
   }
   startStats()
-  pendingVoiceNotice
-    = props.automatic && unconfirmedStudio(props.voice, playback.value)
+  pendingVoiceNotice = playback.value?.preferenceMismatch?.length
+    ? t('player.trackUnavailable')
+    : playback.value?.preferenceMismatch === undefined
+      && props.automatic
+      && unconfirmedStudio(props.voice, playback.value)
       ? t('player.voiceUnconfirmed', { studio: props.voice })
       : ''
   void begin(from)
@@ -2089,6 +2148,14 @@ async function start() {
 let detachNative: (() => void) | undefined
 
 onMounted(() => {
+  if (returnedPlayback) {
+    void router.replace({
+      path: router.currentRoute.value.path,
+      query: router.currentRoute.value.query,
+      state: { resumePlayback: null },
+      force: true,
+    })
+  }
   if (hasNativePlayer && video.value)
     detachNative = attachNativeVideo(video.value)
 
@@ -2102,6 +2169,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  leaving = true
   stopDiagnosticMedia()
   playerSummary('unmounted')
   consent.cancel()
@@ -2269,7 +2337,13 @@ onBeforeUnmount(() => {
         v-else-if="panel === 'source' && titleId"
         :id="titleId"
         class="player__sources"
-        :playing="{ season, episode, library: isLibrary, mediaFileId }"
+        :playing="{
+          season,
+          episode,
+          library: isLibrary,
+          mediaFileId,
+          torrentId,
+        }"
         @select="switchSource"
         @library="switchToLibrary"
         @back="closePanelFromScreen"

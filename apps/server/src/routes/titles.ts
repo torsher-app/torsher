@@ -92,7 +92,11 @@ import {
   WatchError,
   watchTitle,
 } from '../services/sources/watch.ts'
-import { getTorrent, liveTorrents } from '../services/torrents/index.ts'
+import {
+  getTorrent,
+  liveTorrents,
+  torrentsByInfoHash,
+} from '../services/torrents/index.ts'
 import { getSeason, getTitle, TmdbError } from '../services/tmdb/index.ts'
 import { parseCatalogId } from '../services/tmdb/mappers.ts'
 import { sendTmdbError } from './catalog.ts'
@@ -197,12 +201,20 @@ export function toSourcesResponse(
   const rankingDecisionId = diagnosticsCollecting()
     ? newDecisionId()
     : undefined
+  const knownTorrents = torrentsByInfoHash(
+    sources.ranking.ranked.flatMap(release =>
+      release.infoHash ? [release.infoHash.toLowerCase()] : [],
+    ),
+  )
   const candidates = sources.ranking.ranked.map((release, index) => ({
     ...toCandidate(
       release,
       release.id === sources.lastWatchedId,
       sources.audio === 'ru',
     ),
+    torrentId: release.infoHash
+      ? (knownTorrents.get(release.infoHash.toLowerCase())?.id ?? null)
+      : null,
     ...(rankingDecisionId && {
       diagnostics: {
         rank: index + 1,

@@ -24,6 +24,7 @@ import { useStackScroll } from '../composables/useStackScroll.ts'
 import { useFocus } from '../focus/index.ts'
 import { libraryRoute } from '../lib/continue.ts'
 import { anchorSpan } from '../lib/gridWindow.ts'
+import { survivingFocus } from '../lib/listFocus.ts'
 import type { GridRow } from '../lib/homeVideo.ts'
 import {
   albumName,
@@ -193,9 +194,57 @@ function measure() {
   }
 }
 
-watch(rows, async () => {
+let focusRevision = 0
+let isActive = false
+let lastCard: HTMLElement | undefined
+let lastKey: string | undefined
+watch(rows, async (next, previous) => {
+  const revision = ++focusRevision
+  const restore
+    = isActive
+      && lastKey !== undefined
+      && (gridRoot.value?.contains(document.activeElement)
+        || !lastCard?.isConnected)
+  const keys = (items: GridRow<GridItem>[]) => {
+    const result: string[] = []
+    for (const row of items) {
+      if (row.kind !== 'header')
+        result.push(...row.items.map(itemKey))
+    }
+    return result
+  }
+  const key = restore
+    ? survivingFocus(keys(previous), keys(next), lastKey!)
+    : undefined
+  if (restore) {
+    focusedRow.value = Math.max(
+      0,
+      next.findIndex(
+        row =>
+          row.kind !== 'header'
+          && row.items.some(item => itemKey(item) === key),
+      ),
+    )
+    followsFocus.value = true
+  }
   await nextTick()
+  if (revision !== focusRevision)
+    return
   measure()
+  if (!restore || !isActive)
+    return
+  const card = [
+    ...gridRoot.value!.querySelectorAll<HTMLElement>('[data-item-key]'),
+  ].find(el => el.dataset.itemKey === key)
+  if (card) {
+    focus.focusOn(card)
+    alignTo(card)
+  }
+  else {
+    lastKey = undefined
+    scrollGridTo(0)
+    focus.activate(isAlbum.value ? RAIL_SECTION : 'home-video-views')
+  }
 })
 
 const heading = computed(() =>
@@ -250,13 +299,12 @@ function alignTo(el: HTMLElement) {
   )
 }
 
-let lastCard: HTMLElement | undefined
-
 const stopFocus = focus.onFocus((el, via) => {
   if (!gridRoot.value?.contains(el))
     return
 
   lastCard = el
+  lastKey = el.dataset.itemKey
 
   const row = Number(el.closest<HTMLElement>('[data-row]')?.dataset.row)
 
@@ -270,6 +318,7 @@ const stopFocus = focus.onFocus((el, via) => {
 // Фокус на чипах: окну строк держать его не нужно
 watch(view, () => {
   lastCard = undefined
+  lastKey = undefined
   focusedRow.value = 0
   followsFocus.value = false
   scrollGridTo(0)
@@ -277,8 +326,6 @@ watch(view, () => {
 
 onMounted(() => window.addEventListener('resize', measure))
 onBeforeUnmount(() => window.removeEventListener('resize', measure))
-
-let isActive = false
 
 // Вернулись из плеера или альбома — на карточку, с которой ушли
 onActivated(() => {
@@ -398,10 +445,17 @@ onBeforeUnmount(stopFocus)
                   <template v-for="item in row.items" :key="itemKey(item)">
                     <AlbumCard
                       v-if="isAlbumItem(item)"
+                      :data-item-key="itemKey(item)"
                       :album="item"
                       @select="openAlbum(item)"
                     />
-                    <FileCard v-else :file="item" dated @select="play(item)" />
+                    <FileCard
+                      v-else
+                      :data-item-key="itemKey(item)"
+                      :file="item"
+                      dated
+                      @select="play(item)"
+                    />
                   </template>
                 </div>
               </template>

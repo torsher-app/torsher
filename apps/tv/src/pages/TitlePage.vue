@@ -334,6 +334,9 @@ const episodeActions = useEpisodeActions(
   selectedSeason,
   progress,
   () => progressStatus.value !== 'loading',
+  () => {
+    void refreshProgress()
+  },
 )
 const episodeContext = episodeActions.context
 const episodeOptions = episodeActions.options

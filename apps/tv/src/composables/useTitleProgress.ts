@@ -1,6 +1,7 @@
 import type { TitleProgress } from '@torsher/api-client'
 import type { Ref } from 'vue'
 import { computed } from 'vue'
+import { session } from '../session.ts'
 import { api } from '../api.ts'
 import { useCatalogLanguage } from './useCatalogLanguage.ts'
 import { useResource } from './useResource.ts'
@@ -13,7 +14,9 @@ import { useResource } from './useResource.ts'
 export function useTitleProgress(id: Ref<string>) {
   const language = useCatalogLanguage()
   const { data, ...rest } = useResource<TitleProgress>(
-    computed(() => `${id.value}|${language.value}`),
+    computed(
+      () => `${id.value}|${language.value}|${session.profile?.id ?? ''}`,
+    ),
     (_, signal) =>
       api.titles.getTitleProgress(
         id.value,

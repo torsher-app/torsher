@@ -20,7 +20,7 @@ Before the video starts, the screen shows the title's backdrop, its name, the ep
 
 If the video starts quickly, you don't see the lamp at all.
 
-If the stream breaks off or stalls, the player reconnects by itself and continues from the same place. It shows <Ui k="player.steps.reconnecting" /> and keeps trying for up to 3 minutes before it shows an error. <Ui k="player.steps.slow" /> means peers are there but the video doesn't move: you can wait or pick another release.
+If the stream breaks off or stalls, the player reconnects by itself and continues from the same place. It shows <Ui k="player.steps.reconnecting" /> while retrying, then an error if it cannot recover. Back remains available while you wait. <Ui k="player.steps.slow" /> means peers are there but the video doesn't move: you can wait or pick another release.
 
 ## Continue and start over
 
@@ -63,13 +63,13 @@ Skipping credits seeks only across a confirmed section, preserving gaps that may
 
 <Ui k="player.audio" /> appears when the file has two or more audio tracks. Its second line is the voice-over or language that's playing. The panel lists each track by language and studio, with its type, codec and channels.
 
-The player picks the track itself: the voice-over of the release you chose or of your last episodes, otherwise one in your profile language. The track you pick is remembered for the next episodes.
+Your explicit audio choice is saved on the server for this title in your profile. It applies to the next episodes and later visits, using the language, studio and translation type rather than a track number. Without an explicit choice, the player uses the release or episode history, then your profile language. Choosing a track does not change Following rules.
 
-Some devices can't switch tracks inside a file. Then the panel says so, and the stream restarts from the same point with the new track.
+Some devices can't switch tracks inside a file. Then the panel says so, and the stream restarts from the same point with the new track. If paused, it stays paused. If a preferred track cannot be identified in the new file, a notice explains that it is unavailable; your preference is kept for later files.
 
 ## Subtitles
 
-<Ui k="player.subtitles" /> appears when the file or the release has subtitles: tracks inside the video, separate files next to it (marked <Ui k="player.subtitleFile" />) and image subtitles from discs (marked <Ui k="player.subtitleBurnIn" />). Every video starts with subtitles <Ui k="player.subtitlesOff" />.
+<Ui k="player.subtitles" /> appears when the file or the release has subtitles: tracks inside the video, separate files next to it (marked <Ui k="player.subtitleFile" />) and image subtitles from discs (marked <Ui k="player.subtitleBurnIn" />). Without a saved choice, subtitles start <Ui k="player.subtitlesOff" />. Choosing a language or explicitly selecting <Ui k="player.subtitlesOff" /> saves that choice for this title in your profile, including later episodes and app restarts. Full and forced subtitles are matched separately. For home videos without a catalog title, track choices belong to that file.
 
 Image subtitles can't be drawn as text: the server burns them into the picture, so turning them on or off restarts the stream from the same point and needs transcoding.
 
@@ -81,7 +81,7 @@ You can also start a specific episode from the title page: press OK on it, then 
 
 <Ui k="player.episodes.button" /> lists the aired episodes of a season, with season chips on top. Each episode shows its progress: <Ui k="player.episodes.current" />, <Ui k="player.episodes.watched" />, the time left, and <Ui k="player.episodes.inTorrent" /> when this release has it.
 
-Switching episodes keeps the current release when it contains the episode, even if you watched that episode from another release before. The player also carries over the voice-over studio it can identify, instead of restoring the episode's old choice. This applies to the next episode too; you do not need to watch a minimum amount first.
+Switching episodes keeps the current release when it contains the episode, even if you watched that episode from another release before. Your explicit audio and subtitle preferences take priority over the episode's old choice. This applies to the next episode too; you do not need to watch a minimum amount first.
 
 If the episode is missing from the current release, Torsher checks your viewing history, the release picked by Following, and then search results. The screen says <Ui k="resolve.searching" /> meanwhile. If the audio check cannot confirm the same studio in the selected track, a message asks you to check the audio track. Files without audio metadata cannot be checked this way.
 
@@ -89,7 +89,7 @@ If the episode is missing from the current release, Torsher checks your viewing 
 
 <Ui k="player.source.button" /> opens the same <Ui k="sources.title" /> screen as on the title page, over the paused video, with only the releases that have this episode. The release that's playing is marked <Ui k="player.source.current" />. See [Sources and audio](/docs/watch/sources).
 
-Pick another release and the player continues from the same position, with the voice-over you were hearing if the new release has it. Back returns to the video without changes.
+Pick another release and the player continues from the same position, with the voice-over you were hearing if the new release has it. Back returns to the video without changes. If you already selected a release and it is still connecting, Back restores the previous file at the same position and keeps it paused.
 
 ## Next episode
 

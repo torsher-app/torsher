@@ -317,3 +317,170 @@ export async function readCueTimes(
 
   return times.filter((time, i) => i === 0 || time !== times[i - 1])
 }
+
+/**
+ * Indexed UTF-8 subtitles spanning a seek. Matroska Cues supplies duration
+ * and the block's exact location; reading video from zero is unnecessary.
+ * https://www.matroska.org/technical/cues.html
+ * Unsupported/encoded tracks keep using ffmpeg's normal extraction path.
+ */
+export async function readSubtitleIndex(read: RangeReader) {
+  const prefix = await read(0, PREFIX_BYTES)
+  const segment = [...children(prefix, 0, prefix.length)].find(
+    element => element.id === ID.segment,
+  )
+  if (!segment)
+    return null
+  const headers = [...children(prefix, segment.data, segment.end)]
+  const seek = headers.find(element => element.id === ID.seekHead)
+  if (!seek)
+    return null
+  const positions = seekPositions(prefix, seek)
+  const load = async (id: number) => {
+    const here = headers.find(
+      element => element.id === id && element.end <= prefix.length,
+    )
+    if (here)
+      return { buffer: prefix, element: here }
+    const at = positions.get(id)
+    return at === undefined ? null : fetchElement(read, segment.data, at, id)
+  }
+  const tracks = await load(ID.tracks)
+  const info = await load(ID.info)
+  const index = await load(ID.cues)
+  if (!tracks || !index)
+    return null
+  const scale
+    = ((info && childValue(info.buffer, info.element, ID.timestampScale))
+      ?? DEFAULT_TIMESTAMP_SCALE) / 1e9
+  const numbers = new Map<number, number>()
+  let stream = 0
+  for (const entry of children(
+    tracks.buffer,
+    tracks.element.data,
+    tracks.element.end,
+  )) {
+    if (entry.id !== ID.trackEntry)
+      continue
+    const fields = [...children(tracks.buffer, entry.data, entry.end)]
+    const codec = fields.find(field => field.id === 0x86)
+    const number = childValue(tracks.buffer, entry, ID.trackNumber)
+    if (
+      number !== undefined
+      && codec
+      && new TextDecoder().decode(
+        tracks.buffer.subarray(codec.data, codec.end),
+      ) === 'S_TEXT/UTF8'
+      && !fields.some(field => field.id === 0x6D80)
+    ) {
+      numbers.set(stream, number)
+    }
+    stream++
+  }
+  const references: {
+    track: number
+    start: number
+    end: number
+    cluster: number
+    relative: number
+  }[] = []
+  for (const point of children(
+    index.buffer,
+    index.element.data,
+    index.element.end,
+  )) {
+    if (point.id !== ID.cuePoint)
+      continue
+    const time = childValue(index.buffer, point, ID.cueTime)
+    if (time === undefined)
+      continue
+    for (const position of children(index.buffer, point.data, point.end)) {
+      if (position.id !== ID.cueTrackPositions)
+        continue
+      const track = childValue(index.buffer, position, ID.cueTrack)
+      const duration = childValue(index.buffer, position, 0xB2)
+      const cluster = childValue(index.buffer, position, 0xF1)
+      const relative = childValue(index.buffer, position, 0xF0)
+      if (
+        track !== undefined
+        && duration !== undefined
+        && cluster !== undefined
+        && relative !== undefined
+        && duration > 0
+        && Number.isSafeInteger(cluster)
+        && Number.isSafeInteger(relative)
+      ) {
+        references.push({
+          track,
+          start: time * scale,
+          end: (time + duration) * scale,
+          cluster,
+          relative,
+        })
+      }
+    }
+  }
+  const cache = new Map<number, string | null>()
+  return async (streamIndex: number, at: number) => {
+    const track = numbers.get(streamIndex)
+    if (track === undefined)
+      return []
+    const result: { start: number, end: number, text: string }[] = []
+    // A corrupt index must not create unbounded random reads per request.
+    for (const ref of references
+      .filter(
+        item => item.track === track && item.start <= at && item.end > at,
+      )
+      .slice(0, 32)) {
+      const clusterAt = segment.data + ref.cluster
+      let text = cache.get(clusterAt + ref.relative)
+      if (text === undefined) {
+        const clusterHead = await read(clusterAt, clusterAt + 12)
+        const cluster = readElement(clusterHead, 0, clusterHead.length)
+        if (!cluster || cluster.id !== ID.cluster)
+          continue
+        const blockAt = clusterAt + cluster.data + ref.relative
+        const head = await read(blockAt, blockAt + 12)
+        const group = readElement(head, 0, head.length)
+        if (
+          !group
+          || ![0xA0, 0xA3].includes(group.id)
+          || group.size === null
+          || group.size > 128 * 1024
+        ) {
+          continue
+        }
+        const bytes = await read(blockAt, blockAt + group.end)
+        if (bytes.length < group.end)
+          continue
+        const block
+          = group.id === 0xA3
+            ? group
+            : [...children(bytes, group.data, group.end)].find(
+                item => item.id === 0xA1,
+              )
+        if (!block || block.end > bytes.length)
+          continue
+        const blockTrack = readSize(bytes, block.data)
+        const payload = block.data + (blockTrack?.length ?? 0) + 3
+        if (
+          blockTrack?.size !== track
+          || payload > block.end
+          || (bytes[payload - 1]! & 6) !== 0
+        ) {
+          continue
+        }
+        text
+          = new TextDecoder('utf-8', { fatal: true })
+            .decode(bytes.subarray(payload, block.end))
+            .trim() || null
+        cache.set(clusterAt + ref.relative, text)
+        if (cache.size > 64)
+          cache.delete(cache.keys().next().value!)
+      }
+      if (text)
+        result.push({ start: ref.start, end: ref.end, text })
+    }
+    return result
+  }
+}

@@ -340,7 +340,12 @@
     "libraryPlay": "Watch",
     "controlPreset": "Preset: {name}",
     "presetDefault": "Server default — {name}",
-    "profilePreferences": "Quality: {qualities} · Languages: {languages} · Translation: {voices}"
+    "profilePreferences": "Quality: {qualities} · Languages: {languages} · Translation: {voices}",
+    "episodeScope": "Season {season} · Episode {episode}",
+    "titleScope": "Whole title",
+    "showAll": "All torrents",
+    "showEpisode": "Only this episode",
+    "allForEpisode": "All torrents · target: S{season}E{episode}"
   },
   "files": {
     "title": "Files",
@@ -461,6 +466,16 @@
     }
   },
   "about": {
+    "dev": {
+      "stand": "Test stand",
+      "branch": "Branch",
+      "snapshot": "Source snapshot",
+      "builtAt": "Built at",
+      "changes": "Local changes",
+      "clean": "None",
+      "dirty": "Included",
+      "uiBuild": "TV build"
+    },
     "title": "About",
     "license": "Torsher is free software: you can use, study, change and share it under the {license} license",
     "version": "Version",
@@ -489,7 +504,7 @@
     "screensaverAfter": "After {n} min"
   },
   "player": {
-    "timeline": "Position {position}. OK pauses, left and right seek",
+    "timeline": "Position {position}. OK plays or pauses, left and right seek",
     "peers": "{n} peer | {n} peers",
     "found": "{n} peer found | {n} peers found",
     "speed": "{value} MB/s",
@@ -528,7 +543,7 @@
       },
       "notFound": {
         "title": "File not found",
-        "text": "The torrent was deleted or the link is outdated. Open the file from Downloads in the panel."
+        "text": "The file is no longer available. Check the library or torrent, or choose another source."
       },
       "notReady": {
         "title": "The torrent isn't ready yet",
@@ -628,7 +643,10 @@
       "text": "This episode has a lower resolution than your previous viewing.",
       "watch": "Watch in {quality}",
       "sources": "Choose a source"
-    }
+    },
+    "trackScope": "Your choice is saved for this title in your profile",
+    "trackSaveFailed": "Could not save your track choice. Please try again.",
+    "trackUnavailable": "Your preferred track is unavailable in this file. Check audio and subtitles; your preference is kept."
   },
   "languages": {
     "rus": "Russian",
@@ -3978,6 +3996,14 @@
     "followUnsupported": {
       "title": "Ready selection could not be found",
       "text": "The server could not find this selection or does not support opening it. Retry, return to the title, or choose a source yourself."
+    },
+    "unsuitable": {
+      "title": "No suitable source",
+      "text": "Torrents for this episode were found, but their language, quality, availability or match confidence prevents automatic selection. Review them in Sources."
+    },
+    "searchFailed": {
+      "title": "Could not check sources",
+      "text": "The search did not respond. Retry or open Sources manually."
     }
   },
   "crew": {

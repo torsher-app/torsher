@@ -24,6 +24,7 @@ export const aboutRoutes: FastifyPluginAsyncZod = async (app) => {
     () => ({
       version: config.version,
       commit: config.commit,
+      devStand: config.devStand,
       license: LICENSE,
       sourceUrl: config.sourceUrl,
       imdbAttribution: isImdbEnabled(),

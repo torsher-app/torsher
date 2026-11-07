@@ -2,7 +2,7 @@
 import type { SourceCandidate } from '@torsher/api-client'
 import type { SourceChoice } from '../components/SourcesScreen.vue'
 import { getErrorBody, getErrorStatus } from '@torsher/api-client'
-import { ref } from 'vue'
+import { onBeforeUnmount, onDeactivated, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import {
@@ -42,6 +42,16 @@ const router = useRouter()
 // Выбор раздачи: подключаем её и переходим к «Файлам»; ошибка — тостом
 const opening = ref<string>()
 const openError = ref('')
+let openGeneration = 0
+
+function cancelOpen() {
+  openGeneration++
+  opening.value = undefined
+  openError.value = ''
+}
+
+onDeactivated(cancelOpen)
+onBeforeUnmount(cancelOpen)
 
 async function openErrorKey(err: unknown) {
   switch (getErrorStatus(err)) {
@@ -105,6 +115,7 @@ async function open(candidate: SourceCandidate, choice: SourceChoice) {
 
   opening.value = candidate.id
   openError.value = ''
+  const generation = ++openGeneration
 
   try {
     const result = await api.titles.postTitleOpen(
@@ -115,6 +126,8 @@ async function open(candidate: SourceCandidate, choice: SourceChoice) {
       },
       diagnosticParams(context),
     )
+    if (generation !== openGeneration)
+      return
 
     // Выбран сезон — «Файлы» встают на его первую серию; при «Скачать» —
     // отмечают его серии
@@ -132,10 +145,15 @@ async function open(candidate: SourceCandidate, choice: SourceChoice) {
     })
   }
   catch (err) {
-    openError.value = t(`watch.errors.${await openErrorKey(err)}`)
+    if (generation !== openGeneration)
+      return
+    const key = await openErrorKey(err)
+    if (generation === openGeneration)
+      openError.value = t(`watch.errors.${key}`)
   }
   finally {
-    opening.value = undefined
+    if (generation === openGeneration)
+      opening.value = undefined
   }
 }
 
@@ -143,6 +161,7 @@ function playLibrary(
   fileId: string,
   title: { season?: number | null, episode?: number | null },
 ) {
+  cancelOpen()
   const context = diagnosticAction()
   diagnostic(
     {
@@ -169,6 +188,7 @@ function playLibrary(
 }
 
 function back() {
+  cancelOpen()
   goBack(router)
 }
 </script>

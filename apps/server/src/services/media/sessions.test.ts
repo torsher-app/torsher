@@ -8,7 +8,18 @@ import { torrents } from '../../db/schema.ts'
 import { setEngineDown, setEngineReady } from '../engine/index.ts'
 import { isStreaming } from '../storage/index.ts'
 import type { SessionLog } from './sessions.ts'
-import { createSession, stopAllSessions, stopSession } from './sessions.ts'
+import {
+  createSession,
+  sessionCues,
+  stopAllSessions,
+  stopSession,
+} from './sessions.ts'
+
+const subtitleIndex = vi.hoisted(() => vi.fn())
+vi.mock('./matroska.ts', async importOriginal => ({
+  ...(await importOriginal<typeof import('./matroska.ts')>()),
+  readSubtitleIndex: subtitleIndex,
+}))
 
 const probe = vi.hoisted(() => ({
   pending: undefined as ((media: MediaInfo) => void) | undefined,
@@ -173,5 +184,160 @@ describe('сессии воспроизведения', () => {
 
     expect(isStreaming(torrent.id)).toBe(false)
     expect(session.hls).toBeNull()
+  })
+
+  it('uses the studio fallback without confirming or changing the saved voice type', async () => {
+    const selected = {
+      language: 'rus',
+      studio: 'Red Head Sound',
+      voiceType: 'MVO',
+    }
+    const session = createSession({
+      subject: 'owner',
+      torrent: torrentOf('studio-fallback'),
+      fileIndex: 0,
+      fileName: 'Film.mkv',
+      preference: { selected },
+      log,
+    });
+    (await probeStarted())({
+      ...media,
+      audio: [
+        { ...media.audio[0]!, title: 'MVO NewStudio' },
+        {
+          ...media.audio[0]!,
+          index: 3,
+          title: 'Red Head Sound',
+          default: false,
+        },
+      ],
+    })
+    try {
+      await session.ready
+      expect(session.audioStream).toBe(3)
+      expect(session.preferenceMismatch).toEqual(['audio'])
+      expect(selected).toEqual({
+        language: 'rus',
+        studio: 'Red Head Sound',
+        voiceType: 'MVO',
+      })
+    }
+    finally {
+      await stopSession(session.id)
+    }
+  })
+
+  describe('optional subtitle index', () => {
+    const extracted = [{ start: 20, end: 25, text: 'Extracted' }]
+    const overlapping = { start: 0, end: 40, text: 'Overlapping' }
+
+    async function subtitleSession() {
+      const session = createSession({
+        subject: 'owner',
+        torrent: torrentOf('subtitles'),
+        fileIndex: 0,
+        fileName: 'Film.mkv',
+        preference: {},
+        log,
+      });
+      (await probeStarted())({
+        ...media,
+        subtitles: [
+          {
+            index: 2,
+            codec: 'subrip',
+            language: 'eng',
+            title: null,
+            forced: false,
+            default: false,
+            text: true,
+            image: false,
+          },
+        ],
+      })
+      await session.ready
+      session.log = { ...log, warn: vi.fn() }
+      session.hls = {
+        cues: vi.fn().mockResolvedValue(extracted),
+        stop: vi.fn().mockResolvedValue(undefined),
+      } as unknown as NonNullable<typeof session.hls>
+      return session
+    }
+
+    it.each(['builder', 'lookup'])(
+      'preserves extracted cues after a rejected %s',
+      async (stage) => {
+        subtitleIndex.mockReset()
+        const lookup = vi
+          .fn()
+          .mockRejectedValue(new Error('Range unavailable'))
+        if (stage === 'builder')
+          subtitleIndex.mockRejectedValue(new Error('Index unavailable'))
+        else subtitleIndex.mockResolvedValue(lookup)
+        const session = await subtitleSession()
+        try {
+          for (let request = 0; request < 2; request++) {
+            expect(await sessionCues(session, 's2', 20)).toEqual({
+              cues: extracted,
+              done: false,
+            })
+          }
+          expect(subtitleIndex).toHaveBeenCalledTimes(1)
+          expect(lookup).toHaveBeenCalledTimes(stage === 'lookup' ? 1 : 0)
+          expect(session.log.warn).toHaveBeenCalledTimes(1)
+        }
+        finally {
+          await stopSession(session.id)
+        }
+      },
+    )
+
+    it('keeps extracted cues when an index has no usable subtitle references', async () => {
+      const lookup = vi.fn().mockResolvedValue([])
+      subtitleIndex.mockReset().mockResolvedValue(lookup)
+      const session = await subtitleSession()
+      try {
+        expect(await sessionCues(session, 's2', 20)).toEqual({
+          cues: extracted,
+          done: false,
+        })
+        expect(lookup).toHaveBeenCalledWith(2, 20)
+        expect(session.log.warn).not.toHaveBeenCalled()
+      }
+      finally {
+        await stopSession(session.id)
+      }
+    })
+
+    it('merges overlapping indexed cues with extracted cues', async () => {
+      const lookup = vi.fn().mockResolvedValue([overlapping, ...extracted])
+      subtitleIndex.mockReset().mockResolvedValue(lookup)
+      const session = await subtitleSession()
+      try {
+        expect(await sessionCues(session, 's2', 20)).toEqual({
+          cues: [overlapping, ...extracted],
+          done: false,
+        })
+        expect(lookup).toHaveBeenCalledWith(2, 20)
+        expect(session.log.warn).not.toHaveBeenCalled()
+      }
+      finally {
+        await stopSession(session.id)
+      }
+    })
+
+    it('still rejects when the main extraction fails', async () => {
+      subtitleIndex.mockReset()
+      const session = await subtitleSession()
+      const error = new Error('Extraction failed')
+      vi.mocked(session.hls!.cues).mockRejectedValue(error)
+      try {
+        await expect(sessionCues(session, 's2', 20)).rejects.toBe(error)
+        expect(subtitleIndex).not.toHaveBeenCalled()
+      }
+      finally {
+        await stopSession(session.id)
+      }
+    })
   })
 })

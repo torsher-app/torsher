@@ -73,6 +73,38 @@ onMounted(async () => {
           {{ about.commit ?? t("about.unknown") }}
         </template>
       </dd>
+      <template v-if="about?.devStand">
+        <dt class="text-muted-foreground">
+          {{ t("about.dev.stand") }}
+        </dt>
+        <dd class="min-w-0 break-words">
+          {{ `DEV · ${about.devStand.name}` }}
+        </dd>
+        <dt class="text-muted-foreground">
+          {{ t("about.dev.branch") }}
+        </dt>
+        <dd class="min-w-0 break-words">
+          {{ about.devStand.branch ?? t("about.unknown") }}
+        </dd>
+        <dt class="text-muted-foreground">
+          {{ t("about.dev.snapshot") }}
+        </dt>
+        <dd class="min-w-0 break-words">
+          {{ about.devStand.snapshot ?? t("about.unknown") }}
+        </dd>
+        <dt class="text-muted-foreground">
+          {{ t("about.dev.builtAt") }}
+        </dt>
+        <dd class="min-w-0 break-words">
+          {{ about.devStand.builtAt ?? t("about.unknown") }}
+        </dd>
+        <dt class="text-muted-foreground">
+          {{ t("about.dev.changes") }}
+        </dt>
+        <dd class="min-w-0 break-words">
+          {{ t(about.devStand.dirty ? "about.dev.dirty" : "about.dev.clean") }}
+        </dd>
+      </template>
       <dt class="text-muted-foreground">
         {{ t("about.licenseLabel") }}
       </dt>

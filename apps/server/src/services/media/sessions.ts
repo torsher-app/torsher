@@ -1,3 +1,5 @@
+import type { SavedSubtitlePreference } from './trackPreferences.ts'
+import { matchesAudio, preferredSubtitle } from './trackPreferences.ts'
 import type { DiagnosticContext } from '../diagnostics/index.ts'
 import { recordDecision, recordFailure } from '../diagnostics/index.ts'
 import type { SkipSegment } from '../segments/model.ts'
@@ -27,10 +29,16 @@ import {
   touchTorrent,
 } from '../torrents/index.ts'
 import { encoderCapsOf, mediaAccel } from './accel.ts'
-import { decidePlayback, pickAudioStream, textSubtitles } from './decide.ts'
+import {
+  decidePlayback,
+  pickAudioStream,
+  textSubtitles,
+  voiceOfTrack,
+} from './decide.ts'
 import { describePlan, planEncode } from './encode.ts'
 import { HlsTranscode, segmentStarts } from './hls.ts'
-import { readCueTimes } from './matroska.ts'
+import { readCueTimes, readSubtitleIndex } from './matroska.ts'
+import { mergeCues } from './webvtt.ts'
 import { probeMedia } from './probe.ts'
 import {
   findExternalSubtitles,
@@ -64,6 +72,7 @@ export interface PlaybackSession {
   external: ExternalSubtitle[]
   audioStream: number | null
   subtitle: string | null
+  preferenceMismatch?: ('audio' | 'subtitles')[]
   decision: PlaybackDecision
   hls: HlsTranscode | null
   /** Ожидание пробы: ответ `POST /playback` ждёт его недолго */
@@ -94,7 +103,8 @@ export interface SessionInput {
   client?: string
   preference: AudioPreference
   audioStream?: number
-  subtitle?: string
+  subtitle?: string | null
+  subtitlePreference?: SavedSubtitlePreference | null
   log: SessionLog
 }
 
@@ -103,6 +113,10 @@ export interface SessionInput {
 const IDLE_MS = 2 * 60 * 1000
 const SWEEP_MS = 30 * 1000
 const EXTERNAL_CACHE_SIZE = 50
+const subtitleIndexes = new WeakMap<
+  PlaybackSession,
+  ReturnType<typeof readSubtitleIndex>
+>()
 // Перезапуск движка обрывает пробу на полпути: повтор берёт новый адрес
 const PROBE_RETRIES = 2
 const PROBE_RETRY_MS = 3000
@@ -315,17 +329,54 @@ async function prepare(
   session.audioStream
     = requested?.index ?? pickAudioStream(media, input.preference)
 
+  const subtitle
+    = input.subtitle !== undefined
+      ? input.subtitle
+      : preferredSubtitle(media, session.external, input.subtitlePreference)
+  session.preferenceMismatch = []
+  if (
+    input.audioStream === undefined
+    && input.preference.selected
+    && !media.audio.some(
+      track =>
+        track.index === session.audioStream
+        && matchesAudio(track, input.preference.selected!),
+    )
+  ) {
+    session.preferenceMismatch.push('audio')
+  }
+  if (
+    input.audioStream === undefined
+    && !input.preference.selected
+    && input.preference.studio
+    && !media.audio.some(
+      track =>
+        track.index === session.audioStream
+        && voiceOfTrack(track)?.studio?.toLowerCase()
+        === input.preference.studio?.toLowerCase(),
+    )
+  ) {
+    session.preferenceMismatch.push('audio')
+  }
+  if (
+    input.subtitle === undefined
+    && input.subtitlePreference?.enabled
+    && !subtitle
+  ) {
+    session.preferenceMismatch.push('subtitles')
+  }
+
   const embedded = media.subtitles.find(
-    track => track.text && `s${track.index}` === input.subtitle,
+    track => track.text && `s${track.index}` === subtitle,
   )
   const burned = media.subtitles.find(
-    track => track.image && `s${track.index}` === input.subtitle,
+    track => track.image && `s${track.index}` === subtitle,
   )
   const external = session.external.find(
-    track => `f${track.fileIndex}` === input.subtitle,
+    track => `f${track.fileIndex}` === subtitle,
   )
 
-  session.subtitle = embedded || burned || external ? input.subtitle! : null
+  session.subtitle = embedded || burned || external ? subtitle! : null
 
   if (!device) {
     session.decision = DIRECT
@@ -679,6 +730,7 @@ export async function cleanTranscodes() {
 export async function sessionCues(
   session: PlaybackSession,
   trackId: string,
+  from = 0,
 ): Promise<{ cues: Cue[], done: boolean } | undefined> {
   const index = Number(trackId.slice(1))
 
@@ -721,8 +773,44 @@ export async function sessionCues(
   if (!track)
     return undefined
 
+  let cues = session.hls ? await session.hls.cues(index) : []
+  if (
+    session.hls
+    && session.media?.container === 'mkv'
+    && track.codec === 'subrip'
+    && from > 0
+  ) {
+    let pending = subtitleIndexes.get(session)
+    try {
+      if (!pending) {
+        const signal = closers.get(session.id)?.signal
+        if (!signal || signal.aborted)
+          return { cues, done: true }
+        const read = session.library
+          ? fileRangeReader(session.library.path)
+          : (start: number, end: number) =>
+              rangeReader(
+                engineStreamUrl(session.torrent!.infoHash, session.fileIndex),
+                signal,
+              )(start, end)
+        pending = readSubtitleIndex(read)
+        subtitleIndexes.set(session, pending)
+      }
+      const lookup = await pending
+      if (lookup)
+        cues = mergeCues([cues, await lookup(index, from)])
+    }
+    catch {
+      // Индекс лишь дополняет ffmpeg: сбой не должен скрывать готовые реплики.
+      // Не повторяем повреждённое/недоступное чтение на каждом опросе.
+      if (subtitleIndexes.get(session) === pending) {
+        subtitleIndexes.set(session, Promise.resolve(null))
+        session.log.warn('Subtitle index unavailable; using extracted cues')
+      }
+    }
+  }
   return {
-    cues: session.hls ? await session.hls.cues(index) : [],
+    cues,
     done: !session.hls,
   }
 }

@@ -37,7 +37,11 @@ import {
 } from '../db/schema.ts'
 import { setEngineDown, setEngineReady } from '../services/engine/index.ts'
 import { engineError } from '../services/engine/fixtures/index.ts'
-import { checkLinkMode, syncLibrary } from '../services/library/index.ts'
+import {
+  checkLinkMode,
+  getMediaFile,
+  syncLibrary,
+} from '../services/library/index.ts'
 import { linkDeps } from '../services/library/link.ts'
 import { installLogger } from '../services/logs/index.ts'
 import { signToken } from '../utils/token.ts'
@@ -1059,6 +1063,19 @@ describe('библиотека на витрине', () => {
       url: `/api/playback/${body.sessionId}`,
       cookies: owner,
     })
+  })
+
+  it('returns file not found before playback when a catalogued local file disappeared', async () => {
+    const file = await placedMovie()
+    await rm(getMediaFile(file.id)!.path)
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/playback',
+      cookies: owner,
+      payload: { mediaFileId: file.id },
+    })
+    expect(res.statusCode).toBe(404)
+    expect(res.json()).toEqual({ message: 'File not found' })
   })
 
   it('позиция файла библиотеки — по тайтлу, «Продолжить» её видит', async () => {

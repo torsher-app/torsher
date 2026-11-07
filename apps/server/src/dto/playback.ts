@@ -56,13 +56,24 @@ export const createPlayback = z
     language: z.enum(profileLanguages).optional(),
     // Смена озвучки или субтитров перезапуском: поток с этой дорожкой и позиции
     audioStream: z.number().int().min(0).max(9999).optional(),
-    subtitle: subtitleId.optional(),
+    subtitle: subtitleId.nullable().optional(),
     startPosition: seconds.optional(),
     // Студия, которую слушали в прошлой раздаче: при смене раздачи — её дорожка
     voiceStudio: z.string().min(1).max(200).optional(),
   })
   .refine(oneSource, sourceMessage)
   .meta({ id: 'createPlayback' })
+
+export const updatePlaybackPreferences = z
+  .object({
+    audioStream: z.number().int().min(0).max(9999).optional(),
+    subtitle: subtitleId.nullable().optional(),
+  })
+  .refine(
+    value => value.audioStream !== undefined || value.subtitle !== undefined,
+    'Select a track',
+  )
+  .meta({ id: 'updatePlaybackPreferences' })
 
 const audioTrack = z
   .object({
@@ -145,6 +156,7 @@ export const playback = z
     audioStream: z.number().nullable(),
     subtitle: subtitleId.nullable(),
     // `platform` — озвучку меняет плеер, `restart` — новый `POST /playback`
+    preferenceMismatch: z.array(z.enum(['audio', 'subtitles'])).optional(),
     audioSwitch: z.enum(['platform', 'restart']),
     // Почему не напрямую; пусто — играем напрямую
     reasons: z.array(z.string()),

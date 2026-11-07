@@ -8,6 +8,7 @@ import type {
   PlaybackTitleInput,
   SubtitleCues,
   TorrentStats,
+  UpdatePlaybackPreferencesInput,
   UpdateWatchStateInput,
   WatchState,
 } from '@torsher/api-client'
@@ -156,6 +157,26 @@ get<Playback>('/api/playback/:id', ({ params }) => {
 
   return playback
 })
+
+// Demo media has one audio track and no subtitles. Validate explicit choices.
+put<MessageResponse, UpdatePlaybackPreferencesInput>(
+  '/api/playback/:id/preferences',
+  ({ params, body }) => {
+    const session = sessions.get(params.id!)
+    if (!session)
+      throw new DemoError(404, { message: 'Playback not found' })
+    if (
+      (body.audioStream !== undefined
+        && !session.media?.audio.some(
+          track => track.index === body.audioStream,
+        ))
+        || body.subtitle
+    ) {
+      throw new DemoError(400, { message: 'Track not found' })
+    }
+    return { message: 'Playback preferences saved' }
+  },
+)
 
 del<MessageResponse>('/api/playback/:id', ({ params }) => {
   sessions.delete(params.id!)

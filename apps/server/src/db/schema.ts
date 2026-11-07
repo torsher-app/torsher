@@ -1,3 +1,4 @@
+import type { SavedTrackPreferences } from '../services/media/trackPreferences.ts'
 import type { AnalysisData } from '../services/segments/model.ts'
 import type { TorznabCaps } from '../services/torznab/caps.ts'
 import type { MediaInfo } from '../services/media/probe.ts'
@@ -1717,3 +1718,21 @@ export const maintenanceOperations = sqliteTable('maintenance_operations', {
     .notNull()
     .$defaultFn(() => new Date()),
 })
+
+// Explicit viewer choices, independent of episode history and following rules.
+export const playbackPreferences = sqliteTable(
+  'playback_preferences',
+  {
+    profileId: text('profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    titleId: text('title_id').notNull(),
+    audio: text('audio', { mode: 'json' }).$type<
+      SavedTrackPreferences['audio']
+    >(),
+    subtitles: text('subtitles', { mode: 'json' }).$type<
+      SavedTrackPreferences['subtitles']
+    >(),
+  },
+  table => [primaryKey({ columns: [table.profileId, table.titleId] })],
+)
