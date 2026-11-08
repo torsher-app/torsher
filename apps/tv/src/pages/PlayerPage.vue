@@ -99,6 +99,7 @@ import {
   playerPrompt,
   settleBudget,
   stallAction,
+  STATS_STALE_MS,
   streamLive,
   UP_NEXT_SECONDS,
   upNextVisible,
@@ -319,6 +320,10 @@ const step = computed<StageStep>(() => {
   return bufferingStep(
     stats.value ?? null,
     now.value.getTime() - bufferingSince.value,
+    !player.statsFailed.value
+    && now.value.getTime()
+    - Math.max(player.statsReceivedAt(), bufferingSince.value)
+    <= STATS_STALE_MS,
   )
 })
 
@@ -1525,18 +1530,24 @@ async function restartWith(change: PlaybackRestart) {
   requested = change
   reloadArt()
   holdStream()
-  const outcome = await player.start({ ...change, startPosition: at })
+  const startup = player.start({ ...change, startPosition: at })
+  // Проба тоже может ждать пиров: статистика нужна до playback.ready.
+  // start() уже сменил generation, поэтому опрос принадлежит новой попытке.
+  startStats()
+  const outcome = await startup
 
   if (run !== launch)
     return
 
   if (outcome === 'ready') {
     requested = undefined
-    startStats()
     await begin(at)
   }
   else if (outcome === 'retry') {
     recover()
+  }
+  else if (outcome === 'error') {
+    player.stopStats()
   }
 }
 
@@ -1913,6 +1924,7 @@ function onError() {
 
 /** Плеер не разобрал данные: повтор или ошибка — по `mediaFailureAction` */
 async function onMediaFailure(failure: PlayerFailure) {
+  const attempt = launch
   const size = playback.value?.size ?? 0
   const offset = byteOffset(
     phase.value === 'playing' ? position.value : startAt,
@@ -1921,7 +1933,7 @@ async function onMediaFailure(failure: PlayerFailure) {
   )
   const fresh = await player.freshStats(offset)
 
-  if (restarting.value || player.status.value === 'error')
+  if (attempt !== launch || restarting.value || player.status.value === 'error')
     return
 
   const { action, cause } = mediaFailureAction({
@@ -2112,13 +2124,15 @@ async function start() {
   }
   if (run !== launch || leaving)
     return
-  const outcome = await player.start(
+  const startup = player.start(
     returnedPlayback
       ? { startPosition: returnedPlayback.position }
       : props.start === '0'
         ? { startPosition: 0 }
         : undefined,
   )
+  startStats()
+  const outcome = await startup
 
   if (run !== launch || leaving)
     return
@@ -2126,8 +2140,11 @@ async function start() {
   if (outcome === 'retry')
     recover()
 
-  if (outcome !== 'ready')
+  if (outcome !== 'ready') {
+    if (outcome === 'error')
+      player.stopStats()
     return
+  }
 
   // Сервер не даёт позицию в самом начале и в хвосте файла: там с начала
   const from
@@ -2174,7 +2191,6 @@ async function start() {
   ) {
     return
   }
-  startStats()
   pendingVoiceNotice = playback.value?.preferenceMismatch?.length
     ? t('player.trackUnavailable')
     : playback.value?.preferenceMismatch === undefined

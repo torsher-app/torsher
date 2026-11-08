@@ -24,7 +24,7 @@ const status = computed(() => {
   const step = t(`player.steps.${props.step}`)
   const stats = props.stats
 
-  if (!stats)
+  if (!stats || props.step === 'reconnecting')
     return { step, data: '' }
 
   const parts
@@ -46,8 +46,18 @@ const status = computed(() => {
   return { step, data: parts.join(' · ') }
 })
 
-// Ждём пиров: вместо цифр — что это значит и что делать
-const hint = computed(() => !props.label && props.step === 'waitingPeers')
+// Ноль соединений не доказывает отсутствие сидов: описываем только наблюдаемое.
+const hint = computed(() => {
+  if (props.label)
+    return ''
+
+  if (props.step === 'waitingPeers')
+    return t('player.waitingHint')
+
+  return props.step === 'connectingPeers'
+    ? t('player.connectingPeersHint')
+    : ''
+})
 
 // Появление цифр и смена их вида растворяются, а новые цифры того же вида — нет
 const detailsKind = computed(() => {
@@ -92,7 +102,7 @@ const dataParts = computed(() =>
     <div class="buffering__line buffering__line--details">
       <Transition name="buffering-swap">
         <p v-if="hint" key="hint" class="buffering__text buffering__hint">
-          {{ t("player.waitingHint") }}
+          {{ hint }}
         </p>
         <p v-else :key="detailsKind" class="buffering__text">
           <span

@@ -41,31 +41,59 @@ import {
 
 const peers = (connected: number) => ({ connected, found: connected * 3 })
 
+const waitingStats = {
+  activity: 'downloading' as const,
+  peers: peers(0),
+  downloadSpeed: 0,
+  file: { size: BUFFER_TARGET_BYTES * 2, downloaded: 0, bufferedAhead: 0 },
+}
+
 describe('шаги буферизации', () => {
-  it('пока движок ищет пиров — «подключаемся»', () => {
+  it('даёт время на поиск и не считает idle отсутствием пиров', () => {
     expect(bufferingStep(null, 0)).toBe('connecting')
-    expect(bufferingStep({ activity: 'idle', peers: peers(0) }, 2000)).toBe(
+    expect(bufferingStep(waitingStats, 14_999)).toBe('connecting')
+    expect(bufferingStep({ ...waitingStats, activity: 'idle' }, 60_000)).toBe(
       'connecting',
     )
-    expect(
-      bufferingStep({ activity: 'downloading', peers: peers(0) }, 5000),
-    ).toBe('connecting')
   })
 
-  it('долго без пиров — честное «ждём пиров»', () => {
-    expect(
-      bufferingStep({ activity: 'downloading', peers: peers(0) }, 15_000),
-    ).toBe('waitingPeers')
-    expect(bufferingStep(null, 20_000)).toBe('waitingPeers')
+  it('ожидает участников только по свежему активному ответу без известных пиров', () => {
+    expect(bufferingStep(waitingStats, 15_000)).toBe('waitingPeers')
+    expect(bufferingStep(null, 20_000)).toBe('reconnecting')
+    expect(bufferingStep(waitingStats, 20_000, false)).toBe('reconnecting')
+    expect(bufferingStep(waitingStats, 20_000, true)).toBe('waitingPeers')
   })
 
-  it('пиры подключились — буферизация', () => {
-    expect(
-      bufferingStep({ activity: 'downloading', peers: peers(4) }, 1000),
-    ).toBe('buffering')
-    expect(
-      bufferingStep({ activity: 'downloading', peers: peers(4) }, 60_000),
-    ).toBe('buffering')
+  it('отличает найденные адреса без соединений от ещё не найденных участников', () => {
+    const found = { ...waitingStats, peers: { connected: 0, found: 40 } }
+    expect(bufferingStep(found, 14_999)).toBe('connecting')
+    expect(bufferingStep(found, 15_000)).toBe('connectingPeers')
+    expect(bufferingStep(found, 20_000, false)).toBe('reconnecting')
+    expect(bufferingStep({ ...found, peers: peers(4) }, 20_000)).toBe(
+      'buffering',
+    )
+    expect(bufferingStep(waitingStats, 20_000)).toBe('waitingPeers')
+  })
+
+  it.each([
+    ['подключённые пиры', { peers: peers(4) }],
+    [
+      'поступающие данные без соединений в текущем снимке',
+      { downloadSpeed: 1024 },
+    ],
+    [
+      'достаточный буфер',
+      { file: { ...waitingStats.file, bufferedAhead: BUFFER_TARGET_BYTES } },
+    ],
+    [
+      'скачанный файл',
+      { file: { size: 100, downloaded: 100, bufferedAhead: 0 } },
+    ],
+  ])('буферизует, когда есть %s', (_name, change) => {
+    const stats = { ...waitingStats, ...change }
+    expect(bufferingStep(stats, 1000)).toBe('buffering')
+    expect(bufferingStep(stats, 60_000)).toBe('buffering')
+    expect(bufferingStep(stats, 60_000, false)).toBe('reconnecting')
   })
 })
 

@@ -1,4 +1,4 @@
-import type { Playback } from '@torsher/api-client'
+import type { Playback, TorrentStats } from '@torsher/api-client'
 import { effectScope } from 'vue'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { usePlayback } from './usePlayback.ts'
@@ -9,9 +9,11 @@ const mocks = vi.hoisted(() => ({
   get: vi.fn(),
   save: vi.fn(),
   diagnostic: vi.fn(),
+  stats: vi.fn(),
 }))
 vi.mock('../api.ts', () => ({
   api: {
+    torrents: { getTorrentStats: mocks.stats },
     watchState: { putWatchState: mocks.save },
     playback: {
       postPlayback: mocks.post,
@@ -47,6 +49,115 @@ beforeEach(() => {
   mocks.remove.mockResolvedValue(undefined)
 })
 afterEach(() => vi.useRealTimers())
+
+const zeroPeers: TorrentStats = {
+  activity: 'downloading',
+  peers: { connected: 0, found: 0 },
+  downloadSpeed: 0,
+  uploadSpeed: 0,
+  badPieces: 0,
+  file: { size: 100, downloaded: 0, bufferedAhead: 0 },
+}
+
+it('keeps last-success time separate from a missed poll and recovers on success', async () => {
+  vi.setSystemTime(100_000)
+  mocks.stats
+    .mockResolvedValueOnce(zeroPeers)
+    .mockRejectedValueOnce(new Error('503'))
+    .mockResolvedValue(zeroPeers)
+  const scope = effectScope()
+  const player = scope.run(() =>
+    usePlayback({ torrentId: 'torrent', fileIndex: 0 }),
+  )!
+  player.pollStats(() => ({ offset: 0, intervalMs: 1000 }))
+  await vi.advanceTimersByTimeAsync(0)
+  expect(player.statsReceivedAt()).toBe(100_000)
+  await vi.advanceTimersByTimeAsync(1000)
+  expect(player.statsFailed.value).toBe(true)
+  expect(player.statsReceivedAt()).toBe(100_000)
+  expect(player.stats.value).toEqual(zeroPeers)
+  expect(mocks.post).not.toHaveBeenCalled()
+  await vi.advanceTimersByTimeAsync(1000)
+  expect(player.statsFailed.value).toBe(false)
+  expect(player.statsReceivedAt()).toBe(102_000)
+  scope.stop()
+})
+
+it('lasting failures never advance the last successful timestamp or return cached data as fresh', async () => {
+  vi.setSystemTime(100_000)
+  mocks.stats
+    .mockResolvedValueOnce(zeroPeers)
+    .mockRejectedValue(new Error('503'))
+  const scope = effectScope()
+  const player = scope.run(() =>
+    usePlayback({ torrentId: 'torrent', fileIndex: 0 }),
+  )!
+  player.pollStats(() => ({ offset: 0, intervalMs: 1000 }))
+  await vi.advanceTimersByTimeAsync(20_000)
+  expect(player.statsFailed.value).toBe(true)
+  expect(player.statsReceivedAt()).toBe(100_000)
+  expect(await player.freshStats(0)).toBeUndefined()
+  expect(mocks.post).not.toHaveBeenCalled()
+  scope.stop()
+})
+
+it('a late previous poll cannot overwrite current data, time or failure status', async () => {
+  const old = deferred<TorrentStats>()
+  const current = { ...zeroPeers, peers: { connected: 3, found: 3 } }
+  mocks.stats.mockReturnValueOnce(old.promise).mockResolvedValue(current)
+  const scope = effectScope()
+  const player = scope.run(() =>
+    usePlayback({ torrentId: 'torrent', fileIndex: 0 }),
+  )!
+  player.pollStats(() => ({ offset: 0, intervalMs: 1000 }))
+  player.pollStats(() => ({ offset: 20, intervalMs: 1000 }))
+  await vi.advanceTimersByTimeAsync(0)
+  const received = player.statsReceivedAt()
+  old.resolve(zeroPeers)
+  await vi.advanceTimersByTimeAsync(0)
+  expect(player.stats.value).toEqual(current)
+  expect(player.statsReceivedAt()).toBe(received)
+  expect(player.statsFailed.value).toBe(false)
+  expect(vi.getTimerCount()).toBe(1)
+  scope.stop()
+})
+
+it('freshStats discards a late result after the polling generation changed', async () => {
+  const old = deferred<TorrentStats>()
+  mocks.stats.mockReturnValueOnce(old.promise)
+  const scope = effectScope()
+  const player = scope.run(() =>
+    usePlayback({ torrentId: 'torrent', fileIndex: 0 }),
+  )!
+  const request = player.freshStats(0)
+  player.stopStats()
+  old.resolve(zeroPeers)
+  expect(await request).toBeUndefined()
+  scope.stop()
+})
+
+it('a poll from before a new playback launch cannot publish into its probe generation', async () => {
+  const old = deferred<TorrentStats>()
+  const startup = deferred<Playback>()
+  mocks.stats.mockReturnValueOnce(old.promise).mockResolvedValue(zeroPeers)
+  mocks.post.mockReturnValueOnce(startup.promise)
+  const scope = effectScope()
+  const player = scope.run(() =>
+    usePlayback({ torrentId: 'torrent', fileIndex: 0 }),
+  )!
+  player.pollStats(() => ({ offset: 0, intervalMs: 1000 }))
+  const launching = player.start()
+  old.resolve({ ...zeroPeers, peers: { connected: 9, found: 9 } })
+  await vi.advanceTimersByTimeAsync(0)
+  expect(player.stats.value).toBeUndefined()
+  expect(player.statsReceivedAt()).toBe(0)
+  await vi.advanceTimersByTimeAsync(1000)
+  expect(player.stats.value).toEqual(zeroPeers)
+  expect(player.status.value).toBe('loading')
+  startup.resolve(ready('new'))
+  await launching
+  scope.stop()
+})
 
 it.each([false, true])(
   'keeps Off compatible with preference support=%s',

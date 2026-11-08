@@ -39,6 +39,7 @@ describe('lampMode', () => {
     expect(lampMode('buffering')).toBe('peers')
     expect(lampMode('slow')).toBe('peers')
     expect(lampMode('connecting')).toBe('noPeers')
+    expect(lampMode('connectingPeers')).toBe('noPeers')
     expect(lampMode('waitingPeers')).toBe('noPeers')
     expect(lampMode('reconnecting')).toBe('noPeers')
   })

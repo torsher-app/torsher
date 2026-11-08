@@ -182,12 +182,13 @@ export function usePlayback(
   const engineKind = ref<EngineKind>()
   const storage = shallowRef<StorageShortage>()
   const stats = shallowRef<TorrentStats>()
+  const statsFailed = ref(false)
 
   let statsTimer: ReturnType<typeof setTimeout> | undefined
   // Запрос прошлого круга, вернувшийся после перезапуска опроса, не ставит таймер
   let statsRun = 0
   let heartbeatTimer: ReturnType<typeof setInterval> | undefined
-  let statsAt = 0
+  const statsAt = ref(0)
 
   let generation = 0
   // `playback` держит закрытую сессию: экран читает из неё адрес и позицию
@@ -503,36 +504,49 @@ export function usePlayback(
     if (library)
       return localStats(playback.value?.size ?? 0)
 
+    const run = statsRun
+    const session = generation
     try {
-      return await api.torrents.getTorrentStats(source.torrentId, {
+      const result = await api.torrents.getTorrentStats(source.torrentId, {
         fileIndex: String(source.fileIndex),
         offset: String(Math.floor(offset)),
       })
+      return run === statsRun && session === generation ? result : undefined
     }
     catch {
-      return stats.value
+      return undefined
     }
   }
 
   /** Статистика по кругу; интервал и позицию чтения спрашивает у экрана на каждом шаге */
   function pollStats(next: () => { offset: number, intervalMs: number }) {
     stopStats()
+    stats.value = undefined
+    statsAt.value = 0
+    statsFailed.value = false
 
     const run = statsRun
     const tick = async () => {
       const { offset, intervalMs } = next()
+      const session = generation
 
       try {
-        stats.value = library
+        const result = library
           ? localStats(playback.value?.size ?? 0)
           : await api.torrents.getTorrentStats(source.torrentId, {
               fileIndex: String(source.fileIndex),
               offset: String(Math.floor(offset)),
             })
-        statsAt = Date.now()
+        if (run === statsRun && session === generation) {
+          stats.value = result
+          statsAt.value = Date.now()
+          statsFailed.value = false
+        }
       }
       catch {
         // Пропущенный шаг не ломает экран: остаются прежние цифры
+        if (run === statsRun && session === generation)
+          statsFailed.value = true
       }
 
       if (run === statsRun)
@@ -632,6 +646,7 @@ export function usePlayback(
     engineKind,
     storage,
     stats,
+    statsFailed,
     start,
     close,
     fail,
@@ -639,7 +654,7 @@ export function usePlayback(
     pollStats,
     stopStats,
     /** Когда статистика пришла в последний раз: молчит — сервер или движок не отвечают */
-    statsReceivedAt: () => statsAt,
+    statsReceivedAt: () => statsAt.value,
     saveWatchState,
   }
 }
