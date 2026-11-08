@@ -63,7 +63,11 @@ import {
 } from '../releaseMatch.ts'
 import { mineQueryOf, mineTargetOf } from '../lib/mineView.ts'
 import { titleActions } from '../titleActions.ts'
-import { firstVisibleRow, stackOffset } from '../lib/rowStack.ts'
+import {
+  firstVisibleRow,
+  lastRowPadding,
+  stackOffset,
+} from '../lib/rowStack.ts'
 
 defineOptions({ name: 'HomePage' })
 
@@ -243,6 +247,27 @@ const content = computed(() => {
 function alignRows() {
   const container = rowsElement.value
   const target = rowElements[aligned.value]
+
+  // KeepAlive может обновить ряды вне документа: размеры перечитаем при возврате.
+  if (container && props.mode === 'all' && !container.isConnected)
+    return
+
+  if (container) {
+    const last
+      = props.mode === 'all' ? rowElements[rows.value.length - 1] : undefined
+
+    // Пишем до чтения высоты контейнера: запас входит и в scrollHeight веба,
+    // и в offsetHeight ТВ. Нижний margin ряда уже добавляет часть запаса.
+    container.style.paddingBottom = last
+      ? `${lastRowPadding(
+        nativeScroll
+          ? container.clientHeight
+          : window.innerHeight - container.offsetTop,
+        last.offsetHeight,
+        Number.parseFloat(window.getComputedStyle(last).marginBottom) || 0,
+      )}px`
+      : ''
+  }
 
   if (!container || !target) {
     scrollRowsTo(0)
@@ -459,6 +484,10 @@ let seenVersion = titleActions.version
 // «Продолжить» подтягивает свежий прогресс, правки списков — все ряды
 onActivated(() => {
   isActive = true
+
+  if (props.mode === 'all')
+    nextTick(alignRows)
+
   restoreFocus()
 
   if (releaseMatch.notice) {
