@@ -401,18 +401,20 @@ const LIBRARY_MOVIES = [
 const LIBRARY_SERIES = ['Saltwater Lullaby']
 
 interface LibraryEntry extends LibraryFile {
+  addedAt: number
   titleId: string
   name: string
 }
 
 function libraryEntries(): LibraryEntry[] {
   const variant = VARIANTS[DEFAULT_VARIANT]!
-  const movies = LIBRARY_MOVIES.map((name) => {
+  const movies = LIBRARY_MOVIES.map((name, index) => {
     const title = titleNamed(name)
     const [file] = filesOf(title, variant)
 
     return {
       id: `media-${title.id.split(':')[2]}`,
+      addedAt: Date.now() - (index + 1) * 6 * DAY * 1000,
       titleId: title.id,
       name: file!.name,
       season: null,
@@ -432,6 +434,7 @@ function libraryEntries(): LibraryEntry[] {
 
       return filesOf(title, variant, season, episodes).map(file => ({
         id: `media-${title.id.split(':')[2]}-${season}-${file.episode}`,
+        addedAt: Date.now() - 2 * DAY * 1000,
         titleId: title.id,
         name: file.name,
         season,
@@ -449,8 +452,18 @@ function libraryEntries(): LibraryEntry[] {
 
 const library = libraryEntries()
 
-export function libraryTitleIds() {
-  return [...new Set(library.map(entry => entry.titleId))]
+export function libraryTitleIds(since?: number) {
+  if (since === undefined)
+    return [...new Set(library.map(entry => entry.titleId))]
+
+  return [
+    ...new Set(
+      library
+        .filter(entry => entry.addedAt >= since)
+        .sort((a, b) => b.addedAt - a.addedAt)
+        .map(entry => entry.titleId),
+    ),
+  ]
 }
 
 export function isInLibrary(titleId: string) {
@@ -460,7 +473,7 @@ export function isInLibrary(titleId: string) {
 export function libraryFilesOf(titleId: string): LibraryFile[] {
   return library
     .filter(entry => entry.titleId === titleId)
-    .map(({ titleId: _, name: __, ...file }) => file)
+    .map(({ titleId: _, name: __, addedAt: ___, ...file }) => file)
 }
 
 export function libraryEntry(id: string) {
