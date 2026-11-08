@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { firstVisibleRow, lastRowPadding, stackOffset } from './rowStack.ts'
+import {
+  firstVisibleRow,
+  lastRowFooterVisible,
+  lastRowPadding,
+  stackOffset,
+} from './rowStack.ts'
 
 // Ряды по 470 px, область рядов — 460 px
 const tops = [0, 470, 940, 1410]
@@ -149,5 +154,55 @@ describe('compact home row alignment', () => {
 
   it('keeps the existing end clamp when a mode does not opt into trailing space', () => {
     expect(stackOffset(900, 900 + 500 + 52, 660)).toBe(792)
+  })
+})
+
+describe('last row footer visibility', () => {
+  it.each([1, 2])(
+    'uses measured footer extent within the trailing space at %sx scale',
+    (scale) => {
+      const padding = lastRowPadding(660 * scale, 500 * scale, 52 * scale)
+      const extent = (36 + 54) * scale
+      const top = 900 * scale
+      expect(lastRowFooterVisible(padding, extent, top, top)).toBe(true)
+      expect(lastRowFooterVisible(extent, extent, top, top)).toBe(true)
+      expect(lastRowFooterVisible(extent - 1, extent, top, top)).toBe(false)
+    },
+  )
+
+  it('hides when resizing leaves insufficient space without increasing row padding', () => {
+    const extent = 90
+    expect(
+      lastRowFooterVisible(lastRowPadding(660, 500, 52), extent, 900, 900),
+    ).toBe(true)
+    expect(
+      lastRowFooterVisible(lastRowPadding(300, 500, 52), extent, 900, 900),
+    ).toBe(false)
+    expect(
+      lastRowFooterVisible(lastRowPadding(620, 500, 52), extent, 900, 900),
+    ).toBe(false)
+  })
+
+  it('follows actual native scroll position after the last row was focused', () => {
+    expect(lastRowFooterVisible(108, 90, 900, 900)).toBe(true)
+    expect(lastRowFooterVisible(108, 90, 900, 899.4)).toBe(true)
+    // A previous aligned index must not keep the footer visible after wheel scroll.
+    expect(lastRowFooterVisible(108, 90, 900, 898)).toBe(false)
+    expect(lastRowFooterVisible(108, 90, 900, 450)).toBe(false)
+  })
+
+  it('stays hidden for reset or unmeasured rows and footer', () => {
+    expect(lastRowFooterVisible(108, 90, undefined, 0)).toBe(false)
+    expect(lastRowFooterVisible(108, 0, 900, 900)).toBe(false)
+    expect(lastRowFooterVisible(0, 0, undefined, 0)).toBe(false)
+  })
+
+  it('allows a single row only when it leaves enough room', () => {
+    expect(lastRowFooterVisible(lastRowPadding(660, 500, 52), 90, 0, 0)).toBe(
+      true,
+    )
+    expect(lastRowFooterVisible(lastRowPadding(660, 620, 52), 90, 0, 0)).toBe(
+      false,
+    )
   })
 })

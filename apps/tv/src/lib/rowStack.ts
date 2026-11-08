@@ -29,3 +29,18 @@ export function lastRowPadding(
 ) {
   return Math.max(0, viewHeight - rowHeight - marginBottom)
 }
+
+/** Декоративный футер помещается под последним рядом и виден только у его якоря. */
+export function lastRowFooterVisible(
+  padding: number,
+  footerExtent: number,
+  lastRowTop: number | undefined,
+  offset: number,
+) {
+  return (
+    lastRowTop !== undefined
+    && footerExtent > 0
+    && padding >= footerExtent
+    && Math.abs(offset - lastRowTop) <= EPSILON
+  )
+}
