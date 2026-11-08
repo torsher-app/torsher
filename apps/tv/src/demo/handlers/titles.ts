@@ -1,3 +1,4 @@
+import { demoFoundStudios, demoStudioName } from '@torsher/demo/studios'
 import type {
   FollowTitleInput,
   FollowVoicesResponse,
@@ -254,6 +255,15 @@ put<TitleFollowResponse, FollowTitleInput>(
   '/api/titles/:id/follow',
   ({ params, body }) => {
     const title = titleById(params.id!)
+    if (
+      body.voicePolicy?.mode === 'prefer'
+      || body.voicePolicy?.mode === 'only'
+    ) {
+      const studio = demoStudioName(body.voicePolicy.studio)
+      if (!studio)
+        throw new DemoError(400, { message: 'Unknown studio' })
+      body = { ...body, voicePolicy: { ...body.voicePolicy, studio } }
+    }
 
     follows.add(title.id)
     followSettings.set(title.id, {
@@ -333,14 +343,14 @@ get<FollowVoicesResponse>(
       items: [
         ...new Set([
           ...(studio ? [studio] : []),
-          ...(refresh ? ['Demo Studio A', 'Demo Studio B'] : []),
+          ...(refresh ? demoFoundStudios : []),
         ]),
       ].map(name => ({
         studio: name,
         types: ['MVO'],
-        count: refresh ? 2 : 0,
-        seeders: refresh ? 10 : 0,
-        found: refresh,
+        count: refresh && demoFoundStudios.includes(name) ? 2 : 0,
+        seeders: refresh && demoFoundStudios.includes(name) ? 10 : 0,
+        found: refresh && demoFoundStudios.includes(name),
         saved: name === studio,
         inherited: false,
       })),
