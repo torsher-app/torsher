@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.2 (2026-11-08)
+
+### Bug Fixes
+
+- **dev:** isolate branch stand cookies by hostname (#178) ([8128f96](https://github.com/torsher-app/torsher/commit/8128f9642f97fbdd22b9d688c18302319b3d41b4))
+- **tv:** return to source picker after switching (#177) ([297259b](https://github.com/torsher-app/torsher/commit/297259bd9946e5694e61c6bfd75324e93d38a78b))
+
 ## 1.5.1 (2026-11-07)
 
 ### Bug Fixes
