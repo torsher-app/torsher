@@ -72,6 +72,8 @@ Only your own data is read from the files: title IDs, your ratings, dates and li
 
 Each row shows the device's name, type, the profile it uses and <Ui k="panel.people.devices.watching" /> when it plays something.
 
+Select <Ui k="panel.nav.logs" /> in a device’s menu to open its related journal entries.
+
 ### Connect a device
 
 1. Open Torsher on the TV or in a browser: it shows a six-character code.
