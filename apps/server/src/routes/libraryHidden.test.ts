@@ -110,6 +110,13 @@ function stream(cookies: Record<string, string>, query = '') {
   })
 }
 
+async function ownerStreamToken(profileId?: string) {
+  const { id } = (
+    await app.inject({ url: '/api/users/me', cookies: owner })
+  ).json()
+  return signToken(id, 'stream', 0, profileId)
+}
+
 function thumbOf(cookies: Record<string, string>) {
   return app.inject({ url: `/api/library/files/${fileId}/thumb`, cookies })
 }
@@ -153,16 +160,19 @@ describe('files of a library hidden from the profile', () => {
     })
   })
 
-  it('play with the owner stream token', async () => {
-    const res = await stream(
-      {},
-      `?token=${signToken(
-        (await app.inject({ url: '/api/users/me', cookies: owner })).json().id,
-        'stream',
-      )}`,
-    )
+  it('play with the owner stream token bound to a profile that sees the library', async () => {
+    const token = await ownerStreamToken(visibleFor[PROFILE_COOKIE])
+    expect((await stream({}, `?token=${token}`)).statusCode).toBe(200)
+  })
 
-    expect(res.statusCode).toBe(200)
+  it('reject an owner stream token without a profile', async () => {
+    const token = await ownerStreamToken()
+    expect((await stream({}, `?token=${token}`)).statusCode).toBe(401)
+  })
+
+  it('remain hidden for an owner stream token bound to the hidden profile', async () => {
+    const token = await ownerStreamToken(hiddenFor[PROFILE_COOKIE])
+    expect((await stream({}, `?token=${token}`)).statusCode).toBe(404)
   })
 })
 

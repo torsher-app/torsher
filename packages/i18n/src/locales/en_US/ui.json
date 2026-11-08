@@ -88,7 +88,8 @@
     "decade": "{decade}s",
     "ratingFrom": "{n}+",
     "reset": "Reset filters",
-    "moreFailed": "Could not load more"
+    "moreFailed": "Could not load more",
+    "nextPage": "Next page"
   },
   "home": {
     "rows": {
@@ -2071,7 +2072,7 @@
         "language": "Showcase language",
         "languageHint": "Interface and descriptions on the TV.",
         "ageLimit": "Age limit",
-        "ageLimitHint": "The catalog isn’t filtered by age yet. For now a profile with a limit can’t match unrecognized downloads to titles on the TV.",
+        "ageLimitHint": "Titles rated at or above this age, and titles without a known rating, are hidden. Home videos and unrecognized downloads are hidden too.",
         "noLimits": "No restrictions",
         "pin": "PIN",
         "pinHint": "4 digits. The TV asks for it when switching to this profile.",

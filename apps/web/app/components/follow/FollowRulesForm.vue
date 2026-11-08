@@ -48,7 +48,8 @@ const props = defineProps<{
 const { t } = useI18n()
 const store = useFollows()
 const studioCollection = __DEMO__ ? demoStudios : studios
-const voiceList = ref<Awaited<ReturnType<typeof api.titles.getFollowVoices>>>()
+const voiceList
+  = ref<Awaited<ReturnType<typeof api.follows.getAdminFollowVoices>>>()
 
 // Те же пределы, что в DTO сервера
 const schema = toTypedSchema(
@@ -134,7 +135,7 @@ async function loadVoices(refresh = false) {
   voiceError.value = false
   try {
     const result = await withErrorMode('silent', () =>
-      api.titles.getFollowVoices(props.follow.titleId, {
+      api.follows.getAdminFollowVoices(props.follow.id, {
         season: voiceSeason.value,
         ...(refresh ? { refresh: '1' as const } : {}),
       }))

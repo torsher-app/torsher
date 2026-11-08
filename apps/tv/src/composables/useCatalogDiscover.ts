@@ -21,6 +21,7 @@ export function useCatalogDiscover(params: Ref<DiscoverParams>) {
   const status = ref<CatalogStatus>('loading')
   const items = shallowRef<Card[]>([])
   const total = ref(0)
+  const totalIsApproximate = ref(false)
   const error = ref<LoadError>()
   const loadingMore = ref(false)
   const moreFailed = ref(false)
@@ -60,15 +61,14 @@ export function useCatalogDiscover(params: Ref<DiscoverParams>) {
 
     items.value = outcome.value.items
     total.value = outcome.value.total
+    totalIsApproximate.value = outcome.value.totalIsApproximate ?? false
     pages = outcome.value.totalPages
     loaded = 1
     status.value = 'ready'
     resets.value += 1
   }
 
-  const hasMore = computed(
-    () => status.value === 'ready' && items.value.length > 0 && loaded < pages,
-  )
+  const hasMore = computed(() => status.value === 'ready' && loaded < pages)
 
   async function loadMore() {
     if (!hasMore.value || loadingMore.value)
@@ -113,6 +113,7 @@ export function useCatalogDiscover(params: Ref<DiscoverParams>) {
     status,
     items,
     total,
+    totalIsApproximate,
     error,
     hasMore,
     loadingMore,

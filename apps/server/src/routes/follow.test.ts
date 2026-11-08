@@ -70,6 +70,7 @@ function series() {
     name: 'Тихая гавань',
     original_name: 'Quiet Harbor',
     original_language: 'en',
+    content_ratings: { results: [{ iso_3166_1: 'RU', rating: '6+' }] },
     last_episode_to_air: {
       season_number: 2,
       episode_number: 4,

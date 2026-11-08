@@ -2,14 +2,12 @@
 import type { Backdrop } from '@torsher/api-client'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { api } from '../api.ts'
 import holdVideo from '../assets/screensaver-hold.mp4'
-import { useCatalogLanguage } from '../composables/useCatalogLanguage.ts'
+import { useScreensaverBackdrops } from '../composables/useScreensaverBackdrops.ts'
 import { formatClock } from '../lib/player.ts'
 import { cornerOf, shuffled, SLIDE_MS } from '../lib/screensaver.ts'
 import { holdAndroidScreen, isAndroidShell } from '../platform/android.ts'
 import { holdSystemScreensaver, isWebos } from '../platform/webos.ts'
-import { session } from '../session.ts'
 
 /**
  * Заставка при простое: медленная смена кадров TMDB с названием и часами, как
@@ -24,37 +22,7 @@ import { session } from '../session.ts'
 const props = defineProps<{ resting: boolean }>()
 
 const { locale } = useI18n()
-const language = useCatalogLanguage()
-
-// Кадры живут дольше одной заставки: тренд дня меняется раз в сутки
-const CACHE_MS = 30 * 60 * 1000
-let cached: { items: Backdrop[], language: string, at: number } | undefined
-
-async function loadBackdrops() {
-  if (session.status !== 'ready')
-    return []
-
-  if (
-    cached
-    && cached.language === language.value
-    && Date.now() - cached.at < CACHE_MS
-  ) {
-    return cached.items
-  }
-
-  try {
-    const { items } = await api.catalog.getCatalogBackdrops({
-      language: language.value,
-    })
-
-    cached = { items, language: language.value, at: Date.now() }
-
-    return items
-  }
-  catch {
-    return []
-  }
-}
+const { items: backdrops, key: accessKey } = useScreensaverBackdrops()
 
 interface Layer {
   slide: number
@@ -90,6 +58,7 @@ function preload(src: string) {
 async function advance() {
   if (stopped)
     return
+  const key = accessKey.value
 
   // Битый кадр пропускаем; если не загрузился ни один из круга — остаются часы
   for (let tries = 0; tries < order.length; tries++) {
@@ -101,7 +70,7 @@ async function advance() {
     const item = order[position++]!
 
     if (await preload(item.backdrop)) {
-      if (stopped)
+      if (stopped || key !== accessKey.value)
         return
 
       const back = 1 - front.value
@@ -113,7 +82,8 @@ async function advance() {
       // Новый слой сначала встаёт прозрачным, иначе кроссфейда не будет
       requestAnimationFrame(() =>
         requestAnimationFrame(() => {
-          front.value = back
+          if (key === accessKey.value && !stopped)
+            front.value = back
         }),
       )
       break
@@ -172,7 +142,27 @@ watch(
   },
 )
 
-onMounted(async () => {
+watch(
+  accessKey,
+  () => {
+    clearTimeout(slideTimer)
+    layers.value = [undefined, undefined]
+    order = []
+    position = 0
+  },
+  { flush: 'sync' },
+)
+
+watch(backdrops, (items) => {
+  if (stopped)
+    return
+  clearTimeout(slideTimer)
+  order = shuffled(items)
+  position = 0
+  void advance()
+})
+
+onMounted(() => {
   if (webos)
     holdScreen()
   // На Android экран держит окно оболочки, ролик-удержание не нужен
@@ -183,7 +173,7 @@ onMounted(async () => {
     now.value = new Date()
   }, 10_000)
 
-  order = shuffled(await loadBackdrops())
+  order = shuffled(backdrops.value)
   void advance()
 })
 

@@ -11,6 +11,7 @@ import { libraryEpisodeFiles, stateInputs } from './episodes.ts'
 import { followsOfProfile, isFollowing } from './index.ts'
 import { episodeKey, episodeStates, localDay } from './wanted.ts'
 import { seasonVoice } from './voice.ts'
+import { filterTitles } from '../profiles/access.ts'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 // «Недавние» — за две недели, как окно целевых поисков после выхода серии
@@ -44,10 +45,13 @@ export async function profileSchedule(
         && (state.status === 'watching' || state.status === 'waiting'),
     )
     .map(state => state.titleId)
-  const ids = [...new Set([...followed.keys(), ...watching])].slice(
-    0,
-    MAX_TITLES,
-  )
+  const ids = (
+    await filterTitles(
+      profileId,
+      [...new Set([...followed.keys(), ...watching])],
+      id => id,
+    )
+  ).slice(0, MAX_TITLES)
 
   const items = (
     await mapLimit(ids, DETAILS_CONCURRENCY, id =>

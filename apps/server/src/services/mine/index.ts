@@ -24,6 +24,7 @@ import { parseCatalogId } from '../tmdb/mappers.ts'
 import { cardsOf, summariesOf, summaryOf } from './cards.ts'
 import { ratingsOf } from './posterRatings.ts'
 import { isDropped, lastWatchedAt, titleStatus } from './status.ts'
+import { filterTitles } from '../profiles/access.ts'
 
 export { withPosterRatings } from './posterRatings.ts'
 
@@ -249,7 +250,11 @@ function stateOf(
 export async function profileStates(profileId: string, language: string) {
   const progress = progressRows(profileId)
   const mine = mineRows(profileId)
-  const ids = [...new Set([...progress.keys(), ...mine.keys()])]
+  const ids = await filterTitles(
+    profileId,
+    [...new Set([...progress.keys(), ...mine.keys()])],
+    id => id,
+  )
   const series = ids.filter(
     id => kindOf(id) === 'series' && progress.has(id),
   )
@@ -432,7 +437,11 @@ function matchesRating(rating: number | undefined, filter: MineRatingFilter) {
 
 /** Раздел «Моё»: фильтры и сортировка — по базе, карточки — только для страницы */
 export async function mineItems(profileId: string, query: MineQuery) {
-  const entries = await sectionEntries(profileId, query)
+  const entries = await filterTitles(
+    profileId,
+    await sectionEntries(profileId, query),
+    item => item.titleId,
+  )
   const ratings = ratingsOf(
     profileId,
     entries.map(entry => entry.titleId),
@@ -474,26 +483,52 @@ export async function mineSections(profileId: string, language: string) {
     { id: 'continue' as const, count: count('watching') },
     {
       id: 'watchlist' as const,
-      count: listEntries(profileId, 'watchlistAt').length,
+      count: (
+        await filterTitles(
+          profileId,
+          listEntries(profileId, 'watchlistAt'),
+          item => item.titleId,
+        )
+      ).length,
     },
     {
       id: 'favorites' as const,
-      count: listEntries(profileId, 'favoriteAt').length,
+      count: (
+        await filterTitles(
+          profileId,
+          listEntries(profileId, 'favoriteAt'),
+          item => item.titleId,
+        )
+      ).length,
     },
-    ...visibleCollections(profileId).map(item => ({
-      id: 'collection' as const,
-      collectionId: item.id,
-      name: item.name,
-      count: item.count,
-    })),
+    ...(await Promise.all(
+      visibleCollections(profileId).map(async item => ({
+        id: 'collection' as const,
+        collectionId: item.id,
+        name: item.name,
+        count: (
+          await filterTitles(
+            profileId,
+            collectionItems(item.id),
+            entry => entry.titleId,
+          )
+        ).length,
+      })),
+    )),
     { id: 'watched' as const, count: count('watched') },
     { id: 'dropped' as const, count: count('dropped') },
   ]
 }
 
 /** Сколько тайтлов в «Позже»: число плитки «Все» ряда главной */
-export function watchlistTotal(profileId: string) {
-  return listEntries(profileId, 'watchlistAt').length
+export async function watchlistTotal(profileId: string) {
+  return (
+    await filterTitles(
+      profileId,
+      listEntries(profileId, 'watchlistAt'),
+      item => item.titleId,
+    )
+  ).length
 }
 
 /**
@@ -519,7 +554,13 @@ export async function watchlistCards(
   language: string,
   limit: number,
 ) {
-  const ids = listEntries(profileId, 'watchlistAt')
+  const ids = (
+    await filterTitles(
+      profileId,
+      listEntries(profileId, 'watchlistAt'),
+      item => item.titleId,
+    )
+  )
     .sort(byTimeDesc)
     .slice(0, limit)
     .map(entry => entry.titleId)
@@ -532,8 +573,14 @@ export async function collectionCards(
   id: string,
   language: string,
   limit?: number,
+  profileId?: string,
 ) {
-  const ids = collectionItems(id).map(item => item.titleId)
+  const entries = collectionItems(id)
+  const ids = (
+    profileId
+      ? await filterTitles(profileId, entries, item => item.titleId)
+      : entries
+  ).map(item => item.titleId)
 
   return cardsOf(limit ? ids.slice(0, limit) : ids, language)
 }

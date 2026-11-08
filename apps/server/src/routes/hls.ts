@@ -16,6 +16,7 @@ import {
   SegmentTimeoutError,
   TranscodeFailedError,
 } from '../services/media/index.ts'
+import { sessionAccessible } from '../services/profiles/playbackAccess.ts'
 
 const REPEAT_LOG_MS = 60 * 1000
 
@@ -55,7 +56,12 @@ export const hlsRoutes: FastifyPluginAsyncZod = async (app) => {
       const session = getSession(request.params.id, streamSubjectOf(request))
       const hls = session?.hls
 
-      if (!session || !hls || !session.media?.duration) {
+      if (
+        !session
+        || !sessionAccessible(session, request.profileId)
+        || !hls
+        || !session.media?.duration
+      ) {
         logUnknownSession(request, request.params.id)
         return reply.code(404).send({ message: 'Playback not found' })
       }
@@ -88,7 +94,7 @@ export const hlsRoutes: FastifyPluginAsyncZod = async (app) => {
       const hls = session?.hls
       const index = Number.parseInt(request.params.segment, 10)
 
-      if (!session || !hls) {
+      if (!session || !sessionAccessible(session, request.profileId) || !hls) {
         logUnknownSession(request, request.params.id)
         return reply.code(404).send({ message: 'Segment not found' })
       }

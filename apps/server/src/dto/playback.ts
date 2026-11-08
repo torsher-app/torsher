@@ -246,6 +246,7 @@ export const insufficientStorageResponse = z
 
 export const updateWatchState = z
   .object({
+    profileId: z.string().min(1).max(100).optional(),
     torrentId: z.string().min(1).max(100).optional(),
     fileIndex: fileIndex.optional(),
     mediaFileId: z.string().min(1).max(100).optional(),

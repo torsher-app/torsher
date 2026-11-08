@@ -19,3 +19,15 @@ get<TitleDetails>('/api/catalog/titles/:id', ({ params }) => {
 
   return detailsOf(title)
 })
+get<CatalogSearchResponse>('/api/catalog/admin/search', ({ query }) => ({
+  items: searchTitles(query.get('query') ?? '').map(cardOf),
+  people: [],
+}))
+
+get<TitleDetails>('/api/catalog/admin/titles/:id', ({ params }) => {
+  const title = findTitle(params.id!)
+  if (!title)
+    throw new DemoError(404, { message: 'Title not found' })
+
+  return detailsOf(title)
+})

@@ -22,6 +22,7 @@ export interface VerifiedToken {
   userId: string
   purpose: TokenPurpose
   sessionVersion: number
+  profileId?: string
   iat: number
   exp: number
 }
@@ -34,11 +35,16 @@ export function signToken(
   userId: string,
   purpose: TokenPurpose,
   sessionVersion = 0,
+  profileId?: string,
 ) {
-  return jwt.sign({ userId, purpose, sv: sessionVersion }, config.secretKey, {
-    expiresIn: TOKEN_TTL[purpose],
-    algorithm: 'HS256',
-  })
+  return jwt.sign(
+    { userId, purpose, sv: sessionVersion, ...(profileId && { profileId }) },
+    config.secretKey,
+    {
+      expiresIn: TOKEN_TTL[purpose],
+      algorithm: 'HS256',
+    },
+  )
 }
 
 export function generateSessionTokens(userId: string, sessionVersion: number) {
@@ -59,12 +65,17 @@ export function verifyTokenFor(
   if (typeof payload !== 'object' || payload === null)
     throw new TypeError('Invalid token payload')
 
-  const { userId, purpose, sv, iat, exp } = payload as Record<string, unknown>
+  const { userId, purpose, sv, profileId, iat, exp } = payload as Record<
+    string,
+    unknown
+  >
 
   if (
     typeof userId !== 'string'
     || userId.length === 0
     || (sv !== undefined && !Number.isInteger(sv))
+    || (profileId !== undefined
+      && (typeof profileId !== 'string' || !profileId))
     || typeof iat !== 'number'
     || typeof exp !== 'number'
   ) {
@@ -83,6 +94,7 @@ export function verifyTokenFor(
     userId,
     purpose: expectedPurpose,
     sessionVersion: (sv as number | undefined) ?? 0,
+    ...(typeof profileId === 'string' && { profileId }),
     iat,
     exp,
   }

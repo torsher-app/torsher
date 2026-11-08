@@ -24,6 +24,7 @@ import {
   sampleTorrentFile,
 } from '../services/engine/fixtures/index.ts'
 import { signToken } from '../utils/token.ts'
+import { defaultProfile } from '../services/profiles/index.ts'
 
 const GIB = 1024 ** 3
 const disk = vi.hoisted(() => ({ total: 0, free: 0 }))
@@ -656,7 +657,7 @@ describe('воспроизведение и позиция', () => {
 
 describe('поток', () => {
   function streamUrl(torrent: Torrent, fileIndex = 0) {
-    return `/api/stream/${torrent.id}/${fileIndex}?token=${signToken('owner', 'stream')}`
+    return `/api/stream/${torrent.id}/${fileIndex}?token=${signToken('owner', 'stream', 0, defaultProfile().id)}`
   }
 
   it('диапазон Range уходит в движок, 206 и Content-Range возвращаются плееру', async () => {

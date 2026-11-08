@@ -408,6 +408,7 @@ export const catalogDiscoverResponse = z
     // Не больше 500: дальше TMDB страницы не отдаёт
     totalPages: z.number().int(),
     total: z.number().int(),
+    totalIsApproximate: z.boolean().optional(),
   })
   .meta({ id: 'catalogDiscoverResponse' })
 

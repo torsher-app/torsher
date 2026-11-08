@@ -11,7 +11,7 @@ import {
   vi,
 } from 'vitest'
 import { createApp } from '../app.ts'
-import { ACCESS_TOKEN_COOKIE } from '../config.ts'
+import { ACCESS_TOKEN_COOKIE, PROFILE_COOKIE } from '../config.ts'
 import { getDb, migrateDb } from '../db/index.ts'
 import {
   indexers,
@@ -29,6 +29,9 @@ import { clearSearchCache } from '../services/sources/cache.ts'
 import { tvIdentity } from '../services/tmdb/fixtures/index.ts'
 import { searchXml } from '../services/torznab/fixtures/index.ts'
 import { signToken } from '../utils/token.ts'
+
+import { createProfile } from '../services/profiles/index.ts'
+import { storeMetaCache } from '../services/tmdb/cache.ts'
 
 // Место на диске для проверки перед просмотром — с запасом
 vi.mock('../services/storage/disk.ts', () => ({
@@ -553,6 +556,37 @@ describe('экран «Источники» и «Файлы»', () => {
       expect(download.statusCode).toBe(422)
       expect(download.json().kind).toBe('no_sources')
       expect(getDb().select().from(torrents).all()).toHaveLength(0)
+      const child = createProfile({
+        name: 'Child',
+        color: 'violet',
+        ageLimit: 12,
+        language: null,
+      })
+      storeMetaCache('tmdb:tv:101:ru-RU:v3', {
+        content_ratings: { results: [{ iso_3166_1: 'RU', rating: '6+' }] },
+      })
+      const restricted = { ...owner, [PROFILE_COOKIE]: child.id }
+      const filtered = await app.inject({
+        url: `/api/titles/${TITLE}/sources?all=1${query ? `&query=${encodeURIComponent(query)}` : ''}`,
+        cookies: restricted,
+      })
+      expect(filtered.statusCode).toBe(200)
+      expect(filtered.json().candidates).toEqual([])
+      for (const action of ['open', 'watch', 'download']) {
+        const rejected = await app.inject({
+          method: 'POST',
+          url: `/api/titles/${TITLE}/${action}`,
+          cookies: restricted,
+          payload: {
+            candidateId: body.candidates[0].id,
+            season: 2,
+            episode: 1,
+            ...(query && { query }),
+          },
+        })
+        expect(rejected.statusCode, action).toBe(422)
+      }
+      expect(getDb().select().from(torrents).all()).toHaveLength(0)
       const open = await app.inject({
         method: 'POST',
         url: `/api/titles/${TITLE}/open`,
@@ -931,4 +965,36 @@ describe('«Скачать сезон» с карточки', () => {
     ).toBe(404)
     expect((await download({ torrentId: other.id })).statusCode).toBe(400)
   })
+})
+
+it('a limited viewer can still select a confidently matched classified source', async () => {
+  const child = createProfile({
+    name: 'Child high match',
+    color: 'violet',
+    ageLimit: 12,
+    language: null,
+  })
+  storeMetaCache('tmdb:tv:101:ru-RU:v3', {
+    content_ratings: { results: [{ iso_3166_1: 'RU', rating: '6+' }] },
+  })
+  const restricted = { ...owner, [PROFILE_COOKIE]: child.id }
+  const list = await app.inject({
+    url: `/api/titles/${TITLE}/sources?season=2&episode=5`,
+    cookies: restricted,
+  })
+  expect(list.statusCode).toBe(200)
+  const candidate = list
+    .json()
+    .candidates
+    .find(
+      (item: { confidence: string }) => item.confidence === 'high',
+    )
+  expect(candidate).toBeDefined()
+  const opened = await app.inject({
+    method: 'POST',
+    url: `/api/titles/${TITLE}/watch`,
+    cookies: restricted,
+    payload: { candidateId: candidate.id, season: 2, episode: 5 },
+  })
+  expect(opened.statusCode, opened.body).toBe(200)
 })

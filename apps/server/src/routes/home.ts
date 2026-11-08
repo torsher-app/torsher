@@ -14,6 +14,7 @@ import { personalHomeRows } from '../services/mine/home.ts'
 import { getContinueRow } from '../services/sources/continue.ts'
 import { getHomeRows, TmdbError } from '../services/tmdb/index.ts'
 import { sendTmdbError } from './catalog.ts'
+import { allowedTitleIds, hasAgeLimit } from '../services/profiles/access.ts'
 
 export const homeRoutes: FastifyPluginAsyncZod = async (app) => {
   app.get(
@@ -42,7 +43,11 @@ export const homeRoutes: FastifyPluginAsyncZod = async (app) => {
         = await Promise.allSettled([
           mode === 'library' ? [] : getHomeRows(mode, language),
           getContinueRow(profileId, mode, language, diagnosticContext(request)),
-          unmatchedHomeRow(mode, language, canManageLibrary(request)),
+          unmatchedHomeRow(
+            mode,
+            language,
+            canManageLibrary(request) && !hasAgeLimit(profileId),
+          ),
           libraryHomeRows(mode, language, profileId),
           mode === 'all' ? personalHomeRows(profileId, language) : [],
         ])
@@ -66,13 +71,22 @@ export const homeRoutes: FastifyPluginAsyncZod = async (app) => {
       const hasSources = hasSearchableIndexers()
 
       if (catalog.status === 'fulfilled') {
+        const allowed = await allowedTitleIds(
+          profileId,
+          catalog.value.flatMap(row => row.items.map(item => item.id)),
+        )
         return {
           rows: [
             ...own,
-            ...catalog.value.map(row => ({
-              ...row,
-              items: withPosterRatings(row.items, profileId),
-            })),
+            ...catalog.value
+              .map(row => ({
+                ...row,
+                items: withPosterRatings(
+                  row.items.filter(item => allowed.has(item.id)),
+                  profileId,
+                ),
+              }))
+              .filter(row => row.items.length),
           ],
           hasSources,
         }

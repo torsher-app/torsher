@@ -8,6 +8,7 @@ import { users } from '../db/schema.ts'
 import { setEngineDown } from '../services/engine/index.ts'
 import { createOwner } from '../services/users/index.ts'
 import { signToken } from '../utils/token.ts'
+import { defaultProfile } from '../services/profiles/index.ts'
 
 // Каждый маршрут API помечен явно: публичный, витрина (сессия владельца или
 // токен устройства) или панель (только владелец). Новый маршрут без пометки
@@ -221,6 +222,35 @@ describe('токены потока и сессии', () => {
       const res = await app.inject({ url: streamUrl(key, token) })
 
       expect(res.statusCode, key).not.toBe(401)
+    }
+  })
+
+  it('owner stream tokens require a valid profile claim', async () => {
+    for (const key of STREAM) {
+      expect(
+        (
+          await app.inject({
+            url: streamUrl(key, signToken(ownerId, 'stream')),
+          })
+        ).statusCode,
+      ).toBe(401)
+      expect(
+        (
+          await app.inject({
+            url: streamUrl(key, signToken(ownerId, 'stream', 0, 'missing')),
+          })
+        ).statusCode,
+      ).toBe(401)
+      expect(
+        (
+          await app.inject({
+            url: streamUrl(
+              key,
+              signToken(ownerId, 'stream', 0, defaultProfile().id),
+            ),
+          })
+        ).statusCode,
+      ).not.toBe(401)
     }
   })
 

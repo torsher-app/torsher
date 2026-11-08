@@ -3089,6 +3089,7 @@ export interface CatalogDiscoverResponseInput {
    * @max 9007199254740991
    */
   total: number;
+  totalIsApproximate?: boolean;
 }
 
 export interface CatalogGenresResponseInput {
@@ -5380,6 +5381,11 @@ export interface InsufficientStorageResponseInput {
 }
 
 export interface UpdateWatchStateInput {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  profileId?: string;
   /**
    * @minLength 1
    * @maxLength 100
@@ -10798,6 +10804,7 @@ export interface CatalogDiscoverResponse {
    * @max 9007199254740991
    */
   total: number;
+  totalIsApproximate?: boolean;
 }
 
 export interface CatalogGenresResponse {
@@ -13086,6 +13093,11 @@ export interface InsufficientStorageResponse {
 }
 
 export interface UpdateWatchState {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  profileId?: string;
   /**
    * @minLength 1
    * @maxLength 100
@@ -15544,6 +15556,10 @@ export type GetCatalogTrendingError = MessageResponse;
 
 export type GetCatalogBackdropsError = MessageResponse;
 
+export type GetAdminCatalogSearchError = MessageResponse;
+
+export type GetAdminCatalogTitleError = MessageResponse;
+
 export type GetHomeError = MessageResponse;
 
 export type GetHomeContinueError = MessageResponse;
@@ -15621,6 +15637,8 @@ export type GetCollectionTitlesError = MessageResponse;
 export type PutCollectionTitleError = MessageResponse;
 
 export type DeleteCollectionTitleError = MessageResponse;
+
+export type DeleteAdminCollectionTitleError = MessageResponse;
 
 export type GetTorrentsError = MessageResponse;
 
@@ -15855,6 +15873,8 @@ export type OpenFollowPickError =
   | EngineUnavailableResponse;
 
 export type GetScheduleError = MessageResponse;
+
+export type GetAdminFollowVoicesError = MessageResponse;
 
 export type GetFollowsError = MessageResponse;
 
@@ -16961,6 +16981,62 @@ export class Api<
         format: "json",
         ...params,
       }),
+
+    /**
+     * No description
+     *
+     * @tags Catalog
+     * @name GetAdminCatalogSearch
+     * @request GET:/api/catalog/admin/search
+     */
+    getAdminCatalogSearch: (
+      query: {
+        /**
+         * @minLength 1
+         * @maxLength 200
+         */
+        query: string;
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<CatalogSearchResponse, GetAdminCatalogSearchError>({
+        path: `/api/catalog/admin/search`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Catalog
+     * @name GetAdminCatalogTitle
+     * @request GET:/api/catalog/admin/titles/{id}
+     */
+    getAdminCatalogTitle: (
+      id: string,
+      query?: {
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<TitleDetails, GetAdminCatalogTitleError>({
+        path: `/api/catalog/admin/titles/${id}`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
   };
   home = {
     /**
@@ -17881,6 +17957,25 @@ export class Api<
     ) =>
       this.request<MessageResponse, DeleteCollectionTitleError>({
         path: `/api/collections/${id}/titles/${titleId}`,
+        method: "DELETE",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Collections
+     * @name DeleteAdminCollectionTitle
+     * @request DELETE:/api/collections/admin/{id}/titles/{titleId}
+     */
+    deleteAdminCollectionTitle: (
+      id: string,
+      titleId: string,
+      params: RequestParams = {},
+    ) =>
+      this.request<MessageResponse, DeleteAdminCollectionTitleError>({
+        path: `/api/collections/admin/${id}/titles/${titleId}`,
         method: "DELETE",
         format: "json",
         ...params,
@@ -19813,6 +19908,33 @@ export class Api<
       }),
   };
   follows = {
+    /**
+     * No description
+     *
+     * @tags Follow
+     * @name GetAdminFollowVoices
+     * @request GET:/api/follows/{id}/voices
+     */
+    getAdminFollowVoices: (
+      id: string,
+      query: {
+        /**
+         * @min 0
+         * @max 999
+         */
+        season: number;
+        refresh?: "1";
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<FollowVoicesResponse, GetAdminFollowVoicesError>({
+        path: `/api/follows/${id}/voices`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
     /**
      * No description
      *

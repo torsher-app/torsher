@@ -49,7 +49,7 @@ async function search(value: string) {
 
   try {
     const found = await withErrorMode('silent', () =>
-      api.catalog.getCatalogSearch({
+      api.catalog.getAdminCatalogSearch({
         query: text,
         language: locale.value.replace('_', '-'),
       }))

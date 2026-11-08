@@ -21,6 +21,7 @@ import { getProfile } from '../profiles/index.ts'
 import { cachedTitleDetails } from '../tmdb/index.ts'
 import { parseCatalogId } from '../tmdb/mappers.ts'
 import { serverId } from './auth.ts'
+import { allowedTitleIds, hasAgeLimit } from '../profiles/access.ts'
 
 export type ItemType
   = 'CollectionFolder' | 'Movie' | 'Series' | 'Season' | 'Episode' | 'Video'
@@ -117,7 +118,26 @@ export async function projectLibrary(profileId: string, targetItemId?: string) {
             .id === targetItemId)
       )
     })
-  const available = await mapLimit(rows, 16, async (file) => {
+  const allowed = await allowedTitleIds(
+    profileId,
+    rows
+      .filter(
+        file =>
+          byFolder.get(file.folderId)?.library.kind !== 'home'
+          && file.matchStatus === 'matched',
+      )
+      .map(file => file.titleId),
+  )
+  const visible = hasAgeLimit(profileId)
+    ? rows.filter(
+        file =>
+          byFolder.get(file.folderId)?.library.kind !== 'home'
+          && file.matchStatus === 'matched'
+          && !!file.titleId
+          && allowed.has(file.titleId),
+      )
+    : rows
+  const available = await mapLimit(visible, 16, async (file) => {
     const info = await stat(
       absolutePathOf(byFolder.get(file.folderId)!.folder, file),
     ).catch(() => undefined)

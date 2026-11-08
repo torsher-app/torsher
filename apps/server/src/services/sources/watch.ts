@@ -1,3 +1,4 @@
+import type { AddResult } from '../torrents/index.ts'
 import type { DiagnosticContext } from '../diagnostics/index.ts'
 import { newDecisionId, recordDecision } from '../diagnostics/index.ts'
 import type { ParsedRelease } from '@torsher/release-parser'
@@ -15,10 +16,11 @@ import {
   linkTitle,
 } from '../torrents/index.ts'
 import { downloadTorrent, SourceError } from '../torznab/index.ts'
-import { indexerCookie } from '../indexers/index.ts'
-import { getTitleSources } from './index.ts'
+import { getTitleSources, sourceAllowed } from './index.ts'
 import { rememberChoice } from './progress.ts'
 import { seasonReleases } from './seasonRelease.ts'
+import { titleAllowed } from '../profiles/access.ts'
+import { indexerCookie } from '../indexers/index.ts'
 
 // Столько кандидатов пробуем за один запрос: каждый стоит загрузки
 // `.torrent` или ожидания метаданных
@@ -95,8 +97,13 @@ export async function acquire(
   hasTime: () => boolean,
   origin: TorrentOrigin = 'search',
   isCurrent: () => boolean = () => true,
+  canUseExisting?: (torrent: Torrent) => Promise<boolean>,
 ): Promise<Torrent | undefined> {
   const magnet = magnetOf(release)
+  const accepted = async (result: AddResult) =>
+    result.created || !canUseExisting || (await canUseExisting(result.torrent))
+      ? result.torrent
+      : undefined
 
   if (release.link) {
     try {
@@ -116,8 +123,8 @@ export async function acquire(
         return undefined
 
       return downloaded.kind === 'file'
-        ? (await addTorrentFile(downloaded.bytes, origin)).torrent
-        : (await addMagnet(downloaded.magnet, origin)).torrent
+        ? accepted(await addTorrentFile(downloaded.bytes, origin))
+        : accepted(await addMagnet(downloaded.magnet, origin))
     }
     catch (err) {
       if (!(err instanceof SourceError) || !magnet || !hasTime())
@@ -126,7 +133,7 @@ export async function acquire(
   }
 
   return magnet && isCurrent()
-    ? (await addMagnet(magnet, origin)).torrent
+    ? accepted(await addMagnet(magnet, origin))
     : undefined
 }
 
@@ -210,13 +217,19 @@ export async function openCandidate(
     item => item.id === candidateId,
   )
 
-  if (!release)
+  if (!release || !sourceAllowed(profileId, release))
     throw new WatchError('candidate_gone', 'Release is no longer available')
 
   let torrent: Torrent | undefined
 
   try {
-    torrent = await acquire(release, () => true)
+    torrent = await acquire(
+      release,
+      () => true,
+      'search',
+      () => true,
+      torrent => titleAllowed(profileId, torrent.titleId),
+    )
   }
   catch (err) {
     if (isSkippable(err))
@@ -237,11 +250,11 @@ export async function openCandidate(
 }
 
 /** Серия из раздачи сезона: раздача уже в базе, файл — по номеру серии */
-function watchTorrent(
+async function watchTorrent(
   titleId: string,
   request: WatchRequest & { torrentId: string },
   profileId: string,
-): WatchResult | undefined {
+): Promise<WatchResult | undefined> {
   const ref = parseCatalogId(titleId)
 
   if (!ref)
@@ -249,8 +262,13 @@ function watchTorrent(
 
   const found = getTorrent(request.torrentId)
 
-  if (!found || found.status === 'failed')
+  if (
+    !found
+    || found.status === 'failed'
+    || !(await titleAllowed(profileId, found.titleId))
+  ) {
     throw new WatchError('candidate_gone', 'Release is no longer available')
+  }
 
   const torrent = linkTitle(found, titleId)
 
@@ -322,14 +340,17 @@ export async function watchTitle(
   if (request.candidateId) {
     const chosen = byId.get(request.candidateId)
 
-    if (!chosen)
+    if (!chosen || !sourceAllowed(profileId, chosen))
       throw new WatchError('candidate_gone', 'Release is no longer available')
 
     queue = [chosen]
   }
   else {
     queue = ranked.filter(
-      release => release.eligible && release.audioFit !== 'foreign',
+      release =>
+        sourceAllowed(profileId, release)
+        && release.eligible
+        && release.audioFit !== 'foreign',
     )
   }
 
@@ -382,7 +403,13 @@ export async function watchTitle(
     let torrent: Torrent | undefined
 
     try {
-      torrent = await acquire(release, hasTime)
+      torrent = await acquire(
+        release,
+        hasTime,
+        'search',
+        () => true,
+        torrent => titleAllowed(profileId, torrent.titleId),
+      )
     }
     catch (err) {
       if (isSkippable(err)) {

@@ -34,6 +34,7 @@ import { protectedVoiceEpisodes } from './invalidation.ts'
 import { permitsCandidate, voiceGuard } from './voice.ts'
 import { releaseFacts } from './upgrade.ts'
 import { episodeKey } from './wanted.ts'
+import { titleAllowed } from '../profiles/access.ts'
 
 function rowsOf(follow: Pick<Follow, 'id'>) {
   return getDb()
@@ -388,6 +389,7 @@ export function settlePicks(follow: Follow) {
 export async function openPick(
   titleId: string,
   episode: EpisodeRef & { intent?: 'follow-ready' },
+  profileId?: string,
 ): Promise<{ status: 'ready' | 'resolving', torrentId: string }> {
   const found = pickOf(titleId, episode)
 
@@ -416,6 +418,9 @@ export async function openPick(
       () => true,
       'search',
       isCurrent,
+      profileId
+        ? torrent => titleAllowed(profileId, torrent.titleId)
+        : undefined,
     )
   }
   catch (err) {
