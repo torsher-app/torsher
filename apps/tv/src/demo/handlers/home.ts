@@ -271,14 +271,22 @@ function libraryRows(mode: Mode): CatalogRow[] {
     TITLES.find(title => title.id === id)!,
   )
 
-  if (mode === 'all')
-    return [row('library', own)]
+  const recent = libraryTitleIds(Date.now() - 30 * DAY * 1000).map(id =>
+    TITLES.find(title => title.id === id)!,
+  )
+  const recentRow = row('libraryRecent', recent)
+
+  if (mode === 'all') {
+    return recent.length
+      ? [{ ...recentRow, title: 'home.rows.libraryRecentlyAdded' }]
+      : []
+  }
 
   if (mode !== 'library')
     return []
 
   return [
-    row('libraryRecent', own.slice().reverse()),
+    recentRow,
     row(
       'libraryMovies',
       own.filter(title => title.kind === 'movie'),
@@ -331,10 +339,12 @@ function personalRows(): CatalogRow[] {
 get<HomeResponse>('/api/home', ({ query }) => {
   const mode = modeOf(query.get('mode'))
   const resume = continueRow(mode)
+  const personal = mode === 'all' ? personalRows() : []
   const rows: HomeRow[] = [
     ...(resume.items.length ? [resume] : []),
+    ...personal.filter(item => item.id !== 'collection'),
     ...libraryRows(mode),
-    ...(mode === 'all' ? personalRows() : []),
+    ...personal.filter(item => item.id === 'collection'),
     ...catalogRows(mode),
   ]
 

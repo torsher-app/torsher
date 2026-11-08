@@ -20,3 +20,27 @@ export function firstVisibleRow(rowTops: number[], offset: number) {
 
   return index === -1 ? rowTops.length : index
 }
+
+/** Запас после последнего ряда, чтобы он тоже мог встать наверх окна. */
+export function lastRowPadding(
+  viewHeight: number,
+  rowHeight: number,
+  marginBottom: number,
+) {
+  return Math.max(0, viewHeight - rowHeight - marginBottom)
+}
+
+/** Декоративный футер помещается под последним рядом и виден только у его якоря. */
+export function lastRowFooterVisible(
+  padding: number,
+  footerExtent: number,
+  lastRowTop: number | undefined,
+  offset: number,
+) {
+  return (
+    lastRowTop !== undefined
+    && footerExtent > 0
+    && padding >= footerExtent
+    && Math.abs(offset - lastRowTop) <= EPSILON
+  )
+}

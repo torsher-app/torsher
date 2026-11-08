@@ -24,6 +24,7 @@ import {
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import AllCard from '../components/AllCard.vue'
+import AppIcon from '../components/AppIcon.vue'
 import AppRail from '../components/AppRail.vue'
 import BackdropLayer from '../components/BackdropLayer.vue'
 import ContentRow from '../components/ContentRow.vue'
@@ -63,7 +64,12 @@ import {
 } from '../releaseMatch.ts'
 import { mineQueryOf, mineTargetOf } from '../lib/mineView.ts'
 import { titleActions } from '../titleActions.ts'
-import { firstVisibleRow, stackOffset } from '../lib/rowStack.ts'
+import {
+  firstVisibleRow,
+  lastRowFooterVisible,
+  lastRowPadding,
+  stackOffset,
+} from '../lib/rowStack.ts'
 
 defineOptions({ name: 'HomePage' })
 
@@ -115,6 +121,23 @@ const {
 })
 const lastSection = ref<string>()
 const rowElements: (HTMLElement | undefined)[] = []
+const footer = ref<HTMLElement>()
+const trailingPadding = ref(0)
+const lastRowTop = ref<number>()
+const footerExtent = ref(0)
+const footerVisible = computed(
+  () =>
+    props.mode === 'all'
+    && status.value === 'ready'
+    && rows.value.length > 0
+    && (nativeScroll || aligned.value === rows.value.length - 1)
+    && lastRowFooterVisible(
+      trailingPadding.value,
+      footerExtent.value,
+      lastRowTop.value,
+      rowsOffset.value,
+    ),
+)
 
 // У рядов подборок один id: секцию и ключ различает подборка
 function rowKey(row: HomeRow) {
@@ -177,7 +200,7 @@ function isTile(item: RowItem): item is Tile {
 // Hero серии — её сериал, раздачи без тайтла — подсказка, если она есть
 function heroCardOf(
   item: Exclude<RowItem, ReleaseItem | FileItem | Tile>,
-): Card {
+): Card | ContinueItem {
   return isEpisode(item)
     ? {
         id: item.titleId,
@@ -243,6 +266,44 @@ const content = computed(() => {
 function alignRows() {
   const container = rowsElement.value
   const target = rowElements[aligned.value]
+
+  trailingPadding.value = 0
+  lastRowTop.value = undefined
+  footerExtent.value = 0
+
+  // KeepAlive может обновить ряды вне документа: размеры перечитаем при возврате.
+  if (container && props.mode === 'all' && !container.isConnected)
+    return
+
+  if (container) {
+    const last
+      = props.mode === 'all' ? rowElements[rows.value.length - 1] : undefined
+
+    // Пишем до чтения высоты контейнера: запас входит и в scrollHeight веба,
+    // и в offsetHeight ТВ. Нижний margin ряда уже добавляет часть запаса.
+    const padding = last
+      ? lastRowPadding(
+          nativeScroll
+            ? container.clientHeight
+            : window.innerHeight - container.offsetTop,
+          last.offsetHeight,
+          Number.parseFloat(window.getComputedStyle(last).marginBottom) || 0,
+        )
+      : 0
+    container.style.paddingBottom = last ? `${padding}px` : ''
+
+    if (last?.isConnected) {
+      trailingPadding.value = padding
+      lastRowTop.value = last.offsetTop
+
+      if (footer.value?.isConnected) {
+        footerExtent.value
+          = footer.value.offsetHeight
+            + (Number.parseFloat(window.getComputedStyle(footer.value).bottom)
+              || 0)
+      }
+    }
+  }
 
   if (!container || !target) {
     scrollRowsTo(0)
@@ -459,6 +520,10 @@ let seenVersion = titleActions.version
 // «Продолжить» подтягивает свежий прогресс, правки списков — все ряды
 onActivated(() => {
   isActive = true
+
+  if (props.mode === 'all')
+    nextTick(alignRows)
+
   restoreFocus()
 
   if (releaseMatch.notice) {
@@ -485,6 +550,9 @@ onActivated(() => {
 
 onDeactivated(() => {
   isActive = false
+  trailingPadding.value = 0
+  lastRowTop.value = undefined
+  footerExtent.value = 0
 })
 
 // Колесо листает ряды от того, что на экране, а не от карточки под курсором,
@@ -516,7 +584,12 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main ref="screen" class="home" @wheel.passive="onScreenWheel">
+  <main
+    ref="screen"
+    class="home"
+    :class="{ 'home--compact': mode === 'all' }"
+    @wheel.passive="onScreenWheel"
+  >
     <BackdropLayer :src="hero?.details?.backdrop" />
     <span v-if="serverAbout?.devStand" class="home__dev">DEV · {{ serverAbout.devStand.name }}</span>
 
@@ -525,6 +598,7 @@ onBeforeUnmount(() => {
         v-if="hero"
         :hero="hero"
         :resume="heroResume"
+        :compact="mode === 'all'"
         :release="heroRelease"
       />
     </div>
@@ -636,6 +710,17 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
+    <div
+      v-if="mode === 'all'"
+      ref="footer"
+      class="home__footer"
+      :class="{ 'home__footer--visible': footerVisible }"
+      aria-hidden="true"
+    >
+      <AppIcon name="brand" class="home__footer-mark" />
+      <span>Torsher</span>
+    </div>
+
     <AppRail :current="railItem" :section="railSection" :content="content" />
 
     <AppToast :message="releaseToast" @hide="releaseToast = ''" />
@@ -702,6 +787,15 @@ onBeforeUnmount(() => {
   transition: transform var(--motion-base) var(--motion-easing);
 }
 
+.home--compact .home__hero {
+  top: calc(var(--u) * 72);
+}
+
+.home--compact .home__rows,
+.home--compact .home__state {
+  top: calc(var(--u) * 420);
+}
+
 /* Веб: окно рядов под hero прокручивается нативно */
 .home__rows--native {
   bottom: 0;
@@ -716,6 +810,32 @@ onBeforeUnmount(() => {
 .home__row--above {
   opacity: 0;
   pointer-events: none;
+}
+
+.home__footer {
+  position: absolute;
+  z-index: 5;
+  right: var(--safe-x);
+  bottom: var(--safe-y);
+  left: var(--content-x);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-dim);
+  font-size: var(--font-size-s);
+  font-weight: 600;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion-base) var(--motion-easing);
+}
+
+.home__footer--visible {
+  opacity: 1;
+}
+
+.home__footer-mark {
+  margin-right: var(--space-1);
+  font-size: var(--font-size-l);
 }
 
 .home__skeleton-row {

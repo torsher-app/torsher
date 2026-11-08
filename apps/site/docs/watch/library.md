@@ -32,7 +32,7 @@ Automatically downloaded follows can have an optional [retention rule](/docs/pan
 - <Ui k="home.rows.libraryHomeVideo" />;
 - <Ui k="home.rows.libraryUntitled" />: files Torsher couldn't match.
 
-Empty rows are hidden. On <Ui k="nav.home" />, the <Ui k="home.rows.library" /> row shows the latest titles.
+Empty rows are hidden. On <Ui k="nav.home" />, <Ui k="home.rows.libraryRecentlyAdded" /> shows titles with files added in the last 30 days, newest first, after <Ui k="home.rows.watchlist" /> and before collections. Files outside that window remain in the Library section.
 
 ## Watch from the library
 

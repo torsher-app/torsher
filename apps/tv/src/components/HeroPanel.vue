@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import type { Card, ContinueCard } from '@torsher/api-client'
 import type { Hero } from '../composables/useHero.ts'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useResumeLabels } from '../composables/useResumeLabels.ts'
 import { useTitleMeta } from '../composables/useTitleMeta.ts'
 import { lacksSources } from '../serverSources.ts'
 import AppIcon from './AppIcon.vue'
@@ -11,12 +13,23 @@ const props = defineProps<{
   hero: Hero
   // Карточка «Продолжить»: OK сразу запускает просмотр
   resume?: boolean
+  compact?: boolean
   // Подсказка раздачи без тайтла: OK открывает выбор тайтла
   release?: boolean
 }>()
 
+function isContinueCard(card: Card | ContinueCard): card is ContinueCard {
+  return 'next' in card
+}
+
 const { t } = useI18n()
 const { metaParts } = useTitleMeta()
+const { resumeLine } = useResumeLabels()
+const continuation = computed(() =>
+  props.compact && props.resume && isContinueCard(props.hero.card)
+    ? props.hero.card
+    : undefined,
+)
 
 // Логотип не загрузился — пишем название текстом
 const logoFailed = ref(false)
@@ -60,7 +73,7 @@ const meta = computed(() => {
 <template>
   <!-- Новый тайтл проявляется после того, как старый погас: текст не наслаивается -->
   <Transition name="hero" mode="out-in">
-    <div :key="hero.card.id" class="hero">
+    <div :key="hero.card.id" class="hero" :class="{ 'hero--compact': compact }">
       <h1 class="hero__heading">
         <img
           v-if="logo"
@@ -86,7 +99,15 @@ const meta = computed(() => {
           }}</span>
         </span>
       </div>
-      <p v-if="hero.details?.overview" class="hero__overview">
+      <p v-if="continuation" class="hero__overview hero__continuation">
+        <span v-if="resumeLine(continuation)">{{
+          resumeLine(continuation)
+        }}</span>
+        <span v-if="continuation.episodeTitle">{{
+          continuation.episodeTitle
+        }}</span>
+      </p>
+      <p v-else-if="hero.details?.overview" class="hero__overview">
         {{ hero.details.overview }}
       </p>
       <div v-if="resume" class="hero__keys">
@@ -198,6 +219,22 @@ const meta = computed(() => {
   line-height: 1.42;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
+}
+
+.hero--compact .hero__logo {
+  width: calc(var(--u) * 600);
+  height: calc(var(--u) * 120);
+}
+
+.hero--compact .hero__title {
+  font-size: calc(var(--u) * 44);
+}
+
+.hero__continuation > span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .hero__keys {

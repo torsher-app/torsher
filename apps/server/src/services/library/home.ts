@@ -315,7 +315,7 @@ export async function unmatchedHomeRow(
 }
 
 /**
- * Ряды библиотеки: на главной — «Моя библиотека», в разделе «Библиотека» —
+ * Ряды библиотеки: на главной — свежие добавления, в разделе «Библиотека» —
  * «Недавно добавлено», «Фильмы» и «Сериалы». Пустые не отдаются.
  */
 export async function libraryHomeRows(
@@ -328,7 +328,7 @@ export async function libraryHomeRows(
     = mode === 'library'
       ? SECTION
       : mode === 'all'
-        ? [{ id: 'library' as const, query: () => ({ limit: ROW_LIMIT }) }]
+        ? SECTION.filter(spec => spec.id === 'libraryRecent')
         : []
   const results = await Promise.allSettled(
     specs.map(async (spec) => {
@@ -346,7 +346,10 @@ export async function libraryHomeRows(
       return {
         id: spec.id,
         kind: 'posters' as const,
-        title: `home.rows.${spec.id}`,
+        title:
+          mode === 'all'
+            ? 'home.rows.libraryRecentlyAdded'
+            : `home.rows.${spec.id}`,
         items: ids.length
           ? (await cardsOf(ids, language)).map(card => ({
               ...card,
