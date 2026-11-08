@@ -60,7 +60,11 @@ export const torrentFile = z
   })
   .meta({ id: 'torrentFile' })
 
-const peers = z.object({ connected: z.number(), found: z.number() })
+const peers = z.object({
+  connected: z.number(),
+  found: z.number(),
+  seeders: z.number(),
+})
 
 export const torrent = z
   .object({
@@ -191,8 +195,12 @@ export const torrentStats = z
   .object({
     // `idle` — раздача ещё не в движке (файл не начинали смотреть)
     activity: z.enum(['idle', 'downloading']),
-    // Движок не отличает сидов от пиров: `found` — известные, `connected` — подключённые
-    peers: z.object({ connected: z.number(), found: z.number() }),
+    // `found` — известные пиры, `connected` — подключённые, `seeders` — сиды среди подключённых
+    peers: z.object({
+      connected: z.number(),
+      found: z.number(),
+      seeders: z.number(),
+    }),
     // Байт в секунду
     downloadSpeed: z.number(),
     uploadSpeed: z.number(),

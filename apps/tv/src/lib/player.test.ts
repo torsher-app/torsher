@@ -39,7 +39,13 @@ import {
   videoTimePolicy,
 } from './player.ts'
 
-const peers = (connected: number) => ({ connected, found: connected * 3 })
+function peers(connected: number) {
+  return {
+    connected,
+    found: connected * 3,
+    seeders: 0,
+  }
+}
 
 const waitingStats = {
   activity: 'downloading' as const,
@@ -65,7 +71,10 @@ describe('шаги буферизации', () => {
   })
 
   it('отличает найденные адреса без соединений от ещё не найденных участников', () => {
-    const found = { ...waitingStats, peers: { connected: 0, found: 40 } }
+    const found = {
+      ...waitingStats,
+      peers: { connected: 0, found: 40, seeders: 0 },
+    }
     expect(bufferingStep(found, 14_999)).toBe('connecting')
     expect(bufferingStep(found, 15_000)).toBe('connectingPeers')
     expect(bufferingStep(found, 20_000, false)).toBe('reconnecting')

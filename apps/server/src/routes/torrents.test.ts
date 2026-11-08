@@ -518,7 +518,7 @@ describe('статистика', () => {
 
     expect(response.json()).toEqual({
       activity: 'downloading',
-      peers: { connected: 7, found: 41 },
+      peers: { connected: 7, found: 41, seeders: 3 },
       downloadSpeed: 2_621_440,
       uploadSpeed: 262_144,
       file: {
@@ -529,6 +529,34 @@ describe('статистика', () => {
       badPieces: 2,
     })
   })
+
+  it.each([undefined, 12])(
+    'public stats сохраняет seeders нового движка и поддерживает старый: %s',
+    async (seeders) => {
+      const torrent = insertTorrent()
+      engine({
+        [`GET /torrents/${INFO_HASH}/stats`]: () =>
+          json({
+            ...liveStats,
+            peers: {
+              connected: 20,
+              found: 41,
+              ...(seeders === undefined ? {} : { seeders }),
+            },
+          }),
+      })
+      const response = await app.inject({
+        url: `/api/torrents/${torrent.id}/stats?fileIndex=0`,
+        cookies: owner,
+      })
+      expect(response.statusCode).toBe(200)
+      expect(response.json().peers).toEqual({
+        connected: 20,
+        found: 41,
+        seeders: seeders ?? 0,
+      })
+    },
+  )
 
   it('файл-выравнивание и чужой индекс — 404', async () => {
     const torrent = insertTorrent()

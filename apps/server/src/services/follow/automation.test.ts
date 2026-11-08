@@ -236,7 +236,7 @@ function liveOf(hash: string, wantedCompleted: number): EngineTorrentState {
     queued: false,
     seeding: false,
     uploaded: 0,
-    peers: { connected: 0, found: 3 },
+    peers: { connected: 0, found: 3, seeders: 0 },
     downloadSpeed: 0,
     uploadSpeed: 0,
     fileProgress: [0, 0, 0, 0, 0, 0, 0, 0],

@@ -258,7 +258,7 @@ function stateOf(
     queued: false,
     seeding: false,
     uploaded: 0,
-    peers: { connected: 0, found: 3 },
+    peers: { connected: 0, found: 3, seeders: 0 },
     downloadSpeed: 0,
     uploadSpeed: 0,
     fileProgress: progress,

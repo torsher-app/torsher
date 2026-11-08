@@ -233,7 +233,7 @@ get<TorrentStats>('/api/torrents/:id/stats', ({ params, query }) => {
 
   return {
     activity: 'downloading',
-    peers: peersOf(params.id!),
+    peers: { ...peersOf(params.id!), seeders: 0 },
     downloadSpeed: streamSpeed(params.id!),
     uploadSpeed: Math.round(streamSpeed(`${params.id}:up`) / 8),
     file: { size, downloaded: size, bufferedAhead: size - offset },

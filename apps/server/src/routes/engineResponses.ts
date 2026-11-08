@@ -127,7 +127,7 @@ export function toTorrentResponse(
     sizeOnDisk: live?.bytesCompleted ?? 0,
     downloadSpeed: live?.downloadSpeed ?? 0,
     uploadSpeed: live?.uploadSpeed ?? 0,
-    peers: live?.peers ?? { connected: 0, found: 0 },
+    peers: live?.peers ?? { connected: 0, found: 0, seeders: 0 },
     seeding: seedingResponse(torrent, live, settings),
   }
 }

@@ -1028,7 +1028,7 @@ export type TorrentActivity = 'idle' | 'downloading'
 
 export interface StreamStats {
   activity: TorrentActivity
-  peers: { connected: number, found: number }
+  peers: { connected: number, found: number, seeders: number }
   downloadSpeed: number
   uploadSpeed: number
   file: { size: number, downloaded: number, bufferedAhead: number }
@@ -1048,7 +1048,7 @@ export async function streamStats(
   const size = files[fileIndex]?.size ?? 0
   const idle: StreamStats = {
     activity: 'idle',
-    peers: { connected: 0, found: 0 },
+    peers: { connected: 0, found: 0, seeders: 0 },
     downloadSpeed: 0,
     uploadSpeed: 0,
     file: { size, downloaded: 0, bufferedAhead: 0 },

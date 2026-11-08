@@ -110,7 +110,11 @@ const engineTorrentState = z.object({
   seeding: z.boolean(),
   // Отдано пирам за всё время
   uploaded: z.number().optional(),
-  peers: z.object({ connected: z.number(), found: z.number() }),
+  peers: z.object({
+    connected: z.number(),
+    found: z.number(),
+    seeders: z.number().optional(),
+  }),
   downloadSpeed: z.number(),
   uploadSpeed: z.number(),
   fileProgress: z.array(z.number()).nullable(),
@@ -152,7 +156,7 @@ export interface EngineTorrentState {
   queued: boolean
   seeding: boolean
   uploaded: number
-  peers: { connected: number, found: number }
+  peers: { connected: number, found: number, seeders: number }
   downloadSpeed: number
   uploadSpeed: number
   fileProgress: number[]
@@ -176,7 +180,11 @@ function toState(raw: z.infer<typeof engineTorrentState>): EngineTorrentState {
     queued: raw.queued ?? false,
     seeding: raw.seeding,
     uploaded: raw.uploaded ?? 0,
-    peers: { connected: raw.peers.connected, found: raw.peers.found },
+    peers: {
+      connected: raw.peers.connected,
+      found: raw.peers.found,
+      seeders: raw.peers.seeders ?? 0,
+    },
     downloadSpeed: raw.downloadSpeed,
     uploadSpeed: raw.uploadSpeed,
     fileProgress: raw.fileProgress ?? [],

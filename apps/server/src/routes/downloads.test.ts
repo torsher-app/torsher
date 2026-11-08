@@ -171,7 +171,7 @@ describe('список загрузок', () => {
       progress: { downloaded: 3_145_728, wanted: 9_437_184 },
       sizeOnDisk: 3_145_728,
       downloadSpeed: 2_621_440,
-      peers: { connected: 7, found: 41 },
+      peers: { connected: 7, found: 41, seeders: 3 },
     })
     expect(body.items[0].files[0]).toMatchObject({
       downloaded: 3_145_728,

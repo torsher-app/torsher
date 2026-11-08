@@ -108,7 +108,7 @@ export type EngineKind = EngineUnavailableResponse['kind']
 function localStats(size: number): TorrentStats {
   return {
     activity: 'downloading',
-    peers: { connected: 1, found: 1 },
+    peers: { connected: 1, found: 1, seeders: 0 },
     downloadSpeed: 0,
     uploadSpeed: 0,
     file: { size, downloaded: size, bufferedAhead: size },

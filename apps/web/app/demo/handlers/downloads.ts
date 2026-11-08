@@ -91,7 +91,7 @@ function livedEntries(): Entry[] {
     retention: 'keep',
     state: 'downloading',
     addedAt: ago(3 * HOUR),
-    peers: { connected: 38, found: 112 },
+    peers: { connected: 38, found: 112, seeders: 0 },
   })
 
   const lanterns = make('t-lanterns', 'Lanterns of Vell', {
@@ -103,7 +103,7 @@ function livedEntries(): Entry[] {
     retention: 'keep',
     state: 'downloading',
     addedAt: ago(40 * MINUTE),
-    peers: { connected: 21, found: 64 },
+    peers: { connected: 21, found: 64, seeders: 0 },
   })
 
   const saltwater = make('t-saltwater-e03', 'Saltwater Lullaby', {
@@ -117,7 +117,7 @@ function livedEntries(): Entry[] {
     streaming: true,
     addedAt: ago(12 * MINUTE),
     lastAccessAt: ago(0),
-    peers: { connected: 14, found: 40 },
+    peers: { connected: 14, found: 40, seeders: 0 },
   })
 
   const kites = make('t-kites-e05', 'Kites over Mareth', {
@@ -130,7 +130,7 @@ function livedEntries(): Entry[] {
     retention: 'keep',
     state: 'stalled',
     addedAt: ago(2 * DAY),
-    peers: { connected: 0, found: 3 },
+    peers: { connected: 0, found: 3, seeders: 0 },
   })
 
   const brightwater = make('t-brightwater-e04', 'Brightwater Ninety', {
@@ -144,7 +144,7 @@ function livedEntries(): Entry[] {
     retention: 'keep',
     state: 'queued',
     addedAt: ago(5 * MINUTE),
-    peers: { connected: 0, found: 18 },
+    peers: { connected: 0, found: 18, seeders: 0 },
   })
 
   const paper = make('t-paper-comets', 'Paper Comets', {
@@ -167,7 +167,7 @@ function livedEntries(): Entry[] {
     state: 'seeding',
     addedAt: ago(21 * DAY),
     lastAccessAt: ago(6 * DAY),
-    peers: { connected: 4, found: 26 },
+    peers: { connected: 4, found: 26, seeders: 0 },
   })
 
   const moth = make('t-moth-s01', 'Moth and Meridian', {
@@ -193,7 +193,7 @@ function livedEntries(): Entry[] {
     state: 'seeding',
     addedAt: ago(2 * DAY + 3 * HOUR),
     lastAccessAt: ago(DAY),
-    peers: { connected: 7, found: 31 },
+    peers: { connected: 7, found: 31, seeders: 0 },
   })
 
   // Кэш просмотра: досмотрели не до конца, файл на диске частично
@@ -215,7 +215,7 @@ function livedEntries(): Entry[] {
     state: 'seeding',
     addedAt: ago(9 * DAY),
     lastAccessAt: ago(9 * DAY),
-    peers: { connected: 2, found: 15 },
+    peers: { connected: 2, found: 15, seeders: 0 },
   })
 
   // Имя не дало уверенного тайтла: панель предложит «Исправить совпадение»
@@ -350,7 +350,7 @@ function advance(entry: Entry) {
     torrent.status = 'ready'
     torrent.files = entry.pendingFiles ?? []
     torrent.totalSize = sum(torrent.files, file => file.size)
-    torrent.peers = { connected: 26, found: 80 }
+    torrent.peers = { connected: 26, found: 80, seeders: 0 }
     selectVideo(torrent, 0)
     torrent.retention = 'keep'
     entry.resolveAt = undefined
@@ -440,7 +440,7 @@ function view(entry: Entry, position: number): Torrent {
   if (seeding && torrent.seeding.stopped) {
     torrent.state = 'complete'
     torrent.uploadSpeed = 0
-    torrent.peers = { connected: 0, found: torrent.peers.found }
+    torrent.peers = { connected: 0, found: torrent.peers.found, seeders: 0 }
   }
   else {
     torrent.uploadSpeed = jitter(uploadSpeed, position + 0.5)
@@ -659,7 +659,11 @@ function pause(req: DemoRequest) {
   entry.flow = undefined
   entry.torrent.state = 'paused'
   entry.torrent.pauseReason = 'user'
-  entry.torrent.peers = { connected: 0, found: entry.torrent.peers.found }
+  entry.torrent.peers = {
+    connected: 0,
+    found: entry.torrent.peers.found,
+    seeders: 0,
+  }
 
   return respond(entry)
 }
@@ -670,7 +674,11 @@ function resume(req: DemoRequest) {
 
   if (torrent.state === 'paused') {
     torrent.pauseReason = null
-    torrent.peers = { connected: 17, found: Math.max(torrent.peers.found, 40) }
+    torrent.peers = {
+      connected: 17,
+      found: Math.max(torrent.peers.found, 40),
+      seeders: 0,
+    }
 
     if (targetsOf(entry).length === 0)
       torrent.state = torrent.sizeOnDisk > 0 ? 'partial' : 'idle'

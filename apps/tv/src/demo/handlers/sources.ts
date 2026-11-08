@@ -269,7 +269,7 @@ function torrentView(torrent: DemoTorrent, titleId: string | null): Torrent {
     sizeOnDisk: 0,
     downloadSpeed: 0,
     uploadSpeed: 0,
-    peers: { connected: 0, found: 0 },
+    peers: { connected: 0, found: 0, seeders: 0 },
     seeding: {
       rule: null,
       effective: null,
