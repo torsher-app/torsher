@@ -1,3 +1,4 @@
+import { followErrorFacts } from './logDiagnostics.ts'
 import { withMaintenanceLease } from '../libraryMaintenance/admission.ts'
 import type {
   FeedCursor,
@@ -811,7 +812,11 @@ export async function feedPass(
     }
     catch (err) {
       logFor('catalog').warn(
-        { err, titleId: follow.titleId },
+        {
+          titleId: follow.titleId,
+          followId: follow.id,
+          ...followErrorFacts(err),
+        },
         'Follow feed decision failed',
       )
     }
@@ -873,7 +878,11 @@ export async function confirmUnsure(
     ),
   ).catch(err =>
     logFor('catalog').warn(
-      { err, titleId: follow.titleId },
+      {
+        titleId: follow.titleId,
+        followId: follow.id,
+        ...followErrorFacts(err),
+      },
       'Follow confirmed release decision failed',
     ),
   )

@@ -22,6 +22,8 @@ export class EngineError extends Error {
   readonly kind: EngineErrorKind
   readonly unavailable?: EngineUnavailableKind
   readonly engineCode?: string
+  /** Фактический HTTP status движка; отсутствует при сетевом отказе. */
+  readonly status?: number
 
   constructor(
     kind: EngineErrorKind,
@@ -29,6 +31,7 @@ export class EngineError extends Error {
     options?: ErrorOptions & {
       unavailable?: EngineUnavailableKind
       engineCode?: string
+      status?: number
     },
   ) {
     super(message, options)
@@ -36,6 +39,7 @@ export class EngineError extends Error {
     this.kind = kind
     this.unavailable = options?.unavailable
     this.engineCode = options?.engineCode
+    this.status = options?.status
   }
 }
 
@@ -210,19 +214,34 @@ async function errorOf(response: Response) {
 
   const message = body.message ?? `Engine responded ${response.status}`
 
-  if (response.status === 404)
-    return new EngineError('not_found', message, { engineCode: body.kind })
+  if (response.status === 404) {
+    return new EngineError('not_found', message, {
+      engineCode: body.kind,
+      status: response.status,
+    })
+  }
 
-  if (response.status === 504)
-    return new EngineError('timeout', message, { engineCode: body.kind })
+  if (response.status === 504) {
+    return new EngineError('timeout', message, {
+      engineCode: body.kind,
+      status: response.status,
+    })
+  }
 
   if (response.status === 409 && body.kind === 'torrent_moving')
-    return new EngineError('moving', message)
+    return new EngineError('moving', message, { status: response.status })
 
-  if (response.status >= 400 && response.status < 500)
-    return new EngineError('rejected', message, { engineCode: body.kind })
+  if (response.status >= 400 && response.status < 500) {
+    return new EngineError('rejected', message, {
+      engineCode: body.kind,
+      status: response.status,
+    })
+  }
 
-  return new EngineError('failed', message, { engineCode: body.kind })
+  return new EngineError('failed', message, {
+    engineCode: body.kind,
+    status: response.status,
+  })
 }
 
 interface EngineRequest {
@@ -283,8 +302,11 @@ async function engineJson<T>(
 
   const parsed = schema.safeParse(await response.json().catch(() => null))
 
-  if (!parsed.success)
-    throw new EngineError('failed', 'Unexpected engine response')
+  if (!parsed.success) {
+    throw new EngineError('failed', 'Unexpected engine response', {
+      status: response.status,
+    })
+  }
 
   return parsed.data
 }

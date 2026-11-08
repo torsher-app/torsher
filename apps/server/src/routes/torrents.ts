@@ -152,7 +152,7 @@ export const torrentRoutes: FastifyPluginAsyncZod = async (app) => {
     },
     async (request, reply) => {
       const { magnet, torrentFile } = request.body
-
+      let confirmed: Torrent | undefined
       try {
         const result = magnet
           ? await addMagnet(magnet, 'manual')
@@ -161,6 +161,7 @@ export const torrentRoutes: FastifyPluginAsyncZod = async (app) => {
               'manual',
             )
 
+        confirmed = result.torrent
         return reply
           .code(result.created ? 201 : 200)
           .send(await respond(result.torrent))
@@ -169,7 +170,7 @@ export const torrentRoutes: FastifyPluginAsyncZod = async (app) => {
         if (err instanceof InvalidMagnetError)
           return reply.code(400).send({ message: err.message })
 
-        return sendEngineError(reply, err)
+        return sendEngineError(reply, err, confirmed)
       }
     },
   )
@@ -227,7 +228,7 @@ export const torrentRoutes: FastifyPluginAsyncZod = async (app) => {
         })
       }
       catch (err) {
-        return sendEngineError(reply, err)
+        return sendEngineError(reply, err, found)
       }
 
       return { message: 'Torrent deleted' }
@@ -260,7 +261,7 @@ export const torrentRoutes: FastifyPluginAsyncZod = async (app) => {
         return await respond(await retryTorrent(found))
       }
       catch (err) {
-        return sendEngineError(reply, err)
+        return sendEngineError(reply, err, found)
       }
     },
   )
@@ -312,7 +313,7 @@ export const torrentRoutes: FastifyPluginAsyncZod = async (app) => {
         if (err instanceof NotReadyError)
           return reply.code(409).send({ message: err.message })
 
-        return sendEngineError(reply, err)
+        return sendEngineError(reply, err, found)
       }
     },
   )
@@ -354,7 +355,7 @@ export const torrentRoutes: FastifyPluginAsyncZod = async (app) => {
         if (err instanceof NotInEngineError)
           return reply.code(409).send({ message: err.message })
 
-        return sendEngineError(reply, err)
+        return sendEngineError(reply, err, found)
       }
     },
   )
@@ -395,7 +396,7 @@ export const torrentRoutes: FastifyPluginAsyncZod = async (app) => {
           if (err instanceof NotInEngineError)
             return reply.code(409).send({ message: err.message })
 
-          return sendEngineError(reply, err)
+          return sendEngineError(reply, err, found)
         }
       },
     )
@@ -433,7 +434,7 @@ export const torrentRoutes: FastifyPluginAsyncZod = async (app) => {
         return await respond(updated)
       }
       catch (err) {
-        return sendEngineError(reply, err)
+        return sendEngineError(reply, err, found)
       }
     },
   )
@@ -531,7 +532,7 @@ export const torrentRoutes: FastifyPluginAsyncZod = async (app) => {
         return await respond(await removeFromLibrary(found))
       }
       catch (err) {
-        return sendEngineError(reply, err)
+        return sendEngineError(reply, err, found)
       }
     },
   )
@@ -568,7 +569,7 @@ export const torrentRoutes: FastifyPluginAsyncZod = async (app) => {
         )
       }
       catch (err) {
-        return sendEngineError(reply, err)
+        return sendEngineError(reply, err, found)
       }
     },
   )

@@ -1,3 +1,4 @@
+import { followErrorFacts } from './logDiagnostics.ts'
 import { durableSqlite } from '../libraryMaintenance/durable.ts'
 import { withMaintenanceLease } from '../libraryMaintenance/admission.ts'
 import {
@@ -525,7 +526,7 @@ async function prepare(
       throw err
 
     logFor('catalog').warn(
-      { err, titleId: topic.titleId, torrentId: next.id },
+      { titleId: topic.titleId, torrentId: next.id, ...followErrorFacts(err) },
       'Topic refresh could not compare files on disk',
     )
 
@@ -922,7 +923,10 @@ async function refreshSafely(topicId: string, now: Date) {
     return await runRefresh(topicId, now)
   }
   catch (err) {
-    logFor('catalog').warn({ err, topicId }, 'Topic refresh failed')
+    logFor('catalog').warn(
+      { topicId, ...followErrorFacts(err) },
+      'Topic refresh failed',
+    )
 
     const topic = topicById(topicId)
 

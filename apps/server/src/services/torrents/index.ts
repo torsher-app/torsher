@@ -169,6 +169,22 @@ async function runResolveImpl(id: string) {
   if (!torrent?.magnet || torrent.status !== 'resolving')
     return
 
+  const startedAt = Date.now()
+  const logFailed = (
+    reason: 'timeout' | 'rejected' | 'failed' | 'hash_mismatch',
+  ) => {
+    logFor('storage').warn(
+      {
+        event: 'storage.metadata_failed',
+        origin: 'server',
+        torrentId: torrent.id,
+        infoHash: torrent.infoHash,
+        reason,
+        elapsedMs: Date.now() - startedAt,
+      },
+      'Torrent metadata failed',
+    )
+  }
   try {
     const bytes = await resolveMagnet(
       torrent.magnet,
@@ -177,7 +193,8 @@ async function runResolveImpl(id: string) {
     const details = await inspectTorrent(bytes)
 
     if (details.infoHash.toLowerCase() !== torrent.infoHash) {
-      update(id, { status: 'failed', error: 'rejected' })
+      if (update(id, { status: 'failed', error: 'rejected' }))
+        logFailed('hash_mismatch')
       return
     }
 
@@ -201,11 +218,10 @@ async function runResolveImpl(id: string) {
     if (!getTorrent(id))
       return
 
-    update(id, {
-      status: 'failed',
-      error:
-        err.kind === 'timeout' || err.kind === 'rejected' ? err.kind : 'failed',
-    })
+    const reason
+      = err.kind === 'timeout' || err.kind === 'rejected' ? err.kind : 'failed'
+    if (update(id, { status: 'failed', error: reason }))
+      logFailed(reason)
   }
 }
 function runResolve(...args: Parameters<typeof runResolveImpl>) {
@@ -501,6 +517,7 @@ async function addToEngineImpl(
   dir?: Torrent['downloadDir'],
   requiredBytes?: number,
   paused = false,
+  spaceKind: 'stream' | 'download' | 'unknown' = 'unknown',
 ) {
   const current = getTorrent(torrent.id)
   if (!current)
@@ -549,6 +566,7 @@ async function addToEngineImpl(
     torrent = update(torrent.id, { downloadDir: isolated })
     await ensureSpaceFor({
       torrent,
+      kind: spaceKind,
       bytes:
         requiredBytes
         ?? files.reduce(
@@ -598,7 +616,14 @@ async function downloadFilesImpl(
   if (origin === 'manual')
     protectTorrent(torrent.id)
 
-  torrent = await addToEngine(torrent, files, options.dir)
+  torrent = await addToEngine(
+    torrent,
+    files,
+    options.dir,
+    undefined,
+    false,
+    'download',
+  )
 
   if (torrent.pauseReason)
     await resumeTorrent(torrent.infoHash)
@@ -841,11 +866,22 @@ async function prepareStreamImpl(torrent: Torrent, fileIndex: number) {
   const size = torrent.files?.[fileIndex]?.size ?? 0
   const downloaded = await downloadedOf(torrent, fileIndex)
 
-  await ensureSpaceFor({ torrent, bytes: Math.max(0, size - downloaded) })
+  await ensureSpaceFor({
+    torrent,
+    kind: 'stream',
+    bytes: Math.max(0, size - downloaded),
+  })
 
   const selected = streamSelection(torrent, fileIndex)
 
-  torrent = await addToEngine(torrent, selected, undefined, size)
+  torrent = await addToEngine(
+    torrent,
+    selected,
+    undefined,
+    size,
+    false,
+    'stream',
+  )
 
   if (torrent.pauseReason)
     await resumeTorrent(torrent.infoHash)
@@ -894,6 +930,8 @@ export async function openFileStream(
         streamSelection(torrent, fileIndex),
         undefined,
         torrent.files?.[fileIndex]?.size ?? 0,
+        false,
+        'stream',
       )
     })
 

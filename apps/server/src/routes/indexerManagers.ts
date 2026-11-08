@@ -1,3 +1,4 @@
+import { logSourceCheckError } from '../services/sources/logDiagnostics.ts'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { messageResponse } from '../dto/common.ts'
 import {
@@ -70,6 +71,7 @@ export const indexerManagerRoutes: FastifyPluginAsyncZod = async (app) => {
         return toSyncResponse(result)
       }
       catch (err) {
+        logSourceCheckError(err, { operation: 'manager_import' })
         return sendSourceError(reply, err, request.body.url)
       }
     },
@@ -102,6 +104,10 @@ export const indexerManagerRoutes: FastifyPluginAsyncZod = async (app) => {
         return toSyncResponse(result)
       }
       catch (err) {
+        logSourceCheckError(err, {
+          operation: 'manager_sync',
+          managerId: request.params.id,
+        })
         return sendSourceError(reply, err)
       }
     },

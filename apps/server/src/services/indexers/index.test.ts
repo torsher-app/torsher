@@ -461,9 +461,13 @@ describe('checkIndexers', () => {
       expect.objectContaining({
         level: 40,
         source: 'sources',
-        msg: 'Indexer check failed',
+        msg: 'Source check failed',
+        event: 'sources.check_failed',
+        origin: 'server',
+        operation: 'indexer_check',
+        status: 401,
         indexerId: byName.get('Indexer B')?.id,
-        kind: 'auth',
+        errorKind: 'auth',
       }),
     ])
     expect(byName.get('Indexer B')?.checkStatus).toBe('auth')

@@ -1,3 +1,4 @@
+import { logSourceCheckError } from '../services/sources/logDiagnostics.ts'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { messageResponse } from '../dto/common.ts'
 import {
@@ -62,6 +63,7 @@ export const indexerRoutes: FastifyPluginAsyncZod = async (app) => {
         return reply.code(201).send(toIndexerResponse(created))
       }
       catch (err) {
+        logSourceCheckError(err, { operation: 'indexer_add' })
         return sendSourceError(reply, err, request.body.url)
       }
     },

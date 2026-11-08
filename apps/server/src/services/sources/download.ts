@@ -180,7 +180,11 @@ export async function startDownload(
   if (!isCurrent())
     return undefined
 
-  await ensureSpaceFor({ torrent: { ...torrent, retention: 'keep' }, bytes })
+  await ensureSpaceFor({
+    torrent: { ...torrent, retention: 'keep' },
+    kind: 'download',
+    bytes,
+  })
 
   if (!isCurrent())
     return undefined
@@ -380,7 +384,11 @@ export async function keepTitle(titleId: string) {
     )
   }, 0)
 
-  await ensureSpaceFor({ torrent: { ...rows[0]!, retention: 'keep' }, bytes })
+  await ensureSpaceFor({
+    torrent: { ...rows[0]!, retention: 'keep' },
+    kind: 'download',
+    bytes,
+  })
 
   for (const row of rows) await setRetention(row, 'keep')
 

@@ -11,6 +11,7 @@ function fakes() {
   const request = {
     method: 'GET',
     url: '/api/stream/1/0',
+    routeOptions: { url: '/api/stream/:torrentId/:fileIndex' },
     log,
   } as unknown as FastifyRequest
   const reply = { statusCode: 206, log } as unknown as FastifyReply
@@ -28,7 +29,11 @@ describe('ошибки потока ответа', () => {
     new RequestLogController().streamError(error, request, reply)
 
     expect(log.debug).toHaveBeenCalledWith(
-      { method: 'GET', url: '/api/stream/1/0', statusCode: 206 },
+      {
+        method: 'GET',
+        url: '/api/stream/:torrentId/:fileIndex',
+        statusCode: 206,
+      },
       'Stream closed by client',
     )
     expect(log.info).not.toHaveBeenCalled()

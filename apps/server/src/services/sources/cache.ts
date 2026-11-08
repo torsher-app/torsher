@@ -1,4 +1,5 @@
 import type { SearchOutcome } from './search.ts'
+import { logSearchCacheHit } from './logDiagnostics.ts'
 
 // Поиск стоит секунд и запросов к индексаторам: результат держим в памяти.
 // После перезапуска сервера поиск просто повторится
@@ -30,6 +31,7 @@ export function cachedSearch(
     && !options.refresh
     && now - found.updatedAt.getTime() < SEARCH_TTL_MS
   ) {
+    logSearchCacheHit(found.outcome)
     return Promise.resolve(found)
   }
 

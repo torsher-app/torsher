@@ -1,6 +1,27 @@
 import jwt from 'jsonwebtoken'
 import { config } from '../config.ts'
 
+const tokenReasons = new WeakMap<Error, 'purpose' | 'invalid'>()
+function invalidToken(
+  message: string,
+  reason: 'purpose' | 'invalid' = 'invalid',
+) {
+  const error = new TypeError(message)
+  tokenReasons.set(error, reason)
+  return error
+}
+export function tokenRejectionReason(
+  error: unknown,
+): 'expired' | 'purpose' | 'invalid' | 'unknown' {
+  if (error instanceof jwt.TokenExpiredError)
+    return 'expired'
+  if (error instanceof jwt.JsonWebTokenError)
+    return 'invalid'
+  return error instanceof Error
+    ? (tokenReasons.get(error) ?? 'unknown')
+    : 'unknown'
+}
+
 /**
  * Время жизни задаётся здесь и проверяется при верификации: токен,
  * подписанный на другой срок, отвергается. Это не даёт использовать
@@ -63,7 +84,7 @@ export function verifyTokenFor(
   })
 
   if (typeof payload !== 'object' || payload === null)
-    throw new TypeError('Invalid token payload')
+    throw invalidToken('Invalid token payload')
 
   const { userId, purpose, sv, profileId, iat, exp } = payload as Record<
     string,
@@ -79,14 +100,14 @@ export function verifyTokenFor(
     || typeof iat !== 'number'
     || typeof exp !== 'number'
   ) {
-    throw new TypeError('Invalid token claims')
+    throw invalidToken('Invalid token claims')
   }
 
   if (purpose !== expectedPurpose)
-    throw new TypeError('Invalid token purpose')
+    throw invalidToken('Invalid token purpose', 'purpose')
 
   if (Math.abs(exp - iat - TOKEN_TTL[expectedPurpose]) > 5)
-    throw new TypeError('Invalid token TTL')
+    throw invalidToken('Invalid token TTL')
 
   // Токены, выданные до появления версии сессий, считаются версией 0:
   // обновление сервера никого не разлогинивает

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { hashPassword, verifyPassword } from '../../utils/password.ts'
 import { normalizeUsername } from '../../utils/username.ts'
-import { logFor } from '../logs/index.ts'
+import { logAuthRateLimited, logSigninFailed } from '../auth/logDiagnostics.ts'
 import { findOwner, signinLimiter } from './index.ts'
 
 let placeholderHash: Promise<string> | undefined
@@ -13,6 +13,7 @@ export async function verifyOwnerCredentials(
 ) {
   const key = `signin:${ip}`
   if (signinLimiter.isLimited(key) || !signinLimiter.hit(key)) {
+    logAuthRateLimited(ip, 'signin')
     return {
       ok: false as const,
       status: 429 as const,
@@ -31,7 +32,7 @@ export async function verifyOwnerCredentials(
     || !valid
     || normalizeUsername(user.username) !== normalizeUsername(input.username)
   ) {
-    logFor('auth').warn({ ip }, 'Sign-in failed')
+    logSigninFailed(ip, user ? 'invalid_credentials' : 'no_user')
     return {
       ok: false as const,
       status: 400 as const,
@@ -40,6 +41,7 @@ export async function verifyOwnerCredentials(
   }
   signinLimiter.reset(key)
   if (user.isBanned || user.isDeleted) {
+    logSigninFailed(ip, 'unavailable')
     return {
       ok: false as const,
       status: 403 as const,
@@ -47,6 +49,7 @@ export async function verifyOwnerCredentials(
     }
   }
   if (!user.isActive) {
+    logSigninFailed(ip, 'inactive')
     return {
       ok: false as const,
       status: 403 as const,

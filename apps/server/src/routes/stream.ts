@@ -52,6 +52,7 @@ export const streamRoutes: FastifyPluginAsyncZod = async (app) => {
       schema: {
         // Бинарный ответ: в OpenAPI и generated-клиенте роут не нужен
         hide: true,
+        operationId: 'streamTorrentFile',
         params: streamParams,
         querystring: streamQuery,
       },
@@ -118,7 +119,7 @@ export const streamRoutes: FastifyPluginAsyncZod = async (app) => {
 
         if (failure)
           logRejection(request, failure.reason, fields, failure.fields)
-        return sendEngineError(reply, err)
+        return sendEngineError(reply, err, torrent)
       }
 
       touchTorrent(torrent.id)

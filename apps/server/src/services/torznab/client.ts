@@ -27,16 +27,19 @@ export class SourceError extends Error {
   readonly kind: SourceErrorKind
   /** Когда индексатор просит повторить: `Retry-After` ответа 429 или 503 */
   readonly retryAt?: Date
+  /** Только фактически полученный HTTP status; сеть не выдумывает статус. */
+  readonly status?: number
 
   constructor(
     kind: SourceErrorKind,
     message: string,
-    options?: ErrorOptions & { retryAt?: Date },
+    options?: ErrorOptions & { retryAt?: Date, status?: number },
   ) {
     super(message, options)
     this.name = 'SourceError'
     this.kind = kind
     this.retryAt = options?.retryAt
+    this.status = options?.status
   }
 }
 
@@ -96,12 +99,15 @@ export async function readBody(res: Response) {
   }
   catch (err) {
     if (err instanceof BodyTooLargeError) {
-      throw new SourceError('bad_response', 'Source response is too large')
+      throw new SourceError('bad_response', 'Source response is too large', {
+        status: res.status,
+      })
     }
 
     throw new SourceError(
       isTimeout(err) ? 'timeout' : 'unreachable',
       'Source response was interrupted',
+      { status: res.status },
     )
   }
 }
@@ -141,8 +147,11 @@ const AUTH_ERROR_CODES = new Set(['100', '101', '102'])
 
 /** Разбирает ответ Torznab: ошибка в теле приходит и со статусом 200 */
 export async function readTorznabXml(res: Response) {
-  if (res.status === 401 || res.status === 403)
-    throw new SourceError('auth', 'Source rejected the credentials')
+  if (res.status === 401 || res.status === 403) {
+    throw new SourceError('auth', 'Source rejected the credentials', {
+      status: res.status,
+    })
+  }
 
   // Лимит запросов (у Prowlarr — `QueryLimit` и «disabled till»): тело
   // бывает и XML-ошибкой, срок важнее
@@ -151,6 +160,7 @@ export async function readTorznabXml(res: Response) {
 
     throw new SourceError('remote', `Source responded with ${res.status}`, {
       retryAt: retryAtOf(res),
+      status: res.status,
     })
   }
 
@@ -166,6 +176,7 @@ export async function readTorznabXml(res: Response) {
       res.ok
         ? 'Response is not Torznab XML'
         : `Source responded with ${res.status}`,
+      { status: res.status },
     )
   }
 
@@ -177,11 +188,15 @@ export async function readTorznabXml(res: Response) {
     throw new SourceError(
       AUTH_ERROR_CODES.has(code) ? 'auth' : 'remote',
       `Torznab request failed (${AUTH_ERROR_CODES.has(code) ? 'auth' : 'remote'})`,
+      { status: res.status },
     )
   }
 
-  if (!res.ok)
-    throw new SourceError('remote', `Source responded with ${res.status}`)
+  if (!res.ok) {
+    throw new SourceError('remote', `Source responded with ${res.status}`, {
+      status: res.status,
+    })
+  }
 
   return xml
 }
@@ -202,6 +217,7 @@ export async function fetchCaps(
     throw new SourceError(
       'bad_response',
       'Response is not Torznab capabilities',
+      { status: res.status },
     )
   }
 

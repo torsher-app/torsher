@@ -1,3 +1,4 @@
+import { logFor } from '../logs/index.ts'
 import type { IndexerFailure } from '../sources/search.ts'
 import type { SearchableIndexer } from './index.ts'
 import { eq, inArray } from 'drizzle-orm'
@@ -87,14 +88,6 @@ export function recordBackgroundOutcome(
     if (failure?.kind === 'unsupported')
       continue
 
-    if (!failure) {
-      db.update(indexers)
-        .set({ backoffUntil: null, backoffSince: null, failureCount: 0 })
-        .where(eq(indexers.id, indexer.id))
-        .run()
-      continue
-    }
-
     const row = db
       .select({
         failureCount: indexers.failureCount,
@@ -103,15 +96,47 @@ export function recordBackgroundOutcome(
       .from(indexers)
       .where(eq(indexers.id, indexer.id))
       .get()
+    if (!failure) {
+      db.update(indexers)
+        .set({ backoffUntil: null, backoffSince: null, failureCount: 0 })
+        .where(eq(indexers.id, indexer.id))
+        .run()
+      if (row && row.failureCount > 0) {
+        logFor('sources').info(
+          {
+            event: 'sources.backoff_returned',
+            origin: 'server',
+            indexerId: indexer.id,
+            failures: row.failureCount,
+          },
+          'Indexer backoff cleared',
+        )
+      }
+      continue
+    }
+
     const count = (row?.failureCount ?? 0) + 1
+    const until = backoffUntil(count, now, failure.retryAt)
 
     db.update(indexers)
       .set({
         failureCount: count,
-        backoffUntil: backoffUntil(count, now, failure.retryAt),
+        backoffUntil: until,
         backoffSince: row?.backoffSince ?? now,
       })
       .where(eq(indexers.id, indexer.id))
       .run()
+    if (row) {
+      logFor('sources').warn(
+        {
+          event: 'sources.backoff_paused',
+          origin: 'server',
+          indexerId: indexer.id,
+          failures: count,
+          until: until.toISOString(),
+        },
+        'Indexer backoff started',
+      )
+    }
   }
 }

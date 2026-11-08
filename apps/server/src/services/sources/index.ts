@@ -164,6 +164,7 @@ async function viewerSearch(target: SearchTarget) {
   const asked = available.length > 0 ? available : all
   const outcome = await searchReleases(target, asked, {
     seriesYearQuery: true,
+    skipped: all.length - asked.length,
   })
 
   recordBackgroundOutcome(asked, outcome.failed)
@@ -211,7 +212,9 @@ export async function getTitleSources(
   const search = await cachedSearch(
     searchKey,
     () =>
-      asViewerSearch(() => viewerSearch({ identity, aliases, season, query })),
+      asViewerSearch(() =>
+        viewerSearch({ titleId, identity, aliases, season, query }),
+      ),
     { refresh: request.refresh },
   )
 

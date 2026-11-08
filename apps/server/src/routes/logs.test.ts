@@ -357,7 +357,7 @@ describe('запросы в журнале', () => {
 
     expect(completed.context).toMatchObject({
       method: 'GET',
-      url: '/api/about?token=[redacted]',
+      url: '/api/about',
       statusCode: 200,
     })
     expect(JSON.stringify(entries)).not.toContain('abc123')

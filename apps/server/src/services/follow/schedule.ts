@@ -4,6 +4,7 @@ import {
   MaintenanceBusyError,
 } from '../libraryMaintenance/admission.ts'
 import { logFor } from '../logs/index.ts'
+import { followErrorFacts, followFailureIdentity } from './logDiagnostics.ts'
 import { liveTorrents } from '../torrents/index.ts'
 import { purgeBlocklist } from './blocklist.ts'
 import { feedPass } from './feed.ts'
@@ -106,7 +107,17 @@ export async function followAutomation(now = new Date()) {
 export function followTick(now = new Date()) {
   running ??= refreshFollowSchedules(now)
     .then(() => followAutomation(now))
-    .catch(err => logFor('catalog').warn({ err }, 'Follow tick failed'))
+    .catch(err =>
+      logFor('catalog').warn(
+        {
+          event: 'follow.tick_failed',
+          origin: 'server',
+          ...followFailureIdentity(err),
+          ...followErrorFacts(err),
+        },
+        'Follow tick failed',
+      ),
+    )
     .finally(() => {
       running = undefined
     })

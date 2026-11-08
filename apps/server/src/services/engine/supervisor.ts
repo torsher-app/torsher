@@ -1,4 +1,5 @@
 import { logStorageStatus } from '../logs/index.ts'
+import { parseEngineDiagnostic } from './logDiagnostics.ts'
 import { engineMaintenanceToken } from './maintenanceAuth.ts'
 import type { FastifyBaseLogger } from 'fastify'
 import type { ChildProcess } from 'node:child_process'
@@ -58,7 +59,15 @@ const RUNTIME_TAIL_LINES = 500
 const CRASH_TAIL_LINES = 50
 const ENGINE_LEVELS = new Set(['DEBUG', 'INFO', 'WARN', 'ERROR'])
 // Свои поля записи журнала: поле движка с таким именем их бы перезаписало
-const RESERVED_FIELDS = new Set(['time', 'level', 'msg', 'source', 'details'])
+const RESERVED_FIELDS = new Set([
+  'time',
+  'level',
+  'msg',
+  'source',
+  'details',
+  'event',
+  'origin',
+])
 const DETAIL_FIELDS = ['stack', 'goroutines']
 const LOGFMT_PAIR = /([^\s="]+)=("(?:[^"\\]|\\.)*"|\S*)/g
 
@@ -87,7 +96,16 @@ export function parseEngineLine(line: string) {
   if (!level || !ENGINE_LEVELS.has(level))
     return undefined
 
-  const fields: Record<string, string> = {}
+  const diagnostic = parseEngineDiagnostic(pairs)
+  if (diagnostic) {
+    return {
+      level: level.toLowerCase() as 'debug' | 'info' | 'warn' | 'error',
+      ...diagnostic,
+      details: undefined,
+    }
+  }
+
+  const fields: Record<string, string | number | boolean> = {}
   const details: string[] = []
 
   for (const [key, value] of pairs) {

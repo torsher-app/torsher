@@ -1,3 +1,4 @@
+import { logSearchCacheHit } from '../sources/logDiagnostics.ts'
 import { withMaintenanceLease } from '../libraryMaintenance/admission.ts'
 import { suppressedEpisodes } from '../libraryMaintenance/suppression.ts'
 import type { Follow } from '../../db/schema.ts'
@@ -11,11 +12,12 @@ import {
   recordBackgroundOutcome,
 } from '../indexers/backoff.ts'
 import { listSearchableIndexers } from '../indexers/index.ts'
-import { logFor } from '../logs/index.ts'
+import { logFor, throttleLog } from '../logs/index.ts'
+import { followErrorFacts, followPlanFacts } from './logDiagnostics.ts'
 import { syncTitleAliases } from '../sources/aliases.ts'
 import { cachedSearch, peekSearch, SEARCH_TTL_MS } from '../sources/cache.ts'
 import { isViewerSearching, searchReleases } from '../sources/search.ts'
-import { getTitleIdentity } from '../tmdb/index.ts'
+import { getTitleIdentity, TmdbError } from '../tmdb/index.ts'
 import { recordHistory } from './history.ts'
 import { withPendingReleases } from './feed.ts'
 import { followById } from './index.ts'
@@ -288,7 +290,7 @@ export function followSearchStarted(now: Date) {
 function setSchedule(follow: Follow, values: Partial<Follow>) {
   // Изменение предпочтений обнуляет lastSearchAt. Старый проход после await
   // не должен вернуть отменённое расписание поверх этого сигнала переоценки.
-  getDb()
+  return getDb()
     .update(follows)
     .set(values)
     .where(
@@ -300,6 +302,31 @@ function setSchedule(follow: Follow, values: Partial<Follow>) {
       ),
     )
     .run()
+}
+
+function postpone(
+  follow: Follow,
+  until: Date,
+  reason: 'title_missing' | 'indexers_paused' | 'no_indexers' | 'not_released',
+) {
+  const changed = setSchedule(follow, { nextSearchAt: until }).changes
+  if (
+    changed
+    && follow.nextSearchAt?.getTime() !== until.getTime()
+    && throttleLog(`follow-postponed:${follow.id}:${reason}`, 10 * MINUTE_MS)
+  ) {
+    logFor('catalog').info(
+      {
+        event: 'follow.postponed',
+        origin: 'server',
+        titleId: follow.titleId,
+        followId: follow.id,
+        reason,
+        until: until.toISOString(),
+      },
+      'Follow search postponed',
+    )
+  }
 }
 
 /** Состояние слежения для планировщика: пора ли искать и когда смотреть снова */
@@ -314,12 +341,15 @@ async function evaluate(follow: Follow, now: Date) {
       WANTED_STATES.has(item.state)
       && !suppressed.has(`${item.season}:${item.episode}`),
   )
+  const upgrading = await upgradeNeeded(follow, states, now)
+  const availability = await movieAvailability(follow, now)
+  const upcoming = states.find(item => item.state === 'upcoming')?.airDate
   const plan = searchPlan({
     kind: follow.kind,
     wanted: wanted.map(item => ({ airDate: item.airDate })),
-    upgrading: await upgradeNeeded(follow, states, now),
-    availableFrom: (await movieAvailability(follow, now))?.from,
-    upcomingAirDate: states.find(item => item.state === 'upcoming')?.airDate,
+    upgrading,
+    availableFrom: availability?.from,
+    upcomingAirDate: upcoming,
     topics:
       follow.kind === 'series'
         ? getDb()
@@ -345,7 +375,13 @@ async function evaluate(follow: Follow, now: Date) {
     now,
   })
 
-  return { ...plan, states, wanted }
+  const notReleased
+    = (availability?.from && availability.from > now)
+      || (!wanted.length
+        && !upgrading
+        && upcoming
+        && airStart(upcoming) > now.getTime())
+  return { ...plan, states, wanted, notReleased: !!notReleased }
 }
 
 function airedToday(states: EpisodeWithState[], now: Date) {
@@ -366,7 +402,9 @@ export async function followReleases(
   now: Date,
   refresh = false,
 ): Promise<
-  { outcome: SearchOutcome, network: boolean } | { nextAt?: Date } | undefined
+  | { outcome: SearchOutcome, network: boolean }
+  | { nextAt?: Date, paused?: boolean }
+  | undefined
 > {
   const viewer = peekSearch(`${follow.titleId}:all`)
 
@@ -375,6 +413,7 @@ export async function followReleases(
     && !refresh
     && now.getTime() - viewer.updatedAt.getTime() < SEARCH_TTL_MS
   ) {
+    logSearchCacheHit(viewer.outcome)
     return { outcome: viewer.outcome, network: false }
   }
 
@@ -386,16 +425,15 @@ export async function followReleases(
     && !refresh
     && now.getTime() - own.updatedAt.getTime() < SEARCH_TTL_MS
   ) {
+    logSearchCacheHit(own.outcome)
     return { outcome: own.outcome, network: false }
   }
 
-  const { available, nextAt } = availableForBackground(
-    listSearchableIndexers(),
-    now,
-  )
+  const all = listSearchableIndexers()
+  const { available, nextAt } = availableForBackground(all, now)
 
   if (!available.length)
-    return { nextAt }
+    return { nextAt, paused: all.length > 0 }
 
   const identity = await getTitleIdentity(follow.titleId)
 
@@ -406,11 +444,16 @@ export async function followReleases(
   const search = await cachedSearch(
     key,
     async () => {
-      const outcome = await searchReleases({ identity, aliases }, available, {
-        deadlineMs: SEARCH_DEADLINE_MS,
-        concurrency: SEARCH_CONCURRENCY,
-        textQueries: TEXT_QUERIES,
-      })
+      const outcome = await searchReleases(
+        { titleId: follow.titleId, identity, aliases },
+        available,
+        {
+          skipped: all.length - available.length,
+          deadlineMs: SEARCH_DEADLINE_MS,
+          concurrency: SEARCH_CONCURRENCY,
+          textQueries: TEXT_QUERIES,
+        },
+      )
 
       recordBackgroundOutcome(available, outcome.failed, now)
       return outcome
@@ -434,15 +477,17 @@ async function runSearchImpl(due: DueSearch, now: Date) {
   // поиск, а остальные слежения ждали бы
   if (!found) {
     state.requested.delete(follow.id)
-    setSchedule(follow, { nextSearchAt: new Date(now.getTime() + HOUR_MS) })
+    postpone(follow, new Date(now.getTime() + HOUR_MS), 'title_missing')
     return false
   }
 
   if (!('outcome' in found)) {
     // Все индексаторы в бэкоффе: ждём первый освободившийся
-    setSchedule(follow, {
-      nextSearchAt: found.nextAt ?? new Date(now.getTime() + HOUR_MS),
-    })
+    postpone(
+      follow,
+      found.nextAt ?? new Date(now.getTime() + HOUR_MS),
+      found.paused ? 'indexers_paused' : 'no_indexers',
+    )
     return false
   }
 
@@ -471,11 +516,34 @@ async function runSearchImpl(due: DueSearch, now: Date) {
   const searched = { ...follow, lastSearchAt: now }
 
   setSchedule(follow, { lastSearchAt: now })
+  const summaries: Array<
+    { season: number } & ReturnType<typeof followPlanFacts>
+  > = []
   await decideFollow(
     searched,
     await withPendingReleases(follow, outcome.releases),
     now,
+    (season, plan, episodes) =>
+      summaries.push({ season, ...followPlanFacts(plan, episodes) }),
   )
+  for (const summary of summaries) {
+    logFor('catalog').info(
+      {
+        event: 'follow.search',
+        origin: 'server',
+        titleId: follow.titleId,
+        followId: follow.id,
+        modeAtSearchStart: follow.mode,
+        ...summary,
+        found: outcome.releases.length,
+        indexers: outcome.indexerCount,
+        failed: outcome.failed.length,
+        cached: !found.network,
+        network: found.network,
+      },
+      `Follow search: ${summary.toGrab} planned actions, ${summary.pending} pending, ${summary.rejected} rejected`,
+    )
+  }
 
   const { next } = await evaluate(searched, now)
 
@@ -505,7 +573,9 @@ export async function searchPass(active: Follow[], now = new Date()) {
     const plan = await evaluate(follow, now)
 
     if (!plan.due && !request) {
-      setSchedule(follow, { nextSearchAt: plan.next })
+      if (plan.notReleased)
+        postpone(follow, plan.next, 'not_released')
+      else setSchedule(follow, { nextSearchAt: plan.next })
       continue
     }
 
@@ -521,13 +591,28 @@ export async function searchPass(active: Follow[], now = new Date()) {
     return await runSearch(first, now)
   }
   catch (err) {
-    logFor('catalog').warn(
-      { err, titleId: first.follow.titleId },
-      'Follow search failed',
-    )
-    setSchedule(first.follow, {
-      nextSearchAt: new Date(now.getTime() + HOUR_MS),
-    })
+    if (err instanceof TmdbError && err.kind === 'not_found') {
+      postpone(
+        first.follow,
+        new Date(now.getTime() + HOUR_MS),
+        'title_missing',
+      )
+    }
+    else {
+      logFor('catalog').warn(
+        {
+          event: 'follow.search_failed',
+          origin: 'server',
+          titleId: first.follow.titleId,
+          followId: first.follow.id,
+          ...followErrorFacts(err),
+        },
+        'Follow search failed',
+      )
+      setSchedule(first.follow, {
+        nextSearchAt: new Date(now.getTime() + HOUR_MS),
+      })
+    }
     return false
   }
 }
