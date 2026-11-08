@@ -177,7 +177,7 @@ function isTile(item: RowItem): item is Tile {
 // Hero серии — её сериал, раздачи без тайтла — подсказка, если она есть
 function heroCardOf(
   item: Exclude<RowItem, ReleaseItem | FileItem | Tile>,
-): Card {
+): Card | ContinueItem {
   return isEpisode(item)
     ? {
         id: item.titleId,
@@ -516,7 +516,12 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main ref="screen" class="home" @wheel.passive="onScreenWheel">
+  <main
+    ref="screen"
+    class="home"
+    :class="{ 'home--compact': mode === 'all' }"
+    @wheel.passive="onScreenWheel"
+  >
     <BackdropLayer :src="hero?.details?.backdrop" />
     <span v-if="serverAbout?.devStand" class="home__dev">DEV · {{ serverAbout.devStand.name }}</span>
 
@@ -525,6 +530,7 @@ onBeforeUnmount(() => {
         v-if="hero"
         :hero="hero"
         :resume="heroResume"
+        :compact="mode === 'all'"
         :release="heroRelease"
       />
     </div>
@@ -700,6 +706,15 @@ onBeforeUnmount(() => {
   right: 0;
   left: 0;
   transition: transform var(--motion-base) var(--motion-easing);
+}
+
+.home--compact .home__hero {
+  top: calc(var(--u) * 72);
+}
+
+.home--compact .home__rows,
+.home--compact .home__state {
+  top: calc(var(--u) * 420);
 }
 
 /* Веб: окно рядов под hero прокручивается нативно */

@@ -1,4 +1,4 @@
-import type { Card, TitleDetails } from '@torsher/api-client'
+import type { Card, ContinueCard, TitleDetails } from '@torsher/api-client'
 import type { FocusVia } from '../focus/index.ts'
 import { onScopeDispose, shallowRef } from 'vue'
 import { api } from '../api.ts'
@@ -12,7 +12,7 @@ const DETAILS_CACHE_LIMIT = 100
 const detailsCache = createPromiseCache<TitleDetails>(DETAILS_CACHE_LIMIT)
 
 export interface Hero {
-  card: Card
+  card: Card | ContinueCard
   // Нет, если детали не загрузились: hero показывает то, что есть в карточке
   details?: TitleDetails
 }
@@ -21,9 +21,9 @@ export interface Hero {
 export function useHero() {
   const language = useCatalogLanguage()
   const hero = shallowRef<Hero>()
-  let latest: Card | undefined
+  let latest: Card | ContinueCard | undefined
 
-  async function apply(card: Card) {
+  async function apply(card: Card | ContinueCard) {
     // Тот же тайтл из другого ряда — другая карточка: у «Продолжить» своя подсказка
     if (hero.value?.card === card)
       return
@@ -58,7 +58,8 @@ export function useHero() {
 
   return {
     hero,
-    show: (card: Card, via: FocusVia) => scheduler.schedule(card, via),
+    show: (card: Card | ContinueCard, via: FocusVia) =>
+      scheduler.schedule(card, via),
     clear,
   }
 }
