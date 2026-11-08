@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.6.0 (2026-11-08)
+
+### Features
+
+- **diagnostics:** trace subsystem failures by id (#186) ([d3345c8](https://github.com/torsher-app/torsher/commit/d3345c8ae55a562b0cb52854aa73bff160cbafb6))
+- **home:** prioritize personal viewing and compact hero (#184) ([be2e7be](https://github.com/torsher-app/torsher/commit/be2e7be95282da02ba812bfdc5b62b7b62246ea0))
+- **automation:** add topic polling, source cookies and age limits (#185) ([ef6937a](https://github.com/torsher-app/torsher/commit/ef6937a4076e0bf619ad294568bcb61e9585ec91))
+- **follow:** add searchable studio selection (#183) ([6bf3b68](https://github.com/torsher-app/torsher/commit/6bf3b688a3a9c455cb705d885b3fd24a85a011dc))
+
+### Bug Fixes
+
+- **playback:** prevent torrent storage crash loops (#179) ([2d29bad](https://github.com/torsher-app/torsher/commit/2d29bad702eb4d9550ca814333b1f0ebd56e9db7))
+- **tv:** distinguish peer discovery from playback failures (#182) ([d78cf38](https://github.com/torsher-app/torsher/commit/d78cf380c6bc192a9f8373ee72031b526a5a3647))
+- **tv:** align content screens to the safe area (#181) ([7136ce4](https://github.com/torsher-app/torsher/commit/7136ce4f1f0a0fa8676d04b5478c04189d0ecefd))
+- **tv:** remove track panel hint (#180) ([97f37d4](https://github.com/torsher-app/torsher/commit/97f37d424af38e49ff7632bc3c45906d2dcf887b))
+
 ## 1.5.2 (2026-11-08)
 
 ### Bug Fixes
