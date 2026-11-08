@@ -1,3 +1,8 @@
+import { logFor } from '../services/logs/index.ts'
+import {
+  logAuthRateLimited,
+  logPairingRejected,
+} from '../services/auth/logDiagnostics.ts'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import type { Device, Profile } from '../db/schema.ts'
 import { DEVICE_TOKEN_COOKIE, deviceCookieOptions } from '../config.ts'
@@ -86,20 +91,32 @@ export const deviceRoutes: FastifyPluginAsyncZod = async (app) => {
       },
     },
     async (request, reply) => {
-      if (
-        !pairingStartLimiter.hit(request.ip)
-        || countActivePairings() >= MAX_ACTIVE_PAIRINGS
-      ) {
+      if (!pairingStartLimiter.hit(request.ip)) {
+        logAuthRateLimited(request.ip, 'start')
+        return reply.code(429).send(tooMany)
+      }
+      if (countActivePairings() >= MAX_ACTIVE_PAIRINGS) {
+        logAuthRateLimited(request.ip, 'active')
         return reply.code(429).send(tooMany)
       }
 
       const userAgent = request.headers['user-agent']
+      const type = request.body.type ?? deviceTypeOf(userAgent)
       const started = startPairing({
-        type: request.body.type ?? deviceTypeOf(userAgent),
+        type,
         ip: request.ip,
         userAgent,
       })
 
+      logFor('auth').info(
+        {
+          event: 'auth.pairing_started',
+          origin: 'server',
+          ip: request.ip,
+          type,
+        },
+        'Device pairing started',
+      )
       return reply.code(201).send({
         secret: started.secret,
         code: started.code,
@@ -126,14 +143,20 @@ export const deviceRoutes: FastifyPluginAsyncZod = async (app) => {
       },
     },
     async (request, reply) => {
-      if (!pairingPollLimiter.hit(request.ip))
+      if (!pairingPollLimiter.hit(request.ip)) {
+        logAuthRateLimited(request.ip, 'poll')
         return reply.code(429).send(tooMany)
+      }
 
       const result = pollPairing(request.params.secret)
 
-      if (!result)
+      if (!result) {
+        logPairingRejected(request.ip, 'invalid', 'poll')
         return reply.code(404).send({ message: 'Pairing not found' })
+      }
 
+      if (result.status === 'expired')
+        logPairingRejected(request.ip, 'expired', 'poll')
       if (result.status !== 'approved') {
         return {
           status: result.status,
@@ -142,6 +165,15 @@ export const deviceRoutes: FastifyPluginAsyncZod = async (app) => {
         }
       }
 
+      logFor('auth').info(
+        {
+          event: 'auth.device_paired',
+          origin: 'server',
+          deviceId: result.device.id,
+          type: result.device.type,
+        },
+        'Device paired',
+      )
       reply.setCookie(DEVICE_TOKEN_COOKIE, result.token, deviceCookieOptions)
 
       return {
@@ -187,8 +219,10 @@ export const deviceRoutes: FastifyPluginAsyncZod = async (app) => {
         return confirmed
       }
       catch (err) {
-        if (err instanceof PairingError)
+        if (err instanceof PairingError) {
+          logPairingRejected(request.ip, err.kind, 'confirm')
           return reply.code(422).send({ message: err.message, kind: err.kind })
+        }
 
         throw err
       }

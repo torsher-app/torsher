@@ -1,3 +1,5 @@
+import { logFor, throttleLog } from '../services/logs/index.ts'
+import { engineRequestOperations } from '../services/storage/logDiagnostics.ts'
 import type { FastifyReply } from 'fastify'
 import type { Torrent } from '../db/schema.ts'
 import type { EngineTorrentState } from '../services/engine/index.ts'
@@ -17,13 +19,46 @@ import {
  * отклонил запрос — 400, не дождались — 504, раздача переезжает в другую
  * папку — 409, ответил ошибкой — 502.
  */
-export function sendEngineError(reply: FastifyReply, err: unknown) {
+export function sendEngineError(
+  reply: FastifyReply,
+  err: unknown,
+  torrent?: Pick<Torrent, 'id' | 'infoHash'>,
+) {
   if (err instanceof InsufficientStorageError) {
     return reply.code(507).send({ message: err.message, ...err.shortage })
   }
 
   if (!(err instanceof EngineError))
     throw err
+
+  const schema = reply.request.routeOptions.schema as
+    { operationId?: unknown } | undefined
+  const operation
+    = engineRequestOperations.safeParse(schema?.operationId).data ?? 'unknown'
+  if (
+    throttleLog(
+      `engine-request:${operation}:${err.kind}:${torrent?.id ?? ''}`,
+      60_000,
+    )
+  ) {
+    const fields = {
+      event: 'engine.request_failed',
+      origin: 'server',
+      operation,
+      errorKind: err.kind,
+      ...(err.status === undefined ? {} : { status: err.status }),
+      ...(err.unavailable ? { unavailable: err.unavailable } : {}),
+      ...(torrent
+        ? { torrentId: torrent.id, infoHash: torrent.infoHash.toLowerCase() }
+        : {}),
+      requestId: reply.request.id,
+    }
+    const level
+      = err.kind === 'unavailable' && err.unavailable === 'starting'
+        ? 'debug'
+        : 'warn'
+    logFor('engine')[level](fields, 'Engine request failed')
+  }
 
   switch (err.kind) {
     case 'unavailable':
@@ -58,8 +93,16 @@ export function engineFailureOf(
     }
   }
 
-  if (err instanceof EngineError)
-    return { reason: `engine ${err.kind}`, fields: { error: err.message } }
+  if (err instanceof EngineError) {
+    return {
+      reason: `engine ${err.kind}`,
+      fields: {
+        errorKind: err.kind,
+        ...(err.status === undefined ? {} : { engineStatus: err.status }),
+        ...(err.unavailable ? { unavailable: err.unavailable } : {}),
+      },
+    }
+  }
 
   return undefined
 }
@@ -127,7 +170,7 @@ export function toTorrentResponse(
     sizeOnDisk: live?.bytesCompleted ?? 0,
     downloadSpeed: live?.downloadSpeed ?? 0,
     uploadSpeed: live?.uploadSpeed ?? 0,
-    peers: live?.peers ?? { connected: 0, found: 0 },
+    peers: live?.peers ?? { connected: 0, found: 0, seeders: 0 },
     seeding: seedingResponse(torrent, live, settings),
   }
 }

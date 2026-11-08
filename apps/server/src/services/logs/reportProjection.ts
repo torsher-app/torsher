@@ -1,5 +1,13 @@
+import { authDiagnosticRule } from '../auth/logDiagnostics.ts'
+import { followDiagnosticRule } from '../follow/logDiagnostics.ts'
+import {
+  engineRequestDiagnostic,
+  storageDiagnosticRule,
+} from '../storage/logDiagnostics.ts'
 import type { LogEntry } from './ring.ts'
 import { z } from 'zod'
+import { engineDiagnosticRule } from '../engine/logDiagnostics.ts'
+import { sourceDiagnosticRule } from '../sources/logDiagnostics.ts'
 import {
   candidateDiagnostics,
   diagnosticCandidateId,
@@ -385,6 +393,122 @@ export function projectRecord(
   if (at > cutoffAt || at <= cutoffAt - retentionMs)
     return { kind: 'outside_window' }
   const observedAt = new Date(at).toISOString()
+  const authRule = authDiagnosticRule(raw.event)
+  if (authRule) {
+    if (raw.origin !== 'server' || raw.source !== 'auth')
+      return { kind: 'unstructured' }
+    const parsed = authRule.safeParse(raw)
+    if (!parsed.success)
+      return { kind: 'unstructured' }
+    return {
+      kind: 'event',
+      value: {
+        observedAt,
+        origin: 'server',
+        event: String(raw.event),
+        facts: parsed.data,
+        ...(typeof raw.repeat === 'number'
+          && Number.isSafeInteger(raw.repeat)
+          && raw.repeat > 1
+          ? { repeat: Math.min(raw.repeat, 1_000_000) }
+          : {}),
+      },
+    }
+  }
+  const followRule = followDiagnosticRule(raw.event)
+  if (followRule) {
+    if (raw.origin !== 'server' || raw.source !== 'catalog')
+      return { kind: 'unstructured' }
+    const parsed = followRule.safeParse(raw)
+    if (!parsed.success)
+      return { kind: 'unstructured' }
+    return {
+      kind: 'event',
+      value: {
+        observedAt,
+        origin: 'server',
+        event: String(raw.event),
+        facts: parsed.data,
+        ...(typeof raw.repeat === 'number'
+          && Number.isSafeInteger(raw.repeat)
+          && raw.repeat > 1
+          ? { repeat: Math.min(raw.repeat, 1_000_000) }
+          : {}),
+      },
+    }
+  }
+  const storageRule = storageDiagnosticRule(raw.event)
+  const requestRule
+    = raw.event === 'engine.request_failed' ? engineRequestDiagnostic : undefined
+  if (storageRule || requestRule) {
+    if (
+      raw.origin !== 'server'
+      || raw.source !== (storageRule ? 'storage' : 'engine')
+    ) {
+      return { kind: 'unstructured' }
+    }
+    const parsed = (storageRule ?? requestRule)!.safeParse(raw)
+    if (!parsed.success)
+      return { kind: 'unstructured' }
+    return {
+      kind: 'event',
+      value: {
+        observedAt,
+        origin: 'server',
+        event: String(raw.event),
+        facts: parsed.data,
+        ...(typeof raw.repeat === 'number'
+          && Number.isSafeInteger(raw.repeat)
+          && raw.repeat > 1
+          ? { repeat: Math.min(raw.repeat, 1_000_000) }
+          : {}),
+      },
+    }
+  }
+  const sourceRule = sourceDiagnosticRule(raw.event)
+  if (sourceRule) {
+    if (raw.origin !== 'server' || raw.source !== 'sources')
+      return { kind: 'unstructured' }
+    const parsed = sourceRule.safeParse(raw)
+    if (!parsed.success)
+      return { kind: 'unstructured' }
+    return {
+      kind: 'event',
+      value: {
+        observedAt,
+        origin: 'server',
+        event: String(raw.event),
+        facts: parsed.data,
+        ...(typeof raw.repeat === 'number'
+          && Number.isSafeInteger(raw.repeat)
+          && raw.repeat > 1
+          ? { repeat: Math.min(raw.repeat, 1_000_000) }
+          : {}),
+      },
+    }
+  }
+  const engineRule = engineDiagnosticRule(raw.event)
+  if (engineRule) {
+    if (raw.origin !== 'server' || raw.source !== 'engine')
+      return { kind: 'unstructured' }
+    const parsed = engineRule.schema.safeParse(raw)
+    if (!parsed.success)
+      return { kind: 'unstructured' }
+    return {
+      kind: 'event',
+      value: {
+        observedAt,
+        origin: 'server',
+        event: String(raw.event),
+        facts: parsed.data,
+        ...(typeof raw.repeat === 'number'
+          && Number.isSafeInteger(raw.repeat)
+          && raw.repeat > 1
+          ? { repeat: Math.min(raw.repeat, 1_000_000) }
+          : {}),
+      },
+    }
+  }
   const facts = select(raw, fields)
   if (
     raw.origin === 'server'

@@ -11,7 +11,7 @@ vi.mock('vue-i18n', () => ({
 
 const stats: TorrentStats = {
   activity: 'downloading',
-  peers: { connected: 0, found: 40 },
+  peers: { connected: 0, found: 40, seeders: 0 },
   downloadSpeed: 0,
   uploadSpeed: 0,
   badPieces: 0,

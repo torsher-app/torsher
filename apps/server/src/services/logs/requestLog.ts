@@ -4,7 +4,7 @@ import { LogController } from 'fastify'
 function requestFields(request: FastifyRequest, reply: FastifyReply) {
   return {
     method: request.method,
-    url: request.url,
+    url: request.routeOptions?.url ?? '<unmatched>',
     statusCode: reply.statusCode,
   }
 }
@@ -31,7 +31,7 @@ export class RequestLogController extends LogController {
       {
         ...requestFields(request, reply),
         ms: Math.round(reply.elapsedTime),
-        ...(error ? { err: error } : {}),
+        ...(error && reply.statusCode >= 500 ? { err: error } : {}),
       },
       'Request completed',
     )
@@ -49,7 +49,7 @@ export class RequestLogController extends LogController {
       )
     }
     else {
-      request.log.debug(requestFields(request, reply), error?.message)
+      request.log.debug(requestFields(request, reply), 'Request rejected')
     }
   }
 
@@ -75,7 +75,10 @@ export class RequestLogController extends LogController {
 
   override routeNotFound(request: FastifyRequest) {
     request.log.debug(
-      { method: request.method, url: request.url },
+      {
+        method: request.method,
+        url: request.routeOptions?.url ?? '<unmatched>',
+      },
       'Route not found',
     )
   }

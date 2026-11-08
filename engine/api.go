@@ -68,6 +68,7 @@ type api struct {
 	exit func(code int)
 	// Время последней пробы блокировки клиента (unix nano, 0 — сторож не
 	// запущен) и пороги сторожа; в тестах пороги подменяются
+	apiErrorLog   apiErrorThrottle
 	lockAlive     atomic.Int64
 	watchEvery    time.Duration
 	lockStuckFrom time.Duration
@@ -122,6 +123,9 @@ func (a *api) routes() http.Handler {
 		}
 
 		if !a.restored.Load() {
+			if result, ok := w.(*diagnosticResponse); ok {
+				result.expectedRestoring = true
+			}
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "restoring"})
 			return
 		}
@@ -145,7 +149,7 @@ func (a *api) routes() http.Handler {
 	mux.HandleFunc("GET /settings", a.getSettings)
 	mux.HandleFunc("PUT /settings", a.putSettings)
 
-	return a.crashOnPanic(a.maintenanceRoute(mux))
+	return a.crashOnPanic(a.diagnosticErrors(a.maintenanceRoute(mux)))
 }
 
 // Паника в обработчике завершает движок, супервизор сервера запустит его
@@ -364,9 +368,13 @@ func (a *api) resolve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	started := time.Now()
 	select {
 	case <-t.GotInfo():
 	case <-time.After(timeout):
+		facts := []any{"event", "engine.metadata_timeout", "infoHash", spec.InfoHash.HexString(), "elapsedMs", time.Since(started).Milliseconds()}
+		facts = append(facts, a.speeds.diagnosticFacts(spec.InfoHash)...)
+		a.logger.Warn("metadata resolution timed out", facts...)
 		writeError(w, http.StatusGatewayTimeout, "timeout", errors.New("no peers sent the torrent metadata"))
 		return
 	case <-r.Context().Done():
@@ -1104,6 +1112,9 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 }
 
 func writeError(w http.ResponseWriter, status int, kind string, err error) {
+	if diagnostic, ok := w.(*diagnosticResponse); ok {
+		diagnostic.kind = kind
+	}
 	writeJSON(w, status, map[string]string{"kind": kind, "message": err.Error()})
 }
 

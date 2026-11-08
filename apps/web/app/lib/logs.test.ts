@@ -4,6 +4,7 @@ import {
   duplicateDiagnosticEvents,
   LOG_ID_KEYS,
   logSourceLabels,
+  logsRouteForId,
 } from './logs'
 
 function entry(id: number, eventId: string, clientSeq: number): LogEntry {
@@ -42,5 +43,20 @@ describe('client journal correlation', () => {
       'rankingDecisionId',
     ])
       expect(LOG_ID_KEYS.has(key)).toBe(true)
+  })
+})
+
+describe('journal navigation', () => {
+  it.each([
+    '0123456789abcdef0123456789abcdef01234567',
+    'indexer-12345678',
+    'tmdb:tv:3000',
+    '018ebd4a-6bcb-7b0b-9f1b-7c2b7c20ab21',
+  ])('opens id %s across all levels and sources with a fresh query', (hash) => {
+    const route = logsRouteForId(hash)
+    expect(route).toEqual({ path: '/logs', query: { q: hash } })
+    expect(new URLSearchParams(route.query).toString()).toBe(
+      `q=${encodeURIComponent(hash)}`,
+    )
   })
 })

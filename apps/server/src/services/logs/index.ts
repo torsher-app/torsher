@@ -125,6 +125,10 @@ export function throttleLog(key: string, ms: number) {
     }
   }
 
+  // Не вытесняем активные окна ради новых ключей: flood не раздувает память.
+  if (quietUntil.size >= 1000)
+    return false
+
   quietUntil.set(key, now + ms)
   return true
 }

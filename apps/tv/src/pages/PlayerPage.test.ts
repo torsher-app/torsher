@@ -264,7 +264,7 @@ it('polls while the initial probe is pending and distinguishes fresh zero peers 
   await vi.advanceTimersByTimeAsync(16_000)
   playerStats.value = {
     activity: 'downloading',
-    peers: { connected: 0, found: 0 },
+    peers: { connected: 0, found: 0, seeders: 0 },
     downloadSpeed: 0,
     uploadSpeed: 0,
     badPieces: 0,
@@ -282,7 +282,7 @@ it('polls while the initial probe is pending and distinguishes fresh zero peers 
   expect(controls.step).toBe('waitingPeers')
   playerStats.value = {
     ...playerStats.value!,
-    peers: { connected: 0, found: 40 },
+    peers: { connected: 0, found: 40, seeders: 0 },
   }
   await settle()
   expect(controls.step).toBe('connectingPeers')

@@ -8,6 +8,7 @@ import {
   PinOffIcon,
   PlayIcon,
   RotateCwIcon,
+  ScrollTextIcon,
   Trash2Icon,
 } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
@@ -22,6 +23,7 @@ import {
 import { Progress } from '@/components/ui/progress'
 import { cn } from '@/lib/utils'
 import { progressOf } from '~/lib/downloadStatus'
+import { logsRouteForId } from '~/lib/logs'
 import { toneText } from '~/lib/indexerStatus'
 import DownloadStatusIcon from './DownloadStatusIcon.vue'
 
@@ -195,6 +197,12 @@ const progressClass = {
               aria-hidden="true"
             />
             {{ t(isPaused ? "panel.torrents.resume" : "panel.torrents.pause") }}
+          </DropdownMenuItem>
+          <DropdownMenuItem as-child>
+            <NuxtLink :to="logsRouteForId(torrent.infoHash)">
+              <ScrollTextIcon aria-hidden="true" />
+              {{ t("panel.nav.logs") }}
+            </NuxtLink>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem variant="destructive" @select="emit('delete')">

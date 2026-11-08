@@ -1,3 +1,16 @@
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import pino from 'pino'
+import {
+  closeLogFiles,
+  createLogger,
+  installLogger,
+  logFor,
+  queryLogs,
+} from '../logs/index.ts'
+import { projectRecord, projectRingEntry } from '../logs/reportProjection.ts'
+import { LOG_RETENTION_MS } from '../logs/ring.ts'
 import { deleteSetting, setSetting } from '../settings/index.ts'
 import * as picks from './pick.ts'
 import * as watch from '../sources/watch.ts'
@@ -43,7 +56,6 @@ import {
 import { parseRelease } from '@torsher/release-parser'
 import { setEngineDown, setEngineReady } from '../engine/index.ts'
 import { sampleTorrentFile } from '../engine/fixtures/index.ts'
-import { logFor } from '../logs/index.ts'
 import { clearSearchCache } from '../sources/cache.ts'
 import { tvOngoing } from '../tmdb/fixtures/index.ts'
 import { pinVoice } from '../sources/voices.ts'
@@ -236,7 +248,7 @@ function liveOf(hash: string, wantedCompleted: number): EngineTorrentState {
     queued: false,
     seeding: false,
     uploaded: 0,
-    peers: { connected: 0, found: 3 },
+    peers: { connected: 0, found: 3, seeders: 0 },
     downloadSpeed: 0,
     uploadSpeed: 0,
     fileProgress: [0, 0, 0, 0, 0, 0, 0, 0],
@@ -2475,4 +2487,395 @@ describe('режим «Только уведомлять»', () => {
       }),
     ])
   })
+})
+
+describe('operational follow diagnostics', () => {
+  const marker = 'PRIVATE_DIAGNOSTIC_MARKER'
+  let logDir = ''
+  let output: string[] = []
+  function events(event: string) {
+    return queryLogs({ level: 'debug', limit: 500 }).entries.filter(
+      entry => entry.context?.event === event,
+    )
+  }
+  async function assertSafeReport() {
+    await closeLogFiles()
+    const file = readFileSync(join(logDir, 'torsher.log'), 'utf8')
+    const ring = queryLogs({ level: 'debug', limit: 500 }).entries
+    expect(output.join('')).not.toContain(marker)
+    expect(file).not.toContain(marker)
+    expect(JSON.stringify(ring)).not.toContain(marker)
+    const projected = file
+      .trim()
+      .split('\n')
+      .map(line =>
+        projectRecord(JSON.parse(line), Date.now(), LOG_RETENTION_MS),
+      )
+    expect(JSON.stringify(projected)).not.toContain(marker)
+    for (const entry of ring.filter(entry =>
+      entry.context?.event?.toString().startsWith('follow.'),
+    )) {
+      const report = projectRingEntry(entry, Date.now(), LOG_RETENTION_MS)
+      expect(report.kind).toBe('event')
+      expect(projected).toContainEqual(report)
+    }
+    return projected
+  }
+  beforeEach(() => {
+    setSetting('userActionDiagnostics', false)
+    saveFollowSettings({ searchesPerHour: 20 })
+    logDir = mkdtempSync(join(tmpdir(), 'torsher-follow-diag-'))
+    output = []
+    installLogger(
+      createLogger({
+        level: 'debug',
+        logsDir: logDir,
+        stdout: { write: line => output.push(line) },
+      }),
+    )
+  })
+  afterEach(async () => {
+    vi.restoreAllMocks()
+    await closeLogFiles()
+    installLogger(pino({ level: 'silent' }))
+    rmSync(logDir, { recursive: true, force: true })
+  })
+  it('summarizes real per-season quality and language rejections without candidate params', async () => {
+    const follow = insertFollow({ audio: 'ru', qualityPreset: 'best' })
+    items = [
+      {
+        title: `${PACK_TITLE.replace('1080p', '2160p')} | ${marker}`,
+        hash: PACK_HASH,
+      },
+      {
+        title: PACK_TITLE.replace('| LostFilm', `| ENG | ${marker}`),
+        hash: SINGLE_HASH,
+      },
+    ]
+    expect(await searchPass([follow], new Date())).toBe(true)
+    const entry = events('follow.search')[0]!
+    expect(entry.message).toBe(
+      'Follow search: 0 planned actions, 0 pending, 2 rejected',
+    )
+    expect(entry.context).toMatchObject({
+      followId: follow.id,
+      titleId: SERIES,
+      season: 2,
+      episodes: 8,
+      found: 2,
+      indexers: 1,
+      failed: 0,
+      cached: false,
+      network: true,
+    })
+    expect(entry.context?.reasons).toContain('quality:1')
+    expect(entry.context?.reasons).toContain('no_russian:1')
+    expect(projectRingEntry(entry, Date.now(), LOG_RETENTION_MS)).toMatchObject(
+      {
+        kind: 'event',
+        value: {
+          facts: {
+            reasons: expect.arrayContaining([
+              { code: 'quality', count: 1 },
+              { code: 'no_russian', count: 1 },
+            ]),
+          },
+        },
+      },
+    )
+    expect(events('follow.grabbed')).toHaveLength(0)
+    await assertSafeReport()
+  })
+  it('does not count the same waiting candidate as a rejected verdict', async () => {
+    const follow = insertFollow({ audio: 'ru' })
+    items = [
+      {
+        title: `${PACK_TITLE.replace('1080p', '720p')} | ${marker}`,
+        hash: PACK_HASH,
+      },
+    ]
+    expect(await searchPass([follow], new Date())).toBe(true)
+    expect(events('follow.search')[0]!.context).toMatchObject({
+      toGrab: 0,
+      pending: 8,
+      rejected: 0,
+      episodes: 8,
+    })
+    expect(events('follow.search')[0]!.context?.reasons).toContain('wait:1')
+    expect(events('follow.grabbed')).toHaveLength(0)
+    await assertSafeReport()
+  })
+  it('confirms actual download start separately from the plan with diagnostics disabled', async () => {
+    const follow = insertFollow({ audio: 'ru' })
+    pinVoice(SERIES, 2, { studio: 'LostFilm' })
+    items = [{ title: `${PACK_TITLE} | ${marker}`, hash: PACK_HASH }]
+    expect(await searchPass([follow], new Date())).toBe(true)
+    const grabbed = events('follow.grabbed')[0]!
+    expect(events('follow.grabbed')).toHaveLength(1)
+    expect(grabbed.context).toMatchObject({
+      titleId: SERIES,
+      followId: follow.id,
+      infoHash: PACK_HASH,
+      season: 2,
+      episodes: '1,2,3,4,5,6,7,8',
+      episodeCount: 8,
+      episodesTruncated: false,
+    })
+    expect(getDb().select().from(torrents).get()!.selectedFiles).toHaveLength(
+      8,
+    )
+    expect(events('follow.search')[0]!.context).toMatchObject({
+      toGrab: 1,
+      pending: 0,
+      rejected: 0,
+    })
+    expect(queryLogs({ q: SERIES }).entries).toContainEqual(grabbed)
+    expect(events('follow.choice')).toHaveLength(0)
+    await assertSafeReport()
+  })
+  it('keeps a planned action separate from no-space and uses the existing direct download admission', async () => {
+    const follow = insertFollow({ audio: 'ru' })
+    pinVoice(SERIES, 2, { studio: 'LostFilm' })
+    items = [{ title: `${PACK_TITLE} | ${marker}`, hash: PACK_HASH }]
+    disk.free = 0
+    expect(await searchPass([follow], new Date())).toBe(true)
+    expect(events('follow.grabbed')).toHaveLength(0)
+    expect(events('storage.insufficient_space')[0]!.context).toMatchObject({
+      kind: 'download',
+      shortage: 'no_space',
+    })
+    expect(rows(follow.id).every(row => row.stateNote === 'no_space')).toBe(
+      true,
+    )
+    expect(events('follow.search')[0]!.context?.toGrab).toBe(1)
+    await assertSafeReport()
+  })
+  it('reports cached decision work without claiming another physical search', async () => {
+    const follow = insertFollow({ audio: 'ru' })
+    items = [{ title: PACK_TITLE.replace('1080p', '720p'), hash: PACK_HASH }]
+    const now = new Date()
+    await searchPass([follow], now)
+    const searches = indexerSearches
+    getDb()
+      .update(follows)
+      .set({ lastSearchAt: null, nextSearchAt: null })
+      .where(eq(follows.id, follow.id))
+      .run()
+    await searchPass(
+      [followById(follow.id)!],
+      new Date(now.getTime() + 60_000),
+    )
+    expect(indexerSearches).toBe(searches)
+    expect(events('follow.search')[0]!.context).toMatchObject({
+      cached: true,
+      network: false,
+      episodes: 8,
+      modeAtSearchStart: 'download',
+    })
+    await assertSafeReport()
+  })
+  it('never labels a notify pick as a started download', async () => {
+    const follow = insertFollow({ audio: 'ru', mode: 'notify' })
+    pinVoice(SERIES, 2, { studio: 'LostFilm' })
+    items = [{ title: PACK_TITLE, hash: PACK_HASH }]
+    await searchPass([follow], new Date())
+    expect(events('follow.search')[0]!.context).toMatchObject({
+      modeAtSearchStart: 'notify',
+      toGrab: 1,
+    })
+    expect(rows(follow.id).some(row => !!row.picked)).toBe(true)
+    expect(events('follow.grabbed')).toHaveLength(0)
+    await assertSafeReport()
+  })
+  it('does not claim a decision for paused, removed or no-wanted follows', async () => {
+    const follow = insertFollow({ audio: 'ru' })
+    items = [{ title: PACK_TITLE, hash: PACK_HASH }]
+    onIndexerSearch = () =>
+      getDb()
+        .update(follows)
+        .set({ state: 'paused' })
+        .where(eq(follows.id, follow.id))
+        .run()
+    expect(await searchPass([follow], new Date())).toBe(false)
+    expect(events('follow.search')).toHaveLength(0)
+    expect(events('follow.grabbed')).toHaveLength(0)
+    onIndexerSearch = undefined
+    getDb().delete(follows).where(eq(follows.id, follow.id)).run()
+    const next = insertFollow({ startEpisode: 99, mode: 'notify' })
+    requestFollowSearch(next.id)
+    await searchPass([next], new Date())
+    expect(events('follow.search')).toHaveLength(0)
+  })
+  it('records missing-title postponement only after the guarded schedule update', async () => {
+    const follow = insertFollow({ titleId: 'tmdb:tv:9999' })
+    requestFollowSearch(follow.id)
+    const now = new Date()
+    expect(await searchPass([follow], now)).toBe(false)
+    expect(events('follow.postponed')[0]!.context).toMatchObject({
+      titleId: follow.titleId,
+      followId: follow.id,
+      reason: 'title_missing',
+      until: new Date(now.getTime() + HOUR_MS).toISOString(),
+    })
+    expect(followById(follow.id)!.nextSearchAt).toEqual(
+      new Date(now.getTime() + HOUR_MS),
+    )
+    await assertSafeReport()
+  })
+  it('does not report postponement when the existing lastSearchAt guard rejects the schedule update', async () => {
+    const follow = insertFollow({ titleId: 'tmdb:tv:9999' })
+    requestFollowSearch(follow.id)
+    const now = new Date()
+    const newer = new Date(now.getTime() + 1234)
+    const original = fetchMock.getMockImplementation()!
+    fetchMock.mockImplementation(async (input, init) => {
+      if (new URL(String(input)).pathname === '/3/tv/9999') {
+        getDb()
+          .update(follows)
+          .set({ lastSearchAt: newer, nextSearchAt: null })
+          .where(eq(follows.id, follow.id))
+          .run()
+      }
+      return original(input, init)
+    })
+    expect(await searchPass([follow], now)).toBe(false)
+    expect(followById(follow.id)!.nextSearchAt).toBeNull()
+    expect(events('follow.postponed')).toHaveLength(0)
+  })
+  it('throttles manual paused-indexer polling without clearing the pending request', async () => {
+    const follow = insertFollow()
+    const now = new Date()
+    getDb()
+      .update(indexers)
+      .set({ backoffUntil: new Date(now.getTime() + HOUR_MS) })
+      .run()
+    requestFollowSearch(follow.id)
+    for (let i = 0; i < 3; i++) {
+      expect(
+        await searchPass(
+          [followById(follow.id)!],
+          new Date(now.getTime() + i * 30000),
+        ),
+      ).toBe(false)
+    }
+    expect(events('follow.postponed')).toHaveLength(1)
+    expect(events('follow.postponed')[0]!.context?.reason).toBe(
+      'indexers_paused',
+    )
+    expect(requestedSearch(follow.id)).toBe('manual')
+    expect(indexerSearches).toBe(0)
+    await assertSafeReport()
+  })
+  it('only names not-released when existing upcoming episode facts prove it', async () => {
+    const follow = insertFollow({ startEpisode: 9 })
+    expect(await searchPass([follow], new Date())).toBe(false)
+    expect(events('follow.postponed')[0]!.context?.reason).toBe('not_released')
+    expect(indexerSearches).toBe(0)
+    await assertSafeReport()
+  })
+  it('does not spam logs while budget, startup or viewer work defer polling', async () => {
+    const follow = insertFollow()
+    const now = new Date()
+    resetFollowSearch(now.getTime())
+    for (let i = 0; i < 3; i++)
+      expect(await searchPass([follow], now)).toBe(false)
+    resetFollowSearch(0)
+    const { asViewerSearch } = await import('../sources/search.ts')
+    await asViewerSearch(async () => {
+      for (let i = 0; i < 3; i++)
+        expect(await searchPass([follow], now)).toBe(false)
+    })
+    saveFollowSettings({ searchesPerHour: 0 })
+    for (let i = 0; i < 3; i++)
+      expect(await searchPass([follow], now)).toBe(false)
+    expect(
+      queryLogs({ q: SERIES }).entries.filter(entry =>
+        entry.context?.event?.toString().startsWith('follow.'),
+      ),
+    ).toEqual([])
+  })
+  it('retains the title context of an unskippable acquire error without mutating a frozen Error', async () => {
+    const follow = insertFollow({ audio: 'ru' })
+    const candidate = pendingOf({
+      ...parseReleaseForDiagnostic(),
+      id: 'f'.repeat(16),
+    } as Parameters<typeof pendingOf>[0])
+    getDb()
+      .insert(followEpisodes)
+      .values({
+        followId: follow.id,
+        season: 2,
+        episode: 8,
+        firstSeenAt: new Date(Date.now() - 2 * DAY_MS),
+        waitUntil: new Date(0),
+        pending: candidate,
+      })
+      .run()
+    const failure = Object.freeze(
+      new Error(`${marker} https://remote.example/path`, {
+        cause: new Error(marker),
+      }),
+    )
+    vi.spyOn(watch, 'acquire').mockRejectedValueOnce(failure)
+    await followTick(new Date())
+    expect(events('follow.tick_failed')).toHaveLength(1)
+    expect(events('follow.tick_failed')[0]!.context).toMatchObject({
+      titleId: SERIES,
+      followId: follow.id,
+      errorKind: 'unknown',
+    })
+    expect(Object.isFrozen(failure)).toBe(true)
+    await assertSafeReport()
+  })
+  it('sanitizes the confirmed-feed decision catch while preserving its async result', async () => {
+    const follow = insertFollow({ audio: 'ru', waitHours: 0 })
+    pinVoice(SERIES, 2, { studio: 'LostFilm' })
+    const now = new Date()
+    const candidate = pendingOf({
+      ...parseReleaseForDiagnostic(),
+      id: 'e'.repeat(16),
+    } as Parameters<typeof pendingOf>[0])
+    const history = getDb()
+      .insert(followHistory)
+      .values({
+        followId: follow.id,
+        titleId: SERIES,
+        at: now,
+        kind: 'unsure',
+        season: 2,
+        releaseTitle: candidate.title,
+        params: { candidate },
+      })
+      .returning()
+      .get()
+    const failure = Object.freeze(
+      new Error(`${marker} https://remote.example/path`, {
+        cause: new Error(marker),
+      }),
+    )
+    vi.spyOn(watch, 'acquire').mockRejectedValueOnce(failure)
+    expect(await confirmUnsure(history.id, now)).toBe('ok')
+    await underFollowLock(async () => {})
+    const warning = queryLogs({ level: 'debug' }).entries.find(
+      entry => entry.message === 'Follow confirmed release decision failed',
+    )
+    expect(warning?.context).toMatchObject({
+      titleId: SERIES,
+      followId: follow.id,
+      errorKind: 'unknown',
+    })
+    expect(events('follow.grabbed')).toHaveLength(0)
+    await assertSafeReport()
+  })
+
+  function parseReleaseForDiagnostic() {
+    return {
+      title: EPISODE_8_TITLE,
+      infoHash: SINGLE_HASH,
+      seeders: 30,
+      indexers: [{ id: 'indexer-001', name: marker }],
+      parsed: parseRelease(EPISODE_8_TITLE),
+      match: { confidence: 'high', issues: [] },
+    }
+  }
 })

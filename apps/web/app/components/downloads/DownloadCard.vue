@@ -3,6 +3,7 @@ import type { Torrent } from '@torsher/api-client'
 import {
   ArrowDownToLineIcon,
   CircleXIcon,
+  CopyIcon,
   FileIcon,
   FilmIcon,
   LibraryIcon,
@@ -10,6 +11,7 @@ import {
   MonitorPlayIcon,
   PinIcon,
   PinOffIcon,
+  ScrollTextIcon,
   TriangleAlertIcon,
   XIcon,
 } from '@lucide/vue'
@@ -34,6 +36,8 @@ import DownloadSeedRule from './DownloadSeedRule.vue'
 import DownloadStatusIcon from './DownloadStatusIcon.vue'
 import FixMatchDialog from '~/components/library/FixMatchDialog.vue'
 import RemoveLibraryDialog from './RemoveLibraryDialog.vue'
+import { copyText } from '~/lib/clipboard'
+import { logsRouteForId } from '~/lib/logs'
 import { keepOpenOnListClick } from '~/lib/sheet'
 
 const props = defineProps<{
@@ -246,6 +250,18 @@ function filePercent(downloaded: number, size: number) {
   return size > 0 ? Math.floor((downloaded / size) * 100) : 0
 }
 
+async function copyInfoHash() {
+  if (!shown.value)
+    return
+  try {
+    await copyText(shown.value.infoHash)
+    toast.success(t('panel.torrents.card.hashCopied'))
+  }
+  catch {
+    toast.error(t('panel.torrents.card.hashCopyFailed'))
+  }
+}
+
 // Строка списка переключает карточку, пустое место под строками закрывает её
 function onInteractOutside(event: Event) {
   keepOpenOnListClick(event, '[data-downloads-list]')
@@ -385,6 +401,23 @@ function onInteractOutside(event: Event) {
                   }}
                 </Button>
               </span>
+            </dd>
+            <dt class="text-muted-foreground">
+              {{ t("panel.torrents.card.infoHash") }}
+            </dt>
+            <dd class="flex min-w-0 items-center gap-1">
+              <code class="min-w-0 flex-1 break-all text-xs">{{
+                shown.infoHash
+              }}</code>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                class="shrink-0 text-muted-foreground"
+                :aria-label="t('panel.torrents.card.copyHash')"
+                @click="copyInfoHash"
+              >
+                <CopyIcon />
+              </Button>
             </dd>
             <dt class="text-muted-foreground">
               {{ t("panel.torrents.card.size") }}
@@ -614,6 +647,12 @@ function onInteractOutside(event: Event) {
           >
             <LibraryIcon aria-hidden="true" />
             {{ t("panel.torrents.removeLibrary") }}
+          </Button>
+          <Button as-child variant="outline" size="sm">
+            <NuxtLink :to="logsRouteForId(shown.infoHash)">
+              <ScrollTextIcon aria-hidden="true" />
+              {{ t("panel.nav.logs") }}
+            </NuxtLink>
           </Button>
           <Button
             variant="destructive"

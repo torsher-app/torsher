@@ -1,3 +1,8 @@
+import {
+  logCrossSite,
+  logDeviceTokenRejected,
+  logSessionRejected,
+} from '../services/auth/logDiagnostics.ts'
 import type { FastifyReply, FastifyRequest } from 'fastify'
 import type { Device } from '../db/schema.ts'
 import {
@@ -74,6 +79,7 @@ function isCrossSite(request: FastifyRequest) {
 // Своя сериализация: у роута 403 может быть описан другой схемой
 // (неверный пароль, PIN), и валидатор ответа превратил бы отказ в 500
 function crossSiteRejected(reply: FastifyReply) {
+  logCrossSite(reply.request)
   return reply
     .code(403)
     .serializer(JSON.stringify)
@@ -91,7 +97,9 @@ function ownerIdOf(request: FastifyRequest) {
   try {
     return verifySession(token, 'user_access').userId
   }
-  catch {
+  catch (error) {
+    if (token)
+      logSessionRejected(request, 'access', error)
     return undefined
   }
 }
@@ -195,8 +203,10 @@ export async function requireViewer(
   if (token) {
     const device = deviceByToken(token)
 
-    if (device?.purpose === 'jellyfin')
+    if (device?.purpose === 'jellyfin') {
+      logDeviceTokenRejected(request, 'device_cookie', 'purpose', device)
       return unauthorized(reply)
+    }
 
     if (device) {
       const stale
@@ -221,6 +231,7 @@ export async function requireViewer(
       return
     }
 
+    logDeviceTokenRejected(request, 'device_cookie', 'unknown')
     reply.clearCookie(DEVICE_TOKEN_COOKIE, { path: deviceCookieOptions.path })
   }
 
@@ -284,15 +295,24 @@ export async function requireStream(
     try {
       subject = verifyTokenFor(token, 'stream').userId
     }
-    catch {
+    catch (error) {
+      logSessionRejected(request, 'stream', error)
       return unauthorized(reply)
     }
 
     if (subject.startsWith(DEVICE_SUBJECT_PREFIX)) {
       const device = getDevice(subject.slice(DEVICE_SUBJECT_PREFIX.length))
 
-      if (!device || device.purpose !== 'viewer')
+      if (!device || device.purpose !== 'viewer') {
+        logDeviceTokenRejected(
+          request,
+          'device_stream',
+          device ? 'purpose' : 'unknown',
+          device,
+          subject.slice(DEVICE_SUBJECT_PREFIX.length),
+        )
         return unauthorized(reply)
+      }
 
       asDevice(request, device)
 
@@ -315,7 +335,8 @@ export async function requireStream(
         request.profileId = verified.profileId
         request.profileSelected = true
       }
-      catch {
+      catch (error) {
+        logSessionRejected(request, 'stream', error)
         return unauthorized(reply)
       }
     }

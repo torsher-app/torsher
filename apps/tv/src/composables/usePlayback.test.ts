@@ -52,7 +52,7 @@ afterEach(() => vi.useRealTimers())
 
 const zeroPeers: TorrentStats = {
   activity: 'downloading',
-  peers: { connected: 0, found: 0 },
+  peers: { connected: 0, found: 0, seeders: 0 },
   downloadSpeed: 0,
   uploadSpeed: 0,
   badPieces: 0,
@@ -103,7 +103,10 @@ it('lasting failures never advance the last successful timestamp or return cache
 
 it('a late previous poll cannot overwrite current data, time or failure status', async () => {
   const old = deferred<TorrentStats>()
-  const current = { ...zeroPeers, peers: { connected: 3, found: 3 } }
+  const current = {
+    ...zeroPeers,
+    peers: { connected: 3, found: 3, seeders: 0 },
+  }
   mocks.stats.mockReturnValueOnce(old.promise).mockResolvedValue(current)
   const scope = effectScope()
   const player = scope.run(() =>
@@ -147,7 +150,7 @@ it('a poll from before a new playback launch cannot publish into its probe gener
   )!
   player.pollStats(() => ({ offset: 0, intervalMs: 1000 }))
   const launching = player.start()
-  old.resolve({ ...zeroPeers, peers: { connected: 9, found: 9 } })
+  old.resolve({ ...zeroPeers, peers: { connected: 9, found: 9, seeders: 0 } })
   await vi.advanceTimersByTimeAsync(0)
   expect(player.stats.value).toBeUndefined()
   expect(player.statsReceivedAt()).toBe(0)

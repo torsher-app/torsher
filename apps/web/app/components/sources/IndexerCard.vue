@@ -5,6 +5,7 @@ import {
   ExternalLinkIcon,
   PencilIcon,
   RefreshCwIcon,
+  ScrollTextIcon,
   TriangleAlertIcon,
   XIcon,
 } from '@lucide/vue'
@@ -22,6 +23,7 @@ import { Switch } from '@/components/ui/switch'
 import LoadingButton from '~/components/LoadingButton.vue'
 import { formatDateTime, formatRelative } from '~/lib/format'
 import IndexerStatusIcon from './IndexerStatusIcon.vue'
+import { logsRouteForId } from '~/lib/logs'
 import { keepOpenOnListClick } from '~/lib/sheet'
 
 const props = defineProps<{
@@ -295,6 +297,12 @@ function onInteractOutside(event: Event) {
           <Button variant="ghost" size="sm" @click="emit('edit')">
             <PencilIcon aria-hidden="true" />
             {{ t("panel.sources.indexers.edit") }}
+          </Button>
+          <Button as-child variant="outline" size="sm">
+            <NuxtLink :to="logsRouteForId(shown.id)">
+              <ScrollTextIcon aria-hidden="true" />
+              {{ t("panel.nav.logs") }}
+            </NuxtLink>
           </Button>
           <Button
             variant="destructive"

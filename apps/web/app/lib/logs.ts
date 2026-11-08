@@ -161,3 +161,8 @@ export function duplicateDiagnosticEvents(entries: LogEntry[]) {
   }
   return duplicates
 }
+
+/** Новый переход сбрасывает прежние source/level и ищет id во всех записях. */
+export function logsRouteForId(id: string) {
+  return { path: '/logs', query: { q: id } }
+}

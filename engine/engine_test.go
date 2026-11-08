@@ -1263,7 +1263,7 @@ func TestRestoredPausedSelectionCanBeCleared(t *testing.T) {
 
 func TestLibraryLogDropsCanceledReads(t *testing.T) {
 	var out bytes.Buffer
-	logger := slog.New(withoutCanceled{slog.NewTextHandler(&out, nil)}).With("torrent.ih", "abc")
+	logger := slog.New(withoutCanceled{Handler: slog.NewTextHandler(&out, nil)}).With("torrent.ih", "abc")
 
 	logger.Error("initial read failed", "err", context.Canceled)
 	logger.Error("read failed after reader reset", "err", fmt.Errorf("wait: %w", context.Canceled))
@@ -1271,7 +1271,7 @@ func TestLibraryLogDropsCanceledReads(t *testing.T) {
 
 	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
 
-	if len(lines) != 1 || !strings.Contains(lines[0], `msg="error reading"`) {
+	if len(lines) != 1 || !strings.Contains(lines[0], `libraryOperation=read`) {
 		t.Fatalf("journal %q", out.String())
 	}
 }

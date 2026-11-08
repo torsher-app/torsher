@@ -386,7 +386,7 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
               ...failure.fields,
             })
           }
-          return sendEngineError(reply, err)
+          return sendEngineError(reply, err, found)
         }
 
         fileName = fileNameOf(file.path)

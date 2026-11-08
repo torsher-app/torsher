@@ -21,6 +21,16 @@ The page shows recent entries. The downloaded log may include older ones that ar
 
 Entries name torrents by their info hash and playback by a session id, not by file or release names. In an entry's card, click an id to see every entry with it: for one viewing, that's the engine, the playback decision, transcoding and the player's error together.
 
+Open <Ui k="panel.nav.logs" /> from a download's menu or card to find its info hash across all levels and sources. You can also copy the info hash from the card.
+
+Engine entries include network settings at startup, metadata timeouts, reads stalled for at least ten seconds, recovery when a read returns bytes, API errors and storage write failures. A stalled read can be waiting for peers, disk IO or an internal lock. Available peer counts and download speed are sampled facts with an age; they do not prove why the read is waiting. Repeated failures are limited to keep the journal readable.
+
+An indexer’s menu and card also open <Ui k="panel.nav.logs" /> with its id. The same menu is available on phones. Search summaries show how many indexers were contacted, answered successfully, failed or were skipped, and how many distinct results remained after matching. One indexer can receive several queries but is counted once. An empty successful answer is different from a failed search. Cache hits appear in verbose logs; they can reuse an earlier failed result. Backoff entries show when repeated failures pause an indexer and when a successful search clears that pause.
+
+Storage entries explain when metadata could not be fetched, a file cannot start because of disk space or cache limits, or a selected folder was rejected. They show the relevant download id, space figures or a safe error category, without file names or folder paths. Repeated polling failures are limited so they do not fill the journal.
+
+A followed title’s card opens <Ui k="panel.nav.logs" /> for that title. Follow summaries show planned actions, waiting episodes and rejected candidates; the common rejection codes explain the result. A separate entry confirms a download actually started. Postponed searches show the next check time when the title is unavailable, indexers are paused or the next release has not arrived.
+
 ## Narrow it down
 
 - **Level:** <Ui k="panel.logs.filters.all" />, <Ui k="panel.logs.filters.warn" /> or <Ui k="panel.logs.filters.error" />.
@@ -52,11 +62,13 @@ You do not need to enable verbose logs to create a report. If the report option 
 
 <Ui k="panel.logs.verbose.label" /> in the <Ui k="panel.logs.more" /> menu adds requests and internal steps to new entries. Turn it on before reproducing a problem, then turn it off again. See [how to collect more detail](/docs/maintain/logs#see-more-detail), including what to do when the switch is unavailable.
 
+Pairing, sign-in and access failures are also recorded with safe reasons. Device menus have <Ui k="panel.nav.logs" /> to find related entries. Pairing codes, tokens and device names are excluded from these messages.
+
 ## Viewer action diagnostics
 
 <Ui k="panel.logs.diagnostics.label" /> in the <Ui k="panel.logs.more" /> menu is on by default. It records actions from the TV showcase on your own server, helping explain problems such as resuming at the wrong position or choosing an unexpected next episode.
 
-Turn it off to stop recording new viewer actions. Existing entries and previously downloaded files are kept. A brief notification confirms the change; the checkbox shows the current setting.
+Turn it off to stop recording new viewer actions. Regular engine and server diagnostics continue to be recorded. Existing entries and previously downloaded files are kept. A brief notification confirms the change; the checkbox shows the current setting.
 
 To inspect these events, select <Ui k="panel.logs.sources.client" /> in the source filter. Click an entry's id to follow related events. <Ui k="panel.logs.diagnostics.duplicate" /> means the same event was delivered again, rather than another action by the viewer.
 

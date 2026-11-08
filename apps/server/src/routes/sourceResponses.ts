@@ -5,7 +5,7 @@ import type {
   SyncResult,
 } from '../services/indexers/index.ts'
 import { feedProbeAt } from '../services/follow/feed.ts'
-import { logFor } from '../services/logs/index.ts'
+import { logSourceCheckError } from '../services/sources/logDiagnostics.ts'
 import { isLoopbackHostname, isMdnsHostname } from '../services/net/address.ts'
 import { SourceError } from '../services/torznab/index.ts'
 
@@ -97,6 +97,9 @@ export function sendSourceError(
     .send({ message: err.message, kind: errorKindFor(err, url) })
 }
 
-export function logCheckError(err: unknown) {
-  logFor('sources').error({ err }, 'Indexer check failed')
+export function logCheckError(err: unknown, indexerId?: string) {
+  logSourceCheckError(err, {
+    operation: 'indexer_check',
+    ...(indexerId ? { indexerId } : {}),
+  })
 }

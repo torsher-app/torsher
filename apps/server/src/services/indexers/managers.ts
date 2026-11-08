@@ -53,10 +53,11 @@ export function normalizeManagerUrl(input: string, kind: IndexerManagerKind) {
   return url.href.replace(/\/+$/, '')
 }
 
-function notFound(kind: IndexerManagerKind): never {
+function notFound(kind: IndexerManagerKind, status: number): never {
   throw new SourceError(
     'unsupported',
     `The address does not expose the ${kind} API or this version is not supported`,
+    { status },
   )
 }
 
@@ -70,14 +71,20 @@ async function listProwlarr(baseUrl: string, apiKey: string) {
     'Accept': 'application/json',
   })
 
-  if (res.status === 401 || res.status === 403)
-    throw new SourceError('auth', 'Manager rejected the API key')
+  if (res.status === 401 || res.status === 403) {
+    throw new SourceError('auth', 'Manager rejected the API key', {
+      status: res.status,
+    })
+  }
 
   if (res.status === 404)
-    notFound('prowlarr')
+    notFound('prowlarr', res.status)
 
-  if (!res.ok)
-    throw new SourceError('remote', `Manager responded with ${res.status}`)
+  if (!res.ok) {
+    throw new SourceError('remote', `Manager responded with ${res.status}`, {
+      status: res.status,
+    })
+  }
 
   let list: unknown
 
@@ -90,11 +97,12 @@ async function listProwlarr(baseUrl: string, apiKey: string) {
 
     throw new SourceError('bad_response', 'Manager response is not JSON', {
       cause: err,
+      status: res.status,
     })
   }
 
   if (!Array.isArray(list))
-    notFound('prowlarr')
+    notFound('prowlarr', res.status)
 
   return list.flatMap((item): RemoteIndexer[] => {
     if (typeof item !== 'object' || item === null)
@@ -139,14 +147,14 @@ async function listJackett(baseUrl: string, apiKey: string) {
   )
 
   if (res.status === 404)
-    notFound('jackett')
+    notFound('jackett', res.status)
 
   const xml = await readTorznabXml(res)
 
   // Jackett без настроенных индексаторов отвечает `<indexers />`, а пустой
   // элемент парсер отдаёт строкой, не объектом
   if (!('indexers' in xml))
-    notFound('jackett')
+    notFound('jackett', res.status)
 
   return children(child(xml, 'indexers'), 'indexer').flatMap(
     (node): RemoteIndexer[] => {

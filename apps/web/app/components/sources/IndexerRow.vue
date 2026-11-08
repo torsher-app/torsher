@@ -6,6 +6,7 @@ import {
   CopyIcon,
   EllipsisIcon,
   RefreshCwIcon,
+  ScrollTextIcon,
   Trash2Icon,
 } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
@@ -19,6 +20,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 import { formatRelative, hostOf } from '~/lib/format'
+import { logsRouteForId } from '~/lib/logs'
 import { toneText } from '~/lib/indexerStatus'
 import IndexerStatusIcon from './IndexerStatusIcon.vue'
 
@@ -134,6 +136,12 @@ const checkedAt = computed(() =>
           <DropdownMenuItem @select="actions.copyUrl(indexer)">
             <CopyIcon aria-hidden="true" />
             {{ t("panel.sources.indexers.copyUrl") }}
+          </DropdownMenuItem>
+          <DropdownMenuItem as-child>
+            <NuxtLink :to="logsRouteForId(indexer.id)">
+              <ScrollTextIcon aria-hidden="true" />
+              {{ t("panel.nav.logs") }}
+            </NuxtLink>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem variant="destructive" @select="emit('delete')">

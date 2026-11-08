@@ -4250,6 +4250,7 @@ export interface TorrentInput {
   peers: {
     connected: number;
     found: number;
+    seeders: number;
   };
   seeding: {
     rule: SeedRuleInput | null;
@@ -4319,6 +4320,7 @@ export interface TorrentStatsInput {
   peers: {
     connected: number;
     found: number;
+    seeders: number;
   };
   downloadSpeed: number;
   uploadSpeed: number;
@@ -11962,6 +11964,7 @@ export interface Torrent {
   peers: {
     connected: number;
     found: number;
+    seeders: number;
   };
   seeding: {
     rule: SeedRule | null;
@@ -12031,6 +12034,7 @@ export interface TorrentStats {
   peers: {
     connected: number;
     found: number;
+    seeders: number;
   };
   downloadSpeed: number;
   uploadSpeed: number;

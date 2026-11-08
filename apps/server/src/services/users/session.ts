@@ -2,7 +2,14 @@ import type { TokenPurpose, VerifiedToken } from '../../utils/token.ts'
 import { eq } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import { users } from '../../db/schema.ts'
-import { verifyTokenFor } from '../../utils/token.ts'
+import { tokenRejectionReason, verifyTokenFor } from '../../utils/token.ts'
+
+const revokedSessions = new WeakSet<Error>()
+export function sessionRejectionReason(error: unknown) {
+  return error instanceof Error && revokedSessions.has(error)
+    ? ('revoked' as const)
+    : tokenRejectionReason(error)
+}
 
 /**
  * Текущая версия сессий аккаунта или `undefined`, если сессий у него быть
@@ -35,8 +42,11 @@ export function verifySession(
 ): VerifiedToken {
   const verified = verifyTokenFor(token, purpose)
 
-  if (sessionVersionOf(verified.userId) !== verified.sessionVersion)
-    throw new TypeError('Session is revoked')
+  if (sessionVersionOf(verified.userId) !== verified.sessionVersion) {
+    const error = new TypeError('Session is revoked')
+    revokedSessions.add(error)
+    throw error
+  }
 
   return verified
 }

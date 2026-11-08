@@ -19,6 +19,9 @@ import {
   SourceError,
 } from '../torznab/index.ts'
 import { parseMagnet } from '../torrents/magnet.ts'
+import type { SearchDiagnostics } from './logDiagnostics.ts'
+import { logFor } from '../logs/index.ts'
+import { sourceErrorFacts } from './logDiagnostics.ts'
 import { textQueriesOf } from './aliases.ts'
 
 // Индексаторов бывает десяток, а каждый отвечает до таймаута запроса:
@@ -32,6 +35,8 @@ export const SEARCH_DEADLINE_MS = 7000
 const MAX_RELEASES = 150
 
 export interface SearchTarget {
+  /** Захваченный ID каталога; названия и запрос в журнал не попадают. */
+  titleId?: string
   identity: TitleIdentity
   aliases: TitleAlias[]
   /** Сезон сериала; у фильма не задаётся. */
@@ -53,6 +58,8 @@ export interface IndexerFailure {
 }
 
 export interface SearchOptions {
+  /** Индексаторы, пропущенные caller из-за backoff. */
+  skipped?: number
   deadlineMs?: number
   /** Запросов к индексаторам одновременно */
   concurrency?: number
@@ -65,6 +72,8 @@ export interface SearchOptions {
 export interface SearchOutcome {
   /** Сопоставленные раздачи: только они доступны автоматизации. */
   releases: FoundRelease[]
+  /** Эксплуатационный итог physical search; у старых fixtures может отсутствовать. */
+  diagnostics?: SearchDiagnostics
   /** Ответы индексаторов без подтверждённого совпадения, для ручного выбора. */
   unmatched: FoundRelease[]
   /** Сколько индексаторов участвовало в поиске. */
@@ -79,6 +88,10 @@ interface Hit {
 
 interface IndexerState {
   ok: boolean
+  startedAt?: number
+  mode?: 'id' | 'text'
+  pending?: boolean
+  failure?: { errorKind: string, status?: number, mode: 'id' | 'text' }
   error?: SourceErrorKind
   retryAt?: Date
 }
@@ -250,6 +263,7 @@ export async function searchReleases(
   indexers: SearchableIndexer[],
   options: SearchOptions = {},
 ): Promise<SearchOutcome> {
+  const startedAt = Date.now()
   const {
     deadlineMs = SEARCH_DEADLINE_MS,
     concurrency = SEARCH_CONCURRENCY,
@@ -294,7 +308,9 @@ export async function searchReleases(
 
   async function run(indexer: SearchableIndexer, params: SearchParams) {
     const state = states.get(indexer.id)!
-
+    state.startedAt ??= Date.now()
+    state.mode = params.q === undefined ? 'id' : 'text'
+    state.pending = true
     try {
       const releases = await searchIndexer(
         indexer.url,
@@ -310,10 +326,17 @@ export async function searchReleases(
       hits.push(...releases.map(release => ({ indexer, release })))
     }
     catch (err) {
+      if (deadline.expired)
+        return
+      state.failure ??= { ...sourceErrorFacts(err), mode: state.mode }
       state.error ??= errorKind(err)
 
       if (err instanceof SourceError && err.retryAt)
         state.retryAt ??= err.retryAt
+    }
+    finally {
+      if (!deadline.expired)
+        state.pending = false
     }
   }
 
@@ -361,6 +384,29 @@ export async function searchReleases(
       },
     ]
   })
+  const context = {
+    ...(target.titleId ? { titleId: target.titleId } : {}),
+    ...(season === undefined ? {} : { season }),
+  }
+  for (const indexer of indexers) {
+    const state = states.get(indexer.id)!
+    if (state.startedAt === undefined || (!state.failure && !state.pending))
+      continue
+    const failure = state.pending
+      ? { errorKind: 'late', mode: state.mode! }
+      : state.failure!
+    logFor('sources').warn(
+      {
+        event: 'sources.indexer_failed',
+        origin: 'server',
+        ...context,
+        indexerId: indexer.id,
+        ...failure,
+        ms: Date.now() - state.startedAt,
+      },
+      'Indexer search failed',
+    )
+  }
   const titleTarget = {
     kind: identity.kind,
     // Строка зрителя — тоже название тайтла: иначе раздачи под названием,
@@ -376,7 +422,8 @@ export async function searchReleases(
     seasonYears: identity.seasonYears,
     season,
   }
-  const found = mergeHits(hits)
+  const merged = mergeHits(hits)
+  const found = merged
     .map((release) => {
       const parsed = parseRelease(release.title)
       const match = matchTitle(parsed, titleTarget)
@@ -401,5 +448,35 @@ export async function searchReleases(
     )
     .slice(0, MAX_RELEASES - releases.length)
 
-  return { releases, unmatched, indexerCount: indexers.length, failed }
+  const asked = [...states.values()].filter(
+    state => state.startedAt !== undefined,
+  )
+  const ok = asked.filter(state => state.ok).length
+  const diagnostics: SearchDiagnostics = {
+    ...context,
+    asked: asked.length,
+    ok,
+    failed: asked.length - ok,
+    skipped: (options.skipped ?? 0) + indexers.length - asked.length,
+    raw: merged.length,
+    kept: releases.length,
+    ms: Date.now() - startedAt,
+    customQuery: !!manual,
+  }
+  logFor('sources').info(
+    {
+      event: 'sources.search',
+      origin: 'server',
+      ...diagnostics,
+      cached: false,
+    },
+    `Source search: ${ok} of ${asked.length} indexers answered, ${merged.length} found, ${releases.length} kept`,
+  )
+  return {
+    releases,
+    unmatched,
+    indexerCount: indexers.length,
+    failed,
+    diagnostics,
+  }
 }

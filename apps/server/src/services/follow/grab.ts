@@ -1,3 +1,4 @@
+import { followErrorFacts, rememberFollowFailure } from './logDiagnostics.ts'
 import type { FollowChoiceDiagnostics } from './decide.ts'
 import { newDecisionId, recordDecision } from '../diagnostics/index.ts'
 import { withMaintenanceLease } from '../libraryMaintenance/admission.ts'
@@ -446,8 +447,10 @@ async function startGrabImpl(
     if (options.isCurrent && !options.isCurrent())
       return 'later'
 
-    if (!(err instanceof InsufficientStorageError))
+    if (!(err instanceof InsufficientStorageError)) {
+      rememberFollowFailure(err, follow)
       throw err
+    }
 
     const waitUntil = new Date(now.getTime() + ACQUIRE_RETRY_MS)
 
@@ -554,6 +557,27 @@ async function startGrabImpl(
       truncated: present.length > 20,
     },
   )
+  for (const season of new Set(present.map(item => item.season))) {
+    const episodes = present.filter(item => item.season === season)
+    logFor('catalog').info(
+      {
+        event: 'follow.grabbed',
+        origin: 'server',
+        titleId: follow.titleId,
+        followId: follow.id,
+        torrentId: torrent.id,
+        infoHash: torrent.infoHash,
+        season,
+        episodes: episodes
+          .slice(0, 20)
+          .map(item => item.episode)
+          .join(','),
+        episodeCount: episodes.length,
+        episodesTruncated: episodes.length > 20,
+      },
+      'Follow download started',
+    )
+  }
   await announceOtherVoice(
     follow,
     candidate,
@@ -656,11 +680,19 @@ async function grabCandidateImpl(
     if (!isCurrent())
       return 'later'
 
-    if (!isSkippable(err))
+    if (!isSkippable(err)) {
+      rememberFollowFailure(err, follow)
       throw err
+    }
 
     logFor('catalog').warn(
-      { err, titleId: follow.titleId },
+      {
+        event: 'follow.acquire_failed',
+        origin: 'server',
+        titleId: follow.titleId,
+        followId: follow.id,
+        ...followErrorFacts(err),
+      },
       'Follow could not add a release',
     )
     return retryLater(
@@ -746,6 +778,7 @@ async function grabCandidateImpl(
     // Иначе серия осталась бы с прежним файлом и пометкой апгрейда, и итог
     // апгрейда записал бы замену, которой не было
     restoreUpgrades(follow, upgradingRows(follow, episodes))
+    rememberFollowFailure(err, follow)
     throw err
   }
 }

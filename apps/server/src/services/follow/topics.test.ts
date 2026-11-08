@@ -449,7 +449,7 @@ function completeState(torrent: Torrent): EngineTorrentState {
     queued: false,
     seeding: true,
     uploaded: 0,
-    peers: { connected: 0, found: 0 },
+    peers: { connected: 0, found: 0, seeders: 0 },
     downloadSpeed: 0,
     uploadSpeed: 0,
     fileProgress: sizes,

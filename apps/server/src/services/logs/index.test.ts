@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import Fastify from 'fastify'
 import pino from 'pino'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   closeLogFiles,
   createLogger,
@@ -11,6 +11,7 @@ import {
   logFor,
   queryLogs,
   setLogLevel,
+  throttleLog,
 } from './index.ts'
 
 const dirs: string[] = []
@@ -24,6 +25,7 @@ function tempDir() {
 }
 
 afterEach(() => {
+  vi.restoreAllMocks()
   installLogger(pino({ level: 'silent' }))
 
   for (const dir of dirs.splice(0))
@@ -123,5 +125,24 @@ describe('логгер журнала', () => {
     expect(queryLogs({}).entries.map(entry => entry.message)).toEqual([
       'before restart',
     ])
+  })
+})
+
+describe('bounded log throttle', () => {
+  it('preserves active windows, refuses excess keys, admits expiry and resets on install', () => {
+    let now = 1000
+    vi.spyOn(Date, 'now').mockImplementation(() => now)
+    installLogger(pino({ level: 'silent' }))
+    for (let i = 0; i < 1000; i++)
+      expect(throttleLog(`active-${i}`, 10000)).toBe(true)
+    expect(throttleLog('overflow', 10000)).toBe(false)
+    now += 5000
+    expect(throttleLog('active-0', 10000)).toBe(false)
+    expect(throttleLog('overflow', 10000)).toBe(false)
+    now += 5000
+    expect(throttleLog('overflow', 10000)).toBe(true)
+    expect(throttleLog('overflow', 10000)).toBe(false)
+    installLogger(pino({ level: 'silent' }))
+    expect(throttleLog('overflow', 10000)).toBe(true)
   })
 })

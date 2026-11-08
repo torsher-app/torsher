@@ -41,7 +41,9 @@ func (a *api) stream(w http.ResponseWriter, r *http.Request) {
 
 	window, _ := strconv.ParseInt(r.URL.Query().Get("window"), 10, 64)
 
-	reader := a.windows.open(t, file, newStreamReader(r.Context(), file), window)
+	fileIndex, _ := strconv.Atoi(r.PathValue("index"))
+	windowed := a.windows.open(t, file, newStreamReader(r.Context(), file), window)
+	reader := &streamDiagnostics{Reader: windowed, ctx: r.Context(), logger: a.logger, speeds: a.speeds, hash: t.InfoHash(), fileIndex: fileIndex, offset: file.Offset(), pieceLength: t.Info().PieceLength, first: streamWaitFirst, every: streamWaitRepeat}
 	defer reader.Close()
 
 	name := path.Base(file.Path())

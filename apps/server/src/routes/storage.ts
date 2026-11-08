@@ -1,3 +1,7 @@
+import process from 'node:process'
+import { logFor } from '../services/logs/index.ts'
+import { storageErrno } from '../services/storage/logDiagnostics.ts'
+import type { StorageKind } from '../services/storage/paths.ts'
 import type { FastifyReply } from 'fastify'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import type { StorageOverview } from '../services/storage/index.ts'
@@ -91,11 +95,36 @@ const pathResponses = {
   422: storagePathErrorResponse,
 }
 
-function sendPathError(reply: FastifyReply, err: unknown) {
-  if (err instanceof StoragePathError)
+function sendPathError(
+  reply: FastifyReply,
+  err: unknown,
+  setting: StorageKind,
+) {
+  const logRejected = (errorKind: string) =>
+    logFor('storage').warn(
+      {
+        event: 'storage.folder_rejected',
+        origin: 'server',
+        setting,
+        errorKind,
+        errno: storageErrno(err),
+        ...(typeof process.getuid === 'function'
+          ? { uid: process.getuid() }
+          : {}),
+        ...(typeof process.getgid === 'function'
+          ? { gid: process.getgid() }
+          : {}),
+      },
+      'Storage folder rejected',
+    )
+  if (err instanceof StoragePathError) {
+    logRejected(err.kind)
     return reply.code(422).send({ message: err.message, kind: err.kind })
+  }
 
   if (err instanceof StorageMoveError) {
+    if (err.kind !== 'busy')
+      logRejected(err.kind)
     return reply
       .code(err.kind === 'busy' ? 409 : 422)
       .send({ message: err.message, kind: err.kind })
@@ -105,12 +134,14 @@ function sendPathError(reply: FastifyReply, err: unknown) {
 
   // Папку не создать: нет прав или том только на чтение
   if (code === 'EACCES' || code === 'EPERM' || code === 'EROFS') {
+    logRejected('denied')
     return reply
       .code(422)
       .send({ message: 'Folder is not writable', kind: 'denied' })
   }
 
   if (code === 'ENOTDIR' || code === 'EEXIST') {
+    logRejected('not_directory')
     return reply
       .code(422)
       .send({ message: 'Not a folder', kind: 'not_directory' })
@@ -234,7 +265,7 @@ export const storageRoutes: FastifyPluginAsyncZod = async (app) => {
           const check = await checkStoragePath(kind, path)
 
           if (check.problem)
-            throw new StoragePathError(check.problem)
+            throw new StoragePathError(check.problem, check.errorCode)
         }
 
         await changeStoragePath(kind, path, mode)
@@ -242,7 +273,7 @@ export const storageRoutes: FastifyPluginAsyncZod = async (app) => {
         return toOverviewResponse(await getStorageOverview())
       }
       catch (err) {
-        return sendPathError(reply, err)
+        return sendPathError(reply, err, kind)
       }
     },
   )
@@ -265,7 +296,7 @@ export const storageRoutes: FastifyPluginAsyncZod = async (app) => {
         return toOverviewResponse(await getStorageOverview())
       }
       catch (err) {
-        return sendPathError(reply, err)
+        return sendPathError(reply, err, request.body.kind)
       }
     },
   )

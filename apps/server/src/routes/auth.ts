@@ -1,3 +1,4 @@
+import { logSessionRejected } from '../services/auth/logDiagnostics.ts'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { REFRESH_TOKEN_COOKIE } from '../config.ts'
 import { setupResponse, signin, signup } from '../dto/auth.ts'
@@ -96,14 +97,12 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
       if (!result.ok) {
         if (result.retryAfter !== undefined)
           reply.header('Retry-After', String(result.retryAfter))
-        return reply
-          .code(result.status)
-          .send({
-            message: result.message,
-            ...(result.retryAfter === undefined
-              ? {}
-              : { retryAfter: result.retryAfter }),
-          })
+        return reply.code(result.status).send({
+          message: result.message,
+          ...(result.retryAfter === undefined
+            ? {}
+            : { retryAfter: result.retryAfter }),
+        })
       }
 
       const user = result.user
@@ -138,7 +137,13 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
 
         return { message: 'Refreshed' }
       }
-      catch {
+      catch (error) {
+        logSessionRejected(
+          request,
+          'refresh',
+          error,
+          !request.cookies[REFRESH_TOKEN_COOKIE],
+        )
         clearSession(reply)
 
         return reply.code(401).send({ message: 'Invalid token' })

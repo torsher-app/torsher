@@ -1,3 +1,5 @@
+import { storageErrno } from './logDiagnostics.ts'
+import type { StorageErrno } from './logDiagnostics.ts'
 import type { EngineTorrentState } from '../engine/index.ts'
 import type { StorageKind, StoragePathSource } from './paths.ts'
 import { randomBytes } from 'node:crypto'
@@ -34,11 +36,13 @@ export type StoragePathProblem
 /** Папку нельзя выбрать: причина для панели */
 export class StoragePathError extends Error {
   readonly kind: StoragePathProblem
+  readonly code?: StorageErrno
 
-  constructor(kind: StoragePathProblem) {
+  constructor(kind: StoragePathProblem, code?: StorageErrno) {
     super(`Storage path rejected: ${kind}`)
     this.name = 'StoragePathError'
     this.kind = kind
+    this.code = code
   }
 }
 
@@ -65,18 +69,22 @@ export async function existingDir(path: string) {
 
 // Права и ACL по `access` врут на сетевых и read-only томах, поэтому пишем
 // настоящий файл и сразу удаляем
-export async function canWrite(dir: string) {
+async function probeWrite(dir: string) {
   const probe = join(dir, `.torsher-write-${randomBytes(6).toString('hex')}`)
 
   try {
     await writeFile(probe, '')
     await unlink(probe)
 
-    return true
+    return { writable: true, errorCode: 'unknown' as StorageErrno }
   }
-  catch {
-    return false
+  catch (err) {
+    return { writable: false, errorCode: storageErrno(err) }
   }
+}
+
+export async function canWrite(dir: string) {
+  return (await probeWrite(dir)).writable
 }
 
 /** Реальный путь: симлинки ближайшего существующего каталога раскрыты */
@@ -238,6 +246,8 @@ export async function pathProblem(
 }
 
 export interface StoragePathCheck {
+  /** Внутренний результат уже выполненной пробы; API его не публикует. */
+  errorCode?: StorageErrno
   path: string
   problem: StoragePathProblem | null
   exists: boolean
@@ -284,11 +294,14 @@ export async function checkStoragePath(
 
   // Пробный файл — только в разрешённой папке: в подключённые папки
   // пользователя Torsher не пишет
-  const [writable, disk, same] = await Promise.all([
-    problem ? false : canWrite(existing),
+  const [probe, disk, same] = await Promise.all([
+    problem
+      ? { writable: false, errorCode: 'unknown' as StorageErrno }
+      : probeWrite(existing),
     diskUsage(existing),
     sameVolume(target, storagePath(kind)),
   ])
+  const writable = probe.writable
   const pair
     = kind === 'downloads'
       ? [target, storagePath('library')]
@@ -299,6 +312,7 @@ export async function checkStoragePath(
   return {
     path: target,
     problem: problem ?? (writable ? null : 'denied'),
+    ...(!writable ? { errorCode: probe.errorCode } : {}),
     exists: existing === target,
     writable,
     total: disk.total,

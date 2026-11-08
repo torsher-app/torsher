@@ -88,7 +88,7 @@ describe('клиент движка', () => {
       queued: false,
       seeding: true,
       uploaded: 1_048_576,
-      peers: { connected: 7, found: 41 },
+      peers: { connected: 7, found: 41, seeders: 3 },
       downloadSpeed: 2_621_440,
       uploadSpeed: 262_144,
       fileProgress: [3_145_728, 0, 0],
@@ -406,6 +406,58 @@ describe('maintenance detach protocol', () => {
     )
     expect(fetchMock.mock.calls.at(-1)?.[1]?.headers).toHaveProperty(
       'X-Torsher-Maintenance-Token',
+    )
+  })
+})
+
+it('старый движок без seeders остаётся совместимым', async () => {
+  fetchMock.mockResolvedValue(
+    json({ ...liveStats, peers: { connected: 7, found: 41 } }),
+  )
+  expect((await torrentStats(INFO_HASH)).peers).toEqual({
+    connected: 7,
+    found: 41,
+    seeders: 0,
+  })
+})
+
+describe('engine error status compatibility', () => {
+  it.each([
+    [400, 'invalid_torrent', 'rejected'],
+    [404, 'torrent_not_found', 'not_found'],
+    [409, 'torrent_moving', 'moving'],
+    [504, 'timeout', 'timeout'],
+    [500, 'storage', 'failed'],
+  ] as const)(
+    'preserves response status %s and existing error kind',
+    async (status, code, kind) => {
+      fetchMock.mockResolvedValue(
+        json(engineError(code, 'Synthetic engine response'), status),
+      )
+      const failure = await pauseTorrent(INFO_HASH).catch(error => error)
+      expect(failure).toBeInstanceOf(EngineError)
+      expect(failure).toMatchObject({
+        kind,
+        status,
+        message: 'Synthetic engine response',
+      })
+    },
+  )
+  it('keeps old constructor options and never invents an HTTP response for transport failure', async () => {
+    const cause = new Error('synthetic failure')
+    const legacy = new EngineError('failed', 'legacy', {
+      engineCode: 'legacy_code',
+      cause,
+    })
+    expect(legacy).toMatchObject({
+      kind: 'failed',
+      engineCode: 'legacy_code',
+      cause,
+    })
+    expect(legacy.status).toBeUndefined()
+    fetchMock.mockRejectedValue(cause)
+    expect(await pauseTorrent(INFO_HASH).catch(error => error)).toMatchObject(
+      { kind: 'unavailable', status: undefined },
     )
   })
 })

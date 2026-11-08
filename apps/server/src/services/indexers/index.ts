@@ -1,3 +1,4 @@
+import { logSourceCheckError } from '../sources/logDiagnostics.ts'
 import type {
   FeedCursor,
   Indexer,
@@ -17,7 +18,6 @@ import {
   SourceError,
 } from '../torznab/index.ts'
 import { listManagerIndexers, normalizeManagerUrl } from './managers.ts'
-import { logFor } from '../logs/index.ts'
 import { isSessionCookie } from '../torznab/cookie.ts'
 
 export { normalizeManagerUrl } from './managers.ts'
@@ -323,10 +323,7 @@ export async function checkIndexer(id: string) {
     const kind = checkStatusOf(err)
 
     values = { checkStatus: kind }
-    logFor('sources').warn(
-      { indexerId: id, kind, err },
-      'Indexer check failed',
-    )
+    logSourceCheckError(err, { operation: 'indexer_check', indexerId: id })
   }
 
   getDb()
@@ -355,7 +352,7 @@ export async function checkIndexer(id: string) {
  */
 export async function checkIndexers(
   ids: string[],
-  onError: (err: unknown) => void,
+  onError: (err: unknown, indexerId: string) => void,
 ) {
   const queue = [...ids]
 
@@ -365,7 +362,7 @@ export async function checkIndexers(
         await checkIndexer(id)
       }
       catch (err) {
-        onError(err)
+        onError(err, id)
       }
     }
   }

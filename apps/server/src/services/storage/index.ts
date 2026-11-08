@@ -27,7 +27,7 @@ import {
 } from '../engine/index.ts'
 import { libraryUsage, linkedBytesByTorrent } from '../library/files.ts'
 import { librarySharesVolume } from '../library/link.ts'
-import { logFor } from '../logs/index.ts'
+import { logFor, throttleLog } from '../logs/index.ts'
 import type { StorageFolder } from './folders.ts'
 import type { StorageKind } from './paths.ts'
 import { diskUsage } from './disk.ts'
@@ -360,6 +360,8 @@ async function balanceDownloads(
 }
 
 export interface SpaceRequest {
+  /** Наблюдательный контекст: не влияет на admission и число байт. */
+  kind?: 'stream' | 'download' | 'unknown'
   torrent: Torrent
   /** Сколько ещё скачает просмотр */
   bytes: number
@@ -535,14 +537,31 @@ export async function ensureSpaceFor(request: SpaceRequest) {
   const result = await enforceStorage(request)
 
   if (!result.ok) {
-    throw new InsufficientStorageError({
+    const shortage: StorageShortage = {
       kind: result.shortage ?? 'no_space',
       needed: request.bytes,
       available: result.available,
       free: result.free,
       minFree: result.minFree,
       cacheLimit: result.cacheLimit,
-    })
+    }
+    const kind = request.kind ?? 'unknown'
+    if (throttleLog(`storage-space:${request.torrent.id}:${kind}`, 60_000)) {
+      const { kind: shortageKind, ...numbers } = shortage
+      logFor('storage').warn(
+        {
+          event: 'storage.insufficient_space',
+          origin: 'server',
+          torrentId: request.torrent.id,
+          infoHash: request.torrent.infoHash,
+          kind,
+          shortage: shortageKind,
+          ...numbers,
+        },
+        'Not enough storage space',
+      )
+    }
+    throw new InsufficientStorageError(shortage)
   }
 }
 

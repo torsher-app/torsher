@@ -491,11 +491,17 @@ async function decideFollowImpl(
   follow: Follow,
   releases: FoundRelease[],
   now = new Date(),
+  observe?: (season: number, plan: SeasonPlan, episodes: number) => void,
 ) {
-  const currentRules = voiceGuard(follow, [
+  const guard = voiceGuard(follow, [
     ...new Set(releases.flatMap(release => release.parsed.seasons)),
     follow.startSeason,
   ])
+  let observedCurrent = true
+  const currentRules = () => {
+    observedCurrent = guard()
+    return observedCurrent
+  }
   // Проход начался раньше: слежение могли остановить или удалить
   if (followById(follow.id)?.state !== 'active')
     return
@@ -554,7 +560,12 @@ async function decideFollowImpl(
     }),
     now,
   }
-  const grabs: { plan: SeasonPlan, voice?: VoiceRef }[] = []
+  const grabs: {
+    plan: SeasonPlan
+    voice?: VoiceRef
+    season: number
+    episodes: number
+  }[] = []
   const waiting: NewPending[] = []
   const topics = titleTopics(follow.titleId)
   const ownTopics = seasonTopics(follow.id)
@@ -620,7 +631,12 @@ async function decideFollowImpl(
         now,
       ),
     )
-    grabs.push({ plan, voice })
+    grabs.push({
+      plan,
+      voice,
+      season,
+      episodes: considered.filter(item => item.season === season).length,
+    })
   }
 
   touchTopics([...seenTopics], now)
@@ -645,6 +661,9 @@ async function decideFollowImpl(
         },
       )
     }
+  }
+  if (observe && observedCurrent) {
+    for (const item of grabs) observe(item.season, item.plan, item.episodes)
   }
 }
 export function decideFollow(...args: Parameters<typeof decideFollowImpl>) {

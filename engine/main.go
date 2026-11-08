@@ -84,33 +84,43 @@ func main() {
 	}
 }
 
-// Журнал библиотеки без записей об отменённом чтении. Плеер закрывает поток
-// на каждой перемотке и остановке, а ридер библиотеки пишет такую отмену
-// тремя записями ERROR — по одной на каждую попытку чтения
-type withoutCanceled struct{ slog.Handler }
+// Фильтрует отмену и оставляет только безопасные факты upstream.
+type withoutCanceled struct {
+	slog.Handler
+	throttle *apiErrorThrottle
+}
 
 func (h withoutCanceled) Handle(ctx context.Context, record slog.Record) error {
-	canceled := false
-
-	record.Attrs(func(attr slog.Attr) bool {
-		err, ok := attr.Value.Any().(error)
-		canceled = ok && errors.Is(err, context.Canceled)
-		return !canceled
-	})
-
+	var attrs []slog.Attr
+	record.Attrs(func(attr slog.Attr) bool { attrs = append(attrs, attr); return true })
+	safe, canceled := libraryAttrs(attrs)
 	if canceled {
 		return nil
 	}
-
-	return h.Handler.Handle(ctx, record)
+	operation := libraryOperation(record.Message)
+	throttleKey := operation
+	for _, attr := range safe {
+		if attr.Key == "errorKind" {
+			throttleKey += ":" + attr.Value.String()
+			break
+		}
+	}
+	if h.throttle != nil && !h.throttle.allow(throttleKey, time.Now()) {
+		return nil
+	}
+	projected := slog.NewRecord(record.Time, record.Level, "torrent library diagnostic", record.PC)
+	projected.AddAttrs(slog.String("libraryOperation", operation))
+	projected.AddAttrs(safe...)
+	return h.Handler.Handle(ctx, projected)
 }
-
 func (h withoutCanceled) WithAttrs(attrs []slog.Attr) slog.Handler {
-	return withoutCanceled{h.Handler.WithAttrs(attrs)}
+	safe, _ := libraryAttrs(attrs)
+	return withoutCanceled{Handler: h.Handler.WithAttrs(safe), throttle: h.throttle}
 }
+func (h withoutCanceled) WithGroup(string) slog.Handler { return h }
 
-func (h withoutCanceled) WithGroup(name string) slog.Handler {
-	return withoutCanceled{h.Handler.WithGroup(name)}
+func newLibraryLogger() *slog.Logger {
+	return slog.New(withoutCanceled{Handler: slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn}), throttle: &apiErrorThrottle{}})
 }
 
 func (o engineOptions) validate() error {
@@ -136,6 +146,7 @@ type clientParts struct {
 func fileStorage(dir string, completion storage.PieceCompletion) storage.ClientImplCloser {
 	return storage.NewFileOpts(storage.NewFileClientOpts{
 		ClientBaseDir:   dir,
+		Logger:          newLibraryLogger(),
 		FilePathMaker:   filePathOf,
 		PieceCompletion: completion,
 		// Без `.part`: с ними хранилище пишет кусок всегда в `<файл>.part`, даже
@@ -190,10 +201,10 @@ func newClientConfig(downloads, dataDir string, opts engineOptions) (*torrent.Cl
 	cfg.DownloadRateLimiter = speedLimits.download
 	cfg.UploadRateLimiter = speedLimits.upload
 	cfg.Callbacks.ReceivedUsefulData = append(cfg.Callbacks.ReceivedUsefulData, speedLimits.received)
-	lifecycle := &storageLifecycle{torrents: map[metainfo.Hash]*storageLifetime{}}
+	lifecycle := &storageLifecycle{torrents: map[metainfo.Hash]*storageLifetime{}, diagnostics: newStorageDiagnostics()}
 	cfg.DefaultStorage = trackedStorage{ClientImplCloser: fileStorage(downloads, completion), lifecycle: lifecycle}
 	// Сообщения библиотеки — только предупреждения и ошибки: остальное шумит в журнале сервера
-	cfg.Slogger = slog.New(withoutCanceled{slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn})})
+	cfg.Slogger = newLibraryLogger()
 
 	return cfg, clientParts{lifecycle: lifecycle, downloads: downloads, completion: completion, limits: speedLimits, windows: streams}, nil
 }
@@ -216,6 +227,7 @@ func run(listen, downloads, dataDir string, opts engineOptions, logger *slog.Log
 	}
 
 	engine := newAPI(client, sess, store, logger)
+	logger.Info("engine network configured", "event", "engine.network", "peerPort", client.LocalPort(), "dht", opts.dht, "pex", opts.pex, "upnp", opts.upnp, "encryption", opts.encryption, "connsPerTorrent", opts.live.ConnsPerTorrent, "connsTotal", opts.live.ConnsTotal)
 	// После восстановления и до закрытия клиента: счётчики раздач живут в нём
 	defer engine.flushAllUploaded()
 
@@ -249,6 +261,7 @@ func run(listen, downloads, dataDir string, opts engineOptions, logger *slog.Log
 	// может застрять под ней
 	go engine.watchdog(ctx, func() { client.Torrents() })
 	go engine.speeds.run(ctx, client, logger)
+	go engine.logStorageFailures(ctx)
 	go engine.schedule(ctx)
 	go engine.limits.gate(ctx)
 
