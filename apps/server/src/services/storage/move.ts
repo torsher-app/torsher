@@ -41,10 +41,16 @@ import {
   sameDirectory,
   sameVolume,
 } from './folders.ts'
-import { markMoving, unmarkMoving } from './moving.ts'
+import {
+  markMoving,
+  unmarkMoving,
+  withTorrentStorageMutation,
+} from './moving.ts'
 import {
   downloadDirValue,
   envStoragePath,
+  isIsolatedTorrentDir,
+  isolatedTorrentDir,
   setStoragePath,
   storagePath,
   torrentDir,
@@ -170,7 +176,11 @@ async function pendingTorrents(target: string) {
     : new Map()
 
   return rows
-    .filter(row => resolve(torrentDir(row)) !== target)
+    .filter(
+      row =>
+        resolve(torrentDir(row)) !== target
+        && resolve(torrentDir(row)) !== isolatedTorrentDir(target, row.infoHash),
+    )
     .map(row => ({
       row,
       bytes: live.get(row.infoHash)?.bytesCompleted ?? 0,
@@ -471,8 +481,23 @@ async function moveDownloads(state: Running, row: StorageMove) {
 
   // Без данных на диске: следующая закачка начнётся в новом каталоге
   for (const item of await pendingTorrents(target)) {
-    if (!item.row.inEngine)
-      setDownloadDir(item.row, target)
+    if (!item.row.inEngine) {
+      await withTorrentStorageMutation(item.row.id, async () => {
+        const current = getDb()
+          .select()
+          .from(torrents)
+          .where(eq(torrents.id, item.row.id))
+          .get()
+        if (current && !current.inEngine) {
+          setDownloadDir(
+            current,
+            isIsolatedTorrentDir(torrentDir(current), current.infoHash)
+              ? isolatedTorrentDir(target, current.infoHash)
+              : target,
+          )
+        }
+      })
+    }
   }
 
   for (;;) {
@@ -500,8 +525,22 @@ async function moveDownloads(state: Running, row: StorageMove) {
     state.waiting = false
     state.currentName = next.row.name
 
-    await moveOneTorrent(state, next.row, target)
-    await separateLibraryCopies(next.row, target)
+    await withTorrentStorageMutation(next.row.id, async () => {
+      const current = getDb()
+        .select()
+        .from(torrents)
+        .where(eq(torrents.id, next.row.id))
+        .get()
+      if (current)
+        await moveOneTorrent(state, current, target)
+    })
+    const current = getDb()
+      .select()
+      .from(torrents)
+      .where(eq(torrents.id, next.row.id))
+      .get()
+    if (current)
+      await separateLibraryCopies(current, torrentDir(current))
     itemDone(state, next.bytes)
   }
 }
@@ -512,6 +551,9 @@ async function moveOneTorrent(
   target: string,
 ) {
   markMoving(torrent.id)
+  let destination = isIsolatedTorrentDir(torrentDir(torrent), torrent.infoHash)
+    ? isolatedTorrentDir(target, torrent.infoHash)
+    : target
 
   try {
     for (let attempt = 0; ; attempt++) {
@@ -519,7 +561,20 @@ async function moveOneTorrent(
         let move
 
         try {
-          move = await moveTorrent(torrent.infoHash, target)
+          try {
+            move = await moveTorrent(torrent.infoHash, destination)
+          }
+          catch (error) {
+            if (
+              !(error instanceof EngineError)
+              || error.engineCode !== 'storage_path_conflict'
+              || destination !== target
+            ) {
+              throw error
+            }
+            destination = isolatedTorrentDir(target, torrent.infoHash)
+            move = await moveTorrent(torrent.infoHash, destination)
+          }
         }
         catch (err) {
           // Движок раздачу не знает: файлами он не управляет, и следующая
@@ -547,6 +602,8 @@ async function moveOneTorrent(
           )
         }
 
+        destination = move.dir
+
         break
       }
       catch (err) {
@@ -563,7 +620,7 @@ async function moveOneTorrent(
       }
     }
 
-    setDownloadDir(torrent, target)
+    setDownloadDir(torrent, destination)
   }
   finally {
     unmarkMoving(torrent.id)

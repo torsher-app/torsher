@@ -39,6 +39,7 @@ type api struct {
 	maintenanceToken string
 	maintenance      *maintenanceFences
 	lifecycle        *storageLifecycle
+	ownership        *storageOwnership
 	metadataOnly     sync.Map
 	client           *torrent.Client
 	session          *session
@@ -77,6 +78,7 @@ func newAPI(client *torrent.Client, session *session, parts clientParts, logger 
 		maintenanceToken: os.Getenv("TORSHER_ENGINE_MAINTENANCE_TOKEN"),
 		maintenance:      loadMaintenance(filepath.Join(filepath.Dir(session.dir), "maintenance")),
 		lifecycle:        parts.lifecycle,
+		ownership:        newStorageOwnership(),
 		client:           client,
 		session:          session,
 		logger:           logger,
@@ -129,6 +131,7 @@ func (a *api) routes() http.Handler {
 	mux.HandleFunc("POST /torrents/inspect", a.inspect)
 	mux.HandleFunc("POST /torrents/resolve", a.resolve)
 	mux.HandleFunc("GET /torrents", a.list)
+	mux.HandleFunc("GET /torrents/storage", a.storageInventory)
 	mux.HandleFunc("POST /torrents", a.add)
 	mux.HandleFunc("PUT /torrents/{hash}/files", a.selectFiles)
 	mux.HandleFunc("POST /torrents/{hash}/pause", a.pause)
@@ -230,6 +233,8 @@ type fileDetails struct {
 }
 
 type torrentDetails struct {
+	Paused      bool          `json:"paused,omitempty"`
+	Dir         string        `json:"dir,omitempty"`
 	InfoHash    string        `json:"infoHash"`
 	Name        string        `json:"name"`
 	PieceLength int64         `json:"pieceLength"`
@@ -337,16 +342,23 @@ func (a *api) resolve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer release()
+	unlock, acquired := a.ownership.tryOperation(spec.InfoHash)
+	if !acquired {
+		writeMoving(w)
+		return
+	}
 	_, known := a.client.Torrent(spec.InfoHash)
 	if !known && len(a.session.get(spec.InfoHash).GuardedPaths) > 0 {
+		unlock()
 		writeError(w, 409, "source_identity_guarded", errors.New("Guarded files require maintenance recovery before reopening the download."))
 		return
 	}
 	spec.Storage = metadataOnlyStorage{}
-	t, _, err := a.client.AddTorrentSpec(spec)
-	if err == nil && !known {
+	t, created, err := a.client.AddTorrentSpec(spec)
+	if err == nil && created {
 		a.metadataOnly.Store(t.InfoHash(), true)
 	}
+	unlock()
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_magnet", err)
 		return
@@ -458,8 +470,9 @@ func (a *api) restore(ctx context.Context) {
 	if a.maintenance.loadErr != nil {
 		return
 	}
-	a.recoverMaintenanceReattachments()
 	restored, errs := a.session.load()
+	a.preflightStorage(restored)
+	a.recoverMaintenanceReattachments()
 
 	for _, err := range errs {
 		a.logger.Warn("restore torrent", "err", err)
@@ -469,6 +482,10 @@ func (a *api) restore(ctx context.Context) {
 		// Остановка во время восстановления: остальные раздачи — в следующий запуск
 		if ctx.Err() != nil {
 			return
+		}
+		if a.ownership.blocked(item.meta.HashInfoBytes()) {
+			a.logger.Warn("restore storage conflict", "infoHash", item.meta.HashInfoBytes().HexString())
+			continue
 		}
 
 		// Guarded sessions восстанавливаются отдельно: долгий rehash не задерживает чужие.
@@ -490,6 +507,7 @@ func (a *api) restore(ctx context.Context) {
 			a.logger.Warn("restore torrent", "err", err)
 			continue
 		}
+		a.ownership.replace(item.meta.HashInfoBytes(), storageClaim{paths: metadataPaths(item.meta, dir), dir: dir})
 
 		// До `ok` в `/health`: сервер не откроет поток, который отдал бы нули вместо данных
 		a.verifyHoles(t)
@@ -562,6 +580,12 @@ func (a *api) add(w http.ResponseWriter, r *http.Request) {
 	}
 
 	hash := mi.HashInfoBytes()
+	unlock, acquired := a.ownership.tryOperation(hash)
+	if !acquired {
+		writeMoving(w)
+		return
+	}
+	defer unlock()
 	release, err := a.maintenanceLease(hash, metadataPaths(mi, dir))
 	if err != nil {
 		writeError(w, 409, "maintenance_held", err)
@@ -588,7 +612,7 @@ func (a *api) add(w http.ResponseWriter, r *http.Request) {
 	// Добавленная раньше остаётся в своём каталоге — сменить его может только
 	// перенос
 	_, metadataOnly := a.metadataOnly.Load(hash)
-	if known && !a.session.has(hash) && (metadataOnly || !samePath(a.dirOf(hash), dir)) {
+	if known && (metadataOnly || (!a.session.has(hash) && !samePath(a.dirOf(hash), dir))) {
 		existing.Drop()
 		a.metadataOnly.Delete(hash)
 		a.dirs.Delete(hash)
@@ -598,16 +622,30 @@ func (a *api) add(w http.ResponseWriter, r *http.Request) {
 	if known {
 		dir = a.dirOf(hash)
 	}
+	claims, _ := a.ownership.snapshot()
+	previous := claims[hash]
+	if err := a.ownership.reserve(hash, dir, metadataPaths(mi, dir)); err != nil {
+		writeError(w, http.StatusConflict, "storage_path_conflict", err)
+		return
+	}
+	opened := false
+	defer func() {
+		if !opened {
+			a.ownership.replace(hash, previous)
+		}
+	}()
 
 	if info, err := mi.UnmarshalInfo(); err == nil && !known {
 		adoptPartFiles(dir, &info)
 	}
 
-	t, err := a.addIn(mi, dir)
+	t, err := a.addIn(mi, dir, r.URL.Query().Get("paused") == "true")
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_torrent", err)
 		return
 	}
+	opened = true
+	a.ownership.replace(hash, storageClaim{paths: metadataPaths(mi, dir), dir: dir})
 
 	<-t.GotInfo()
 
@@ -626,6 +664,13 @@ func (a *api) add(w http.ResponseWriter, r *http.Request) {
 		queue(saved, selected, first, low)
 		saved.Background = nil
 		saved.Dir = sessionDir
+		if previous.blocked {
+			// Изоляция не продолжает старый перенос и не удаляет общие исходники.
+			saved.MovingTo, saved.MovedFrom, saved.Placed = "", "", nil
+		}
+		if r.URL.Query().Get("paused") == "true" {
+			saved.Paused = true
+		}
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "storage", err)
@@ -634,6 +679,8 @@ func (a *api) add(w http.ResponseWriter, r *http.Request) {
 
 	a.applySelection(t)
 
+	details.Dir = a.dirOf(hash)
+	details.Paused = a.session.get(hash).Paused
 	writeJSON(w, http.StatusOK, details)
 }
 
@@ -837,6 +884,30 @@ type forgetResponse struct {
 // с отметками скачанных кусков: иначе повторное добавление сочло бы куски
 // скачанными. Без параметра файлы остаются на диске
 func (a *api) forget(w http.ResponseWriter, r *http.Request) {
+	var requested metainfo.Hash
+	if err := requested.FromHexString(r.PathValue("hash")); err != nil {
+		writeError(w, 400, "invalid_hash", err)
+		return
+	}
+	unlock, acquired := a.ownership.tryOperation(requested)
+	if !acquired {
+		writeMoving(w)
+		return
+	}
+	defer unlock()
+	if a.ownership.blocked(requested) {
+		if r.URL.Query().Get("delete_files") == "true" {
+			writeError(w, 409, "storage_path_conflict", errStorageConflict)
+			return
+		}
+		if err := a.session.remove(requested); err != nil {
+			writeError(w, 500, "storage", err)
+			return
+		}
+		a.ownership.replace(requested, storageClaim{})
+		writeJSON(w, 200, forgetResponse{})
+		return
+	}
 	t, ok := a.torrentOf(w, r)
 	if !ok {
 		return
@@ -852,6 +923,10 @@ func (a *api) forget(w http.ResponseWriter, r *http.Request) {
 	dir := a.dirOf(hash)
 
 	t.Drop()
+	if !a.lifecycle.settled(hash) {
+		writeError(w, 500, "storage", errors.New("torrent storage has not closed"))
+		return
+	}
 	a.guarded.Delete(hash)
 	a.dirs.Delete(hash)
 	a.forgetMove(hash)
@@ -883,6 +958,7 @@ func (a *api) forget(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	a.ownership.replace(hash, storageClaim{})
 	writeJSON(w, http.StatusOK, response)
 }
 

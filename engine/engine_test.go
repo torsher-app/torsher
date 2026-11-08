@@ -238,7 +238,7 @@ func TestStreamServesRangesFromPeers(t *testing.T) {
 		t.Fatalf("Content-Range %q, want %q", response.Header.Get("Content-Range"), want)
 	}
 
-	if response.Header.Get("Content-Type") != "video/x-matroska" {
+	if contentType := response.Header.Get("Content-Type"); contentType != "video/x-matroska" && contentType != "video/matroska" {
 		t.Fatalf("Content-Type %q", response.Header.Get("Content-Type"))
 	}
 

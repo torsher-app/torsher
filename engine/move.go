@@ -122,7 +122,7 @@ func (a *api) storageFor(dir string) storage.ClientImpl {
 }
 
 // Добавляет раздачу в клиент с хранилищем её каталога
-func (a *api) addIn(mi *metainfo.MetaInfo, dir string) (*torrent.Torrent, error) {
+func (a *api) addIn(mi *metainfo.MetaInfo, dir string, paused ...bool) (*torrent.Torrent, error) {
 	if a.maintenanceBlocked(mi.HashInfoBytes(), metadataPaths(mi, dir)) {
 		return nil, errMaintenance
 	}
@@ -141,6 +141,13 @@ func (a *api) addIn(mi *metainfo.MetaInfo, dir string) (*torrent.Torrent, error)
 	}
 
 	spec.Storage = a.storageFor(dir)
+	if err := a.ownership.reserve(mi.HashInfoBytes(), dir, metadataPaths(mi, dir)); err != nil {
+		return nil, err
+	}
+	if a.session.get(mi.HashInfoBytes()).Paused || (len(paused) > 0 && paused[0]) {
+		spec.DisallowDataDownload = true
+		spec.DisallowDataUpload = true
+	}
 
 	t, _, err := a.client.AddTorrentSpec(spec)
 	if err != nil {
@@ -209,6 +216,22 @@ func writeMoving(w http.ResponseWriter) {
 // Переносит раздачу в другой каталог в фоне. Раздача на время переноса уходит
 // из клиента: не качает, не раздаёт, поток не открыть. Ход — `GET …/move`
 func (a *api) startMove(w http.ResponseWriter, r *http.Request) {
+	var requested metainfo.Hash
+	if err := requested.FromHexString(r.PathValue("hash")); err != nil {
+		writeError(w, 400, "invalid_hash", err)
+		return
+	}
+	unlock, acquired := a.ownership.tryOperation(requested)
+	if !acquired {
+		writeMoving(w)
+		return
+	}
+	async := false
+	defer func() {
+		if !async {
+			unlock()
+		}
+	}()
 	t, ok := a.torrentOf(w, r)
 	if !ok {
 		return
@@ -260,6 +283,16 @@ func (a *api) startMove(w http.ResponseWriter, r *http.Request) {
 	from := a.dirOf(hash)
 	to := filepath.Clean(body.Dir)
 	job.update(func(state *moveState) { state.Dir = to })
+	if err := a.ownership.reserve(hash, to, metadataPaths(&metaForFence, to)); err != nil {
+		reject(409, "storage_path_conflict", err)
+		return
+	}
+	defer func() {
+		if !async {
+			dir := a.dirOf(hash)
+			a.ownership.replace(hash, storageClaim{paths: metadataPaths(&metaForFence, dir), dir: dir})
+		}
+	}()
 
 	if err := os.MkdirAll(to, 0o755); err != nil {
 		reject(http.StatusInternalServerError, "storage", err)
@@ -300,6 +333,10 @@ func (a *api) startMove(w http.ResponseWriter, r *http.Request) {
 		a.flushUploaded(t)
 		complete := dropTorrent(t)
 		a.windows.forget(hash)
+		if !a.lifecycle.settled(hash) {
+			reject(500, "storage", errors.New("torrent storage has not closed"))
+			return
+		}
 		adoptPartFiles(to, info)
 
 		// Сессия уже переключена: раздача вернётся при перезапуске движка
@@ -326,9 +363,15 @@ func (a *api) startMove(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Ожидание проверок кусков не держит ответ: задание уже занято
+	async = true
 	go func() {
+		defer unlock()
 		a.flushUploaded(t)
 		complete := dropTorrent(t)
+		if !a.lifecycle.settled(hash) {
+			job.update(func(state *moveState) { state.State = "failed"; state.Error = "torrent storage has not closed" })
+			return
+		}
 		a.windows.forget(hash)
 		a.runMove(job, mi, info, from, to, saved, complete)
 	}()
@@ -400,6 +443,10 @@ func (a *api) moveStatus(w http.ResponseWriter, r *http.Request) {
 // удаляются. Сбой первого шага убирает поставленное, раздача остаётся на месте
 func (a *api) runMove(job *moveJob, mi *metainfo.MetaInfo, info *metainfo.Info, from, to string, saved savedTorrent, complete []int) {
 	hash := mi.HashInfoBytes()
+	defer func() {
+		dir := a.dirOrDefault(a.session.get(hash).Dir)
+		a.ownership.replace(hash, storageClaim{paths: metadataPaths(mi, dir), dir: dir})
+	}()
 	log := a.logger.With("infoHash", hash.HexString())
 	log.Info("torrent move started")
 

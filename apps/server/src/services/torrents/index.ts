@@ -31,6 +31,7 @@ import { torrents, watchStates } from '../../db/schema.ts'
 import {
   addTorrent,
   EngineError,
+  engineStorageInventory,
   engineUnavailableError,
   forgetTorrent,
   inspectTorrent,
@@ -44,9 +45,18 @@ import {
   torrentStats,
 } from '../engine/index.ts'
 import { findSidecars } from '../media/subtitles.ts'
+import { logFor } from '../logs/index.ts'
 import { enforceStorage, ensureSpaceFor } from '../storage/index.ts'
-import { isMovingTorrent } from '../storage/moving.ts'
-import { downloadDirValue, storagePath, torrentDir } from '../storage/paths.ts'
+import {
+  isMovingTorrent,
+  withTorrentStorageMutation as withEngineMutation,
+} from '../storage/moving.ts'
+import {
+  downloadDirValue,
+  isolatedTorrentDir,
+  storagePath,
+  torrentDir,
+} from '../storage/paths.ts'
 import { parseMagnet } from './magnet.ts'
 import { isVideoFile } from './media.ts'
 import { downloadOrder } from './order.ts'
@@ -328,6 +338,10 @@ async function deleteTorrentImpl(
   torrent: Torrent,
   options: { deleteFiles?: boolean } = {},
 ) {
+  const current = getTorrent(torrent.id)
+  if (!current)
+    return
+  torrent = current
   if (torrent.inEngine) {
     try {
       await forgetTorrent(torrent.infoHash, options)
@@ -344,7 +358,7 @@ async function deleteTorrentImpl(
 }
 export function deleteTorrent(...args: Parameters<typeof deleteTorrentImpl>) {
   return withMaintenanceLease({ torrentId: args[0].id }, () =>
-    deleteTorrentImpl(...args))
+    withEngineMutation(args[0].id, () => deleteTorrentImpl(...args)))
 }
 
 let lastLive = new Map<string, EngineTorrentState>()
@@ -478,22 +492,27 @@ export function linkTitle(torrent: Torrent, titleId: string) {
 }
 
 /**
- * Добавляет раздачу в движок в её каталоге. Раздача, которой в движке нет,
- * на диске ничего не хранит и получает действующий каталог загрузок: так
- * выбранная в панели папка действует с первой новой закачки.
+ * Добавляет раздачу в сохранённом каталоге. Новая без своего каталога получает
+ * действующий путь; изоляция переживает даже падение до сохранения engine session.
  */
 async function addToEngineImpl(
   torrent: Torrent,
   files: number[],
   dir?: Torrent['downloadDir'],
+  requiredBytes?: number,
+  paused = false,
 ) {
+  const current = getTorrent(torrent.id)
+  if (!current)
+    throw new NotReadyError()
+  torrent = current
   if (!torrent.torrentFile)
     throw new NotReadyError()
 
   if (isMovingTorrent(torrent.id))
     throw new EngineError('moving', 'Torrent is being moved')
 
-  if (!torrent.inEngine || dir !== undefined) {
+  if ((!torrent.inEngine && !torrent.downloadDir) || dir !== undefined) {
     const downloadDir
       = dir !== undefined ? dir : downloadDirValue(storagePath('downloads'))
 
@@ -503,13 +522,52 @@ async function addToEngineImpl(
     }
   }
 
-  await addTorrent(
-    torrent.torrentFile!,
-    downloadOrder(torrent, files),
-    torrent.downloadDir ? torrentDir(torrent) : undefined,
-    priorityWithin(torrent, files, 'firstFiles') ?? [],
-    priorityWithin(torrent, files, 'lowFiles') ?? [],
-  )
+  const add = () =>
+    addTorrent(
+      torrent.torrentFile!,
+      downloadOrder(torrent, files),
+      torrent.downloadDir ? torrentDir(torrent) : undefined,
+      priorityWithin(torrent, files, 'firstFiles') ?? [],
+      priorityWithin(torrent, files, 'lowFiles') ?? [],
+      paused,
+    )
+  let details
+  try {
+    details = await add()
+  }
+  catch (error) {
+    if (
+      !(error instanceof EngineError)
+      || error.engineCode !== 'storage_path_conflict'
+    ) {
+      throw error
+    }
+    const isolated = isolatedTorrentDir(torrentDir(torrent), torrent.infoHash)
+    if (isolated === torrentDir(torrent))
+      throw error
+    // До retry: restart не возвращает раздачу в общий каталог даже при потере ответа.
+    torrent = update(torrent.id, { downloadDir: isolated })
+    await ensureSpaceFor({
+      torrent,
+      bytes:
+        requiredBytes
+        ?? files.reduce(
+          (sum, index) => sum + (torrent.files?.[index]?.size ?? 0),
+          0,
+        ),
+    })
+    details = await add()
+  }
+  // Engine мог уже принять предыдущий запрос, пока сервер потерял ответ.
+  const updated = update(torrent.id, {
+    inEngine: true,
+    ...(details.dir && { downloadDir: downloadDirValue(details.dir) }),
+  })
+  // Recovery мог прерваться после durable paused add. Явные PLAY/download
+  // снимают эту техническую паузу, даже если в DB pauseReason отсутствует.
+  if (!paused && details.paused && !updated.pauseReason)
+    await resumeTorrent(updated.infoHash)
+  return updated
 }
 function addToEngine(...args: Parameters<typeof addToEngineImpl>) {
   return withMaintenanceLease({ torrentId: args[0].id }, () =>
@@ -531,6 +589,7 @@ async function downloadFilesImpl(
     origin?: 'follow' | 'manual' | 'preserve'
   } = {},
 ) {
+  torrent = getTorrent(torrent.id) ?? torrent
   if (!torrent.torrentFile)
     throw new NotReadyError()
 
@@ -539,7 +598,7 @@ async function downloadFilesImpl(
   if (origin === 'manual')
     protectTorrent(torrent.id)
 
-  await addToEngine(torrent, files, options.dir)
+  torrent = await addToEngine(torrent, files, options.dir)
 
   if (torrent.pauseReason)
     await resumeTorrent(torrent.infoHash)
@@ -565,10 +624,11 @@ async function downloadFilesImpl(
 }
 export function downloadFiles(...args: Parameters<typeof downloadFilesImpl>) {
   return withMaintenanceLease({ torrentId: args[0].id }, () =>
-    downloadFilesImpl(...args))
+    withEngineMutation(args[0].id, () => downloadFilesImpl(...args)))
 }
 
 async function pauseDownloadImpl(torrent: Torrent) {
+  torrent = getTorrent(torrent.id) ?? torrent
   if (!torrent.inEngine)
     throw new NotInEngineError()
 
@@ -578,11 +638,12 @@ async function pauseDownloadImpl(torrent: Torrent) {
 }
 export function pauseDownload(...args: Parameters<typeof pauseDownloadImpl>) {
   return withMaintenanceLease({ torrentId: args[0].id }, () =>
-    pauseDownloadImpl(...args))
+    withEngineMutation(args[0].id, () => pauseDownloadImpl(...args)))
 }
 
 /** Снимает любую паузу; если места всё ещё мало, сервер поставит свою снова */
 async function resumeDownloadImpl(torrent: Torrent) {
+  torrent = getTorrent(torrent.id) ?? torrent
   if (!torrent.inEngine)
     throw new NotInEngineError()
 
@@ -594,7 +655,7 @@ async function resumeDownloadImpl(torrent: Torrent) {
 }
 export function resumeDownload(...args: Parameters<typeof resumeDownloadImpl>) {
   return withMaintenanceLease({ torrentId: args[0].id }, () =>
-    resumeDownloadImpl(...args))
+    withEngineMutation(args[0].id, () => resumeDownloadImpl(...args)))
 }
 
 /** Приоритет меняется сразу, только у выбранных файлов. */
@@ -773,6 +834,7 @@ export function playableFile(torrent: Torrent, fileIndex: number) {
  * (`streamSelection`). Просмотр снимает паузу: смотреть — значит качать.
  */
 async function prepareStreamImpl(torrent: Torrent, fileIndex: number) {
+  torrent = getTorrent(torrent.id) ?? torrent
   if (!torrent.torrentFile)
     throw new EngineError('rejected', 'Torrent metadata is not ready')
 
@@ -783,7 +845,7 @@ async function prepareStreamImpl(torrent: Torrent, fileIndex: number) {
 
   const selected = streamSelection(torrent, fileIndex)
 
-  await addToEngine(torrent, selected)
+  torrent = await addToEngine(torrent, selected, undefined, size)
 
   if (torrent.pauseReason)
     await resumeTorrent(torrent.infoHash)
@@ -799,7 +861,7 @@ async function prepareStreamImpl(torrent: Torrent, fileIndex: number) {
 }
 export function prepareStream(...args: Parameters<typeof prepareStreamImpl>) {
   return withMaintenanceLease({ torrentId: args[0].id }, () =>
-    prepareStreamImpl(...args))
+    withEngineMutation(args[0].id, () => prepareStreamImpl(...args)))
 }
 
 /**
@@ -825,11 +887,105 @@ export async function openFileStream(
       throw new EngineError('rejected', 'Torrent metadata is not ready')
 
     // Движок потерял раздачу; место под неё проверялось при старте просмотра
-    await addToEngine(torrent, streamSelection(torrent, fileIndex))
-    update(torrent.id, { inEngine: true })
+    await withEngineMutation(torrent.id, async () => {
+      torrent = getTorrent(torrent.id) ?? torrent
+      await addToEngine(
+        torrent,
+        streamSelection(torrent, fileIndex),
+        undefined,
+        torrent.files?.[fileIndex]?.size ?? 0,
+      )
+    })
 
     return openStream(torrent.infoHash, fileIndex, range, signal, window)
   }
+}
+
+/** На каждом engine-ready, до библиотеки/переносов/follow. Неизвестные DB сессии не запускаем. */
+async function reconcileEngineStorageImpl() {
+  const inventory = await engineStorageInventory()
+  for (let item of inventory) {
+    const known = findByInfoHash(item.infoHash.toLowerCase())
+    if (!known)
+      continue
+    try {
+      await withMaintenanceLease({ torrentId: known.id }, () =>
+        withEngineMutation(known.id, async () => {
+          const torrent = getTorrent(known.id)
+          if (!torrent)
+            return
+          // Playback мог успеть восстановить hash после первого снимка inventory.
+          const current = (await engineStorageInventory()).find(
+            entry => entry.infoHash === item.infoHash,
+          )
+          if (!current)
+            return
+          item = current
+          if (item.state === 'active') {
+            const active = update(torrent.id, {
+              downloadDir: downloadDirValue(item.dir),
+              inEngine: true,
+            })
+            if (item.paused && !active.pauseReason) {
+              const stats = await torrentStats(active.infoHash)
+              await ensureSpaceFor({
+                torrent: active,
+                bytes: (active.selectedFiles ?? []).reduce(
+                  (sum, index) =>
+                    sum
+                    + Math.max(
+                      0,
+                      (active.files?.[index]?.size ?? 0)
+                      - (stats.fileProgress[index] ?? 0),
+                    ),
+                  0,
+                ),
+              })
+              await resumeTorrent(active.infoHash)
+            }
+            return
+          }
+          if (!torrent.torrentFile)
+            return
+          // Сначала paused add, даже если pauseReason пуст: ни одного байта до
+          // восстановления selection/приоритетов. Старые общие файлы не трогаем.
+          const isolated = isolatedTorrentDir(item.dir, torrent.infoHash)
+          const recovering = update(torrent.id, { downloadDir: isolated })
+          await ensureSpaceFor({
+            torrent: recovering,
+            bytes: (torrent.selectedFiles ?? []).reduce(
+              (sum, index) => sum + (torrent.files?.[index]?.size ?? 0),
+              0,
+            ),
+          })
+          await addToEngine(
+            torrent,
+            torrent.selectedFiles ?? [],
+            isolated,
+            undefined,
+            true,
+          )
+          if (!torrent.pauseReason)
+            await resumeTorrent(torrent.infoHash)
+        }))
+    }
+    catch (err) {
+      // Одна раздача не держит всю библиотеку/follow. Inventory остаётся
+      // источником незавершённой работы; очередная проверка места повторит её.
+      logFor('engine').warn(
+        { err, torrentId: known.id },
+        'Torrent storage recovery deferred',
+      )
+    }
+  }
+}
+
+let storageReconciliation: Promise<void> | undefined
+export function reconcileEngineStorage() {
+  storageReconciliation ??= reconcileEngineStorageImpl().finally(() => {
+    storageReconciliation = undefined
+  })
+  return storageReconciliation
 }
 
 export function touchTorrent(id: string) {

@@ -74,6 +74,8 @@ const engineErrorBody = z.object({
 })
 
 const engineTorrentDetails = z.object({
+  paused: z.boolean().optional(),
+  dir: z.string().optional(),
   infoHash: z.string(),
   name: z.string(),
   pieceLength: z.number(),
@@ -330,8 +332,11 @@ export async function addTorrent(
   dir?: string,
   first: number[] = [],
   low: number[] = [],
+  paused = false,
 ) {
   const query = new URLSearchParams({ files: onlyFiles.join(',') })
+  if (paused)
+    query.set('paused', 'true')
 
   if (first.length)
     query.set('first', first.join(','))
@@ -351,6 +356,18 @@ export async function addTorrent(
       body: torrentBody(bytes),
     },
   )
+}
+
+const engineStorageEntry = z.object({
+  paused: z.boolean().optional(),
+  infoHash: z.string(),
+  dir: z.string(),
+  state: z.enum(['active', 'conflict']),
+  conflictingHashes: z.array(z.string()),
+})
+
+export function engineStorageInventory() {
+  return engineJson('/torrents/storage', z.array(engineStorageEntry))
 }
 
 async function engineEmpty(path: string, request: EngineRequest) {

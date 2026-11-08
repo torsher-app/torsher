@@ -956,6 +956,12 @@ it('reconciles a cancelled Go fence when the Node cancellation commit was lost',
 it('independent library startup inspects the actual local journal without requiring Go', async () => {
   setMaintenanceExecution(false)
   expect(await libraryStartupWithoutEngine()).toBe(true)
+  const sessions = join(root, 'engine', 'state', 'torrents')
+  await mkdir(sessions, { recursive: true })
+  await writeFile(join(sessions, 'fixture.torrent'), 'synthetic')
+  expect(await libraryStartupWithoutEngine()).toBe(false)
+  await rm(join(sessions, 'fixture.torrent'))
+  expect(await libraryStartupWithoutEngine()).toBe(true)
   const directory = join(root, 'engine', 'state', 'maintenance')
   await mkdir(directory, { recursive: true })
   await writeFile(

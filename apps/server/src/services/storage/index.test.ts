@@ -146,6 +146,26 @@ afterEach(() => {
 })
 
 describe('место по томам', () => {
+  it.each(['', `/torsher/${INFO_HASH}`])(
+    'evicted torrent with persisted path %s is admitted on its original volume',
+    async (suffix) => {
+      // Настройка уже переключена на A, сохранённая загрузка всё ещё в B.
+      disks.b.free = 11 * GIB
+      const torrent = insertTorrent({
+        inEngine: false,
+        downloadDir: join(ROOT, `b${suffix}`),
+      })
+      engine([])
+      await expect(
+        ensureSpaceFor({ torrent, bytes: 5 * GIB }),
+      ).rejects.toBeInstanceOf(InsufficientStorageError)
+      disks.b.free = 50 * GIB
+      disks.a.free = 11 * GIB
+      await expect(
+        ensureSpaceFor({ torrent, bytes: 5 * GIB }),
+      ).resolves.toBeUndefined()
+    },
+  )
   it('кэш на другом томе не освобождает место на томе просмотра', async () => {
     // Запас по умолчанию — 10 ГиБ на томе в 100 ГиБ
     disks.a.free = 12 * GIB
