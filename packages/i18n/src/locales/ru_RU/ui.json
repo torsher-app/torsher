@@ -4226,7 +4226,6 @@
       "choose": "Выберите студию",
       "required": "Выберите студию",
       "sources": {
-        "explicit": "Сейчас: {studio} (явное правило)",
         "season_pin": "Сейчас: {studio} (сезон {season})",
         "inherited_pin": "Сейчас: {studio} (из сезона {season})",
         "profile": "Сейчас используются предпочтения сервера",

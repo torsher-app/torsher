@@ -4226,7 +4226,6 @@
       "choose": "Choose a studio",
       "required": "Choose a studio",
       "sources": {
-        "explicit": "Current result: {studio} (explicit rule)",
         "season_pin": "Current result: {studio} (season {season})",
         "inherited_pin": "Current result: {studio} (inherited from season {season})",
         "profile": "Current result uses server preferences",
