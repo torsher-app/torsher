@@ -3,7 +3,16 @@ import type {
   FollowVoicesResponse,
   UpdateFollowInput,
 } from '@torsher/api-client'
-import { findStudio } from '@torsher/release-parser'
+import type { Studio } from '@torsher/release-parser/studio-search'
+import { studioKey, studios } from '@torsher/release-parser/studio-search'
+
+export function canonicalStudio(value: string, collection: readonly Studio[]) {
+  return collection.find(studio =>
+    [studio.name, ...(studio.aliases ?? [])].some(
+      name => studioKey(name) === studioKey(value),
+    ),
+  )?.name
+}
 
 interface VoiceForm {
   voiceMode?: NonNullable<FollowSummary['voicePolicy']>['mode']
@@ -15,11 +24,7 @@ interface VoiceForm {
 export function followVoiceError(
   follow: Pick<FollowSummary, 'voicePolicy'>,
   form: VoiceForm,
-  demoSelection?: {
-    demo: boolean
-    manual: boolean
-    items: Pick<FollowVoicesResponse['items'][number], 'studio'>[]
-  },
+  collection: readonly Studio[] = studios,
 ): 'required' | 'unknown' | undefined {
   if (
     follow.voicePolicy === undefined
@@ -30,20 +35,14 @@ export function followVoiceError(
   const studio = form.voiceStudio?.trim() ?? ''
   if (!studio)
     return 'required'
-  if (
-    demoSelection?.demo
-    && !demoSelection.manual
-    && demoSelection.items.some(item => item.studio === studio)
-  ) {
-    return undefined
-  }
-  return findStudio(studio) ? undefined : 'unknown'
+  return canonicalStudio(studio, collection) ? undefined : 'unknown'
 }
 
 /** Form state is separate from the transport policy; legacy stays untouched until edited. */
 export function followVoiceBody(
   follow: Pick<FollowSummary, 'voicePolicy' | 'voiceStudio' | 'voiceStrict'>,
   form: VoiceForm,
+  collection: readonly Studio[] = studios,
 ): Pick<UpdateFollowInput, 'voicePolicy' | 'voiceStudio' | 'voiceStrict'> {
   const studio = form.voiceStudio?.trim() ?? ''
   if (follow.voicePolicy !== undefined) {
@@ -51,7 +50,7 @@ export function followVoiceBody(
       return {
         voicePolicy: {
           mode: form.voiceMode,
-          studio: findStudio(studio)?.name ?? studio,
+          studio: canonicalStudio(studio, collection) ?? studio,
         },
       }
     }
@@ -69,4 +68,33 @@ export function followVoiceBody(
     }
   }
   return {}
+}
+
+/** Alias rows may overlap the same releases: retain flags and the largest count. */
+export function mergeStudioEvidence(
+  items: FollowVoicesResponse['items'],
+  collection: readonly Studio[],
+) {
+  const merged = new Map<string, FollowVoicesResponse['items'][number]>()
+  for (const item of items) {
+    const name = canonicalStudio(item.studio, collection)
+    if (!name)
+      continue
+    const previous = merged.get(name)
+    merged.set(
+      name,
+      previous
+        ? {
+            ...previous,
+            found: previous.found || item.found,
+            saved: previous.saved || item.saved,
+            inherited: previous.inherited || item.inherited,
+            count: Math.max(previous.count, item.count),
+            seeders: Math.max(previous.seeders, item.seeders),
+            types: [...new Set([...previous.types, ...item.types])],
+          }
+        : { ...item, studio: name },
+    )
+  }
+  return merged
 }

@@ -1,3 +1,4 @@
+import { demoFoundStudios, demoStudioName } from '@torsher/demo/studios'
 import type {
   AttentionItem,
   BlocklistItem,
@@ -92,8 +93,8 @@ const PROFILES = {
 } satisfies Record<string, FollowDetails['profiles'][number]>
 
 // Выдуманные студии озвучки: настоящих в данных демо нет
-const STUDIO_A = 'Demo Voices'
-const STUDIO_B = 'Studio North'
+const STUDIO_A = 'Demo Studio A'
+const STUDIO_B = 'Demo Studio B'
 
 // Ручной поиск «идёт» несколько секунд, потом пишет событие в историю
 const SEARCH_MS = 4000
@@ -789,6 +790,15 @@ patch<FollowDetails, UpdateFollowInput>(
   '/api/follows/:id',
   ({ params, body }) => {
     const follow = findFollow(params.id!)
+    if (
+      body.voicePolicy?.mode === 'prefer'
+      || body.voicePolicy?.mode === 'only'
+    ) {
+      const studio = demoStudioName(body.voicePolicy.studio)
+      if (!studio)
+        throw new DemoError(400, { message: 'Unknown studio' })
+      body = { ...body, voicePolicy: { ...body.voicePolicy, studio } }
+    }
     const { state, ...rules } = body
 
     Object.assign(follow, rules, { updatedAt: new Date().toISOString() })
@@ -1013,14 +1023,14 @@ get<FollowVoicesResponse>(
       items: [
         ...new Set([
           ...(studio ? [studio] : []),
-          ...(refresh ? [STUDIO_A, STUDIO_B] : []),
+          ...(refresh ? demoFoundStudios : []),
         ]),
       ].map(name => ({
         studio: name,
         types: ['MVO'],
-        count: refresh ? 2 : 0,
-        seeders: refresh ? 10 : 0,
-        found: refresh,
+        count: refresh && demoFoundStudios.includes(name) ? 2 : 0,
+        seeders: refresh && demoFoundStudios.includes(name) ? 10 : 0,
+        found: refresh && demoFoundStudios.includes(name),
         saved: name === studio,
         inherited: false,
       })),
