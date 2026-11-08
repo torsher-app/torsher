@@ -156,6 +156,15 @@ export const followWait = z
     voiceType: z.string().optional(),
     language: z.string().optional(),
     quality: z.string().optional(),
+    // Найденная версия; верхние поля описывают цель ожидания
+    candidate: z
+      .object({
+        quality: z.string().optional(),
+        studio: z.string().optional(),
+        voiceType: z.string().optional(),
+        language: z.string().optional(),
+      })
+      .optional(),
   })
   .meta({ id: 'followWait' })
 

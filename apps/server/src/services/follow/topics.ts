@@ -233,6 +233,16 @@ export function trackTopic(
   if (!indexer)
     return
 
+  const previous = db
+    .select()
+    .from(trackedTopics)
+    .where(
+      and(
+        eq(trackedTopics.indexerId, candidate.indexerId),
+        eq(trackedTopics.detailsUrl, candidate.detailsUrl),
+      ),
+    )
+    .get()
   const values = {
     titleId: follow.titleId,
     torrentId: torrent.id,
@@ -242,7 +252,8 @@ export function trackTopic(
     episodesTo: shape.to ?? null,
     episodesTotal: shape.total ?? null,
     lastSeenAt: now,
-    updatedAt: now,
+    updatedAt:
+      previous?.infoHash === torrent.infoHash ? previous.updatedAt : now,
   }
   const topic = db
     .insert(trackedTopics)

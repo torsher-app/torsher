@@ -3,9 +3,9 @@ import { suppressedEpisodes } from '../libraryMaintenance/suppression.ts'
 import type { Follow } from '../../db/schema.ts'
 import type { SearchOutcome } from '../sources/search.ts'
 import type { EpisodeWithState } from './wanted.ts'
-import { and, eq, isNull } from 'drizzle-orm'
+import { and, eq, gte, isNull } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
-import { follows } from '../../db/schema.ts'
+import { follows, followSeasons, trackedTopics } from '../../db/schema.ts'
 import {
   availableForBackground,
   recordBackgroundOutcome,
@@ -101,6 +101,12 @@ export interface SearchPlanInput {
   availableFrom?: Date
   /** Ближайшая невышедшая серия */
   upcomingAirDate?: string
+  /** Привязанные темы сезонов с курсора, независимо от расписания TMDB */
+  topics?: {
+    expectedTotal: number | null
+    episodesTo: number | null
+    updatedAt: Date
+  }[]
   lastSearchAt?: Date | null
   now: Date
 }
@@ -140,6 +146,25 @@ export function searchPlan(input: SearchPlanInput) {
       return moviePlan(input, now, last)
 
     return { due, next: new Date(next) }
+  }
+
+  for (const topic of input.topics ?? []) {
+    const age = now - topic.updatedAt.getTime()
+    const recentIncomplete
+      = topic.expectedTotal !== null
+        && topic.episodesTo !== null
+        && topic.episodesTo < topic.expectedTotal
+        && age >= 0
+        && age <= 30 * DAY_MS
+    const every = recentIncomplete ? 12 * HOUR_MS : 3 * DAY_MS
+
+    if (last === undefined) {
+      due = true
+    }
+    else {
+      due ||= now - last >= every
+      next = Math.min(next, Math.max(last + every, now))
+    }
   }
 
   if (input.upgrading && last !== undefined) {
@@ -295,6 +320,27 @@ async function evaluate(follow: Follow, now: Date) {
     upgrading: await upgradeNeeded(follow, states, now),
     availableFrom: (await movieAvailability(follow, now))?.from,
     upcomingAirDate: states.find(item => item.state === 'upcoming')?.airDate,
+    topics:
+      follow.kind === 'series'
+        ? getDb()
+            .select({
+              expectedTotal: followSeasons.expectedTotal,
+              episodesTo: trackedTopics.episodesTo,
+              updatedAt: trackedTopics.updatedAt,
+            })
+            .from(followSeasons)
+            .innerJoin(
+              trackedTopics,
+              eq(trackedTopics.id, followSeasons.topicId),
+            )
+            .where(
+              and(
+                eq(followSeasons.followId, follow.id),
+                gte(followSeasons.season, follow.startSeason),
+              ),
+            )
+            .all()
+        : [],
     lastSearchAt: follow.lastSearchAt,
     now,
   })

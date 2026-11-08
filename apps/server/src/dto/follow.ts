@@ -279,6 +279,12 @@ export const followSummary = z
     unsure: z.number().int(),
     // Ближайший конец окна ожидания среди `waiting`, ISO
     waitUntil: z.string().optional(),
+    waiting: followWait
+      .extend({
+        season: z.number().int(),
+        episode: z.number().int(),
+      })
+      .optional(),
     createdAt: z.string(),
     updatedAt: z.string(),
   })

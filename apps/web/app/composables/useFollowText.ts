@@ -69,7 +69,7 @@ export function useFollowText() {
   }
 
   /** «Студия и 1080p», «немецкую озвучку»: что ждём, в порядке решателя */
-  function target(wait: WaitTarget) {
+  function target(wait: WaitTarget, found = false) {
     const parts = [
       wait.studio,
       wait.voiceType
@@ -77,8 +77,8 @@ export function useFollowText() {
         ? t(`sources.voiceTypes.${wait.voiceType}`)
         : wait.voiceType),
       wait.language
-      && (te(`audioTargets.${wait.language}`)
-        ? t(`audioTargets.${wait.language}`)
+      && (te(`${found ? 'audioLanguages' : 'audioTargets'}.${wait.language}`)
+        ? t(`${found ? 'audioLanguages' : 'audioTargets'}.${wait.language}`)
         : wait.language),
       wait.quality,
     ].filter(Boolean)
@@ -145,6 +145,26 @@ export function useFollowText() {
 
   function status(follow: FollowSummary, view: FollowStatusView) {
     const scope = follow.kind === 'movie' ? 'movie' : 'series'
+
+    if (view.status === 'waiting' && follow.waiting) {
+      const wait = follow.waiting
+      const found = wait.candidate ? target(wait.candidate, true) : ''
+      const wanted = target(wait)
+      const key = found
+        ? wanted
+          ? 'waitingFoundTarget'
+          : 'waitingFound'
+        : wanted
+          ? 'waitingTarget'
+          : 'waitingEpisode'
+
+      return t(`panel.follow.status.${scope}.${key}`, {
+        code: episodesLabel(wait.season, [wait.episode]),
+        found,
+        target: wanted,
+        until: until(wait.until),
+      })
+    }
 
     if (view.status === 'waiting' && follow.waitUntil) {
       return t(`panel.follow.status.${scope}.waiting`, {

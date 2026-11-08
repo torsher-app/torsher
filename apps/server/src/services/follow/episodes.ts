@@ -161,7 +161,9 @@ export function waitTargets(followId: string) {
       continue
 
     const params = row.decisions
-      ?.find(item => item.verdict === 'pending')
+      ?.find(
+        item => item.verdict === 'pending' && item.id === row.pending!.id,
+      )
       ?.rejections
       .find(item => item.code === 'wait')
       ?.params
@@ -172,6 +174,12 @@ export function waitTargets(followId: string) {
       voiceType: textParam(params?.voiceType),
       language: textParam(params?.language),
       quality: textParam(params?.quality),
+      candidate: {
+        quality: row.pending.quality,
+        studio: row.pending.studio,
+        voiceType: row.pending.voiceType,
+        language: row.pending.language,
+      },
     })
   }
 

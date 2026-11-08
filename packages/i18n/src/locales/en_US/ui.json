@@ -3468,7 +3468,11 @@
           "nextUnknown": "Waiting for the next episode",
           "done": "All downloaded",
           "doneNotify": "Everything released is ready to watch",
-          "unsure": "{n} similar release to confirm | {n} similar releases to confirm"
+          "unsure": "{n} similar release to confirm | {n} similar releases to confirm",
+          "waitingEpisode": "{code}: waiting for a better release until {until}",
+          "waitingTarget": "{code}: waiting for {target} until {until}",
+          "waitingFound": "{code}: found {found}; waiting for better until {until}",
+          "waitingFoundTarget": "{code}: found {found}; waiting for {target} until {until}"
         },
         "movie": {
           "paused": "Paused",
@@ -3481,7 +3485,11 @@
           "next": "Not released yet",
           "done": "In the library",
           "doneNotify": "Ready to watch",
-          "unsure": "Similar releases to confirm"
+          "unsure": "Similar releases to confirm",
+          "waitingEpisode": "Waiting for a better release until {until}",
+          "waitingTarget": "Waiting for {target} until {until}",
+          "waitingFound": "Found {found}; waiting for better until {until}",
+          "waitingFoundTarget": "Found {found}; waiting for {target} until {until}"
         }
       },
       "actions": {
@@ -4114,7 +4122,11 @@
       "movieMissing": "No releases found",
       "movieReady": "Out digitally — ready to watch",
       "bestQuality": "Season tops out at {quality}",
-      "pinned": "{studio} audio is pinned to this season"
+      "pinned": "{studio} audio is pinned to this season",
+      "waitingFound": "{code}: found {found}; waiting for {target} until {until}",
+      "waitingFoundBetter": "{code}: found {found}; waiting for better until {until}",
+      "movieWaitingFound": "found {found}; waiting for {target} until {until}",
+      "movieWaitingFoundBetter": "found {found}; waiting for better until {until}"
     },
     "until": {
       "today": "{time}",
@@ -4188,7 +4200,11 @@
       "no_space": "no space",
       "missing": "not found",
       "searching": "searching",
-      "ready": "ready"
+      "ready": "ready",
+      "waitingFound": "found {found}; waiting for {target} until {until}",
+      "waitingFoundBetter": "found {found}; waiting for better until {until}",
+      "waitingUntil": "waiting for {target} until {until}",
+      "waitingBetterUntil": "waiting for better until {until}"
     },
     "badge": "Following",
     "badgeNew": "Following · {n} new episodes",

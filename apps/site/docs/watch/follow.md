@@ -30,6 +30,8 @@ Following is shared by the whole server: one set of rules per title, so a series
 
 If the owner has paused the follow, you still subscribe, but automation stays paused. A message confirms both facts, and the title’s status continues to show the pause. The owner can resume it in the panel.
 
+The waiting status identifies the episode, the release quality and audio found so far, what is still preferred, and when the wait ends. Unknown release details are omitted. The same details appear on an episode while it waits.
+
 ## The rules
 
 - **<Ui k="follow.panel.mode" />.** <Ui k="follow.panel.modes.download" /> (the default) or <Ui k="follow.panel.modes.notify" />. See [Download or notify](#download-or-notify). The default for new follows is set in the panel.

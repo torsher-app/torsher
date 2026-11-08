@@ -252,6 +252,96 @@ describe('лестница целевого поиска', () => {
   })
 })
 
+describe('поиск привязанной темы без нужных серий TMDB', () => {
+  function topicPlan(
+    overrides: {
+      expectedTotal?: number | null
+      episodesTo?: number | null
+      updatedAt?: Date
+    } = {},
+    last = at(-12 * HOUR_MS),
+  ) {
+    return searchPlan({
+      kind: 'series',
+      wanted: [],
+      lastSearchAt: last,
+      now: NOW,
+      topics: [
+        {
+          expectedTotal: 12,
+          episodesTo: 8,
+          updatedAt: at(-DAY_MS),
+          ...overrides,
+        },
+      ],
+    })
+  }
+
+  it('неполная свежая тема — каждые 12 часов даже без wanted', () => {
+    expect(topicPlan().due).toBe(true)
+    expect(topicPlan({}, at(-11 * HOUR_MS))).toEqual({
+      due: false,
+      next: at(HOUR_MS),
+    })
+  })
+
+  it('граница свежести — 30 дней версии, не последнего появления', () => {
+    expect(topicPlan({ updatedAt: at(-30 * DAY_MS) }).due).toBe(true)
+    expect(topicPlan({ updatedAt: at(-30 * DAY_MS - 1) }).due).toBe(false)
+  })
+
+  it.each([
+    { episodesTo: 12 },
+    { episodesTo: null },
+    { expectedTotal: null },
+    { updatedAt: at(-31 * DAY_MS) },
+  ])('полная, неизвестная или старая тема %o — каждые 72 часа', (topic) => {
+    expect(topicPlan(topic, at(-71 * HOUR_MS))).toEqual({
+      due: false,
+      next: at(HOUR_MS),
+    })
+    expect(topicPlan(topic, at(-72 * HOUR_MS)).due).toBe(true)
+  })
+
+  it('самая быстрая тема, ступень поиска и апгрейд сохраняют приоритет', () => {
+    const topics = [
+      { expectedTotal: 12, episodesTo: 12, updatedAt: NOW },
+      { expectedTotal: 12, episodesTo: 8, updatedAt: NOW },
+    ]
+    expect(
+      searchPlan({
+        kind: 'series',
+        wanted: [],
+        topics,
+        now: NOW,
+        lastSearchAt: at(-11 * HOUR_MS),
+      }).next,
+    ).toEqual(at(HOUR_MS))
+    expect(
+      searchPlan({
+        kind: 'series',
+        wanted: [{ airDate: ymd(NOW) }],
+        topics,
+        now: NOW,
+        lastSearchAt: at(-HOUR_MS),
+      }).due,
+    ).toBe(true)
+    expect(
+      searchPlan({
+        kind: 'series',
+        wanted: [],
+        upgrading: true,
+        topics: [topics[0]!],
+        now: NOW,
+        lastSearchAt: at(-DAY_MS),
+      }).due,
+    ).toBe(true)
+    expect(
+      searchPlan({ kind: 'series', wanted: [], topics, now: NOW }).due,
+    ).toBe(true)
+  })
+})
+
 describe('очередь и бюджет целевых поисков', () => {
   beforeEach(() => resetFollowSearch(0))
 

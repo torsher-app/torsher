@@ -1226,6 +1226,8 @@ export interface FollowPendingCandidate {
   quality?: string
   studio?: string
   voiceType?: string
+  /** Язык ранжирования, включая original; у старых записей отсутствует */
+  language?: string
 }
 
 /** Кандидат в снимке последнего прогона серии: что нашли и почему отклонили */

@@ -3468,7 +3468,11 @@
           "nextUnknown": "Ждём следующую серию",
           "done": "Всё скачано",
           "doneNotify": "Всё вышедшее готово к просмотру",
-          "unsure": "{n} похожая раздача — подтвердите | {n} похожие раздачи — подтвердите | {n} похожих раздач — подтвердите"
+          "unsure": "{n} похожая раздача — подтвердите | {n} похожие раздачи — подтвердите | {n} похожих раздач — подтвердите",
+          "waitingEpisode": "{code}: ждём лучшую версию до {until}",
+          "waitingTarget": "{code}: ждём {target} до {until}",
+          "waitingFound": "{code}: найдено: {found}; ждём лучшее до {until}",
+          "waitingFoundTarget": "{code}: найдено: {found}; ждём {target} до {until}"
         },
         "movie": {
           "paused": "На паузе",
@@ -3481,7 +3485,11 @@
           "next": "Ещё не вышел",
           "done": "В библиотеке",
           "doneNotify": "Можно смотреть",
-          "unsure": "Похожие раздачи — подтвердите"
+          "unsure": "Похожие раздачи — подтвердите",
+          "waitingEpisode": "Ждём лучшую версию до {until}",
+          "waitingTarget": "Ждём {target} до {until}",
+          "waitingFound": "Найдено: {found}; ждём лучшее до {until}",
+          "waitingFoundTarget": "Найдено: {found}; ждём {target} до {until}"
         }
       },
       "actions": {
@@ -4114,7 +4122,11 @@
       "movieMissing": "Раздач так и не нашли",
       "movieReady": "Вышел в цифре — можно смотреть",
       "bestQuality": "Сезон выходит максимум в {quality}",
-      "pinned": "Озвучка {studio} закреплена за сезоном"
+      "pinned": "Озвучка {studio} закреплена за сезоном",
+      "waitingFound": "{code}: найдено: {found}; ждём {target} до {until}",
+      "waitingFoundBetter": "{code}: найдено: {found}; ждём лучшее до {until}",
+      "movieWaitingFound": "найдено: {found}; ждём {target} до {until}",
+      "movieWaitingFoundBetter": "найдено: {found}; ждём лучшее до {until}"
     },
     "until": {
       "today": "{time}",
@@ -4188,7 +4200,11 @@
       "no_space": "нет места",
       "missing": "не нашли",
       "searching": "ищем",
-      "ready": "готова"
+      "ready": "готова",
+      "waitingFound": "найдено: {found}; ждём {target} до {until}",
+      "waitingFoundBetter": "найдено: {found}; ждём лучшее до {until}",
+      "waitingUntil": "ждём {target} до {until}",
+      "waitingBetterUntil": "ждём лучшее до {until}"
     },
     "badge": "Слежу",
     "badgeNew": "Слежу · новых серий: {n}",

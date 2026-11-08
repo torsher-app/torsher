@@ -2847,6 +2847,12 @@ export interface FollowWaitInput {
   voiceType?: string;
   language?: string;
   quality?: string;
+  candidate?: {
+    quality?: string;
+    studio?: string;
+    voiceType?: string;
+    language?: string;
+  };
 }
 
 export interface FollowCursorInput {
@@ -4576,6 +4582,12 @@ export interface TitleFollowInput {
     voiceType?: string;
     language?: string;
     quality?: string;
+    candidate?: {
+      quality?: string;
+      studio?: string;
+      voiceType?: string;
+      language?: string;
+    };
     /**
      * @min -9007199254740991
      * @max 9007199254740991
@@ -4792,6 +4804,29 @@ export interface FollowSummaryInput {
    */
   unsure: number;
   waitUntil?: string;
+  waiting?: {
+    until: string;
+    studio?: string;
+    voiceType?: string;
+    language?: string;
+    quality?: string;
+    candidate?: {
+      quality?: string;
+      studio?: string;
+      voiceType?: string;
+      language?: string;
+    };
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    season: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    episode: number;
+  };
   createdAt: string;
   updatedAt: string;
 }
@@ -4883,6 +4918,29 @@ export interface FollowDetailsInput {
    */
   unsure: number;
   waitUntil?: string;
+  waiting?: {
+    until: string;
+    studio?: string;
+    voiceType?: string;
+    language?: string;
+    quality?: string;
+    candidate?: {
+      quality?: string;
+      studio?: string;
+      voiceType?: string;
+      language?: string;
+    };
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    season: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    episode: number;
+  };
   createdAt: string;
   updatedAt: string;
   episodes: FollowEpisodeInput[];
@@ -10487,6 +10545,12 @@ export interface FollowWait {
   voiceType?: string;
   language?: string;
   quality?: string;
+  candidate?: {
+    quality?: string;
+    studio?: string;
+    voiceType?: string;
+    language?: string;
+  };
 }
 
 export interface FollowCursor {
@@ -12215,6 +12279,12 @@ export interface TitleFollow {
     voiceType?: string;
     language?: string;
     quality?: string;
+    candidate?: {
+      quality?: string;
+      studio?: string;
+      voiceType?: string;
+      language?: string;
+    };
     /**
      * @min -9007199254740991
      * @max 9007199254740991
@@ -12431,6 +12501,29 @@ export interface FollowSummary {
    */
   unsure: number;
   waitUntil?: string;
+  waiting?: {
+    until: string;
+    studio?: string;
+    voiceType?: string;
+    language?: string;
+    quality?: string;
+    candidate?: {
+      quality?: string;
+      studio?: string;
+      voiceType?: string;
+      language?: string;
+    };
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    season: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    episode: number;
+  };
   createdAt: string;
   updatedAt: string;
 }
@@ -12522,6 +12615,29 @@ export interface FollowDetails {
    */
   unsure: number;
   waitUntil?: string;
+  waiting?: {
+    until: string;
+    studio?: string;
+    voiceType?: string;
+    language?: string;
+    quality?: string;
+    candidate?: {
+      quality?: string;
+      studio?: string;
+      voiceType?: string;
+      language?: string;
+    };
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    season: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    episode: number;
+  };
   createdAt: string;
   updatedAt: string;
   episodes: FollowEpisode[];
