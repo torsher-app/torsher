@@ -9,6 +9,7 @@ import {
   PauseIcon,
   PlayIcon,
   RefreshCwIcon,
+  ScrollTextIcon,
   SearchIcon,
   XIcon,
 } from '@lucide/vue'
@@ -29,6 +30,7 @@ import LoadingButton from '~/components/LoadingButton.vue'
 import ProfileAvatar from '~/components/people/ProfileAvatar.vue'
 import { followStatusOf, toneBadge } from '~/lib/follow'
 import { formatDateTime, formatRelative } from '~/lib/format'
+import { logsRouteForId } from '~/lib/logs'
 import { toneText } from '~/lib/indexerStatus'
 import { keepOpenOnListClick } from '~/lib/sheet'
 import FollowEpisodes from './FollowEpisodes.vue'
@@ -385,6 +387,12 @@ function onInteractOutside(event: Event) {
                   : "panel.follow.actions.pause",
               )
             }}
+          </Button>
+          <Button as-child variant="outline" size="sm">
+            <NuxtLink :to="logsRouteForId(shown.titleId)">
+              <ScrollTextIcon aria-hidden="true" />
+              {{ t("panel.nav.logs") }}
+            </NuxtLink>
           </Button>
           <Button
             variant="destructive"

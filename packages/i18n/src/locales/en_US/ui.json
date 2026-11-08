@@ -2330,7 +2330,11 @@
         "seedRuleDefaultPlain": "As in settings",
         "seedRuleSaved": "Seeding rule saved",
         "queued": "Starts once the downloads ahead of it finish. You can already watch it.",
-        "queuedLink": "Queue settings"
+        "queuedLink": "Queue settings",
+        "infoHash": "Info hash",
+        "copyHash": "Copy info hash",
+        "hashCopied": "Info hash copied",
+        "hashCopyFailed": "Couldn't copy the info hash"
       },
       "toasts": {
         "kept": "Torrent kept",

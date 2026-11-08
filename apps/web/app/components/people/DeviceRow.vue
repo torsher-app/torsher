@@ -5,6 +5,7 @@ import {
   GlobeIcon,
   MonitorSmartphoneIcon,
   PencilIcon,
+  ScrollTextIcon,
   TvMinimalIcon,
   UnplugIcon,
 } from '@lucide/vue'
@@ -18,6 +19,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { formatDateTime, formatRelative } from '~/lib/format'
+import { logsRouteForId } from '~/lib/logs'
 
 const props = defineProps<{
   device: Device
@@ -105,6 +107,12 @@ const seenAt = computed(
           <DropdownMenuItem @select="emit('rename')">
             <PencilIcon aria-hidden="true" />
             {{ t("panel.people.devices.rename") }}
+          </DropdownMenuItem>
+          <DropdownMenuItem as-child>
+            <NuxtLink :to="logsRouteForId(device.id)">
+              <ScrollTextIcon aria-hidden="true" />
+              {{ t("panel.nav.logs") }}
+            </NuxtLink>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem variant="destructive" @select="emit('revoke')">
