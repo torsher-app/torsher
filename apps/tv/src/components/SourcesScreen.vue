@@ -896,7 +896,10 @@ const meta = computed(() => {
             }}
           </span>
         </p>
-        <p class="sources__head-meta sources__profile">
+        <p
+          v-if="showAllSources || (sources && !sources.presets)"
+          class="sources__head-meta sources__profile"
+        >
           {{
             showAllSources
               ? t("sources.allForEpisode", targetEpisode!)

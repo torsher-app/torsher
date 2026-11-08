@@ -799,7 +799,7 @@ onBeforeUnmount(() => {
 
 .mine__left {
   position: absolute;
-  top: calc(var(--u) * 90);
+  top: var(--safe-y);
   bottom: 0;
   left: var(--content-x);
   display: flex;
@@ -889,7 +889,7 @@ onBeforeUnmount(() => {
 
 .mine__head {
   position: absolute;
-  top: calc(var(--u) * 90);
+  top: var(--safe-y);
   right: 0;
   left: 0;
 }
@@ -931,7 +931,7 @@ onBeforeUnmount(() => {
    окна слева и сверху — кольцу фокуса */
 .mine__viewport {
   position: absolute;
-  top: calc(var(--u) * 294 - var(--focus-ring-gap));
+  top: calc(var(--safe-y) + var(--u) * 204 - var(--focus-ring-gap));
   right: 0;
   bottom: 0;
   left: calc(var(--focus-ring-gap) * -1);
