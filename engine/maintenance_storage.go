@@ -13,8 +13,9 @@ import (
 // вне блокировки клиента. Собственный барьер storage ждёт все текущие IO и
 // запрещает поздним callback старого incarnation менять файлы/completion.
 type storageLifecycle struct {
-	mu       sync.Mutex
-	torrents map[metainfo.Hash]*storageLifetime
+	mu          sync.Mutex
+	torrents    map[metainfo.Hash]*storageLifetime
+	diagnostics *storageDiagnostics
 }
 type storageLifetime struct {
 	mu       sync.RWMutex
@@ -37,7 +38,7 @@ func (s trackedStorage) OpenTorrent(ctx context.Context, info *metainfo.Info, ha
 	s.lifecycle.mu.Unlock()
 	return storage.TorrentImpl{
 		Piece: func(piece metainfo.Piece) storage.PieceImpl {
-			return trackedPiece{PieceImpl: impl.Piece(piece), life: life}
+			return trackedPiece{PieceImpl: impl.Piece(piece), life: life, diagnostics: s.lifecycle.diagnostics, hash: hash, index: piece.Index()}
 		},
 		Close: func() error {
 			life.mu.Lock()
@@ -65,7 +66,10 @@ func (s *storageLifecycle) settled(hash metainfo.Hash) bool {
 
 type trackedPiece struct {
 	storage.PieceImpl
-	life *storageLifetime
+	life        *storageLifetime
+	diagnostics *storageDiagnostics
+	hash        metainfo.Hash
+	index       int
 }
 
 var errStorageClosed = context.Canceled
@@ -80,11 +84,14 @@ func (p trackedPiece) ReadAt(b []byte, off int64) (int, error) {
 }
 func (p trackedPiece) WriteAt(b []byte, off int64) (int, error) {
 	p.life.mu.RLock()
-	defer p.life.mu.RUnlock()
 	if p.life.closed {
+		p.life.mu.RUnlock()
 		return 0, errStorageClosed
 	}
-	return p.PieceImpl.WriteAt(b, off)
+	n, err := p.PieceImpl.WriteAt(b, off)
+	p.life.mu.RUnlock()
+	p.diagnostics.writeFailed(p.hash, p.index, n, len(b), err)
+	return n, err
 }
 func (p trackedPiece) MarkComplete() error {
 	p.life.mu.RLock()

@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/anacrolix/torrent"
@@ -29,10 +30,17 @@ type speed struct {
 	upload   int64
 }
 
+type peerDiagnosticSnapshot struct {
+	at                              time.Time
+	peers, found, seeders, halfOpen int
+	downRate                        int64
+}
+
 type speedTracker struct {
-	mu      sync.Mutex
-	samples map[metainfo.Hash][]counterSample
-	speeds  map[metainfo.Hash]speed
+	diagnostics atomic.Pointer[map[metainfo.Hash]peerDiagnosticSnapshot]
+	mu          sync.Mutex
+	samples     map[metainfo.Hash][]counterSample
+	speeds      map[metainfo.Hash]speed
 	// Куски, не прошедшие проверку хэша, на прошлом замере
 	badPieces map[metainfo.Hash]int64
 }
@@ -72,6 +80,7 @@ func (s *speedTracker) run(ctx context.Context, client *torrent.Client, logger *
 
 func (s *speedTracker) sample(now time.Time, torrents []*torrent.Torrent) []badPiecesGrowth {
 	seen := map[metainfo.Hash]bool{}
+	diagnostics := map[metainfo.Hash]peerDiagnosticSnapshot{}
 	var grown []badPiecesGrowth
 
 	s.mu.Lock()
@@ -102,6 +111,9 @@ func (s *speedTracker) sample(now time.Time, torrents []*torrent.Torrent) []badP
 			}
 		}
 
+		if len(diagnostics) < 4096 {
+			diagnostics[hash] = peerDiagnosticSnapshot{now, stats.ActivePeers, stats.TotalPeers, stats.ConnectedSeeders, stats.HalfOpenPeers, max(0, s.speeds[hash].download)}
+		}
 		if bad := badPiecesOf(stats); bad > s.badPieces[hash] {
 			grown = append(grown, badPiecesGrowth{hash, bad - s.badPieces[hash], bad})
 			s.badPieces[hash] = bad
@@ -116,6 +128,7 @@ func (s *speedTracker) sample(now time.Time, torrents []*torrent.Torrent) []badP
 		}
 	}
 
+	s.diagnostics.Store(&diagnostics)
 	return grown
 }
 
@@ -132,4 +145,15 @@ func (s *speedTracker) of(hash metainfo.Hash) speed {
 	defer s.mu.Unlock()
 
 	return s.speeds[hash]
+}
+
+// Не берёт mutex sampler или клиента: даже при зависшем Stats поток можно закрыть.
+// Старый снимок помечен возрастом; отсутствующий не превращается в нули.
+func (s *speedTracker) diagnosticFacts(hash metainfo.Hash) []any {
+	if snapshots := s.diagnostics.Load(); snapshots != nil {
+		if snapshot, ok := (*snapshots)[hash]; ok {
+			return []any{"statsKnown", true, "statsAgeMs", max(0, time.Since(snapshot.at).Milliseconds()), "peers", snapshot.peers, "found", snapshot.found, "seeders", snapshot.seeders, "halfOpen", snapshot.halfOpen, "downRate", snapshot.downRate}
+		}
+	}
+	return []any{"statsKnown", false}
 }
