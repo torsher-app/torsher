@@ -384,6 +384,7 @@ function exportSettings(secret: SecretWriter): ExportSettings {
         name: row.name,
         url: row.url,
         apiKey: secret(row.apiKey),
+        sessionCookie: secret(row.sessionCookie),
         enabled: row.enabled,
         manager: row.managerId
           ? (managerKeys.get(row.managerId) ?? null)

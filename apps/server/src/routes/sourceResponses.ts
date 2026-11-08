@@ -16,6 +16,7 @@ export function toIndexerResponse(indexer: IndexerWithManager) {
     name: indexer.name,
     url: indexer.url,
     hasApiKey: indexer.apiKey !== null,
+    hasCookie: indexer.sessionCookie !== null,
     enabled: indexer.enabled,
     managerId: indexer.managerId,
     managerKind: indexer.managerKind,

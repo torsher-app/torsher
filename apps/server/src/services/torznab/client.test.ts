@@ -200,3 +200,75 @@ describe('fetchCaps', () => {
     )
   })
 })
+
+describe('cookie authentication', () => {
+  it('sends the session cookie for caps', async () => {
+    fetchMock.mockImplementation(async () => new Response(capsXml))
+    await fetchCaps('https://indexer.example', 'key', 'sid=synthetic-secret')
+    expect(
+      new Headers(fetchMock.mock.calls[0]![1]?.headers).get('cookie'),
+    ).toBe('sid=synthetic-secret')
+  })
+  it.each([
+    [
+      'transport',
+      () => {
+        throw new Error('sid=echo-secret')
+      },
+      'unreachable',
+    ],
+    [
+      'XML',
+      () => new Response('<error code="100" description="sid=echo-secret"/>'),
+      'auth',
+    ],
+    [
+      'remote XML',
+      () =>
+        new Response(
+          '<error code="sid=echo-secret" description="sid=echo-secret"/>',
+        ),
+      'remote',
+    ],
+    [
+      'parse',
+      () => new Response('<caps attr="sid=echo-secret"'),
+      'bad_response',
+    ],
+    [
+      'HTML',
+      () => new Response('<html>sid=echo-secret</html>'),
+      'bad_response',
+    ],
+    [
+      'body',
+      () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.error(new Error('sid=echo-secret'))
+            },
+          }),
+        ),
+      'unreachable',
+    ],
+  ] as const)(
+    'does not expose %s errors that echo credentials',
+    async (_, response, kind) => {
+      fetchMock.mockImplementation(async () => response())
+      try {
+        await fetchCaps(
+          'https://indexer.example',
+          undefined,
+          'sid=echo-secret',
+        )
+        throw new Error('Expected rejection')
+      }
+      catch (error) {
+        expect(error).toMatchObject({ kind })
+        expect(String(error)).not.toContain('echo-secret')
+        expect(error).not.toHaveProperty('cause')
+      }
+    },
+  )
+})

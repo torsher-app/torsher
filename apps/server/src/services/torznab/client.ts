@@ -74,20 +74,14 @@ export async function sourceGet(
   }
   catch (err) {
     if (isTimeout(err)) {
-      throw new SourceError('timeout', 'Source did not respond in time', {
-        cause: err,
-      })
+      throw new SourceError('timeout', 'Source did not respond in time')
     }
 
     if (err instanceof NetRedirectError) {
-      throw new SourceError('bad_response', 'Source redirect was refused', {
-        cause: err,
-      })
+      throw new SourceError('bad_response', 'Source redirect was refused')
     }
 
-    throw new SourceError('unreachable', 'Source is unreachable', {
-      cause: err,
-    })
+    throw new SourceError('unreachable', 'Source is unreachable')
   }
 }
 
@@ -102,15 +96,12 @@ export async function readBody(res: Response) {
   }
   catch (err) {
     if (err instanceof BodyTooLargeError) {
-      throw new SourceError('bad_response', 'Source response is too large', {
-        cause: err,
-      })
+      throw new SourceError('bad_response', 'Source response is too large')
     }
 
     throw new SourceError(
       isTimeout(err) ? 'timeout' : 'unreachable',
       'Source response was interrupted',
-      { cause: err },
     )
   }
 }
@@ -151,7 +142,7 @@ const AUTH_ERROR_CODES = new Set(['100', '101', '102'])
 /** Разбирает ответ Torznab: ошибка в теле приходит и со статусом 200 */
 export async function readTorznabXml(res: Response) {
   if (res.status === 401 || res.status === 403)
-    throw new SourceError('auth', 'Source rejected the API key')
+    throw new SourceError('auth', 'Source rejected the credentials')
 
   // Лимит запросов (у Prowlarr — `QueryLimit` и «disabled till»): тело
   // бывает и XML-ошибкой, срок важнее
@@ -169,13 +160,12 @@ export async function readTorznabXml(res: Response) {
   try {
     xml = parseXml(body)
   }
-  catch (err) {
+  catch {
     throw new SourceError(
       res.ok ? 'bad_response' : 'remote',
       res.ok
         ? 'Response is not Torznab XML'
         : `Source responded with ${res.status}`,
-      { cause: err },
     )
   }
 
@@ -186,7 +176,7 @@ export async function readTorznabXml(res: Response) {
 
     throw new SourceError(
       AUTH_ERROR_CODES.has(code) ? 'auth' : 'remote',
-      `Torznab error ${code}: ${text(error, 'description') ?? 'unknown'}`,
+      `Torznab request failed (${AUTH_ERROR_CODES.has(code) ? 'auth' : 'remote'})`,
     )
   }
 
@@ -200,9 +190,11 @@ export async function readTorznabXml(res: Response) {
 export async function fetchCaps(
   baseUrl: string,
   apiKey?: string,
+  sessionCookie?: string,
 ): Promise<TorznabCaps> {
   const res = await sourceGet(
     torznabRequestUrl(baseUrl, { t: 'caps' }, apiKey),
+    sessionCookie ? { Cookie: sessionCookie } : {},
   )
   const caps = parseCaps(child(await readTorznabXml(res), 'caps'))
 
@@ -234,7 +226,6 @@ async function readLimited(res: Response) {
     throw new SourceError(
       isTimeout(err) ? 'timeout' : 'unreachable',
       'Source response was interrupted',
-      { cause: err },
     )
   }
 }
@@ -252,9 +243,17 @@ async function readLimited(res: Response) {
 export async function downloadTorrent(
   link: string,
   timeoutMs = SOURCE_TIMEOUT_MS,
-  options: { trustedOrigin?: string } = {},
+  options: { trustedOrigin?: string, sessionCookie?: string } = {},
 ): Promise<DownloadedTorrent> {
-  let url = new URL(link)
+  let url: URL
+  try {
+    url = new URL(link)
+  }
+  catch {
+    throw new SourceError('bad_response', 'Invalid torrent link')
+  }
+  let cookie
+    = url.origin === options.trustedOrigin ? options.sessionCookie : undefined
 
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
     if (
@@ -272,6 +271,7 @@ export async function downloadTorrent(
     try {
       res = await netFetch(url, {
         redirect: 'manual',
+        headers: cookie ? { Cookie: cookie } : {},
         signal: AbortSignal.timeout(timeoutMs),
       })
     }
@@ -281,7 +281,6 @@ export async function downloadTorrent(
         isTimeout(err)
           ? 'Source did not respond in time'
           : 'Source is unreachable',
-        { cause: err },
       )
     }
 
@@ -293,16 +292,28 @@ export async function downloadTorrent(
       if (location.startsWith('magnet:'))
         return { kind: 'magnet', magnet: location }
 
-      url = new URL(location, url)
+      let next: URL
+      try {
+        next = new URL(location, url)
+      }
+      catch {
+        throw new SourceError('bad_response', 'Invalid torrent redirect')
+      }
 
-      if (url.protocol !== 'http:' && url.protocol !== 'https:')
+      if (next.protocol !== 'http:' && next.protocol !== 'https:')
         throw new SourceError('bad_response', 'Unexpected redirect')
 
+      if (url.protocol === 'https:' && next.protocol === 'http:')
+        throw new SourceError('bad_response', 'Redirect from https to http')
+
+      if (url.origin !== next.origin)
+        cookie = undefined
+      url = next
       continue
     }
 
     if (res.status === 401 || res.status === 403)
-      throw new SourceError('auth', 'Source rejected the API key')
+      throw new SourceError('auth', 'Source rejected the credentials')
 
     if (!res.ok) {
       throw new SourceError('remote', `Source responded with ${res.status}`, {

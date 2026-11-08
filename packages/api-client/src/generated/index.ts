@@ -3194,6 +3194,7 @@ export interface IndexerInput {
   name: string;
   url: string;
   hasApiKey: boolean;
+  hasCookie?: boolean;
   enabled: boolean;
   managerId: string | null;
   managerKind: "prowlarr" | "jackett" | null;
@@ -3243,6 +3244,8 @@ export interface CreateIndexerInput {
    * @maxLength 500
    */
   apiKey?: string;
+  /** @maxLength 8192 */
+  sessionCookie?: string | null;
 }
 
 export interface UpdateIndexerInput {
@@ -3257,6 +3260,8 @@ export interface UpdateIndexerInput {
    * @maxLength 500
    */
   apiKey?: string;
+  /** @maxLength 8192 */
+  sessionCookie?: string | null;
   feed?: boolean;
 }
 
@@ -7414,6 +7419,12 @@ export interface ExportFileInput {
        * @pattern ^p1:.*
        */
       apiKey: string | null;
+      /**
+       * @format starts_with
+       * @maxLength 12000
+       * @pattern ^p1:.*
+       */
+      sessionCookie?: string | null;
       enabled: boolean;
       /** @maxLength 20 */
       manager: string | null;
@@ -10892,6 +10903,7 @@ export interface Indexer {
   name: string;
   url: string;
   hasApiKey: boolean;
+  hasCookie?: boolean;
   enabled: boolean;
   managerId: string | null;
   managerKind: "prowlarr" | "jackett" | null;
@@ -10941,6 +10953,7 @@ export interface CreateIndexer {
    * @maxLength 500
    */
   apiKey?: string;
+  sessionCookie?: any | null;
 }
 
 export interface UpdateIndexer {
@@ -10955,6 +10968,7 @@ export interface UpdateIndexer {
    * @maxLength 500
    */
   apiKey?: string;
+  sessionCookie?: any | null;
   feed?: boolean;
 }
 
@@ -15111,6 +15125,12 @@ export interface ExportFile {
        * @pattern ^p1:.*
        */
       apiKey: string | null;
+      /**
+       * @format starts_with
+       * @maxLength 12000
+       * @pattern ^p1:.*
+       */
+      sessionCookie?: string | null;
       enabled: boolean;
       /** @maxLength 20 */
       manager: string | null;

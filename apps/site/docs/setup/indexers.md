@@ -43,11 +43,11 @@ Already past the wizard? Use Option B with the address `http://prowlarr:9696`.
 
    The address is how the **Torsher server** reaches the manager, not your computer:
 
-   | Where the manager runs | Address |
-   | --- | --- |
-   | In the same `docker-compose.yml` | `http://prowlarr:9696` or `http://jackett:9117` |
-   | On the same machine, outside Compose | `http://<server-address>:9696` or `http://<server-address>:9117` |
-   | On another machine | `http://<that-machine-address>:9696` or `http://<that-machine-address>:9117` |
+   | Where the manager runs               | Address                                                                      |
+   | ------------------------------------ | ---------------------------------------------------------------------------- |
+   | In the same `docker-compose.yml`     | `http://prowlarr:9696` or `http://jackett:9117`                              |
+   | On the same machine, outside Compose | `http://<server-address>:9696` or `http://<server-address>:9117`             |
+   | On another machine                   | `http://<that-machine-address>:9696` or `http://<that-machine-address>:9117` |
 
    For Jackett you can paste the address straight from your browser, such as `http://<server-address>:9117/UI/Dashboard`, or the Torznab feed address Jackett copies for an indexer: Torsher keeps the part before `/UI` or `/api`. If Jackett runs under a base path, it stays in the address: `http://<server-address>:9117/jackett`.
 
@@ -60,6 +60,16 @@ Torsher doesn't watch the manager by itself. When you add or remove indexers the
 ## Option C: one Torznab indexer
 
 For an indexer that isn't in a manager, open <Ui k="panel.nav.sources" />, select <Ui k="panel.sources.add" /> and enter its <Ui k="panel.sources.addDialog.url" /> and <Ui k="panel.sources.addDialog.apiKey" />. The server checks the indexer before saving it.
+
+### Session cookie for a Torznab endpoint
+
+If your Torznab endpoint requires your session cookie, fill in the field when adding the indexer or in its <Ui k="panel.sources.indexers.edit" /> dialog: <Ui k="panel.sources.cookie.label" />. Enter only the `name=value; other=value` pairs from the request Cookie header. This also works for indexers imported from a manager; their name, address and API key stay managed there.
+
+Torsher stores the cookie encrypted and never sends it back to the panel. Leave the field empty to keep the saved value, replace it by entering a new one, or select <Ui k="panel.sources.cookie.remove" /> and save to remove it. A cookie is included in a settings export only when you protect the export with a password.
+
+The cookie is sent for capabilities, search, the feed and torrent downloads only at the configured Torznab origin: the same scheme, host and port. Redirecting to another origin drops it. An endpoint that redirects from HTTP to HTTPS needs its HTTPS address configured before saving the cookie.
+
+The access check confirms that the capabilities request works now. A request Cookie header does not specify when the session expires; replace the cookie if access is rejected. This field does not add support for searching an ordinary website, browser challenges or automatic sign-in.
 
 ## Releases in other languages
 
@@ -86,6 +96,7 @@ Open any title on the TV and select <Ui k="title.watch" />. The <Ui k="sources.t
 - **Jackett runs outside Docker and the server can't reach it.** On Windows and macOS Jackett accepts only connections from the same computer by default. In the Jackett dashboard, turn on **External access** and select **Apply server settings**.
 - **The import adds no indexers.** The manager has none configured. Add indexers in it, then use the sync button on the manager's card.
 - **Some indexers are not responding.** The <Ui k="sources.title" /> screen says how many didn't answer; the others are searched anyway. Check them in the manager. If the server can't reach a site directly, add a route through your proxy in [Network](/docs/setup/network).
+
 ## Next
 
 [TMDB key](/docs/setup/tmdb), if the catalog is empty, or [Connect a device](/docs/tv/connect).

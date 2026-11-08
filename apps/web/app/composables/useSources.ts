@@ -247,7 +247,9 @@ export function useSources() {
   async function updateIndexer(id: string, body: UpdateIndexerInput) {
     replaceIndexer(await api.indexers.patchIndexer(id, body))
 
-    return body.apiKey ? testIndexer(id) : undefined
+    return body.apiKey || body.sessionCookie !== undefined
+      ? testIndexer(id)
+      : undefined
   }
 
   async function setEnabled(indexer: Indexer, enabled: boolean) {

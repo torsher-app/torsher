@@ -259,6 +259,8 @@ export const indexers = sqliteTable(
     url: text('url').notNull(),
     // Шифртекст; null — индексатор без ключа
     apiKey: text('api_key'),
+    // Шифртекст заголовка Cookie; только для origin этого Torznab
+    sessionCookie: text('session_cookie'),
     enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
     managerId: text('manager_id').references(() => indexerManagers.id, {
       onDelete: 'set null',

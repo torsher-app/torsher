@@ -23,10 +23,15 @@ import LoadingButton from '~/components/LoadingButton.vue'
 import SecretInput from '~/components/SecretInput.vue'
 import { sourceErrorKind } from '~/composables/useSources'
 import { dialogSheetClass } from '~/lib/dialog'
-import { fieldOfSourceError, httpUrlSchema } from '~/lib/sourceForms'
+import {
+  fieldOfSourceError,
+  httpUrlSchema,
+  indexerUpdateBody,
+  isSessionCookie,
+} from '~/lib/sourceForms'
 
 const props = defineProps<{
-  /** Ручной индексатор для правки; без него диалог добавляет новый */
+  /** Индексатор для правки; без него диалог добавляет новый */
   indexer?: Indexer | null
 }>()
 
@@ -37,6 +42,7 @@ const { createIndexer, updateIndexer } = useSources()
 
 const serverError = ref<SourceErrorKind | null>(null)
 const isEdit = computed(() => !!props.indexer)
+const managed = computed(() => !!props.indexer?.managerId)
 
 // Адрес у индексатора не меняется (PATCH принимает имя и ключ), поэтому
 // при правке поле адреса только для чтения и не проверяется
@@ -50,28 +56,51 @@ const optionalKey = z
 const schema = computed(() =>
   toTypedSchema(
     z.object({
-      name: z
-        .string()
-        .trim()
-        .min(1, t('panel.sources.validation.name'))
-        .max(100),
+      name: managed.value
+        ? z.string()
+        : z.string().trim().min(1, t('panel.sources.validation.name')).max(100),
       url: isEdit.value
         ? z.string()
         : httpUrlSchema(t('panel.sources.validation.url')),
       // Пустое поле — индексатор без ключа или прежний ключ: на сервер не отправляем
       apiKey: optionalKey,
+      sessionCookie: z
+        .string()
+        .max(8192, t('panel.sources.validation.sessionCookie'))
+        .refine(
+          value => !value || isSessionCookie(value),
+          t('panel.sources.validation.sessionCookie'),
+        )
+        .optional()
+        .transform(value => value || undefined),
+      removeCookie: z.boolean(),
     }),
   ),
 )
 
-const { handleSubmit, defineField, errors, isSubmitting, resetForm } = useForm({
+const {
+  handleSubmit,
+  defineField,
+  errors,
+  isSubmitting,
+  resetForm,
+  setFieldValue,
+} = useForm({
   validationSchema: schema,
-  initialValues: { name: '', url: '', apiKey: '' },
+  initialValues: {
+    name: '',
+    url: '',
+    apiKey: '',
+    sessionCookie: '',
+    removeCookie: false,
+  },
 })
 
 const [name, nameProps] = defineField('name')
 const [url, urlProps] = defineField('url')
 const [apiKey, apiKeyProps] = defineField('apiKey')
+const [sessionCookie, sessionCookieProps] = defineField('sessionCookie')
+const [removeCookie] = defineField('removeCookie')
 
 const errorField = computed(() =>
   serverError.value ? fieldOfSourceError(serverError.value) : null,
@@ -84,6 +113,8 @@ watch(open, (isOpen) => {
         name: props.indexer?.name ?? '',
         url: props.indexer?.url ?? '',
         apiKey: '',
+        sessionCookie: '',
+        removeCookie: false,
       },
     })
     serverError.value = null
@@ -95,10 +126,10 @@ const onSubmit = handleSubmit(async (values) => {
 
   try {
     if (props.indexer) {
-      const checked = await updateIndexer(props.indexer.id, {
-        name: values.name,
-        apiKey: values.apiKey,
-      })
+      const checked = await updateIndexer(
+        props.indexer.id,
+        indexerUpdateBody(values, managed.value),
+      )
 
       // Новый ключ не прошёл проверку: диалог остаётся открытым с причиной
       if (checked && checked.checkStatus !== 'ok') {
@@ -115,6 +146,7 @@ const onSubmit = handleSubmit(async (values) => {
       name: values.name,
       url: values.url,
       apiKey: values.apiKey,
+      sessionCookie: values.sessionCookie,
     })
 
     open.value = false
@@ -150,9 +182,7 @@ const onSubmit = handleSubmit(async (values) => {
         <Alert v-if="serverError" variant="destructive">
           <CircleAlertIcon />
           <AlertTitle>
-            {{
-              t(`panel.sources.errorTitles.${serverError}`)
-            }}
+            {{ t(`panel.sources.errorTitles.${serverError}`) }}
           </AlertTitle>
           <AlertDescription>
             {{ t(`panel.sources.errors.${serverError}`) }}
@@ -169,6 +199,7 @@ const onSubmit = handleSubmit(async (values) => {
             v-bind="nameProps"
             autocomplete="off"
             :placeholder="t('panel.sources.addDialog.namePlaceholder')"
+            :readonly="managed"
             :aria-invalid="!!errors.name || undefined"
           />
           <p v-if="errors.name" class="text-[12.5px] text-destructive">
@@ -214,12 +245,18 @@ const onSubmit = handleSubmit(async (values) => {
             id="indexer-api-key"
             v-model="apiKey"
             v-bind="apiKeyProps"
+            :readonly="managed"
+            :placeholder="
+              managed && indexer?.hasApiKey ? '••••••••' : undefined
+            "
             autocomplete="off"
             class="font-mono"
             :show-label="t('panel.common.showKey')"
             :hide-label="t('panel.common.hideKey')"
             :aria-invalid="
-              !!errors.apiKey || errorField === 'apiKey' || undefined
+              !!errors.apiKey
+                || (errorField === 'apiKey' && !managed)
+                || undefined
             "
             aria-describedby="indexer-api-key-hint"
           />
@@ -237,11 +274,80 @@ const onSubmit = handleSubmit(async (values) => {
           >
             {{
               t(
-                isEdit
-                  ? "panel.sources.editDialog.apiKeyHint"
-                  : "panel.sources.addDialog.apiKeyHint",
+                managed
+                  ? "panel.sources.cookie.managedKey"
+                  : isEdit
+                    ? "panel.sources.editDialog.apiKeyHint"
+                    : "panel.sources.addDialog.apiKeyHint",
               )
             }}
+          </p>
+        </div>
+        <div class="grid gap-2">
+          <Label for="indexer-session-cookie">{{
+            t("panel.sources.cookie.label")
+          }}</Label>
+          <SecretInput
+            id="indexer-session-cookie"
+            v-model="sessionCookie"
+            v-bind="sessionCookieProps"
+            autocomplete="off"
+            autocapitalize="off"
+            :spellcheck="false"
+            class="font-mono"
+            :placeholder="
+              indexer?.hasCookie && !removeCookie ? '••••••••' : undefined
+            "
+            :show-label="t('panel.sources.cookie.show')"
+            :hide-label="t('panel.sources.cookie.hide')"
+            :aria-invalid="
+              !!errors.sessionCookie
+                || (errorField === 'apiKey'
+                  && !!(sessionCookie || indexer?.hasCookie))
+                || undefined
+            "
+            aria-describedby="indexer-cookie-hint"
+          />
+          <p
+            v-if="errors.sessionCookie"
+            id="indexer-cookie-hint"
+            class="text-[12.5px] text-destructive"
+          >
+            {{ errors.sessionCookie }}
+          </p>
+          <p
+            v-else
+            id="indexer-cookie-hint"
+            class="text-[12.5px] text-muted-foreground"
+          >
+            {{
+              t(
+                removeCookie
+                  ? "panel.sources.cookie.removing"
+                  : indexer?.hasCookie
+                    ? "panel.sources.cookie.saved"
+                    : "panel.sources.cookie.hint",
+              )
+            }}
+          </p>
+          <Button
+            v-if="indexer?.hasCookie && !sessionCookie"
+            type="button"
+            variant="ghost"
+            size="sm"
+            class="justify-self-start"
+            @click="setFieldValue('removeCookie', !removeCookie)"
+          >
+            {{
+              t(
+                removeCookie
+                  ? "panel.sources.cookie.undoRemove"
+                  : "panel.sources.cookie.remove",
+              )
+            }}
+          </Button>
+          <p class="text-[12.5px] text-muted-foreground">
+            {{ t("panel.sources.cookie.scope") }}
           </p>
         </div>
       </form>

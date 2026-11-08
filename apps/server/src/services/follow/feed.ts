@@ -227,6 +227,7 @@ export async function readFeed(
           ...(offset > 0 && { offset: String(offset) }),
         },
         indexer.apiKey(),
+        indexer.sessionCookie?.(),
       )
     }
     catch (err) {

@@ -15,6 +15,7 @@ import {
   linkTitle,
 } from '../torrents/index.ts'
 import { downloadTorrent, SourceError } from '../torznab/index.ts'
+import { indexerCookie } from '../indexers/index.ts'
 import { getTitleSources } from './index.ts'
 import { rememberChoice } from './progress.ts'
 import { seasonReleases } from './seasonRelease.ts'
@@ -102,7 +103,13 @@ export async function acquire(
       const downloaded = await downloadTorrent(
         release.link.url,
         DOWNLOAD_TIMEOUT_MS,
-        { trustedOrigin: release.link.indexerOrigin },
+        {
+          trustedOrigin: release.link.indexerOrigin,
+          sessionCookie: indexerCookie(
+            release.link.indexerId,
+            release.link.indexerOrigin,
+          ),
+        },
       )
 
       if (!isCurrent())

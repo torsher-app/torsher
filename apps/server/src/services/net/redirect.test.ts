@@ -241,3 +241,29 @@ describe('netFetch redirects', () => {
     expect(callInit(1).body).toBeUndefined()
   })
 })
+
+describe('cookie origin boundary', () => {
+  it('strips Cookie on an HTTPS upgrade while keeping the existing API key policy', async () => {
+    fetchMock
+      .mockResolvedValueOnce(redirect('https://a.example/next'))
+      .mockResolvedValueOnce(new Response('done'))
+    await netFetch('http://a.example/start', {
+      headers: { 'Cookie': 'sid=secret', 'X-Api-Key': 'key' },
+    })
+    const headers = new Headers(callInit(1).headers)
+    expect(headers.get('cookie')).toBeNull()
+    expect(headers.get('x-api-key')).toBe('key')
+  })
+  it('does not restore Cookie on an A → B → A chain', async () => {
+    fetchMock
+      .mockResolvedValueOnce(redirect('https://b.example/next'))
+      .mockResolvedValueOnce(redirect('https://a.example/final'))
+      .mockResolvedValueOnce(new Response('done'))
+    await netFetch('https://a.example/start', {
+      headers: { Cookie: 'sid=secret' },
+    })
+    expect(new Headers(callInit(0).headers).get('cookie')).toBe('sid=secret')
+    for (const hop of [1, 2])
+      expect(new Headers(callInit(hop).headers).get('cookie')).toBeNull()
+  })
+})

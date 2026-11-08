@@ -18,6 +18,7 @@ import {
 } from '../services/torznab/fixtures/index.ts'
 import { createOwner } from '../services/users/index.ts'
 import { signToken } from '../utils/token.ts'
+import { decryptSecret } from '../services/secrets/index.ts'
 
 const app = createApp()
 const fetchMock = vi.fn<typeof fetch>()
@@ -368,5 +369,125 @@ describe('менеджеры', () => {
     })
 
     expect(again.statusCode).toBe(404)
+  })
+})
+
+describe('write-only Torznab session cookie', () => {
+  async function create(sessionCookie = 'sid=synthetic-cookie-secret') {
+    fetchMock.mockImplementation(async () => new Response(capsXml))
+    return app.inject({
+      method: 'POST',
+      url: '/api/indexers',
+      cookies: owner,
+      payload: {
+        name: 'Cookie indexer',
+        url: 'https://indexer.example',
+        sessionCookie,
+      },
+    })
+  }
+  it('encrypts the cookie and never returns it in create/list/check/update', async () => {
+    const created = await create()
+    expect(created.statusCode).toBe(201)
+    const row = getDb().select().from(indexers).get()!
+    expect(row.sessionCookie).toMatch(/^v1:/)
+    expect(decryptSecret(row.sessionCookie!)).toBe(
+      'sid=synthetic-cookie-secret',
+    )
+    expect(created.json().hasCookie).toBe(true)
+    for (const response of [
+      created,
+      await app.inject({ method: 'GET', url: '/api/indexers', cookies: owner }),
+      await app.inject({
+        method: 'POST',
+        url: `/api/indexers/${row.id}/test`,
+        cookies: owner,
+      }),
+      await app.inject({
+        method: 'PATCH',
+        url: `/api/indexers/${row.id}`,
+        cookies: owner,
+        payload: { name: 'Renamed' },
+      }),
+    ]) {
+      expect(response.body).not.toContain('synthetic-cookie-secret')
+      expect(response.body).not.toContain('sessionCookie')
+      expect(response.body).not.toContain('v1:')
+    }
+    expect(
+      new Headers(fetchMock.mock.calls[0]![1]?.headers).get('cookie'),
+    ).toBe('sid=synthetic-cookie-secret')
+  })
+  it('keeps omitted secrets, replaces them and deletes only on explicit null', async () => {
+    const created = await create()
+    const url = `/api/indexers/${created.json().id}`
+    const saved = getDb().select().from(indexers).get()!.sessionCookie
+    await app.inject({
+      method: 'PATCH',
+      url,
+      cookies: owner,
+      payload: { name: 'New name' },
+    })
+    expect(getDb().select().from(indexers).get()?.sessionCookie).toBe(saved)
+    const replaced = await app.inject({
+      method: 'PATCH',
+      url,
+      cookies: owner,
+      payload: { sessionCookie: 'sid=new-secret' },
+    })
+    expect(replaced.json()).toMatchObject({
+      hasCookie: true,
+      checkStatus: null,
+      checkedAt: null,
+    })
+    expect(
+      decryptSecret(getDb().select().from(indexers).get()!.sessionCookie!),
+    ).toBe('sid=new-secret')
+    const removed = await app.inject({
+      method: 'PATCH',
+      url,
+      cookies: owner,
+      payload: { sessionCookie: null },
+    })
+    expect(removed.json().hasCookie).toBe(false)
+    expect(getDb().select().from(indexers).get()?.sessionCookie).toBeNull()
+  })
+  it.each([
+    '',
+    'not-a-pair',
+    'sid=x\r\nHeader: leak',
+    'sid=\x00secret',
+    'sid=\tsecret',
+    'sid=secret\x7F',
+    'sid=secret; cf_clearance=challenge',
+    `sid=${'x'.repeat(8192)}`,
+  ])(
+    'rejects invalid or challenge credentials without echoing input',
+    async (sessionCookie) => {
+      const response = await create(sessionCookie)
+      expect(response.statusCode).toBe(400)
+      expect(response.body).not.toContain('challenge')
+      expect(response.body).not.toContain('Header: leak')
+      expect(fetchMock).not.toHaveBeenCalled()
+    },
+  )
+  it('does not expose a remote echo in a source error', async () => {
+    fetchMock.mockImplementation(
+      async () =>
+        new Response('<error code="100" description="sid=echo-secret"/>'),
+    )
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/indexers',
+      cookies: owner,
+      payload: {
+        name: 'Test',
+        url: 'https://indexer.example',
+        sessionCookie: 'sid=echo-secret',
+      },
+    })
+    expect(response.statusCode).toBe(422)
+    expect(response.json().kind).toBe('auth')
+    expect(response.body).not.toContain('echo-secret')
   })
 })

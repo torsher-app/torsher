@@ -28,6 +28,7 @@ import { scanFolder } from '../library/scan.ts'
 import { logFor } from '../logs/index.ts'
 import { routesChanged } from '../net/index.ts'
 import { providerOf } from '../notifications/channels/index.ts'
+import { DocumentError } from './document.ts'
 import { encryptSecret } from '../secrets/index.ts'
 import { saveTmdbKey, tmdbKeySource } from '../tmdb/credentials.ts'
 import { parseCatalogId } from '../tmdb/mappers.ts'
@@ -38,6 +39,7 @@ import {
   verifyPasswordCheck,
 } from './passwords.ts'
 import { applyProfileMerge, planProfileMerge } from './profileData.ts'
+import { isSessionCookie } from '../torznab/cookie.ts'
 
 // Предпросмотр ждёт решения владельца, потом забывается
 const JOB_TTL_MS = 30 * 60 * 1000
@@ -272,6 +274,12 @@ export async function previewServerImport(
     secrets: SecretsState
     key?: PasswordKey
   }
+  const importedSecrets = secretReader(key)
+  for (const indexer of document.settings?.indexers ?? []) {
+    const cookie = importedSecrets.plain(indexer.sessionCookie)
+    if (cookie !== null && !isSessionCookie(cookie))
+      throw new DocumentError('broken')
+  }
   const targets = suggestTargets(document)
   const token = randomUUID()
 
@@ -465,6 +473,7 @@ function importIndexers(settings: ExportSettings, secrets: SecretReader) {
         name: indexer.name,
         url: indexer.url,
         apiKey: secrets.read(indexer.apiKey),
+        sessionCookie: secrets.read(indexer.sessionCookie ?? null),
         enabled: indexer.enabled,
         managerId: managerId ?? null,
         externalId: managerId ? indexer.externalId : null,

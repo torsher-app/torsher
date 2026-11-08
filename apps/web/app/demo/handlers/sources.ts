@@ -54,6 +54,7 @@ function indexerOf(
 ): Indexer {
   return {
     hasApiKey: true,
+    hasCookie: false,
     enabled: true,
     managerId: null,
     managerKind: null,
@@ -291,6 +292,7 @@ post<Indexer, CreateIndexerInput>('/api/indexers', async ({ body }) => {
     name: body.name,
     url: body.url,
     hasApiKey: Boolean(body.apiKey),
+    hasCookie: Boolean(body.sessionCookie),
     checkedAt: new Date().toISOString(),
     feed: { supported: null, checkedAt: null, probeAt: null },
   })
@@ -313,6 +315,10 @@ patch<Indexer, UpdateIndexerInput>('/api/indexers/:id', ({ params, body }) => {
     name: body.name ?? current.name,
     enabled: body.enabled ?? current.enabled,
     hasApiKey: body.apiKey ? true : current.hasApiKey,
+    hasCookie:
+      body.sessionCookie === undefined
+        ? current.hasCookie
+        : body.sessionCookie !== null,
     feed:
       body.feed === undefined
         ? current.feed

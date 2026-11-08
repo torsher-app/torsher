@@ -206,3 +206,104 @@ describe('downloadTorrent', () => {
     ).resolves.toMatchObject({ kind: 'file' })
   })
 })
+
+describe('session Cookie for torrent links', () => {
+  const origin = 'https://indexer.example'
+  const sessionCookie = 'sid=synthetic-secret'
+  const cookie = (hop: number) =>
+    new Headers(fetchMock.mock.calls[hop]![1]?.headers).get('cookie')
+  it('sends it to the exact origin and relative redirects', async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(null, { status: 302, headers: { location: '/next' } }),
+      )
+      .mockResolvedValueOnce(new Response('d1:ai1ee'))
+    await downloadTorrent(LINK, 1000, { trustedOrigin: origin, sessionCookie })
+    expect(cookie(0)).toBe(sessionCookie)
+    expect(cookie(1)).toBe(sessionCookie)
+  })
+  it.each([
+    'https://foreign.example/file',
+    'https://indexer.example:8443/file',
+    'http://indexer.example/file',
+  ])(
+    'does not send the cookie to an enclosure outside the configured origin: %s',
+    async (link) => {
+      fetchMock.mockResolvedValue(new Response('d1:ai1ee'))
+      await downloadTorrent(link, 1000, {
+        trustedOrigin: origin,
+        sessionCookie,
+      })
+      expect(cookie(0)).toBeNull()
+    },
+  )
+  it('never restores the cookie after leaving the origin', async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(null, {
+          status: 302,
+          headers: { location: 'https://other.example/next' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(null, {
+          status: 302,
+          headers: { location: `${origin}/final` },
+        }),
+      )
+      .mockResolvedValueOnce(new Response('d1:ai1ee'))
+    await downloadTorrent(LINK, 1000, { trustedOrigin: origin, sessionCookie })
+    expect(cookie(0)).toBe(sessionCookie)
+    expect(cookie(1)).toBeNull()
+    expect(cookie(2)).toBeNull()
+  })
+  it('strips the cookie on a protocol upgrade', async () => {
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(null, {
+          status: 302,
+          headers: { location: `${origin}/final` },
+        }),
+      )
+      .mockResolvedValueOnce(new Response('d1:ai1ee'))
+    await downloadTorrent('http://indexer.example/start', 1000, {
+      trustedOrigin: 'http://indexer.example',
+      sessionCookie,
+    })
+    expect(cookie(0)).toBe(sessionCookie)
+    expect(cookie(1)).toBeNull()
+  })
+  it('refuses HTTPS downgrade before sending a second request', async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(null, {
+        status: 302,
+        headers: { location: 'http://indexer.example/final' },
+      }),
+    )
+    await expect(
+      downloadTorrent(LINK, 1000, { trustedOrigin: origin, sessionCookie }),
+    ).rejects.toMatchObject({ kind: 'bad_response' })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+})
+
+it('does not expose an invalid redirect location that echoes the cookie', async () => {
+  fetchMock.mockResolvedValue(
+    new Response(null, {
+      status: 302,
+      headers: { location: 'https://[sid=echo-secret' },
+    }),
+  )
+  try {
+    await downloadTorrent(LINK, 1000, {
+      trustedOrigin: 'https://indexer.example',
+      sessionCookie: 'sid=echo-secret',
+    })
+    throw new Error('Expected rejection')
+  }
+  catch (error) {
+    expect(error).toMatchObject({ kind: 'bad_response' })
+    expect(String(error)).not.toContain('echo-secret')
+    expect(error).not.toHaveProperty('cause')
+  }
+})

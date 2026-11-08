@@ -300,6 +300,7 @@ export async function searchReleases(
         indexer.url,
         params,
         indexer.apiKey(),
+        indexer.sessionCookie?.(),
       )
 
       if (deadline.expired)

@@ -161,6 +161,7 @@ const exportIndexer = z.object({
   name: z.string().min(1).max(200),
   url: z.string().min(1).max(2048),
   apiKey: secret.nullable(),
+  sessionCookie: z.string().startsWith('p1:').max(12000).nullable().optional(),
   enabled: z.boolean(),
   manager: z.string().max(20).nullable(),
   externalId: z.string().max(200).nullable(),
