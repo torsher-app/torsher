@@ -17,8 +17,6 @@ defineProps<{
   options: TrackOption[]
   /** Под заголовком: какой файл играет */
   caption?: string
-  /** Внизу: смена дорожки перезапустит поток */
-  hint?: string
 }>()
 
 const emit = defineEmits<{ select: [id: string] }>()
@@ -27,7 +25,7 @@ const { t } = useI18n()
 </script>
 
 <template>
-  <PlayerPanel :title="t(`player.${kind}`)" :caption="caption" :hint="hint">
+  <PlayerPanel :title="t(`player.${kind}`)" :caption="caption">
     <FocusSection name="player-tracks" autofocus manual-scroll>
       <PanelRow
         v-for="option in options"

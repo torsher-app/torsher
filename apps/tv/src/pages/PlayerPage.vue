@@ -352,18 +352,6 @@ const trackOptions = computed(() =>
     : tracks.subtitleOptions.value,
 )
 
-// Смена дорожки, которую плеер не переключит сам, перезапускает поток
-const tracksHint = computed(() => {
-  const hints = []
-  if (playback.value?.media && (props.titleId || props.mediaFileId))
-    hints.push(t('player.trackScope'))
-  if (panel.value === 'audio' && playback.value?.audioSwitch === 'restart')
-    hints.push(t('player.restartHint'))
-  if (panel.value === 'subtitles' && tracks.hasBurnIn.value)
-    hints.push(t('player.burnInHint'))
-  return hints.join(' · ') || undefined
-})
-
 // Настройки профиля — вид субтитров и автопереход; скорость живёт до
 // перезапуска витрины и переходит на следующую серию
 const speed = usePlaybackSpeed()
@@ -2387,7 +2375,6 @@ onBeforeUnmount(() => {
         :kind="panel"
         :options="trackOptions"
         :caption="tracks.caption.value"
-        :hint="tracksHint"
         @select="onTracksSelect"
         @close="closePanelFromScreen"
       />

@@ -4,9 +4,8 @@
 // курсор Magic Remote) — к фильму: панель закрывается
 defineProps<{
   title: string
-  /** Под заголовком: какой файл играет, что сохранится при смене */
+  /** Под заголовком: какой файл играет */
   caption?: string
-  hint?: string
 }>()
 
 const emit = defineEmits<{ close: [] }>()
@@ -25,9 +24,6 @@ const emit = defineEmits<{ close: [] }>()
       <div class="panel__content">
         <slot />
       </div>
-      <p v-if="hint" class="panel__hint">
-        {{ hint }}
-      </p>
     </aside>
   </div>
 </template>
@@ -72,12 +68,5 @@ const emit = defineEmits<{ close: [] }>()
   position: relative;
   flex: 1;
   min-height: 0;
-}
-
-.panel__hint {
-  margin: 0;
-  padding-top: calc(var(--u) * 24);
-  color: var(--color-text-muted);
-  font-size: var(--font-size-s);
 }
 </style>
