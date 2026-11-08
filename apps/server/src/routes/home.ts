@@ -46,16 +46,24 @@ export const homeRoutes: FastifyPluginAsyncZod = async (app) => {
           libraryHomeRows(mode, language, profileId),
           mode === 'all' ? personalHomeRows(profileId, language) : [],
         ])
-      // «Моя библиотека» — сразу после «Продолжить»: своё важнее каталога
+      // Личные намерения выше свежих добавлений; подборки — после библиотеки.
+      const personalRows
+        = personal.status === 'fulfilled' ? personal.value : []
+      const libraryRows = library.status === 'fulfilled' ? library.value : []
+      const titleRows
+        = mode === 'all'
+          ? [
+              ...personalRows.filter(row => row.id !== 'collection'),
+              ...libraryRows,
+              ...personalRows.filter(row => row.id === 'collection'),
+            ]
+          : [...libraryRows, ...personalRows]
       const own = [
         ...(resume.status === 'fulfilled' && resume.value.items.length > 0
           ? [resume.value]
           : []),
         ...(unmatched.status === 'fulfilled' ? unmatched.value : []),
-        ...[
-          ...(library.status === 'fulfilled' ? library.value : []),
-          ...(personal.status === 'fulfilled' ? personal.value : []),
-        ].map(row => ({
+        ...titleRows.map(row => ({
           ...row,
           items: withPosterRatings(row.items, profileId),
         })),
