@@ -1,4 +1,4 @@
-import type { SourceCandidate } from '@torsher/api-client'
+import type { SourceCandidate, TorrentStats } from '@torsher/api-client'
 import type { SourceChoice } from '../components/SourcesScreen.vue'
 import type { Ref } from 'vue'
 import type { PlaybackRestart } from '../composables/usePlayback.ts'
@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   pause: vi.fn(),
   focus: vi.fn(),
   attach: vi.fn(),
+  pollStats: vi.fn(),
   native: false,
   restart: (_change: PlaybackRestart): Promise<void> => Promise.resolve(),
   media: undefined as unknown as HTMLVideoElement,
@@ -88,6 +89,10 @@ vi.mock('../composables/useHls.ts', () => ({
   }),
 }))
 let mode = 'direct'
+const playerStats = ref<TorrentStats>()
+const statsFailed = ref(false)
+const statsAt = ref(0)
+const playerStatus = ref('ready')
 vi.mock('../composables/usePlayback.ts', () => ({
   usePlayback: () => ({
     playback: ref({
@@ -98,14 +103,16 @@ vi.mock('../composables/usePlayback.ts', () => ({
       duration: 180,
       startPosition: 0,
     }),
-    stats: ref(),
+    stats: playerStats,
+    statsFailed,
+    statsReceivedAt: () => statsAt.value,
     pending: ref(),
-    status: ref('ready'),
+    status: playerStatus,
     error: ref(),
     engineKind: ref(),
     storage: ref(),
     start: mocks.start,
-    pollStats: vi.fn(),
+    pollStats: mocks.pollStats,
     stopStats: vi.fn(),
     close: vi.fn(),
     saveWatchState: vi.fn().mockResolvedValue(undefined),
@@ -169,6 +176,7 @@ interface Controls {
   paused: boolean
   phase: string
   panel: 'source' | null
+  step: string
 }
 let controls: Controls
 let cleanup: () => void
@@ -204,6 +212,10 @@ async function mount(playing = true) {
 beforeEach(() => {
   vi.useFakeTimers()
   vi.clearAllMocks()
+  playerStats.value = undefined
+  statsFailed.value = false
+  statsAt.value = 0
+  playerStatus.value = 'ready'
   mocks.historyState = {}
   vi.stubGlobal('history', { state: {} })
   vi.stubGlobal('document', {
@@ -235,6 +247,54 @@ afterEach(() => {
   cleanup?.()
   vi.useRealTimers()
   vi.unstubAllGlobals()
+})
+
+it('polls while the initial probe is pending and distinguishes fresh zero peers from a failed poll', async () => {
+  let finish!: (outcome: string) => void
+  mocks.start.mockImplementation(
+    () =>
+      new Promise<string>((resolve) => {
+        finish = resolve
+      }),
+  )
+  playerStatus.value = 'loading'
+  await mount(false)
+  expect(mocks.pollStats).toHaveBeenCalledTimes(1)
+  expect(controls.phase).toBe('starting')
+  await vi.advanceTimersByTimeAsync(16_000)
+  playerStats.value = {
+    activity: 'downloading',
+    peers: { connected: 0, found: 0 },
+    downloadSpeed: 0,
+    uploadSpeed: 0,
+    badPieces: 0,
+    file: { size: 100, downloaded: 0, bufferedAhead: 0 },
+  }
+  statsAt.value = Date.now()
+  await settle()
+  expect(controls.step).toBe('waitingPeers')
+  statsFailed.value = true
+  await settle()
+  expect(controls.step).toBe('reconnecting')
+  statsFailed.value = false
+  statsAt.value = Date.now()
+  await settle()
+  expect(controls.step).toBe('waitingPeers')
+  playerStats.value = {
+    ...playerStats.value!,
+    peers: { connected: 0, found: 40 },
+  }
+  await settle()
+  expect(controls.step).toBe('connectingPeers')
+  playerStats.value = {
+    ...playerStats.value!,
+    file: { size: 100, downloaded: 100, bufferedAhead: 0 },
+  }
+  await settle()
+  expect(controls.step).toBe('buffering')
+  finish('ready')
+  await settle()
+  expect(mocks.pollStats).toHaveBeenCalledTimes(1)
 })
 
 it('restores the position and pause after cancelling a source switch', async () => {

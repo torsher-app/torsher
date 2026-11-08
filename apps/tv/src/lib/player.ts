@@ -2,29 +2,55 @@ import type { TorrentStats } from '@torsher/api-client'
 
 /**
  * Шаги экрана буферизации: `connecting` — движок ищет пиров,
- * `waitingPeers` — долго никого нет (честно говорим, что ждём),
- * `buffering` — пиры есть, качаем начало.
+ * `waitingPeers` — движок пока не нашёл участников,
+ * `connectingPeers` — адреса найдены, соединений пока нет,
+ * `buffering` — получаем данные или готовим уже скачанные.
  */
-export type BufferingStep = 'connecting' | 'waitingPeers' | 'buffering'
+export type BufferingStep
+  = | 'connecting'
+    | 'connectingPeers'
+    | 'waitingPeers'
+    | 'buffering'
+    | 'reconnecting'
 
 /** Шаг на сцене подготовки: ещё повтор после сбоя и медленная раздача */
-export type StageStep = BufferingStep | 'reconnecting' | 'slow'
+export type StageStep = BufferingStep | 'slow'
 
 // Столько ищем пиров молча, дальше говорим, что ждём
 export const WAITING_PEERS_AFTER_MS = 15_000
-
-export function bufferingStep(
-  stats: Pick<TorrentStats, 'activity' | 'peers'> | null,
-  waitedMs: number,
-): BufferingStep {
-  if (stats && stats.activity === 'downloading' && stats.peers.connected > 0)
-    return 'buffering'
-
-  return waitedMs >= WAITING_PEERS_AFTER_MS ? 'waitingPeers' : 'connecting'
-}
-
+// Статистика молчит дольше — не отвечает сервер или движок
+export const STATS_STALE_MS = 15_000
 // Столько буфера впереди считаем «почти готово»: дальше старт решает `<video>`
 export const BUFFER_TARGET_BYTES = 16 * 1024 * 1024
+
+export function bufferingStep(
+  stats: Pick<
+    TorrentStats,
+    'activity' | 'peers' | 'downloadSpeed' | 'file'
+  > | null,
+  waitedMs: number,
+  statsFresh = true,
+): BufferingStep {
+  if (!statsFresh || (!stats && waitedMs >= STATS_STALE_MS))
+    return 'reconnecting'
+
+  if (!stats || stats.activity !== 'downloading')
+    return 'connecting'
+
+  if (
+    stats.peers.connected > 0
+    || stats.downloadSpeed > 0
+    || stats.file.bufferedAhead >= BUFFER_TARGET_BYTES
+    || (stats.file.size > 0 && stats.file.downloaded >= stats.file.size)
+  ) {
+    return 'buffering'
+  }
+
+  if (waitedMs < WAITING_PEERS_AFTER_MS)
+    return 'connecting'
+
+  return stats.peers.found > 0 ? 'connectingPeers' : 'waitingPeers'
+}
 
 /**
  * Доля подготовки для статуса и света торшера, к цели в байтах. Буфер подряд
@@ -280,8 +306,6 @@ export function settleBudget(
     : budget
 }
 
-// Статистика молчит дольше — не отвечает сервер или движок
-export const STATS_STALE_MS = 15_000
 // Столько данных впереди у движка значат, что стоит не раздача, а конвейер
 const AHEAD_ENOUGH_S = 30
 const STUCK_WITH_DATA_MS = 20_000

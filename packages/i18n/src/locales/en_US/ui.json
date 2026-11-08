@@ -525,12 +525,14 @@
     "subtitleBurnIn": "in picture",
     "steps": {
       "connecting": "Connecting",
+      "connectingPeers": "Connecting to peers",
       "waitingPeers": "Waiting for peers",
       "buffering": "Buffering",
       "reconnecting": "Reconnecting",
       "slow": "Slow torrent"
     },
-    "waitingHint": "Nobody is sharing this file yet. The torrent may be rare: wait or pick another one.",
+    "waitingHint": "No peers have been found yet. Wait or choose another release.",
+    "connectingPeersHint": "Peers were found, but a connection has not been established yet. Wait or choose another release.",
     "retry": "Retry",
     "back": "Back",
     "fromStart": "From start",
