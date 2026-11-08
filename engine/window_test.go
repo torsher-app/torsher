@@ -113,8 +113,10 @@ func TestStreamWindowKeepsUpWithFirstFile(t *testing.T) {
 	}()
 
 	// Последний кусок второго файла вне readahead и не пересекается с первым.
+	// Срочный приоритет ридера появляется только после входа горутины в Read.
 	waitFor(t, 5*time.Second, func() bool {
-		return added.Piece(added.NumPieces()-1).State().Priority == torrent.PiecePriorityHigh
+		return added.Piece(added.NumPieces()-1).State().Priority == torrent.PiecePriorityHigh &&
+			added.Piece(int(file.Offset()/added.Info().PieceLength)).State().Priority > torrent.PiecePriorityHigh
 	})
 	last := added.Piece(added.NumPieces() - 1).State().Priority
 	if last != torrent.PiecePriorityHigh {
