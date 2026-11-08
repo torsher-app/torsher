@@ -117,7 +117,7 @@ export const studios: Studio[] = [
 export function studioKey(value: string) {
   return value
     .toLowerCase()
-    .replaceAll('ё', 'е')
+    .replace(/ё/g, 'е')
     .replace(/[\s.\-_]+/g, '')
 }
 
@@ -132,10 +132,9 @@ export function findStudio(value: string): Studio | undefined {
 }
 
 /** Самое длинное число слов в одном написании: столько токенов смотрит поиск. */
-export const studioMaxWords = Math.max(
-  ...studios.flatMap(studio =>
-    [studio.name, ...(studio.aliases ?? [])].map(
-      alias => alias.split(/[\s.\-_]+/).length,
-    ),
-  ),
-)
+let maxWords = 0
+for (const studio of studios) {
+  for (const alias of [studio.name, ...(studio.aliases ?? [])])
+    maxWords = Math.max(maxWords, alias.split(/[\s.\-_]+/).length)
+}
+export const studioMaxWords = maxWords
