@@ -32,12 +32,13 @@ Near the bottom are your avatar and name (OK switches the profile, see [Profiles
 
 ## Home
 
-The top of the screen shows the focused title: its backdrop, ratings, year, genres and description, with a hint of what OK does. Below are rows. Your own rows come first, and only when they have something:
+The top of the screen shows the focused title: its backdrop, ratings, year, genres and description, with a hint of what OK does. In <Ui k="home.rows.continue" />, it shows the remaining time when known, or the next episode, and the episode title when available instead of the plot. Below are rows. Your own rows come first, in this order, and only when they have something:
 
 - <Ui k="home.rows.continue" />: what you watched in the last 16 weeks, and new episodes of series you follow. OK resumes right away. Older titles you haven't finished stay in [Mine](/docs/watch/mine).
-- <Ui k="home.rows.library" />: titles in your library.
 - <Ui k="home.rows.newEpisodes" />: fresh episodes of series you watch.
-- <Ui k="home.rows.watchlist" /> and the collections shown on home.
+- <Ui k="home.rows.watchlist" />: titles you saved for later.
+- <Ui k="home.rows.libraryRecentlyAdded" />: titles with files added in the last 30 days, newest first.
+- Collections shown on home.
 
 A row holds up to 20 titles. When <Ui k="home.rows.continue" />, <Ui k="home.rows.watchlist" /> or a collection has more, the last card is <Ui k="home.all" /> with the total: OK opens the whole list in [Mine](/docs/watch/mine).
 

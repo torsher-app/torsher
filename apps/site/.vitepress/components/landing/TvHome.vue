@@ -130,8 +130,7 @@ const settingsSpokes = [
         </template>
       </div>
       <p class="overview">
-        A mapmaker crosses a frozen valley to relight the beacons that once
-        guided travellers home.
+        {{ cards[0]?.meta }}
       </p>
       <div class="hints">
         <span class="hint"><span class="key">OK</span>{{ label("home.hint.resume") }}</span>
@@ -158,7 +157,17 @@ const settingsSpokes = [
         </div>
       </section>
       <section class="row">
-        <h2>{{ label("home.rows.trending") }}</h2>
+        <h2>{{ label("home.rows.watchlist") }}</h2>
+        <div class="cards">
+          <div
+            v-for="card in cards.slice(1)"
+            :key="card.title"
+            class="card card--poster"
+          >
+            <span class="frame" :style="{ background: card.art }" />
+            <span class="card-title">{{ card.title }}</span>
+          </div>
+        </div>
       </section>
     </div>
 
@@ -323,7 +332,7 @@ const settingsSpokes = [
 .hero {
   position: absolute;
   z-index: 5;
-  top: calc(var(--u) * 84);
+  top: calc(var(--u) * 72);
   left: calc(var(--u) * 168);
   width: calc(var(--u) * 1000);
 }
@@ -333,7 +342,7 @@ const settingsSpokes = [
   border: 0;
   padding: 0;
   color: inherit;
-  font-size: calc(var(--u) * 56);
+  font-size: calc(var(--u) * 44);
   font-weight: 700;
   line-height: 1.05;
   letter-spacing: 0;
@@ -396,7 +405,7 @@ const settingsSpokes = [
 .rows {
   position: absolute;
   z-index: 4;
-  top: calc(var(--u) * 618);
+  top: calc(var(--u) * 420);
   right: 0;
   left: 0;
 }
@@ -426,6 +435,14 @@ const settingsSpokes = [
   flex-shrink: 0;
   width: calc(var(--u) * 400);
   margin-right: calc(var(--u) * 28);
+}
+
+.card--poster {
+  width: calc(var(--u) * 240);
+}
+
+.card--poster .frame {
+  padding-top: 150%;
 }
 
 .card.focused {
