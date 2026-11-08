@@ -486,7 +486,7 @@ onBeforeUnmount(stopFocus)
 
 .home-video__head {
   position: absolute;
-  top: calc(var(--u) * 90);
+  top: var(--safe-y);
   right: var(--content-x);
   left: var(--content-x);
 }
@@ -512,7 +512,7 @@ onBeforeUnmount(stopFocus)
    сверху — кольцу фокуса */
 .home-video__viewport {
   position: absolute;
-  top: calc(var(--u) * 294 - var(--focus-ring-gap));
+  top: calc(var(--safe-y) + var(--u) * 204 - var(--focus-ring-gap));
   right: 0;
   bottom: 0;
   left: calc(var(--content-x) - var(--focus-ring-gap));

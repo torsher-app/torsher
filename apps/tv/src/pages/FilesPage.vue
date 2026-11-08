@@ -790,7 +790,7 @@ onBeforeUnmount(() => {
 
 .files__main {
   position: absolute;
-  top: calc(var(--u) * 140);
+  top: var(--safe-y);
   right: var(--safe-x);
   bottom: 0;
   left: var(--content-x);

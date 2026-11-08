@@ -388,7 +388,7 @@ onBeforeUnmount(stopFocus)
 
 .search__left {
   position: absolute;
-  top: calc(var(--u) * 90);
+  top: var(--safe-y);
   left: var(--content-x);
   width: calc(var(--u) * 600);
 }
@@ -480,7 +480,7 @@ onBeforeUnmount(stopFocus)
 /* Запас слева — кольцу фокуса крайней карточки: в вебе колонка обрезает края */
 .search__right {
   position: absolute;
-  top: calc(var(--u) * 106);
+  top: calc(var(--safe-y) + var(--u) * 16);
   right: 0;
   left: calc(var(--u) * 840 - var(--focus-ring-gap));
   padding: 0 0 calc(var(--u) * 160) var(--focus-ring-gap);
