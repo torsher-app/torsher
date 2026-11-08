@@ -523,8 +523,6 @@
     "subtitleFile": "file",
     "forced": "forced",
     "subtitleBurnIn": "in picture",
-    "restartHint": "The player cannot switch audio by itself: the stream will restart from this point",
-    "burnInHint": "The server burns “in picture” subtitles into the video: the stream will restart from this point",
     "steps": {
       "connecting": "Connecting",
       "waitingPeers": "Waiting for peers",
@@ -644,7 +642,6 @@
       "watch": "Watch in {quality}",
       "sources": "Choose a source"
     },
-    "trackScope": "Your choice is saved for this title in your profile",
     "trackSaveFailed": "Could not save your track choice. Please try again.",
     "trackUnavailable": "Your preferred track is unavailable in this file. Check audio and subtitles; your preference is kept."
   },

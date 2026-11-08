@@ -65,7 +65,7 @@ Skipping credits seeks only across a confirmed section, preserving gaps that may
 
 Your explicit audio choice is saved on the server for this title in your profile. It applies to the next episodes and later visits, using the language, studio and translation type rather than a track number. Without an explicit choice, the player uses the release or episode history, then your profile language. Choosing a track does not change Following rules.
 
-Some devices can't switch tracks inside a file. Then the panel says so, and the stream restarts from the same point with the new track. If paused, it stays paused. If a preferred track cannot be identified in the new file, a notice explains that it is unavailable; your preference is kept for later files.
+Some devices can't switch tracks inside a file, so the stream restarts from the same point with the new track. If paused, it stays paused. If a preferred track cannot be identified in the new file, a notice explains that it is unavailable; your preference is kept for later files.
 
 ## Subtitles
 
