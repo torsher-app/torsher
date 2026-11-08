@@ -5,14 +5,20 @@ import type {
   TitleFollowResponse,
 } from '@torsher/api-client'
 import type { PanelOption } from './OptionsPanel.vue'
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { demoStudios } from '@torsher/demo/studios'
+import { searchStudios, studios } from '@torsher/release-parser/studio-search'
+import { useFocus } from '../focus/index.ts'
+import { useFollowSave } from '../composables/useFollowSave.ts'
 import { useFollowVoices } from '../composables/useFollowVoices.ts'
 import { useI18n } from 'vue-i18n'
 import { useFollowTexts } from '../composables/useTitleFollow.ts'
 import {
+  canonicalStudio,
   FOLLOW_AUDIOS,
   FOLLOW_MODES,
   isFollowAudio,
+  mergeStudioEvidence,
   QUALITY_LADDERS,
   QUALITY_PRESETS,
   qualityName,
@@ -23,7 +29,14 @@ import OptionsPanel from './OptionsPanel.vue'
 
 // `language` — вложенный шаг «Озвучки»: другой язык при русской
 type Step
-  = 'main' | 'mode' | 'voice' | 'language' | 'studio' | 'wait' | 'quality'
+  = | 'main'
+    | 'mode'
+    | 'voice'
+    | 'language'
+    | 'studio'
+    | 'otherStudios'
+    | 'wait'
+    | 'quality'
 
 /**
  * Лист правил «Следить»: пункты со значением справа, OK открывает шаг с
@@ -44,19 +57,18 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const texts = useFollowTexts()
+const focus = useFocus()
+const query = ref('')
+const collection = __DEMO__ ? demoStudios : studios
 
 const follow = computed(() => props.view.follow)
 const series = computed(() => follow.value.kind === 'series')
 const editable = computed(() => props.view.canEdit)
 
 const step = ref<Step>('main')
-const saving = ref(false)
-const saveError = ref(false)
+// Возврат из шага — на пункт, который его открыл
+const returnTo = ref<string>()
 const chosenMode = ref<'prefer' | 'only'>('prefer')
-let alive = true
-onBeforeUnmount(() => {
-  alive = false
-})
 const modern = computed(() => follow.value.voicePolicy !== undefined)
 const season = computed(() =>
   follow.value.kind === 'movie' ? 0 : follow.value.season,
@@ -71,39 +83,29 @@ const {
   season,
   editable,
 )
+const context = computed(() => `${props.titleId}|${season.value}`)
+const {
+  saving,
+  error: saveError,
+  persist: saveRules,
+} = useFollowSave(context, editable, body => props.save(body))
 watch(
-  () => `${props.titleId}|${season.value}`,
+  context,
   () => {
-    if (step.value === 'studio')
-      void loadVoices()
+    step.value = 'main'
+    query.value = ''
+    returnTo.value = undefined
   },
+  { flush: 'sync' },
 )
 async function persist(body: FollowTitleInput) {
-  if (!editable.value || saving.value)
-    return
   const savedStep = step.value
-  saving.value = true
-  saveError.value = false
-  try {
-    const ok = await props.save(body)
-    if (alive) {
-      saveError.value = !ok
-      if (ok && step.value === savedStep)
-        toMain(savedStep)
-    }
-  }
-  catch {
-    if (alive)
-      saveError.value = true
-  }
-  finally {
-    if (alive)
-      saving.value = false
+  const savedContext = context.value
+  if ((await saveRules(body)) && context.value === savedContext) {
+    if (step.value === savedStep)
+      toMain(savedStep)
   }
 }
-
-// Возврат из шага — на пункт, который его открыл
-const returnTo = ref<string>()
 
 const studio = computed(
   () => follow.value.voice?.studio ?? follow.value.voiceStudio ?? undefined,
@@ -285,7 +287,9 @@ const voiceOptions = computed<PanelOption[]>(() => {
       ? [
           {
             id: 'legacy',
-            label: t('follow.studio.legacy'),
+            label: policy.studio
+              ? t('follow.studio.legacyValue', { studio: policy.studio })
+              : t('follow.studio.legacy'),
             selected: true,
             disabled: true,
           },
@@ -303,42 +307,112 @@ const voiceOptions = computed<PanelOption[]>(() => {
     })),
   ]
 })
-const studioOptions = computed<PanelOption[]>(() => {
+const studioEvidence = computed(() =>
+  mergeStudioEvidence(voices.value?.items ?? [], collection),
+)
+const savedStudio = computed(() => {
   const policy = follow.value.voicePolicy
-  const saved = policy && 'studio' in policy ? policy.studio : undefined
-  const names = [
-    ...new Set(
-      [
-        saved,
-        follow.value.voiceResolution?.studio,
-        ...(voices.value?.items.map(item => item.studio) ?? []),
-      ].filter((name): name is string => !!name),
+  return policy?.mode === 'prefer' || policy?.mode === 'only'
+    ? canonicalStudio(policy.studio, collection)
+    : undefined
+})
+function studioRow(name: string, fuzzy = false): PanelOption {
+  const item = studioEvidence.value.get(name)
+  const saved = savedStudio.value === name
+  return {
+    id: `studio:${name}`,
+    label: name,
+    selected: saved && follow.value.voicePolicy?.mode === chosenMode.value,
+    hint: [
+      fuzzy ? t('follow.studio.suggestions') : '',
+      saved ? t('follow.studio.saved') : '',
+      item?.found
+        ? t(
+            season.value
+              ? 'follow.studio.foundSeason'
+              : 'follow.studio.foundMovie',
+            { count: item.count, season: season.value },
+          )
+        : t('follow.studio.notFound'),
+      item?.inherited ? t('follow.studio.inherited') : '',
+    ]
+      .filter(Boolean)
+      .join(' · '),
+    disabled: saving.value,
+  }
+}
+const seasonStudios = computed(() =>
+  searchStudios('', collection)
+    .filter(({ studio }) => {
+      return (
+        savedStudio.value === studio.name
+        || studioEvidence.value.has(studio.name)
+        || (follow.value.voiceResolution?.studio
+          && canonicalStudio(follow.value.voiceResolution.studio, collection)
+          === studio.name)
+      )
+    })
+    .sort(
+      (a, b) =>
+        Number(b.studio.name === savedStudio.value)
+        - Number(a.studio.name === savedStudio.value),
     ),
-  ]
-  return [
-    {
-      id: 'refresh',
-      label: t(
-        loading.value
-          ? 'follow.studio.searching'
-          : voices.value?.updatedAt
-            ? 'follow.studio.refresh'
-            : 'follow.studio.find',
-      ),
-      selected: false,
-      disabled: loading.value,
-    },
-    ...names.map((name) => {
-      const item = voices.value?.items.find(item => item.studio === name)
-      return {
-        id: `studio:${name}`,
-        label: name,
-        selected: saved === name && policy?.mode === chosenMode.value,
-        hint: t(item?.found ? 'follow.studio.found' : 'follow.studio.saved'),
-        disabled: saving.value,
-      }
-    }),
-  ]
+)
+const studioOptions = computed<PanelOption[]>(() => [
+  {
+    id: 'refresh',
+    label: t(
+      loading.value
+        ? 'follow.studio.searching'
+        : voices.value?.updatedAt
+          ? 'follow.studio.refresh'
+          : 'follow.studio.find',
+    ),
+    selected: false,
+    disabled: loading.value || saving.value,
+  },
+  ...seasonStudios.value.map(({ studio }) => studioRow(studio.name)),
+  {
+    id: 'otherStudios',
+    label: t('follow.studio.otherGroup'),
+    selected: false,
+    detail: '›',
+    disabled: saving.value,
+  },
+])
+const otherStudioOptions = computed<PanelOption[]>(() => {
+  const results = searchStudios(query.value, collection)
+  return results.length
+    ? results.map(({ studio, match }) =>
+        studioRow(studio.name, match === 'fuzzy'),
+      )
+    : [
+        {
+          id: 'empty',
+          label: t('follow.studio.noMatches'),
+          selected: false,
+          disabled: true,
+        },
+      ]
+})
+const onlyWarning = computed(() => {
+  const policy = follow.value.voicePolicy
+  if (
+    policy?.mode !== 'only'
+    || studioEvidence.value.get(canonicalStudio(policy.studio, collection) ?? '')
+      ?.found
+  ) {
+    return ''
+  }
+  const data = voices.value
+  return t(
+    searchError.value || !data || data.failed.length || !data.indexerCount
+      ? 'follow.studio.onlyUncertain'
+      : data.cache === 'miss'
+        ? 'follow.studio.onlyNoCache'
+        : 'follow.studio.onlyWaiting',
+    { studio: policy.studio },
+  )
 })
 
 const waitOptions = computed<PanelOption[]>(() =>
@@ -371,6 +445,8 @@ const options = computed(() => {
       return languageOptions.value
     case 'studio':
       return studioOptions.value
+    case 'otherStudios':
+      return otherStudioOptions.value
     case 'wait':
       return waitOptions.value
     case 'quality':
@@ -383,9 +459,11 @@ const options = computed(() => {
 const panelTitle = computed(() =>
   step.value === 'main'
     ? props.title
-    : step.value === 'studio' || step.value === 'voice'
-      ? t('follow.studio.title')
-      : t(`follow.panel.${step.value}`),
+    : step.value === 'otherStudios'
+      ? t('follow.studio.otherGroup')
+      : step.value === 'studio' || step.value === 'voice'
+        ? t('follow.studio.title')
+        : t(`follow.panel.${step.value}`),
 )
 
 const subtitle = computed(() => {
@@ -393,7 +471,7 @@ const subtitle = computed(() => {
     return t('follow.errors.save')
   if (saving.value)
     return t('follow.studio.saving')
-  if (step.value === 'studio') {
+  if (step.value === 'studio' || step.value === 'otherStudios') {
     const data = voices.value
     return [
       t(series.value ? 'follow.studio.context' : 'follow.studio.contextMovie', {
@@ -408,6 +486,7 @@ const subtitle = computed(() => {
           })
         : '',
       data?.stale ? t('follow.studio.stale') : '',
+      onlyWarning.value,
       data && !data.indexerCount ? t('follow.studio.noIndexers') : '',
       data?.updatedAt && !data.items.some(item => item.found)
         ? t('follow.studio.empty')
@@ -420,9 +499,10 @@ const subtitle = computed(() => {
     const resolution = follow.value.voiceResolution
     return [
       t('follow.studio.trackHint'),
+      onlyWarning.value,
       !modern.value ? t('follow.studio.oldServer') : '',
       !russian.value ? t('follow.studio.inactive') : '',
-      resolution
+      resolution && resolution.source !== 'explicit'
         ? t(`follow.studio.sources.${resolution.source}`, {
             studio:
               resolution.studio
@@ -458,9 +538,13 @@ const subtitle = computed(() => {
 })
 
 function toMain(from = step.value) {
-  if (from === 'main')
+  if (from === 'main') {
     returnTo.value = undefined
-  else returnTo.value = from === 'studio' ? 'voice' : from
+  }
+  else {
+    returnTo.value
+      = from === 'studio' || from === 'otherStudios' ? 'voice' : from
+  }
 
   step.value = 'main'
 }
@@ -497,6 +581,13 @@ function select(id: string) {
       void persist({ mode: id as (typeof FOLLOW_MODES)[number] })
       break
     case 'studio':
+    case 'otherStudios':
+      if (id === 'otherStudios') {
+        step.value = 'otherStudios'
+        query.value = ''
+        returnTo.value = undefined
+        return
+      }
       if (id === 'refresh') {
         void loadVoices(true)
         return
@@ -541,8 +632,19 @@ function select(id: string) {
 }
 
 function back() {
+  if (
+    step.value === 'otherStudios'
+    && document.activeElement?.tagName === 'INPUT'
+  ) {
+    focus.activate('options-panel')
+    return
+  }
   if (step.value === 'main') {
     emit('close')
+  }
+  else if (step.value === 'otherStudios') {
+    step.value = 'studio'
+    returnTo.value = 'otherStudios'
   }
   else if (step.value === 'studio') {
     returnTo.value = chosenMode.value
@@ -564,5 +666,27 @@ function back() {
     :focus-option="returnTo"
     @select="select"
     @close="back"
-  />
+  >
+    <template v-if="step === 'otherStudios'" #top>
+      <input
+        v-model="query"
+        v-focusable
+        class="field studio-search"
+        type="search"
+        :aria-label="t('follow.studio.searchPlaceholder')"
+        :placeholder="t('follow.studio.searchPlaceholder')"
+        @keydown.enter.prevent
+      >
+    </template>
+  </OptionsPanel>
 </template>
+
+<style scoped>
+.studio-search {
+  width: 100%;
+  height: calc(var(--u) * 80);
+  margin-bottom: calc(var(--u) * 24);
+  padding: 0 calc(var(--u) * 24);
+  font: inherit;
+}
+</style>

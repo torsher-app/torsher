@@ -11,7 +11,8 @@
     "./media/*": "./media/*",
     "./router": "./src/router.ts",
     "./state": "./src/state.ts",
-    "./titles": "./src/titles.ts"
+    "./titles": "./src/titles.ts",
+    "./studios": "./src/studios.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

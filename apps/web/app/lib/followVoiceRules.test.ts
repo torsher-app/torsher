@@ -1,5 +1,12 @@
+import { studios } from '@torsher/release-parser/studio-search'
+import { demoStudios } from '@torsher/demo/studios'
 import { describe, expect, it } from 'vitest'
-import { followVoiceBody, followVoiceError } from './followVoiceRules'
+import {
+  canonicalStudio,
+  followVoiceBody,
+  followVoiceError,
+  mergeStudioEvidence,
+} from './followVoiceRules'
 
 describe('follow voice form adapter', () => {
   it('does not migrate legacy or send old fields when another rule changes', () => {
@@ -112,26 +119,56 @@ describe('modern studio validation', () => {
   })
 })
 
-it('allows fictional demo list choices only in demo list mode', () => {
+it('validates the demo collection without a production fallback, even before refresh', () => {
   const follow = { voicePolicy: { mode: 'auto' as const } }
-  const form = { voiceMode: 'only' as const, voiceStudio: 'Demo Voices' }
-  const selection = {
-    demo: true,
-    manual: false,
-    items: [{ studio: 'Demo Voices' }],
-  }
-  expect(followVoiceError(follow, form, selection)).toBeUndefined()
-  expect(followVoiceError(follow, form, { ...selection, demo: false })).toBe(
-    'unknown',
-  )
-  expect(followVoiceError(follow, form, { ...selection, manual: true })).toBe(
-    'unknown',
-  )
+  const form = { voiceMode: 'only' as const, voiceStudio: 'Demo Gamma' }
+  expect(followVoiceError(follow, form, demoStudios)).toBeUndefined()
+  expect(
+    followVoiceBody(
+      { ...follow, voiceStudio: null, voiceStrict: false },
+      form,
+      demoStudios,
+    ),
+  ).toEqual({ voicePolicy: { mode: 'only', studio: 'Demo Studio C' } })
+  expect(
+    followVoiceError(follow, { ...form, voiceStudio: 'LostFilm' }, demoStudios),
+  ).toBe('unknown')
   expect(
     followVoiceError(
       follow,
-      { ...form, voiceStudio: 'Demo Voices typo' },
-      selection,
+      { ...form, voiceStudio: 'Demo Studio C typo' },
+      demoStudios,
     ),
   ).toBe('unknown')
+  expect(followVoiceError(follow, form)).toBe('unknown')
+})
+
+it('merges alias evidence canonically without treating inherited or draft as saved intent', () => {
+  const item = {
+    types: ['MVO' as const],
+    count: 2,
+    seeders: 10,
+    found: true,
+    saved: false,
+    inherited: false,
+  }
+  const evidence = mergeStudioEvidence(
+    [
+      { ...item, studio: 'HDRezka' },
+      {
+        ...item,
+        studio: 'hdrezka-studio',
+        count: 4,
+        found: false,
+        inherited: true,
+      },
+      { ...item, studio: 'Unknown legacy studio' },
+    ],
+    studios,
+  )
+  expect([...evidence.values()]).toEqual([
+    { ...item, studio: 'HDRezka Studio', count: 4, inherited: true },
+  ])
+  expect(canonicalStudio('HDRezka', studios)).toBe('HDRezka Studio')
+  expect(canonicalStudio('HDRezka typo', studios)).toBeUndefined()
 })

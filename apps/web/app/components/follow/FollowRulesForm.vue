@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import type { FollowSummary, UpdateFollowInput } from '@torsher/api-client'
+import { demoStudios } from '@torsher/demo/studios'
+import { studios } from '@torsher/release-parser/studio-search'
 import { getErrorMessage } from '@torsher/api-client'
 import { toTypedSchema } from '@vee-validate/zod'
 import { useForm } from 'vee-validate'
@@ -7,7 +9,12 @@ import { useI18n } from 'vue-i18n'
 import { toast } from 'vue-sonner'
 import * as z from 'zod'
 import { api } from '~/services/api'
-import { followVoiceBody, followVoiceError } from '~/lib/followVoiceRules'
+import {
+  canonicalStudio,
+  followVoiceBody,
+  followVoiceError,
+  mergeStudioEvidence,
+} from '~/lib/followVoiceRules'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Input } from '@/components/ui/input'
@@ -21,6 +28,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
+import StudioSelect from '~/components/follow/StudioSelect.vue'
 import AudioLanguageSelect from '~/components/follow/AudioLanguageSelect.vue'
 import LoadingButton from '~/components/LoadingButton.vue'
 import {
@@ -39,7 +47,7 @@ const props = defineProps<{
 
 const { t } = useI18n()
 const store = useFollows()
-const manualStudio = ref(false)
+const studioCollection = __DEMO__ ? demoStudios : studios
 const voiceList = ref<Awaited<ReturnType<typeof api.titles.getFollowVoices>>>()
 
 // Те же пределы, что в DTO сервера
@@ -60,13 +68,7 @@ const schema = toTypedSchema(
       const voiceError = followVoiceError(
         props.follow,
         value,
-        __DEMO__
-          ? {
-              demo: true,
-              manual: manualStudio.value,
-              items: voiceList.value?.items ?? [],
-            }
-          : undefined,
+        studioCollection,
       )
       if (voiceError) {
         ctx.addIssue({
@@ -118,16 +120,6 @@ const [qualityPreset] = defineField('qualityPreset')
 const [requireRussian] = defineField('requireRussian')
 
 const formError = ref('')
-const studioEditor = ref<HTMLElement>()
-async function toggleManualStudio() {
-  manualStudio.value = !manualStudio.value
-  await nextTick()
-  studioEditor.value
-    ?.querySelector<HTMLElement>(
-      manualStudio.value ? 'input' : '[role="combobox"]',
-    )
-    ?.focus()
-}
 const voiceLoading = ref(false)
 const voiceError = ref(false)
 let voiceRequest = 0
@@ -171,24 +163,45 @@ watch(
 onBeforeUnmount(() => {
   voiceRequest++
 })
-const foundStudios = computed(() => voiceList.value?.items ?? [])
-const studioChoices = computed(() => {
-  const items = foundStudios.value.map(item => ({
-    studio: item.studio,
-    found: item.found,
-  }))
+const foundStudios = computed(() => [
+  ...mergeStudioEvidence(
+    voiceList.value?.items ?? [],
+    studioCollection,
+  ).values(),
+])
+const savedStudio = computed(() => {
   const policy = props.follow.voicePolicy
-  const saved
-    = policy && 'studio' in policy ? policy.studio : props.follow.voiceStudio
-  for (const studio of [saved, voiceStudio.value]) {
-    if (studio?.trim() && !items.some(item => item.studio === studio))
-      items.unshift({ studio, found: false })
+  return policy?.mode === 'prefer' || policy?.mode === 'only'
+    ? policy.studio
+    : undefined
+})
+const onlyWarning = computed(() => {
+  if (voiceMode.value !== 'only' || !voiceStudio.value)
+    return ''
+  if (
+    foundStudios.value.some(
+      item =>
+        item.found
+        && item.studio === canonicalStudio(voiceStudio.value!, studioCollection),
+    )
+  ) {
+    return ''
   }
-  return items
+  if (
+    voiceError.value
+    || voiceList.value?.failed.length
+    || !voiceList.value
+    || !voiceList.value.indexerCount
+  ) {
+    return t('follow.studio.onlyUncertain', { studio: voiceStudio.value })
+  }
+  if (voiceList.value.cache === 'miss')
+    return t('follow.studio.onlyNoCache', { studio: voiceStudio.value })
+  return t('follow.studio.onlyWaiting', { studio: voiceStudio.value })
 })
 const resolutionText = computed(() => {
   const resolution = props.follow.voiceResolution
-  if (!resolution)
+  if (!resolution || resolution.source === 'explicit')
     return ''
   return t(`follow.studio.sources.${resolution.source}`, {
     studio:
@@ -220,8 +233,6 @@ const waitOptions = computed(() => waitOptionsFor(props.follow.waitHours))
 watch(
   () => props.follow,
   (follow, previous) => {
-    if (follow.id !== previous?.id)
-      manualStudio.value = false
     if (follow.id !== previous?.id || !meta.value.dirty) {
       formError.value = ''
       resetForm({ values: valuesOf(follow) })
@@ -248,7 +259,7 @@ function bodyOf(form: typeof values): UpdateFollowInput {
     requireRussian: !!form.requireRussian,
   }
 
-  Object.assign(body, followVoiceBody(props.follow, form))
+  Object.assign(body, followVoiceBody(props.follow, form, studioCollection))
   return body
 }
 
@@ -349,6 +360,16 @@ const choiceClass
           )
         }}
       </p>
+      <p
+        v-if="
+          follow.voicePolicy?.mode === 'legacy' && follow.voicePolicy.studio
+        "
+        class="text-[12.5px] text-muted-foreground"
+      >
+        {{
+          t("follow.studio.legacyValue", { studio: follow.voicePolicy.studio })
+        }}
+      </p>
       <p v-if="resolutionText" class="text-[12.5px] text-muted-foreground">
         {{ resolutionText }}
       </p>
@@ -365,70 +386,38 @@ const choiceClass
 
     <div
       v-if="modern ? voiceMode === 'prefer' || voiceMode === 'only' : russian"
-      ref="studioEditor"
       class="grid gap-2"
     >
-      <template v-if="modern && !manualStudio">
+      <template v-if="modern">
         <Label for="follow-studio-list">{{
           t("panel.follow.rules.voice")
         }}</Label>
-        <Select
+        <StudioSelect
+          :key="`${follow.id}|${voiceSeason}`"
           v-model="voiceStudio"
-          :disabled="!studioChoices.length || isSubmitting"
-        >
-          <SelectTrigger id="follow-studio-list">
-            <SelectValue :placeholder="t('follow.studio.choose')">
-              {{ voiceStudio || t("follow.studio.choose") }}
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem
-              v-for="item in studioChoices"
-              :key="item.studio"
-              :value="item.studio"
-              :text-value="item.studio"
-            >
-              <span class="flex flex-col">
-                <span>{{ item.studio }}</span>
-                <span
-                  v-if="!item.found"
-                  class="text-xs text-muted-foreground"
-                >{{ t("follow.studio.saved") }}</span>
-              </span>
-            </SelectItem>
-          </SelectContent>
-        </Select>
+          :collection="studioCollection"
+          :items="foundStudios"
+          :saved="savedStudio"
+          :season="voiceSeason"
+          :disabled="isSubmitting"
+          :invalid="!!errors.voiceStudio"
+        />
+        <p v-if="onlyWarning" class="text-[12.5px] text-muted-foreground">
+          {{ onlyWarning }}
+        </p>
       </template>
-      <Label v-if="!modern || manualStudio" for="follow-studio">{{
-        t(modern ? "follow.studio.manual" : "panel.follow.rules.voice")
-      }}</Label>
-      <Input
-        v-if="!modern || manualStudio"
-        id="follow-studio"
-        v-model="voiceStudio"
-        v-bind="voiceStudioProps"
-        autocomplete="off"
-        :placeholder="t('panel.follow.rules.voicePlaceholder')"
-        :aria-invalid="!!errors.voiceStudio || undefined"
-      />
-      <Button
-        v-if="modern"
-        type="button"
-        variant="link"
-        size="sm"
-        class="justify-self-start"
-        :disabled="isSubmitting"
-        @click="toggleManualStudio"
-      >
-        {{
-          t(
-            manualStudio
-              ? "follow.studio.chooseFromList"
-              : "follow.studio.missingStudio",
-          )
-        }}
-      </Button>
-      <div v-if="modern && !manualStudio" class="grid gap-2">
+      <template v-else>
+        <Label for="follow-studio">{{ t("panel.follow.rules.voice") }}</Label>
+        <Input
+          id="follow-studio"
+          v-model="voiceStudio"
+          v-bind="voiceStudioProps"
+          autocomplete="off"
+          :placeholder="t('panel.follow.rules.voicePlaceholder')"
+          :aria-invalid="!!errors.voiceStudio || undefined"
+        />
+      </template>
+      <div v-if="modern" class="grid gap-2">
         <Button
           type="button"
           variant="outline"
@@ -466,7 +455,10 @@ const choiceClass
           {{ t("follow.studio.partial") }}
         </p>
         <p
-          v-if="voiceList?.cache === 'hit' && !foundStudios.length"
+          v-if="
+            voiceList?.cache === 'hit'
+              && !foundStudios.some((item) => item.found)
+          "
           class="text-[12.5px] text-muted-foreground"
         >
           {{ t("follow.studio.empty") }}
@@ -500,17 +492,8 @@ const choiceClass
       <p v-if="errors.voiceStudio" class="text-[12.5px] text-destructive">
         {{ errors.voiceStudio }}
       </p>
-      <p
-        v-else-if="!modern || manualStudio"
-        class="text-[12.5px] text-muted-foreground"
-      >
-        {{
-          t(
-            modern
-              ? "follow.studio.manualHint"
-              : "panel.follow.rules.voiceHint",
-          )
-        }}
+      <p v-else-if="!modern" class="text-[12.5px] text-muted-foreground">
+        {{ t("panel.follow.rules.voiceHint") }}
       </p>
     </div>
 

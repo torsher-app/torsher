@@ -6,7 +6,8 @@
   "license": "AGPL-3.0-only",
   "exports": {
     ".": "./src/index.ts",
-    "./resolution": "./src/resolution.ts"
+    "./resolution": "./src/resolution.ts",
+    "./studio-search": "./src/studioSearch.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

@@ -1,4 +1,10 @@
-import type { ScheduleItem, TitleFollow } from '@torsher/api-client'
+import type { Studio } from '@torsher/release-parser/studio-search'
+import { studioKey } from '@torsher/release-parser/studio-search'
+import type {
+  FollowVoicesResponse,
+  ScheduleItem,
+  TitleFollow,
+} from '@torsher/api-client'
 
 /** «Новая серия»: скачать в библиотеку или только уведомить */
 export const FOLLOW_MODES = ['download', 'notify'] as const
@@ -262,4 +268,42 @@ export function untilDay(iso: string, now = new Date()) {
   const day = relativeDay(localDay(until), now)
 
   return day === 'today' || day === 'tomorrow' ? day : localDay(until)
+}
+
+/** Resolve only exact names/aliases in the current production or demo dictionary. */
+export function canonicalStudio(value: string, collection: readonly Studio[]) {
+  return collection.find(studio =>
+    [studio.name, ...(studio.aliases ?? [])].some(
+      name => studioKey(name) === studioKey(value),
+    ),
+  )?.name
+}
+
+/** Alias rows may overlap the same releases: retain flags and the largest count. */
+export function mergeStudioEvidence(
+  items: FollowVoicesResponse['items'],
+  collection: readonly Studio[],
+) {
+  const merged = new Map<string, FollowVoicesResponse['items'][number]>()
+  for (const item of items) {
+    const name = canonicalStudio(item.studio, collection)
+    if (!name)
+      continue
+    const previous = merged.get(name)
+    merged.set(
+      name,
+      previous
+        ? {
+            ...previous,
+            found: previous.found || item.found,
+            saved: previous.saved || item.saved,
+            inherited: previous.inherited || item.inherited,
+            count: Math.max(previous.count, item.count),
+            seeders: Math.max(previous.seeders, item.seeders),
+            types: [...new Set([...previous.types, ...item.types])],
+          }
+        : { ...item, studio: name },
+    )
+  }
+  return merged
 }
