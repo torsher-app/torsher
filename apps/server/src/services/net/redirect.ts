@@ -47,6 +47,10 @@ function nextInit(
     for (const name of CREDENTIAL_HEADERS) headers.delete(name)
   }
 
+  // Cookie разрешена только точному origin, в том числе при http → https.
+  if (from.origin !== to.origin)
+    headers.delete('cookie')
+
   if (becomesGet) {
     headers.delete('content-type')
     headers.delete('content-length')

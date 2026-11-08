@@ -19,6 +19,7 @@ import {
   visibleResumeSource,
   watchedTitles,
 } from './resume.ts'
+import { allowedTitleIds } from '../profiles/access.ts'
 
 const ROW_LIMIT = 20
 // С запасом: часть тайтлов отсеется — досмотрены, брошены или без метаданных
@@ -245,13 +246,19 @@ export async function getContinueRow(
   const ids = watchedTitles(profileId, CANDIDATE_LIMIT, since).filter(
     id => fits(id) && !excluded.has(id) && !freshIds.has(id),
   )
+  const allowed = await allowedTitleIds(profileId, [
+    ...fresh.map(([id]) => id),
+    ...ids,
+  ])
   const results = await Promise.allSettled([
-    ...fresh.map(([id, item]) =>
-      continueCard(profileId, id, language, item, context),
-    ),
-    ...ids.map(id =>
-      continueCard(profileId, id, language, undefined, context),
-    ),
+    ...fresh
+      .filter(([id]) => allowed.has(id))
+      .map(([id, item]) =>
+        continueCard(profileId, id, language, item, context),
+      ),
+    ...ids
+      .filter(id => allowed.has(id))
+      .map(id => continueCard(profileId, id, language, undefined, context)),
   ])
   const items = results
     .flatMap(result =>

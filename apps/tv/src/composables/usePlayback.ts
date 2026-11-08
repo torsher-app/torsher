@@ -165,6 +165,7 @@ export function usePlayback(
   // Озвучка, которую слушали в прошлой раздаче: сервер возьмёт её дорожку
   voiceStudio?: string,
   context: DiagnosticContext = currentDiagnosticContext(),
+  viewerProfileId?: string,
 ) {
   const diagnosticTarget = {
     ...source,
@@ -598,6 +599,7 @@ export function usePlayback(
       .putWatchState(
         {
           ...source,
+          profileId: viewerProfileId,
           position,
           duration:
             Number.isFinite(duration) && duration > 0 ? duration : undefined,

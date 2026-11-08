@@ -62,6 +62,7 @@ import { compareEpisodes, parseEpisodeKey } from '../services/follow/wanted.ts'
 import { parseCatalogId } from '../services/tmdb/mappers.ts'
 import { sendTmdbError } from './catalog.ts'
 import { sendEngineError } from './engineResponses.ts'
+import { requireTitleAccess } from '../services/profiles/access.ts'
 
 const titleNotFound = { message: 'Title not found' }
 const followNotFound = { message: 'Follow not found' }
@@ -96,6 +97,7 @@ export const followRoutes: FastifyPluginAsyncZod = async (app) => {
     '/titles/:id/follow',
     {
       onRequest: requireViewer,
+      preHandler: requireTitleAccess,
       schema: {
         operationId: 'getTitleFollow',
         tags: ['Follow'],
@@ -123,6 +125,7 @@ export const followRoutes: FastifyPluginAsyncZod = async (app) => {
     '/titles/:id/follow/voices',
     {
       onRequest: requireViewer,
+      preHandler: requireTitleAccess,
       schema: {
         operationId: 'getFollowVoices',
         tags: ['Follow'],
@@ -148,6 +151,7 @@ export const followRoutes: FastifyPluginAsyncZod = async (app) => {
     '/titles/:id/follow',
     {
       onRequest: requireViewer,
+      preHandler: requireTitleAccess,
       schema: {
         operationId: 'followTitle',
         tags: ['Follow'],
@@ -189,6 +193,7 @@ export const followRoutes: FastifyPluginAsyncZod = async (app) => {
     '/titles/:id/follow',
     {
       onRequest: requireViewer,
+      preHandler: requireTitleAccess,
       schema: {
         operationId: 'unfollowTitle',
         tags: ['Follow'],
@@ -221,6 +226,7 @@ export const followRoutes: FastifyPluginAsyncZod = async (app) => {
     '/titles/:id/follow/open',
     {
       onRequest: requireViewer,
+      preHandler: requireTitleAccess,
       schema: {
         operationId: 'openFollowPick',
         tags: ['Follow'],
@@ -244,7 +250,7 @@ export const followRoutes: FastifyPluginAsyncZod = async (app) => {
 
       try {
         const context = diagnosticContext(request)
-        const result = await openPick(id, request.body)
+        const result = await openPick(id, request.body, request.profileId)
         recordDecision('sources', 'source.follow_pick', context, {
           titleId: id,
           season: request.body.season,
@@ -286,6 +292,30 @@ export const followRoutes: FastifyPluginAsyncZod = async (app) => {
     },
     async request =>
       profileSchedule(request.profileId, request.query.language),
+  )
+
+  app.get(
+    '/follows/:id/voices',
+    {
+      onRequest: requireOwner,
+      schema: {
+        operationId: 'getAdminFollowVoices',
+        tags: ['Follow'],
+        params: followParams,
+        querystring: followVoicesQuery,
+        response: { 200: followVoicesResponse, ...ownerErrors, ...tmdbErrors },
+      },
+    },
+    async (request, reply) => {
+      const follow = followById(request.params.id)
+      if (!follow)
+        return reply.code(404).send(followNotFound)
+      return followVoiceOptions(
+        follow.titleId,
+        request.query.season,
+        request.query.refresh === '1',
+      )
+    },
   )
 
   app.get(

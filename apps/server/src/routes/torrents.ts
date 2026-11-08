@@ -51,6 +51,7 @@ import {
 import { enforceSeeding, setSeedRule } from '../services/torrents/seeding.ts'
 import { getTorrentSettings } from '../services/torrents/settings.ts'
 import { sendEngineError, toTorrentResponse } from './engineResponses.ts'
+import { titleAllowed } from '../services/profiles/access.ts'
 
 /** Ответ с живыми данными движка: прогресс, скорость, пиры */
 async function respond(found: Torrent) {
@@ -77,6 +78,20 @@ export const torrentRoutes: FastifyPluginAsyncZod = async (app) => {
   // Раздачу и её статистику читает и витрина (ожидание magnet, буфер
   // плеера) — такие роуты помечены `config.viewer`; остальное — панель
   app.addHook('onRequest', requireByRoute)
+  app.addHook('preHandler', async (request, reply) => {
+    if (!request.routeOptions.config.viewer)
+      return
+    const { id } = request.params as { id?: string }
+    if (
+      id
+      && !(await titleAllowed(request.profileId, getTorrent(id)?.titleId))
+    ) {
+      return reply
+        .code(404)
+        .serializer(JSON.stringify)
+        .send({ message: 'Torrent not found' })
+    }
+  })
 
   app.get(
     '',

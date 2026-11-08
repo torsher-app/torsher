@@ -241,9 +241,11 @@ export async function searchIndexer(
   baseUrl: string,
   params: SearchParams,
   apiKey?: string,
+  sessionCookie?: string,
 ): Promise<TorznabRelease[]> {
   const res = await sourceGet(
     torznabRequestUrl(baseUrl, { ...params, extended: '1' }, apiKey),
+    sessionCookie ? { Cookie: sessionCookie } : {},
   )
 
   return parseSearchResults(await readTorznabXml(res))

@@ -42,6 +42,10 @@ import {
 } from '../services/transfer/serverImport.ts'
 import { signToken } from '../utils/token.ts'
 import { readExportText } from './transfer.ts'
+import {
+  encryptWithPassword,
+  passwordKeyOf,
+} from '../services/transfer/passwords.ts'
 
 const app = createApp()
 
@@ -165,6 +169,7 @@ function seed() {
       name: 'Indexer',
       url: 'http://indexer.example/torznab',
       apiKey: encryptSecret('indexer-secret-value'),
+      sessionCookie: encryptSecret('sid=transfer-cookie-secret'),
     })
     .run()
   db.insert(devices)
@@ -299,6 +304,8 @@ describe('export', () => {
     // Без пароля секретов нет совсем
     expect(document.encryption).toBeUndefined()
     expect(document.settings.indexers[0].apiKey).toBeNull()
+    expect(document.settings.indexers[0].sessionCookie).toBeNull()
+    expect(body).not.toContain('transfer-cookie-secret')
   })
 
   it('encrypts secrets with the export password only', async () => {
@@ -308,6 +315,8 @@ describe('export', () => {
     expect(body).not.toContain('indexer-secret-value')
     expect(document.encryption.kdf).toBe('scrypt')
     expect(document.settings.indexers[0].apiKey).toMatch(/^p1:/)
+    expect(document.settings.indexers[0].sessionCookie).toMatch(/^p1:/)
+    expect(body).not.toContain('transfer-cookie-secret')
   })
 
   it('exports one profile without server sections', async () => {
@@ -376,6 +385,9 @@ describe('server import', () => {
     const indexer = getDb().select().from(indexers).get()!
 
     expect(decryptSecret(indexer.apiKey!)).toBe('indexer-secret-value')
+    expect(decryptSecret(indexer.sessionCookie!)).toBe(
+      'sid=transfer-cookie-secret',
+    )
   })
 
   it('merges into existing profiles by name and changes nothing on repeat', async () => {
@@ -767,5 +779,42 @@ describe('library decisions', () => {
         .where(eq(mediaFiles.id, 'file-1'))
         .get(),
     ).toMatchObject({ titleId: MOVIE, matchSource: 'user' })
+  })
+})
+
+describe('imported Torznab cookie validation', () => {
+  it.each([
+    'sid=secret\r\nHeader: secret',
+    'sid=secret; cf_clearance=challenge',
+    'not-a-cookie',
+  ])(
+    'rejects crafted protected cookies without exposing them',
+    async (cookie) => {
+      const password = 'export-password-1'
+      const document = JSON.parse(await exportServer({ password }))
+      const key = passwordKeyOf(password, document.encryption.salt)
+      document.settings.indexers[0].sessionCookie = encryptWithPassword(
+        key,
+        cookie,
+      )
+      const result = await preview(JSON.stringify(document), password)
+      expect(result.statusCode).toBe(400)
+      expect(result.json().kind).toBe('broken')
+      expect(result.body).not.toContain(cookie)
+      expect(result.body).not.toContain('challenge')
+    },
+  )
+  it('accepts old export files without the optional cookie field', async () => {
+    const document = JSON.parse(await exportServer())
+    delete document.settings.indexers[0].sessionCookie
+    expect((await preview(JSON.stringify(document))).statusCode).toBe(200)
+  })
+  it('round-trips the maximum cookie size through password encryption', async () => {
+    getDb()
+      .update(indexers)
+      .set({ sessionCookie: encryptSecret(`sid=${'x'.repeat(8188)}`) })
+      .run()
+    const body = await exportServer({ password: 'export-password-1' })
+    expect((await preview(body, 'export-password-1')).statusCode).toBe(200)
   })
 })

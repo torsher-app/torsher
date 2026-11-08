@@ -292,12 +292,7 @@ function onInteractOutside(event: Event) {
               {{ t("panel.sources.managers.open", { manager: managerName }) }}
             </a>
           </Button>
-          <Button
-            v-else-if="!shown.managerId"
-            variant="ghost"
-            size="sm"
-            @click="emit('edit')"
-          >
+          <Button variant="ghost" size="sm" @click="emit('edit')">
             <PencilIcon aria-hidden="true" />
             {{ t("panel.sources.indexers.edit") }}
           </Button>

@@ -25,7 +25,12 @@ import {
 } from './index.ts'
 import { unsureCounts } from './panel.ts'
 import { requestedSearch } from './search.ts'
-import { firstEpisodes, followStatus, statusSeason } from './status.ts'
+import {
+  firstEpisodes,
+  followStatus,
+  statusSeason,
+  waitingStatus,
+} from './status.ts'
 import { compareEpisodes, episodeKey, wantedEpisodes } from './wanted.ts'
 
 type NextEpisode = FollowSummary['next']
@@ -172,14 +177,6 @@ function countsOf(states: EpisodeWithState[]) {
   return counts
 }
 
-function nearestWait(states: EpisodeWithState[]) {
-  const times = states
-    .map(item => item.waitUntil?.getTime())
-    .filter(time => time !== undefined)
-
-  return times.length ? new Date(Math.min(...times)).toISOString() : undefined
-}
-
 async function summaryView(
   follow: Follow,
   language: string,
@@ -188,6 +185,7 @@ async function summaryView(
   const summary = await summaryOf(follow.titleId, language)
   const states = await statesOf(follow, summary, language)
   const upcoming = states.find(item => item.state === 'upcoming')
+  const waiting = waitingStatus(follow.id, states)
 
   return {
     ...rulesView(
@@ -210,7 +208,8 @@ async function summaryView(
     counts: countsOf(states),
     first: firstEpisodes(states),
     unsure: unsure.get(follow.id) ?? 0,
-    waitUntil: nearestWait(states),
+    waitUntil: waiting?.until,
+    waiting,
     createdAt: follow.createdAt.toISOString(),
     updatedAt: follow.updatedAt.toISOString(),
     states,

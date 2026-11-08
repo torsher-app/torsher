@@ -1447,7 +1447,8 @@ describe('«Указать тайтл» с витрины', () => {
       payload: { titleId: 'tmdb:tv:1396' },
     })
 
-    expect(put.statusCode).toBe(403)
+    // Источник без классификации скрыт до проверки права менять его тайтл.
+    expect(put.statusCode).toBe(404)
     expect(torrentRow(torrent.id)).toMatchObject({ titleId: null })
   })
 

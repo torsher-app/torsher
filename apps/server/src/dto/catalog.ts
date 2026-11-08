@@ -156,6 +156,15 @@ export const followWait = z
     voiceType: z.string().optional(),
     language: z.string().optional(),
     quality: z.string().optional(),
+    // Найденная версия; верхние поля описывают цель ожидания
+    candidate: z
+      .object({
+        quality: z.string().optional(),
+        studio: z.string().optional(),
+        voiceType: z.string().optional(),
+        language: z.string().optional(),
+      })
+      .optional(),
   })
   .meta({ id: 'followWait' })
 
@@ -399,6 +408,7 @@ export const catalogDiscoverResponse = z
     // Не больше 500: дальше TMDB страницы не отдаёт
     totalPages: z.number().int(),
     total: z.number().int(),
+    totalIsApproximate: z.boolean().optional(),
   })
   .meta({ id: 'catalogDiscoverResponse' })
 

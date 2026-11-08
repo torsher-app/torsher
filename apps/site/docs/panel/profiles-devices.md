@@ -21,7 +21,7 @@ Select <Ui k="panel.people.profiles.add" />, or <Ui k="panel.people.profiles.edi
 
 - **<Ui k="panel.people.profileDialog.name" />** and **<Ui k="panel.people.profileDialog.color" />.**
 - **<Ui k="panel.people.profileDialog.language" />.** The interface and descriptions on the TV. <Ui k="panel.people.profiles.deviceLanguage" /> follows the TV.
-- **<Ui k="panel.people.profileDialog.ageLimit" />:** 6+, 12+, 16+, 18+ or <Ui k="panel.people.profileDialog.noLimits" />. The catalog isn't filtered by age yet. For now, a profile with a limit can't match unrecognized downloads to titles on the TV.
+- **<Ui k="panel.people.profileDialog.ageLimit" />:** 6+, 12+, 16+, 18+ or <Ui k="panel.people.profileDialog.noLimits" />. Titles rated at or above the threshold, and titles without a known rating, are hidden in the showcase and Jellyfin-compatible clients. Home videos and unrecognized downloads are hidden too. The owner’s panel catalog remains available for administration.
 - **<Ui k="panel.people.profileDialog.posterRating" />.** Which service ratings appear at the bottom of posters on the TV: <Ui k="panel.people.posterRatings.tmdb" /> and <Ui k="panel.people.posterRatings.imdb" />. IMDb ratings appear only when they are turned on in [Settings](/docs/panel/settings#metadata). The profile's own rating is always shown.
 - **<Ui k="panel.people.profileDialog.pin" />,** when creating a profile: 4 digits.
 

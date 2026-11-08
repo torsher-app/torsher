@@ -28,6 +28,7 @@ import { fileProgressId } from './files.ts'
 import { albumOf } from './homeVideo.ts'
 import { visibleFolderIds, visibleFolderLibraries } from './folders.ts'
 import { unmatchedReleases } from './unmatched.ts'
+import { filterTitles, hasAgeLimit } from '../profiles/access.ts'
 
 const ROW_LIMIT = 20
 // «Недавно добавлено» — за последний месяц
@@ -161,6 +162,8 @@ function countWhere(where: ReturnType<typeof and>) {
 
 /** Файлы без описания: видео без тайтла в библиотеках «Фильмы и сериалы», свежие первыми */
 export function untitledFiles(profileId: string, limit = ROW_LIMIT) {
+  if (hasAgeLimit(profileId))
+    return []
   const where = untitledWhere(profileId)
 
   if (!where)
@@ -180,6 +183,8 @@ export function homeVideos(
   profileId: string,
   query: { album?: string, libraryId?: string, limit?: number } = {},
 ) {
+  if (hasAgeLimit(profileId))
+    return []
   const where = homeWhere(profileId, query)
 
   if (!where)
@@ -257,7 +262,7 @@ const SECTION: Array<{ id: CatalogRow['id'], query: () => TitleQuery }> = [
  * «Без описания» (видео без тайтла — их смотрят, пока владелец не сопоставит)
  */
 export function libraryFileRows(mode: HomeMode, profileId: string): FilesRow[] {
-  if (mode !== 'library')
+  if (mode !== 'library' || hasAgeLimit(profileId))
     return []
 
   const rows: FilesRow[] = [
@@ -327,7 +332,16 @@ export async function libraryHomeRows(
         : []
   const results = await Promise.allSettled(
     specs.map(async (spec) => {
-      const ids = libraryTitles({ ...spec.query(), folders })
+      const query = spec.query()
+      const candidates = libraryTitles({
+        ...query,
+        limit: hasAgeLimit(profileId) ? 10000 : query.limit,
+        folders,
+      })
+      const ids = (await filterTitles(profileId, candidates, id => id)).slice(
+        0,
+        query.limit,
+      )
 
       return {
         id: spec.id,

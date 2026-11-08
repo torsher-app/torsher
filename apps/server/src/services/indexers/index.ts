@@ -7,7 +7,7 @@ import type {
 } from '../../db/schema.ts'
 import type { TorznabCaps } from '../torznab/index.ts'
 import type { RemoteIndexer } from './managers.ts'
-import { and, eq, inArray, isNotNull, sql } from 'drizzle-orm'
+import { and, eq, inArray, isNotNull, isNull, sql } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import { indexerManagers, indexers } from '../../db/schema.ts'
 import { decryptSecret, encryptSecret, SecretError } from '../secrets/index.ts'
@@ -18,6 +18,7 @@ import {
 } from '../torznab/index.ts'
 import { listManagerIndexers, normalizeManagerUrl } from './managers.ts'
 import { logFor } from '../logs/index.ts'
+import { isSessionCookie } from '../torznab/cookie.ts'
 
 export { normalizeManagerUrl } from './managers.ts'
 
@@ -66,7 +67,7 @@ function readStoredKey(ciphertext: string) {
 
     throw new SourceError(
       'auth',
-      'Stored API key cannot be decrypted, enter it again',
+      'Stored credentials cannot be decrypted, enter them again',
       {
         cause: err,
       },
@@ -95,6 +96,7 @@ export interface SearchableIndexer {
   caps: TorznabCaps
   /** Расшифровывает ключ при запросе: битый ключ ломает только этот индексатор. */
   apiKey: () => string | undefined
+  sessionCookie?: () => string | undefined
 }
 
 /** Включённые индексаторы с известными caps, которые менеджер ещё отдаёт */
@@ -105,7 +107,7 @@ export function listSearchableIndexers(): SearchableIndexer[] {
     .where(and(eq(indexers.enabled, true), eq(indexers.missing, false)))
     .orderBy(indexers.name)
     .all()
-    .flatMap(({ id, name, url, caps, apiKey }) =>
+    .flatMap(({ id, name, url, caps, apiKey, sessionCookie }) =>
       caps
         ? [
             {
@@ -114,6 +116,8 @@ export function listSearchableIndexers(): SearchableIndexer[] {
               url,
               caps,
               apiKey: () => (apiKey ? readStoredKey(apiKey) : undefined),
+              sessionCookie: () =>
+                sessionCookie ? readStoredKey(sessionCookie) : undefined,
             },
           ]
         : [],
@@ -180,6 +184,10 @@ export function listFeedIndexers(): FeedIndexer[] {
               caps: row.caps,
               apiKey: () =>
                 row.apiKey ? readStoredKey(row.apiKey) : undefined,
+              sessionCookie: () =>
+                row.sessionCookie
+                  ? readStoredKey(row.sessionCookie)
+                  : undefined,
               supportsRss: row.supportsRss,
               rssCursor: row.rssCursor,
               rssCheckedAt: row.rssCheckedAt,
@@ -203,6 +211,7 @@ export interface NewIndexer {
   name: string
   url: string
   apiKey?: string
+  sessionCookie?: string | null
 }
 
 /**
@@ -211,10 +220,12 @@ export interface NewIndexer {
  * адрес хранится без query.
  */
 export async function createManualIndexer(input: NewIndexer) {
+  if (input.sessionCookie != null && !isSessionCookie(input.sessionCookie))
+    throw new SourceError('auth', 'Invalid session cookie')
   const apiKey
     = input.apiKey || new URL(input.url).searchParams.get('apikey') || undefined
   const url = normalizeTorznabUrl(input.url)
-  const caps = await fetchCaps(url, apiKey)
+  const caps = await fetchCaps(url, apiKey, input.sessionCookie ?? undefined)
 
   const row = getDb()
     .insert(indexers)
@@ -222,6 +233,9 @@ export async function createManualIndexer(input: NewIndexer) {
       name: input.name,
       url,
       apiKey: apiKey ? encryptSecret(apiKey) : null,
+      sessionCookie: input.sessionCookie
+        ? encryptSecret(input.sessionCookie)
+        : null,
       caps,
       checkStatus: 'ok',
       checkedAt: new Date(),
@@ -236,10 +250,13 @@ export interface IndexerPatch {
   name?: string
   enabled?: boolean
   apiKey?: string
+  sessionCookie?: string | null
   feed?: boolean
 }
 
 export function updateIndexer(id: string, patch: IndexerPatch) {
+  if (patch.sessionCookie != null && !isSessionCookie(patch.sessionCookie))
+    throw new SourceError('auth', 'Invalid session cookie')
   const values: Partial<typeof indexers.$inferInsert> = {}
 
   if (patch.name !== undefined)
@@ -257,6 +274,14 @@ export function updateIndexer(id: string, patch: IndexerPatch) {
   // Новый ключ сбрасывает результат проверки: старый к нему не относится
   if (patch.apiKey) {
     values.apiKey = encryptSecret(patch.apiKey)
+    values.checkStatus = null
+    values.checkedAt = null
+  }
+
+  if (patch.sessionCookie !== undefined) {
+    values.sessionCookie = patch.sessionCookie
+      ? encryptSecret(patch.sessionCookie)
+      : null
     values.checkStatus = null
     values.checkedAt = null
   }
@@ -286,7 +311,13 @@ export async function checkIndexer(id: string) {
   try {
     const apiKey = indexer.apiKey ? readStoredKey(indexer.apiKey) : undefined
 
-    values = { caps: await fetchCaps(indexer.url, apiKey), checkStatus: 'ok' }
+    const cookie = indexer.sessionCookie
+      ? readStoredKey(indexer.sessionCookie)
+      : undefined
+    values = {
+      caps: await fetchCaps(indexer.url, apiKey, cookie),
+      checkStatus: 'ok',
+    }
   }
   catch (err) {
     const kind = checkStatusOf(err)
@@ -301,7 +332,18 @@ export async function checkIndexer(id: string) {
   getDb()
     .update(indexers)
     .set({ ...values, checkedAt: new Date() })
-    .where(eq(indexers.id, id))
+    .where(
+      and(
+        eq(indexers.id, id),
+        eq(indexers.url, indexer.url),
+        indexer.apiKey === null
+          ? isNull(indexers.apiKey)
+          : eq(indexers.apiKey, indexer.apiKey),
+        indexer.sessionCookie === null
+          ? isNull(indexers.sessionCookie)
+          : eq(indexers.sessionCookie, indexer.sessionCookie),
+      ),
+    )
     .run()
 
   return getIndexer(id)
@@ -426,6 +468,11 @@ function applyRemoteIndexers(
           url: item.url,
           apiKey: encryptedKey,
           missing: false,
+          ...(new URL(known.url).origin !== new URL(item.url).origin && {
+            sessionCookie: null,
+            checkStatus: null,
+            checkedAt: null,
+          }),
           ...caps,
           ...feed,
         })
@@ -540,4 +587,16 @@ export function deleteManager(id: string, indexersMode: 'keep' | 'delete') {
       tx.delete(indexerManagers).where(eq(indexerManagers.id, id)).run().changes > 0
     )
   })
+}
+
+/** Секрет текущей конфигурации; ссылка поиска не даёт доступ к другому origin. */
+export function indexerCookie(id: string, expectedOrigin: string) {
+  const row = getDb()
+    .select({ url: indexers.url, sessionCookie: indexers.sessionCookie })
+    .from(indexers)
+    .where(eq(indexers.id, id))
+    .get()
+  return row?.sessionCookie && new URL(row.url).origin === expectedOrigin
+    ? readStoredKey(row.sessionCookie)
+    : undefined
 }

@@ -2847,6 +2847,12 @@ export interface FollowWaitInput {
   voiceType?: string;
   language?: string;
   quality?: string;
+  candidate?: {
+    quality?: string;
+    studio?: string;
+    voiceType?: string;
+    language?: string;
+  };
 }
 
 export interface FollowCursorInput {
@@ -3083,6 +3089,7 @@ export interface CatalogDiscoverResponseInput {
    * @max 9007199254740991
    */
   total: number;
+  totalIsApproximate?: boolean;
 }
 
 export interface CatalogGenresResponseInput {
@@ -3188,6 +3195,7 @@ export interface IndexerInput {
   name: string;
   url: string;
   hasApiKey: boolean;
+  hasCookie?: boolean;
   enabled: boolean;
   managerId: string | null;
   managerKind: "prowlarr" | "jackett" | null;
@@ -3237,6 +3245,8 @@ export interface CreateIndexerInput {
    * @maxLength 500
    */
   apiKey?: string;
+  /** @maxLength 8192 */
+  sessionCookie?: string | null;
 }
 
 export interface UpdateIndexerInput {
@@ -3251,6 +3261,8 @@ export interface UpdateIndexerInput {
    * @maxLength 500
    */
   apiKey?: string;
+  /** @maxLength 8192 */
+  sessionCookie?: string | null;
   feed?: boolean;
 }
 
@@ -4576,6 +4588,12 @@ export interface TitleFollowInput {
     voiceType?: string;
     language?: string;
     quality?: string;
+    candidate?: {
+      quality?: string;
+      studio?: string;
+      voiceType?: string;
+      language?: string;
+    };
     /**
      * @min -9007199254740991
      * @max 9007199254740991
@@ -4792,6 +4810,29 @@ export interface FollowSummaryInput {
    */
   unsure: number;
   waitUntil?: string;
+  waiting?: {
+    until: string;
+    studio?: string;
+    voiceType?: string;
+    language?: string;
+    quality?: string;
+    candidate?: {
+      quality?: string;
+      studio?: string;
+      voiceType?: string;
+      language?: string;
+    };
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    season: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    episode: number;
+  };
   createdAt: string;
   updatedAt: string;
 }
@@ -4883,6 +4924,29 @@ export interface FollowDetailsInput {
    */
   unsure: number;
   waitUntil?: string;
+  waiting?: {
+    until: string;
+    studio?: string;
+    voiceType?: string;
+    language?: string;
+    quality?: string;
+    candidate?: {
+      quality?: string;
+      studio?: string;
+      voiceType?: string;
+      language?: string;
+    };
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    season: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    episode: number;
+  };
   createdAt: string;
   updatedAt: string;
   episodes: FollowEpisodeInput[];
@@ -5317,6 +5381,11 @@ export interface InsufficientStorageResponseInput {
 }
 
 export interface UpdateWatchStateInput {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  profileId?: string;
   /**
    * @minLength 1
    * @maxLength 100
@@ -7356,6 +7425,12 @@ export interface ExportFileInput {
        * @pattern ^p1:.*
        */
       apiKey: string | null;
+      /**
+       * @format starts_with
+       * @maxLength 12000
+       * @pattern ^p1:.*
+       */
+      sessionCookie?: string | null;
       enabled: boolean;
       /** @maxLength 20 */
       manager: string | null;
@@ -10487,6 +10562,12 @@ export interface FollowWait {
   voiceType?: string;
   language?: string;
   quality?: string;
+  candidate?: {
+    quality?: string;
+    studio?: string;
+    voiceType?: string;
+    language?: string;
+  };
 }
 
 export interface FollowCursor {
@@ -10723,6 +10804,7 @@ export interface CatalogDiscoverResponse {
    * @max 9007199254740991
    */
   total: number;
+  totalIsApproximate?: boolean;
 }
 
 export interface CatalogGenresResponse {
@@ -10828,6 +10910,7 @@ export interface Indexer {
   name: string;
   url: string;
   hasApiKey: boolean;
+  hasCookie?: boolean;
   enabled: boolean;
   managerId: string | null;
   managerKind: "prowlarr" | "jackett" | null;
@@ -10877,6 +10960,7 @@ export interface CreateIndexer {
    * @maxLength 500
    */
   apiKey?: string;
+  sessionCookie?: any | null;
 }
 
 export interface UpdateIndexer {
@@ -10891,6 +10975,7 @@ export interface UpdateIndexer {
    * @maxLength 500
    */
   apiKey?: string;
+  sessionCookie?: any | null;
   feed?: boolean;
 }
 
@@ -12215,6 +12300,12 @@ export interface TitleFollow {
     voiceType?: string;
     language?: string;
     quality?: string;
+    candidate?: {
+      quality?: string;
+      studio?: string;
+      voiceType?: string;
+      language?: string;
+    };
     /**
      * @min -9007199254740991
      * @max 9007199254740991
@@ -12431,6 +12522,29 @@ export interface FollowSummary {
    */
   unsure: number;
   waitUntil?: string;
+  waiting?: {
+    until: string;
+    studio?: string;
+    voiceType?: string;
+    language?: string;
+    quality?: string;
+    candidate?: {
+      quality?: string;
+      studio?: string;
+      voiceType?: string;
+      language?: string;
+    };
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    season: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    episode: number;
+  };
   createdAt: string;
   updatedAt: string;
 }
@@ -12522,6 +12636,29 @@ export interface FollowDetails {
    */
   unsure: number;
   waitUntil?: string;
+  waiting?: {
+    until: string;
+    studio?: string;
+    voiceType?: string;
+    language?: string;
+    quality?: string;
+    candidate?: {
+      quality?: string;
+      studio?: string;
+      voiceType?: string;
+      language?: string;
+    };
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    season: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    episode: number;
+  };
   createdAt: string;
   updatedAt: string;
   episodes: FollowEpisode[];
@@ -12956,6 +13093,11 @@ export interface InsufficientStorageResponse {
 }
 
 export interface UpdateWatchState {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  profileId?: string;
   /**
    * @minLength 1
    * @maxLength 100
@@ -14995,6 +15137,12 @@ export interface ExportFile {
        * @pattern ^p1:.*
        */
       apiKey: string | null;
+      /**
+       * @format starts_with
+       * @maxLength 12000
+       * @pattern ^p1:.*
+       */
+      sessionCookie?: string | null;
       enabled: boolean;
       /** @maxLength 20 */
       manager: string | null;
@@ -15408,6 +15556,10 @@ export type GetCatalogTrendingError = MessageResponse;
 
 export type GetCatalogBackdropsError = MessageResponse;
 
+export type GetAdminCatalogSearchError = MessageResponse;
+
+export type GetAdminCatalogTitleError = MessageResponse;
+
 export type GetHomeError = MessageResponse;
 
 export type GetHomeContinueError = MessageResponse;
@@ -15485,6 +15637,8 @@ export type GetCollectionTitlesError = MessageResponse;
 export type PutCollectionTitleError = MessageResponse;
 
 export type DeleteCollectionTitleError = MessageResponse;
+
+export type DeleteAdminCollectionTitleError = MessageResponse;
 
 export type GetTorrentsError = MessageResponse;
 
@@ -15719,6 +15873,8 @@ export type OpenFollowPickError =
   | EngineUnavailableResponse;
 
 export type GetScheduleError = MessageResponse;
+
+export type GetAdminFollowVoicesError = MessageResponse;
 
 export type GetFollowsError = MessageResponse;
 
@@ -16825,6 +16981,62 @@ export class Api<
         format: "json",
         ...params,
       }),
+
+    /**
+     * No description
+     *
+     * @tags Catalog
+     * @name GetAdminCatalogSearch
+     * @request GET:/api/catalog/admin/search
+     */
+    getAdminCatalogSearch: (
+      query: {
+        /**
+         * @minLength 1
+         * @maxLength 200
+         */
+        query: string;
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<CatalogSearchResponse, GetAdminCatalogSearchError>({
+        path: `/api/catalog/admin/search`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Catalog
+     * @name GetAdminCatalogTitle
+     * @request GET:/api/catalog/admin/titles/{id}
+     */
+    getAdminCatalogTitle: (
+      id: string,
+      query?: {
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<TitleDetails, GetAdminCatalogTitleError>({
+        path: `/api/catalog/admin/titles/${id}`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
   };
   home = {
     /**
@@ -17745,6 +17957,25 @@ export class Api<
     ) =>
       this.request<MessageResponse, DeleteCollectionTitleError>({
         path: `/api/collections/${id}/titles/${titleId}`,
+        method: "DELETE",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Collections
+     * @name DeleteAdminCollectionTitle
+     * @request DELETE:/api/collections/admin/{id}/titles/{titleId}
+     */
+    deleteAdminCollectionTitle: (
+      id: string,
+      titleId: string,
+      params: RequestParams = {},
+    ) =>
+      this.request<MessageResponse, DeleteAdminCollectionTitleError>({
+        path: `/api/collections/admin/${id}/titles/${titleId}`,
         method: "DELETE",
         format: "json",
         ...params,
@@ -19677,6 +19908,33 @@ export class Api<
       }),
   };
   follows = {
+    /**
+     * No description
+     *
+     * @tags Follow
+     * @name GetAdminFollowVoices
+     * @request GET:/api/follows/{id}/voices
+     */
+    getAdminFollowVoices: (
+      id: string,
+      query: {
+        /**
+         * @min 0
+         * @max 999
+         */
+        season: number;
+        refresh?: "1";
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<FollowVoicesResponse, GetAdminFollowVoicesError>({
+        path: `/api/follows/${id}/voices`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
     /**
      * No description
      *

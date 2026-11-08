@@ -23,9 +23,21 @@ import { getPinnedVoice } from './voices.ts'
 import { seasonReleases } from './seasonRelease.ts'
 import { getTorrent } from '../torrents/index.ts'
 
+import { hasAgeLimit } from '../profiles/access.ts'
+
 export type { RankingProfile, VoiceRef } from './profile.ts'
 export type { RankedRelease, SourceReason } from './rank.ts'
 export { pinVoice } from './voices.ts'
+
+/** A limited viewer cannot classify an uncertain release through manual selection. */
+export function sourceAllowed(
+  profileId: string | undefined,
+  release: Pick<RankedRelease, 'match'>,
+) {
+  return (
+    !profileId || !hasAgeLimit(profileId) || release.match.confidence === 'high'
+  )
+}
 
 export interface SourcesRequest {
   presetId?: string
@@ -206,7 +218,10 @@ export async function getTitleSources(
   if (identity.kind === 'series')
     await recordTrackerEpisodes(titleId, search.outcome.releases)
 
-  const found = [...search.outcome.releases, ...search.outcome.unmatched]
+  const found = [
+    ...search.outcome.releases,
+    ...search.outcome.unmatched,
+  ].filter(release => sourceAllowed(request.profileId, release))
   const releases
     = episode === undefined
       ? found

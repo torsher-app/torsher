@@ -15,6 +15,7 @@ import {
   touchTorrent,
 } from '../services/torrents/index.ts'
 import { engineFailureOf, sendEngineError } from './engineResponses.ts'
+import { titleAllowedCached } from '../services/profiles/access.ts'
 
 // Заголовки ответа движка, которые нужны плееру для перемотки
 const FORWARDED_HEADERS = ['content-length', 'content-range', 'accept-ranges']
@@ -65,7 +66,11 @@ export const streamRoutes: FastifyPluginAsyncZod = async (app) => {
         fileIndex,
       }
 
-      if (!torrent || !file) {
+      if (
+        !torrent
+        || !file
+        || !titleAllowedCached(request.profileId, torrent.titleId)
+      ) {
         logRejection(request, 'file not found', fields)
         return reply.code(404).send({ message: 'File not found' })
       }

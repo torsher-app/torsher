@@ -1,5 +1,5 @@
+import { collectionItems, visibleCollections } from '../collections/index.ts'
 import type { CatalogRow } from '../../dto/home.ts'
-import { visibleCollections } from '../collections/index.ts'
 import { logFor } from '../logs/index.ts'
 import { freshFollowEpisodes } from '../sources/continue.ts'
 import {
@@ -9,6 +9,7 @@ import {
   watchlistTotal,
 } from './index.ts'
 import { newEpisodeCards } from './newEpisodes.ts'
+import { filterTitles } from '../profiles/access.ts'
 
 const ROW_LIMIT = 20
 
@@ -43,23 +44,31 @@ export async function personalHomeRows(
         items: [],
         episodes,
       })),
-    watchlistCards(profileId, language, ROW_LIMIT).then(items => ({
+    watchlistCards(profileId, language, ROW_LIMIT).then(async items => ({
       id: 'watchlist',
       kind: 'posters',
       title: 'home.rows.watchlist',
       items,
-      total: watchlistTotal(profileId),
+      total: await watchlistTotal(profileId),
     })),
     ...collections.map(collection =>
-      collectionCards(collection.id, language, ROW_LIMIT).then(items => ({
-        id: 'collection' as const,
-        kind: 'posters' as const,
-        title: '',
-        ref: collection.id,
-        name: collection.name,
-        items,
-        total: collection.count,
-      })),
+      collectionCards(collection.id, language, ROW_LIMIT, profileId).then(
+        async items => ({
+          id: 'collection' as const,
+          kind: 'posters' as const,
+          title: '',
+          ref: collection.id,
+          name: collection.name,
+          items,
+          total: (
+            await filterTitles(
+              profileId,
+              collectionItems(collection.id),
+              item => item.titleId,
+            )
+          ).length,
+        }),
+      ),
     ),
   ]
   const results = await Promise.allSettled(loads)

@@ -81,7 +81,7 @@ export function useCollections() {
   }
 
   async function removeTitle(id: string, titleId: string) {
-    await api.collections.deleteCollectionTitle(id, titleId)
+    await api.collections.deleteAdminCollectionTitle(id, titleId)
 
     const current = collections.value.find(item => item.id === id)
 

@@ -302,7 +302,18 @@ export async function requireStream(
     else {
       // Поток владельца несёт версию сессий: после смены пароля он закрывается
       try {
-        request.userId = verifySession(token, 'stream').userId
+        const verified = verifySession(token, 'stream')
+        if (
+          !verified.profileId
+          || !getProfile(verified.profileId)
+          || (request.cookies[PROFILE_COOKIE]
+            && request.cookies[PROFILE_COOKIE] !== verified.profileId)
+        ) {
+          return unauthorized(reply)
+        }
+        request.userId = verified.userId
+        request.profileId = verified.profileId
+        request.profileSelected = true
       }
       catch {
         return unauthorized(reply)

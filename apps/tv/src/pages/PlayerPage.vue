@@ -153,6 +153,7 @@ const player = usePlayback(
   titleRefOf(props.titleId, props.season, props.episode),
   props.voice,
   diagnosticContext,
+  session.profile?.id,
 )
 const { playback, stats } = player
 // Пиры и скорость — только у раздачи: файл библиотеки играется с диска

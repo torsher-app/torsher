@@ -59,6 +59,10 @@ There is no trash or undo. A database backup does not contain the video files. T
 
 Sizes in the preview are estimates by volume. Hard links, shared blocks and files open in other applications can change how much disk space is actually freed. Cleanup is independent of the cache limit and does not guarantee a maximum library size.
 
+When a follow is waiting, its status shows the episode, the quality and audio of the held release when known, the preferred version and the deadline.
+
+Tracked season topics are searched even when the catalog has no new episode listed. An incomplete topic whose version changed within the last 30 days is checked every 12 hours; other topics are checked every 3 days. Other search reasons can run sooner. These checks share the hourly search budget and pause when an indexer asks the server to wait.
+
 ## Activity
 
 <Ui k="panel.follow.activity.title" /> opens from the button at the top of <Ui k="panel.nav.follow" />. Filter it by title and by event.

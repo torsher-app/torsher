@@ -1,3 +1,4 @@
+import { requireOwner, requireViewer } from '../middleware/auth.ts'
 import { localTitleImages } from '../services/library/images.ts'
 import type { FastifyReply } from 'fastify'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
@@ -20,7 +21,6 @@ import {
   titleExtras,
 } from '../dto/catalog.ts'
 import { messageResponse } from '../dto/common.ts'
-import { requireViewer } from '../middleware/auth.ts'
 import {
   seasonEpisodeStates,
   waitTargets,
@@ -43,6 +43,12 @@ import {
   searchCatalog,
   TmdbError,
 } from '../services/tmdb/index.ts'
+import {
+  allowedTitleIds,
+  filterTitles,
+  hasAgeLimit,
+  requireTitleAccess,
+} from '../services/profiles/access.ts'
 
 const errorResponses = {
   401: messageResponse,
@@ -87,7 +93,14 @@ export const catalogRoutes: FastifyPluginAsyncZod = async (app) => {
 
         return {
           ...result,
-          items: withPosterRatings(result.items, request.profileId),
+          items: withPosterRatings(
+            await filterTitles(
+              request.profileId,
+              result.items,
+              item => item.id,
+            ),
+            request.profileId,
+          ),
         }
       }
       catch (err) {
@@ -100,6 +113,7 @@ export const catalogRoutes: FastifyPluginAsyncZod = async (app) => {
     '/titles/:id',
     {
       onRequest: requireViewer,
+      preHandler: requireTitleAccess,
       schema: {
         operationId: 'getCatalogTitle',
         tags: ['Catalog'],
@@ -138,6 +152,7 @@ export const catalogRoutes: FastifyPluginAsyncZod = async (app) => {
     '/titles/:id/seasons/:number',
     {
       onRequest: requireViewer,
+      preHandler: requireTitleAccess,
       schema: {
         operationId: 'getCatalogSeason',
         tags: ['Catalog'],
@@ -213,6 +228,7 @@ export const catalogRoutes: FastifyPluginAsyncZod = async (app) => {
     '/titles/:id/extras',
     {
       onRequest: requireViewer,
+      preHandler: requireTitleAccess,
       schema: {
         operationId: 'getCatalogTitleExtras',
         tags: ['Catalog'],
@@ -238,10 +254,21 @@ export const catalogRoutes: FastifyPluginAsyncZod = async (app) => {
         if (!extras)
           return reply.code(404).send({ message: 'Title not found' })
 
+        const allowed = await allowedTitleIds(
+          profileId,
+          [...extras.similar, ...extras.franchise].map(item => item.id),
+        )
+
         return {
           ...extras,
-          similar: withPosterRatings(extras.similar, profileId),
-          franchise: withPosterRatings(extras.franchise, profileId),
+          similar: withPosterRatings(
+            extras.similar.filter(item => allowed.has(item.id)),
+            profileId,
+          ),
+          franchise: withPosterRatings(
+            extras.franchise.filter(item => allowed.has(item.id)),
+            profileId,
+          ),
         }
       }
       catch (err) {
@@ -279,11 +306,19 @@ export const catalogRoutes: FastifyPluginAsyncZod = async (app) => {
         if (!person)
           return reply.code(404).send({ message: 'Person not found' })
 
+        const allowed = await allowedTitleIds(
+          profileId,
+          person.credits.flatMap(group => group.items.map(item => item.id)),
+        )
+
         return {
           ...person,
           credits: person.credits.map(group => ({
             ...group,
-            items: withPosterRatings(group.items, profileId),
+            items: withPosterRatings(
+              group.items.filter(item => allowed.has(item.id)),
+              profileId,
+            ),
           })),
         }
       }
@@ -320,7 +355,15 @@ export const catalogRoutes: FastifyPluginAsyncZod = async (app) => {
 
         return {
           ...page,
-          items: withPosterRatings(page.items, request.profileId),
+          totalIsApproximate: hasAgeLimit(request.profileId),
+          items: withPosterRatings(
+            await filterTitles(
+              request.profileId,
+              page.items,
+              item => item.id,
+            ),
+            request.profileId,
+          ),
         }
       }
       catch (err) {
@@ -375,7 +418,11 @@ export const catalogRoutes: FastifyPluginAsyncZod = async (app) => {
       try {
         return {
           items: withPosterRatings(
-            await getTrending(request.query.language),
+            await filterTitles(
+              request.profileId,
+              await getTrending(request.query.language),
+              item => item.id,
+            ),
             request.profileId,
           ),
         }
@@ -403,7 +450,64 @@ export const catalogRoutes: FastifyPluginAsyncZod = async (app) => {
     },
     async (request, reply) => {
       try {
-        return { items: await getTrendingBackdrops(request.query.language) }
+        return {
+          items: await filterTitles(
+            request.profileId,
+            await getTrendingBackdrops(request.query.language),
+            item => item.id,
+          ),
+        }
+      }
+      catch (err) {
+        return sendTmdbError(reply, err)
+      }
+    },
+  )
+
+  app.get(
+    '/admin/search',
+    {
+      onRequest: requireOwner,
+      schema: {
+        operationId: 'getAdminCatalogSearch',
+        tags: ['Catalog'],
+        querystring: catalogSearchQuery,
+        response: {
+          200: catalogSearchResponse,
+          400: messageResponse,
+          ...errorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        return await searchCatalog(request.query.query, request.query.language)
+      }
+      catch (err) {
+        return sendTmdbError(reply, err)
+      }
+    },
+  )
+  app.get(
+    '/admin/titles/:id',
+    {
+      onRequest: requireOwner,
+      schema: {
+        operationId: 'getAdminCatalogTitle',
+        tags: ['Catalog'],
+        params: catalogTitleParams,
+        querystring: catalogTitleQuery,
+        response: {
+          200: titleDetails,
+          404: messageResponse,
+          ...errorResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      try {
+        const title = await getTitle(request.params.id, request.query.language)
+        return title ?? reply.code(404).send({ message: 'Title not found' })
       }
       catch (err) {
         return sendTmdbError(reply, err)

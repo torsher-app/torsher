@@ -18,7 +18,7 @@ import {
   liveTorrents,
   setRetention,
 } from '../torrents/index.ts'
-import { getTitleSources } from './index.ts'
+import { getTitleSources, sourceAllowed } from './index.ts'
 import {
   acquire,
   isSkippable,
@@ -28,6 +28,10 @@ import {
   WATCH_BUDGET_MS,
   WatchError,
 } from './watch.ts'
+
+import { titleAllowed } from '../profiles/access.ts'
+
+/** Раздача не этого тайтла или файл не из неё */
 
 export interface DownloadRequest {
   presetId?: string
@@ -45,7 +49,6 @@ export type DownloadResult
   /** Magnet ждёт метаданные: клиент ждёт раздачу и повторяет с `candidateId`. */
     | { status: 'resolving', torrentId: string, candidateId: string }
 
-/** Раздача не этого тайтла или файл не из неё */
 export class DownloadNotFoundError extends Error {
   constructor() {
     super('Release not found')
@@ -268,14 +271,17 @@ export async function downloadTitle(
   if (request.candidateId) {
     const chosen = byId.get(request.candidateId)
 
-    if (!chosen)
+    if (!chosen || !sourceAllowed(profileId, chosen))
       throw new WatchError('candidate_gone', 'Release is no longer available')
 
     queue = [chosen]
   }
   else {
     queue = ranked.filter(
-      release => release.eligible && release.audioFit !== 'foreign',
+      release =>
+        sourceAllowed(profileId, release)
+        && release.eligible
+        && release.audioFit !== 'foreign',
     )
     if (kind === 'series') {
       const count = sources.identity.episodeCounts?.[season]
@@ -302,7 +308,13 @@ export async function downloadTitle(
     let torrent: Torrent | undefined
 
     try {
-      torrent = await acquire(release, hasTime)
+      torrent = await acquire(
+        release,
+        hasTime,
+        'search',
+        () => true,
+        torrent => titleAllowed(profileId, torrent.titleId),
+      )
     }
     catch (err) {
       if (isSkippable(err))

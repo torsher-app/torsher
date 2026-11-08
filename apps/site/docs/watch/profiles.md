@@ -63,10 +63,15 @@ The showcase language sets the interface and the descriptions of titles on the T
 
 ## Age limit
 
-An age limit can be 6+, 12+, 16+ or 18+. The catalog isn't filtered by age yet: a profile with a limit sees the same titles. Today the limit only keeps the profile from changing what the household shares:
+An age limit can be 6+, 12+, 16+ or 18+. Titles rated at or above that age, and titles without a known rating, are hidden. This applies to catalog lists, direct title links, followed titles and playback, including Jellyfin-compatible clients. Home videos and unrecognized downloads are hidden too.
 
-- it doesn't see <Ui k="home.rows.libraryUnmatched" /> and can't set titles for downloads;
-- it sees the rules of followed titles but can only stop following.
+The rating uses Russia (RU), with US ratings only when no nonempty RU rating is available. PG and TV-PG use age 10; NC-17 uses age 18. Changing the interface language does not change access. If the classification cannot be loaded, the title stays hidden.
+
+Only confidently matched sources are shown to a profile with an age limit.
+
+Existing progress, followed titles and shared files are kept. Automatic downloads continue; another profile can still use them. A limited profile cannot change shared follow rules or match downloads to titles. The owner’s panel catalog remains available for administration.
+
+After an update, reopen an already open player if its old stream link no longer works.
 
 ## Delete a profile
 

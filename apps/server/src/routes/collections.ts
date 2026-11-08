@@ -26,6 +26,7 @@ import {
 } from '../services/collections/index.ts'
 import { collectionCards } from '../services/mine/index.ts'
 import { parseCatalogId } from '../services/tmdb/mappers.ts'
+import { titleAllowed } from '../services/profiles/access.ts'
 
 const guardResponses = {
   401: messageResponse,
@@ -207,8 +208,13 @@ export const collectionRoutes: FastifyPluginAsyncZod = async (app) => {
     async (request, reply) => {
       const { id, titleId } = request.params
 
-      if (!parseCatalogId(titleId) || !canEdit(request, id))
+      if (
+        !parseCatalogId(titleId)
+        || !canEdit(request, id)
+        || !(await titleAllowed(request.profileId, titleId))
+      ) {
         return reply.code(404).send(notFound)
+      }
 
       addToCollection(id, titleId, request.profileId)
 
@@ -234,11 +240,38 @@ export const collectionRoutes: FastifyPluginAsyncZod = async (app) => {
     async (request, reply) => {
       const { id, titleId } = request.params
 
-      if (!canEdit(request, id))
+      if (
+        !canEdit(request, id)
+        || !(await titleAllowed(request.profileId, titleId))
+      ) {
         return reply.code(404).send(notFound)
+      }
 
       removeFromCollection(id, titleId)
 
+      return { message: 'Title removed' }
+    },
+  )
+
+  app.delete(
+    '/admin/:id/titles/:titleId',
+    {
+      schema: {
+        operationId: 'deleteAdminCollectionTitle',
+        tags: ['Collections'],
+        params: collectionTitleParams,
+        response: {
+          200: messageResponse,
+          404: messageResponse,
+          ...guardResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { id, titleId } = request.params
+      if (!getCollection(id))
+        return reply.code(404).send(notFound)
+      removeFromCollection(id, titleId)
       return { message: 'Title removed' }
     },
   )

@@ -259,6 +259,8 @@ export const indexers = sqliteTable(
     url: text('url').notNull(),
     // Шифртекст; null — индексатор без ключа
     apiKey: text('api_key'),
+    // Шифртекст заголовка Cookie; только для origin этого Torznab
+    sessionCookie: text('session_cookie'),
     enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
     managerId: text('manager_id').references(() => indexerManagers.id, {
       onDelete: 'set null',
@@ -1226,6 +1228,8 @@ export interface FollowPendingCandidate {
   quality?: string
   studio?: string
   voiceType?: string
+  /** Язык ранжирования, включая original; у старых записей отсутствует */
+  language?: string
 }
 
 /** Кандидат в снимке последнего прогона серии: что нашли и почему отклонили */

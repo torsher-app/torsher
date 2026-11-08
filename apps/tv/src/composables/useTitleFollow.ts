@@ -97,7 +97,7 @@ export function useTitleFollow(id: Ref<string>) {
 
 /** Подписи «Следить»: политика на кнопке, статус-строка, состояния серий */
 export function useFollowTexts() {
-  const { t } = useI18n()
+  const { t, te } = useI18n()
   const language = useCatalogLanguage()
 
   function voiceTypeName(type: string) {
@@ -124,6 +124,23 @@ export function useFollowTexts() {
       return t('follow.voiceQuality', { voice, quality })
 
     return voice || quality
+  }
+
+  function candidateText(candidate: FollowWait['candidate']) {
+    return [
+      candidate?.studio,
+      candidate?.voiceType
+      && (te(`sources.voiceTypes.${candidate.voiceType}`)
+        ? t(`sources.voiceTypes.${candidate.voiceType}`)
+        : candidate.voiceType),
+      candidate?.language
+      && (te(`audioLanguages.${candidate.language}`)
+        ? t(`audioLanguages.${candidate.language}`)
+        : candidate.language),
+      candidate?.quality && qualityName(candidate.quality),
+    ]
+      .filter(Boolean)
+      .join(' · ')
   }
 
   function untilText(iso: string) {
@@ -213,8 +230,13 @@ export function useFollowTexts() {
           : t('follow.status.ready', { code: status.code })
       case 'waiting': {
         const target = waitTarget(status.waiting)
+        const found = candidateText(status.waiting.candidate)
+        const key = found
+          ? `${movie ? 'movieWaiting' : 'waiting'}Found${target ? '' : 'Better'}`
+          : waitingStatusKey(!!target, movie)
 
-        return t(`follow.status.${waitingStatusKey(!!target, movie)}`, {
+        return t(`follow.status.${key}`, {
+          found,
           code: status.code,
           target,
           until: untilText(status.waiting.until),
@@ -258,10 +280,21 @@ export function useFollowTexts() {
 
     if (state === 'waiting') {
       const target = wait ? waitTarget(wait) : ''
+      if (wait) {
+        const found = candidateText(wait.candidate)
+        const key = found
+          ? `waitingFound${target ? '' : 'Better'}`
+          : target
+            ? 'waitingUntil'
+            : 'waitingBetterUntil'
+        return t(`follow.episode.${key}`, {
+          found,
+          target,
+          until: untilText(wait.until),
+        })
+      }
 
-      return target
-        ? t('follow.episode.waiting', { target })
-        : t('follow.episode.waitingBetter')
+      return t('follow.episode.waitingBetter')
     }
 
     return t(`follow.episode.${state}`)

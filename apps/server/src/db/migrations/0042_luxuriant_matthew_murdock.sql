@@ -1,0 +1,1 @@
+ALTER TABLE `indexers` ADD `session_cookie` text;

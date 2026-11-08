@@ -26,7 +26,7 @@ export function useTitleInfo(titleId: () => string | null) {
       entry = info
       cache.set(key, info)
       withErrorMode('silent', () =>
-        api.catalog.getCatalogTitle(id, {
+        api.catalog.getAdminCatalogTitle(id, {
           language: locale.value.replace('_', '-'),
         }))
         .then((details) => {

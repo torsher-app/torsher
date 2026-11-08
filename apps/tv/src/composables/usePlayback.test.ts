@@ -248,3 +248,27 @@ it('observes swallowed checkpoint failures even between throttled successful sna
   )
   scope.stop()
 })
+
+it('keeps the originating viewer profile on final saves after closing the session', async () => {
+  mocks.post.mockResolvedValue(ready('origin-session'))
+  mocks.save.mockResolvedValue(undefined)
+  const scope = effectScope()
+  const player = scope.run(() =>
+    usePlayback(
+      { mediaFileId: 'file-00001' },
+      undefined,
+      undefined,
+      {},
+      'origin-profile',
+    ),
+  )!
+  await player.start()
+  player.close()
+  await player.saveWatchState(10, 100, 'exit')
+  expect(mocks.save.mock.calls[0]![0]).toMatchObject({
+    profileId: 'origin-profile',
+    mediaFileId: 'file-00001',
+    position: 10,
+  })
+  scope.stop()
+})

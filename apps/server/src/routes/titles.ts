@@ -101,6 +101,7 @@ import { getSeason, getTitle, TmdbError } from '../services/tmdb/index.ts'
 import { parseCatalogId } from '../services/tmdb/mappers.ts'
 import { sendTmdbError } from './catalog.ts'
 import { sendEngineError } from './engineResponses.ts'
+import { requireTitleAccess } from '../services/profiles/access.ts'
 
 const guardResponses = {
   401: messageResponse,
@@ -289,6 +290,7 @@ export function toSourcesResponse(
 
 export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
   app.addHook('onRequest', requireViewer)
+  app.addHook('preHandler', requireTitleAccess)
 
   app.get(
     '/:id/sources',

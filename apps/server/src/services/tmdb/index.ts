@@ -53,6 +53,13 @@ import {
   withTrackerSeason,
 } from './mappers.ts'
 import { trackerEpisodesOf } from './tracker.ts'
+import {
+  certificationAge,
+  DETAILS_KEY_VERSION,
+  titleDetailsCacheKey as detailsKey,
+} from './certification.ts'
+
+export { cachedTitleAge } from './certification.ts'
 
 export { fetchTmdbImage, TmdbError } from './client.ts'
 export { discoverTitles, getGenres } from './discover.ts'
@@ -71,11 +78,6 @@ const DETAILS_TTL_MS = 7 * 24 * HOUR_MS
 const SEASON_TTL_MS = 24 * HOUR_MS
 const TRENDING_LIMIT = 12
 
-/**
- * В кэше лежит сырой ответ: при смене набора append_to_response версия
- * меняется, иначе до конца TTL отдавались бы ответы без новых полей.
- */
-const DETAILS_KEY_VERSION = 'v3'
 // v2: съёмочная группа сериала и создатели; v3: жанры, студии и keywords;
 // v4: франшиза фильма
 const EXTRAS_KEY_VERSION = 'v4'
@@ -199,10 +201,6 @@ interface LoadedTitle {
   imdbId?: string | null
 }
 
-function detailsKey(ref: TmdbRef, language: string) {
-  return `tmdb:${ref.type}:${ref.tmdbId}:${language}:${DETAILS_KEY_VERSION}`
-}
-
 /** Local metadata for library filtering; never triggers a network request. */
 export function cachedTitleDetails(id: string, language: string) {
   const ref = parseCatalogId(id)
@@ -214,6 +212,23 @@ export function cachedTitleDetails(id: string, language: string) {
   }
   const tv = readMetaCache<TmdbTv>(detailsKey(ref, language))
   return tv ? tvToDetails(tv, language) : undefined
+}
+
+export async function titleAge(id: string) {
+  const ref = parseCatalogId(id)
+  if (!ref)
+    return undefined
+  const language
+    = !readMetaCache(detailsKey(ref, 'ru-RU'))
+      && readMetaCache(detailsKey(ref, 'en-US'))
+      ? 'en-US'
+      : 'ru-RU'
+  const raw = await withMetaCache<TmdbMovie | TmdbTv>(
+    detailsKey(ref, language),
+    DETAILS_TTL_MS,
+    () => tmdbGet(`/${ref.type}/${ref.tmdbId}`, detailsParams(ref, language)),
+  )
+  return certificationAge(raw)
 }
 
 async function loadTitle(ref: TmdbRef, language: string): Promise<LoadedTitle> {

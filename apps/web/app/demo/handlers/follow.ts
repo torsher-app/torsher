@@ -561,10 +561,9 @@ function detailsOf(follow: DemoFollow): FollowDetails {
   }
 
   const upcoming = follow.episodes.find(item => item.state === 'upcoming')
-  const waits = follow.episodes
-    .map(item => item.waitUntil)
-    .filter((value): value is string => Boolean(value))
-    .sort()
+  const waiting = follow.episodes
+    .filter(item => item.state === 'waiting' && item.waitUntil)
+    .sort((a, b) => a.waitUntil!.localeCompare(b.waitUntil!))[0]
 
   const server = settings.audio?.value ?? 'ru'
 
@@ -587,7 +586,15 @@ function detailsOf(follow: DemoFollow): FollowDetails {
     counts,
     first,
     unsure: unsureOf(follow.id),
-    waitUntil: waits[0],
+    waitUntil: waiting?.waitUntil,
+    waiting: waiting && {
+      season: waiting.season,
+      episode: waiting.episode,
+      until: waiting.waitUntil!,
+      studio: follow.voiceStudio ?? undefined,
+      quality: '1080p',
+      candidate: { quality: '720p' },
+    },
   }
 }
 
@@ -1037,3 +1044,35 @@ get<FollowVoicesResponse>(
     }
   },
 )
+get<FollowVoicesResponse>('/api/follows/:id/voices', ({ params, query }) => {
+  const follow = follows.find(item => item.id === params.id)
+  const policy = follow?.voicePolicy
+  const studio = policy && 'studio' in policy ? policy.studio : null
+  const key = `${follow?.titleId}|${query.get('season') ?? 0}`
+  if (query.get('refresh') === '1')
+    voiceSearches.set(key, new Date().toISOString())
+  const updatedAt = voiceSearches.get(key) ?? null
+  const refresh = updatedAt !== null
+  return {
+    season: Number(query.get('season') ?? 0),
+    updatedAt,
+    stale: !refresh,
+    cache: refresh ? 'hit' : 'miss',
+    indexerCount: 1,
+    failed: [],
+    items: [
+      ...new Set([
+        ...(studio ? [studio] : []),
+        ...(refresh ? demoFoundStudios : []),
+      ]),
+    ].map(name => ({
+      studio: name,
+      types: ['MVO'],
+      count: refresh && demoFoundStudios.includes(name) ? 2 : 0,
+      seeders: refresh && demoFoundStudios.includes(name) ? 10 : 0,
+      found: refresh && demoFoundStudios.includes(name),
+      saved: name === studio,
+      inherited: false,
+    })),
+  }
+})

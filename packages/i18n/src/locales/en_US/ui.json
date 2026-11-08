@@ -88,7 +88,8 @@
     "decade": "{decade}s",
     "ratingFrom": "{n}+",
     "reset": "Reset filters",
-    "moreFailed": "Could not load more"
+    "moreFailed": "Could not load more",
+    "nextPage": "Next page"
   },
   "home": {
     "rows": {
@@ -1839,7 +1840,7 @@
         "checking": "Checking…",
         "disabled": "Disabled",
         "missing": "Gone from {manager}",
-        "auth": "Key rejected",
+        "auth": "Access denied",
         "timeout": "No response",
         "unreachable": "Unreachable",
         "bad_response": "Not Torznab",
@@ -1847,7 +1848,7 @@
         "unsupported": "Not supported"
       },
       "errorTitles": {
-        "auth": "Key rejected",
+        "auth": "Access denied",
         "timeout": "No response",
         "unreachable": "Address doesn't respond",
         "bad_response": "Not Torznab",
@@ -1858,7 +1859,7 @@
         "unknown": "That didn't work"
       },
       "errors": {
-        "auth": "The API key was rejected. Check the key and try again.",
+        "auth": "The source rejected the credentials. Check the API key and session cookie.",
         "timeout": "The address didn't respond in time. Check that the service is running and the server can reach it.",
         "unreachable": "The Torsher server couldn't reach the address. Check it; if the service runs in a neighbouring container, use its name in the Docker network.",
         "bad_response": "The address answered, but not with Torznab. Check the address.",
@@ -1870,8 +1871,8 @@
       },
       "reasons": {
         "checking": "Checking…",
-        "authManaged": "{manager} rejected the key — enter the new one in the manager menu",
-        "auth": "Key rejected — enter a new key",
+        "authManaged": "Access denied — check the key in {manager} and the cookie",
+        "auth": "Access denied — check the key and cookie",
         "timeout": "Didn't respond in time — search goes on without it",
         "unreachable": "Unreachable — check the address and network",
         "bad_response": "The response doesn't look like Torznab — check the address",
@@ -1879,15 +1880,16 @@
         "missing": "Gone from {manager} — Torsher doesn't search it"
       },
       "problems": {
-        "authManaged": "{manager} rejected the API key saved in Torsher: most likely the key was changed in {manager}. Copy the current key from {manager} and enter it: “⋯” next to the manager → “New API key”.",
-        "auth": "The indexer rejected the API key. Enter a new key with “Edit”.",
+        "authManaged": "Check the current API key in the {manager} menu. If a Torznab session cookie is configured, update it with “Edit” on the indexer.",
+        "auth": "The indexer rejected the credentials. Check the API key and session cookie with “Edit”.",
         "timeout": "The indexer didn't respond in time. Search goes through the others and skips this one until it responds.",
         "missing": "The indexer is no longer in {manager}, and Torsher doesn't search it. Add it back in {manager} and sync, or delete it here if you don't need it."
       },
       "validation": {
         "name": "Enter a name",
         "url": "Enter an http or https address",
-        "apiKey": "Enter the API key"
+        "apiKey": "Enter the API key",
+        "sessionCookie": "Enter valid name=value pairs without control characters, up to 8192 characters. Browser challenge cookies are not supported."
       },
       "indexers": {
         "manual": "Added manually",
@@ -1996,6 +1998,18 @@
         "managed": "set in Prowlarr",
         "enabledToast": "Feed is on for {name}",
         "disabledToast": "Feed is off for {name}"
+      },
+      "cookie": {
+        "label": "Torznab session cookie",
+        "show": "Show cookie",
+        "hide": "Hide cookie",
+        "hint": "Optional. The name=value pairs from your session’s Cookie header.",
+        "saved": "A cookie is saved. Leave empty to keep it.",
+        "removing": "The cookie will be removed when you save.",
+        "remove": "Remove saved cookie",
+        "undoRemove": "Keep saved cookie",
+        "managedKey": "The manager controls the name, address and API key. Set the cookie here.",
+        "scope": "Only for Torznab and torrent links with the same scheme, host and port. The check confirms current access, not the session’s expiry."
       }
     },
     "people": {
@@ -2058,7 +2072,7 @@
         "language": "Showcase language",
         "languageHint": "Interface and descriptions on the TV.",
         "ageLimit": "Age limit",
-        "ageLimitHint": "The catalog isn’t filtered by age yet. For now a profile with a limit can’t match unrecognized downloads to titles on the TV.",
+        "ageLimitHint": "Titles rated at or above this age, and titles without a known rating, are hidden. Home videos and unrecognized downloads are hidden too.",
         "noLimits": "No restrictions",
         "pin": "PIN",
         "pinHint": "4 digits. The TV asks for it when switching to this profile.",
@@ -3468,7 +3482,11 @@
           "nextUnknown": "Waiting for the next episode",
           "done": "All downloaded",
           "doneNotify": "Everything released is ready to watch",
-          "unsure": "{n} similar release to confirm | {n} similar releases to confirm"
+          "unsure": "{n} similar release to confirm | {n} similar releases to confirm",
+          "waitingEpisode": "{code}: waiting for a better release until {until}",
+          "waitingTarget": "{code}: waiting for {target} until {until}",
+          "waitingFound": "{code}: found {found}; waiting for better until {until}",
+          "waitingFoundTarget": "{code}: found {found}; waiting for {target} until {until}"
         },
         "movie": {
           "paused": "Paused",
@@ -3481,7 +3499,11 @@
           "next": "Not released yet",
           "done": "In the library",
           "doneNotify": "Ready to watch",
-          "unsure": "Similar releases to confirm"
+          "unsure": "Similar releases to confirm",
+          "waitingEpisode": "Waiting for a better release until {until}",
+          "waitingTarget": "Waiting for {target} until {until}",
+          "waitingFound": "Found {found}; waiting for better until {until}",
+          "waitingFoundTarget": "Found {found}; waiting for {target} until {until}"
         }
       },
       "actions": {
@@ -4114,7 +4136,11 @@
       "movieMissing": "No releases found",
       "movieReady": "Out digitally — ready to watch",
       "bestQuality": "Season tops out at {quality}",
-      "pinned": "{studio} audio is pinned to this season"
+      "pinned": "{studio} audio is pinned to this season",
+      "waitingFound": "{code}: found {found}; waiting for {target} until {until}",
+      "waitingFoundBetter": "{code}: found {found}; waiting for better until {until}",
+      "movieWaitingFound": "found {found}; waiting for {target} until {until}",
+      "movieWaitingFoundBetter": "found {found}; waiting for better until {until}"
     },
     "until": {
       "today": "{time}",
@@ -4188,7 +4214,11 @@
       "no_space": "no space",
       "missing": "not found",
       "searching": "searching",
-      "ready": "ready"
+      "ready": "ready",
+      "waitingFound": "found {found}; waiting for {target} until {until}",
+      "waitingFoundBetter": "found {found}; waiting for better until {until}",
+      "waitingUntil": "waiting for {target} until {until}",
+      "waitingBetterUntil": "waiting for better until {until}"
     },
     "badge": "Following",
     "badgeNew": "Following · {n} new episodes",

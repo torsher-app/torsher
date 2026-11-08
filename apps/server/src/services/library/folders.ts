@@ -17,6 +17,7 @@ import { getMediaFile, managedFolders } from './files.ts'
 import { isScanning, scanFolder } from './scan.ts'
 import { removeThumbs } from './thumbs.ts'
 import { unwatchFolder, watcherState, watchFolder } from './watch.ts'
+import { titleAllowedCached } from '../profiles/access.ts'
 
 export class LibraryNotFoundError extends Error {
   constructor() {
@@ -509,7 +510,7 @@ export async function browseFolders(path = '/') {
 
 /**
  * Файл библиотеки, которую от профиля зрителя скрыли, для него не существует.
- * У токена потока владельца профиля нет — ему открыто всё.
+ * Возрастной доступ проверяется по кэшу без сетевого запроса.
  */
 export function playableMediaFile(id: string, profileId: string) {
   const found = getMediaFile(id)
@@ -517,7 +518,13 @@ export function playableMediaFile(id: string, profileId: string) {
   if (
     found
     && profileId
-    && hiddenLibraryIds(profileId).includes(found.folder.libraryId)
+    && (hiddenLibraryIds(profileId).includes(found.folder.libraryId)
+      || !titleAllowedCached(
+        profileId,
+        folderWithLibrary(found.file.folderId)?.library.kind === 'home'
+          ? null
+          : found.file.titleId,
+      ))
   ) {
     return undefined
   }

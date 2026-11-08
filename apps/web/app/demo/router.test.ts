@@ -64,7 +64,7 @@ describe('notification history demo', () => {
   })
 })
 
-it('keeps an out-of-results demo studio saved independently of found evidence', async () => {
+it.each(['showcase', 'panel'])('keeps an out-of-results demo studio saved independently of found evidence in %s', async (surface) => {
   const request = (path: string, method = 'GET', body?: object) =>
     handle(
       new URL(`http://demo/api${path}`),
@@ -74,7 +74,9 @@ it('keeps an out-of-results demo studio saved independently of found evidence', 
   const list = await (await request('/follows')).json()
   const follow = list.items[0]
   const path = `/follows/${follow.id}`
-  const voices = `/titles/${follow.titleId}/follow/voices?season=2`
+  const voices = surface === 'panel'
+    ? `/follows/${follow.id}/voices?season=2`
+    : `/titles/${follow.titleId}/follow/voices?season=2`
   const saved = await request(path, 'PATCH', {
     voicePolicy: { mode: 'only', studio: 'Demo Gamma' },
   })

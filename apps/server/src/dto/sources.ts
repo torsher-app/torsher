@@ -1,9 +1,15 @@
 import { z } from 'zod'
 import { indexerCheckStatuses, indexerManagerKinds } from '../db/schema.ts'
+import { isSessionCookie } from '../services/torznab/cookie.ts'
 
 const httpUrl = z.url({ protocol: /^https?$/ }).max(2000)
 const indexerName = z.string().trim().min(1).max(100)
 // Ключи только на вход: ни один ответ их не содержит
+const sessionCookie = z
+  .string()
+  .max(8192)
+  .refine(isSessionCookie, 'Invalid session cookie')
+  .transform(value => value.trim())
 const apiKey = z.string().trim().min(1).max(500)
 
 export const sourceErrorKinds = [
@@ -47,6 +53,7 @@ export const indexer = z
     // Адрес Torznab без query: ключ в нём не передаётся
     url: z.string(),
     hasApiKey: z.boolean(),
+    hasCookie: z.boolean().optional(),
     enabled: z.boolean(),
     managerId: z.string().nullable(),
     managerKind: z.enum(indexerManagerKinds).nullable(),
@@ -79,6 +86,7 @@ export const createIndexer = z
     name: indexerName,
     url: httpUrl,
     apiKey: apiKey.optional(),
+    sessionCookie: sessionCookie.nullable().optional(),
   })
   .meta({ id: 'createIndexer' })
 
@@ -87,6 +95,7 @@ export const updateIndexer = z
     name: indexerName.optional(),
     enabled: z.boolean().optional(),
     apiKey: apiKey.optional(),
+    sessionCookie: sessionCookie.nullable().optional(),
     // Читать ленту новых раздач; у индексаторов Prowlarr это задаёт Prowlarr
     feed: z.boolean().optional(),
   })

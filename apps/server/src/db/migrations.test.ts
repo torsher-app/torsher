@@ -588,3 +588,55 @@ describe('follow voice policy migration', () => {
     }
   })
 })
+
+describe('torznab session cookie migration', () => {
+  it('preserves existing indexers and gives them no cookie', () => {
+    const idx = journal.entries.findIndex(entry =>
+      readFileSync(join(MIGRATIONS_DIR, `${entry.tag}.sql`), 'utf8').includes(
+        'ADD `session_cookie`',
+      ),
+    )
+    expect(idx).toBeGreaterThan(0)
+    const sqlite = new Database(':memory:')
+    const db = drizzle(sqlite)
+    try {
+      migrate(db, { migrationsFolder: migrationsBefore(idx) })
+      const caps = JSON.stringify({
+        search: { available: true, params: ['q'] },
+        categories: [],
+      })
+      sqlite
+        .prepare(
+          'INSERT INTO indexers (id, name, url, api_key, caps, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+        )
+        .run(
+          'old',
+          'Old source',
+          'https://indexer.example',
+          'encrypted-existing-key',
+          caps,
+          1,
+        )
+      migrate(db, { migrationsFolder: MIGRATIONS_DIR })
+      expect(
+        sqlite
+          .prepare(
+            'SELECT name, api_key, caps, session_cookie FROM indexers WHERE id = ?',
+          )
+          .get('old'),
+      ).toEqual({
+        name: 'Old source',
+        api_key: 'encrypted-existing-key',
+        caps,
+        session_cookie: null,
+      })
+      migrate(db, { migrationsFolder: MIGRATIONS_DIR })
+      expect(
+        sqlite.prepare('SELECT COUNT(*) AS n FROM indexers').get(),
+      ).toEqual({ n: 1 })
+    }
+    finally {
+      sqlite.close()
+    }
+  })
+})

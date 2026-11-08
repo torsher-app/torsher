@@ -506,10 +506,13 @@ get<CollectionTitles>('/api/collections/:id/titles', ({ params }) => ({
   }),
 }))
 
-del<MessageResponse>('/api/collections/:id/titles/:titleId', ({ params }) => {
-  const collection = collectionById(params.id!)
+del<MessageResponse>(
+  '/api/collections/admin/:id/titles/:titleId',
+  ({ params }) => {
+    const collection = collectionById(params.id!)
 
-  collection.titles = collection.titles.filter(id => id !== params.titleId)
+    collection.titles = collection.titles.filter(id => id !== params.titleId)
 
-  return { message: 'Title removed from collection' }
-})
+    return { message: 'Title removed from collection' }
+  },
+)

@@ -105,7 +105,8 @@ export function retryLater(
  * отслеживаемой темы, если раздача из неё, иначе того индексатора, чья ссылка.
  */
 export function pendingOf(
-  release: FoundRelease & Partial<Pick<RankedRelease, 'resolution' | 'voice'>>,
+  release: FoundRelease
+    & Partial<Pick<RankedRelease, 'resolution' | 'voice' | 'audioLanguage'>>,
   topic?: TopicKey,
 ): FollowPendingCandidate {
   const indexer
@@ -135,6 +136,7 @@ export function pendingOf(
     quality: release.resolution?.value,
     studio: release.voice?.studio,
     voiceType: release.voice?.type,
+    language: release.audioLanguage,
   }
 }
 

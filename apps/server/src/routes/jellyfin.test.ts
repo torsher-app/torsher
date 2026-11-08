@@ -41,6 +41,8 @@ import {
 } from '../services/users/index.ts'
 import { hashPassword } from '../utils/password.ts'
 import { signToken } from '../utils/token.ts'
+import { storeMetaCache } from '../services/tmdb/cache.ts'
+import { movie, tv } from '../services/tmdb/fixtures/index.ts'
 
 const app = createApp()
 const routes: { method: string, url: string }[] = []
@@ -947,4 +949,78 @@ it('audits every root and /emby protected route, including HEAD, before validati
       await app.inject({ url: '/Persons?SearchTerm=Example', headers: auth() })
     ).json().Items,
   ).toEqual([])
+})
+
+it('age policy filters Jellyfin groups and counts before projection and closes direct media paths', async () => {
+  const db = getDb()
+  db.update(profiles)
+    .set({ ageLimit: 12 })
+    .where(eq(profiles.id, profileId))
+    .run()
+  storeMetaCache('tmdb:movie:900001:ru-RU:v3', {
+    ...movie,
+    id: 900001,
+    release_dates: {
+      results: [
+        { iso_3166_1: 'RU', release_dates: [{ certification: '12+' }] },
+      ],
+    },
+  })
+  storeMetaCache('tmdb:tv:900002:ru-RU:v3', {
+    ...tv,
+    id: 900002,
+    content_ratings: { results: [{ iso_3166_1: 'RU', rating: '6+' }] },
+  })
+  try {
+    const visible = await list()
+    expect(
+      visible.Items.some((item: { Type: string }) =>
+        ['Movie', 'Video'].includes(item.Type),
+      ),
+    ).toBe(false)
+    expect(
+      (await list('/Items?Recursive=true&IncludeItemTypes=Movie'))
+        .TotalRecordCount,
+    ).toBe(0)
+    expect(
+      (await list('/Items?Recursive=true&IncludeItemTypes=Series'))
+        .TotalRecordCount,
+    ).toBe(1)
+    expect(await list('/Items/Counts')).toMatchObject({
+      MovieCount: 0,
+      SeriesCount: 1,
+      EpisodeCount: 3,
+    })
+    for (const id of [movieId, videoId]) {
+      for (const [method, url, payload] of [
+        ['GET', `/Items/${id}`],
+        ['GET', `/Items/${id}/PlaybackInfo`],
+        ['GET', `/Items/${id}/Images/Primary`],
+        ['GET', `/Videos/${id}/stream`],
+        [
+          'POST',
+          '/Sessions/Playing/Progress',
+          { ItemId: id, PositionTicks: 100 },
+        ],
+      ] as const) {
+        const response = await app.inject({
+          method,
+          url,
+          payload,
+          headers: auth(),
+        })
+        expect(response.statusCode, url).toBe(404)
+      }
+    }
+    expect(
+      (await app.inject({ url: `/Items/${episodeId}`, headers: auth() }))
+        .statusCode,
+    ).toBe(200)
+  }
+  finally {
+    db.update(profiles)
+      .set({ ageLimit: null })
+      .where(eq(profiles.id, profileId))
+      .run()
+  }
 })

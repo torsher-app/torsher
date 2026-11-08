@@ -1,3 +1,7 @@
+import {
+  folderWithLibrary,
+  playableMediaFile,
+} from '../services/library/folders.ts'
 import { stat } from 'node:fs/promises'
 import {
   getPlaybackPreferences,
@@ -39,7 +43,6 @@ import {
   stopSession,
   voiceOfTrack,
 } from '../services/media/index.ts'
-import { playableMediaFile } from '../services/library/folders.ts'
 import { fileProgressId } from '../services/library/index.ts'
 import { clearMovieWatchlist } from '../services/mine/index.ts'
 import { getProfile } from '../services/profiles/index.ts'
@@ -65,6 +68,12 @@ import {
 import { sessionVersionOf } from '../services/users/session.ts'
 import { signToken } from '../utils/token.ts'
 import { engineFailureOf, sendEngineError } from './engineResponses.ts'
+import { hasAgeLimit, titleAllowed } from '../services/profiles/access.ts'
+import { getMediaFile } from '../services/library/files.ts'
+import {
+  bindSessionProfile,
+  sessionAccessible,
+} from '../services/profiles/playbackAccess.ts'
 
 const guardResponses = {
   401: messageResponse,
@@ -83,7 +92,12 @@ function streamTokenOf(request: FastifyRequest) {
   return encodeURIComponent(
     request.deviceId
       ? signToken(subject, 'stream')
-      : signToken(subject, 'stream', sessionVersionOf(subject)),
+      : signToken(
+          subject,
+          'stream',
+          sessionVersionOf(subject),
+          request.profileId,
+        ),
   )
 }
 
@@ -274,6 +288,18 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
       let fileName: string
 
       if (mediaFileId) {
+        const actual = getMediaFile(mediaFileId)
+        if (
+          !(await titleAllowed(
+            request.profileId,
+            actual
+            && folderWithLibrary(actual.file.folderId)?.library.kind === 'home'
+              ? null
+              : actual?.file.titleId,
+          ))
+        ) {
+          return reply.code(404).send({ message: 'File not found' })
+        }
         const found = playableMediaFile(mediaFileId, request.profileId)
 
         const available
@@ -286,7 +312,10 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
         if (
           !found
           || !available?.isFile()
-          || (title && !parseCatalogId(title.id))
+          || (title
+            && (!parseCatalogId(title.id)
+              || (hasAgeLimit(request.profileId)
+                && title.id !== found.file.titleId)))
         ) {
           logRejection(request, 'file not found', { libraryId: mediaFileId })
           return reply.code(404).send({ message: 'File not found' })
@@ -320,7 +349,14 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
           fileIndex: fileIndex!,
         }
 
-        if (!found || !file || (title && !parseCatalogId(title.id))) {
+        if (
+          !found
+          || !file
+          || !(await titleAllowed(request.profileId, found.titleId))
+          || (title
+            && (!parseCatalogId(title.id)
+              || (hasAgeLimit(request.profileId) && title.id !== found.titleId)))
+        ) {
           logRejection(request, 'file not found', fields)
           return reply.code(404).send({ message: 'File not found' })
         }
@@ -432,6 +468,7 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
           ?? (state ? resumePosition(state.position, state.duration) : null),
       }
 
+      bindSessionProfile(session, request.profileId)
       resumes.set(session, resume)
       if (preferenceOwner)
         preferenceOwners.set(session, preferenceOwner)
@@ -482,8 +519,14 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
     async (request, reply) => {
       const session = getSession(request.params.id, streamSubjectOf(request))
       const owner = session && preferenceOwners.get(session)
-      if (!session || !owner || owner.profileId !== request.profileId)
+      if (
+        !session
+        || !sessionAccessible(session, request.profileId)
+        || !owner
+        || owner.profileId !== request.profileId
+      ) {
         return reply.code(404).send({ message: 'Playback not found' })
+      }
       if (session.status !== 'ready' || !session.media) {
         return reply
           .code(409)
@@ -532,7 +575,7 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
     async (request, reply) => {
       const session = getSession(request.params.id, streamSubjectOf(request))
 
-      if (!session)
+      if (!session || !sessionAccessible(session, request.profileId))
         return reply.code(404).send({ message: 'Playback not found' })
 
       // Статус — пульс плеера: пока он идёт, раздача считается используемой,
@@ -591,7 +634,7 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
     async (request, reply) => {
       const session = getSession(request.params.id, streamSubjectOf(request))
 
-      if (!session)
+      if (!session || !sessionAccessible(session, request.profileId))
         return reply.code(404).send({ message: 'Playback not found' })
 
       const { error, mediaError, detail, position } = request.body
@@ -634,7 +677,7 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
     async (request, reply) => {
       const session = getSession(request.params.id, streamSubjectOf(request))
 
-      if (!session)
+      if (!session || !sessionAccessible(session, request.profileId))
         return reply.code(404).send({ message: 'Playback not found' })
 
       let result
@@ -680,11 +723,32 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
       },
     },
     async (request, reply) => {
+      // The player can close its session before its final progress write.
+      // Its captured profile still prevents a late write after switching viewers.
+      if (
+        request.body.profileId
+        && request.body.profileId !== request.profileId
+      ) {
+        return reply.code(404).send({ message: 'Playback not found' })
+      }
       const context = diagnosticContext(request)
       const { torrentId, fileIndex, mediaFileId, position, duration }
         = request.body
       let { title } = request.body
       const torrent = torrentId ? getTorrent(torrentId) : undefined
+      const actualFile = mediaFileId ? getMediaFile(mediaFileId) : undefined
+      const actualTitleId = mediaFileId
+        ? actualFile
+        && folderWithLibrary(actualFile.file.folderId)?.library.kind === 'home'
+          ? null
+          : actualFile?.file.titleId
+        : torrent?.titleId
+      if (
+        !(await titleAllowed(request.profileId, actualTitleId))
+        || (title && hasAgeLimit(request.profileId) && title.id !== actualTitleId)
+      ) {
+        return reply.code(404).send({ message: 'File not found' })
+      }
       const library = mediaFileId
         ? playableMediaFile(mediaFileId, request.profileId)
         : undefined

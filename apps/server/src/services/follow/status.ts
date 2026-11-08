@@ -100,11 +100,7 @@ export function followStatus(
 ): FollowStatus {
   const season = statusSeason(follow, states)
   const voice = seasonVoice(follow, season)
-  const targets = waitTargets(follow.id)
-  const waiting = states
-    .filter(item => item.state === 'waiting' && item.waitUntil)
-    .sort((a, b) => a.waitUntil!.getTime() - b.waitUntil!.getTime())[0]
-  const target = waiting && targets.get(episodeKey(waiting))
+  const waiting = waitingStatus(follow.id, states)
   const count = (state: EpisodeWithState['state']) =>
     states.filter(item => item.state === state).length
 
@@ -115,14 +111,7 @@ export function followStatus(
       ? { ...voice, pinned: !!getPinnedVoice(follow.titleId, season) }
       : null,
     quality: seasonQuality(follow, season),
-    waiting: waiting
-      ? {
-          season: waiting.season,
-          episode: waiting.episode,
-          ...target,
-          until: waiting.waitUntil!.toISOString(),
-        }
-      : null,
+    waiting: waiting ?? null,
     counts: {
       downloading: count('downloading'),
       noSpace: count('no_space'),
@@ -131,5 +120,25 @@ export function followStatus(
       ready: count('ready'),
     },
     first: firstEpisodes(states),
+  }
+}
+
+/** Ближайшее ожидание и снимок именно выбранного кандидата, общий для клиентов */
+export function waitingStatus(followId: string, states: EpisodeWithState[]) {
+  const waiting = states
+    .filter(item => item.state === 'waiting' && item.waitUntil)
+    .sort(
+      (a, b) =>
+        a.waitUntil!.getTime() - b.waitUntil!.getTime()
+        || compareEpisodes(a, b),
+    )[0]
+  if (!waiting)
+    return undefined
+
+  return {
+    season: waiting.season,
+    episode: waiting.episode,
+    ...waitTargets(followId).get(episodeKey(waiting)),
+    until: waiting.waitUntil!.toISOString(),
   }
 }

@@ -120,6 +120,7 @@ const {
   status,
   items,
   total,
+  totalIsApproximate,
   error,
   hasMore,
   moreFailed,
@@ -145,7 +146,7 @@ const isEmpty = computed(
 const count = ref<number>()
 
 watch(resets, () => {
-  count.value = total.value
+  count.value = totalIsApproximate.value ? undefined : total.value
 })
 
 // TMDB отдаёт не больше 500 страниц по 20, а на большой выборке вместо точного
@@ -791,6 +792,12 @@ onBeforeUnmount(() => {
         :edges="{ left: RAIL_SECTION, up: 'catalog-controls' }"
       >
         <ScreenState kind="catalogEmpty">
+          <ActionButton
+            v-if="hasMore"
+            v-focusable
+            :label="t('catalog.nextPage')"
+            @click="loadMore"
+          />
           <ActionButton
             v-if="changed"
             v-focusable
