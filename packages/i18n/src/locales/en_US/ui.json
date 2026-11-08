@@ -2502,7 +2502,7 @@
       "title": "Collections",
       "add": "New collection",
       "actions": "Actions: {name}",
-      "edit": "Rename",
+      "edit": "Edit",
       "titles": "{n} title | {n} titles",
       "onHome": "On home",
       "visibleToAll": "visible to all profiles",
