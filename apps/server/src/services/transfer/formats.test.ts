@@ -2,7 +2,13 @@ import { Buffer } from 'node:buffer'
 import { describe, expect, it } from 'vitest'
 import { parseCsv } from './csv.ts'
 import { buildZip } from './fixtures/zip.ts'
-import { ImportFormatError, parseImportFiles } from './formats.ts'
+import {
+  ImportFormatError,
+  MAX_IMPORT_BYTES,
+  MAX_IMPORT_ROWS,
+  parseImportFiles,
+} from './formats.ts'
+import { looksLikeExport } from './document.ts'
 import { readZip, ZipError } from './zip.ts'
 
 function file(name: string, content: string | Buffer) {
@@ -229,5 +235,89 @@ describe('parseImportFiles', () => {
         ]),
       ),
     ).toBe('empty')
+  })
+})
+
+describe('общий файл отметок тайтлов', () => {
+  const entry = {
+    list: 'watched',
+    title: 'Synthetic Beacon',
+    kind: 'series',
+    year: 2020,
+    tmdbId: 9901,
+  }
+  const document = (entries: unknown[], version: unknown = 1) =>
+    JSON.stringify({ format: 'torsher-import', version, entries })
+  const parse = (text: string) =>
+    parseImportFiles([file('watched.json', text)])
+
+  it('читает только title-level отметки и отличает их от native export и Trakt', () => {
+    const text = document([
+      entry,
+      {
+        list: 'watched',
+        title: 'torsher-export',
+        kind: 'movie',
+        originalTitle: 'Synthetic Light',
+        imdbId: 'tt9000001',
+      },
+    ])
+    expect(looksLikeExport(text)).toBe(false)
+    expect(parse(text)).toEqual({
+      sources: ['torsher'],
+      skipped: 0,
+      entries: [
+        { ...entry, source: 'torsher' },
+        expect.objectContaining({
+          kind: 'movie',
+          source: 'torsher',
+          list: 'watched',
+        }),
+      ],
+    })
+  })
+
+  it('отклоняет неподдерживаемые версии, malformed и поля истории вместо ложного empty', () => {
+    expect(formatError(() => parse(document([entry], 2)))).toBe('newerVersion')
+    for (const version of [0, '1', null]) {
+      expect(formatError(() => parse(document([entry], version)))).toBe(
+        'broken',
+      )
+    }
+    for (const invalid of [
+      { ...entry, title: '  ' },
+      { ...entry, kind: 'episode' },
+      { ...entry, rating: 8 },
+      { ...entry, at: '2020-01-01' },
+      { ...entry, episode: 1 },
+      { ...entry, tmdbId: -1 },
+      { ...entry, list: 'watchlist' },
+    ])
+      expect(formatError(() => parse(document([invalid])))).toBe('broken')
+    expect(formatError(() => parse('{"format":"torsher-import",'))).toBe(
+      'broken',
+    )
+    expect(formatError(() => parse(document([])))).toBe('empty')
+  })
+
+  it('соблюдает общие пределы строк и байтов', () => {
+    expect(
+      parse(document(Array.from({ length: MAX_IMPORT_ROWS }).fill(entry)))
+        .entries,
+    ).toHaveLength(MAX_IMPORT_ROWS)
+    expect(
+      formatError(() =>
+        parse(
+          document(Array.from({ length: MAX_IMPORT_ROWS + 1 }).fill(entry)),
+        ),
+      ),
+    ).toBe('tooMany')
+    expect(
+      formatError(() =>
+        parseImportFiles([
+          file('watched.json', Buffer.alloc(MAX_IMPORT_BYTES + 1)),
+        ]),
+      ),
+    ).toBe('tooLarge')
   })
 })

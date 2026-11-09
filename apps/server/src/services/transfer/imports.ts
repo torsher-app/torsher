@@ -312,7 +312,10 @@ function groupEntries(job: ImportJob): Grouped {
         current.ratedAt = entry.at
       }
     }
-    else {
+    else if (entry.list === 'watched') {
+      current.watchedMarkedAt = null
+    }
+    else if (entry.list === 'watchlist') {
       const at = entry.at ?? null
 
       if (current.watchlistAt === undefined)
@@ -361,6 +364,7 @@ export interface ImportPreview {
   sources: ImportSource[]
   ratings: { new: number, same: number, conflicts: number }
   watchlist: { new: number, same: number }
+  watched: { new: number, same: number }
   unsure: number
   notFound: number
   skipped: number
@@ -379,6 +383,7 @@ function documentPreviewOf(job: ImportJob, document: ProfileRows) {
     sources: job.sources,
     ratings: counts.ratings,
     watchlist: counts.watchlist,
+    watched: counts.watched,
     unsure: 0,
     notFound: 0,
     skipped: counts.skipped,
@@ -401,6 +406,7 @@ function previewOf(job: ImportJob): ImportPreview {
     sources: job.sources,
     ratings: { new: 0, same: 0, conflicts: 0 },
     watchlist: { new: 0, same: 0 },
+    watched: { new: 0, same: 0 },
     unsure: unmatched.filter(item => item.result.status === 'unsure').length,
     notFound: unmatched.filter(item => item.result.status === 'notFound')
       .length,
@@ -435,9 +441,19 @@ function previewOf(job: ImportJob): ImportPreview {
       }
     }
 
+    if (incoming.watchedMarkedAt !== undefined) {
+      if (current?.watchedMarkedAt)
+        preview.watched.same++
+      else preview.watched.new++
+    }
+
     if (incoming.watchlistAt !== undefined) {
       const rated
-        = incoming.kind === 'movie' && (current?.rating || incoming.rating)
+        = incoming.kind === 'movie'
+          && (current?.rating
+            || incoming.rating
+            || current?.watchedMarkedAt
+            || incoming.watchedMarkedAt !== undefined)
 
       if (current?.watchlistAt || rated)
         preview.watchlist.same++
@@ -480,6 +496,7 @@ function undoValues(row: ProfileTitle | undefined): ImportUndoEntry['before'] {
     rating: row.rating,
     ratedAt: row.ratedAt?.getTime() ?? null,
     droppedAt: row.droppedAt?.getTime() ?? null,
+    watchedMarkedAt: row.watchedMarkedAt?.getTime() ?? null,
     updatedAt: row.updatedAt.getTime(),
   }
 }
@@ -699,6 +716,12 @@ export function undoImport(profileId: string, id: string) {
             rating: before.rating,
             ratedAt: before.ratedAt ? new Date(before.ratedAt) : null,
             droppedAt: before.droppedAt ? new Date(before.droppedAt) : null,
+            watchedMarkedAt:
+              before.watchedMarkedAt === undefined
+                ? current.watchedMarkedAt
+                : before.watchedMarkedAt === null
+                  ? null
+                  : new Date(before.watchedMarkedAt),
           },
           new Date(before.updatedAt),
         )
@@ -828,7 +851,9 @@ export function matchUnmatchedRow(
     kind: kindOfTitle(titleId),
     ...(row.list === 'rating'
       ? { rating: row.rating ?? undefined, ratedAt: row.at ?? undefined }
-      : { watchlistAt: row.at }),
+      : row.list === 'watchlist'
+        ? { watchlistAt: row.at }
+        : { watchedMarkedAt: null }),
   }
   const db = getDb()
 
@@ -836,8 +861,16 @@ export function matchUnmatchedRow(
     const current = currentRows(profileId, [titleId]).get(titleId)
     const next = mergeMine(current, incoming, conflicts, now)
 
-    if (next)
-      writeMine(profileId, titleId, next, now)
+    if (next) {
+      writeMine(
+        profileId,
+        titleId,
+        next,
+        new Date(
+          Math.max(now.getTime(), (current?.updatedAt.getTime() ?? -1) + 1),
+        ),
+      )
+    }
 
     tx.delete(profileImportRows).where(eq(profileImportRows.id, rowId)).run()
   })

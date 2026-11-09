@@ -1,0 +1,1 @@
+ALTER TABLE `profile_titles` ADD `watched_marked_at` integer;

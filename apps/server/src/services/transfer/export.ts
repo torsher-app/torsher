@@ -190,6 +190,7 @@ function exportMine(
       rating: row.rating,
       ratedAt: iso(row.ratedAt),
       droppedAt: iso(row.droppedAt),
+      watchedMarkedAt: iso(row.watchedMarkedAt),
     }))
 }
 

@@ -13,6 +13,7 @@ function mine(values: Partial<MineValues>): MineValues {
     rating: null,
     ratedAt: null,
     droppedAt: null,
+    watchedMarkedAt: null,
     ...values,
   }
 }
@@ -159,4 +160,33 @@ describe('mergeMine', () => {
       ),
     ).toBeUndefined()
   })
+})
+
+it('отметки объединяются с прежним stamp, фильм уходит из «Позже», сериал сохраняет список', () => {
+  const incoming = { watchedMarkedAt: null }
+  const movie = mergeMine(
+    mine({ watchlistAt: old }),
+    { kind: 'movie', ...incoming },
+    'keep',
+    now,
+  )!
+  expect(movie).toMatchObject({
+    watchedMarkedAt: now,
+    watchlistAt: null,
+    rating: null,
+  })
+  expect(
+    mergeMine(movie, { kind: 'movie', ...incoming }, 'replace', newer),
+  ).toBeUndefined()
+  expect(
+    mergeMine(
+      mine({ watchlistAt: old }),
+      { kind: 'series', ...incoming },
+      'keep',
+      now,
+    ),
+  ).toMatchObject({ watchlistAt: old, watchedMarkedAt: now })
+  expect(
+    mergeMine(movie, { kind: 'movie', rating: 8 }, 'keep', newer),
+  ).toMatchObject({ watchedMarkedAt: now, rating: 8 })
 })

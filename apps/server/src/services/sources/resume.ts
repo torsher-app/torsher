@@ -11,6 +11,7 @@ import {
   unavailableTorrentFiles,
 } from '../library/folders.ts'
 import { droppedSince } from '../mine/index.ts'
+import { hasWatchedMark, watchedMarkedTitles } from '../mine/marks.ts'
 import { getTorrent } from '../torrents/index.ts'
 import { resumePosition } from '../torrents/playback.ts'
 import { titleFiles } from './files.ts'
@@ -106,7 +107,10 @@ export function nextAiredEpisode(
  * просмотра. Новый просмотр снимает отметку сам
  */
 export function excludedFromContinue(profileId: string): Set<string> {
-  return new Set(droppedSince(profileId).keys())
+  return new Set([
+    ...droppedSince(profileId).keys(),
+    ...watchedMarkedTitles(profileId),
+  ])
 }
 
 /** Файл серии в раздаче — по именам файлов, как экран «Файлы» */
@@ -174,6 +178,9 @@ export async function resumeTarget(
   loadSeasons: () => Promise<AiredSeason[] | undefined>,
   context?: DiagnosticContext,
 ): Promise<ResumeTarget | undefined> {
+  if (hasWatchedMark(profileId, titleId))
+    return undefined
+
   const last = lastTitleProgress(profileId, titleId)
 
   if (!last) {

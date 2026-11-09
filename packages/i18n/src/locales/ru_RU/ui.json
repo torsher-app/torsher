@@ -2609,7 +2609,7 @@
         "imdb": "IMDb",
         "letterboxd": "Letterboxd",
         "trakt": "Trakt",
-        "torsher": "экспорт Torsher"
+        "torsher": "Torsher"
       },
       "dialog": {
         "title": "Импорт в профиль",
@@ -2636,11 +2636,13 @@
         "undo": "Отменить импорт",
         "matchManually": "Сопоставить вручную",
         "done": "Готово",
-        "formatTorsher": "Экспорт профиля с другого сервера Torsher — файл .json: позиции, списки и оценки"
+        "formatTorsher": "Экспорт профиля Torsher или JSON с отметками тайтлов",
+        "watchedHint": "Отметки тайтлов не содержат прогресса серий и даты просмотра. Новый просмотр снимает отметку."
       },
       "preview": {
         "newRatings": "Новые оценки",
         "watchlist": "Новое в «Позже»",
+        "watched": "Новые отметки «Просмотрено»",
         "same": "Уже есть в профиле",
         "conflicts": "Оценка расходится с вашей",
         "unmatched": "Не сопоставлено",
@@ -2696,6 +2698,7 @@
         "titleShort": "Не сопоставлено",
         "group": "Строки из файлов · {n}",
         "rating": "★ {n}",
+        "watched": "Тайтл просмотрен",
         "watchlist": "Позже",
         "suggestion": "похоже на «{title}»",
         "notFound": "не нашлось в каталоге",
@@ -3341,7 +3344,7 @@
           "skip": "Не переносить"
         },
         "counts": {
-          "line": "Позиций: {progress} · оценок: {ratings} · «Позже»: {watchlist} · «Избранное»: {favorites}",
+          "line": "Позиций: {progress} · оценок: {ratings} · «Позже»: {watchlist} · «Избранное»: {favorites} · отметок просмотра: {watched}",
           "later": "Что изменится, покажет итог импорта",
           "skipped": "Профиль не переносится"
         },

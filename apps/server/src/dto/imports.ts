@@ -59,6 +59,9 @@ export const importPreview = z
       new: z.number().int(),
       same: z.number().int(),
     }),
+    watched: z
+      .object({ new: z.number().int(), same: z.number().int() })
+      .optional(),
     unsure: z.number().int(),
     notFound: z.number().int(),
     // Строки, которые не про тайтл: серии, игры, пустые
@@ -151,7 +154,7 @@ export const unmatchedImportQuery = z.object({
 export const unmatchedImportRow = z
   .object({
     id: z.string(),
-    list: z.enum(['rating', 'watchlist']),
+    list: z.enum(['rating', 'watchlist', 'watched']),
     status: z.enum(importRowStatuses),
     title: z.string(),
     year: z.number().int().nullable(),

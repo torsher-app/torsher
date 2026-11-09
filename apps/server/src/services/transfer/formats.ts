@@ -1,8 +1,9 @@
 import type { Buffer } from 'node:buffer'
+import { z } from 'zod'
 import { csvRecords } from './csv.ts'
 import { isZip, readZip, ZipError } from './zip.ts'
 
-// `torsher` — экспорт профиля другого сервера Torsher (transfer/document.ts)
+// `torsher` — общий файл импорта или экспорт профиля Torsher
 export const importSources = [
   'imdb',
   'letterboxd',
@@ -11,7 +12,7 @@ export const importSources = [
 ] as const
 
 export type ImportSource = (typeof importSources)[number]
-export type ImportList = 'rating' | 'watchlist'
+export type ImportList = 'rating' | 'watchlist' | 'watched'
 export type ImportKind = 'movie' | 'series'
 
 /**
@@ -352,6 +353,26 @@ function traktRows(name: string, items: unknown[]): Parsed {
   return { entries, skipped }
 }
 
+const torsherImport = z
+  .object({
+    format: z.literal('torsher-import'),
+    version: z.literal(1),
+    entries: z.array(
+      z
+        .object({
+          list: z.literal('watched'),
+          title: z.string().trim().min(1).max(500),
+          kind: z.enum(['movie', 'series']),
+          originalTitle: z.string().trim().min(1).max(500).optional(),
+          year: z.number().int().min(1870).max(2100).optional(),
+          tmdbId: z.number().int().positive().optional(),
+          imdbId: z.string().regex(IMDB_ID).optional(),
+        })
+        .strict(),
+    ),
+  })
+  .strict()
+
 function parseJson(name: string, text: string): Parsed {
   let value: unknown
 
@@ -360,6 +381,37 @@ function parseJson(name: string, text: string): Parsed {
   }
   catch {
     throw new ImportFormatError('broken', name)
+  }
+
+  if (
+    typeof value === 'object'
+    && value !== null
+    && 'format' in value
+    && value.format === 'torsher-import'
+  ) {
+    if (
+      'version' in value
+      && typeof value.version === 'number'
+      && value.version > 1
+    ) {
+      throw new ImportFormatError('newerVersion', name)
+    }
+
+    const parsed = torsherImport.safeParse(value)
+
+    if (!parsed.success)
+      throw new ImportFormatError('broken', name)
+
+    if (parsed.data.entries.length > MAX_IMPORT_ROWS)
+      throw new ImportFormatError('tooMany', name)
+
+    return {
+      entries: parsed.data.entries.map(entry => ({
+        ...entry,
+        source: 'torsher' as const,
+      })),
+      skipped: 0,
+    }
   }
 
   if (!Array.isArray(value))

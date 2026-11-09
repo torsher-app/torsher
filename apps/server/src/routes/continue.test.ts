@@ -1344,3 +1344,48 @@ it('records unavailable preference skips from actual file checks', async () => {
     rmSync(dir, { recursive: true, force: true })
   }
 })
+
+it('отметка тайтла скрывает обычный Continue, прямой resume и новые follow-серии без изменения эпизодов', async () => {
+  watched(SERIES, 2, 1, 600)
+  freshEpisodes.set(SERIES, {
+    season: 2,
+    episode: 2,
+    at: new Date(),
+    torrentId: 's2',
+    fileIndex: 1,
+  })
+  expect(
+    await resumeTarget(profileId, SERIES, async () => [
+      { number: 2, airedEpisodeCount: 4 },
+    ]),
+  ).toBeDefined()
+  getDb()
+    .insert(profileTitles)
+    .values({ profileId, titleId: SERIES, watchedMarkedAt: new Date() })
+    .run()
+  expect(
+    await resumeTarget(profileId, SERIES, async () => [
+      { number: 2, airedEpisodeCount: 4 },
+    ]),
+  ).toBeUndefined()
+  expect(await continueItems()).toEqual([])
+  const progress = await app.inject({
+    url: `/api/titles/${SERIES}/progress`,
+    cookies: owner,
+  })
+  expect(progress.statusCode).toBe(200)
+  expect(progress.json().resume).toBeNull()
+  expect(getDb().select().from(titleProgress).all()).toMatchObject([
+    { season: 2, episode: 1, position: 600, watchedAt: null },
+  ])
+  // Явно выбранную серию можно смотреть: общий writer снимает только aggregate.
+  saveTitleProgress(
+    { profileId, titleId: SERIES, season: 2, episode: 2 },
+    { position: 30, duration: EPISODE, torrentId: 's2', fileIndex: 1 },
+  )
+  expect(
+    await resumeTarget(profileId, SERIES, async () => [
+      { number: 2, airedEpisodeCount: 4 },
+    ]),
+  ).toMatchObject({ season: 2, episode: 2 })
+})

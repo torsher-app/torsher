@@ -53,6 +53,7 @@ import {
   maintenanceSuppressions,
   mediaFiles,
   profiles,
+  profileTitles,
   titleProgress,
   torrents,
 } from '../../db/schema.ts'
@@ -117,6 +118,7 @@ beforeEach(async () => {
     maintenanceGroups,
     maintenanceRules,
     titleProgress,
+    profileTitles,
     mediaFiles,
     follows,
     torrents,
@@ -356,6 +358,24 @@ async function mature() {
 }
 
 describe('maintenance executor', () => {
+  it('does not treat an imported title mark as watched files', async () => {
+    const f = await fixture()
+    db.delete(titleProgress).run()
+    db.insert(profileTitles)
+      .values({
+        profileId,
+        titleId: f.titleId,
+        watchedMarkedAt: new Date(now - 3 * DAY),
+      })
+      .run()
+    const preview = await previewMaintenance(
+      f.titleId,
+      maintenanceConfig(f.titleId).rule,
+      now,
+    )
+    expect(preview.groups[0]?.reasons).toContain('not_watched')
+  })
+
   it('previews the common rule without saving, lists only exceptions and guards return by both revisions', async () => {
     const request = (
       method: 'GET' | 'POST' | 'PATCH',

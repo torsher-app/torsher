@@ -6,7 +6,8 @@ import {
   PROFILE_COOKIE,
 } from '../config.ts'
 import { getDb, migrateDb } from '../db/index.ts'
-import { torrents } from '../db/schema.ts'
+import { profileTitles, torrents } from '../db/schema.ts'
+import { eq } from 'drizzle-orm'
 import {
   pairingPollLimiter,
   pairingStartLimiter,
@@ -370,6 +371,21 @@ describe('прогресс по профилям', () => {
     await select(tv, dropped.id)
     await saveProgress(tv, 50)
 
+    const mark = new Date('2026-11-09T10:00:00Z')
+    const existingMark = new Date('2026-11-08T10:00:00Z')
+    getDb()
+      .insert(profileTitles)
+      .values([
+        { profileId: from.id, titleId: 'tmdb:tv:9901', watchedMarkedAt: mark },
+        { profileId: from.id, titleId: 'tmdb:tv:9902', watchedMarkedAt: mark },
+        {
+          profileId: to.id,
+          titleId: 'tmdb:tv:9901',
+          watchedMarkedAt: existingMark,
+        },
+      ])
+      .run()
+
     const moved = await app.inject({
       method: 'DELETE',
       url: `/api/profiles/${from.id}?moveTo=${to.id}`,
@@ -377,6 +393,23 @@ describe('прогресс по профилям', () => {
     })
 
     expect(moved.statusCode).toBe(200)
+    const movedMarks = getDb()
+      .select()
+      .from(profileTitles)
+      .where(eq(profileTitles.profileId, to.id))
+      .all()
+    expect(movedMarks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          titleId: 'tmdb:tv:9901',
+          watchedMarkedAt: existingMark,
+        }),
+        expect.objectContaining({
+          titleId: 'tmdb:tv:9902',
+          watchedMarkedAt: mark,
+        }),
+      ]),
+    )
     await select(tv, to.id)
     expect(await progressOf(tv)).toBe(700)
 

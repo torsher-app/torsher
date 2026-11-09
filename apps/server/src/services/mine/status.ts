@@ -15,6 +15,7 @@ export interface StatusInput {
   progress: ProgressPoint[]
   rating?: number | null
   droppedAt?: Date | null
+  watchedMarkedAt?: Date | null
   // Только у сериала, из деталей TMDB
   seasons?: { number: number, airedEpisodeCount: number }[]
   ongoing?: boolean
@@ -62,6 +63,9 @@ export function watchedEpisodes(progress: ProgressPoint[]) {
 export function titleStatus(input: StatusInput): TitleStatus | null {
   if (isDropped(input.droppedAt, lastWatchedAt(input.progress)))
     return 'dropped'
+
+  if (input.watchedMarkedAt)
+    return 'watched'
 
   if (input.kind === 'movie') {
     const point = input.progress.find(item => item.season === 0)

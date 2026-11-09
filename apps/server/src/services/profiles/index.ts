@@ -228,6 +228,7 @@ export function deleteProfile(id: string, moveTo?: string) {
               watchlistAt: sql`coalesce(${profileTitles.watchlistAt}, excluded.watchlist_at)`,
               favoriteAt: sql`coalesce(${profileTitles.favoriteAt}, excluded.favorite_at)`,
               droppedAt: sql`coalesce(${profileTitles.droppedAt}, excluded.dropped_at)`,
+              watchedMarkedAt: sql`coalesce(${profileTitles.watchedMarkedAt}, excluded.watched_marked_at)`,
               rating: sql`case when excluded.rated_at > coalesce(${profileTitles.ratedAt}, 0) then excluded.rating else ${profileTitles.rating} end`,
               ratedAt: sql`case when excluded.rated_at > coalesce(${profileTitles.ratedAt}, 0) then excluded.rated_at else ${profileTitles.ratedAt} end`,
               updatedAt: row.updatedAt,

@@ -66,6 +66,7 @@ export const profileMergeCounts = z
       conflicts: z.number().int(),
     }),
     watchlist: newSame,
+    watched: newSame.optional(),
     favorites: newSame,
     dropped: newSame,
     skipped: z.number().int(),

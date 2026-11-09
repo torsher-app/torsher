@@ -23,6 +23,7 @@ import {
   libraryHiddenProfiles,
   mediaFiles,
   profiles,
+  profileTitles,
   titleProgress,
   torrents,
   users,
@@ -156,6 +157,7 @@ beforeEach(async () => {
     .run()
   getDb().delete(libraryHiddenProfiles).run()
   getDb().delete(titleProgress).run()
+  getDb().delete(profileTitles).run()
   const response = await login()
   expect(response.statusCode, response.body).toBe(200)
   token = response.json().AccessToken
@@ -572,6 +574,44 @@ describe('jellyfin library and direct play', () => {
 })
 
 describe('jellyfin shared progress', () => {
+  it('keeps title marks out of file Played/Resume/NextUp and clears them through real playback', async () => {
+    const db = getDb()
+    for (const titleId of ['tmdb:movie:900001', 'tmdb:tv:900002']) {
+      db.insert(profileTitles)
+        .values({ profileId, titleId, watchedMarkedAt: new Date() })
+        .run()
+    }
+    expect((await list(`/Items/${movieId}`)).UserData).toMatchObject({
+      Played: false,
+      PlaybackPositionTicks: 0,
+    })
+    expect((await list(`/Items/${episodeId}`)).UserData).toMatchObject({
+      Played: false,
+      PlaybackPositionTicks: 0,
+    })
+    expect((await list('/Items?Recursive=true&IsPlayed=true')).Items).toEqual(
+      [],
+    )
+    expect((await list('/Items/Resume')).Items).toEqual([])
+    const nextBefore = await list('/Shows/NextUp')
+    db.delete(profileTitles)
+      .where(eq(profileTitles.titleId, 'tmdb:tv:900002'))
+      .run()
+    expect(await list('/Shows/NextUp')).toEqual(nextBefore)
+    expect(db.select().from(titleProgress).all()).toEqual([])
+    const response = await app.inject({
+      method: 'POST',
+      url: '/Sessions/Playing/Progress',
+      headers: auth(),
+      payload: { ItemId: movieId, PositionTicks: 1_250_000_000 },
+    })
+    expect(response.statusCode).toBe(204)
+    expect(getMineRow(profileId, 'tmdb:movie:900001')).toBeUndefined()
+    expect(
+      getTitleProgress({ profileId, titleId: 'tmdb:movie:900001' })?.position,
+    ).toBe(125)
+  })
+
   it('preserves resume when Playing/Stopped omit position and shares native updates', async () => {
     saveTitleProgress(
       { profileId, titleId: 'tmdb:movie:900001' },

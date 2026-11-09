@@ -7,6 +7,7 @@ import type { VoiceRef } from './profile.ts'
 import { and, desc, eq, gt, inArray, isNotNull, or } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import { titleProgress } from '../../db/schema.ts'
+import { clearWatchedMark, watchedMarkedTitles } from '../mine/marks.ts'
 import { isWatched } from '../torrents/playback.ts'
 
 /** Тайтл и серия в прогрессе профиля; у фильма сезона и серии нет */
@@ -73,25 +74,30 @@ export function saveTitleProgress(
     ? { ...values, watchedAt: updatedAt, lastPlayedAt: updatedAt, updatedAt }
     : { ...values, lastPlayedAt: updatedAt, updatedAt }
 
-  const saved = getDb()
-    .insert(titleProgress)
-    .values({
-      profileId: ref.profileId,
-      titleId: ref.titleId,
-      ...keyOf(ref),
-      ...set,
-    })
-    .onConflictDoUpdate({
-      target: [
-        titleProgress.profileId,
-        titleProgress.titleId,
-        titleProgress.season,
-        titleProgress.episode,
-      ],
-      set,
-    })
-    .returning()
-    .get()
+  const saved = getDb().transaction(() => {
+    if (values.position > 0)
+      clearWatchedMark(ref.profileId, ref.titleId)
+
+    return getDb()
+      .insert(titleProgress)
+      .values({
+        profileId: ref.profileId,
+        titleId: ref.titleId,
+        ...keyOf(ref),
+        ...set,
+      })
+      .onConflictDoUpdate({
+        target: [
+          titleProgress.profileId,
+          titleProgress.titleId,
+          titleProgress.season,
+          titleProgress.episode,
+        ],
+        set,
+      })
+      .returning()
+      .get()
+  })
   recordCheckpoint('progress.saved', context, {
     ...ref,
     position: saved.position,
@@ -243,25 +249,30 @@ export function markWatched(ref: TitleRef, watched: boolean) {
     ? { position: 0, watchedAt: new Date() }
     : { position: 0, duration: null, watchedAt: null }
 
-  getDb()
-    .insert(titleProgress)
-    .values({
-      profileId: ref.profileId,
-      titleId: ref.titleId,
-      ...keyOf(ref),
-      ...values,
-    })
-    .onConflictDoUpdate({
-      target: [
-        titleProgress.profileId,
-        titleProgress.titleId,
-        titleProgress.season,
-        titleProgress.episode,
-      ],
-      // Время записи — время просмотра: отметка не делает серию «последней»
-      set: values,
-    })
-    .run()
+  getDb().transaction(() => {
+    if (!watched)
+      clearWatchedMark(ref.profileId, ref.titleId)
+
+    getDb()
+      .insert(titleProgress)
+      .values({
+        profileId: ref.profileId,
+        titleId: ref.titleId,
+        ...keyOf(ref),
+        ...values,
+      })
+      .onConflictDoUpdate({
+        target: [
+          titleProgress.profileId,
+          titleProgress.titleId,
+          titleProgress.season,
+          titleProgress.episode,
+        ],
+        // Время записи — время просмотра: отметка не делает серию «последней»
+        set: values,
+      })
+      .run()
+  })
 }
 
 /**
@@ -284,7 +295,12 @@ export function watchedTitles(profileId: string, titleIds: string[]) {
     )
     .all()
 
-  return new Set(rows.map(row => row.titleId))
+  const marked = watchedMarkedTitles(profileId)
+
+  return new Set([
+    ...rows.map(row => row.titleId),
+    ...titleIds.filter(id => marked.has(id)),
+  ])
 }
 
 /** Прогресс по сериям тайтла: полосы и отметки на карточке */

@@ -42,6 +42,7 @@ import {
 } from '../services/transfer/serverImport.ts'
 import { signToken } from '../utils/token.ts'
 import { readExportText } from './transfer.ts'
+import { parseExportDocument } from '../services/transfer/document.ts'
 import {
   encryptWithPassword,
   passwordKeyOf,
@@ -542,6 +543,95 @@ describe('profile import', () => {
     })
   }
 
+  it('round-trips title marks in profile v1, preserves old v1 compatibility and restores marks through profile undo', async () => {
+    const mark = at(5)
+    getDb()
+      .insert(profileTitles)
+      .values({ profileId: ANNA, titleId: SHOW, watchedMarkedAt: mark })
+      .run()
+    const body = await profileExport(ANNA)
+    const document = parseExportDocument(body)
+    expect(
+      document.mine.find(row => row.title === SHOW)?.watchedMarkedAt,
+    ).toBe(mark.toISOString())
+    const old = structuredClone(document)
+    for (const row of old.mine) delete row.watchedMarkedAt
+    expect(parseExportDocument(JSON.stringify(old)).version).toBe(1)
+    const job = (await upload(DAD, body)).json()
+    expect(job.preview.watched).toEqual({ new: 1, same: 0 })
+    const applied = await app.inject({
+      method: 'POST',
+      url: `/api/profiles/${DAD}/imports/${job.id}/apply`,
+      cookies: authed(),
+      payload: { conflicts: 'newer' },
+    })
+    expect(applied.statusCode).toBe(200)
+    expect(
+      getDb()
+        .select()
+        .from(profileTitles)
+        .where(
+          and(
+            eq(profileTitles.profileId, DAD),
+            eq(profileTitles.titleId, SHOW),
+          ),
+        )
+        .get()
+        ?.watchedMarkedAt,
+    ).toEqual(mark)
+    const repeat = (await upload(DAD, body)).json()
+    expect(repeat.preview.watched).toEqual({ new: 0, same: 1 })
+    const undone = await app.inject({
+      method: 'POST',
+      url: `/api/profiles/${DAD}/imports/${applied.json().id}/undo`,
+      cookies: authed(),
+    })
+    expect(undone.statusCode).toBe(200)
+    expect(
+      getDb()
+        .select()
+        .from(profileTitles)
+        .where(
+          and(
+            eq(profileTitles.profileId, DAD),
+            eq(profileTitles.titleId, SHOW),
+          ),
+        )
+        .get(),
+    ).toBeUndefined()
+    // The profileData undo serializer must also preserve a pre-existing mark.
+    getDb()
+      .insert(profileTitles)
+      .values({ profileId: DAD, titleId: SHOW, watchedMarkedAt: at(2) })
+      .run()
+    document.mine.find(row => row.title === SHOW)!.favoriteAt
+      = at(6).toISOString()
+    const next = (await upload(DAD, JSON.stringify(document))).json()
+    const nextApplied = await app.inject({
+      method: 'POST',
+      url: `/api/profiles/${DAD}/imports/${next.id}/apply`,
+      cookies: authed(),
+      payload: { conflicts: 'newer' },
+    })
+    await app.inject({
+      method: 'POST',
+      url: `/api/profiles/${DAD}/imports/${nextApplied.json().id}/undo`,
+      cookies: authed(),
+    })
+    expect(
+      getDb()
+        .select()
+        .from(profileTitles)
+        .where(
+          and(
+            eq(profileTitles.profileId, DAD),
+            eq(profileTitles.titleId, SHOW),
+          ),
+        )
+        .get(),
+    ).toMatchObject({ watchedMarkedAt: at(2), favoriteAt: null })
+  })
+
   it('merges a profile export into another profile and undoes it', async () => {
     const body = await profileExport(ANNA)
     const res = await upload(DAD, body)
@@ -817,4 +907,32 @@ describe('imported Torznab cookie validation', () => {
     const body = await exportServer({ password: 'export-password-1' })
     expect((await preview(body, 'export-password-1')).statusCode).toBe(200)
   })
+})
+
+it('server transfer previews and restores title marks without changing progress', async () => {
+  const mark = at(5)
+  getDb()
+    .insert(profileTitles)
+    .values({ profileId: ANNA, titleId: SHOW, watchedMarkedAt: mark })
+    .run()
+  const body = await exportServer()
+  getDb().delete(profileTitles).where(eq(profileTitles.titleId, SHOW)).run()
+  const positions = getDb().select().from(titleProgress).all()
+  const imported = await importServer(body)
+  expect(
+    imported.preview.profiles.find(
+      (row: { name: string }) => row.name === 'Аня',
+    ).counts.watched,
+  ).toEqual({ new: 1, same: 0 })
+  expect(
+    getDb()
+      .select()
+      .from(profileTitles)
+      .where(
+        and(eq(profileTitles.profileId, ANNA), eq(profileTitles.titleId, SHOW)),
+      )
+      .get()
+      ?.watchedMarkedAt,
+  ).toEqual(mark)
+  expect(getDb().select().from(titleProgress).all()).toEqual(positions)
 })
