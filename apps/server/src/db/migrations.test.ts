@@ -640,3 +640,59 @@ describe('torznab session cookie migration', () => {
     }
   })
 })
+
+describe('миграция отметки тайтла без эпизодов', () => {
+  it('добавляет nullable поле и сохраняет прежние данные при повторном запуске', () => {
+    const idx = journal.entries.findIndex(entry =>
+      readFileSync(join(MIGRATIONS_DIR, `${entry.tag}.sql`), 'utf8').includes(
+        'ADD `watched_marked_at`',
+      ),
+    )
+    expect(idx).toBeGreaterThan(0)
+    const sqlite = new Database(':memory:')
+    try {
+      const db = drizzle(sqlite)
+      migrate(db, { migrationsFolder: migrationsBefore(idx) })
+      sqlite.exec(
+        'INSERT INTO profiles (id,name,color,position,created_at) VALUES (\'watched-profile\',\'Synthetic\',\'violet\',0,1000)',
+      )
+      sqlite.exec(
+        'INSERT INTO profile_titles (profile_id,title_id,rating,rated_at,watchlist_at,updated_at) VALUES (\'watched-profile\',\'tmdb:tv:9901\',8,900,800,1000)',
+      )
+      sqlite.exec(
+        'INSERT INTO title_progress (profile_id,title_id,season,episode,position,watched_at,updated_at) VALUES (\'watched-profile\',\'tmdb:tv:9901\',1,1,42,900,1000)',
+      )
+      migrate(db, { migrationsFolder: MIGRATIONS_DIR })
+      const read = () =>
+        sqlite
+          .prepare(
+            'SELECT rating,rated_at,watchlist_at,updated_at,watched_marked_at FROM profile_titles',
+          )
+          .get()
+      expect(read()).toEqual({
+        rating: 8,
+        rated_at: 900,
+        watchlist_at: 800,
+        updated_at: 1000,
+        watched_marked_at: null,
+      })
+      sqlite.exec('UPDATE profile_titles SET watched_marked_at = 2000')
+      migrate(db, { migrationsFolder: MIGRATIONS_DIR })
+      expect(read()).toEqual({
+        rating: 8,
+        rated_at: 900,
+        watchlist_at: 800,
+        updated_at: 1000,
+        watched_marked_at: 2000,
+      })
+      expect(
+        sqlite
+          .prepare('SELECT position,watched_at,updated_at FROM title_progress')
+          .get(),
+      ).toEqual({ position: 42, watched_at: 900, updated_at: 1000 })
+    }
+    finally {
+      sqlite.close()
+    }
+  })
+})

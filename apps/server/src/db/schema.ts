@@ -588,6 +588,8 @@ export const profileTitles = sqliteTable(
     ratedAt: integer('rated_at', { mode: 'timestamp_ms' }),
     // Действует, пока после него нет нового просмотра тайтла
     droppedAt: integer('dropped_at', { mode: 'timestamp_ms' }),
+    // Время создания отметки тайтла, а не дата просмотра
+    watchedMarkedAt: integer('watched_marked_at', { mode: 'timestamp_ms' }),
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
       .notNull()
       .$defaultFn(() => new Date()),
@@ -622,6 +624,7 @@ export interface ImportUndoEntry {
     rating: number | null
     ratedAt: number | null
     droppedAt: number | null
+    watchedMarkedAt?: number | null
     updatedAt: number
   } | null
 }
@@ -691,7 +694,7 @@ export const profileImportRows = sqliteTable(
     profileId: text('profile_id')
       .notNull()
       .references(() => profiles.id, { onDelete: 'cascade' }),
-    list: text('list', { enum: ['rating', 'watchlist'] }).notNull(),
+    list: text('list', { enum: ['rating', 'watchlist', 'watched'] }).notNull(),
     status: text('status', { enum: importRowStatuses }).notNull(),
     title: text('title').notNull(),
     year: integer('year'),

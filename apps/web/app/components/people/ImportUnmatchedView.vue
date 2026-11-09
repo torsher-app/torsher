@@ -60,7 +60,9 @@ function meta(row: UnmatchedImportRow) {
   const what
     = row.list === 'rating'
       ? t('panel.imports.unmatched.rating', { n: row.rating })
-      : t('panel.imports.unmatched.watchlist')
+      : row.list === 'watched'
+        ? t('panel.imports.unmatched.watched')
+        : t('panel.imports.unmatched.watchlist')
   const status = row.suggestion
     ? t('panel.imports.unmatched.suggestion', {
         title: [row.suggestion.title, row.suggestion.year]

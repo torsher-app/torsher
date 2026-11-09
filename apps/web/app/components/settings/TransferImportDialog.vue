@@ -424,6 +424,7 @@ const policies: Policy[] = ['newer', 'keep', 'replace']
                       + profile.counts.progress.updated,
                     ratings: profile.counts.ratings.new,
                     watchlist: profile.counts.watchlist.new,
+                    watched: profile.counts.watched?.new ?? 0,
                     favorites: profile.counts.favorites.new,
                   })
                 }}

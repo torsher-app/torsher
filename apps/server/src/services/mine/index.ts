@@ -23,6 +23,7 @@ import { episodeProgress, markWatched } from '../sources/progress.ts'
 import { parseCatalogId } from '../tmdb/mappers.ts'
 import { cardsOf, summariesOf, summaryOf } from './cards.ts'
 import { ratingsOf } from './posterRatings.ts'
+import { clearWatchedMark } from './marks.ts'
 import { isDropped, lastWatchedAt, titleStatus } from './status.ts'
 import { filterTitles } from '../profiles/access.ts'
 
@@ -59,7 +60,13 @@ export function getMineRow(profileId: string, titleId: string) {
 }
 
 function isEmpty(row: ProfileTitle) {
-  return !row.watchlistAt && !row.favoriteAt && !row.rating && !row.droppedAt
+  return (
+    !row.watchlistAt
+    && !row.favoriteAt
+    && !row.rating
+    && !row.droppedAt
+    && !row.watchedMarkedAt
+  )
 }
 
 function stamp(on: boolean | undefined, current: Date | null, now: Date) {
@@ -81,10 +88,11 @@ export function updateMine(
   assertMaintenancePolicyChange({ titleId })
 
   const db = getDb()
-  const now = new Date()
-
   return db.transaction(() => {
     const current = getMineRow(profileId, titleId)
+    const now = new Date(
+      Math.max(Date.now(), (current?.updatedAt.getTime() ?? -1) + 1),
+    )
     const rating
       = patch.rating === undefined ? (current?.rating ?? null) : patch.rating
     const ratedNow = patch.rating !== undefined && patch.rating !== null
@@ -111,6 +119,7 @@ export function updateMine(
           : patch.dropped
             ? now
             : null,
+      watchedMarkedAt: current?.watchedMarkedAt ?? null,
       updatedAt: now,
     }
 
@@ -231,6 +240,7 @@ function stateOf(
       progress,
       rating: mine?.rating,
       droppedAt: mine?.droppedAt,
+      watchedMarkedAt: mine?.watchedMarkedAt,
       seasons: summary?.details.seasons,
       ongoing: summary?.details.ongoing,
       lastAired: summary?.airing?.last,
@@ -325,6 +335,9 @@ export async function markTitleWatched(
   }
 
   if (!watched) {
+    assertMaintenancePolicyChange({ titleId })
+    clearWatchedMark(profileId, titleId)
+
     for (const point of episodeProgress(profileId, titleId)) {
       markWatched(
         { profileId, titleId, season: point.season, episode: point.episode },
@@ -372,8 +385,11 @@ function statusEntries(states: TitleState[], status: TitleStatus) {
     .map(state => ({
       titleId: state.titleId,
       at:
-        (status === 'dropped' ? state.mine?.droppedAt : state.lastAt)
-        ?? new Date(0),
+        (status === 'dropped'
+          ? state.mine?.droppedAt
+          : status === 'watched'
+            ? (state.mine?.watchedMarkedAt ?? state.lastAt)
+            : state.lastAt) ?? new Date(0),
     }))
 }
 
@@ -383,6 +399,14 @@ function listEntries(profileId: string, field: 'watchlistAt' | 'favoriteAt') {
 
     return at ? [{ titleId: row.titleId, at }] : []
   })
+}
+
+function ratingEntries(profileId: string): Entry[] {
+  return [...mineRows(profileId).values()].flatMap(row =>
+    row.rating !== null
+      ? [{ titleId: row.titleId, at: row.ratedAt ?? new Date(0) }]
+      : [],
+  )
 }
 
 // «Продолжить» в «Моё» — всё, что профиль смотрит сейчас; ряд главной строит свой срез
@@ -402,6 +426,8 @@ async function sectionEntries(
       return listEntries(profileId, 'watchlistAt')
     case 'favorites':
       return listEntries(profileId, 'favoriteAt')
+    case 'ratings':
+      return ratingEntries(profileId)
     case 'collection': {
       if (!query.collection || !isVisibleTo(query.collection, profileId))
         throw new MineNotFoundError('Collection not found')
@@ -497,6 +523,16 @@ export async function mineSections(profileId: string, language: string) {
         await filterTitles(
           profileId,
           listEntries(profileId, 'favoriteAt'),
+          item => item.titleId,
+        )
+      ).length,
+    },
+    {
+      id: 'ratings' as const,
+      count: (
+        await filterTitles(
+          profileId,
+          ratingEntries(profileId),
           item => item.titleId,
         )
       ).length,

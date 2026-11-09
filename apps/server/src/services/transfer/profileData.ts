@@ -35,6 +35,7 @@ export interface ProfileMergeCounts {
   progress: { new: number, updated: number, same: number }
   ratings: { new: number, same: number, conflicts: number }
   watchlist: { new: number, same: number }
+  watched: { new: number, same: number }
   favorites: { new: number, same: number }
   dropped: { new: number, same: number }
   // Тайтлы не из каталога и файлы библиотеки, которых нет на сервере
@@ -65,6 +66,7 @@ function emptyCounts(): ProfileMergeCounts {
     progress: { new: 0, updated: 0, same: 0 },
     ratings: { new: 0, same: 0, conflicts: 0 },
     watchlist: { new: 0, same: 0 },
+    watched: { new: 0, same: 0 },
     favorites: { new: 0, same: 0 },
     dropped: { new: 0, same: 0 },
     skipped: 0,
@@ -184,6 +186,9 @@ function incomingMine(rows: ExportMine[]) {
       watchlistAt: row.watchlistAt ? new Date(row.watchlistAt) : undefined,
       favoriteAt: date(row.favoriteAt),
       droppedAt: date(row.droppedAt),
+      watchedMarkedAt: row.watchedMarkedAt
+        ? new Date(row.watchedMarkedAt)
+        : undefined,
     })
   }
 
@@ -305,6 +310,12 @@ function countMine(
     else counts.watchlist.same++
   }
 
+  if (incoming.watchedMarkedAt !== undefined) {
+    if (!current?.watchedMarkedAt)
+      counts.watched.new++
+    else counts.watched.same++
+  }
+
   if (incoming.favoriteAt) {
     if (!current?.favoriteAt)
       counts.favorites.new++
@@ -383,6 +394,7 @@ function mineUndo(titleId: string, row?: ProfileTitle): ImportUndoEntry {
           rating: row.rating,
           ratedAt: row.ratedAt?.getTime() ?? null,
           droppedAt: row.droppedAt?.getTime() ?? null,
+          watchedMarkedAt: row.watchedMarkedAt?.getTime() ?? null,
           updatedAt: row.updatedAt.getTime(),
         }
       : null,

@@ -114,3 +114,24 @@ describe('titleStatus', () => {
     expect(isDropped(day(10), day(10))).toBe(true)
   })
 })
+
+it('отметка тайтла даёт watched даже идущему сериалу, действующее dropped приоритетнее', () => {
+  for (const kind of ['movie', 'series'] as const) {
+    const input = {
+      kind,
+      progress: [],
+      watchedMarkedAt: day(11),
+      ongoing: true,
+      seasons,
+    }
+    expect(titleStatus(input)).toBe('watched')
+    expect(titleStatus({ ...input, droppedAt: day(10) })).toBe('dropped')
+    expect(
+      titleStatus({
+        ...input,
+        droppedAt: day(10),
+        progress: [started(1, 1, day(12))],
+      }),
+    ).toBe('watched')
+  }
+})

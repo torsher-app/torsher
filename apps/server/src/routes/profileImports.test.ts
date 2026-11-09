@@ -1,4 +1,6 @@
+import type { ImportUndoEntry } from '../db/schema.ts'
 import { Buffer } from 'node:buffer'
+import { and, eq } from 'drizzle-orm'
 import {
   afterEach,
   beforeAll,
@@ -16,6 +18,8 @@ import {
   profileImports,
   profileTitles,
   titleExternalIds,
+  titleProgress,
+  torrents,
   users,
 } from '../db/schema.ts'
 import { movie } from '../services/tmdb/fixtures/index.ts'
@@ -27,6 +31,20 @@ import {
   UNDO_WINDOW_MS,
 } from '../services/transfer/imports.ts'
 import { signToken } from '../utils/token.ts'
+import {
+  getTitleMine,
+  markTitleWatched,
+  updateMine,
+} from '../services/mine/index.ts'
+import { lastWatchedAt } from '../services/mine/status.ts'
+import {
+  getTitleProgress,
+  markWatched,
+  rememberChoice,
+  rememberVoice,
+  saveTitleProgress,
+  watchedTitles,
+} from '../services/sources/progress.ts'
 
 const app = createApp()
 const fetchMock = vi.fn<typeof fetch>()
@@ -184,6 +202,7 @@ beforeEach(() => {
 
   const db = getDb()
 
+  db.delete(titleProgress).run()
   db.delete(profileTitles).run()
   db.delete(profileImports).run()
   db.delete(metaCache).run()
@@ -388,4 +407,261 @@ describe('/api/profiles/:id/imports', () => {
     })
     expect(res.json().last).toBeNull()
   })
+})
+
+const WATCHED_MOVIE = 'tmdb:movie:9001'
+const WATCHED_SERIES = 'tmdb:tv:9002'
+function watchedFile(
+  entries: unknown[] = [
+    { list: 'watched', title: 'Synthetic Harbor', kind: 'movie', tmdbId: 9001 },
+    { list: 'watched', title: 'Synthetic Ward', kind: 'series', tmdbId: 9002 },
+  ],
+) {
+  return {
+    name: 'watched.json',
+    data: JSON.stringify({ format: 'torsher-import', version: 1, entries }),
+  }
+}
+function undo(id: string) {
+  return app.inject({
+    method: 'POST',
+    url: `/api/profiles/${profileId}/imports/${id}/undo`,
+    cookies: authed(),
+  })
+}
+
+describe('импорт title-level watched', () => {
+  it('смешивает списки по тайтлу, не создаёт эпизоды, повтор сохраняет stamp, ручное сопоставление вне undo', async () => {
+    updateMine(profileId, WATCHED_MOVIE, { watchlist: true })
+    const files = [
+      watchedFile([
+        {
+          list: 'watched',
+          title: 'Synthetic Harbor',
+          kind: 'movie',
+          tmdbId: 9001,
+        },
+        {
+          list: 'watched',
+          title: 'Synthetic Harbor',
+          kind: 'movie',
+          tmdbId: 9001,
+        },
+        {
+          list: 'watched',
+          title: 'Synthetic Ward',
+          kind: 'series',
+          tmdbId: 9002,
+        },
+        { list: 'watched', title: 'Unknown Synthetic Mark', kind: 'series' },
+      ]),
+      { name: 'ratings.csv', data: IMDB_CSV },
+      {
+        name: 'watchlist.json',
+        data: JSON.stringify([
+          {
+            type: 'movie',
+            movie: { title: 'Synthetic Harbor', ids: { tmdb: 9001 } },
+          },
+          {
+            type: 'show',
+            show: { title: 'Synthetic Ward', ids: { tmdb: 9002 } },
+          },
+        ]),
+      },
+    ]
+    let job = await readyJob(files)
+    expect(job.preview).toMatchObject({
+      watched: { new: 2, same: 0 },
+      watchlist: { new: 1, same: 1 },
+      ratings: { new: 1, conflicts: 1 },
+      notFound: 1,
+    })
+    const applied = await apply(job.id, 'keep')
+    expect(applied.json()).toMatchObject({ imported: 2, unmatched: 1 })
+    const stamp = ratingOf(WATCHED_SERIES)!.watchedMarkedAt
+    expect(stamp).toBeInstanceOf(Date)
+    expect(ratingOf(WATCHED_MOVIE)).toMatchObject({
+      watchlistAt: null,
+      rating: 5,
+      watchedMarkedAt: expect.any(Date),
+    })
+    expect(ratingOf(WATCHED_SERIES)).toMatchObject({
+      watchlistAt: expect.any(Date),
+      rating: 6,
+    })
+    expect(
+      (await getTitleMine(profileId, WATCHED_SERIES, 'en-US')).status,
+    ).toBe('watched')
+    expect(getDb().select().from(titleProgress).all()).toEqual([])
+    expect(lastWatchedAt([])).toBeUndefined()
+    expect(
+      watchedTitles(profileId, [WATCHED_MOVIE, WATCHED_SERIES, 'tmdb:tv:9999']),
+    ).toEqual(new Set([WATCHED_MOVIE, WATCHED_SERIES]))
+    job = await readyJob(files)
+    expect(job.preview.watched).toEqual({ new: 0, same: 2 })
+    expect((await apply(job.id, 'keep')).json()).toMatchObject({
+      imported: 0,
+      unchanged: 2,
+    })
+    expect(ratingOf(WATCHED_SERIES)!.watchedMarkedAt).toEqual(stamp)
+    const unmatched = (
+      await app.inject({
+        url: `/api/profiles/${profileId}/imports/unmatched`,
+        cookies: authed(),
+      })
+    ).json()
+    expect(unmatched.items[0]).toMatchObject({ list: 'watched', rating: null })
+    const manualId = 'tmdb:tv:9998'
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: `/api/profiles/${profileId}/imports/unmatched/${unmatched.items[0].id}`,
+          cookies: authed(),
+          payload: { titleId: manualId },
+        })
+      ).statusCode,
+    ).toBe(204)
+    expect(ratingOf(manualId)!.watchedMarkedAt).toBeInstanceOf(Date)
+    expect((await undo(applied.json().id)).json()).toEqual({
+      restored: 2,
+      kept: 0,
+    })
+    expect(ratingOf(WATCHED_MOVIE)).toMatchObject({
+      watchlistAt: expect.any(Date),
+      watchedMarkedAt: null,
+    })
+    expect(ratingOf(WATCHED_SERIES)).toBeUndefined()
+    expect(ratingOf(manualId)!.watchedMarkedAt).toBeInstanceOf(Date)
+  })
+
+  it('просмотр и unwatch в ту же миллисекунду не воскресают через undo; выбор источника сохраняет mark', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date('2026-11-09T12:00:00Z'))
+    try {
+      updateMine(profileId, WATCHED_SERIES, { favorite: true })
+      const job = await readyJob([watchedFile()])
+      const applied = await apply(job.id, 'keep')
+      const ref = { profileId, titleId: WATCHED_SERIES, season: 1, episode: 1 }
+      getDb()
+        .insert(torrents)
+        .values({
+          id: 'synthetic-choice',
+          infoHash: '9'.repeat(40),
+          name: 'Synthetic',
+          source: 'file',
+          status: 'ready',
+        })
+        .onConflictDoNothing()
+        .run()
+      rememberChoice(ref, { torrentId: 'synthetic-choice', fileIndex: 0 })
+      rememberVoice(ref, { studio: 'Synthetic Voice' })
+      saveTitleProgress(ref, {
+        position: 0,
+        duration: 2000,
+        torrentId: null,
+        fileIndex: null,
+      })
+      expect(ratingOf(WATCHED_SERIES)!.watchedMarkedAt).not.toBeNull()
+      saveTitleProgress(ref, {
+        position: 20,
+        duration: 2000,
+        torrentId: null,
+        fileIndex: null,
+      })
+      expect(ratingOf(WATCHED_SERIES)!.watchedMarkedAt).toBeNull()
+      expect(ratingOf(WATCHED_SERIES)!.updatedAt.getTime()).toBeGreaterThan(
+        new Date(applied.json().appliedAt ?? Date.now()).getTime(),
+      )
+      markWatched({ profileId, titleId: WATCHED_MOVIE }, false)
+      expect((await undo(applied.json().id)).json()).toEqual({
+        restored: 0,
+        kept: 2,
+      })
+      expect(ratingOf(WATCHED_MOVIE)!.watchedMarkedAt).toBeNull()
+      expect(ratingOf(WATCHED_SERIES)!.watchedMarkedAt).toBeNull()
+      expect(getTitleProgress(ref)?.position).toBe(20)
+      // Новое явное применение после просмотра снова создаёт отметку, не стирая progress.
+      const again = await readyJob([watchedFile()])
+      expect(again.preview.watched).toEqual({ new: 2, same: 0 })
+      await apply(again.id, 'keep')
+      expect(getTitleProgress(ref)?.position).toBe(20)
+      // Серия без строк прогресса: снятие с карточки удаляет marker-only row.
+      const empty = 'tmdb:tv:9997'
+      getDb()
+        .insert(profileTitles)
+        .values({ profileId, titleId: empty, watchedMarkedAt: new Date() })
+        .run()
+      await markTitleWatched(profileId, empty, false, 'en-US')
+      expect(ratingOf(empty)).toBeUndefined()
+      expect(
+        getTitleProgress({ profileId, titleId: empty, season: 1, episode: 1 }),
+      ).toBeUndefined()
+    }
+    finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('старый undo без нового поля сохраняет current mark при восстановлении остальных полей', async () => {
+    const job = await readyJob([watchedFile()])
+    const applied = await apply(job.id, 'keep')
+    const db = getDb()
+    const row = db
+      .select()
+      .from(profileImports)
+      .where(eq(profileImports.id, applied.json().id))
+      .get()!
+    const undoRows = row.undo!.filter(
+      (item): item is ImportUndoEntry => !('table' in item),
+    )
+    for (const entry of undoRows) {
+      if (entry.before)
+        delete entry.before.watchedMarkedAt
+    }
+    db.update(profileImports)
+      .set({ undo: undoRows })
+      .where(eq(profileImports.id, row.id))
+      .run()
+    expect((await undo(row.id)).statusCode).toBe(200)
+    expect(ratingOf(WATCHED_MOVIE)).toMatchObject({
+      rating: 5,
+      watchedMarkedAt: expect.any(Date),
+    })
+    expect(
+      db
+        .select()
+        .from(titleProgress)
+        .where(
+          and(
+            eq(titleProgress.profileId, profileId),
+            eq(titleProgress.titleId, WATCHED_MOVIE),
+          ),
+        )
+        .all(),
+    ).toEqual([])
+  })
+})
+
+it('обычные правки списков и снятие оценки сохраняют marker-only строку и приоритет dropped', async () => {
+  getDb()
+    .insert(profileTitles)
+    .values({ profileId, titleId: WATCHED_SERIES, watchedMarkedAt: new Date() })
+    .run()
+  updateMine(profileId, WATCHED_SERIES, { rating: 8, watchlist: true })
+  updateMine(profileId, WATCHED_SERIES, { rating: null, watchlist: false })
+  expect(ratingOf(WATCHED_SERIES)).toMatchObject({
+    watchedMarkedAt: expect.any(Date),
+    rating: null,
+    watchlistAt: null,
+  })
+  updateMine(profileId, WATCHED_SERIES, { dropped: true })
+  expect((await getTitleMine(profileId, WATCHED_SERIES, 'en-US')).status).toBe(
+    'dropped',
+  )
+  updateMine(profileId, WATCHED_SERIES, { dropped: false })
+  expect((await getTitleMine(profileId, WATCHED_SERIES, 'en-US')).status).toBe(
+    'watched',
+  )
 })

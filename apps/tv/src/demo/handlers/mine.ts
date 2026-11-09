@@ -52,6 +52,12 @@ function entriesOf(section: Section, collectionId?: string): Entry[] {
       return listed('watchlistAt')
     case 'favorites':
       return listed('favoriteAt')
+    case 'ratings':
+      return TITLES.flatMap((title) => {
+        const entry = mineEntry(title.id)
+
+        return entry.rating ? [{ title, at: entry.ratedAt ?? 0 }] : []
+      })
     case 'collection': {
       const ids
         = collections.find(item => item.id === collectionId)?.titles ?? []
@@ -75,6 +81,7 @@ get<MineResponse>('/api/mine', () => ({
     { id: 'continue', count: entriesOf('continue').length },
     { id: 'watchlist', count: entriesOf('watchlist').length },
     { id: 'favorites', count: entriesOf('favorites').length },
+    { id: 'ratings', count: entriesOf('ratings').length },
     ...collections.map(item => ({
       id: 'collection' as const,
       collectionId: item.id,

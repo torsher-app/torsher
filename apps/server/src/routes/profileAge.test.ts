@@ -141,6 +141,8 @@ beforeAll(async () => {
         profileId: child,
         titleId,
         watchlistAt: new Date(1000 + i),
+        rating: 8,
+        ratedAt: new Date(1000 + i),
       })),
     )
     .run()
@@ -323,6 +325,20 @@ describe('profile age authorization routes', () => {
         collectionItems(collection.id).some(item => item.titleId === id),
       ).toBe(false)
     }
+  })
+
+  it('filters all ratings and their section count by profile access', async () => {
+    const sections = await app.inject({ url: '/api/mine', cookies: viewer })
+    expect(sections.json().sections).toContainEqual({
+      id: 'ratings',
+      count: 1,
+    })
+    const res = await app.inject({
+      url: '/api/mine/items?section=ratings&limit=1',
+      cookies: viewer,
+    })
+    expect(res.statusCode, res.body).toBe(200)
+    expect(res.json()).toMatchObject({ total: 1, items: [{ id: allowed }] })
   })
 
   it('filters mine before pagination and reports allowed totals', async () => {

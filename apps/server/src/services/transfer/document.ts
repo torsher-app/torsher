@@ -80,6 +80,7 @@ const exportMine = z.object({
   rating: z.number().int().min(1).max(10).nullable(),
   ratedAt: at.nullable(),
   droppedAt: at.nullable(),
+  watchedMarkedAt: at.nullable().optional(),
 })
 
 const exportCollection = z.object({
@@ -239,7 +240,8 @@ export class DocumentError extends Error {
 /** Похоже ли содержимое файла на экспорт Torsher, без полного разбора */
 export function looksLikeExport(text: string) {
   return (
-    /^\s*\{/.test(text) && text.slice(0, 200).includes(`"${EXPORT_FORMAT}"`)
+    /^\s*\{/.test(text)
+    && new RegExp(`"format"\\s*:\\s*"${EXPORT_FORMAT}"`).test(text)
   )
 }
 

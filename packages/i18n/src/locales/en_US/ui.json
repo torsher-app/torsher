@@ -2609,7 +2609,7 @@
         "imdb": "IMDb",
         "letterboxd": "Letterboxd",
         "trakt": "Trakt",
-        "torsher": "Torsher export"
+        "torsher": "Torsher"
       },
       "dialog": {
         "title": "Import into profile",
@@ -2636,11 +2636,13 @@
         "undo": "Undo import",
         "matchManually": "Match manually",
         "done": "Done",
-        "formatTorsher": "A profile export from another Torsher server — a .json file with positions, lists and ratings"
+        "formatTorsher": "Torsher profile export or watched title JSON",
+        "watchedHint": "Title marks have no episode progress or watch date. Starting playback removes the mark."
       },
       "preview": {
         "newRatings": "New ratings",
         "watchlist": "New in Watch later",
+        "watched": "New watched marks",
         "same": "Already in the profile",
         "conflicts": "Rating differs from yours",
         "unmatched": "Not matched",
@@ -2696,6 +2698,7 @@
         "titleShort": "Not matched",
         "group": "Rows from files · {n}",
         "rating": "★ {n}",
+        "watched": "Watched title",
         "watchlist": "Watch later",
         "suggestion": "looks like “{title}”",
         "notFound": "not found in the catalog",
@@ -3341,7 +3344,7 @@
           "skip": "Do not import"
         },
         "counts": {
-          "line": "Positions: {progress} · ratings: {ratings} · Watchlist: {watchlist} · Favorites: {favorites}",
+          "line": "Positions: {progress} · ratings: {ratings} · Watchlist: {watchlist} · Favorites: {favorites} · watched marks: {watched}",
           "later": "The import summary will show what changes",
           "skipped": "This profile is not imported"
         },
@@ -3884,12 +3887,14 @@
       "watchlist": "Watch later",
       "favorites": "Favorites",
       "watched": "Watched",
-      "dropped": "Dropped"
+      "dropped": "Dropped",
+      "ratings": "My ratings"
     },
     "collections": "Collections",
     "sort": {
       "added": "Newest first",
-      "rating": "By my rating"
+      "rating": "By my rating",
+      "rated": "Recently rated"
     },
     "kind": {
       "all": "All types",
@@ -3930,11 +3935,15 @@
       },
       "watched": {
         "title": "Nothing watched yet",
-        "text": "Finished, marked and rated titles show up here"
+        "text": "Finished or marked titles and rated movies show up here"
       },
       "dropped": {
         "title": "Nothing dropped",
         "text": "“Dropped” hides a title from Continue. Watching it again clears the mark"
+      },
+      "ratings": {
+        "title": "No ratings yet",
+        "text": "Rate a movie or series on its title page. All your ratings appear here, even without viewing progress."
       }
     },
     "emptyFiltered": {

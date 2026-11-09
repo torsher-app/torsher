@@ -5745,6 +5745,7 @@ export interface MineSectionInput {
     | "continue"
     | "watchlist"
     | "favorites"
+    | "ratings"
     | "collection"
     | "watched"
     | "dropped";
@@ -6465,6 +6466,18 @@ export interface ImportPreviewInput {
      */
     same: number;
   };
+  watched?: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    new: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    same: number;
+  };
   /**
    * @min -9007199254740991
    * @max 9007199254740991
@@ -6632,7 +6645,7 @@ export interface UndoneImportInput {
 
 export interface UnmatchedImportRowInput {
   id: string;
-  list: "rating" | "watchlist";
+  list: "rating" | "watchlist" | "watched";
   status: "unsure" | "notFound";
   title: string;
   /**
@@ -7246,6 +7259,11 @@ export interface ExportFileInput {
      * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
      */
     droppedAt: string | null;
+    /**
+     * @format date-time
+     * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+     */
+    watchedMarkedAt?: string | null;
   }[];
   collections?: {
     /**
@@ -7528,6 +7546,18 @@ export interface ProfileMergeCountsInput {
     conflicts: number;
   };
   watchlist: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    new: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    same: number;
+  };
+  watched?: {
     /**
      * @min -9007199254740991
      * @max 9007199254740991
@@ -13468,6 +13498,7 @@ export interface MineSection {
     | "continue"
     | "watchlist"
     | "favorites"
+    | "ratings"
     | "collection"
     | "watched"
     | "dropped";
@@ -14188,6 +14219,18 @@ export interface ImportPreview {
      */
     same: number;
   };
+  watched?: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    new: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    same: number;
+  };
   /**
    * @min -9007199254740991
    * @max 9007199254740991
@@ -14355,7 +14398,7 @@ export interface UndoneImport {
 
 export interface UnmatchedImportRow {
   id: string;
-  list: "rating" | "watchlist";
+  list: "rating" | "watchlist" | "watched";
   status: "unsure" | "notFound";
   title: string;
   /**
@@ -14969,6 +15012,11 @@ export interface ExportFile {
      * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
      */
     droppedAt: string | null;
+    /**
+     * @format date-time
+     * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+     */
+    watchedMarkedAt?: string | null;
   }[];
   collections?: {
     /**
@@ -15251,6 +15299,18 @@ export interface ProfileMergeCounts {
     conflicts: number;
   };
   watchlist: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    new: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    same: number;
+  };
+  watched?: {
     /**
      * @min -9007199254740991
      * @max 9007199254740991
@@ -17812,6 +17872,7 @@ export class Api<
           | "continue"
           | "watchlist"
           | "favorites"
+          | "ratings"
           | "collection"
           | "watched"
           | "dropped";

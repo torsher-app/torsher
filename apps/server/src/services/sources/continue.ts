@@ -9,6 +9,7 @@ import type { ResumeTarget } from './resume.ts'
 import { followNewEpisodes } from '../follow/badges.ts'
 import { libraryTitleSet } from '../library/home.ts'
 import { droppedSince, watchingTotal } from '../mine/index.ts'
+import { watchedMarkedTitles } from '../mine/marks.ts'
 import { getSeason, getTitle } from '../tmdb/index.ts'
 import { parseCatalogId, withImageSize } from '../tmdb/mappers.ts'
 import { episodeProgress, lastTitleProgress } from './progress.ts'
@@ -206,12 +207,13 @@ async function continueCard(
  */
 export function freshFollowEpisodes(profileId: string) {
   const dropped = droppedSince(profileId)
+  const marked = watchedMarkedTitles(profileId)
 
   return [...followNewEpisodes(profileId)]
     .filter(([titleId, fresh]) => {
       const at = dropped.get(titleId)
 
-      return !at || at < fresh.at
+      return !marked.has(titleId) && (!at || at < fresh.at)
     })
     .sort(([, a], [, b]) => b.at.getTime() - a.at.getTime())
 }

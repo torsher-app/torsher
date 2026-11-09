@@ -14,13 +14,20 @@ export interface IncomingMine {
   watchlistAt?: Date | null
   favoriteAt?: Date
   droppedAt?: Date
+  // null — отметка без даты: время создания задаётся при применении
+  watchedMarkedAt?: Date | null
 }
 
 export type RatingOutcome = 'none' | 'new' | 'same' | 'conflict'
 
 export type MineValues = Pick<
   ProfileTitle,
-  'watchlistAt' | 'favoriteAt' | 'rating' | 'ratedAt' | 'droppedAt'
+  | 'watchlistAt'
+  | 'favoriteAt'
+  | 'rating'
+  | 'ratedAt'
+  | 'droppedAt'
+  | 'watchedMarkedAt'
 >
 
 export function ratingOutcome(
@@ -78,6 +85,7 @@ export function mergeMine(
     rating: current?.rating ?? null,
     ratedAt: current?.ratedAt ?? null,
     droppedAt: current?.droppedAt ?? null,
+    watchedMarkedAt: current?.watchedMarkedAt ?? null,
   }
   let changed = false
   const rated = takesIncoming(current, incoming, policy)
@@ -88,9 +96,19 @@ export function mergeMine(
     changed = true
   }
 
-  const movieRated = incoming.kind === 'movie' && next.rating !== null
+  const marked
+    = incoming.watchedMarkedAt !== undefined && !next.watchedMarkedAt
 
-  if (rated && movieRated && next.watchlistAt) {
+  if (marked) {
+    next.watchedMarkedAt = incoming.watchedMarkedAt ?? now
+    changed = true
+  }
+
+  const movieRated
+    = incoming.kind === 'movie'
+      && (next.rating !== null || !!next.watchedMarkedAt)
+
+  if ((rated || marked) && movieRated && next.watchlistAt) {
     next.watchlistAt = null
   }
   else if (

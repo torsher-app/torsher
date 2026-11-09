@@ -507,6 +507,12 @@ const conflictOptions = computed(() => [
           <dd class="text-right tabular-nums">
             {{ preview.watchlist.new }}
           </dd>
+          <template v-if="preview.watched">
+            <dt>{{ t("panel.imports.preview.watched") }}</dt>
+            <dd class="text-right tabular-nums">
+              {{ preview.watched.new }}
+            </dd>
+          </template>
           <template v-if="preview.favorites">
             <dt>{{ t("panel.imports.preview.favorites") }}</dt>
             <dd class="text-right tabular-nums">
@@ -524,6 +530,7 @@ const conflictOptions = computed(() => [
             {{
               preview.ratings.same
                 + preview.watchlist.same
+                + (preview.watched?.same ?? 0)
                 + (preview.progress?.same ?? 0)
             }}
           </dd>
@@ -554,6 +561,14 @@ const conflictOptions = computed(() => [
           </dd>
         </dl>
 
+        <p
+          v-if="
+            preview.watched && (preview.watched.new || preview.watched.same)
+          "
+          class="text-[12.5px] text-muted-foreground"
+        >
+          {{ t("panel.imports.dialog.watchedHint") }}
+        </p>
         <fieldset v-if="preview.ratings.conflicts > 0" class="grid gap-2">
           <legend class="mb-2 text-[13.5px] font-medium">
             {{ t("panel.imports.preview.conflictsLegend") }}

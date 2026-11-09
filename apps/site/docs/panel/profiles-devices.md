@@ -47,7 +47,7 @@ Click a profile to open its card: color, language, PIN, age limit, devices, and:
 - **<Ui k="panel.history.recent" />.** The last titles watched. The link below them opens the full watch history: every movie and series with the last episode, when it was watched, and how much is left.
 - **<Ui k="panel.imports.section" />.** See below.
 
-## Import ratings and lists
+## Import ratings, lists and watched titles
 
 Bring a profile's ratings and Watchlist from another service, or move a profile from another Torsher server.
 
@@ -57,9 +57,9 @@ Bring a profile's ratings and Watchlist from another service, or move a profile 
    - <Ui k="panel.imports.sources.letterboxd" />: the whole export zip;
    - <Ui k="panel.imports.sources.trakt" />: the whole export zip;
    - a CSV in the Letterboxd import format with `tmdbID` or `imdbID` columns, which converters for other services produce;
-   - <Ui k="panel.imports.sources.torsher" />: a profile export `.json` from another Torsher server.
+   - <Ui k="panel.imports.sources.torsher" />: a profile export `.json` from another Torsher server, or a watched title file in the format below.
 3. Select <Ui k="panel.imports.dialog.upload" />. Torsher matches the rows with the catalog. You can close the window meanwhile: the profile card shows the progress.
-4. Check the preview: new ratings, new titles for the lists, what is already in the profile, and ratings that differ from yours. For those, choose <Ui k="panel.imports.policies.keep" />, <Ui k="panel.imports.policies.replace" /> or <Ui k="panel.imports.policies.newer" />.
+4. Check the preview: new ratings, new titles for the lists, new watched marks, what is already in the profile, and ratings that differ from yours. For those, choose <Ui k="panel.imports.policies.keep" />, <Ui k="panel.imports.policies.replace" /> or <Ui k="panel.imports.policies.newer" />.
 5. Select <Ui k="panel.imports.dialog.apply" />.
 
 Only your own data is read from the files: title IDs, your ratings, dates and lists.
@@ -67,6 +67,24 @@ Only your own data is read from the files: title IDs, your ratings, dates and li
 - **Rows that didn't match.** The profile card links to them. Confirm a suggested title or find one yourself. They wait there for 90 days.
 - **Undo.** The card shows the last import with <Ui k="panel.imports.undo" />. Everything it changed goes back, except titles you changed after the import.
 - **<Ui k="panel.imports.export" />** saves the profile as a file to import on another Torsher server. To move the whole server, see [Backup and move](/docs/maintain/backup#move-data-into-another-server).
+
+### Watched title file
+
+A JSON file can carry title marks without ratings or episode history:
+
+```json
+{
+  "format": "torsher-import",
+  "version": 1,
+  "entries": [
+    { "list": "watched", "title": "Synthetic Beacon", "kind": "series", "year": 2020 }
+  ]
+}
+```
+
+Each entry needs `list: "watched"`, a non-empty `title`, and `kind: "movie"` or `"series"`. Optional fields are `originalTitle`, `year`, `tmdbId` and `imdbId`. Dates, ratings, seasons, episodes and positions are not part of this format. The same 20 MB limit applies, with at most 20,000 entries across the files.
+
+Marks appear under <Ui k="mine.sections.watched" /> even for ongoing series. They do not create episode progress or viewing history. A movie leaves Watch later; a series keeps it. Existing viewing positions are preserved. Repeating the same import keeps the original mark. Starting playback or removing the mark clears it; applying a new import can add it again. Existing Dropped status keeps priority. See [Watched and dropped](/docs/watch/mine#watched-and-dropped) for the showcase and Jellyfin-compatible clients.
 
 ## Devices
 
