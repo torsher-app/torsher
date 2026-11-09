@@ -16,7 +16,7 @@ import LoadingButton from '~/components/LoadingButton.vue'
 import TitleSearch from '~/components/TitleSearch.vue'
 import { dialogSheetClass } from '~/lib/dialog'
 
-/** Поиск тайтла для строки импорта: открывается с названием и годом из файла */
+/** Поиск тайтла для строки импорта: открывается с названием из файла */
 const props = defineProps<{
   row: UnmatchedImportRow | null
   save: (titleId: string) => Promise<void>
@@ -39,7 +39,7 @@ watch(open, (isOpen) => {
   failed.value = false
   saving.value = false
   chosen.value = props.row.suggestion?.id ?? ''
-  query.value = [props.row.title, props.row.year].filter(Boolean).join(' ')
+  query.value = props.row.title
 })
 
 async function onSave() {
@@ -79,9 +79,7 @@ async function onSave() {
       <Alert v-if="failed" variant="destructive">
         <CircleAlertIcon />
         <AlertDescription>
-          {{
-            t("panel.imports.unmatched.saveFailed")
-          }}
+          {{ t("panel.imports.unmatched.saveFailed") }}
         </AlertDescription>
       </Alert>
 
