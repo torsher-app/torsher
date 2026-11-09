@@ -272,12 +272,11 @@ function alignRows() {
   footerExtent.value = 0
 
   // KeepAlive может обновить ряды вне документа: размеры перечитаем при возврате.
-  if (container && props.mode === 'all' && !container.isConnected)
+  if (container && !container.isConnected)
     return
 
   if (container) {
-    const last
-      = props.mode === 'all' ? rowElements[rows.value.length - 1] : undefined
+    const last = rowElements[rows.value.length - 1]
 
     // Пишем до чтения высоты контейнера: запас входит и в scrollHeight веба,
     // и в offsetHeight ТВ. Нижний margin ряда уже добавляет часть запаса.
@@ -521,8 +520,7 @@ let seenVersion = titleActions.version
 onActivated(() => {
   isActive = true
 
-  if (props.mode === 'all')
-    nextTick(alignRows)
+  nextTick(alignRows)
 
   restoreFocus()
 
@@ -584,12 +582,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main
-    ref="screen"
-    class="home"
-    :class="{ 'home--compact': mode === 'all' }"
-    @wheel.passive="onScreenWheel"
-  >
+  <main ref="screen" class="home" @wheel.passive="onScreenWheel">
     <BackdropLayer :src="hero?.details?.backdrop" />
     <span v-if="serverAbout?.devStand" class="home__dev">DEV · {{ serverAbout.devStand.name }}</span>
 
@@ -598,7 +591,7 @@ onBeforeUnmount(() => {
         v-if="hero"
         :hero="hero"
         :resume="heroResume"
-        :compact="mode === 'all'"
+        compact
         :release="heroRelease"
       />
     </div>
@@ -766,14 +759,14 @@ onBeforeUnmount(() => {
 .home__hero {
   position: absolute;
   z-index: 5;
-  top: calc(var(--u) * 84);
+  top: calc(var(--u) * 72);
   left: var(--content-x);
 }
 
 .home__state {
   position: absolute;
   z-index: 5;
-  top: calc(var(--u) * 618);
+  top: calc(var(--u) * 420);
   left: var(--content-x);
 }
 
@@ -781,19 +774,10 @@ onBeforeUnmount(() => {
 .home__rows {
   position: absolute;
   z-index: 4;
-  top: calc(var(--u) * 618);
+  top: calc(var(--u) * 420);
   right: 0;
   left: 0;
   transition: transform var(--motion-base) var(--motion-easing);
-}
-
-.home--compact .home__hero {
-  top: calc(var(--u) * 72);
-}
-
-.home--compact .home__rows,
-.home--compact .home__state {
-  top: calc(var(--u) * 420);
 }
 
 /* Веб: окно рядов под hero прокручивается нативно */

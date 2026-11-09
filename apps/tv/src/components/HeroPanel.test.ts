@@ -96,7 +96,7 @@ describe('home hero continuation context', () => {
     expect(episode).toContain('Unknown length')
     expect(episode).not.toContain('min')
   })
-  it('keeps ordinary hero descriptions and other modes unchanged', async () => {
+  it('keeps the plot for ordinary cards and the noncompact variant', async () => {
     expect(await render(card, false)).toContain('Ordinary plot')
     expect(await render(card, true, false)).toContain('Ordinary plot')
     expect(

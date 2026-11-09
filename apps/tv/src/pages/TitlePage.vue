@@ -2214,7 +2214,7 @@ onBeforeUnmount(() => {
 
 .title__head {
   position: relative;
-  height: calc(var(--u) * 1080);
+  height: calc(var(--u) * 800);
 }
 
 .title__head,
@@ -2230,21 +2230,25 @@ onBeforeUnmount(() => {
 
 .title__info {
   position: absolute;
-  top: calc(var(--u) * 132);
+  top: calc(var(--u) * 84);
   left: var(--content-x);
   width: calc(var(--u) * 1100);
 }
 
 .title__name {
+  display: -webkit-box;
   margin: 0 0 calc(var(--u) * 26);
-  font-size: var(--font-size-xl);
+  overflow: hidden;
+  font-size: calc(var(--u) * 44);
   line-height: 1.05;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 
 .title__logo {
   display: block;
-  max-width: calc(var(--u) * 760);
-  max-height: calc(var(--u) * 200);
+  width: calc(var(--u) * 600);
+  height: calc(var(--u) * 120);
   object-fit: contain;
   object-position: left bottom;
 }
@@ -2351,7 +2355,7 @@ onBeforeUnmount(() => {
 .title__actions {
   position: absolute;
   transition: opacity var(--motion-base) var(--motion-easing);
-  top: calc(var(--u) * 742);
+  top: calc(var(--u) * 500);
   right: var(--safe-x);
   left: var(--content-x);
 }
@@ -2408,7 +2412,7 @@ onBeforeUnmount(() => {
 /* Под кнопками и местом их подписи в фокусе, над подсказкой о том, что ниже */
 .title__follow-status {
   position: absolute;
-  top: calc(var(--u) * 890);
+  top: calc(var(--u) * 648);
   right: var(--safe-x);
   left: var(--content-x);
   max-width: calc(var(--u) * 1100);
@@ -2428,7 +2432,7 @@ onBeforeUnmount(() => {
 
 .title__peek {
   position: absolute;
-  top: calc(var(--u) * 978);
+  top: calc(var(--u) * 720);
   left: var(--content-x);
   display: flex;
   align-items: center;
