@@ -32,7 +32,7 @@ Near the bottom are your avatar and name (OK switches the profile, see [Profiles
 
 ## Home
 
-The top of the screen shows the focused title: its backdrop, ratings, year, genres and description, with a hint of what OK does. In <Ui k="home.rows.continue" />, it shows the remaining time when known, or the next episode, and the episode title when available instead of the plot. Below are rows. Your own rows come first, in this order, and only when they have something:
+The top of the screen shows the focused title: its backdrop, ratings, year, genres and description, with a hint of what OK does. <Ui k="nav.home" />, <Ui k="nav.movies" />, <Ui k="nav.series" /> and <Ui k="nav.library" /> share a compact layout, leaving room for the rows below. In <Ui k="home.rows.continue" />, it shows the remaining time when known, or the next episode, and the episode title when available instead of the plot. Your own rows on home come first, in this order, and only when they have something:
 
 - <Ui k="home.rows.continue" />: what you watched in the last 16 weeks, and new episodes of series you follow. OK resumes right away. Older titles you haven't finished stay in [Mine](/docs/watch/mine).
 - <Ui k="home.rows.newEpisodes" />: fresh episodes of series you watch.
@@ -60,7 +60,7 @@ Genre, studio and tag chips on a title page open the catalog with that filter.
 
 ## The title page
 
-OK on a poster opens the title page. The first screen has the logo, ratings, year, runtime or number of seasons, the age rating and the description. If the description doesn't fit, focus it and press OK to read it all.
+OK on a poster opens the title page. The first screen has the logo, ratings, year, runtime or number of seasons, the age rating and the description, followed by the action buttons and the start of the episodes or title facts. If the description doesn't fit, focus it and press OK to read it all.
 
 The buttons:
 
