@@ -48,6 +48,7 @@ export const mineSectionIds = [
   'continue',
   'watchlist',
   'favorites',
+  'ratings',
   'collection',
   'watched',
   'dropped',

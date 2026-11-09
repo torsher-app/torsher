@@ -151,7 +151,7 @@ function entryOf(section: MineSection): SectionEntry {
   }
 }
 
-// Подборки — отдельной группой между «Избранным» и «Просмотрено»;
+// Подборки — отдельной группой между «Моими оценками» и «Просмотрено»;
 // «Расписание» — сразу после «Продолжить» и только вместе с разделами
 // сервера: одна эта строка до их ответа забрала бы фокус и выбор раздела
 const groups = computed(() => {
@@ -407,8 +407,16 @@ watch([shownKey, status, showSkeleton], () => void focusPendingGrid(), {
 const panel = ref<Control>()
 let panelOpener: HTMLElement | undefined
 
+function sortLabel(id: MineView['sort']) {
+  return t(
+    selected.value?.id === 'ratings' && id === 'added'
+      ? 'mine.sort.rated'
+      : `mine.sort.${id}`,
+  )
+}
+
 const controls = computed(() => [
-  { id: 'sort' as const, label: t(`mine.sort.${view.value.sort}`) },
+  { id: 'sort' as const, label: sortLabel(view.value.sort) },
   { id: 'kind' as const, label: t(`mine.kind.${view.value.kind}`) },
   {
     id: 'rating' as const,
@@ -421,7 +429,7 @@ const panelOptions = computed<PanelOption[]>(() => {
     case 'sort':
       return MINE_SORTS.map(id => ({
         id,
-        label: t(`mine.sort.${id}`),
+        label: sortLabel(id),
         selected: id === view.value.sort,
       }))
     case 'kind':

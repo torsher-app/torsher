@@ -385,6 +385,14 @@ function listEntries(profileId: string, field: 'watchlistAt' | 'favoriteAt') {
   })
 }
 
+function ratingEntries(profileId: string): Entry[] {
+  return [...mineRows(profileId).values()].flatMap(row =>
+    row.rating !== null
+      ? [{ titleId: row.titleId, at: row.ratedAt ?? new Date(0) }]
+      : [],
+  )
+}
+
 // «Продолжить» в «Моё» — всё, что профиль смотрит сейчас; ряд главной строит свой срез
 const STATUS_OF_SECTION = {
   continue: 'watching',
@@ -402,6 +410,8 @@ async function sectionEntries(
       return listEntries(profileId, 'watchlistAt')
     case 'favorites':
       return listEntries(profileId, 'favoriteAt')
+    case 'ratings':
+      return ratingEntries(profileId)
     case 'collection': {
       if (!query.collection || !isVisibleTo(query.collection, profileId))
         throw new MineNotFoundError('Collection not found')
@@ -497,6 +507,16 @@ export async function mineSections(profileId: string, language: string) {
         await filterTitles(
           profileId,
           listEntries(profileId, 'favoriteAt'),
+          item => item.titleId,
+        )
+      ).length,
+    },
+    {
+      id: 'ratings' as const,
+      count: (
+        await filterTitles(
+          profileId,
+          ratingEntries(profileId),
           item => item.titleId,
         )
       ).length,

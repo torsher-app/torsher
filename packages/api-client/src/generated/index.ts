@@ -5745,6 +5745,7 @@ export interface MineSectionInput {
     | "continue"
     | "watchlist"
     | "favorites"
+    | "ratings"
     | "collection"
     | "watched"
     | "dropped";
@@ -13468,6 +13469,7 @@ export interface MineSection {
     | "continue"
     | "watchlist"
     | "favorites"
+    | "ratings"
     | "collection"
     | "watched"
     | "dropped";
@@ -17812,6 +17814,7 @@ export class Api<
           | "continue"
           | "watchlist"
           | "favorites"
+          | "ratings"
           | "collection"
           | "watched"
           | "dropped";

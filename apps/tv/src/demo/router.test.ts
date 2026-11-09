@@ -3,6 +3,7 @@ import { handle } from '@torsher/demo/router'
 import { join } from 'node:path'
 import { unroutedMethods, usedApiMethods } from '@torsher/demo/coverage'
 import { describe, expect, it } from 'vitest'
+import { mineEntry, progressOf } from './viewer.ts'
 import './handlers/index.ts'
 
 describe('showcase demo', () => {
@@ -102,4 +103,43 @@ it('validates only demo studios and does not turn saved into found after refresh
     mode: 'only',
     studio: 'Demo Studio C',
   })
+})
+
+it('shows a rated series without progress in My ratings and removes a cleared rating', async () => {
+  const title = titleNamed('The Vantmoor Files')!
+  const entry = mineEntry(title.id)
+  const before = { ...entry }
+  const read = async (path: string) =>
+    (
+      await handle(
+        new URL(`http://demo/api${path}`),
+        { method: 'GET' },
+        'Unavailable',
+      )
+    ).json()
+  try {
+    expect(progressOf(title.id)).toEqual([])
+    entry.rating = 9
+    entry.ratedAt = Date.now()
+    const items = await read(
+      '/mine/items?section=ratings&sort=added&kind=series',
+    )
+    expect(items.items[0]).toMatchObject({ id: title.id, ownRating: 9 })
+    const sections = await read('/mine')
+    expect(sections.sections).toContainEqual({
+      id: 'ratings',
+      count: (await read('/mine/items?section=ratings')).total,
+    })
+    entry.rating = undefined
+    entry.ratedAt = undefined
+    expect(
+      (await read('/mine/items?section=ratings&kind=series')).items.some(
+        (item: { id: string }) => item.id === title.id,
+      ),
+    ).toBe(false)
+  }
+  finally {
+    entry.rating = before.rating
+    entry.ratedAt = before.ratedAt
+  }
 })

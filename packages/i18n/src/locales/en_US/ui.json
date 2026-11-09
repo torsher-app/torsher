@@ -3884,12 +3884,14 @@
       "watchlist": "Watch later",
       "favorites": "Favorites",
       "watched": "Watched",
-      "dropped": "Dropped"
+      "dropped": "Dropped",
+      "ratings": "My ratings"
     },
     "collections": "Collections",
     "sort": {
       "added": "Newest first",
-      "rating": "By my rating"
+      "rating": "By my rating",
+      "rated": "Recently rated"
     },
     "kind": {
       "all": "All types",
@@ -3930,11 +3932,15 @@
       },
       "watched": {
         "title": "Nothing watched yet",
-        "text": "Finished, marked and rated titles show up here"
+        "text": "Finished or marked titles and rated movies show up here"
       },
       "dropped": {
         "title": "Nothing dropped",
         "text": "“Dropped” hides a title from Continue. Watching it again clears the mark"
+      },
+      "ratings": {
+        "title": "No ratings yet",
+        "text": "Rate a movie or series on its title page. All your ratings appear here, even without viewing progress."
       }
     },
     "emptyFiltered": {

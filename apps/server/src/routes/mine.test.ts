@@ -8,6 +8,7 @@ import {
   it,
   vi,
 } from 'vitest'
+import { and, eq } from 'drizzle-orm'
 import { createApp } from '../app.ts'
 import { setImdbEnabled } from '../services/ratings/imdb/state.ts'
 import * as imdbStore from '../services/ratings/imdb/store.ts'
@@ -210,6 +211,87 @@ describe('put /api/titles/:id/watched без серии', () => {
 })
 
 describe('/api/mine', () => {
+  it('показывает все оценки независимо от прогресса и сортирует по дате оценки', async () => {
+    await patchMine(MOVIE, { rating: 6 })
+    await patchMine(SERIES, { rating: 9 })
+    const dateOf = (titleId: string, day: number) =>
+      getDb()
+        .update(profileTitles)
+        .set({ ratedAt: new Date(Date.UTC(2026, 9, day)) })
+        .where(
+          and(
+            eq(profileTitles.profileId, profileId),
+            eq(profileTitles.titleId, titleId),
+          ),
+        )
+        .run()
+    dateOf(SERIES, 1)
+    dateOf(MOVIE, 2)
+    // Изменение другого признака не двигает дату оценки.
+    await patchMine(SERIES, { favorite: true })
+
+    const sections = (
+      await app.inject({ url: '/api/mine', cookies: authed() })
+    ).json().sections
+    expect(sections).toContainEqual({ id: 'ratings', count: 2 })
+    expect(sections).toContainEqual({ id: 'watched', count: 1 })
+    expect(getDb().select().from(titleProgress).all()).toEqual([])
+    const added = await items('section=ratings')
+    expect(added.statusCode).toBe(200)
+    expect(added.json().items.map((item: { id: string }) => item.id)).toEqual([
+      MOVIE,
+      SERIES,
+    ])
+    expect(
+      (await items('section=ratings&sort=rating'))
+        .json()
+        .items.map((item: { id: string }) => item.id),
+    ).toEqual([SERIES, MOVIE])
+    expect(
+      (await items('section=ratings&kind=series&rating=9-10')).json(),
+    ).toMatchObject({ total: 1, items: [{ id: SERIES, ownRating: 9 }] })
+    expect(
+      (await items('section=ratings&offset=1&limit=1')).json(),
+    ).toMatchObject({ total: 2, items: [{ id: SERIES }] })
+    await patchMine(SERIES, { rating: null })
+    expect((await items('section=ratings')).json()).toMatchObject({
+      total: 1,
+      items: [{ id: MOVIE }],
+    })
+    await patchMine(MOVIE, { rating: null })
+    expect((await items('section=ratings')).json()).toEqual({
+      total: 0,
+      items: [],
+    })
+  })
+
+  it('не включает оценки другого профиля', async () => {
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/profiles',
+      cookies: authed(),
+      payload: { name: 'Other ratings', color: 'green' },
+    })
+    expect(created.statusCode).toBe(201)
+    getDb()
+      .insert(profileTitles)
+      .values({
+        profileId: created.json().id,
+        titleId: SERIES,
+        rating: 9,
+        ratedAt: new Date(),
+      })
+      .run()
+    expect((await items('section=ratings')).json()).toEqual({
+      total: 0,
+      items: [],
+    })
+    expect(
+      (await app.inject({ url: '/api/mine', cookies: authed() })).json()
+        .sections,
+    ).toContainEqual({ id: 'ratings', count: 0 })
+  })
+
   it('считает разделы и отдаёт страницу с фильтрами и сортировкой', async () => {
     await patchMine(MOVIE, { favorite: true, rating: 6 })
     await patchMine(SERIES, { favorite: true, rating: 9 })
