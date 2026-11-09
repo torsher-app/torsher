@@ -18,8 +18,9 @@ Sections are on the left, each with its count. Move to a section and the grid on
 - **<Ui k="mine.sections.continue" />**: movies and series you started, however long ago. The row on home shows only the last 16 weeks.
 - **<Ui k="mine.sections.schedule" />**: upcoming and recent episodes of the series you follow or watch. See [Follow](/docs/watch/follow#check).
 - **<Ui k="mine.sections.watchlist" />** and **<Ui k="mine.sections.favorites" />**.
+- **<Ui k="mine.sections.ratings" />**: every movie and series you rated, including series without viewing progress. Sort by <Ui k="mine.sort.rated" /> or by your rating.
 - **<Ui k="mine.collections" />**: one section per collection your profile can see.
-- **<Ui k="mine.sections.watched" />**: finished, marked and rated titles.
+- **<Ui k="mine.sections.watched" />**: finished or marked titles and rated movies. Rating a series does not mark its episodes as watched.
 - **<Ui k="mine.sections.dropped" />**: titles you gave up on.
 
 Chips above the grid sort and filter it: <Ui k="mine.panel.sort" /> (<Ui k="mine.sort.added" /> or <Ui k="mine.sort.rating" />), <Ui k="mine.panel.kind" /> and <Ui k="mine.panel.rating" />. This TV remembers them for each section.
@@ -45,6 +46,10 @@ Your rating shows as a star at the top right of the poster. Ratings of services,
 - **Watched.** A title becomes watched when you finish it. To mark it yourself, pick <Ui k="actions.markWatched" /> in the actions menu. On a title page, OK on an episode marks that episode.
 - **Dropped.** <Ui k="mine.empty.dropped.text" />
 
+Imported title marks also put movies and series in <Ui k="mine.sections.watched" />, including ongoing series. They do not fill in episode checkboxes or add a viewing date to history. Starting playback or removing the watched mark clears the imported mark; a later import can add it again. <Ui k="status.dropped" /> keeps priority until you resume playback. Following a series, its schedule and downloads continue as before.
+
+Jellyfin-compatible clients keep their file and episode progress: a title mark does not mark files as played, change Resume or Next Up, or allow automatic file cleanup.
+
 The actions menu shows the title's status under its name: <Ui k="status.watching" />, <Ui k="status.waiting" />, <Ui k="status.watched" /> or <Ui k="status.dropped" />.
 
 ## Collections
@@ -56,14 +61,14 @@ A collection is a list of your household, like “Holidays” or “With kids”
 
 A collection appears in <Ui k="nav.mine" /> and, if it's shown on home, as a row on <Ui k="nav.home" />.
 
-## Import ratings and Watch later
+## Import ratings, Watch later and watched titles
 
-Bring your ratings and watchlist from IMDb, Letterboxd or Trakt, or move a profile from another Torsher server. Import works in the panel:
+Bring your ratings and watchlist from IMDb, Letterboxd or Trakt, import watched title marks with the [Torsher JSON format](/docs/panel/profiles-devices#watched-title-file), or move a profile from another Torsher server. Import works in the panel:
 
 1. Export your data from the service: the ratings and watchlist CSV from IMDb, or the whole export zip from Letterboxd or Trakt. A CSV in the Letterboxd import format with TMDB or IMDb IDs also works.
 2. In the panel, open <Ui k="panel.nav.people" />, find the profile and select <Ui k="panel.imports.start" /> under <Ui k="panel.imports.section" />.
 3. Upload the files, up to 20 MB together. Torsher matches every row with the catalog.
-4. Check the preview: new ratings, new <Ui k="mine.sections.watchlist" /> entries, and ratings that differ from yours. Choose which rating wins and select <Ui k="panel.imports.dialog.apply" />.
+4. Check the preview: new ratings, new <Ui k="mine.sections.watchlist" /> entries, new watched marks, and ratings that differ from yours. Choose which rating wins and select <Ui k="panel.imports.dialog.apply" />.
 
 Rows that didn't find a title wait in the profile card for 90 days: match them by hand or hide them. <Ui k="panel.imports.undo" /> rolls the import back, except titles you changed since.
 
