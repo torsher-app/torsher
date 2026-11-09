@@ -460,7 +460,7 @@ function streamSelection(torrent: Torrent, fileIndex: number) {
 
 /** Ручные уровни — только для выбранных файлов. */
 function priorityWithin(
-  torrent: Torrent,
+  torrent: Pick<Torrent, 'firstFiles' | 'lowFiles'>,
   selected: number[],
   key: 'firstFiles' | 'lowFiles',
 ) {
@@ -518,6 +518,7 @@ async function addToEngineImpl(
   requiredBytes?: number,
   paused = false,
   spaceKind: 'stream' | 'download' | 'unknown' = 'unknown',
+  priorities?: Pick<Torrent, 'firstFiles' | 'lowFiles'>,
 ) {
   const current = getTorrent(torrent.id)
   if (!current)
@@ -544,8 +545,8 @@ async function addToEngineImpl(
       torrent.torrentFile!,
       downloadOrder(torrent, files),
       torrent.downloadDir ? torrentDir(torrent) : undefined,
-      priorityWithin(torrent, files, 'firstFiles') ?? [],
-      priorityWithin(torrent, files, 'lowFiles') ?? [],
+      priorityWithin(priorities ?? torrent, files, 'firstFiles') ?? [],
+      priorityWithin(priorities ?? torrent, files, 'lowFiles') ?? [],
       paused,
     )
   let details
@@ -605,6 +606,7 @@ async function downloadFilesImpl(
   options: {
     dir?: Torrent['downloadDir']
     origin?: 'follow' | 'manual' | 'preserve'
+    priorities?: { index: number, priority: 'high' | 'medium' | 'low' }[]
   } = {},
 ) {
   torrent = getTorrent(torrent.id) ?? torrent
@@ -612,6 +614,22 @@ async function downloadFilesImpl(
     throw new NotReadyError()
 
   const files = withSubtitles(torrent, chosen)
+  const overrides = new Map(
+    options.priorities?.map(item => [item.index, item.priority]),
+  )
+  const priorityOf = (index: number) =>
+    overrides.get(index)
+    ?? (torrent.firstFiles?.includes(index)
+      ? 'high'
+      : torrent.lowFiles?.includes(index)
+        ? 'low'
+        : 'medium')
+  const first = files.filter(index => priorityOf(index) === 'high')
+  const low = files.filter(index => priorityOf(index) === 'low')
+  const priorities = {
+    firstFiles: first.length ? first : null,
+    lowFiles: low.length ? low : null,
+  }
   const origin = options.origin ?? 'manual'
   if (origin === 'manual')
     protectTorrent(torrent.id)
@@ -623,6 +641,7 @@ async function downloadFilesImpl(
     undefined,
     false,
     'download',
+    priorities,
   )
 
   if (torrent.pauseReason)
@@ -631,8 +650,7 @@ async function downloadFilesImpl(
   update(torrent.id, {
     inEngine: true,
     selectedFiles: files,
-    firstFiles: priorityWithin(torrent, files, 'firstFiles'),
-    lowFiles: priorityWithin(torrent, files, 'lowFiles'),
+    ...priorities,
     retention: 'keep',
     pauseReason: null,
   })

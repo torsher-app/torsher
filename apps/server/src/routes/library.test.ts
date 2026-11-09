@@ -571,6 +571,40 @@ describe('действия с библиотекой', () => {
   })
 })
 
+describe('download priorities', () => {
+  it('passes draft priorities to the engine together with selected files and subtitles', async () => {
+    const torrent = await seed('Example Movie (2008)', movieFiles)
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/torrents/${torrent.id}/download`,
+      cookies: owner,
+      payload: {
+        files: [0, 2],
+        priorities: [
+          { index: 2, priority: 'high' },
+          { index: 0, priority: 'low' },
+        ],
+      },
+    })
+    expect(response.statusCode).toBe(200)
+    const add = engineCalls.find(call => call.startsWith('POST /torrents?'))!
+    const url = new URL(add.slice('POST '.length), 'http://engine')
+    expect(url.searchParams.get('first')).toBe('2')
+    expect(url.searchParams.get('low')).toBe('0')
+    expect(url.searchParams.get('files')?.split(',').sort()).toEqual([
+      '0',
+      '1',
+      '2',
+    ])
+    expect(response.json().files).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ index: 0, priority: 'low' }),
+        expect.objectContaining({ index: 2, priority: 'high' }),
+      ]),
+    )
+  })
+})
+
 describe('витрина: скачать, оставить, значки', () => {
   const SHOW = 'tmdb:tv:1396'
   const showFiles = [

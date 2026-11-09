@@ -62,8 +62,12 @@ const shown = shallowRef<Torrent | null>(props.torrent)
 const title = useTitleInfo(() => shown.value?.titleId ?? null)
 // Выбор файлов в карточке — черновик до «Скачать выбранные»
 const selection = ref(new Set<number>())
+const draftPriorities = ref(
+  new Map<number, Torrent['files'][number]['priority']>(),
+)
 
 function resetSelection(torrent: Torrent) {
+  draftPriorities.value = new Map()
   const chosen = torrent.files
     .filter(file => file.selected)
     .map(file => file.index)
@@ -230,20 +234,51 @@ const canDownload = computed(
 function toggleFile(index: number, checked: boolean | 'indeterminate') {
   const next = new Set(selection.value)
 
-  if (checked === true)
+  if (checked === true) {
     next.add(index)
-  else next.delete(index)
+  }
+  else {
+    next.delete(index)
+    const priorities = new Map(draftPriorities.value)
+    priorities.delete(index)
+    draftPriorities.value = priorities
+  }
 
   selection.value = next
 }
 
-async function onDownload() {
-  if (shown.value) {
-    await actions.download(
-      shown.value,
-      [...selection.value].sort((a, b) => a - b),
-    )
+function priorityOf(file: Torrent['files'][number]) {
+  return draftPriorities.value.get(file.index) ?? file.priority
+}
+
+function setPriority(
+  file: Torrent['files'][number],
+  priority: Torrent['files'][number]['priority'],
+) {
+  if (shown.value && file.selected) {
+    void actions.setPriority(shown.value, file.index, priority)
+    return
   }
+  const priorities = new Map(draftPriorities.value)
+  priorities.set(file.index, priority)
+  draftPriorities.value = priorities
+}
+
+async function onDownload() {
+  const torrent = shown.value
+  if (!torrent)
+    return
+
+  const priorities = [...draftPriorities.value]
+    .filter(([index]) => selection.value.has(index))
+    .map(([index, priority]) => ({ index, priority }))
+  const updated = await actions.download(
+    torrent,
+    [...selection.value].sort((a, b) => a - b),
+    priorities.length ? priorities : undefined,
+  )
+  if (updated && shown.value?.id === torrent.id)
+    draftPriorities.value = new Map()
 }
 
 function filePercent(downloaded: number, size: number) {
@@ -527,6 +562,7 @@ function onInteractOutside(event: Event) {
                 <Checkbox
                   :id="`download-file-${file.index}`"
                   :model-value="selection.has(file.index)"
+                  :disabled="isBusy"
                   :aria-label="
                     t('panel.torrents.selectFile', { name: file.path })
                   "
@@ -550,7 +586,16 @@ function onInteractOutside(event: Event) {
                     class="mr-1.5 font-medium tabular-nums"
                   >{{ release.fileEpisodes.get(file.index) }}</span>{{ file.path }}
                 </label>
-                <span class="flex items-center justify-end">
+                <span class="flex items-center justify-end gap-1">
+                  <DownloadFilePriority
+                    v-if="
+                      selection.has(file.index) && file.downloaded < file.size
+                    "
+                    :file="file"
+                    :model-value="priorityOf(file)"
+                    :disabled="isBusy"
+                    @update:model-value="setPriority(file, $event)"
+                  />
                   <Button
                     v-if="file.isVideo"
                     as="a"
@@ -594,74 +639,76 @@ function onInteractOutside(event: Event) {
                     {{ t("panel.torrents.inLibrary") }}
                   </template>
                 </span>
-                <DownloadFilePriority
-                  v-if="file.selected && file.downloaded < file.size"
-                  class="col-start-4 justify-self-end"
-                  :file="file"
-                  :disabled="isBusy"
-                  @update:model-value="
-                    actions.setPriority(shown, file.index, $event)
-                  "
-                />
               </li>
             </ul>
           </section>
         </div>
 
-        <footer class="flex shrink-0 flex-wrap gap-2 border-t p-3">
-          <LoadingButton
-            v-if="shown.status === 'ready'"
-            size="sm"
-            :loading="isBusy"
-            :disabled="!canDownload"
-            @click="onDownload"
+        <footer class="flex shrink-0 flex-col border-t">
+          <div
+            v-if="shown.status === 'ready' || hasLibraryFiles"
+            class="grid grid-cols-1 gap-2 p-3 min-[400px]:grid-cols-[minmax(0,1fr)_auto]"
           >
-            <ArrowDownToLineIcon aria-hidden="true" />
-            {{ t("panel.torrents.download") }}
-          </LoadingButton>
-          <Button
-            v-if="shown.status === 'ready'"
-            variant="outline"
-            size="sm"
-            :disabled="isBusy"
-            @click="actions.toggleKeep(shown)"
+            <LoadingButton
+              v-if="shown.status === 'ready'"
+              size="sm"
+              :loading="isBusy"
+              :disabled="!canDownload"
+              @click="onDownload"
+            >
+              <ArrowDownToLineIcon aria-hidden="true" />
+              {{ t("panel.torrents.download") }}
+            </LoadingButton>
+            <Button
+              v-if="shown.status === 'ready'"
+              variant="outline"
+              size="sm"
+              :disabled="isBusy"
+              @click="actions.toggleKeep(shown)"
+            >
+              <component
+                :is="shown.retention === 'keep' ? PinOffIcon : PinIcon"
+                aria-hidden="true"
+              />
+              {{
+                t(
+                  shown.retention === "keep"
+                    ? "panel.torrents.unkeep"
+                    : "panel.torrents.keep",
+                )
+              }}
+            </Button>
+            <Button
+              v-if="hasLibraryFiles"
+              variant="outline"
+              size="sm"
+              :disabled="isBusy"
+              class="min-[400px]:col-span-2 min-[400px]:justify-self-start"
+              @click="isRemoveOpen = true"
+            >
+              <LibraryIcon aria-hidden="true" />
+              {{ t("panel.torrents.removeLibrary") }}
+            </Button>
+          </div>
+          <div
+            class="flex items-center justify-between gap-2 p-3"
+            :class="{ 'border-t': shown.status === 'ready' || hasLibraryFiles }"
           >
-            <component
-              :is="shown.retention === 'keep' ? PinOffIcon : PinIcon"
-              aria-hidden="true"
-            />
-            {{
-              t(
-                shown.retention === "keep"
-                  ? "panel.torrents.unkeep"
-                  : "panel.torrents.keep",
-              )
-            }}
-          </Button>
-          <Button
-            v-if="hasLibraryFiles"
-            variant="outline"
-            size="sm"
-            :disabled="isBusy"
-            @click="isRemoveOpen = true"
-          >
-            <LibraryIcon aria-hidden="true" />
-            {{ t("panel.torrents.removeLibrary") }}
-          </Button>
-          <Button as-child variant="outline" size="sm">
-            <NuxtLink :to="logsRouteForId(shown.infoHash)">
-              <ScrollTextIcon aria-hidden="true" />
-              {{ t("panel.nav.logs") }}
-            </NuxtLink>
-          </Button>
-          <Button
-            variant="destructive"
-            size="sm"
-            class="ml-auto"
-            @click="emit('delete')"
-          >
-            {{ t("panel.common.delete") }}
-          </Button>
+            <Button as-child variant="outline" size="sm">
+              <NuxtLink :to="logsRouteForId(shown.infoHash)">
+                <ScrollTextIcon aria-hidden="true" />
+                {{ t("panel.nav.logs") }}
+              </NuxtLink>
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              class="ml-auto"
+              @click="emit('delete')"
+            >
+              {{ t("panel.common.delete") }}
+            </Button>
+          </div>
         </footer>
       </template>
     </SheetContent>

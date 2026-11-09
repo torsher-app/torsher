@@ -134,7 +134,30 @@ export const deleteTorrentQuery = z.object({
 export const downloadTorrent = z
   .object({
     files: z.array(z.number().int().min(0).max(99_999)).min(1).max(10_000),
+    priorities: z
+      .array(
+        z.object({
+          index: z.number().int().min(0).max(99_999),
+          priority: z.enum(['high', 'medium', 'low']),
+        }),
+      )
+      .max(10_000)
+      .optional(),
   })
+  .refine(
+    ({ files, priorities }) => {
+      const selected = new Set(files)
+      const indexes = priorities?.map(item => item.index) ?? []
+      return (
+        new Set(indexes).size === indexes.length
+          && indexes.every(index => selected.has(index))
+      )
+    },
+    {
+      message: 'Priorities must refer to unique selected files',
+      path: ['priorities'],
+    },
+  )
   .meta({ id: 'downloadTorrent' })
 
 export const updateTorrentPriority = z

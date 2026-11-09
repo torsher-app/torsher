@@ -4280,6 +4280,15 @@ export interface DownloadTorrentInput {
    * @minItems 1
    */
   files: number[];
+  /** @maxItems 10000 */
+  priorities?: {
+    /**
+     * @min 0
+     * @max 99999
+     */
+    index: number;
+    priority: "high" | "medium" | "low";
+  }[];
 }
 
 export interface UpdateTorrentPriorityInput {
@@ -11994,6 +12003,15 @@ export interface DownloadTorrent {
    * @minItems 1
    */
   files: number[];
+  /** @maxItems 10000 */
+  priorities?: {
+    /**
+     * @min 0
+     * @max 99999
+     */
+    index: number;
+    priority: "high" | "medium" | "low";
+  }[];
 }
 
 export interface UpdateTorrentPriority {
