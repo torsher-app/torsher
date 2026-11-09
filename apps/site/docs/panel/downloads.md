@@ -70,13 +70,14 @@ Click a row to open its card on the right.
 - **<Ui k="panel.torrents.card.storage" />.** Whether the torrent is in the cache, kept, or already in the library.
 - **<Ui k="panel.torrents.card.added" />** and **<Ui k="panel.torrents.card.watched" />.**
 - **<Ui k="panel.torrents.card.files" />.** Check files and select <Ui k="panel.torrents.download" />: checked files download in full and the torrent becomes kept, the rest download only while watched. The play button next to a video opens it in the showcase.
-- **Download order.** Episodes download one after another, so the first episode is ready to watch long before the season finishes. Use the priority dropdown below a selected file: <Ui k="panel.torrents.priorityHigh" /> downloads it sooner, <Ui k="panel.torrents.priorityMedium" /> follows episode order (the default), and <Ui k="panel.torrents.priorityLow" /> waits until the other selected files finish. Changes apply immediately and survive a restart. Playback can still read a file at any priority. The file that is downloading now is marked <Ui k="panel.torrents.downloadingFirst" />.
+- **Download order.** Episodes download one after another, so the first episode is ready to watch long before the season finishes. As soon as you check an unfinished file, use the priority button next to its play button: <Ui k="panel.torrents.priorityHigh" /> downloads it sooner, <Ui k="panel.torrents.priorityMedium" /> follows episode order (the default), and <Ui k="panel.torrents.priorityLow" /> waits until the other selected files finish. The button shows an up chevron, a dot or a down chevron; its menu includes the level names. For newly checked files, priorities apply together with <Ui k="panel.torrents.download" />. For files already selected for downloading, changes apply immediately. Applied priorities survive a restart. Playback can still read a file at any priority. The file that is downloading now is marked <Ui k="panel.torrents.downloadingFirst" />.
 
-Buttons at the bottom:
+Buttons at the bottom are grouped into two rows. Download and storage actions come first; the journal and deletion are below the divider:
 
 - **<Ui k="panel.torrents.download" />.**
 - **<Ui k="panel.torrents.keep" />** moves the torrent out of the cache. **<Ui k="panel.torrents.unkeep" />** stops the full download and returns it to the cache: what is downloaded stays until the cache fills up.
 - **<Ui k="panel.torrents.removeLibrary" />,** when files are already in the library.
+- **<Ui k="panel.nav.logs" />** opens the journal filtered to this torrent.
 - **<Ui k="panel.common.delete" />.**
 
 ### Seeding rule for one torrent

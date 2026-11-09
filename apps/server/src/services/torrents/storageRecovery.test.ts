@@ -12,7 +12,12 @@ import {
 } from '../engine/fixtures/index.ts'
 import { ensureSpaceFor } from '../storage/index.ts'
 import { torrentDir } from '../storage/paths.ts'
-import { getTorrent, prepareStream, reconcileEngineStorage } from './index.ts'
+import {
+  downloadFiles,
+  getTorrent,
+  prepareStream,
+  reconcileEngineStorage,
+} from './index.ts'
 
 vi.mock('../storage/index.ts', () => ({
   ensureSpaceFor: vi.fn(async () => {}),
@@ -341,4 +346,97 @@ it('explicit PLAY resumes an engine technical pause even when DB has no pauseRea
   })
   await prepareStream(torrent, 0)
   expect(resumed).toBe(true)
+})
+
+it('sends draft priorities with the first download request and persists them', async () => {
+  const torrent = row()
+  const adds: URL[] = []
+  fetchMock.mockImplementation(async (input, init = {}) => {
+    const url = new URL(String(input))
+    if (init.method === 'POST' && url.pathname === '/torrents') {
+      adds.push(url)
+      return json(movieDetails)
+    }
+    return json(liveStats)
+  })
+  const updated = await downloadFiles(torrent, [0, 2], {
+    priorities: [
+      { index: 2, priority: 'high' },
+      { index: 0, priority: 'low' },
+    ],
+  })
+  expect(adds).toHaveLength(1)
+  expect(adds[0]!.searchParams.get('first')).toBe('2')
+  expect(adds[0]!.searchParams.get('low')).toBe('0')
+  expect(updated).toMatchObject({
+    firstFiles: [2],
+    lowFiles: [0],
+    retention: 'keep',
+  })
+})
+
+it.each([undefined, []])(
+  'preserves saved priorities without overrides (%s)',
+  async (priorities) => {
+    const torrent = row({
+      selectedFiles: [0, 2],
+      firstFiles: [2],
+      lowFiles: [0],
+    })
+    fetchMock.mockImplementation(async (input, init = {}) => {
+      const url = new URL(String(input))
+      if (init.method === 'POST' && url.pathname === '/torrents') {
+        expect(url.searchParams.get('first')).toBe('2')
+        expect(url.searchParams.get('low')).toBe('0')
+        return json(movieDetails)
+      }
+      return json(liveStats)
+    })
+    expect(await downloadFiles(torrent, [0, 2], { priorities })).toMatchObject({
+      firstFiles: [2],
+      lowFiles: [0],
+    })
+  },
+)
+
+it('clears an explicit medium override and retains priorities of other selected files', async () => {
+  const torrent = row({
+    selectedFiles: [0, 2],
+    firstFiles: [2],
+    lowFiles: [0],
+  })
+  fetchMock.mockImplementation(async (input, init = {}) => {
+    const url = new URL(String(input))
+    if (init.method === 'POST' && url.pathname === '/torrents') {
+      expect(url.searchParams.get('first')).toBe('2')
+      expect(url.searchParams.has('low')).toBe(false)
+      return json(movieDetails)
+    }
+    return json(liveStats)
+  })
+  expect(
+    await downloadFiles(torrent, [0, 2], {
+      priorities: [{ index: 0, priority: 'medium' }],
+    }),
+  ).toMatchObject({ firstFiles: [2], lowFiles: null })
+})
+
+it('leaves saved selection and priorities intact when the download request fails', async () => {
+  const torrent = row({ selectedFiles: [0], firstFiles: [0] })
+  fetchMock.mockImplementation(async () =>
+    json({ kind: 'unavailable', message: 'failure' }, 503),
+  )
+  await expect(
+    downloadFiles(torrent, [0, 2], {
+      priorities: [
+        { index: 2, priority: 'high' },
+        { index: 0, priority: 'low' },
+      ],
+    }),
+  ).rejects.toThrow()
+  expect(getTorrent(torrent.id)).toMatchObject({
+    selectedFiles: [0],
+    firstFiles: [0],
+    lowFiles: null,
+  })
 })

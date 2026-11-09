@@ -835,3 +835,28 @@ describe('поток', () => {
     }
   })
 })
+
+describe('download priority validation', () => {
+  it.each([
+    [{ index: 2, priority: 'high' }],
+    [
+      { index: 0, priority: 'high' },
+      { index: 0, priority: 'low' },
+    ],
+    [{ index: 0, priority: 'urgent' }],
+    [{ index: -1, priority: 'high' }],
+  ])(
+    'rejects invalid priorities before touching the engine: %j',
+    async (...priorities) => {
+      const torrent = insertTorrent()
+      const response = await app.inject({
+        method: 'POST',
+        url: `/api/torrents/${torrent.id}/download`,
+        cookies: owner,
+        payload: { files: [0], priorities },
+      })
+      expect(response.statusCode).toBe(400)
+      expect(fetchMock).not.toHaveBeenCalled()
+    },
+  )
+})

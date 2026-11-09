@@ -1,5 +1,6 @@
 import type {
   CreateTorrentInput,
+  DownloadTorrentInput,
   EngineUnavailableResponse,
   SeedRule,
   Torrent,
@@ -149,9 +150,13 @@ async function deleteTorrent(id: string, withFiles: boolean) {
 }
 
 /** Действия строки и карточки: ошибку показывает вызывающий код тостом */
-async function downloadFiles(id: string, files: number[]) {
+async function downloadFiles(
+  id: string,
+  files: number[],
+  priorities?: DownloadTorrentInput['priorities'],
+) {
   const updated = await withErrorMode('silent', () =>
-    api.torrents.postTorrentDownload(id, { files }))
+    api.torrents.postTorrentDownload(id, { files, priorities }))
 
   replaceTorrent(updated)
 

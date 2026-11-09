@@ -303,7 +303,9 @@ export const torrentRoutes: FastifyPluginAsyncZod = async (app) => {
         return reply.code(400).send({ message: 'Unknown file index' })
 
       try {
-        const updated = await downloadFiles(found, files)
+        const updated = await downloadFiles(found, files, {
+          priorities: request.body.priorities,
+        })
 
         // Уже скачанные целиком файлы ложатся в библиотеку сразу
         void syncLibrary()

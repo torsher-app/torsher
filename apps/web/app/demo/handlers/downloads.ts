@@ -620,8 +620,14 @@ post<Torrent, DownloadTorrentInput>(
     advance(entry)
     for (const file of torrent.files) {
       file.selected = wanted.has(file.index)
-      if (!file.selected)
+      if (!file.selected) {
         file.priority = 'medium'
+      }
+      else {
+        file.priority
+          = body.priorities?.find(item => item.index === file.index)
+            ?.priority ?? file.priority
+      }
     }
     torrent.retention = 'keep'
 

@@ -1,4 +1,4 @@
-import type { Torrent } from '@torsher/api-client'
+import type { DownloadTorrentInput, Torrent } from '@torsher/api-client'
 import { toast } from 'vue-sonner'
 import { useI18n } from 'vue-i18n'
 import { torrentErrorKind } from '~/composables/useTorrents'
@@ -74,9 +74,17 @@ export function useDownloadActions() {
     })
   }
 
-  function download(torrent: Torrent, files: number[]) {
+  function download(
+    torrent: Torrent,
+    files: number[],
+    priorities?: DownloadTorrentInput['priorities'],
+  ) {
     return run(torrent, async () => {
-      const updated = await torrents.downloadFiles(torrent.id, files)
+      const updated = await torrents.downloadFiles(
+        torrent.id,
+        files,
+        priorities,
+      )
 
       if (updated.pauseReason === 'storage') {
         toast.warning(t('panel.torrents.toasts.downloadStorage'), {
@@ -88,6 +96,7 @@ export function useDownloadActions() {
           description: t('panel.torrents.toasts.downloadText', files.length),
         })
       }
+      return updated
     })
   }
 
