@@ -1154,6 +1154,7 @@ function exit() {
   launch++
   leaving = true
   consent.cancel()
+  hls.detach()
   player.close()
   save('exit')
 
@@ -1408,6 +1409,7 @@ function onKey(action: KeyAction, event: KeyboardEvent) {
 }
 
 async function begin(from: number) {
+  const run = launch
   const el = video.value
   const current = playback.value
 
@@ -1442,7 +1444,18 @@ async function begin(from: number) {
 
   // Нативный плеер оболочки сам играет HLS: hls.js ему не нужен
   if (current.mode === 'hls' && !hasNativePlayer) {
-    if (!(await hls.attach(el, current.streamUrl, from))) {
+    let attached: boolean
+    try {
+      attached = await hls.attach(el, current.streamUrl, from)
+    }
+    catch (err) {
+      if (run !== launch || leaving || restarting.value)
+        return
+      throw err
+    }
+    if (run !== launch || leaving || restarting.value)
+      return
+    if (!attached) {
       player.fail('unsupported')
       return
     }
@@ -1462,6 +1475,8 @@ async function begin(from: number) {
   // Без жеста пользователя браузер может не дать играть со звуком:
   // тогда видео ждёт на паузе с OSD, OK запускает
   el.play().catch((err: unknown) => {
+    if (run !== launch || leaving || restarting.value)
+      return
     if (err instanceof Error && err.name === 'NotAllowedError') {
       phase.value = 'playing'
       paused.value = true

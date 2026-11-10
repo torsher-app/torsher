@@ -232,6 +232,11 @@ export function usePlayback(
 
   /** Закрыть сессию на сервере: перепаковка и её сегменты больше не нужны */
   function close() {
+    generation++
+    closeSessions()
+  }
+
+  function closeSessions() {
     stopHeartbeat()
 
     for (const id of [playback.value?.sessionId, pending.value?.sessionId]) {
@@ -366,7 +371,7 @@ export function usePlayback(
 
     status.value = 'loading'
     error.value = undefined
-    close()
+    closeSessions()
 
     let created: Playback | undefined
 
@@ -635,7 +640,6 @@ export function usePlayback(
   }
 
   onScopeDispose(() => {
-    generation++
     stopStats()
     close()
   })
