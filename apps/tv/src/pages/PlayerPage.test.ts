@@ -19,6 +19,11 @@ const mocks = vi.hoisted(() => ({
   pause: vi.fn(),
   focus: vi.fn(),
   attach: vi.fn(),
+  detach: vi.fn(),
+  fail: vi.fn(),
+  save: vi.fn(),
+  progress: vi.fn(),
+  upNext: vi.fn(),
   pollStats: vi.fn(),
   native: false,
   restart: (_change: PlaybackRestart): Promise<void> => Promise.resolve(),
@@ -26,7 +31,10 @@ const mocks = vi.hoisted(() => ({
 }))
 vi.mock('../lib/navigation.ts', () => ({ goBack: mocks.goBack }))
 vi.mock('../api.ts', () => ({
-  api: { playback: { putPlaybackPreferences: mocks.saveTracks } },
+  api: {
+    playback: { putPlaybackPreferences: mocks.saveTracks },
+    titles: { getTitleProgress: mocks.progress, getTitleUpNext: mocks.upNext },
+  },
 }))
 vi.mock('../session.ts', () => ({
   session: {},
@@ -87,7 +95,7 @@ vi.mock('../composables/usePlayerArt.ts', () => ({
 vi.mock('../composables/useHls.ts', () => ({
   useHls: () => ({
     attach: mocks.attach,
-    detach: vi.fn(),
+    detach: mocks.detach,
     diagnosticState: () => ({}),
   }),
 }))
@@ -118,7 +126,8 @@ vi.mock('../composables/usePlayback.ts', () => ({
     pollStats: mocks.pollStats,
     stopStats: vi.fn(),
     close: vi.fn(),
-    saveWatchState: vi.fn().mockResolvedValue(undefined),
+    fail: mocks.fail,
+    saveWatchState: mocks.save,
   }),
 }))
 vi.mock('../composables/usePlayerTracks.ts', () => ({
@@ -163,6 +172,10 @@ const renderer = createRenderer<Element, Element>({
   remove() {},
 })
 interface Controls {
+  exit: () => void
+  recover: (cause?: 'unknown') => void
+  playNext: () => Promise<void> | undefined
+  onEnded: () => void
   switchSource: (
     candidate: SourceCandidate,
     choice: SourceChoice,
@@ -188,7 +201,7 @@ let cleanup: () => void
 async function settle() {
   for (let i = 0; i < 12; i++) await nextTick()
 }
-async function mount(playing = true) {
+async function mount(playing = true, episodic = false) {
   // SFCs are compiled for SSR in this test environment. Keep the real setup,
   // lifecycle and media handlers;
   // only the DOM and streaming transport are fakes.
@@ -200,7 +213,12 @@ async function mount(playing = true) {
         return null
       },
     },
-    { torrentId: 'fixture', fileIndex: '0', titleId: 'tmdb:tv:1' },
+    {
+      torrentId: 'fixture',
+      fileIndex: '0',
+      titleId: 'tmdb:tv:1',
+      ...(episodic ? { season: '1', episode: '2' } : {}),
+    },
   )
   app.provide(ssrContextKey, {})
   app.mount(element())
@@ -217,6 +235,7 @@ async function mount(playing = true) {
 beforeEach(() => {
   vi.useFakeTimers()
   vi.clearAllMocks()
+  mode = 'direct'
   playerStats.value = undefined
   statsFailed.value = false
   statsAt.value = 0
@@ -230,6 +249,9 @@ beforeEach(() => {
   })
   vi.stubGlobal('window', { setTimeout, clearTimeout })
   mocks.saveTracks.mockResolvedValue({ saved: true })
+  mocks.save.mockResolvedValue(undefined)
+  mocks.progress.mockResolvedValue({ seasonReleases: [] })
+  mocks.upNext.mockResolvedValue({ next: null })
   mocks.native = false
   mocks.start.mockResolvedValue('ready')
   mocks.attach.mockResolvedValue(true)
@@ -617,4 +639,206 @@ it('does not autoplay after Sources closes during an asynchronous HLS attach', a
   expect(controls.phase).toBe('playing')
   expect(controls.paused).toBe(true)
   expect(mocks.play).not.toHaveBeenCalled()
+})
+
+it.each(['exit', 'unmount'] as const)(
+  'does not autoplay after %s while HLS attaches',
+  async (cancel) => {
+    mode = 'hls'
+    let attached!: (value: boolean) => void
+    mocks.attach.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          attached = resolve
+        }),
+    )
+    await mount(false)
+    mocks.detach.mockClear()
+    if (cancel === 'exit')
+      controls.exit()
+    else cleanup()
+    expect(mocks.detach).toHaveBeenCalledOnce()
+    attached(true)
+    await settle()
+    expect(mocks.play).not.toHaveBeenCalled()
+    expect(mocks.fail).not.toHaveBeenCalled()
+  },
+)
+
+it('ignores a cancelled HLS attach result after exit instead of failing the closed player', async () => {
+  mode = 'hls'
+  let attached!: (value: boolean) => void
+  mocks.attach.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        attached = resolve
+      }),
+  )
+  await mount(false)
+  controls.exit()
+  attached(false)
+  await settle()
+  expect(mocks.fail).not.toHaveBeenCalled()
+  expect(mocks.play).not.toHaveBeenCalled()
+})
+
+it('does not begin a late audio restart after explicit exit', async () => {
+  await mount()
+  let ready!: (value: string) => void
+  mocks.start.mockReturnValueOnce(
+    new Promise((resolve) => {
+      ready = resolve
+    }),
+  )
+  const restarting = mocks.restart({ audioStream: 2 })
+  controls.exit()
+  ready('ready')
+  await restarting
+  expect(mocks.play).not.toHaveBeenCalled()
+  expect(mocks.attach).not.toHaveBeenCalled()
+  expect(mocks.goBack).toHaveBeenCalledOnce()
+})
+
+it('settles a rejected HLS attach after exit without playing or failing the closed page', async () => {
+  mode = 'hls'
+  await mount()
+  let reject!: (reason: Error) => void
+  mocks.attach.mockImplementationOnce(
+    () =>
+      new Promise((_resolve, fail) => {
+        reject = fail
+      }),
+  )
+  const restart = mocks.restart({ audioStream: 2 })
+  await settle()
+  controls.exit()
+  reject(new Error('chunk unavailable'))
+  await expect(restart).resolves.toBeUndefined()
+  expect(mocks.play).not.toHaveBeenCalled()
+  expect(mocks.fail).not.toHaveBeenCalled()
+})
+
+it.each(['cancelled', 'rejected'] as const)(
+  'keeps recovery retry alive when its pending HLS attach is %s',
+  async (outcome) => {
+    mode = 'hls'
+    await mount()
+    let attached!: (value: boolean) => void
+    let rejected!: (reason: Error) => void
+    mocks.attach.mockImplementationOnce(
+      () =>
+        new Promise((resolve, reject) => {
+          attached = resolve
+          rejected = reject
+        }),
+    )
+    const restart = mocks.restart({ audioStream: 2 })
+    await settle()
+    controls.recover('unknown')
+    if (outcome === 'cancelled')
+      attached(false)
+    else rejected(new Error('chunk unavailable'))
+    await expect(restart).resolves.toBeUndefined()
+    expect(mocks.fail).not.toHaveBeenCalled()
+    expect(mocks.play).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(mocks.start).toHaveBeenCalledTimes(3)
+    expect(mocks.play).toHaveBeenCalledOnce()
+    expect(mocks.fail).not.toHaveBeenCalled()
+  },
+)
+
+it('ignores a late autoplay rejection during recovery and still resumes on retry', async () => {
+  await mount()
+  let rejected!: (reason: Error) => void
+  mocks.play.mockImplementationOnce(
+    () =>
+      new Promise((_resolve, reject) => {
+        rejected = reject
+      }),
+  )
+  await mocks.restart({ audioStream: 2 })
+  controls.recover('unknown')
+  const pausedDuringRecovery = controls.paused
+  const failure = new Error('gesture required')
+  failure.name = 'NotAllowedError'
+  rejected(failure)
+  await settle()
+  expect(controls.phase).toBe('buffering')
+  expect(controls.paused).toBe(pausedDuringRecovery)
+  expect(mocks.fail).not.toHaveBeenCalled()
+  await vi.advanceTimersByTimeAsync(2000)
+  expect(mocks.start).toHaveBeenCalledTimes(3)
+  expect(mocks.play).toHaveBeenCalledTimes(2)
+  expect(controls.paused).toBe(false)
+  expect(mocks.fail).not.toHaveBeenCalled()
+})
+
+it.each(['save', 'progress'] as const)(
+  'preserves an agreed Next when natural ended arrives during %s',
+  async (waiting) => {
+    mocks.upNext.mockResolvedValue({
+      next: {
+        season: 1,
+        episode: 3,
+        title: 'Next',
+        file: { torrentId: 'fixture', fileIndex: 1 },
+      },
+    })
+    await mount(true, true)
+    let done!: () => void
+    const pending = new Promise<void>((resolve) => {
+      done = resolve
+    })
+    if (waiting === 'save') {
+      mocks.save.mockReturnValueOnce(pending)
+    }
+    else {
+      mocks.progress.mockImplementationOnce(async () => {
+        await pending
+        return { seasonReleases: [] }
+      })
+    }
+    const next = controls.playNext()
+    await settle()
+    expect(mocks.replace).not.toHaveBeenCalled()
+    mocks.media.currentTime = mocks.media.duration
+    controls.onEnded()
+    done()
+    await next
+    await settle()
+    expect(mocks.replace).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        path: '/play/fixture/1',
+        query: expect.objectContaining({ season: '1', episode: '3' }),
+      }),
+    )
+    expect(mocks.progress).toHaveBeenCalledOnce()
+  },
+)
+
+it('explicit exit cancels an agreed Next while its progress lookup is pending', async () => {
+  mocks.upNext.mockResolvedValue({
+    next: {
+      season: 1,
+      episode: 3,
+      title: 'Next',
+      file: { torrentId: 'fixture', fileIndex: 1 },
+    },
+  })
+  await mount(true, true)
+  let done!: () => void
+  mocks.progress.mockImplementationOnce(async () => {
+    await new Promise<void>((resolve) => {
+      done = resolve
+    })
+    return { seasonReleases: [] }
+  })
+  const next = controls.playNext()
+  await settle()
+  controls.exit()
+  done()
+  await next
+  expect(mocks.goBack).toHaveBeenCalledOnce()
+  expect(mocks.replace).not.toHaveBeenCalled()
 })

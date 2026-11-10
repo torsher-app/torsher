@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"testing"
@@ -149,6 +150,73 @@ func TestClosedStreamStopsDownloading(t *testing.T) {
 		if !state.Complete && state.Priority != torrent.PiecePriorityNone {
 			t.Fatalf("piece %d still wanted after the stream closed: priority %v", index, state.Priority)
 		}
+	}
+}
+
+func TestTwoStreamReadersKeepIndependentPositionsAndLifetime(t *testing.T) {
+	engine, added, fx := streamFixture(t)
+	file := added.Files()[0]
+	pieceLength := added.Info().PieceLength
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	first := engine.windows.open(added, file, newStreamReader(ctx, file), 2*pieceLength)
+	second := engine.windows.open(added, file, newStreamReader(ctx, file), 2*pieceLength)
+	firstClosed, secondClosed := false, false
+	defer func() {
+		if !firstClosed {
+			first.Close()
+		}
+		if !secondClosed {
+			second.Close()
+		}
+	}()
+	if _, err := second.Seek(6*pieceLength, io.SeekStart); err != nil {
+		t.Fatal(err)
+	}
+	readAt := func(reader torrent.Reader, position int64) {
+		t.Helper()
+		data := make([]byte, 4096)
+		if _, err := io.ReadFull(reader, data); err != nil {
+			t.Fatal(err)
+		}
+		if !bytes.Equal(data, fx.content[position:position+int64(len(data))]) {
+			t.Fatalf("reader returned data from another position, want %d", position)
+		}
+	}
+	readAt(first, 0)
+	readAt(second, 6*pieceLength)
+	// Перемотка A не меняет текущую позицию B.
+	if _, err := first.Seek(10*pieceLength, io.SeekStart); err != nil {
+		t.Fatal(err)
+	}
+	readAt(first, 10*pieceLength)
+	readAt(second, 6*pieceLength+4096)
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+	firstClosed = true
+	if !engine.windows.streaming(added.InfoHash()) {
+		t.Fatal("closing one reader released the other stream")
+	}
+	// После закрытия A второй ридер продолжает читать, а затем получает
+	// новые куски за пределами своего прежнего окна.
+	readAt(second, 6*pieceLength+8192)
+	if added.Piece(4).State().Complete {
+		t.Fatal("the piece outside both reader windows was already downloaded")
+	}
+	if _, err := second.Seek(4*pieceLength, io.SeekStart); err != nil {
+		t.Fatal(err)
+	}
+	readAt(second, 4*pieceLength)
+	waitFor(t, 5*time.Second, func() bool {
+		return added.Piece(4).State().Complete
+	})
+	if err := second.Close(); err != nil {
+		t.Fatal(err)
+	}
+	secondClosed = true
+	if engine.windows.streaming(added.InfoHash()) {
+		t.Fatal("the last reader did not release the stream")
 	}
 }
 

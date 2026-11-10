@@ -213,6 +213,43 @@ it('unmount cancels a pending launch and closes its late server response', async
   expect(mocks.remove).toHaveBeenCalledExactlyOnceWith('A')
 })
 
+it('explicit close cancels a pending launch before unmount and never starts its heartbeat', async () => {
+  const a = deferred<Playback>()
+  mocks.post.mockReturnValueOnce(a.promise)
+  const scope = effectScope()
+  const player = scope.run(() => usePlayback({ mediaFileId: 'file' }))!
+  const start = player.start({ audioStream: 2 })
+  player.close()
+  a.resolve(ready('A'))
+  expect(await start).toBe('stale')
+  expect(player.playback.value).toBeUndefined()
+  expect(mocks.remove).toHaveBeenCalledExactlyOnceWith('A')
+  await vi.advanceTimersByTimeAsync(60_000)
+  expect(mocks.get).not.toHaveBeenCalled()
+  scope.stop()
+})
+
+it('explicit close discards an in-flight probe result and leaves a replacement session alive', async () => {
+  const probe = deferred<Playback>()
+  mocks.post.mockResolvedValueOnce({ ...ready('A'), status: 'probing' })
+  mocks.get.mockReturnValueOnce(probe.promise)
+  const scope = effectScope()
+  const player = scope.run(() => usePlayback({ mediaFileId: 'file' }))!
+  const startA = player.start()
+  await vi.advanceTimersByTimeAsync(1000)
+  expect(mocks.get).toHaveBeenCalledOnce()
+  player.close()
+  probe.resolve(ready('A'))
+  expect(await startA).toBe('stale')
+  expect(player.playback.value).toBeUndefined()
+  expect(mocks.remove).toHaveBeenCalledExactlyOnceWith('A')
+  mocks.post.mockResolvedValueOnce(ready('B'))
+  expect(await player.start()).toBe('ready')
+  expect(player.playback.value?.sessionId).toBe('B')
+  expect(mocks.remove).toHaveBeenCalledExactlyOnceWith('A')
+  scope.stop()
+})
+
 it('keeps every business save but bounds successful checkpoint observations over two hours', async () => {
   mocks.save.mockResolvedValue(undefined)
   const scope = effectScope()

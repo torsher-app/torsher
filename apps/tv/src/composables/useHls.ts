@@ -21,9 +21,11 @@ export type HlsFailure = 'network' | 'media' | 'other'
  */
 export function useHls(onFatal: (kind: HlsFailure, detail?: string) => void) {
   let hls: Hls | undefined
+  let generation = 0
   let diagnosticState: DiagnosticMediaSnapshot['hls'] = 'idle'
 
   function detach() {
+    generation++
     hls?.destroy()
     hls = undefined
     diagnosticState = 'idle'
@@ -31,9 +33,22 @@ export function useHls(onFatal: (kind: HlsFailure, detail?: string) => void) {
 
   async function attach(video: HTMLVideoElement, url: string, start: number) {
     detach()
+    const run = generation
     diagnosticState = 'loading'
 
-    const { default: HlsPlayer } = await import('hls.js')
+    let module: typeof import('hls.js')
+    try {
+      module = await import('hls.js')
+    }
+    catch (err) {
+      if (run !== generation)
+        return false
+      throw err
+    }
+
+    if (run !== generation)
+      return false
+    const { default: HlsPlayer } = module
 
     if (!HlsPlayer.isSupported()) {
       if (video.canPlayType(HLS_NATIVE) === '') {
@@ -72,6 +87,8 @@ export function useHls(onFatal: (kind: HlsFailure, detail?: string) => void) {
     })
 
     player.on(HlsPlayer.Events.ERROR, (_event, data) => {
+      if (run !== generation)
+        return
       // 502 — ffmpeg упал или не прочитал вход: повторы hls.js в той же
       // сессии дадут то же самое, а новая сессия запустит новый ffmpeg
       if (
@@ -116,6 +133,8 @@ export function useHls(onFatal: (kind: HlsFailure, detail?: string) => void) {
       player.recoverMediaError()
     })
     player.on(HlsPlayer.Events.FRAG_BUFFERED, () => {
+      if (run !== generation)
+        return
       diagnosticState = 'playing'
     })
     player.loadSource(url)

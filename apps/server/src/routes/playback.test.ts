@@ -26,9 +26,10 @@ import {
 } from '../services/logs/index.ts'
 import { stopAllSessions } from '../services/media/index.ts'
 import { clearProbeCache } from '../services/media/probe.ts'
-import { probeDeps } from '../services/media/sessions.ts'
+import { getSession, probeDeps } from '../services/media/sessions.ts'
 import { resetMediaTools } from '../services/media/tools.ts'
 import { rememberChoice } from '../services/sources/progress.ts'
+import { isStreaming } from '../services/storage/index.ts'
 import { signToken } from '../utils/token.ts'
 
 vi.mock('../services/storage/disk.ts', () => ({
@@ -906,6 +907,148 @@ describe.runIf(hasFfmpeg())('воспроизведение с пробой и �
     ).toBe(404)
     expect((await app.inject({ url: body.streamUrl })).statusCode).toBe(404)
   })
+
+  it('изолирует позиции, озвучку и закрытие двух зрителей одного файла', async () => {
+    await stopAllSessions()
+    const [first, second] = await Promise.all([
+      start({ device: chrome, audioStream: 1, startPosition: 0 }),
+      start({ device: chrome, audioStream: 2, startPosition: 8 }),
+    ])
+    const a = getSession(first.sessionId, 'owner')!
+    const b = getSession(second.sessionId, 'owner')!
+    expect(first.sessionId).not.toBe(second.sessionId)
+    expect(a.hls).not.toBe(b.hls)
+    expect(a.hls!.dir).not.toBe(b.hls!.dir)
+    expect(first).toMatchObject({ audioStream: 1, startPosition: 0 })
+    expect(second).toMatchObject({ audioStream: 2, startPosition: 8 })
+    const stopSecond = vi.spyOn(b.hls!, 'stop')
+
+    async function segment(session: typeof first, index: number) {
+      const response = await app.inject({
+        url: `/api/hls/${session.sessionId}/${index}.ts?${session.streamUrl.split('?')[1]}`,
+      })
+      expect(response.statusCode).toBe(200)
+      const details = JSON.parse(
+        execFileSync(
+          'ffprobe',
+          [
+            '-v',
+            'error',
+            '-show_entries',
+            'stream=codec_type,codec_name,start_time',
+            '-of',
+            'json',
+            'pipe:0',
+          ],
+          { input: response.rawPayload, encoding: 'utf8' },
+        ),
+      ) as {
+        streams: {
+          codec_type: string
+          codec_name: string
+          start_time: string
+        }[]
+      }
+      expect(
+        details.streams.find(stream => stream.codec_type === 'audio')
+          ?.codec_name,
+      ).toBe('aac')
+      const videoStart = Number(
+        details.streams.find(stream => stream.codec_type === 'video')
+          ?.start_time,
+      )
+      const pcm = execFileSync(
+        'ffmpeg',
+        [
+          '-v',
+          'error',
+          '-f',
+          'mpegts',
+          '-i',
+          'pipe:0',
+          '-map',
+          '0:a:0',
+          '-t',
+          '0.5',
+          '-ac',
+          '1',
+          '-ar',
+          '48000',
+          '-f',
+          'f32le',
+          'pipe:1',
+        ],
+        { input: response.rawPayload },
+      )
+      // Синтетические дорожки различаются частотой: 440 и 660 Гц.
+      let crossings = 0
+      const from = 2400
+      const samples = pcm.length / 4
+      for (let i = from + 1; i < samples; i++) {
+        if (pcm.readFloatLE((i - 1) * 4) <= 0 && pcm.readFloatLE(i * 4) > 0)
+          crossings++
+      }
+      return { videoStart, frequency: (crossings * 48_000) / (samples - from) }
+    }
+    async function close(sessionId: string) {
+      expect(
+        (
+          await app.inject({
+            method: 'DELETE',
+            url: `/api/playback/${sessionId}`,
+            cookies: owner,
+          })
+        ).statusCode,
+      ).toBe(200)
+    }
+
+    try {
+      const [firstData, secondData] = await Promise.all([
+        segment(first, 0),
+        segment(second, 2),
+      ])
+      expect(firstData.frequency).toBeCloseTo(440, -1)
+      expect(secondData.frequency).toBeCloseTo(660, -1)
+      expect(secondData.videoStart).toBeGreaterThan(firstData.videoStart + 7)
+      const seek = await segment(first, 3)
+      expect(seek.videoStart).toBeGreaterThan(secondData.videoStart + 5)
+      expect(seek.frequency).toBeCloseTo(440, -1)
+
+      await close(first.sessionId)
+      expect(isStreaming(torrent.id)).toBe(true)
+      // Смена дорожки A создаёт новую сессию с той же позицией.
+      const replacement = await start({
+        device: chrome,
+        audioStream: 2,
+        startPosition: 14,
+      })
+      expect(replacement.sessionId).not.toBe(first.sessionId)
+      expect((await segment(replacement, 3)).frequency).toBeCloseTo(660, -1)
+      await close(replacement.sessionId)
+      expect(stopSecond).not.toHaveBeenCalled()
+      expect(getSession(second.sessionId, 'owner')).toBe(b)
+      expect(b.audioStream).toBe(2)
+      expect(isStreaming(torrent.id)).toBe(true)
+
+      // B начал с сегмента 2: сегмент 1 ещё не генерировался. После закрытия
+      // обоих запусков A он должен читаться заново своим FFmpeg и с тем же аудио.
+      expect(b.hls!.readySegments()).not.toContain(1)
+      const secondAfterClose = await segment(second, 1)
+      expect(secondAfterClose.frequency).toBeCloseTo(660, -1)
+      expect(secondAfterClose.videoStart).toBeLessThan(
+        secondData.videoStart - 5,
+      )
+      expect(stopSecond).not.toHaveBeenCalled()
+      await close(second.sessionId)
+      expect(isStreaming(torrent.id)).toBe(false)
+      expect((await app.inject({ url: second.streamUrl })).statusCode).toBe(
+        404,
+      )
+    }
+    finally {
+      await stopAllSessions()
+    }
+  }, 20_000)
 })
 
 async function defaultProfileId() {
