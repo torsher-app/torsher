@@ -2,10 +2,12 @@
 import type { Card } from '@torsher/api-client'
 import { FilmIcon, SearchIcon } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Skeleton } from '@/components/ui/skeleton'
+import TitlePreviewDialog from '~/components/TitlePreviewDialog.vue'
 import { api } from '~/services/api'
 
 /**
@@ -125,41 +127,56 @@ function kindLabel(card: Card) {
         }}
       </p>
       <RadioGroup v-else v-model="chosen" class="gap-0 p-1.5">
-        <Label
+        <div
           v-for="card in results"
           :key="card.id"
-          :for="`${inputId}-${card.id}`"
-          class="grid cursor-pointer grid-cols-[16px_40px_minmax(0,1fr)] items-center gap-3 rounded-md px-2 py-1.5 font-normal hover:bg-muted/60 has-[[data-state=checked]]:bg-muted"
+          class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-1 rounded-md pr-1 hover:bg-muted/60 has-[[data-state=checked]]:bg-muted"
         >
-          <RadioGroupItem :id="`${inputId}-${card.id}`" :value="card.id" />
-          <span
-            class="grid h-[48px] w-[32px] place-items-center overflow-hidden rounded bg-muted text-muted-foreground"
-            aria-hidden="true"
+          <Label
+            :for="`${inputId}-${card.id}`"
+            class="grid min-w-0 cursor-pointer grid-cols-[16px_32px_minmax(0,1fr)] items-center gap-2 px-2 py-1.5 font-normal sm:gap-3"
           >
-            <img
-              v-if="card.poster"
-              :src="card.poster"
-              alt=""
-              class="size-full object-cover"
-              loading="lazy"
+            <RadioGroupItem :id="`${inputId}-${card.id}`" :value="card.id" />
+            <span
+              class="grid h-[48px] w-[32px] place-items-center overflow-hidden rounded bg-muted text-muted-foreground"
+              aria-hidden="true"
             >
-            <FilmIcon v-else class="size-3.5" />
-          </span>
-          <span class="grid min-w-0">
-            <span class="truncate font-medium">{{ card.title }}</span>
-            <span class="truncate text-xs text-muted-foreground tabular-nums">
-              {{
-                [
-                  card.year,
-                  kindLabel(card),
-                  card.originalTitle !== card.title ? card.originalTitle : "",
-                ]
-                  .filter(Boolean)
-                  .join(" · ")
-              }}
+              <img
+                v-if="card.poster"
+                :src="card.poster"
+                alt=""
+                class="size-full object-cover"
+                loading="lazy"
+              >
+              <FilmIcon v-else class="size-3.5" />
             </span>
-          </span>
-        </Label>
+            <span class="grid min-w-0">
+              <span class="truncate font-medium">{{ card.title }}</span>
+              <span class="truncate text-xs text-muted-foreground tabular-nums">
+                {{
+                  [
+                    card.year,
+                    kindLabel(card),
+                    card.originalTitle !== card.title ? card.originalTitle : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")
+                }}
+              </span>
+            </span>
+          </Label>
+          <TitlePreviewDialog :card="card" @select="chosen = $event">
+            <Button
+              variant="ghost"
+              size="sm"
+              :aria-label="
+                t('panel.titlePreview.detailsOf', { title: card.title })
+              "
+            >
+              {{ t("panel.titlePreview.details") }}
+            </Button>
+          </TitlePreviewDialog>
+        </div>
       </RadioGroup>
     </div>
   </div>

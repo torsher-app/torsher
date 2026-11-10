@@ -757,6 +757,13 @@
       "showKey": "Show key",
       "hideKey": "Hide key"
     },
+    "titlePreview": {
+      "details": "Details",
+      "detailsOf": "Details of “{title}”",
+      "select": "Select this title",
+      "failed": "Could not load title details. Try again.",
+      "noOverview": "No overview available."
+    },
     "kinds": {
       "prowlarr": "Prowlarr",
       "jackett": "Jackett"
