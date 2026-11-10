@@ -64,7 +64,7 @@ Bring a profile's ratings and Watchlist from another service, or move a profile 
 
 Only your own data is read from the files: title IDs, your ratings, dates and lists.
 
-- **Rows that didn't match.** The profile card links to them. Confirm a suggested title or find one yourself. They wait there for 90 days.
+- **Rows that didn't match.** The profile card links to them. Confirm a suggested title or find one yourself. Use <Ui k="panel.titlePreview.details" /> to check the poster and overview, then <Ui k="panel.titlePreview.select" /> to return with that title selected. Save the match in the search dialog. Unmatched rows wait there for 90 days.
 - **Undo.** The card shows the last import with <Ui k="panel.imports.undo" />. Everything it changed goes back, except titles you changed after the import.
 - **<Ui k="panel.imports.export" />** saves the profile as a file to import on another Torsher server. To move the whole server, see [Backup and move](/docs/maintain/backup#move-data-into-another-server).
 

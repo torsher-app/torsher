@@ -55,6 +55,8 @@ When some files can't be matched to a title, the <Ui k="panel.library.unmatched.
 - <Ui k="panel.torrents.match.fix" /> opens a catalog search. Pick the title and select <Ui k="panel.common.save" />. For a series, <Ui k="panel.library.episodes.next" /> shows how the files map to seasons and episodes: fix a number if needed. An empty episode means the file isn't an episode and stays under “No description”.
 - <Ui k="panel.torrents.match.notTitle" /> leaves the files under “No description”.
 
+In the search results, <Ui k="panel.titlePreview.details" /> opens a larger poster and overview without changing your selection. <Ui k="panel.titlePreview.select" /> selects that title and returns to the search; confirm the match with <Ui k="panel.common.save" />.
+
 ## Library settings
 
 The menu of a connected library has:
