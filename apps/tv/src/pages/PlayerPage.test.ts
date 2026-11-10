@@ -4,10 +4,12 @@ import type { Ref } from 'vue'
 import type { PlaybackRestart } from '../composables/usePlayback.ts'
 import { createRenderer, nextTick, ref, ssrContextKey } from 'vue'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { PAUSE_DIM_MS } from '../lib/player.ts'
 import PlayerPage from './PlayerPage.vue'
 
 const mocks = vi.hoisted(() => ({
   historyState: {} as Record<string, unknown>,
+  goBack: vi.fn(),
   replace: vi.fn(),
   start: vi.fn(),
   saveTracks: vi.fn(),
@@ -22,6 +24,7 @@ const mocks = vi.hoisted(() => ({
   restart: (_change: PlaybackRestart): Promise<void> => Promise.resolve(),
   media: undefined as unknown as HTMLVideoElement,
 }))
+vi.mock('../lib/navigation.ts', () => ({ goBack: mocks.goBack }))
 vi.mock('../api.ts', () => ({
   api: { playback: { putPlaybackPreferences: mocks.saveTracks } },
 }))
@@ -173,6 +176,8 @@ interface Controls {
   onPlaying: () => void
   onLoadedMetadata: () => void
   onTimeUpdate: () => void
+  onPointer: (event: MouseEvent) => void
+  osd: { visible: Ref<boolean>, dimmed: Ref<boolean> }
   paused: boolean
   phase: string
   panel: 'source' | null
@@ -247,6 +252,77 @@ afterEach(() => {
   cleanup?.()
   vi.useRealTimers()
   vi.unstubAllGlobals()
+})
+
+function pointerMove(x = 100, y = 100) {
+  controls.onPointer({
+    type: 'mousemove',
+    screenX: x,
+    screenY: y,
+  } as MouseEvent)
+}
+
+it('exits on the next Back after Sources closes despite stationary pointer events', async () => {
+  await mount()
+  pointerMove()
+  controls.openPanel('source')
+  controls.closePanel()
+
+  controls.onKey({ type: 'back' }, {} as KeyboardEvent)
+  expect(controls.osd.visible.value).toBe(false)
+  pointerMove()
+  expect(controls.osd.visible.value).toBe(false)
+  controls.onKey({ type: 'back' }, {} as KeyboardEvent)
+  expect(mocks.goBack).toHaveBeenCalledTimes(1)
+})
+
+it('shows controls when the pointer really moves after Back', async () => {
+  await mount()
+  pointerMove()
+  controls.onKey({ type: 'back' }, {} as KeyboardEvent)
+  expect(controls.osd.visible.value).toBe(false)
+
+  pointerMove(101)
+  expect(controls.osd.visible.value).toBe(true)
+})
+
+it('preserves a click at the same pointer coordinates after hiding controls', async () => {
+  await mount()
+  pointerMove()
+  controls.onKey({ type: 'back' }, {} as KeyboardEvent)
+
+  controls.onPointer({
+    type: 'click',
+    screenX: 100,
+    screenY: 100,
+    target: null,
+  } as unknown as MouseEvent)
+  expect(controls.osd.visible.value).toBe(true)
+  expect(mocks.pause).toHaveBeenCalledTimes(1)
+})
+
+it('does not postpone hiding controls for stationary pointer events', async () => {
+  await mount()
+  pointerMove()
+  await vi.advanceTimersByTimeAsync(3000)
+  pointerMove()
+  await vi.advanceTimersByTimeAsync(1001)
+  expect(controls.osd.visible.value).toBe(false)
+})
+
+it('does not wake a dimmed pause until the pointer really moves', async () => {
+  await mount()
+  pointerMove()
+  controls.onPause()
+  await vi.advanceTimersByTimeAsync(PAUSE_DIM_MS + 1)
+  expect(controls.osd.dimmed.value).toBe(true)
+
+  pointerMove()
+  expect(controls.osd.dimmed.value).toBe(true)
+  expect(controls.osd.visible.value).toBe(false)
+  pointerMove(100, 101)
+  expect(controls.osd.dimmed.value).toBe(false)
+  expect(controls.osd.visible.value).toBe(true)
 })
 
 it('polls while the initial probe is pending and distinguishes fresh zero peers from a failed poll', async () => {
