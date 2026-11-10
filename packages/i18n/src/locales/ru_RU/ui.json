@@ -757,6 +757,13 @@
       "showKey": "Показать ключ",
       "hideKey": "Скрыть ключ"
     },
+    "titlePreview": {
+      "details": "Подробнее",
+      "detailsOf": "Подробнее о «{title}»",
+      "select": "Выбрать этот тайтл",
+      "failed": "Не удалось загрузить подробности. Попробуйте ещё раз.",
+      "noOverview": "Описание отсутствует."
+    },
     "kinds": {
       "prowlarr": "Prowlarr",
       "jackett": "Jackett"
