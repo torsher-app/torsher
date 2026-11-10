@@ -1983,7 +1983,21 @@ function onEnded() {
   else osd.show()
 }
 
+let pointer: { x: number, y: number } | undefined
+
 function onPointer(event: MouseEvent) {
+  // Chromium может прислать mousemove после скрытия OSD без движения указки.
+  // Такое событие не должно снова показать управление и перехватить следующий Back.
+  if (event.type === 'mousemove') {
+    const moved
+      = !pointer || pointer.x !== event.screenX || pointer.y !== event.screenY
+
+    pointer = { x: event.screenX, y: event.screenY }
+
+    if (!moved)
+      return
+  }
+
   if (phase.value !== 'playing' || restarting.value || showsError.value) {
     return
   }
