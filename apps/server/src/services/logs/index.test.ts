@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import Fastify from 'fastify'
@@ -24,9 +24,10 @@ function tempDir() {
   return dir
 }
 
-afterEach(() => {
+afterEach(async () => {
   vi.restoreAllMocks()
   installLogger(pino({ level: 'silent' }))
+  await closeLogFiles()
 
   for (const dir of dirs.splice(0))
     rmSync(dir, { recursive: true, force: true })
@@ -70,6 +71,37 @@ describe('логгер журнала', () => {
     expect(entries[0]!.context).toEqual({
       url: 'http://x/api?apikey=[redacted]',
     })
+  })
+
+  it('очищает JSON-текст с escape до stdout, буфера и файла', async () => {
+    const dir = tempDir()
+    const lines: string[] = []
+    const raw = String.raw`{"value":"http://127.0.0.1:9696/1/api?t=caps\u0026apikey=SYNTHETIC_ONLY\u0026extended=1"}`
+    const expected = String.raw`{"value":"http://127.0.0.1:9696/1/api?t=caps\u0026apikey=[redacted]\u0026extended=1"}`
+
+    installLogger(
+      createLogger({
+        level: 'info',
+        logsDir: dir,
+        stdout: { write: (line: string) => lines.push(line) },
+      }),
+    )
+    logFor('sources').warn({ response: raw }, raw)
+    await closeLogFiles()
+
+    expect(lines).toHaveLength(1)
+    expect(lines[0]).not.toContain('SYNTHETIC_ONLY')
+    const stdout = JSON.parse(lines[0]!)
+
+    expect(stdout.msg).toBe(expected)
+    expect(stdout.response).toBe(expected)
+    expect(JSON.parse(stdout.msg).value).toBe(
+      'http://127.0.0.1:9696/1/api?t=caps&apikey=[redacted]&extended=1',
+    )
+    expect(queryLogs({}).entries).toMatchObject([
+      { source: 'sources', message: expected, context: { response: expected } },
+    ])
+    expect(readFileSync(join(dir, 'torsher.log'), 'utf8')).toBe(lines[0])
   })
 
   it('адреса Fastify при запуске уходят на debug', async () => {

@@ -158,6 +158,75 @@ describe('очистка записей журнала', () => {
     expect(JSON.stringify(result)).not.toMatch(/K[1-4]/)
   })
 
+  describe.each([
+    {
+      name: 'ключ первым',
+      raw: String.raw`{"value":"http://127.0.0.1:9696/1/api?apikey=SYNTHETIC_FIRST\u0026t=caps\u0026extended=1"}`,
+      expected: String.raw`{"value":"http://127.0.0.1:9696/1/api?apikey=[redacted]\u0026t=caps\u0026extended=1"}`,
+    },
+    {
+      name: 'ключ в середине',
+      raw: String.raw`{"value":"http://127.0.0.1:9696/1/api?t=caps\u0026apikey=SYNTHETIC_MIDDLE\u0026extended=1"}`,
+      expected: String.raw`{"value":"http://127.0.0.1:9696/1/api?t=caps\u0026apikey=[redacted]\u0026extended=1"}`,
+    },
+    {
+      name: 'ключ последним',
+      raw: String.raw`{"value":"http://127.0.0.1:9696/1/api?t=caps\u0026extended=1\u0026APIKEY=SYNTHETIC_LAST"}`,
+      expected: String.raw`{"value":"http://127.0.0.1:9696/1/api?t=caps\u0026extended=1\u0026APIKEY=[redacted]"}`,
+    },
+    {
+      name: 'несколько ключей',
+      raw: String.raw`{"value":"/api?t=caps\u0026token=SYNTHETIC_TOKEN\u0026apikey=SYNTHETIC_APIKEY\u0026extended=1"}`,
+      expected: String.raw`{"value":"/api?t=caps\u0026token=[redacted]\u0026apikey=[redacted]\u0026extended=1"}`,
+    },
+    {
+      name: 'смешанные разделители и диагностический текст',
+      raw: String.raw`{"value":"GET /api?t=caps&apikey=SYNTHETIC_AMP\u0026extended=1&amp;passkey=SYNTHETIC_HTML\u0026key=SYNTHETIC_JSON&limit=10 failed: timeout","status":502}`,
+      expected: String.raw`{"value":"GET /api?t=caps&apikey=[redacted]\u0026extended=1&amp;passkey=[redacted]\u0026key=[redacted]&limit=10 failed: timeout","status":502}`,
+    },
+  ])('разделитель JSON: $name', ({ raw, expected }) => {
+    it('очищает сырой JSON с буквальным escape и сохраняет его формат', () => {
+      const result = scrubText(raw)
+
+      expect(result).toBe(expected)
+      expect(JSON.parse(result)).toEqual(JSON.parse(expected))
+    })
+
+    it.each(['msg', 'response'])('очищает JSON-текст в поле %s', (field) => {
+      const result = scrubText(line({ [field]: raw, diagnostic: 'timeout' }))
+
+      expect(result).toBe(line({ [field]: expected, diagnostic: 'timeout' }))
+      const nested = JSON.parse(result)[field]
+
+      expect(JSON.parse(nested)).toEqual(JSON.parse(expected))
+    })
+
+    it('очищает уже разобранный JSON с обычным амперсандом', () => {
+      const result = scrubText(line(JSON.parse(raw)))
+
+      expect(result).toBe(line(JSON.parse(expected)))
+      expect(JSON.parse(result).value).toBe(JSON.parse(expected).value)
+    })
+  })
+
+  it('сохраняет слеши разделителя при нескольких сериализациях JSON', () => {
+    let raw = String.raw`{"value":"/api?t=caps\u0026apikey=SYNTHETIC_NESTED\u0026extended=1"}`
+    let expected = String.raw`{"value":"/api?t=caps\u0026apikey=[redacted]\u0026extended=1"}`
+
+    for (let depth = 0; depth <= 6; depth++) {
+      expect(scrubText(raw)).toBe(expected)
+      raw = JSON.stringify({ msg: raw })
+      expected = JSON.stringify({ msg: expected })
+    }
+  })
+
+  it('разделитель JSON не меняет обычные параметры и другие escape', () => {
+    const raw = String.raw`{"value":"/api?t=caps\u0026tokens=1\u0026apikey_hint=hint\u0026keynote=note\u0025apikey=plain","text":"u0026apikey=ordinary text"}`
+
+    expect(scrubText(raw)).toBe(raw)
+    expect(scrubText(line({ msg: raw }))).toBe(line({ msg: raw }))
+  })
+
   it('заголовок авторизации в тексте', () => {
     const result = JSON.parse(
       scrubText(
