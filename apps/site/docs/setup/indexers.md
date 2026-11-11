@@ -5,7 +5,11 @@ description: "Connect a Torznab indexer to Torsher: start Prowlarr from the inst
 
 # Indexers
 
-Torsher ships with no sources. It finds releases through Torznab indexers that you run and fill yourself: any Torznab indexer works, for example Prowlarr or Jackett. Connect a manager once, and Torsher picks up all its indexers; when you change them in the manager, sync it in the panel.
+Torsher ships with no sources. Prowlarr and Jackett manage connections to the indexers you choose. Both start with no configured sources: you add and set them up yourself.
+
+Torznab is an API for searching torrent indexers, not a separate app to install. Both Prowlarr and Jackett provide this API for the indexers you configure. Torsher can also connect to a Torznab endpoint directly.
+
+First configure and test your indexers in your manager, then connect it to Torsher using its address and API key. After changing indexers in the manager, sync it in Torsher to update the imported list.
 
 ::: tip What you'll get
 An indexer manager connected to Torsher, and releases appearing when you select <Ui k="title.watch" />.
@@ -27,13 +31,15 @@ The install file already has Prowlarr as an optional service. Skip to [Option B]
    ```
 
 2. Open `http://<server-address>:9696`. On the first visit Prowlarr may ask you to set up its own sign-in.
-3. In Prowlarr, open **Indexers** and add the indexers you are allowed to use. Prowlarr starts empty.
+3. In Prowlarr, open **Indexers** and add the torrent indexers you are allowed to use. Test each one in Prowlarr and save it before connecting to Torsher.
 4. Copy the API key from **Settings → General → API Key** in Prowlarr.
 5. In the Torsher setup wizard, the <Ui k="panel.wizard.steps.sources.title" /> step finds Prowlarr at `http://prowlarr:9696` by itself. Paste the API key and select <Ui k="panel.wizard.sources.connect.submit" />.
 
 Already past the wizard? Use Option B with the address `http://prowlarr:9696`.
 
 ## Option B: a manager you already run
+
+Configure and test your torrent indexers in Prowlarr or Jackett before importing them into Torsher.
 
 1. Find the API key:
    - Prowlarr: **Settings → General → API Key**;
@@ -53,7 +59,7 @@ Already past the wizard? Use Option B with the address `http://prowlarr:9696`.
 
    For Prowlarr you can paste the address straight from your browser on any Prowlarr page, such as `http://<server-address>:9696/settings/general`, or an indexer's Torznab feed address: Torsher keeps the part before the page or `/api`. If Prowlarr runs under a URL base, it stays in the address: `http://<server-address>:9696/prowlarr`.
 
-4. Select <Ui k="panel.sources.importDialog.submit" />. Torsher adds every indexer of the manager. Jackett hands over only the indexers you have configured in it; with none, Torsher connects the manager and adds nothing until you configure indexers in Jackett and sync.
+4. Select <Ui k="panel.sources.importDialog.submit" />. Torsher adds the manager's configured torrent indexers. With none configured, Torsher connects the manager and adds nothing until you configure indexers there and sync.
 
 Torsher doesn't watch the manager by itself. When you add or remove indexers there, open <Ui k="panel.nav.sources" /> and use the sync button on the manager's card: new indexers are added, and ones gone from the manager are marked rather than deleted.
 
