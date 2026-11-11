@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.7.0 (2026-11-11)
+
+### Features
+
+- **web:** preview catalog titles before matching (#191) ([800f5a2](https://github.com/torsher-app/torsher/commit/800f5a2a7b4f0edb308118075db44da8d8ec712d))
+- **mine:** add ratings and watched title imports (#190) ([0528df9](https://github.com/torsher-app/torsher/commit/0528df99970bbab0209f6c5e9a3a7454f363520b))
+- **downloads:** improve card actions and file priority controls (#187) ([4b316ae](https://github.com/torsher-app/torsher/commit/4b316ae3417706ced81d85d50d9a5f1c97d53de5))
+
+### Bug Fixes
+
+- **tv:** cancel stale playback launches (#194) ([75d08c0](https://github.com/torsher-app/torsher/commit/75d08c0c462bb9f1d07e718022f0ed1482e76578))
+- **logs:** redact keys in JSON-escaped query strings (#193) ([08fd40b](https://github.com/torsher-app/torsher/commit/08fd40ba6c4e6b5d269d75e7a673f7862eb5572d))
+- **tv:** ignore stationary pointer events in player (#192) ([cc96f2e](https://github.com/torsher-app/torsher/commit/cc96f2e9dd2ef70d3b428e122a0bfbbd2a84aa2e))
+- **web:** search imported ratings by title without appending year (#189) ([4434e6b](https://github.com/torsher-app/torsher/commit/4434e6bdf147e4fbea8284eb768474e102943072))
+- **tv:** compact showcase sections and title pages (#188) ([1055bda](https://github.com/torsher-app/torsher/commit/1055bdad9112d25328197de0fc4c26f700d58b1c))
+
 ## 1.6.0 (2026-11-08)
 
 ### Features
