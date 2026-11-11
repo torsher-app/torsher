@@ -63,7 +63,7 @@ Torsher finds releases in Torznab indexers. The wizard looks for Prowlarr and Ja
 - **It runs somewhere else.** Use <Ui k="panel.wizard.sources.none.importTitle" />: the address as the Torsher server reaches it, and the API key.
 - **You have no indexer yet.** Start Prowlarr from the install file and select <Ui k="panel.wizard.checks.retry" />.
 
-Where to find the API key and how to start Prowlarr: [Indexers](/docs/setup/indexers).
+Before connecting a manager, [set up and test its indexers](/docs/setup/indexers). That page explains how Prowlarr or Jackett provides the Torznab API, where to find the API key and how to start Prowlarr.
 
 Without sources the catalog works, but there is nothing to watch from.
 
