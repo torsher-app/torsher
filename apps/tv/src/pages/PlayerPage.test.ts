@@ -2,6 +2,7 @@ import type { SourceCandidate, TorrentStats } from '@torsher/api-client'
 import type { SourceChoice } from '../components/SourcesScreen.vue'
 import type { Ref } from 'vue'
 import type { PlaybackRestart } from '../composables/usePlayback.ts'
+import type { KeyAction } from '../focus/index.ts'
 import { createRenderer, nextTick, ref, ssrContextKey } from 'vue'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { PAUSE_DIM_MS } from '../lib/player.ts'
@@ -172,6 +173,7 @@ const renderer = createRenderer<Element, Element>({
   remove() {},
 })
 interface Controls {
+  start: () => Promise<void>
   exit: () => void
   recover: (cause?: 'unknown') => void
   playNext: () => Promise<void> | undefined
@@ -183,7 +185,7 @@ interface Controls {
   onTracksSelect: (id: string) => Promise<void>
   openPanel: (kind: 'audio' | 'subtitles' | 'source') => void
   closePanel: () => void
-  onKey: (action: { type: 'back' }, event: KeyboardEvent) => boolean
+  onKey: (action: KeyAction, event: KeyboardEvent) => boolean
   onPause: () => void
   onPlay: () => void
   onPlaying: () => void
@@ -306,6 +308,75 @@ it('shows controls when the pointer really moves after Back', async () => {
 
   pointerMove(101)
   expect(controls.osd.visible.value).toBe(true)
+})
+
+it('exits after hiding controls even when pointer movement shows them again', async () => {
+  await mount()
+  pointerMove()
+  controls.onKey({ type: 'back' }, {} as KeyboardEvent)
+  pointerMove(101)
+  expect(controls.osd.visible.value).toBe(true)
+
+  controls.onKey({ type: 'back' }, {} as KeyboardEvent)
+  expect(mocks.goBack).toHaveBeenCalledOnce()
+})
+
+it('starts the Back sequence again after a deliberate pointer click', async () => {
+  await mount()
+  pointerMove()
+  controls.onKey({ type: 'back' }, {} as KeyboardEvent)
+  controls.onPointer({ type: 'click', target: null } as unknown as MouseEvent)
+
+  controls.onKey({ type: 'back' }, {} as KeyboardEvent)
+  expect(mocks.goBack).not.toHaveBeenCalled()
+  expect(controls.osd.visible.value).toBe(false)
+  controls.onKey({ type: 'back' }, {} as KeyboardEvent)
+  expect(mocks.goBack).toHaveBeenCalledOnce()
+})
+
+it('starts the Back sequence again after another remote key', async () => {
+  await mount()
+  pointerMove()
+  controls.onKey({ type: 'back' }, {} as KeyboardEvent)
+  controls.onKey({ type: 'move', direction: 'up' }, {} as KeyboardEvent)
+
+  controls.onKey({ type: 'back' }, {} as KeyboardEvent)
+  expect(mocks.goBack).not.toHaveBeenCalled()
+  expect(controls.osd.visible.value).toBe(false)
+  controls.onKey({ type: 'back' }, {} as KeyboardEvent)
+  expect(mocks.goBack).toHaveBeenCalledOnce()
+})
+
+it('closes a newly opened panel before hiding controls and exiting', async () => {
+  await mount()
+  pointerMove()
+  controls.onKey({ type: 'back' }, {} as KeyboardEvent)
+  pointerMove(101)
+  controls.openPanel('source')
+
+  controls.onKey({ type: 'back' }, {} as KeyboardEvent)
+  expect(controls.panel).toBe(null)
+  expect(mocks.goBack).not.toHaveBeenCalled()
+  controls.onKey({ type: 'back' }, {} as KeyboardEvent)
+  expect(mocks.goBack).not.toHaveBeenCalled()
+  controls.onKey({ type: 'back' }, {} as KeyboardEvent)
+  expect(mocks.goBack).toHaveBeenCalledOnce()
+})
+
+it('does not carry a dismissed controls step into a new playback launch', async () => {
+  await mount()
+  pointerMove()
+  controls.onKey({ type: 'back' }, {} as KeyboardEvent)
+  await controls.start()
+  controls.onLoadedMetadata()
+  controls.onPlaying()
+  pointerMove(101)
+
+  controls.onKey({ type: 'back' }, {} as KeyboardEvent)
+  expect(mocks.goBack).not.toHaveBeenCalled()
+  expect(controls.osd.visible.value).toBe(false)
+  controls.onKey({ type: 'back' }, {} as KeyboardEvent)
+  expect(mocks.goBack).toHaveBeenCalledOnce()
 })
 
 it('preserves a click at the same pointer coordinates after hiding controls', async () => {

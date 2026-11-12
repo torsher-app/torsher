@@ -45,6 +45,8 @@ Hold left or right to seek faster: the step grows to 30 seconds, a minute and 2 
 
 Back closes an open panel first, then hides the controls, then exits. Your position is saved every 10 seconds, on pause and when you leave.
 
+If pointer movement brings the controls back after you hide them with Back, the next Back still exits. Clicking or pressing another key starts this sequence over.
+
 The controls hide after 4 seconds of playback. They show the title and the file name, the clock, peers, speed and how much is buffered, the time left and when the video ends. Paused for 10 seconds, the picture dims and shows <Ui k="player.youAreWatching" /> with the episode description. The first key press brings the controls back.
 
 With a pointer or a mouse, moving shows the controls, a click on the picture pauses, and a click on the timeline jumps there.
