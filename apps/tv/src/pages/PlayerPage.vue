@@ -267,6 +267,13 @@ const returnedPlayback = playbackResume(
   router.options.history.state.resumePlayback,
 )
 let sourcePanelReturn = router.options.history.state.sourcePanelReturn === true
+// Пассивный показ OSD указкой не отменяет уже выполненный шаг Back.
+let controlsDismissedByBack = false
+
+function resetBack() {
+  controlsDismissedByBack = false
+}
+
 let viewerPaused = returnedPlayback?.paused ?? false
 // Перезапуск на паузе зрителя: новый поток ждёт на той же паузе
 let keepPaused = returnedPlayback?.paused ?? false
@@ -1286,6 +1293,9 @@ function onMedia(
  * фокус на таймлайне, OK при скрытом OSD — пауза, Back — в два шага.
  */
 function onKey(action: KeyAction, event: KeyboardEvent) {
+  if (action.type !== 'back')
+    resetBack()
+
   if (qualityChoice.value)
     return false
   if (phase.value !== 'playing' || restarting.value || showsError.value) {
@@ -1332,7 +1342,7 @@ function onKey(action: KeyAction, event: KeyboardEvent) {
 
     const next = backAction({
       panelOpen: !!panel.value,
-      osdVisible: osd.visible.value,
+      osdVisible: osd.visible.value && !controlsDismissedByBack,
     })
 
     if (next === 'closePanel') {
@@ -1341,6 +1351,7 @@ function onKey(action: KeyAction, event: KeyboardEvent) {
     }
     else if (next === 'hideOsd') {
       backDiagnostic('hide_osd')
+      controlsDismissedByBack = true
       osd.hide()
     }
     else {
@@ -1742,6 +1753,7 @@ async function onTracksSelect(id: string) {
 }
 
 function openPanel(kind: Panel) {
+  resetBack()
   panel.value = kind
   osd.hold()
 
@@ -2001,6 +2013,9 @@ function onEnded() {
 let pointer: { x: number, y: number } | undefined
 
 function onPointer(event: MouseEvent) {
+  if (event.type === 'click')
+    resetBack()
+
   // Chromium может прислать mousemove после скрытия OSD без движения указки.
   // Такое событие не должно снова показать управление и перехватить следующий Back.
   if (event.type === 'mousemove') {
@@ -2135,6 +2150,7 @@ function chooseQuality(choice: string) {
 }
 
 async function start() {
+  resetBack()
   const run = ++launch
 
   phase.value = 'starting'
@@ -2285,7 +2301,12 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <main class="player" @mousemove="onPointer" @click="onPointer">
+  <main
+    class="player"
+    @mousemove="onPointer"
+    @click.capture="resetBack"
+    @click="onPointer"
+  >
     <video
       ref="video"
       class="player__video"
