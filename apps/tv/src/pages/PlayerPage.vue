@@ -72,6 +72,7 @@ import {
   diagnosticSnapshot,
 } from '../diagnostics/index.ts'
 import { mediaSnapshot } from '../diagnostics/media.ts'
+import { networkSnapshot } from '../diagnostics/network.ts'
 import { diagnosticPlaybackMode, upNextGate } from '../diagnostics/player.ts'
 import { usePlayback } from '../composables/usePlayback.ts'
 import { usePlayerTracks } from '../composables/usePlayerTracks.ts'
@@ -376,18 +377,34 @@ const playerSettings = computed(
       subtitleBackground: 'box' as const,
     },
 )
-const stopDiagnosticMedia = diagnosticMedia(() => ({
-  media: mediaSnapshot(
+const stopDiagnosticMedia = diagnosticMedia(() => {
+  const media = mediaSnapshot(
     video.value,
     hasNativePlayer,
     playback.value,
     hls.diagnosticState(),
     tracks.selection(),
-  ),
-  context: { ...diagnosticContext, session: playback.value?.sessionId },
-  active: phase.value === 'playing' && !paused.value && !document.hidden,
-  stalled: stalled.value,
-}))
+  )
+  return {
+    media,
+    network: networkSnapshot({
+      media,
+      stats: stats.value,
+      receivedAt: player.statsReceivedAt(),
+      offset: player.statsOffset(),
+      failed: player.statsFailed.value,
+      now: Date.now(),
+      library: isLibrary,
+      torrentId: props.torrentId,
+      fileIndex: Number(props.fileIndex),
+      size: playback.value?.size,
+      duration: knownDuration.value,
+    }),
+    context: { ...diagnosticContext, session: playback.value?.sessionId },
+    active: phase.value === 'playing' && !paused.value && !document.hidden,
+    stalled: stalled.value,
+  }
+})
 watch([phase, paused, stalled], () =>
   diagnosticSnapshot(stalled.value ? 'buffering' : 'transition'))
 const language = useCatalogLanguage()

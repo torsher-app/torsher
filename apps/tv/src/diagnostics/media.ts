@@ -60,16 +60,18 @@ export function mediaSnapshot(
     }
     const ranges = video.buffered
     const near: { start: number, end: number }[] = []
+    const distance = (range: { start: number, end: number }) =>
+      Math.max(
+        range.start - (result.position ?? 0),
+        (result.position ?? 0) - range.end,
+        0,
+      )
     for (let i = 0; i < Math.min(ranges.length, 128); i++) {
       const start = number(ranges.start(i), 10_000_000)
       const end = number(ranges.end(i), 10_000_000)
       if (start !== undefined && end !== undefined && end >= start) {
         near.push({ start, end })
-        near.sort(
-          (a, b) =>
-            Math.abs(a.start - (result.position ?? 0))
-            - Math.abs(b.start - (result.position ?? 0)),
-        )
+        near.sort((a, b) => distance(a) - distance(b))
         if (near.length > 4)
           near.pop()
       }

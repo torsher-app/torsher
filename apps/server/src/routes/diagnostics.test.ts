@@ -335,7 +335,7 @@ describe('optional support facts', () => {
   it('advertises an additive capability while still accepting v1 events', async () => {
     expect(
       (await app.inject({ url: '/api/diagnostics', cookies })).json(),
-    ).toMatchObject({ schemaVersion: 1, supportFacts: 1 })
+    ).toMatchObject({ schemaVersion: 1, supportFacts: 1, playbackNetwork: 1 })
     expect((await post(payload(501))).json().accepted).toEqual([
       `${clientSessionId}:501`,
     ])
@@ -408,15 +408,50 @@ describe('optional support facts', () => {
       droppedLocations: 1000000,
       media,
     }
+    const network = {
+      torrentId: id,
+      fileIndex: 1_000_000,
+      stats: {
+        state: 'stale',
+        ageMs: 31_536_000_000,
+        offsetBytes: Number.MAX_SAFE_INTEGER,
+        downloadBytesPerSecond: 1_000_000_000_000,
+        peersConnected: 1_000_000,
+        seedersConnected: 1_000_000,
+        peersFound: 1_000_000,
+        bufferedAheadBytes: Number.MAX_SAFE_INTEGER,
+        estimatedBufferedAheadSeconds: 31_536_000,
+      },
+      clientBuffer: { state: 'available', aheadSeconds: 31_536_000 },
+    }
+    const snapshot = {
+      ...common,
+      eventId: `${id}:999999999998`,
+      clientSeq: 999999999998,
+      event: 'playback.snapshot',
+      trigger: 'buffering',
+      media,
+      network,
+    }
+    const legacy = {
+      ...snapshot,
+      eventId: `${id}:999999999997`,
+      clientSeq: 999999999997,
+      network: undefined,
+    }
     const res = await post({
       schemaVersion: 1,
       profileId,
       deviceId: null,
-      events: [event],
+      events: [event, snapshot, legacy],
     })
     expect(res.statusCode).toBe(200)
     expect(res.json().rejected).toEqual([])
-    expect(res.json().accepted).toEqual([event.eventId])
+    expect(res.json().accepted).toEqual([
+      event.eventId,
+      snapshot.eventId,
+      legacy.eventId,
+    ])
     const report = await app.inject({
       url: '/api/logs/download?format=report',
       cookies,
@@ -429,6 +464,21 @@ describe('optional support facts', () => {
       rows.find(row => row.type === 'event' && row.event === 'client.error')
         .diagnostic.media,
     ).toEqual(media)
+    const observed = rows.find(
+      row =>
+        row.type === 'event' && row.diagnostic?.eventId === snapshot.eventId,
+    )
+    expect(observed.origin).toBe('client')
+    expect(observed.diagnostic).toEqual(snapshot)
+    expect(observed.facts).not.toHaveProperty('stats')
+    expect(observed.facts).not.toHaveProperty('downloadBytesPerSecond')
+    const journal = queryLogs({}).entries.find(
+      row => row.context?.eventId === snapshot.eventId,
+    )
+    expect(JSON.parse(journal!.details!)).toEqual(snapshot)
+    expect(
+      rows.find(row => row.diagnostic?.eventId === legacy.eventId).diagnostic,
+    ).not.toHaveProperty('network')
   })
   it('rejects raw error text and asset URLs before journal ingestion', async () => {
     const base = payload(502).events[0]!

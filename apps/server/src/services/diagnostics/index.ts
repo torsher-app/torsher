@@ -107,6 +107,7 @@ export function diagnosticsStatus(request: FastifyRequest) {
     collecting: diagnosticsCollecting(),
     schemaVersion: 1 as const,
     supportFacts: 1 as const,
+    playbackNetwork: 1 as const,
     serverVersion: config.version,
     serverTime: new Date().toISOString(),
     deviceId: request.deviceId,

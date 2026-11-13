@@ -69,17 +69,21 @@ it('keeps last-success time separate from a missed poll and recovers on success'
   const player = scope.run(() =>
     usePlayback({ torrentId: 'torrent', fileIndex: 0 }),
   )!
-  player.pollStats(() => ({ offset: 0, intervalMs: 1000 }))
+  let offset = 0
+  player.pollStats(() => ({ offset: (offset += 10), intervalMs: 1000 }))
   await vi.advanceTimersByTimeAsync(0)
   expect(player.statsReceivedAt()).toBe(100_000)
+  expect(player.statsOffset()).toBe(10)
   await vi.advanceTimersByTimeAsync(1000)
   expect(player.statsFailed.value).toBe(true)
   expect(player.statsReceivedAt()).toBe(100_000)
+  expect(player.statsOffset()).toBe(10)
   expect(player.stats.value).toEqual(zeroPeers)
   expect(mocks.post).not.toHaveBeenCalled()
   await vi.advanceTimersByTimeAsync(1000)
   expect(player.statsFailed.value).toBe(false)
   expect(player.statsReceivedAt()).toBe(102_000)
+  expect(player.statsOffset()).toBe(30)
   scope.stop()
 })
 
@@ -120,6 +124,7 @@ it('a late previous poll cannot overwrite current data, time or failure status',
   await vi.advanceTimersByTimeAsync(0)
   expect(player.stats.value).toEqual(current)
   expect(player.statsReceivedAt()).toBe(received)
+  expect(player.statsOffset()).toBe(20)
   expect(player.statsFailed.value).toBe(false)
   expect(vi.getTimerCount()).toBe(1)
   scope.stop()

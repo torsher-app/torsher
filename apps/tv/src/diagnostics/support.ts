@@ -1,4 +1,7 @@
-import type { DiagnosticMediaSnapshot } from '@torsher/api-client'
+import type {
+  DiagnosticMediaSnapshot,
+  DiagnosticPlaybackNetwork,
+} from '@torsher/api-client'
 import type { DiagnosticContext, DiagnosticInput } from './collector.ts'
 import type { AssetMap } from './supportAssets.ts'
 import { createSafeErrorStackReader } from './errorStack.ts'
@@ -9,6 +12,7 @@ type Environment = Extract<DiagnosticInput, { event: 'client.environment' }>
 export type SupportContext = DiagnosticContext & { session?: string }
 export interface MediaObservation {
   media: DiagnosticMediaSnapshot
+  network?: DiagnosticPlaybackNetwork
   context: SupportContext
   active: boolean
   stalled?: boolean
@@ -324,6 +328,7 @@ export function createSupportRuntime(deps: {
         event: 'playback.snapshot',
         trigger,
         media: current.media,
+        network: current.network,
         session: current.context.session,
       },
       supportContext(current.context),

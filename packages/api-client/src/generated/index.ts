@@ -224,6 +224,67 @@ export interface DiagnosticMediaSnapshotInput {
     | "unknown";
 }
 
+export interface DiagnosticPlaybackNetworkInput {
+  /** @pattern ^[\w-]{8,80}$ */
+  torrentId?: string;
+  /**
+   * @min 0
+   * @max 1000000
+   */
+  fileIndex?: number;
+  stats: {
+    state: "fresh" | "stale" | "error" | "unavailable" | "not_applicable";
+    /**
+     * @min 0
+     * @max 31536000000
+     */
+    ageMs?: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    offsetBytes?: number;
+    /**
+     * @min 0
+     * @max 1000000000000
+     */
+    downloadBytesPerSecond?: number;
+    /**
+     * @min 0
+     * @max 1000000
+     */
+    peersConnected?: number;
+    /**
+     * @min 0
+     * @max 1000000
+     */
+    seedersConnected?: number;
+    /**
+     * @min 0
+     * @max 1000000
+     */
+    peersFound?: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    bufferedAheadBytes?: number;
+    /**
+     * @min 0
+     * @max 31536000
+     */
+    estimatedBufferedAheadSeconds?: number;
+  };
+  clientBuffer: {
+    state: "available" | "unknown" | "unsupported";
+    /**
+     * @min 0
+     * @max 31536000
+     */
+    aheadSeconds?: number;
+  };
+}
+
 export type DiagnosticEventInput =
   | {
       /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
@@ -431,6 +492,7 @@ export type DiagnosticEventInput =
       event: "playback.snapshot";
       trigger: "transition" | "buffering" | "heartbeat" | "error";
       media: DiagnosticMediaSnapshotInput;
+      network?: DiagnosticPlaybackNetworkInput;
     }
   | {
       /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
@@ -2223,6 +2285,7 @@ export interface DiagnosticStatusInput {
   enabled: boolean;
   collecting: boolean;
   supportFacts?: 1;
+  playbackNetwork?: 1;
   schemaVersion: 1;
   serverVersion: string;
   serverInstance: string;
@@ -7980,6 +8043,67 @@ export interface DiagnosticMediaSnapshot {
     | "unknown";
 }
 
+export interface DiagnosticPlaybackNetwork {
+  /** @pattern ^[\w-]{8,80}$ */
+  torrentId?: string;
+  /**
+   * @min 0
+   * @max 1000000
+   */
+  fileIndex?: number;
+  stats: {
+    state: "fresh" | "stale" | "error" | "unavailable" | "not_applicable";
+    /**
+     * @min 0
+     * @max 31536000000
+     */
+    ageMs?: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    offsetBytes?: number;
+    /**
+     * @min 0
+     * @max 1000000000000
+     */
+    downloadBytesPerSecond?: number;
+    /**
+     * @min 0
+     * @max 1000000
+     */
+    peersConnected?: number;
+    /**
+     * @min 0
+     * @max 1000000
+     */
+    seedersConnected?: number;
+    /**
+     * @min 0
+     * @max 1000000
+     */
+    peersFound?: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    bufferedAheadBytes?: number;
+    /**
+     * @min 0
+     * @max 31536000
+     */
+    estimatedBufferedAheadSeconds?: number;
+  };
+  clientBuffer: {
+    state: "available" | "unknown" | "unsupported";
+    /**
+     * @min 0
+     * @max 31536000
+     */
+    aheadSeconds?: number;
+  };
+}
+
 export type DiagnosticEvent =
   | {
       /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
@@ -8187,6 +8311,7 @@ export type DiagnosticEvent =
       event: "playback.snapshot";
       trigger: "transition" | "buffering" | "heartbeat" | "error";
       media: DiagnosticMediaSnapshot;
+      network?: DiagnosticPlaybackNetwork;
     }
   | {
       /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
@@ -9979,6 +10104,7 @@ export interface DiagnosticStatus {
   enabled: boolean;
   collecting: boolean;
   supportFacts?: 1;
+  playbackNetwork?: 1;
   schemaVersion: 1;
   serverVersion: string;
   serverInstance: string;
