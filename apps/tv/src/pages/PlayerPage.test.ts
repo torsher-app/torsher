@@ -3,6 +3,7 @@ import type { SourceChoice } from '../components/SourcesScreen.vue'
 import type { Ref } from 'vue'
 import type { PlaybackRestart } from '../composables/usePlayback.ts'
 import type { KeyAction } from '../focus/index.ts'
+import type { MediaObservation } from '../diagnostics/support.ts'
 import { createRenderer, nextTick, ref, ssrContextKey } from 'vue'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { PAUSE_DIM_MS } from '../lib/player.ts'
@@ -26,6 +27,8 @@ const mocks = vi.hoisted(() => ({
   progress: vi.fn(),
   upNext: vi.fn(),
   pollStats: vi.fn(),
+  snapshot: vi.fn(),
+  readMedia: undefined as (() => MediaObservation | undefined) | undefined,
   native: false,
   restart: (_change: PlaybackRestart): Promise<void> => Promise.resolve(),
   media: undefined as unknown as HTMLVideoElement,
@@ -77,10 +80,15 @@ vi.mock('../diagnostics/index.ts', () => ({
   diagnostic: vi.fn(),
   diagnosticAction: () => ({}),
   diagnosticError: vi.fn(),
-  diagnosticMedia: () => () => {},
+  diagnosticMedia: (read: () => MediaObservation | undefined) => {
+    mocks.readMedia = read
+    return () => {
+      mocks.readMedia = undefined
+    }
+  },
   diagnosticParams: () => ({}),
   diagnosticRoute: (route: unknown) => route,
-  diagnosticSnapshot: vi.fn(),
+  diagnosticSnapshot: mocks.snapshot,
 }))
 vi.mock('../composables/useCatalogLanguage.ts', () => ({
   useCatalogLanguage: () => ref('en'),
@@ -118,6 +126,7 @@ vi.mock('../composables/usePlayback.ts', () => ({
     stats: playerStats,
     statsFailed,
     statsReceivedAt: () => statsAt.value,
+    statsOffset: () => 40,
     pending: ref(),
     status: playerStatus,
     error: ref(),
@@ -189,6 +198,7 @@ interface Controls {
   onPause: () => void
   onPlay: () => void
   onPlaying: () => void
+  onWaiting: () => void
   onLoadedMetadata: () => void
   onTimeUpdate: () => void
   onPointer: (event: MouseEvent) => void
@@ -285,6 +295,66 @@ function pointerMove(x = 100, y = 100) {
     screenY: y,
   } as MouseEvent)
 }
+
+it('samples media and stats together on waiting and recovery with the same playback session', async () => {
+  await mount()
+  await vi.advanceTimersByTimeAsync(500)
+  controls.onPlaying()
+  await settle()
+  const observations: MediaObservation[] = []
+  mocks.snapshot.mockImplementation(() =>
+    observations.push(mocks.readMedia!()!),
+  )
+  const current: TorrentStats = {
+    activity: 'downloading',
+    downloadSpeed: 0,
+    uploadSpeed: 0,
+    badPieces: 0,
+    peers: { connected: 1, seeders: 0, found: 10 },
+    file: { size: 1000, downloaded: 500, bufferedAhead: 100 },
+  }
+  playerStats.value = current
+  statsAt.value = Date.now()
+  Object.defineProperty(mocks.media, 'buffered', {
+    value: { length: 1, start: () => 40, end: () => 43 },
+    configurable: true,
+  })
+  controls.onWaiting()
+  await settle()
+  await vi.advanceTimersByTimeAsync(5000)
+  playerStats.value = {
+    ...current,
+    downloadSpeed: 5000,
+    peers: { connected: 5, seeders: 2, found: 10 },
+  }
+  statsAt.value = Date.now()
+  Object.defineProperty(mocks.media, 'buffered', {
+    value: { length: 1, start: () => 40, end: () => 52 },
+    configurable: true,
+  })
+  controls.onPlaying()
+  await settle()
+  expect(
+    observations.map(o => [
+      o.stalled,
+      o.media.position,
+      o.network?.stats.downloadBytesPerSecond,
+      o.network?.clientBuffer.aheadSeconds,
+    ]),
+  ).toEqual([
+    [true, 42, 0, 1],
+    [false, 42, 5000, 10],
+  ])
+  expect(
+    observations.every(o => o.context.session === 'playback-fixture'),
+  ).toBe(true)
+  expect(observations[0]!.network?.stats).toMatchObject({
+    state: 'fresh',
+    ageMs: 0,
+    offsetBytes: 40,
+    seedersConnected: 0,
+  })
+})
 
 it('exits on the next Back after Sources closes despite stationary pointer events', async () => {
   await mount()

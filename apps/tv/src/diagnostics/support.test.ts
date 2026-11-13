@@ -28,7 +28,11 @@ afterEach(() => {
   vi.clearAllTimers()
   vi.useRealTimers()
 })
-function harness(supportFacts: number | undefined = 1, storage?: Storage) {
+function harness(
+  supportFacts: number | undefined = 1,
+  storage?: Storage,
+  playbackNetwork: number | undefined = 1,
+) {
   const sent: DiagnosticEvent[] = []
   const target = new EventTarget()
   const assets = vi.fn(async () => new Map([[asset, hash]]))
@@ -36,7 +40,12 @@ function harness(supportFacts: number | undefined = 1, storage?: Storage) {
   const fetcher = vi.fn(async (url: RequestInfo | URL, init?: RequestInit) => {
     if (url === '/api/diagnostics') {
       return new Response(
-        JSON.stringify({ ...status, collecting, supportFacts }),
+        JSON.stringify({
+          ...status,
+          collecting,
+          supportFacts,
+          playbackNetwork,
+        }),
       )
     }
     const events = JSON.parse(String(init?.body)).events as DiagnosticEvent[]
@@ -188,14 +197,63 @@ describe('support runtime through collector', () => {
     h.collector.stop()
   })
 
+  it('observes changing network values on heartbeat without logging each stats poll', async () => {
+    const h = harness()
+    await h.start()
+    let speed = 1000
+    const context = { ...h.collector.action(), session: 'playback-0001' }
+    h.support.media(() => ({
+      media: { state: 'available', source: 'html_video', readyState: 4 },
+      network: {
+        stats: { state: 'fresh', downloadBytesPerSecond: speed },
+        clientBuffer: { state: 'available', aheadSeconds: 30 },
+      },
+      active: true,
+      context,
+    }))
+    h.support.snapshot('transition')
+    for (let i = 0; i < 60; i++) {
+      speed += 1000
+      h.support.snapshot('transition')
+      await vi.advanceTimersByTimeAsync(1000)
+    }
+    expect(h.sent.filter(e => e.event === 'playback.snapshot')).toHaveLength(
+      1,
+    )
+    await vi.advanceTimersByTimeAsync(183000)
+    const snapshots = h.sent.filter(e => e.event === 'playback.snapshot')
+    expect(snapshots).toHaveLength(2)
+    expect(snapshots[1]).toMatchObject({
+      trigger: 'heartbeat',
+      network: { stats: { downloadBytesPerSecond: speed } },
+    })
+    expect(
+      Date.parse(snapshots[1]!.clientTime)
+      - Date.parse(snapshots[0]!.clientTime),
+    ).toBeGreaterThanOrEqual(120_000)
+    h.disable()
+    await h.collector.negotiate()
+    h.support.snapshot('buffering')
+    await vi.advanceTimersByTimeAsync(240000)
+    expect(h.sent.filter(e => e.event === 'playback.snapshot')).toHaveLength(
+      2,
+    )
+    h.collector.stop()
+  })
+
   it('records startup, playing, buffering and recovery within two minutes', async () => {
     const h = harness()
     await h.start()
     const context = { ...h.collector.action(), session: 'playback-0001' }
     let readyState = 0
     let stalled = false
+    let network = {
+      stats: { state: 'fresh' as const, downloadBytesPerSecond: 1000 },
+      clientBuffer: { state: 'available' as const, aheadSeconds: 5 },
+    }
     h.support.media(() => ({
       media: { state: 'available', source: 'html_video', readyState },
+      network,
       context,
       active: true,
       stalled,
@@ -207,10 +265,20 @@ describe('support runtime through collector', () => {
     await vi.advanceTimersByTimeAsync(5000)
     readyState = 2
     stalled = true
+    network = {
+      ...network,
+      stats: { state: 'fresh', downloadBytesPerSecond: 0 },
+      clientBuffer: { state: 'available', aheadSeconds: 0 },
+    }
     h.support.snapshot('buffering')
     await vi.advanceTimersByTimeAsync(5000)
     readyState = 4
     stalled = false
+    network = {
+      ...network,
+      stats: { state: 'fresh', downloadBytesPerSecond: 5000 },
+      clientBuffer: { state: 'available', aheadSeconds: 10 },
+    }
     h.support.snapshot('transition')
     await vi.advanceTimersByTimeAsync(3000)
     const snapshots = h.sent.filter(e => e.event === 'playback.snapshot')
@@ -219,6 +287,17 @@ describe('support runtime through collector', () => {
       ['transition', 4],
       ['buffering', 2],
       ['transition', 4],
+    ])
+    expect(
+      snapshots.map(e => [
+        e.network?.stats.downloadBytesPerSecond,
+        e.network?.clientBuffer.aheadSeconds,
+      ]),
+    ).toEqual([
+      [1000, 5],
+      [1000, 5],
+      [0, 0],
+      [5000, 10],
     ])
     h.collector.stop()
   })
@@ -352,6 +431,22 @@ describe('support runtime through collector', () => {
           position: phase,
           totalFrames: second * 25,
         },
+        network: {
+          torrentId: 'torrent-0001',
+          fileIndex: 0,
+          stats: {
+            state: 'fresh',
+            ageMs: 1000,
+            offsetBytes: second * 1_000_000,
+            downloadBytesPerSecond: second * 1000,
+            peersConnected: 8,
+            seedersConnected: 3,
+            peersFound: 40,
+            bufferedAheadBytes: 60_000_000,
+            estimatedBufferedAheadSeconds: 60,
+          },
+          clientBuffer: { state: 'available', aheadSeconds: 5 },
+        },
         context: {
           ...context,
           session: `playback-${String(Math.floor(second / 360)).padStart(4, '0')}`,
@@ -382,6 +477,66 @@ describe('support runtime through collector', () => {
 })
 
 describe('support replay compatibility', () => {
+  it('strips only the network extension for live and persisted snapshots on strict supportFacts v1 servers', async () => {
+    const old = {
+      event: 'playback.snapshot',
+      eventId: 'old-session-0001:1',
+      clientSessionId: 'old-session-0001',
+      clientSeq: 1,
+      clientTime: new Date().toISOString(),
+      elapsedMs: 0,
+      trigger: 'buffering',
+      session: 'playback-0001',
+      media: { state: 'available', source: 'html_video', position: 42 },
+      network: {
+        stats: { state: 'stale', ageMs: 20_000 },
+        clientBuffer: { state: 'unknown' },
+      },
+    }
+    const map = new Map([
+      [
+        'torsher.diagnostics.v1.old-session-0001',
+        JSON.stringify({
+          profileId: status.profileId,
+          deviceId: null,
+          items: [{ event: old, expiresAt: Date.now() + 3600000 }],
+        }),
+      ],
+    ])
+    const storage: Storage = {
+      get length() {
+        return map.size
+      },
+      key: i => [...map.keys()][i] ?? null,
+      getItem: key => map.get(key) ?? null,
+      setItem: (key, value) => {
+        map.set(key, value)
+      },
+      removeItem: (key) => {
+        map.delete(key)
+      },
+      clear: () => map.clear(),
+    }
+    const h = harness(1, storage, 0)
+    await h.start()
+    h.support.media(() => ({
+      media: { state: 'available', source: 'html_video', position: 123 },
+      network: {
+        stats: { state: 'fresh', downloadBytesPerSecond: 99 },
+        clientBuffer: { state: 'available', aheadSeconds: 3 },
+      },
+      active: true,
+      context: { ...h.collector.action(), session: 'playback-0002' },
+    }))
+    h.support.snapshot('buffering')
+    await vi.advanceTimersByTimeAsync(3000)
+    const snapshots = h.sent.filter(e => e.event === 'playback.snapshot')
+    expect(snapshots).toHaveLength(2)
+    expect(snapshots.map(e => e.media.position)).toEqual([42, 123])
+    expect(snapshots.every(e => !('network' in e))).toBe(true)
+    expect(h.sent.some(e => e.event === 'client.started')).toBe(true)
+    h.collector.stop()
+  })
   it('drops new persisted facts before replay to old servers while preserving legacy neighbours', async () => {
     const envelope = {
       clientSessionId: 'old-session-0001',
@@ -448,6 +603,31 @@ describe('support replay compatibility', () => {
 })
 
 describe('safe projections', () => {
+  it('keeps the range containing the observed position even when its start is far behind', () => {
+    const ranges = [
+      [0, 1000],
+      [901, 902],
+      [903, 904],
+      [905, 906],
+      [907, 908],
+    ]
+    const video = {
+      currentTime: 900,
+      duration: 2000,
+      paused: false,
+      ended: false,
+      readyState: 4,
+      buffered: {
+        length: ranges.length,
+        start: (i: number) => ranges[i]![0],
+        end: (i: number) => ranges[i]![1],
+      },
+    } as unknown as HTMLVideoElement
+    expect(mediaSnapshot(video, false).buffered).toContainEqual({
+      start: 0,
+      end: 1000,
+    })
+  })
   it('keeps known numeric environment tokens only and never infers webOS version from Chrome', () => {
     expect(environment('Web0S Chrome/68.0.0.0 SECRET')).toEqual({
       browserFamily: 'chromium',

@@ -190,6 +190,7 @@ export function usePlayback(
   let statsRun = 0
   let heartbeatTimer: ReturnType<typeof setInterval> | undefined
   const statsAt = ref(0)
+  let statsOffset: number | undefined
 
   let generation = 0
   // `playback` держит закрытую сессию: экран читает из неё адрес и позицию
@@ -529,11 +530,13 @@ export function usePlayback(
     stopStats()
     stats.value = undefined
     statsAt.value = 0
+    statsOffset = undefined
     statsFailed.value = false
 
     const run = statsRun
     const tick = async () => {
       const { offset, intervalMs } = next()
+      const requestedOffset = Math.floor(offset)
       const session = generation
 
       try {
@@ -541,11 +544,12 @@ export function usePlayback(
           ? localStats(playback.value?.size ?? 0)
           : await api.torrents.getTorrentStats(source.torrentId, {
               fileIndex: String(source.fileIndex),
-              offset: String(Math.floor(offset)),
+              offset: String(requestedOffset),
             })
         if (run === statsRun && session === generation) {
           stats.value = result
           statsAt.value = Date.now()
+          statsOffset = library ? undefined : requestedOffset
           statsFailed.value = false
         }
       }
@@ -661,6 +665,7 @@ export function usePlayback(
     stopStats,
     /** Когда статистика пришла в последний раз: молчит — сервер или движок не отвечают */
     statsReceivedAt: () => statsAt.value,
+    statsOffset: () => statsOffset,
     saveWatchState,
   }
 }

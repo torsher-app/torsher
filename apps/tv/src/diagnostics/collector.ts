@@ -266,7 +266,7 @@ export function createDiagnostics(deps: Dependencies) {
     expire()
     const event = sanitizeEvent({
       ...context,
-      ...input,
+      ...compatible(input),
       eventId: `${sessionId}:${++sequence}`,
       clientSessionId: sessionId,
       clientSeq: sequence,
@@ -290,6 +290,13 @@ export function createDiagnostics(deps: Dependencies) {
     if (critical || queue.length >= batchSize)
       void flush()
     else schedule()
+  }
+  // Older supportFacts servers have a strict snapshot schema. Preserve the legacy
+  // media observation and its IDs, including persisted events after a downgrade.
+  function compatible<T extends DiagnosticInput>(input: T): T {
+    return input.event === 'playback.snapshot' && binding?.playbackNetwork !== 1
+      ? { ...input, network: undefined }
+      : input
   }
   async function send(url: string, init: RequestInit) {
     const controller = new AbortController()
@@ -385,6 +392,10 @@ export function createDiagnostics(deps: Dependencies) {
         )
         loss('invalid_event', unsupported.length)
         queue = queue.filter(item => !unsupported.includes(item))
+        queue = queue.map(item => ({
+          ...item,
+          event: compatible(item.event),
+        }))
         while (queue.length > 128 || bytes(queue) > 128 * 1024) {
           queue.shift()
           loss('overflow')
