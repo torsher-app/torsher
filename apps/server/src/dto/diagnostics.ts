@@ -219,6 +219,49 @@ export const diagnosticMediaSnapshot = z
       .optional(),
   })
   .meta({ id: 'diagnosticMediaSnapshot' })
+// A client observation of the last stats response, not a server/engine measurement.
+// Bytes and bytes/s are unscaled; engine seconds use the file's average bitrate.
+export const diagnosticPlaybackNetwork = z
+  .strictObject({
+    torrentId: diagnosticId.optional(),
+    fileIndex: count.optional(),
+    stats: z.strictObject({
+      state: z.enum([
+        'fresh',
+        'stale',
+        'error',
+        'unavailable',
+        'not_applicable',
+      ]),
+      ageMs: z.number().min(0).max(31_536_000_000).optional(),
+      offsetBytes: z
+        .number()
+        .int()
+        .min(0)
+        .max(Number.MAX_SAFE_INTEGER)
+        .optional(),
+      downloadBytesPerSecond: z
+        .number()
+        .min(0)
+        .max(1_000_000_000_000)
+        .optional(),
+      peersConnected: count.optional(),
+      seedersConnected: count.optional(),
+      peersFound: count.optional(),
+      bufferedAheadBytes: z
+        .number()
+        .int()
+        .min(0)
+        .max(Number.MAX_SAFE_INTEGER)
+        .optional(),
+      estimatedBufferedAheadSeconds: seconds.optional(),
+    }),
+    clientBuffer: z.strictObject({
+      state: z.enum(['available', 'unknown', 'unsupported']),
+      aheadSeconds: seconds.optional(),
+    }),
+  })
+  .meta({ id: 'diagnosticPlaybackNetwork' })
 export const diagnosticEvent = z
   .discriminatedUnion('event', [
     z.strictObject({
@@ -291,6 +334,7 @@ export const diagnosticEvent = z
       event: z.literal('playback.snapshot'),
       trigger: z.enum(['transition', 'buffering', 'heartbeat', 'error']),
       media: diagnosticMediaSnapshot,
+      network: diagnosticPlaybackNetwork.optional(),
     }),
     z.strictObject({
       ...common,
@@ -584,6 +628,7 @@ export const diagnosticStatus = z
     enabled: z.boolean(),
     collecting: z.boolean(),
     supportFacts: z.literal(1).optional(),
+    playbackNetwork: z.literal(1).optional(),
     schemaVersion: z.literal(1),
     serverVersion: z.string(),
     serverInstance: z.string(),
