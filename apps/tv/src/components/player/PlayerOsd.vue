@@ -6,7 +6,7 @@ import {
   endsAt,
   formatClock,
   formatDuration,
-  formatSpeed,
+  formatMegabits,
   networkState,
 } from '../../lib/player.ts'
 import ActionButton from '../ActionButton.vue'
@@ -66,13 +66,15 @@ const remaining = computed(() =>
 )
 
 function bufferText(seconds: number) {
+  if (!Number.isFinite(seconds) || seconds < 0)
+    return '—'
+
   return seconds >= 60
-    ? t('player.bufferMinutes', { n: Math.floor(seconds / 60) })
-    : t('player.bufferSeconds', { n: Math.floor(seconds) })
+    ? t('player.stats.minutes', { n: Math.floor(seconds / 60) })
+    : t('player.stats.seconds', { n: Math.floor(seconds) })
 }
 
-// Сеть — одним состоянием, а не сырыми цифрами: «0 пиров · 0 МБ/с» у
-// скачанного файла выглядели бы поломкой
+// Скачанному файлу скорость и сиды уже не нужны.
 const network = computed(() => {
   const stats = props.stats
 
@@ -89,19 +91,20 @@ const network = computed(() => {
   })
 })
 
-// Рядом с палочками — что важно сейчас: тающий запас, запас без сети или скорость
-const networkText = computed(() => {
-  const state = network.value
-
-  if (!state || state.kind === 'done')
-    return t('player.downloaded')
-
-  if (state.low || state.level === 0)
-    return bufferText(props.bufferSeconds)
-
-  return t('player.speed', {
-    value: formatSpeed(props.stats!.downloadSpeed, locale.value),
-  })
+const speedText = computed(() =>
+  t('player.stats.speed', {
+    value: formatMegabits(
+      props.stats?.downloadSpeed ?? Number.NaN,
+      locale.value,
+    ),
+  }),
+)
+const bufferedText = computed(() => bufferText(props.bufferSeconds))
+const seedersText = computed(() => {
+  const count = props.stats?.peers.seeders
+  return typeof count === 'number' && Number.isInteger(count) && count >= 0
+    ? String(count)
+    : '—'
 })
 </script>
 
@@ -125,22 +128,46 @@ const networkText = computed(() => {
           v-if="network"
           class="osd__pill"
           :class="{
-            'osd__pill--quiet': network.kind === 'done',
             'osd__pill--low': network.kind === 'signal' && network.low,
           }"
         >
-          <AppIcon
-            v-if="network.kind === 'done'"
-            name="check"
-            class="osd__pill-icon"
-          />
-          <SignalBars
-            v-else
-            class="osd__pill-icon"
-            :level="network.level"
-            :low="network.low"
-          />
-          <span class="osd__pill-text">{{ networkText }}</span>
+          <template v-if="network.kind === 'done'">
+            <AppIcon name="check" class="osd__pill-icon" />
+            <span>{{ t("player.downloaded") }}</span>
+          </template>
+          <template v-else>
+            <SignalBars
+              class="osd__pill-icon"
+              :level="network.level"
+              :low="network.low"
+            />
+            <span
+              class="osd__metric"
+              role="img"
+              :aria-label="
+                t('player.stats.downloadSpeed', { speed: speedText })
+              "
+              :title="t('player.stats.downloadSpeed', { speed: speedText })"
+            >{{ speedText }}</span>
+            <span
+              class="osd__metric"
+              role="img"
+              :aria-label="t('player.stats.buffer', { time: bufferedText })"
+              :title="t('player.stats.buffer', { time: bufferedText })"
+            >
+              <AppIcon name="timer" class="osd__pill-icon" />
+              {{ bufferedText }}
+            </span>
+            <span
+              class="osd__metric"
+              role="img"
+              :aria-label="t('player.stats.seeders', { n: seedersText })"
+              :title="t('player.stats.seeders', { n: seedersText })"
+            >
+              <AppIcon name="arrowUp" class="osd__pill-icon" />
+              {{ seedersText }}
+            </span>
+          </template>
         </span>
       </div>
     </header>
@@ -311,6 +338,7 @@ const networkText = computed(() => {
 }
 
 .osd__heading {
+  flex: 1;
   min-width: 0;
   margin-right: var(--space-5);
   /* Слева от названия — кнопка «Назад» экрана плеера */
@@ -360,10 +388,6 @@ const networkText = computed(() => {
   white-space: nowrap;
 }
 
-.osd__pill--quiet {
-  color: var(--color-text-muted);
-}
-
 .osd__pill--low {
   color: var(--color-warn);
 }
@@ -372,6 +396,16 @@ const networkText = computed(() => {
   width: calc(var(--u) * 22);
   height: calc(var(--u) * 22);
   margin-right: calc(var(--u) * 10);
+}
+
+.osd__metric {
+  display: inline-flex;
+  align-items: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.osd__metric + .osd__metric {
+  margin-left: var(--space-3);
 }
 
 .osd__bottom {

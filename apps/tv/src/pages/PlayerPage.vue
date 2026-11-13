@@ -242,6 +242,13 @@ type Panel
 const panel = ref<Panel | null>(null)
 const settingsPanel = ref<InstanceType<typeof PlayerSettings>>()
 const now = ref(new Date())
+// OSD не выдаёт прошлую скорость и число сидов за текущие после сбоя опроса.
+const osdStats = computed(() =>
+  !player.statsFailed.value
+  && now.value.getTime() - player.statsReceivedAt() <= STATS_STALE_MS
+    ? shownStats.value
+    : undefined,
+)
 const bufferingSince = ref(Date.now())
 // Смена дорожки перезапуском: до нового потока на экране сцена с лоадером, а
 // клавиши, кроме Back, не работают — перемотка потерялась бы при старте
@@ -2401,7 +2408,7 @@ onBeforeUnmount(() => {
         :buffer-end="position + bufferSeconds"
         :scrub-target="osd.scrub.value?.target ?? null"
         :paused="paused"
-        :stats="shownStats"
+        :stats="osdStats"
         :buffer-seconds="bufferSeconds"
         :now="now"
         :audio-label="tracks.audioLabel.value"

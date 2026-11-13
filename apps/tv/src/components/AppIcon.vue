@@ -36,6 +36,7 @@ export type IconName
     | 'arrowUp'
     | 'arrowDown'
     | 'gauge'
+    | 'timer'
     | 'bell'
 
 const props = defineProps<{ name: IconName }>()
@@ -119,6 +120,10 @@ const PATHS: Record<IconName, (string | IconPart)[]> = {
   next: [{ d: 'M5 5v14l10-7z', fill: true }, 'M19 5v14'],
   arrowUp: ['M12 19.5v-14M6 11.5l6-6 6 6'],
   arrowDown: ['M12 4.5v14M6 12.5l6 6 6-6'],
+  timer: [
+    'M12 6a7.5 7.5 0 1 0 0 15 7.5 7.5 0 0 0 0-15z',
+    'M12 10v4M9.5 2.5h5M12 2.5V6M17.5 7.5l2-2',
+  ],
   // Колокольчик «Следить»: купол с кромкой и язычок
   bell: [
     'M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 1.5h-15z',

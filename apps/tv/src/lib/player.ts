@@ -1,4 +1,5 @@
 import type { TorrentStats } from '@torsher/api-client'
+import { formatBitrate } from './sources.ts'
 
 /**
  * Шаги экрана буферизации: `connecting` — движок ищет пиров,
@@ -516,6 +517,13 @@ export function endsAt(now: Date, remainingSeconds: number) {
 /** Мегабайты в секунду с одним знаком: «2,4»; без данных локали — точка */
 export function formatSpeed(bytesPerSecond: number, locale: string) {
   return formatOneDecimal(bytesPerSecond / (1024 * 1024), locale)
+}
+
+/** Десятичные Мбит/с для OSD, с тем же округлением, что у битрейта источника. */
+export function formatMegabits(bytesPerSecond: number, locale: string) {
+  return Number.isFinite(bytesPerSecond) && bytesPerSecond >= 0
+    ? formatBitrate((bytesPerSecond * 8) / 1_000_000, locale)
+    : '—'
 }
 
 /** Гигабайты с одним знаком: «2,1»; единицу добавляет строка i18n */
