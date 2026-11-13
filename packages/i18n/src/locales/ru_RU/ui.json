@@ -506,6 +506,14 @@
     "screensaverAfter": "Через {n} мин"
   },
   "player": {
+    "stats": {
+      "speed": "{value} Мбит/с",
+      "downloadSpeed": "Загрузка сервером: {speed}",
+      "seconds": "{n} с",
+      "minutes": "{n} мин",
+      "buffer": "Запас видео: {time}",
+      "seeders": "Подключённые сиды: {n}"
+    },
     "timeline": "Позиция {position}. OK — воспроизведение/пауза, влево и вправо — перемотка",
     "peers": "{n} пир | {n} пира | {n} пиров",
     "found": "найден {n} пир | найдено {n} пира | найдено {n} пиров",

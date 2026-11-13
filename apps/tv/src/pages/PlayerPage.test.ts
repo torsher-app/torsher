@@ -207,6 +207,7 @@ interface Controls {
   phase: string
   panel: 'source' | null
   step: string
+  osdStats: TorrentStats | undefined
 }
 let controls: Controls
 let cleanup: () => void
@@ -534,6 +535,33 @@ it('polls while the initial probe is pending and distinguishes fresh zero peers 
   finish('ready')
   await settle()
   expect(mocks.pollStats).toHaveBeenCalledTimes(1)
+})
+
+it('hides failed or stale OSD stats and restores them after a successful poll', async () => {
+  await mount()
+  const fresh: TorrentStats = {
+    activity: 'downloading',
+    peers: { connected: 5, found: 20, seeders: 3 },
+    downloadSpeed: 1_000_000,
+    uploadSpeed: 0,
+    badPieces: 0,
+    file: { size: 1e9, downloaded: 1e8, bufferedAhead: 1e7 },
+  }
+  playerStats.value = fresh
+  statsAt.value = Date.now()
+  await settle()
+  expect(controls.osdStats).toEqual(fresh)
+  statsFailed.value = true
+  await settle()
+  expect(controls.osdStats).toBeUndefined()
+  statsFailed.value = false
+  await settle()
+  expect(controls.osdStats).toEqual(fresh)
+  await vi.advanceTimersByTimeAsync(16_000)
+  expect(controls.osdStats).toBeUndefined()
+  statsAt.value = Date.now()
+  await settle()
+  expect(controls.osdStats).toEqual(fresh)
 })
 
 it('restores the position and pause after cancelling a source switch', async () => {

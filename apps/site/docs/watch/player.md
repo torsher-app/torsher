@@ -16,7 +16,7 @@ The keys of the player, how to change the voice-over and subtitles, switch to an
 Before the video starts, the screen shows the title's backdrop, its name, the episode and a floor lamp. The lamp tells you whether data is coming:
 
 - **The cord is pulled but the lamp barely flickers**: no peers yet. The status reads <Ui k="player.steps.connecting" /> and how many peers were found. After 15 seconds without peers it reads <Ui k="player.steps.waitingPeers" />: <Ui k="player.waitingHint" />
-- **The lamp lights up and grows brighter**: data is coming. The status reads <Ui k="player.steps.buffering" /> with the percentage and speed. Moths gather around the lamp, one for each connected peer.
+- **The lamp lights up and grows brighter**: data is coming. The status reads <Ui k="player.steps.buffering" /> with the preparation percentage, the server's download speed in Mbps and connected seeders beside an up arrow. Moths gather around the lamp, one for each connected peer, including peers that are still downloading.
 
 If the video starts quickly, you don't see the lamp at all.
 
@@ -47,7 +47,11 @@ Back closes an open panel first, then hides the controls, then exits. Your posit
 
 If pointer movement brings the controls back after you hide them with Back, the next Back still exits. Clicking or pressing another key starts this sequence over.
 
-The controls hide after 4 seconds of playback. They show the title and the file name, the clock, peers, speed and how much is buffered, the time left and when the video ends. Paused for 10 seconds, the picture dims and shows <Ui k="player.youAreWatching" /> with the episode description. The first key press brings the controls back.
+The controls hide after 4 seconds of playback. They show the title and the file name, the clock, download statistics, the time left and when the video ends. Paused for 10 seconds, the picture dims and shows <Ui k="player.youAreWatching" /> with the episode description. The first key press brings the controls back.
+
+For a streaming torrent, the chip beside the clock shows the server's download speed in Mbps, the buffered time beside a timer, and connected seeders beside an up arrow. This seeder count can differ from the count in the source list: only currently connected seeders are shown here. The speed measures the server's torrent download, not the connection from the server to your TV.
+
+The bars compare download speed with the video's average bitrate. Dim bars with several minutes buffered do not mean playback has failed. A warning appears when there is less than a minute buffered and downloads cannot keep up. When the file or all remaining video is downloaded, the chip shows <Ui k="player.downloaded" />. Library videos have no torrent chip; unavailable or stale statistics are hidden.
 
 With a pointer or a mouse, moving shows the controls, a click on the picture pauses, and a click on the timeline jumps there.
 

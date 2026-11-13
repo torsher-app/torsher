@@ -16,6 +16,8 @@ import {
   formatClock,
   formatDuration,
   formatGigabytes,
+  formatMegabits,
+  formatSpeed,
   freshBudget,
   holdScrub,
   MEDIA_ERROR_WINDOW_MS,
@@ -196,6 +198,29 @@ describe('место на диске', () => {
   it('гигабайты с одним знаком по локали', () => {
     expect(formatGigabytes(2.25 * 1024 ** 3, 'ru_RU')).toBe('2,3')
     expect(formatGigabytes(0, 'en_US')).toBe('0.0')
+  })
+})
+
+describe('скорость OSD', () => {
+  it('считает десятичные Мбит/с из байт/с и округляет по локали', () => {
+    expect(formatMegabits(5.5 * 1024 ** 2, 'ru_RU')).toBe('46')
+    expect(formatMegabits(40 * 1024 ** 2, 'en_US')).toBe('336')
+    expect(formatMegabits(1_000_000, 'en_US')).toBe('8.0')
+    expect(formatMegabits(0, 'ru_RU')).toBe('0,0')
+    expect(formatMegabits(12_500, 'en_US')).toBe('0.1')
+    expect(formatMegabits(1_237_500, 'ru_RU')).toBe('9,9')
+    expect(formatMegabits(1_250_000, 'ru_RU')).toBe('10')
+  })
+
+  it.each([Number.NaN, Number.POSITIVE_INFINITY, -1])(
+    'не подменяет неизвестную скорость %s нулём',
+    (value) => {
+      expect(formatMegabits(value, 'en_US')).toBe('—')
+    },
+  )
+
+  it('сохраняет единицы экрана подготовки', () => {
+    expect(formatSpeed(5.5 * 1024 ** 2, 'en_US')).toBe('5.5')
   })
 })
 

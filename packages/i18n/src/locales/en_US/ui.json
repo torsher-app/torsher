@@ -506,6 +506,14 @@
     "screensaverAfter": "After {n} min"
   },
   "player": {
+    "stats": {
+      "speed": "{value} Mbps",
+      "downloadSpeed": "Server download: {speed}",
+      "seconds": "{n} s",
+      "minutes": "{n} min",
+      "buffer": "Buffered: {time}",
+      "seeders": "Connected seeders: {n}"
+    },
     "timeline": "Position {position}. OK plays or pauses, left and right seek",
     "peers": "{n} peer | {n} peers",
     "found": "{n} peer found | {n} peers found",
