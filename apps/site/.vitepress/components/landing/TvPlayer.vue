@@ -35,7 +35,7 @@ const buttons = [
   <div
     class="screen"
     role="img"
-    aria-label="Torsher player playing a movie with the on-screen controls: Back, the title and file name, the clock and download speed, the timeline in focus, and the Audio, Subtitles, Source and Settings buttons"
+    aria-label="Torsher player playing a movie with the on-screen controls: Back, the title and file name, the clock, download speed, buffer and connected seeders, the timeline in focus, and the Audio, Subtitles, Source and Settings buttons"
   >
     <div class="picture" aria-hidden="true">
       <div class="moon" />
@@ -59,7 +59,40 @@ const buttons = [
           <span class="clock">09:40 PM</span>
           <span class="net">
             <span class="bars" aria-hidden="true"><span /><span /><span /><span /></span>
-            <span>{{ format("player.speed", { value: "6.2" }) }}</span>
+            <span class="net-stat">{{
+              format("player.stats.speed", { value: "52" })
+            }}</span>
+            <span class="net-stat">
+              <svg
+                class="net-icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M12 6a7.5 7.5 0 1 0 0 15 7.5 7.5 0 0 0 0-15z" />
+                <path d="M12 10v4M9.5 2.5h5M12 2.5V6M17.5 7.5l2-2" />
+              </svg>
+              <span>{{ format("player.stats.minutes", { n: 3 }) }}</span>
+            </span>
+            <span class="net-stat">
+              <svg
+                class="net-icon"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M12 19.5v-14M6 11.5l6-6 6 6" />
+              </svg>
+              <span>3</span>
+            </span>
           </span>
         </div>
       </header>
@@ -241,6 +274,7 @@ header {
 }
 
 .titles {
+  flex: 1;
   min-width: 0;
   margin-right: calc(var(--u) * 48);
   padding-left: calc(var(--u) * 120);
@@ -294,6 +328,23 @@ header {
   font-size: calc(var(--u) * 24);
   font-weight: 500;
   white-space: nowrap;
+}
+
+.net-stat {
+  display: inline-flex;
+  align-items: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.net-stat + .net-stat {
+  margin-left: calc(var(--u) * 24);
+}
+
+.net-icon {
+  flex-shrink: 0;
+  width: calc(var(--u) * 22);
+  height: calc(var(--u) * 22);
+  margin-right: calc(var(--u) * 10);
 }
 
 .bars {
