@@ -3,7 +3,8 @@ import type { TorrentStats } from '@torsher/api-client'
 import type { StageStep } from '../../lib/player.ts'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { formatSpeed } from '../../lib/player.ts'
+import { formatMegabits } from '../../lib/player.ts'
+import AppIcon from '../AppIcon.vue'
 
 // Статус под торшером сцены подготовки (`PlayerStage`): шаг и под ним подробности
 const props = defineProps<{
@@ -19,13 +20,13 @@ const { t, locale } = useI18n()
 
 const status = computed(() => {
   if (props.label)
-    return { step: props.label, data: '' }
+    return { step: props.label, data: [] }
 
   const step = t(`player.steps.${props.step}`)
   const stats = props.stats
 
   if (!stats || props.step === 'reconnecting')
-    return { step, data: '' }
+    return { step, data: [] }
 
   const parts
     = props.step === 'buffering' || props.step === 'slow'
@@ -33,8 +34,8 @@ const status = computed(() => {
           t('player.progress', {
             n: Math.round((props.progress ?? 0) * 100),
           }),
-          t('player.speed', {
-            value: formatSpeed(stats.downloadSpeed, locale.value),
+          t('player.stats.speed', {
+            value: formatMegabits(stats.downloadSpeed, locale.value),
           }),
         ]
       : [
@@ -43,7 +44,17 @@ const status = computed(() => {
             : t('player.found', stats.peers.found),
         ]
 
-  return { step, data: parts.join(' · ') }
+  return { step, data: parts }
+})
+
+const seeders = computed(() => {
+  if (props.label || (props.step !== 'buffering' && props.step !== 'slow'))
+    return undefined
+
+  const count = props.stats?.peers.seeders
+  return typeof count === 'number' && Number.isInteger(count) && count >= 0
+    ? count
+    : undefined
 })
 
 // Ноль соединений не доказывает отсутствие сидов: описываем только наблюдаемое.
@@ -61,7 +72,7 @@ const hint = computed(() => {
 
 // Появление цифр и смена их вида растворяются, а новые цифры того же вида — нет
 const detailsKind = computed(() => {
-  if (!status.value.data)
+  if (!status.value.data.length)
     return 'empty'
 
   return props.step === 'buffering' || props.step === 'slow'
@@ -74,14 +85,16 @@ const detailsKind = computed(() => {
  * «9 %» становится «10 %», а «0,9» — «12,4»
  */
 const dataParts = computed(() =>
-  status.value.data
-    .split(/(\d+(?:[.,]\d+)?)/)
-    .filter(Boolean)
-    .map(text => ({
-      text,
-      number: /^\d/.test(text),
-      fraction: /[.,]/.test(text),
-    })),
+  status.value.data.map(value =>
+    value
+      .split(/(\d+(?:[.,]\d+)?)/)
+      .filter(Boolean)
+      .map(text => ({
+        text,
+        number: /^\d/.test(text),
+        fraction: /[.,]/.test(text),
+      })),
+  ),
 )
 </script>
 
@@ -104,15 +117,31 @@ const dataParts = computed(() =>
         <p v-if="hint" key="hint" class="buffering__text buffering__hint">
           {{ hint }}
         </p>
-        <p v-else :key="detailsKind" class="buffering__text">
+        <p v-else :key="detailsKind" class="buffering__text buffering__metrics">
           <span
-            v-for="(part, index) in dataParts"
+            v-for="(parts, index) in dataParts"
             :key="index"
-            :class="{
-              'buffering__number': part.number,
-              'buffering__number--fraction': part.fraction,
-            }"
-          >{{ part.text }}</span>
+            class="buffering__metric"
+          >
+            <span
+              v-for="(part, partIndex) in parts"
+              :key="partIndex"
+              :class="{
+                'buffering__number': part.number,
+                'buffering__number--fraction': part.fraction,
+              }"
+            >{{ part.text }}</span>
+          </span>
+          <span
+            v-if="seeders !== undefined"
+            class="buffering__metric buffering__metric--seeders"
+            role="img"
+            :aria-label="t('player.stats.seeders', { n: seeders })"
+            :title="t('player.stats.seeders', { n: seeders })"
+          >
+            <AppIcon name="arrowUp" class="buffering__stat-icon" />
+            <span>{{ seeders }}</span>
+          </span>
         </p>
       </Transition>
     </div>
@@ -166,6 +195,22 @@ const dataParts = computed(() =>
 .buffering__hint {
   max-width: calc(var(--u) * 900);
   white-space: normal;
+}
+
+.buffering__metrics,
+.buffering__metric--seeders {
+  display: inline-flex;
+  align-items: center;
+}
+
+.buffering__metric + .buffering__metric {
+  margin-left: var(--space-3);
+}
+
+.buffering__stat-icon {
+  width: calc(var(--u) * 22);
+  height: calc(var(--u) * 22);
+  margin-right: calc(var(--u) * 8);
 }
 
 /* Цифры одной ширины (tabular-nums), поэтому ch — ширина любой цифры */
