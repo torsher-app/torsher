@@ -16,7 +16,7 @@ The keys of the player, how to change the voice-over and subtitles, switch to an
 Before the video starts, the screen shows the title's backdrop, its name, the episode and a floor lamp. The lamp tells you whether data is coming:
 
 - **The cord is pulled but the lamp barely flickers**: no peers yet. The status reads <Ui k="player.steps.connecting" /> and how many peers were found. After 15 seconds without peers it reads <Ui k="player.steps.waitingPeers" />: <Ui k="player.waitingHint" />
-- **The lamp lights up and grows brighter**: data is coming. The status reads <Ui k="player.steps.buffering" /> with the percentage and speed. Moths gather around the lamp, one for each connected peer.
+- **The lamp lights up and grows brighter**: data is coming. The status reads <Ui k="player.steps.buffering" /> with the preparation percentage, the server's download speed in Mbps and connected seeders beside an up arrow. Moths gather around the lamp, one for each connected peer, including peers that are still downloading.
 
 If the video starts quickly, you don't see the lamp at all.
 
