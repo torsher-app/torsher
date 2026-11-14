@@ -1,3 +1,4 @@
+import '@torsher/demo/speedtest'
 // Моки разделов витрины: каждый файл регистрирует свои маршруты
 import './catalog.ts'
 import './home.ts'

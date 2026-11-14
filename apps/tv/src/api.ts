@@ -27,6 +27,9 @@ export function onProfileRequired(handler: () => void) {
 // в `onError`: так витрина узнаёт ответ «выберите профиль»
 export const api = createApiClient({
   getErrorMode: () => 'toast',
+  // Old servers may keep this optional check owner-only; its 401 must not unpair the TV.
+  shouldRefreshSession: url =>
+    !/^\/api\/speedtest\/internet(?:\/|$)/.test(url),
   onRequestResult: observeDiagnosticRequest,
   onSessionExpired: () => sessionExpired(),
   onError: (message, status) => {

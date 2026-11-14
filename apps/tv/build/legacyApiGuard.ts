@@ -112,6 +112,43 @@ function isGuardedGlobalThis(code: string, index: number) {
 // проверкой `status === 'rejected'`.
 const SETTLED_LOOKBEHIND = 80
 
+const DATA_REASON_RADIUS = 400
+const MEMBER_CHAIN = '[\\w$]+(?:\\.[\\w$]+)*'
+function escapePattern(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+// The TV speedtest result is plain API data, not an AbortSignal. Require the
+// same receiver's phase, safe HTTP-status projection and translated reason in
+// one render fragment. Vue may use a short alias for its null check.
+function isSpeedtestResultReason(code: string, index: number) {
+  const start = Math.max(0, index - DATA_REASON_RADIUS)
+  const before = code.slice(start, index)
+  let receiver = new RegExp(`(${MEMBER_CHAIN})$`).exec(before)?.[1]
+  if (!receiver)
+    return false
+  if (!receiver.includes('.')) {
+    const assignments = [
+      ...before.matchAll(
+        new RegExp(
+          `(?<![\\w$.])${escapePattern(receiver)}\\s*=\\s*(${MEMBER_CHAIN})`,
+          'g',
+        ),
+      ),
+    ]
+    receiver = assignments.at(-1)?.[1] ?? receiver
+  }
+  if (receiver.split('.').includes('signal'))
+    return false
+  const context = code.slice(start, index + DATA_REASON_RADIUS)
+  const sameReceiver = `(?<![\\w$.])${escapePattern(receiver)}`
+  return (
+    context.includes(`speedtest.reasons.\${${receiver}.reason}`)
+    && new RegExp(`${sameReceiver}\\.phase\\b`).test(context)
+    && new RegExp(`${sameReceiver}\\.providerHttpStatus\\b`).test(context)
+  )
+}
+
 function isPlainReason(code: string, index: number) {
   const after = code.slice(
     index + '.reason'.length,
@@ -132,7 +169,10 @@ function isPlainReason(code: string, index: number) {
     return true
   }
 
-  return /\.status\s*[!=]==?\s*["'`]rejected["'`]/.test(before)
+  return (
+    /\.status\s*[!=]==?\s*["'`]rejected["'`]/.test(before)
+    || isSpeedtestResultReason(code, index)
+  )
 }
 
 function methodRule(method: string, since: number): LegacyApiRule {

@@ -115,6 +115,31 @@ describe('findLegacyApis', () => {
     ])
   })
 
+  it('recognizes the same plain speedtest DTO receiver and Vue null-check alias', () => {
+    const dto = `t(\`speedtest.phases.\${s.value.phase}\`),(p=s.value)!=null&&p.reason&&![\`complete\`,\`byte_limit\`].includes(s.value.reason)?t(\`speedtest.reasons.\${s.value.reason}\`):s.value.reason===\`provider_http_error\`&&s.value.providerHttpStatus`
+    expect(apis(dto)).toEqual([])
+    expect(apis(`${dto};controller.signal.reason`)).toEqual([
+      'AbortSignal.reason',
+    ])
+    expect(apis(`${dto};other.reason`)).toEqual(['AbortSignal.reason'])
+    expect(apis(`${dto};p=controller.signal;consume(p.reason)`)).toEqual([
+      'AbortSignal.reason',
+    ])
+    expect(apis(dto.replace('p.reason&&', 'signal.reason&&'))).toEqual([
+      'AbortSignal.reason',
+    ])
+    expect(
+      apis(
+        dto.replace('s.value.providerHttpStatus', 'other.providerHttpStatus'),
+      ),
+    ).toEqual([
+      'AbortSignal.reason',
+      'AbortSignal.reason',
+      'AbortSignal.reason',
+      'AbortSignal.reason',
+    ])
+  })
+
   it('не путает похожие имена', () => {
     expect(
       apis(
