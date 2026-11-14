@@ -81,6 +81,37 @@ describe('качество и источник', () => {
     expect(video(title)).toEqual(expected)
   })
 
+  it.each([
+    ['UHD BDRip 1080p', '1080p'],
+    ['1080p UHD BDRip', '1080p'],
+    ['4K BDRip 720p', '720p'],
+    ['720p BDRip 4K', '720p'],
+    ['UHD BDRip 1920x800', '1080p'],
+    ['1920x800 BDRip UHD', '1080p'],
+    ['4K BDRip 1920x1080', '1080p'],
+    ['UHD BDRip FullHD', '1080p'],
+    ['UHD BDRip 2160p', '2160p'],
+    ['2160p UHD BDRip', '2160p'],
+    ['UHD BDRip', '2160p'],
+    ['4K BDRip', '2160p'],
+    ['UHD BDRip 1080p 720p', '1080p'],
+    ['1080p BDRip 2160p', '1080p'],
+  ] as const)(
+    'явное разрешение сильнее общего маркера: %s',
+    (tags, quality) => {
+      const parsed = parseRelease(
+        `Фонарь / Lantern [2020, драма, ${tags}, HDR10]`,
+      )
+
+      expect(parsed).toMatchObject({
+        quality,
+        source: 'BDRip',
+        hdr: ['HDR10'],
+      })
+      expect(parsed.titles).toMatchObject({ ru: 'Фонарь', orig: 'Lantern' })
+    },
+  )
+
   it('не принимает слово названия за тег', () => {
     expect(video('Паутина / The Web (2020) BDRip 720p')).toMatchObject({
       source: 'BDRip',

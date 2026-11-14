@@ -167,12 +167,12 @@ export function parseQuality(ctx: ParseContext): QualityResult {
     for (const word of variants(token)) {
       const resolution = RESOLUTIONS[word] ?? parseFrame(word)
       if (resolution && !(leading && RISKY.has(word))) {
-        if (!result.quality) {
+        // UHD/4K может описывать исходник рипа: явное 1080p или размер
+        // кадра сильнее общего маркера независимо от порядка тегов.
+        const confidence = word === '4k' || word === 'uhd' ? 0.9 : 1
+        if (!result.quality || confidence > (ctx.confidence.quality ?? 0)) {
           result.quality = resolution
-          ctx.setConfidence(
-            'quality',
-            word === '4k' || word === 'uhd' ? 0.9 : 1,
-          )
+          ctx.setConfidence('quality', confidence)
         }
         matched = true
         continue
