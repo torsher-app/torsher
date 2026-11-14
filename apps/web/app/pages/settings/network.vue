@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import DeleteRouteDialog from '~/components/settings/DeleteRouteDialog.vue'
 import NetworkDnsCard from '~/components/settings/NetworkDnsCard.vue'
+import NetworkSpeedtest from '~/components/settings/NetworkSpeedtest.vue'
 import NetworkHosts from '~/components/settings/NetworkHosts.vue'
 import NetworkRouteDialog from '~/components/settings/NetworkRouteDialog.vue'
 import NetworkRoutesCard from '~/components/settings/NetworkRoutesCard.vue'
@@ -120,6 +121,8 @@ onBeforeUnmount(network.stopPolling)
         @delete="openDelete"
       />
     </template>
+
+    <NetworkSpeedtest />
 
     <NetworkRouteDialog
       v-model:open="dialogOpen"
