@@ -115,6 +115,35 @@ afterEach(() => {
 })
 
 describe('get /api/titles/:id/sources', () => {
+  it('явное 1080p сильнее UHD без infohash при поиске и чтении кэша', async () => {
+    const original = fetchMock.getMockImplementation()!
+    fetchMock.mockImplementation(async (input, init) =>
+      new URL(String(input)).hostname === 'a.indexer.example'
+        ? new Response(
+            searchXml
+              .replace('WEB-DL 1080p', 'UHD BDRip 1080p')
+              .replace(/<torznab:attr name="infohash"[^>]*\/>/, ''),
+          )
+        : original(input, init),
+    )
+    const url = '/api/titles/tmdb:tv:101/sources?season=2'
+    const first = await app.inject({ url, cookies: authed() })
+    const count = fetchMock.mock.calls.length
+    const cached = await app.inject({ url, cookies: authed() })
+
+    expect(fetchMock).toHaveBeenCalledTimes(count)
+    for (const response of [first, cached]) {
+      expect(response.statusCode).toBe(200)
+      expect(response.json().candidates[0]).toMatchObject({
+        id: first.json().candidates[0].id,
+        quality: '1080p',
+        resolution: { value: '1080p', basis: 'title', sure: true },
+        torrentId: null,
+      })
+      expect(response.json().voices[0].maxQuality).toBe('1080p')
+    }
+  })
+
   it.each(['de', 'ja', 'original', 'ru'])(
     'uses preset audio %s when ranking cached sources',
     async (audio) => {

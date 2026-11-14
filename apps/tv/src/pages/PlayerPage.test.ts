@@ -708,6 +708,23 @@ it('switches to a previous source even when history still labels it last watched
     }),
   )
 })
+it('keeps the refined search query when switching to its selected source', async () => {
+  await mount()
+  await controls.switchSource(
+    { id: 'refined-uhd', torrentId: null } as SourceCandidate,
+    { query: 'Alternate title 2020' },
+  )
+  expect(mocks.replace).toHaveBeenCalledWith(
+    expect.objectContaining({
+      path: '/title/tmdb:tv:1/play',
+      query: expect.objectContaining({
+        candidate: 'refined-uhd',
+        q: 'Alternate title 2020',
+      }),
+    }),
+  )
+})
+
 it('closes the source panel for the actual playing torrent even before history catches up', async () => {
   await mount()
   await controls.switchSource(

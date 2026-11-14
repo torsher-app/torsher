@@ -78,6 +78,28 @@ describe('rankReleases', () => {
     expect(top[0]).toBe('c')
   })
 
+  it('4K-пресет предпочитает 2160p рипу UHD BDRip 1080p', () => {
+    const { top, ranked } = rankReleases(
+      [
+        release('rip', 'Фонарь (2021) UHD BDRip 1080p | D', 100, 8 * GB),
+        release('uhd', 'Фонарь (2021) WEB-DL 2160p | D', 40, 20 * GB),
+      ],
+      {
+        ...movie,
+        profile: {
+          ...DEFAULT_PROFILE,
+          qualities: ['2160p', '1080p', '720p', 'SD'],
+        },
+      },
+    )
+
+    expect(top[0]).toBe('uhd')
+    expect(ranked[1]).toMatchObject({
+      id: 'rip',
+      resolution: { value: '1080p', basis: 'title', sure: true },
+    })
+  })
+
   it('закреплённая озвучка сильнее профиля и даёт причину', () => {
     const { top, ranked } = rankReleases(
       [

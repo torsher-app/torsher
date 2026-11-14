@@ -1136,6 +1136,7 @@ async function switchSource(candidate: SourceCandidate, choice: SourceChoice) {
       season: props.season,
       episode: props.episode,
       candidate: candidate.id,
+      q: choice.query,
       voice: heardStudio(tracks.audioTrack.value, choice.playingVoice),
     },
   })
