@@ -4414,6 +4414,13 @@ export interface TorrentStatsInput {
     size: number;
     downloaded: number;
     bufferedAhead: number;
+    playbackCache?: {
+      sampledAtSeconds: number;
+      anchorOffset: number;
+      contiguousEndOffset: number;
+      bufferedUntilSeconds: number | null;
+      verifiedToEnd: boolean;
+    } | null;
   };
   badPieces: number;
 }
@@ -12249,6 +12256,13 @@ export interface TorrentStats {
     size: number;
     downloaded: number;
     bufferedAhead: number;
+    playbackCache?: {
+      sampledAtSeconds: number;
+      anchorOffset: number;
+      contiguousEndOffset: number;
+      bufferedUntilSeconds: number | null;
+      verifiedToEnd: boolean;
+    } | null;
   };
   badPieces: number;
 }
@@ -18496,6 +18510,11 @@ export class Api<
     getTorrentStats: (
       id: string,
       query: {
+        /**
+         * @maxLength 32
+         * @pattern ^\d+(?:\.\d+)?$
+         */
+        time?: string;
         /** @pattern ^\d{1,5}$ */
         fileIndex: string;
         /** @pattern ^\d{1,16}$ */
