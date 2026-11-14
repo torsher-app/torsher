@@ -60,7 +60,15 @@ import {
 import { parseMagnet } from './magnet.ts'
 import { isVideoFile } from './media.ts'
 import { downloadOrder } from './order.ts'
-import { bufferedAheadBytes, fileOffsetOf } from './playback.ts'
+import type { PlaybackCache } from './playback.ts'
+import {
+  bufferedAheadBytes,
+  fileOffsetOf,
+  playbackCacheAt,
+  verifiedFileOffsets,
+} from './playback.ts'
+import { peekPlaybackIndex } from '../media/cueCache.ts'
+import { peekMediaProbe } from '../media/probe.ts'
 
 export { InsufficientStorageError } from '../storage/index.ts'
 
@@ -1087,7 +1095,12 @@ export interface StreamStats {
   peers: { connected: number, found: number, seeders: number }
   downloadSpeed: number
   uploadSpeed: number
-  file: { size: number, downloaded: number, bufferedAhead: number }
+  file: {
+    size: number
+    downloaded: number
+    bufferedAhead: number
+    playbackCache?: PlaybackCache | null
+  }
   badPieces: number
 }
 
@@ -1099,6 +1112,7 @@ export async function streamStats(
   torrent: Torrent,
   fileIndex: number,
   position: number,
+  time?: number,
 ): Promise<StreamStats> {
   const files = torrent.files ?? []
   const size = files[fileIndex]?.size ?? 0
@@ -1107,7 +1121,12 @@ export async function streamStats(
     peers: { connected: 0, found: 0, seeders: 0 },
     downloadSpeed: 0,
     uploadSpeed: 0,
-    file: { size, downloaded: 0, bufferedAhead: 0 },
+    file: {
+      size,
+      downloaded: 0,
+      bufferedAhead: 0,
+      ...(time === undefined ? {} : { playbackCache: null }),
+    },
     badPieces: 0,
   }
 
@@ -1142,6 +1161,29 @@ export async function streamStats(
       size,
       downloaded: stats.fileProgress[fileIndex] ?? 0,
       bufferedAhead,
+      ...(time === undefined
+        ? {}
+        : {
+            playbackCache: torrent.pieceLength
+              ? playbackCacheAt(
+                  {
+                    pieces: stats.pieces,
+                    pieceLength: torrent.pieceLength,
+                    fileOffsets: verifiedFileOffsets(
+                      files,
+                      fileIndex,
+                      torrent.pieceLength,
+                      stats.pieces.length,
+                    ),
+                    fileSize: size,
+                  },
+                  time,
+                  peekMediaProbe(`${torrent.infoHash}:${fileIndex}`)
+                    ?.duration ?? null,
+                  peekPlaybackIndex(torrent.infoHash, fileIndex, size),
+                )
+              : null,
+          }),
     },
     badPieces: stats.badPieces,
   }

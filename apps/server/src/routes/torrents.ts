@@ -568,6 +568,9 @@ export const torrentRoutes: FastifyPluginAsyncZod = async (app) => {
           found,
           fileIndex,
           Number(request.query.offset ?? 0),
+          request.query.time === undefined
+            ? undefined
+            : Number(request.query.time),
         )
       }
       catch (err) {

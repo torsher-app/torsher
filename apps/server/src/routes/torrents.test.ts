@@ -502,6 +502,90 @@ describe('статистика', () => {
     })
   })
 
+  it('keeps a literal legacy offset with time and starts no index or probe IO during stats', async () => {
+    const torrent = insertTorrent()
+    engine({ [`GET /torrents/${INFO_HASH}/stats`]: () => json(liveStats) })
+    const response = await app.inject({
+      url: `/api/torrents/${torrent.id}/stats?fileIndex=0&offset=1048576&time=25`,
+      cookies: owner,
+    })
+    expect(response.statusCode).toBe(200)
+    expect(response.json().file).toEqual({
+      size: 9_437_184,
+      downloaded: 3_145_728,
+      bufferedAhead: 2_097_152,
+      playbackCache: null,
+    })
+    expect(engineCalls()).toEqual([`GET /torrents/${INFO_HASH}/stats`])
+  })
+
+  it('uses the verified bitmap for complete files, without trusting downloaded bytes or client duration', async () => {
+    const torrent = insertTorrent()
+    engine({
+      [`GET /torrents/${INFO_HASH}/stats`]: () =>
+        json({
+          ...liveStats,
+          fileProgress: [9_437_184],
+          pieces: '1'.repeat(36) + '0'.repeat(5),
+        }),
+    })
+    const response = await app.inject({
+      url: `/api/torrents/${torrent.id}/stats?fileIndex=0&time=25&duration=100`,
+      cookies: owner,
+    })
+    expect(response.json().file.playbackCache).toEqual({
+      sampledAtSeconds: 25,
+      anchorOffset: 0,
+      contiguousEndOffset: 9_437_184,
+      bufferedUntilSeconds: null,
+      verifiedToEnd: true,
+    })
+    engine({
+      [`GET /torrents/${INFO_HASH}/stats`]: () =>
+        json({ ...liveStats, fileProgress: [9_437_184] }),
+    })
+    const hole = await app.inject({
+      url: `/api/torrents/${torrent.id}/stats?fileIndex=0&time=25`,
+      cookies: owner,
+    })
+    expect(hole.json().file.playbackCache).toBeNull()
+  })
+
+  it('does not count the first file piece as verified data of a hybrid second file', async () => {
+    const torrent = insertTorrent({
+      pieceLength: 16384,
+      files: [
+        { size: 8192, path: 'first.mkv', padding: false },
+        { size: 8192, path: 'second.mkv', padding: false },
+      ],
+    })
+    engine({
+      [`GET /torrents/${INFO_HASH}/stats`]: () =>
+        json({ ...liveStats, fileProgress: [8192, 0], pieces: '10' }),
+    })
+    const response = await app.inject({
+      url: `/api/torrents/${torrent.id}/stats?fileIndex=1&time=10`,
+      cookies: owner,
+    })
+    expect(response.json().file).toEqual({
+      size: 8192,
+      downloaded: 0,
+      bufferedAhead: 8192,
+      playbackCache: null,
+    })
+  })
+
+  it.each(['-1', 'NaN', 'Infinity', '1e5', '31536001'])(
+    'rejects invalid playback time %s',
+    async (time) => {
+      const response = await app.inject({
+        url: `/api/torrents/synthetic/stats?fileIndex=0&time=${time}`,
+        cookies: owner,
+      })
+      expect(response.statusCode).toBe(400)
+    },
+  )
+
   it('пиры, скорость и буфер впереди позиции чтения', async () => {
     const torrent = insertTorrent()
 
