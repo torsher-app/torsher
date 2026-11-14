@@ -38,6 +38,7 @@ import {
 import { describePlan, planEncode } from './encode.ts'
 import { HlsTranscode, segmentStarts } from './hls.ts'
 import { readCueTimes, readSubtitleIndex } from './matroska.ts'
+import { loadTorrentCues } from './cueCache.ts'
 import { mergeCues } from './webvtt.ts'
 import { probeMedia } from './probe.ts'
 import {
@@ -279,8 +280,12 @@ async function prepare(
       // Индекс MKV читаем вместе с пробой, а не после: он нужен перепаковке, а
       // у холодной раздачи это ещё одно ожидание кусков — с конца файла
       earlyCues
-        = device && /\.mkv$/i.test(session.fileName)
-          ? readCueTimes(readerOf(url)).catch(() => null)
+        = (torrent || device) && /\.mkv$/i.test(session.fileName)
+          ? torrent
+            ? loadTorrentCues(torrent, fileIndex, signal).then(
+                result => result?.times ?? null,
+              )
+            : readCueTimes(readerOf(url)).catch(() => null)
           : undefined
       session.media = await probeMedia(
         library
@@ -433,7 +438,12 @@ async function prepare(
     // Ключевые кадры перекодирования ставит кодировщик: точки `Cues` не нужны
     const cues
       = media.container === 'mkv' && !encode
-        ? await (earlyCues ?? readCueTimes(readerOf(url)).catch(() => null))
+        ? await (earlyCues
+          ?? (torrent
+            ? loadTorrentCues(torrent, fileIndex, signal).then(
+                result => result?.times ?? null,
+              )
+            : readCueTimes(readerOf(url)).catch(() => null)))
         : null
 
     if (!isOpen(session))

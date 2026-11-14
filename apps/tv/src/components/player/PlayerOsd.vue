@@ -29,6 +29,9 @@ const props = defineProps<{
   stats: TorrentStats | undefined
   /** Секунд видео впереди позиции, уже скачанных */
   bufferSeconds: number
+  cacheSeconds?: number | null
+  verifiedToEnd?: boolean
+  stalled?: boolean
   now: Date
   /** Подписи кнопок дорожек; кнопки нет, если платформа дорожки не отдаёт */
   audioLabel: string | null
@@ -84,10 +87,11 @@ const network = computed(() => {
   return networkState({
     speed: stats.downloadSpeed,
     size: stats.file.size,
-    downloaded: stats.file.downloaded,
     duration: props.duration,
-    bufferSeconds: props.bufferSeconds,
-    remaining: remaining.value,
+    verifiedToEnd: props.verifiedToEnd,
+    stalled: props.stalled,
+    playerBufferSeconds: props.bufferSeconds,
+    cacheSeconds: props.cacheSeconds,
   })
 })
 
@@ -100,6 +104,14 @@ const speedText = computed(() =>
   }),
 )
 const bufferedText = computed(() => bufferText(props.bufferSeconds))
+const cacheText = computed(() =>
+  props.cacheSeconds === null
+  || props.cacheSeconds === undefined
+  || !Number.isFinite(props.cacheSeconds)
+  || props.cacheSeconds < 0
+    ? '—'
+    : `≥ ${bufferText(props.cacheSeconds)}`,
+)
 const seedersText = computed(() => {
   const count = props.stats?.peers.seeders
   return typeof count === 'number' && Number.isInteger(count) && count >= 0
@@ -133,7 +145,7 @@ const seedersText = computed(() => {
         >
           <template v-if="network.kind === 'done'">
             <AppIcon name="check" class="osd__pill-icon" />
-            <span>{{ t("player.downloaded") }}</span>
+            <span class="osd__metric">{{ t("player.downloaded") }}</span>
           </template>
           <template v-else>
             <SignalBars
@@ -152,15 +164,6 @@ const seedersText = computed(() => {
             <span
               class="osd__metric"
               role="img"
-              :aria-label="t('player.stats.buffer', { time: bufferedText })"
-              :title="t('player.stats.buffer', { time: bufferedText })"
-            >
-              <AppIcon name="timer" class="osd__pill-icon" />
-              {{ bufferedText }}
-            </span>
-            <span
-              class="osd__metric"
-              role="img"
               :aria-label="t('player.stats.seeders', { n: seedersText })"
               :title="t('player.stats.seeders', { n: seedersText })"
             >
@@ -168,6 +171,16 @@ const seedersText = computed(() => {
               {{ seedersText }}
             </span>
           </template>
+          <span
+            class="osd__metric"
+            :aria-label="t('player.stats.playerBuffer', { time: bufferedText })"
+            :title="t('player.stats.playerBuffer', { time: bufferedText })"
+          >{{ t("player.stats.player") }} {{ bufferedText }}</span>
+          <span
+            class="osd__metric"
+            :aria-label="t('player.stats.cacheBuffer', { time: cacheText })"
+            :title="t('player.stats.cacheBuffer', { time: cacheText })"
+          >{{ t("player.stats.cache") }} {{ cacheText }}</span>
         </span>
       </div>
     </header>

@@ -1,5 +1,6 @@
 import type { PlayerSnapshot } from '../lib/nativeVideo.ts'
 import { afterEach, expect, it, vi } from 'vitest'
+import { playerBufferedSeconds } from '../lib/player.ts'
 
 class VideoElement extends EventTarget {
   removeAttribute(_name: string) {}
@@ -84,6 +85,28 @@ it('carries load, seek, audio and stop through the Android bridge and applies st
   tracks[1]!.enabled = true
   await el.play()
   expect(el.paused).toBe(false)
+  // The adapter advances its range start between native snapshots. The OSD
+  // must sample its live clock after capturing that range, not use timeupdate's
+  // older position (42), which no longer lies inside the moving range.
+  let clock = 1000
+  vi.stubGlobal('performance', { now: () => clock++ })
+  publish({
+    time: 42,
+    buffered: 72,
+    paused: false,
+    readyState: 4,
+    rate: 1,
+    events: ['playing'],
+  })
+  clock += 100
+  const ahead = playerBufferedSeconds(el)
+  expect(ahead).toBeGreaterThan(29)
+  expect(ahead).toBeLessThan(30)
+  el.currentTime = 10
+  expect(playerBufferedSeconds(el)).toBe(0)
+  publish({ time: 10, buffered: 25, paused: false, events: ['seeking'] })
+  expect(playerBufferedSeconds(el)).toBeGreaterThan(14)
+  expect(playerBufferedSeconds(el)).toBeLessThan(15)
   publish({ time: 120, paused: true, ended: true, events: ['pause', 'ended'] })
   expect(seen.slice(-2)).toEqual([
     { event: 'pause', time: 120, paused: true, ended: true },
@@ -97,6 +120,7 @@ it('carries load, seek, audio and stop through the Android bridge and applies st
     { type: 'player.seek', time: 42 },
     { type: 'player.audio', index: 1 },
     { type: 'player.play' },
+    { type: 'player.seek', time: 10 },
     { type: 'player.stop' },
   ])
   expect(classes.has('native-video')).toBe(true)

@@ -512,6 +512,10 @@
       "seconds": "{n} s",
       "minutes": "{n} min",
       "buffer": "Buffered: {time}",
+      "player": "Player",
+      "cache": "Cache",
+      "playerBuffer": "Player buffer: {time}",
+      "cacheBuffer": "Server cache: {time}",
       "seeders": "Connected seeders: {n}"
     },
     "timeline": "Position {position}. OK plays or pauses, left and right seek",

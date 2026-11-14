@@ -514,8 +514,13 @@ export async function listEngineTorrents() {
   return list.map(toState)
 }
 
-export async function torrentStats(infoHash: string): Promise<EngineStats> {
-  const stats = await engineJson(`/torrents/${infoHash}/stats`, engineStats)
+export async function torrentStats(
+  infoHash: string,
+  signal?: AbortSignal,
+): Promise<EngineStats> {
+  const stats = await engineJson(`/torrents/${infoHash}/stats`, engineStats, {
+    signal,
+  })
 
   return { ...toState(stats), pieces: stats.pieces }
 }

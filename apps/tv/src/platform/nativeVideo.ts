@@ -84,10 +84,12 @@ export function attachNativeVideo(el: HTMLVideoElement): () => void {
     readyState: { get: () => state.snapshot.readyState },
     buffered: {
       get: () =>
-        timeRanges(
-          currentTimeOf(state, performance.now()),
-          state.snapshot.buffered,
-        ),
+        state.pendingSeek !== undefined
+          ? timeRanges(0, 0)
+          : timeRanges(
+              currentTimeOf(state, performance.now()),
+              state.snapshot.buffered,
+            ),
     },
     playbackRate: {
       get: () => rate,

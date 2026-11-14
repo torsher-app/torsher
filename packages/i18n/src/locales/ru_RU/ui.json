@@ -512,6 +512,10 @@
       "seconds": "{n} с",
       "minutes": "{n} мин",
       "buffer": "Запас видео: {time}",
+      "player": "Плеер",
+      "cache": "Кэш",
+      "playerBuffer": "Буфер плеера: {time}",
+      "cacheBuffer": "Кэш сервера: {time}",
       "seeders": "Подключённые сиды: {n}"
     },
     "timeline": "Позиция {position}. OK — воспроизведение/пауза, влево и вправо — перемотка",

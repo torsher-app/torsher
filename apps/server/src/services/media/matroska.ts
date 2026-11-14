@@ -26,6 +26,7 @@ const ID = {
   cueTime: 0xB3,
   cueTrackPositions: 0xB7,
   cueTrack: 0xF7,
+  cueClusterPosition: 0xF1,
   cluster: 0x1F43B675,
 }
 
@@ -94,7 +95,7 @@ function readElement(buffer: Uint8Array, offset: number, limit: number) {
 
   const size = readSize(buffer, offset + id.length)
 
-  if (!size)
+  if (!size || (size.size !== null && !Number.isSafeInteger(size.size)))
     return null
 
   const data = offset + id.length + size.length
@@ -137,6 +138,59 @@ function childValue(buffer: Uint8Array, parent: Element, id: number) {
       return readUint(buffer, child)
   }
 
+  return undefined
+}
+
+function completeChildren(buffer: Uint8Array, parent: Element) {
+  if (parent.size === null || parent.end > buffer.length)
+    return false
+  let end = parent.data
+  for (const child of children(buffer, parent.data, parent.end)) {
+    if (child.size === null || child.end > parent.end || child.end <= end)
+      return false
+    end = child.end
+  }
+  return end === parent.end
+}
+
+/** null means malformed/conflicting; undefined means absent. */
+function strictUint(buffer: Uint8Array, parent: Element, id: number) {
+  let value: number | undefined
+  for (const field of children(buffer, parent.data, parent.end)) {
+    if (field.id !== id)
+      continue
+    if (
+      field.size === null
+      || field.size < 1
+      || field.size > 8
+      || field.end > parent.end
+      || field.end > buffer.length
+    ) {
+      return null
+    }
+    const next = readUint(buffer, field)
+    if (!Number.isSafeInteger(next) || (value !== undefined && next !== value))
+      return null
+    value = next
+  }
+  return value
+}
+
+function strictVideoTrack(buffer: Uint8Array, tracks: Element) {
+  if (!completeChildren(buffer, tracks))
+    return undefined
+  for (const entry of children(buffer, tracks.data, tracks.end)) {
+    if (entry.id !== ID.trackEntry)
+      continue
+    if (!completeChildren(buffer, entry))
+      return undefined
+    if (strictUint(buffer, entry, ID.trackType) === VIDEO_TRACK) {
+      const number = strictUint(buffer, entry, ID.trackNumber)
+      return number !== null && number !== undefined && number > 0
+        ? number
+        : undefined
+    }
+  }
   return undefined
 }
 
@@ -217,6 +271,8 @@ async function fetchElement(
   id: number,
 ) {
   const start = segmentData + position
+  if (!Number.isSafeInteger(start) || start < 0)
+    return null
   const head = await read(start, start + 12)
   const element = readElement(head, 0, head.length)
 
@@ -240,9 +296,10 @@ async function fetchElement(
  * Время точек `Cues` видеодорожки в секундах, по возрастанию, без повторов.
  * null — файл не MKV, индекса нет или его не удалось прочитать.
  */
-export async function readCueTimes(
+export async function readMatroskaCues(
   read: RangeReader,
-): Promise<number[] | null> {
+  fileSize?: number,
+): Promise<MatroskaCues | null> {
   const prefix = await read(0, PREFIX_BYTES)
   let segment: Element | null = null
 
@@ -262,17 +319,26 @@ export async function readCueTimes(
   let positions = new Map<number, number>()
   let scale: number | undefined
   let track: number | undefined
+  let strictTrack: number | undefined
+  let strictScale: number | null | undefined
+  let infoComplete = true
 
   for (const element of children(prefix, segment.data, segment.end)) {
     if (element.id === ID.cluster)
       break
 
-    if (element.id === ID.seekHead && positions.size === 0)
+    if (element.id === ID.seekHead && positions.size === 0) {
       positions = seekPositions(prefix, element)
-    else if (element.id === ID.info)
+    }
+    else if (element.id === ID.info) {
       scale = childValue(prefix, element, ID.timestampScale)
-    else if (element.id === ID.tracks)
+      infoComplete = completeChildren(prefix, element)
+      strictScale = strictUint(prefix, element, ID.timestampScale)
+    }
+    else if (element.id === ID.tracks) {
       track = videoTrackNumber(prefix, element)
+      strictTrack = strictVideoTrack(prefix, element)
+    }
   }
 
   const cuesPosition = positions.get(ID.cues)
@@ -289,8 +355,10 @@ export async function readCueTimes(
       ID.tracks,
     )
 
-    if (tracks)
+    if (tracks) {
       track = videoTrackNumber(tracks.buffer, tracks.element)
+      strictTrack = strictVideoTrack(tracks.buffer, tracks.element)
+    }
   }
 
   if (scale === undefined && positions.has(ID.info)) {
@@ -301,8 +369,11 @@ export async function readCueTimes(
       ID.info,
     )
 
-    if (info)
+    infoComplete = !!info && completeChildren(info.buffer, info.element)
+    if (info) {
       scale = childValue(info.buffer, info.element, ID.timestampScale)
+      strictScale = strictUint(info.buffer, info.element, ID.timestampScale)
+    }
   }
 
   const cues = await fetchElement(read, segment.data, cuesPosition, ID.cues)
@@ -315,7 +386,120 @@ export async function readCueTimes(
     .map(time => (time * nanoseconds) / 1e9)
     .sort((a, b) => a - b)
 
-  return times.filter((time, i) => i === 0 || time !== times[i - 1])
+  return {
+    times: times.filter(
+      (time, i) => Number.isFinite(time) && (i === 0 || time !== times[i - 1]),
+    ),
+    playbackIndex:
+      fileSize === undefined || !infoComplete || strictScale === null
+        ? null
+        : playbackIndex(
+            cues.buffer,
+            cues.element,
+            strictTrack,
+            strictScale ?? DEFAULT_TIMESTAMP_SCALE,
+            segment.data,
+            fileSize,
+          ),
+  }
+}
+
+export interface CueCluster {
+  offset: number
+  minTime: number
+  maxTime: number
+}
+
+export interface MatroskaCues {
+  /** Legacy HLS keyframe times, including the former unknown-track fallback. */
+  times: number[]
+  playbackIndex: CueCluster[] | null
+}
+
+/** A Cues position identifies a cluster, never an exact packet byte position. */
+function playbackIndex(
+  buffer: Uint8Array,
+  cues: Element,
+  track: number | undefined,
+  scale: number,
+  segmentData: number,
+  fileSize: number,
+): CueCluster[] | null {
+  if (
+    !Number.isSafeInteger(track)
+    || !track
+    || !Number.isSafeInteger(fileSize)
+    || fileSize <= 0
+    || !Number.isSafeInteger(scale)
+    || scale <= 0
+  ) {
+    return null
+  }
+  const result: CueCluster[] = []
+  let lastTime = -1
+  let count = 0
+  // Unlike HLS's best-effort times, reject truncated children and unsafe integers.
+  const complete = (parent: Element) => completeChildren(buffer, parent)
+  if (!complete(cues))
+    return null
+  for (const point of children(buffer, cues.data, cues.end)) {
+    if (point.id !== ID.cuePoint)
+      continue
+    if (++count > 100_000 || !complete(point))
+      return null
+    const rawTime = strictUint(buffer, point, ID.cueTime)
+    if (!Number.isSafeInteger(rawTime) || rawTime! < 0)
+      return null
+    const time = rawTime! * (scale / 1e9)
+    if (!Number.isFinite(time) || time > Number.MAX_SAFE_INTEGER)
+      return null
+    let offset: number | undefined
+    for (const position of children(buffer, point.data, point.end)) {
+      if (position.id !== ID.cueTrackPositions)
+        continue
+      if (!complete(position))
+        return null
+      const cueTrack = strictUint(buffer, position, ID.cueTrack)
+      if (cueTrack === null || cueTrack === undefined)
+        return null
+      if (cueTrack !== track)
+        continue
+      const relative = strictUint(buffer, position, ID.cueClusterPosition)
+      const absolute = segmentData + relative!
+      if (
+        !Number.isSafeInteger(relative)
+        || relative! < 0
+        || !Number.isSafeInteger(absolute)
+        || absolute < segmentData
+        || absolute >= fileSize
+        || (offset !== undefined && offset !== absolute)
+      ) {
+        return null
+      }
+      offset = absolute
+    }
+    if (offset === undefined)
+      continue
+    const previous = result.at(-1)
+    if (
+      time < lastTime
+      || (previous && offset < previous.offset)
+      || (previous && time === lastTime && offset !== previous.offset)
+    ) {
+      return null
+    }
+    if (previous?.offset === offset)
+      previous.maxTime = time
+    else result.push({ offset, minTime: time, maxTime: time })
+    lastTime = time
+  }
+  return result.length ? result : null
+}
+
+export async function readCueTimes(
+  read: RangeReader,
+): Promise<number[] | null> {
+  return (await readMatroskaCues(read))?.times ?? null
 }
 
 /**

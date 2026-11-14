@@ -317,3 +317,41 @@ it('keeps the originating viewer profile on final saves after closing the sessio
   })
   scope.stop()
 })
+
+it('requests actual playback time without inventing a diagnostic byte offset', async () => {
+  mocks.stats.mockResolvedValue(zeroPeers)
+  const scope = effectScope()
+  const player = scope.run(() =>
+    usePlayback({ torrentId: 'torrent', fileIndex: 0 }),
+  )!
+  player.pollStats(() => ({ time: 3990.612, intervalMs: 1000 }))
+  await vi.advanceTimersByTimeAsync(0)
+  expect(mocks.stats).toHaveBeenCalledWith('torrent', {
+    fileIndex: '0',
+    time: '3990.612',
+  })
+  expect(player.statsOffset()).toBeUndefined()
+  await player.freshStats(3990.612)
+  expect(mocks.stats).toHaveBeenLastCalledWith('torrent', {
+    fileIndex: '0',
+    time: '3990.612',
+  })
+  scope.stop()
+})
+
+it('discards a time sample that resolves after a seek before the next tick', async () => {
+  const pending = deferred<TorrentStats>()
+  mocks.stats.mockReturnValueOnce(pending.promise)
+  const scope = effectScope()
+  const player = scope.run(() =>
+    usePlayback({ torrentId: 'torrent', fileIndex: 0 }),
+  )!
+  let time = 100
+  player.pollStats(() => ({ time, intervalMs: 1000 }))
+  time = 500
+  pending.resolve(zeroPeers)
+  await vi.advanceTimersByTimeAsync(0)
+  expect(player.stats.value).toBeUndefined()
+  expect(player.statsReceivedAt()).toBe(0)
+  scope.stop()
+})

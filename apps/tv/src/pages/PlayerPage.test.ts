@@ -208,6 +208,9 @@ interface Controls {
   panel: 'source' | null
   step: string
   osdStats: TorrentStats | undefined
+  serverCache: NonNullable<TorrentStats['file']['playbackCache']> | null
+  cacheSeconds: number | null
+  bufferSeconds: number
 }
 let controls: Controls
 let cleanup: () => void
@@ -528,7 +531,18 @@ it('polls while the initial probe is pending and distinguishes fresh zero peers 
   expect(controls.step).toBe('connectingPeers')
   playerStats.value = {
     ...playerStats.value!,
-    file: { size: 100, downloaded: 100, bufferedAhead: 0 },
+    file: {
+      size: 100,
+      downloaded: 100,
+      bufferedAhead: 0,
+      playbackCache: {
+        sampledAtSeconds: 0,
+        anchorOffset: 0,
+        contiguousEndOffset: 100,
+        bufferedUntilSeconds: 100,
+        verifiedToEnd: true,
+      },
+    },
   }
   await settle()
   expect(controls.step).toBe('buffering')
@@ -1027,4 +1041,48 @@ it('explicit exit cancels an agreed Next while its progress lookup is pending', 
   await next
   expect(mocks.goBack).toHaveBeenCalledOnce()
   expect(mocks.replace).not.toHaveBeenCalled()
+})
+
+it('accepts a subsecond stats reply between clock ticks without flickering cache availability', async () => {
+  await mount()
+  await vi.advanceTimersByTimeAsync(500)
+  statsAt.value = Date.now()
+  playerStats.value = {
+    activity: 'downloading',
+    peers: { connected: 0, found: 0, seeders: 0 },
+    downloadSpeed: 0,
+    uploadSpeed: 0,
+    badPieces: 0,
+    file: {
+      size: 1000,
+      downloaded: 1000,
+      bufferedAhead: 1000,
+      playbackCache: {
+        sampledAtSeconds: 42,
+        anchorOffset: 0,
+        contiguousEndOffset: 1000,
+        bufferedUntilSeconds: 180,
+        verifiedToEnd: true,
+      },
+    },
+  }
+  await settle()
+  expect(controls.serverCache?.verifiedToEnd).toBe(true)
+  expect(controls.cacheSeconds).toBe(138)
+})
+
+it('refreshes live player ranges while the playback position stays unchanged', async () => {
+  await mount()
+  Object.defineProperty(mocks.media, 'buffered', {
+    value: { length: 1, start: () => 40, end: () => 43 },
+    configurable: true,
+  })
+  await vi.advanceTimersByTimeAsync(1000)
+  expect(controls.bufferSeconds).toBe(1)
+  Object.defineProperty(mocks.media, 'buffered', {
+    value: { length: 1, start: () => 40, end: () => 52 },
+    configurable: true,
+  })
+  await vi.advanceTimersByTimeAsync(1000)
+  expect(controls.bufferSeconds).toBe(10)
 })

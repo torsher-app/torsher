@@ -236,7 +236,24 @@ get<TorrentStats>('/api/torrents/:id/stats', ({ params, query }) => {
     peers: { ...peersOf(params.id!), seeders: 0 },
     downloadSpeed: streamSpeed(params.id!),
     uploadSpeed: Math.round(streamSpeed(`${params.id}:up`) / 8),
-    file: { size, downloaded: size, bufferedAhead: size - offset },
+    file: {
+      size,
+      downloaded: size,
+      bufferedAhead: size - offset,
+      ...(query.has('time')
+        ? {
+            playbackCache: {
+              sampledAtSeconds: Number(query.get('time')),
+              anchorOffset: 0,
+              contiguousEndOffset: size,
+              bufferedUntilSeconds: (
+                FILMS.find(item => item.size === size) ?? SINTEL
+              ).seconds,
+              verifiedToEnd: true,
+            },
+          }
+        : {}),
+    },
     badPieces: 0,
   }
 })

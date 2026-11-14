@@ -206,6 +206,15 @@ export const createTorrent = z
   .meta({ id: 'createTorrent' })
 
 export const torrentStatsQuery = z.object({
+  // Playback position in seconds; offset remains a literal byte offset.
+  time: z
+    .string()
+    .max(32)
+    .regex(/^\d+(?:\.\d+)?$/)
+    .refine(
+      value => Number.isFinite(Number(value)) && Number(value) <= 31_536_000,
+    )
+    .optional(),
   fileIndex: z.string().regex(/^\d{1,5}$/),
   // Позиция чтения в байтах от начала файла
   offset: z
@@ -232,6 +241,16 @@ export const torrentStats = z
       downloaded: z.number(),
       // Скачано подряд от позиции чтения, байт
       bufferedAhead: z.number(),
+      playbackCache: z
+        .object({
+          sampledAtSeconds: z.number(),
+          anchorOffset: z.number(),
+          contiguousEndOffset: z.number(),
+          bufferedUntilSeconds: z.number().nullable(),
+          verifiedToEnd: z.boolean(),
+        })
+        .nullable()
+        .optional(),
     }),
     // Куски раздачи с неверным хэшем: плеер мог получить повреждённые байты
     badPieces: z.number(),
