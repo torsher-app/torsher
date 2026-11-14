@@ -124,6 +124,18 @@ Hold the click on a poster to open the actions menu. Whether a long press under 
 
 **Keyboard.** Arrows move, Enter is OK, Escape or Backspace is Back, and Space plays and pauses in the player. Digits rate titles and enter a PIN. The menu key opens the actions menu.
 
+## Check the connection to this device {#connection-check}
+
+Open <Ui k="nav.settings speedtest.title" /> from the side menu. One screen shows both the device connection and server internet results. Each block has its own <Ui k="speedtest.start" /> button. While a check is running, the other start button is disabled so the measurements do not compete. The device check measures **server → this device**, using the same address and reverse proxy as the showcase. It shows transfer speed, HTTP latency, duration, start time and the amount of test data. It does not measure the TV's internet connection or a torrent's peers.
+
+The check measures for ten seconds after warmup, with a safety ceiling of 64 GiB of test payload and temporarily competes with viewing and downloads. The adaptive series needs three completed HTTP measurements of at least 10 ms each. Otherwise it shows <Ui k="speedtest.states.insufficient" /> instead of a speed. The result is the 90th percentile of valid speeds; the ten-second phase does not finish early when its samples become stable. The final aborted request adds to the traffic total, but not to that estimate. A dash is missing data, not zero.
+
+Select <Ui k="speedtest.stop" /> to stop. The last shown measurements stay visible with a stopped status until the next <Ui k="speedtest.start" /> for that test. Press Back to stop and close the panel. Focus returns to the settings row. Opening it again does not start another check. Hiding the app or losing the session also stops it. Streaming APIs must be supported by the device; no native shell update is needed.
+
+To check server internet, select <Ui k="speedtest.start" /> in the <Ui k="speedtest.internetTitle" /> block on the same screen. It shows <Ui k="speedtest.internetDirection" />: download and upload belong to the Torsher server, not to this TV. Each direction runs for ten seconds after warmup. The TV shows integer speed values, HTTP latency, phase, route, start time, duration and transferred payload, without graphs. Nothing starts until you select <Ui k="speedtest.start" />; <Ui k="speedtest.stop" /> or Back cancels your test, and Back returns focus to the row that opened it. Both result blocks remain on the same screen. Running one test does not clear the other result. Tests never start automatically after one another; Stop cancels the active test, while Back also closes the screen.
+
+One check at a time is shared by all devices. A connected TV has a combined allowance of three successful local/server-internet starts per minute; invalid and busy requests do not use it. Revoking that TV in the panel stops its check. An older server that keeps server internet checks owner-only shows the optional check as unavailable without disconnecting the TV. See the panel's [network checks](/docs/setup/network#speed-check) for provider privacy, limits and the method. A result from the panel describes that browser, so run the showcase check on the TV itself when investigating its connection. Physical TV performance needs testing on the device; a desktop browser is not a substitute.
+
 ## If something went wrong
 
 - **<Ui k="state.unauthorized.title" />.** The device lost its connection to the server. Select <Ui k="state.connect" /> and enter the new code. See [A device says it is not connected](/docs/troubleshooting#not-connected).
