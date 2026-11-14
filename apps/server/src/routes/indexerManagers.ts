@@ -5,9 +5,11 @@ import {
   createIndexerManager,
   deleteIndexerManagerQuery,
   idParams,
+  indexerManager,
   indexerManagerList,
   indexerManagerSyncResult,
   sourceErrorResponse,
+  updateIndexerManager,
 } from '../dto/sources.ts'
 import { requireOwner } from '../middleware/auth.ts'
 import {
@@ -16,6 +18,7 @@ import {
   importManager,
   listManagers,
   syncManager,
+  updateManager,
 } from '../services/indexers/index.ts'
 import {
   logCheckError,
@@ -74,6 +77,32 @@ export const indexerManagerRoutes: FastifyPluginAsyncZod = async (app) => {
         logSourceCheckError(err, { operation: 'manager_import' })
         return sendSourceError(reply, err, request.body.url)
       }
+    },
+  )
+
+  app.patch(
+    '/:id',
+    {
+      schema: {
+        operationId: 'patchIndexerManager',
+        tags: ['Sources'],
+        params: idParams,
+        body: updateIndexerManager,
+        response: {
+          200: indexerManager,
+          400: messageResponse,
+          404: messageResponse,
+          ...guardResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const manager = updateManager(request.params.id, request.body)
+
+      if (!manager)
+        return reply.code(404).send({ message: 'Indexer manager not found' })
+
+      return toManagerResponse(manager)
     },
   )
 

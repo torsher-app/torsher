@@ -1804,6 +1804,12 @@
       }
     },
     "sources": {
+      "browserUrl": {
+        "label": "Browser address",
+        "hint": "Optional. Used to open the manager from Torsher. Leave empty to use its server address.",
+        "description": "Set the address your browser uses to open {manager}. The server connection stays the same.",
+        "saved": "Browser address saved"
+      },
       "title": "Sources",
       "import": "Import from Prowlarr or Jackett",
       "importShort": "Import",

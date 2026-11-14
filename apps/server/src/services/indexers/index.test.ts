@@ -27,7 +27,9 @@ import {
   hasSearchableIndexers,
   importManager,
   listIndexers,
+  listManagers,
   syncManager,
+  updateManager,
 } from './index.ts'
 import { listManagerIndexers } from './managers.ts'
 
@@ -162,6 +164,81 @@ describe('listManagerIndexers', () => {
 })
 
 describe('importManager', () => {
+  it.each(['prowlarr', 'jackett'] as const)(
+    'keeps %s browser links independent of API calls and reimports',
+    async (kind) => {
+      const url
+        = kind === 'prowlarr'
+          ? 'http://manager.example:9696'
+          : 'http://manager.example:9117/jackett'
+      const browserUrl = 'https://manager.example/ui/base?view=indexers#list'
+      fetchMock.mockImplementation(async () =>
+        kind === 'prowlarr'
+          ? json(prowlarrIndexers)
+          : new Response(jackettIndexersXml),
+      )
+      const input = { kind, url, apiKey: 'key' }
+      const first = await importManager({ ...input, browserUrl })
+      expect(first.manager).toMatchObject({ url, browserUrl })
+      expect(listIndexers().every(item => item.url.startsWith(url))).toBe(
+        true,
+      )
+      expect((await syncManager(first.manager.id))?.manager.browserUrl).toBe(
+        browserUrl,
+      )
+      expect((await importManager(input)).manager.browserUrl).toBe(browserUrl)
+      expect(
+        (
+          await importManager({
+            ...input,
+            browserUrl: 'https://new.example/base/',
+          })
+        ).manager.browserUrl,
+      ).toBe('https://new.example/base/')
+      expect(
+        fetchMock.mock.calls.every(([address]) =>
+          String(address).startsWith(url),
+        ),
+      ).toBe(true)
+
+      fetchMock.mockReset()
+      expect(
+        updateManager(first.manager.id, { browserUrl: null })?.browserUrl,
+      ).toBeNull()
+      expect(updateManager(first.manager.id, { browserUrl })?.browserUrl).toBe(
+        browserUrl,
+      )
+      expect(fetchMock).not.toHaveBeenCalled()
+      fetchMock.mockImplementation(async () =>
+        kind === 'prowlarr'
+          ? json(prowlarrIndexers)
+          : new Response(jackettIndexersXml),
+      )
+      expect(
+        (await importManager({ ...input, browserUrl: null })).manager
+          .browserUrl,
+      ).toBeNull()
+    },
+  )
+
+  it('keeps a saved browser address when reimport fails', async () => {
+    fetchMock.mockResolvedValueOnce(json(prowlarrIndexers))
+    const input = {
+      kind: 'prowlarr' as const,
+      url: 'http://manager.example:9696',
+      apiKey: 'key',
+    }
+    const first = await importManager({
+      ...input,
+      browserUrl: 'https://manager.example',
+    })
+    fetchMock.mockResolvedValueOnce(new Response('', { status: 401 }))
+    await expect(
+      importManager({ ...input, browserUrl: null }),
+    ).rejects.toBeInstanceOf(SourceError)
+    expect(listManagers()[0]?.browserUrl).toBe(first.manager.browserUrl)
+  })
+
   it('сохраняет менеджер и индексаторы с зашифрованным ключом', async () => {
     fetchMock.mockResolvedValue(json(prowlarrIndexers))
 

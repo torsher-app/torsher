@@ -12,6 +12,7 @@ import type {
   OverviewResponse,
   SourceErrorResponse,
   UpdateIndexerInput,
+  UpdateIndexerManagerInput,
 } from '@torsher/api-client'
 import { del, DemoError, get, patch, post } from '@torsher/demo/router'
 import { ago, isFresh, MINUTE, nextId } from '@torsher/demo/state'
@@ -22,6 +23,7 @@ interface DemoManager {
   id: string
   kind: ManagerKind
   url: string
+  browserUrl: string | null
   syncedAt: string | null
 }
 
@@ -75,6 +77,7 @@ const managers: DemoManager[] = isFresh
         id: 'mgr-prowlarr',
         kind: 'prowlarr',
         url: DEMO_MANAGER_URL,
+        browserUrl: null,
         syncedAt: ago(26 * 60 * MINUTE),
       },
     ]
@@ -377,11 +380,29 @@ post<IndexerManagerSyncResult, CreateIndexerManagerInput>(
     )
 
     if (!manager) {
-      manager = { id: nextId('mgr'), kind: body.kind, url, syncedAt: null }
+      manager = {
+        id: nextId('mgr'),
+        kind: body.kind,
+        url,
+        browserUrl: null,
+        syncedAt: null,
+      }
       managers.push(manager)
     }
 
+    if (body.browserUrl !== undefined)
+      manager.browserUrl = body.browserUrl
+
     return syncManager(manager)
+  },
+)
+
+patch<IndexerManager, UpdateIndexerManagerInput>(
+  '/api/indexer-managers/:id',
+  ({ params, body }) => {
+    const manager = findManager(params.id!)
+    manager.browserUrl = body.browserUrl
+    return managerView(manager)
   },
 )
 

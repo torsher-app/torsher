@@ -441,6 +441,7 @@ function importIndexers(settings: ExportSettings, secrets: SecretReader) {
       .values({
         kind: manager.kind,
         url: manager.url,
+        browserUrl: manager.browserUrl ?? null,
         // Ключа нет — строка не расшифруется, и панель попросит его заново
         apiKey: secrets.read(manager.apiKey) ?? '',
       })

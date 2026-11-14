@@ -374,6 +374,7 @@ function exportSettings(secret: SecretWriter): ExportSettings {
       key: managerKeys.get(row.id)!,
       kind: row.kind,
       url: row.url,
+      browserUrl: row.browserUrl,
       apiKey: secret(row.apiKey),
     })),
     indexers: db

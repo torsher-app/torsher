@@ -395,6 +395,21 @@ function getManager(id: string) {
   return listManagers().find(manager => manager.id === id)
 }
 
+/** Меняется только ссылка открытия: ключ и доступность API не нужны. */
+export function updateManager(
+  id: string,
+  input: { browserUrl: string | null },
+) {
+  const changed = getDb()
+    .update(indexerManagers)
+    .set({ browserUrl: input.browserUrl })
+    .where(eq(indexerManagers.id, id))
+    .run()
+    .changes
+
+  return changed ? getManager(id) : undefined
+}
+
 /**
  * Синхронизация с менеджером: новые индексаторы добавляются, у известных
  * обновляются имя и адрес, исчезнувшие помечаются `missing` и не удаляются
@@ -404,6 +419,7 @@ function applyRemoteIndexers(
   manager: IndexerManager,
   apiKey: string,
   remote: RemoteIndexer[],
+  browserUrl?: string | null,
 ) {
   const db = getDb()
   const encryptedKey = encryptSecret(apiKey)
@@ -495,7 +511,11 @@ function applyRemoteIndexers(
     }
 
     tx.update(indexerManagers)
-      .set({ apiKey: encryptedKey, syncedAt: new Date() })
+      .set({
+        apiKey: encryptedKey,
+        syncedAt: new Date(),
+        ...(browserUrl !== undefined && { browserUrl }),
+      })
       .where(eq(indexerManagers.id, manager.id))
       .run()
   })
@@ -515,6 +535,7 @@ export interface NewManager {
   kind: IndexerManagerKind
   url: string
   apiKey: string
+  browserUrl?: string | null
 }
 
 /**
@@ -545,7 +566,7 @@ export async function importManager(input: NewManager): Promise<SyncResult> {
         .returning()
         .get()
 
-  return applyRemoteIndexers(manager, input.apiKey, remote)
+  return applyRemoteIndexers(manager, input.apiKey, remote, input.browserUrl)
 }
 
 export async function syncManager(id: string): Promise<SyncResult | undefined> {

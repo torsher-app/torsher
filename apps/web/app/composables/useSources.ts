@@ -227,6 +227,16 @@ export function useSources() {
     return result
   }
 
+  async function saveManagerBrowserUrl(id: string, browserUrl: string | null) {
+    const updated = await withErrorMode('silent', () =>
+      api.indexerManagers.patchIndexerManager(id, { browserUrl }))
+
+    managers.value = managers.value.map(item =>
+      item.id === id ? updated : item,
+    )
+    return updated
+  }
+
   async function deleteManager(id: string, mode: IndexersMode) {
     await api.indexerManagers.deleteIndexerManager(id, { indexers: mode })
     await fetchAll()
@@ -313,6 +323,7 @@ export function useSources() {
     ensureLoaded,
     importManager,
     syncManager,
+    saveManagerBrowserUrl,
     deleteManager,
     createIndexer,
     updateIndexer,

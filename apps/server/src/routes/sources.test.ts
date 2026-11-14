@@ -60,6 +60,7 @@ describe('доступ', () => {
     ['POST', '/api/indexers/x/test'],
     ['GET', '/api/indexer-managers'],
     ['POST', '/api/indexer-managers'],
+    ['PATCH', '/api/indexer-managers/x'],
     ['POST', '/api/indexer-managers/x/sync'],
     ['DELETE', '/api/indexer-managers/x'],
   ] as const)('%s %s: 401 без входа', async (method, url) => {
@@ -213,6 +214,87 @@ describe('индексаторы', () => {
 })
 
 describe('менеджеры', () => {
+  it.each(['prowlarr', 'jackett'] as const)(
+    'edits the %s browser address without contacting the manager or replacing credentials',
+    async (kind) => {
+      const row = getDb()
+        .insert(indexerManagers)
+        .values({
+          kind,
+          url: 'http://internal.example:9696/base',
+          apiKey: 'unreadable-key',
+        })
+        .returning()
+        .get()
+      const url = `/api/indexer-managers/${row.id}`
+      for (const browserUrl of [
+        'https://public.example/manager/?view=all#page',
+        null,
+      ]) {
+        const saved = await app.inject({
+          method: 'PATCH',
+          url,
+          cookies: owner,
+          payload: { browserUrl },
+        })
+        expect(saved.statusCode).toBe(200)
+        expect(saved.json()).toMatchObject({
+          id: row.id,
+          url: row.url,
+          browserUrl,
+        })
+        expect(saved.body).not.toContain(row.apiKey)
+        const list = await app.inject({
+          url: '/api/indexer-managers',
+          cookies: owner,
+        })
+        expect(list.json().items[0].browserUrl).toBe(browserUrl)
+      }
+      expect(getDb().select().from(indexerManagers).get()).toMatchObject({
+        apiKey: row.apiKey,
+        syncedAt: null,
+      })
+      expect(fetchMock).not.toHaveBeenCalled()
+      expect(
+        (
+          await app.inject({
+            method: 'PATCH',
+            url: '/api/indexer-managers/missing',
+            cookies: owner,
+            payload: { browserUrl: null },
+          })
+        ).statusCode,
+      ).toBe(404)
+    },
+  )
+
+  it.each([
+    'javascript:alert(1)',
+    'data:text/html,test',
+    '//manager.example',
+    '',
+    `https://${'a'.repeat(2000)}`,
+  ])(
+    'rejects an invalid browser URL on import and edit',
+    async (browserUrl) => {
+      for (const method of ['POST', 'PATCH'] as const) {
+        const result = await app.inject({
+          method,
+          url: `/api/indexer-managers${method === 'PATCH' ? '/missing' : ''}`,
+          cookies: owner,
+          payload: {
+            kind: 'prowlarr',
+            url: 'http://manager.example:9696',
+            apiKey: SECRET,
+            browserUrl,
+          },
+        })
+        expect(result.statusCode).toBe(400)
+      }
+      expect(fetchMock).not.toHaveBeenCalled()
+    },
+  )
+
   it('импорт из prowlarr и синхронизация без ключа в ответах', async () => {
     fetchMock.mockImplementation(async url =>
       String(url).endsWith('/api/v1/indexer')
@@ -227,6 +309,7 @@ describe('менеджеры', () => {
       payload: {
         kind: 'prowlarr',
         url: 'http://manager.example:9696',
+        browserUrl: 'https://manager.example/prowlarr',
         apiKey: SECRET,
       },
     })
@@ -237,7 +320,12 @@ describe('менеджеры', () => {
       added: 2,
       updated: 0,
       missing: 0,
-      manager: { kind: 'prowlarr', indexerCount: 2, missingCount: 0 },
+      manager: {
+        kind: 'prowlarr',
+        browserUrl: 'https://manager.example/prowlarr',
+        indexerCount: 2,
+        missingCount: 0,
+      },
     })
 
     const { id } = imported.json().manager
@@ -248,7 +336,12 @@ describe('менеджеры', () => {
     })
 
     expect(synced.statusCode).toBe(200)
-    expect(synced.json()).toMatchObject({ added: 0, updated: 0, missing: 0 })
+    expect(synced.json()).toMatchObject({
+      added: 0,
+      updated: 0,
+      missing: 0,
+      manager: { browserUrl: 'https://manager.example/prowlarr' },
+    })
 
     for (const url of ['/api/indexer-managers', '/api/indexers']) {
       const res = await app.inject({ url, cookies: owner })

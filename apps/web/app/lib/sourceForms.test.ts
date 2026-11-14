@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { indexerUpdateBody, isSessionCookie } from './sourceForms'
+import {
+  indexerUpdateBody,
+  isSessionCookie,
+  managerBrowserUrlSchema,
+} from './sourceForms'
 
 describe('torznab session cookie form', () => {
   it.each([
@@ -45,5 +49,23 @@ describe('torznab session cookie form', () => {
       apiKey: 'must-not-save',
       sessionCookie: undefined,
     })
+  })
+})
+
+describe('manager browser URL form', () => {
+  const schema = managerBrowserUrlSchema('Invalid URL')
+  it('omits blank imports and keeps full browser paths, query and hash', () => {
+    expect(schema.parse('  ')).toBeUndefined()
+    expect(schema.parse(' https://manager.example/base/?view=all#list ')).toBe(
+      'https://manager.example/base/?view=all#list',
+    )
+  })
+  it.each([
+    'javascript:alert(1)',
+    '//manager.example',
+    'not a URL',
+    `https://${'a'.repeat(2000)}`,
+  ])('rejects invalid input: %s', (value) => {
+    expect(schema.safeParse(value).success).toBe(false)
   })
 })

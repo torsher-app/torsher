@@ -64,58 +64,107 @@ describe('notification history demo', () => {
   })
 })
 
-it.each(['showcase', 'panel'])('keeps an out-of-results demo studio saved independently of found evidence in %s', async (surface) => {
-  const request = (path: string, method = 'GET', body?: object) =>
-    handle(
+it.each(['showcase', 'panel'])(
+  'keeps an out-of-results demo studio saved independently of found evidence in %s',
+  async (surface) => {
+    const request = (path: string, method = 'GET', body?: object) =>
+      handle(
+        new URL(`http://demo/api${path}`),
+        { method, ...(body ? { body: JSON.stringify(body) } : {}) },
+        'Unavailable',
+      )
+    const list = await (await request('/follows')).json()
+    const follow = list.items[0]
+    const path = `/follows/${follow.id}`
+    const voices
+      = surface === 'panel'
+        ? `/follows/${follow.id}/voices?season=2`
+        : `/titles/${follow.titleId}/follow/voices?season=2`
+    const saved = await request(path, 'PATCH', {
+      voicePolicy: { mode: 'only', studio: 'Demo Gamma' },
+    })
+    expect(saved.status).toBe(200)
+    expect((await saved.json()).voicePolicy).toEqual({
+      mode: 'only',
+      studio: 'Demo Studio C',
+    })
+    const before = await (await request(voices)).json()
+    expect(before.items).toContainEqual(
+      expect.objectContaining({
+        studio: 'Demo Studio C',
+        found: false,
+        saved: true,
+        count: 0,
+      }),
+    )
+    const refreshed = await (await request(`${voices}&refresh=1`)).json()
+    expect(
+      refreshed.items
+        .filter((item: { found: boolean }) => item.found)
+        .map((item: { studio: string }) => item.studio),
+    ).toEqual(['Demo Studio A', 'Demo Studio B'])
+    expect(refreshed.items).toContainEqual(
+      expect.objectContaining({
+        studio: 'Demo Studio C',
+        found: false,
+        saved: true,
+        count: 0,
+      }),
+    )
+    for (const studio of ['LostFilm', 'Demo Studio typo']) {
+      expect(
+        (
+          await request(path, 'PATCH', {
+            voicePolicy: { mode: 'only', studio },
+          })
+        ).status,
+      ).toBe(400)
+    }
+    expect((await (await request(path)).json()).voicePolicy).toEqual({
+      mode: 'only',
+      studio: 'Demo Studio C',
+    })
+  },
+)
+
+it('preserves the manager browser address through demo imports, sync and clearing', async () => {
+  const request = async (path: string, method: string, body?: object) => {
+    const response = await handle(
       new URL(`http://demo/api${path}`),
       { method, ...(body ? { body: JSON.stringify(body) } : {}) },
       'Unavailable',
     )
-  const list = await (await request('/follows')).json()
-  const follow = list.items[0]
-  const path = `/follows/${follow.id}`
-  const voices = surface === 'panel'
-    ? `/follows/${follow.id}/voices?season=2`
-    : `/titles/${follow.titleId}/follow/voices?season=2`
-  const saved = await request(path, 'PATCH', {
-    voicePolicy: { mode: 'only', studio: 'Demo Gamma' },
-  })
-  expect(saved.status).toBe(200)
-  expect((await saved.json()).voicePolicy).toEqual({
-    mode: 'only',
-    studio: 'Demo Studio C',
-  })
-  const before = await (await request(voices)).json()
-  expect(before.items).toContainEqual(
-    expect.objectContaining({
-      studio: 'Demo Studio C',
-      found: false,
-      saved: true,
-      count: 0,
-    }),
-  )
-  const refreshed = await (await request(`${voices}&refresh=1`)).json()
-  expect(
-    refreshed.items
-      .filter((item: { found: boolean }) => item.found)
-      .map((item: { studio: string }) => item.studio),
-  ).toEqual(['Demo Studio A', 'Demo Studio B'])
-  expect(refreshed.items).toContainEqual(
-    expect.objectContaining({
-      studio: 'Demo Studio C',
-      found: false,
-      saved: true,
-      count: 0,
-    }),
-  )
-  for (const studio of ['LostFilm', 'Demo Studio typo']) {
-    expect(
-      (await request(path, 'PATCH', { voicePolicy: { mode: 'only', studio } }))
-        .status,
-    ).toBe(400)
+    expect(response.status).toBe(200)
+    return response.json()
   }
-  expect((await (await request(path)).json()).voicePolicy).toEqual({
-    mode: 'only',
-    studio: 'Demo Studio C',
+  const input = {
+    kind: 'prowlarr',
+    url: 'http://demo-manager.example:9696',
+    apiKey: 'demo',
+  }
+  const browserUrl = 'https://demo-manager.example/base/'
+  const first = await request('/indexer-managers', 'POST', {
+    ...input,
+    browserUrl,
   })
+  const path = `/indexer-managers/${first.manager.id}`
+  expect(first.manager.browserUrl).toBe(browserUrl)
+  expect((await request(`${path}/sync`, 'POST')).manager.browserUrl).toBe(
+    browserUrl,
+  )
+  expect(
+    (await request('/indexer-managers', 'POST', input)).manager.browserUrl,
+  ).toBe(browserUrl)
+  expect(
+    (await request(path, 'PATCH', { browserUrl: null })).browserUrl,
+  ).toBeNull()
+  expect(
+    (
+      await request('/indexer-managers', 'POST', {
+        ...input,
+        browserUrl: 'https://new.example',
+      })
+    ).manager.browserUrl,
+  ).toBe('https://new.example')
+  await request(path, 'DELETE')
 })

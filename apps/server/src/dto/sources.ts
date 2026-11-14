@@ -106,6 +106,7 @@ export const indexerManager = z
     id: z.string(),
     kind: z.enum(indexerManagerKinds),
     url: z.string(),
+    browserUrl: z.string().nullable(),
     syncedAt: z.string().nullable(),
     indexerCount: z.number().int(),
     missingCount: z.number().int(),
@@ -120,9 +121,14 @@ export const createIndexerManager = z
   .object({
     kind: z.enum(indexerManagerKinds),
     url: httpUrl,
+    browserUrl: httpUrl.nullable().optional(),
     apiKey,
   })
   .meta({ id: 'createIndexerManager' })
+
+export const updateIndexerManager = z
+  .object({ browserUrl: httpUrl.nullable() })
+  .meta({ id: 'updateIndexerManager' })
 
 export const indexerManagerSyncResult = z
   .object({

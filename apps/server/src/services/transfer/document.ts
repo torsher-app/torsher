@@ -155,6 +155,11 @@ const exportManager = z.object({
   key: z.string().min(1).max(20),
   kind: z.enum(['prowlarr', 'jackett']),
   url: z.string().min(1).max(2048),
+  browserUrl: z
+    .url({ protocol: /^https?$/ })
+    .max(2000)
+    .nullable()
+    .optional(),
   apiKey: secret.nullable(),
 })
 
