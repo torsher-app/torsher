@@ -2,10 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   backAction,
   BUFFER_TARGET_BYTES,
-  bufferedSeconds,
   bufferingStep,
   bufferProgress,
-  byteOffset,
   canDimPause,
   canRetry,
   clampTime,
@@ -25,6 +23,7 @@ import {
   mediaFailureAction,
   networkState,
   nextRetry,
+  playbackCacheAtPosition,
   playerPrompt,
   pressScrub,
   RETRY_RESET_MS,
@@ -93,12 +92,36 @@ describe('шаги буферизации', () => {
       { downloadSpeed: 1024 },
     ],
     [
-      'достаточный буфер',
-      { file: { ...waitingStats.file, bufferedAhead: BUFFER_TARGET_BYTES } },
+      'проверенный хвост',
+      {
+        file: {
+          ...waitingStats.file,
+          playbackCache: {
+            sampledAtSeconds: 20,
+            anchorOffset: 10,
+            contiguousEndOffset: 100,
+            bufferedUntilSeconds: 100,
+            verifiedToEnd: true,
+          },
+        },
+      },
     ],
     [
-      'скачанный файл',
-      { file: { size: 100, downloaded: 100, bufferedAhead: 0 } },
+      'проверенный файл',
+      {
+        file: {
+          size: 100,
+          downloaded: 100,
+          bufferedAhead: 100,
+          playbackCache: {
+            sampledAtSeconds: 20,
+            anchorOffset: 0,
+            contiguousEndOffset: 100,
+            bufferedUntilSeconds: 100,
+            verifiedToEnd: true,
+          },
+        },
+      },
     ],
   ])('буферизует, когда есть %s', (_name, change) => {
     const stats = { ...waitingStats, ...change }
@@ -164,21 +187,6 @@ describe('перемотка', () => {
   })
 })
 
-describe('буфер и позиция в байтах', () => {
-  it('секунды буфера по среднему битрейту файла', () => {
-    expect(bufferedSeconds(50 * 1024 * 1024, 1024 * 1024 * 1024, 2048)).toBe(
-      100,
-    )
-    expect(bufferedSeconds(1000, 0, 100)).toBe(0)
-    expect(bufferedSeconds(1000, 5000, Number.NaN)).toBe(0)
-  })
-
-  it('позиция чтения в байтах', () => {
-    expect(byteOffset(600, 1_000_000, 6000)).toBe(100_000)
-    expect(byteOffset(600, 1_000_000, Number.NaN)).toBe(0)
-  })
-})
-
 describe('время', () => {
   it('длительность в часах и минутах', () => {
     expect(formatDuration(3723)).toBe('1:02:03')
@@ -228,17 +236,14 @@ describe('networkState', () => {
   // 1 ГБ на 1000 с — битрейт 1 МБ/с
   const base = {
     size: 1e9,
-    downloaded: 1e8,
     duration: 1000,
-    bufferSeconds: 300,
-    remaining: 800,
   }
 
   it('файл скачан или скачан до конца от позиции — сеть не важна', () => {
-    expect(networkState({ ...base, speed: 0, downloaded: 1e9 })).toEqual({
+    expect(networkState({ ...base, speed: 0, verifiedToEnd: true })).toEqual({
       kind: 'done',
     })
-    expect(networkState({ ...base, speed: 0, bufferSeconds: 800 })).toEqual({
+    expect(networkState({ ...base, speed: 0, verifiedToEnd: true })).toEqual({
       kind: 'done',
     })
   })
@@ -253,15 +258,80 @@ describe('networkState', () => {
   })
 
   it('тревога — только когда запас кончается и сеть не успевает', () => {
+    expect(networkState({ ...base, speed: 0, stalled: false })).toMatchObject({
+      low: false,
+    })
     expect(
-      networkState({ ...base, speed: 0, bufferSeconds: 300 }),
-    ).toMatchObject({ low: false })
-    expect(
-      networkState({ ...base, speed: 0.5e6, bufferSeconds: 40 }),
+      networkState({ ...base, speed: 0.5e6, stalled: true }),
     ).toMatchObject({ low: true })
+    expect(networkState({ ...base, speed: 2e6, stalled: true })).toMatchObject({
+      low: false,
+    })
+  })
+})
+
+describe('network warning suppression', () => {
+  const base = { speed: 0, size: 1e9, duration: 1000, stalled: true }
+  it.each([
+    { playerBufferSeconds: 0, cacheSeconds: 120 },
+    { playerBufferSeconds: 60, cacheSeconds: 0 },
+    { playerBufferSeconds: 120, cacheSeconds: null },
+    { playerBufferSeconds: Number.NaN, cacheSeconds: 60 },
+  ])(
+    'uses either sufficient measurement only to suppress a warning: %j',
+    (buffers) => {
+      expect(networkState({ ...base, ...buffers })).toEqual({
+        kind: 'signal',
+        level: 0,
+        low: false,
+      })
+    },
+  )
+  it('keeps a small or unknown lower bound neutral without a stall', () => {
+    for (const cacheSeconds of [
+      null,
+      undefined,
+      0,
+      59.99,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      -1,
+    ]) {
+      expect(
+        networkState({
+          ...base,
+          stalled: false,
+          cacheSeconds,
+          playerBufferSeconds: 0,
+        }),
+      ).toMatchObject({ low: false })
+    }
+  })
+  it('warns on a stall and insufficient measured speed when neither buffer rules shortage out', () => {
     expect(
-      networkState({ ...base, speed: 2e6, bufferSeconds: 40 }),
-    ).toMatchObject({ low: false })
+      networkState({
+        ...base,
+        cacheSeconds: 59.99,
+        playerBufferSeconds: 59.99,
+      }),
+    ).toMatchObject({ low: true })
+  })
+  it('requires known speed and bitrate for a network warning', () => {
+    for (const speed of [
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+      -1,
+    ]) {
+      expect(networkState({ ...base, speed })).toMatchObject({
+        level: 0,
+        low: false,
+      })
+    }
+    for (const duration of [0, Number.NaN, Number.POSITIVE_INFINITY, -1])
+      expect(networkState({ ...base, duration })).toMatchObject({ low: false })
+    for (const size of [0, Number.NaN, Number.POSITIVE_INFINITY, -1])
+      expect(networkState({ ...base, size })).toMatchObject({ low: false })
   })
 })
 
@@ -620,14 +690,11 @@ describe('errorKeyOf', () => {
 })
 
 describe('mediaFailureAction', () => {
-  const MB = 1024 * 1024
-
   it('данные у позиции не проверены — повтор', () => {
     expect(
       mediaFailureAction({
         badPieces: 0,
-        bufferedAhead: 0,
-        remaining: 100 * MB,
+        verifiedToEnd: false,
       }),
     ).toEqual({ action: 'retry', cause: 'unsupported' })
   })
@@ -636,8 +703,7 @@ describe('mediaFailureAction', () => {
     expect(
       mediaFailureAction({
         badPieces: 2,
-        bufferedAhead: 20 * MB,
-        remaining: 100 * MB,
+        verifiedToEnd: true,
       }),
     ).toEqual({ action: 'retry', cause: 'corrupt' })
   })
@@ -646,8 +712,7 @@ describe('mediaFailureAction', () => {
     expect(
       mediaFailureAction({
         badPieces: 0,
-        bufferedAhead: 16 * MB,
-        remaining: 100 * MB,
+        verifiedToEnd: true,
       }),
     ).toEqual({ action: 'fail', cause: 'unsupported' })
   })
@@ -656,9 +721,66 @@ describe('mediaFailureAction', () => {
     expect(
       mediaFailureAction({
         badPieces: 0,
-        bufferedAhead: 2 * MB,
-        remaining: 2 * MB,
+        verifiedToEnd: true,
       }),
     ).toEqual({ action: 'fail', cause: 'unsupported' })
+  })
+})
+
+describe('playback cache samples', () => {
+  const cache = {
+    sampledAtSeconds: 100,
+    anchorOffset: 700,
+    contiguousEndOffset: 900,
+    bufferedUntilSeconds: 130,
+    verifiedToEnd: false,
+  }
+  const stats = {
+    ...waitingStats,
+    uploadSpeed: 0,
+    badPieces: 0,
+    file: { ...waitingStats.file, playbackCache: cache },
+  }
+  const input = {
+    stats,
+    position: 102,
+    receivedAt: 100_000,
+    now: 102_000,
+    failed: false,
+  }
+  it('accepts a fresh sample but rejects stale, failed, seeked and old-server samples', () => {
+    expect(playbackCacheAtPosition(input)).toEqual(cache)
+    expect(playbackCacheAtPosition({ ...input, now: 116_000 })).toBeNull()
+    expect(playbackCacheAtPosition({ ...input, failed: true })).toBeNull()
+    expect(playbackCacheAtPosition({ ...input, position: 120 })).toBeNull()
+    expect(playbackCacheAtPosition({ ...input, position: 90 })).toBeNull()
+    expect(
+      playbackCacheAtPosition({
+        ...input,
+        stats: { ...stats, file: waitingStats.file },
+      }),
+    ).toBeNull()
+  })
+  it('does not infer low cache or done from downloaded bytes or zero lower bounds', () => {
+    expect(networkState({ speed: 0, size: 1000, duration: 100 })).toMatchObject(
+      { kind: 'signal', low: false },
+    )
+    expect(
+      bufferingStep(
+        {
+          ...waitingStats,
+          file: {
+            size: 100,
+            downloaded: 100,
+            bufferedAhead: BUFFER_TARGET_BYTES,
+          },
+        },
+        20_000,
+      ),
+    ).toBe('waitingPeers')
+    expect(mediaFailureAction({ badPieces: 0, verifiedToEnd: false })).toEqual({
+      action: 'retry',
+      cause: 'unsupported',
+    })
   })
 })

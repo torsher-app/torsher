@@ -41,8 +41,7 @@ export function bufferingStep(
   if (
     stats.peers.connected > 0
     || stats.downloadSpeed > 0
-    || stats.file.bufferedAhead >= BUFFER_TARGET_BYTES
-    || (stats.file.size > 0 && stats.file.downloaded >= stats.file.size)
+    || stats.file.playbackCache?.verifiedToEnd === true
   ) {
     return 'buffering'
   }
@@ -147,56 +146,89 @@ export function holdScrub(scrub: Scrub, now: number, duration: number): Scrub {
   }
 }
 
-/** Сколько секунд видео в скачанном подряд: по среднему битрейту файла */
-export function bufferedSeconds(bytes: number, size: number, duration: number) {
-  if (!size || !Number.isFinite(duration) || duration <= 0)
-    return 0
-
-  return (bytes / size) * duration
+/** Capture a range snapshot before sampling the live native/HTML clock. */
+export function playerBufferedSeconds(video: HTMLVideoElement | undefined) {
+  if (!video)
+    return Number.NaN
+  const ranges = video.buffered
+  const position = video.currentTime
+  for (let i = 0; i < ranges.length; i++) {
+    if (ranges.start(i) <= position && ranges.end(i) >= position)
+      return ranges.end(i) - position
+  }
+  return 0
 }
 
-// Запас, с которым нехватка скорости не страшна: пока впереди больше минуты,
-// плашка не пугает зрителя
-const LOW_BUFFER_SECONDS = 60
+/** Only a fresh sample near the current playback position can describe its cache. */
+export function playbackCacheAtPosition(input: {
+  stats: TorrentStats | undefined
+  position: number
+  receivedAt: number
+  now: number
+  failed: boolean
+}) {
+  const cache = input.stats?.file.playbackCache
+  const age = input.now - input.receivedAt
+  if (
+    !cache
+    || input.failed
+    || input.receivedAt <= 0
+    || age < 0
+    || age > STATS_STALE_MS
+    || !Number.isFinite(input.position)
+    || !Number.isFinite(cache.sampledAtSeconds)
+    || input.position < cache.sampledAtSeconds - 1
+    || input.position > cache.sampledAtSeconds + age / 1000 + 5
+  ) {
+    return null
+  }
+  return cache
+}
 
-/**
- * Что сказать о сети в OSD. `done` — до конца файла всё скачано, скорость и
- * пиры больше не важны. Иначе `level` 0–4 — палочки, как у сотовой связи:
- * успевает ли скачивание за видео (скорость против среднего битрейта файла);
- * `low` — запас кончается, а сеть не успевает.
- */
+/** Throughput bars are an estimate; a small cache lower bound proves no shortage. */
 export type NetworkState
   = { kind: 'done' } | { kind: 'signal', level: 0 | 1 | 2 | 3 | 4, low: boolean }
 
 export function networkState(input: {
   speed: number
   size: number
-  downloaded: number
   duration: number
-  /** Секунд видео впереди позиции, уже скачанных */
-  bufferSeconds: number
-  /** Секунд до конца файла от позиции */
-  remaining: number
+  verifiedToEnd?: boolean
+  stalled?: boolean
+  playerBufferSeconds?: number
+  cacheSeconds?: number | null
 }): NetworkState {
-  const { speed, size, downloaded, duration, bufferSeconds, remaining } = input
-
-  if (
-    (size > 0 && downloaded >= size)
-    || (remaining > 0 && bufferSeconds >= remaining - 1)
-  ) {
+  const { speed, size, duration } = input
+  if (input.verifiedToEnd)
     return { kind: 'done' }
-  }
-
   const bitrate
-    = size > 0 && Number.isFinite(duration) && duration > 0 ? size / duration : 0
-  const ratio = bitrate > 0 ? speed / bitrate : 0
+    = Number.isFinite(size)
+      && size > 0
+      && Number.isFinite(duration)
+      && duration > 0
+      ? size / duration
+      : 0
+  const speedKnown = Number.isFinite(speed) && speed >= 0
+  const ratio = speedKnown && bitrate > 0 ? speed / bitrate : 0
   const level
     = ratio >= 2 ? 4 : ratio >= 1.3 ? 3 : ratio >= 1 ? 2 : ratio > 0 ? 1 : 0
-
+  // Either measurement can rule out a torrent shortage. Small or unknown
+  // cache lower bounds alone cannot establish one.
+  const enoughPlayerBuffer
+    = Number.isFinite(input.playerBufferSeconds)
+      && input.playerBufferSeconds! >= 60
+  const enoughCache
+    = Number.isFinite(input.cacheSeconds) && input.cacheSeconds! >= 60
   return {
     kind: 'signal',
     level,
-    low: bufferSeconds < LOW_BUFFER_SECONDS && ratio < 1,
+    low:
+      !!input.stalled
+      && speedKnown
+      && bitrate > 0
+      && ratio < 1
+      && !enoughPlayerBuffer
+      && !enoughCache,
   }
 }
 
@@ -394,16 +426,14 @@ export function startErrorAction(error: {
  */
 export function mediaFailureAction(stats: {
   badPieces: number
-  /** Проверено подряд от позиции чтения, байт */
-  bufferedAhead: number
-  /** Байт от позиции до конца файла */
-  remaining: number
+  /** Library source, or hash-verified bytes through EOF from an indexed anchor. */
+  verifiedToEnd: boolean
 }): { action: 'retry' | 'fail', cause: 'corrupt' | 'unsupported' } {
   const cause = stats.badPieces > 0 ? 'corrupt' : 'unsupported'
-  const verified
-    = stats.bufferedAhead >= Math.min(BUFFER_TARGET_BYTES, stats.remaining)
-
-  return { action: stats.badPieces > 0 || !verified ? 'retry' : 'fail', cause }
+  return {
+    action: stats.badPieces > 0 || !stats.verifiedToEnd ? 'retry' : 'fail',
+    cause,
+  }
 }
 
 /**
@@ -445,14 +475,6 @@ export function endedEarly(
   const total = Number.isFinite(mediaDuration) ? mediaDuration : knownDuration
 
   return Number.isFinite(total) && currentTime < total - 2
-}
-
-/** Позиция чтения в байтах — по той же оценке битрейта */
-export function byteOffset(time: number, size: number, duration: number) {
-  if (!size || !Number.isFinite(duration) || duration <= 0)
-    return 0
-
-  return Math.min(size, Math.max(0, Math.floor((time / duration) * size)))
 }
 
 function pad(value: number) {

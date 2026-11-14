@@ -54,7 +54,6 @@ describe('playback network observation', () => {
         seedersConnected: 3,
         peersFound: 40,
         bufferedAheadBytes: 60_000_000,
-        estimatedBufferedAheadSeconds: 60,
       },
       clientBuffer: { state: 'available', aheadSeconds: 7 },
     })
@@ -94,7 +93,6 @@ describe('playback network observation', () => {
       peersConnected: 0,
       peersFound: 0,
       bufferedAheadBytes: 0,
-      estimatedBufferedAheadSeconds: 0,
     })
     expect(
       networkSnapshot({ ...input, duration: 0 }).stats
@@ -141,5 +139,16 @@ describe('playback network observation', () => {
       stats: { state: 'not_applicable' },
       clientBuffer: { state: 'available', aheadSeconds: 7 },
     })
+  })
+})
+
+it('omits legacy byte pairs and average-bitrate seconds for time-only samples', () => {
+  const snapshot = networkSnapshot({ ...input, offset: undefined })
+  expect(snapshot.stats.offsetBytes).toBeUndefined()
+  expect(snapshot.stats.bufferedAheadBytes).toBeUndefined()
+  expect(snapshot.stats.estimatedBufferedAheadSeconds).toBeUndefined()
+  expect(snapshot.clientBuffer).toEqual({
+    state: 'available',
+    aheadSeconds: 7,
   })
 })

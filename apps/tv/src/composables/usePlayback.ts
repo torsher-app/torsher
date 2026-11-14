@@ -507,7 +507,7 @@ export function usePlayback(
    * Свежая статистика у позиции чтения для решения об ошибке медиа: битые
    * куски и проверенное впереди. В опросе её может не быть ещё секунду-другую
    */
-  async function freshStats(offset: number) {
+  async function freshStats(time: number) {
     if (library)
       return localStats(playback.value?.size ?? 0)
 
@@ -516,7 +516,7 @@ export function usePlayback(
     try {
       const result = await api.torrents.getTorrentStats(source.torrentId, {
         fileIndex: String(source.fileIndex),
-        offset: String(Math.floor(offset)),
+        time: String(Math.max(0, time)),
       })
       return run === statsRun && session === generation ? result : undefined
     }
@@ -526,7 +526,9 @@ export function usePlayback(
   }
 
   /** Статистика по кругу; интервал и позицию чтения спрашивает у экрана на каждом шаге */
-  function pollStats(next: () => { offset: number, intervalMs: number }) {
+  function pollStats(
+    next: () => { time?: number, offset?: number, intervalMs: number },
+  ) {
     stopStats()
     stats.value = undefined
     statsAt.value = 0
@@ -535,8 +537,9 @@ export function usePlayback(
 
     const run = statsRun
     const tick = async () => {
-      const { offset, intervalMs } = next()
-      const requestedOffset = Math.floor(offset)
+      const { time, offset, intervalMs } = next()
+      const requestedOffset
+        = offset === undefined ? undefined : Math.floor(offset)
       const session = generation
 
       try {
@@ -544,9 +547,16 @@ export function usePlayback(
           ? localStats(playback.value?.size ?? 0)
           : await api.torrents.getTorrentStats(source.torrentId, {
               fileIndex: String(source.fileIndex),
-              offset: String(requestedOffset),
+              ...(time === undefined
+                ? { offset: String(requestedOffset ?? 0) }
+                : { time: String(Math.max(0, time)) }),
             })
-        if (run === statsRun && session === generation) {
+        if (
+          run === statsRun
+          && session === generation
+          && (time === undefined
+            || Math.abs((next().time ?? Number.NaN) - time) <= 5)
+        ) {
           stats.value = result
           statsAt.value = Date.now()
           statsOffset = library ? undefined : requestedOffset

@@ -15,7 +15,7 @@ function number(value: unknown, max: number, integer = false) {
     : undefined
 }
 
-/** Separate from the OSD's max(engine estimate, client buffer). No estimated client ranges. */
+/** Actual client ranges only; native diagnostic capability remains unsupported. */
 function clientBuffer(
   media: DiagnosticMediaSnapshot,
 ): DiagnosticPlaybackNetwork['clientBuffer'] {
@@ -72,21 +72,16 @@ export function networkSnapshot(input: {
     return result
   const stats = input.stats
   const bytes = number(stats.file.bufferedAhead, Number.MAX_SAFE_INTEGER, true)
-  const size = number(input.size, Number.MAX_SAFE_INTEGER, true)
-  const duration = number(input.duration, 31_536_000)
+  const offset = number(input.offset, Number.MAX_SAFE_INTEGER, true)
   result.stats = {
     state: input.failed ? 'error' : age > STATS_STALE_MS ? 'stale' : 'fresh',
     ageMs: age,
-    offsetBytes: number(input.offset, Number.MAX_SAFE_INTEGER, true),
+    offsetBytes: bytes === undefined ? undefined : offset,
     downloadBytesPerSecond: number(stats.downloadSpeed, 1_000_000_000_000),
     peersConnected: number(stats.peers.connected, 1_000_000, true),
     seedersConnected: number(stats.peers.seeders, 1_000_000, true),
     peersFound: number(stats.peers.found, 1_000_000, true),
-    bufferedAheadBytes: bytes,
-    estimatedBufferedAheadSeconds:
-      bytes !== undefined && size && duration
-        ? number((bytes / size) * duration, 31_536_000)
-        : undefined,
+    bufferedAheadBytes: offset === undefined ? undefined : bytes,
   }
   return result
 }

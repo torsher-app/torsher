@@ -82,10 +82,8 @@ import { usePlayerArt } from '../composables/usePlayerArt.ts'
 import { useFocus } from '../focus/index.ts'
 import {
   backAction,
-  bufferedSeconds,
   bufferingStep,
   bufferProgress,
-  byteOffset,
   canDimPause,
   canRetry,
   clampTime,
@@ -97,6 +95,8 @@ import {
   mediaFailureAction,
   nextRetry,
   PAUSED_METADATA_MS,
+  playbackCacheAtPosition,
+  playerBufferedSeconds,
   playerPrompt,
   settleBudget,
   stallAction,
@@ -268,6 +268,7 @@ let offKey: (() => void) | undefined
 let begun = false
 // Запуск перезапуском: устаревший после `await` уходит, не трогая видео
 let launch = 0
+let seekGeneration = 0
 let budget = freshBudget()
 let retryTimer: ReturnType<typeof setTimeout> | undefined
 // Пауза зрителя или свёрнутого приложения, а не остановка потока плеером
@@ -343,28 +344,28 @@ const step = computed<StageStep>(() => {
   )
 })
 
-// Буфер впереди — большее из скачанного движком подряд и того, что уже у браузера
+// Actual player ranges include the native adapter's snapshot.buffered range.
 const bufferSeconds = computed(() => {
-  const fromEngine = bufferedSeconds(
-    stats.value?.file.bufferedAhead ?? 0,
-    playback.value?.size ?? 0,
-    knownDuration.value,
-  )
-  const el = video.value
-  let fromBrowser = 0
-
-  if (el) {
-    for (let i = 0; i < el.buffered.length; i++) {
-      if (
-        el.buffered.start(i) <= position.value
-        && el.buffered.end(i) >= position.value
-      ) {
-        fromBrowser = el.buffered.end(i) - position.value
-      }
-    }
-  }
-
-  return Math.max(fromEngine, fromBrowser)
+  // buffered is a live platform value rather than a Vue dependency.
+  void now.value
+  void position.value
+  return playerBufferedSeconds(video.value)
+})
+const serverCache = computed(() => {
+  void now.value
+  return playbackCacheAtPosition({
+    stats: stats.value,
+    position: phase.value === 'playing' ? position.value : startAt,
+    receivedAt: player.statsReceivedAt(),
+    now: Date.now(),
+    failed: player.statsFailed.value,
+  })
+})
+const cacheSeconds = computed(() => {
+  const until = serverCache.value?.bufferedUntilSeconds
+  return until === undefined || until === null || until < position.value
+    ? null
+    : until - position.value
 })
 
 const trackOptions = computed(() =>
@@ -874,10 +875,7 @@ const stageProgress = computed(() => {
 
   downloadedAtStage ??= file.downloaded
 
-  return bufferProgress(
-    file.bufferedAhead,
-    file.downloaded - downloadedAtStage,
-  )
+  return bufferProgress(0, file.downloaded - downloadedAtStage)
 })
 
 /**
@@ -1256,6 +1254,8 @@ function seekTo(
   pendingSeek = { from: Math.max(0, el.currentTime), to: target, trigger }
   el.currentTime = target
   position.value = target
+  seekGeneration++
+  startStats()
   fromStart.value = false
 
   if (target < knownDuration.value - 1)
@@ -1718,11 +1718,9 @@ function watchProgress() {
     now: at,
     statsAt: Math.max(player.statsReceivedAt(), armedAt),
     peers,
-    aheadSeconds: bufferedSeconds(
-      current?.file.bufferedAhead ?? 0,
-      playback.value?.size ?? 0,
-      knownDuration.value,
-    ),
+    aheadSeconds: props.mediaFileId
+      ? Math.max(0, knownDuration.value - position.value)
+      : (cacheSeconds.value ?? 0),
     stuckMs: at - progressAt,
     peersMs: at - peersSince,
     budgetLeft: canRetry(budget, at),
@@ -1978,21 +1976,28 @@ function onError() {
 /** Плеер не разобрал данные: повтор или ошибка — по `mediaFailureAction` */
 async function onMediaFailure(failure: PlayerFailure) {
   const attempt = launch
-  const size = playback.value?.size ?? 0
-  const offset = byteOffset(
-    phase.value === 'playing' ? position.value : startAt,
-    size,
-    knownDuration.value,
-  )
-  const fresh = await player.freshStats(offset)
+  const seekAttempt = seekGeneration
+  const time = phase.value === 'playing' ? position.value : startAt
+  const fresh = await player.freshStats(time)
 
-  if (attempt !== launch || restarting.value || player.status.value === 'error')
+  if (
+    attempt !== launch
+    || seekAttempt !== seekGeneration
+    || restarting.value
+    || player.status.value === 'error'
+    || Math.abs((phase.value === 'playing' ? position.value : startAt) - time) > 5
+  ) {
     return
+  }
 
+  const cache = fresh?.file.playbackCache
   const { action, cause } = mediaFailureAction({
     badPieces: fresh?.badPieces ?? 0,
-    bufferedAhead: fresh?.file.bufferedAhead ?? 0,
-    remaining: size - offset,
+    verifiedToEnd:
+      !!props.mediaFileId
+      || (cache?.sampledAtSeconds === time
+        && cache.verifiedToEnd
+        && cache.contiguousEndOffset === fresh?.file.size),
   })
 
   if (action === 'retry')
@@ -2116,11 +2121,7 @@ function onVisibility() {
 
 function startStats() {
   player.pollStats(() => ({
-    offset: byteOffset(
-      phase.value === 'playing' ? position.value : startAt,
-      playback.value?.size ?? 0,
-      knownDuration.value,
-    ),
+    time: Math.max(0, phase.value === 'playing' ? position.value : startAt),
     intervalMs: phase.value === 'playing' && !stalled.value ? 2000 : 1000,
   }))
 }
@@ -2423,11 +2424,16 @@ onBeforeUnmount(() => {
         :subtitle="artSubtitle || playback.fileName"
         :position="position"
         :duration="knownDuration"
-        :buffer-end="position + bufferSeconds"
+        :buffer-end="
+          Number.isFinite(bufferSeconds) ? position + bufferSeconds : position
+        "
         :scrub-target="osd.scrub.value?.target ?? null"
         :paused="paused"
         :stats="osdStats"
         :buffer-seconds="bufferSeconds"
+        :cache-seconds="cacheSeconds"
+        :verified-to-end="serverCache?.verifiedToEnd === true"
+        :stalled="stalled"
         :now="now"
         :audio-label="tracks.audioLabel.value"
         :subtitles-label="tracks.subtitlesLabel.value"
