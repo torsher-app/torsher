@@ -1,6 +1,7 @@
+import { speedtestDeps } from '../services/speedtest/index.ts'
 import type { HTTPMethods } from 'fastify'
 import { eq } from 'drizzle-orm'
-import { beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { createApp } from '../app.ts'
 import { ACCESS_TOKEN_COOKIE, DEVICE_TOKEN_COOKIE } from '../config.ts'
 import { getDb, migrateDb } from '../db/index.ts'
@@ -28,6 +29,14 @@ const PUBLIC = new Set([
 ])
 
 const VIEWER = new Set([
+  'POST /api/speedtest/internet',
+  'GET /api/speedtest/internet/:id',
+  'POST /api/speedtest/internet/:id/heartbeat',
+  'DELETE /api/speedtest/internet/:id',
+  'POST /api/speedtest/local',
+  'GET /api/speedtest/local/:id/latency',
+  'GET /api/speedtest/local/:id/download',
+  'DELETE /api/speedtest/local/:id',
   'GET /api/diagnostics',
   'POST /api/diagnostics/events',
   'GET /api/home',
@@ -129,6 +138,9 @@ function inject(
 }
 
 beforeAll(async () => {
+  vi.spyOn(speedtestDeps, 'fetch').mockRejectedValue(
+    new Error('External speedtest network is disabled in access tests'),
+  )
   await migrateDb()
   // Без движка роуты раздач отвечают сразу, а не ждут его
   setEngineDown('stopped')
@@ -169,6 +181,11 @@ beforeAll(async () => {
 function streamUrl(key: string, token: string) {
   return `${key.split(' ')[1]!.replace(/:\w+/g, '0')}?token=${token}`
 }
+
+afterAll(async () => {
+  await app.close()
+  vi.restoreAllMocks()
+})
 
 describe('доступ к маршрутам API', () => {
   it('списки ссылаются только на существующие маршруты', () => {

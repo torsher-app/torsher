@@ -1,3 +1,4 @@
+import { stopSpeedtest } from '../speedtest/lifecycle.ts'
 import type { Device, DeviceType } from '../../db/schema.ts'
 import { createHash, randomBytes, randomInt } from 'node:crypto'
 import { and, asc, desc, eq, gt, lt } from 'drizzle-orm'
@@ -330,6 +331,7 @@ export function selectDeviceProfile(id: string, profileId: string) {
 
 /** Отзыв — удаление строки: токен больше ни с чем не совпадёт */
 export function revokeDevice(id: string) {
+  stopSpeedtest('revoked', `device:${id}`)
   streamWrites.delete(id)
 
   return getDb().delete(devices).where(eq(devices.id, id)).returning().get()

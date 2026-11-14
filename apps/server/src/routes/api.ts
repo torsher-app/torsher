@@ -1,3 +1,4 @@
+import { speedtestRoutes } from './speedtest.ts'
 import { diagnosticRoutes } from './diagnostics.ts'
 import { libraryMaintenanceRoutes } from './libraryMaintenance.ts'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
@@ -82,6 +83,7 @@ export const apiRoutes: FastifyPluginAsyncZod = async (app) => {
   app.register(backupRoutes, { prefix: '/backups' })
   app.register(transferRoutes, { prefix: '/transfer' })
   app.register(netRoutes, { prefix: '/net' })
+  app.register(speedtestRoutes, { prefix: '/speedtest' })
   app.register(settingsRoutes, { prefix: '/settings' })
   app.register(setupRoutes, { prefix: '/setup' })
   app.register(playbackRoutes)

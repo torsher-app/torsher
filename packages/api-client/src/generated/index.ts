@@ -2325,6 +2325,95 @@ export interface TooManyAttemptsResponseInput {
   retryAfter: number;
 }
 
+export type SpeedtestStartInput = object;
+
+export interface SpeedtestPhaseInput {
+  /** @min 0 */
+  bytesPerSecond: number | null;
+  /** @min 0 */
+  durationMs: number;
+  /** @min 0 */
+  payloadBytes: number;
+  /** @min 0 */
+  confirmedBytes: number;
+  /** @min 0 */
+  reservedBytes: number;
+  shortened: boolean;
+}
+
+export interface SpeedtestSampleInput {
+  /** @min 0 */
+  seconds: number;
+  /** @min 0 */
+  bytesPerSecond: number;
+  phase: "download" | "upload";
+}
+
+export interface LocalSpeedtestInput {
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  id: string;
+  startedAt: string;
+  /** @min 0 */
+  deadlineMs: number;
+  /** @min 0 */
+  durationMs: number;
+  /** @min 0 */
+  maxBytes: number;
+  /** @min 0 */
+  maxRequestBytes: number;
+  /** @min 0 */
+  maxRequests: number;
+}
+
+export interface InternetSpeedtestInput {
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  id: string;
+  startedAt: string;
+  finishedAt: string | null;
+  state: "running" | "complete" | "cancelled" | "error";
+  phase: "latency" | "download" | "upload" | "finished";
+  reason:
+    | "complete"
+    | "byte_limit"
+    | "traffic_limit"
+    | "request_limit"
+    | "cancelled"
+    | "deadline"
+    | "lease_expired"
+    | "route_changed"
+    | "revoked"
+    | "shutdown"
+    | "provider_http_error"
+    | "provider_protocol_error"
+    | "provider_unavailable"
+    | null;
+  provider: "Cloudflare";
+  /**
+   * @min 100
+   * @max 599
+   */
+  providerHttpStatus?: number;
+  /**
+   * @format date-time
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+   */
+  providerRetryAt?: string;
+  route: "direct" | "http_proxy" | "socks5_proxy" | "env_proxy";
+  dns: "system" | "doh" | "proxy";
+  /** @min 0 */
+  latencyMs: number | null;
+  download: SpeedtestPhaseInput;
+  upload: SpeedtestPhaseInput;
+  /** @maxItems 102 */
+  samples: SpeedtestSampleInput[];
+}
+
 export interface MaintenanceRuleOptionsInput {
   enabled: boolean;
   /**
@@ -10163,6 +10252,95 @@ export interface TooManyAttemptsResponse {
   retryAfter: number;
 }
 
+export type SpeedtestStart = object;
+
+export interface SpeedtestPhase {
+  /** @min 0 */
+  bytesPerSecond: number | null;
+  /** @min 0 */
+  durationMs: number;
+  /** @min 0 */
+  payloadBytes: number;
+  /** @min 0 */
+  confirmedBytes: number;
+  /** @min 0 */
+  reservedBytes: number;
+  shortened: boolean;
+}
+
+export interface SpeedtestSample {
+  /** @min 0 */
+  seconds: number;
+  /** @min 0 */
+  bytesPerSecond: number;
+  phase: "download" | "upload";
+}
+
+export interface LocalSpeedtest {
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  id: string;
+  startedAt: string;
+  /** @min 0 */
+  deadlineMs: number;
+  /** @min 0 */
+  durationMs: number;
+  /** @min 0 */
+  maxBytes: number;
+  /** @min 0 */
+  maxRequestBytes: number;
+  /** @min 0 */
+  maxRequests: number;
+}
+
+export interface InternetSpeedtest {
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  id: string;
+  startedAt: string;
+  finishedAt: string | null;
+  state: "running" | "complete" | "cancelled" | "error";
+  phase: "latency" | "download" | "upload" | "finished";
+  reason:
+    | "complete"
+    | "byte_limit"
+    | "traffic_limit"
+    | "request_limit"
+    | "cancelled"
+    | "deadline"
+    | "lease_expired"
+    | "route_changed"
+    | "revoked"
+    | "shutdown"
+    | "provider_http_error"
+    | "provider_protocol_error"
+    | "provider_unavailable"
+    | null;
+  provider: "Cloudflare";
+  /**
+   * @min 100
+   * @max 599
+   */
+  providerHttpStatus?: number;
+  /**
+   * @format date-time
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+   */
+  providerRetryAt?: string;
+  route: "direct" | "http_proxy" | "socks5_proxy" | "env_proxy";
+  dns: "system" | "doh" | "proxy";
+  /** @min 0 */
+  latencyMs: number | null;
+  download: SpeedtestPhase;
+  upload: SpeedtestPhase;
+  /** @maxItems 102 */
+  samples: SpeedtestSample[];
+}
+
 export interface MaintenanceRuleOptions {
   enabled: boolean;
   /**
@@ -16038,6 +16216,22 @@ export type GetNetCheckError = MessageResponse;
 
 export type PostNetCheckError = MessageResponse;
 
+export type PostLocalSpeedtestError = MessageResponse;
+
+export type GetLocalSpeedtestLatencyError = MessageResponse;
+
+export type GetLocalSpeedtestDownloadError = MessageResponse;
+
+export type DeleteLocalSpeedtestError = MessageResponse;
+
+export type PostInternetSpeedtestError = MessageResponse;
+
+export type GetInternetSpeedtestError = MessageResponse;
+
+export type DeleteInternetSpeedtestError = MessageResponse;
+
+export type PostInternetSpeedtestHeartbeatError = MessageResponse;
+
 export type GetSourceSettingsError = MessageResponse;
 
 export type PutSourceSettingsError = MessageResponse;
@@ -19582,6 +19776,158 @@ export class Api<
     postNetCheck: (data: StartNetCheckInput, params: RequestParams = {}) =>
       this.request<NetCheckState, PostNetCheckError>({
         path: `/api/net/check`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+  };
+  speedtest = {
+    /**
+     * No description
+     *
+     * @tags Speedtest
+     * @name PostLocalSpeedtest
+     * @request POST:/api/speedtest/local
+     */
+    postLocalSpeedtest: (
+      data: SpeedtestStartInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<LocalSpeedtest, PostLocalSpeedtestError>({
+        path: `/api/speedtest/local`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Speedtest
+     * @name GetLocalSpeedtestLatency
+     * @request GET:/api/speedtest/local/{id}/latency
+     */
+    getLocalSpeedtestLatency: (id: string, params: RequestParams = {}) =>
+      this.request<MessageResponse, GetLocalSpeedtestLatencyError>({
+        path: `/api/speedtest/local/${id}/latency`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Speedtest
+     * @name GetLocalSpeedtestDownload
+     * @request GET:/api/speedtest/local/{id}/download
+     */
+    getLocalSpeedtestDownload: (
+      id: string,
+      query: {
+        /**
+         * @min 1
+         * @max 67108864
+         */
+        bytes: number;
+        /**
+         * @min 0
+         * @max 4095
+         */
+        seq: number;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<Blob, GetLocalSpeedtestDownloadError>({
+        path: `/api/speedtest/local/${id}/download`,
+        method: "GET",
+        query: query,
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Speedtest
+     * @name DeleteLocalSpeedtest
+     * @request DELETE:/api/speedtest/local/{id}
+     */
+    deleteLocalSpeedtest: (id: string, params: RequestParams = {}) =>
+      this.request<MessageResponse, DeleteLocalSpeedtestError>({
+        path: `/api/speedtest/local/${id}`,
+        method: "DELETE",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Speedtest
+     * @name PostInternetSpeedtest
+     * @request POST:/api/speedtest/internet
+     */
+    postInternetSpeedtest: (
+      data: SpeedtestStartInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<InternetSpeedtest, PostInternetSpeedtestError>({
+        path: `/api/speedtest/internet`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Speedtest
+     * @name GetInternetSpeedtest
+     * @request GET:/api/speedtest/internet/{id}
+     */
+    getInternetSpeedtest: (id: string, params: RequestParams = {}) =>
+      this.request<InternetSpeedtest, GetInternetSpeedtestError>({
+        path: `/api/speedtest/internet/${id}`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Speedtest
+     * @name DeleteInternetSpeedtest
+     * @request DELETE:/api/speedtest/internet/{id}
+     */
+    deleteInternetSpeedtest: (id: string, params: RequestParams = {}) =>
+      this.request<MessageResponse, DeleteInternetSpeedtestError>({
+        path: `/api/speedtest/internet/${id}`,
+        method: "DELETE",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Speedtest
+     * @name PostInternetSpeedtestHeartbeat
+     * @request POST:/api/speedtest/internet/{id}/heartbeat
+     */
+    postInternetSpeedtestHeartbeat: (
+      id: string,
+      data: SpeedtestStartInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<MessageResponse, PostInternetSpeedtestHeartbeatError>({
+        path: `/api/speedtest/internet/${id}/heartbeat`,
         method: "POST",
         body: data,
         type: ContentType.Json,

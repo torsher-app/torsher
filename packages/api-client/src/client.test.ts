@@ -477,3 +477,24 @@ describe('raw response downloads use the authenticated core', () => {
     expect(await result).toHaveProperty('name', 'AbortError')
   })
 })
+
+it('keeps an optional old owner-only speedtest 401 from expiring a paired viewer while normal auth still refreshes', async () => {
+  const options = {
+    getErrorMode: () => 'silent' as const,
+    onSessionExpired: vi.fn(),
+    onError: vi.fn(),
+    onFatal: vi.fn(),
+    shouldRefreshSession: (url: string) =>
+      !/^\/api\/speedtest\/internet(?:\/|$)/.test(url),
+  }
+  const api = createApiClient(options)
+  fetchMock.mockResolvedValue(json(401))
+  await expect(api.speedtest.postInternetSpeedtest({})).rejects.toMatchObject({
+    status: 401,
+  })
+  expect(options.onSessionExpired).not.toHaveBeenCalled()
+  expect(requestedUrls()).toEqual(['POST /api/speedtest/internet'])
+  await expect(api.users.getUsersMe()).rejects.toMatchObject({ status: 401 })
+  expect(options.onSessionExpired).toHaveBeenCalledTimes(1)
+  expect(requestedUrls()).toContain('POST /api/auth/refresh')
+})
