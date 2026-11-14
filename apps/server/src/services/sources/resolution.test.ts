@@ -65,4 +65,20 @@ describe('torrentResolution', () => {
       ),
     ).toBeUndefined()
   })
+
+  it('явное 1080p в имени файла сильнее UHD до пробы', () => {
+    expect(
+      torrentResolution(
+        torrent({
+          files: [
+            {
+              path: 'Lantern.2020.UHD.BDRip.1080p.HDR.mkv',
+              size: 500,
+              padding: false,
+            },
+          ],
+        }),
+      ),
+    ).toEqual({ value: '1080p', basis: 'file', sure: true })
+  })
 })
