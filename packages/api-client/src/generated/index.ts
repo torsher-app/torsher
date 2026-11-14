@@ -2312,19 +2312,6 @@ export interface DiagnosticSettingsInput {
   enabled: boolean;
 }
 
-export interface MessageResponseInput {
-  message: string;
-}
-
-export interface TooManyAttemptsResponseInput {
-  message: "too_many_attempts";
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  retryAfter: number;
-}
-
 export type SpeedtestStartInput = object;
 
 export interface SpeedtestPhaseInput {
@@ -2412,6 +2399,19 @@ export interface InternetSpeedtestInput {
   upload: SpeedtestPhaseInput;
   /** @maxItems 102 */
   samples: SpeedtestSampleInput[];
+}
+
+export interface MessageResponseInput {
+  message: string;
+}
+
+export interface TooManyAttemptsResponseInput {
+  message: "too_many_attempts";
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  retryAfter: number;
 }
 
 export interface MaintenanceRuleOptionsInput {
@@ -10239,19 +10239,6 @@ export interface DiagnosticSettings {
   enabled: boolean;
 }
 
-export interface MessageResponse {
-  message: string;
-}
-
-export interface TooManyAttemptsResponse {
-  message: "too_many_attempts";
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  retryAfter: number;
-}
-
 export type SpeedtestStart = object;
 
 export interface SpeedtestPhase {
@@ -10339,6 +10326,19 @@ export interface InternetSpeedtest {
   upload: SpeedtestPhase;
   /** @maxItems 102 */
   samples: SpeedtestSample[];
+}
+
+export interface MessageResponse {
+  message: string;
+}
+
+export interface TooManyAttemptsResponse {
+  message: "too_many_attempts";
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  retryAfter: number;
 }
 
 export interface MaintenanceRuleOptions {
