@@ -1,3 +1,5 @@
+import type { ScreensaverDebugEvent } from '../inputDebug.ts'
+
 interface PalmSystem {
   platformBack?: () => void
 }
@@ -34,62 +36,125 @@ function serviceBridge(): ServiceBridge | undefined {
   }
 }
 
-/**
- * Не пускает системную заставку webOS, пока не снято удержание: перед её
- * включением tvpower спрашивает подписчиков, ответ `ack: false` её отменяет.
- * API недокументирован, поэтому без гарантий: нет моста или вызов отклонён —
- * молча ничего. Вне webOS ничего не делает. Возвращает снятие удержания.
- */
-export function holdSystemScreensaver(): () => void {
+/** Best-effort veto только на время нашей заставки. Отправка RPC не означает успех. */
+export function holdSystemScreensaver(
+  report?: (event: Extract<ScreensaverDebugEvent, { kind: 'luna' }>) => void,
+): () => void {
+  function emit(
+    status: Extract<ScreensaverDebugEvent, { kind: 'luna' }>['status'],
+    code?: number,
+  ) {
+    report?.({ kind: 'luna', status, ...(code === undefined ? {} : { code }) })
+  }
   const subscription = serviceBridge()
-
-  if (!subscription)
+  if (!subscription) {
+    emit('unavailable')
     return () => {}
+  }
 
   let held = true
+  let released = false
   let responder: ServiceBridge | undefined
 
-  subscription.onservicecallback = (message) => {
-    let timestamp: unknown
-
+  function parse(
+    message: string,
+  ):
+    | { timestamp?: number | string, returnValue?: boolean, errorCode?: number }
+    | undefined {
     try {
-      timestamp = (JSON.parse(message) as { timestamp?: unknown }).timestamp
+      const value: unknown = JSON.parse(message)
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        return value as {
+          timestamp?: number | string
+          returnValue?: boolean
+          errorCode?: number
+        }
+      }
     }
     catch {
+      /* Повреждённое сообщение не должно ломать подписку. */
+    }
+    emit('malformed')
+  }
+  function codeOf(value: { errorCode?: number }) {
+    return typeof value.errorCode === 'number'
+      && Number.isFinite(value.errorCode)
+      ? value.errorCode
+      : undefined
+  }
+
+  subscription.onservicecallback = (message) => {
+    const value = parse(message)
+    if (!value)
+      return
+    // Отказ может содержать timestamp: сначала проверяем результат регистрации.
+    if (value.returnValue === false) {
+      emit('register-failed', codeOf(value))
       return
     }
-
-    // Ждём запрос с меткой времени, а не `state: 'Active'`: на части прошивок
-    // `state` в запросе нет, и без ответа заставка включается
-    if (timestamp === undefined)
+    if (
+      typeof value.timestamp !== 'number'
+      && typeof value.timestamp !== 'string'
+    ) {
+      if (value.returnValue === true)
+        emit('registered')
       return
-
+    }
+    // Метка непрозрачна: webOS присылает и строки, и числа, включая 0.
+    // state может отсутствовать.
     responder ??= serviceBridge()
-    responder?.call(
-      `${TV_POWER}/responseScreenSaverRequest`,
-      JSON.stringify({ clientName: SCREENSAVER_CLIENT, ack: !held, timestamp }),
-    )
+    if (!responder) {
+      emit('response-failed')
+      return
+    }
+    responder.onservicecallback = (response) => {
+      const result = parse(response)
+      if (!result)
+        return
+      if (result.returnValue === false)
+        emit('response-failed', codeOf(result))
+      else if (result.returnValue === true)
+        emit('response-ok')
+    }
+    try {
+      emit('response-sent')
+      responder.call(
+        `${TV_POWER}/responseScreenSaverRequest`,
+        JSON.stringify({
+          clientName: SCREENSAVER_CLIENT,
+          ack: !held,
+          timestamp: value.timestamp,
+        }),
+      )
+    }
+    catch {
+      emit('response-failed')
+    }
   }
 
   try {
+    emit('register-sent')
     subscription.call(
       `${TV_POWER}/registerScreenSaverRequest`,
       JSON.stringify({ subscribe: true, clientName: SCREENSAVER_CLIENT }),
     )
   }
   catch {
-    return () => {}
+    emit('register-failed')
   }
 
-  // Запрос, который успеет прийти до отмены подписки, получит `ack: true`
+  // Даже запоздавший callback после cancel получает ack=true.
   return () => {
+    if (released)
+      return
     held = false
-
+    released = true
+    emit('release')
     try {
       subscription.cancel()
     }
     catch {
-      // Мост уже закрыт: держать нечего
+      /* Мост уже закрыт. */
     }
   }
 }

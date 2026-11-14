@@ -4,6 +4,8 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import holdVideo from '../assets/screensaver-hold.mp4'
 import { useScreensaverBackdrops } from '../composables/useScreensaverBackdrops.ts'
+import { reportScreensaverDebug } from '../inputDebug.ts'
+import { startScreensaverVideo } from '../platform/screensaverVideo.ts'
 import { formatClock } from '../lib/player.ts'
 import { cornerOf, shuffled, SLIDE_MS } from '../lib/screensaver.ts'
 import { holdAndroidScreen, isAndroidShell } from '../platform/android.ts'
@@ -43,7 +45,7 @@ let order: Backdrop[] = []
 let position = 0
 let slideTimer: ReturnType<typeof setTimeout> | undefined
 let clockTimer: ReturnType<typeof setInterval> | undefined
-let stopped = false
+let stopped = props.resting
 
 function preload(src: string) {
   return new Promise<boolean>((resolve) => {
@@ -69,10 +71,11 @@ async function advance() {
 
     const item = order[position++]!
 
-    if (await preload(item.backdrop)) {
-      if (stopped || key !== accessKey.value)
-        return
+    const loaded = await preload(item.backdrop)
+    if (stopped || key !== accessKey.value)
+      return
 
+    if (loaded) {
       const back = 1 - front.value
 
       slide.value += 1
@@ -90,6 +93,8 @@ async function advance() {
     }
   }
 
+  if (stopped)
+    return
   if (!order.length)
     slide.value += 1
 
@@ -100,30 +105,24 @@ const webos = isWebos()
 const hold = ref<HTMLVideoElement>()
 let releaseHold: (() => void) | undefined
 
+let releaseVideo: (() => void) | undefined
+
 function holdScreen() {
-  releaseHold = holdSystemScreensaver()
-
-  const video = hold.value
-
-  if (video) {
-    video.src = holdVideo
-    // Не запустился — экран держит только ответ tvpower
-    video.play().catch(() => {})
+  releaseHold = holdSystemScreensaver(reportScreensaverDebug)
+  if (hold.value) {
+    releaseVideo = startScreensaverVideo(
+      hold.value,
+      holdVideo,
+      reportScreensaverDebug,
+    )
   }
 }
 
-// Без `src` и `load()` браузер держит ролик и аппаратный декодер
 function releaseScreen() {
   releaseHold?.()
   releaseHold = undefined
-
-  const video = hold.value
-
-  if (video) {
-    video.pause()
-    video.removeAttribute('src')
-    video.load()
-  }
+  releaseVideo?.()
+  releaseVideo = undefined
 }
 
 function stop() {
@@ -140,6 +139,7 @@ watch(
       releaseScreen()
     }
   },
+  { flush: 'sync' },
 )
 
 watch(
@@ -163,6 +163,8 @@ watch(backdrops, (items) => {
 })
 
 onMounted(() => {
+  if (props.resting)
+    return
   if (webos)
     holdScreen()
   // На Android экран держит окно оболочки, ролик-удержание не нужен

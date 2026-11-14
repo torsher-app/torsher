@@ -1,10 +1,14 @@
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   idleDue,
   loadScreensaverMinutes,
   saveScreensaverMinutes,
   screensaverRests,
 } from '../lib/screensaver.ts'
+import {
+  reportScreensaverDebug,
+  SCREENSAVER_DEBUG_REQUEST,
+} from '../inputDebug.ts'
 
 // Простой сверяем раз в несколько секунд: таймер не перезапускается на каждое нажатие
 const CHECK_MS = 5000
@@ -28,12 +32,14 @@ export function setScreensaverMinutes(minutes: number) {
 export function useScreensaver(enabled: () => boolean) {
   const active = ref(false)
   const resting = ref(false)
+  const visible = ref(!document.hidden)
   let activeSince = 0
   let lastInputAt = Date.now()
   let pointer: { x: number, y: number } | undefined
   let timer: ReturnType<typeof setInterval> | undefined
 
   function wake(event: Event) {
+    const elapsed = Date.now() - activeSince
     lastInputAt = Date.now()
 
     if (!active.value)
@@ -43,6 +49,7 @@ export function useScreensaver(enabled: () => boolean) {
     event.stopImmediatePropagation()
     active.value = false
     resting.value = false
+    reportScreensaverDebug({ kind: 'phase', status: 'wake', elapsed })
   }
 
   // Chrome шлёт mousemove и без движения, когда контент сдвинулся под курсором
@@ -56,26 +63,95 @@ export function useScreensaver(enabled: () => boolean) {
       wake(event)
   }
 
-  function onVisibility() {
-    if (!document.hidden)
-      lastInputAt = Date.now()
+  function phase(
+    status: 'off' | 'waiting' | 'player' | 'active' | 'rest' | 'background',
+  ) {
+    reportScreensaverDebug({
+      kind: 'phase',
+      status,
+      elapsed: Date.now() - (active.value ? activeSince : lastInputAt),
+    })
   }
+
+  function reportCurrentPhase() {
+    phase(
+      !visible.value
+        ? 'background'
+        : active.value
+          ? resting.value
+            ? 'rest'
+            : 'active'
+          : !enabled()
+              ? 'player'
+              : screensaverMinutes.value === 0
+                ? 'off'
+                : 'waiting',
+    )
+  }
+
+  function updateRest(now: number) {
+    if (!resting.value && screensaverRests(activeSince, now)) {
+      resting.value = true
+      phase('rest')
+    }
+  }
+
+  function onVisibility() {
+    if (document.hidden) {
+      visible.value = false
+      phase('background')
+      return
+    }
+    // Сначала часовой предел, потом mount: фоновое время не продлевает hold.
+    if (active.value)
+      updateRest(Date.now())
+    else lastInputAt = Date.now()
+    visible.value = true
+    phase(
+      active.value
+        ? resting.value
+          ? 'rest'
+          : 'active'
+        : !enabled()
+            ? 'player'
+            : screensaverMinutes.value === 0
+              ? 'off'
+              : 'waiting',
+    )
+  }
+
+  // Синхронно с маршрутом: decoder освобождается до mounted основного плеера.
+  watch(
+    [enabled, screensaverMinutes],
+    () => {
+      active.value = false
+      resting.value = false
+      lastInputAt = Date.now()
+      phase(
+        !enabled()
+          ? 'player'
+          : screensaverMinutes.value === 0
+            ? 'off'
+            : 'waiting',
+      )
+    },
+    { flush: 'sync' },
+  )
 
   function check() {
     const now = Date.now()
-
     if (active.value) {
-      resting.value = screensaverRests(activeSince, now)
+      updateRest(now)
       return
     }
-
     if (
-      !document.hidden
+      visible.value
       && enabled()
       && idleDue(lastInputAt, now, screensaverMinutes.value)
     ) {
-      active.value = true
       activeSince = now
+      active.value = true
+      phase('active')
     }
   }
 
@@ -83,6 +159,14 @@ export function useScreensaver(enabled: () => boolean) {
   const blocking = { capture: true, passive: false }
 
   onMounted(() => {
+    phase(
+      !enabled()
+        ? 'player'
+        : screensaverMinutes.value === 0
+          ? 'off'
+          : 'waiting',
+    )
+    window.addEventListener(SCREENSAVER_DEBUG_REQUEST, reportCurrentPhase)
     window.addEventListener('keydown', wake, capture)
     window.addEventListener('mousemove', onMousemove, capture)
     window.addEventListener('mousedown', wake, capture)
@@ -93,6 +177,7 @@ export function useScreensaver(enabled: () => boolean) {
   })
 
   onBeforeUnmount(() => {
+    window.removeEventListener(SCREENSAVER_DEBUG_REQUEST, reportCurrentPhase)
     window.removeEventListener('keydown', wake, capture)
     window.removeEventListener('mousemove', onMousemove, capture)
     window.removeEventListener('mousedown', wake, capture)
@@ -102,5 +187,5 @@ export function useScreensaver(enabled: () => boolean) {
     clearInterval(timer)
   })
 
-  return { active, resting }
+  return { active, resting, visible }
 }
