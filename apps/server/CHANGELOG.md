@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.8.0 (2026-11-14)
+
+### Features
+
+- **network:** add device and server speed checks (#202) ([e731519](https://github.com/torsher-app/torsher/commit/e731519dedf6f57a8587696a760bbc2b38e3e14c))
+- **tv:** show playback download and buffer statistics (#198) ([6713f5d](https://github.com/torsher-app/torsher/commit/6713f5dba7a6a17bcecbd69d69d961b9fcb6a93d))
+- **diagnostics:** capture playback network and buffer snapshots (#197) ([0b6493b](https://github.com/torsher-app/torsher/commit/0b6493bae242f36a8c3ce2f8f4c79d4d20e4613f))
+
+### Bug Fixes
+
+- **playback:** calculate verified buffer from Matroska cues (#201) ([3decd1f](https://github.com/torsher-app/torsher/commit/3decd1faa5bbd6611f501b91ad9101a779329320))
+- **sources:** correct resolution labels and source switching (#200) ([6cc7e8d](https://github.com/torsher-app/torsher/commit/6cc7e8d37fb52bcf448592e3f69534342eb36fd0))
+- **sources:** support separate indexer manager browser URLs (#199) ([8fe65f1](https://github.com/torsher-app/torsher/commit/8fe65f1c4028783048349fae958c068f3a125cfe))
+- **tv:** preserve back navigation after pointer activity (#196) ([0013414](https://github.com/torsher-app/torsher/commit/0013414e585323defb554acb8ca874c7f1467c13))
+
 ## 1.7.0 (2026-11-11)
 
 ### Features
