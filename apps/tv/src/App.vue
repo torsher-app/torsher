@@ -37,8 +37,11 @@ watchEffect(() => {
 })
 
 // В плеере заставки нет: ни при просмотре, ни на паузе — там своё затемнение
-const { active: screensaverActive, resting: screensaverResting }
-  = useScreensaver(() => !currentRoute.path.startsWith('/play/'))
+const {
+  active: screensaverActive,
+  resting: screensaverResting,
+  visible: screensaverVisible,
+} = useScreensaver(() => !currentRoute.path.startsWith('/play/'))
 </script>
 
 <template>
@@ -83,9 +86,12 @@ const { active: screensaverActive, resting: screensaverResting }
   <TitleActions />
 
   <Transition name="screensaver">
-    <AppScreensaver v-if="screensaverActive" :resting="screensaverResting" />
+    <AppScreensaver
+      v-if="screensaverActive && screensaverVisible"
+      :resting="screensaverResting"
+    />
   </Transition>
-  <InputDebug v-if="inputDebug" />
+  <InputDebug v-if="inputDebug" v-show="!screensaverActive" />
 </template>
 
 <style>

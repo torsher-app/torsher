@@ -1,5 +1,10 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
+import type { ScreensaverDebugEvent } from '../inputDebug.ts'
+import {
+  SCREENSAVER_DEBUG_EVENT,
+  SCREENSAVER_DEBUG_REQUEST,
+} from '../inputDebug.ts'
 import { describeInput, INPUT_LOG_SIZE } from '../lib/inputLog.ts'
 
 /**
@@ -42,12 +47,16 @@ function record(event: Event) {
     return
   }
 
-  const now = performance.now()
   const text
     = event.type === 'visibilitychange'
       ? `visibilitychange ${document.visibilityState}`
       : describeInput(event as Event & { keyCode?: number })
 
+  append(text)
+}
+
+function append(text: string) {
+  const now = performance.now()
   lines.value = [
     {
       id: ++counter,
@@ -63,7 +72,19 @@ function record(event: Event) {
   lastAt = now
 }
 
+function recordScreensaver(event: Event) {
+  const entry = (event as CustomEvent<ScreensaverDebugEvent>).detail
+  const elapsed
+    = 'elapsed' in entry ? ` ${Math.round(entry.elapsed / 1000)}s` : ''
+  const code
+    = 'code' in entry && entry.code !== undefined ? ` code=${entry.code}` : ''
+  append(`saver ${entry.kind} ${entry.status}${elapsed}${code}`)
+}
+
 onMounted(() => {
+  window.addEventListener(SCREENSAVER_DEBUG_EVENT, recordScreensaver)
+  // Включение с пульта происходит уже после mount App: сначала слушаем ответ.
+  window.dispatchEvent(new Event(SCREENSAVER_DEBUG_REQUEST))
   for (const type of WINDOW_EVENTS) window.addEventListener(type, record, true)
 
   for (const type of DOCUMENT_EVENTS)
@@ -71,6 +92,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener(SCREENSAVER_DEBUG_EVENT, recordScreensaver)
   for (const type of WINDOW_EVENTS)
     window.removeEventListener(type, record, true)
 
