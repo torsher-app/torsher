@@ -24,7 +24,12 @@ import LoadingButton from '~/components/LoadingButton.vue'
 import SecretInput from '~/components/SecretInput.vue'
 import { sourceErrorKind } from '~/composables/useSources'
 import { dialogSheetClass } from '~/lib/dialog'
-import { fieldOfSourceError, httpUrlSchema } from '~/lib/sourceForms'
+import {
+  fieldOfSourceError,
+  httpUrlSchema,
+  managerBrowserUrlSchema,
+} from '~/lib/sourceForms'
+import ManagerBrowserUrlField from './ManagerBrowserUrlField.vue'
 
 const props = defineProps<{
   /** Новый ключ подключённого менеджера: тип и адрес уже известны */
@@ -49,6 +54,7 @@ const schema = toTypedSchema(
   z.object({
     kind: z.enum(['prowlarr', 'jackett']),
     url: httpUrlSchema(t('panel.sources.validation.url')),
+    browserUrl: managerBrowserUrlSchema(t('panel.sources.validation.url')),
     apiKey: z
       .string()
       .trim()
@@ -61,7 +67,12 @@ const { handleSubmit, defineField, errors, isSubmitting, resetForm } = useForm({
   validationSchema: schema,
   // Пустые строки, а не undefined: иначе пустое поле получает сообщение zod
   // о типе, а не текст из i18n
-  initialValues: { kind: 'prowlarr' as const, url: '', apiKey: '' },
+  initialValues: {
+    kind: 'prowlarr' as const,
+    url: '',
+    browserUrl: '',
+    apiKey: '',
+  },
 })
 
 const [kind, kindProps] = defineField('kind')
@@ -89,6 +100,7 @@ watch(open, (isOpen) => {
         values: {
           kind: props.manager.kind,
           url: props.manager.url,
+          browserUrl: '',
           apiKey: '',
         },
       },
@@ -265,6 +277,8 @@ const onSubmit = handleSubmit(async (values) => {
             </p>
           </div>
         </div>
+
+        <ManagerBrowserUrlField v-if="!manager" />
 
         <div class="grid gap-2">
           <Label for="manager-api-key">{{

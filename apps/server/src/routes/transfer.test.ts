@@ -21,6 +21,7 @@ import {
   collections,
   collectionTitles,
   devices,
+  indexerManagers,
   indexers,
   libraries,
   libraryFolders,
@@ -77,6 +78,7 @@ function clearViewerData() {
     titleVoices,
     titleAliases,
     indexers,
+    indexerManagers,
     netRoutes,
     devices,
     mediaFiles,
@@ -935,4 +937,49 @@ it('server transfer previews and restores title marks without changing progress'
       ?.watchedMarkedAt,
   ).toEqual(mark)
   expect(getDb().select().from(titleProgress).all()).toEqual(positions)
+})
+
+describe('manager browser address transfer', () => {
+  it.each(['prowlarr', 'jackett'] as const)(
+    'round-trips %s and preserves the address of an existing connection',
+    async (kind) => {
+      const db = getDb()
+      const browserUrl = 'https://manager.example/base/'
+      db.insert(indexerManagers)
+        .values({
+          kind,
+          url: 'http://manager.example:9696',
+          apiKey: encryptSecret('manager-secret'),
+          browserUrl,
+        })
+        .run()
+      const body = await exportServer({ password: 'export-password-1' })
+      const document = JSON.parse(body)
+      expect(document.settings.managers[0].browserUrl).toBe(browserUrl)
+      db.delete(indexerManagers).run()
+      await importServer(body, { password: 'export-password-1' })
+      expect(db.select().from(indexerManagers).get()).toMatchObject({
+        kind,
+        browserUrl,
+      })
+      expect(
+        decryptSecret(db.select().from(indexerManagers).get()!.apiKey),
+      ).toBe('manager-secret')
+
+      db.update(indexerManagers)
+        .set({ browserUrl: 'https://current.example' })
+        .run()
+      await importServer(body, { password: 'export-password-1' })
+      expect(db.select().from(indexerManagers).get()?.browserUrl).toBe(
+        'https://current.example',
+      )
+
+      delete document.settings.managers[0].browserUrl
+      db.delete(indexerManagers).run()
+      await importServer(JSON.stringify(document), {
+        password: 'export-password-1',
+      })
+      expect(db.select().from(indexerManagers).get()?.browserUrl).toBeNull()
+    },
+  )
 })

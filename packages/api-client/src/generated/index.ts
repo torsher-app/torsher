@@ -3333,6 +3333,7 @@ export interface IndexerManagerInput {
   id: string;
   kind: "prowlarr" | "jackett";
   url: string;
+  browserUrl: string | null;
   syncedAt: string | null;
   /**
    * @min -9007199254740991
@@ -3358,10 +3359,23 @@ export interface CreateIndexerManagerInput {
    */
   url: string;
   /**
+   * @format uri
+   * @maxLength 2000
+   */
+  browserUrl?: string | null;
+  /**
    * @minLength 1
    * @maxLength 500
    */
   apiKey: string;
+}
+
+export interface UpdateIndexerManagerInput {
+  /**
+   * @format uri
+   * @maxLength 2000
+   */
+  browserUrl: string | null;
 }
 
 export interface IndexerManagerSyncResultInput {
@@ -7494,6 +7508,11 @@ export interface ExportFileInput {
        */
       url: string;
       /**
+       * @format uri
+       * @maxLength 2000
+       */
+      browserUrl?: string | null;
+      /**
        * @format starts_with
        * @maxLength 10000
        * @pattern ^p1:.*
@@ -11150,6 +11169,7 @@ export interface IndexerManager {
   id: string;
   kind: "prowlarr" | "jackett";
   url: string;
+  browserUrl: string | null;
   syncedAt: string | null;
   /**
    * @min -9007199254740991
@@ -11175,10 +11195,23 @@ export interface CreateIndexerManager {
    */
   url: string;
   /**
+   * @format uri
+   * @maxLength 2000
+   */
+  browserUrl?: string | null;
+  /**
    * @minLength 1
    * @maxLength 500
    */
   apiKey: string;
+}
+
+export interface UpdateIndexerManager {
+  /**
+   * @format uri
+   * @maxLength 2000
+   */
+  browserUrl: string | null;
 }
 
 export interface IndexerManagerSyncResult {
@@ -15310,6 +15343,11 @@ export interface ExportFile {
        */
       url: string;
       /**
+       * @format uri
+       * @maxLength 2000
+       */
+      browserUrl?: string | null;
+      /**
        * @format starts_with
        * @maxLength 10000
        * @pattern ^p1:.*
@@ -15786,9 +15824,11 @@ export type GetIndexerManagersError = MessageResponse;
 
 export type PostIndexerManagerError = MessageResponse | SourceErrorResponse;
 
-export type PostIndexerManagerSyncError = MessageResponse | SourceErrorResponse;
+export type PatchIndexerManagerError = MessageResponse;
 
 export type DeleteIndexerManagerError = MessageResponse;
+
+export type PostIndexerManagerSyncError = MessageResponse | SourceErrorResponse;
 
 export type GetTitleSourcesError = MessageResponse;
 
@@ -17425,13 +17465,19 @@ export class Api<
      * No description
      *
      * @tags Sources
-     * @name PostIndexerManagerSync
-     * @request POST:/api/indexer-managers/{id}/sync
+     * @name PatchIndexerManager
+     * @request PATCH:/api/indexer-managers/{id}
      */
-    postIndexerManagerSync: (id: string, params: RequestParams = {}) =>
-      this.request<IndexerManagerSyncResult, PostIndexerManagerSyncError>({
-        path: `/api/indexer-managers/${id}/sync`,
-        method: "POST",
+    patchIndexerManager: (
+      id: string,
+      data: UpdateIndexerManagerInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<IndexerManager, PatchIndexerManagerError>({
+        path: `/api/indexer-managers/${id}`,
+        method: "PATCH",
+        body: data,
+        type: ContentType.Json,
         format: "json",
         ...params,
       }),
@@ -17455,6 +17501,21 @@ export class Api<
         path: `/api/indexer-managers/${id}`,
         method: "DELETE",
         query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Sources
+     * @name PostIndexerManagerSync
+     * @request POST:/api/indexer-managers/{id}/sync
+     */
+    postIndexerManagerSync: (id: string, params: RequestParams = {}) =>
+      this.request<IndexerManagerSyncResult, PostIndexerManagerSyncError>({
+        path: `/api/indexer-managers/${id}/sync`,
+        method: "POST",
         format: "json",
         ...params,
       }),

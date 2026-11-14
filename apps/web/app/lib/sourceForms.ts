@@ -17,6 +17,15 @@ export function httpUrlSchema(message: string) {
     }, message)
 }
 
+/** Пустое поле при импорте сохраняет адрес уже подключённого менеджера. */
+export function managerBrowserUrlSchema(message: string) {
+  return z
+    .string()
+    .trim()
+    .pipe(httpUrlSchema(message).or(z.literal('')))
+    .transform(value => value || undefined)
+}
+
 /** Поле формы, к которому относится ошибка проверки источника на сервере */
 export function fieldOfSourceError(kind: string): 'url' | 'apiKey' | null {
   if (kind === 'auth')

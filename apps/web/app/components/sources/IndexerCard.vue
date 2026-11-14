@@ -289,7 +289,11 @@ function onInteractOutside(event: Event) {
             {{ t("panel.sources.indexers.test") }}
           </LoadingButton>
           <Button v-if="manager" variant="ghost" size="sm" as-child>
-            <a :href="manager.url" target="_blank" rel="noopener noreferrer">
+            <a
+              :href="manager.browserUrl ?? manager.url"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
               <ExternalLinkIcon aria-hidden="true" />
               {{ t("panel.sources.managers.open", { manager: managerName }) }}
             </a>

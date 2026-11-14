@@ -59,7 +59,11 @@ Configure and test your torrent indexers in Prowlarr or Jackett before importing
 
    For Prowlarr you can paste the address straight from your browser on any Prowlarr page, such as `http://<server-address>:9696/settings/general`, or an indexer's Torznab feed address: Torsher keeps the part before the page or `/api`. If Prowlarr runs under a URL base, it stays in the address: `http://<server-address>:9696/prowlarr`.
 
+   If your browser uses a different address, enter it in <Ui k="panel.sources.browserUrl.label" />, for example `https://manager.example/prowlarr`. This address is only for opening the manager's web interface; Torsher keeps using the server address for API requests. Leave it empty to use the server address for both.
+
 4. Select <Ui k="panel.sources.importDialog.submit" />. Torsher adds the manager's configured torrent indexers. With none configured, Torsher connects the manager and adds nothing until you configure indexers there and sync.
+
+To set or change the browser address after connecting, including a connection made by the setup wizard, open the manager's menu in <Ui k="panel.nav.sources" /> and select <Ui k="panel.sources.browserUrl.label" />. Save the address without entering the API key again. Clear the field and save to use the server address. Syncing and changing the API key keep this setting.
 
 Torsher doesn't watch the manager by itself. When you add or remove indexers there, open <Ui k="panel.nav.sources" /> and use the sync button on the manager's card: new indexers are added, and ones gone from the manager are marked rather than deleted.
 

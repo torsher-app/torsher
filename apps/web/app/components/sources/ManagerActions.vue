@@ -21,6 +21,7 @@ import {
 import { sourceErrorKind } from '~/composables/useSources'
 import DisconnectManagerDialog from './DisconnectManagerDialog.vue'
 import ImportManagerDialog from './ImportManagerDialog.vue'
+import ManagerBrowserUrlDialog from './ManagerBrowserUrlDialog.vue'
 
 const props = defineProps<{
   manager: IndexerManager
@@ -32,6 +33,7 @@ const { syncManager } = useSources()
 const isSyncing = ref(false)
 const isDisconnectOpen = ref(false)
 const isKeyOpen = ref(false)
+const isBrowserUrlOpen = ref(false)
 
 const name = computed(() => t(`panel.kinds.${props.manager.kind}`))
 
@@ -100,10 +102,18 @@ async function onSync() {
     </DropdownMenuTrigger>
     <DropdownMenuContent align="end" class="w-auto min-w-52">
       <DropdownMenuItem as-child>
-        <a :href="manager.url" target="_blank" rel="noopener noreferrer">
+        <a
+          :href="manager.browserUrl ?? manager.url"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
           <ExternalLinkIcon aria-hidden="true" />
           {{ t("panel.sources.managers.open", { manager: name }) }}
         </a>
+      </DropdownMenuItem>
+      <DropdownMenuItem @select="isBrowserUrlOpen = true">
+        <ExternalLinkIcon aria-hidden="true" />
+        {{ t("panel.sources.browserUrl.label") }}
       </DropdownMenuItem>
       <DropdownMenuItem @select="isKeyOpen = true">
         <KeyRoundIcon aria-hidden="true" />
@@ -118,4 +128,5 @@ async function onSync() {
   </DropdownMenu>
   <DisconnectManagerDialog v-model:open="isDisconnectOpen" :manager="manager" />
   <ImportManagerDialog v-model:open="isKeyOpen" :manager="manager" />
+  <ManagerBrowserUrlDialog v-model:open="isBrowserUrlOpen" :manager="manager" />
 </template>

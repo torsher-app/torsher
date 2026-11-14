@@ -47,6 +47,7 @@ export function toManagerResponse(manager: ManagerWithCounts) {
     id: manager.id,
     kind: manager.kind,
     url: manager.url,
+    browserUrl: manager.browserUrl,
     syncedAt: manager.syncedAt?.toISOString() ?? null,
     indexerCount: manager.indexerCount,
     missingCount: manager.missingCount,

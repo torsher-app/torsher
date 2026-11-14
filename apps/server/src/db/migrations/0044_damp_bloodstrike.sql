@@ -1,0 +1,1 @@
+ALTER TABLE `indexer_managers` ADD `browser_url` text;

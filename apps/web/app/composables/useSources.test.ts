@@ -1,13 +1,18 @@
-import type { Indexer } from '@torsher/api-client'
+import type { Indexer, IndexerManager } from '@torsher/api-client'
 import { computed, readonly, ref, shallowRef } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const api = vi.hoisted(() => ({
+  patchIndexerManager: vi.fn(),
+  getIndexerManagers: vi.fn(),
+  getIndexers: vi.fn(),
   postIndexer: vi.fn(),
   patchIndexer: vi.fn(),
   postIndexerTest: vi.fn(),
 }))
-vi.mock('~/services/api', () => ({ api: { indexers: api } }))
+vi.mock('~/services/api', () => ({
+  api: { indexers: api, indexerManagers: api },
+}))
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -46,6 +51,39 @@ describe('source credentials checks', () => {
   it('does not recheck an unrelated edit with an omitted cookie', async () => {
     const { useSources } = await import('./useSources')
     await useSources().updateIndexer('source', { name: 'Renamed' })
+    expect(api.postIndexerTest).not.toHaveBeenCalled()
+  })
+})
+
+describe('manager browser address', () => {
+  it('updates the shared manager immediately and leaves API and indexers unchanged', async () => {
+    const manager = {
+      id: 'manager',
+      kind: 'prowlarr',
+      url: 'http://internal.example:9696',
+      browserUrl: null,
+      syncedAt: null,
+      indexerCount: 0,
+      missingCount: 0,
+    } satisfies IndexerManager
+    api.getIndexerManagers.mockResolvedValue({ items: [manager] })
+    api.getIndexers.mockResolvedValue({ items: [] })
+    const { useSources } = await import('./useSources')
+    const sources = useSources()
+    await sources.load()
+    for (const browserUrl of ['https://manager.example/base/', null]) {
+      api.patchIndexerManager.mockResolvedValue({ ...manager, browserUrl })
+      await sources.saveManagerBrowserUrl(manager.id, browserUrl)
+      expect(sources.managers.value[0]).toMatchObject({
+        url: manager.url,
+        browserUrl,
+      })
+      expect(api.patchIndexerManager).toHaveBeenLastCalledWith(manager.id, {
+        browserUrl,
+      })
+    }
+    expect(api.getIndexerManagers).toHaveBeenCalledTimes(1)
+    expect(api.getIndexers).toHaveBeenCalledTimes(1)
     expect(api.postIndexerTest).not.toHaveBeenCalled()
   })
 })

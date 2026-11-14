@@ -696,3 +696,59 @@ describe('миграция отметки тайтла без эпизодов',
     }
   })
 })
+
+describe('manager browser URL migration', () => {
+  it('keeps existing managers, credentials and linked indexers on repeated migration', () => {
+    const idx = journal.entries.findIndex(entry =>
+      readFileSync(join(MIGRATIONS_DIR, `${entry.tag}.sql`), 'utf8').includes(
+        'ADD `browser_url`',
+      ),
+    )
+    expect(idx).toBeGreaterThan(0)
+    const sqlite = new Database(':memory:')
+    sqlite.pragma('foreign_keys = ON')
+    const db = drizzle(sqlite)
+    try {
+      migrate(db, { migrationsFolder: migrationsBefore(idx) })
+      sqlite
+        .prepare(
+          'INSERT INTO indexer_managers (id, kind, url, api_key, created_at) VALUES (?, ?, ?, ?, ?)',
+        )
+        .run(
+          'manager',
+          'prowlarr',
+          'http://manager.example:9696',
+          'encrypted-key',
+          1,
+        )
+      sqlite
+        .prepare(
+          'INSERT INTO indexers (id, name, url, manager_id, created_at) VALUES (?, ?, ?, ?, ?)',
+        )
+        .run('indexer', 'Demo', 'http://manager.example:9696/1', 'manager', 1)
+      migrate(db, { migrationsFolder: MIGRATIONS_DIR })
+      expect(
+        sqlite
+          .prepare('SELECT url, api_key, browser_url FROM indexer_managers')
+          .get(),
+      ).toEqual({
+        url: 'http://manager.example:9696',
+        api_key: 'encrypted-key',
+        browser_url: null,
+      })
+      sqlite
+        .prepare('UPDATE indexer_managers SET browser_url = ?')
+        .run('https://manager.example')
+      migrate(db, { migrationsFolder: MIGRATIONS_DIR })
+      expect(
+        sqlite.prepare('SELECT browser_url FROM indexer_managers').get(),
+      ).toEqual({ browser_url: 'https://manager.example' })
+      expect(sqlite.prepare('SELECT manager_id FROM indexers').all()).toEqual([
+        { manager_id: 'manager' },
+      ])
+    }
+    finally {
+      sqlite.close()
+    }
+  })
+})

@@ -224,6 +224,7 @@ export const indexerManagers = sqliteTable(
       .$defaultFn(() => randomUUID()),
     kind: text('kind', { enum: indexerManagerKinds }).notNull(),
     url: text('url').notNull(),
+    browserUrl: text('browser_url'),
     apiKey: text('api_key').notNull(),
     syncedAt: integer('synced_at', { mode: 'timestamp_ms' }),
     createdAt: integer('created_at', { mode: 'timestamp_ms' })
