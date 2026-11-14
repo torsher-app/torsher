@@ -12,7 +12,8 @@
     "./router": "./src/router.ts",
     "./state": "./src/state.ts",
     "./titles": "./src/titles.ts",
-    "./studios": "./src/studios.ts"
+    "./studios": "./src/studios.ts",
+    "./speedtest": "./src/speedtest.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

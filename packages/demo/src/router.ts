@@ -64,7 +64,7 @@ function compile(path: string) {
   return { pattern: new RegExp(`^${source}/?$`), keys }
 }
 
-type Result<Res> = Res | typeof NO_CONTENT
+type Result<Res> = Res | typeof NO_CONTENT | Response
 
 function define(method: Method) {
   return <Res = void, Body = unknown>(
@@ -140,6 +140,9 @@ export async function handle(
       query: url.searchParams,
       body: parseBody(init.body),
     })
+
+    if (result instanceof Response)
+      return result
 
     if (result === NO_CONTENT)
       return new Response(null, { status: 204 })

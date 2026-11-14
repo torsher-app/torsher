@@ -54,6 +54,8 @@ export interface ApiClientOptions {
   onRequestResult?: (observation: ApiRequestObservation) => void
   /** Как показывать ошибку текущего запроса */
   getErrorMode: () => ErrorMode
+  /** Opt out only for optional endpoints whose 401 does not invalidate the viewer session. */
+  shouldRefreshSession?: (url: string) => boolean
   /** Refresh не удался — сессия мертва */
   onSessionExpired: () => void | Promise<void>
   /** Ошибка в режиме toast */
@@ -208,7 +210,11 @@ export function createApiClient(options: ApiClientOptions) {
     }
     let response = await sendWithRetry(url, init, sendAttempt)
 
-    if (response.status === UNAUTHORIZED && !url.includes(REFRESH_PATH)) {
+    if (
+      response.status === UNAUTHORIZED
+      && !url.includes(REFRESH_PATH)
+      && (options.shouldRefreshSession?.(url) ?? true)
+    ) {
       try {
         await refreshSession()
       }

@@ -4441,5 +4441,93 @@
   "libraryVersions": {
     "title": "Choose version",
     "version": "Version {number}"
+  },
+  "speedtest": {
+    "combinedHint": "This device and server internet",
+    "combinedNote": "Checks server → this device and server ↔ Cloudflare. Cloudflare and your configured proxy see the server connection; no Torsher cookies or identifiers are sent.",
+    "combinedBudget": "10 seconds per direction after warmup. Temporarily uses the network and can transfer a lot of data.",
+    "title": "Connection speed check",
+    "localTitle": "Connection to this device",
+    "localDirection": "Server → this device",
+    "localNote": "Measures data transfer from your Torsher server to this device through its current address and proxy. Other viewing and downloads affect the result.",
+    "browserNote": "This result applies to this browser. To check a TV, start the check on the TV.",
+    "internetTitle": "Server internet",
+    "internetDirection": "Server ↔ Cloudflare",
+    "internetNote": "Cloudflare and your configured proxy see the server connection. No Torsher cookies or identifiers are sent. This checks the route to one provider, under current network load.",
+    "localBudget": "10 seconds after warmup. A fast connection can transfer a lot of test data.",
+    "internetBudget": "10 seconds each way after warmup. Temporarily uses the server network.",
+    "start": "Start check",
+    "stop": "Stop",
+    "mbps": "Mbps",
+    "ms": "ms",
+    "seconds": "s",
+    "latency": "HTTP latency",
+    "duration": "Phase duration",
+    "payload": "Test data transferred",
+    "startedAt": "Started at",
+    "download": "Download",
+    "upload": "Upload",
+    "chart": "Speed estimate over time",
+    "route": "Cloudflare route",
+    "dns": "DNS",
+    "shortened": "The check reached its data limit. The result uses completed HTTP measurements.",
+    "states": {
+      "idle": "Ready to check",
+      "preparing": "Preparing",
+      "latency": "Checking HTTP latency",
+      "download": "Measuring transfer",
+      "running": "Measuring",
+      "complete": "Check complete",
+      "insufficient": "Not enough completed HTTP measurements",
+      "cancelled": "Check stopped",
+      "error": "Check failed"
+    },
+    "errors": {
+      "busy": "Another check is running. Try again after it finishes.",
+      "rate_limited": "Too many starts. Wait a minute and try again.",
+      "unsupported": "Streaming measurement is not supported on this device.",
+      "unavailable": "This server version does not support this check.",
+      "unauthorized": "Your session ended. Sign in again before retrying.",
+      "invalid_response": "The response was changed, encoded or buffered incorrectly. Check the reverse proxy.",
+      "network": "The connection ended or timed out. Check the address and proxy, then retry.",
+      "limit_reached": "The safety limit was reached before ten seconds. The check is incomplete."
+    },
+    "phases": {
+      "latency": "HTTP latency",
+      "download": "Download",
+      "upload": "Upload",
+      "finished": "Finished"
+    },
+    "routes": {
+      "direct": "Direct",
+      "http_proxy": "HTTP proxy",
+      "socks5_proxy": "SOCKS5 proxy",
+      "env_proxy": "Environment proxy"
+    },
+    "dnsTypes": {
+      "system": "System",
+      "doh": "DNS over HTTPS",
+      "proxy": "Resolved by proxy"
+    },
+    "reasons": {
+      "cancelled": "Check stopped. The last measurements are shown.",
+      "deadline": "The check reached its time limit.",
+      "lease_expired": "The page stopped responding. The check was stopped.",
+      "route_changed": "The network route changed. Start a new check.",
+      "revoked": "Device access was revoked.",
+      "shutdown": "The server is stopping.",
+      "provider_http_error": "Cloudflare rejected the request. Check its availability and your route.",
+      "provider_protocol_error": "Cloudflare returned an unexpected response. This phase has no speed result.",
+      "provider_unavailable": "Cloudflare or the configured network route is unavailable.",
+      "traffic_limit": "The safety data limit was reached before ten seconds. This phase is incomplete.",
+      "request_limit": "The safety request limit was reached before ten seconds. This phase is incomplete."
+    },
+    "methodNote": "Speed is the 90th percentile of completed HTTP measurements, with at least three valid samples.",
+    "noSamples": "Start a check to see the graph",
+    "graphPending": "Measuring…",
+    "provider": "Provider",
+    "httpStatus": "HTTP {status}",
+    "providerLimited": "The external service has temporarily limited requests. Try again later.",
+    "retryAfter": "Try again after {time}"
   }
 }

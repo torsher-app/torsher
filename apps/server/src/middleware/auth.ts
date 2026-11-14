@@ -86,6 +86,15 @@ function crossSiteRejected(reply: FastifyReply) {
     .send({ message: 'cross_site_request' })
 }
 
+/** Same policy as owner routes, opt-in for viewer mutations. */
+export async function requireSameOrigin(
+  request: FastifyRequest,
+  reply: FastifyReply,
+) {
+  if (isCrossSite(request))
+    return crossSiteRejected(reply)
+}
+
 function unauthorized(reply: FastifyReply) {
   return reply.code(401).send({ message: 'Unauthorized' })
 }

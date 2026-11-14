@@ -8,6 +8,7 @@ import type { LogEntry } from './ring.ts'
 import { z } from 'zod'
 import { engineDiagnosticRule } from '../engine/logDiagnostics.ts'
 import { sourceDiagnosticRule } from '../sources/logDiagnostics.ts'
+import { speedtestFailure } from '../speedtest/logDiagnostics.ts'
 import {
   candidateDiagnostics,
   diagnosticCandidateId,
@@ -393,6 +394,22 @@ export function projectRecord(
   if (at > cutoffAt || at <= cutoffAt - retentionMs)
     return { kind: 'outside_window' }
   const observedAt = new Date(at).toISOString()
+  if (raw.event === 'speedtest.failed') {
+    if (raw.origin !== 'server' || raw.source !== 'network')
+      return { kind: 'unstructured' }
+    const parsed = speedtestFailure.safeParse(raw)
+    if (!parsed.success)
+      return { kind: 'unstructured' }
+    return {
+      kind: 'event',
+      value: {
+        observedAt,
+        origin: 'server',
+        event: 'speedtest.failed',
+        facts: parsed.data,
+      },
+    }
+  }
   const authRule = authDiagnosticRule(raw.event)
   if (authRule) {
     if (raw.origin !== 'server' || raw.source !== 'auth')

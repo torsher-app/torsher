@@ -1,3 +1,4 @@
+import { stopSpeedtest } from '../speedtest/lifecycle.ts'
 import type { Dispatcher, RequestInit as UndiciRequestInit } from 'undici'
 import type { NetRoute } from '../../db/schema.ts'
 import { lookup } from 'node:dns/promises'
@@ -68,6 +69,7 @@ export function currentRoutes() {
 
 /** После любой правки маршрутов: следующий запрос возьмёт новые */
 export function routesChanged() {
+  stopSpeedtest('route_changed')
   routesCache = undefined
   resetDispatchers()
 }

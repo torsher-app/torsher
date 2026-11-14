@@ -6,6 +6,7 @@ import AppIcon from '../components/AppIcon.vue'
 import AppRail from '../components/AppRail.vue'
 import FocusSection from '../components/FocusSection.vue'
 import OptionsPanel from '../components/OptionsPanel.vue'
+import SpeedtestPanel from '../components/SpeedtestPanel.vue'
 import {
   screensaverMinutes,
   setScreensaverMinutes,
@@ -23,7 +24,7 @@ const focus = useFocus()
 
 const RAIL_SECTION = 'rail-settings'
 
-type Setting = 'screensaver'
+type Setting = 'screensaver' | 'speedtest'
 
 const panel = ref<Setting>()
 let panelOpener: HTMLElement | undefined
@@ -96,6 +97,18 @@ function choose(id: string) {
         </span>
         <AppIcon name="chevronRight" class="setting__chevron" />
       </button>
+      <button
+        v-focusable
+        class="setting setting--connection"
+        type="button"
+        @click="openPanel('speedtest')"
+      >
+        <span class="setting__text">
+          <span class="setting__name">{{ t("speedtest.title") }}</span>
+          <span class="setting__hint">{{ t("speedtest.combinedHint") }}</span>
+        </span>
+        <AppIcon name="chevronRight" class="setting__chevron" />
+      </button>
     </FocusSection>
 
     <AppRail
@@ -104,8 +117,9 @@ function choose(id: string) {
       content="settings-list"
     />
 
+    <SpeedtestPanel v-if="panel === 'speedtest'" @close="closePanel" />
     <OptionsPanel
-      v-if="panel"
+      v-if="panel === 'screensaver'"
       :title="t('settings.screensaver')"
       :options="options"
       @select="choose"
@@ -128,6 +142,10 @@ function choose(id: string) {
   margin: 0;
   font-size: var(--font-size-m);
   font-weight: 600;
+}
+
+.setting--connection {
+  margin-top: var(--space-5);
 }
 
 .settings__note {

@@ -227,3 +227,21 @@ Scheduled backups are failing or off. <Ui k="panel.nav.settings panel.settings.n
 ## Still stuck
 
 Collect the version, the log and the steps, and [report the problem](/docs/maintain/logs#what-to-put-in-a-bug-report).
+
+
+## Connection speed checks
+
+### A check fails or has no speed result {#speed-check}
+
+In <Ui k="panel.nav.settings panel.settings.nav.network speedtest.title" /> or the showcase's <Ui k="nav.settings speedtest.title" />:
+
+- **Another check is running.** Wait for it to finish or stop it on the screen that started it. The server permits one check at a time. A connected viewer device can start three checks per minute; wait a minute if its allowance is exhausted. The owner has no frequency limit.
+- **Not enough data.** Fewer than three valid HTTP transfers completed before the time, payload or request limit. Warmup and aborted transfers are excluded; a single completed response followed by a stall is insufficient. A completed transfer must last at least 10 ms. The result is absent rather than zero. The normal phase lasts ten seconds after warmup. A safety ceiling reached earlier is an incomplete check, not a successful short run.
+- **The response was changed or the connection failed.** Check the address and reverse proxy: this endpoint needs streaming, with no compression or cache. Torsher sends `Cache-Control: no-store, no-transform` and `X-Accel-Buffering: no`, but those headers cannot guarantee how a proxy is configured. Buffering is part of each HTTP measurement and may substantially change its timing. Try the server's direct address to compare the paths.
+- **The server internet check fails.** Check access to `speed.cloudflare.com` through the selected DNS/proxy route. Cloudflare or the configured proxy can reject requests, limit them or change the response format. A rejected HTTP request shows its status code next to the error (for example, HTTP 400, 413 or 429); the code alone does not prove which component rejected it. A protocol error has no numerical result for that phase; an earlier completed phase remains visible. Torsher does not switch providers or circumvent a rejection. The local device check does not depend on Cloudflare.
+- **HTTP 429.** The external service or proxy temporarily limited requests. Try again later. If its response includes a valid `Retry-After`, Torsher shows the suggested retry date and time in your local time zone. Without it, Torsher does not invent a waiting period. Retrying is always manual.
+- **A safety limit is reached before ten seconds.** The phase is incomplete. The local ceiling is 64 GiB, the server internet ceiling is 64 GiB per direction, and the request ceiling is 4096 per direction. The server uses at most 250 MB per download request or 50 MB per upload request; high HTTP latency and a configured proxy can still lower the measured end-to-end result. No successful p90 result is shown for the interrupted phase.
+- **The check stops when the route changes.** Start again once the route is stable so one measurement describes one path.
+- **Unsupported device or server version.** Update the server, or use a browser with Fetch, AbortController and readable streams. This check cannot be emulated by displaying a number from a different device.
+
+Checks stop when the screen is left or hidden, the session ends or the user selects <Ui k="speedtest.stop" />. A lost page's server internet task stops after its five-second heartbeat lease; hard deadlines and payload limits also bound it. No history is saved. See [network checks](/docs/setup/network#speed-check) for directions, limits and provider privacy.
