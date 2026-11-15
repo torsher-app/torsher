@@ -1,6 +1,6 @@
 ---
 title: Donate
-description: "Support Torsher development with a donation through PayPal or Open Collective. Donations pay for development time and test hardware, not for features or content."
+description: "Support Torsher development with a donation through PayPal, Gumroad or Open Collective. Donations pay for development time and test hardware, not for features or content."
 sidebar: false
 aside: false
 outline: false
@@ -15,6 +15,7 @@ Torsher is open source under the AGPL-3.0 license and built by one developer. Do
 | Platform | For | Status |
 | --- | --- | --- |
 | [PayPal](https://paypal.me/antongithub) | One-time, by card or from a PayPal account | [Donate](https://paypal.me/antongithub) |
+| [Gumroad](https://antonreshetov.gumroad.com/l/torsher) | One-time | [Donate](https://antonreshetov.gumroad.com/l/torsher) |
 | Open Collective | One-time or monthly, by card, with public accounting | <Badge type="info" text="soon" /> |
 
 ## What donations pay for
