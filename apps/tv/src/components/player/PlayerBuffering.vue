@@ -3,15 +3,13 @@ import type { TorrentStats } from '@torsher/api-client'
 import type { StageStep } from '../../lib/player.ts'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { formatMegabits } from '../../lib/player.ts'
+import { formatMegabits, isPeerCount } from '../../lib/player.ts'
 import AppIcon from '../AppIcon.vue'
 
 // Статус под торшером сцены подготовки (`PlayerStage`): шаг и под ним подробности
 const props = defineProps<{
   step: StageStep
   stats: TorrentStats | undefined
-  /** Доля подготовки 0–1 — та же, что у света торшера */
-  progress?: number
   /** Своя подпись шага: экран подготовки ищет серию до потока */
   label?: string
 }>()
@@ -25,34 +23,48 @@ const status = computed(() => {
   const step = t(`player.steps.${props.step}`)
   const stats = props.stats
 
-  if (!stats || props.step === 'reconnecting')
+  if (
+    !stats
+    || stats.activity !== 'downloading'
+    || props.step === 'reconnecting'
+  ) {
     return { step, data: [] }
+  }
 
   const parts
     = props.step === 'buffering' || props.step === 'slow'
       ? [
-          t('player.progress', {
-            n: Math.round((props.progress ?? 0) * 100),
-          }),
           t('player.stats.speed', {
-            value: formatMegabits(stats.downloadSpeed, locale.value),
+            value: formatMegabits(
+              stats.downloadSpeedMeasured === false
+                ? Number.NaN
+                : stats.downloadSpeed,
+              locale.value,
+            ),
           }),
         ]
       : [
-          stats.peers.connected > 0
+          isPeerCount(stats.peers.connected) && stats.peers.connected > 0
             ? t('player.peers', stats.peers.connected)
-            : t('player.found', stats.peers.found),
+            : isPeerCount(stats.peers.found)
+              ? t('player.found', stats.peers.found)
+              : '—',
         ]
 
   return { step, data: parts }
 })
 
 const seeders = computed(() => {
-  if (props.label || (props.step !== 'buffering' && props.step !== 'slow'))
+  if (
+    props.label
+    || props.stats?.activity !== 'downloading'
+    || (props.step !== 'buffering' && props.step !== 'slow')
+  ) {
     return undefined
+  }
 
   const count = props.stats?.peers.seeders
-  return typeof count === 'number' && Number.isInteger(count) && count >= 0
+  return props.stats?.peers.seedersKnown !== false && isPeerCount(count)
     ? count
     : undefined
 })
@@ -82,7 +94,7 @@ const detailsKind = computed(() => {
 
 /**
  * Числа — в ячейках постоянной ширины: строка по центру не сдвигается, когда
- * «9 %» становится «10 %», а «0,9» — «12,4»
+ * «0,9» становится «12,4»
  */
 const dataParts = computed(() =>
   status.value.data.map(value =>

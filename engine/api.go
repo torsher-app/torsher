@@ -997,9 +997,10 @@ type torrentState struct {
 	Uploaded int64         `json:"uploaded"`
 	Peers    peersResponse `json:"peers"`
 	// Байт в секунду за последние секунды
-	DownloadSpeed int64   `json:"downloadSpeed"`
-	UploadSpeed   int64   `json:"uploadSpeed"`
-	FileProgress  []int64 `json:"fileProgress"`
+	DownloadSpeed         int64   `json:"downloadSpeed"`
+	DownloadSpeedMeasured bool    `json:"downloadSpeedMeasured"`
+	UploadSpeed           int64   `json:"uploadSpeed"`
+	FileProgress          []int64 `json:"fileProgress"`
 	// Куски с неверным хэшем за время работы движка: их байты могли уйти в поток
 	BadPieces int64 `json:"badPieces"`
 }
@@ -1008,7 +1009,7 @@ func (a *api) stateOf(t *torrent.Torrent) torrentState {
 	hash := t.InfoHash()
 	saved := a.session.get(hash)
 	stats := t.Stats()
-	current := a.speeds.of(hash)
+	current := a.speeds.of(t)
 	files := t.Files()
 
 	state := torrentState{
@@ -1025,10 +1026,11 @@ func (a *api) stateOf(t *torrent.Torrent) torrentState {
 			Found:     stats.TotalPeers,
 			Seeders:   stats.ConnectedSeeders,
 		},
-		DownloadSpeed: current.download,
-		UploadSpeed:   current.upload,
-		FileProgress:  []int64{},
-		BadPieces:     badPiecesOf(stats),
+		DownloadSpeed:         current.download,
+		DownloadSpeedMeasured: current.measured,
+		UploadSpeed:           current.upload,
+		FileProgress:          []int64{},
+		BadPieces:             badPiecesOf(stats),
 	}
 
 	if state.Selected == nil {

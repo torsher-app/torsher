@@ -182,6 +182,7 @@ const renderer = createRenderer<Element, Element>({
   remove() {},
 })
 interface Controls {
+  seekTo: (seconds: number) => void
   start: () => Promise<void>
   exit: () => void
   recover: (cause?: 'unknown') => void
@@ -207,6 +208,11 @@ interface Controls {
   phase: string
   panel: 'source' | null
   step: string
+  slow: boolean
+  bufferingSince: number
+  stageStats: TorrentStats | undefined
+  stageProgress: number
+  stalledStatus: { step: string, connected?: number }
   osdStats: TorrentStats | undefined
   serverCache: NonNullable<TorrentStats['file']['playbackCache']> | null
   cacheSeconds: number | null
@@ -217,7 +223,7 @@ let cleanup: () => void
 async function settle() {
   for (let i = 0; i < 12; i++) await nextTick()
 }
-async function mount(playing = true, episodic = false) {
+async function mount(playing = true, episodic = false, library = false) {
   // SFCs are compiled for SSR in this test environment. Keep the real setup,
   // lifecycle and media handlers;
   // only the DOM and streaming transport are fakes.
@@ -230,9 +236,10 @@ async function mount(playing = true, episodic = false) {
       },
     },
     {
-      torrentId: 'fixture',
-      fileIndex: '0',
-      titleId: 'tmdb:tv:1',
+      ...(library
+        ? { mediaFileId: 'library-file' }
+        : { torrentId: 'fixture', fileIndex: '0' }),
+      ...(library ? {} : { titleId: 'tmdb:tv:1' }),
       ...(episodic ? { season: '1', episode: '2' } : {}),
     },
   )
@@ -1085,4 +1092,164 @@ it('refreshes live player ranges while the playback position stays unchanged', a
   })
   await vi.advanceTimersByTimeAsync(1000)
   expect(controls.bufferSeconds).toBe(10)
+})
+
+const displayedSample: TorrentStats = {
+  activity: 'downloading',
+  downloadSpeed: 0,
+  uploadSpeed: 0,
+  badPieces: 0,
+  peers: { connected: 6, found: 40, seeders: 6 },
+  file: { size: 1000, downloaded: 1000, bufferedAhead: 0 },
+}
+
+it('retracts slow and peer claims together in preparation and stalled status after failure or expiry', async () => {
+  await mount(false)
+  playerStats.value = displayedSample
+  statsAt.value = Date.now()
+  controls.slow = true
+  await settle()
+  expect(controls.step).toBe('slow')
+  expect(controls.stageStats).toEqual(displayedSample)
+  expect(controls.stalledStatus).toEqual({ step: 'slow', connected: 6 })
+  statsFailed.value = true
+  await settle()
+  expect(controls.osdStats).toBeUndefined()
+  expect(controls.stageStats).toBeUndefined()
+  expect(controls.stalledStatus).toEqual({
+    step: 'reconnecting',
+    connected: undefined,
+  })
+  statsFailed.value = false
+  statsAt.value = Date.now()
+  await settle()
+  expect(controls.stalledStatus).toEqual({ step: 'slow', connected: 6 })
+  await vi.advanceTimersByTimeAsync(16_000)
+  expect(controls.step).toBe('reconnecting')
+  expect(controls.stageStats).toBeUndefined()
+  expect(controls.stalledStatus).toEqual({
+    step: 'reconnecting',
+    connected: undefined,
+  })
+  statsAt.value = Date.now()
+  await settle()
+  expect(controls.osdStats).toEqual(displayedSample)
+  expect(controls.stageStats).toEqual(displayedSample)
+})
+
+it('uses exact response age and never rejuvenates old stats when preparation restarts', async () => {
+  await mount(false)
+  await vi.advanceTimersByTimeAsync(500)
+  playerStats.value = displayedSample
+  statsAt.value = Date.now()
+  await settle()
+  expect(controls.osdStats).toEqual(displayedSample)
+  expect(controls.stageStats).toEqual(displayedSample)
+  statsAt.value = Date.now() - 15_000
+  await settle()
+  expect(controls.osdStats).toEqual(displayedSample)
+  statsAt.value = Date.now() - 15_001
+  controls.bufferingSince = Date.now()
+  await settle()
+  expect(controls.osdStats).toBeUndefined()
+  expect(controls.step).toBe('reconnecting')
+  for (const received of [
+    0,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Date.now() + 1,
+  ]) {
+    statsAt.value = received
+    await settle()
+    expect(controls.osdStats).toBeUndefined()
+    expect(controls.step).toBe('reconnecting')
+  }
+})
+
+it('waits for the first sample then reconnects and never calls idle or invalid peers slow', async () => {
+  await mount(false)
+  expect(controls.step).toBe('connecting')
+  expect(controls.stageStats).toBeUndefined()
+  await vi.advanceTimersByTimeAsync(15_000)
+  expect(controls.step).toBe('reconnecting')
+  playerStats.value = { ...displayedSample, activity: 'idle' }
+  statsAt.value = Date.now()
+  controls.slow = true
+  await settle()
+  expect(controls.step).toBe('connecting')
+  expect(controls.stalledStatus.connected).toBeUndefined()
+  for (const connected of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+    playerStats.value = {
+      ...displayedSample,
+      peers: { connected, found: Number.NaN, seeders: 6 },
+    }
+    await settle()
+    expect(controls.step).toBe('connecting')
+    expect(controls.stalledStatus.step).toBe('buffering')
+  }
+})
+
+it('keeps invalid downloaded bytes out of decorative lamp intensity', async () => {
+  await mount(false)
+  statsAt.value = Date.now()
+  for (const downloaded of [Number.NaN, Number.POSITIVE_INFINITY, -1]) {
+    playerStats.value = {
+      ...displayedSample,
+      file: { ...displayedSample.file, downloaded },
+    }
+    await settle()
+    expect(controls.stageProgress).toBe(0)
+  }
+})
+
+it('does not preserve a slow diagnosis after the current poll fails', async () => {
+  await mount(false)
+  playerStats.value = displayedSample
+  statsAt.value = Date.now()
+  controls.slow = true
+  await settle()
+  expect(controls.step).toBe('slow')
+  statsFailed.value = true
+  await settle()
+  expect(controls.step).toBe('reconnecting')
+})
+
+it('keeps library preparation neutral without torrent counters after fifteen seconds', async () => {
+  await mount(false, false, true)
+  controls.slow = true
+  await vi.advanceTimersByTimeAsync(16_000)
+  expect(controls.step).toBe('buffering')
+  expect(controls.osdStats).toBeUndefined()
+  expect(controls.stageStats).toBeUndefined()
+  expect(controls.stalledStatus).toEqual({
+    step: 'buffering',
+    connected: undefined,
+  })
+})
+
+it('gives a seek its own first-response grace without rejuvenating an old measurement', async () => {
+  await mount()
+  await vi.advanceTimersByTimeAsync(16_000)
+  mocks.pollStats.mockImplementationOnce(() => {
+    playerStats.value = undefined
+    statsAt.value = 0
+    statsFailed.value = false
+  })
+  controls.seekTo(60)
+  controls.onWaiting()
+  await settle()
+  expect(controls.step).toBe('connecting')
+  expect(controls.stalledStatus).toEqual({
+    step: 'buffering',
+    connected: undefined,
+  })
+  expect(controls.osdStats).toBeUndefined()
+  await vi.advanceTimersByTimeAsync(14_000)
+  expect(controls.step).toBe('connecting')
+  await vi.advanceTimersByTimeAsync(1_000)
+  expect(controls.step).toBe('reconnecting')
+  playerStats.value = displayedSample
+  statsAt.value = Date.now()
+  await settle()
+  expect(controls.stalledStatus).toEqual({ step: 'buffering', connected: 6 })
 })

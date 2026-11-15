@@ -232,9 +232,11 @@ export const torrentStats = z
       connected: z.number(),
       found: z.number(),
       seeders: z.number(),
+      seedersKnown: z.boolean().optional(),
     }),
     // Байт в секунду
     downloadSpeed: z.number(),
+    downloadSpeedMeasured: z.boolean().optional(),
     uploadSpeed: z.number(),
     file: z.object({
       size: z.number(),

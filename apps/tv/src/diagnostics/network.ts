@@ -68,8 +68,13 @@ export function networkSnapshot(input: {
     = input.receivedAt > 0
       ? number(input.now - input.receivedAt, 31_536_000_000)
       : undefined
-  if (!input.stats || age === undefined)
+  if (
+    !input.stats
+    || input.stats.activity !== 'downloading'
+    || age === undefined
+  ) {
     return result
+  }
   const stats = input.stats
   const bytes = number(stats.file.bufferedAhead, Number.MAX_SAFE_INTEGER, true)
   const offset = number(input.offset, Number.MAX_SAFE_INTEGER, true)
@@ -77,9 +82,15 @@ export function networkSnapshot(input: {
     state: input.failed ? 'error' : age > STATS_STALE_MS ? 'stale' : 'fresh',
     ageMs: age,
     offsetBytes: bytes === undefined ? undefined : offset,
-    downloadBytesPerSecond: number(stats.downloadSpeed, 1_000_000_000_000),
+    downloadBytesPerSecond:
+      stats.downloadSpeedMeasured === false
+        ? undefined
+        : number(stats.downloadSpeed, 1_000_000_000_000),
     peersConnected: number(stats.peers.connected, 1_000_000, true),
-    seedersConnected: number(stats.peers.seeders, 1_000_000, true),
+    seedersConnected:
+      stats.peers.seedersKnown === false
+        ? undefined
+        : number(stats.peers.seeders, 1_000_000, true),
     peersFound: number(stats.peers.found, 1_000_000, true),
     bufferedAheadBytes: offset === undefined ? undefined : bytes,
   }

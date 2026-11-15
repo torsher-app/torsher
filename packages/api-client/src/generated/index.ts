@@ -4496,8 +4496,10 @@ export interface TorrentStatsInput {
     connected: number;
     found: number;
     seeders: number;
+    seedersKnown?: boolean;
   };
   downloadSpeed: number;
+  downloadSpeedMeasured?: boolean;
   uploadSpeed: number;
   file: {
     size: number;
@@ -12427,8 +12429,10 @@ export interface TorrentStats {
     connected: number;
     found: number;
     seeders: number;
+    seedersKnown?: boolean;
   };
   downloadSpeed: number;
+  downloadSpeedMeasured?: boolean;
   uploadSpeed: number;
   file: {
     size: number;

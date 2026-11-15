@@ -22,6 +22,7 @@ function render(
   step: StageStep,
   label?: string,
   measurement: TorrentStats | null = stats,
+  locale = 'en_US',
 ) {
   const app = createSSRApp({
     render: () =>
@@ -29,12 +30,9 @@ function render(
         step,
         stats: measurement ?? undefined,
         label,
-        progress: 0.42,
       }),
   })
-  app.use(
-    createI18n({ legacy: false, locale: 'en_US', messages, pluralRules }),
-  )
+  app.use(createI18n({ legacy: false, locale, messages, pluralRules }))
   return renderToString(app)
 }
 
@@ -62,7 +60,7 @@ it('preserves a custom preparation label without a peer diagnosis', async () => 
 })
 
 it.each(['buffering', 'slow'] as const)(
-  'shows percent, Mbps and connected seeders during %s',
+  'shows Mbps and connected seeders without a readiness percentage during %s',
   async (step) => {
     const html = await render(step, undefined, {
       ...stats,
@@ -70,7 +68,7 @@ it.each(['buffering', 'slow'] as const)(
       peers: { connected: 9, found: 40, seeders: 3 },
     })
     const text = html.replace(/<[^>]*>/g, '')
-    expect(text).toContain('42%')
+    expect(text).not.toContain('%')
     expect(text).toContain('46 Mbps')
     expect(html).toContain('Connected seeders: 3')
     expect(html).not.toContain('Connected seeders: 9')
@@ -106,4 +104,48 @@ it('does not invent statistics before the first response', async () => {
   expect(html).not.toContain('Mbps')
   expect(html).not.toContain('Connected seeders')
   expect(html).not.toContain('buffering__number')
+})
+
+it.each(['en_US', 'ru_RU'])(
+  'shows measured zero or tiny speed, never a cached preparation percentage in %s',
+  async (locale) => {
+    for (const [downloadSpeed, expected] of [
+      [0, locale === 'en_US' ? '0.0 Mbps' : '0,0 Мбит/с'],
+      [1, locale === 'en_US' ? '&lt;0.1 Mbps' : '&lt;0,1 Мбит/с'],
+    ] as const) {
+      const html = await render(
+        'buffering',
+        undefined,
+        {
+          ...stats,
+          downloadSpeed,
+          file: { size: 100, downloaded: 100, bufferedAhead: 100 },
+          peers: { connected: 6, found: 40, seeders: 6 },
+        },
+        locale,
+      )
+      expect(html.replace(/<[^>]*>/g, '')).toContain(expected)
+      expect(html).not.toContain('%')
+      expect(html.replace(/<[^>]*>/g, '')).not.toMatch(/Torrent|Торрент/)
+      expect(html).toContain(
+        locale === 'en_US' ? 'Connected seeders: 6' : 'Подключённые сиды: 6',
+      )
+    }
+  },
+)
+
+it('omits idle, cold speed and unavailable legacy seeder measurements', async () => {
+  const cold = await render('buffering', undefined, {
+    ...stats,
+    downloadSpeedMeasured: false,
+    peers: { ...stats.peers, seedersKnown: false },
+  })
+  expect(cold.replace(/<[^>]*>/g, '')).toContain('— Mbps')
+  expect(cold).not.toContain('Connected seeders')
+  const idle = await render('buffering', undefined, {
+    ...stats,
+    activity: 'idle',
+  })
+  expect(idle).not.toContain('Mbps')
+  expect(idle).not.toContain('Connected seeders')
 })

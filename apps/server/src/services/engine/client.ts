@@ -120,6 +120,7 @@ const engineTorrentState = z.object({
     seeders: z.number().optional(),
   }),
   downloadSpeed: z.number(),
+  downloadSpeedMeasured: z.boolean().optional(),
   uploadSpeed: z.number(),
   fileProgress: z.array(z.number()).nullable(),
   // Куски с неверным хэшем; у движков прежних версий поля нет
@@ -160,8 +161,14 @@ export interface EngineTorrentState {
   queued: boolean
   seeding: boolean
   uploaded: number
-  peers: { connected: number, found: number, seeders: number }
+  peers: {
+    connected: number
+    found: number
+    seeders: number
+    seedersKnown?: boolean
+  }
   downloadSpeed: number
+  downloadSpeedMeasured?: boolean
   uploadSpeed: number
   fileProgress: number[]
   /** Куски с неверным хэшем за время работы движка: их байты могли уйти в поток */
@@ -188,8 +195,12 @@ function toState(raw: z.infer<typeof engineTorrentState>): EngineTorrentState {
       connected: raw.peers.connected,
       found: raw.peers.found,
       seeders: raw.peers.seeders ?? 0,
+      ...(raw.peers.seeders === undefined ? { seedersKnown: false } : {}),
     },
     downloadSpeed: raw.downloadSpeed,
+    ...(raw.downloadSpeedMeasured === undefined
+      ? {}
+      : { downloadSpeedMeasured: raw.downloadSpeedMeasured }),
     uploadSpeed: raw.uploadSpeed,
     fileProgress: raw.fileProgress ?? [],
     badPieces: raw.badPieces ?? 0,
