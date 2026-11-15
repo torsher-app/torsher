@@ -21,13 +21,13 @@ export type StageStep = BufferingStep | 'slow'
 export const WAITING_PEERS_AFTER_MS = 15_000
 // Статистика молчит дольше — не отвечает сервер или движок
 export const STATS_STALE_MS = 15_000
-// Столько буфера впереди считаем «почти готово»: дальше старт решает `<video>`
+// Масштаб реакции декоративного света на пришедшие байты.
 export const BUFFER_TARGET_BYTES = 16 * 1024 * 1024
 
 export function bufferingStep(
   stats: Pick<
     TorrentStats,
-    'activity' | 'peers' | 'downloadSpeed' | 'file'
+    'activity' | 'peers' | 'downloadSpeed' | 'downloadSpeedMeasured' | 'file'
   > | null,
   waitedMs: number,
   statsFresh = true,
@@ -39,8 +39,10 @@ export function bufferingStep(
     return 'connecting'
 
   if (
-    stats.peers.connected > 0
-    || stats.downloadSpeed > 0
+    (isPeerCount(stats.peers.connected) && stats.peers.connected > 0)
+    || (stats.downloadSpeedMeasured !== false
+      && Number.isFinite(stats.downloadSpeed)
+      && stats.downloadSpeed > 0)
     || stats.file.playbackCache?.verifiedToEnd === true
   ) {
     return 'buffering'
@@ -49,16 +51,13 @@ export function bufferingStep(
   if (waitedMs < WAITING_PEERS_AFTER_MS)
     return 'connecting'
 
+  if (!isPeerCount(stats.peers.connected) || !isPeerCount(stats.peers.found))
+    return 'connecting'
+
   return stats.peers.found > 0 ? 'connectingPeers' : 'waitingPeers'
 }
 
-/**
- * Доля подготовки для статуса и света торшера, к цели в байтах. Буфер подряд
- * от позиции растёт рывками: куски окна приходят вразнобой, и процент стоял
- * бы при идущей скорости. Поэтому берём большее из буфера подряд (засчитывает
- * уже скачанное) и докачанного файлом с начала подготовки (`gained`, растёт
- * с каждым байтом). Точного конца нет, поэтому не больше 0.99 — 100 % не обещаем.
- */
+/** Decorative lamp intensity from arriving bytes; never a media readiness percentage. */
 export function bufferProgress(bufferedAhead: number, gained = 0) {
   const bytes = Math.max(bufferedAhead, gained)
 
@@ -152,11 +151,30 @@ export function playerBufferedSeconds(video: HTMLVideoElement | undefined) {
     return Number.NaN
   const ranges = video.buffered
   const position = video.currentTime
-  for (let i = 0; i < ranges.length; i++) {
-    if (ranges.start(i) <= position && ranges.end(i) >= position)
-      return ranges.end(i) - position
+  if (
+    !Number.isFinite(position)
+    || position < 0
+    || !Number.isInteger(ranges.length)
+    || ranges.length < 0
+  ) {
+    return Number.NaN
   }
-  return 0
+  let endAtPosition: number | undefined
+  for (let i = 0; i < ranges.length; i++) {
+    const start = ranges.start(i)
+    const end = ranges.end(i)
+    if (
+      !Number.isFinite(start)
+      || !Number.isFinite(end)
+      || start < 0
+      || end < start
+    ) {
+      return Number.NaN
+    }
+    if (start <= position && end >= position)
+      endAtPosition = Math.max(endAtPosition ?? end, end)
+  }
+  return endAtPosition === undefined ? 0 : endAtPosition - position
 }
 
 /** Only a fresh sample near the current playback position can describe its cache. */
@@ -172,6 +190,7 @@ export function playbackCacheAtPosition(input: {
   if (
     !cache
     || input.failed
+    || !Number.isFinite(age)
     || input.receivedAt <= 0
     || age < 0
     || age > STATS_STALE_MS
@@ -187,7 +206,8 @@ export function playbackCacheAtPosition(input: {
 
 /** Throughput bars are an estimate; a small cache lower bound proves no shortage. */
 export type NetworkState
-  = { kind: 'done' } | { kind: 'signal', level: 0 | 1 | 2 | 3 | 4, low: boolean }
+  = | { kind: 'done' }
+    | { kind: 'signal', level: 0 | 1 | 2 | 3 | 4 | undefined, low: boolean }
 
 export function networkState(input: {
   speed: number
@@ -221,7 +241,7 @@ export function networkState(input: {
     = Number.isFinite(input.cacheSeconds) && input.cacheSeconds! >= 60
   return {
     kind: 'signal',
-    level,
+    level: speedKnown && bitrate > 0 ? level : undefined,
     low:
       !!input.stalled
       && speedKnown
@@ -541,11 +561,17 @@ export function formatSpeed(bytesPerSecond: number, locale: string) {
   return formatOneDecimal(bytesPerSecond / (1024 * 1024), locale)
 }
 
+export function isPeerCount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0
+}
+
 /** Десятичные Мбит/с для OSD, с тем же округлением, что у битрейта источника. */
 export function formatMegabits(bytesPerSecond: number, locale: string) {
-  return Number.isFinite(bytesPerSecond) && bytesPerSecond >= 0
-    ? formatBitrate((bytesPerSecond * 8) / 1_000_000, locale)
-    : '—'
+  if (!Number.isFinite(bytesPerSecond) || bytesPerSecond < 0)
+    return '—'
+  if (bytesPerSecond > 0 && bytesPerSecond < 6250)
+    return `<${formatBitrate(0.1, locale)}`
+  return formatBitrate((bytesPerSecond * 8) / 1_000_000, locale)
 }
 
 /** Гигабайты с одним знаком: «2,1»; единицу добавляет строка i18n */

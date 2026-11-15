@@ -7,6 +7,7 @@ import {
   formatClock,
   formatDuration,
   formatMegabits,
+  isPeerCount,
   networkState,
 } from '../../lib/player.ts'
 import ActionButton from '../ActionButton.vue'
@@ -81,11 +82,12 @@ function bufferText(seconds: number) {
 const network = computed(() => {
   const stats = props.stats
 
-  if (!stats)
+  if (!stats || stats.activity !== 'downloading')
     return undefined
 
   return networkState({
-    speed: stats.downloadSpeed,
+    speed:
+      stats.downloadSpeedMeasured === false ? Number.NaN : stats.downloadSpeed,
     size: stats.file.size,
     duration: props.duration,
     verifiedToEnd: props.verifiedToEnd,
@@ -98,7 +100,9 @@ const network = computed(() => {
 const speedText = computed(() =>
   t('player.stats.speed', {
     value: formatMegabits(
-      props.stats?.downloadSpeed ?? Number.NaN,
+      props.stats?.downloadSpeedMeasured === false
+        ? Number.NaN
+        : (props.stats?.downloadSpeed ?? Number.NaN),
       locale.value,
     ),
   }),
@@ -106,7 +110,7 @@ const speedText = computed(() =>
 const bufferedText = computed(() => bufferText(props.bufferSeconds))
 const seedersText = computed(() => {
   const count = props.stats?.peers.seeders
-  return typeof count === 'number' && Number.isInteger(count) && count >= 0
+  return props.stats?.peers.seedersKnown !== false && isPeerCount(count)
     ? String(count)
     : '—'
 })

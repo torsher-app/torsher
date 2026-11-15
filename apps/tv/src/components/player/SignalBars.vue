@@ -3,7 +3,7 @@ import { useI18n } from 'vue-i18n'
 
 // Уровень сети палочками, как у сотовой связи: 0–4 закрашенных из четырёх
 defineProps<{
-  level: number
+  level?: number
   low?: boolean
 }>()
 
@@ -14,14 +14,17 @@ const { t } = useI18n()
   <span
     class="signal"
     :class="{ 'signal--low': low }"
-    role="img"
-    :aria-label="t('player.signal', { n: level })"
+    :role="level === undefined ? undefined : 'img'"
+    :aria-hidden="level === undefined ? true : undefined"
+    :aria-label="
+      level === undefined ? undefined : t('player.signal', { n: level })
+    "
   >
     <span
       v-for="bar in 4"
       :key="bar"
       class="signal__bar"
-      :class="{ 'signal__bar--on': bar <= level }"
+      :class="{ 'signal__bar--on': level !== undefined && bar <= level }"
       :style="{ height: `${bar * 25}%` }"
     />
   </span>

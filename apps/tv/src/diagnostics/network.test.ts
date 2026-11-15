@@ -152,3 +152,26 @@ it('omits legacy byte pairs and average-bitrate seconds for time-only samples', 
     aheadSeconds: 7,
   })
 })
+
+it('omits unavailable cold and legacy counters but retains a measured zero', () => {
+  const cold = networkSnapshot({
+    ...input,
+    stats: {
+      ...stats,
+      downloadSpeed: 0,
+      downloadSpeedMeasured: false,
+      peers: { ...stats.peers, seeders: 0, seedersKnown: false },
+    },
+  })
+  expect(cold.stats.downloadBytesPerSecond).toBeUndefined()
+  expect(cold.stats.seedersConnected).toBeUndefined()
+  expect(cold.stats.peersConnected).toBe(8)
+  const measured = networkSnapshot({
+    ...input,
+    stats: { ...stats, downloadSpeed: 0, downloadSpeedMeasured: true },
+  })
+  expect(measured.stats.downloadBytesPerSecond).toBe(0)
+  expect(
+    networkSnapshot({ ...input, stats: { ...stats, activity: 'idle' } }).stats,
+  ).toEqual({ state: 'unavailable' })
+})

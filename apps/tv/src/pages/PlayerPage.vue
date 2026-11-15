@@ -92,6 +92,7 @@ import {
   errorKeyOf,
   formatGigabytes,
   freshBudget,
+  isPeerCount,
   mediaFailureAction,
   nextRetry,
   PAUSED_METADATA_MS,
@@ -243,14 +244,23 @@ type Panel
 const panel = ref<Panel | null>(null)
 const settingsPanel = ref<InstanceType<typeof PlayerSettings>>()
 const now = ref(new Date())
-// OSD не выдаёт прошлую скорость и число сидов за текущие после сбоя опроса.
-const osdStats = computed(() =>
-  !player.statsFailed.value
-  && now.value.getTime() - player.statsReceivedAt() <= STATS_STALE_MS
+// One current torrent sample feeds every visible statistic. The clock only triggers
+// reevaluation: a response can arrive between its ticks.
+const osdStats = computed(() => {
+  void now.value
+  const receivedAt = player.statsReceivedAt()
+  const age = Date.now() - receivedAt
+  return !player.statsFailed.value
+    && receivedAt > 0
+    && Number.isFinite(age)
+    && age >= 0
+    && age <= STATS_STALE_MS
     ? shownStats.value
-    : undefined,
-)
+    : undefined
+})
 const bufferingSince = ref(Date.now())
+// First-response grace belongs to this polling generation, including seeks.
+const statsPollingSince = ref(Date.now())
 // Смена дорожки перезапуском: до нового потока на экране сцена с лоадером, а
 // клавиши, кроме Back, не работают — перемотка потерялась бы при старте
 const restarting = ref(false)
@@ -328,21 +338,41 @@ const osd = usePlayerOsd({
 })
 
 const step = computed<StageStep>(() => {
+  void now.value
   if (reconnecting.value)
     return 'reconnecting'
 
-  if (slow.value)
+  if (isLibrary)
+    return 'buffering'
+
+  if (
+    slow.value
+    && osdStats.value?.activity === 'downloading'
+    && isPeerCount(osdStats.value.peers.connected)
+    && osdStats.value.peers.connected > 0
+  ) {
     return 'slow'
+  }
 
   return bufferingStep(
-    stats.value ?? null,
-    now.value.getTime() - bufferingSince.value,
-    !player.statsFailed.value
-    && now.value.getTime()
-    - Math.max(player.statsReceivedAt(), bufferingSince.value)
-    <= STATS_STALE_MS,
+    osdStats.value ?? null,
+    Date.now()
+    - (osdStats.value ? bufferingSince.value : statsPollingSince.value),
+    !player.statsFailed.value && (!shownStats.value || !!osdStats.value),
   )
 })
+
+const stalledStatus = computed(() => ({
+  step:
+    step.value === 'slow' || step.value === 'reconnecting'
+      ? step.value
+      : 'buffering',
+  connected:
+    osdStats.value?.activity === 'downloading'
+    && isPeerCount(osdStats.value.peers.connected)
+      ? osdStats.value.peers.connected
+      : undefined,
+}))
 
 // Actual player ranges include the native adapter's snapshot.buffered range.
 const bufferSeconds = computed(() => {
@@ -839,7 +869,7 @@ const showsLoader = computed(
 let loaderSince = 0
 let loaderDelay = LOADER_DELAY_MS
 // Сколько файла было скачано, когда подготовка началась: от него считается
-// докачанное для процента (`bufferProgress`)
+// реакция декоративного света (`bufferProgress`)
 let downloadedAtStage: number | null = null
 
 watch(
@@ -857,21 +887,27 @@ watch(
 
 // Уходящая сцена замирает: подпись и свет не меняются во время растворения
 const stageStep = ref<StageStep>(step.value)
-const stageStats = shallowRef(shownStats.value)
+const stageStats = shallowRef(osdStats.value)
 
 watchEffect(() => {
   if (!showsLoader.value)
     return
 
   stageStep.value = step.value
-  stageStats.value = shownStats.value
+  stageStats.value = osdStats.value
 })
 
 const stageProgress = computed(() => {
   const file = stageStats.value?.file
 
-  if (!file)
+  if (
+    !file
+    || stageStats.value?.activity !== 'downloading'
+    || !Number.isFinite(file.downloaded)
+    || file.downloaded < 0
+  ) {
     return 0
+  }
 
   downloadedAtStage ??= file.downloaded
 
@@ -2120,6 +2156,7 @@ function onVisibility() {
 }
 
 function startStats() {
+  statsPollingSince.value = Date.now()
   player.pollStats(() => ({
     time: Math.max(0, phase.value === 'playing' ? position.value : startAt),
     intervalMs: phase.value === 'playing' && !stalled.value ? 2000 : 1000,
@@ -2379,14 +2416,14 @@ onBeforeUnmount(() => {
         <template v-else-if="showsLoader">
           <PlayerLamp
             :step="stageStep"
-            :connected="stageStats?.peers.connected ?? 0"
+            :connected="
+              isPeerCount(stageStats?.peers.connected)
+                ? stageStats!.peers.connected
+                : 0
+            "
             :progress="stageProgress"
           />
-          <PlayerBuffering
-            :step="stageStep"
-            :stats="stageStats"
-            :progress="stageProgress"
-          />
+          <PlayerBuffering :step="stageStep" :stats="stageStats" />
         </template>
       </PlayerStage>
     </Transition>
@@ -2412,9 +2449,9 @@ onBeforeUnmount(() => {
     >
       <p v-if="stalled" class="player__stall" role="status">
         <span class="player__spinner" aria-hidden="true" />
-        {{ t(slow ? "player.steps.slow" : "player.steps.buffering")
-        }}<template v-if="shownStats">
-          · {{ t("player.peers", shownStats.peers.connected) }}
+        {{ t(`player.steps.${stalledStatus.step}`)
+        }}<template v-if="stalledStatus.connected !== undefined">
+          · {{ t("player.peers", stalledStatus.connected) }}
         </template>
       </p>
 

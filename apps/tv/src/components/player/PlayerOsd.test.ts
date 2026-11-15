@@ -243,6 +243,9 @@ it.each(locales)(
   async (text) => {
     for (const [speed, expected] of [
       [0, `0${text.decimal}0`],
+      [1, `&lt;0${text.decimal}1`],
+      [6249, `&lt;0${text.decimal}1`],
+      [6250, `0${text.decimal}1`],
       [12500, `0${text.decimal}1`],
       [1237500, `9${text.decimal}9`],
       [1250000, '10'],
@@ -387,3 +390,72 @@ it.each(locales)(
     }
   },
 )
+
+it.each(['en_US', 'ru_RU'])(
+  'shows honest cached playback 0 Mbps, six seeders and 29 seconds in %s',
+  async (locale) => {
+    const html = await render(
+      {
+        stats: {
+          ...stats,
+          downloadSpeed: 0,
+          peers: { connected: 6, found: 40, seeders: 6 },
+        },
+        bufferSeconds: 29,
+        cacheSeconds: null,
+      },
+      locale,
+    )
+    expect(html.replace(/<[^>]*>/g, '')).not.toMatch(/Torrent|Торрент/)
+    expect(html).toContain(
+      locale === 'en_US'
+        ? 'Server download: 0.0 Mbps'
+        : 'Загрузка сервером: 0,0 Мбит/с',
+    )
+    expect(html).toContain(
+      locale === 'en_US' ? 'Buffered: 29 s' : 'Запас видео: 29 с',
+    )
+    expect(html).toContain(
+      locale === 'en_US' ? 'Connected seeders: 6' : 'Подключённые сиды: 6',
+    )
+    expect(html).not.toContain('osd__pill--low')
+  },
+)
+
+it('does not claim a zero signal when speed or average bitrate is unknown', async () => {
+  for (const changes of [
+    {
+      stats: {
+        ...stats,
+        downloadSpeed: 0,
+        downloadSpeedMeasured: false,
+        peers: { ...stats.peers, seedersKnown: false },
+      },
+    },
+    { duration: Number.NaN },
+  ]) {
+    const html = await render(changes)
+    const signal = html.match(
+      /<span[^>]*class="[^"]*\bsignal\b[^"]*"[^>]*>/,
+    )?.[0]
+    expect(signal).toBeDefined()
+    expect(signal).toContain('aria-hidden="true"')
+    expect(signal).not.toContain('aria-label=')
+    expect(signal).not.toContain('role=')
+  }
+  const cold = await render({
+    stats: {
+      ...stats,
+      downloadSpeed: 0,
+      downloadSpeedMeasured: false,
+      peers: { ...stats.peers, seedersKnown: false },
+    },
+  })
+  expect(cold).toContain('Server download: — Mbps')
+  expect(cold).toContain('Connected seeders: —')
+  expect(await render({ stats: { ...stats, downloadSpeed: 0 } })).toContain(
+    'Network: 0 of 4',
+  )
+  const idle = await render({ stats: { ...stats, activity: 'idle' } })
+  expect(idle).not.toContain('osd__pill')
+})

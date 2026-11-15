@@ -24,6 +24,7 @@ import {
   networkState,
   nextRetry,
   playbackCacheAtPosition,
+  playerBufferedSeconds,
   playerPrompt,
   pressScrub,
   RETRY_RESET_MS,
@@ -324,7 +325,7 @@ describe('network warning suppression', () => {
       -1,
     ]) {
       expect(networkState({ ...base, speed })).toMatchObject({
-        level: 0,
+        level: undefined,
         low: false,
       })
     }
@@ -783,4 +784,64 @@ describe('playback cache samples', () => {
       cause: 'unsupported',
     })
   })
+})
+
+it('distinguishes tiny positive torrent speed from a measured zero', () => {
+  expect(formatMegabits(0, 'en_US')).toBe('0.0')
+  expect(formatMegabits(1, 'en_US')).toBe('<0.1')
+  expect(formatMegabits(6249, 'ru_RU')).toBe('<0,1')
+  expect(formatMegabits(6250, 'en_US')).toBe('0.1')
+})
+
+it('does not diagnose missing peers from malformed external counters', () => {
+  for (const invalid of [Number.NaN, Infinity, -1, 1.5]) {
+    expect(
+      bufferingStep(
+        {
+          ...waitingStats,
+          peers: { connected: invalid, found: 0, seeders: 0 },
+        },
+        16_000,
+      ),
+    ).toBe('connecting')
+    expect(
+      bufferingStep(
+        {
+          ...waitingStats,
+          peers: { connected: 0, found: invalid, seeders: 0 },
+        },
+        16_000,
+      ),
+    ).toBe('connecting')
+  }
+  expect(
+    bufferingStep(
+      { ...waitingStats, downloadSpeed: 100, downloadSpeedMeasured: false },
+      16_000,
+    ),
+  ).toBe('waitingPeers')
+})
+
+it('keeps malformed player positions or ranges unknown while valid empty ranges measure zero', () => {
+  const video = (position: number, ranges: [number, number][]) =>
+    ({
+      currentTime: position,
+      buffered: {
+        length: ranges.length,
+        start: (i: number) => ranges[i]![0],
+        end: (i: number) => ranges[i]![1],
+      },
+    }) as HTMLVideoElement
+  for (const position of [Number.NaN, Infinity, -1])
+    expect(playerBufferedSeconds(video(position, [[0, 50]]))).toBeNaN()
+  for (const range of [
+    [Number.NaN, 50],
+    [0, Infinity],
+    [5, 4],
+    [-1, 50],
+  ] as [number, number][])
+    expect(playerBufferedSeconds(video(20, [range]))).toBeNaN()
+  expect(playerBufferedSeconds(video(20, []))).toBe(0)
+  expect(playerBufferedSeconds(video(20, [[25, 30]]))).toBe(0)
+  expect(playerBufferedSeconds(video(20, [[10, 49]]))).toBe(29)
 })
