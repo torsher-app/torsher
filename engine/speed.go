@@ -28,6 +28,7 @@ type counterSample struct {
 type speed struct {
 	download int64
 	upload   int64
+	measured bool
 }
 
 type peerDiagnosticSnapshot struct {
@@ -41,6 +42,7 @@ type speedTracker struct {
 	mu          sync.Mutex
 	samples     map[metainfo.Hash][]counterSample
 	speeds      map[metainfo.Hash]speed
+	torrents    map[metainfo.Hash]*torrent.Torrent
 	// Куски, не прошедшие проверку хэша, на прошлом замере
 	badPieces map[metainfo.Hash]int64
 }
@@ -56,6 +58,7 @@ func newSpeedTracker() *speedTracker {
 	return &speedTracker{
 		samples:   map[metainfo.Hash][]counterSample{},
 		speeds:    map[metainfo.Hash]speed{},
+		torrents:  map[metainfo.Hash]*torrent.Torrent{},
 		badPieces: map[metainfo.Hash]int64{},
 	}
 }
@@ -91,6 +94,12 @@ func (s *speedTracker) sample(now time.Time, torrents []*torrent.Torrent) []badP
 		stats := t.Stats()
 		seen[hash] = true
 
+		if s.torrents[hash] != t {
+			delete(s.samples, hash)
+			delete(s.speeds, hash)
+			s.torrents[hash] = t
+		}
+
 		history := append(s.samples[hash], counterSample{
 			at:         now,
 			downloaded: stats.BytesReadData.Int64(),
@@ -106,6 +115,7 @@ func (s *speedTracker) sample(now time.Time, torrents []*torrent.Torrent) []badP
 
 		if elapsed > 0 {
 			s.speeds[hash] = speed{
+				measured: true,
 				download: int64(float64(last.downloaded-first.downloaded) / elapsed),
 				upload:   int64(float64(last.uploaded-first.uploaded) / elapsed),
 			}
@@ -124,6 +134,7 @@ func (s *speedTracker) sample(now time.Time, torrents []*torrent.Torrent) []badP
 		if !seen[hash] {
 			delete(s.samples, hash)
 			delete(s.speeds, hash)
+			delete(s.torrents, hash)
 			delete(s.badPieces, hash)
 		}
 	}
@@ -139,12 +150,15 @@ func badPiecesOf(stats torrent.TorrentStats) int64 {
 	return stats.PiecesDirtiedBad.Int64()
 }
 
-// Байт в секунду; раздачи, которую ещё не замеряли, — ноль
-func (s *speedTracker) of(hash metainfo.Hash) speed {
+// Байт в секунду; measured отличает настоящий ноль от отсутствующего замера.
+func (s *speedTracker) of(t *torrent.Torrent) speed {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	return s.speeds[hash]
+	if s.torrents[t.InfoHash()] != t {
+		return speed{}
+	}
+	return s.speeds[t.InfoHash()]
 }
 
 // Не берёт mutex sampler или клиента: даже при зависшем Stats поток можно закрыть.
