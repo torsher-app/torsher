@@ -418,6 +418,7 @@ it('старый движок без seeders остаётся совместим
     connected: 7,
     found: 41,
     seeders: 0,
+    seedersKnown: false,
   })
 })
 
@@ -461,3 +462,22 @@ describe('engine error status compatibility', () => {
     )
   })
 })
+
+it.each([undefined, false, true])(
+  'preserves download measurement availability from engine: %s',
+  async (measured) => {
+    fetchMock.mockResolvedValue(
+      json({
+        ...liveStats,
+        downloadSpeed: 0,
+        ...(measured === undefined ? {} : { downloadSpeedMeasured: measured }),
+        peers: { connected: 7, found: 41, seeders: 0 },
+      }),
+    )
+    const actual = await torrentStats(INFO_HASH)
+    expect(actual.downloadSpeed).toBe(0)
+    expect(actual.downloadSpeedMeasured).toBe(measured)
+    expect(actual.peers.seeders).toBe(0)
+    expect(actual.peers.seedersKnown).not.toBe(false)
+  },
+)

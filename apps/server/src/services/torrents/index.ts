@@ -1091,8 +1091,14 @@ export function torrentsByInfoHash(infoHashes: string[]) {
 export type TorrentActivity = 'idle' | 'downloading'
 
 export interface StreamStats {
+  downloadSpeedMeasured?: boolean
   activity: TorrentActivity
-  peers: { connected: number, found: number, seeders: number }
+  peers: {
+    connected: number
+    found: number
+    seeders: number
+    seedersKnown?: boolean
+  }
   downloadSpeed: number
   uploadSpeed: number
   file: {
@@ -1118,7 +1124,8 @@ export async function streamStats(
   const size = files[fileIndex]?.size ?? 0
   const idle: StreamStats = {
     activity: 'idle',
-    peers: { connected: 0, found: 0, seeders: 0 },
+    downloadSpeedMeasured: false,
+    peers: { connected: 0, found: 0, seeders: 0, seedersKnown: false },
     downloadSpeed: 0,
     uploadSpeed: 0,
     file: {
@@ -1156,6 +1163,9 @@ export async function streamStats(
     activity: 'downloading',
     peers: stats.peers,
     downloadSpeed: stats.downloadSpeed,
+    ...(stats.downloadSpeedMeasured === undefined
+      ? {}
+      : { downloadSpeedMeasured: stats.downloadSpeedMeasured }),
     uploadSpeed: stats.uploadSpeed,
     file: {
       size,

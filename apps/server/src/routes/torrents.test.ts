@@ -498,6 +498,8 @@ describe('статистика', () => {
 
     expect(response.json()).toMatchObject({
       activity: 'idle',
+      downloadSpeedMeasured: false,
+      peers: { connected: 0, found: 0, seeders: 0, seedersKnown: false },
       file: { size: 9_437_184, downloaded: 0, bufferedAhead: 0 },
     })
   })
@@ -614,7 +616,7 @@ describe('статистика', () => {
     })
   })
 
-  it.each([undefined, 12])(
+  it.each([undefined, 0, 12])(
     'public stats сохраняет seeders нового движка и поддерживает старый: %s',
     async (seeders) => {
       const torrent = insertTorrent()
@@ -638,7 +640,32 @@ describe('статистика', () => {
         connected: 20,
         found: 41,
         seeders: seeders ?? 0,
+        ...(seeders === undefined ? { seedersKnown: false } : {}),
       })
+    },
+  )
+
+  it.each([undefined, false, true])(
+    'propagates download measurement availability: %s',
+    async (measured) => {
+      const torrent = insertTorrent()
+      engine({
+        [`GET /torrents/${INFO_HASH}/stats`]: () =>
+          json({
+            ...liveStats,
+            downloadSpeed: 0,
+            ...(measured === undefined
+              ? {}
+              : { downloadSpeedMeasured: measured }),
+          }),
+      })
+      const response = await app.inject({
+        url: `/api/torrents/${torrent.id}/stats?fileIndex=0`,
+        cookies: owner,
+      })
+      expect(response.statusCode).toBe(200)
+      expect(response.json().downloadSpeed).toBe(0)
+      expect(response.json().downloadSpeedMeasured).toBe(measured)
     },
   )
 
