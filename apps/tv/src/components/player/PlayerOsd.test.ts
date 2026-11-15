@@ -62,7 +62,7 @@ async function render(
 it('shows Mbps, buffer and connected seeders together with accessible names', async () => {
   const html = await render()
   expect(html).toContain('Server download: 46 Mbps')
-  expect(html).toContain('Player buffer: 24 s')
+  expect(html).toContain('Buffered: 24 s')
   expect(html).toContain('Connected seeders: 3')
   expect(html).not.toContain('Connected seeders: 9')
   expect(html).not.toContain('Connected seeders: 40')
@@ -82,7 +82,7 @@ it('keeps zero speed and zero seeders neutral with a full buffer', async () => {
     'ru_RU',
   )
   expect(html).toContain('Загрузка сервером: 0,0 Мбит/с')
-  expect(html).toContain('Буфер плеера: 7 мин')
+  expect(html).toContain('Запас видео: 7 мин')
   expect(html).toContain('Подключённые сиды: 0')
   expect(html).not.toContain('osd__pill--low')
 })
@@ -95,7 +95,7 @@ it('warns only when speed is insufficient and buffer is running out', async () =
   })
   expect(html).toContain('osd__pill--low')
   expect(html).toContain('0.0 Mbps')
-  expect(html).toContain('Player buffer: 24 s')
+  expect(html).toContain('Buffered: 24 s')
   expect(html).toContain('Connected seeders: 3')
 })
 
@@ -125,23 +125,27 @@ it('does not turn unknown measurements into zero', async () => {
     bufferSeconds: Number.NaN,
   })
   expect(html).toContain('Server download: — Mbps')
-  expect(html).toContain('Player buffer: —')
+  expect(html).toContain('Buffered: —')
   expect(html).toContain('Connected seeders: —')
   expect(html).not.toContain('NaN')
 })
 
-it('distinguishes player buffer from a conservative cache lower bound, including a verified tail', async () => {
+it('shows one timer buffer without player or cache labels or combining their values', async () => {
   const html = await render({ bufferSeconds: 7, cacheSeconds: 420 })
-  expect(html).toContain('Player buffer: 7 s')
-  expect(html).toContain('Server cache: ≥ 7 min')
-  const complete = await render({
-    bufferSeconds: 7,
-    cacheSeconds: 420,
-    verifiedToEnd: true,
-  })
-  expect(complete).toContain('Downloaded')
-  expect(complete).toContain('Player buffer: 7 s')
-  expect(complete).toContain('Server cache: ≥ 7 min')
+  expect(html).toContain('Buffered: 7 s')
+  expect(html.match(/aria-label="Buffered:/g)).toHaveLength(1)
+  expect(html).toContain('M12 10v4M9.5 2.5h5M12 2.5V6M17.5 7.5l2-2')
+  expect(html).not.toContain('Player')
+  expect(html).not.toContain('Cache')
+  expect(html).not.toContain('Server cache')
+  expect(html).not.toContain('≥')
+  expect(html).not.toContain('7 min')
+  expect(html.indexOf('Server download:')).toBeLessThan(
+    html.indexOf('Buffered:'),
+  )
+  expect(html.indexOf('Buffered:')).toBeLessThan(
+    html.indexOf('Connected seeders:'),
+  )
 })
 
 it('keeps missing or zero cache bounds neutral until playback actually stalls', async () => {
@@ -152,14 +156,12 @@ it('keeps missing or zero cache bounds neutral until playback actually stalls', 
     })
     expect(html).not.toContain('osd__pill--low')
   }
-  expect(await render({ cacheSeconds: null })).toContain('Server cache: —')
 })
 
 const locales = [
   {
     locale: 'en_US',
-    player: 'Player buffer:',
-    cache: 'Server cache:',
+    buffer: 'Buffered:',
     speed: 'Server download:',
     speedUnit: 'Mbps',
     seeders: 'Connected seeders:',
@@ -170,8 +172,7 @@ const locales = [
   },
   {
     locale: 'ru_RU',
-    player: 'Буфер плеера:',
-    cache: 'Кэш сервера:',
+    buffer: 'Запас видео:',
     speed: 'Загрузка сервером:',
     speedUnit: 'Мбит/с',
     seeders: 'Подключённые сиды:',
@@ -183,7 +184,7 @@ const locales = [
 ]
 
 it.each(locales)(
-  'formats unknown and invalid cache/player measurements in $locale without a false lower-bound marker',
+  'formats unknown and invalid player measurements in $locale',
   async (text) => {
     for (const value of [
       undefined,
@@ -197,8 +198,7 @@ it.each(locales)(
         { cacheSeconds: value, bufferSeconds: Number.NaN },
         text.locale,
       )
-      expect(html).toContain(`${text.cache} —`)
-      expect(html).toContain(`${text.player} —`)
+      expect(html).toContain(`${text.buffer} —`)
       expect(html).not.toContain('≥ —')
       expect(html).not.toMatch(/NaN|Infinity/)
     }
@@ -208,13 +208,13 @@ it.each(locales)(
       -1,
     ]) {
       const html = await render({ bufferSeconds: value }, text.locale)
-      expect(html).toContain(`${text.player} —`)
+      expect(html).toContain(`${text.buffer} —`)
     }
   },
 )
 
 it.each(locales)(
-  'formats zero, subsecond, minute boundaries and long buffers independently in $locale',
+  'formats zero, subsecond, minute boundaries and long buffers in $locale',
   async (text) => {
     for (const [value, expected] of [
       [0, `0 ${text.seconds}`],
@@ -227,15 +227,14 @@ it.each(locales)(
         { bufferSeconds: value, cacheSeconds: value },
         text.locale,
       )
-      expect(html).toContain(`${text.player} ${expected}`)
-      expect(html).toContain(`${text.cache} ≥ ${expected}`)
+      expect(html).toContain(`${text.buffer} ${expected}`)
     }
     const distinct = await render(
       { bufferSeconds: 7, cacheSeconds: 420 },
       text.locale,
     )
-    expect(distinct).toContain(`${text.player} 7 ${text.seconds}`)
-    expect(distinct).toContain(`${text.cache} ≥ 7 ${text.minutes}`)
+    expect(distinct).toContain(`${text.buffer} 7 ${text.seconds}`)
+    expect(distinct).not.toContain(`7 ${text.minutes}`)
   },
 )
 
@@ -287,7 +286,7 @@ it.each(locales)(
 )
 
 it.each(locales)(
-  'keeps full-file and verified-tail Done text with distinct Player/Cache in $locale',
+  'shows only Done for full files and verified tails in $locale',
   async (text) => {
     for (const [downloaded, anchorOffset] of [
       [1e9, 0],
@@ -316,8 +315,7 @@ it.each(locales)(
         text.locale,
       )
       expect(html).toContain(text.downloaded)
-      expect(html).toContain(`${text.player} 7 ${text.seconds}`)
-      expect(html).toContain(`${text.cache} ≥ 15 ${text.minutes}`)
+      expect(html).not.toContain(text.buffer)
       expect(html).not.toContain(text.speedUnit)
       expect(html).not.toContain(text.seeders)
     }
