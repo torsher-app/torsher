@@ -87,7 +87,7 @@ export function segmentStarts(
     let cut = first
 
     for (const time of cues) {
-      if (time >= cut && time < duration) {
+      if (time >= cut && time <= duration - first) {
         starts.push(time)
         while (cut <= time) cut += length
       }
@@ -96,7 +96,11 @@ export function segmentStarts(
     return starts
   }
 
-  for (let time = first; time < duration; time += length) starts.push(time)
+  // Короткий хвост контейнера может содержать только звук после последнего
+  // видеокадра. Не объявляем его отдельным сегментом с seek за конец видео:
+  // он остаётся в предыдущем сегменте, а длительность VOD сохраняется.
+  for (let time = first; time <= duration - first; time += length)
+    starts.push(time)
 
   return starts
 }

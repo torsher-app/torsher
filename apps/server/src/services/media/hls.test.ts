@@ -46,6 +46,33 @@ describe('segmentStarts', () => {
   it('без точек — равные сегменты', () => {
     expect(segmentStarts(20, null)).toEqual([0, 2, 8, 14])
   })
+  it.each([null, [0, 2, 8, 14, 20, 26]])(
+    'объединяет короткий хвост с предыдущим сегментом: %j',
+    (cues) => {
+      expect(segmentStarts(26.021, cues)).toEqual([0, 2, 8, 14, 20])
+      expect(segmentStarts(27.999, cues)).toEqual([0, 2, 8, 14, 20])
+      expect(segmentStarts(28, cues)).toEqual([0, 2, 8, 14, 20, 26])
+      expect(segmentStarts(28.001, cues)).toEqual([0, 2, 8, 14, 20, 26])
+    },
+  )
+
+  it('короткий файл остаётся целым, длина плейлиста включает хвост', () => {
+    expect(segmentStarts(0.021, null)).toEqual([0])
+    expect(segmentStarts(2.021, [0, 2])).toEqual([0])
+    const playlist = buildPlaylist(
+      segmentStarts(26.021, null),
+      26.021,
+      i => `${i}.ts`,
+    )
+    expect(playlist).toContain('#EXTINF:6.021000,\n4.ts')
+    expect(playlist).not.toContain('5.ts')
+    const lengths = [...playlist.matchAll(/#EXTINF:([\d.]+)/g)].map(match =>
+      Number(match[1]),
+    )
+    expect(lengths.reduce((sum, length) => sum + length, 0)).toBeCloseTo(
+      26.021,
+    )
+  })
 })
 
 describe('buildPlaylist', () => {
