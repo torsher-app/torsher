@@ -41,7 +41,7 @@ export type ResolveOutcome
     | {
       kind: 'notFound'
       noSources?: boolean
-      failureKind?: 'unsuitable' | 'searchFailed'
+      failureKind?: 'unsuitable' | 'searchFailed' | 'filesFailed'
     }
     | { kind: 'cancelled' }
     | { kind: 'followUnavailable' | 'followOpenFailed' | 'followUnsupported' }
@@ -101,7 +101,7 @@ async function fileIn(
   torrentId: string,
   options: ResolveOptions,
   wait: boolean,
-): Promise<EpisodeFile | undefined | 'cancelled'> {
+): Promise<EpisodeFile | undefined | 'cancelled' | 'failed'> {
   if (!options.candidateId) {
     diagnostic(
       {
@@ -142,8 +142,13 @@ async function fileIn(
         )
       }
       catch {
-        report(options, target, 'source.attempt', 'search_failed')
-        return undefined
+        report(
+          options,
+          target,
+          'source.attempt',
+          options.cancelled() ? 'cancelled' : 'search_failed',
+        )
+        return options.cancelled() ? 'cancelled' : 'failed'
       }
 
       if (options.cancelled()) {
@@ -244,7 +249,7 @@ export async function resolveEpisode(
       const picked = await pickedFile(target, options)
       if (options.cancelled() || picked === 'cancelled')
         return { kind: 'cancelled' }
-      return picked
+      return picked && picked !== 'failed'
         ? { kind: 'found', file: picked }
         : { kind: 'followOpenFailed' }
     }
@@ -272,12 +277,18 @@ export async function resolveEpisode(
   }
 
   options.onStep?.('searching')
+  let filesFailed = false
 
   for (const torrentId of known) {
     const found = await fileIn(target, torrentId, options, false)
 
     if (found === 'cancelled')
       return { kind: 'cancelled' }
+
+    if (found === 'failed') {
+      filesFailed = true
+      continue
+    }
 
     if (found)
       return { kind: 'found', file: found }
@@ -291,7 +302,10 @@ export async function resolveEpisode(
   if (picked === 'cancelled')
     return { kind: 'cancelled' }
 
-  if (picked)
+  if (picked === 'failed')
+    filesFailed = true
+
+  if (picked && picked !== 'failed')
     return { kind: 'found', file: picked }
 
   let candidates: SourceCandidate[] = []
@@ -377,6 +391,8 @@ export async function resolveEpisode(
 
     if (outcome.kind !== 'notFound')
       return outcome
+    if (outcome.failureKind === 'filesFailed')
+      filesFailed = true
   }
 
   return options.cancelled()
@@ -384,11 +400,13 @@ export async function resolveEpisode(
     : {
         kind: 'notFound',
         noSources,
-        ...(!searched
-          ? { failureKind: 'searchFailed' as const }
-          : unsuitable
-            ? { failureKind: 'unsuitable' as const }
-            : {}),
+        ...(filesFailed
+          ? { failureKind: 'filesFailed' as const }
+          : !searched
+              ? { failureKind: 'searchFailed' as const }
+              : unsuitable
+                ? { failureKind: 'unsuitable' as const }
+                : {}),
       }
 }
 
@@ -429,6 +447,9 @@ async function openAndFind(
 
   if (found === 'cancelled')
     return { kind: 'cancelled' }
+
+  if (found === 'failed')
+    return { kind: 'notFound', failureKind: 'filesFailed' }
 
   return found ? { kind: 'found', file: found } : { kind: 'notFound' }
 }

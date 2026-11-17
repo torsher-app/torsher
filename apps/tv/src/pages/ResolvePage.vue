@@ -66,7 +66,7 @@ const step = ref<ResolveStep>('searching')
 const notFound = ref(false)
 // Серии не нашлось, а искать было негде: источников на сервере нет
 const noSources = ref(false)
-const failureReason = ref<'unsuitable' | 'searchFailed'>()
+const failureReason = ref<'unsuitable' | 'searchFailed' | 'filesFailed'>()
 const followFailure = ref<
   'followUnavailable' | 'followOpenFailed' | 'followUnsupported'
 >()
@@ -88,14 +88,17 @@ const label = computed(() => t(`resolve.${step.value}`))
 const failure = computed(
   () =>
     followFailure.value
-    ?? (props.candidate
-      ? 'failed'
-      : noSources.value
-        ? 'notInLibrary'
-        : (failureReason.value ?? 'notFound')),
+    ?? (failureReason.value === 'filesFailed'
+      ? 'filesFailed'
+      : props.candidate
+        ? 'failed'
+        : noSources.value
+          ? 'notInLibrary'
+          : (failureReason.value ?? 'notFound')),
 )
 const actions = computed(() => [
-  ...(failureReason.value === 'searchFailed'
+  ...(failureReason.value === 'filesFailed'
+    || failureReason.value === 'searchFailed'
     || followFailure.value === 'followOpenFailed'
     || followFailure.value === 'followUnsupported'
     ? [{ id: 'retry' as const, label: t('resolve.retry') }]

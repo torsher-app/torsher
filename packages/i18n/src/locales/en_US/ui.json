@@ -4067,6 +4067,10 @@
       "title": "No suitable source",
       "text": "Torrents for this episode were found, but their language, quality, availability or match confidence prevents automatic selection. Review them in Sources."
     },
+    "filesFailed": {
+      "title": "Could not load the file list",
+      "text": "The server did not respond to the file list request. Retry or choose another source."
+    },
     "searchFailed": {
       "title": "Could not check sources",
       "text": "The search did not respond. Retry or open Sources manually."

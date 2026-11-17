@@ -99,9 +99,25 @@ const renderer = createRenderer<Element, Element>({
 async function settle() {
   for (let i = 0; i < 6; i++) await nextTick()
 }
+let controls: {
+  failure: string
+  actions: { id: string, label: string }[]
+  onChoice: (choice: 'retry' | 'back') => void
+}
 async function mount(props = {}) {
   const app = renderer.createApp(
-    { ...ResolvePage, render: () => null },
+    {
+      ...ResolvePage,
+      render(
+        _ctx: unknown,
+        _cache: unknown,
+        _props: unknown,
+        setup: typeof controls,
+      ) {
+        controls = setup
+        return null
+      },
+    },
     { id: 'tmdb:tv:100', season: '1', episode: '2', ...props },
   )
   app.provide(ssrContextKey, {})
@@ -287,5 +303,56 @@ it('leaves Home continuation preference ahead of factual history', async () => {
   expect(mocks.resolve.mock.calls[0]![1].torrents.filter(Boolean)).toEqual([
     'watched-pack',
   ])
+  app.unmount()
+})
+
+it('retries a failed file list with the same selected source and query', async () => {
+  mocks.resolve
+    .mockResolvedValueOnce({ kind: 'notFound', failureKind: 'filesFailed' })
+    .mockResolvedValueOnce({
+      kind: 'found',
+      file: { torrentId: 'selected', fileIndex: 1 },
+    })
+  const app = await mount({ candidate: 'selected', query: 'Alternate' })
+  expect(controls.failure).toBe('filesFailed')
+  expect(controls.actions.map(action => action.id)).toEqual([
+    'retry',
+    'sources',
+    'back',
+  ])
+  controls.onChoice('retry')
+  await settle()
+  expect(mocks.resolve).toHaveBeenCalledTimes(2)
+  for (const call of mocks.resolve.mock.calls) {
+    expect(call[1]).toMatchObject({
+      candidateId: 'selected',
+      query: 'Alternate',
+    })
+  }
+  expect(mocks.replace.mock.calls[0]![0].path).toBe('/play/selected/1')
+  app.unmount()
+})
+it('returns from a files failure to the original paused file at its captured position', async () => {
+  mocks.historyState.sourceReturn = {
+    path: '/play/original/3',
+    query: { title: 'tmdb:tv:100', season: '1', episode: '2' },
+    position: 123.5,
+    paused: true,
+  }
+  mocks.resolve.mockResolvedValue({
+    kind: 'notFound',
+    failureKind: 'filesFailed',
+  })
+  const app = await mount({ candidate: 'selected' })
+  controls.onChoice('back')
+  expect(mocks.replace).toHaveBeenCalledExactlyOnceWith({
+    path: '/play/original/3',
+    query: { title: 'tmdb:tv:100', season: '1', episode: '2' },
+    state: {
+      sourceReturn: null,
+      sourcePanelReturn: null,
+      resumePlayback: { position: 123.5, paused: true },
+    },
+  })
   app.unmount()
 })
