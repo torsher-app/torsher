@@ -123,14 +123,16 @@ export function useSourceLabels() {
       item => item.season === (last.season ?? 0),
     )
 
+    const source = last.source === undefined ? release : last.source
+
     return {
       line: [
         last.season && last.episode ? `S${last.season}E${last.episode}` : '',
-        release ? releaseLine(release) : '',
+        source ? releaseLine(source) : '',
       ]
         .filter(Boolean)
         .join(' · '),
-      torrentId: release?.torrentId,
+      torrentId: source?.torrentId ?? undefined,
       season: last.season,
       episode: last.episode,
     }

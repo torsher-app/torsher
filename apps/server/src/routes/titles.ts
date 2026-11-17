@@ -1,3 +1,4 @@
+import { historySource } from '../services/sources/history.ts'
 import { episodeSkips } from '../services/diagnostics/episodes.ts'
 import { rankDecisiveKey } from '../services/sources/rank.ts'
 import type { DiagnosticContext } from '../services/diagnostics/index.ts'
@@ -517,6 +518,7 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
               duration: last.duration,
               watched: isProgressWatched(last),
               updatedAt: last.updatedAt.toISOString(),
+              source: await historySource(last),
             }
           : null,
         episodes: episodeProgress(request.profileId, request.params.id).map(
