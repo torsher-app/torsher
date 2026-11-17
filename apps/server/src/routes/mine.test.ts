@@ -14,7 +14,12 @@ import { setImdbEnabled } from '../services/ratings/imdb/state.ts'
 import * as imdbStore from '../services/ratings/imdb/store.ts'
 import { ACCESS_TOKEN_COOKIE } from '../config.ts'
 import { getDb, migrateDb } from '../db/index.ts'
-import { profileTitles, titleProgress, users } from '../db/schema.ts'
+import {
+  metaCache,
+  profileTitles,
+  titleProgress,
+  users,
+} from '../db/schema.ts'
 import {
   emptyList,
   movie,
@@ -645,6 +650,128 @@ describe('get /api/profiles/:id/history', () => {
         { title: { id: MOVIE }, season: null, episode: null, watched: true },
       ],
     })
+  })
+
+  it('не считает native file ID и применяет pagination только к catalog history', async () => {
+    getDb()
+      .insert(titleProgress)
+      .values([
+        {
+          profileId,
+          season: 0,
+          episode: 0,
+          titleId: 'file:home-video',
+          position: 120,
+          updatedAt: new Date(3000),
+        },
+        {
+          profileId,
+          season: 0,
+          episode: 0,
+          titleId: MOVIE,
+          position: 120,
+          updatedAt: new Date(2000),
+        },
+        {
+          profileId,
+          season: 0,
+          episode: 0,
+          titleId: SERIES,
+          position: 120,
+          updatedAt: new Date(1000),
+        },
+      ])
+      .run()
+    const before = getDb().select().from(titleProgress).all()
+
+    for (const [offset, id] of [MOVIE, SERIES].entries()) {
+      const res = await app.inject({
+        url: `/api/profiles/${profileId}/history?language=ru-RU&limit=1&offset=${offset}`,
+        cookies: authed(),
+      })
+      expect(res.statusCode).toBe(200)
+      expect(res.json()).toMatchObject({
+        total: 2,
+        items: [{ title: { id } }],
+      })
+      expect(res.json().items).toHaveLength(1)
+    }
+    expect(getDb().select().from(titleProgress).all()).toEqual(before)
+  })
+
+  it('native-only история пуста без обращения к TMDB', async () => {
+    getDb()
+      .insert(titleProgress)
+      .values({
+        profileId,
+        season: 0,
+        episode: 0,
+        titleId: 'file:home-video',
+        position: 120,
+      })
+      .run()
+    fetchMock.mockClear()
+    const res = await app.inject({
+      url: `/api/profiles/${profileId}/history`,
+      cookies: authed(),
+    })
+    expect(res.statusCode).toBe(200)
+    expect(res.json()).toEqual({ total: 0, items: [] })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('без ключа и metadata возвращает ошибку, после восстановления повтор отдаёт историю', async () => {
+    getDb().delete(metaCache).run()
+    vi.stubEnv('TMDB_ACCESS_TOKEN', '')
+    getDb()
+      .insert(titleProgress)
+      .values([
+        {
+          profileId,
+          season: 0,
+          episode: 0,
+          titleId: 'file:home-video',
+          position: 120,
+        },
+        { profileId, season: 0, episode: 0, titleId: MOVIE, position: 120 },
+      ])
+      .run()
+    const before = getDb().select().from(titleProgress).all()
+    const request = () =>
+      app.inject({
+        url: `/api/profiles/${profileId}/history?language=ru-RU`,
+        cookies: authed(),
+      })
+    expect((await request()).statusCode).toBe(500)
+    vi.stubEnv('TMDB_ACCESS_TOKEN', 'test-token')
+    const recovered = await request()
+    expect(recovered.statusCode).toBe(200)
+    expect(recovered.json()).toMatchObject({
+      total: 1,
+      items: [{ title: { id: MOVIE } }],
+    })
+    expect(getDb().select().from(titleProgress).all()).toEqual(before)
+  })
+
+  it('не выдаёт частичную страницу за успешную при ошибке metadata одной карточки', async () => {
+    getDb().delete(metaCache).run()
+    getDb()
+      .insert(titleProgress)
+      .values([
+        { profileId, season: 0, episode: 0, titleId: MOVIE, position: 120 },
+        { profileId, season: 0, episode: 0, titleId: SERIES, position: 120 },
+      ])
+      .run()
+    fetchMock.mockImplementation(async (input) => {
+      if (String(input).includes('/tv/2000'))
+        throw new Error('offline')
+      return new Response(JSON.stringify(tmdbResponse(String(input))))
+    })
+    const res = await app.inject({
+      url: `/api/profiles/${profileId}/history?language=ru-RU`,
+      cookies: authed(),
+    })
+    expect(res.statusCode).toBe(500)
   })
 
   it('отвечает 404 на неизвестный профиль', async () => {
