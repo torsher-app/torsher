@@ -140,7 +140,8 @@ async function onCheck() {
   isChecking.value = true
 
   try {
-    const result = await checkTmdbKey(typed || undefined)
+    const result = await withErrorMode('silent', () =>
+      checkTmdbKey(typed || undefined))
 
     if (result.ok) {
       toast.success(t('panel.settings.metadata.check.ok'))
@@ -150,6 +151,9 @@ async function onCheck() {
         t(`panel.settings.metadata.check.${result.kind ?? 'rejected'}`),
       )
     }
+  }
+  catch {
+    toast.error(t('panel.settings.metadata.check.unavailable'))
   }
   finally {
     isChecking.value = false
