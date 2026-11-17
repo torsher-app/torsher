@@ -551,9 +551,13 @@ export function formatClock(date: Date, locale: string) {
   return `${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
-/** Когда закончится при обычной скорости с текущей позиции */
-export function endsAt(now: Date, remainingSeconds: number) {
-  return new Date(now.getTime() + Math.max(0, remainingSeconds) * 1000)
+/** Время окончания: остаток в media seconds переводим в wall-clock. */
+export function endsAt(now: Date, remainingSeconds: number, playbackRate = 1) {
+  const rate
+    = Number.isFinite(playbackRate) && playbackRate > 0 ? playbackRate : 1
+  return new Date(
+    now.getTime() + (Math.max(0, remainingSeconds) / rate) * 1000,
+  )
 }
 
 /** Мегабайты в секунду с одним знаком: «2,4»; без данных локали — точка */

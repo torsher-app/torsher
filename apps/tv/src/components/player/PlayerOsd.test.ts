@@ -37,6 +37,7 @@ async function render(
         subtitle: '',
         position: 100,
         duration: 1000,
+        speed: 1,
         bufferEnd: 124,
         scrubTarget: null,
         paused: false,
@@ -459,3 +460,25 @@ it('does not claim a zero signal when speed or average bitrate is unknown', asyn
   const idle = await render({ stats: { ...stats, activity: 'idle' } })
   expect(idle).not.toContain('osd__pill')
 })
+
+it.each(['en_US', 'ru_RU'])(
+  'adjusts ETA without changing media remaining in %s',
+  async (locale) => {
+    const now = new Date(2026, 10, 17, 18, 0, 0)
+    const normal = await render({ now, speed: 1 }, locale)
+    const fast = await render({ now, speed: 1.5 }, locale)
+    const slow = await render({ now, speed: 0.5 }, locale)
+    const scrub = await render({ now, speed: 1.5, scrubTarget: 550 }, locale)
+    for (const html of [normal, fast, slow]) expect(html).toContain('−15:00')
+    const clock = (minutes: number) =>
+      new Intl.DateTimeFormat(locale.replace('_', '-'), {
+        hour: '2-digit',
+        minute: '2-digit',
+      }).format(new Date(2026, 10, 17, 18, minutes, 0))
+    expect(normal).toContain(clock(15))
+    expect(fast).toContain(clock(10))
+    expect(slow).toContain(clock(30))
+    expect(scrub).toContain(clock(5))
+    expect(scrub).toContain('−7:30')
+  },
+)

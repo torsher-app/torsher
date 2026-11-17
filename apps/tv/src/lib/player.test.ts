@@ -203,6 +203,25 @@ describe('время', () => {
   })
 })
 
+it.each([0.5, 0.75, 1, 1.25, 1.5, 2])(
+  'calculates wall-clock ETA at %sx',
+  (rate) => {
+    const now = new Date(2026, 10, 17, 18, 0, 0)
+    expect(endsAt(now, 900, rate).getTime() - now.getTime()).toBe(
+      900000 / rate,
+    )
+    expect(endsAt(now, -5, rate).getTime()).toBe(now.getTime())
+  },
+)
+
+it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
+  'uses normal ETA for invalid rate %s',
+  (rate) => {
+    const now = new Date(2026, 10, 17, 18, 0, 0)
+    expect(endsAt(now, 900, rate).getTime() - now.getTime()).toBe(900000)
+  },
+)
+
 describe('место на диске', () => {
   it('гигабайты с одним знаком по локали', () => {
     expect(formatGigabytes(2.25 * 1024 ** 3, 'ru_RU')).toBe('2,3')
