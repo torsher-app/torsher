@@ -445,6 +445,135 @@ describe('связыватель', () => {
     ])
   })
 
+  it.each(['matched', 'ignored'] as const)(
+    'rebinds an orphaned %s hardlink after readding and explicit matching',
+    async (status) => {
+      const torrent = await seed('Example Movie (2008)', movieFiles, {
+        titleId: status === 'matched' ? 'tmdb:movie:603' : null,
+        matchStatus: status,
+      })
+      progress = [4000, 10, 20]
+      selected = [0, 1]
+      await syncLibrary()
+      getDb()
+        .update(mediaFiles)
+        .set({
+          duration: 123,
+          probedAt: new Date('2026-11-01T00:00:00Z'),
+          probeKey: 'preserved-probe',
+          matchSource: 'user',
+          thumb: 'preserved-thumb',
+        })
+        .run()
+      const original = rows()[0]!
+      const path = libraryPath(original.relPath)
+      const before = await stat(path)
+
+      const removed = await app.inject({
+        method: 'DELETE',
+        url: `/api/torrents/${torrent.id}?files=keep`,
+        cookies: owner,
+      })
+      expect(removed.statusCode).toBe(200)
+      expect(rows()[0]).toMatchObject({ id: original.id, torrentId: null })
+      const next = getDb()
+        .insert(torrents)
+        .values({
+          ...torrent,
+          id: randomUUID(),
+          titleId: null,
+          matchStatus: null,
+        })
+        .returning()
+        .get()
+      const matched = await app.inject({
+        method: 'PUT',
+        url: `/api/torrents/${next.id}/title`,
+        cookies: owner,
+        payload: { titleId: torrent.titleId },
+      })
+      expect(matched.statusCode).toBe(200)
+      await syncLibrary()
+      await syncLibrary()
+
+      expect(rows()).toEqual([{ ...original, torrentId: next.id }])
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/torrents/${next.id}`,
+        cookies: owner,
+      })
+      expect(response.json()).toMatchObject({
+        inLibrary: true,
+        files: [
+          expect.objectContaining({ index: 0, inLibrary: true }),
+          expect.anything(),
+          expect.anything(),
+        ],
+      })
+      expect(await stat(path)).toMatchObject({
+        ino: before.ino,
+        dev: before.dev,
+        nlink: before.nlink,
+        size: before.size,
+      })
+    },
+  )
+
+  it.each([
+    'bound',
+    'title',
+    'episode',
+    'stale',
+    'replacement',
+    'different bytes',
+  ] as const)('does not adopt an existing %s file', async (reason) => {
+    const torrent = await seed('Example Movie (2008)', movieFiles, {
+      titleId: 'tmdb:movie:603',
+    })
+    progress = [4000, 10, 20]
+    selected = [0, 1]
+    await syncLibrary()
+    const original = rows()[0]!
+    getDb()
+      .update(mediaFiles)
+      .set({
+        torrentId: reason === 'bound' ? torrent.id : null,
+        titleId: reason === 'title' ? 'tmdb:movie:1' : original.titleId,
+        episode: reason === 'episode' ? 1 : original.episode,
+        stale: reason === 'stale',
+        replacementTorrentId: reason === 'replacement' ? torrent.id : null,
+      })
+      .where(eq(mediaFiles.id, original.id))
+      .run()
+    if (reason === 'different bytes') {
+      const path = libraryPath(original.relPath)
+      await rm(path)
+      await writeFile(path, Buffer.alloc(4000, 2))
+    }
+    const before = rows()[0]!
+    const next = getDb()
+      .insert(torrents)
+      .values({ ...torrent, id: randomUUID(), infoHash: '1'.repeat(40) })
+      .returning()
+      .get()
+    // Only the readded record is live for this pass.
+    getDb()
+      .update(torrents)
+      .set({ inEngine: false, infoHash: '2'.repeat(40) })
+      .where(eq(torrents.id, torrent.id))
+      .run()
+    getDb()
+      .update(torrents)
+      .set({ infoHash: HASH })
+      .where(eq(torrents.id, next.id))
+      .run()
+    await syncLibrary()
+    expect(rows().find(row => row.id === original.id)).toEqual(before)
+    expect(
+      rows().some(row => row.torrentId === next.id && row.id === original.id),
+    ).toBe(false)
+  })
+
   it('без хардлинка и reflink — копия, раздача возвращается в кэш', async () => {
     vi.spyOn(linkDeps, 'link').mockRejectedValue(
       Object.assign(new Error('EXDEV'), { code: 'EXDEV' }),
