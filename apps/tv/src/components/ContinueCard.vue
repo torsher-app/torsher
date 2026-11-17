@@ -56,6 +56,7 @@ function openActions() {
     id: props.item.id,
     title: props.item.title,
     kind: props.item.kind,
+    canOpenTitle: true,
   })
 }
 

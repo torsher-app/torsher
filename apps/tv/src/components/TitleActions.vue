@@ -308,11 +308,24 @@ function openRedownload() {
   })
 }
 
+function openTitle() {
+  const item = target.value
+
+  if (!item?.canOpenTitle)
+    return
+
+  closeTitleActions()
+  router.push(`/title/${item.id}`)
+}
+
 const mainOptions = computed<PanelOption[]>(() => {
   const state = mine.value
   const rating = state?.rating
 
   return [
+    ...(target.value?.canOpenTitle
+      ? [{ id: 'openTitle', label: t('actions.openTitle'), selected: false }]
+      : []),
     {
       id: 'watchlist',
       label: t('actions.watchlist'),
@@ -373,6 +386,9 @@ function select(id: string) {
   }
 
   switch (id) {
+    case 'openTitle':
+      openTitle()
+      break
     case 'watchlist':
       void patch({ watchlist: !state?.watchlist })
       break

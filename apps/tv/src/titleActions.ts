@@ -6,6 +6,8 @@ export interface ActionTarget {
   id: string
   title: string
   kind: Card['kind']
+  // Карточка с быстрым запуском просмотра: отдельный переход к тайтлу
+  canOpenTitle?: boolean
   // С карточки, где всё уже в библиотеке: пункт «Скачать другую раздачу»
   // (у сериала — выбранного сезона)
   redownload?: { season?: number }
