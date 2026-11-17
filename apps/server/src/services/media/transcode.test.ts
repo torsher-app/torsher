@@ -179,6 +179,85 @@ describe.runIf(hasFfmpeg())('перекодирование на ffmpeg', () => 
     return join(transcode.dir, `${index}.ts`)
   }
 
+  it.each(['encode', 'copy'] as const)(
+    'короткий AAC-хвост не требует пустого сегмента: %s',
+    async (mode) => {
+      const file = join(dir, `terminal-${mode}.mkv`)
+      execFileSync('ffmpeg', [
+        '-v',
+        'error',
+        '-y',
+        '-f',
+        'lavfi',
+        '-i',
+        'testsrc2=size=160x90:rate=1',
+        '-f',
+        'lavfi',
+        '-i',
+        'sine=f=440:r=48000',
+        '-t',
+        '26',
+        '-c:v',
+        mode === 'encode' ? 'mpeg2video' : 'libx264',
+        '-g',
+        '1',
+        '-bf',
+        '0',
+        '-c:a',
+        'aac',
+        file,
+      ])
+      const duration = Number(
+        probe(file, ['-show_entries', 'format=duration', '-of', 'csv=p=0']),
+      )
+      expect(duration).toBeGreaterThan(26)
+      expect(duration).toBeLessThan(26.1)
+      const starts = segmentStarts(duration, null)
+      const video = {
+        ...xvid,
+        codec: 'mpeg2video',
+        width: 160,
+        height: 90,
+        frameRate: 1,
+      }
+      const transcode = new HlsTranscode(
+        join(dir, `out-${transcodes.length}`),
+        {
+          url: () => file,
+          videoStream: 0,
+          audioStream: 1,
+          audio: 'copy',
+          subtitleStreams: [],
+          starts,
+          duration,
+          segmentWaitMs: 3000,
+          encode:
+            mode === 'encode' ? planEncode(video, software, null, null) : null,
+        },
+        { debug: () => {}, warn: () => {} },
+      )
+      transcodes.push(transcode)
+
+      // Последний сегмент первым: отдельный запуск с seek, как при перемотке.
+      const last = starts.length - 1
+      for (const index of [last, ...starts.map((_, i) => i)]) {
+        const path = await segmentPath(transcode, index)
+        expect(packets(path, 'v').length).toBeGreaterThan(0)
+        if (index === last) {
+          expect(
+            packets(path, 'a').length,
+            `audio in tail ${index}`,
+          ).toBeGreaterThan(0)
+        }
+      }
+      expect(starts).toEqual([0, 2, 8, 14, 20])
+      expect(
+        packets(join(transcode.dir, `${last}.ts`), 'v').at(-1)!.time,
+      ).toBeGreaterThanOrEqual(35)
+    },
+    30_000,
+  )
+
   it('каждый сегмент — H.264 с ключевого кадра ровно на своей границе', async () => {
     const { transcode, starts } = job()
 
