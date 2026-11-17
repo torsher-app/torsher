@@ -55,7 +55,7 @@ import {
 } from './services/logs/index.ts'
 import { setScrubDownloads } from './services/logs/scrub.ts'
 import { applyHomeVideoFields } from './services/library/homeVideo.ts'
-import { queueMatch, queueUnmatched } from './services/library/match.ts'
+import { queueUnmatched } from './services/library/match.ts'
 import { onFolderScanned, scanAllFolders } from './services/library/scan.ts'
 import { cleanupOrphanThumbs } from './services/library/thumbs.ts'
 import { watchFolder } from './services/library/watch.ts'
@@ -237,11 +237,12 @@ onTorrentReady((torrent) => {
 // Recognition запускается за recovery barrier.
 
 // Подключённые папки: скан при старте и раз в 12 ч — страховка к
-// наблюдателю; новые файлы «Фильмов и сериалов» идут на сопоставление,
+// наблюдателю; pending-файлы «Фильмов и сериалов» идут на сопоставление,
 // кроме тех, о которых владелец уже решил на прежнем сервере (импорт данных)
 onFolderScanned((folder, library, result) => {
   if (library.kind === 'video') {
-    void queueMatch(folder.id, applyPendingDecisions(folder.id, result.added))
+    applyPendingDecisions(folder.id, result.added)
+    queueUnmatched(folder.id)
   }
   else {
     applyHomeVideoFields([...result.added, ...result.changed])
@@ -280,7 +281,7 @@ async function startLibraryProducers() {
   resumeMoves()
   checkLibrary()
   startRecognition(() => void syncLibrary())
-  void scanAllFolders().then(queueUnmatched)
+  void scanAllFolders().then(() => queueUnmatched())
   startFollowScheduler()
 }
 
