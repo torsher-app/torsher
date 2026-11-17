@@ -54,6 +54,10 @@ export type PlaybackRestart = Pick<
   'audioStream' | 'subtitle' | 'startPosition'
 >
 
+// Один порядок для всех плееров этого запуска, включая A → B → A.
+const progressClientId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`
+let progressSequence = 0
+
 let profile: CreatePlaybackInput['device'] | undefined
 
 /**
@@ -620,6 +624,7 @@ export function usePlayback(
       .putWatchState(
         {
           ...source,
+          event: { clientId: progressClientId, sequence: ++progressSequence },
           profileId: viewerProfileId,
           position,
           duration:

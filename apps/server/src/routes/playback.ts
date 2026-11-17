@@ -1,3 +1,5 @@
+import { acceptWatchEvent } from '../services/watchEvents.ts'
+import { getDb } from '../db/index.ts'
 import {
   folderWithLibrary,
   playableMediaFile,
@@ -770,76 +772,128 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
         }
       }
 
-      if (title) {
-        saveTitleProgress(
-          {
-            profileId: request.profileId,
-            titleId: title.id,
-            season: title.season,
-            episode: title.episode,
-          },
-          {
-            position,
-            duration: duration ?? null,
-            // Файл библиотеки из раздачи помнит её: «Вы смотрели» и раздачи сезонов
-            torrentId: torrentId ?? library?.file.torrentId ?? null,
-            fileIndex: fileIndex ?? library?.file.fileIndex ?? null,
+      return getDb().transaction(() => {
+        const titleRef = title
+          ? {
+              profileId: request.profileId,
+              titleId: title.id,
+              season: title.season,
+              episode: title.episode,
+            }
+          : library
+            ? {
+                profileId: request.profileId,
+                titleId: fileProgressId(library.file.id),
+              }
+            : undefined
+        const resources = [
+          ...(torrentId
+            ? [JSON.stringify(['torrent', torrentId, fileIndex])]
+            : []),
+          ...(mediaFileId ? [JSON.stringify(['library', mediaFileId])] : []),
+          ...(titleRef
+            ? [
+                JSON.stringify([
+                  'title',
+                  titleRef.titleId,
+                  titleRef.season ?? 0,
+                  titleRef.episode ?? 0,
+                ]),
+              ]
+            : []),
+        ]
+        if (
+          !acceptWatchEvent(request.profileId, resources, request.body.event)
+        ) {
+          const saved = torrentId
+            ? getWatchState(request.profileId, torrentId, fileIndex!)
+            : titleRef
+              ? getTitleProgress(titleRef)
+              : undefined
+          return {
+            torrentId: torrentId ?? null,
+            fileIndex: fileIndex ?? null,
             mediaFileId: mediaFileId ?? null,
-          },
-          context,
-        )
+            position: saved?.position ?? 0,
+            duration: saved?.duration ?? null,
+            updatedAt: (saved?.updatedAt ?? new Date()).toISOString(),
+          }
+        }
+        if (title) {
+          saveTitleProgress(
+            {
+              profileId: request.profileId,
+              titleId: title.id,
+              season: title.season,
+              episode: title.episode,
+            },
+            {
+              position,
+              duration: duration ?? null,
+              // Файл библиотеки из раздачи помнит её: «Вы смотрели» и раздачи сезонов
+              torrentId: torrentId ?? library?.file.torrentId ?? null,
+              fileIndex: fileIndex ?? library?.file.fileIndex ?? null,
+              mediaFileId: mediaFileId ?? null,
+            },
+            context,
+          )
 
-        if (title.season === undefined && isWatched(position, duration ?? null))
-          clearMovieWatchlist(request.profileId, title.id)
-      }
-      else if (library) {
-        saveTitleProgress(
-          {
-            profileId: request.profileId,
-            titleId: fileProgressId(library.file.id),
-          },
-          {
+          if (
+            title.season === undefined
+            && isWatched(position, duration ?? null)
+          ) {
+            clearMovieWatchlist(request.profileId, title.id)
+          }
+        }
+        else if (library) {
+          saveTitleProgress(
+            {
+              profileId: request.profileId,
+              titleId: fileProgressId(library.file.id),
+            },
+            {
+              position,
+              duration: duration ?? null,
+              torrentId: library.file.torrentId,
+              fileIndex: library.file.fileIndex,
+              mediaFileId: library.file.id,
+            },
+            context,
+          )
+        }
+
+        if (!torrentId) {
+          return {
+            torrentId: null,
+            fileIndex: null,
+            mediaFileId: mediaFileId ?? null,
             position,
             duration: duration ?? null,
-            torrentId: library.file.torrentId,
-            fileIndex: library.file.fileIndex,
-            mediaFileId: library.file.id,
+            updatedAt: new Date().toISOString(),
+          }
+        }
+
+        const saved = saveWatchState(
+          {
+            profileId: request.profileId,
+            torrentId,
+            fileIndex: fileIndex!,
+            position,
+            duration: duration ?? null,
           },
           context,
+          !!(title || library),
         )
-      }
 
-      if (!torrentId) {
         return {
-          torrentId: null,
-          fileIndex: null,
-          mediaFileId: mediaFileId ?? null,
-          position,
-          duration: duration ?? null,
-          updatedAt: new Date().toISOString(),
+          torrentId: saved.torrentId,
+          fileIndex: saved.fileIndex,
+          mediaFileId: null,
+          position: saved.position,
+          duration: saved.duration,
+          updatedAt: saved.updatedAt.toISOString(),
         }
-      }
-
-      const saved = saveWatchState(
-        {
-          profileId: request.profileId,
-          torrentId,
-          fileIndex: fileIndex!,
-          position,
-          duration: duration ?? null,
-        },
-        context,
-        !!(title || library),
-      )
-
-      return {
-        torrentId: saved.torrentId,
-        fileIndex: saved.fileIndex,
-        mediaFileId: null,
-        position: saved.position,
-        duration: saved.duration,
-        updatedAt: saved.updatedAt.toISOString(),
-      }
+      })
     },
   )
 }

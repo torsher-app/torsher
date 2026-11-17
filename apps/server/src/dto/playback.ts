@@ -246,6 +246,12 @@ export const insufficientStorageResponse = z
 
 export const updateWatchState = z
   .object({
+    event: z
+      .object({
+        clientId: z.string().min(1).max(100),
+        sequence: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+      })
+      .optional(),
     profileId: z.string().min(1).max(100).optional(),
     torrentId: z.string().min(1).max(100).optional(),
     fileIndex: fileIndex.optional(),
