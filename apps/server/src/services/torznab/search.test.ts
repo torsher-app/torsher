@@ -285,6 +285,37 @@ describe('searchIndexer', () => {
     ).resolves.toEqual([])
   })
 
+  it.each([
+    '<html>QA invalid XML</html>',
+    '<rss version="2.0"/>',
+    '<rss><channel>Unexpected text</channel></rss>',
+    '<rss><channel/><channel/></rss>',
+    '<rss><channel/></rss><rss><channel/></rss>',
+    '<wrapper><rss><channel/></rss></wrapper>',
+  ])('отклоняет HTTP 200 без структуры RSS channel: %s', async (body) => {
+    fetchMock.mockImplementation(async () => new Response(body))
+
+    await expect(
+      searchIndexer('https://indexer.example/torznab', { t: 'search', q: 'x' }),
+    ).rejects.toMatchObject({
+      name: 'SourceError',
+      kind: 'bad_response',
+      status: 200,
+    })
+  })
+
+  it.each([
+    '<rss><channel/></rss>',
+    '<rss><channel></channel></rss>',
+    '<rss><channel>  </channel></rss>',
+  ])('пустой channel без метаданных остаётся успехом: %s', async (body) => {
+    fetchMock.mockResolvedValue(new Response(body))
+
+    await expect(
+      searchIndexer('https://indexer.example/torznab', { t: 'search' }),
+    ).resolves.toEqual([])
+  })
+
   it('ошибка Torznab в теле — SourceError', async () => {
     fetchMock.mockImplementation(
       async () => new Response(torznabErrorXml(100, 'Bad key')),
