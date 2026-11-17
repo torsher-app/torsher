@@ -230,8 +230,9 @@ function nonFeatureContent(parsed: ParsedRelease) {
         || /игра/.test(tail)
         || (!parsed.source && !parsed.quality && !parsed.codec))
   const audio
-    = (/\b(?:ost|soundtrack)\b|саундтрек/.test(tail)
-      || /^\s*(?:ost|soundtrack|саундтрек)\s*[-:]/i.test(raw))
+    = (/\b(?:ost|score|soundtrack)\b|саундтрек/.test(tail)
+      || /^\s*(?:ost|score|soundtrack|саундтрек)\s*[-:]/i.test(raw)
+      || /^\s*[[(]\s*(?:ost|score|soundtrack|саундтрек)\s*[)\]]/i.test(raw))
     && /\b(?:mp3|flac|ape|lossless)\b/.test(tail)
   const trailer = /(?:^|[\s.[(|/-])(?:trailer|трейлер)(?=$|[\s.\])|/-])/i.test(
     tail,

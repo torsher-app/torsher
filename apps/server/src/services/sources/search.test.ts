@@ -171,6 +171,34 @@ describe('searchReleases', () => {
 })
 
 describe('несопоставленные результаты', () => {
+  it.each(['movie', 'series'] as const)(
+    'автопоиск %s исключает Score MP3/FLAC из обеих групп, сохраняя видео',
+    async (kind) => {
+      const video = `Quiet Harbor ${kind === 'series' ? 'S01 ' : ''}(2023) WEB-DL 1080p FLAC`
+      const titles = [
+        video,
+        '(Score) Тихая гавань / Quiet Harbor (by Demo Composer) - 2023, MP3 (tracks), 320 kbps',
+        '(Score) Тихая гавань / Quiet Harbor (by Demo Composer) - 2023, FLAC (tracks), lossless',
+      ]
+      fetchMock.mockImplementation(
+        async () =>
+          new Response(
+            `<rss><channel>${titles.map(title => `<item><title>${title}</title></item>`).join('')}</channel></rss>`,
+          ),
+      )
+      const result = await searchReleases(
+        {
+          identity: { ...identity, kind },
+          aliases,
+          ...(kind === 'series' && { season: 1 }),
+        },
+        [indexer('a', 'a.indexer.example')],
+      )
+      expect(result.releases.map(item => item.title)).toEqual([video])
+      expect(result.unmatched).toEqual([])
+    },
+  )
+
   it.each([undefined, 'Quiet Harbor'])(
     'автоматический поиск отсекает шум, ручной сохраняет исходные low: %s',
     async (query) => {
