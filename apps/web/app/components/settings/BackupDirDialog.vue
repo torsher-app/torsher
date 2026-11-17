@@ -29,6 +29,7 @@ import LoadingButton from '~/components/LoadingButton.vue'
 import FolderPicker from '~/components/storage/FolderPicker.vue'
 import { backupErrorText } from '~/lib/backups'
 import { dialogSheetClass } from '~/lib/dialog'
+import { cn } from '~/lib/utils'
 import { formatBytes } from '~/lib/format'
 
 const props = defineProps<{
@@ -42,6 +43,11 @@ const { checkDir, saveSettings } = useBackups()
 
 const CHECK_DELAY_MS = 250
 const base = 'panel.backups.dir.dialog'
+
+const contentClass = cn(
+  dialogSheetClass,
+  'grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden',
+)
 
 const schema = toTypedSchema(z.object({ path: z.string().trim().min(1) }))
 
@@ -230,7 +236,7 @@ async function resetToDefault() {
 
 <template>
   <Dialog v-model:open="open">
-    <DialogContent :class="dialogSheetClass">
+    <DialogContent :class="contentClass">
       <DialogHeader>
         <DialogTitle>{{ t(`${base}.title`) }}</DialogTitle>
         <DialogDescription>{{ t(`${base}.text`) }}</DialogDescription>
@@ -238,7 +244,7 @@ async function resetToDefault() {
 
       <form
         id="backup-dir"
-        class="grid min-w-0 gap-4"
+        class="-m-1 grid min-h-0 min-w-0 content-start gap-4 overflow-y-auto p-1"
         novalidate
         @submit="onSubmit"
       >

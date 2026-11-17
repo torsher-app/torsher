@@ -31,6 +31,7 @@ import LoadingButton from '~/components/LoadingButton.vue'
 import FolderPicker from '~/components/storage/FolderPicker.vue'
 import { storagePathError } from '~/composables/useStorage'
 import { dialogSheetClass } from '~/lib/dialog'
+import { cn } from '~/lib/utils'
 import { formatBytes } from '~/lib/format'
 
 const props = defineProps<{
@@ -50,6 +51,11 @@ const titleKey = computed(() =>
   props.kind === 'downloads' ? 'Downloads' : 'Library',
 )
 const base = 'panel.settings.storage.pathDialog'
+
+const contentClass = cn(
+  dialogSheetClass,
+  'grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden',
+)
 
 const schema = toTypedSchema(
   z.object({
@@ -300,7 +306,7 @@ const onSubmit = handleSubmit(async (values) => {
 
 <template>
   <Dialog v-model:open="open">
-    <DialogContent :class="dialogSheetClass">
+    <DialogContent :class="contentClass">
       <DialogHeader>
         <DialogTitle>{{ t(`${base}.title${titleKey}`) }}</DialogTitle>
         <DialogDescription>
@@ -310,7 +316,7 @@ const onSubmit = handleSubmit(async (values) => {
 
       <form
         id="storage-path"
-        class="grid min-w-0 gap-4"
+        class="-m-1 grid min-h-0 min-w-0 content-start gap-4 overflow-y-auto p-1"
         novalidate
         @submit="onSubmit"
       >
