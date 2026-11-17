@@ -313,7 +313,7 @@ function upgradeRejection(
   compared?.(current)
 
   return isAtCutoff(current, season) || !isUpgrade(candidate, current)
-    ? reject('not_better')
+    ? reject('not_better', check.picked ? { current: 'picked' } : undefined)
     : undefined
 }
 
@@ -451,14 +451,18 @@ export function checkCandidate(
     rejections.push(reject('voice_strict', { studio: season.voice.studio }))
 
   if (episodes.length === 0 && !blockedEpisodes) {
-    const kept = UPGRADE_REJECTIONS.find(code =>
+    const keptCode = UPGRADE_REJECTIONS.find(code =>
       [...episodeRejections.values()].some(item => item.code === code),
+    )
+
+    const kept = [...episodeRejections.values()].find(
+      item => item.code === keptCode,
     )
 
     rejections.push(
       named.some(item => ctx.downloading.has(episodeKey(item)))
         ? reject('already_downloading')
-        : reject(kept ?? 'no_wanted'),
+        : (kept ?? reject('no_wanted')),
     )
   }
 

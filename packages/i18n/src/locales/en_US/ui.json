@@ -3658,6 +3658,7 @@
         "not_available": "waiting for the digital release",
         "notAvailableDate": "waiting for the digital release on {date}",
         "not_better": "not better than the downloaded one",
+        "notBetterPicked": "not better than the selected one",
         "watched": "already being watched — not replaced",
         "manual": "chosen by hand — not replaced",
         "unknown": "doesn't fit the rules"

@@ -87,6 +87,8 @@ export type UpgradeBlock = 'watched' | 'manual'
 
 /** Серия в библиотеке, которую рассматривает апгрейд */
 export interface UpgradeTarget {
+  /** Текущая версия выбрана для notify, но ещё не скачана */
+  picked?: boolean
   /**
    * Раздача текущего файла из захвата автоматики и её название; у выбора
    * режима `notify` раздачи в базе нет — только название
@@ -97,6 +99,7 @@ export interface UpgradeTarget {
 
 /** Что решатель знает о заменяемой серии */
 export interface UpgradeCheck {
+  picked?: boolean
   current?: ReleaseVersion
   blocked?: UpgradeBlock
 }
@@ -178,7 +181,7 @@ function pickTargets(
       key,
       started.has(key)
         ? { blocked: 'watched' }
-        : { current: { title: row.picked.title } },
+        : { current: { title: row.picked.title }, picked: true },
     )
   }
 

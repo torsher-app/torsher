@@ -2154,7 +2154,34 @@ describe('режим «Только уведомлять»', () => {
         .map(item => item.state),
     ).toEqual(['ready', 'ready', 'ready'])
 
+    requestFollowSearch(follow.id)
     await followAutomation(new Date(now.getTime() + 60_000))
+    const response = await app.inject({
+      url: `/api/follows/${follow.id}/candidates?season=2&episode=8`,
+      cookies: owner,
+    })
+    expect(response.statusCode).toBe(200)
+    expect(response.json().items).toEqual([
+      expect.objectContaining({
+        id: rows(follow.id)[0]!.picked!.id,
+        infoHash: PACK_HASH,
+        verdict: 'rejected',
+        rejections: [
+          {
+            code: 'not_better',
+            type: 'permanent',
+            params: { current: 'picked' },
+          },
+        ],
+      }),
+    ])
+    expect(
+      rows(follow.id).every(
+        row => row.picked?.infoHash === PACK_HASH && !row.torrentId,
+      ),
+    ).toBe(true)
+    expect(torrentDownloads).toBe(0)
+    expect(engineAdds).toEqual([])
     await followAutomation(new Date(now.getTime() + 120_000))
 
     expect(inbox()).toEqual([

@@ -206,6 +206,9 @@ export function useFollowText() {
 
     const params = item.params ?? {}
 
+    if (item.code === 'not_better' && params.current === 'picked')
+      return t('panel.follow.rejections.notBetterPicked')
+
     if (item.code === 'wait') {
       const wait = target(waitTargetOf(params))
       const at = typeof params.until === 'string' ? until(params.until) : ''
