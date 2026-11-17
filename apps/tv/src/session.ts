@@ -1,11 +1,14 @@
 import type { PlayerSettings, Profile, ProfileList } from '@torsher/api-client'
 import type { SessionStatus } from './lib/session.ts'
+import type { RouteLocationNormalized } from 'vue-router'
 import { getErrorStatus } from '@torsher/api-client'
 import { reactive, readonly } from 'vue'
 import { beforeDiagnosticProfileChange } from './diagnostics/index.ts'
 import { api } from './api.ts'
 import { applyLanguage } from './i18n.ts'
-import { autoProfile } from './lib/session.ts'
+import { autoProfile, gateTarget } from './lib/session.ts'
+
+let revision = 0
 
 const state = reactive<{ status: SessionStatus, profile: Profile | undefined }>(
   {
@@ -18,6 +21,7 @@ const state = reactive<{ status: SessionStatus, profile: Profile | undefined }>(
 export const session = readonly(state)
 
 function enter(profile: Profile) {
+  revision++
   state.profile = profile
   state.status = 'ready'
   applyLanguage(profile.language)
@@ -25,6 +29,7 @@ function enter(profile: Profile) {
 
 /** Профили сервера. `undefined` — витрина не подключена (401) */
 export async function loadProfiles(): Promise<ProfileList | undefined> {
+  const started = revision
   try {
     return await api.profiles.getProfiles()
   }
@@ -32,7 +37,8 @@ export async function loadProfiles(): Promise<ProfileList | undefined> {
     if (getErrorStatus(err) !== 401)
       throw err
 
-    expireSession()
+    if (revision === started)
+      expireSession()
 
     return undefined
   }
@@ -43,6 +49,7 @@ export async function loadProfiles(): Promise<ProfileList | undefined> {
  * Ошибки PIN (403, 429) разбирает экран выбора.
  */
 export async function chooseProfile(id: string, pin?: string) {
+  revision++
   beforeDiagnosticProfileChange(id)
   enter(await api.profiles.postProfileSelect(id, pin ? { pin } : {}))
 }
@@ -68,6 +75,8 @@ export async function settleSession(list: ProfileList) {
   }
 
   state.status = 'choosing'
+  state.profile = undefined
+  revision++
 
   return false
 }
@@ -77,15 +86,55 @@ export async function settleSession(list: ProfileList) {
  * сервера ведёт на выбор профиля: там она видна и повторяется.
  */
 export async function resolveSession() {
+  const started = ++revision
+  const wasReady = state.status === 'ready'
   try {
     const list = await loadProfiles()
 
-    if (list)
+    if (!list || revision !== started)
+      return
+
+    const current = list.items.find(item => item.id === list.currentId)
+
+    // A working viewer follows the same permitted fallback as the server.
+    // Initial connection still offers the usual profile choice.
+    if (wasReady && current && (list.selected || !current.hasPin)) {
+      // The owner may still carry the deleted profile cookie: stream tokens
+      // must agree with it, so commit the permitted fallback on the server.
+      const profile = list.selected
+        ? current
+        : await api.profiles.postProfileSelect(current.id, {})
+
+      if (revision !== started)
+        return
+
+      if (profile.id !== state.profile?.id)
+        beforeDiagnosticProfileChange(profile.id)
+      enter(profile)
+    }
+    else {
+      state.status = 'choosing'
+      state.profile = undefined
       await settleSession(list)
+    }
   }
   catch {
+    if (revision !== started)
+      return
     state.status = 'choosing'
+    state.profile = undefined
+    revision++
   }
+}
+
+/** Revalidate before creating a screen that captures the viewer actor. */
+export async function guardSession(
+  to: Pick<RouteLocationNormalized, 'path' | 'fullPath' | 'query'>,
+) {
+  if (state.status === 'unknown' || state.status === 'ready')
+    await resolveSession()
+
+  return gateTarget(state.status, to) ?? true
 }
 
 /**
@@ -98,12 +147,14 @@ export function requireProfile() {
 
   state.status = 'choosing'
   state.profile = undefined
+  revision++
 
   return true
 }
 
 /** Устройство отключили или сессия кончилась: витрина снова ждёт кода */
 export function expireSession() {
+  revision++
   state.status = 'unpaired'
   state.profile = undefined
   applyLanguage(null)

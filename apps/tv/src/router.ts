@@ -7,7 +7,6 @@ import { automaticFromQuery } from './lib/continue.ts'
 import type { LocationQueryValue, RouteLocationNormalized } from 'vue-router'
 import { ref } from 'vue'
 import { createRouter, createWebHashHistory } from 'vue-router'
-import { gateTarget } from './lib/session.ts'
 import AboutPage from './pages/AboutPage.vue'
 import CatalogPage from './pages/CatalogPage.vue'
 import ConnectPage from './pages/ConnectPage.vue'
@@ -24,7 +23,7 @@ import SearchPage from './pages/SearchPage.vue'
 import SettingsPage from './pages/SettingsPage.vue'
 import SourcesPage from './pages/SourcesPage.vue'
 import TitlePage from './pages/TitlePage.vue'
-import { resolveSession, session } from './session.ts'
+import { guardSession } from './session.ts'
 
 function queryOf(value: LocationQueryValue | LocationQueryValue[] | undefined) {
   return typeof value === 'string' ? value : undefined
@@ -171,12 +170,7 @@ export const router = createRouter({
 
 // Без подключения и выбранного профиля витрина ведёт на экран кода или выбора.
 // На первом переходе ждёт ответа сервера: экран не мигает главной
-router.beforeEach(async (to) => {
-  if (session.status === 'unknown')
-    await resolveSession()
-
-  return gateTarget(session.status, to) ?? true
-})
+router.beforeEach(guardSession)
 
 /** Экран живёт в стеке KeepAlive по записи истории, а не по пути */
 export function isStacked(route: RouteLocationNormalized) {
