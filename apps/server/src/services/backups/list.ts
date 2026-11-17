@@ -5,7 +5,7 @@ import { parseBackupName } from './names.ts'
 
 export interface BackupItem extends BackupName {
   size: number
-  /** `fallback` — копия перед обновлением, упавшая в каталог по умолчанию */
+  /** `fallback` — критическая копия, сохранённая в каталог по умолчанию */
   dirKind: 'main' | 'fallback'
   path: string
 }
@@ -32,7 +32,7 @@ async function readDir(dir: string, dirKind: BackupItem['dirKind']) {
 
 /**
  * Копии по именам файлов, новые сверху. Если каталог выбран в панели, к
- * нему добавляются копии перед обновлением из каталога по умолчанию: туда
+ * нему добавляются критические копии из каталога по умолчанию: туда
  * они падают, когда выбранный каталог недоступен.
  */
 export async function listBackupsIn(dir: string, defaultDir: string) {
@@ -49,7 +49,14 @@ export async function listBackupsIn(dir: string, defaultDir: string) {
   if (resolve(dir) !== resolve(defaultDir)) {
     const fallback = await readDir(defaultDir, 'fallback').catch(() => [])
 
-    items.push(...fallback.filter(item => item.reason === 'pre-update'))
+    items.push(
+      ...fallback.filter(
+        item =>
+          item.reason === 'pre-update'
+          || item.reason === 'pre-restore'
+          || item.reason === 'pre-import',
+      ),
+    )
   }
 
   items.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
