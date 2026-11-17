@@ -1,4 +1,8 @@
-import { createApiClient, getErrorStatus } from '@torsher/api-client'
+import {
+  createApiClient,
+  getErrorHeader,
+  getErrorStatus,
+} from '@torsher/api-client'
 import { observeDiagnosticRequest } from './diagnostics/index.ts'
 import { toLoadError } from './lib/loadError.ts'
 
@@ -40,5 +44,8 @@ export const api = createApiClient({
 })
 
 export function loadErrorOf(err: unknown) {
-  return toLoadError(getErrorStatus(err))
+  return toLoadError(
+    getErrorStatus(err),
+    getErrorHeader(err, 'X-Torsher-Catalog-Error'),
+  )
 }
