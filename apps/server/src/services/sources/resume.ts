@@ -3,7 +3,7 @@ import { episodeSkips, skippedEpisode } from '../diagnostics/episodes.ts'
 import type { DiagnosticContext } from '../diagnostics/index.ts'
 import { decisionSnapshot } from '../diagnostics/index.ts'
 import type { TitleProgress } from '../../db/schema.ts'
-import { and, desc, eq, gte, isNotNull, lt, max, or } from 'drizzle-orm'
+import { and, desc, eq, gte, lt, max } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import { titleProgress } from '../../db/schema.ts'
 import {
@@ -19,7 +19,7 @@ import {
   episodeProgress,
   isProgressWatched,
   lastTitleProgress,
-  progressSeen,
+  playbackSeen,
 } from './progress.ts'
 
 export interface EpisodeRef {
@@ -319,14 +319,7 @@ export async function resumeTarget(
 }
 
 function playedFrom(profileId: string) {
-  return and(
-    eq(titleProgress.profileId, profileId),
-    progressSeen(),
-    or(
-      isNotNull(titleProgress.torrentId),
-      isNotNull(titleProgress.mediaFileId),
-    ),
-  )
+  return and(eq(titleProgress.profileId, profileId), playbackSeen())
 }
 
 /** Тайтлы, которые профиль смотрел в плеере с `since`, — свежие первыми */
