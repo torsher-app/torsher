@@ -48,6 +48,7 @@ const emit = defineEmits<{
 const { t, locale } = useI18n()
 const store = useFollows()
 const actions = useFollowActions()
+useFollowDetailsPolling(() => props.follow?.id ?? null)
 const text = useFollowText()
 const now = useNow({ interval: 30_000 })
 
@@ -72,7 +73,7 @@ async function loadDetails() {
   detailsState.value = 'loading'
 
   try {
-    await store.loadDetails(id)
+    await store.loadDetails(id, () => props.follow?.id === id)
 
     if (shown.value?.id === id)
       detailsState.value = 'ready'
@@ -120,8 +121,9 @@ const isPaused = computed(() => shown.value?.state === 'paused')
 
 // Карточка — тоже на языке панели; показанное остаётся, пока идёт запрос
 watch(locale, () => {
-  if (shown.value)
-    void store.loadDetails(shown.value.id).catch(() => {})
+  const id = props.follow?.id
+  if (id)
+    void store.loadDetails(id, () => props.follow?.id === id).catch(() => {})
 })
 
 function relative(iso: string) {

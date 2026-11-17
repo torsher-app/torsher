@@ -7,6 +7,7 @@ import type {
 import type { FollowGroup } from '~/lib/follow'
 import { getErrorStatus } from '@torsher/api-client'
 import { useI18n } from 'vue-i18n'
+import { useDocumentVisibility } from '@vueuse/core'
 import { FOLLOW_GROUPS, followGroupOf } from '~/lib/follow'
 import { api } from '~/services/api'
 
@@ -18,11 +19,12 @@ const FILTERS: FollowsFilter[] = ['all', 'attention', 'stopped']
 
 const follows = shallowRef<FollowSummary[]>([])
 const state = ref<LoadState>('idle')
-// Карточка: подробности выбранного слежения, перечитываются после действий
+// Карточка: подробности выбранного слежения, обновляются и после фонового поиска
 const details = shallowRef<FollowDetails | null>(null)
 const busy = ref(new Set<string>())
 
 let loadedOnce: Promise<void> | undefined
+let detailsRequest = 0
 
 // Счётчик у раздела в сайдбаре: нет места или серия не нашлась
 const attentionCount = computed(
@@ -99,17 +101,27 @@ export function useFollows() {
     return loadedOnce
   }
 
-  async function loadDetails(id: string) {
+  async function loadDetails(id: string, isCurrent = () => true) {
+    const request = ++detailsRequest
+    const requestedLanguage = language()
     const loaded = await withErrorMode('silent', () =>
-      api.follows.getFollow(id, { language: language() }))
+      api.follows.getFollow(id, { language: requestedLanguage }))
 
-    details.value = loaded
-    replaceSummary(summaryOf(loaded))
+    if (
+      request === detailsRequest
+      && requestedLanguage === language()
+      && isCurrent()
+    ) {
+      details.value = loaded
+      replaceSummary(summaryOf(loaded))
+    }
 
     return loaded
   }
 
   async function run<T>(id: string, action: () => Promise<T>) {
+    // Начатое действие делает предыдущие ответы деталей устаревшими.
+    detailsRequest++
     busy.value = new Set(busy.value).add(id)
 
     try {
@@ -188,6 +200,36 @@ export function useFollows() {
     block,
     isBusy: (id: string) => busy.value.has(id),
   }
+}
+
+/** Тихое обновление открытой карточки; watch cleanup отменяет и поздний ответ. */
+export function useFollowDetailsPolling(selectedId: () => string | null) {
+  const store = useFollows()
+  const visibility = useDocumentVisibility()
+
+  watch(
+    [selectedId, visibility],
+    ([id, visible], _previous, onCleanup) => {
+      if (!id || visible !== 'visible')
+        return
+
+      let active = true
+      let timer: ReturnType<typeof setTimeout>
+      const tick = async () => {
+        if (!store.isBusy(id)) {
+          await store.loadDetails(id, () => active).catch(() => {})
+        }
+        if (active)
+          timer = setTimeout(tick, 2000)
+      }
+      timer = setTimeout(tick, 2000)
+      onCleanup(() => {
+        active = false
+        clearTimeout(timer)
+      })
+    },
+    { immediate: true },
+  )
 }
 
 /** Поиск на паузе не запускается: слежение остановили, пока карточка была открыта */
