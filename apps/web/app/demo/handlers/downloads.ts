@@ -5,6 +5,7 @@ import type {
   OverviewResponse,
   SeedRule,
   Torrent,
+  TorrentDeletePreview,
   TorrentList,
   UpdateRetentionInput,
   UpdateTorrentPriorityInput,
@@ -568,6 +569,17 @@ post<Torrent, CreateTorrentInput>('/api/torrents', ({ body }) => {
   entries.unshift(entry)
 
   return respond(entry)
+})
+
+get<TorrentDeletePreview>('/api/torrents/:id/delete-preview', ({ params }) => {
+  const torrent = respond(entryById(params.id!))
+  // В демо библиотека использует hardlinks; остальные файлы независимы.
+  return {
+    reclaimableBytes: sum(
+      torrent.files.filter(file => !file.inLibrary),
+      file => file.downloaded,
+    ),
+  }
 })
 
 del<MessageResponse>('/api/torrents/:id', ({ params }) => {

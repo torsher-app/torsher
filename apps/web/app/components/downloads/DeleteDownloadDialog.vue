@@ -18,6 +18,7 @@ import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import LoadingButton from '~/components/LoadingButton.vue'
 import { torrentErrorKind } from '~/composables/useTorrents'
+import { useTorrentDeletePreview } from '~/composables/useTorrentDeletePreview'
 import { dialogSheetClass } from '~/lib/dialog'
 import { formatBytes } from '~/lib/format'
 
@@ -35,6 +36,11 @@ const { deleteTorrent } = useTorrents()
 const outcome = ref<Outcome>('delete')
 const isBusy = ref(false)
 const error = ref<TorrentErrorKind | null>(null)
+const { preview, error: previewError } = useTorrentDeletePreview(
+  () => props.torrent?.id,
+  () => open.value,
+)
+const shownError = computed(() => error.value ?? previewError.value)
 
 watch(open, (isOpen) => {
   if (isOpen) {
@@ -48,7 +54,7 @@ const hasLibraryFiles = computed(
 )
 
 const size = computed(() =>
-  formatBytes(props.torrent?.sizeOnDisk ?? 0, locale.value),
+  formatBytes(preview.value?.reclaimableBytes ?? 0, locale.value),
 )
 
 // Раздачу в движке удаляет и движок: без него ошибка остаётся в диалоге
@@ -116,10 +122,13 @@ async function onDelete() {
                   : "panel.torrents.deleteDialog.keepFiles",
               )
             }}</span>
-            <span class="text-[12.5px] text-muted-foreground">{{
+            <span
+              v-if="item === 'keep' || preview"
+              class="text-[12.5px] text-muted-foreground"
+            >{{
               item === "keep"
                 ? t("panel.torrents.deleteDialog.keepFilesText")
-                : torrent?.sizeOnDisk
+                : preview?.reclaimableBytes || torrent?.sizeOnDisk
                   ? t("panel.torrents.deleteDialog.withFilesText", { size })
                   : t("panel.torrents.deleteDialog.withFilesEmpty")
             }}</span>
@@ -127,11 +136,13 @@ async function onDelete() {
         </Label>
       </RadioGroup>
 
-      <Alert v-if="error" variant="destructive">
+      <Alert v-if="shownError" variant="destructive">
         <CircleAlertIcon />
-        <AlertTitle>{{ t(`panel.torrents.errorTitles.${error}`) }}</AlertTitle>
+        <AlertTitle>
+          {{ t(`panel.torrents.errorTitles.${shownError}`) }}
+        </AlertTitle>
         <AlertDescription>
-          {{ t(`panel.torrents.errors.${error}`) }}
+          {{ t(`panel.torrents.errors.${shownError}`) }}
         </AlertDescription>
       </Alert>
       <AlertDialogFooter>

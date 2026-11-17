@@ -11,6 +11,7 @@ import {
   engineUnavailableResponse,
   torrent,
   TORRENT_FILE_MAX_BYTES,
+  torrentDeletePreview,
   torrentIdParams,
   torrentList,
   torrentStats,
@@ -21,7 +22,11 @@ import {
   updateTorrentTitle,
 } from '../dto/torrents.ts'
 import { canManageLibrary, requireByRoute } from '../middleware/auth.ts'
-import { engineState } from '../services/engine/index.ts'
+import {
+  EngineError,
+  engineState,
+  previewTorrentDeletion,
+} from '../services/engine/index.ts'
 import {
   placedFilesByTorrent,
   removeFromLibrary,
@@ -193,6 +198,45 @@ export const torrentRoutes: FastifyPluginAsyncZod = async (app) => {
         return reply.code(404).send({ message: 'Torrent not found' })
 
       return respond(found)
+    },
+  )
+
+  app.get(
+    '/:id/delete-preview',
+    {
+      schema: {
+        operationId: 'getTorrentDeletePreview',
+        tags: ['Torrents'],
+        params: torrentIdParams,
+        response: {
+          200: torrentDeletePreview,
+          400: messageResponse,
+          404: messageResponse,
+          409: messageResponse,
+          ...guardResponses,
+          ...engineResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const found = getTorrent(request.params.id)
+      if (!found)
+        return reply.code(404).send({ message: 'Torrent not found' })
+      if (!found.inEngine)
+        return { reclaimableBytes: 0 }
+      try {
+        return await previewTorrentDeletion(found.infoHash)
+      }
+      catch (err) {
+        if (
+          err instanceof EngineError
+          && err.kind === 'not_found'
+          && err.engineCode === 'torrent_not_found'
+        ) {
+          return { reclaimableBytes: 0 }
+        }
+        return sendEngineError(reply, err, found)
+      }
     },
   )
 

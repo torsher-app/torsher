@@ -4368,6 +4368,11 @@ export interface EngineUnavailableResponseInput {
   kind: "not_installed" | "starting" | "stopped";
 }
 
+export interface TorrentDeletePreviewInput {
+  /** @min 0 */
+  reclaimableBytes: number;
+}
+
 export interface TorrentFileInput {
   index: number;
   path: string;
@@ -12308,6 +12313,11 @@ export interface EngineUnavailableResponse {
   kind: "not_installed" | "starting" | "stopped";
 }
 
+export interface TorrentDeletePreview {
+  /** @min 0 */
+  reclaimableBytes: number;
+}
+
 export interface TorrentFile {
   index: number;
   path: string;
@@ -16106,6 +16116,9 @@ export type GetTorrentError = MessageResponse;
 
 export type DeleteTorrentError = MessageResponse | EngineUnavailableResponse;
 
+export type GetTorrentDeletePreviewError =
+  MessageResponse | EngineUnavailableResponse;
+
 export type PostTorrentRetryError = MessageResponse | EngineUnavailableResponse;
 
 export type PostTorrentDownloadError =
@@ -18543,6 +18556,21 @@ export class Api<
         path: `/api/torrents/${id}`,
         method: "DELETE",
         query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Torrents
+     * @name GetTorrentDeletePreview
+     * @request GET:/api/torrents/{id}/delete-preview
+     */
+    getTorrentDeletePreview: (id: string, params: RequestParams = {}) =>
+      this.request<TorrentDeletePreview, GetTorrentDeletePreviewError>({
+        path: `/api/torrents/${id}/delete-preview`,
+        method: "GET",
         format: "json",
         ...params,
       }),

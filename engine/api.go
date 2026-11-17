@@ -141,6 +141,7 @@ func (a *api) routes() http.Handler {
 	mux.HandleFunc("POST /torrents/{hash}/pause", a.pause)
 	mux.HandleFunc("POST /torrents/{hash}/resume", a.resume)
 	mux.HandleFunc("DELETE /torrents/{hash}", a.forget)
+	mux.HandleFunc("GET /torrents/{hash}/delete-preview", a.deletePreview)
 	mux.HandleFunc("POST /torrents/{hash}/move", a.startMove)
 	mux.HandleFunc("GET /torrents/{hash}/move", a.moveStatus)
 	mux.HandleFunc("GET /torrents/{hash}/stats", a.stats)

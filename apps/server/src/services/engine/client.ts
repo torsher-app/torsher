@@ -134,6 +134,17 @@ const engineStats = engineTorrentState.extend({
 
 const engineForget = z.object({ deletedBytes: z.number() })
 
+const engineDeletePreview = z.object({
+  reclaimableBytes: z.number().nonnegative(),
+})
+
+export function previewTorrentDeletion(infoHash: string) {
+  return engineJson(
+    `/torrents/${infoHash}/delete-preview`,
+    engineDeletePreview,
+  )
+}
+
 const engineMoveState = z.object({
   dir: z.string(),
   state: z.enum(['running', 'done', 'failed']),
@@ -483,7 +494,7 @@ export async function resumeTorrent(infoHash: string) {
 
 /**
  * Убирает раздачу из движка. С `deleteFiles` движок удаляет и её файлы;
- * ответ — сколько байт освободилось. Без него файлы остаются на диске.
+ * ответ — логический размер удалённых файлов. Без него файлы остаются на диске.
  */
 export async function forgetTorrent(
   infoHash: string,

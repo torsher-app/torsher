@@ -37,7 +37,7 @@ func isInside(base, path string) bool {
 }
 
 // Удаляет файлы раздачи (и недокачанные `.part`) и опустевшие каталоги
-// раздачи. Возвращает, сколько байт освободилось. Файлы вне каталога
+// раздачи. Возвращает логический размер удалённых файлов, не свободные блоки. Файлы вне каталога
 // загрузок не трогает: путь из чужого `.torrent` не должен выйти наружу
 func deleteTorrentFiles(downloads string, info *metainfo.Info) (int64, error) {
 	base, err := filepath.Abs(downloads)
