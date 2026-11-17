@@ -314,6 +314,10 @@ describe('обзор', () => {
     expect(fault.load).toMatchObject({
       historyRange: '15m',
       playbackActive: false,
+      cpuCores: 0.5,
+      memoryBytes: 123456,
+      receiveBps: 42,
+      sendBps: 0,
     })
     expect(fault.attention).toContainEqual(
       expect.objectContaining({ kind: 'storage_paused' }),
