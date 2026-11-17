@@ -53,6 +53,7 @@ import {
   isolatedTorrentDir,
   setStoragePath,
   storagePath,
+  torrentAtRoot,
   torrentDir,
 } from './paths.ts'
 import { isStreaming } from './streams.ts'
@@ -176,11 +177,7 @@ async function pendingTorrents(target: string) {
     : new Map()
 
   return rows
-    .filter(
-      row =>
-        resolve(torrentDir(row)) !== target
-        && resolve(torrentDir(row)) !== isolatedTorrentDir(target, row.infoHash),
-    )
+    .filter(row => !torrentAtRoot(row, target))
     .map(row => ({
       row,
       bytes: live.get(row.infoHash)?.bytesCompleted ?? 0,

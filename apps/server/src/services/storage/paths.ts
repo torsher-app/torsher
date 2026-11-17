@@ -78,6 +78,18 @@ export function isolatedTorrentDir(root: string, infoHash: string) {
     : join(path, 'torsher', infoHash)
 }
 
+/** Раздача уже в корне или в его собственном изолированном каталоге. */
+export function torrentAtRoot(
+  torrent: Pick<Torrent, 'downloadDir' | 'infoHash'>,
+  root: string,
+) {
+  const dir = resolve(torrentDir(torrent))
+
+  return (
+    dir === resolve(root) || dir === isolatedTorrentDir(root, torrent.infoHash)
+  )
+}
+
 export function isIsolatedTorrentDir(dir: string, infoHash: string) {
   return isolatedTorrentDir(dir, infoHash) === resolve(dir)
 }
