@@ -440,3 +440,69 @@ it('leaves saved selection and priorities intact when the download request fails
     lowFiles: null,
   })
 })
+
+it.each(['user', 'storage'] as const)(
+  'preserves %s pause while removing a replaced file, including engine add and priorities',
+  async (pauseReason) => {
+    const torrent = row({
+      inEngine: true,
+      retention: 'keep',
+      selectedFiles: [0, 2],
+      firstFiles: [2],
+      lowFiles: [0],
+      pauseReason,
+    })
+    const requests: URL[] = []
+    fetchMock.mockImplementation(async (input, init = {}) => {
+      const url = new URL(String(input))
+      requests.push(url)
+      if (init.method === 'POST' && url.pathname === '/torrents')
+        return json({ ...movieDetails, paused: true })
+      return json(liveStats)
+    })
+    const result = await downloadFiles(torrent, [0], { origin: 'preserve' })
+    expect(result).toMatchObject({
+      pauseReason,
+      selectedFiles: [0],
+      firstFiles: null,
+      lowFiles: [0],
+      retention: 'keep',
+      origin: torrent.origin,
+    })
+    const add = requests.find(url => url.pathname === '/torrents')!
+    expect(add.searchParams.get('paused')).toBe('true')
+    expect(requests.some(url => url.pathname.endsWith('/resume'))).toBe(
+      false,
+    )
+  },
+)
+
+it.each(['manual', 'follow'] as const)(
+  'explicit %s download still resumes a user pause',
+  async (origin) => {
+    const torrent = row({
+      inEngine: true,
+      pauseReason: 'user',
+      retention: 'keep',
+    })
+    const requests: URL[] = []
+    fetchMock.mockImplementation(async (input, init = {}) => {
+      const url = new URL(String(input))
+      requests.push(url)
+      if (init.method === 'POST' && url.pathname === '/torrents')
+        return json({ ...movieDetails, paused: true })
+      if (url.pathname.endsWith('/resume'))
+        return new Response(null, { status: 204 })
+      return json(liveStats)
+    })
+    expect(await downloadFiles(torrent, [0], { origin })).toMatchObject({
+      pauseReason: null,
+    })
+    expect(
+      requests
+        .find(url => url.pathname === '/torrents')!
+        .searchParams.get('paused'),
+    ).not.toBe('true')
+    expect(requests.some(url => url.pathname.endsWith('/resume'))).toBe(true)
+  },
+)
