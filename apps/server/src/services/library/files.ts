@@ -201,7 +201,11 @@ export function relinkMediaFiles(
       .set(
         fileIndex === undefined
           ? { torrentId: null, fileIndex: null }
-          : { torrentId: newId, fileIndex, stale: stale.has(fileIndex) },
+          : {
+              torrentId: newId,
+              fileIndex,
+              stale: row.state === 'missing' || stale.has(fileIndex),
+            },
       )
       .where(eq(mediaFiles.id, row.id))
       .run()
@@ -325,14 +329,21 @@ export function linkedBytesByTorrent() {
  * Сверка своей раскладки с диском: пропавший файл — `missing` (ничего не
  * удаляется), вернувшийся — снова `present`.
  */
-export async function checkManagedFiles() {
+export async function checkManagedFiles(torrentId?: string) {
   const folders = new Map(
     managedFolders().map(folder => [folder.id, folder]),
   )
   const rows = getDb()
     .select()
     .from(mediaFiles)
-    .where(inArray(mediaFiles.folderId, [...folders.keys()]))
+    .where(
+      and(
+        inArray(mediaFiles.folderId, [...folders.keys()]),
+        torrentId === undefined
+          ? undefined
+          : eq(mediaFiles.torrentId, torrentId),
+      ),
+    )
     .all()
   let missing = 0
 

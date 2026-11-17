@@ -29,7 +29,11 @@ import {
   trackedTopics,
 } from '../../db/schema.ts'
 import { EngineError, isEngineReady } from '../engine/index.ts'
-import { relinkMediaFiles, torrentLibraryFiles } from '../library/files.ts'
+import {
+  checkManagedFiles,
+  relinkMediaFiles,
+  torrentLibraryFiles,
+} from '../library/files.ts'
 import { syncLibrary } from '../library/linker.ts'
 import { logFor } from '../logs/index.ts'
 import { relinkTitleProgress } from '../sources/progress.ts'
@@ -559,6 +563,9 @@ async function prepare(
     )
   }
 
+  await checkManagedFiles(old.id)
+  if (!ctx.isCurrent())
+    return cancelRefresh(ctx)
   const kept = new Set([...(old.selectedFiles ?? []), ...libraryIndexes(old)])
   const selection = [
     ...new Set([
@@ -566,8 +573,13 @@ async function prepare(
       ...files.values(),
     ]),
   ]
+  const carried = new Set(map.values())
   const changed = onDisk.flatMap((state, index) =>
-    state === 'differs' || state === 'unknown' ? [index] : [],
+    state === 'differs'
+    || state === 'unknown'
+    || (state === 'missing' && carried.has(index))
+      ? [index]
+      : [],
   )
   const bytes = selection
     .filter(index => onDisk[index] !== 'match')
