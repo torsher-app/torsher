@@ -642,17 +642,18 @@ async function downloadFilesImpl(
   if (origin === 'manual')
     protectTorrent(torrent.id)
 
+  const pauseReason = origin === 'preserve' ? torrent.pauseReason : null
   torrent = await addToEngine(
     torrent,
     files,
     options.dir,
     undefined,
-    false,
+    pauseReason !== null,
     'download',
     priorities,
   )
 
-  if (torrent.pauseReason)
+  if (torrent.pauseReason && !pauseReason)
     await resumeTorrent(torrent.infoHash)
 
   update(torrent.id, {
@@ -660,7 +661,7 @@ async function downloadFilesImpl(
     selectedFiles: files,
     ...priorities,
     retention: 'keep',
-    pauseReason: null,
+    pauseReason,
   })
 
   const updated = getTorrent(torrent.id) ?? torrent

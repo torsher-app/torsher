@@ -553,7 +553,7 @@ beforeEach(async () => {
     if (url.pathname === '/torrents' && method === 'GET')
       return json(live)
 
-    if (method === 'PUT')
+    if (method === 'PUT' || url.pathname.endsWith('/resume'))
       return new Response(null, { status: 204 })
 
     return json({ kind: 'torrent_not_found', message: 'not found' }, 404)
@@ -572,10 +572,27 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true })
 })
 
+const upgrades = [
+  { pauseReason: null, remaining: true },
+  { pauseReason: 'user', remaining: true },
+  { pauseReason: 'user', remaining: false },
+] as const
+
 describe('апгрейд серии', () => {
-  it('чужая студия до просмотра заменяется своей: строка, путь и прогресс те же', async () => {
+  it.each(upgrades)('preserves pause and selection: %j', async (s) => {
+    const { pauseReason, remaining } = s
     const follow = insertFollow()
     const { old, downloadedAt } = await seedOld(follow)
+    getDb()
+      .update(torrents)
+      .set({
+        pauseReason,
+        selectedFiles: remaining ? [0, 1] : [1],
+        firstFiles: [0],
+        lowFiles: [1],
+      })
+      .where(eq(torrents.id, old.id))
+      .run()
     const before = libraryRows(8)[0]!
 
     getDb()
@@ -667,10 +684,13 @@ describe('апгрейд серии', () => {
       fileIndex: 0,
       mediaFileId: before.id,
     })
-    // Прежняя раздача больше не качает восьмую серию, седьмая — качается
+    // Убирается только заменённая серия; пауза и приоритеты остальных сохраняются
     expect(torrentByHash(OLD)).toMatchObject({
-      retention: 'keep',
-      selectedFiles: [0],
+      retention: remaining ? 'keep' : 'cache',
+      selectedFiles: remaining ? [0] : null,
+      pauseReason,
+      firstFiles: remaining ? [0] : null,
+      lowFiles: null,
     })
 
     // Прежний файл скачан, раздача ещё закреплена — второй версией не ляжет
