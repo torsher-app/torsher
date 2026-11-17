@@ -2,6 +2,7 @@ import { and, desc, eq } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import { titleProgress } from '../../db/schema.ts'
 import { isProgressWatched, progressSeen } from '../sources/progress.ts'
+import { parseCatalogId } from '../tmdb/mappers.ts'
 import { cardOf, summariesOf } from './cards.ts'
 
 /**
@@ -27,7 +28,7 @@ export async function profileHistory(
   const latest = new Map<string, (typeof rows)[number]>()
 
   for (const row of rows) {
-    if (!latest.has(row.titleId))
+    if (parseCatalogId(row.titleId) && !latest.has(row.titleId))
       latest.set(row.titleId, row)
   }
 
@@ -40,23 +41,21 @@ export async function profileHistory(
 
   return {
     total: entries.length,
-    items: slice.flatMap((row, index) => {
+    items: slice.map((row, index) => {
       const summary = summaries[index]
 
       if (!summary)
-        return []
+        throw new Error('Profile history metadata unavailable')
 
-      return [
-        {
-          title: cardOf(summary.details),
-          season: row.season || null,
-          episode: row.season ? row.episode : null,
-          position: row.position,
-          duration: row.duration,
-          watched: isProgressWatched(row),
-          watchedAt: row.updatedAt.toISOString(),
-        },
-      ]
+      return {
+        title: cardOf(summary.details),
+        season: row.season || null,
+        episode: row.season ? row.episode : null,
+        position: row.position,
+        duration: row.duration,
+        watched: isProgressWatched(row),
+        watchedAt: row.updatedAt.toISOString(),
+      }
     }),
   }
 }
