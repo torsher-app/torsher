@@ -215,3 +215,37 @@ func openMaintenanceFile(item maintenancePath) (*os.File, error) {
 	}
 	return os.NewFile(uintptr(fd), "maintenance-source"), nil
 }
+
+// Cancel never restores or removes captured content. An empty staging directory
+// is only an intent artifact; all original identities must still be confirmed.
+func confirmMaintenanceUnchanged(item maintenancePath, staged string) error {
+	file, err := openMaintenanceFile(item)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	root, err := openMaintenanceDir(item.Root)
+	if err != nil {
+		return err
+	}
+	defer unix.Close(root)
+	var info unix.Stat_t
+	if unix.Fstat(root, &info) != nil || uint64(info.Dev) != item.RootDevice || info.Ino != item.RootInode {
+		return errors.New("root_identity_changed")
+	}
+	err = unix.Fstatat(root, staged, &info, unix.AT_SYMLINK_NOFOLLOW)
+	if errors.Is(err, unix.ENOENT) {
+		return nil
+	}
+	if err != nil || info.Mode&unix.S_IFMT != unix.S_IFDIR || info.Uid != uint32(unix.Geteuid()) || info.Mode&0777 != 0700 {
+		return errors.New("staging_identity_changed")
+	}
+	// rmdir refuses nonempty staging, including a captured file or unknown entry.
+	if unix.Unlinkat(root, staged, unix.AT_REMOVEDIR) != nil {
+		return errors.New("staging_not_empty")
+	}
+	if unix.Fsync(root) != nil {
+		return errors.New("staging_sync_failed")
+	}
+	return nil
+}

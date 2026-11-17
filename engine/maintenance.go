@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -496,8 +497,27 @@ func (a *api) maintenanceFinish(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if next == "cancelled" && len(fence.Results) > 0 {
-		writeError(w, 409, "operation_partial", errors.New("operation has filesystem effects"))
-		return
+		// A write-ahead intent can precede any filesystem effect. Only the
+		// engine can prove that every original is intact and nothing is captured.
+		for key, result := range fence.Results {
+			if result != "staged" {
+				writeError(w, 409, "operation_partial", errors.New("operation has filesystem effects"))
+				return
+			}
+			index, err := strconv.Atoi(key)
+			if err != nil || index < 0 || index >= len(fence.Manifest.Paths) || strconv.Itoa(index) != key {
+				writeError(w, 409, "operation_partial", errors.New("invalid file intent"))
+				return
+			}
+		}
+		for index, item := range fence.Manifest.Paths {
+			if err := confirmMaintenanceUnchanged(item, ".torsher-maintenance-"+fence.ID+"-"+fmt.Sprint(index)); err != nil {
+				writeError(w, 409, "operation_partial", err)
+				return
+			}
+		}
+		fence.Results = map[string]string{}
+		fence.Error = ""
 	}
 	if next == "finalized" {
 		for index := range fence.Manifest.Paths {
