@@ -31,7 +31,7 @@ import LoadingButton from '~/components/LoadingButton.vue'
 import DownloadFilePriority from './DownloadFilePriority.vue'
 import { formatDateTime, formatRelative } from '~/lib/format'
 import { releaseMetaOf } from '~/lib/releaseMeta'
-import { playerUrl, videoIndexes } from '~/lib/torrents'
+import { playerUrl } from '~/lib/torrents'
 import DownloadSeedRule from './DownloadSeedRule.vue'
 import DownloadStatusIcon from './DownloadStatusIcon.vue'
 import FixMatchDialog from '~/components/library/FixMatchDialog.vue'
@@ -60,42 +60,17 @@ const actions = useDownloadActions()
 // Пока лист уезжает, в нём остаётся последняя раздача, а не пустота
 const shown = shallowRef<Torrent | null>(props.torrent)
 const title = useTitleInfo(() => shown.value?.titleId ?? null)
-// Выбор файлов в карточке — черновик до «Скачать выбранные»
-const selection = ref(new Set<number>())
-const draftPriorities = ref(
-  new Map<number, Torrent['files'][number]['priority']>(),
+const { selection, draftPriorities } = useDownloadSelection(
+  () => props.torrent,
+  () => props.preselect,
 )
-
-function resetSelection(torrent: Torrent) {
-  draftPriorities.value = new Map()
-  const chosen = torrent.files
-    .filter(file => file.selected)
-    .map(file => file.index)
-
-  selection.value = new Set(
-    chosen.length === 0 && props.preselect ? videoIndexes(torrent) : chosen,
-  )
-}
 
 watch(
   () => props.torrent,
-  (torrent, previous) => {
-    if (!torrent)
-      return
-
-    shown.value = torrent
-
-    // У magnet список файлов приходит позже: отметки — когда он появился
-    if (
-      torrent.id !== previous?.id
-      || (props.preselect
-        && previous?.files.length === 0
-        && torrent.files.length > 0)
-    ) {
-      resetSelection(torrent)
-    }
+  (torrent) => {
+    if (torrent)
+      shown.value = torrent
   },
-  { immediate: true },
 )
 
 const view = computed(() => (shown.value ? status.viewOf(shown.value) : null))
