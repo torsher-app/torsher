@@ -87,3 +87,72 @@ describe('manager browser address', () => {
     expect(api.postIndexerTest).not.toHaveBeenCalled()
   })
 })
+
+describe('check all availability summary', () => {
+  async function loadSources(items: Indexer[]) {
+    api.getIndexers.mockResolvedValue({ items })
+    api.getIndexerManagers.mockResolvedValue({ items: [] })
+    const { useSources } = await import('./useSources')
+    const sources = useSources()
+    await sources.load()
+    api.postIndexerTest.mockImplementation(async (id: string) =>
+      items.find(item => item.id === id),
+    )
+    return sources
+  }
+
+  function source(id: string, overrides: Partial<Indexer> = {}): Indexer {
+    return {
+      id,
+      enabled: true,
+      missing: false,
+      checkStatus: 'ok',
+      ...overrides,
+    } as Indexer
+  }
+
+  it('checks all enabled endpoints but counts only working sources, excluding missing', async () => {
+    const sources = await loadSources([
+      source('one'),
+      source('two'),
+      source('three'),
+      source('gone', { missing: true }),
+      source('disabled', { enabled: false }),
+    ])
+    expect(await sources.checkAll()).toEqual({ passed: 3, total: 4 })
+    expect(api.postIndexerTest.mock.calls.map(([id]) => id).sort()).toEqual([
+      'gone',
+      'one',
+      'three',
+      'two',
+    ])
+    expect(sources.attentionCount.value).toBe(1)
+    expect(
+      sources.indexers.value.find(item => item.id === 'gone'),
+    ).toMatchObject({ missing: true, checkStatus: 'ok' })
+    expect(sources.checkRun.value).toBeNull()
+    expect(sources.isChecking('gone')).toBe(false)
+  })
+
+  it('uses returned availability and excludes failed checks without stopping the run', async () => {
+    const sources = await loadSources([
+      source('working'),
+      source('gone'),
+      source('disabled'),
+      source('timeout'),
+      source('request-error'),
+    ])
+    api.postIndexerTest.mockImplementation(async (id: string) => {
+      if (id === 'request-error')
+        throw new Error('request failed')
+      return source(id, {
+        missing: id === 'gone',
+        enabled: id !== 'disabled',
+        checkStatus: id === 'timeout' ? 'timeout' : 'ok',
+      })
+    })
+    expect(await sources.checkAll()).toEqual({ passed: 1, total: 5 })
+    expect(sources.checkRun.value).toBeNull()
+    expect(sources.isChecking('request-error')).toBe(false)
+  })
+})
