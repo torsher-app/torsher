@@ -44,6 +44,7 @@ import {
   searchResultsToPeople,
   seasonToDetails,
   similarCards,
+  trackerSeasonAllowed,
   trackerSeasonName,
   trimExtras,
   trimPerson,
@@ -335,10 +336,10 @@ function cachedLanguages(ref: TmdbRef) {
 }
 
 /**
- * Серий в сезонах по одному TMDB, без серий с трекера: из деталей в кэше на
+ * Детали сериала по одному TMDB, без серий с трекера: из кэша на
  * любом языке. `undefined` — ID не сериала; ошибки TMDB — `TmdbError`.
  */
-export async function tmdbEpisodeCounts(id: string) {
+export async function tmdbSeriesDetails(id: string) {
   const ref = parseCatalogId(id)
 
   if (ref?.type !== 'tv')
@@ -346,12 +347,7 @@ export async function tmdbEpisodeCounts(id: string) {
 
   const { details } = await loadTitle(ref, cachedLanguages(ref)[0]!)
 
-  return new Map(
-    (details.seasons ?? []).map(season => [
-      season.number,
-      season.episodeCount,
-    ]),
-  )
+  return details
 }
 
 /** Релиз фильма по TMDB: тип (`TmdbRelease.type`) и дата `YYYY-MM-DD` */
@@ -514,6 +510,9 @@ export async function getSeason(
 
   // Сезона, который знают только раздачи, в TMDB не спрашиваем
   const { details } = await loadTitle(ref, language)
+  if (!trackerSeasonAllowed(details, number))
+    return tmdbSeason(ref.tmdbId, number, language)
+
   const seasons = details.seasons ?? []
   const known = seasons.find(season => season.number === number)
 
