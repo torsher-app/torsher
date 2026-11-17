@@ -6343,10 +6343,10 @@ export interface OverviewResponseInput {
   };
   storage: {
     usedByCache: number;
-    cacheLimit: number;
-    free: number;
-    total: number;
-    minFree: number;
+    cacheLimit: number | null;
+    free: number | null;
+    total: number | null;
+    minFree: number | null;
   };
   sources: {
     ok: number;
@@ -14288,10 +14288,10 @@ export interface OverviewResponse {
   };
   storage: {
     usedByCache: number;
-    cacheLimit: number;
-    free: number;
-    total: number;
-    minFree: number;
+    cacheLimit: number | null;
+    free: number | null;
+    total: number | null;
+    minFree: number | null;
   };
   sources: {
     ok: number;

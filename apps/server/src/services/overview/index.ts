@@ -20,7 +20,7 @@ import { listIndexers } from '../indexers/index.ts'
 import { checkState } from '../net/check.ts'
 import { currentLinkMode } from '../library/link.ts'
 import { accelSnapshot, playbackSettingsOf } from '../media/index.ts'
-import { isStreaming, storageSummary } from '../storage/index.ts'
+import { isStreaming, overviewStorageSummary } from '../storage/index.ts'
 import { tmdbKeyStatus } from '../tmdb/credentials.ts'
 import { overviewUpdate } from '../updates/index.ts'
 import {
@@ -217,12 +217,22 @@ function playbackAttention(state: AccelState | null): AttentionItem[] {
 }
 
 function storageAttention(
-  storage: { free: number, minFree: number, total: number },
+  storage: {
+    free: number | null
+    minFree: number | null
+    total: number | null
+  },
   pausedNames: string[],
 ): AttentionItem[] {
   const items: AttentionItem[] = []
 
-  if (storage.total > 0 && storage.free < storage.minFree) {
+  if (
+    storage.total !== null
+    && storage.total > 0
+    && storage.free !== null
+    && storage.minFree !== null
+    && storage.free < storage.minFree
+  ) {
     items.push({
       kind: 'storage_low',
       severity: 'error',
@@ -340,7 +350,7 @@ function downloadsOf(live: Map<string, EngineTorrentState>) {
 
 async function collect(known?: Map<string, EngineTorrentState>) {
   const live = known ?? (await liveTorrents())
-  const storage = await storageSummary(live)
+  const storage = await overviewStorageSummary(live)
   const downloads = downloadsOf(live)
   const accel = accelSnapshot()
   const attention = [
