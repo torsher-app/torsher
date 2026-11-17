@@ -1840,7 +1840,11 @@ function openPanel(kind: Panel) {
 }
 
 function onLoadedMetadata() {
-  const el = video.value!
+  const el = video.value
+
+  // Teardown can queue media events on a detached video after the ref is cleared.
+  if (leaving || !el)
+    return
 
   clearTimeout(metadataTimer)
   duration.value = el.duration
@@ -1962,7 +1966,11 @@ function onPause() {
 }
 
 function onTimeUpdate() {
-  const el = video.value!
+  const el = video.value
+
+  // Teardown can queue media events on a detached video after the ref is cleared.
+  if (leaving || !el)
+    return
 
   // До метаданных `currentTime` нового потока — 0, а не позиция
   if (

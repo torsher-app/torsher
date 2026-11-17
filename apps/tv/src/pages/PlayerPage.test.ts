@@ -108,6 +108,7 @@ vi.mock('../composables/useHls.ts', () => ({
     diagnosticState: () => ({}),
   }),
 }))
+let mediaRef: Ref<HTMLVideoElement | undefined>
 let mode = 'direct'
 const playerStats = ref<TorrentStats>()
 const statsFailed = ref(false)
@@ -147,6 +148,7 @@ vi.mock('../composables/usePlayerTracks.ts', () => ({
     _position: unknown,
     restart: typeof mocks.restart,
   ) => {
+    mediaRef = video
     video.value = mocks.media
     mocks.restart = restart
     return {
@@ -1253,3 +1255,45 @@ it('gives a seek its own first-response grace without rejuvenating an old measur
   await settle()
   expect(controls.stalledStatus).toEqual({ step: 'buffering', connected: 6 })
 })
+
+it.each(['exit', 'unmount'] as const)(
+  'ignores late media updates after %s and preserves the exit checkpoint',
+  async (cancel) => {
+    await mount()
+    mocks.media.currentTime = 73
+    controls.onTimeUpdate()
+    mocks.save.mockClear()
+    if (cancel === 'exit')
+      controls.exit()
+    else cleanup()
+    expect(mocks.save).toHaveBeenLastCalledWith(
+      73,
+      180,
+      cancel === 'exit' ? 'exit' : 'checkpoint',
+      expect.anything(),
+    )
+    mocks.save.mockClear()
+
+    // Teardown can queue events before Vue clears the template ref.
+    mocks.media.currentTime = 0
+    Object.assign(mocks.media, { duration: Number.NaN })
+    controls.onTimeUpdate()
+    controls.onLoadedMetadata()
+    // Detached DOM listeners can also fire after Vue has cleared the ref.
+    for (const value of [null, undefined]) {
+      Object.assign(mediaRef, { value })
+      expect(() => controls.onTimeUpdate()).not.toThrow()
+      expect(() => controls.onLoadedMetadata()).not.toThrow()
+    }
+    expect(mocks.save).not.toHaveBeenCalled()
+    if (cancel === 'exit') {
+      cleanup()
+      expect(mocks.save).toHaveBeenLastCalledWith(
+        73,
+        180,
+        'checkpoint',
+        expect.anything(),
+      )
+    }
+  },
+)
