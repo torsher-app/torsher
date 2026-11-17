@@ -271,7 +271,7 @@ async function freeVideoPath(
   source: string,
   quality: string | undefined,
 ) {
-  const sourceInode = (await stat(source)).ino
+  const sourceInfo = await stat(source)
   const versions = [undefined, quality, '2', '3', '4', '5']
 
   for (const version of versions) {
@@ -279,11 +279,64 @@ async function freeVideoPath(
     const found = await exists(libraryPath(folder, relPath))
 
     // Тот же файл уже лежит (база потеряла запись) — регистрируем его
-    if (!found || found.ino === sourceInode)
+    if (
+      !found
+      || (found.dev === sourceInfo.dev && found.ino === sourceInfo.ino)
+    ) {
       return { relPath, version, adopt: !!found }
+    }
   }
 
   return undefined
+}
+
+/** Повторный add сохраняет media ID и метаданные существующего hardlink. */
+function registerVideo(values: typeof mediaFiles.$inferInsert, adopt: boolean) {
+  return getDb().transaction((tx) => {
+    const inserted = tx
+      .insert(mediaFiles)
+      .values(values)
+      .onConflictDoNothing()
+      .returning()
+      .get()
+    if (inserted || !adopt)
+      return inserted
+
+    const existing = tx
+      .select()
+      .from(mediaFiles)
+      .where(
+        and(
+          eq(mediaFiles.folderId, values.folderId),
+          eq(mediaFiles.relPath, values.relPath),
+        ),
+      )
+      .get()
+
+    if (
+      !existing
+      || existing.torrentId !== null
+      || existing.stale
+      || existing.replacementTorrentId !== null
+      || existing.titleId !== (values.titleId ?? null)
+      || existing.season !== (values.season ?? null)
+      || existing.episode !== (values.episode ?? null)
+      || existing.episodeTo !== (values.episodeTo ?? null)
+    ) {
+      return undefined
+    }
+
+    return tx
+      .update(mediaFiles)
+      .set({
+        torrentId: values.torrentId,
+        fileIndex: values.fileIndex,
+        linkMode: values.linkMode,
+      })
+      .where(eq(mediaFiles.id, existing.id))
+      .returning()
+      .get()
+  })
 }
 
 async function placeVideo(
@@ -348,9 +401,8 @@ async function placeVideo(
   }
 
   const placed = await stat(absolute)
-  const row = getDb()
-    .insert(mediaFiles)
-    .values({
+  const row = registerVideo(
+    {
       folderId: folder.id,
       relPath: target.relPath,
       size: placed.size,
@@ -366,10 +418,9 @@ async function placeVideo(
       version: target.version ?? null,
       matchStatus: 'matched',
       matchSource: 'torrent',
-    })
-    .onConflictDoNothing()
-    .returning()
-    .get()
+    },
+    target.adopt,
+  )
 
   if (!row)
     return
@@ -687,12 +738,18 @@ async function linkOther(
     const relPath = otherPath(torrent.name, file.path)
     let absolute: string
     let linkMode: MediaLinkMode
+    let adopt = false
 
     try {
       absolute = libraryPath(folder, relPath)
-      linkMode = (await exists(absolute))
-        ? 'hardlink'
-        : await placeFile(source, absolute)
+      const found = await exists(absolute)
+      if (found) {
+        const sourceInfo = await stat(source)
+        if (found.dev !== sourceInfo.dev || found.ino !== sourceInfo.ino)
+          continue
+        adopt = true
+      }
+      linkMode = adopt ? 'hardlink' : await placeFile(source, absolute)
     }
     catch (err) {
       logFor('storage').error(
@@ -703,9 +760,8 @@ async function linkOther(
     }
 
     const info = await stat(absolute)
-    const row = getDb()
-      .insert(mediaFiles)
-      .values({
+    const row = registerVideo(
+      {
         folderId: folder.id,
         relPath,
         size: info.size,
@@ -717,10 +773,9 @@ async function linkOther(
         matchStatus: 'ignored',
         matchSource: 'user',
         matchGroup: relPath.split('/').slice(0, 2).join('/'),
-      })
-      .onConflictDoNothing()
-      .returning()
-      .get()
+      },
+      adopt,
+    )
 
     if (row)
       queueProbe(row.id)
