@@ -2,7 +2,10 @@
 export type LoadError
   = 'unauthorized' | 'notConfigured' | 'unavailable' | 'notFound' | 'unknown'
 
-export function toLoadError(status: number | undefined): LoadError {
+export function toLoadError(
+  status: number | undefined,
+  catalogError?: string,
+): LoadError {
   switch (status) {
     case 401:
       return 'unauthorized'
@@ -11,7 +14,7 @@ export function toLoadError(status: number | undefined): LoadError {
     case 502:
       return 'unavailable'
     case 503:
-      return 'notConfigured'
+      return catalogError === 'config' ? 'notConfigured' : 'unavailable'
     default:
       return 'unknown'
   }

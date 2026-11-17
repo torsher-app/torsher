@@ -69,6 +69,16 @@ afterEach(() => {
 })
 
 describe('get /api/catalog/search', () => {
+  it('does not diagnose an upstream 503 as missing configuration', async () => {
+    fetchMock.mockResolvedValue(json({ message: 'Service unavailable' }, 503))
+    const res = await app.inject({
+      url: '/api/catalog/search?query=temporary-503',
+      cookies: authed(),
+    })
+    expect(res.statusCode).toBe(502)
+    expect(res.headers['x-torsher-catalog-error']).toBeUndefined()
+  })
+
   it('отвечает 401 без cookie', async () => {
     const res = await app.inject({ url: '/api/catalog/search?query=matrix' })
 
@@ -114,6 +124,7 @@ describe('get /api/catalog/search', () => {
     })
 
     expect(res.statusCode).toBe(503)
+    expect(res.headers['x-torsher-catalog-error']).toBe('config')
   })
 
   it('отвечает 502, если TMDB недоступен и кэша нет', async () => {

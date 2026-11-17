@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   createApiClient,
   getErrorBody,
+  getErrorHeader,
   getErrorMessage,
   getErrorStatus,
 } from './client.ts'
@@ -497,4 +498,25 @@ it('keeps an optional old owner-only speedtest 401 from expiring a paired viewer
   await expect(api.users.getUsersMe()).rejects.toMatchObject({ status: 401 })
   expect(options.onSessionExpired).toHaveBeenCalledTimes(1)
   expect(requestedUrls()).toContain('POST /api/auth/refresh')
+})
+
+describe('getErrorHeader', () => {
+  it('reads a case-insensitive header without consuming the body', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({ message: 'configuration error' }), {
+        status: 503,
+        headers: { 'X-Torsher-Catalog-Error': 'config' },
+      }),
+    )
+    const { api } = setup()
+    const error = await catchError(api.auth.postAuthSignin(signin))
+    expect(getErrorHeader(error, 'x-torsher-catalog-error')).toBe('config')
+    expect(getErrorHeader(error, 'missing')).toBeUndefined()
+    expect(
+      getErrorHeader(new TypeError('offline'), 'x-torsher-catalog-error'),
+    ).toBeUndefined()
+    await expect(getErrorBody(error)).resolves.toEqual({
+      message: 'configuration error',
+    })
+  })
 })

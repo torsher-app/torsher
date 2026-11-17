@@ -2,6 +2,7 @@ export {
   correlationHeaders,
   createApiClient,
   getErrorBody,
+  getErrorHeader,
   getErrorMessage,
   getErrorOutcome,
   getErrorRequestId,

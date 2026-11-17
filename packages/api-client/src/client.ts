@@ -378,3 +378,13 @@ export function getErrorRequestId(error: unknown): string | undefined {
     ? (error.response.headers.get('X-Torsher-Request-Id') ?? undefined)
     : undefined
 }
+
+/** Read a response header without consuming the HTTP error body. */
+export function getErrorHeader(
+  error: unknown,
+  name: string,
+): string | undefined {
+  return error instanceof HttpError
+    ? (error.response.headers.get(name) ?? undefined)
+    : undefined
+}
