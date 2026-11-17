@@ -37,6 +37,7 @@ const high: TitleMatch = { confidence: 'high', issues: [] }
 const fetchMock = vi.fn<typeof fetch>()
 // Серий во втором сезоне по TMDB: тест «TMDB узнал серию» его меняет
 let season2Count = 5
+let seriesStatus = 'Returning Series'
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -58,7 +59,7 @@ function series() {
     original_name: 'Quiet Harbor',
     original_language: 'en',
     first_air_date: '2023-05-01',
-    status: 'Returning Series',
+    status: seriesStatus,
     last_episode_to_air: {
       season_number: 2,
       episode_number: season2Count,
@@ -155,6 +156,7 @@ beforeEach(() => {
     getDb().delete(table).run()
 
   season2Count = 5
+  seriesStatus = 'Returning Series'
   fetchMock.mockReset()
   fetchMock.mockImplementation(async (input) => {
     const url = new URL(String(input))
@@ -177,6 +179,115 @@ afterEach(() => {
 })
 
 describe('серии с трекера', () => {
+  it('старые строки раннего сезона не расширяют его, а чистка сбрасывает только автоматическую подсказку', async () => {
+    const follow = insertFollow()
+    getDb()
+      .insert(trackerEpisodes)
+      .values({
+        titleId: SERIES,
+        season: 1,
+        episode: 62,
+        firstSeenAt: new Date(),
+        releaseTitle: 'Quiet.Harbor.S01E01-62.of.62',
+      })
+      .run()
+    getDb()
+      .insert(followSeasons)
+      .values({ followId: follow.id, season: 1, expectedTotal: 62 })
+      .run()
+    getDb()
+      .insert(followSeasons)
+      .values({ followId: follow.id, season: 2, expectedTotal: 12 })
+      .run()
+
+    expect(
+      (await getTitleSummary(SERIES, 'ru-RU'))?.details.seasons?.[0]?.episodeCount,
+    ).toBe(8)
+    await purgeTrackerEpisodes()
+    await purgeTrackerEpisodes()
+
+    expect(trackerRows()).toEqual([])
+    expect(
+      getDb()
+        .select({
+          season: followSeasons.season,
+          total: followSeasons.expectedTotal,
+        })
+        .from(followSeasons)
+        .all(),
+    ).toEqual([
+      { season: 1, total: null },
+      { season: 2, total: 12 },
+    ])
+  })
+
+  it('s1E121 не расширяет 24 серии первого сезона завершённого сериала', async () => {
+    seriesStatus = 'Ended'
+    const raw = series()
+    raw.seasons[0]!.episode_count = 24
+    fetchMock.mockImplementation(async () => json(raw))
+    await recordTrackerEpisodes(SERIES, [
+      found('Quiet.Harbor.S01E121.720p.WEB-DL'),
+    ])
+    expect(trackerRows()).toEqual([])
+    expect(
+      (await getTitleSummary(SERIES, 'ru-RU'))?.details.seasons?.[0]?.episodeCount,
+    ).toBe(24)
+  })
+
+  it.each(['Ended', 'Canceled'])(
+    'не расширяет завершённый сериал (%s) и не сохраняет общий размер как размер сезона',
+    async (status) => {
+      seriesStatus = status
+      const follow = insertFollow()
+
+      await recordTrackerEpisodes(SERIES, [
+        found('Quiet.Harbor.S01E01-62.of.62.720p.WEB-DL'),
+        found('Quiet.Harbor.S01E121.720p.WEB-DL'),
+        found('Quiet.Harbor.S02E01-13.of.13.720p.WEB-DL'),
+        found('Quiet.Harbor.S03E01.720p.WEB-DL'),
+      ])
+
+      expect(trackerRows()).toEqual([])
+      expect(
+        getDb()
+          .select()
+          .from(followSeasons)
+          .where(eq(followSeasons.followId, follow.id))
+          .all(),
+      ).toEqual([])
+    },
+  )
+
+  it('не расширяет ранний сезон продолжающегося сериала', async () => {
+    await recordTrackerEpisodes(SERIES, [
+      found('Quiet.Harbor.S01E01-62.of.62.720p.WEB-DL'),
+      found('Quiet.Harbor.S01E09.720p.WEB-DL'),
+    ])
+
+    expect(trackerRows()).toEqual([])
+  })
+
+  it('старые строки завершённого сериала сразу не влияют на summary и сезон и удаляются чисткой', async () => {
+    await recordTrackerEpisodes(SERIES, [
+      found('Quiet.Harbor.S02E01-07.1080p.WEB-DL'),
+    ])
+    expect(trackerRows()).toHaveLength(2)
+    seriesStatus = 'Ended'
+    getDb().delete(metaCache).run()
+
+    const summary = await getTitleSummary(SERIES, 'ru-RU')
+    expect(summary?.details.seasons?.[1]).toMatchObject({
+      episodeCount: 5,
+      airedEpisodeCount: 5,
+    })
+    expect(summary?.airing?.last?.episode).toBe(5)
+    expect((await getSeason(SERIES, 2, 'ru-RU'))?.episodes).toHaveLength(5)
+
+    await purgeTrackerEpisodes()
+    expect(trackerRows()).toEqual([])
+  })
+
   it('раздача S02E01-06 при пяти сериях в TMDB даёт шестую «на трекере», и она нужная', async () => {
     const follow = insertFollow()
     const now = new Date()

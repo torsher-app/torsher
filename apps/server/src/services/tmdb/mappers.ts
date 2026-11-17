@@ -590,6 +590,21 @@ export interface TrackerEpisode {
 
 type TvAiring = ReturnType<typeof tvAiring>
 
+/** Заголовок релиза может опережать TMDB только у текущего/следующего сезона идущего шоу. */
+export function trackerSeasonAllowed(
+  details: Pick<TitleDetails, 'ongoing' | 'seasons'>,
+  season: number,
+) {
+  const last = Math.max(
+    0,
+    ...(details.seasons ?? []).map(item => item.number),
+  )
+
+  return (
+    !!details.ongoing && season > 0 && season >= last && season <= last + 1
+  )
+}
+
 interface EpisodeNumber {
   season: number
   episode: number
@@ -651,7 +666,10 @@ export function withTrackerEpisodes<
   const known = new Map(
     seasons.map(season => [season.number, season.episodeCount]),
   )
-  const furthest = trackerBeyond(known, episodes)
+  const furthest = trackerBeyond(
+    known,
+    episodes.filter(item => trackerSeasonAllowed(title.details, item.season)),
+  )
 
   if (!furthest.size)
     return title
