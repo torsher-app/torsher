@@ -85,12 +85,13 @@ watch(value, (next) => {
     <Input
       v-else
       :id="id"
-      v-model="value"
+      :model-value="value"
       :type="type ?? 'text'"
       :class="mono && 'font-mono'"
       :placeholder="placeholder"
       :autocomplete="autocomplete ?? 'off'"
       :aria-invalid="Boolean(errorMessage)"
+      @update:model-value="value = String($event)"
       @blur="handleBlur"
     />
     <p v-if="errorMessage" class="text-[12.5px] text-destructive">
