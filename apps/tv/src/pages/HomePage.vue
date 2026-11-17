@@ -47,6 +47,7 @@ import { useContinuePlayback } from '../composables/useContinuePlayback.ts'
 import { useHero } from '../composables/useHero.ts'
 import { useHeldLoading } from '../composables/useHeldLoading.ts'
 import { useHome } from '../composables/useHome.ts'
+import { useTitleChanges } from '../composables/useTitleChanges.ts'
 import { useReleaseTexts } from '../composables/useReleaseTexts.ts'
 import { useStackScroll } from '../composables/useStackScroll.ts'
 import { useFocus } from '../focus/index.ts'
@@ -91,6 +92,7 @@ const router = useRouter()
 const focus = useFocus()
 const {
   status,
+  refreshing,
   rows,
   loads,
   error,
@@ -477,11 +479,17 @@ function searchRelease() {
 }
 
 // Экран в KeepAlive: ряды могут прийти, когда пользователь уже ушёл на другой экран
-let isActive = false
+const isActive = ref(false)
 
 function restoreFocus() {
-  if (isActive)
+  if (
+    isActive.value
+    && !titleActions.target
+    && !librarySelection.value
+    && !release.value
+  ) {
     focus.activate(content.value)
+  }
 }
 
 watch(aligned, alignRows)
@@ -491,8 +499,10 @@ const showSkeleton = useHeldLoading(
   () => status.value === 'loading' && rows.value.length === 0,
 )
 
-watch(showSkeleton, async (value) => {
-  if (value)
+watch([status, showSkeleton], async ([state, skeleton], [, wasSkeleton]) => {
+  // Ошибка после retry с прежними рядами не меняет rows и не показывает
+  // скелетон: её секция тоже получает фокус через общий guard экрана.
+  if (skeleton || (state !== 'error' && !wasSkeleton))
     return
 
   await nextTick()
@@ -504,10 +514,13 @@ watch(showSkeleton, async (value) => {
 // обновление (правка списков, «Продолжить» после плеера) оставляет экран на
 // том же ряду, даже если ряды выше появились или пропали
 watch([rows, loads], async ([next, count], [, prevCount]) => {
-  const kept
-    = count === prevCount
-      ? next.findIndex(row => sectionOf(row) === lastSection.value)
-      : -1
+  const quiet = count === prevCount
+  const previousFocus = focus.current()
+  const lostRowCard
+    = !!previousFocus && !!rowsElement.value?.contains(previousFocus)
+  const kept = quiet
+    ? next.findIndex(row => sectionOf(row) === lastSection.value)
+    : -1
 
   aligned.value = Math.max(kept, 0)
 
@@ -516,16 +529,31 @@ watch([rows, loads], async ([next, count], [, prevCount]) => {
 
   await nextTick()
   alignRows()
-  restoreFocus()
+  // Тихий ответ восстанавливает только исчезнувшую карточку. Живой фокус
+  // в рейле, другом ряду или панели принадлежит текущему действию зрителя.
+  if (
+    !quiet
+    || (lostRowCard
+      && !previousFocus?.isConnected
+      && !focus.current()?.isConnected)
+  ) {
+    restoreFocus()
+  }
 })
 
 // Правки «Позже» и подборок из меню видны на главной после возврата на неё
-let seenVersion = titleActions.version
+const syncChanges = useTitleChanges(
+  () => titleActions.version,
+  () => status.value === 'ready' && !refreshing.value,
+  refresh,
+  () => isActive.value,
+  () => !!titleActions.target,
+)
 
 // Возврат из карточки и плеера: фокус на ту карточку, с которой ушли;
 // «Продолжить» подтягивает свежий прогресс, правки списков — все ряды
 onActivated(() => {
-  isActive = true
+  isActive.value = true
 
   nextTick(alignRows)
 
@@ -539,22 +567,24 @@ onActivated(() => {
   // Ряды «Библиотеки» — свои, без каталога: дёшево перечитать при каждом
   // возврате, и новые загрузки и раздачи без тайтла видны сразу. Первый
   // показ ряды ещё грузит сам
+  if (syncChanges())
+    return
+
   if (
     (props.mode === 'library' && status.value === 'ready')
-    || seenVersion !== titleActions.version
     || seenRelease !== releaseMatch.version
   ) {
-    seenVersion = titleActions.version
     seenRelease = releaseMatch.version
-    void refresh()
+    if (!titleActions.target)
+      void refresh()
   }
-  else {
+  else if (!titleActions.target) {
     void refreshContinue()
   }
 })
 
 onDeactivated(() => {
-  isActive = false
+  isActive.value = false
   trailingPadding.value = 0
   lastRowTop.value = undefined
   footerExtent.value = 0
@@ -563,7 +593,7 @@ onDeactivated(() => {
 // Колесо листает ряды от того, что на экране, а не от карточки под курсором,
 // и не трогает ленты по горизонтали — куда бы ни указывал фокус (рейл, ряд ниже)
 const stopWheel = focus.onWheel((direction) => {
-  if (!isActive || rows.value.length === 0)
+  if (!isActive.value || rows.value.length === 0)
     return false
 
   if (librarySelection.value)
@@ -615,7 +645,7 @@ onBeforeUnmount(() => {
       v-if="status === 'error' && error && !showSkeleton"
       class="home__state"
     >
-      <FocusSection name="home-state" :edges="{ left: railSection }" autofocus>
+      <FocusSection name="home-state" :edges="{ left: railSection }">
         <ScreenState :kind="error" @retry="retry" />
       </FocusSection>
     </div>
@@ -697,7 +727,7 @@ onBeforeUnmount(() => {
     </div>
 
     <div v-else-if="status === 'ready' && !showSkeleton" class="home__state">
-      <FocusSection name="home-state" :edges="{ left: railSection }" autofocus>
+      <FocusSection name="home-state" :edges="{ left: railSection }">
         <ScreenState
           :kind="mode === 'library' ? 'libraryEmpty' : 'homeEmpty'"
           @retry="retry"

@@ -1,6 +1,7 @@
 import type { Ref } from 'vue'
 import type { LoadError } from '../lib/loadError.ts'
 import { onScopeDispose, ref, shallowRef, watch } from 'vue'
+import { captureTitleViewer, isTitleViewer } from '../titleActions.ts'
 import { loadErrorOf } from '../api.ts'
 import { createLatest } from '../lib/latest.ts'
 
@@ -23,6 +24,7 @@ export function useResource<T>(
 
   async function run(quiet = false) {
     const current = key.value
+    const viewer = captureTitleViewer()
 
     if (!quiet)
       data.value = undefined
@@ -39,7 +41,7 @@ export function useResource<T>(
 
     const outcome = await latest.run(signal => load(current, signal))
 
-    if (outcome.status === 'cancelled')
+    if (!isTitleViewer(viewer) || outcome.status === 'cancelled')
       return
 
     if (outcome.status === 'failed') {
@@ -56,7 +58,7 @@ export function useResource<T>(
     status.value = 'ready'
   }
 
-  watch(key, () => run(), { immediate: true })
+  watch(key, () => run(), { immediate: true, flush: 'sync' })
 
   onScopeDispose(latest.cancel)
 
@@ -66,5 +68,6 @@ export function useResource<T>(
     error,
     retry: () => run(),
     refresh: () => run(true),
+    cancel: latest.cancel,
   }
 }

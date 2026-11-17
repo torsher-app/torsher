@@ -2,11 +2,11 @@ import type { Episode, TitleProgress } from '@torsher/api-client'
 import { nextTick, ref, shallowRef } from 'vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useEpisodeActions } from './useEpisodeActions.ts'
+import { setTitleViewer, titleActions } from '../titleActions.ts'
 
 const mocks = vi.hoisted(() => ({
   library: vi.fn(),
   mark: vi.fn(),
-  refresh: vi.fn(),
   push: vi.fn(),
   focusOn: vi.fn(),
   opener: { isConnected: true },
@@ -48,18 +48,14 @@ function setup(ready = true) {
     seasonReleases: [],
     episodes: [{ ...point }],
   })
-  const actions = useEpisodeActions(
-    ref('show'),
-    season,
-    progress,
-    () => ready,
-    mocks.refresh,
-  )
+  const actions = useEpisodeActions(ref('show'), season, progress, () => ready)
   actions.open(episode)
   return { ...actions, season, progress }
 }
 beforeEach(() => {
   vi.resetAllMocks()
+  setTitleViewer(undefined)
+  setTitleViewer('A')
   mocks.deactivate.length = 0
   mocks.library.mockResolvedValue({ files: [] })
   mocks.mark.mockResolvedValue({})
@@ -184,7 +180,6 @@ describe('episode actions', () => {
       position: 0,
       watched: true,
     })
-    expect(mocks.refresh).toHaveBeenCalledOnce()
     expect(actions.context.value).toBeUndefined()
     actions.open(episode)
     expect(actions.options.value.map(option => option.id)).toEqual([
@@ -198,18 +193,38 @@ describe('episode actions', () => {
       duration: null,
     })
     await nextTick()
-    expect(mocks.refresh).toHaveBeenCalledTimes(2)
     expect(mocks.focusOn).toHaveBeenCalledWith(mocks.opener)
   })
   it('a failed mark preserves every field and leaves the panel available for retry', async () => {
     mocks.mark.mockRejectedValueOnce(new Error('offline'))
     const actions = setup()
+    const version = titleActions.version
     await actions.select('mark')
+    expect(titleActions.version).toBe(version)
     expect(actions.progress.value.episodes[0]).toEqual(point)
     expect(actions.context.value).toBeDefined()
     expect(actions.error.value).toBe('actions.errors.save')
     await actions.select('mark')
+    expect(titleActions.version).toBe(version + 1)
     expect(actions.context.value).toBeUndefined()
+  })
+  it('does not update the UI or notify a new viewer from an earlier pending mark', async () => {
+    let finish!: () => void
+    mocks.mark.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve
+        }),
+    )
+    const actions = setup()
+    const pending = actions.select('mark')
+    setTitleViewer('B')
+    setTitleViewer('A')
+    const version = titleActions.version
+    finish()
+    await pending
+    expect(actions.progress.value.episodes[0]).toEqual(point)
+    expect(titleActions.version).toBe(version)
   })
   it('hold saves once and a late reply updates its original season only', async () => {
     let resolve!: () => void

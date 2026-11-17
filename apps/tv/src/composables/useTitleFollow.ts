@@ -20,7 +20,12 @@ import {
 } from '../lib/follow.ts'
 import { formatClock } from '../lib/player.ts'
 import { formatAirDate } from '../lib/titleInfo.ts'
-import { noteTitleFollow } from '../titleActions.ts'
+import {
+  captureTitleViewer,
+  isTitleViewer,
+  noteTitleFollow,
+  titleActions,
+} from '../titleActions.ts'
 import { useCatalogLanguage } from './useCatalogLanguage.ts'
 import { useResource } from './useResource.ts'
 
@@ -31,8 +36,8 @@ import { useResource } from './useResource.ts'
  */
 export function useTitleFollow(id: Ref<string>) {
   const language = useCatalogLanguage()
-  const { data, status, refresh } = useResource<TitleFollowResponse>(
-    computed(() => `${id.value}|${language.value}`),
+  const { data, status, refresh, cancel } = useResource<TitleFollowResponse>(
+    computed(() => `${id.value}|${language.value}|${titleActions.viewer}`),
     (_, signal) =>
       api.titles.getTitleFollow(
         id.value,
@@ -41,19 +46,23 @@ export function useTitleFollow(id: Ref<string>) {
       ),
   )
 
-  function apply(titleId: string, fresh: TitleFollowResponse) {
-    if (titleId !== id.value)
+  function apply(titleId: string, fresh: TitleFollowResponse, viewer: number) {
+    if (!isTitleViewer(viewer) || titleId !== id.value)
       return
 
+    cancel()
     data.value = fresh
+    status.value = 'ready'
     noteTitleFollow(
       titleId,
       !!fresh.follow?.subscribed && fresh.follow.state !== 'stopped',
+      viewer,
     )
   }
 
   async function save(body: FollowTitleInput) {
     const titleId = id.value
+    const viewer = captureTitleViewer()
 
     try {
       apply(
@@ -61,9 +70,10 @@ export function useTitleFollow(id: Ref<string>) {
         await api.titles.followTitle(titleId, body, {
           language: language.value,
         }),
+        viewer,
       )
 
-      return true
+      return isTitleViewer(viewer)
     }
     catch {
       return false
@@ -72,14 +82,16 @@ export function useTitleFollow(id: Ref<string>) {
 
   async function stop() {
     const titleId = id.value
+    const viewer = captureTitleViewer()
 
     try {
       apply(
         titleId,
         await api.titles.unfollowTitle(titleId, { language: language.value }),
+        viewer,
       )
 
-      return true
+      return isTitleViewer(viewer)
     }
     catch {
       return false

@@ -61,14 +61,21 @@ import {
   useDownloadTexts,
   useTitleDownload,
 } from '../composables/useTitleDownload.ts'
+import { patchTitleMine } from '../composables/useTitleMineMutation.ts'
+import { useTitleChanges } from '../composables/useTitleChanges.ts'
 import { useTitleProgress } from '../composables/useTitleProgress.ts'
 import { useFocus } from '../focus/index.ts'
 import {
+  captureTitleViewer,
+  isTitleViewer,
   knownTitleMine,
   noteTitleDownload,
-  noteTitleMine,
   openTitleActions,
   rememberTitleMine,
+  titleActions,
+  titleMineProgressVersion,
+  titleMineRevision,
+  titleProgressVersion,
 } from '../titleActions.ts'
 import {
   queryOf as catalogQueryOf,
@@ -334,9 +341,6 @@ const episodeActions = useEpisodeActions(
   selectedSeason,
   progress,
   () => progressStatus.value !== 'loading',
-  () => {
-    void refreshProgress()
-  },
 )
 const episodeContext = episodeActions.context
 const episodeOptions = episodeActions.options
@@ -467,23 +471,26 @@ function openSources() {
 const mine = computed(() => knownTitleMine(props.id))
 const mineError = ref('')
 
-watch(
-  [id, language],
-  async ([current]) => {
-    try {
-      const fresh = await api.titles.getTitleMine(current, {
-        language: language.value,
-      })
-
-      if (current === props.id)
-        rememberTitleMine(current, fresh)
-    }
-    catch {
-      // Без состояния кнопки работают через меню, когда оно загрузится
-    }
-  },
-  { immediate: true },
-)
+let mineRead = 0
+async function refreshMine() {
+  const current = props.id
+  const viewer = captureTitleViewer()
+  const revision = titleMineRevision(current)
+  const read = ++mineRead
+  try {
+    const fresh = await api.titles.getTitleMine(current, {
+      language: language.value,
+    })
+    if (read === mineRead && current === props.id)
+      rememberTitleMine(current, fresh, viewer, revision)
+  }
+  catch {
+    // Без состояния кнопки работают через меню, когда оно загрузится.
+  }
+}
+watch([id, language, () => titleActions.viewer], refreshMine, {
+  immediate: true,
+})
 
 async function toggleWatchlist() {
   const current = mine.value
@@ -492,21 +499,16 @@ async function toggleWatchlist() {
     return
 
   const watchlist = !current.watchlist
-
-  noteTitleMine(props.id, { ...current, watchlist })
+  const viewer = captureTitleViewer()
+  const titleId = props.id
 
   try {
-    noteTitleMine(
-      props.id,
-      await api.titles.patchTitleMine(
-        props.id,
-        { watchlist },
-        { language: language.value },
-      ),
-    )
+    const currentLanguage = language.value
+    await patchTitleMine(titleId, viewer, { watchlist }, currentLanguage)
   }
   catch {
-    noteTitleMine(props.id, current)
+    if (!isTitleViewer(viewer) || titleId !== props.id)
+      return
     mineError.value = t('actions.errors.save')
   }
 }
@@ -1006,19 +1008,40 @@ const { active } = useStackedScreen(screen, {
   fallback: () =>
     order.value.includes('title-actions') ? 'title-actions' : order.value[0],
   onReturn: () => {
-    void refreshProgress()
-    void refreshFollow()
     refreshSeasonStates()
   },
 })
+
+const syncProgress = useTitleChanges(
+  () => titleProgressVersion(props.id),
+  () => progressStatus.value !== 'loading' && followLoad.value !== 'loading',
+  async () => {
+    await Promise.all([refreshProgress(), refreshFollow()])
+  },
+  () => active.value,
+  () => !!titleActions.target,
+)
+useTitleChanges(
+  () => titleMineProgressVersion(props.id),
+  () => !titleActions.writing.has(props.id),
+  refreshMine,
+  () => active.value,
+  () => !!titleActions.target,
+)
 
 // «Скачать фильм / сезон»: лучшая раздача по профилю и озвучке, закачка
 // целиком в библиотеку. Состояние — живое, пока качается и экран на виду
 const { download, refreshDownload } = useTitleDownload(id, () => active.value)
 
 // Вернулись на карточку (из «Источников», плеера) — состояние свежее
+let shownBefore = false
 watch(active, (value, previous) => {
   if (value && previous === false) {
+    if (shownBefore && !syncProgress() && !titleActions.target) {
+      void refreshProgress()
+      void refreshFollow()
+    }
+    shownBefore = true
     void refreshDownload()
     void refreshLibrary()
   }
@@ -1172,17 +1195,24 @@ watch(
 )
 
 async function cancelDownload(torrentId: string) {
+  const viewer = captureTitleViewer()
+  const titleId = props.id
   closeDownloadPanel()
 
   try {
-    const fresh = await api.titles.deleteTitleDownload(props.id, { torrentId })
+    const fresh = await api.titles.deleteTitleDownload(titleId, { torrentId })
 
-    noteTitleDownload(props.id, fresh)
+    if (!isTitleViewer(viewer) || titleId !== props.id)
+      return
+    noteTitleDownload(titleId, fresh, viewer)
     await refreshDownload()
-    downloadToast.value = t('download.cancelled')
+    if (isTitleViewer(viewer) && titleId === props.id)
+      downloadToast.value = t('download.cancelled')
   }
   catch (err) {
-    downloadToast.value = await downloadTexts.errorOf(err, 'nothingToCancel')
+    const message = await downloadTexts.errorOf(err, 'nothingToCancel')
+    if (isTitleViewer(viewer) && titleId === props.id)
+      downloadToast.value = message
   }
 }
 

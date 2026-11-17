@@ -3,6 +3,7 @@ import type { Ref } from 'vue'
 import type { LoadError } from '../lib/loadError.ts'
 import type { MineView } from '../lib/mineView.ts'
 import { computed, onScopeDispose, ref, shallowRef, watch } from 'vue'
+import { captureTitleViewer, isTitleViewer } from '../titleActions.ts'
 import { api, loadErrorOf } from '../api.ts'
 import { createLatest } from '../lib/latest.ts'
 import { useCatalogLanguage } from './useCatalogLanguage.ts'
@@ -22,6 +23,7 @@ export function useMineSections() {
   const latest = createLatest()
 
   async function load(quiet = false) {
+    const viewer = captureTitleViewer()
     if (!quiet)
       status.value = 'loading'
 
@@ -29,7 +31,7 @@ export function useMineSections() {
       api.mine.getMine({ language: language.value }, { signal }),
     )
 
-    if (outcome.status === 'cancelled')
+    if (!isTitleViewer(viewer) || outcome.status === 'cancelled')
       return
 
     if (outcome.status === 'failed') {
@@ -73,7 +75,8 @@ export function useMineItems(
   const total = ref(0)
   const error = ref<LoadError>()
   const latest = createLatest()
-  let loadingMore = false
+  let loadingMore: number | undefined
+  let refreshing = false
 
   function request(
     current: MineSection,
@@ -102,7 +105,10 @@ export function useMineItems(
   async function load() {
     const current = section.value
 
-    generation++
+    const started = ++generation
+    loadingMore = undefined
+    refreshing = false
+    const viewer = captureTitleViewer()
 
     if (!current)
       return
@@ -123,8 +129,13 @@ export function useMineItems(
       request(current, 0, undefined, signal),
     )
 
-    if (outcome.status === 'cancelled')
+    if (
+      started !== generation
+      || !isTitleViewer(viewer)
+      || outcome.status === 'cancelled'
+    ) {
       return
+    }
 
     if (outcome.status === 'failed') {
       error.value = loadErrorOf(outcome.error)
@@ -144,19 +155,21 @@ export function useMineItems(
 
     if (
       !current
-      || loadingMore
+      || loadingMore !== undefined
+      || refreshing
       || status.value !== 'ready'
       || items.value.length >= total.value
     ) {
       return
     }
 
-    loadingMore = true
+    loadingMore = started
+    const viewer = captureTitleViewer()
 
     try {
       const page = await request(current, items.value.length, undefined)
 
-      if (started !== generation)
+      if (started !== generation || !isTitleViewer(viewer))
         return
 
       items.value = [
@@ -171,7 +184,8 @@ export function useMineItems(
       // Следующая страница не пришла — дочитаем при следующем подходе к концу
     }
     finally {
-      loadingMore = false
+      if (loadingMore === started)
+        loadingMore = undefined
     }
   }
 
@@ -181,6 +195,10 @@ export function useMineItems(
     if (!current || status.value !== 'ready')
       return
 
+    const started = ++generation
+    loadingMore = undefined
+    refreshing = true
+    const viewer = captureTitleViewer()
     const outcome = await latest.run(signal =>
       request(
         current,
@@ -190,26 +208,56 @@ export function useMineItems(
       ),
     )
 
-    if (outcome.status === 'done') {
+    if (started === generation)
+      refreshing = false
+    if (
+      started === generation
+      && isTitleViewer(viewer)
+      && outcome.status === 'done'
+    ) {
       items.value = outcome.value.items
       total.value = outcome.value.total
     }
   }
 
+  const sources = [
+    () => section.value?.id,
+    () => section.value?.collectionId,
+    view,
+    language,
+  ]
+  // Устаревший ответ теряет право на запись сразу; смена раздела и его вида
+  // в одном tick при этом отправляет только один запрос с конечными параметрами.
   watch(
-    () => [
-      section.value?.id,
-      section.value?.collectionId,
-      view.value,
-      language.value,
-    ],
-    load,
-    { immediate: true },
+    sources,
+    () => {
+      generation++
+      latest.cancel()
+      loadingMore = undefined
+      refreshing = false
+    },
+    { flush: 'sync' },
   )
+  watch(sources, load, { immediate: true })
 
-  onScopeDispose(latest.cancel)
+  onScopeDispose(() => {
+    generation++
+    latest.cancel()
+  })
 
-  return { status, items, total, error, retry: load, more, refresh }
+  const refreshReady = computed(
+    () => !section.value || status.value !== 'loading',
+  )
+  return {
+    status,
+    items,
+    total,
+    error,
+    retry: load,
+    more,
+    refresh,
+    refreshReady,
+  }
 }
 
 /**

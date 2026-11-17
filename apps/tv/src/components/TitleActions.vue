@@ -17,16 +17,26 @@ import {
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { api } from '../api.ts'
+import {
+  mutateTitleMine,
+  patchTitleMine,
+} from '../composables/useTitleMineMutation.ts'
+import { saveTitleWatched } from '../composables/useTitleWatched.ts'
 import { useCatalogLanguage } from '../composables/useCatalogLanguage.ts'
 import { useDownloadTexts } from '../composables/useTitleDownload.ts'
 import { useFocus } from '../focus/index.ts'
+import { captureTitleActionReturn } from '../focus/titleActionReturn.ts'
 import {
+  captureTitleViewer,
   closeTitleActions,
+  isTitleActionCurrent,
+  isTitleViewer,
   knownTitleMine,
   noteTitleDownload,
-  noteTitleMine,
   rememberTitleMine,
   titleActions,
+  titleMineProgressVersion,
+  titleMineRevision,
 } from '../titleActions.ts'
 import AppToast from './AppToast.vue'
 import OptionsPanel from './OptionsPanel.vue'
@@ -39,45 +49,57 @@ const language = useCatalogLanguage()
 
 const target = computed(() => titleActions.target)
 const step = ref<ActionStep>('main')
-const mine = shallowRef<TitleMine>()
+const mine = computed(() =>
+  target.value ? knownTitleMine(target.value.id) : undefined,
+)
 // «Оставить»: есть ли что сохранить и не оставлено ли уже
 const download = shallowRef<TitleDownload>()
 const texts = useDownloadTexts()
 const busy = ref(false)
 const toast = ref('')
-let opener: HTMLElement | undefined
+let returnFocus = () => false
 let loadToken = 0
+const rereadMine = ref(false)
 
 async function load(item: ActionTarget) {
   const token = ++loadToken
-  const known = knownTitleMine(item.id)
+  const viewer = captureTitleViewer()
+  const revision = titleMineRevision(item.id)
 
-  mine.value = known
   download.value = undefined
-  void loadDownload(item.id, token)
+  void loadDownload(item.id, token, viewer)
 
   try {
     const fresh = await api.titles.getTitleMine(item.id, {
       language: language.value,
     })
 
-    if (token !== loadToken)
+    if (
+      token !== loadToken
+      || !isTitleViewer(viewer)
+      || revision !== titleMineRevision(item.id)
+    ) {
       return
+    }
 
-    mine.value = fresh
-    rememberTitleMine(item.id, fresh)
+    rememberTitleMine(item.id, fresh, viewer, revision)
   }
   catch {
-    if (token === loadToken && !known)
+    if (
+      token === loadToken
+      && isTitleViewer(viewer)
+      && !knownTitleMine(item.id)
+    ) {
       toast.value = t('actions.errors.load')
+    }
   }
 }
 
-async function loadDownload(id: string, token: number) {
+async function loadDownload(id: string, token: number, viewer: number) {
   try {
     const fresh = await api.titles.getTitleDownload(id)
 
-    if (token === loadToken)
+    if (token === loadToken && isTitleViewer(viewer))
       download.value = fresh
   }
   catch {
@@ -92,38 +114,59 @@ async function keep() {
     return
 
   busy.value = true
+  const viewer = captureTitleViewer()
+  const token = loadToken
 
   try {
     const fresh = await api.titles.postTitleKeep(item.id)
 
-    download.value = fresh
-    noteTitleDownload(item.id, fresh)
-    toast.value = t('download.keptToast')
+    if (!isTitleViewer(viewer))
+      return
+    if (token === loadToken)
+      download.value = fresh
+    noteTitleDownload(item.id, fresh, viewer)
+    if (token === loadToken)
+      toast.value = t('download.keptToast')
   }
   catch (err) {
-    toast.value = await texts.errorOf(err)
+    const message = await texts.errorOf(err)
+    if (isTitleViewer(viewer) && token === loadToken)
+      toast.value = message
   }
   finally {
-    busy.value = false
+    if (isTitleViewer(viewer) && token === loadToken)
+      busy.value = false
   }
 }
 
-watch(target, (item) => {
-  if (!item)
-    return
+watch(
+  target,
+  (item) => {
+    if (!item) {
+      loadToken++
+      busy.value = false
+      download.value = undefined
+      rereadMine.value = false
+      return
+    }
 
-  opener = focus.current() ?? undefined
-  step.value = titleActions.step
-  void load(item)
-})
+    rereadMine.value = false
+    returnFocus = captureTitleActionReturn(focus, focus.current())
+    step.value = titleActions.step
+    void load(item)
+  },
+  { flush: 'sync' },
+)
 
 function close() {
+  const viewer = captureTitleViewer()
+  const generation = titleActions.menuRevision
+  const restore = returnFocus
   closeTitleActions()
-  mine.value = undefined
 
   nextTick(() => {
-    if (opener?.isConnected)
-      focus.focusOn(opener)
+    if (isTitleActionCurrent(viewer, generation) && !target.value)
+      restore()
   })
 }
 
@@ -134,70 +177,78 @@ function back() {
   else step.value = 'main'
 }
 
-// Значки постеров и карточка видят правку сразу, ещё до ответа сервера
-function show(id: string, next: TitleMine) {
-  if (target.value?.id === id)
-    mine.value = next
-
-  noteTitleMine(id, next)
-}
-
-async function run(
-  change: (id: string) => Promise<TitleMine>,
-  optimistic?: TitleMine,
-) {
+async function run(saving: (id: string, viewer: number) => Promise<void>) {
   const item = target.value
-
   if (!item || busy.value)
     return
-
-  const before = mine.value
-
+  const viewer = captureTitleViewer()
+  const token = loadToken
+  const generation = titleActions.menuRevision
   busy.value = true
-
-  if (optimistic)
-    show(item.id, optimistic)
-
   try {
-    show(item.id, await change(item.id))
+    await saving(item.id, viewer)
   }
   catch {
-    if (before)
-      show(item.id, before)
-
-    toast.value = t('actions.errors.save')
+    if (isTitleActionCurrent(viewer, generation))
+      toast.value = t('actions.errors.save')
   }
   finally {
-    busy.value = false
+    if (isTitleViewer(viewer) && token === loadToken)
+      busy.value = false
   }
 }
 
-function patch(body: UpdateTitleMineInput) {
-  const current = mine.value
+watch(
+  [
+    () => target.value?.id,
+    () => target.value && titleMineProgressVersion(target.value.id),
+  ],
+  ([id, version], [previousId, previousVersion]) => {
+    if (id && id === previousId && version !== previousVersion)
+      rereadMine.value = true
+  },
+)
+watch(
+  [
+    rereadMine,
+    busy,
+    () => target.value && titleActions.writing.has(target.value.id),
+  ],
+  () => {
+    const item = target.value
+    if (
+      rereadMine.value
+      && item
+      && !busy.value
+      && !titleActions.writing.has(item.id)
+    ) {
+      rereadMine.value = false
+      void load(item)
+    }
+  },
+)
 
-  return run(
-    id => api.titles.patchTitleMine(id, body, { language: language.value }),
-    current && {
-      ...current,
-      ...(body.watchlist !== undefined && { watchlist: body.watchlist }),
-      ...(body.favorite !== undefined && { favorite: body.favorite }),
-      ...(body.rating !== undefined && { rating: body.rating }),
-    },
-  )
+function patch(body: UpdateTitleMineInput) {
+  const currentLanguage = language.value
+  return run((id, viewer) => patchTitleMine(id, viewer, body, currentLanguage))
 }
 
 function toggleWatched() {
-  const watched = mine.value?.status !== 'watched'
+  const current = mine.value
+  if (!current)
+    return
+  const watched = current.status !== 'watched'
+  const currentLanguage = language.value
 
-  return run(async (id) => {
-    await api.titles.putTitleWatched(
+  return run((id, viewer) =>
+    mutateTitleMine(
       id,
-      { watched },
-      { language: language.value },
-    )
-
-    return api.titles.getTitleMine(id, { language: language.value })
-  })
+      viewer,
+      () => saveTitleWatched(id, watched, currentLanguage, viewer),
+      undefined,
+      false,
+    ),
+  )
 }
 
 async function toggleCollection(id: string) {
@@ -207,19 +258,25 @@ async function toggleCollection(id: string) {
   if (!current || !entry)
     return
 
-  const collections = current.collections.map(item =>
-    item.id === id ? { ...item, contains: !item.contains } : item,
-  )
-
-  await run(
-    async (titleId) => {
-      if (entry.contains)
-        await api.collections.deleteCollectionTitle(id, titleId)
-      else await api.collections.putCollectionTitle(id, titleId)
-
-      return { ...current, collections }
-    },
-    { ...current, collections },
+  const contains = !entry.contains
+  const update = (value: TitleMine) => ({
+    ...value,
+    collections: value.collections.map(item =>
+      item.id === id ? { ...item, contains } : item,
+    ),
+  })
+  await run((titleId, viewer) =>
+    mutateTitleMine(
+      titleId,
+      viewer,
+      async (latest) => {
+        if (entry.contains)
+          await api.collections.deleteCollectionTitle(id, titleId)
+        else await api.collections.putCollectionTitle(id, titleId)
+        return latest ? update(latest) : undefined
+      },
+      update,
+    ),
   )
 }
 
