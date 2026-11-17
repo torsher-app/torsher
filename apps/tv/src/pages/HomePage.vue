@@ -89,9 +89,16 @@ const SKELETON_CARDS = 7
 const { t } = useI18n()
 const router = useRouter()
 const focus = useFocus()
-const { status, rows, loads, error, retry, refresh, refreshContinue } = useHome(
-  computed(() => props.mode),
-)
+const {
+  status,
+  rows,
+  loads,
+  error,
+  catalogError,
+  retry,
+  refresh,
+  refreshContinue,
+} = useHome(computed(() => props.mode))
 const { hero, show, clear: clearHero } = useHero()
 const releaseTexts = useReleaseTexts()
 const screen = ref<HTMLElement>()
@@ -586,6 +593,14 @@ onBeforeUnmount(() => {
     <BackdropLayer :src="hero?.details?.backdrop" />
     <span v-if="serverAbout?.devStand" class="home__dev">DEV · {{ serverAbout.devStand.name }}</span>
 
+    <p
+      v-if="status === 'ready' && catalogError && !showSkeleton"
+      class="home__catalog-note"
+      role="status"
+    >
+      {{ t(`home.catalogError.${catalogError}`) }}
+    </p>
+
     <div class="home__hero">
       <HeroPanel
         v-if="hero"
@@ -761,6 +776,18 @@ onBeforeUnmount(() => {
   z-index: 5;
   top: calc(var(--u) * 72);
   left: var(--content-x);
+}
+
+.home__catalog-note {
+  position: absolute;
+  z-index: 5;
+  top: calc(var(--u) * 374);
+  right: var(--content-x);
+  left: var(--content-x);
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-s);
+  pointer-events: none;
 }
 
 .home__state {

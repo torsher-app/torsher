@@ -92,6 +92,10 @@
     "nextPage": "Next page"
   },
   "home": {
+    "catalogError": {
+      "notConfigured": "Catalog unavailable. Configure TMDB in the Torsher panel.",
+      "unavailable": "Catalog temporarily unavailable."
+    },
     "rows": {
       "continue": "Continue watching",
       "trending": "Top 10 today",

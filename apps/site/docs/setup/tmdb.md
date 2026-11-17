@@ -7,6 +7,8 @@ description: "The Torsher catalog comes from TMDB. The image ships with an app k
 
 Titles, posters, descriptions and cast in the showcase come from [TMDB](https://www.themoviedb.org/), a community-built movie and TV database. The official image ships with Torsher's app key, so the catalog works without any setup. You need your own key only if the app key stops working or your build has none, for example an image you built yourself.
 
+If TMDB is unavailable or no key is configured, the home screen keeps the personal rows it can load from cached metadata and shows a catalog notice. Titles without cached metadata may remain unavailable.
+
 ::: tip What you'll get
 <Ui k="panel.settings.metadata.check.ok" /> in the panel and a full catalog on the TV.
 :::

@@ -4115,6 +4115,7 @@ export type HomeRowInput =
 export interface HomeResponseInput {
   rows: HomeRowInput[];
   hasSources: boolean;
+  catalogError?: "notConfigured" | "unavailable";
 }
 
 export interface CollectionInput {
@@ -12048,6 +12049,7 @@ export type HomeRow = ContinueRow | ReleasesRow | FilesRow | CatalogRow;
 export interface HomeResponse {
   rows: HomeRow[];
   hasSources: boolean;
+  catalogError?: "notConfigured" | "unavailable";
 }
 
 export interface Collection {

@@ -22,6 +22,7 @@ import {
   mediaFiles,
   profiles,
 } from '../db/schema.ts'
+import { TmdbError } from '../services/tmdb/index.ts'
 import { homeRoutes } from './home.ts'
 
 const mocks = vi.hoisted(() => ({
@@ -279,5 +280,85 @@ describe('home viewing priorities', () => {
       'continue',
       'libraryRecent',
     ])
+  })
+})
+
+describe('home catalog availability', () => {
+  it('keeps recent library files without a key even when there are no personal marks', async () => {
+    mocks.personal.mockResolvedValue([])
+    mocks.resume.mockResolvedValue({ ...resume, items: [] })
+    mocks.catalog.mockRejectedValue(new TmdbError('config', 'No key'))
+    file(1, DAY)
+    file(2, DAY, { folderId: 'hidden-folder' })
+    file(3, DAY, { state: 'missing' })
+    const response = await app.inject('/api/home?mode=all&language=ru-RU')
+    expect(response.statusCode).toBe(200)
+    expect(response.json()).toMatchObject({
+      catalogError: 'notConfigured',
+      rows: [{ id: 'libraryRecent', items: [{ id: 'tmdb:movie:1' }] }],
+    })
+    expect(response.json().rows).toHaveLength(1)
+    expect(response.json().rows[0].items).toHaveLength(1)
+  })
+  it.each(['movies', 'series'])(
+    'keeps continue watching in %s without a key',
+    async (mode) => {
+      mocks.catalog.mockRejectedValue(new TmdbError('config', 'No key'))
+      const response = await app.inject(
+        `/api/home?mode=${mode}&language=ru-RU`,
+      )
+      expect(response.statusCode).toBe(200)
+      expect(response.json().catalogError).toBe('notConfigured')
+      expect(response.json().rows.map((item: CatalogRow) => item.id)).toEqual([
+        'continue',
+      ])
+    },
+  )
+  it.each([
+    ['config', 'notConfigured'],
+    ['unavailable', 'unavailable'],
+  ] as const)(
+    'keeps personal rows and reports a %s catalog',
+    async (kind, catalogError) => {
+      mocks.catalog.mockRejectedValue(
+        new TmdbError(kind, 'Catalog unavailable'),
+      )
+      const response = await app.inject('/api/home?mode=all&language=ru-RU')
+      expect(response.statusCode).toBe(200)
+      expect(response.json()).toMatchObject({
+        catalogError,
+        hasSources: false,
+      })
+      expect(response.json().rows.map((item: CatalogRow) => item.id)).toEqual([
+        'continue',
+        'newEpisodes',
+        'watchlist',
+        'collection',
+        'collection',
+      ])
+    },
+  )
+  it.each([
+    ['config', 503],
+    ['unavailable', 502],
+  ] as const)(
+    'preserves the %s error when no own rows can be shown',
+    async (kind, status) => {
+      mocks.personal.mockResolvedValue([])
+      mocks.resume.mockResolvedValue({ ...resume, items: [] })
+      mocks.catalog.mockRejectedValue(
+        new TmdbError(kind, 'Catalog unavailable'),
+      )
+      const response = await app.inject('/api/home?mode=all&language=ru-RU')
+      expect(response.statusCode).toBe(status)
+    },
+  )
+  it('omits catalog errors from a successful or library-only response', async () => {
+    expect(
+      (await app.inject('/api/home?mode=all&language=ru-RU')).json(),
+    ).not.toHaveProperty('catalogError')
+    expect(
+      (await app.inject('/api/home?mode=library&language=ru-RU')).json(),
+    ).not.toHaveProperty('catalogError')
   })
 })
