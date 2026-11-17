@@ -231,6 +231,198 @@ describe('nextAiredEpisode', () => {
 })
 
 describe('get /api/home/continue', () => {
+  it.each([
+    {
+      titleId: MOVIE,
+      season: 0,
+      episode: 0,
+      position: 461.012,
+      duration: 1800,
+    },
+    {
+      titleId: SERIES,
+      season: 2,
+      episode: 1,
+      position: 600,
+      duration: EPISODE,
+    },
+  ])(
+    'continues imported progress without server-local source refs: $titleId',
+    async (point) => {
+      saveTitleProgress(
+        {
+          profileId,
+          titleId: point.titleId,
+          season: point.season,
+          episode: point.episode,
+        },
+        { ...point, torrentId: 's2', fileIndex: 0 },
+      )
+      const exported = await app.inject({
+        method: 'POST',
+        url: '/api/transfer/export',
+        cookies: owner,
+        payload: { scope: 'profile', profileId },
+      })
+      expect(exported.statusCode).toBe(200)
+      const document = exported.json()
+      expect(document.progress[0]).not.toHaveProperty('torrentId')
+      expect(document.progress[0]).not.toHaveProperty('mediaFileId')
+      getDb().delete(titleProgress).run()
+      const uploaded = await app.inject({
+        method: 'POST',
+        url: `/api/profiles/${profileId}/imports`,
+        cookies: owner,
+        payload: {
+          files: [
+            {
+              name: 'progress.json',
+              data: Buffer.from(exported.body).toString('base64'),
+            },
+          ],
+        },
+      })
+      expect(uploaded.statusCode).toBe(202)
+      const applied = await app.inject({
+        method: 'POST',
+        url: `/api/profiles/${profileId}/imports/${uploaded.json().id}/apply`,
+        cookies: owner,
+        payload: { conflicts: 'newer' },
+      })
+      expect(applied.statusCode).toBe(200)
+      const stored = getDb().select().from(titleProgress).get()!
+      expect(stored).toMatchObject({
+        position: point.position,
+        torrentId: null,
+        fileIndex: null,
+        mediaFileId: null,
+      })
+      const res = await app.inject({
+        url: `/api/titles/${point.titleId}/progress`,
+        cookies: owner,
+      })
+      expect(res.statusCode).toBe(200)
+      expect(res.json().last).toMatchObject({
+        position: point.position,
+        duration: point.duration,
+        watched: false,
+      })
+      expect(res.json().resume).toMatchObject({
+        position: point.position,
+        duration: point.duration,
+        next: false,
+        file: null,
+        mediaFileId: null,
+      })
+      expect(await continueItems()).toEqual([
+        expect.objectContaining({
+          id: point.titleId,
+          position: point.position,
+          next: false,
+          file: null,
+        }),
+      ])
+      const home = await app.inject({ url: '/api/home', cookies: owner })
+      expect(home.statusCode).toBe(200)
+      expect(home.json().rows[0]).toMatchObject({
+        id: 'continue',
+        items: [
+          expect.objectContaining({
+            id: point.titleId,
+            position: point.position,
+          }),
+        ],
+      })
+      expect(
+        await resumeTarget('someone-else', point.titleId, async () => []),
+      ).toBeUndefined()
+      // Reading and resolving history must not rewrite the imported checkpoint.
+      expect(getDb().select().from(titleProgress).get()).toEqual(stored)
+    },
+  )
+
+  it('keeps source-free watched marks out of playback history', async () => {
+    markWatched({ profileId, titleId: SERIES, season: 2, episode: 1 }, true)
+    const res = await app.inject({
+      url: `/api/titles/${SERIES}/progress`,
+      cookies: owner,
+    })
+    expect(res.json()).toMatchObject({ last: null, resume: null })
+    expect(await continueItems()).toEqual([])
+  })
+
+  it('advances completed source-free episodes but does not resume completed movies', async () => {
+    const now = new Date()
+    getDb()
+      .insert(titleProgress)
+      .values([
+        {
+          profileId,
+          titleId: SERIES,
+          season: 2,
+          episode: 1,
+          position: EPISODE,
+          duration: EPISODE,
+          watchedAt: now,
+          updatedAt: now,
+        },
+        {
+          profileId,
+          titleId: MOVIE,
+          season: 0,
+          episode: 0,
+          position: 1800,
+          duration: 1800,
+          watchedAt: now,
+          updatedAt: now,
+        },
+      ])
+      .run()
+    const items = await continueItems()
+    expect(items).toEqual([
+      expect.objectContaining({
+        id: SERIES,
+        season: 2,
+        episode: 2,
+        position: 0,
+        next: true,
+        file: null,
+      }),
+    ])
+    const film = await app.inject({
+      url: `/api/titles/${MOVIE}/progress`,
+      cookies: owner,
+    })
+    expect(film.json()).toMatchObject({
+      resume: null,
+      last: { position: 1800, watched: true },
+    })
+  })
+
+  it('keeps old source-free progress off Home without losing title resume', async () => {
+    getDb()
+      .insert(titleProgress)
+      .values({
+        profileId,
+        titleId: MOVIE,
+        season: 0,
+        episode: 0,
+        position: 461.012,
+        duration: 1800,
+        updatedAt: new Date(Date.now() - (CONTINUE_MAX_AGE_DAYS + 1) * DAY_MS),
+      })
+      .run()
+    expect(await continueItems()).toEqual([])
+    const film = await app.inject({
+      url: `/api/titles/${MOVIE}/progress`,
+      cookies: owner,
+    })
+    expect(film.json().resume).toMatchObject({
+      position: 461.012,
+      next: false,
+    })
+  })
+
   it('отвечает 401 без входа', async () => {
     const res = await app.inject({ url: '/api/home/continue' })
 

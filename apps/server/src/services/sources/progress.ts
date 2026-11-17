@@ -50,6 +50,18 @@ export function progressSeen() {
   return or(gt(titleProgress.position, 0), isNotNull(titleProgress.watchedAt))
 }
 
+/** История запуска: импорт сохраняет позицию, но не локальные ссылки на источник. */
+export function playbackSeen() {
+  return and(
+    progressSeen(),
+    or(
+      gt(titleProgress.position, 0),
+      isNotNull(titleProgress.torrentId),
+      isNotNull(titleProgress.mediaFileId),
+    ),
+  )
+}
+
 export function getTitleProgress(ref: TitleRef) {
   return getDb().select().from(titleProgress).where(whereRef(ref)).get()
 }
@@ -320,7 +332,7 @@ export function episodeProgress(profileId: string, titleId: string) {
 
 /**
  * Последняя серия, которую смотрели в плеере: история и «Продолжить». Серии,
- * только отмеченные с карточки, раздачи не имеют и сюда не попадают.
+ * только отмеченные с карточки, позиции и источника не имеют и сюда не попадают.
  */
 export function lastTitleProgress(profileId: string, titleId: string) {
   return getDb()
@@ -330,12 +342,7 @@ export function lastTitleProgress(profileId: string, titleId: string) {
       and(
         eq(titleProgress.profileId, profileId),
         eq(titleProgress.titleId, titleId),
-        progressSeen(),
-        // Смотрели в плеере: раздачу или файл библиотеки, а не отметили с карточки
-        or(
-          isNotNull(titleProgress.torrentId),
-          isNotNull(titleProgress.mediaFileId),
-        ),
+        playbackSeen(),
       ),
     )
     .orderBy(desc(titleProgress.updatedAt))
