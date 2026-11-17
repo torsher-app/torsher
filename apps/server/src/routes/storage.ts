@@ -33,9 +33,9 @@ import { getStorageOverview, updatePolicy } from '../services/storage/index.ts'
 import {
   cancelMove,
   changeStoragePath,
-  moveBytesNeeded,
   startMove,
   StorageMoveError,
+  storageMovePreview,
   storageMoveState,
 } from '../services/storage/move.ts'
 import { sendEngineError } from './engineResponses.ts'
@@ -227,18 +227,22 @@ export const storageRoutes: FastifyPluginAsyncZod = async (app) => {
         operationId: 'postStorageCheck',
         tags: ['Storage'],
         body: storagePathCheckBody,
-        response: { 200: storagePathCheck, 401: messageResponse },
+        response: { ...responses, 200: storagePathCheck },
       },
     },
-    async (request) => {
+    async (request, reply) => {
       const { kind, path } = request.body
-      const check = await checkStoragePath(kind, path)
-      const moveBytes
-        = check.problem || check.sameVolume
-          ? 0
-          : await moveBytesNeeded(kind, check.path).catch(() => 0)
+      try {
+        const check = await checkStoragePath(kind, path)
+        const preview = check.problem
+          ? { moveBytes: 0, moveTotalBytes: 0, moveItems: 0 }
+          : await storageMovePreview(kind, check.path)
 
-      return { ...check, moveBytes }
+        return { ...check, ...preview }
+      }
+      catch (err) {
+        return sendEngineError(reply, err)
+      }
     },
   )
 
