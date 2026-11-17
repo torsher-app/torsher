@@ -290,8 +290,13 @@ export function useSources() {
         try {
           const checked = await testIndexer(next.id)
 
-          if (checked.checkStatus === 'ok')
+          if (
+            checked.enabled
+            && !checked.missing
+            && checked.checkStatus === 'ok'
+          ) {
             passed++
+          }
         }
         catch {
           // Строка покажет прежний статус, проверка остальных продолжается
