@@ -809,6 +809,77 @@ describe('подмена раздачи темы', () => {
     expect(topicRow().refresh).toBeNull()
   })
 
+  it.each([
+    [NAME, true],
+    [OTHER_NAME, true],
+    [NAME, false],
+  ] as const)(
+    'missing episode is restored after topic refresh to %s (download missing=%s)',
+    async (name, missingDownload) => {
+      const follow = insertFollow()
+      await seedOld(follow)
+      const before = libraryRows().find(row => row.episode === 7)!
+      const neighbours = await Promise.all(
+        [6, 8].map(number => stat(libraryPath(number))),
+      )
+      if (missingDownload)
+        await rm(downloadsPath(NAME, episodeFile(7)))
+      await rm(libraryPath(7))
+      newVersion(name)
+      await followAutomation(new Date())
+      const next = torrentByHash(NEW)!
+      expect(next.selectedFiles).toEqual([5, 6, 7, 8])
+      expect(libraryRows().find(row => row.id === before.id)).toMatchObject({
+        torrentId: next.id,
+        fileIndex: 6,
+        stale: true,
+        state: 'missing',
+      })
+      await expect(stat(libraryPath(7))).rejects.toMatchObject({
+        code: 'ENOENT',
+      })
+      if (!missingDownload) {
+        expect(
+          await readFile(downloadsPath(name, episodeFile(7)), 'utf8'),
+        ).toBe(content(7))
+      }
+      await writeFile(downloadsPath(name, episodeFile(7)), content(7))
+      await writeFile(downloadsPath(name, episodeFile(9)), content(9))
+      live = [completeState(next)]
+      await syncLibrary()
+      await syncLibrary()
+      expect(await readFile(libraryPath(7), 'utf8')).toBe(content(7))
+      expect(await readFile(libraryPath(9), 'utf8')).toBe(content(9))
+      expect(libraryRows().find(row => row.id === before.id)).toMatchObject({
+        relPath: before.relPath,
+        torrentId: next.id,
+        fileIndex: 6,
+        stale: false,
+        state: 'present',
+        missingSince: null,
+      })
+      expect(libraryRows().filter(row => row.episode === 7)).toHaveLength(1)
+      for (const [index, number] of [6, 8].entries()) {
+        expect((await stat(libraryPath(number))).ino).toBe(
+          neighbours[index]!.ino,
+        )
+        expect(await readFile(libraryPath(number), 'utf8')).toBe(
+          content(number),
+        )
+      }
+      expect(getDb().select().from(titleProgress).get()).toMatchObject({
+        torrentId: next.id,
+        fileIndex: 6,
+        position: 1200,
+      })
+      expect(getDb().select().from(watchStates).get()).toMatchObject({
+        torrentId: next.id,
+        fileIndex: 6,
+        position: 1200,
+      })
+    },
+  )
+
   it('перезалитая серия качается в новый inode, библиотека заменяет её на месте', async () => {
     const follow = insertFollow()
 
