@@ -34,6 +34,7 @@ function openActions() {
     id: props.item.titleId,
     title: props.item.title,
     kind: 'series',
+    canOpenTitle: true,
   })
 }
 </script>

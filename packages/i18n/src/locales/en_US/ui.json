@@ -3994,6 +3994,7 @@
     }
   },
   "actions": {
+    "openTitle": "Open title page",
     "watchlist": "Watch later",
     "favorite": "Favorite",
     "rate": "Rate",
