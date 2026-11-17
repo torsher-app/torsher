@@ -1,6 +1,11 @@
 import type { TorznabCaps, TorznabSearchMode } from './caps.ts'
 import type { XmlNode } from './xml.ts'
-import { readTorznabXml, sourceGet, torznabRequestUrl } from './client.ts'
+import {
+  readTorznabXml,
+  SourceError,
+  sourceGet,
+  torznabRequestUrl,
+} from './client.ts'
 import { child, children, text } from './xml.ts'
 
 export interface SearchIds {
@@ -230,8 +235,29 @@ function toRelease(item: XmlNode): TorznabRelease | undefined {
 }
 
 /** Разбирает ответ поиска: `<rss><channel><item>…` */
-export function parseSearchResults(xml: XmlNode): TorznabRelease[] {
-  const channel = child(child(xml, 'rss'), 'channel')
+export function parseSearchResults(
+  xml: XmlNode,
+  status?: number,
+): TorznabRelease[] {
+  const rss = child(xml, 'rss')
+  const channel = rss?.channel
+
+  // Пустой XML-элемент парсер возвращает строкой, а не объектом.
+  // HTML, отсутствующий канал и повторяющиеся каналы — не пустая выдача.
+  if (
+    !rss
+    || Array.isArray(rss)
+    || !(
+      channel === ''
+      || (typeof channel === 'object'
+        && channel !== null
+        && !Array.isArray(channel))
+    )
+  ) {
+    throw new SourceError('bad_response', 'Response is not Torznab XML', {
+      status,
+    })
+  }
 
   return children(channel, 'item').flatMap(item => toRelease(item) ?? [])
 }
@@ -248,5 +274,5 @@ export async function searchIndexer(
     sessionCookie ? { Cookie: sessionCookie } : {},
   )
 
-  return parseSearchResults(await readTorznabXml(res))
+  return parseSearchResults(await readTorznabXml(res), res.status)
 }

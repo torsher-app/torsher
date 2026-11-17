@@ -50,6 +50,32 @@ const aliases: TitleAlias[] = [
 ]
 
 describe('searchReleases', () => {
+  it('hTML считается bad_response, валидный пустой RSS не считается ошибкой', async () => {
+    fetchMock.mockImplementation(
+      async input =>
+        new Response(
+          String(input).includes('invalid.indexer.example')
+            ? '<html>QA invalid XML</html>'
+            : '<rss><channel/></rss>',
+        ),
+    )
+
+    const outcome = await searchReleases({ identity, aliases, season: 2 }, [
+      indexer('invalid', 'invalid.indexer.example'),
+      indexer('empty', 'empty.indexer.example'),
+    ])
+
+    expect(outcome.indexerCount).toBe(2)
+    expect(outcome.releases).toEqual([])
+    expect(outcome.failed).toEqual([
+      {
+        id: 'invalid',
+        name: 'Indexer invalid',
+        kind: 'bad_response',
+      },
+    ])
+  })
+
   it('индексатор, не ответивший к сроку, — timeout; остальное приходит', async () => {
     fetchMock.mockImplementation(async (input) => {
       if (String(input).includes('slow.indexer.example'))
