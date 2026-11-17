@@ -314,9 +314,11 @@ let peersSince = 0
 let playingSince: number | null = null
 
 const knownDuration = computed(() =>
-  Number.isFinite(duration.value)
-    ? duration.value
-    : (playback.value?.duration ?? Number.NaN),
+  playback.value?.mode === 'hls' && playback.value.duration
+    ? playback.value.duration
+    : Number.isFinite(duration.value)
+      ? duration.value
+      : (playback.value?.duration ?? Number.NaN),
 )
 
 const osd = usePlayerOsd({
@@ -658,7 +660,7 @@ watch(
 function skipCurrent() {
   const segment = currentSkip(
     playback.value?.skipSegments,
-    video.value?.currentTime ?? position.value,
+    video.value ? hls.sourceTime(video.value.currentTime) : position.value,
     knownDuration.value,
   )
   if (!segment || !showsSkip.value || segment.id !== activeSkip.value?.id)
@@ -1292,7 +1294,10 @@ function onSeeked() {
     {
       event: 'playback.seek',
       ...pendingSeek,
-      to: Math.max(0, video.value?.currentTime ?? pendingSeek.to),
+      to: Math.max(
+        0,
+        video.value ? hls.sourceTime(video.value.currentTime) : pendingSeek.to,
+      ),
     },
     diagnosticContext,
   )
@@ -1309,8 +1314,8 @@ function seekTo(
 
   const target = clampTime(seconds, knownDuration.value)
 
-  pendingSeek = { from: Math.max(0, el.currentTime), to: target, trigger }
-  el.currentTime = target
+  pendingSeek = { from: hls.sourceTime(el.currentTime), to: target, trigger }
+  el.currentTime = hls.mediaTime(target)
   position.value = target
   seekGeneration++
   startStats()
@@ -1541,7 +1546,12 @@ async function begin(from: number) {
   if (current.mode === 'hls' && !hasNativePlayer) {
     let attached: boolean
     try {
-      attached = await hls.attach(el, current.streamUrl, from)
+      attached = await hls.attach(
+        el,
+        current.streamUrl,
+        from,
+        current.hlsTimestampOffset,
+      )
     }
     catch (err) {
       if (run !== launch || leaving || restarting.value)
@@ -1876,7 +1886,7 @@ function onLoadedMetadata() {
   tracks.refresh()
 
   if (startAt > 0)
-    el.currentTime = clampTime(startAt, el.duration)
+    el.currentTime = hls.mediaTime(clampTime(startAt, knownDuration.value))
 
   if (startPausedBy)
     showPaused()
@@ -2018,7 +2028,10 @@ function onTimeUpdate() {
   }
   pictureWaitStarted = undefined
 
-  position.value = el.currentTime
+  position.value = Math.min(
+    hls.sourceTime(el.currentTime),
+    Number.isFinite(knownDuration.value) ? knownDuration.value : Infinity,
+  )
 
   if (Math.abs(el.currentTime - savedAt) >= SAVE_EVERY_S) {
     savedAt = el.currentTime
@@ -2115,7 +2128,13 @@ function onEnded() {
     return
   }
 
-  if (endedEarly(el.currentTime, el.duration, knownDuration.value)) {
+  if (
+    endedEarly(
+      hls.sourceTime(el.currentTime),
+      hls.sourceTime(el.duration),
+      knownDuration.value,
+    )
+  ) {
     recover('unknown')
     return
   }

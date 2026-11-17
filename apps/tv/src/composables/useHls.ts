@@ -22,16 +22,23 @@ export type HlsFailure = 'network' | 'media' | 'other'
 export function useHls(onFatal: (kind: HlsFailure, detail?: string) => void) {
   let hls: Hls | undefined
   let generation = 0
+  let timeOffset = 0
   let diagnosticState: DiagnosticMediaSnapshot['hls'] = 'idle'
 
   function detach() {
     generation++
+    timeOffset = 0
     hls?.destroy()
     hls = undefined
     diagnosticState = 'idle'
   }
 
-  async function attach(video: HTMLVideoElement, url: string, start: number) {
+  async function attach(
+    video: HTMLVideoElement,
+    url: string,
+    start: number,
+    timestampOffset?: number,
+  ) {
     detach()
     const run = generation
     diagnosticState = 'loading'
@@ -84,6 +91,15 @@ export function useHls(onFatal: (kind: HlsFailure, detail?: string) => void) {
       // Память ТВ ограничена: позади держим немного
       backBufferLength: 30,
       maxBufferLength: 60,
+    })
+
+    player.on(HlsPlayer.Events.INIT_PTS_FOUND, (_event, data) => {
+      if (run !== generation || timestampOffset === undefined)
+        return
+      // hls.js shifts DTS to zero; B-frame presentation time keeps that delay.
+      // Translate both seek targets and progress using the same source clock.
+      if (Number.isFinite(data.initPTS) && data.timescale > 0)
+        timeOffset = timestampOffset - data.initPTS / data.timescale
     })
 
     player.on(HlsPlayer.Events.ERROR, (_event, data) => {
@@ -146,5 +162,11 @@ export function useHls(onFatal: (kind: HlsFailure, detail?: string) => void) {
 
   onScopeDispose(detach)
 
-  return { attach, detach, diagnosticState: () => diagnosticState }
+  return {
+    attach,
+    detach,
+    diagnosticState: () => diagnosticState,
+    sourceTime: (time: number) => Math.max(0, time - timeOffset),
+    mediaTime: (time: number) => Math.max(0, time + timeOffset),
+  }
 }

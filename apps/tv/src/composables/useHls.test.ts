@@ -14,7 +14,12 @@ function deferred<T>() {
 class FakeHls {
   static instances: FakeHls[] = []
   static isSupported = () => true
-  static Events = { ERROR: 'error', FRAG_BUFFERED: 'buffered' }
+  static Events = {
+    ERROR: 'error',
+    FRAG_BUFFERED: 'buffered',
+    INIT_PTS_FOUND: 'initPts',
+  }
+
   static ErrorDetails = { FRAG_LOAD_ERROR: 'frag' }
   static ErrorTypes = { MEDIA_ERROR: 'media', NETWORK_ERROR: 'network' }
   handlers = new Map<string, (event: string, data: unknown) => void>()
@@ -142,3 +147,48 @@ it.each([false, true])(
     scope.stop()
   },
 )
+
+it('maps HLS decoder delay to the source clock for progress, seek and resume', async () => {
+  vi.doMock('hls.js', () => ({ default: FakeHls }))
+  const { useHls } = await import('./useHls.ts')
+  const scope = effectScope()
+  const hls = scope.run(() => useHls(vi.fn()))!
+  await hls.attach({} as HTMLVideoElement, '/stream.m3u8', 0, 10)
+  const old = FakeHls.instances[0]!
+  old.handlers.get('initPts')!('initPts', {
+    initPTS: 720000,
+    timescale: 90000,
+  })
+  expect(hls.sourceTime(28.005666)).toBeCloseTo(26.005666)
+  expect(hls.mediaTime(12)).toBe(14)
+  expect(hls.sourceTime(hls.mediaTime(4))).toBe(4)
+  expect(hls.sourceTime(0)).toBe(0)
+  // A backward seek remains backward; this is a clock transform, not max(position).
+  expect(hls.sourceTime(7)).toBe(5)
+  await hls.attach({} as HTMLVideoElement, '/replacement.m3u8', 5, 10)
+  old.handlers.get('initPts')!('initPts', { initPTS: 0, timescale: 90000 })
+  expect(hls.sourceTime(5)).toBe(5)
+  FakeHls.instances[1]!.handlers.get('initPts')!('initPts', {
+    initPTS: 891000,
+    timescale: 90000,
+  })
+  expect(hls.mediaTime(5)).toBeCloseTo(5.1)
+  hls.detach()
+  expect(hls.sourceTime(5)).toBe(5)
+  scope.stop()
+})
+
+it('keeps the legacy clock when the server does not provide a TS offset', async () => {
+  vi.doMock('hls.js', () => ({ default: FakeHls }))
+  const { useHls } = await import('./useHls.ts')
+  const scope = effectScope()
+  const hls = scope.run(() => useHls(vi.fn()))!
+  await hls.attach({} as HTMLVideoElement, '/legacy.m3u8', 12)
+  FakeHls.instances[0]!.handlers.get('initPts')!('initPts', {
+    initPTS: 720000,
+    timescale: 90000,
+  })
+  expect(hls.sourceTime(14)).toBe(14)
+  expect(hls.mediaTime(12)).toBe(12)
+  scope.stop()
+})

@@ -1,5 +1,6 @@
 import { acceptWatchEvent } from '../services/watchEvents.ts'
 import { getDb } from '../db/index.ts'
+import { TS_OFFSET_SECONDS } from '../services/media/hls.ts'
 import {
   folderWithLibrary,
   playableMediaFile,
@@ -165,6 +166,7 @@ function toPlaybackResponse(
     status: session.status,
     mode: ready ? decision.mode : null,
     streamUrl: ready ? streamUrlOf(session, token) : null,
+    ...(session.hls ? { hlsTimestampOffset: TS_OFFSET_SECONDS } : {}),
     // Внешний плеер читает файл сам: перепаковка закрывается вместе с плеером
     externalUrl: streamUrlOf(session, token, 'direct'),
     title: session.torrent?.name ?? session.fileName,

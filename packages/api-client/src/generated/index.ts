@@ -5513,6 +5513,7 @@ export interface PlaybackInput {
   status: "probing" | "ready";
   mode: "direct" | "hls" | null;
   streamUrl: string | null;
+  hlsTimestampOffset?: number;
   externalUrl: string;
   title: string;
   fileName: string;
@@ -13470,6 +13471,7 @@ export interface Playback {
   status: "probing" | "ready";
   mode: "direct" | "hls" | null;
   streamUrl: string | null;
+  hlsTimestampOffset?: number;
   externalUrl: string;
   title: string;
   fileName: string;
