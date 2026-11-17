@@ -382,6 +382,92 @@ describe('пути хранения', () => {
     expect(res.statusCode).toBe(422)
     expect(res.json().kind).toBe('not_absolute')
   })
+
+  it.each(['env', 'panel'])(
+    'counts isolated torrents in the current %s root without a redundant move',
+    async (source) => {
+      const current = join(root, source === 'env' ? 'torrents' : 'current')
+      if (source === 'panel')
+        setStoragePath('downloads', current)
+      await mkdir(current, { recursive: true })
+      const rows = [
+        insertTorrent({ inEngine: true, downloadDir: current }),
+        insertTorrent({
+          infoHash: 'b'.repeat(40),
+          inEngine: true,
+          downloadDir: join(current, 'torsher', 'b'.repeat(40)),
+        }),
+        insertTorrent({
+          infoHash: 'c'.repeat(40),
+          inEngine: true,
+          downloadDir: join(current, 'torsher', 'c'.repeat(40)),
+        }),
+      ]
+      engine(
+        rows.map((row, index) => ({
+          ...liveState,
+          infoHash: row.infoHash,
+          bytesCompleted: [10, 20, 0][index],
+        })),
+      )
+      expect((await overview()).folders.downloads).toMatchObject({
+        path: current,
+        source,
+        items: 3,
+        bytes: 30,
+        leftovers: [],
+      })
+      const check = await app.inject({
+        method: 'POST',
+        url: '/api/storage/check',
+        cookies: owner,
+        payload: { kind: 'downloads', path: current },
+      })
+      expect(check.statusCode).toBe(200)
+      expect(check.json()).toMatchObject({ moveItems: 0, moveTotalBytes: 0 })
+      const move = await app.inject({
+        method: 'POST',
+        url: '/api/storage/move',
+        cookies: owner,
+        payload: { kind: 'downloads' },
+      })
+      expect(move.statusCode).toBe(200)
+      await moveIdle()
+      expect(engineCalls()).toEqual([])
+      expect(rows.map(row => torrentRow(row.id).downloadDir)).toEqual(
+        rows.map(row => row.downloadDir),
+      )
+
+      const previous = [
+        join(root, 'old', 'torsher', 'd'.repeat(40)),
+        join(current, 'custom'),
+        join(current, 'torsher', '0'.repeat(40)),
+      ]
+      for (const [index, downloadDir] of previous.entries()) {
+        insertTorrent({
+          infoHash: ['d', 'e', 'f'][index]!.repeat(40),
+          inEngine: true,
+          downloadDir,
+        })
+      }
+      const folder = (await overview()).folders.downloads
+      expect(folder.items).toBe(3)
+      expect(folder.bytes).toBe(30)
+      expect(folder.leftovers).toEqual(
+        previous.map(path => ({
+          path,
+          items: 1,
+          bytes: 0,
+        })),
+      )
+      // Changing the target makes the old isolated paths genuine leftovers.
+      setStoragePath('downloads', join(root, 'next'))
+      const changed = (await overview()).folders.downloads
+      expect(changed.items).toBe(0)
+      expect(changed.bytes).toBe(0)
+      expect(changed.leftovers).toHaveLength(6)
+    },
+  )
 })
 
 describe('перенос загрузок', () => {

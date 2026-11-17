@@ -22,6 +22,7 @@ import {
   envStoragePath,
   storagePath,
   storagePathSource,
+  torrentAtRoot,
   torrentDir,
 } from './paths.ts'
 
@@ -329,8 +330,8 @@ export interface FolderContents {
 }
 
 /**
- * Что лежит в папках загрузок: раздачи в движке по каталогу. Каталог
- * раздачи без своего — окружения
+ * Что лежит в папках загрузок: текущий корень включает собственные isolated
+ * dirs; остальные раздачи в движке группируются по физическому каталогу.
  */
 export function downloadsContents(live: Map<string, EngineTorrentState>) {
   const rows = getDb()
@@ -339,9 +340,12 @@ export function downloadsContents(live: Map<string, EngineTorrentState>) {
     .where(eq(torrents.inEngine, true))
     .all()
   const byDir = new Map<string, FolderContents>()
+  const current = storagePath('downloads')
 
   for (const row of rows) {
-    const dir = resolve(torrentDir(row))
+    const dir = torrentAtRoot(row, current)
+      ? current
+      : resolve(torrentDir(row))
     const entry = byDir.get(dir) ?? { path: dir, items: 0, bytes: 0 }
 
     entry.items++
