@@ -311,6 +311,104 @@ describe('export', () => {
     expect(body).not.toContain('transfer-cookie-secret')
   })
 
+  it.each([
+    {
+      scope: 'server',
+      includeLibraries: false,
+      managed: false,
+      expectedNative: false,
+    },
+    {
+      scope: 'server',
+      includeLibraries: true,
+      managed: false,
+      expectedNative: true,
+    },
+    {
+      scope: 'server',
+      includeLibraries: true,
+      managed: true,
+      expectedNative: false,
+    },
+    {
+      scope: 'profile',
+      includeLibraries: true,
+      managed: false,
+      expectedNative: false,
+    },
+  ])(
+    'exports native positions only with connected server libraries: $scope / $includeLibraries / managed=$managed',
+    async ({ scope, includeLibraries, managed, expectedNative }) => {
+      const db = getDb()
+      db.insert(libraries)
+        .values({ id: 'home-lib', kind: 'video', name: 'Home videos', managed })
+        .run()
+      db.insert(libraryFolders)
+        .values({
+          id: 'home-folder',
+          libraryId: 'home-lib',
+          path: '/home/videos',
+        })
+        .run()
+      db.insert(mediaFiles)
+        .values({
+          id: 'home-file',
+          folderId: 'home-folder',
+          relPath: 'trip.mp4',
+          size: 1,
+          mtime: at(1),
+        })
+        .run()
+      db.insert(titleProgress)
+        .values({
+          profileId: ANNA,
+          titleId: 'file:home-file',
+          season: 0,
+          episode: 0,
+          position: 42,
+          duration: 120,
+          updatedAt: at(6),
+        })
+        .run()
+      const original = db.select().from(titleProgress).all()
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/transfer/export',
+        cookies: authed(),
+        payload: {
+          scope,
+          profileId: scope === 'profile' ? ANNA : undefined,
+          include: { libraries: includeLibraries },
+        },
+      })
+      expect(res.statusCode).toBe(200)
+      const document = res.json()
+      expect(
+        document.progress.filter((row: { title?: string }) => row.title),
+      ).toEqual([
+        expect.objectContaining({ title: MOVIE, position: 1200 }),
+        expect.objectContaining({ title: SHOW, position: 300 }),
+      ])
+      expect(
+        document.progress.filter((row: { file?: unknown }) => row.file),
+      ).toEqual(
+        expectedNative
+          ? [
+              expect.objectContaining({
+                file: { folder: '/home/videos', path: 'trip.mp4' },
+                position: 42,
+              }),
+            ]
+          : [],
+      )
+      expect(document.libraries !== undefined).toBe(
+        scope === 'server' && includeLibraries,
+      )
+      expect(db.select().from(titleProgress).all()).toEqual(original)
+    },
+  )
+
   it('encrypts secrets with the export password only', async () => {
     const body = await exportServer({ password: 'export-password-1' })
     const document = JSON.parse(body)

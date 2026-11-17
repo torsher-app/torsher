@@ -141,7 +141,7 @@ Downloads and the library are not in the backup. Copy them yourself to the folde
 
 To bring profiles into a server that already has its own data, use an export. Unlike a restore, it merges and replaces nothing.
 
-1. On the old server, in the <Ui k="panel.transfer.title" /> card, select <Ui k="panel.transfer.exportAction" />. Profiles, watch positions, Watchlist, Favorites, ratings and Dropped are always included. Choose what else to add: <Ui k="panel.transfer.export.collections" />, <Ui k="panel.transfer.export.libraries" />, <Ui k="panel.transfer.export.settings" />, and <Ui k="panel.transfer.export.secrets" /> with an export password. Select <Ui k="panel.transfer.export.submit" />.
+1. On the old server, in the <Ui k="panel.transfer.title" /> card, select <Ui k="panel.transfer.exportAction" />. Profiles, title positions, Watchlist, Favorites, ratings and Dropped are always included. Positions of files without a title (home video and <Ui k="home.rows.libraryUntitled" />) require <Ui k="panel.transfer.export.libraries" />: they are matched by the connected folder and relative file path. Choose what else to add: <Ui k="panel.transfer.export.collections" />, <Ui k="panel.transfer.export.libraries" />, <Ui k="panel.transfer.export.settings" />, and <Ui k="panel.transfer.export.secrets" /> with an export password. Select <Ui k="panel.transfer.export.submit" />.
 2. On the other server, in the same card, select <Ui k="panel.transfer.importAction" /> and drop the file.
 3. Choose where each profile goes: into a profile with the same name, into another one, into a new profile, or nowhere. Check the summary and select <Ui k="panel.transfer.import.submit" />.
 
@@ -149,7 +149,9 @@ The later watch position and rating win, lists and collections are combined, and
 
 The server makes a backup before the import, so <Ui k="panel.transfer.import.result.undo" /> can take it back.
 
-One profile only: <Ui k="panel.imports.export" /> and <Ui k="panel.imports.start" /> in the profile card under <Ui k="panel.nav.people" />.
+Positions of files without a title in the library layout managed by Torsher are not exported, even with <Ui k="panel.transfer.export.libraries" />.
+
+One profile only: <Ui k="panel.imports.export" /> and <Ui k="panel.imports.start" /> in the profile card under <Ui k="panel.nav.people" />. A profile export includes title positions, but no file positions or library folder mapping.
 
 ::: details From the command line
 Export everything with libraries and settings:
