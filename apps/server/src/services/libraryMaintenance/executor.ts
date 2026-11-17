@@ -1,6 +1,7 @@
 import { notify } from '../notifications/index.ts'
 import process from 'node:process'
 import { statfs } from 'node:fs/promises'
+import { diskUsageFromStats } from '../storage/disk.ts'
 import { rootIdentity } from './identity.ts'
 import { durableMaintenance } from './durable.ts'
 import { getTorrentSettings } from '../torrents/settings.ts'
@@ -247,7 +248,7 @@ async function observedFree(root: string, device: string, inode: number) {
   }
   try {
     const stat = await statfs(root)
-    const bytes = stat.bavail * stat.bsize
+    const bytes = diskUsageFromStats(stat).free
     return Number.isSafeInteger(bytes) ? bytes : null
   }
   catch {

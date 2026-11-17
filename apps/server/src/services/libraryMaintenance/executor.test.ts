@@ -26,6 +26,7 @@ import {
   realpath,
   rename,
   rm,
+  statfs,
   unlink,
   writeFile,
 } from 'node:fs/promises'
@@ -91,6 +92,10 @@ let root: string
 let profileId: string
 let serial = 0
 const now = Date.now()
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const fs = await importOriginal<typeof import('node:fs/promises')>()
+  return { ...fs, statfs: vi.fn(fs.statfs) }
+})
 const engineOps = new Map<string, EngineMaintenanceOperation>()
 beforeAll(async () => {
   await migrateDb()
@@ -358,6 +363,29 @@ async function mature() {
 }
 
 describe('maintenance executor', () => {
+  it('records fundamental-block free bytes before and after cleanup', async () => {
+    await fixture()
+    const actual = await statfs(root)
+    vi.mocked(statfs)
+      .mockResolvedValueOnce({
+        ...actual,
+        bsize: 1048576,
+        frsize: 4096,
+        bavail: 1000,
+      })
+      .mockResolvedValueOnce({
+        ...actual,
+        bsize: 1048576,
+        frsize: 4096,
+        bavail: 1001,
+      })
+    await mature()
+    const operation = db.select().from(maintenanceOperations).get()!
+    expect(operation.state).toBe('cleaned')
+    expect(operation.volumes).toMatchObject([
+      { beforeFree: 4096000, afterFree: 4100096 },
+    ])
+  })
   it('does not treat an imported title mark as watched files', async () => {
     const f = await fixture()
     db.delete(titleProgress).run()
