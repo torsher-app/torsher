@@ -182,19 +182,22 @@ function configOf(target: ChannelKind, channel?: NotificationChannel) {
 function start(target: ChannelKind) {
   kind.value = target
   clearedSecrets.value = new Set()
-  resetForm({
-    values: {
-      name: props.channel?.name ?? t(`panel.notifications.kinds.${target}`),
-      language:
-        props.channel?.language
-        ?? (locale.value === 'ru_RU' ? 'ru_RU' : 'en_US'),
-      panelUrl: props.channel?.panelUrl ?? defaultPanelUrl(),
-      events: props.channel?.events ?? ['problems', 'updates', 'follow'],
-      includeWarnings: props.channel?.includeWarnings ?? false,
-      notifyResolved: props.channel?.notifyResolved ?? false,
-      config: configOf(target, props.channel),
+  resetForm(
+    {
+      values: {
+        name: props.channel?.name ?? t(`panel.notifications.kinds.${target}`),
+        language:
+          props.channel?.language
+          ?? (locale.value === 'ru_RU' ? 'ru_RU' : 'en_US'),
+        panelUrl: props.channel?.panelUrl ?? defaultPanelUrl(),
+        events: props.channel?.events ?? ['problems', 'updates', 'follow'],
+        includeWarnings: props.channel?.includeWarnings ?? false,
+        notifyResolved: props.channel?.notifyResolved ?? false,
+        config: configOf(target, props.channel),
+      },
     },
-  })
+    { force: true },
+  )
 }
 
 watch(open, (isOpen) => {
