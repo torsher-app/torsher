@@ -1,8 +1,10 @@
 import type { LibraryFile } from '@torsher/api-client'
 import { describe, expect, it } from 'vitest'
+import { downloadSlot } from './downloadSlot.ts'
 import {
   firstLibraryFile,
   libraryChoices,
+  libraryEpisodeCount,
   libraryFileFor,
   libraryFilesFor,
   libraryTarget,
@@ -58,6 +60,75 @@ describe('файлы библиотеки', () => {
     expect(
       libraryTarget(middle, true, { season: 1, episode: 1 }),
     ).toBeUndefined()
+  })
+})
+
+describe('unique season library coverage', () => {
+  it('counts alternate versions of E2 and E3 as two episodes', () => {
+    const files = [
+      file('2a', 1, 2),
+      file('2b', 1, 2),
+      file('3a', 1, 3),
+      file('3b', 1, 3),
+    ]
+    expect(libraryEpisodeCount(files, 1)).toBe(2)
+  })
+
+  it('unions overlapping multi-episode ranges and includes disjoint episodes', () => {
+    const files = [
+      file('tail', 1, 3, 5),
+      file('single', 1, 2),
+      file('head', 1, 1, 3),
+      file('gap', 1, 8),
+    ]
+    expect(libraryEpisodeCount(files, 1)).toBe(6)
+  })
+
+  it('keeps seasons separate and ignores files without episode mapping', () => {
+    const files = [
+      file('s1', 1, 1, 2),
+      file('s2', 2, 1, 3),
+      file('unknown', 1, null),
+      file('movie', null, null),
+    ]
+    expect(libraryEpisodeCount(files, 1)).toBe(2)
+    expect(libraryEpisodeCount(files, 2)).toBe(3)
+    expect(libraryEpisodeCount(files, 3)).toBe(0)
+    expect(libraryEpisodeCount(files)).toBe(0)
+    expect(libraryEpisodeCount([], 1)).toBe(0)
+  })
+
+  it('uses the same special season normalization as libraryFilesFor', () => {
+    const files = [
+      file('special-a', null, 1, 2),
+      file('special-b', 0, 2, 3),
+      file('regular', 1, 1),
+    ]
+    expect(libraryEpisodeCount(files, 0)).toBe(3)
+    expect(libraryEpisodeCount(files, 1)).toBe(1)
+  })
+
+  it('keeps season download available despite enough duplicate files to hide it', () => {
+    const files = Array.from({ length: 8 }, (_, i) =>
+      file(`${i}`, 1, i < 4 ? 2 : 3))
+    const input = {
+      series: true,
+      season: 1,
+      downloads: [],
+      movieInLibrary: false,
+      seasonAired: 7,
+      seasonInLibrary: libraryEpisodeCount(files, 1),
+    }
+    expect(downloadSlot(input)).toEqual({ kind: 'start' })
+    expect(
+      downloadSlot({
+        ...input,
+        seasonInLibrary: libraryEpisodeCount(
+          [...files, file('complete', 1, 1, 7)],
+          1,
+        ),
+      }),
+    ).toEqual({ kind: 'none' })
   })
 })
 

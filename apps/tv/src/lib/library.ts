@@ -1,5 +1,27 @@
 import type { LibraryFile } from '@torsher/api-client'
 
+/** Уникальные серии сезона: версии и перекрытия диапазонов считаются один раз. */
+export function libraryEpisodeCount(files: LibraryFile[], season?: number) {
+  const episodes = new Set<number>()
+
+  if (season === undefined)
+    return 0
+
+  for (const file of files) {
+    if ((file.season ?? 0) !== season || file.episode === null)
+      continue
+
+    for (
+      let episode = file.episode;
+      episode <= (file.episodeTo ?? file.episode);
+      episode++
+    )
+      episodes.add(episode)
+  }
+
+  return episodes.size
+}
+
 /** Серия, которую содержит файл: у файла с несколькими сериями — любая из них */
 export function libraryFilesFor(
   files: LibraryFile[],
