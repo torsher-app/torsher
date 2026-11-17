@@ -233,6 +233,8 @@ export const homeResponse = z
     rows: z.array(homeRow),
     // Есть ли на сервере источники раздач, как у деталей тайтла
     hasSources: z.boolean(),
+    // Own rows remain usable when the discovery catalog cannot load.
+    catalogError: z.enum(['notConfigured', 'unavailable']).optional(),
   })
   .meta({ id: 'homeResponse' })
 

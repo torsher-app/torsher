@@ -100,13 +100,20 @@ export const homeRoutes: FastifyPluginAsyncZod = async (app) => {
         }
       }
 
-      // Без сети главная показывает хотя бы свои ряды из кэша; без ключа
-      // TMDB каталога нет совсем — это настройка, а не сбой
+      // Свои ряды полезны и без сети, и без ключа TMDB. Клиент отдельно
+      // показывает причину отсутствия каталога, не закрывая личные данные.
       const err: unknown = catalog.reason
       const config = err instanceof TmdbError && err.kind === 'config'
 
-      if (own.length > 0 && !config)
-        return { rows: own, hasSources }
+      if (own.length > 0) {
+        return {
+          rows: own,
+          hasSources,
+          catalogError: config
+            ? ('notConfigured' as const)
+            : ('unavailable' as const),
+        }
+      }
 
       return sendTmdbError(reply, err)
     },

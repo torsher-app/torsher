@@ -92,6 +92,10 @@
     "nextPage": "Следующая страница"
   },
   "home": {
+    "catalogError": {
+      "notConfigured": "Каталог недоступен. Настройте TMDB в панели Torsher.",
+      "unavailable": "Каталог временно недоступен."
+    },
     "rows": {
       "continue": "Продолжить просмотр",
       "trending": "Топ-10 сегодня",

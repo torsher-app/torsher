@@ -4,7 +4,7 @@ import {
   diagnosticParams,
 } from '../diagnostics/index.ts'
 import { noteContinueReceived } from '../diagnostics/continue.ts'
-import type { ContinueRow, HomeRow } from '@torsher/api-client'
+import type { ContinueRow, HomeResponse, HomeRow } from '@torsher/api-client'
 import type { Ref } from 'vue'
 import type { LoadError } from '../lib/loadError.ts'
 import { onScopeDispose, ref, shallowRef, watch } from 'vue'
@@ -24,6 +24,7 @@ export function useHome(mode: Ref<HomeMode>) {
   const status = ref<HomeStatus>('loading')
   const rows = shallowRef<HomeRow[]>([])
   const error = ref<LoadError>()
+  const catalogError = ref<HomeResponse['catalogError']>()
   // Загрузок с лоадером: по нему экран отличает новую главную от тихого
   // обновления рядов (правка списков, «Продолжить» после плеера)
   const loads = ref(0)
@@ -58,6 +59,7 @@ export function useHome(mode: Ref<HomeMode>) {
       if (row.kind === 'continue')
         noteContinueReceived(row.items)
     }
+    catalogError.value = outcome.value.catalogError
     rows.value = outcome.value.rows
     status.value = 'ready'
 
@@ -120,6 +122,7 @@ export function useHome(mode: Ref<HomeMode>) {
     rows,
     loads,
     error,
+    catalogError,
     retry: () => load(),
     refresh: () => load(true),
     refreshContinue,
