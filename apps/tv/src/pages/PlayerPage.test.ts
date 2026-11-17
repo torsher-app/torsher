@@ -110,6 +110,7 @@ vi.mock('../composables/useHls.ts', () => ({
 }))
 let mediaRef: Ref<HTMLVideoElement | undefined>
 let mode = 'direct'
+let reasons: string[] = []
 const playerStats = ref<TorrentStats>()
 const statsFailed = ref(false)
 const statsAt = ref(0)
@@ -121,6 +122,7 @@ vi.mock('../composables/usePlayback.ts', () => ({
       media: { audio: [], subtitles: [] },
       streamUrl: '/stream',
       mode,
+      reasons,
       duration: 180,
       startPosition: 0,
     }),
@@ -261,6 +263,7 @@ beforeEach(() => {
   vi.useFakeTimers()
   vi.clearAllMocks()
   mode = 'direct'
+  reasons = []
   playerStats.value = undefined
   statsFailed.value = false
   statsAt.value = 0
@@ -287,6 +290,8 @@ beforeEach(() => {
     currentTime: 0,
     duration: 180,
     readyState: 4,
+    videoWidth: 854,
+    videoHeight: 480,
     HAVE_METADATA: 1,
     ended: false,
     error: null,
@@ -657,6 +662,7 @@ it.each(['direct', 'hls', 'native'])(
 )
 it('resumes an actively playing stream despite the internal pause during restart', async () => {
   mode = 'direct'
+  reasons = []
   await mount()
   await mocks.restart({ audioStream: 2 })
   expect(mocks.pause).toHaveBeenCalledOnce()
@@ -664,6 +670,7 @@ it('resumes an actively playing stream despite the internal pause during restart
 })
 it('retains a paused restart while a transient start failure is retried', async () => {
   mode = 'direct'
+  reasons = []
   await mount()
   controls.onPause()
   mocks.start.mockResolvedValueOnce('retry').mockResolvedValueOnce('ready')
@@ -799,6 +806,7 @@ it('returns a resolved source switch to the source overlay once', async () => {
 
 it('leaves buffering on metadata after Sources paused a stream before its first frame', async () => {
   mode = 'direct'
+  reasons = []
   await mount(false)
   Object.assign(mocks.media, { readyState: 0 })
   controls.openPanel('source')
@@ -813,6 +821,7 @@ it('leaves buffering on metadata after Sources paused a stream before its first 
 
 it('preserves the Sources pause while the playback request is still pending', async () => {
   mode = 'direct'
+  reasons = []
   let ready!: (value: string) => void
   mocks.start.mockImplementation(
     () =>
@@ -1297,3 +1306,70 @@ it.each(['exit', 'unmount'] as const)(
     }
   },
 )
+
+it('rejects an audio-only direct fallback without saving false video progress', async () => {
+  reasons = ['ToolsMissing']
+  Object.assign(mocks.media, { videoWidth: 0, videoHeight: 0 })
+  await mount(true, false, true)
+  expect(mocks.fail).not.toHaveBeenCalled()
+  expect(mocks.save).not.toHaveBeenCalled()
+  await vi.advanceTimersByTimeAsync(5100)
+  controls.onTimeUpdate()
+  expect(mocks.fail).toHaveBeenCalledWith('unsupported', expect.any(Object))
+  expect(mocks.pause).toHaveBeenCalled()
+  controls.exit()
+  expect(mocks.save).not.toHaveBeenCalled()
+})
+
+it('rejects a short ToolsMissing EOF with no picture before accepting completion', async () => {
+  reasons = ['ToolsMissing']
+  Object.assign(mocks.media, { videoWidth: 0, videoHeight: 0 })
+  await mount(true, false, true)
+  Object.assign(mocks.media, { currentTime: 2, duration: 2, ended: true })
+  controls.onEnded()
+  expect(mocks.fail).toHaveBeenCalledWith('unsupported', expect.any(Object))
+  expect(mocks.save).not.toHaveBeenCalled()
+})
+
+it('allows delayed video dimensions and saves compatible direct playback without ffmpeg', async () => {
+  reasons = ['ToolsMissing']
+  Object.assign(mocks.media, { videoWidth: 0, videoHeight: 0 })
+  await mount(true, false, true)
+  expect(mocks.save).not.toHaveBeenCalled()
+  Object.assign(mocks.media, { videoWidth: 854, videoHeight: 480 })
+  await vi.advanceTimersByTimeAsync(5100)
+  controls.onTimeUpdate()
+  expect(mocks.fail).not.toHaveBeenCalled()
+  expect(mocks.save).toHaveBeenCalled()
+  Object.assign(mocks.media, { currentTime: 180, ended: true })
+  controls.onEnded()
+  expect(mocks.fail).not.toHaveBeenCalled()
+})
+
+it('does not require HTML dimensions from the Android native player bridge', async () => {
+  reasons = ['ToolsMissing']
+  mocks.native = true
+  Object.assign(mocks.media, { videoWidth: 0, videoHeight: 0 })
+  await mount(true, false, true)
+  await vi.advanceTimersByTimeAsync(5100)
+  controls.onTimeUpdate()
+  expect(mocks.fail).not.toHaveBeenCalled()
+  expect(mocks.save).toHaveBeenCalled()
+})
+
+it('starts a fresh picture grace period after retrying the same file', async () => {
+  reasons = ['ToolsMissing']
+  Object.assign(mocks.media, { videoWidth: 0, videoHeight: 0 })
+  await mount(true, false, true)
+  await vi.advanceTimersByTimeAsync(5100)
+  controls.onTimeUpdate()
+  expect(mocks.fail).toHaveBeenCalledOnce()
+  mocks.fail.mockClear()
+  await controls.start()
+  controls.onPlaying()
+  controls.onTimeUpdate()
+  expect(mocks.fail).not.toHaveBeenCalled()
+  await vi.advanceTimersByTimeAsync(5100)
+  controls.onTimeUpdate()
+  expect(mocks.fail).toHaveBeenCalledOnce()
+})
