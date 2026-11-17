@@ -322,6 +322,137 @@ describe('проверка хостов', () => {
     return (await inject('GET', '/api/net/check')).json()
   }
 
+  it.each([
+    { proxy: '127.0.0.1:9' },
+    { via: 'socks5h' },
+    { username: 'another-reader' },
+    { password: 'another-password' },
+    { password: null },
+    { dns: 'google' },
+    { dns: 'custom', dohUrl: 'https://dns.example/query' },
+    { match: 'another.example' },
+  ])('забывает результат после изменения маршрута %j', async (patch) => {
+    stubDns(['203.0.113.1'], ['203.0.113.1'])
+    fetchMock.mockImplementation(async () => new Response('ok'))
+    const route = (
+      await inject('POST', '/api/net/routes', {
+        match: 'api.themoviedb.org',
+        via: 'http',
+        proxy: '127.0.0.1:3128',
+        username: 'reader',
+        password: PASSWORD,
+      })
+    ).json()
+    const before = await checkAll()
+
+    expect(before.hosts[0].status).toBe('ok')
+    expect(before.finishedAt).not.toBeNull()
+    expect(
+      (await inject('PATCH', `/api/net/routes/${route.id}`, patch)).statusCode,
+    ).toBe(200)
+
+    const changed = (await inject('GET', '/api/net/check')).json()
+
+    expect(changed.finishedAt).toBeNull()
+    expect(changed.hosts[0]).toMatchObject({
+      status: null,
+      latencyMs: null,
+      httpStatus: null,
+      checkedAt: null,
+      dnsSpoofed: false,
+    })
+    fetchMock.mockRejectedValue(failure('ECONNREFUSED'))
+    expect((await checkAll()).hosts[0].status).toBe('refused')
+  })
+
+  it('сбрасывает результат после создания, перестановки и удаления правил', async () => {
+    stubDns(['203.0.113.1'], ['203.0.113.1'])
+    fetchMock.mockImplementation(async () => new Response('ok'))
+    await checkAll()
+    const broad = (
+      await inject('POST', '/api/net/routes', {
+        match: '*.org',
+        via: 'direct',
+      })
+    ).json()
+
+    expect(
+      (await inject('GET', '/api/net/check')).json().hosts[0].status,
+    ).toBeNull()
+    const narrow = (
+      await inject('POST', '/api/net/routes', {
+        match: '*.themoviedb.org',
+        via: 'direct',
+        dns: 'google',
+      })
+    ).json()
+    await checkAll()
+    await inject('PUT', '/api/net/routes/order', {
+      ids: [narrow.id, broad.id],
+    })
+    const reordered = (await inject('GET', '/api/net/check')).json()
+
+    expect(reordered.hosts[0].route.id).toBe(narrow.id)
+    expect(reordered.hosts[0].status).toBeNull()
+    await checkAll()
+    await inject('DELETE', `/api/net/routes/${narrow.id}`)
+    const deleted = (await inject('GET', '/api/net/check')).json()
+
+    expect(deleted.hosts[0].route.id).toBe(broad.id)
+    expect(deleted.hosts[0].status).toBeNull()
+  })
+
+  it.each([{}, { host: 'https://api.themoviedb.org' }])(
+    'не публикует поздний ответ проверки прежних маршрутов %j',
+    async (scope) => {
+      stubDns(['203.0.113.1'], ['203.0.113.1'])
+      let release!: () => void
+      const held = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      fetchMock.mockImplementation(async () => {
+        await held
+        return new Response('ok')
+      })
+      await inject('POST', '/api/net/check', scope)
+      const [route] = (await inject('GET', '/api/net/routes')).json().items
+
+      try {
+        await inject('PATCH', `/api/net/routes/${route.id}`, { dns: 'google' })
+      }
+      finally {
+        release()
+        await waitForCheck()
+      }
+      const changed = (await inject('GET', '/api/net/check')).json()
+
+      expect(changed.running).toBe(false)
+      expect(changed.finishedAt).toBeNull()
+      expect(
+        changed.hosts.every(
+          (host: { status: string | null, checking: boolean }) =>
+            host.status === null && !host.checking,
+        ),
+      ).toBe(true)
+      fetchMock.mockImplementation(async () => new Response('ok'))
+      expect((await checkAll()).hosts[0].status).toBe('ok')
+    },
+  )
+
+  it('сохраняет результат без изменений маршрутов и после отклонённого сохранения', async () => {
+    stubDns(['203.0.113.1'], ['203.0.113.1'])
+    fetchMock.mockImplementation(async () => new Response('ok'))
+    const before = await checkAll()
+    const [route] = (await inject('GET', '/api/net/routes')).json().items
+    const rejected = await inject('PATCH', `/api/net/routes/${route.id}`, {
+      via: 'http',
+      proxy: 'invalid',
+    })
+
+    expect(rejected.statusCode).toBe(422)
+    expect((await inject('GET', '/api/net/check')).json()).toEqual(before)
+  })
+
   it('проверяет TMDB и ручные индексаторы с маршрутом и задержкой', async () => {
     stubDns(['203.0.113.1'], ['203.0.113.1'])
     getDb()
