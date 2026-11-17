@@ -13,6 +13,8 @@ type LoadState = 'idle' | 'loading' | 'error' | 'ready'
 
 // Снимок и проверка копии перед восстановлением идут на сервере в фоне
 const POLL_MS = 1000
+// Планировщик и другие клиенты меняют список даже без известной UI операции
+const IDLE_POLL_MS = 30_000
 
 /** Отказ сервера с видом причины: показываем его в форме или диалоге */
 export class BackupRequestError extends Error {
@@ -51,20 +53,23 @@ const state = ref<LoadState>('idle')
 let pollTimer: ReturnType<typeof setTimeout> | undefined
 let polling = false
 
-function needsPoll(value: BackupStatus | null) {
+function needsFastPoll(value: BackupStatus | null) {
   return !!value?.state.running || value?.restore?.state === 'checking'
 }
 
 function schedulePoll() {
   clearTimeout(pollTimer)
 
-  if (!polling || !needsPoll(status.value))
+  if (!polling)
     return
 
-  pollTimer = setTimeout(async () => {
-    await refresh()
-    schedulePoll()
-  }, POLL_MS)
+  pollTimer = setTimeout(
+    async () => {
+      await refresh()
+      schedulePoll()
+    },
+    needsFastPoll(status.value) ? POLL_MS : IDLE_POLL_MS,
+  )
 }
 
 function apply(next: BackupStatus) {
@@ -215,11 +220,12 @@ export function useBackups() {
 
 /**
  * Опрос на время жизни страницы и только в видимой вкладке: пока идёт
- * снимок или проверка копии. Вернувшись во вкладку, страница сразу
- * получает свежее состояние.
+ * снимок или проверка копии — часто, в ожидании — реже. При возврате
+ * во вкладку страница сразу получает свежее состояние.
  */
 export function useBackupsPolling() {
   const visibility = useDocumentVisibility()
+  let disposed = false
 
   function sync() {
     polling = visibility.value === 'visible'
@@ -231,7 +237,8 @@ export function useBackupsPolling() {
 
   onMounted(async () => {
     await (status.value ? refresh() : load())
-    sync()
+    if (!disposed)
+      sync()
   })
 
   watch(visibility, (value) => {
@@ -242,6 +249,7 @@ export function useBackupsPolling() {
   })
 
   onBeforeUnmount(() => {
+    disposed = true
     polling = false
     clearTimeout(pollTimer)
   })
