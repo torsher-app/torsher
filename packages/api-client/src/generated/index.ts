@@ -5573,6 +5573,18 @@ export interface InsufficientStorageResponseInput {
 }
 
 export interface UpdateWatchStateInput {
+  event?: {
+    /**
+     * @minLength 1
+     * @maxLength 100
+     */
+    clientId: string;
+    /**
+     * @min 1
+     * @max 9007199254740991
+     */
+    sequence: number;
+  };
   /**
    * @minLength 1
    * @maxLength 100
@@ -13518,6 +13530,18 @@ export interface InsufficientStorageResponse {
 }
 
 export interface UpdateWatchState {
+  event?: {
+    /**
+     * @minLength 1
+     * @maxLength 100
+     */
+    clientId: string;
+    /**
+     * @min 1
+     * @max 9007199254740991
+     */
+    sequence: number;
+  };
   /**
    * @minLength 1
    * @maxLength 100

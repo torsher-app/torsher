@@ -397,3 +397,27 @@ it('discards a time sample that resolves after a seek before the next tick', asy
   expect(player.statsReceivedAt()).toBe(0)
   scope.stop()
 })
+
+it('orders checkpoints and backward seeks across player instances without waiting for old requests', async () => {
+  const old = deferred<void>()
+  mocks.save.mockReturnValueOnce(old.promise).mockResolvedValue(undefined)
+  const scope = effectScope()
+  const a = scope.run(() => usePlayback({ mediaFileId: 'A' }))!
+  const pending = a.saveWatchState(798, 2000)
+  await a.saveWatchState(921, 2000, 'exit')
+  const b = scope.run(() => usePlayback({ mediaFileId: 'B' }))!
+  await b.saveWatchState(20, 2000)
+  const again = scope.run(() => usePlayback({ mediaFileId: 'A' }))!
+  await again.saveWatchState(200, 2000, 'pause')
+  const events = mocks.save.mock.calls.map(call => call[0].event)
+  expect(new Set(events.map(event => event.clientId)).size).toBe(1)
+  expect(events.map(event => event.sequence)).toEqual([
+    events[0].sequence,
+    events[0].sequence + 1,
+    events[0].sequence + 2,
+    events[0].sequence + 3,
+  ])
+  old.resolve()
+  await pending
+  scope.stop()
+})

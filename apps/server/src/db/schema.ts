@@ -449,6 +449,22 @@ export const storagePolicy = sqliteTable('storage_policy', {
     .$defaultFn(() => new Date()),
 })
 
+// Последний принятый порядок событий клиента для каждого ресурса прогресса.
+export const watchEvents = sqliteTable(
+  'watch_events',
+  {
+    profileId: text('profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    clientId: text('client_id').notNull(),
+    resource: text('resource').notNull(),
+    sequence: integer('sequence').notNull(),
+  },
+  table => [
+    primaryKey({ columns: [table.profileId, table.clientId, table.resource] }),
+  ],
+)
+
 // Позиция просмотра файла раздачи у профиля
 export const watchStates = sqliteTable(
   'watch_states',
