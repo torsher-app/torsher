@@ -755,7 +755,21 @@ describe('profile import', () => {
       payload: { conflicts: 'newer' },
     })
 
-    expect(applied.json()).toMatchObject({ imported: 3 })
+    expect(applied.json()).toMatchObject({
+      imported: 2,
+      unchanged: 0,
+      unmatched: 0,
+    })
+    const overview = await app.inject({
+      url: `/api/profiles/${DAD}/imports`,
+      cookies: authed(),
+    })
+
+    expect(overview.json().last.summary).toEqual({
+      imported: 2,
+      unchanged: 0,
+      unmatched: 0,
+    })
     expect(
       getDb()
         .select()
@@ -767,6 +781,14 @@ describe('profile import', () => {
     const again = (await upload(DAD, body)).json()
 
     expect(again.preview.progress).toEqual({ new: 0, updated: 0, same: 2 })
+    const repeated = await app.inject({
+      method: 'POST',
+      url: `/api/profiles/${DAD}/imports/${again.id}/apply`,
+      cookies: authed(),
+      payload: { conflicts: 'newer' },
+    })
+
+    expect(repeated.json()).toMatchObject({ imported: 0, unchanged: 3 })
 
     const undone = await app.inject({
       method: 'POST',
@@ -782,6 +804,74 @@ describe('profile import', () => {
         .where(eq(titleProgress.profileId, DAD))
         .all(),
     ).toHaveLength(0)
+  })
+
+  it('counts multiple episode positions and mine changes once per imported title', async () => {
+    const beforeMine = getDb()
+      .select()
+      .from(profileTitles)
+      .where(eq(profileTitles.profileId, DAD))
+      .all()
+    const document = JSON.parse(await profileExport(ANNA))
+
+    document.progress = document.progress.filter(
+      (row: { title: string }) => row.title === SHOW,
+    )
+    document.progress.push({
+      ...document.progress[0],
+      episode: 3,
+      position: 500,
+    })
+    document.mine = [{ ...document.mine[0], title: SHOW }]
+    const job = (await upload(DAD, JSON.stringify(document))).json()
+    const applied = await app.inject({
+      method: 'POST',
+      url: `/api/profiles/${DAD}/imports/${job.id}/apply`,
+      cookies: authed(),
+      payload: { conflicts: 'newer' },
+    })
+
+    expect(applied.statusCode).toBe(200)
+    expect(applied.json()).toMatchObject({
+      imported: 1,
+      unchanged: 0,
+      unmatched: 0,
+    })
+    expect(
+      getDb()
+        .select()
+        .from(titleProgress)
+        .where(eq(titleProgress.profileId, DAD))
+        .all(),
+    ).toHaveLength(2)
+    expect(
+      getDb()
+        .select()
+        .from(profileTitles)
+        .where(eq(profileTitles.profileId, DAD))
+        .all(),
+    ).toHaveLength(beforeMine.length + 1)
+    const undone = await app.inject({
+      method: 'POST',
+      url: `/api/profiles/${DAD}/imports/${applied.json().id}/undo`,
+      cookies: authed(),
+    })
+
+    expect(undone.json()).toEqual({ restored: 3, kept: 0 })
+    expect(
+      getDb()
+        .select()
+        .from(titleProgress)
+        .where(eq(titleProgress.profileId, DAD))
+        .all(),
+    ).toHaveLength(0)
+    expect(
+      getDb()
+        .select()
+        .from(profileTitles)
+        .where(eq(profileTitles.profileId, DAD))
+        .all(),
+    ).toEqual(beforeMine)
   })
 
   it('carries the watched mark and derives it from files of older versions', async () => {
