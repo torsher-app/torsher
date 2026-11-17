@@ -88,9 +88,11 @@ function normalized(value: string | undefined) {
 }
 
 const isCurrent = computed(() => normalized(path.value) === folder.value.path)
-const hasData = computed(() => folder.value.items > 0)
 const checkedHere = computed(
   () => !!check.value && check.value.path === normalized(path.value),
+)
+const hasData = computed(
+  () => checkedHere.value && (check.value?.moveItems ?? 0) > 0,
 )
 const notEnoughSpace = computed(
   () => !!check.value && check.value.moveBytes > check.value.free,
@@ -258,7 +260,9 @@ const options = computed(() => [
   },
   {
     value: 'move' as const,
-    title: t(`${base}.moveTitle`, { size: bytes(folder.value.bytes) }),
+    title: t(`${base}.moveTitle`, {
+      size: bytes(check.value?.moveTotalBytes ?? 0),
+    }),
     text: check.value?.sameVolume
       ? t(`${base}.moveSameVolume`)
       : t(`${base}.move${titleKey.value}`),
