@@ -256,9 +256,19 @@ export async function checkTarget(target: CheckTarget): Promise<HostResult> {
   }
 }
 
-const results = new Map<string, HostResult>()
+interface CachedResult {
+  routes: NetRoute[]
+  result: HostResult
+}
+
+const results = new Map<string, CachedResult>()
 const checking = new Set<string>()
-let run: { done: number, total: number, finishedAt: Date | null } = {
+let run: {
+  done: number
+  total: number
+  finishedAt: Date | null
+  routes?: NetRoute[]
+} = {
   done: 0,
   total: 0,
   finishedAt: null,
@@ -279,18 +289,22 @@ export interface CheckState {
 }
 
 export function checkState(): CheckState {
+  const routes = currentRoutes()
   const hosts = checkTargets().map(target => ({
     ...target,
     route: routeForHost(target.hostname),
     checking: checking.has(target.id),
-    result: results.get(target.id) ?? null,
+    result:
+      results.get(target.id)?.routes === routes
+        ? results.get(target.id)!.result
+        : null,
   }))
 
   return {
     running: run.done < run.total,
     done: run.done,
     total: run.total,
-    finishedAt: run.finishedAt,
+    finishedAt: run.routes === routes ? run.finishedAt : null,
     hosts,
   }
 }
@@ -324,14 +338,28 @@ function logHostChange(
   }
 }
 
-async function checkOne(target: CheckTarget) {
+async function checkOne(target: CheckTarget, routes = currentRoutes()) {
+  // Снимок кэша меняется при любом routesChanged(), включая credentials/reorder.
+  if (routes !== currentRoutes())
+    return
+
   checking.add(target.id)
 
   try {
     const result = await checkTarget(target)
 
-    logHostChange(target, results.get(target.id), result)
-    results.set(target.id, result)
+    // Запрос прежнего маршрута может завершиться уже после сохранения нового.
+    if (routes !== currentRoutes())
+      return
+
+    const previous = results.get(target.id)
+
+    logHostChange(
+      target,
+      previous?.routes === routes ? previous.result : undefined,
+      result,
+    )
+    results.set(target.id, { routes, result })
   }
   finally {
     checking.delete(target.id)
@@ -360,7 +388,12 @@ export function startCheck(id?: string) {
   if (run.done < run.total)
     return true
 
-  run = { done: 0, total: targets.length, finishedAt: null }
+  run = {
+    done: 0,
+    total: targets.length,
+    finishedAt: null,
+    routes: currentRoutes(),
+  }
 
   const queue = [...targets]
   const current = run
@@ -368,7 +401,7 @@ export function startCheck(id?: string) {
   const worker = async () => {
     for (let target = queue.shift(); target; target = queue.shift()) {
       try {
-        await checkOne(target)
+        await checkOne(target, current.routes)
       }
       finally {
         current.done++

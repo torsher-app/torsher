@@ -88,7 +88,8 @@ function poll() {
     }
 
     pollTimer = undefined
-    settle(check.value)
+    // null finishedAt: маршруты сменились, итог старой проверки уже не актуален.
+    settle(check.value?.finishedAt ? check.value : null)
   }
 
   pollTimer = setTimeout(tick, POLL_INTERVAL_MS)
