@@ -454,7 +454,20 @@ func TestMaintenanceCancelReattachesLiveSession(t *testing.T) {
 	item := maintenanceIdentity(t, filepath.Join(data, "downloads"), filepath.Join(data, "downloads", "Synthetic.Cancel.mkv"))
 	info, _ := fx.meta.UnmarshalInfo()
 	manifest := detachManifest{InfoHash: hash.HexString(), PieceCount: info.NumPieces(), Paths: []maintenancePath{item}}
+	checkpoint := maintenanceUnlinkCheckpoint
+	t.Cleanup(func() { maintenanceUnlinkCheckpoint = checkpoint })
+	maintenanceUnlinkCheckpoint = func(step string) error {
+		if step == "before_capture" {
+			return errors.New("synthetic_before_capture")
+		}
+		return nil
+	}
 	for _, step := range []string{"prepare", "cancel"} {
+		if step == "cancel" {
+			if r := maintenanceRequest(t, a, "POST", "/maintenance/cancel-live/unlink", map[string]int{"index": 0}); r.Code != 409 {
+				t.Fatal(r.Code, r.Body.String())
+			}
+		}
 		response := maintenanceRequest(t, a, "POST", "/maintenance/cancel-live/"+step, manifest)
 		if response.Code != 200 && response.Code != 202 {
 			t.Fatal(step, response.Code, response.Body.String())
@@ -664,5 +677,160 @@ func TestMaintenanceCancelJournalFailureRecoversOriginal(t *testing.T) {
 	}
 	if loadMaintenance(a.maintenance.dir).fences["cancel-recovery"].State != "cancelled" {
 		t.Fatal("recovery not durable")
+	}
+}
+
+func TestMaintenanceCancelIntactStagedIntent(t *testing.T) {
+	a, _ := newTestEngine(t, t.TempDir())
+	item := maintenanceFixture(t)
+	manifest := detachManifest{InfoHash: strings.Repeat("e", 40), PieceCount: 1, Paths: []maintenancePath{item}}
+	if r := maintenanceRequest(t, a, "POST", "/maintenance/intact/prepare", manifest); r.Code != 200 {
+		t.Fatal(r.Body.String())
+	}
+	original := maintenanceUnlinkCheckpoint
+	maintenanceUnlinkCheckpoint = func(step string) error {
+		if step == "before_capture" {
+			return errors.New("synthetic_before_capture")
+		}
+		return nil
+	}
+	t.Cleanup(func() { maintenanceUnlinkCheckpoint = original })
+	if r := maintenanceRequest(t, a, "POST", "/maintenance/intact/unlink", map[string]int{"index": 0}); r.Code != 409 {
+		t.Fatal(r.Code, r.Body.String())
+	}
+	// Restart from the durable write-ahead intent; no journal edits.
+	a.maintenance = loadMaintenance(a.maintenance.dir)
+	if a.maintenance.fences["intact"].Results["0"] != "staged" {
+		t.Fatal("intent missing")
+	}
+	if r := maintenanceRequest(t, a, "POST", "/maintenance/intact/cancel", nil); r.Code != 200 {
+		t.Fatal(r.Code, r.Body.String())
+	}
+	if data, err := os.ReadFile(item.Path); err != nil || string(data) != "synthetic" {
+		t.Fatal("payload changed", err)
+	}
+	reloaded := loadMaintenance(a.maintenance.dir)
+	if fence := reloaded.fences["intact"]; fence.State != "cancelled" || len(fence.Results) != 0 || fence.Error != "" {
+		t.Fatalf("cancel not durable: %+v", fence)
+	}
+	if reloaded.blocked(manifest.InfoHash, []string{item.Path}) {
+		t.Fatal("fence not released")
+	}
+	if r := maintenanceRequest(t, a, "POST", "/maintenance/intact/cancel", nil); r.Code != 200 {
+		t.Fatal("cancel not idempotent")
+	}
+}
+
+func TestMaintenanceCancelStagedRejectsUncertainFiles(t *testing.T) {
+	for _, failure := range []string{"captured", "replaced", "missing", "root_replaced", "stage_nonempty", "stage_symlink", "pending_missing", "unknown_result", "invalid_index"} {
+		t.Run(failure, func(t *testing.T) {
+			a, _ := newTestEngine(t, t.TempDir())
+			item := maintenanceFixture(t)
+			other := maintenanceFixture(t)
+			manifest := detachManifest{InfoHash: strings.Repeat("f", 40), PieceCount: 1, Paths: []maintenancePath{item, other}}
+			if r := maintenanceRequest(t, a, "POST", "/maintenance/uncertain/prepare", manifest); r.Code != 200 {
+				t.Fatal(r.Body.String())
+			}
+			original := maintenanceUnlinkCheckpoint
+			maintenanceUnlinkCheckpoint = func(step string) error {
+				if step == "before_capture" && failure != "captured" || step == "captured" && failure == "captured" {
+					return errors.New("synthetic_checkpoint")
+				}
+				return nil
+			}
+			t.Cleanup(func() { maintenanceUnlinkCheckpoint = original })
+			if r := maintenanceRequest(t, a, "POST", "/maintenance/uncertain/unlink", map[string]int{"index": 0}); r.Code != 409 {
+				t.Fatal(r.Code, r.Body.String())
+			}
+			stage := filepath.Join(item.Root, ".torsher-maintenance-uncertain-0")
+			switch failure {
+			case "replaced":
+				if err := os.Rename(item.Path, item.Path+".old"); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(item.Path, []byte("replacement"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			case "missing":
+				if err := os.Remove(item.Path); err != nil {
+					t.Fatal(err)
+				}
+			case "root_replaced":
+				if err := os.Rename(item.Root, item.Root+".old"); err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { os.RemoveAll(item.Root + ".old") })
+				if err := os.Mkdir(item.Root, 0700); err != nil {
+					t.Fatal(err)
+				}
+			case "stage_nonempty":
+				if err := os.WriteFile(filepath.Join(stage, "unknown"), []byte("keep"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			case "stage_symlink":
+				if err := os.Remove(stage); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(other.Root, stage); err != nil {
+					t.Fatal(err)
+				}
+			case "pending_missing":
+				if err := os.Remove(other.Path); err != nil {
+					t.Fatal(err)
+				}
+			case "unknown_result":
+				a.maintenance.fences["uncertain"].Results["0"] = "unknown"
+			case "invalid_index":
+				a.maintenance.fences["uncertain"].Results["9"] = "staged"
+			}
+			if r := maintenanceRequest(t, a, "POST", "/maintenance/uncertain/cancel", nil); r.Code != 409 {
+				t.Fatal("unsafe cancel", r.Code, r.Body.String())
+			}
+			if !a.maintenance.blocked(manifest.InfoHash, []string{item.Path}) {
+				t.Fatal("unsafe fence release")
+			}
+			if failure == "captured" {
+				data, err := os.ReadFile(filepath.Join(stage, "file"))
+				if err != nil || string(data) != "synthetic" {
+					t.Fatal("captured payload changed", err)
+				}
+			}
+		})
+	}
+}
+
+func TestMaintenanceCancelStagedJournalFailure(t *testing.T) {
+	a, _ := newTestEngine(t, t.TempDir())
+	item := maintenanceFixture(t)
+	manifest := detachManifest{InfoHash: strings.Repeat("d", 40), PieceCount: 1, Paths: []maintenancePath{item}}
+	if r := maintenanceRequest(t, a, "POST", "/maintenance/journal/prepare", manifest); r.Code != 200 {
+		t.Fatal(r.Body.String())
+	}
+	original := maintenanceUnlinkCheckpoint
+	t.Cleanup(func() { maintenanceUnlinkCheckpoint = original })
+	maintenanceUnlinkCheckpoint = func(string) error { return errors.New("synthetic_before_capture") }
+	if r := maintenanceRequest(t, a, "POST", "/maintenance/journal/unlink", map[string]int{"index": 0}); r.Code != 409 {
+		t.Fatal(r.Code)
+	}
+	write := maintenanceJournalWrite
+	t.Cleanup(func() { maintenanceJournalWrite = write })
+	maintenanceJournalWrite = func(string, any) error { return errors.New("synthetic_journal_failure") }
+	if r := maintenanceRequest(t, a, "POST", "/maintenance/journal/cancel", nil); r.Code != 500 {
+		t.Fatal(r.Code, r.Body.String())
+	}
+	if !a.maintenance.blocked(manifest.InfoHash, nil) {
+		t.Fatal("dirty cancellation released fence")
+	}
+	restarted := loadMaintenance(a.maintenance.dir)
+	if restarted.fences["journal"].Results["0"] != "staged" || !restarted.blocked(manifest.InfoHash, nil) {
+		t.Fatal("durable intent lost")
+	}
+	a.maintenance = restarted
+	maintenanceJournalWrite = write
+	if r := maintenanceRequest(t, a, "POST", "/maintenance/journal/cancel", nil); r.Code != 200 {
+		t.Fatal(r.Code, r.Body.String())
+	}
+	if data, err := os.ReadFile(item.Path); err != nil || string(data) != "synthetic" {
+		t.Fatal("payload changed", err)
 	}
 }

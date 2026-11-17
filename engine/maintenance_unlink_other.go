@@ -16,3 +16,7 @@ func maintenanceEntryKey(_ string) string { return "" }
 func openMaintenanceFile(_ maintenancePath) (*os.File, error) {
 	return nil, errors.New("maintenance_platform_unsupported")
 }
+
+func confirmMaintenanceUnchanged(_ maintenancePath, _ string) error {
+	return errors.New("maintenance_platform_unsupported")
+}

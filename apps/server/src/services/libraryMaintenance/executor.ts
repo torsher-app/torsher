@@ -189,6 +189,7 @@ async function cancelUnchanged(
     patch(op.id, {
       state: reply.error ? 'blocked' : 'pending',
       engineStage: 'reattaching',
+      results: reply.results,
       error: reply.error ?? null,
     })
     if (!reply.error)
@@ -201,6 +202,7 @@ async function cancelUnchanged(
     patch(op.id, {
       state: 'cancelled',
       engineStage: 'cancelled',
+      results: reply.results,
       error: 'policy_changed',
     })
     getDb()
@@ -370,7 +372,8 @@ export async function retryMaintenanceOperation(id: string) {
     op = operation(id)!
     const changed = eligibilityFingerprint(op.groupId) !== op.fingerprint
     if (changed || restoreHeld() || !executionEnabled()) {
-      if (!Object.keys(op.results).length) {
+      if (Object.values(op.results).every(result => result === 'staged')) {
+        // Go confirms intact originals before cancelling write-ahead intents.
         await cancelUnchanged(op)
       }
       else {

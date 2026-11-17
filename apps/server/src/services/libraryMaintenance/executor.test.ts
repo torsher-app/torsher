@@ -994,39 +994,49 @@ it('independent library startup inspects the actual local journal without requir
   expect(await libraryStartupWithoutEngine()).toBe(false)
 })
 
-it('async cancellation retains suppression until polling confirms guarded reattach', async () => {
-  await fixture()
-  vi.spyOn(maintenanceEngine, 'unlink').mockRejectedValueOnce(
-    new Error('disk_offline'),
-  )
-  await mature()
-  const op = db.select().from(maintenanceOperations).get()!
-  setMaintenanceExecution(false)
-  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-  vi.spyOn(maintenanceEngine, 'cancel').mockImplementation(async (id) => {
-    const reply = engineOps.get(id)!
-    reply.state = 'reattaching'
-    return structuredClone(reply)
-  })
-  vi.spyOn(maintenanceEngine, 'status').mockImplementation(async id =>
-    structuredClone(engineOps.get(id)!),
-  )
-  await retryMaintenanceOperation(op.id)
-  expect(db.select().from(maintenanceOperations).get()).toMatchObject({
-    state: 'pending',
-    engineStage: 'reattaching',
-  })
-  expect(db.select().from(maintenanceSuppressions).all()).not.toHaveLength(0)
-  await vi.advanceTimersByTimeAsync(1000)
-  expect(db.select().from(maintenanceSuppressions).all()).not.toHaveLength(0)
-  engineOps.get(op.id)!.state = 'cancelled'
-  await vi.advanceTimersByTimeAsync(1000)
-  expect(db.select().from(maintenanceOperations).get()?.state).toBe(
-    'cancelled',
-  )
-  expect(db.select().from(maintenanceSuppressions).all()).toHaveLength(0)
-  expect(maintenanceEngine.cancel).toHaveBeenCalledTimes(1)
-})
+it.each([false, true])(
+  'async cancellation (%s staged) retains suppression until polling confirms guarded reattach',
+  async (staged) => {
+    await fixture()
+    vi.spyOn(maintenanceEngine, 'unlink').mockImplementationOnce(
+      async (id, index) => {
+        if (staged) {
+          engineOps.get(id)!.results[String(index)] = 'staged'
+          engineOps.get(id)!.state = 'deleting'
+        }
+        throw new Error('disk_offline')
+      },
+    )
+    await mature()
+    const op = db.select().from(maintenanceOperations).get()!
+    setMaintenanceExecution(false)
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    vi.spyOn(maintenanceEngine, 'cancel').mockImplementation(async (id) => {
+      const reply = engineOps.get(id)!
+      reply.state = 'reattaching'
+      reply.results = {}
+      return structuredClone(reply)
+    })
+    vi.spyOn(maintenanceEngine, 'status').mockImplementation(async id =>
+      structuredClone(engineOps.get(id)!),
+    )
+    await retryMaintenanceOperation(op.id)
+    expect(db.select().from(maintenanceOperations).get()).toMatchObject({
+      state: 'pending',
+      engineStage: 'reattaching',
+    })
+    expect(db.select().from(maintenanceSuppressions).all()).not.toHaveLength(0)
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(db.select().from(maintenanceSuppressions).all()).not.toHaveLength(0)
+    engineOps.get(op.id)!.state = 'cancelled'
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(db.select().from(maintenanceOperations).get()?.state).toBe(
+      'cancelled',
+    )
+    expect(db.select().from(maintenanceSuppressions).all()).toHaveLength(0)
+    expect(maintenanceEngine.cancel).toHaveBeenCalledTimes(1)
+  },
+)
 it('reattach error survives restart and requires explicit retry instead of automatic writes', async () => {
   await fixture()
   vi.spyOn(maintenanceEngine, 'unlink').mockRejectedValueOnce(
@@ -1072,3 +1082,74 @@ it('restart reconciles cancellation completed in Go before the last Node poll', 
   expect(db.select().from(maintenanceSuppressions).all()).toHaveLength(0)
   expect(maintenanceEngine.cancel).not.toHaveBeenCalled()
 })
+
+it.each(['protection', 'rule', 'global_off', 'restore_hold'])(
+  'retry cancels intact staged intent after %s and preserves policy and payload',
+  async (change) => {
+    const f = await fixture()
+    vi.spyOn(maintenanceEngine, 'unlink').mockImplementationOnce(
+      async (id, index) => {
+        const op = engineOps.get(id)!
+        op.results[String(index)] = 'staged'
+        op.state = 'deleting'
+        throw new Error('unlink_blocked')
+      },
+    )
+    await mature()
+    const op = db.select().from(maintenanceOperations).get()!
+    expect(op).toMatchObject({ state: 'partial', error: 'unlink_blocked' })
+    if (change === 'protection') {
+      const revision = db.select().from(maintenanceGroups).get()!.revision
+      expect(protectGroup(f.groupId, true, revision)).toMatchObject({
+        revision: revision + 1,
+      })
+    }
+    else if (change === 'rule') {
+      const rule = maintenanceConfig(f.titleId).rule
+      saveMaintenanceConfig(f.titleId, { ...rule, days: 2 }, rule.revision)
+    }
+    else if (change === 'global_off') {
+      expect(setMaintenanceExecution(false)).toBe(true)
+    }
+    else {
+      setSetting('maintenanceRestoreHold', true)
+    }
+    // Engine confirms the original files and absence of capture; Node cannot infer it.
+    vi.spyOn(maintenanceEngine, 'cancel').mockImplementationOnce(async (id) => {
+      for (const file of engineOps.get(id)!.manifest.paths)
+        expect(await readFile(file.path, 'utf8')).toBe('test')
+      const result = engineOps.get(id)!
+      result.state = 'cancelled'
+      result.results = {}
+      return structuredClone(result)
+    })
+    const unlinks = vi.mocked(maintenanceEngine.unlink).mock.calls.length
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/library-maintenance/operations/${op.id}/retry`,
+      headers: { cookie },
+    })
+    expect(response.statusCode).toBe(200)
+    expect(maintenanceEngine.cancel).toHaveBeenCalledWith(op.id)
+    expect(vi.mocked(maintenanceEngine.unlink).mock.calls.length).toBe(unlinks)
+    expect(db.select().from(maintenanceOperations).get()).toMatchObject({
+      state: 'cancelled',
+      engineStage: 'cancelled',
+      results: {},
+    })
+    expect(db.select().from(maintenanceGroups).get()).toMatchObject({
+      manualProtection: change === 'protection',
+      eligibleSince: null,
+      eligibilityFingerprint: null,
+    })
+    expect(hasSuppressed(f.titleId, [f.episode])).toBe(false)
+    if (change !== 'restore_hold')
+      acquireMaintenanceLease({ torrentId: f.torrent.id })()
+    expect(
+      maintenanceOperationList().find(row => row.id === op.id)?.action,
+    ).toBe('none')
+    for (const path of [f.source, f.path, f.alias])
+      expect(await readFile(path, 'utf8')).toBe('test')
+    expect(await readFile(f.neighbor, 'utf8')).toBe('neighbor')
+  },
+)
