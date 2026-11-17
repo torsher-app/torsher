@@ -1122,6 +1122,7 @@
           "empty": "Раздач пока нет"
         },
         "storage": {
+          "unavailable": "Недоступно",
           "label": "Занято {used} из {total}",
           "legend": "Кэш {used} из {limit} · запас {reserve}"
         },

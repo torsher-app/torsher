@@ -1122,6 +1122,7 @@
           "empty": "No torrents yet"
         },
         "storage": {
+          "unavailable": "Unavailable",
           "label": "{used} of {total} used",
           "legend": "Cache {used} of {limit} · reserve {reserve}"
         },

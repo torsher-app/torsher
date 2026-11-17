@@ -32,7 +32,11 @@ const props = defineProps<{
 
 const { t, locale } = useI18n()
 
-const bytes = (value: number) => formatBytes(value, locale.value)
+function bytes(value: number | null) {
+  return value === null
+    ? t('panel.overview.tiles.storage.unavailable')
+    : formatBytes(value, locale.value)
+}
 const now = useNow({ interval: 60_000 })
 
 /** Плитка копий: когда была последняя, и всё ли в порядке */
@@ -56,13 +60,24 @@ const backups = computed(() => {
 
 const storage = computed(() => props.overview.storage)
 const used = computed(() =>
-  Math.max(0, storage.value.total - storage.value.free),
+  storage.value.total === null || storage.value.free === null
+    ? null
+    : Math.max(0, storage.value.total - storage.value.free),
 )
 const usedPercent = computed(() =>
-  storage.value.total > 0 ? (used.value / storage.value.total) * 100 : 0,
+  used.value === null || storage.value.total === null
+    ? null
+    : storage.value.total > 0
+      ? (used.value / storage.value.total) * 100
+      : 0,
 )
 const isLow = computed(
-  () => storage.value.total > 0 && storage.value.free < storage.value.minFree,
+  () =>
+    storage.value.total !== null
+    && storage.value.total > 0
+    && storage.value.free !== null
+    && storage.value.minFree !== null
+    && storage.value.free < storage.value.minFree,
 )
 
 /** Плитка ускорения: заголовок, строка под ним и потолки в футере */
@@ -160,13 +175,16 @@ const playback = computed(() => {
         :class="{ 'text-destructive': isLow }"
       >
         {{
-          t("panel.settings.storage.disk.freeOf", {
-            free: bytes(storage.free),
-            total: bytes(storage.total),
-          })
+          storage.total === null || storage.free === null
+            ? t("panel.overview.tiles.storage.unavailable")
+            : t("panel.settings.storage.disk.freeOf", {
+              free: bytes(storage.free),
+              total: bytes(storage.total),
+            })
         }}
       </p>
       <Progress
+        v-if="usedPercent !== null"
         :model-value="usedPercent"
         :class="
           cn(

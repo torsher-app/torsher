@@ -120,10 +120,10 @@ export const overviewResponse = z
     }),
     storage: z.object({
       usedByCache: z.number(),
-      cacheLimit: z.number(),
-      free: z.number(),
-      total: z.number(),
-      minFree: z.number(),
+      cacheLimit: z.number().nullable(),
+      free: z.number().nullable(),
+      total: z.number().nullable(),
+      minFree: z.number().nullable(),
     }),
     // Включённые индексаторы и из них работающие по последней проверке
     sources: z.object({ ok: z.number(), total: z.number() }),

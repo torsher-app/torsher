@@ -637,13 +637,38 @@ export async function updatePolicy(values: {
   return getStorageOverview()
 }
 
-/** Том, кэш и политика без очереди вытеснения — для «Обзора» */
-export async function storageSummary(live: Map<string, EngineTorrentState>) {
-  const disk = await diskUsage(storagePath('downloads'))
+function cacheUsedOf(live: Map<string, EngineTorrentState>) {
   const rows = getDb().select().from(torrents).all()
-  const cacheUsed = storedOf(rows, live, Date.now())
+  return storedOf(rows, live, Date.now())
     .filter(item => item.retention === 'cache')
     .reduce((total, item) => total + item.size, 0)
+}
+
+/** Read-only overview: a failed disk probe must not hide independent metrics. */
+export async function overviewStorageSummary(
+  live: Map<string, EngineTorrentState>,
+) {
+  const disk = await diskUsage(storagePath('downloads')).catch((err) => {
+    if (throttleLog('overview-disk-unavailable', 60_000))
+      logFor('storage').warn({ err }, 'Overview disk metric unavailable')
+    return null
+  })
+  const policy = getPolicy(disk?.total ?? 0)
+  const policyKnown = disk !== null || policy.custom
+
+  return {
+    total: disk?.total ?? null,
+    free: disk?.free ?? null,
+    cacheUsed: cacheUsedOf(live),
+    cacheLimit: policyKnown ? policy.cacheLimit : null,
+    minFree: policyKnown ? policy.minFree : null,
+  }
+}
+
+/** Строгая сводка кэша: политика по умолчанию требует измеренного размера тома. */
+export async function storageSummary(live: Map<string, EngineTorrentState>) {
+  const disk = await diskUsage(storagePath('downloads'))
+  const cacheUsed = cacheUsedOf(live)
   const policy = getPolicy(disk.total)
 
   return {

@@ -36,6 +36,8 @@ import {
   sampleTorrentFile,
 } from '../services/engine/fixtures/index.ts'
 import { checkDeps, waitForCheck } from '../services/net/check.ts'
+import { serverAttention } from '../services/overview/index.ts'
+import * as resourceMonitor from '../services/overview/monitor.ts'
 import { trackPlayback } from '../services/segments/activity.ts'
 import { routesChanged } from '../services/net/index.ts'
 import { saveTmdbKey } from '../services/tmdb/credentials.ts'
@@ -44,10 +46,14 @@ import { signToken } from '../utils/token.ts'
 
 const GIB = 1024 ** 3
 const ENGINE = 'http://127.0.0.1:4000'
-const disk = vi.hoisted(() => ({ total: 0, free: 0 }))
+const disk = vi.hoisted(() => ({ total: 0, free: 0, error: false }))
 
 vi.mock('../services/storage/disk.ts', () => ({
-  diskUsage: async () => ({ ...disk }),
+  diskUsage: async () => {
+    if (disk.error)
+      throw Object.assign(new Error('disk denied'), { code: 'EACCES' })
+    return { total: disk.total, free: disk.free }
+  },
 }))
 
 // Счётчик падений ведёт супервизор процесса, которого в тестах нет
@@ -189,6 +195,7 @@ beforeEach(() => {
   for (const name of ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy'])
     vi.stubEnv(name, '')
   vi.stubEnv('TMDB_ACCESS_TOKEN', 'app-token')
+  disk.error = false
   disk.total = 1000 * GIB
   disk.free = 500 * GIB
   live = []
@@ -272,6 +279,89 @@ describe('обзор', () => {
       backups: { enabled: true, failing: false },
     })
     expect(Date.parse(body.startedAt)).toBeLessThanOrEqual(Date.now())
+  })
+
+  it('отказ диска сохраняет независимые данные и восстанавливается без перезапуска', async () => {
+    insertTorrent({ pauseReason: 'storage' })
+    live = [{ ...liveState, paused: true }]
+    insertIndexer({ name: 'Available', checkStatus: 'ok' })
+    const resources = resourceMonitor.containerResources()
+    vi.spyOn(resourceMonitor, 'containerResources').mockReturnValue({
+      ...resources,
+      cpuCores: 0.5,
+      memoryBytes: 123456,
+      receiveBps: 42,
+      sendBps: 0,
+    })
+    const before = await overview()
+    disk.error = true
+    const fault = await overview()
+    expect(fault.storage).toEqual({
+      usedByCache: liveState.bytesCompleted,
+      free: null,
+      total: null,
+      cacheLimit: null,
+      minFree: null,
+    })
+    for (const key of [
+      'downloads',
+      'sources',
+      'devices',
+      'backups',
+      'playback',
+    ])
+      expect(fault[key]).toEqual(before[key])
+    expect(fault.load).toMatchObject({
+      historyRange: '15m',
+      playbackActive: false,
+      cpuCores: 0.5,
+      memoryBytes: 123456,
+      receiveBps: 42,
+      sendBps: 0,
+    })
+    expect(fault.attention).toContainEqual(
+      expect.objectContaining({ kind: 'storage_paused' }),
+    )
+    expect(fault.attention).not.toContainEqual(
+      expect.objectContaining({ kind: 'storage_low' }),
+    )
+    expect(await serverAttention()).toEqual(fault.attention)
+    // Settings Storage remains strict: unknown capacity must not become zero.
+    expect(
+      (await app.inject({ url: '/api/storage', cookies: owner })).statusCode,
+    ).toBe(500)
+    disk.error = false
+    expect((await overview()).storage).toEqual(before.storage)
+  })
+
+  it('при отказе диска сохранённая политика остаётся известной', async () => {
+    getDb()
+      .insert(storagePolicy)
+      .values({
+        id: 1,
+        cacheLimitBytes: 12 * GIB,
+        minFreeBytes: GIB,
+        updatedAt: new Date(),
+      })
+      .run()
+    disk.error = true
+    expect((await overview()).storage).toMatchObject({
+      free: null,
+      total: null,
+      cacheLimit: 12 * GIB,
+      minFree: GIB,
+    })
+  })
+
+  it('измеренный ноль диска отличается от отсутствующего измерения', async () => {
+    disk.total = 0
+    disk.free = 0
+    expect((await overview()).storage).toMatchObject({
+      free: 0,
+      total: 0,
+      cacheLimit: 0,
+      minFree: 0,
+    })
   })
 
   it('принимает только шесть поддерживаемых диапазонов истории', async () => {
