@@ -1,3 +1,4 @@
+import { historySource } from '../services/sources/history.ts'
 import { Buffer } from 'node:buffer'
 import { stat as statFile } from 'node:fs/promises'
 import { mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
@@ -1231,16 +1232,27 @@ describe('continuation preference preserves factual history', () => {
         video: { width: 1920, height: 1080, basis: 'probe' },
       })
       expect(vi.mocked(statFile)).toHaveBeenCalledTimes(1)
+      const history = getDb()
+        .select()
+        .from(titleProgress)
+        .where(eq(titleProgress.mediaFileId, file.id))
+        .get()!
+      expect(await historySource(history)).toMatchObject({
+        quality: '1080p',
+        torrentId: null,
+      })
       writeFileSync(join(dir, 'episode.mkv'), 'changed fixture')
       expect(
         (await continuationFor(profileId, SERIES, target)).baseline?.video,
       ).toBeNull()
+      expect(await historySource(history)).toMatchObject({ quality: null })
       db.insert(libraryHiddenProfiles)
         .values({ libraryId: library.id, profileId })
         .run()
       expect(
         (await continuationFor(profileId, SERIES, target)).baseline,
       ).toBeNull()
+      expect(await historySource(history)).toBeNull()
     }
     finally {
       rmSync(dir, { recursive: true, force: true })
@@ -1580,4 +1592,68 @@ it('отметка тайтла скрывает обычный Continue, пря
       { number: 2, airedEpisodeCount: 4 },
     ]),
   ).toMatchObject({ season: 2, episode: 2 })
+})
+
+describe('last-file history metadata', () => {
+  it('uses the exact SD probe, not an aggregate HD frame or a later unplayed choice', async () => {
+    watched(SERIES, 1, 4, EPISODE, new Date(Date.now() - 1000), 's1')
+    watched(SERIES, 1, 5, 0, new Date(), 's2')
+    getDb()
+      .update(torrents)
+      .set({ videoWidth: 1920, videoHeight: 1080 })
+      .where(eq(torrents.id, 's1'))
+      .run()
+    probeFrames.set(`${'s1'.padEnd(40, '0')}:3`, {
+      video: { width: 640, height: 360 },
+    })
+    const result = await app.inject({
+      url: `/api/titles/${SERIES}/progress`,
+      cookies: owner,
+    })
+    expect(result.statusCode).toBe(200)
+    expect(result.json()).toMatchObject({
+      last: {
+        episode: 4,
+        source: { torrentId: 's1', quality: 'SD', voice: null },
+      },
+      seasonReleases: [{ torrentId: 's2', quality: '1080p' }],
+    })
+  })
+
+  it('uses only the selected filename without a probe, leaving unknown quality unknown', async () => {
+    getDb()
+      .update(torrents)
+      .set({
+        files: [
+          {
+            path: 'Mixed.1080p/Mixed.S01E01.720p.mkv',
+            size: 1,
+            padding: false,
+          },
+          { path: 'Mixed.1080p/Mixed.S01E02.mkv', size: 200, padding: false },
+        ],
+        videoWidth: 1920,
+        videoHeight: 1080,
+      })
+      .where(eq(torrents.id, 's1'))
+      .run()
+    watched(SERIES, 1, 1, 50, new Date(), 's1', 0)
+    let result = await app.inject({
+      url: `/api/titles/${SERIES}/progress`,
+      cookies: owner,
+    })
+    expect(result.json().last.source.quality).toBe('720p')
+    watched(SERIES, 1, 2, 50, new Date(Date.now() + 1000), 's1', 1)
+    result = await app.inject({
+      url: `/api/titles/${SERIES}/progress`,
+      cookies: owner,
+    })
+    expect(result.json().last.source.quality).toBeNull()
+    getDb().delete(torrents).where(eq(torrents.id, 's1')).run()
+    result = await app.inject({
+      url: `/api/titles/${SERIES}/progress`,
+      cookies: owner,
+    })
+    expect(result.json().last.source).toBeNull()
+  })
 })

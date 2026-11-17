@@ -3887,6 +3887,11 @@ export interface TitleProgressInput {
     duration: number | null;
     watched: boolean;
     updatedAt: string;
+    source?: {
+      torrentId: string | null;
+      quality: "2160p" | "1080p" | "720p" | "SD" | null;
+      voice: VoiceRefInput | null;
+    } | null;
   } | null;
   seasonReleases: SeasonReleaseInput[];
   episodes: EpisodeProgressInput[];
@@ -11846,6 +11851,11 @@ export interface TitleProgress {
     duration: number | null;
     watched: boolean;
     updatedAt: string;
+    source?: {
+      torrentId: string | null;
+      quality: "2160p" | "1080p" | "720p" | "SD" | null;
+      voice: VoiceRef | null;
+    } | null;
   } | null;
   seasonReleases: SeasonRelease[];
   episodes: EpisodeProgress[];

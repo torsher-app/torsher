@@ -516,6 +516,15 @@ export const titleProgress = z
         // Досмотрена: продолжать нечего, дальше — следующая серия
         watched: z.boolean(),
         updatedAt: z.string(),
+        // Exact last file; absent on older servers, null when unavailable.
+        source: z
+          .object({
+            torrentId: z.string().nullable(),
+            quality: z.enum(videoClasses).nullable(),
+            voice: voiceRef.nullable(),
+          })
+          .nullable()
+          .optional(),
       })
       .nullable(),
     // Раздача сезона — чем последний раз смотрели серию сезона
