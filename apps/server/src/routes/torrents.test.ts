@@ -971,3 +971,81 @@ describe('download priority validation', () => {
     },
   )
 })
+
+describe('delete preview', () => {
+  it.each([
+    [engineError('torrent_not_found', 'not in engine'), 200],
+    [{ message: 'route not found' }, 502],
+  ])(
+    'distinguishes a missing torrent from an unsupported engine route: %j',
+    async (body, status) => {
+      const row = insertTorrent({ inEngine: true })
+      engine({
+        [`GET /torrents/${INFO_HASH}/delete-preview`]: () => json(body, 404),
+      })
+      const response = await app.inject({
+        url: `/api/torrents/${row.id}/delete-preview`,
+        cookies: owner,
+      })
+      expect(response.statusCode).toBe(status)
+      if (status === 200)
+        expect(response.json()).toEqual({ reclaimableBytes: 0 })
+      else expect(response.json()).not.toHaveProperty('reclaimableBytes')
+    },
+  )
+  it.each([0, 8192])(
+    'returns allocated reclaimable bytes %i without deleting data',
+    async (bytes) => {
+      const row = insertTorrent({ inEngine: true })
+      engine({
+        [`GET /torrents/${INFO_HASH}/delete-preview`]: () =>
+          json({ reclaimableBytes: bytes }),
+      })
+      const response = await app.inject({
+        url: `/api/torrents/${row.id}/delete-preview`,
+        cookies: owner,
+      })
+      expect(response.statusCode).toBe(200)
+      expect(response.json()).toEqual({ reclaimableBytes: bytes })
+      expect(getDb().select().from(torrents).get()?.id).toBe(row.id)
+      expect(engineCalls()).toEqual([
+        `GET /torrents/${INFO_HASH}/delete-preview`,
+      ])
+    },
+  )
+  it('does not invent an estimate when the engine is unavailable', async () => {
+    const row = insertTorrent({ inEngine: true })
+    setEngineDown('starting')
+    const response = await app.inject({
+      url: `/api/torrents/${row.id}/delete-preview`,
+      cookies: owner,
+    })
+    expect(response.statusCode).toBe(503)
+    expect(response.json()).not.toHaveProperty('reclaimableBytes')
+  })
+  it('returns zero if deletion would not touch engine files', async () => {
+    const row = insertTorrent({ inEngine: false })
+    const response = await app.inject({
+      url: `/api/torrents/${row.id}/delete-preview`,
+      cookies: owner,
+    })
+    expect(response.json()).toEqual({ reclaimableBytes: 0 })
+    expect(engineCalls()).toEqual([])
+  })
+  it('rejects missing torrents and anonymous requests', async () => {
+    const row = insertTorrent()
+    expect(
+      (await app.inject({ url: `/api/torrents/${row.id}/delete-preview` }))
+        .statusCode,
+    ).toBe(401)
+    expect(
+      (
+        await app.inject({
+          url: '/api/torrents/missing/delete-preview',
+          cookies: owner,
+        })
+      ).statusCode,
+    ).toBe(404)
+    expect(engineCalls()).toEqual([])
+  })
+})

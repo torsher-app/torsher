@@ -30,6 +30,12 @@ export const torrentIdParams = z.object({
   id: z.string().min(1).max(100),
 })
 
+export const torrentDeletePreview = z
+  .object({
+    reclaimableBytes: z.number().nonnegative(),
+  })
+  .meta({ id: 'torrentDeletePreview' })
+
 export const downloadStates = [
   'idle',
   'partial',
