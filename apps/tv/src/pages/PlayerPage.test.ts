@@ -1385,7 +1385,10 @@ it('starts a fresh picture grace period after retrying the same file', async () 
 it('saves HLS progress in source time and bounds packet padding by source duration', async () => {
   mode = 'hls'
   mocks.clockOffset = 2
-  mocks.media.duration = 182.05
+  Object.defineProperty(mocks.media, 'duration', {
+    value: 182.05,
+    configurable: true,
+  })
   await mount()
   mocks.media.currentTime = 102
   controls.onTimeUpdate()
