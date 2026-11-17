@@ -950,13 +950,35 @@ function onStageGone() {
   osdAfterStage = false
 }
 
+// Без ffmpeg браузер может принять только аудиодорожку видеофайла.
+// Native bridge не передаёт HTML-размеры, его ошибки приходят отдельно.
+let pictureWaitStarted: number | undefined
+const PICTURE_WAIT_MS = 5000
+function awaitingPicture() {
+  const el = video.value
+  return (
+    !hasNativePlayer
+    && playback.value?.mode === 'direct'
+    && playback.value.reasons.includes('ToolsMissing')
+    && el?.videoWidth === 0
+    && el.videoHeight === 0
+  )
+}
+
+function failWithoutPicture() {
+  failAt('unsupported', {})
+  cancelHold()
+  video.value?.pause()
+}
+
 function save(
   reason:
     'exit' | 'next' | 'source_switch' | 'pause' | 'checkpoint' = 'checkpoint',
   context: DiagnosticContext = diagnosticContext,
 ) {
   if (
-    videoTimePolicy({ phase: phase.value, restarting: restarting.value }).save
+    !awaitingPicture()
+    && videoTimePolicy({ phase: phase.value, restarting: restarting.value }).save
   ) {
     return player.saveWatchState(
       osd.scrub.value?.target ?? position.value,
@@ -1501,6 +1523,7 @@ async function begin(from: number) {
     metadataTimer = setTimeout(onMetadataTimeout, PAUSED_METADATA_MS)
 
   startAt = from
+  pictureWaitStarted = undefined
   // Новая позиция — новый отсчёт докачанного
   downloadedAtStage = null
   held = false
@@ -1892,6 +1915,9 @@ function onPlay() {
 }
 
 function onPlaying() {
+  if (awaitingPicture())
+    pictureWaitStarted ??= Date.now()
+
   const id = playback.value?.sessionId
   if (id && !playedSessions.has(id)) {
     playedSessions.add(id)
@@ -1979,6 +2005,18 @@ function onTimeUpdate() {
   ) {
     return
   }
+
+  if (awaitingPicture()) {
+    if (
+      pictureWaitStarted !== undefined
+      && Date.now() - pictureWaitStarted >= PICTURE_WAIT_MS
+      && !showsError.value
+    ) {
+      failWithoutPicture()
+    }
+    return
+  }
+  pictureWaitStarted = undefined
 
   position.value = el.currentTime
 
@@ -2071,6 +2109,11 @@ function onEnded() {
 
   if (restarting.value || !el)
     return
+
+  if (awaitingPicture()) {
+    failWithoutPicture()
+    return
+  }
 
   if (endedEarly(el.currentTime, el.duration, knownDuration.value)) {
     recover('unknown')
