@@ -55,6 +55,8 @@ export interface DecisionInput {
   /** Выбраны графические субтитры (PGS, VobSub): их прожигает перекодирование */
   burnSubtitle: boolean
   toolsReady: boolean
+  /** Известны границы copy-сегментов; false требует точных ключевых кадров. */
+  keyframeIndex?: boolean
   /** Сервер может перекодировать видео: есть кодировщик H.264 */
   canEncode: boolean
 }
@@ -102,7 +104,8 @@ export function decidePlayback(input: DecisionInput): PlaybackDecision {
     return { mode: 'direct', reasons, video: null, audio: null, audioSwitch }
 
   const encode
-    = reasons.includes('VideoCodecNotSupported')
+    = input.keyframeIndex === false
+      || reasons.includes('VideoCodecNotSupported')
       || reasons.includes('VideoBitDepthNotSupported')
       || input.burnSubtitle
   const blockers: PlaybackReason[] = []

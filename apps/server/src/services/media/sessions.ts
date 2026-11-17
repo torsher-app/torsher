@@ -388,6 +388,7 @@ async function prepare(
     return
   }
 
+  let keyframeIndex = true
   const decide = (canEncode: boolean) =>
     decidePlayback({
       media,
@@ -397,9 +398,33 @@ async function prepare(
       burnSubtitle: !!burned,
       toolsReady: true,
       canEncode,
+      keyframeIndex,
     })
 
   let decision = decide(true)
+  let cues: number[] | null = null
+  if (decision.mode === 'hls' && decision.video === 'copy' && media.duration) {
+    cues
+      = media.container === 'mkv'
+        ? await (earlyCues
+          ?? (torrent
+            ? loadTorrentCues(torrent, fileIndex, signal).then(
+                result => result?.times ?? null,
+              )
+            : readCueTimes(readerOf(url)).catch(() => null)))
+        : null
+    if (!cues || cues.length < 2) {
+      // Copy cannot cut at arbitrary timestamps. Without an index, encode the
+      // keyframes required by the VOD playlist rather than repeat whole GOPs.
+      keyframeIndex = segmentStarts(media.duration, null).length === 1
+      if (!keyframeIndex) {
+        log.warn(
+          'HLS video keyframe index unavailable; encoding to align segments',
+        )
+        decision = decide(true)
+      }
+    }
+  }
   // Детект ускорения нужен только перекодированию: прямой поток и копия его не ждут
   const accel
     = decision.video === 'encode'
@@ -435,16 +460,6 @@ async function prepare(
       = decision.video === 'encode' && caps
         ? planEncode(media.video, caps, burned?.index ?? null, software)
         : null
-    // Ключевые кадры перекодирования ставит кодировщик: точки `Cues` не нужны
-    const cues
-      = media.container === 'mkv' && !encode
-        ? await (earlyCues
-          ?? (torrent
-            ? loadTorrentCues(torrent, fileIndex, signal).then(
-                result => result?.times ?? null,
-              )
-            : readCueTimes(readerOf(url)).catch(() => null)))
-        : null
 
     if (!isOpen(session))
       return
@@ -463,7 +478,8 @@ async function prepare(
         audioStream: session.audioStream,
         audio: decision.audio ?? 'aac',
         subtitleStreams: textSubtitles(media).map(track => track.index),
-        starts: segmentStarts(media.duration, cues),
+        starts: segmentStarts(media.duration, encode ? null : cues),
+        firstVideoTime: cues?.[0],
         duration: media.duration,
         encode,
         session: session.id,

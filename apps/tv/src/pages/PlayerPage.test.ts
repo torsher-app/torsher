@@ -10,6 +10,7 @@ import { PAUSE_DIM_MS } from '../lib/player.ts'
 import PlayerPage from './PlayerPage.vue'
 
 const mocks = vi.hoisted(() => ({
+  clockOffset: 0,
   historyState: {} as Record<string, unknown>,
   goBack: vi.fn(),
   replace: vi.fn(),
@@ -106,6 +107,8 @@ vi.mock('../composables/useHls.ts', () => ({
     attach: mocks.attach,
     detach: mocks.detach,
     diagnosticState: () => ({}),
+    sourceTime: (time: number) => Math.max(0, time - mocks.clockOffset),
+    mediaTime: (time: number) => Math.max(0, time + mocks.clockOffset),
   }),
 }))
 let mediaRef: Ref<HTMLVideoElement | undefined>
@@ -262,6 +265,7 @@ async function mount(playing = true, episodic = false, library = false) {
 beforeEach(() => {
   vi.useFakeTimers()
   vi.clearAllMocks()
+  mocks.clockOffset = 0
   mode = 'direct'
   reasons = []
   playerStats.value = undefined
@@ -661,6 +665,7 @@ it.each(['direct', 'hls', 'native'])(
   },
 )
 it('resumes an actively playing stream despite the internal pause during restart', async () => {
+  mocks.clockOffset = 0
   mode = 'direct'
   reasons = []
   await mount()
@@ -669,6 +674,7 @@ it('resumes an actively playing stream despite the internal pause during restart
   expect(mocks.play).toHaveBeenCalledOnce()
 })
 it('retains a paused restart while a transient start failure is retried', async () => {
+  mocks.clockOffset = 0
   mode = 'direct'
   reasons = []
   await mount()
@@ -805,6 +811,7 @@ it('returns a resolved source switch to the source overlay once', async () => {
 })
 
 it('leaves buffering on metadata after Sources paused a stream before its first frame', async () => {
+  mocks.clockOffset = 0
   mode = 'direct'
   reasons = []
   await mount(false)
@@ -820,6 +827,7 @@ it('leaves buffering on metadata after Sources paused a stream before its first 
 })
 
 it('preserves the Sources pause while the playback request is still pending', async () => {
+  mocks.clockOffset = 0
   mode = 'direct'
   reasons = []
   let ready!: (value: string) => void
@@ -1372,4 +1380,35 @@ it('starts a fresh picture grace period after retrying the same file', async () 
   await vi.advanceTimersByTimeAsync(5100)
   controls.onTimeUpdate()
   expect(mocks.fail).toHaveBeenCalledOnce()
+})
+
+it('saves HLS progress in source time and bounds packet padding by source duration', async () => {
+  mode = 'hls'
+  mocks.clockOffset = 2
+  mocks.media.duration = 182.05
+  await mount()
+  mocks.media.currentTime = 102
+  controls.onTimeUpdate()
+  expect(mocks.save).toHaveBeenLastCalledWith(
+    100,
+    180,
+    'checkpoint',
+    expect.anything(),
+  )
+  mocks.media.currentTime = 32
+  controls.onTimeUpdate()
+  expect(mocks.save).toHaveBeenLastCalledWith(
+    30,
+    180,
+    'checkpoint',
+    expect.anything(),
+  )
+  mocks.media.currentTime = 182.05
+  controls.onTimeUpdate()
+  expect(mocks.save).toHaveBeenLastCalledWith(
+    180,
+    180,
+    'checkpoint',
+    expect.anything(),
+  )
 })

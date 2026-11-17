@@ -44,7 +44,7 @@ export function useSubtitles(
       const response = await api.playback.getPlaybackSubtitles(
         target.sessionId,
         target.trackId,
-        { from: String(Math.floor(el.currentTime)) },
+        { from: String(Math.floor(position.value)) },
       )
 
       // Пока ждали ответ, выбрали другую дорожку

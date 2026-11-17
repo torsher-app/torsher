@@ -36,6 +36,7 @@ function decide(
     embeddedSubtitle?: boolean
     burnSubtitle?: boolean
     toolsReady?: boolean
+    keyframeIndex?: boolean
     canEncode?: boolean
   } = {},
 ) {
@@ -47,6 +48,7 @@ function decide(
     burnSubtitle: overrides.burnSubtitle ?? false,
     toolsReady: overrides.toolsReady ?? true,
     canEncode: overrides.canEncode ?? true,
+    keyframeIndex: overrides.keyframeIndex,
   })
 }
 
@@ -310,5 +312,25 @@ describe('pickAudioStream', () => {
 
   it('без звука — null', () => {
     expect(pickAudioStream({ ...media, audio: [] }, {})).toBeNull()
+  })
+})
+
+it('encodes HLS without indexed cut points but preserves direct and indexed remux', () => {
+  expect(decide(mkv, chrome, { keyframeIndex: false })).toMatchObject({
+    mode: 'hls',
+    video: 'encode',
+  })
+  expect(decide(mkv, chrome, { keyframeIndex: true })).toMatchObject({
+    mode: 'hls',
+    video: 'copy',
+  })
+  expect(decide(mp4, chrome, { keyframeIndex: false })).toMatchObject({
+    mode: 'direct',
+  })
+  expect(
+    decide(mkv, chrome, { keyframeIndex: false, canEncode: false }),
+  ).toMatchObject({
+    mode: 'direct',
+    reasons: expect.arrayContaining(['ToolsMissing']),
   })
 })

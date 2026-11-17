@@ -154,6 +154,8 @@ export interface HlsInput {
   subtitleStreams: number[]
   starts: number[]
   duration: number
+  /** PTS первого ключевого кадра MKV: segment muxer считает разрезы от него */
+  firstVideoTime?: number
   /** Перекодирование видео; без него — видео копией */
   encode?: EncodePlan | null
   /** Запас перепаковки впереди плеера; меньше — только в тестах */
@@ -693,10 +695,12 @@ export class HlsTranscode {
     const plan = this.plan
     const origin = starts[from] ?? 0
     const tolerance = plan ? ENCODE_CUT_TOLERANCE : 0
+    const firstTime
+      = !plan && from === 0 ? (this.input.firstVideoTime ?? 0) : 0
     // Границы относительно первого пакета запуска: так их считает ffmpeg
     const cuts = starts
       .slice(from + 1)
-      .map(start => (start - origin - tolerance).toFixed(3))
+      .map(start => (start - origin - firstTime - tolerance).toFixed(3))
     const args = ['-hide_banner', '-loglevel', 'error', '-nostdin']
 
     if (plan) {

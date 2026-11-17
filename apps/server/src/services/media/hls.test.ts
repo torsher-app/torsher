@@ -306,6 +306,64 @@ describe.runIf(hasFfmpeg())('hlsTranscode на ffmpeg', () => {
     return join(transcode.dir, `${index}.ts`)
   }
 
+  it('remux with a delayed first video timestamp cuts at the indexed keyframes', async () => {
+    const delayed = join(dir, 'delayed.mkv')
+    execFileSync('ffmpeg', [
+      '-v',
+      'error',
+      '-y',
+      '-i',
+      file,
+      '-map',
+      '0:v',
+      '-map',
+      '0:a',
+      '-c',
+      'copy',
+      '-output_ts_offset',
+      '0.083',
+      delayed,
+    ])
+    const bytes = readFileSync(delayed)
+    const cues = await readCueTimes(async (a, b) => bytes.subarray(a, b))
+    expect(cues![0]).toBeGreaterThan(0)
+    const starts = segmentStarts(40.1, cues)
+    const transcode = new HlsTranscode(
+      join(dir, `out-${transcodes.length}`),
+      {
+        url: () => delayed,
+        videoStream: 0,
+        audioStream: 1,
+        audio: 'aac',
+        subtitleStreams: [],
+        starts,
+        duration: 40.1,
+        firstVideoTime: cues![0],
+      },
+      { debug: () => {}, warn: () => {} },
+    )
+    transcodes.push(transcode)
+    const sourcePackets = packetTimes(delayed, 'v').sort((a, b) => a - b)
+    const outputPackets: number[] = []
+    for (const index of [...starts.keys(), starts.length - 1, 2]) {
+      const path = await segmentPath(transcode, index)
+      const times = packetTimes(path, 'v')
+      if (outputPackets.length < sourcePackets.length)
+        outputPackets.push(...times.map(time => time - TS_OFFSET_SECONDS))
+      const first = index === 0 ? cues![0]! : starts[index]!
+      expect(times[0]).toBeCloseTo(first + TS_OFFSET_SECONDS, 2)
+      expect(Math.max(...times)).toBeLessThan(
+        (starts[index + 1] ?? 40.1) + TS_OFFSET_SECONDS,
+      )
+    }
+    expect(outputPackets).toHaveLength(sourcePackets.length)
+    outputPackets
+      .sort((a, b) => a - b)
+      .forEach((time, i) => {
+        expect(time).toBeCloseTo(sourcePackets[i]!, 3)
+      })
+  }, 30_000)
+
   it('сегменты подряд и после перезапуска совпадают с плейлистом', async () => {
     const { transcode, starts } = await job()
     const last = starts.length - 1
