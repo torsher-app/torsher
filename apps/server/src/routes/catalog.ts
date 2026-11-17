@@ -66,6 +66,9 @@ export function sendTmdbError(reply: FastifyReply, err: unknown) {
   if (!(err instanceof TmdbError))
     throw err
 
+  if (err.kind === 'config')
+    reply.header('X-Torsher-Catalog-Error', 'config')
+
   return reply.code(TMDB_ERROR_STATUS[err.kind]).send({ message: err.message })
 }
 
