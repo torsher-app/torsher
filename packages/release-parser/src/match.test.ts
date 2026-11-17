@@ -173,6 +173,12 @@ describe('сопутствующий контент', () => {
     'The Paper Lantern (2021) PC',
     'The Paper Lantern: The Video Game / Бумажный фонарь (2021) PC-Лицензия',
     'The Paper Lantern (2021) OST FLAC',
+    '(Score) Бумажный фонарь / The Paper Lantern (by Demo Composer) - 2021, MP3 (tracks), 320 kbps',
+    '(Score) Бумажный фонарь / The Paper Lantern (by Demo Composer) - 2021, FLAC (tracks), lossless',
+    '[OST] The Paper Lantern - 2021, FLAC (tracks)',
+    '(Soundtrack) The Paper Lantern (2021) APE (tracks)',
+    '(Саундтрек) Бумажный фонарь / The Paper Lantern (2021) FLAC',
+    'The Paper Lantern (2021) Score MP3 (tracks)',
     'The Paper Lantern (2020) WEBRip 2160p | 4K-Трейлер',
     'The Paper Lantern (Trailer) (2020) WEBRip',
   ])('%s не является полнометражным видео', (title) => {
@@ -191,6 +197,27 @@ describe('сопутствующий контент', () => {
       ).toBe('high')
     },
   )
+
+  it.each(['Score', 'The Score', 'Soundtrack', 'OST', 'Саундтрек'])(
+    'название %s и FLAC у видео не являются саундтреком',
+    (name) => {
+      expect(
+        match(`${name} (2021) BluRay 1080p FLAC`, {
+          ...lantern,
+          aliases: [name],
+        }),
+      ).toEqual({ confidence: 'high', issues: [] })
+    },
+  )
+
+  it('метка Score без аудиоформата не доказывает саундтрек', () => {
+    expect(
+      match(
+        '(Score) Бумажный фонарь / The Paper Lantern (2021) WEB-DL 1080p',
+        lantern,
+      ).issues,
+    ).not.toContain('content')
+  })
 })
 
 describe('годы сезонов', () => {
