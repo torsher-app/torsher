@@ -86,7 +86,11 @@ import { noteContinueReceived } from '../diagnostics/continue.ts'
 import { downloadSlot } from '../lib/downloadSlot.ts'
 import { titleOffer } from '../lib/titleOffer.ts'
 import { isFollowed } from '../lib/follow.ts'
-import { libraryChoices, libraryFileFor } from '../lib/library.ts'
+import {
+  libraryChoices,
+  libraryEpisodeCount,
+  libraryFileFor,
+} from '../lib/library.ts'
 import { crewCaption } from '../lib/people.ts'
 import {
   formatAirDate,
@@ -1050,17 +1054,9 @@ const downloadTexts = useDownloadTexts()
 const downloadToast = ref('')
 const downloadPanel = ref(false)
 
-// Серий выбранного сезона в библиотеке: файл с несколькими сериями — все они
-const seasonInLibrary = computed(() => {
-  let count = 0
-
-  for (const file of libraryFiles.value) {
-    if (file.season === selectedSeason.value && file.episode !== null)
-      count += (file.episodeTo ?? file.episode) - file.episode + 1
-  }
-
-  return count
-})
+const seasonInLibrary = computed(() =>
+  libraryEpisodeCount(libraryFiles.value, selectedSeason.value),
+)
 
 // Слот загрузки: заголовок кнопки — всегда действие («Скачать …» или идущая
 // закачка выбранного объёма); всё уже в библиотеке — кнопки нет, об этом
