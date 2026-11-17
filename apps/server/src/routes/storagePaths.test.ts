@@ -269,6 +269,109 @@ describe('пути хранения', () => {
     })
   })
 
+  it('move preview includes previous downloads and excludes torrents already at the target', async () => {
+    const oldDir = join(root, 'torrents')
+    const current = join(root, 'current')
+    const target = join(root, 'target')
+    await mkdir(oldDir, { recursive: true })
+    await mkdir(current, { recursive: true })
+    setStoragePath('downloads', current)
+    insertTorrent({ inEngine: true })
+    insertTorrent({
+      infoHash: 'b'.repeat(40),
+      inEngine: true,
+      downloadDir: current,
+    })
+    insertTorrent({ infoHash: 'c'.repeat(40), inEngine: false })
+    engine([
+      { ...liveState, bytesCompleted: 3709107 },
+      { ...liveState, infoHash: 'b'.repeat(40), bytesCompleted: 4087412 },
+    ])
+    const check = async (path: string) =>
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/storage/check',
+          cookies: owner,
+          payload: { kind: 'downloads', path },
+        })
+      ).json()
+
+    expect((await overview()).folders.downloads.bytes).toBe(4087412)
+    expect(await check(target)).toMatchObject({
+      moveTotalBytes: 7796519,
+      moveItems: 2,
+      moveBytes: 0,
+    })
+    expect(await check(oldDir)).toMatchObject({
+      moveTotalBytes: 4087412,
+      moveItems: 1,
+      moveBytes: 0,
+    })
+    // Current and target share a volume, but the previous folder does not.
+    volumeDeps.volumeKey = async path =>
+      path === oldDir ? 'old' : 'current'
+    expect(await check(target)).toMatchObject({
+      sameVolume: false,
+      moveTotalBytes: 7796519,
+      moveItems: 2,
+      moveBytes: 3709107,
+    })
+    // An empty current folder still has data available to move from leftovers.
+    setStoragePath('downloads', join(root, 'empty'))
+    expect((await overview()).folders.downloads.items).toBe(0)
+    expect(await check(target)).toMatchObject({
+      moveTotalBytes: 7796519,
+      moveItems: 2,
+    })
+  })
+
+  it('move preview includes previous managed library folders', async () => {
+    const old = managedFolder()
+    getDb()
+      .insert(mediaFiles)
+      .values({
+        folderId: old.id,
+        relPath: 'old.mkv',
+        size: 100,
+        mtime: new Date(),
+      })
+      .run()
+    const current = join(root, 'current-library')
+    expect(
+      (await putPath({ kind: 'library', path: current, mode: 'new_only' }))
+        .statusCode,
+    ).toBe(200)
+    getDb()
+      .insert(mediaFiles)
+      .values({
+        folderId: managedFolder().id,
+        relPath: 'new.mkv',
+        size: 200,
+        mtime: new Date(),
+      })
+      .run()
+    const check = async (path: string) =>
+      (
+        await app.inject({
+          method: 'POST',
+          url: '/api/storage/check',
+          cookies: owner,
+          payload: { kind: 'library', path },
+        })
+      ).json()
+    expect(await check(join(root, 'target-library'))).toMatchObject({
+      moveTotalBytes: 300,
+      moveItems: 2,
+      moveBytes: 0,
+    })
+    expect(await check(old.path)).toMatchObject({
+      moveTotalBytes: 200,
+      moveItems: 1,
+      moveBytes: 0,
+    })
+  })
+
   it('папку подключённой библиотеки и каталог данных выбрать нельзя', async () => {
     const res = await putPath({
       kind: 'downloads',

@@ -87,12 +87,15 @@ export const storagePathCheck = z
     writable: z.boolean(),
     total: z.number(),
     free: z.number(),
-    // На одном томе с текущей папкой: перенос не займёт места
+    // Все переносимые данные на томе цели: перенос не займёт места
     sameVolume: z.boolean(),
     // Как файлы попадут из загрузок в библиотеку с этой папкой
     linkMode: z.enum(libraryLinkModes).nullable(),
     // Сколько займёт «Перенести» на томе этой папки
     moveBytes: z.number(),
+    // Полный объём и количество элементов вне целевой папки, включая прежние
+    moveTotalBytes: z.number(),
+    moveItems: z.number().int(),
   })
   .meta({ id: 'storagePathCheck' })
 

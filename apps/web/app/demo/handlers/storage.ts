@@ -348,9 +348,21 @@ function problemOf(kind: Kind, path: string): StoragePathCheck['problem'] {
   return null
 }
 
-function bytesToMove(kind: Kind, target: string) {
-  const sameVolume = volumeOf(target) === volumeOf(pathOf(kind))
-  return sameVolume ? 0 : contentsOf(kind).bytes
+function movePreview(kind: Kind, target: string) {
+  const folder = folderOf(kind)
+  const sources = [folder, ...folder.leftovers].filter(
+    item => item.path !== target && item.items > 0,
+  )
+  return {
+    moveTotalBytes: sources.reduce((sum, item) => sum + item.bytes, 0),
+    moveItems: sources.reduce((sum, item) => sum + item.items, 0),
+    moveBytes: sources
+      .filter(item => volumeOf(item.path) !== volumeOf(target))
+      .reduce((sum, item) => sum + item.bytes, 0),
+    sameVolume: sources.every(
+      item => volumeOf(item.path) === volumeOf(target),
+    ),
+  }
 }
 
 function check(kind: Kind, rawPath: string): StoragePathCheck {
@@ -368,6 +380,8 @@ function check(kind: Kind, rawPath: string): StoragePathCheck {
       sameVolume: false,
       linkMode: null,
       moveBytes: 0,
+      moveTotalBytes: 0,
+      moveItems: 0,
     }
   }
 
@@ -379,9 +393,10 @@ function check(kind: Kind, rawPath: string): StoragePathCheck {
     exists: path in FOLDER_TREE,
     writable: true,
     ...volumeSpace(path),
-    sameVolume: volumeOf(path) === volumeOf(pathOf(kind)),
     linkMode: volumeOf(path) === volumeOf(other) ? 'hardlink' : 'copy',
-    moveBytes: problem ? 0 : bytesToMove(kind, path),
+    ...(problem
+      ? { moveBytes: 0, moveTotalBytes: 0, moveItems: 0, sameVolume: false }
+      : movePreview(kind, path)),
   }
 }
 

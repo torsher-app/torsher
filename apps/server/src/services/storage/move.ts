@@ -208,19 +208,24 @@ function pendingFiles(target: LibraryFolder) {
     .map(file => ({ file, folder: byId.get(file.folderId)! }))
 }
 
-/** Сколько займёт перенос в папку: на том же томе — нисколько */
-export async function moveBytesNeeded(kind: StorageKind, target: string) {
-  const sources
-    = kind === 'downloads'
-      ? (await pendingTorrents(target))
-          .filter(item => item.row.inEngine)
-          .map(item => ({ dir: torrentDir(item.row), bytes: item.bytes }))
-      : pendingFiles(managedFolderFor(target)).map(item => ({
-          dir: item.folder.path,
-          bytes: item.file.size,
-        }))
+/** Один набор для объёма задания и предпросмотра, включая прежние папки. */
+async function pendingMoveItems(kind: StorageKind, target: string) {
+  return kind === 'downloads'
+    ? (await pendingTorrents(target))
+        .filter(item => item.row.inEngine)
+        .map(item => ({ dir: torrentDir(item.row), bytes: item.bytes }))
+    : pendingFiles(managedFolderFor(target)).map(item => ({
+        dir: item.folder.path,
+        bytes: item.file.size,
+      }))
+}
+
+/** Объём файлов и дополнительное место на целевом томе — разные величины. */
+export async function storageMovePreview(kind: StorageKind, target: string) {
+  const sources = await pendingMoveItems(kind, target)
   const volumes = new Map<string, boolean>()
   let needed = 0
+  let allSameVolume = true
 
   for (const source of sources) {
     let same = volumes.get(source.dir)
@@ -230,16 +235,32 @@ export async function moveBytesNeeded(kind: StorageKind, target: string) {
       volumes.set(source.dir, same)
     }
 
+    allSameVolume &&= same
     if (!same)
       needed += source.bytes
   }
 
-  return needed
+  return {
+    moveBytes: needed,
+    moveTotalBytes: sources.reduce((sum, source) => sum + source.bytes, 0),
+    moveItems: sources.length,
+    sameVolume: allSameVolume,
+  }
+}
+
+/** Сколько займёт перенос в папку: на том же томе — нисколько */
+export async function moveBytesNeeded(kind: StorageKind, target: string) {
+  return (await storageMovePreview(kind, target)).moveBytes
 }
 
 // Папка раскладки для пути: для действующего — она сама, для нового —
 // без создания строки (она появится при смене пути)
 function managedFolderFor(target: string) {
+  const existing = managedFolders().find(folder => folder.path === target)
+
+  if (existing)
+    return existing
+
   const active = managedFolder()
 
   return active.path === target
@@ -336,12 +357,7 @@ async function beginMove(kind: StorageKind) {
   if (needed > disk.free)
     throw new StorageMoveError('no_space')
 
-  const items
-    = kind === 'downloads'
-      ? (await pendingTorrents(target)).filter(item => item.row.inEngine)
-      : pendingFiles(managedFolder()).map(item => ({
-          bytes: item.file.size,
-        }))
+  const items = await pendingMoveItems(kind, target)
   const row = getDb()
     .insert(storageMoves)
     .values({

@@ -7191,6 +7191,12 @@ export interface StoragePathCheckInput {
   sameVolume: boolean;
   linkMode: "hardlink" | "reflink" | "copy" | null;
   moveBytes: number;
+  moveTotalBytes: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  moveItems: number;
 }
 
 export interface UpdateStoragePathInput {
@@ -15125,6 +15131,12 @@ export interface StoragePathCheck {
   sameVolume: boolean;
   linkMode: "hardlink" | "reflink" | "copy" | null;
   moveBytes: number;
+  moveTotalBytes: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  moveItems: number;
 }
 
 export interface UpdateStoragePath {
@@ -16183,7 +16195,7 @@ export type PutStoragePolicyError = MessageResponse | EngineUnavailableResponse;
 
 export type GetStorageBrowseError = MessageResponse;
 
-export type PostStorageCheckError = MessageResponse;
+export type PostStorageCheckError = MessageResponse | EngineUnavailableResponse;
 
 export type PutStoragePathError =
   MessageResponse | StoragePathErrorResponse | EngineUnavailableResponse;
