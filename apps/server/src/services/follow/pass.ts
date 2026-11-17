@@ -360,7 +360,7 @@ function upgradeChecks(
     checks.set(
       key,
       target.current
-        ? { current: versionOf(target.current, ctx) }
+        ? { current: versionOf(target.current, ctx), picked: target.picked }
         : { blocked: target.blocked },
     )
   }

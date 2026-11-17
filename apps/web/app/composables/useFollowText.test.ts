@@ -118,3 +118,32 @@ describe.each(['en_US', 'ru_RU'])('waiting status in %s', (locale) => {
     expect(text(follow)).not.toContain('Studio')
   })
 })
+
+describe('upgrade baseline explanation', () => {
+  it.each([
+    [
+      'en_US',
+      'not better than the selected one',
+      'not better than the downloaded one',
+    ],
+    ['ru_RU', 'не лучше уже выбранной', 'не лучше скачанной'],
+  ])(
+    'distinguishes picked from downloaded in %s',
+    (locale, picked, downloaded) => {
+      useI18n().locale.value = locale
+      const { rejection } = useFollowText()
+      const reason = { code: 'not_better', type: 'permanent' } as const
+      expect(rejection({ ...reason, params: { current: 'picked' } })).toBe(
+        picked,
+      )
+      expect(rejection(reason)).toBe(downloaded)
+      expect(rejection({ ...reason, params: { current: 'downloaded' } })).toBe(
+        downloaded,
+      )
+      expect(rejection({ ...reason, params: { current: 'unknown' } })).toBe(
+        downloaded,
+      )
+      useI18n().locale.value = 'en_US'
+    },
+  )
+})
