@@ -217,7 +217,7 @@ describe('navigation after deletion of the active viewer', () => {
     )
   })
 
-  it('never bypasses PIN for the only remaining profile', async () => {
+  it('requires PIN for the only remaining profile', async () => {
     const select = vi.mocked(api.profiles.postProfileSelect)
     select.mockClear()
     vi.spyOn(api.profiles, 'getProfiles').mockResolvedValue({
