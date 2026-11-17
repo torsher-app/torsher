@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   open: vi.fn(),
   files: vi.fn(),
   sources: vi.fn(),
+  follow: vi.fn(),
 }))
 vi.mock('../api.ts', () => ({
   api: {
@@ -12,6 +13,7 @@ vi.mock('../api.ts', () => ({
       postTitleOpen: mocks.open,
       getTitleFiles: mocks.files,
       getTitleSources: mocks.sources,
+      openFollowPick: mocks.follow,
     },
   },
 }))
@@ -172,5 +174,152 @@ it('does not report an absent episode when the search failed', async () => {
     kind: 'notFound',
     noSources: false,
     failureKind: 'searchFailed',
+  })
+})
+
+it.each([new Error('offline'), { status: 503 }])(
+  'keeps a file-list failure retryable without losing the selected source: %o',
+  async (error) => {
+    mocks.open.mockResolvedValue({ torrentId: 'selected-pack' })
+    mocks.files.mockRejectedValueOnce(error)
+    const target = { titleId: 'show', season: 2, episode: 6 }
+    const options = {
+      candidateId: 'selected',
+      query: 'Alternate S02',
+      cancelled: () => false,
+    }
+    expect(await resolveEpisode(target, options)).toEqual({
+      kind: 'notFound',
+      failureKind: 'filesFailed',
+    })
+    expect(await resolveEpisode(target, options)).toEqual({
+      kind: 'found',
+      file: { torrentId: 'selected-pack', fileIndex: 5 },
+    })
+    expect(mocks.open.mock.calls.map(call => call[1])).toEqual([
+      { candidateId: 'selected', query: 'Alternate S02' },
+      { candidateId: 'selected', query: 'Alternate S02' },
+    ])
+    expect(mocks.sources).not.toHaveBeenCalled()
+  },
+)
+it('reserves absent-episode outcome for a successful ready list', async () => {
+  mocks.open.mockResolvedValue({ torrentId: 'selected-pack' })
+  mocks.files.mockResolvedValue({ status: 'ready', files: [] })
+  expect(
+    await resolveEpisode(
+      { titleId: 'show', season: 2, episode: 6 },
+      { candidateId: 'selected', cancelled: () => false },
+    ),
+  ).toEqual({ kind: 'notFound' })
+})
+it('does not turn a late file-list rejection after Back into a failure', async () => {
+  let cancelled = false
+  mocks.open.mockResolvedValue({ torrentId: 'selected-pack' })
+  mocks.files.mockImplementation(async () => {
+    cancelled = true
+    throw new Error('offline')
+  })
+  expect(
+    await resolveEpisode(
+      { titleId: 'show' },
+      { candidateId: 'selected', cancelled: () => cancelled },
+    ),
+  ).toEqual({ kind: 'cancelled' })
+})
+it('retains a known file-list failure when search finds no alternatives', async () => {
+  mocks.files.mockRejectedValue(new Error('offline'))
+  mocks.sources.mockResolvedValue({ indexers: { total: 0 }, candidates: [] })
+  expect(
+    await resolveEpisode(
+      { titleId: 'show', season: 2, episode: 6 },
+      { torrents: ['known'], cancelled: () => false },
+    ),
+  ).toEqual({ kind: 'notFound', noSources: true, failureKind: 'filesFailed' })
+})
+it('continues ranked candidates after a file-list failure', async () => {
+  mocks.sources.mockResolvedValue({
+    indexers: { total: 1 },
+    candidates: ['first', 'second'].map(id => ({
+      id,
+      seasons: [2],
+      episodes: { from: 6, to: 6 },
+      confidence: 'high',
+      seeders: 2,
+    })),
+  })
+  mocks.open.mockImplementation(async (_title, body) => ({
+    torrentId: body.candidateId,
+  }))
+  mocks.files.mockRejectedValueOnce(new Error('offline'))
+  expect(
+    await resolveEpisode(
+      { titleId: 'show', season: 2, episode: 6 },
+      { cancelled: () => false },
+    ),
+  ).toEqual({ kind: 'found', file: { torrentId: 'second', fileIndex: 5 } })
+})
+it('retains ranked file-list failures instead of declaring the episode absent', async () => {
+  mocks.sources.mockResolvedValue({
+    indexers: { total: 1 },
+    candidates: [
+      {
+        id: 'first',
+        seasons: [2],
+        episodes: { from: 6, to: 6 },
+        confidence: 'high',
+        seeders: 2,
+      },
+    ],
+  })
+  mocks.open.mockResolvedValue({ torrentId: 'first' })
+  mocks.files.mockRejectedValue(new Error('offline'))
+  expect(
+    await resolveEpisode(
+      { titleId: 'show', season: 2, episode: 6 },
+      { cancelled: () => false },
+    ),
+  ).toEqual({ kind: 'notFound', noSources: false, failureKind: 'filesFailed' })
+})
+
+it('keeps a metadata timeout distinct from a failed HTTP file-list request', async () => {
+  vi.useFakeTimers()
+  try {
+    mocks.open.mockResolvedValue({ torrentId: 'pending-pack' })
+    mocks.files.mockResolvedValue({
+      status: 'resolving',
+      name: 'Pending',
+      files: [],
+    })
+    const result = resolveEpisode(
+      { titleId: 'show' },
+      { candidateId: 'pending', cancelled: () => false },
+    )
+    await vi.advanceTimersByTimeAsync(90_000)
+    expect(await result).toEqual({ kind: 'notFound' })
+  }
+  finally {
+    vi.useRealTimers()
+  }
+})
+
+it('keeps follow-ready file-list failures in its existing retryable outcome', async () => {
+  mocks.follow.mockResolvedValue({ torrentId: 'follow-pack' })
+  mocks.files.mockRejectedValueOnce(new Error('offline'))
+  const target = { titleId: 'show', season: 2, episode: 6 }
+  expect(
+    await resolveEpisode(target, {
+      intent: 'follow-ready',
+      cancelled: () => false,
+    }),
+  ).toEqual({ kind: 'followOpenFailed' })
+  expect(
+    await resolveEpisode(target, {
+      intent: 'follow-ready',
+      cancelled: () => false,
+    }),
+  ).toEqual({
+    kind: 'found',
+    file: { torrentId: 'follow-pack', fileIndex: 5 },
   })
 })
