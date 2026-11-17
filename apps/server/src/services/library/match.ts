@@ -562,8 +562,8 @@ export function matchIdle() {
   return draining ?? Promise.resolve()
 }
 
-/** Файлы видео-библиотек, которые ещё не сопоставляли: после старта и сбоя каталога */
-export function queueUnmatched() {
+/** Pending-файлы видео-библиотек: при старте — все, после скана — только его папка */
+export function queueUnmatched(folderId?: string) {
   const rows = getDb()
     .select({ id: mediaFiles.id, folderId: mediaFiles.folderId })
     .from(mediaFiles)
@@ -575,6 +575,7 @@ export function queueUnmatched() {
         eq(libraries.managed, false),
         eq(mediaFiles.state, 'present'),
         isNull(mediaFiles.matchStatus),
+        folderId === undefined ? undefined : eq(libraryFolders.id, folderId),
       ),
     )
     .all()

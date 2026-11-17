@@ -39,12 +39,17 @@ import {
 import {
   matchIdle,
   queueMatch,
+  queueUnmatched,
   releaseGroups,
 } from '../services/library/match.ts'
 import { scanFolder } from '../services/library/scan.ts'
 import { installLogger } from '../services/logs/index.ts'
 import { movie } from '../services/tmdb/fixtures/index.ts'
 import { signToken } from '../utils/token.ts'
+import {
+  addLibraryDecisions,
+  applyPendingDecisions,
+} from '../services/transfer/libraryMatches.ts'
 
 const ffmpegAvailable = (() => {
   try {
@@ -185,6 +190,168 @@ afterEach(async () => {
 })
 
 describe('подключённые папки: скан', () => {
+  it('повторный скан после настройки TMDB распознаёт прежние pending-файлы', async () => {
+    vi.stubEnv('TMDB_ACCESS_TOKEN', '')
+    vi.spyOn(config, 'tmdbAppKeyPath', 'get').mockReturnValue(
+      join(root, 'no-app-key'),
+    )
+    await file('First [tmdbid-603]/first.mkv')
+    await file('Second/second.mkv')
+    await writeFile(
+      join(root, 'media', 'Second', 'movie.nfo'),
+      '<movie><tmdbid>603</tmdbid></movie>',
+    )
+    const library = await addLibrary({ hint: 'movies' })
+    const folderId = await scanned(library)
+    const before = rows()
+
+    await queueMatch(
+      folderId,
+      before.map(row => row.id),
+    )
+    expect(rows().map(row => row.matchStatus)).toEqual([null, null])
+    expect(fetchMock).not.toHaveBeenCalled()
+
+    queueUnmatched(folderId)
+    await matchIdle()
+    expect(rows().map(row => row.matchStatus)).toEqual([null, null])
+
+    vi.stubEnv('TMDB_ACCESS_TOKEN', 'test-token')
+    const rescan = await scanFolder(folderId)
+    expect(rescan).toMatchObject({ added: [], changed: [] })
+    queueUnmatched(folderId)
+    await matchIdle()
+
+    expect(
+      rows().map(row => [
+        row.id,
+        row.titleId,
+        row.season,
+        row.episode,
+        row.matchSource,
+      ]),
+    ).toEqual([
+      [before[0]!.id, 'tmdb:movie:603', 0, 0, 'name_id'],
+      [before[1]!.id, 'tmdb:movie:603', 0, 0, 'nfo'],
+    ])
+    const listed = await app.inject({ url: '/api/libraries', cookies: owner })
+    expect(
+      listed
+        .json()
+        .items.find((item: { id: string }) => item.id === library.json().id)
+        .folders[0],
+    ).toMatchObject({ files: 2, pending: 0 })
+
+    const matched = rows()
+    fetchMock.mockClear()
+    queueUnmatched(folderId)
+    await matchIdle()
+    expect(rows()).toEqual(matched)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('повторная очередь ограничена сканируемой папкой и сохраняет решения', async () => {
+    for (const name of [
+      'Pending',
+      'Matched',
+      'Unsure',
+      'Unmatched',
+      'Ignored',
+      'Missing',
+    ])
+      await file(`${name} [tmdbid-603]/video.mkv`)
+    const folderId = await scanned(await addLibrary({ hint: 'movies' }))
+    for (const row of rows()) {
+      const status = row.relPath.split(' ')[0]!.toLowerCase()
+      if (status === 'pending')
+        continue
+      getDb()
+        .update(mediaFiles)
+        .set(
+          status === 'missing'
+            ? { state: 'missing' }
+            : {
+                matchStatus: status as
+                  'matched' | 'unsure' | 'unmatched' | 'ignored',
+                matchSource: status === 'ignored' ? 'user' : 'parser',
+                titleId: status === 'matched' ? 'tmdb:movie:603' : null,
+                matchSuggestion: status === 'unsure' ? 'tmdb:movie:603' : null,
+              },
+        )
+        .where(eq(mediaFiles.id, row.id))
+        .run()
+    }
+    const other = join(root, 'other')
+    await mkdir(other)
+    await writeFile(join(other, 'Other [tmdbid-603].mkv'), Buffer.alloc(1000))
+    await scanned(
+      await addLibrary({ name: 'Other', path: other, hint: 'movies' }),
+    )
+    const before = rows()
+
+    queueUnmatched(folderId)
+    await matchIdle()
+
+    const pending = rows().find(row => row.relPath.startsWith('Pending'))!
+    expect(pending).toMatchObject({
+      matchStatus: 'matched',
+      titleId: 'tmdb:movie:603',
+    })
+    expect(rows().filter(row => row.id !== pending.id)).toEqual(
+      before.filter(row => row.id !== pending.id),
+    )
+
+    // Стартовый вызов без folderId по-прежнему обходит все видео-папки.
+    queueUnmatched()
+    await matchIdle()
+    expect(rows().find(row => row.folderId !== folderId)).toMatchObject({
+      matchStatus: 'matched',
+      titleId: 'tmdb:movie:603',
+    })
+  })
+
+  it('решение из импорта применяется до retry, остальные поля файла сохраняются', async () => {
+    const path = 'Imported [tmdbid-603]/video.mkv'
+    const capturedAt = '2020-01-02T03:04:05.000Z'
+    addLibraryDecisions([
+      {
+        folder: join(root, 'media'),
+        path,
+        capturedAt,
+        match: {
+          status: 'ignored',
+          title: null,
+          season: null,
+          episode: null,
+          episodeTo: null,
+          version: null,
+        },
+      },
+    ])
+    await file(path)
+    const folderId = await scanned(await addLibrary())
+    const before = rows()[0]!
+
+    applyPendingDecisions(folderId, [before.id])
+    queueUnmatched(folderId)
+    await matchIdle()
+
+    expect(rows()[0]).toMatchObject({
+      id: before.id,
+      relPath: before.relPath,
+      size: before.size,
+      inode: before.inode,
+      mtime: before.mtime,
+      addedAt: before.addedAt,
+      matchStatus: 'ignored',
+      matchSource: 'user',
+      titleId: null,
+      capturedAt: new Date(capturedAt),
+      capturedAtSource: 'user',
+    })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
   it('папка индексируется на месте: видео, без скрытых, служебных и исключённых', async () => {
     await file('Example Movie (2008)/Example.Movie.2008.1080p.mkv')
     await file('Example Movie (2008)/Example.Movie.2008.rus.srt')
