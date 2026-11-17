@@ -2461,6 +2461,7 @@ onBeforeUnmount(() => {
         :subtitle="artSubtitle || playback.fileName"
         :position="position"
         :duration="knownDuration"
+        :speed="speed"
         :buffer-end="
           Number.isFinite(bufferSeconds) ? position + bufferSeconds : position
         "

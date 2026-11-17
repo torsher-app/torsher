@@ -24,6 +24,7 @@ const props = defineProps<{
   subtitle: string
   position: number
   duration: number
+  speed: number
   bufferEnd: number
   scrubTarget: number | null
   paused: boolean
@@ -208,7 +209,7 @@ const seedersText = computed(() => {
           ·
           {{
             t("player.endsAt", {
-              time: formatClock(endsAt(now, remaining), locale),
+              time: formatClock(endsAt(now, remaining, speed), locale),
             })
           }}
         </span>
