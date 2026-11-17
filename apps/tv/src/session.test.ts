@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { gateTarget } from './lib/session.ts'
 import { chooseProfile, requireProfile, session } from './session.ts'
+import { captureTitleViewer } from './titleActions.ts'
 
 // Язык витрины зависит от браузера: здесь он не важен
 vi.mock('./i18n.ts', () => ({ applyLanguage: () => {} }))
@@ -38,7 +39,11 @@ describe('requireProfile', () => {
     await chooseProfile('kids', '1234')
 
     expect(session.status).toBe('ready')
+    const viewer = captureTitleViewer()
+    await chooseProfile('kids', '1234')
+    expect(captureTitleViewer()).toBe(viewer)
     expect(requireProfile()).toBe(true)
+    expect(captureTitleViewer()).not.toBe(viewer)
     expect(session.status).toBe('choosing')
     expect(session.profile).toBeUndefined()
     expect(

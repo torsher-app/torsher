@@ -25,6 +25,7 @@ import {
 import { onScopeDispose, ref, shallowRef } from 'vue'
 import type { PlaybackTitle } from '../lib/sources.ts'
 import { api } from '../api.ts'
+import { captureTitleViewer, noteTitleProgress } from '../titleActions.ts'
 import { i18n } from '../i18n.ts'
 import { browserMediaSupport, deviceProfileOf } from '../lib/deviceProfile.ts'
 import { startErrorAction } from '../lib/player.ts'
@@ -167,6 +168,7 @@ export function usePlayback(
   context: DiagnosticContext = currentDiagnosticContext(),
   viewerProfileId?: string,
 ) {
+  const viewer = captureTitleViewer()
   const diagnosticTarget = {
     ...source,
     titleId: title?.id,
@@ -630,6 +632,7 @@ export function usePlayback(
       )
       .then(
         () => {
+          noteTitleProgress(viewer, title?.id)
           if (trace) {
             diagnostic(
               { event: 'progress.result', ...details, outcome: 'accepted' },

@@ -19,25 +19,111 @@ const state = reactive({
   target: undefined as ActionTarget | undefined,
   // С какого шага открыть: кнопка «Оценить» карточки сразу ведёт к оценке
   step: 'main' as ActionStep,
+  menuRevision: 0,
   // Последнее известное состояние тайтлов: карточка тайтла и значки постеров
   // видят правку сразу, не дожидаясь перезагрузки экрана
   known: new Map<string, TitleMine>(),
+  mineRevisions: new Map<string, number>(),
+  writing: new Set<string>(),
   // Загрузка тайтла после «Скачать» и «Оставить»: значок постера — сразу
   downloads: new Map<string, TitleDownload>(),
   // «Следить» после кнопки в карточке: значок постера — сразу
   follows: new Map<string, boolean>(),
   // Растёт с каждой правкой: экраны со списками перечитывают их при возврате
   version: 0,
+  viewer: 0,
+  progress: new Map<string, number>(),
+  progressWildcard: 0,
+  mineProgress: new Map<string, number>(),
+  mineWildcard: 0,
 })
 
 export const titleActions = readonly(state)
+
+let viewerId: string | undefined
+
+/** Один активный зритель; возврат к прежнему ID создаёт новое поколение. */
+export function setTitleViewer(id: string | undefined) {
+  if (id === viewerId)
+    return
+
+  viewerId = id
+  state.viewer++
+  state.target = undefined
+  state.known.clear()
+  state.mineRevisions.clear()
+  state.writing.clear()
+  state.downloads.clear()
+  state.follows.clear()
+  state.progress.clear()
+  state.mineProgress.clear()
+  state.mineWildcard++
+  state.progressWildcard++
+  state.version++
+}
+
+export function captureTitleViewer() {
+  return state.viewer
+}
+
+export function isTitleViewer(viewer: number) {
+  return viewer === state.viewer
+}
+
+export function titleProgressVersion(id: string) {
+  return `${state.viewer}:${state.progressWildcard}:${state.progress.get(id) ?? 0}`
+}
+
+/** Только подтверждённая запись прогресса; без ID сервер сам сопоставляет файл. */
+export function noteTitleProgress(
+  viewer: number,
+  id: string | undefined,
+  refreshMine = true,
+) {
+  if (!isTitleViewer(viewer))
+    return
+
+  if (id) {
+    state.mineRevisions.set(id, titleMineRevision(id) + 1)
+    state.progress.set(id, (state.progress.get(id) ?? 0) + 1)
+  }
+  else {
+    state.progressWildcard++
+  }
+  if (refreshMine)
+    noteTitleMineRefresh(viewer, id)
+  state.version++
+}
+
+/** Повторить только чтение mine, не публикуя вторую успешную мутацию. */
+export function noteTitleMineRefresh(viewer: number, id: string | undefined) {
+  if (!isTitleViewer(viewer))
+    return
+  if (id) {
+    state.mineRevisions.set(id, titleMineRevision(id) + 1)
+    state.mineProgress.set(id, (state.mineProgress.get(id) ?? 0) + 1)
+  }
+  else {
+    state.mineWildcard++
+  }
+}
+
+export function titleMineProgressVersion(id: string) {
+  return `${state.viewer}:${state.mineWildcard}:${state.mineProgress.get(id) ?? 0}`
+}
 
 export function openTitleActions(
   target: ActionTarget,
   step: ActionStep = 'main',
 ) {
+  state.menuRevision++
   state.step = step
   state.target = target
+}
+
+/** Штатное закрытие не скрывает результат записи; новое меню уже другой контекст. */
+export function isTitleActionCurrent(viewer: number, menuRevision: number) {
+  return isTitleViewer(viewer) && state.menuRevision === menuRevision
 }
 
 export function closeTitleActions() {
@@ -49,13 +135,48 @@ export function knownTitleMine(id: string): TitleMine | undefined {
   return state.known.get(id)
 }
 
-export function rememberTitleMine(id: string, mine: TitleMine) {
+export function titleMineRevision(id: string) {
+  return state.mineRevisions.get(id) ?? 0
+}
+
+export function setTitleMineWriting(
+  id: string,
+  writing: boolean,
+  viewer: number,
+) {
+  if (!isTitleViewer(viewer))
+    return
+  state.mineRevisions.set(id, titleMineRevision(id) + 1)
+  if (writing)
+    state.writing.add(id)
+  else state.writing.delete(id)
+}
+
+export function rememberTitleMine(
+  id: string,
+  mine: TitleMine,
+  viewer: number,
+  revision?: number,
+) {
+  if (!isTitleViewer(viewer))
+    return
+
+  if (
+    revision !== undefined
+    && (revision !== titleMineRevision(id) || state.writing.has(id))
+  ) {
+    return
+  }
+  state.mineRevisions.set(id, titleMineRevision(id) + 1)
   state.known.set(id, mine)
 }
 
 /** Правка из меню или карточки: запомнить и сообщить экранам со списками */
-export function noteTitleMine(id: string, mine: TitleMine) {
-  state.known.set(id, mine)
+export function noteTitleMine(id: string, mine: TitleMine, viewer: number) {
+  if (!isTitleViewer(viewer))
+    return
+
+  rememberTitleMine(id, mine, viewer)
   state.version++
 }
 
@@ -70,7 +191,14 @@ export function ownRatingOf(card: Card): number | undefined {
 }
 
 /** «Скачать» или «Оставить»: запомнить и сообщить экранам со списками */
-export function noteTitleDownload(id: string, download: TitleDownload) {
+export function noteTitleDownload(
+  id: string,
+  download: TitleDownload,
+  viewer: number,
+) {
+  if (!isTitleViewer(viewer))
+    return
+
   state.downloads.set(id, download)
   state.version++
 }
@@ -95,7 +223,10 @@ export function downloadOf(card: Card) {
 }
 
 /** «Следить» на карточке: запомнить и сообщить экранам со списками */
-export function noteTitleFollow(id: string, followed: boolean) {
+export function noteTitleFollow(id: string, followed: boolean, viewer: number) {
+  if (!isTitleViewer(viewer))
+    return
+
   if (state.follows.get(id) === followed)
     return
 

@@ -2,9 +2,10 @@ import type { PlayerSettings, Profile, ProfileList } from '@torsher/api-client'
 import type { SessionStatus } from './lib/session.ts'
 import type { RouteLocationNormalized } from 'vue-router'
 import { getErrorStatus } from '@torsher/api-client'
-import { reactive, readonly } from 'vue'
+import { reactive, readonly, watch } from 'vue'
 import { beforeDiagnosticProfileChange } from './diagnostics/index.ts'
 import { api } from './api.ts'
+import { setTitleViewer } from './titleActions.ts'
 import { applyLanguage } from './i18n.ts'
 import { autoProfile, gateTarget } from './lib/session.ts'
 
@@ -19,6 +20,8 @@ const state = reactive<{ status: SessionStatus, profile: Profile | undefined }>(
 
 /** Подключение витрины и профиль зрителя; меняется только функциями ниже */
 export const session = readonly(state)
+
+watch(() => state.profile?.id, setTitleViewer, { flush: 'sync' })
 
 function enter(profile: Profile) {
   revision++

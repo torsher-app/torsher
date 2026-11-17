@@ -4,10 +4,11 @@ import {
   diagnosticParams,
 } from '../diagnostics/index.ts'
 import { noteContinueReceived } from '../diagnostics/continue.ts'
-import type { ContinueRow, HomeResponse, HomeRow } from '@torsher/api-client'
+import type { HomeResponse, HomeRow } from '@torsher/api-client'
 import type { Ref } from 'vue'
 import type { LoadError } from '../lib/loadError.ts'
 import { onScopeDispose, ref, shallowRef, watch } from 'vue'
+import { captureTitleViewer, isTitleViewer } from '../titleActions.ts'
 import { api, loadErrorOf } from '../api.ts'
 import { replaceContinueRow } from '../lib/continue.ts'
 import { createLatest } from '../lib/latest.ts'
@@ -29,20 +30,38 @@ export function useHome(mode: Ref<HomeMode>) {
   // обновления рядов (правка списков, «Продолжить» после плеера)
   const loads = ref(0)
   const latest = createLatest()
+  const partial = createLatest()
+  const refreshing = ref(false)
+  let fullRun = 0
 
   async function load(quiet = false) {
+    partial.cancel()
+    const run = ++fullRun
+    const viewer = captureTitleViewer()
+    const currentMode = mode.value
+    const currentLanguage = language.value
+    refreshing.value = true
     if (!quiet)
       status.value = 'loading'
 
     const outcome = await latest.run(signal =>
       api.home.getHome(
-        { mode: mode.value, language: language.value },
+        { mode: currentMode, language: currentLanguage },
         { signal },
       ),
     )
 
-    if (outcome.status === 'cancelled')
+    if (run === fullRun)
+      refreshing.value = false
+
+    if (
+      !isTitleViewer(viewer)
+      || mode.value !== currentMode
+      || language.value !== currentLanguage
+      || outcome.status === 'cancelled'
+    ) {
       return
+    }
 
     if (outcome.status === 'failed') {
       // Тихое перечитывание оставляет прежние ряды
@@ -73,22 +92,22 @@ export function useHome(mode: Ref<HomeMode>) {
    * перезагрузки рядов каталога. Ошибка оставляет прежний ряд.
    */
   async function refreshContinue() {
-    if (status.value !== 'ready')
+    if (status.value !== 'ready' || refreshing.value)
       return
 
     const context = diagnosticAction()
-    let row: ContinueRow
-
-    try {
-      row = await api.home.getHomeContinue(
-        {
-          mode: mode.value,
-          language: language.value,
-        },
-        diagnosticParams(context),
-      )
-    }
-    catch {
+    const viewer = captureTitleViewer()
+    const currentMode = mode.value
+    const currentLanguage = language.value
+    const outcome = await partial.run(signal =>
+      api.home.getHomeContinue(
+        { mode: currentMode, language: currentLanguage },
+        { ...diagnosticParams(context), signal },
+      ),
+    )
+    if (outcome.status === 'cancelled')
+      return
+    if (outcome.status === 'failed') {
       diagnostic(
         { event: 'continue.refresh', outcome: 'failed', retained: true },
         context,
@@ -96,10 +115,15 @@ export function useHome(mode: Ref<HomeMode>) {
       return
     }
 
-    // Пока шёл запрос, главная могла начать грузиться заново
-    if (status.value === 'ready') {
-      noteContinueReceived(row.items)
-      rows.value = replaceContinueRow(rows.value, row)
+    if (
+      isTitleViewer(viewer)
+      && !refreshing.value
+      && mode.value === currentMode
+      && language.value === currentLanguage
+      && status.value === 'ready'
+    ) {
+      noteContinueReceived(outcome.value.items)
+      rows.value = replaceContinueRow(rows.value, outcome.value)
       diagnostic(
         { event: 'continue.refresh', outcome: 'accepted', retained: false },
         context,
@@ -115,10 +139,14 @@ export function useHome(mode: Ref<HomeMode>) {
 
   watch([mode, language], () => load(), { immediate: true })
 
-  onScopeDispose(latest.cancel)
+  onScopeDispose(() => {
+    latest.cancel()
+    partial.cancel()
+  })
 
   return {
     status,
+    refreshing,
     rows,
     loads,
     error,

@@ -23,6 +23,7 @@ import PosterCard from '../components/PosterCard.vue'
 import PosterSkeleton from '../components/PosterSkeleton.vue'
 import ScreenState from '../components/ScreenState.vue'
 import { useHeldLoading } from '../composables/useHeldLoading.ts'
+import { useTitleChanges } from '../composables/useTitleChanges.ts'
 import {
   useMineItems,
   useMineSections,
@@ -98,10 +99,8 @@ const selected = computed(() =>
 )
 const view = shallowRef<MineView>(loadMineView(selectedKey.value))
 
-const { status, items, total, error, retry, more, refresh } = useMineItems(
-  selected,
-  view,
-)
+const { status, items, total, error, retry, more, refresh, refreshReady }
+  = useMineItems(selected, view)
 
 // Шапка, сетка и счётчик меняются вместе, когда пришли карточки нового раздела
 const shownKey = ref<string>()
@@ -194,6 +193,8 @@ const root = ref<HTMLElement>()
 const sectionsRoot = ref<HTMLElement>()
 const gridRoot = ref<HTMLElement>()
 const focusedIndex = ref(0)
+const panel = ref<Control>()
+const isActive = ref(false)
 
 const stopFocus = focus.onFocus((el, via) => {
   const key = el.dataset.section
@@ -289,12 +290,34 @@ const gridPadding = computed(() => {
 
 // Шаг строки сетки меряется по DOM: размеры карточки заданы токенами
 watch(items, async () => {
+  const previous = focus.current()
+  const lostGridCard = !!previous && !!gridRoot.value?.contains(previous)
+  const oldIndex = focusedIndex.value
+  const oldSection = shownKey.value
   await nextTick()
 
   const cards = gridRoot.value?.querySelectorAll<HTMLElement>('[data-index]')
 
   if (cards && cards.length > COLUMNS)
     rowStep.value = cards[COLUMNS].offsetTop - cards[0].offsetTop
+
+  const canRestore = () => {
+    const current = focus.current()
+    return (
+      isActive.value
+      && !titleActions.target
+      && !panel.value
+      && lostGridCard
+      && !previous?.isConnected
+      && shownKey.value === oldSection
+      && (!current || current === previous)
+    )
+  }
+  if (!canRestore())
+    return
+  if (items.value.length)
+    await focusCard(Math.min(oldIndex, items.value.length - 1), canRestore)
+  else focusSelectedSection()
 })
 
 function alignTo(el: HTMLElement) {
@@ -329,7 +352,7 @@ function rowsPerScreen() {
 // Карточка может быть за окном строк в DOM: сначала сдвигаем окно, потом фокус.
 // В вебе окно идёт за прокруткой: колонку сразу ставим к строке карточки,
 // плавное выравнивание после фокуса только доводит её
-async function focusCard(index: number) {
+async function focusCard(index: number, canFocus = () => true) {
   focusedIndex.value = index
 
   if (nativeScroll && column.value) {
@@ -338,6 +361,9 @@ async function focusCard(index: number) {
   }
 
   await nextTick()
+
+  if (!canFocus())
+    return false
 
   const card = gridRoot.value?.querySelector<HTMLElement>(
     `[data-index="${index}"] button`,
@@ -404,7 +430,6 @@ watch([shownKey, status, showSkeleton], () => void focusPendingGrid(), {
 })
 
 // Чипы вида и правая панель выбора
-const panel = ref<Control>()
 let panelOpener: HTMLElement | undefined
 
 function sortLabel(id: MineView['sort']) {
@@ -514,42 +539,21 @@ function open(card: Card) {
 }
 
 // Правки из меню действий: списки перечитываются тихо, на месте
-let seenVersion = titleActions.version
-
-function syncChanges() {
-  if (seenVersion === titleActions.version)
-    return
-
-  seenVersion = titleActions.version
-  void refreshSections()
-  void refresh()
-  void refreshSchedule()
-}
-
-watch(
+const syncChanges = useTitleChanges(
   () => titleActions.version,
-  () => {
-    // Меню открыто поверх «Моё»: перечитываем, когда оно закрылось
-    if (!titleActions.target)
-      syncChanges()
+  () => sectionsStatus.value === 'ready' && refreshReady.value,
+  async () => {
+    await Promise.all([refreshSections(), refresh(), refreshSchedule()])
   },
+  () => isActive.value,
+  () => !!titleActions.target || !!panel.value,
 )
-watch(
-  () => titleActions.target,
-  (value) => {
-    if (!value)
-      syncChanges()
-  },
-)
-
-// Экран в KeepAlive: разделы могут прийти, когда пользователь уже ушёл дальше
-let isActive = false
 
 // Back в глубине сетки — к её началу, с первой строки — как обычно, на
 // главную; PageUp/PageDown — на экран строк в той же колонке
 const offKey = focus.onKey((action) => {
   if (
-    !isActive
+    !isActive.value
     || panel.value
     || (action.type !== 'back' && action.type !== 'page')
   ) {
@@ -595,7 +599,7 @@ function focusSelectedSection() {
 
 // Первый показ: разделы приходят после открытия экрана, autofocus им не достаётся
 watch(sectionsStatus, async (value, previous) => {
-  if (value !== 'ready' || previous !== 'loading' || !isActive)
+  if (value !== 'ready' || previous !== 'loading' || !isActive.value)
     return
 
   await nextTick()
@@ -605,14 +609,14 @@ watch(sectionsStatus, async (value, previous) => {
 })
 
 onActivated(() => {
-  isActive = true
+  isActive.value = true
 
   const targeted = openTarget()
 
-  syncChanges()
+  const syncing = syncChanges()
 
   // Из плеера и карточки — с новыми состояниями серий
-  if (scheduleShown.value)
+  if (scheduleShown.value && !syncing && !titleActions.target)
     void refreshSchedule()
 
   if (targeted)
@@ -623,7 +627,7 @@ onActivated(() => {
 })
 
 onDeactivated(() => {
-  isActive = false
+  isActive.value = false
 })
 
 onBeforeUnmount(() => {

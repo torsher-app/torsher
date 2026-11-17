@@ -11,6 +11,11 @@ import {
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { api } from '../api.ts'
+import {
+  captureTitleViewer,
+  isTitleViewer,
+  noteTitleProgress,
+} from '../titleActions.ts'
 import { useFocus } from '../focus/index.ts'
 import {
   libraryRoute,
@@ -37,7 +42,6 @@ export function useEpisodeActions(
   season: Ref<number | undefined>,
   progress: Ref<TitleProgress | undefined>,
   ready: () => boolean,
-  refreshProgress: () => void,
 ) {
   const { t } = useI18n()
   const router = useRouter()
@@ -117,12 +121,13 @@ export function useEpisodeActions(
   }
 
   function close() {
+    const viewer = captureTitleViewer()
     const opener = context.value?.opener
     lookup.cancel()
     busy.value = false
     context.value = undefined
     nextTick(() => {
-      if (opener?.isConnected)
+      if (isTitleViewer(viewer) && opener?.isConnected)
         focus.focusOn(opener)
     })
   }
@@ -131,6 +136,7 @@ export function useEpisodeActions(
     const key = `${value.titleId}:${value.season}:${value.episode.number}`
     if (!ready() || saving.has(key) || isUpcoming(value.episode.airDate))
       return
+    const viewer = captureTitleViewer()
     saving.add(key)
     const previous = pointOf(value) ?? {
       season: value.season,
@@ -146,7 +152,8 @@ export function useEpisodeActions(
         episode: value.episode.number,
         watched,
       })
-      if (!live || id.value !== value.titleId)
+      noteTitleProgress(viewer, value.titleId)
+      if (!isTitleViewer(viewer) || !live || id.value !== value.titleId)
         return
       const current = progress.value ?? {
         resume: null,
@@ -165,12 +172,11 @@ export function useEpisodeActions(
           markedEpisode(previous, watched),
         ],
       }
-      refreshProgress()
       if (closeAfter && context.value === value)
         close()
     }
     catch {
-      if (live && id.value === value.titleId)
+      if (isTitleViewer(viewer) && live && id.value === value.titleId)
         error.value = t('actions.errors.save')
     }
     finally {
@@ -185,6 +191,7 @@ export function useEpisodeActions(
 
   async function select(action: string) {
     const value = context.value
+    const viewer = captureTitleViewer()
     if (!value || busy.value || !ready())
       return
     focusOption.value = action
@@ -192,6 +199,8 @@ export function useEpisodeActions(
     busy.value = true
     if (action === 'mark') {
       await toggle(value, true)
+      if (!isTitleViewer(viewer))
+        return
       if (context.value === value)
         busy.value = false
       return
@@ -205,8 +214,13 @@ export function useEpisodeActions(
         { signal },
       ),
     )
-    if (result.status === 'cancelled' || context.value !== value)
+    if (
+      !isTitleViewer(viewer)
+      || result.status === 'cancelled'
+      || context.value !== value
+    ) {
       return
+    }
     busy.value = false
     if (result.status === 'done') {
       const choice = libraryChoices(result.value.files, true, target)

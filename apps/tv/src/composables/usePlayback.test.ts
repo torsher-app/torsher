@@ -2,6 +2,11 @@ import type { Playback, TorrentStats } from '@torsher/api-client'
 import { effectScope } from 'vue'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { usePlayback } from './usePlayback.ts'
+import {
+  setTitleViewer,
+  titleActions,
+  titleProgressVersion,
+} from '../titleActions.ts'
 
 const mocks = vi.hoisted(() => ({
   post: vi.fn(),
@@ -46,7 +51,44 @@ function ready(sessionId: string) {
 beforeEach(() => {
   vi.useFakeTimers()
   vi.resetAllMocks()
+  setTitleViewer(undefined)
+  setTitleViewer('A')
   mocks.remove.mockResolvedValue(undefined)
+})
+
+it('notifies only successful saves, including library files without a client title ID', async () => {
+  mocks.save
+    .mockResolvedValueOnce(undefined)
+    .mockRejectedValueOnce(new Error('offline'))
+  const scope = effectScope()
+  const player = scope.run(() => usePlayback({ mediaFileId: 'local-file' }))!
+  const version = titleActions.version
+  const progress = titleProgressVersion('server-matched-title')
+  await player.saveWatchState(10, 100)
+  expect(titleActions.version).toBe(version + 1)
+  expect(titleProgressVersion('server-matched-title')).not.toBe(progress)
+  await player.saveWatchState(20, 100)
+  expect(titleActions.version).toBe(version + 1)
+  scope.stop()
+})
+
+it('keeps notification scope captured at player creation after A/B/A, even for later saves', async () => {
+  const save = deferred<void>()
+  mocks.save.mockReturnValueOnce(save.promise).mockResolvedValue(undefined)
+  const scope = effectScope()
+  const player = scope.run(() =>
+    usePlayback({ mediaFileId: 'local-file' }, undefined, undefined, {}, 'A'),
+  )!
+  const pending = player.saveWatchState(10, 100)
+  setTitleViewer('B')
+  setTitleViewer('A')
+  const version = titleActions.version
+  save.resolve()
+  await pending
+  await player.saveWatchState(20, 100, 'exit')
+  expect(titleActions.version).toBe(version)
+  expect(mocks.save.mock.calls[1]![0]).toMatchObject({ profileId: 'A' })
+  scope.stop()
 })
 afterEach(() => vi.useRealTimers())
 
