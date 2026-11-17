@@ -622,7 +622,8 @@ function applyDocument(
     const { counts } = plan
 
     summary = {
-      imported: undo.length,
+      // Progress episodes and mine changes may belong to the same title.
+      imported: new Set(undo.map(entry => entry.titleId)).size,
       unchanged: plan.unchanged,
       unmatched: counts.skipped,
     }
