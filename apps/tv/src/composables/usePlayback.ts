@@ -14,6 +14,7 @@ import type {
   Playback,
   PlaybackErrorInput,
   TorrentStats,
+  UpdateWatchStateInput,
 } from '@torsher/api-client'
 import {
   correlationHeaders,
@@ -52,6 +53,11 @@ export type StartOutcome = 'ready' | 'retry' | 'error' | 'stale'
 export type PlaybackRestart = Pick<
   CreatePlaybackInput,
   'audioStream' | 'subtitle' | 'startPosition'
+>
+
+export type CheckpointSession = Pick<
+  UpdateWatchStateInput,
+  'sessionId' | 'appliedAudioStream'
 >
 
 // Один порядок для всех плееров этого запуска, включая A → B → A.
@@ -595,6 +601,7 @@ export function usePlayback(
     reason:
       'exit' | 'next' | 'source_switch' | 'pause' | 'checkpoint' = 'checkpoint',
     captured: DiagnosticContext = context,
+    checkpoint?: CheckpointSession,
   ) {
     if (!Number.isFinite(position))
       return Promise.resolve()
@@ -626,6 +633,7 @@ export function usePlayback(
           ...source,
           event: { clientId: progressClientId, sequence: ++progressSequence },
           profileId: viewerProfileId,
+          ...checkpoint,
           position,
           duration:
             Number.isFinite(duration) && duration > 0 ? duration : undefined,

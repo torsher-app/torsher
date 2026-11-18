@@ -33,7 +33,7 @@ export function useResource<T>(
       latest.cancel()
       status.value = 'idle'
 
-      return
+      return false
     }
 
     if (!quiet)
@@ -42,20 +42,21 @@ export function useResource<T>(
     const outcome = await latest.run(signal => load(current, signal))
 
     if (!isTitleViewer(viewer) || outcome.status === 'cancelled')
-      return
+      return false
 
     if (outcome.status === 'failed') {
       if (quiet)
-        return
+        return false
 
       error.value = loadErrorOf(outcome.error)
       status.value = 'error'
 
-      return
+      return false
     }
 
     data.value = outcome.value
     status.value = 'ready'
+    return true
   }
 
   watch(key, () => run(), { immediate: true, flush: 'sync' })

@@ -30,7 +30,7 @@ beforeEach(() => {
 })
 afterEach(() => scope.stop())
 function card(id: string) {
-  return ({ id, kind: 'movie', title: id, originalTitle: id }) as Card
+  return { id, kind: 'movie', title: id, originalTitle: id } as Card
 }
 function setup() {
   const section = ref<MineSection | undefined>({ id: 'watchlist', count: 3 })
@@ -38,6 +38,36 @@ function setup() {
   const mine = scope.run(() => useMineItems(section, view))!
   return { mine, section, view }
 }
+
+it('keeps a failed quiet refresh dirty until a healthy reactivation', async () => {
+  mocks.items.mockResolvedValueOnce({ items: [card('old')], total: 1 })
+  const { mine } = setup()
+  await vi.waitFor(() => expect(mine.status.value).toBe('ready'))
+  const version = ref(0)
+  const active = ref(true)
+  scope.run(() =>
+    useTitleChanges(
+      () => version.value,
+      () => true,
+      mine.refresh,
+      () => active.value,
+      () => false,
+    ),
+  )
+  mocks.items.mockRejectedValueOnce(new Error('offline'))
+  version.value++
+  await vi.waitFor(() => expect(mocks.items).toHaveBeenCalledTimes(2))
+  await nextTick()
+  expect(mine.items.value.map(item => item.id)).toEqual(['old'])
+  mocks.items.mockResolvedValueOnce({ items: [card('fresh')], total: 1 })
+  active.value = false
+  await nextTick()
+  active.value = true
+  await vi.waitFor(() =>
+    expect(mine.items.value.map(item => item.id)).toEqual(['fresh']),
+  )
+  expect(mocks.items).toHaveBeenCalledTimes(3)
+})
 
 it('does not append a stale more page after a quiet refresh has removed its cards', async () => {
   let finish!: (value: object) => void

@@ -64,6 +64,32 @@ describe('файлы библиотеки', () => {
 })
 
 describe('unique season library coverage', () => {
+  it('does not let a future library episode replace a missing aired episode', () => {
+    const future = Array.from({ length: 7 }, (_, index) =>
+      file(`${index}`, 1, index + 2))
+    const complete = [file('aired', 1, 1, 7)]
+    expect(libraryEpisodeCount(future, 1, 7)).toBe(6)
+    expect(libraryEpisodeCount(complete, 1, 7)).toBe(7)
+    const input = {
+      series: true,
+      season: 1,
+      downloads: [],
+      movieInLibrary: false,
+      seasonAired: 7,
+    }
+    expect(
+      downloadSlot({
+        ...input,
+        seasonInLibrary: libraryEpisodeCount(future, 1, 7),
+      }),
+    ).toEqual({ kind: 'start' })
+    expect(
+      downloadSlot({
+        ...input,
+        seasonInLibrary: libraryEpisodeCount(complete, 1, 7),
+      }),
+    ).toEqual({ kind: 'none' })
+  })
   it('counts alternate versions of E2 and E3 as two episodes', () => {
     const files = [
       file('2a', 1, 2),

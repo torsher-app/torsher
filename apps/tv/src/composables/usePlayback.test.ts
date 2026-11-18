@@ -351,10 +351,17 @@ it('keeps the originating viewer profile on final saves after closing the sessio
   )!
   await player.start()
   player.close()
-  await player.saveWatchState(10, 100, 'exit')
+  setTitleViewer('B')
+  await player.saveWatchState(10, 100, 'exit', undefined, {
+    sessionId: 'origin-session',
+    appliedAudioStream: 2,
+  })
+  expect(mocks.remove).toHaveBeenCalledWith('origin-session')
   expect(mocks.save.mock.calls[0]![0]).toMatchObject({
     profileId: 'origin-profile',
     mediaFileId: 'file-00001',
+    sessionId: 'origin-session',
+    appliedAudioStream: 2,
     position: 10,
   })
   scope.stop()

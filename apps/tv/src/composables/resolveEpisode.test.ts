@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { createApiClient } from '@torsher/api-client'
 import { resolveEpisode } from './resolveEpisode.ts'
 
 const mocks = vi.hoisted(() => ({
@@ -236,6 +237,36 @@ it('retains a known file-list failure when search finds no alternatives', async 
       { torrents: ['known'], cancelled: () => false },
     ),
   ).toEqual({ kind: 'notFound', noSources: true, failureKind: 'filesFailed' })
+})
+it('treats a deleted known torrent as absent after an otherwise successful empty search', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => new Response('{}', { status: 404 })),
+  )
+  const client = createApiClient({
+    getErrorMode: () => 'silent',
+    onSessionExpired() {},
+    onError() {},
+    onFatal() {},
+  })
+  let error: unknown
+  try {
+    await client.titles.getTitleFiles('show', 'deleted')
+  }
+  catch (caught) {
+    error = caught
+  }
+  finally {
+    vi.unstubAllGlobals()
+  }
+  mocks.files.mockRejectedValue(error)
+  mocks.sources.mockResolvedValue({ indexers: { total: 0 }, candidates: [] })
+  expect(
+    await resolveEpisode(
+      { titleId: 'show', season: 2, episode: 6 },
+      { torrents: ['deleted'], cancelled: () => false },
+    ),
+  ).toEqual({ kind: 'notFound', noSources: true })
 })
 it('continues ranked candidates after a file-list failure', async () => {
   mocks.sources.mockResolvedValue({

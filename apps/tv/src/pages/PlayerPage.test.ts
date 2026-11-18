@@ -25,6 +25,7 @@ const mocks = vi.hoisted(() => ({
   detach: vi.fn(),
   fail: vi.fn(),
   save: vi.fn(),
+  appliedAudioStream: vi.fn(),
   progress: vi.fn(),
   upNext: vi.fn(),
   pollStats: vi.fn(),
@@ -160,6 +161,8 @@ vi.mock('../composables/usePlayerTracks.ts', () => ({
       audioTrack: ref(undefined),
       selection: () => ({}),
       refresh: vi.fn(),
+      resetAppliedAudio: vi.fn(),
+      appliedAudioStream: mocks.appliedAudioStream,
       selectAudio: mocks.selectAudio,
       selectSubtitles: mocks.selectSubtitles,
     }
@@ -282,6 +285,7 @@ beforeEach(() => {
   vi.stubGlobal('window', { setTimeout, clearTimeout })
   mocks.saveTracks.mockResolvedValue({ saved: true })
   mocks.save.mockResolvedValue(undefined)
+  mocks.appliedAudioStream.mockReturnValue(null)
   mocks.progress.mockResolvedValue({ seasonReleases: [] })
   mocks.upNext.mockResolvedValue({ next: null })
   mocks.native = false
@@ -891,6 +895,25 @@ it.each(['exit', 'unmount'] as const)(
   },
 )
 
+it('saves the former HLS session before a failed audio restart', async () => {
+  mode = 'hls'
+  await mount()
+  mocks.media.currentTime = 38
+  controls.onTimeUpdate()
+  mocks.save.mockClear()
+  mocks.start.mockResolvedValueOnce('error')
+  await mocks.restart({ audioStream: 2 })
+  expect(mocks.save).toHaveBeenCalledExactlyOnceWith(
+    38,
+    180,
+    'checkpoint',
+    expect.anything(),
+    { sessionId: 'playback-fixture', appliedAudioStream: null },
+  )
+  controls.exit()
+  expect(mocks.save).toHaveBeenCalledOnce()
+})
+
 it('ignores a cancelled HLS attach result after exit instead of failing the closed player', async () => {
   mode = 'hls'
   let attached!: (value: boolean) => void
@@ -1040,6 +1063,47 @@ it.each(['save', 'progress'] as const)(
       }),
     )
     expect(mocks.progress).toHaveBeenCalledOnce()
+  },
+)
+
+it.each(['save', 'progress'] as const)(
+  'ignores new and queued recovery while Next waits for %s',
+  async (waiting) => {
+    mocks.upNext.mockResolvedValue({
+      next: {
+        season: 1,
+        episode: 3,
+        title: 'Next',
+        file: { torrentId: 'fixture', fileIndex: 1 },
+      },
+    })
+    await mount(true, true)
+    controls.recover('unknown')
+    let done!: () => void
+    const pending = new Promise<void>((resolve) => {
+      done = resolve
+    })
+    if (waiting === 'save') {
+      mocks.save.mockReturnValueOnce(pending)
+    }
+    else {
+      mocks.progress.mockImplementationOnce(async () => {
+        await pending
+        return { seasonReleases: [] }
+      })
+    }
+    const next = controls.playNext()
+    await settle()
+    const starts = mocks.start.mock.calls.length
+    controls.recover('unknown')
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(mocks.start).toHaveBeenCalledTimes(starts)
+    done()
+    await next
+    await settle()
+    expect(mocks.replace).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ path: '/play/fixture/1' }),
+    )
   },
 )
 
@@ -1280,6 +1344,10 @@ it.each(['exit', 'unmount'] as const)(
     mocks.media.currentTime = 73
     controls.onTimeUpdate()
     mocks.save.mockClear()
+    mocks.appliedAudioStream.mockReturnValue(2)
+    mocks.detach.mockImplementation(() =>
+      mocks.appliedAudioStream.mockReturnValue(null),
+    )
     if (cancel === 'exit')
       controls.exit()
     else cleanup()
@@ -1288,6 +1356,7 @@ it.each(['exit', 'unmount'] as const)(
       180,
       cancel === 'exit' ? 'exit' : 'checkpoint',
       expect.anything(),
+      { sessionId: 'playback-fixture', appliedAudioStream: 2 },
     )
     mocks.save.mockClear()
 
@@ -1305,12 +1374,7 @@ it.each(['exit', 'unmount'] as const)(
     expect(mocks.save).not.toHaveBeenCalled()
     if (cancel === 'exit') {
       cleanup()
-      expect(mocks.save).toHaveBeenLastCalledWith(
-        73,
-        180,
-        'checkpoint',
-        expect.anything(),
-      )
+      expect(mocks.save).not.toHaveBeenCalled()
     }
   },
 )
@@ -1397,6 +1461,7 @@ it('saves HLS progress in source time and bounds packet padding by source durati
     180,
     'checkpoint',
     expect.anything(),
+    { sessionId: 'playback-fixture', appliedAudioStream: null },
   )
   mocks.media.currentTime = 32
   controls.onTimeUpdate()
@@ -1405,6 +1470,7 @@ it('saves HLS progress in source time and bounds packet padding by source durati
     180,
     'checkpoint',
     expect.anything(),
+    { sessionId: 'playback-fixture', appliedAudioStream: null },
   )
   mocks.media.currentTime = 182.05
   controls.onTimeUpdate()
@@ -1413,5 +1479,6 @@ it('saves HLS progress in source time and bounds packet padding by source durati
     180,
     'checkpoint',
     expect.anything(),
+    { sessionId: 'playback-fixture', appliedAudioStream: null },
   )
 })

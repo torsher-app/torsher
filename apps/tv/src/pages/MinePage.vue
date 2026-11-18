@@ -543,7 +543,12 @@ const syncChanges = useTitleChanges(
   () => titleActions.version,
   () => sectionsStatus.value === 'ready' && refreshReady.value,
   async () => {
-    await Promise.all([refreshSections(), refresh(), refreshSchedule()])
+    const outcomes = await Promise.all([
+      refreshSections(),
+      refresh(),
+      refreshSchedule(),
+    ])
+    return outcomes.every(outcome => outcome !== false)
   },
   () => isActive.value,
   () => !!titleActions.target || !!panel.value,

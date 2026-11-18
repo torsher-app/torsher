@@ -18,14 +18,19 @@ export function useTitleChanges(
     if (disposed || !active() || blocked() || !ready() || seen === version())
       return false
 
-    seen = version()
+    const requested = version()
     running = true
-    void refresh()
-      .catch(() => {})
-      .finally(() => {
-        running = false
+    const finish = () => {
+      running = false
+      // Не повторяем тот же отказ по кругу: следующий вход/событие попробует снова.
+      if (version() !== requested)
         sync()
-      })
+    }
+    void refresh().then((success) => {
+      if (success !== false)
+        seen = requested
+      finish()
+    }, finish)
     return true
   }
 
