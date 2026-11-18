@@ -97,6 +97,9 @@ const hasData = computed(
 const notEnoughSpace = computed(
   () => !!check.value && check.value.moveBytes > check.value.free,
 )
+const moveDisabled = computed(
+  () => notEnoughSpace.value || check.value?.moveAvailable === false,
+)
 const choosing = computed(
   () => hasData.value && !isCurrent.value && !check.value?.problem,
 )
@@ -117,7 +120,7 @@ const canSubmit = computed(
     && !checking.value
     && !check.value?.problem
     && !isCurrent.value
-    && !(moving.value && notEnoughSpace.value),
+    && !(moving.value && moveDisabled.value),
 )
 
 async function runCheck(value: string) {
@@ -170,7 +173,7 @@ watch(
 )
 
 // Перенос недоступен — выбор сам уходит на «Только новые»
-watch(notEnoughSpace, (value) => {
+watch(moveDisabled, (value) => {
   if (value && mode.value === 'move')
     mode.value = 'new_only'
 })
@@ -260,13 +263,16 @@ const options = computed(() => [
   },
   {
     value: 'move' as const,
-    title: t(`${base}.moveTitle`, {
-      size: bytes(check.value?.moveTotalBytes ?? 0),
-    }),
+    title:
+      check.value?.moveAvailable === false
+        ? t(`${base}.startMove`)
+        : t(`${base}.moveTitle`, {
+            size: bytes(check.value?.moveTotalBytes ?? 0),
+          }),
     text: check.value?.sameVolume
       ? t(`${base}.moveSameVolume`)
       : t(`${base}.move${titleKey.value}`),
-    disabled: notEnoughSpace.value,
+    disabled: moveDisabled.value,
   },
 ])
 
