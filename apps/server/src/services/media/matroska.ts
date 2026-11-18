@@ -593,6 +593,7 @@ export interface MatroskaCues {
   times: number[]
   playbackIndex: CueCluster[] | null
   packetEnds?: PacketEnds
+  videoStart?: { stream: number, time: number }
 }
 
 /** A Cues position identifies a cluster, never an exact packet byte position. */

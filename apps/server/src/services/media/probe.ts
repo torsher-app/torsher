@@ -450,6 +450,107 @@ interface ProbePacket {
   duration_time?: string
 }
 
+/** Absolute PTS of the first decoded video frame in a contiguous Matroska prefix. */
+export function probeVideoStart(
+  prefix: Uint8Array,
+  stream: number,
+  signal: AbortSignal,
+) {
+  return new Promise<number | undefined>((resolve) => {
+    const child = execFile(
+      config.ffprobePath,
+      [
+        '-v',
+        'error',
+        '-protocol_whitelist',
+        'pipe',
+        '-format_whitelist',
+        'matroska',
+        '-select_streams',
+        String(stream),
+        '-read_intervals',
+        '%+#8',
+        '-show_entries',
+        'frame=best_effort_timestamp_time',
+        '-of',
+        'json',
+        'pipe:0',
+      ],
+      { signal, killSignal: 'SIGKILL', maxBuffer: 64 * 1024 },
+      (err, stdout, stderr) => {
+        if (err || stderr || signal.aborted) {
+          resolve(undefined)
+          return
+        }
+        try {
+          const { frames } = JSON.parse(stdout) as {
+            frames: { best_effort_timestamp_time?: string }[]
+          }
+          resolve(signedNumber(frames[0]?.best_effort_timestamp_time))
+        }
+        catch {
+          resolve(undefined)
+        }
+      },
+    )
+    // The probe bounds its packet count and may close stdin with bytes still queued.
+    child.stdin?.on('error', () => {})
+    child.stdin?.end(prefix)
+  })
+}
+
+/** Timestamp one source tick before the key packet selected by a MOV seek. */
+export function probeSeekAnchor(
+  url: string,
+  stream: number,
+  time: number,
+  signal: AbortSignal,
+) {
+  return new Promise<number | undefined>((resolve) => {
+    execFile(
+      config.ffprobePath,
+      [
+        '-v',
+        'error',
+        ...untrustedInputArgs(url),
+        '-select_streams',
+        String(stream),
+        '-read_intervals',
+        `${time.toFixed(6)}%+#1`,
+        '-show_entries',
+        'packet=dts_time,flags:stream=time_base',
+        '-of',
+        'json',
+        url,
+      ],
+      { signal, timeout: 5000, killSignal: 'SIGKILL', maxBuffer: 64 * 1024 },
+      (err, stdout) => {
+        if (err || signal.aborted) {
+          resolve(undefined)
+          return
+        }
+        try {
+          const { packets, streams } = JSON.parse(stdout) as {
+            packets: { dts_time?: string, flags?: string }[]
+            streams: { time_base?: string }[]
+          }
+          const packet = packets[0]
+          const dts = packet?.flags?.startsWith('K')
+            ? signedNumber(packet.dts_time)
+            : undefined
+          const tick = ratioOf(streams[0]?.time_base)
+          resolve(
+            dts !== undefined && tick && tick > 0 ? dts - tick : undefined,
+          )
+        }
+        catch {
+          resolve(undefined)
+        }
+      },
+    )
+  })
+}
+
 /** Measures only a structurally validated, bounded Matroska fragment. */
 export function probePacketEnds(fragment: Uint8Array, signal: AbortSignal) {
   return new Promise<PacketEnds | null>((resolve) => {

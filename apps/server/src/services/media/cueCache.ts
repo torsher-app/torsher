@@ -1,5 +1,6 @@
 import type { Torrent } from '../../db/schema.ts'
 import type { MatroskaCues, RangeReader } from './matroska.ts'
+import { Buffer } from 'node:buffer'
 import { open, stat } from 'node:fs/promises'
 import { libraryProbeKey } from '../library/playedSource.ts'
 import { acquireMaintenanceLease } from '../libraryMaintenance/admission.ts'
@@ -10,7 +11,7 @@ import {
   verifiedFileOffsets,
 } from '../torrents/playback.ts'
 import { readMatroskaCues } from './matroska.ts'
-import { probePacketEnds } from './probe.ts'
+import { probePacketEnds, probeVideoStart } from './probe.ts'
 
 const MAX_ENTRIES = 100
 const MAX_POINTS = 200_000
@@ -21,7 +22,7 @@ const LOAD_TIMEOUT_MS = 30_000
 
 interface Pending {
   controller: AbortController
-  subscribers: Map<AbortSignal, boolean>
+  subscribers: Map<AbortSignal, { ends: boolean, video?: number }>
   promise: Promise<MatroskaCues | null>
 }
 const ready = new Map<string, MatroskaCues | null>()
@@ -56,6 +57,7 @@ function pointCount(value: MatroskaCues | null) {
     (value?.times.length ?? 0)
     + (value?.playbackIndex?.length ?? 0)
     + (value?.packetEnds?.size ?? 0)
+    + (value?.videoStart ? 1 : 0)
   )
 }
 
@@ -143,11 +145,43 @@ export function cueRangeReader(url: string, size: number, signal: AbortSignal) {
 
 type CueResult = MatroskaCues | null
 type ReadEndpoints = () => Promise<CueResult>
+type ReadVideoStart = (stream: number) => Promise<number | undefined>
 type Finish = (
   index: CueResult,
   readEndpoints: ReadEndpoints | undefined,
   publish: (result: CueResult) => CueResult,
+  readVideoStart: ReadVideoStart,
 ) => CueResult | Promise<CueResult>
+
+/** Reuse the index prefix and extend it contiguously within the same read budget. */
+function videoStartReader(
+  size: number,
+  signal: AbortSignal,
+  read: RangeReader,
+  prefix: () => Uint8Array | undefined,
+  verified?: (start: number, end: number) => Promise<boolean>,
+): ReadVideoStart {
+  return async (stream) => {
+    let bytes = prefix()
+    if (!bytes) {
+      const end = Math.min(size, 32 * 1024)
+      if (verified && !(await verified(0, end)))
+        return undefined
+      bytes = await read(0, end)
+    }
+    const limit = Math.min(size, MAX_RANGE_BYTES)
+    for (;;) {
+      signal.throwIfAborted()
+      const time = await probeVideoStart(bytes, stream, signal)
+      if (time !== undefined || bytes.length >= limit)
+        return time
+      const end = Math.min(limit, bytes.length * 2)
+      if (verified && !(await verified(bytes.length, end)))
+        return undefined
+      bytes = Buffer.concat([bytes, await read(bytes.length, end)])
+    }
+  }
+}
 
 /** One preparation per immutable file, with independent lifetime from any viewer. */
 function loadCues(
@@ -155,12 +189,17 @@ function loadCues(
   size: number,
   signal: AbortSignal,
   measureEndpoints: boolean,
+  videoStream: number | undefined,
   prepare: (signal: AbortSignal, finish: Finish) => Promise<CueResult>,
 ): Promise<MatroskaCues | null> {
   if (signal.aborted || !Number.isSafeInteger(size) || size <= 0)
     return Promise.resolve(null)
   const cached = ready.get(key)
-  if (cached !== undefined && (!measureEndpoints || cached?.packetEnds)) {
+  if (
+    cached !== undefined
+    && (!measureEndpoints || cached?.packetEnds)
+    && (videoStream === undefined || cached?.videoStart?.stream === videoStream)
+  ) {
     ready.delete(key)
     ready.set(key, cached)
     return Promise.resolve(cached)
@@ -184,17 +223,43 @@ function loadCues(
         pending.delete(key)
     }
     const loadSignal = AbortSignal.any([controller.signal, deadline])
-    const finish: Finish = (index, readEndpoints, publish) => {
+    const finish: Finish = (index, readEndpoints, publish, readVideoStart) => {
       const seal = (result: CueResult) => {
         loadSignal.throwIfAborted()
         // Publish and remove the pending entry together. An index-only result
         // must never leave behind an observable load that can no longer upgrade.
-        const published = publish(result)
+        const published = publish(result && { ...cached, ...result })
         remove()
         return published
       }
-      if (readEndpoints && [...own.subscribers.values()].includes(true))
-        return readEndpoints().then(seal)
+      const requests = () => [...own.subscribers.values()]
+      const needsEnds = () =>
+        readEndpoints && requests().some(request => request.ends)
+      const videoToMeasure = () =>
+        requests().find(request => request.video !== undefined)?.video
+      if (needsEnds() || videoToMeasure() !== undefined) {
+        return (async () => {
+          const endsFirst = needsEnds()
+          let result = endsFirst ? await readEndpoints!() : index
+          const stream = videoToMeasure()
+          if (stream !== undefined) {
+            const time
+              = cached?.videoStart?.stream === stream
+                ? cached.videoStart.time
+                : await readVideoStart(stream).catch(() => undefined)
+            // Endpoint viewers can still join while the prefix is being measured.
+            if (!endsFirst && needsEnds())
+              result = await readEndpoints!()
+            if (time !== undefined) {
+              result = {
+                ...(result ?? { times: [], playbackIndex: null }),
+                videoStart: { stream, time },
+              }
+            }
+          }
+          return seal(result)
+        })()
+      }
       return seal(index)
     }
     own.promise = Promise.resolve()
@@ -206,10 +271,11 @@ function loadCues(
       })
   }
   const own = entry
-  own.subscribers.set(
-    signal,
-    measureEndpoints || own.subscribers.get(signal) === true,
-  )
+  const previous = own.subscribers.get(signal)
+  own.subscribers.set(signal, {
+    ends: measureEndpoints || previous?.ends === true,
+    video: videoStream ?? previous?.video,
+  })
   const unsubscribe = () => {
     own.subscribers.delete(signal)
     if (!own.subscribers.size) {
@@ -230,6 +296,7 @@ export function loadTorrentCues(
   fileIndex: number,
   signal: AbortSignal,
   measureEndpoints = false,
+  videoStream?: number,
 ) {
   const size = torrent.files?.[fileIndex]?.size ?? 0
   const key = cueCacheKey(torrent.infoHash, fileIndex, size)
@@ -238,6 +305,7 @@ export function loadTorrentCues(
     size,
     signal,
     measureEndpoints,
+    videoStream,
     async (loadSignal, finish) => {
       const releaseMaintenance = acquireMaintenanceLease({
         torrentId: torrent.id,
@@ -250,39 +318,47 @@ export function loadTorrentCues(
           loadSignal,
         )
         let trusted = true
+        let prefix: Uint8Array | undefined
         let readEndpoints: ReadEndpoints | undefined
+        const verified = async (start: number, end: number) => {
+          loadSignal.throwIfAborted()
+          if (!torrent.pieceLength)
+            return false
+          try {
+            const stats = await torrentStats(torrent.infoHash, loadSignal)
+            return (
+              (verifiedBufferedAheadBytes(
+                {
+                  pieces: stats.pieces,
+                  pieceLength: torrent.pieceLength,
+                  fileOffsets: verifiedFileOffsets(
+                    torrent.files ?? [],
+                    fileIndex,
+                    torrent.pieceLength,
+                    stats.pieces.length,
+                  ),
+                  fileSize: size,
+                },
+                start,
+              ) ?? 0)
+              >= Math.min(end, size) - start
+            )
+          }
+          catch {
+            loadSignal.throwIfAborted()
+            return false
+          }
+        }
         const result = await readMatroskaCues(
           async (start, end) => {
-            loadSignal.throwIfAborted()
             // Responsive readers can expose bytes before hashing. Verification must
             // precede the read to use them for strict bounds or measured endpoints.
-            let verified = false
-            if (torrent.pieceLength) {
-              try {
-                const stats = await torrentStats(torrent.infoHash, loadSignal)
-                verified
-                  = (verifiedBufferedAheadBytes(
-                    {
-                      pieces: stats.pieces,
-                      pieceLength: torrent.pieceLength,
-                      fileOffsets: verifiedFileOffsets(
-                        torrent.files ?? [],
-                        fileIndex,
-                        torrent.pieceLength,
-                        stats.pieces.length,
-                      ),
-                      fileSize: size,
-                    },
-                    start,
-                  ) ?? 0)
-                  >= Math.min(end, size) - start
-              }
-              catch {
-                loadSignal.throwIfAborted()
-              }
-            }
-            trusted &&= verified
-            return read(start, end)
+            const trustedRange = await verified(start, end)
+            trusted &&= trustedRange
+            const bytes = await read(start, end)
+            if (start === 0 && trustedRange)
+              prefix = bytes
+            return bytes
           },
           size,
           {
@@ -295,15 +371,24 @@ export function loadTorrentCues(
           },
         )
         const indexTrusted = trusted
-        return await finish(result, readEndpoints, (cues) => {
-          // An unverified tail cannot supply endpoints. The verified index
-          // from before that optional read remains usable independently.
-          if (indexTrusted && (cues !== null || !ready.has(key)))
-            remember(key, cues)
-          return indexTrusted || cues === null
-            ? cues
-            : { times: cues.times, playbackIndex: null }
-        })
+        return await finish(
+          result,
+          readEndpoints,
+          (cues) => {
+            // An unverified tail cannot supply endpoints. The verified index
+            // from before that optional read remains usable independently.
+            if (indexTrusted && (cues !== null || !ready.has(key)))
+              remember(key, cues)
+            return indexTrusted || cues === null
+              ? cues
+              : {
+                  times: cues.times,
+                  playbackIndex: null,
+                  ...(cues.videoStart ? { videoStart: cues.videoStart } : {}),
+                }
+          },
+          videoStartReader(size, loadSignal, read, () => prefix, verified),
+        )
       }
       finally {
         releaseStream()
@@ -318,6 +403,7 @@ export async function loadLibraryCues(
   key: string,
   signal: AbortSignal,
   measureEndpoints: boolean,
+  videoStream?: number,
 ) {
   const { id, path, size } = source
   if (signal.aborted)
@@ -330,6 +416,7 @@ export async function loadLibraryCues(
     size,
     signal,
     measureEndpoints,
+    videoStream,
     async (loadSignal, finish) => {
       const file = await open(path, 'r')
       try {
@@ -340,44 +427,59 @@ export async function loadLibraryCues(
         if ((await identity()) !== key)
           return null
         let readEndpoints: ReadEndpoints | undefined
-        const result = await readMatroskaCues(
-          boundedCueReader(size, loadSignal, async (start, end) => {
-            const buffer = new Uint8Array(end - start)
-            let offset = 0
-            while (offset < buffer.length) {
-              const { bytesRead } = await file.read(
-                buffer,
-                offset,
-                buffer.length - offset,
-                start + offset,
-              )
-              if (bytesRead === 0)
-                throw new Error('Truncated cue range')
-              offset += bytesRead
-              loadSignal.throwIfAborted()
+        let prefix: Uint8Array | undefined
+        const read = boundedCueReader(size, loadSignal, async (start, end) => {
+          const buffer = new Uint8Array(end - start)
+          let offset = 0
+          while (offset < buffer.length) {
+            const { bytesRead } = await file.read(
+              buffer,
+              offset,
+              buffer.length - offset,
+              start + offset,
+            )
+            if (bytesRead === 0)
+              throw new Error('Truncated cue range')
+            offset += bytesRead
+            loadSignal.throwIfAborted()
+          }
+          if (start === 0)
+            prefix = buffer
+          return buffer
+        })
+        const result = await readMatroskaCues(read, size, {
+          maxBytes: MAX_RANGE_BYTES,
+          measure: fragment => probePacketEnds(fragment, loadSignal),
+          defer: (read) => {
+            readEndpoints = async () => {
+              const cues = await read()
+              if (!(await unchanged()))
+                throw new Error('Library source changed while reading cues')
+              return cues
             }
-            return buffer
-          }),
-          size,
-          {
-            maxBytes: MAX_RANGE_BYTES,
-            measure: fragment => probePacketEnds(fragment, loadSignal),
-            defer: (read) => {
-              readEndpoints = async () => {
-                const cues = await read()
-                if (!(await unchanged()))
-                  throw new Error('Library source changed while reading cues')
-                return cues
-              }
-            },
           },
-        )
+        })
         if (!(await unchanged()))
           return null
-        return await finish(result, readEndpoints, (cues) => {
-          remember(key, cues)
-          return cues
-        })
+        return await finish(
+          result,
+          readEndpoints,
+          (cues) => {
+            remember(key, cues)
+            return cues
+          },
+          async (stream) => {
+            const time = await videoStartReader(
+              size,
+              loadSignal,
+              read,
+              () => prefix,
+            )(stream)
+            if (!(await unchanged()))
+              return undefined
+            return time
+          },
+        )
       }
       finally {
         await file.close()

@@ -127,7 +127,7 @@ function packets(path: string) {
           'json',
           path,
         ],
-        { encoding: 'utf8' },
+        { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 },
       ),
     ) as {
       packets: {
@@ -147,11 +147,376 @@ function packetEnd(stream: ReturnType<typeof packets>, index: number) {
   )
 }
 
+function firstFrameHash(input: string[]) {
+  return execFileSync(
+    'ffmpeg',
+    [
+      '-v',
+      'error',
+      ...input,
+      '-map',
+      '0:v:0',
+      '-frames:v',
+      '1',
+      '-vf',
+      'scale=64:48:flags=neighbor,format=yuv420p',
+      '-f',
+      'framehash',
+      '-',
+    ],
+    { encoding: 'utf8' },
+  )
+    .trim()
+    .split('\n')
+    .at(-1)!
+    .split(',')
+    .at(-1)!
+    .trim()
+}
+
 describe.runIf(hasFfmpeg())('source and HLS timing on FFmpeg', () => {
   let dir: string
   let path: string
   let bytes: Buffer
   const signal = new AbortController().signal
+
+  it('serves short Matroska HLS without waiting for Cues', async () => {
+    const local = join(dir, 'short.mkv')
+    execFileSync('ffmpeg', [
+      '-v',
+      'error',
+      '-f',
+      'lavfi',
+      '-i',
+      'color=s=64x48:r=10:d=3',
+      '-c:v',
+      'libx264',
+      local,
+    ])
+    const file = await stat(local)
+    const load = vi.spyOn(cueCache, 'loadLibraryCues')
+    const session = createSession({
+      subject: 'owner',
+      library: { id: 'short', path: local, size: file.size },
+      fileIndex: 0,
+      fileName: local,
+      preference: {},
+      device,
+      log,
+    })
+    try {
+      await session.ready
+      expect(session.hls?.starts).toEqual([0])
+      expect(session.decision.video).toBe('copy')
+      expect(load).not.toHaveBeenCalled()
+      await (await session.hls!.segment(0)).close()
+    }
+    finally {
+      load.mockRestore()
+      await stopSession(session.id)
+    }
+  }, 20_000)
+
+  it.each([
+    {
+      ext: 'mp4',
+      rate: '10',
+      delay: 10,
+      duration: 8,
+      offset: 0,
+      b: 0,
+      gap: false,
+      audio: 'copy',
+    },
+    {
+      ext: 'mkv',
+      rate: '10',
+      delay: 10,
+      duration: 19,
+      offset: 0,
+      b: 2,
+      gap: false,
+      audio: 'copy',
+    },
+    {
+      ext: 'mp4',
+      rate: '24',
+      delay: 10,
+      duration: 19,
+      offset: 0,
+      b: 2,
+      gap: true,
+      audio: 'copy',
+    },
+    {
+      ext: 'mp4',
+      rate: '24',
+      delay: 10,
+      duration: 19,
+      offset: 100,
+      b: 2,
+      gap: true,
+      audio: 'aac',
+    },
+    {
+      ext: 'mp4',
+      rate: '24',
+      delay: 0,
+      duration: 19,
+      offset: 0,
+      b: 2,
+      gap: true,
+      audio: 'copy',
+    },
+    {
+      ext: 'mp4',
+      rate: '1',
+      delay: 10,
+      duration: 19,
+      offset: 0,
+      b: 0,
+      gap: false,
+      audio: 'aac',
+    },
+    {
+      ext: 'mp4',
+      rate: '2',
+      delay: 10,
+      duration: 19,
+      offset: 100,
+      b: 2,
+      gap: false,
+      audio: 'copy',
+    },
+    {
+      ext: 'mp4',
+      rate: '24000/1001',
+      delay: 10,
+      duration: 19,
+      offset: 100,
+      b: 2,
+      gap: false,
+      audio: 'copy',
+    },
+    {
+      ext: 'mkv',
+      rate: '10',
+      delay: 0,
+      duration: 19,
+      offset: 100,
+      b: 2,
+      gap: false,
+      audio: 'copy',
+    },
+    {
+      ext: 'mp4',
+      rate: '10',
+      delay: 0,
+      duration: 19,
+      offset: 0,
+      b: 2,
+      gap: false,
+      audio: 'copy',
+    },
+    {
+      ext: 'ts',
+      rate: '25',
+      delay: 0,
+      duration: 19,
+      offset: 100,
+      b: 2,
+      gap: false,
+      audio: 'copy',
+    },
+  ])(
+    'aligns linear and cold segments for $ext $rate fps, offset $offset, delay $delay, gap $gap',
+    async (spec) => {
+      const { ext, rate, delay, duration, b, offset, gap, audio } = spec
+      const local = join(
+        dir,
+        `cuts-${rate.replace('/', '_')}-${ext}-${offset}-${delay}.${ext}`,
+      )
+      const customTimeBase = gap || (ext === 'mkv' && delay > 0)
+      // A uniform predecessor makes the decoded frame hash independent of the
+      // output encoder's rate-control history. Frames after the gap are colorful.
+      const timing = `${gap ? 'drawbox=color=black:t=fill:enable=\'between(t,2.7,3)\',select=\'not(between(t,3,9))\',' : ''}${customTimeBase ? 'settb=1/1000,' : ''}setpts=PTS+${delay}/TB`
+      execFileSync('ffmpeg', [
+        '-v',
+        'error',
+        '-f',
+        'lavfi',
+        '-i',
+        `testsrc2=s=64x48:r=${rate}:d=${duration}`,
+        '-f',
+        'lavfi',
+        '-i',
+        `sine=d=${duration + delay}`,
+        '-map',
+        '0:v',
+        '-map',
+        '1:a',
+        '-vf',
+        timing,
+        '-fps_mode',
+        'passthrough',
+        ...(customTimeBase ? ['-enc_time_base:v', '1/1000'] : []),
+        '-c:v',
+        ext === 'ts' ? 'mpeg2video' : 'mpeg4',
+        '-bf',
+        String(b),
+        ...(gap ? ['-video_track_timescale', '1000'] : []),
+        '-c:a',
+        'aac',
+        '-b:a',
+        gap ? '8k' : '48k',
+        '-output_ts_offset',
+        String(offset),
+        local,
+      ])
+      const source = await stat(local)
+      if (ext === 'mkv' && delay) {
+        const prefix = (await readFile(local)).subarray(0, 8 * 1024)
+        expect(await probe.probeVideoStart(prefix, 0, signal)).toBeUndefined()
+      }
+      const options = {
+        subject: 'owner',
+        library: { id: local, path: local, size: source.size },
+        fileIndex: 0,
+        fileName: local,
+        preference: {},
+        device: {
+          ...device,
+          audio: audio === 'copy' ? (['aac'] as ['aac']) : [],
+        },
+        log,
+      }
+      const linearLog: SessionLog = {
+        ...log,
+        debug: vi.fn(),
+        child: () => linearLog,
+      }
+      const linear = createSession({ ...options, log: linearLog })
+      const cold = createSession(options)
+      try {
+        await Promise.all([linear.ready, cold.ready])
+        expect(linear.decision).toMatchObject({
+          mode: 'hls',
+          video: 'encode',
+          audio,
+        })
+        const starts = linear.hls!.starts
+        const gapIndex = gap
+          ? starts.findIndex(time => time > delay + 3 && time < delay + 9)
+          : -1
+        expect(starts.length).toBeGreaterThan(1)
+        expect(cold.hls!.starts).toEqual(starts)
+        if (delay) {
+          expect(starts.length).toBe(duration === 8 ? 2 : 4)
+          expect(starts[1]).toBeGreaterThanOrEqual(14)
+          expect(starts[1]).toBeLessThan(14.4)
+        }
+
+        async function inspect(
+          hls: NonNullable<typeof linear.hls>,
+          index: number,
+        ) {
+          const handle = await hls.segment(index)
+          await handle.close()
+          const path = join(hls.dir, `${index}.ts`)
+          const output = packets(path)
+          const v = Math.min(
+            ...output
+              .filter(packet => packet.stream_index === 0)
+              .map(packet => Number(packet.pts_time)),
+          )
+          const a = Math.min(
+            ...output
+              .filter(packet => packet.stream_index === 1)
+              .map(packet => Number(packet.pts_time)),
+          )
+          expect(Number.isFinite(v)).toBe(true)
+          expect(Number.isFinite(a)).toBe(true)
+          const hash = index === gapIndex ? firstFrameHash(['-i', path]) : null
+          return { v, a, hash }
+        }
+
+        const measured: Awaited<ReturnType<typeof inspect>>[] = []
+        for (let i = 0; i < starts.length; i++) {
+          const result = await inspect(linear.hls!, i)
+          if (i === 0) {
+            expect(result.a).toBeCloseTo(TS_OFFSET_SECONDS, 1)
+            expect(result.v).toBeCloseTo(TS_OFFSET_SECONDS + delay, 0)
+          }
+          else {
+            expect(result.v - TS_OFFSET_SECONDS).toBeCloseTo(
+              starts[i]!,
+              ext === 'ts' ? 0 : 3,
+            )
+          }
+          measured.push(result)
+        }
+        const startsLogged = vi
+          .mocked(linearLog.debug)
+          .mock
+          .calls
+          .filter(args =>
+            /ffmpeg run \d+ from segment/.test(String(args.at(-1))),
+          )
+        expect(startsLogged).toHaveLength(1)
+        if (gap) {
+          expect(measured[gapIndex]?.hash).toBe(
+            firstFrameHash(['-f', 'lavfi', '-i', 'color=c=black:s=64x48']),
+          )
+        }
+        for (let i = starts.length - 1; i >= 0; i--) {
+          const result = await inspect(cold.hls!, i)
+          expect(result.v).toBeCloseTo(measured[i]!.v, ext === 'ts' ? 0 : 3)
+          expect(Math.abs(result.a - measured[i]!.a)).toBeLessThan(
+            0.05 + 2 / linear.hls!.encode!.frameRate,
+          )
+          expect(result.hash).toBe(measured[i]!.hash)
+        }
+
+        if (gap && delay && !offset) {
+          const seek = createSession(options)
+          const cancelled = new AbortController()
+          let seeking: AbortSignal | undefined
+          const recovery = vi
+            .spyOn(probe, 'probeSeekAnchor')
+            .mockImplementation((_url, _stream, _time, signal) => {
+              seeking = signal
+              return new Promise(resolve =>
+                signal.addEventListener('abort', () => resolve(undefined), {
+                  once: true,
+                }),
+              )
+            })
+          try {
+            await seek.ready
+            const pending = expect(
+              seek.hls!.segment(gapIndex, cancelled.signal),
+            ).rejects.toThrow('Segment is not ready')
+            await vi.waitFor(() => expect(seeking).toBeDefined())
+            expect(seek.hls!.readySegments()).toEqual([])
+            cancelled.abort()
+            await pending
+            await (await seek.hls!.segment(0)).close()
+            expect(seeking?.aborted).toBe(true)
+            recovery.mockRestore()
+            await (await seek.hls!.segment(gapIndex)).close()
+          }
+          finally {
+            recovery.mockRestore()
+            await stopSession(seek.id)
+          }
+        }
+      }
+      finally {
+        await Promise.all([stopSession(linear.id), stopSession(cold.id)])
+      }
+    },
+    30_000,
+  )
 
   beforeAll(async () => {
     vi.stubEnv('FFMPEG_PATH', 'ffmpeg')
