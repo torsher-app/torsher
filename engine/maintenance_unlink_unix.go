@@ -39,6 +39,9 @@ func matchingFile(stat unix.Stat_t, item maintenancePath) bool {
 	return stat.Mode&unix.S_IFMT == unix.S_IFREG && uint64(stat.Dev) == item.Device && stat.Ino == item.Inode && stat.Size == item.Size && statMtime(stat) == item.Mtime
 }
 func safeMaintenanceUnlink(item maintenancePath, staged string) error {
+	if item.BaselineAbsent {
+		return confirmMaintenanceUnchanged(item, staged)
+	}
 	root, err := openMaintenanceDir(item.Root)
 	if err != nil {
 		return err
@@ -176,6 +179,10 @@ func maintenanceEntryKey(path string) string {
 
 // O_NOFOLLOW применяется ко всем компонентам; fstat проверяет именно открытый объект.
 func openMaintenanceFile(item maintenancePath) (*os.File, error) {
+	return openMaintenanceFileMode(item, unix.O_RDWR)
+}
+
+func openMaintenanceFileMode(item maintenancePath, mode int) (*os.File, error) {
 	root, err := openMaintenanceDir(item.Root)
 	if err != nil {
 		return nil, err
@@ -205,7 +212,7 @@ func openMaintenanceFile(item maintenancePath) (*os.File, error) {
 		parent = next
 	}
 	defer unix.Close(parent)
-	fd, err := unix.Openat(parent, filepath.Base(rel), unix.O_RDWR|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	fd, err := unix.Openat(parent, filepath.Base(rel), mode|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return nil, errors.New("file_unavailable")
 	}
@@ -219,11 +226,13 @@ func openMaintenanceFile(item maintenancePath) (*os.File, error) {
 // Cancel never restores or removes captured content. An empty staging directory
 // is only an intent artifact; all original identities must still be confirmed.
 func confirmMaintenanceUnchanged(item maintenancePath, staged string) error {
-	file, err := openMaintenanceFile(item)
-	if err != nil {
-		return err
+	if !item.BaselineAbsent {
+		file, err := openMaintenanceFileMode(item, unix.O_RDONLY|unix.O_NONBLOCK)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
 	}
-	defer file.Close()
 	root, err := openMaintenanceDir(item.Root)
 	if err != nil {
 		return err
@@ -232,6 +241,39 @@ func confirmMaintenanceUnchanged(item maintenancePath, staged string) error {
 	var info unix.Stat_t
 	if unix.Fstat(root, &info) != nil || uint64(info.Dev) != item.RootDevice || info.Ino != item.RootInode {
 		return errors.New("root_identity_changed")
+	}
+	if item.BaselineAbsent {
+		if !isInside(item.Root, item.Path) {
+			return errors.New("invalid_path")
+		}
+		rel, _ := filepath.Rel(item.Root, item.Path)
+		parent, err := unix.Dup(root)
+		if err != nil {
+			return errors.New("root_unavailable")
+		}
+		missingParent := false
+		for _, part := range strings.Split(filepath.Dir(rel), string(filepath.Separator)) {
+			if part == "." {
+				continue
+			}
+			next, openErr := unix.Openat(parent, part, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+			unix.Close(parent)
+			if openErr != nil {
+				if !errors.Is(openErr, unix.ENOENT) {
+					return errors.New("parent_unavailable")
+				}
+				missingParent = true
+				break
+			}
+			parent = next
+		}
+		if !missingParent {
+			err = unix.Fstatat(parent, filepath.Base(rel), &info, unix.AT_SYMLINK_NOFOLLOW)
+			unix.Close(parent)
+			if !errors.Is(err, unix.ENOENT) {
+				return errors.New("baseline_changed")
+			}
+		}
 	}
 	err = unix.Fstatat(root, staged, &info, unix.AT_SYMLINK_NOFOLLOW)
 	if errors.Is(err, unix.ENOENT) {

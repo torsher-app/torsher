@@ -14,7 +14,7 @@ import type {
 } from './eviction.ts'
 import { resolve } from 'node:path'
 import { eq } from 'drizzle-orm'
-import { storagePath, torrentDir } from './paths.ts'
+import { storageLocation, storagePath, torrentDir } from './paths.ts'
 import { getDb } from '../../db/index.ts'
 import { torrents } from '../../db/schema.ts'
 import {
@@ -580,12 +580,29 @@ export interface StorageOverview {
   folders: Record<StorageKind, StorageFolder>
 }
 
-export async function getStorageOverview(): Promise<StorageOverview> {
-  const disk = await diskUsage(storagePath('downloads'))
+interface StorageOverviewSnapshot {
+  downloads: ReturnType<typeof storageLocation>
+  library: ReturnType<typeof storageLocation>
+  live: Map<string, EngineTorrentState>
+  disks: Map<string, Awaited<ReturnType<typeof diskUsage>>>
+  librarySharesVolume: boolean
+}
+
+export async function getStorageOverview(
+  snapshot?: StorageOverviewSnapshot,
+): Promise<StorageOverview> {
+  const downloads = snapshot?.downloads ?? storageLocation('downloads')
+  const libraryLocation = snapshot?.library ?? storageLocation('library')
+  const disk
+    = snapshot?.disks.get(downloads.path) ?? (await diskUsage(downloads.path))
   const rows = getDb().select().from(torrents).all()
-  const live = isEngineReady()
-    ? new Map((await listEngineTorrents()).map(item => [item.infoHash, item]))
-    : new Map<string, EngineTorrentState>()
+  const live
+    = snapshot?.live
+      ?? (isEngineReady()
+        ? new Map(
+            (await listEngineTorrents()).map(item => [item.infoHash, item]),
+          )
+        : new Map<string, EngineTorrentState>())
   const stored = storedOf(rows, live, Date.now())
   const byId = new Map(rows.map(row => [row.id, row]))
   const sum = (retention: StoredTorrent['retention']) =>
@@ -596,23 +613,31 @@ export async function getStorageOverview(): Promise<StorageOverview> {
   const keptUsed = sum('keep')
   const library = libraryUsage()
   // Библиотека на другом томе место загрузок не занимает
-  const libraryOwn = librarySharesVolume() ? library.used - library.shared : 0
+  const libraryOwn
+    = (snapshot?.librarySharesVolume ?? librarySharesVolume())
+      ? library.used - library.shared
+      : 0
 
   return {
-    path: storagePath('downloads'),
+    path: downloads.path,
     total: disk.total,
     free: disk.free,
     cacheUsed,
     keptUsed,
-    library: { path: storagePath('library'), ...library, own: libraryOwn },
+    library: { path: libraryLocation.path, ...library, own: libraryOwn },
     other: Math.max(
       0,
       disk.total - disk.free - cacheUsed - keptUsed - libraryOwn,
     ),
     policy: getPolicy(disk.total),
     folders: {
-      downloads: await storageFolder('downloads', live),
-      library: await storageFolder('library', live),
+      downloads: await storageFolder('downloads', live, downloads, disk),
+      library: await storageFolder(
+        'library',
+        live,
+        libraryLocation,
+        snapshot?.disks.get(libraryLocation.path),
+      ),
     },
     queue: evictionQueue(stored)
       .slice(0, QUEUE_PREVIEW)

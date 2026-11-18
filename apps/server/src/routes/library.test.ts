@@ -4,11 +4,13 @@ import { randomUUID } from 'node:crypto'
 import { constants } from 'node:fs'
 import {
   copyFile,
+  lstat,
   mkdir,
   mkdtemp,
   readdir,
   rm,
   stat,
+  symlink,
   writeFile,
 } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -516,6 +518,91 @@ describe('связыватель', () => {
         nlink: before.nlink,
         size: before.size,
       })
+    },
+  )
+
+  it.each(['hardlink', 'symlink'] as const)(
+    'handles a suffixed %s before taking a free base movie path',
+    async (kind) => {
+      const first = await seed('Example Movie (2008)', movieFiles, {
+        titleId: 'tmdb:movie:603',
+      })
+      progress = [4000, 10, 20]
+      await syncLibrary()
+      const base = rows()[0]!
+      getDb().delete(torrents).where(eq(torrents.id, first.id)).run()
+      const second = await seed(
+        'Example.Movie.2008.2160p',
+        [{ path: 'Example.Movie.2008.2160p.mkv', size: 5000 }],
+        { titleId: 'tmdb:movie:603' },
+      )
+      progress = [5000]
+      selected = [0]
+      await syncLibrary()
+      const original = rows().find(row => row.id !== base.id)!
+      expect(original.version).toBe('2160p')
+      const suffix = libraryPath(original.relPath)
+      const source = join(
+        root,
+        'torrents',
+        second.name,
+        second.files![0]!.path,
+      )
+      const before = await stat(suffix)
+      if (kind === 'symlink') {
+        await rm(suffix)
+        await symlink(source, suffix)
+      }
+      await rm(libraryPath(base.relPath))
+      getDb().delete(mediaFiles).where(eq(mediaFiles.id, base.id)).run()
+      const removed = await app.inject({
+        method: 'DELETE',
+        url: `/api/torrents/${second.id}?files=keep`,
+        cookies: owner,
+      })
+      expect(removed.statusCode).toBe(200)
+      const next = getDb()
+        .insert(torrents)
+        .values({
+          ...second,
+          id: randomUUID(),
+          titleId: null,
+          matchStatus: null,
+        })
+        .returning()
+        .get()
+      const matched = await app.inject({
+        method: 'PUT',
+        url: `/api/torrents/${next.id}/title`,
+        cookies: owner,
+        payload: { titleId: second.titleId },
+      })
+      expect(matched.statusCode).toBe(200)
+      await syncLibrary()
+      await syncLibrary()
+      if (kind === 'symlink') {
+        expect(
+          rows().find(row => row.id === original.id)?.torrentId,
+        ).toBeNull()
+        expect(rows().find(row => row.torrentId === next.id)).toMatchObject({
+          relPath: base.relPath,
+          linkMode: 'hardlink',
+        })
+        expect((await lstat(suffix)).isSymbolicLink()).toBe(true)
+        expect((await lstat(libraryPath(base.relPath))).isFile()).toBe(true)
+        expect((await stat(libraryPath(base.relPath))).ino).toBe(before.ino)
+      }
+      else {
+        expect(rows()).toEqual([{ ...original, torrentId: next.id }])
+        expect(await stat(suffix)).toMatchObject({
+          ino: before.ino,
+          dev: before.dev,
+          nlink: before.nlink,
+        })
+        await expect(stat(libraryPath(base.relPath))).rejects.toMatchObject({
+          code: 'ENOENT',
+        })
+      }
     },
   )
 

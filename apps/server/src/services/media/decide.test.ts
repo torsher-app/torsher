@@ -92,7 +92,7 @@ describe('parseProbe', () => {
       width: 1280,
       highBitDepth: false,
     })
-    expect(mkv.audio).toEqual([
+    expect(mkv.audio).toMatchObject([
       {
         index: 1,
         language: 'rus',

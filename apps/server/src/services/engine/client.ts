@@ -604,6 +604,7 @@ export const engineMaintenancePath = z.object({
   inode: z.number().int().max(Number.MAX_SAFE_INTEGER),
   size: z.number().int(),
   mtime: z.number(),
+  baselineAbsent: z.literal(true).optional(),
 })
 export const engineDetachManifest = z.object({
   infoHash: z.string(),

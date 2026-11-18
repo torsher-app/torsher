@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/anacrolix/torrent"
 	"io"
 	"net/http"
@@ -718,6 +719,219 @@ func TestMaintenanceCancelIntactStagedIntent(t *testing.T) {
 	}
 	if r := maintenanceRequest(t, a, "POST", "/maintenance/intact/cancel", nil); r.Code != 200 {
 		t.Fatal("cancel not idempotent")
+	}
+}
+
+func TestMaintenanceCancelReadOnlyLibraryCopy(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("requires non-root permissions")
+	}
+	a, _ := newTestEngine(t, t.TempDir())
+	item := maintenanceFixture(t)
+	if err := os.Chmod(item.Path, 0444); err != nil {
+		t.Fatal(err)
+	}
+	// Для возврата настоящего source по-прежнему нужен writable pinned fd.
+	if file, err := openMaintenanceFile(item); err == nil {
+		file.Close()
+		t.Fatal("read-only fixture unexpectedly writable")
+	}
+	manifest := detachManifest{InfoHash: strings.Repeat("e", 40), PieceCount: 1, Paths: []maintenancePath{item}}
+	if r := maintenanceRequest(t, a, "POST", "/maintenance/readonly/prepare", manifest); r.Code != 200 {
+		t.Fatal(r.Code, r.Body.String())
+	}
+	original := maintenanceUnlinkCheckpoint
+	maintenanceUnlinkCheckpoint = func(step string) error {
+		if step == "before_capture" {
+			return errors.New("synthetic_before_capture")
+		}
+		return nil
+	}
+	t.Cleanup(func() { maintenanceUnlinkCheckpoint = original })
+	if r := maintenanceRequest(t, a, "POST", "/maintenance/readonly/unlink", map[string]int{"index": 0}); r.Code != 409 {
+		t.Fatal(r.Code, r.Body.String())
+	}
+	a.maintenance = loadMaintenance(a.maintenance.dir)
+	if r := maintenanceRequest(t, a, "POST", "/maintenance/readonly/cancel", nil); r.Code != 200 {
+		t.Fatal(r.Code, r.Body.String())
+	}
+	if data, err := os.ReadFile(item.Path); err != nil || string(data) != "synthetic" {
+		t.Fatal("readonly payload changed", err)
+	}
+}
+
+func TestMaintenanceCancelAbsentBaseline(t *testing.T) {
+	a, _ := newTestEngine(t, t.TempDir())
+	source := maintenanceFixture(t)
+	copy := maintenanceFixture(t)
+	if err := os.Remove(source.Path); err != nil {
+		t.Fatal(err)
+	}
+	source.BaselineAbsent = true
+	manifest := detachManifest{InfoHash: strings.Repeat("d", 40), PieceCount: 1, Paths: []maintenancePath{source, copy}}
+	if r := maintenanceRequest(t, a, "POST", "/maintenance/baseline/prepare", manifest); r.Code != 200 {
+		t.Fatal(r.Code, r.Body.String())
+	}
+	if !a.maintenance.blocked("", []string{source.Path}) {
+		t.Fatal("absent source claim lost")
+	}
+	if r := maintenanceRequest(t, a, "POST", "/maintenance/baseline/unlink", map[string]int{"index": 0}); r.Code != 200 {
+		t.Fatal(r.Code, r.Body.String())
+	}
+	if len(loadMaintenance(a.maintenance.dir).fences["baseline"].Results) != 0 {
+		t.Fatal("absent baseline recorded a destructive result")
+	}
+	original := maintenanceUnlinkCheckpoint
+	maintenanceUnlinkCheckpoint = func(step string) error {
+		if step == "before_capture" {
+			return errors.New("synthetic_before_capture")
+		}
+		return nil
+	}
+	t.Cleanup(func() { maintenanceUnlinkCheckpoint = original })
+	if r := maintenanceRequest(t, a, "POST", "/maintenance/baseline/unlink", map[string]int{"index": 1}); r.Code != 409 {
+		t.Fatal(r.Code, r.Body.String())
+	}
+	a.maintenance = loadMaintenance(a.maintenance.dir)
+	if !a.maintenance.fences["baseline"].Manifest.Paths[0].BaselineAbsent {
+		t.Fatal("baseline not durable")
+	}
+	if r := maintenanceRequest(t, a, "POST", "/maintenance/baseline/prepare", manifest); r.Code != 200 {
+		t.Fatal(r.Code, r.Body.String())
+	}
+	if r := maintenanceRequest(t, a, "POST", "/maintenance/baseline/cancel", nil); r.Code != 200 {
+		t.Fatal(r.Code, r.Body.String())
+	}
+	if _, err := os.Lstat(source.Path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("absent source restored", err)
+	}
+	if data, err := os.ReadFile(copy.Path); err != nil || string(data) != "synthetic" {
+		t.Fatal("copy changed", err)
+	}
+	if err := os.WriteFile(source.Path, []byte("next download"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if r := maintenanceRequest(t, a, "POST", "/maintenance/baseline/prepare", manifest); r.Code != 200 {
+		t.Fatal("terminal manifest lost idempotency", r.Code, r.Body.String())
+	}
+}
+
+func TestMaintenanceAbsentBaselineFinalize(t *testing.T) {
+	for _, appeared := range []bool{false, true} {
+		t.Run(fmt.Sprint(appeared), func(t *testing.T) {
+			a, _ := newTestEngine(t, t.TempDir())
+			source := maintenanceFixture(t)
+			copy := maintenanceFixture(t)
+			if err := os.Remove(source.Path); err != nil {
+				t.Fatal(err)
+			}
+			source.BaselineAbsent = true
+			manifest := detachManifest{InfoHash: strings.Repeat("c", 40), PieceCount: 1, Paths: []maintenancePath{source, copy}}
+			if r := maintenanceRequest(t, a, "POST", "/maintenance/baseline-finalize/prepare", manifest); r.Code != 200 {
+				t.Fatal(r.Code, r.Body.String())
+			}
+			for index := range manifest.Paths {
+				if r := maintenanceRequest(t, a, "POST", "/maintenance/baseline-finalize/unlink", map[string]int{"index": index}); r.Code != 200 {
+					t.Fatal(r.Code, r.Body.String())
+				}
+			}
+			if result := a.maintenance.fences["baseline-finalize"].Results["0"]; result != "" {
+				t.Fatal("absent baseline recorded an effect", result)
+			}
+			if appeared {
+				if err := os.WriteFile(source.Path, []byte("next download"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			response := maintenanceRequest(t, a, "POST", "/maintenance/baseline-finalize/finalize", nil)
+			if appeared {
+				if response.Code != 409 || !a.maintenance.blocked(manifest.InfoHash, []string{source.Path}) {
+					t.Fatal("appeared source released", response.Code, response.Body.String())
+				}
+				if data, err := os.ReadFile(source.Path); err != nil || string(data) != "next download" {
+					t.Fatal("appeared source changed", err)
+				}
+			} else if response.Code != 200 {
+				t.Fatal(response.Code, response.Body.String())
+			}
+		})
+	}
+}
+
+func TestMaintenanceAbsentBaselineSafety(t *testing.T) {
+	for _, failure := range []string{"present_at_prepare", "appeared", "offline", "path_symlink", "parent_symlink", "captured", "removed", "legacy_missing", "restore_session"} {
+		t.Run(failure, func(t *testing.T) {
+			a, _ := newTestEngine(t, t.TempDir())
+			source := maintenanceFixture(t)
+			copy := maintenanceFixture(t)
+			source.BaselineAbsent = failure != "legacy_missing"
+			if failure != "present_at_prepare" {
+				if err := os.Remove(source.Path); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if failure == "parent_symlink" {
+				if err := os.Mkdir(filepath.Join(source.Root, "nested"), 0700); err != nil {
+					t.Fatal(err)
+				}
+				source.Path = filepath.Join(source.Root, "nested", "absent.mkv")
+			}
+			manifest := detachManifest{InfoHash: strings.Repeat("b", 40), PieceCount: 1, Paths: []maintenancePath{source, copy}}
+			response := maintenanceRequest(t, a, "POST", "/maintenance/absent-unsafe/prepare", manifest)
+			if failure == "present_at_prepare" {
+				if response.Code != 409 {
+					t.Fatal("accepted existing baseline", response.Code)
+				}
+				return
+			}
+			if response.Code != 200 {
+				t.Fatal(response.Code, response.Body.String())
+			}
+			fence := a.maintenance.fences["absent-unsafe"]
+			fence.Results["1"] = "staged"
+			fence.State = "deleting"
+			switch failure {
+			case "appeared":
+				if err := os.WriteFile(source.Path, []byte("new source"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			case "offline":
+				if err := os.Rename(source.Root, source.Root+".old"); err != nil {
+					t.Fatal(err)
+				}
+				t.Cleanup(func() { os.RemoveAll(source.Root + ".old") })
+			case "path_symlink":
+				if err := os.Symlink(copy.Root, source.Path); err != nil {
+					t.Fatal(err)
+				}
+			case "parent_symlink":
+				parent := filepath.Dir(source.Path)
+				if err := os.Remove(parent); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(copy.Root, parent); err != nil {
+					t.Fatal(err)
+				}
+			case "captured":
+				stage := filepath.Join(source.Root, ".torsher-maintenance-absent-unsafe-0")
+				if err := os.Mkdir(stage, 0700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(filepath.Join(stage, "file"), []byte("captured"), 0600); err != nil {
+					t.Fatal(err)
+				}
+			case "removed":
+				fence.Results["1"] = "removed"
+			case "restore_session":
+				fence.RestoreSession = &savedTorrent{}
+			}
+			if r := maintenanceRequest(t, a, "POST", "/maintenance/absent-unsafe/cancel", nil); r.Code != 409 {
+				t.Fatal("unsafe baseline released", r.Code, r.Body.String())
+			}
+			if !a.maintenance.blocked(manifest.InfoHash, []string{source.Path}) {
+				t.Fatal("unsafe fence released")
+			}
+		})
 	}
 }
 

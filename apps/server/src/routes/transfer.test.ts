@@ -1,5 +1,7 @@
 import { Buffer } from 'node:buffer'
+import type { Stats } from 'node:fs'
 import { mkdtempSync } from 'node:fs'
+import { mkdtemp, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { gzipSync } from 'node:zlib'
@@ -14,7 +16,7 @@ import {
   vi,
 } from 'vitest'
 import { createApp } from '../app.ts'
-import { ACCESS_TOKEN_COOKIE } from '../config.ts'
+import { ACCESS_TOKEN_COOKIE, PROFILE_COOKIE } from '../config.ts'
 import { getDb, migrateDb } from '../db/index.ts'
 import {
   collectionHiddenProfiles,
@@ -27,6 +29,7 @@ import {
   libraryFolders,
   mediaFiles,
   netRoutes,
+  profileImports,
   profiles,
   profileTitles,
   titleAliases,
@@ -35,6 +38,16 @@ import {
   users,
 } from '../db/schema.ts'
 import { decryptSecret, encryptSecret } from '../services/secrets/index.ts'
+import { persistedProbeKey } from '../services/library/playedSource.ts'
+import { applyScan } from '../services/library/scan.ts'
+import { parseProbe } from '../services/media/probe.ts'
+import {
+  getTitleProgress,
+  launchSelectionOf,
+  rememberStartedSource,
+  rememberVoice,
+} from '../services/sources/progress.ts'
+import { resumeTarget } from '../services/sources/resume.ts'
 import { resetImportJobs } from '../services/transfer/imports.ts'
 import { applyPendingDecisions } from '../services/transfer/libraryMatches.ts'
 import {
@@ -50,6 +63,19 @@ import {
 } from '../services/transfer/passwords.ts'
 
 const app = createApp()
+const fsControl = vi.hoisted(() => ({
+  beforeStat: undefined as ((path: string) => Promise<void> | void) | undefined,
+}))
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>()
+  return {
+    ...actual,
+    stat: async (...args: Parameters<typeof actual.stat>) => {
+      await fsControl.beforeStat?.(String(args[0]))
+      return actual.stat(...args)
+    },
+  }
+})
 
 function authed() {
   return { [ACCESS_TOKEN_COOKIE]: signToken('user-1', 'user_access') }
@@ -731,6 +757,524 @@ describe('profile import', () => {
         .get(),
     ).toMatchObject({ watchedMarkedAt: at(2), favoriteAt: null })
   })
+
+  it.each([
+    'unchanged',
+    'new source',
+    'new voice',
+    'same imported voice',
+    'round trip',
+    'legacy journal',
+  ] as const)(
+    'undo restores the factual source and preserves selection changes (%s)',
+    async (selection) => {
+      const db = getDb()
+      const localSource = {
+        kind: 'library' as const,
+        mediaFileId: 'local-played-file',
+        torrentId: null,
+        fileIndex: null,
+        quality: 'SD' as const,
+        voice: { studio: 'Old voice' },
+      }
+      db.update(titleProgress)
+        .set({
+          mediaFileId: 'local-export-file',
+          playedSource: { ...localSource, mediaFileId: 'local-export-file' },
+          voiceStudio: 'Imported',
+        })
+        .where(eq(titleProgress.profileId, ANNA))
+        .run()
+      const body = await profileExport(ANNA)
+      expect(body).not.toContain('local-export-file')
+      expect(body).not.toContain('playedSource')
+      expect(body).not.toContain('voiceSelectionRevision')
+      expect(body).not.toContain('voice_selection_revision')
+      db.insert(titleProgress)
+        .values({
+          profileId: DAD,
+          titleId: MOVIE,
+          season: 0,
+          episode: 0,
+          position: 10,
+          duration: 100,
+          mediaFileId: localSource.mediaFileId,
+          playedSource: localSource,
+          lastPlayedAt: at(1),
+          updatedAt: at(1),
+          voiceStudio: 'Old voice',
+        })
+        .run()
+      const where = and(
+        eq(titleProgress.profileId, DAD),
+        eq(titleProgress.titleId, MOVIE),
+      )
+      const before = db.select().from(titleProgress).where(where).get()!
+      const job = (await upload(DAD, body)).json()
+      const applied = await app.inject({
+        method: 'POST',
+        url: `/api/profiles/${DAD}/imports/${job.id}/apply`,
+        cookies: authed(),
+        payload: { conflicts: 'newer' },
+      })
+      expect(applied.statusCode).toBe(200)
+      expect(db.select().from(titleProgress).where(where).get()).toMatchObject({
+        position: 1200,
+        playedSource: { kind: 'unknown' },
+        voiceStudio: 'Imported',
+        voiceSelectionRevision: before.voiceSelectionRevision,
+      })
+      const ref = { profileId: DAD, titleId: MOVIE }
+      const id = applied.json().id
+      const mediaFileId
+        = selection === 'new source' ? 'local-selected-file' : before.mediaFileId
+      const voiceStudio
+        = selection === 'unchanged'
+          ? before.voiceStudio
+          : selection === 'same imported voice'
+            || selection === 'round trip'
+            || selection === 'legacy journal'
+            ? 'Imported'
+            : 'More recent voice'
+      if (selection === 'round trip')
+        rememberVoice(ref, { studio: 'Another' })
+      if (selection !== 'unchanged') {
+        rememberVoice(
+          ref,
+          { studio: voiceStudio! },
+          {
+            torrentId: null,
+            fileIndex: null,
+            mediaFileId,
+          },
+        )
+      }
+      if (selection === 'legacy journal') {
+        const entry = db
+          .select()
+          .from(profileImports)
+          .where(eq(profileImports.id, id))
+          .get()!
+        for (const item of entry.undo!) {
+          if ('table' in item) {
+            delete item.afterVoice
+            delete item.afterVoiceRevision
+          }
+        }
+        db.update(profileImports)
+          .set({ undo: entry.undo })
+          .where(eq(profileImports.id, id))
+          .run()
+      }
+      const undone = await app.inject({
+        method: 'POST',
+        url: `/api/profiles/${DAD}/imports/${id}/undo`,
+        cookies: authed(),
+      })
+      expect(undone.statusCode).toBe(200)
+      expect(db.select().from(titleProgress).where(where).get()).toEqual({
+        ...before,
+        mediaFileId,
+        voiceStudio,
+        voiceSelectionRevision:
+          selection === 'unchanged' ? 0 : selection === 'round trip' ? 2 : 1,
+      })
+    },
+  )
+
+  it.each([false, true])(
+    'keeps a new file choice while removing its imported view; explicit voice=%s',
+    async (explicit) => {
+      getDb()
+        .update(titleProgress)
+        .set({ voiceStudio: 'Imported' })
+        .where(
+          and(
+            eq(titleProgress.profileId, ANNA),
+            eq(titleProgress.titleId, MOVIE),
+          ),
+        )
+        .run()
+      const job = (await upload(DAD, await profileExport(ANNA))).json()
+      const applied = await app.inject({
+        method: 'POST',
+        url: `/api/profiles/${DAD}/imports/${job.id}/apply`,
+        cookies: authed(),
+        payload: { conflicts: 'newer' },
+      })
+      expect(applied.statusCode).toBe(200)
+      const ref = { profileId: DAD, titleId: MOVIE }
+      const imported = getTitleProgress(ref)!
+      expect(imported.position).toBe(1200)
+      expect(imported.voiceStudio).toBe('Imported')
+      const source = {
+        mediaFileId: 'local-selected-file',
+        torrentId: null,
+        fileIndex: null,
+      }
+      if (explicit)
+        rememberVoice(ref, { studio: 'Imported' }, source)
+      else rememberStartedSource(ref, source, launchSelectionOf(ref, imported))
+      expect(
+        (
+          await app.inject({
+            method: 'POST',
+            url: `/api/profiles/${DAD}/imports/${applied.json().id}/undo`,
+            cookies: authed(),
+          })
+        ).statusCode,
+      ).toBe(200)
+      expect(getTitleProgress(ref)).toMatchObject({
+        mediaFileId: 'local-selected-file',
+        voiceStudio: explicit ? 'Imported' : null,
+        voiceSelectionRevision: explicit ? 1 : 0,
+        position: 0,
+        duration: null,
+        watchedAt: null,
+        lastPlayedAt: null,
+        playedSource: null,
+        updatedAt: imported.updatedAt,
+      })
+    },
+  )
+
+  it.each([
+    { name: 'empty original voice', studio: null, type: null, legacy: false },
+    { name: 'original voice', studio: 'Before', type: 'MVO', legacy: false },
+    { name: 'legacy journal', studio: 'Before', type: 'MVO', legacy: true },
+  ])(
+    'undo keeps the later source-only choice with $name',
+    async ({ studio, type, legacy }) => {
+      const db = getDb()
+      const ref = { profileId: DAD, titleId: MOVIE, season: 0, episode: 0 }
+      const playedSource = {
+        kind: 'library' as const,
+        mediaFileId: 'before-file',
+        torrentId: null,
+        fileIndex: null,
+        quality: '1080p' as const,
+        voice: null,
+      }
+      db.insert(titleProgress)
+        .values({
+          ...ref,
+          mediaFileId: playedSource.mediaFileId,
+          position: 21,
+          duration: 100,
+          playedSource,
+          voiceStudio: studio,
+          voiceType: type,
+          lastPlayedAt: at(1),
+          updatedAt: at(1),
+        })
+        .run()
+      db.update(titleProgress)
+        .set({ voiceStudio: 'Imported', voiceType: 'DVO' })
+        .where(
+          and(
+            eq(titleProgress.profileId, ANNA),
+            eq(titleProgress.titleId, MOVIE),
+          ),
+        )
+        .run()
+      const job = (await upload(DAD, await profileExport(ANNA))).json()
+      const applied = await app.inject({
+        method: 'POST',
+        url: `/api/profiles/${DAD}/imports/${job.id}/apply`,
+        cookies: authed(),
+        payload: { conflicts: 'newer' },
+      })
+      expect(applied.statusCode).toBe(200)
+      const imported = getTitleProgress(ref)!
+      rememberStartedSource(
+        ref,
+        { mediaFileId: 'selected-file', torrentId: null, fileIndex: null },
+        launchSelectionOf(ref, imported),
+      )
+      expect(getTitleProgress(ref)).toMatchObject({
+        mediaFileId: 'selected-file',
+        voiceStudio: 'Imported',
+        voiceType: 'DVO',
+        voiceSelectionRevision: 0,
+      })
+      const id = applied.json().id
+      if (legacy) {
+        const where = eq(profileImports.id, id)
+        const journal = db.select().from(profileImports).where(where).get()!.undo!
+        for (const entry of journal) {
+          if ('table' in entry)
+            delete entry.afterVoiceRevision
+        }
+        db.update(profileImports).set({ undo: journal }).where(where).run()
+      }
+      const undone = await app.inject({
+        method: 'POST',
+        url: `/api/profiles/${DAD}/imports/${id}/undo`,
+        cookies: authed(),
+      })
+      expect(undone.statusCode).toBe(200)
+      expect(getTitleProgress(ref)).toMatchObject({
+        mediaFileId: 'selected-file',
+        position: 21,
+        duration: 100,
+        playedSource,
+        voiceStudio: legacy ? 'Imported' : studio,
+        voiceType: legacy ? 'DVO' : type,
+        voiceSelectionRevision: 0,
+        updatedAt: at(1),
+      })
+    },
+  )
+
+  it.each([
+    'confirmed',
+    'same choice again',
+    'choice round trip',
+    'foreign source',
+    'expired',
+    'evicted',
+    'delayed stat',
+    'derived title delayed stat',
+    'closed file replaced',
+  ] as const)(
+    'uses the playback launch to resume the actual library file after an import (%s)',
+    async (scenario) => {
+      const root = await mkdtemp(join(tmpdir(), 'torsher-import-resume-'))
+      const db = getDb()
+      const ref = { profileId: DAD, titleId: MOVIE }
+      const title = { id: MOVIE }
+      const cookies = { ...authed(), [PROFILE_COOKIE]: DAD }
+      const sessions: string[] = []
+      const source = (mediaFileId: string) => ({
+        mediaFileId,
+        torrentId: null,
+        fileIndex: null,
+      })
+      const start = async (mediaFileId: string, inferredTitle = false) => {
+        const response = await app.inject({
+          method: 'POST',
+          url: '/api/playback',
+          cookies,
+          payload: { mediaFileId, title: inferredTitle ? undefined : title },
+        })
+        expect(response.statusCode, response.body).toBe(200)
+        const { sessionId } = response.json()
+        expect(response.json()).toMatchObject({
+          status: 'ready',
+          reasons: ['ToolsMissing'],
+        })
+        sessions.push(sessionId)
+        return sessionId as string
+      }
+      const checkpoint = async (
+        mediaFileId: string,
+        sessionId: string,
+        position: number,
+      ) => {
+        const response = await app.inject({
+          method: 'PUT',
+          url: '/api/watch-state',
+          cookies,
+          payload: {
+            mediaFileId,
+            title,
+            sessionId,
+            position,
+            duration: 5400,
+            appliedAudioStream: null,
+          },
+        })
+        expect(response.statusCode, response.body).toBe(200)
+      }
+      const close = (id: string) =>
+        app.inject({ method: 'DELETE', url: `/api/playback/${id}`, cookies })
+      let unblockStat: (() => void) | undefined
+      try {
+        const library = db
+          .insert(libraries)
+          .values({ kind: 'video', name: 'Import resume' })
+          .returning()
+          .get()
+        const folder = db
+          .insert(libraryFolders)
+          .values({ libraryId: library.id, path: root, status: 'ok' })
+          .returning()
+          .get()
+        const files = []
+        for (const label of ['a', 'b', 'c']) {
+          const relPath = `${label}.mkv`
+          const path = join(root, relPath)
+          await writeFile(path, label)
+          const info = await stat(path)
+          files.push(
+            db
+              .insert(mediaFiles)
+              .values({
+                folderId: folder.id,
+                titleId: MOVIE,
+                relPath,
+                size: info.size,
+                inode: info.ino,
+                mtime: info.mtime,
+              })
+              .returning()
+              .get().id,
+          )
+        }
+        const [a, b, c] = files as [string, string, string]
+        const previous = await start(a)
+        await checkpoint(a, previous, 10)
+        db.update(titleProgress)
+          .set({ updatedAt: at(1), lastPlayedAt: at(1) })
+          .where(eq(titleProgress.profileId, DAD))
+          .run()
+        const job = (await upload(DAD, await profileExport(ANNA))).json()
+        const imported = await app.inject({
+          method: 'POST',
+          url: `/api/profiles/${DAD}/imports/${job.id}/apply`,
+          cookies: authed(),
+          payload: { conflicts: 'newer' },
+        })
+        expect(imported.statusCode).toBe(200)
+        expect(getTitleProgress(ref)).toMatchObject({
+          mediaFileId: a,
+          position: 1200,
+          playedSource: { kind: 'unknown' },
+        })
+
+        if (scenario === 'evicted') {
+          // With an ordinary factual A, the legacy path would allow B.
+          await checkpoint(a, previous, 1225)
+        }
+        const pathB = join(root, 'b.mkv')
+        function storeProbe(info: Stats, width: number, height: number) {
+          db.update(mediaFiles)
+            .set({
+              probeKey: persistedProbeKey(info),
+              probe: parseProbe(
+                { streams: [{ index: 0, codec_type: 'video', width, height }] },
+                'b.mkv',
+              ),
+            })
+            .where(eq(mediaFiles.id, b))
+            .run()
+        }
+        if (scenario === 'closed file replaced')
+          storeProbe(await stat(pathB), 1920, 1080)
+        const delayed
+          = scenario === 'delayed stat'
+            || scenario === 'derived title delayed stat'
+        let waitForStat: Promise<void> | undefined
+        if (delayed) {
+          let enter!: () => void
+          waitForStat = new Promise((resolve) => {
+            enter = resolve
+          })
+          const gate = new Promise<void>((resolve) => {
+            unblockStat = resolve
+          })
+          fsControl.beforeStat = (path) => {
+            if (path === pathB) {
+              fsControl.beforeStat = undefined
+              enter()
+              return gate
+            }
+          }
+        }
+        const request = start(b, scenario === 'derived title delayed stat')
+        if (waitForStat) {
+          await waitForStat
+          rememberVoice(ref, { studio: 'Newer choice' }, source(c))
+          unblockStat?.()
+        }
+        const playing = await request
+        if (scenario === 'choice round trip')
+          rememberVoice(ref, {}, source(c))
+        if (
+          scenario === 'same choice again'
+          || scenario === 'choice round trip'
+        ) {
+          rememberVoice(ref, {}, source(a))
+        }
+        if (scenario === 'evicted') {
+          for (let i = 0; i < 1024; i++)
+            launchSelectionOf({ profileId: DAD, titleId: `tmdb:movie:${i}` })
+        }
+        if (scenario === 'confirmed' || scenario === 'closed file replaced')
+          await checkpoint(b, playing, 1250)
+        expect((await close(playing)).statusCode).toBe(200)
+        if (scenario === 'closed file replaced') {
+          expect(getTitleProgress(ref)?.playedSource).toMatchObject({
+            quality: '1080p',
+          })
+          const replacement = join(root, '.replacement')
+          await writeFile(replacement, 'new content')
+          await rename(replacement, pathB)
+          const info = await stat(pathB)
+          const old = db
+            .select()
+            .from(mediaFiles)
+            .where(eq(mediaFiles.id, b))
+            .get()!
+          expect(
+            applyScan(
+              folder.id,
+              [
+                {
+                  relPath: old.relPath,
+                  inode: info.ino,
+                  size: info.size,
+                  mtime: info.mtimeMs,
+                },
+              ],
+              [old],
+            ).changed,
+          ).toEqual([b])
+          storeProbe(info, 3840, 2160)
+        }
+        if (scenario === 'expired') {
+          vi.useFakeTimers({ toFake: ['Date'] })
+          vi.setSystemTime(Date.now() + 121_000)
+        }
+        await checkpoint(
+          b,
+          scenario === 'foreign source' ? previous : playing,
+          1300,
+        )
+        const remembered
+          = scenario === 'confirmed' || scenario === 'closed file replaced'
+            ? b
+            : delayed
+              ? c
+              : a
+        expect(getTitleProgress(ref)).toMatchObject({
+          position: 1300,
+          mediaFileId: remembered,
+          playedSource: { kind: 'library', mediaFileId: b, voice: null },
+        })
+        expect(
+          (await resumeTarget(DAD, MOVIE, async () => []))?.mediaFileId,
+        ).toBe(remembered)
+        if (scenario === 'closed file replaced') {
+          expect(getTitleProgress(ref)?.playedSource).toMatchObject({
+            quality: '1080p',
+          })
+          await checkpoint(b, await start(b), 1350)
+          expect(getTitleProgress(ref)?.playedSource).toMatchObject({
+            quality: '2160p',
+          })
+        }
+      }
+      finally {
+        fsControl.beforeStat = undefined
+        unblockStat?.()
+        if (scenario === 'expired')
+          vi.useRealTimers()
+        for (const id of sessions) await close(id)
+        await rm(root, { recursive: true, force: true })
+      }
+    },
+  )
 
   it('merges a profile export into another profile and undoes it', async () => {
     const body = await profileExport(ANNA)

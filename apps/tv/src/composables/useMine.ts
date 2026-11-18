@@ -32,7 +32,7 @@ export function useMineSections() {
     )
 
     if (!isTitleViewer(viewer) || outcome.status === 'cancelled')
-      return
+      return false
 
     if (outcome.status === 'failed') {
       if (!quiet) {
@@ -40,11 +40,12 @@ export function useMineSections() {
         status.value = 'error'
       }
 
-      return
+      return false
     }
 
     sections.value = outcome.value.sections
     status.value = 'ready'
+    return true
   }
 
   watch(language, () => load(), { immediate: true })
@@ -193,7 +194,7 @@ export function useMineItems(
     const current = section.value
 
     if (!current || status.value !== 'ready')
-      return
+      return !current
 
     const started = ++generation
     loadingMore = undefined
@@ -217,7 +218,9 @@ export function useMineItems(
     ) {
       items.value = outcome.value.items
       total.value = outcome.value.total
+      return true
     }
+    return false
   }
 
   const sources = [

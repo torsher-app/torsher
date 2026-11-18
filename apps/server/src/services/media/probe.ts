@@ -4,7 +4,20 @@ import { untrustedInputArgs } from './inputSafety.ts'
 
 export type Container = 'mp4' | 'webm' | 'mkv' | 'avi' | 'ts' | 'other'
 
-export interface VideoStreamInfo {
+/** Container family for timing and Cues; device support still distinguishes WebM and MKV. */
+export function isMatroska(container: Container) {
+  return container === 'mkv' || container === 'webm'
+}
+
+export interface StreamTiming {
+  /** Signed timestamps in the source clock, before format start normalization. */
+  startTime?: number
+  duration?: number
+}
+
+export interface VideoStreamInfo extends StreamTiming {
+  /** Decoder reorder delay reported by ffprobe; absent means unknown. */
+  videoDelay?: number
   index: number
   codec: string
   profile: string | null
@@ -23,7 +36,7 @@ export interface VideoStreamInfo {
   pixelAspect: number
 }
 
-export interface AudioStreamInfo {
+export interface AudioStreamInfo extends StreamTiming {
   index: number
   /** ISO 639-2 из тегов файла (`rus`, `eng`), `und` и пустое — null */
   language: string | null
@@ -49,6 +62,8 @@ export interface SubtitleStreamInfo {
 }
 
 export interface MediaInfo {
+  /** Common source origin; HLS normalizes this to zero. */
+  startTime?: number
   container: Container
   /** Секунды; у недокачанного файла без длительности в заголовке — null */
   duration: number | null
@@ -83,6 +98,11 @@ const HDR_TRANSFERS = new Set(['smpte2084', 'arib-std-b67'])
 
 interface ProbeStream {
   index: number
+  start_time?: string
+  duration?: string
+  duration_ts?: number
+  time_base?: string
+  has_b_frames?: number
   codec_type?: string
   codec_name?: string
   profile?: string
@@ -104,6 +124,7 @@ interface ProbeStream {
 export interface ProbeOutput {
   streams?: ProbeStream[]
   format?: {
+    start_time?: string
     format_name?: string
     duration?: string
     bit_rate?: string
@@ -130,11 +151,30 @@ function createdOf(output: ProbeOutput) {
   return null
 }
 
-function tag(stream: ProbeStream, name: string) {
-  const tags = stream.tags ?? {}
+function tag(
+  source: { tags?: Record<string, string | undefined> },
+  name: string,
+) {
+  const tags = source.tags ?? {}
   const value = tags[name] ?? tags[name.toUpperCase()]
 
   return value?.trim() || null
+}
+
+/** Matroska may attach a language suffix to track statistics. Keep it for pairing. */
+function languageTag(stream: ProbeStream, name: string) {
+  const plain = tag(stream, name)
+  if (plain)
+    return { value: plain, suffix: '' }
+
+  const key = Object.keys(stream.tags ?? {}).find(
+    key =>
+      key.toUpperCase().startsWith(`${name.toUpperCase()}-`)
+      && tag(stream, key),
+  )
+  return key
+    ? { value: tag(stream, key)!, suffix: key.slice(name.length) }
+    : null
 }
 
 function languageOf(stream: ProbeStream) {
@@ -147,6 +187,101 @@ function numberOf(value: string | number | undefined) {
   const parsed = Number(value)
 
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+}
+
+function signedNumber(value: string | number | undefined) {
+  if (value === undefined || value === '')
+    return undefined
+  const number = Number(value)
+  return Number.isFinite(number) ? number : undefined
+}
+
+function taggedDuration(
+  stream: ProbeStream,
+  start: number,
+  muxer: string | null,
+) {
+  const duration = languageTag(stream, 'DURATION')
+  if (!duration)
+    return null
+  const parts = duration.value.match(/^(\d+):(\d+):(\d+(?:\.\d+)?)$/)
+  if (!parts)
+    return null
+  const end
+    = Number(parts[1]) * 3600 + Number(parts[2]) * 60 + Number(parts[3])
+
+  // Lavf rewrites the plain tag as an end timestamp, even when remuxing
+  // old _STATISTICS_WRITING_APP and language-suffixed statistics unchanged.
+  if (!duration.suffix && /^Lavf[\d.]*$/i.test(muxer ?? ''))
+    return numberOf(end - start)
+  const marker = tag(stream, `_STATISTICS_WRITING_APP${duration.suffix}`)
+  if (!marker)
+    return numberOf(end - start)
+  const mkvmerge = /^mkvmerge\b/i.test(marker)
+  const mkvToolNixMuxer = /^(?:mkvmerge\b|libebml\b.+\blibmatroska\b)/i.test(
+    muxer ?? '',
+  )
+  return mkvmerge && (duration.suffix || mkvToolNixMuxer)
+    ? numberOf(end)
+    : null
+}
+
+function timingOf(
+  stream: ProbeStream,
+  origin: number | undefined,
+  muxer: string | null,
+): StreamTiming {
+  const startTime = signedNumber(stream.start_time)
+  const ticks = signedNumber(stream.duration_ts)
+  const base = ratioOf(stream.time_base)
+  const duration
+    = numberOf(stream.duration)
+      ?? (ticks !== undefined && base ? numberOf(ticks * base) : null)
+      ?? taggedDuration(stream, startTime ?? origin ?? 0, muxer)
+  return {
+    ...(startTime !== undefined ? { startTime } : {}),
+    ...(duration !== null ? { duration } : {}),
+  }
+}
+
+/** Packet ends are absolute timestamps, indexed by ffprobe stream index. */
+export type PacketEnds = ReadonlyMap<number, number>
+
+/** Selected streams only; the raw cached probe remains selection-independent. */
+export function hlsTiming(
+  media: MediaInfo,
+  audioIndex: number | null,
+  packetEnds?: PacketEnds,
+) {
+  const origin = media.startTime ?? 0
+  // Matroska's container duration can be an absolute end timestamp or include
+  // other tracks; it is not evidence for a selected stream's relative end.
+  const fallback = isMatroska(media.container) ? null : media.duration
+  const endOf = (stream: (StreamTiming & { index: number }) | null) => {
+    if (!stream)
+      return fallback
+    if (stream.duration !== undefined) {
+      return Math.max(
+        0,
+        (stream.startTime ?? origin) + stream.duration - origin,
+      )
+    }
+    const measured
+      = media.startTime === undefined ? undefined : packetEnds?.get(stream.index)
+    return measured !== undefined && measured > origin
+      ? measured - origin
+      : fallback
+  }
+  const videoEnd = endOf(media.video)
+  const audio = media.audio.find(track => track.index === audioIndex)
+  const audioEnd = audio ? endOf(audio) : 0
+  return {
+    videoEnd,
+    duration:
+      videoEnd !== null && audioEnd !== null
+        ? Math.max(videoEnd, audioEnd)
+        : fallback,
+  }
 }
 
 // mkvmerge пишет битрейт в теги статистики (`BPS`, `BPS-eng`), а не в поле потока
@@ -206,6 +341,11 @@ const INTERLACED_ORDERS = new Set(['tt', 'bb', 'tb', 'bt'])
 /** Вывод `ffprobe -show_format -show_streams` → то, что нужно решению и меню */
 export function parseProbe(output: ProbeOutput, fileName: string): MediaInfo {
   const streams = output.streams ?? []
+  const container = containerOf(output.format?.format_name ?? '', fileName)
+  const startTime = signedNumber(output.format?.start_time)
+  const matroska = isMatroska(container)
+  const tagOrigin = matroska ? startTime : undefined
+  const muxer = matroska ? tag(output.format ?? {}, 'encoder') : null
   // Обложки в MKV и MP4 приходят видеопотоком с `attached_pic`
   const video = streams.find(
     stream =>
@@ -213,11 +353,16 @@ export function parseProbe(output: ProbeOutput, fileName: string): MediaInfo {
   )
 
   return {
-    container: containerOf(output.format?.format_name ?? '', fileName),
+    container,
     duration: numberOf(output.format?.duration),
+    ...(startTime !== undefined ? { startTime } : {}),
     created: createdOf(output),
     video: video
       ? {
+          ...timingOf(video, tagOrigin, muxer),
+          ...(video.has_b_frames !== undefined
+            ? { videoDelay: video.has_b_frames }
+            : {}),
           index: video.index,
           codec: video.codec_name ?? 'unknown',
           profile: video.profile ?? null,
@@ -235,6 +380,7 @@ export function parseProbe(output: ProbeOutput, fileName: string): MediaInfo {
     audio: streams
       .filter(stream => stream.codec_type === 'audio')
       .map(stream => ({
+        ...timingOf(stream, tagOrigin, muxer),
         index: stream.index,
         language: languageOf(stream),
         title: titleOf(stream),
@@ -298,6 +444,76 @@ function runProbe(url: string, signal?: AbortSignal) {
   })
 }
 
+interface ProbePacket {
+  stream_index: number
+  pts_time?: string
+  duration_time?: string
+}
+
+/** Measures only a structurally validated, bounded Matroska fragment. */
+export function probePacketEnds(fragment: Uint8Array, signal: AbortSignal) {
+  return new Promise<PacketEnds | null>((resolve) => {
+    if (signal.aborted) {
+      resolve(null)
+      return
+    }
+    const child = execFile(
+      config.ffprobePath,
+      [
+        '-v',
+        'error',
+        '-protocol_whitelist',
+        'pipe',
+        '-f',
+        'matroska',
+        '-show_packets',
+        '-show_entries',
+        'packet=stream_index,pts_time,duration_time',
+        '-of',
+        'json',
+        'pipe:0',
+      ],
+      { signal, killSignal: 'SIGKILL', maxBuffer: 8 * 1024 * 1024 },
+      (err, stdout, stderr) => {
+        if (err || stderr || signal.aborted) {
+          resolve(null)
+          return
+        }
+        try {
+          const { packets } = JSON.parse(stdout) as { packets: ProbePacket[] }
+          const ends = new Map<number, number>()
+          const unknown = new Set<number>()
+          for (const packet of packets) {
+            const index = packet.stream_index
+            const pts = signedNumber(packet.pts_time)
+            const duration = numberOf(packet.duration_time)
+            if (
+              pts === undefined
+              || duration === null
+              || !Number.isFinite(pts + duration)
+            ) {
+              unknown.add(index)
+            }
+            else {
+              ends.set(
+                index,
+                Math.max(ends.get(index) ?? -Infinity, pts + duration),
+              )
+            }
+          }
+          for (const index of unknown) ends.delete(index)
+          resolve(ends.size ? ends : null)
+        }
+        catch {
+          resolve(null)
+        }
+      },
+    )
+    child.stdin?.on('error', () => child.kill('SIGKILL'))
+    child.stdin?.end(fragment)
+  })
+}
+
 const CACHE_SIZE = 200
 const cache = new Map<
   string,
@@ -314,7 +530,12 @@ export function peekMediaProbe(key: string) {
  * повторный запуск файла обходится без ffprobe. Одинаковые запросы ждут одну
  * пробу; неудачная проба из кэша уходит.
  */
-export function probeMedia(key: string, url: string, fileName: string) {
+export function probeMedia(
+  key: string,
+  url: string,
+  fileName: string,
+  confirmRevision?: () => Promise<boolean>,
+) {
   const cached = cache.get(key)
 
   if (cached) {
@@ -324,7 +545,11 @@ export function probeMedia(key: string, url: string, fileName: string) {
     return cached.promise
   }
 
-  const probe = runProbe(url).then(output => parseProbe(output, fileName))
+  const probe = runProbe(url).then(async (output) => {
+    if (confirmRevision && !(await confirmRevision()))
+      throw new Error('Media file changed during probe')
+    return parseProbe(output, fileName)
+  })
 
   const entry: { promise: Promise<MediaInfo>, ready?: MediaInfo } = {
     promise: probe,

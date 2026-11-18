@@ -190,6 +190,111 @@ afterEach(async () => {
 })
 
 describe('подключённые папки: скан', () => {
+  it('queues a pending release larger than the SQLite bind limit without splitting its decision', async () => {
+    const folderId = await scanned(await addLibrary())
+    const db = getDb()
+    const count = 32_767
+    db.transaction(() => {
+      for (let index = 0; index <= count; index++) {
+        db.insert(mediaFiles)
+          .values({
+            id: `large-${index}`,
+            folderId,
+            relPath: `Large/part-${index}.mkv`,
+            size: 1,
+            mtime: new Date(),
+            matchGroup: 'Large',
+            ...(index === count
+              ? {
+                  matchSource: 'user' as const,
+                  matchStatus: 'ignored' as const,
+                }
+              : {}),
+          })
+          .run()
+      }
+    })
+    try {
+      expect(() => queueUnmatched(folderId)).not.toThrow()
+      await matchIdle()
+      expect(rows()).toHaveLength(count + 1)
+      expect(rows().every(row => row.matchStatus === 'ignored')).toBe(true)
+      expect(fetchMock).not.toHaveBeenCalled()
+    }
+    finally {
+      db.delete(mediaFiles).run()
+    }
+  }, 30_000)
+  // Every row passes real maintenance admission; leave headroom on CI runners.
+  it('ignores a group larger than the SQLite bind limit without changing neighbours', async () => {
+    const folderId = await scanned(await addLibrary())
+    const otherPath = join(root, 'other')
+    await mkdir(otherPath)
+    const otherFolder = await scanned(await addLibrary({ path: otherPath }))
+    const db = getDb()
+    const count = 32_767
+    const row = {
+      folderId,
+      size: 1,
+      mtime: new Date(),
+      matchGroup: 'Large',
+      matchStatus: 'unmatched' as const,
+    }
+    const insert = db.$client.prepare(`
+      INSERT INTO media_files
+        (id, folder_id, rel_path, size, mtime, match_group, match_status, added_at)
+      VALUES (?, ?, ?, 1, ?, 'Large', 'unmatched', ?)
+    `)
+    db.transaction(() => {
+      for (let index = 0; index < count; index++) {
+        insert.run(
+          `large-ignore-${index}`,
+          folderId,
+          `Large/part-${index}.mkv`,
+          row.mtime.getTime(),
+          row.mtime.getTime(),
+        )
+      }
+      db.insert(mediaFiles)
+        .values([
+          { ...row, relPath: 'other.mkv', matchGroup: 'Other' },
+          { ...row, relPath: 'other.mkv', folderId: otherFolder },
+        ])
+        .run()
+    })
+    try {
+      const result = await app.inject({
+        method: 'PUT',
+        url: '/api/libraries/groups/title',
+        cookies: owner,
+        payload: { folderId, group: 'Large', titleId: null },
+      })
+      expect(result.statusCode).toBe(204)
+      const saved = db
+        .select({
+          relPath: mediaFiles.relPath,
+          matchStatus: mediaFiles.matchStatus,
+          matchSource: mediaFiles.matchSource,
+        })
+        .from(mediaFiles)
+        .all()
+      expect(
+        saved.filter(
+          item =>
+            item.matchStatus === 'ignored' && item.matchSource === 'user',
+        ),
+      ).toHaveLength(count)
+      expect(
+        saved
+          .filter(item => item.relPath === 'other.mkv')
+          .map(item => item.matchStatus),
+      ).toEqual(['unmatched', 'unmatched'])
+    }
+    finally {
+      db.delete(mediaFiles).run()
+    }
+  }, 60_000)
+
   it('повторный скан после настройки TMDB распознаёт прежние pending-файлы', async () => {
     vi.stubEnv('TMDB_ACCESS_TOKEN', '')
     vi.spyOn(config, 'tmdbAppKeyPath', 'get').mockReturnValue(

@@ -977,6 +977,7 @@ function save(
   reason:
     'exit' | 'next' | 'source_switch' | 'pause' | 'checkpoint' = 'checkpoint',
   context: DiagnosticContext = diagnosticContext,
+  checkpoint = checkpointSession(),
 ) {
   if (
     !awaitingPicture()
@@ -987,10 +988,18 @@ function save(
       knownDuration.value,
       reason,
       context,
+      checkpoint,
     )
   }
 
   return Promise.resolve()
+}
+
+function checkpointSession() {
+  return {
+    sessionId: playback.value?.sessionId,
+    appliedAudioStream: tracks.appliedAudioStream(hasNativePlayer),
+  }
 }
 
 function automaticContext(): AutomaticPlayback {
@@ -1239,6 +1248,7 @@ async function switchToLibrary(
 }
 
 function exit() {
+  const checkpoint = checkpointSession()
   backDiagnostic('exit')
   playerSummary('exit')
   launch++
@@ -1246,7 +1256,7 @@ function exit() {
   consent.cancel()
   hls.detach()
   player.close()
-  save('exit')
+  save('exit', diagnosticContext, checkpoint)
 
   goBack(router, () => void router.replace('/'))
 }
@@ -1514,6 +1524,7 @@ async function begin(from: number) {
 
   if (!el || !current?.streamUrl)
     return
+  tracks.resetAppliedAudio()
 
   // Свёрнутое приложение ставит паузу и на остановленном видео, без события
   // `pause`: поток не должен стартовать в фоне
@@ -1614,6 +1625,9 @@ function resumeAt() {
 // Тот же файл с теми же дорожками с места остановки; до первого потока —
 // обычный запуск с сохранённого места
 function relaunch() {
+  if (leaving)
+    return
+
   if (begun)
     void restartWith(requested ?? tracks.selection())
   else void start()
@@ -1678,7 +1692,8 @@ async function restartWith(change: PlaybackRestart) {
  */
 function recover(cause?: PlayerError, failure: PlayerFailure = {}) {
   if (
-    qualityChoice.value
+    leaving
+    || qualityChoice.value
     || retryTimer !== undefined
     || player.status.value === 'error'
   ) {
@@ -2404,11 +2419,13 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  const exiting = leaving
   leaving = true
   stopDiagnosticMedia()
   playerSummary('unmounted')
   consent.cancel()
-  save()
+  if (!exiting)
+    save()
   offKey?.()
   clearInterval(clockTimer)
   clearTimeout(retryTimer)

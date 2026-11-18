@@ -38,7 +38,10 @@ import { syncLibrary } from '../library/linker.ts'
 import { logFor } from '../logs/index.ts'
 import { relinkTitleProgress } from '../sources/progress.ts'
 import { ensureSpaceFor, InsufficientStorageError } from '../storage/index.ts'
-import { isMovingTorrent } from '../storage/moving.ts'
+import {
+  isMovingTorrent,
+  withTorrentStorageMutation,
+} from '../storage/moving.ts'
 import { torrentDir } from '../storage/paths.ts'
 import { isStreaming } from '../storage/streams.ts'
 import { downloadFiles, getTorrent } from '../torrents/index.ts'
@@ -48,9 +51,11 @@ import {
   diskPathOf,
   forgetKeepingFiles,
   linkCarried,
+  metadataPaths,
   moveWatchStates,
   NoLinkError,
   removeFiles,
+  removeRetiredFiles,
   unlinkCarried,
 } from '../torrents/refresh.ts'
 import {
@@ -617,27 +622,13 @@ async function prepare(
     return 'no_space'
   }
 
-  if (!ctx.isCurrent())
-    return cancelRefresh(ctx)
-  if (old.inEngine) {
-    await forgetKeepingFiles(old)
-    refresh.forgotten = true
-    setRefresh(topic.id, refresh)
-  }
-
-  if (!ctx.isCurrent())
-    return cancelRefresh(ctx)
-
-  // This durable boundary precedes the first destructive unlink. From here
-  // recovery must finish the accepted replacement even if policy changes.
   Object.assign(refresh, {
-    stage: 'committing',
     selection,
     downloadDir: old.downloadDir,
     redownload: changed,
+    unlink: changed.filter(index => onDisk[index] !== 'missing'),
+    protectedPaths: [...metadataPaths(old, dir), ...metadataPaths(next, dir)],
   })
-  delete refresh.retryAt
-  durableSqlite(getDb().$client, () => setRefresh(topic.id, refresh))
   return undefined
 }
 
@@ -710,6 +701,7 @@ function relink(ctx: RefreshContext, now: Date) {
         retention: 'keep',
         selectedFiles: refresh.selection ?? [],
         downloadDir: refresh.downloadDir ?? null,
+        ...(old.pauseReason === 'user' && { pauseReason: old.pauseReason }),
         ...(old.seedRule && !next.seedRule && { seedRule: old.seedRule }),
       })
       .where(eq(torrents.id, next.id))
@@ -756,17 +748,80 @@ function relink(ctx: RefreshContext, now: Date) {
 
 /** Replayable commit: unlink only the persisted changed paths, then relink. */
 async function commitRefresh(ctx: RefreshContext, now: Date) {
-  const { topic, refresh, follow, next, dir } = ctx
-  // Shared names point to the old bytes. Cancellation after this await would
-  // leave the old torrent incomplete; the committing journal must survive errors.
-  await removeFiles(
-    (refresh.redownload ?? []).flatMap(
-      index => diskPathOf(next, index, dir) ?? [],
-    ),
-    join(dir, next.name),
-  )
-  relink(ctx, now)
-  await announceUpdate(follow, topic, refresh)
+  const { topic, follow, next, old, dir } = ctx
+  const result = await withTorrentStorageMutation(old.id, async () => {
+    const current = getTorrent(old.id)
+    const journal = topicById(topic.id)?.refresh
+    if (
+      !current
+      || resolve(torrentDir(current)) !== dir
+      || journal?.torrentId !== next.id
+    ) {
+      return 'later'
+    }
+    const refresh = journal.stage === 'committing' ? journal : ctx.refresh
+
+    if (refresh.stage === 'prepare') {
+      if (isStreaming(old.id))
+        return 'later'
+      if (!ctx.isCurrent())
+        return 'cancel'
+
+      if (current.inEngine) {
+        await forgetKeepingFiles(current)
+        refresh.forgotten = true
+        setRefresh(topic.id, refresh)
+      }
+
+      if (!ctx.isCurrent())
+        return 'cancel'
+
+      // Recovery must finish the accepted replacement after this boundary.
+      refresh.stage = 'committing'
+      delete refresh.retryAt
+      durableSqlite(getDb().$client, () => setRefresh(topic.id, refresh))
+    }
+
+    // Legacy journals mixed restoration with unlink. Missing paths need
+    // placement, and comparison errors must hold the journal.
+    if (!refresh.unlink) {
+      const onDisk = await compareOnDisk(next, dir)
+      refresh.unlink = (refresh.redownload ?? []).filter(
+        index => onDisk[index] === 'differs' || onDisk[index] === 'unknown',
+      )
+      refresh.protectedPaths = [
+        ...metadataPaths(current, dir),
+        ...metadataPaths(next, dir),
+      ]
+      durableSqlite(getDb().$client, () => setRefresh(topic.id, refresh))
+    }
+    // Shared names still point to the old bytes. Cancellation after this
+    // await would leave the old torrent incomplete.
+    await removeFiles(
+      refresh.unlink.flatMap(index => diskPathOf(next, index, dir) ?? []),
+      join(dir, next.name),
+      refresh.protectedPaths,
+    )
+    relink(
+      {
+        ...ctx,
+        refresh,
+        old: getTorrent(old.id) ?? current,
+        next: getTorrent(next.id) ?? next,
+      },
+      now,
+    )
+    return 'relinked'
+  })
+
+  if (result === 'cancel') {
+    // Restoring uses downloadFiles, which acquires the same mutation lock.
+    return cancelRefresh({ ...ctx, old: getTorrent(old.id) ?? old })
+  }
+  if (result === 'later')
+    return result
+
+  await announceUpdate(follow, topic, ctx.refresh)
   return runRefresh(topic.id, now)
 }
 
@@ -812,9 +867,15 @@ async function runRefreshImpl(
     return 'later'
 
   if (refresh.stage === 'added') {
-    await removeFiles(
+    const active = refreshTorrent
+      ? metadataPaths(refreshTorrent, torrentDir(refreshTorrent))
+      : []
+    await removeRetiredFiles(
       refresh.cleanup?.paths ?? [],
       refresh.cleanup?.root ?? '',
+      active,
+      refresh.protectedPaths
+      ?? (refresh.cleanup?.paths ?? []).map(path => `${path}.part`),
     )
     setRefresh(topic.id, null)
     void syncLibrary()

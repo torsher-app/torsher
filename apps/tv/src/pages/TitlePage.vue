@@ -485,12 +485,21 @@ async function refreshMine() {
     const fresh = await api.titles.getTitleMine(current, {
       language: language.value,
     })
-    if (read === mineRead && current === props.id)
+    if (
+      read === mineRead
+      && current === props.id
+      && isTitleViewer(viewer)
+      && revision === titleMineRevision(current)
+      && !titleActions.writing.has(current)
+    ) {
       rememberTitleMine(current, fresh, viewer, revision)
+      return true
+    }
   }
   catch {
     // Без состояния кнопки работают через меню, когда оно загрузится.
   }
+  return false
 }
 watch([id, language, () => titleActions.viewer], refreshMine, {
   immediate: true,
@@ -1020,7 +1029,8 @@ const syncProgress = useTitleChanges(
   () => titleProgressVersion(props.id),
   () => progressStatus.value !== 'loading' && followLoad.value !== 'loading',
   async () => {
-    await Promise.all([refreshProgress(), refreshFollow()])
+    const outcomes = await Promise.all([refreshProgress(), refreshFollow()])
+    return outcomes.every(outcome => outcome !== false)
   },
   () => active.value,
   () => !!titleActions.target,
@@ -1055,7 +1065,11 @@ const downloadToast = ref('')
 const downloadPanel = ref(false)
 
 const seasonInLibrary = computed(() =>
-  libraryEpisodeCount(libraryFiles.value, selectedSeason.value),
+  libraryEpisodeCount(
+    libraryFiles.value,
+    selectedSeason.value,
+    currentSeason.value?.airedEpisodeCount ?? 0,
+  ),
 )
 
 // Слот загрузки: заголовок кнопки — всегда действие («Скачать …» или идущая

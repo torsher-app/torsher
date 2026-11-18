@@ -11,6 +11,7 @@ import {
   playableMediaFile,
   unavailableTorrentFiles,
 } from '../library/folders.ts'
+import { storedProbeMatches } from '../library/playedSource.ts'
 import { peekMediaProbe } from '../media/probe.ts'
 import { getTorrent } from '../torrents/index.ts'
 import { episodeFileIn } from './resume.ts'
@@ -154,11 +155,7 @@ export async function continuationFor(
         }
   if (file.kind === 'library') {
     const current = await library(file.mediaFileId)
-    if (
-      current
-      && current.found.file.probeKey
-      === `${current.info.size}:${current.info.mtimeMs}`
-    ) {
+    if (current && storedProbeMatches(current.found.file, current.info)) {
       const found = current.found
       const dimensions = found.file.probe?.video
       if (dimensions?.width && dimensions.height) {

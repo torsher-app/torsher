@@ -5600,6 +5600,16 @@ export interface UpdateWatchStateInput {
    * @minLength 1
    * @maxLength 100
    */
+  sessionId?: string;
+  /**
+   * @min 0
+   * @max 9999
+   */
+  appliedAudioStream?: number | null;
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
   torrentId?: string;
   /**
    * @min 0
@@ -7220,6 +7230,7 @@ export interface StoragePathCheckInput {
    * @max 9007199254740991
    */
   moveItems: number;
+  moveAvailable?: boolean;
 }
 
 export interface UpdateStoragePathInput {
@@ -13563,6 +13574,16 @@ export interface UpdateWatchState {
    * @minLength 1
    * @maxLength 100
    */
+  sessionId?: string;
+  /**
+   * @min 0
+   * @max 9999
+   */
+  appliedAudioStream?: number | null;
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
   torrentId?: string;
   /**
    * @min 0
@@ -15183,6 +15204,7 @@ export interface StoragePathCheck {
    * @max 9007199254740991
    */
   moveItems: number;
+  moveAvailable?: boolean;
 }
 
 export interface UpdateStoragePath {

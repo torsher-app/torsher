@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha1"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -29,7 +30,7 @@ const (
 //
 // Сверяются только куски, лежащие целиком внутри файла: кусок на стыке зависит
 // и от соседа. Файл, в котором таких кусков нет, — `unknown`
-func compareOnDisk(ctx context.Context, info *metainfo.Info, dir string) []string {
+func compareOnDisk(ctx context.Context, info *metainfo.Info, dir string) ([]string, error) {
 	files := info.UpvertedFiles()
 	states := make([]string, len(files))
 	total := info.TotalLength()
@@ -38,6 +39,9 @@ func compareOnDisk(ctx context.Context, info *metainfo.Info, dir string) []strin
 	var offset int64
 
 	for i := range files {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		file := &files[i]
 		start := offset
 		offset += file.Length
@@ -50,9 +54,11 @@ func compareOnDisk(ctx context.Context, info *metainfo.Info, dir string) []strin
 
 		stat, err := os.Stat(path)
 		switch {
-		case err != nil:
+		case errors.Is(err, os.ErrNotExist):
 			states[i] = diskMissing
 			continue
+		case err != nil:
+			return nil, err
 		case !stat.Mode().IsRegular() || stat.Size() != file.Length:
 			states[i] = diskDiffers
 			continue
@@ -61,16 +67,23 @@ func compareOnDisk(ctx context.Context, info *metainfo.Info, dir string) []strin
 			continue
 		}
 
-		states[i] = compareFile(ctx, info, path, start, file.Length, total, buf)
+		state, err := compareFile(ctx, info, path, start, file.Length, total, buf)
+		if err != nil {
+			return nil, err
+		}
+		states[i] = state
 	}
 
-	return states
+	return states, nil
 }
 
-func compareFile(ctx context.Context, info *metainfo.Info, path string, start, length, total int64, buf []byte) string {
+func compareFile(ctx context.Context, info *metainfo.Info, path string, start, length, total int64, buf []byte) (string, error) {
 	f, err := os.Open(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return diskMissing, nil
+	}
 	if err != nil {
-		return diskMissing
+		return "", err
 	}
 	defer f.Close()
 
@@ -84,25 +97,27 @@ func compareFile(ctx context.Context, info *metainfo.Info, path string, start, l
 		if pieceStart >= start+length || pieceEnd > start+length {
 			break
 		}
-		if ctx.Err() != nil {
-			return diskUnknown
+		if err := ctx.Err(); err != nil {
+			return "", err
 		}
 
 		chunk := buf[:pieceEnd-pieceStart]
-		if _, err := f.ReadAt(chunk, pieceStart-start); err != nil && err != io.EOF {
-			return diskUnknown
+		if n, err := f.ReadAt(chunk, pieceStart-start); err != nil {
+			return "", err
+		} else if n != len(chunk) {
+			return "", io.ErrUnexpectedEOF
 		}
 
 		sum := sha1.Sum(chunk)
 		if !bytes.Equal(sum[:], info.Pieces[piece*sha1.Size:(piece+1)*sha1.Size]) {
-			return diskDiffers
+			return diskDiffers, nil
 		}
 		checked++
 	}
 
 	if checked == 0 {
-		return diskUnknown
+		return diskUnknown, nil
 	}
 
-	return diskMatch
+	return diskMatch, nil
 }

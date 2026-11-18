@@ -115,6 +115,7 @@ beforeEach(async () => {
   stopMaintenanceScheduler()
   vi.useRealTimers()
   vi.restoreAllMocks()
+  vi.spyOn(maintenanceEngine, 'torrents').mockResolvedValue([])
   vi.spyOn(config, 'dataDir', 'get').mockReturnValue(root)
   for (const table of [
     maintenanceSuppressions,
@@ -166,6 +167,12 @@ beforeEach(async () => {
     async (id, index) => {
       const op = engineOps.get(id)!
       const file = op.manifest.paths[index]!
+      if (file.baselineAbsent) {
+        await expect(lstat(file.path)).rejects.toMatchObject({
+          code: 'ENOENT',
+        })
+        return structuredClone(op)
+      }
       op.results[String(index)] = 'staged'
       op.state = 'deleting'
       try {
@@ -1179,5 +1186,116 @@ it.each(['protection', 'rule', 'global_off', 'restore_hold'])(
     for (const path of [f.source, f.path, f.alias])
       expect(await readFile(path, 'utf8')).toBe('test')
     expect(await readFile(f.neighbor, 'utf8')).toBe('neighbor')
+  },
+)
+
+it('cancels unchanged orphan staging with durable evidence of an absent source', async () => {
+  const f = await fixture({ copy: true, orphan: true })
+  const unlink = vi.mocked(maintenanceEngine.unlink).getMockImplementation()!
+  vi.spyOn(maintenanceEngine, 'unlink').mockImplementation(
+    async (id, index) => {
+      const op = engineOps.get(id)!
+      if (op.manifest.paths[index]!.baselineAbsent)
+        return unlink(id, index)
+      op.results[String(index)] = 'staged'
+      op.state = 'deleting'
+      throw new Error('before_capture')
+    },
+  )
+  await mature()
+  const op = db.select().from(maintenanceOperations).get()!
+  expect(op.state).toBe('partial')
+  expect(op.manifest.paths).toHaveLength(2)
+  expect(op.manifest.paths[0]).toMatchObject({
+    kind: 'source',
+    baselineAbsent: true,
+  })
+  expect(
+    vi.mocked(maintenanceEngine.unlink).mock.calls.map(([, index]) => index),
+  ).toEqual([0, 1])
+  // The failed unlink response was lost locally; prepare on Retry reconciles it.
+  expect(op.results).toEqual({})
+  expect(engineOps.get(op.id)!.results).toEqual({ 1: 'staged' })
+  expect(
+    op.manifest.paths.find(file => file.kind === 'source'),
+  ).toMatchObject({ path: f.source, baselineAbsent: true })
+  expect(
+    engineOps.get(op.id)!.manifest.paths.find(file => file.path === f.source),
+  ).toMatchObject({ baselineAbsent: true })
+  expect(
+    op.manifest.paths.find(file => file.kind === 'library'),
+  ).not.toHaveProperty('baselineAbsent')
+  const revision = db.select().from(maintenanceGroups).get()!.revision
+  protectGroup(f.groupId, true, revision)
+  vi.spyOn(maintenanceEngine, 'cancel').mockImplementationOnce(async (id) => {
+    const reply = engineOps.get(id)!
+    expect(reply.manifest).toEqual(engineOps.get(op.id)!.manifest)
+    await expect(lstat(f.source)).rejects.toMatchObject({ code: 'ENOENT' })
+    expect(await readFile(f.path, 'utf8')).toBe('test')
+    reply.results = {}
+    reply.state = 'cancelled'
+    return structuredClone(reply)
+  })
+  const unlinks = vi.mocked(maintenanceEngine.unlink).mock.calls.length
+  expect(await retryMaintenanceOperation(op.id)).toBe(false)
+  expect(vi.mocked(maintenanceEngine.unlink).mock.calls.length).toBe(unlinks)
+  expect(db.select().from(maintenanceOperations).get()).toMatchObject({
+    state: 'cancelled',
+    results: {},
+  })
+  expect(hasSuppressed(f.titleId, [f.episode])).toBe(false)
+  expect(await readFile(f.path, 'utf8')).toBe('test')
+  expect(await readFile(f.alias, 'utf8')).toBe('test')
+})
+
+it('retains an evicted source that reappeared at its original identity', async () => {
+  const f = await fixture({ copy: true, orphan: true })
+  await link(f.alias, f.source)
+  vi.spyOn(maintenanceEngine, 'unlink').mockRejectedValueOnce(
+    new Error('before_capture'),
+  )
+  const preview = await previewMaintenance(
+    f.titleId,
+    maintenanceConfig(f.titleId).rule,
+    now,
+  )
+  expect(preview.groups[0]?.candidate).toBe(true)
+  expect(preview.groups[0]?.files.some(file => file.kind === 'source')).toBe(
+    true,
+  )
+  await mature()
+  const op = db.select().from(maintenanceOperations).get()!
+  expect(
+    op.manifest.paths.find(file => file.kind === 'source'),
+  ).toMatchObject({ path: f.source })
+  expect(
+    op.manifest.paths.find(file => file.kind === 'source'),
+  ).not.toHaveProperty('baselineAbsent')
+  expect(await readFile(f.source, 'utf8')).toBe('test')
+})
+
+it.each(['no_eviction', 'different_root'])(
+  'does not admit an absent source with %s evidence',
+  async (failure) => {
+    const f = await fixture({ copy: true, orphan: true })
+    const group = db.select().from(maintenanceGroups).get()!
+    db.update(maintenanceGroups)
+      .set(
+        failure === 'no_eviction'
+          ? { sourceEvictedAt: null }
+          : { sourceRootInode: group.sourceRootInode! + 1 },
+      )
+      .where(eq(maintenanceGroups.id, f.groupId))
+      .run()
+    const preview = await previewMaintenance(
+      f.titleId,
+      maintenanceConfig(f.titleId).rule,
+      now,
+    )
+    expect(preview.groups[0]).toMatchObject({ candidate: false })
+    expect(preview.groups[0]?.reasons).toContain('file_unavailable')
+    await mature()
+    expect(db.select().from(maintenanceOperations).all()).toHaveLength(0)
+    expect(await readFile(f.path, 'utf8')).toBe('test')
   },
 )

@@ -187,9 +187,16 @@ export function createProblemMonitor(options: ProblemMonitorOptions) {
   }
 
   return {
-    tick(items: AttentionItem[], now = Date.now()) {
+    tick(
+      items: AttentionItem[],
+      now = Date.now(),
+      unknown: readonly ProblemKind[] = [],
+    ) {
+      const unmeasured = new Set(unknown)
       const current = new Map(
-        items.filter(isProblem).map(item => [item.kind, item] as const),
+        items
+          .filter(item => isProblem(item) && !unmeasured.has(item.kind))
+          .map(item => [item.kind, item] as const),
       )
       const settled = now - options.startedAt >= STARTUP_GRACE_MS
 
@@ -220,6 +227,12 @@ export function createProblemMonitor(options: ProblemMonitorOptions) {
       }
 
       for (const [kind, state] of tracked) {
+        if (unmeasured.has(kind)) {
+          state.present = 0
+          state.absent = 0
+          state.recheck = undefined
+          continue
+        }
         if (current.has(kind))
           continue
 
@@ -229,7 +242,7 @@ export function createProblemMonitor(options: ProblemMonitorOptions) {
       }
 
       for (const [kind, problem] of open) {
-        if (current.has(kind))
+        if (unmeasured.has(kind) || current.has(kind))
           continue
 
         const state = tracked.get(kind) ?? { present: 0, absent: 0 }
@@ -247,8 +260,14 @@ export function createProblemMonitor(options: ProblemMonitorOptions) {
       for (const [kind, recent] of resolved) {
         // Поднятое после перезапуска ждёт конца льготного периода: за него
         // видно, не вернулась ли проблема
-        if (!settled || current.has(kind) || now - recent.at < REOPEN_QUIET_MS)
+        if (
+          !settled
+          || unmeasured.has(kind)
+          || current.has(kind)
+          || now - recent.at < REOPEN_QUIET_MS
+        ) {
           continue
+        }
 
         resolved.delete(kind)
         markResolutionSent(recent.row.id, new Date(now))

@@ -47,6 +47,59 @@ describe('журнал миграций', () => {
   })
 })
 
+it('upgrades a 0046 view and keeps explicit voice revision across a database reopen', () => {
+  const index = journal.entries.findIndex(
+    entry => entry.tag === '0047_voice-selection-revision',
+  )
+  expect(index).toBeGreaterThan(0)
+  const previous = migrationsBefore(index)
+  const path = join(previous, 'view-before-voice-revision.sqlite')
+  let sqlite = new Database(path)
+  try {
+    migrate(drizzle(sqlite), { migrationsFolder: previous })
+    sqlite
+      .prepare(
+        'INSERT INTO profiles (id,name,color,position,created_at) VALUES (?,?,?,?,?)',
+      )
+      .run('viewer', 'Viewer', 'blue', 0, 0)
+    sqlite
+      .prepare(
+        'INSERT INTO title_progress (profile_id,title_id,season,episode,position,voice_studio,updated_at) VALUES (?,?,?,?,?,?,?)',
+      )
+      .run('viewer', 'tmdb:movie:1', 0, 0, 45, 'Imported', 1000)
+    migrate(drizzle(sqlite), { migrationsFolder: MIGRATIONS_DIR })
+    expect(
+      sqlite
+        .prepare('SELECT voice_selection_revision FROM title_progress')
+        .get(),
+    ).toEqual({ voice_selection_revision: 0 })
+    sqlite
+      .prepare(
+        'UPDATE title_progress SET voice_studio = ?, voice_selection_revision = voice_selection_revision + 1',
+      )
+      .run('Imported')
+    sqlite.close()
+
+    sqlite = new Database(path)
+    migrate(drizzle(sqlite), { migrationsFolder: MIGRATIONS_DIR })
+    expect(
+      sqlite
+        .prepare(
+          'SELECT position, voice_studio, voice_selection_revision FROM title_progress',
+        )
+        .get(),
+    ).toEqual({
+      position: 45,
+      voice_studio: 'Imported',
+      voice_selection_revision: 1,
+    })
+  }
+  finally {
+    if (sqlite.open)
+      sqlite.close()
+  }
+})
+
 describe('миграция порядка закачки', () => {
   it('сохраняет старый выбор и добавляет пустой ручной приоритет', () => {
     const idx = journal.entries.findIndex(entry =>
@@ -751,4 +804,47 @@ describe('manager browser URL migration', () => {
       sqlite.close()
     }
   })
+})
+
+it('preserves an existing storage move across migration 0048', () => {
+  const index = journal.entries.findIndex(
+    entry => entry.tag === '0048_storage-move-recovery',
+  )
+  expect(index).toBeGreaterThan(0)
+  const sqlite = new Database(':memory:')
+  try {
+    migrate(drizzle(sqlite), { migrationsFolder: migrationsBefore(index) })
+    sqlite
+      .prepare(
+        'INSERT INTO storage_moves(id,kind,target,status,items_total,items_done,started_at) VALUES(?,?,?,?,?,?,?)',
+      )
+      .run('legacy', 'downloads', '/saved', 'running', 4, 2, 0)
+    migrate(drizzle(sqlite), { migrationsFolder: MIGRATIONS_DIR })
+    expect(
+      sqlite
+        .prepare(
+          'SELECT target,status,items_total,items_done,recovery FROM storage_moves',
+        )
+        .get(),
+    ).toEqual({
+      target: '/saved',
+      status: 'running',
+      items_total: 4,
+      items_done: 2,
+      recovery: null,
+    })
+    sqlite
+      .prepare('UPDATE storage_moves SET recovery = ?')
+      .run('{"cancelRequested":true}')
+    expect(
+      sqlite
+        .prepare(
+          'SELECT json_extract(recovery, \'$.cancelRequested\') AS cancelled FROM storage_moves',
+        )
+        .get(),
+    ).toEqual({ cancelled: 1 })
+  }
+  finally {
+    sqlite.close()
+  }
 })

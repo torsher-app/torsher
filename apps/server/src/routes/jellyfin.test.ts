@@ -1,6 +1,6 @@
 import { Buffer } from 'node:buffer'
 import { randomUUID } from 'node:crypto'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { eq } from 'drizzle-orm'
@@ -30,9 +30,13 @@ import {
 } from '../db/schema.ts'
 import { hashToken, revokeDevice } from '../services/devices/index.ts'
 import { itemId } from '../services/jellyfin/library.ts'
+import { persistedProbeKey } from '../services/library/playedSource.ts'
+import { applyScan } from '../services/library/scan.ts'
+import { parseProbe } from '../services/media/probe.ts'
 import { getMineRow } from '../services/mine/index.ts'
 import {
   getTitleProgress,
+  rememberVoice,
   saveTitleProgress,
 } from '../services/sources/progress.ts'
 import {
@@ -46,6 +50,19 @@ import { storeMetaCache } from '../services/tmdb/cache.ts'
 import { movie, tv } from '../services/tmdb/fixtures/index.ts'
 
 const app = createApp()
+const fsControl = vi.hoisted(() => ({
+  beforeStat: undefined as ((path: string) => Promise<void> | void) | undefined,
+}))
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>()
+  return {
+    ...actual,
+    stat: async (...args: Parameters<typeof actual.stat>) => {
+      await fsControl.beforeStat?.(String(args[0]))
+      return actual.stat(...args)
+    },
+  }
+})
 const routes: { method: string, url: string }[] = []
 app.addHook('onRoute', (route) => {
   if (!route.url.startsWith('/api') && route.url !== '*') {
@@ -667,6 +684,511 @@ describe('jellyfin shared progress', () => {
       ).statusCode,
     ).toBe(400)
   })
+  it('does not transfer the previous voice to two checkpoints from another MediaSource', async () => {
+    const ref = { profileId, titleId: 'tmdb:movie:900001' }
+    rememberVoice(
+      ref,
+      { studio: 'Voice A' },
+      { mediaFileId: movieFile, torrentId: null, fileIndex: null },
+    )
+    saveTitleProgress(
+      ref,
+      {
+        mediaFileId: movieFile,
+        torrentId: null,
+        fileIndex: null,
+        position: 75,
+        duration: 3600,
+      },
+      undefined,
+      undefined,
+      { studio: 'Voice A' },
+    )
+    expect(getTitleProgress(ref)?.playedSource).toMatchObject({
+      kind: 'library',
+      mediaFileId: movieFile,
+      voice: { studio: 'Voice A' },
+    })
+    for (const position of [125, 150]) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/Sessions/Playing/Progress',
+        headers: auth(),
+        payload: {
+          ItemId: movieId,
+          MediaSourceId: secondFile.replaceAll('-', ''),
+          PositionTicks: position * 10_000_000,
+        },
+      })
+      expect(response.statusCode).toBe(204)
+      expect(getTitleProgress(ref)?.playedSource).toMatchObject({
+        kind: 'library',
+        mediaFileId: secondFile,
+        voice: null,
+      })
+    }
+    expect(getTitleProgress(ref)).toMatchObject({
+      voiceStudio: null,
+      voiceType: null,
+    })
+  })
+
+  it('resolves Jellyfin audio only against a specific source with a current probe', async () => {
+    const db = getDb()
+    const ref = { profileId, titleId: 'tmdb:movie:900001' }
+    const original = db
+      .select()
+      .from(mediaFiles)
+      .where(eq(mediaFiles.id, secondFile))
+      .get()!
+    const info = await stat(join(root, original.relPath))
+    db.update(mediaFiles)
+      .set({
+        inode: info.ino,
+        mtime: info.mtime,
+        probeKey: persistedProbeKey(info),
+        probe: {
+          container: 'mkv',
+          duration: 3600,
+          video: null,
+          audio: [
+            {
+              index: 2,
+              title: 'MVO NewStudio',
+              language: 'rus',
+              codec: 'aac',
+              channels: 2,
+              bitrate: null,
+              default: true,
+            },
+          ],
+          subtitles: [],
+        },
+      })
+      .where(eq(mediaFiles.id, secondFile))
+      .run()
+    rememberVoice(
+      ref,
+      { studio: 'Pending' },
+      { mediaFileId: secondFile, torrentId: null, fileIndex: null },
+    )
+    const checkpoint = async (position: number, body: object) => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/Sessions/Playing/Progress',
+        headers: auth(),
+        payload: {
+          ItemId: movieId,
+          PositionTicks: position * 10_000_000,
+          ...body,
+        },
+      })
+      expect(response.statusCode).toBe(204)
+      expect(getTitleProgress(ref)?.position).toBe(position)
+      return getTitleProgress(ref)?.playedSource
+    }
+    try {
+      expect(await checkpoint(75, { AudioStreamIndex: 2 })).toEqual({
+        kind: 'unknown',
+      })
+      const picked = {
+        MediaSourceId: secondFile.replaceAll('-', ''),
+        AudioStreamIndex: 2,
+      }
+      expect(await checkpoint(80, picked)).toMatchObject({
+        mediaFileId: secondFile,
+        voice: { studio: 'NewStudio' },
+      })
+      expect(
+        await checkpoint(82, { ...picked, AudioStreamIndex: '2' }),
+      ).toMatchObject({ voice: null })
+      db.update(mediaFiles)
+        .set({ inode: info.ino + 1 })
+        .where(eq(mediaFiles.id, secondFile))
+        .run()
+      expect(await checkpoint(85, picked)).toMatchObject({ voice: null })
+      expect(getTitleProgress(ref)?.voiceStudio).toBe('Pending')
+    }
+    finally {
+      db.update(mediaFiles)
+        .set({
+          inode: original.inode,
+          mtime: original.mtime,
+          probeKey: original.probeKey,
+          probe: original.probe,
+        })
+        .where(eq(mediaFiles.id, secondFile))
+        .run()
+    }
+  })
+
+  it('saves unknown factual source for all position reports with ambiguous versions', async () => {
+    const ref = { profileId, titleId: 'tmdb:movie:900001' }
+    const info = await list(`/Items/${movieId}/PlaybackInfo`)
+    const [first, second] = info.MediaSources
+    const a = [movieFile, secondFile].find(
+      id => id.replaceAll('-', '') === first.Id,
+    )!
+    const b = [movieFile, secondFile].find(
+      id => id.replaceAll('-', '') === second.Id,
+    )!
+    const row = getDb()
+      .select()
+      .from(mediaFiles)
+      .where(eq(mediaFiles.id, a))
+      .get()!
+    const path = join(root, row.relPath)
+    rememberVoice(
+      ref,
+      { studio: 'Chosen B' },
+      { mediaFileId: b, torrentId: null, fileIndex: null },
+    )
+    await writeFile(path, 'default-A!')
+    try {
+      const stream = await app.inject({
+        url: `/Videos/${movieId}/stream`,
+        headers: auth(),
+      })
+      expect(stream.statusCode).toBe(200)
+      expect(stream.body).toBe('default-A!')
+      for (const [i, suffix] of ['', '/Progress', '/Stopped'].entries()) {
+        const position = 70 + i
+        const response = await app.inject({
+          method: 'POST',
+          url: `/Sessions/Playing${suffix}`,
+          headers: auth(),
+          payload: {
+            ItemId: movieId,
+            PositionTicks: position * 10_000_000,
+            AudioStreamIndex: 2,
+          },
+        })
+        expect(response.statusCode).toBe(204)
+        expect(getTitleProgress(ref)).toMatchObject({
+          position,
+          mediaFileId: b,
+          voiceStudio: 'Chosen B',
+          playedSource: { kind: 'unknown' },
+        })
+      }
+    }
+    finally {
+      await writeFile(path, '0123456789')
+    }
+  })
+
+  it.each(['PlaybackInfo', 'Playing'] as const)(
+    'preserves selection made during the async projection for %s',
+    async (entry) => {
+      const ref = { profileId, titleId: 'tmdb:movie:900001' }
+      const a = { mediaFileId: movieFile, torrentId: null, fileIndex: null }
+      rememberVoice(ref, { studio: 'Earlier choice' }, a)
+      let enter!: () => void
+      let release!: () => void
+      const waiting = new Promise<void>((resolve) => {
+        enter = resolve
+      })
+      const gate = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      fsControl.beforeStat = (path) => {
+        if (path.endsWith('Example.Movie.1080p.mkv')) {
+          fsControl.beforeStat = undefined
+          enter()
+          return gate
+        }
+      }
+      const payload = {
+        ItemId: movieId,
+        MediaSourceId: secondFile.replaceAll('-', ''),
+        PositionTicks: 750_000_000,
+      }
+      const pending
+        = entry === 'PlaybackInfo'
+          ? list(`/Items/${movieId}/PlaybackInfo`)
+          : app.inject({
+              method: 'POST',
+              url: '/Sessions/Playing',
+              headers: auth(),
+              payload,
+            })
+      try {
+        await waiting
+        rememberVoice(ref, { studio: 'Newer choice' }, a)
+        release()
+        if (entry === 'PlaybackInfo') {
+          const { PlaySessionId } = await pending
+          const result = await app.inject({
+            method: 'POST',
+            url: '/Sessions/Playing/Progress',
+            headers: auth(),
+            payload: { ...payload, PlaySessionId },
+          })
+          expect(result.statusCode).toBe(204)
+        }
+        else {
+          expect((await pending).statusCode).toBe(204)
+        }
+        expect(getTitleProgress(ref)).toMatchObject({
+          position: 75,
+          mediaFileId: movieFile,
+          voiceStudio: 'Newer choice',
+          playedSource: { mediaFileId: secondFile },
+        })
+      }
+      finally {
+        fsControl.beforeStat = undefined
+        release()
+        await pending
+      }
+    },
+  )
+
+  it('keeps the Jellyfin version evidence from the first confirmed report after replacement', async () => {
+    const db = getDb()
+    const ref = { profileId, titleId: 'tmdb:movie:900001' }
+    const original = db
+      .select()
+      .from(mediaFiles)
+      .where(eq(mediaFiles.id, secondFile))
+      .get()!
+    const path = join(root, original.relPath)
+    const previousPath = join(root, '.previous-jellyfin')
+    const replacement = join(root, '.replacement-jellyfin')
+    const probe = (width: number, height: number) =>
+      parseProbe(
+        { streams: [{ index: 0, codec_type: 'video', width, height }] },
+        original.relPath,
+      )
+    const info = await stat(path)
+    db.update(mediaFiles)
+      .set({
+        inode: info.ino,
+        mtime: info.mtime,
+        probeKey: persistedProbeKey(info),
+        probe: probe(1920, 1080),
+      })
+      .where(eq(mediaFiles.id, secondFile))
+      .run()
+    const report = async (suffix: string, id: string, position: number) => {
+      const result = await app.inject({
+        method: 'POST',
+        url: `/Sessions/Playing${suffix}`,
+        headers: auth(),
+        payload: {
+          ItemId: movieId,
+          MediaSourceId: secondFile.replaceAll('-', ''),
+          PlaySessionId: id,
+          PositionTicks: position * 10_000_000,
+        },
+      })
+      expect(result.statusCode).toBe(204)
+      return getTitleProgress(ref)?.playedSource
+    }
+    let moved = false
+    try {
+      const old = await list(`/Items/${movieId}/PlaybackInfo`)
+      expect(await report('/Progress', old.PlaySessionId, 70)).toMatchObject({
+        quality: '1080p',
+      })
+      await writeFile(replacement, 'replacement bytes')
+      await rename(path, previousPath)
+      moved = true
+      await rename(replacement, path)
+      const actual = await stat(path)
+      const before = db
+        .select()
+        .from(mediaFiles)
+        .where(eq(mediaFiles.id, secondFile))
+        .get()!
+      const revised = {
+        relPath: before.relPath,
+        inode: actual.ino,
+        size: actual.size,
+        mtime: actual.mtimeMs,
+      }
+      expect(applyScan(before.folderId, [revised], [before]).changed).toEqual([
+        secondFile,
+      ])
+      db.update(mediaFiles)
+        .set({ probeKey: persistedProbeKey(actual), probe: probe(3840, 2160) })
+        .where(eq(mediaFiles.id, secondFile))
+        .run()
+      expect(await report('/Stopped', old.PlaySessionId, 75)).toMatchObject({
+        quality: '1080p',
+      })
+      const next = await list(`/Items/${movieId}/PlaybackInfo`)
+      expect(await report('/Progress', next.PlaySessionId, 80)).toMatchObject({
+        quality: '2160p',
+      })
+    }
+    finally {
+      if (moved)
+        await rename(previousPath, path)
+      await rm(replacement, { force: true })
+      db.update(mediaFiles)
+        .set({
+          inode: original.inode,
+          size: original.size,
+          mtime: original.mtime,
+          probe: original.probe,
+          probeKey: original.probeKey,
+        })
+        .where(eq(mediaFiles.id, secondFile))
+        .run()
+    }
+  })
+
+  it.each([
+    'issued progress',
+    'duplicate start',
+    'unambiguous start without ID',
+    'ambiguous start without ID',
+    'orphan progress',
+    'foreign device',
+    'foreign profile',
+    'wrong file',
+    'expired session',
+  ] as const)(
+    'protects newer selections using Jellyfin launch evidence (%s)',
+    async (scenario) => {
+      const db = getDb()
+      const titleId = 'tmdb:movie:900001'
+      const ref = { profileId, titleId, season: 0, episode: 0 }
+      const seed = (profile: string) =>
+        db
+          .insert(titleProgress)
+          .values({
+            ...ref,
+            profileId: profile,
+            mediaFileId: movieFile,
+            position: 60,
+            duration: 3600,
+            playedSource: { kind: 'unknown' },
+          })
+          .run()
+      seed(profileId)
+      const initialVersion = movieFile.replaceAll('-', '')
+      const newVersion = secondFile.replaceAll('-', '')
+      const started = await list(
+        `/Items/${movieId}/PlaybackInfo${
+          scenario === 'wrong file' ? `?MediaSourceId=${initialVersion}` : ''
+        }`,
+      )
+      const issued = { PlaySessionId: started.PlaySessionId }
+      let targetProfile = profileId
+      let headers = auth()
+      const report = async (suffix: string, body: object) => {
+        const response = await app.inject({
+          method: 'POST',
+          url: `/Sessions/Playing${suffix}`,
+          headers,
+          payload: { ItemId: movieId, ...body },
+        })
+        expect(response.statusCode, response.body).toBe(204)
+      }
+      try {
+        if (
+          scenario === 'unambiguous start without ID'
+          || scenario === 'ambiguous start without ID'
+        ) {
+          const unambiguous = scenario === 'unambiguous start without ID'
+          await report('', unambiguous ? { MediaSourceId: newVersion } : {})
+          expect(getTitleProgress(ref)).toMatchObject({
+            position: 60,
+            mediaFileId: unambiguous ? secondFile : movieFile,
+            playedSource: { kind: 'unknown' },
+          })
+          return
+        }
+        if (scenario === 'foreign device') {
+          const loginResponse = await login()
+          expect(loginResponse.statusCode).toBe(200)
+          headers = { 'X-Emby-Token': loginResponse.json().AccessToken }
+        }
+        if (scenario === 'foreign profile') {
+          targetProfile = randomUUID()
+          db.insert(profiles)
+            .values({
+              id: targetProfile,
+              name: 'Foreign fixture',
+              color: 'blue',
+            })
+            .run()
+          seed(targetProfile)
+          db.update(devices)
+            .set({ profileId: targetProfile })
+            .where(eq(devices.tokenHash, hashToken(token)))
+            .run()
+        }
+        if (scenario === 'expired session')
+          vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 121_000)
+
+        if (scenario === 'duplicate start') {
+          await report('', {
+            ...issued,
+            MediaSourceId: newVersion,
+            PositionTicks: 700_000_000,
+          })
+          expect(getTitleProgress(ref)?.mediaFileId).toBe(secondFile)
+          rememberVoice(
+            ref,
+            { studio: 'Newer choice' },
+            { torrentId: null, fileIndex: null, mediaFileId: movieFile },
+          )
+          await report('', { ...issued, MediaSourceId: newVersion })
+          await report('/Stopped', { ...issued, PositionTicks: 750_000_000 })
+          expect(getTitleProgress(ref)).toMatchObject({
+            mediaFileId: movieFile,
+            voiceStudio: 'Newer choice',
+          })
+        }
+        else if (scenario === 'issued progress') {
+          await report('/Progress', {
+            ...issued,
+            MediaSourceId: newVersion,
+            PositionTicks: 700_000_000,
+          })
+          expect(getTitleProgress(ref)?.mediaFileId).toBe(secondFile)
+          await report('/Progress', { ...issued, PositionTicks: 750_000_000 })
+          expect(
+            (await list(`/Users/${userId}/Items/Resume`)).Items[0].UserData
+              .PlaybackPositionTicks,
+          ).toBe(750_000_000)
+        }
+        else {
+          await report('/Progress', {
+            ...(scenario !== 'orphan progress' && issued),
+            MediaSourceId: newVersion,
+            PositionTicks: 750_000_000,
+          })
+        }
+        expect(
+          getTitleProgress({ ...ref, profileId: targetProfile }),
+        ).toMatchObject({
+          position: 75,
+          mediaFileId: scenario === 'issued progress' ? secondFile : movieFile,
+          playedSource: {
+            kind: 'library',
+            mediaFileId: secondFile,
+            voice: null,
+          },
+        })
+      }
+      finally {
+        if (scenario === 'expired session')
+          vi.mocked(Date.now).mockRestore()
+        if (scenario === 'foreign profile') {
+          db.update(devices)
+            .set({ profileId })
+            .where(eq(devices.tokenHash, hashToken(token)))
+            .run()
+          db.delete(profiles).where(eq(profiles.id, targetProfile)).run()
+        }
+      }
+    },
+  )
+
   it('round-trips playback position through the native HTTP API', async () => {
     const native = await app.inject({
       method: 'PUT',

@@ -10,7 +10,13 @@ import {
 } from 'vue'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
-const api = vi.hoisted(() => ({ getBackups: vi.fn() }))
+const api = vi.hoisted(() => ({
+  getBackups: vi.fn(),
+  putBackupSettings: vi.fn(),
+  postBackup: vi.fn(),
+  deleteBackup: vi.fn(),
+  deleteBackupRestore: vi.fn(),
+}))
 vi.mock('~/services/api', () => ({ api: { backups: api } }))
 const visibility = ref('visible')
 vi.mock('@vueuse/core', () => ({ useDocumentVisibility: () => visibility }))
@@ -182,4 +188,174 @@ it('waits for a slow refresh before scheduling another request', async () => {
   await vi.advanceTimersByTimeAsync(0)
   await vi.advanceTimersByTimeAsync(30_000)
   expect(api.getBackups).toHaveBeenCalledTimes(3)
+})
+
+it('rejects a polling snapshot older than saved settings and keeps them on a directory save', async () => {
+  await mount()
+  let finish!: (value: BackupStatus) => void
+  api.getBackups.mockReturnValueOnce(
+    new Promise<BackupStatus>((resolve) => {
+      finish = resolve
+    }),
+  )
+  const pending = store.useBackups().refresh()
+  const saved = snapshot()
+  saved.settings.time = '05:30'
+  saved.settings.keepDaily = 7
+  api.putBackupSettings.mockResolvedValue(saved)
+  await store.useBackups().saveSettings({ time: '05:30', keepDaily: 7 })
+  finish(snapshot())
+  await pending
+  expect(store.useBackups().status.value?.settings).toEqual(saved.settings)
+  await store.useBackups().saveSettings({ dir: '/new-backups' })
+  expect(api.putBackupSettings).toHaveBeenLastCalledWith({
+    enabled: true,
+    time: '05:30',
+    keepDaily: 7,
+    keepWeekly: 0,
+    dir: '/new-backups',
+  })
+})
+
+it('serializes backup responses from separate controls and builds queued directory saves from fresh settings', async () => {
+  await mount()
+  let finish!: (value: BackupStatus) => void
+  api.postBackup.mockReturnValue(
+    new Promise<BackupStatus>((resolve) => {
+      finish = resolve
+    }),
+  )
+  const backup = store.useBackups().backupNow()
+  const saved = snapshot()
+  saved.settings.time = '07:00'
+  saved.settings.keepDaily = 9
+  api.putBackupSettings.mockResolvedValue(saved)
+  const schedule = store
+    .useBackups()
+    .saveSettings({ time: '07:00', keepDaily: 9 })
+  const directory = store.useBackups().saveSettings({ dir: '/new-backups' })
+  await nextTick()
+  expect(api.putBackupSettings).not.toHaveBeenCalled()
+  finish(snapshot())
+  await Promise.all([backup, schedule, directory])
+  expect(store.useBackups().status.value?.settings).toEqual(saved.settings)
+  expect(api.putBackupSettings).toHaveBeenLastCalledWith({
+    enabled: true,
+    time: '07:00',
+    keepDaily: 9,
+    keepWeekly: 0,
+    dir: '/new-backups',
+  })
+})
+
+it('deletes and reads after an earlier settings PUT with an older list', async () => {
+  await mount()
+  const backups = store.useBackups()
+  const saved = Promise.withResolvers<BackupStatus>()
+  const older = snapshot()
+  older.settings.time = '05:30'
+  const current = { ...older, items: older.items.slice(1) }
+  api.putBackupSettings.mockReturnValueOnce(saved.promise)
+  api.deleteBackup.mockResolvedValueOnce(null)
+  api.getBackups.mockResolvedValueOnce(current)
+
+  const settings = backups.saveSettings({ time: '05:30' })
+  const deletion = backups.removeBackup('old-a')
+  await vi.advanceTimersByTimeAsync(0)
+  expect(api.putBackupSettings).toHaveBeenCalledTimes(1)
+  expect(api.deleteBackup).not.toHaveBeenCalled()
+  expect(api.getBackups).toHaveBeenCalledTimes(1)
+  saved.resolve(older)
+  await Promise.all([settings, deletion])
+
+  expect(api.deleteBackup).toHaveBeenCalledWith('old-a')
+  expect(backups.status.value).toEqual(current)
+})
+
+it('preserves the item when DELETE is rejected', async () => {
+  await mount()
+  const backups = store.useBackups()
+  api.deleteBackup.mockRejectedValueOnce(new Error('delete failed'))
+
+  await expect(backups.removeBackup('old-a')).rejects.toThrow('delete failed')
+  expect(backups.status.value).toEqual(snapshot())
+  expect(api.getBackups).toHaveBeenCalledTimes(1)
+})
+
+it('keeps the confirmed deletion when the status request fails and an old poll arrives', async () => {
+  await mount()
+  const backups = store.useBackups()
+  const earlier = Promise.withResolvers<BackupStatus>()
+  api.getBackups.mockReturnValueOnce(earlier.promise)
+  const poll = backups.refresh()
+  api.deleteBackup.mockResolvedValueOnce(null)
+  api.getBackups.mockRejectedValueOnce(new Error('status unavailable'))
+
+  await backups.removeBackup('old-a')
+  earlier.resolve(snapshot())
+  await poll
+
+  expect(backups.status.value).toEqual(snapshot(['old-b']))
+  const restored = snapshot(['old-b'])
+  api.getBackups.mockResolvedValueOnce(restored)
+  await vi.advanceTimersByTimeAsync(30_000)
+  expect(api.getBackups).toHaveBeenCalledTimes(4)
+  expect(backups.status.value).toEqual(restored)
+})
+
+it('dismisses restore and reads status after earlier settings settle', async () => {
+  const initial = snapshot()
+  initial.restore = { state: 'failed', warnings: [] }
+  api.getBackups.mockResolvedValueOnce(initial)
+  await mount()
+  const backups = store.useBackups()
+  const saved = Promise.withResolvers<BackupStatus>()
+  const oldRestore = {
+    ...initial,
+    settings: { ...initial.settings, time: '05:30' },
+  }
+  const dismissed = { ...snapshot(), settings: oldRestore.settings }
+  api.putBackupSettings.mockReturnValueOnce(saved.promise)
+  api.deleteBackupRestore.mockResolvedValueOnce(null)
+  api.getBackups.mockResolvedValueOnce(dismissed)
+
+  const settings = backups.saveSettings({ time: '05:30' })
+  const dismissal = backups.dismissRestore()
+  await vi.advanceTimersByTimeAsync(0)
+  expect(api.deleteBackupRestore).not.toHaveBeenCalled()
+  saved.resolve(oldRestore)
+  await Promise.all([settings, dismissal])
+  expect(backups.status.value).toEqual(dismissed)
+})
+
+it('uploads without occupying the queue and reads status after in-flight settings settle', async () => {
+  await mount()
+  const backups = store.useBackups()
+  const transfer = Promise.withResolvers<Response>()
+  const fetch = vi.fn().mockReturnValueOnce(transfer.promise)
+  vi.stubGlobal('fetch', fetch)
+  const saved = Promise.withResolvers<BackupStatus>()
+  const older = snapshot()
+  older.settings.time = '05:30'
+  const uploaded = {
+    ...older,
+    items: snapshot(['uploaded', 'old-a', 'old-b']).items,
+  }
+  const item = uploaded.items[0]!
+  api.putBackupSettings.mockReturnValueOnce(saved.promise)
+  api.getBackups.mockResolvedValueOnce(uploaded)
+
+  const upload = backups.upload(new File(['backup'], 'uploaded'))
+  const settings = backups.saveSettings({ time: '05:30' })
+  await vi.advanceTimersByTimeAsync(0)
+  expect(fetch).toHaveBeenCalledTimes(1)
+  expect(api.putBackupSettings).toHaveBeenCalledTimes(1)
+  transfer.resolve(Response.json(item))
+  await vi.advanceTimersByTimeAsync(0)
+  expect(api.getBackups).toHaveBeenCalledTimes(1)
+
+  saved.resolve(older)
+  await settings
+  expect(await upload).toEqual(item)
+  expect(backups.status.value).toEqual(uploaded)
 })

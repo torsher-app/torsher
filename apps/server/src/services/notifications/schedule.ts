@@ -4,7 +4,7 @@ import { performance } from 'node:perf_hooks'
 import { checkIndexers, listIndexers } from '../indexers/index.ts'
 import { logFor } from '../logs/index.ts'
 import { startCheck, waitForCheck } from '../net/check.ts'
-import { serverAttention } from '../overview/index.ts'
+import { serverAttentionSnapshot } from '../overview/index.ts'
 import { liveTorrents } from '../torrents/index.ts'
 import { isNewerVersion } from '../updates/version.ts'
 import { createDownloadWatcher } from './downloads.ts'
@@ -76,7 +76,8 @@ export function startNotificationMonitor() {
       const live = await liveTorrents()
 
       downloads.tick(live)
-      problems.tick(await serverAttention(live), now)
+      const attention = await serverAttentionSnapshot(live)
+      problems.tick(attention.items, now, attention.unknown)
     }
     catch (err) {
       logFor('notifications').error({ err }, 'Notification monitor failed')

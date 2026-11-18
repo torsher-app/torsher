@@ -67,8 +67,8 @@ import {
   playbackCacheAt,
   verifiedFileOffsets,
 } from './playback.ts'
-import { peekPlaybackIndex } from '../media/cueCache.ts'
-import { peekMediaProbe } from '../media/probe.ts'
+import { peekPacketEnds, peekPlaybackIndex } from '../media/cueCache.ts'
+import { hlsTiming, peekMediaProbe } from '../media/probe.ts'
 
 export { InsufficientStorageError } from '../storage/index.ts'
 
@@ -680,13 +680,13 @@ export function downloadFiles(...args: Parameters<typeof downloadFilesImpl>) {
 }
 
 async function pauseDownloadImpl(torrent: Torrent) {
-  torrent = getTorrent(torrent.id) ?? torrent
-  if (!torrent.inEngine)
+  const current = getTorrent(torrent.id)
+  if (!current?.inEngine)
     throw new NotInEngineError()
 
-  await pauseTorrent(torrent.infoHash)
+  await pauseTorrent(current.infoHash)
 
-  return update(torrent.id, { pauseReason: 'user' })
+  return update(current.id, { pauseReason: 'user' })
 }
 export function pauseDownload(...args: Parameters<typeof pauseDownloadImpl>) {
   return withMaintenanceLease({ torrentId: args[0].id }, () =>
@@ -695,15 +695,15 @@ export function pauseDownload(...args: Parameters<typeof pauseDownloadImpl>) {
 
 /** Снимает любую паузу; если места всё ещё мало, сервер поставит свою снова */
 async function resumeDownloadImpl(torrent: Torrent) {
-  torrent = getTorrent(torrent.id) ?? torrent
-  if (!torrent.inEngine)
+  const current = getTorrent(torrent.id)
+  if (!current?.inEngine)
     throw new NotInEngineError()
 
-  await resumeTorrent(torrent.infoHash)
-  update(torrent.id, { pauseReason: null })
+  await resumeTorrent(current.infoHash)
+  update(current.id, { pauseReason: null })
   await enforceStorage()
 
-  return getTorrent(torrent.id) ?? torrent
+  return getTorrent(current.id) ?? current
 }
 export function resumeDownload(...args: Parameters<typeof resumeDownloadImpl>) {
   return withMaintenanceLease({ torrentId: args[0].id }, () =>
@@ -1160,6 +1160,11 @@ export async function streamStats(
       })
     : 0
 
+  const media
+    = time === undefined
+      ? undefined
+      : peekMediaProbe(`${torrent.infoHash}:${fileIndex}`)
+
   return {
     activity: 'downloading',
     peers: stats.peers,
@@ -1189,9 +1194,15 @@ export async function streamStats(
                     fileSize: size,
                   },
                   time,
-                  peekMediaProbe(`${torrent.infoHash}:${fileIndex}`)
-                    ?.duration ?? null,
+                  media
+                    ? hlsTiming(
+                      media,
+                      null,
+                      peekPacketEnds(torrent.infoHash, fileIndex, size),
+                    ).videoEnd
+                    : null,
                   peekPlaybackIndex(torrent.infoHash, fileIndex, size),
+                  media?.startTime ?? null,
                 )
               : null,
           }),

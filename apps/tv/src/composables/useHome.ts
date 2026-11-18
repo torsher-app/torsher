@@ -60,7 +60,7 @@ export function useHome(mode: Ref<HomeMode>) {
       || language.value !== currentLanguage
       || outcome.status === 'cancelled'
     ) {
-      return
+      return false
     }
 
     if (outcome.status === 'failed') {
@@ -70,7 +70,7 @@ export function useHome(mode: Ref<HomeMode>) {
         status.value = 'error'
       }
 
-      return
+      return false
     }
 
     noteHasSources(outcome.value.hasSources)
@@ -85,6 +85,7 @@ export function useHome(mode: Ref<HomeMode>) {
     // Тихое перечитывание — обновление тех же рядов, а не новая главная
     if (!quiet)
       loads.value++
+    return true
   }
 
   /**

@@ -36,7 +36,7 @@ export function storagePathSource(kind: StorageKind): StoragePathSource {
  * Сохраняет путь; путь окружения и `null` — «Вернуть по умолчанию»: дальше
  * действует окружение и идёт за его сменой в compose.
  */
-export function setStoragePath(kind: StorageKind, path: string | null) {
+export function persistStoragePath(kind: StorageKind, path: string | null) {
   const next = { ...savedPaths() }
   const value = path && resolve(path)
 
@@ -47,8 +47,27 @@ export function setStoragePath(kind: StorageKind, path: string | null) {
   if (Object.keys(next).length)
     setSetting(SETTING_KEY, next)
   else deleteSetting(SETTING_KEY)
+}
 
+export function notifyStoragePathsChanged() {
   for (const listener of listeners) listener()
+}
+
+export function setStoragePath(kind: StorageKind, path: string | null) {
+  persistStoragePath(kind, path)
+  notifyStoragePathsChanged()
+}
+
+export function storageLocation(kind: StorageKind, proposed?: string | null) {
+  if (proposed === undefined)
+    return { path: storagePath(kind), source: storagePathSource(kind) }
+
+  const env = envStoragePath(kind)
+  const path = proposed ? resolve(proposed) : env
+  return {
+    path,
+    source: (path === env ? 'env' : 'panel') as StoragePathSource,
+  }
 }
 
 /** Подписка на смену путей: кэши, которые держат пути (очистка журнала) */

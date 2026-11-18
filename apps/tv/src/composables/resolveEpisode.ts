@@ -141,7 +141,9 @@ async function fileIn(
           poll.params(),
         )
       }
-      catch {
+      catch (error) {
+        if (getErrorStatus(error) === 404 && !options.cancelled())
+          return undefined
         report(
           options,
           target,

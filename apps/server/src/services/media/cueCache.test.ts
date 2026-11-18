@@ -1,21 +1,28 @@
 import type { Torrent } from '../../db/schema.ts'
-import type { MatroskaCues, RangeReader } from './matroska.ts'
+import type {
+  MatroskaCues,
+  RangeReader,
+  readMatroskaCues,
+} from './matroska.ts'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import {
   clearCueCache,
   cueRangeReader,
   loadTorrentCues,
+  peekPacketEnds,
   peekPlaybackIndex,
 } from './cueCache.ts'
 
 const mocks = vi.hoisted(() => ({
   parse: vi.fn(),
+  packetProbe: vi.fn(),
   stats: vi.fn(),
   maintenance: vi.fn(),
   stream: vi.fn(),
   releases: [] as ReturnType<typeof vi.fn>[],
 }))
 vi.mock('./matroska.ts', () => ({ readMatroskaCues: mocks.parse }))
+vi.mock('./probe.ts', () => ({ probePacketEnds: mocks.packetProbe }))
 vi.mock('../engine/index.ts', () => ({
   engineStreamUrl: () => 'http://synthetic.invalid/stream',
   torrentStats: mocks.stats,
@@ -335,3 +342,144 @@ it('applies the shared deadline to the metadata verification stats request and r
   ).toBe(true)
   timeout.mockRestore()
 })
+
+it('retries terminal data verified only after the first read, then caches all endpoints', async () => {
+  const endpoints = new Map([
+    [0, 106],
+    [1, 106.021],
+    [2, 109.002],
+  ])
+  mocks.packetProbe.mockResolvedValue(endpoints)
+  mocks.parse.mockImplementation(
+    async (read: RangeReader, _size: number, probe: TerminalProbe) => {
+      await read(0, 8)
+      deferTail(read, probe)
+      return value
+    },
+  )
+  vi.mocked(fetch).mockImplementation(async (_url, options) =>
+    (options!.headers as Record<string, string>).Range === 'bytes=0-7'
+      ? response()
+      : response(900, 1000),
+  )
+  // The tail is readable but has not passed its piece hash check yet.
+  mocks.stats.mockResolvedValue({ pieces: '1111111110' })
+  const signal = new AbortController().signal
+  expect(await loadTorrentCues(torrent(), 0, signal, true)).toEqual(value)
+  expect(peekPlaybackIndex('synthetic', 0, 1000)).toEqual(value.playbackIndex)
+  expect(mocks.packetProbe).not.toHaveBeenCalled()
+  expect(peekPacketEnds('synthetic', 0, 1000)).toBeUndefined()
+
+  mocks.stats.mockResolvedValue({ pieces: '1111111111' })
+  expect(await loadTorrentCues(torrent(), 0, signal, true)).toEqual({
+    ...value,
+    packetEnds: endpoints,
+  })
+  expect(await loadTorrentCues(torrent(), 0, signal, true)).toMatchObject({
+    packetEnds: endpoints,
+  })
+  expect(peekPacketEnds('synthetic', 0, 1000)).toBe(endpoints)
+  expect(mocks.packetProbe).toHaveBeenCalledOnce()
+  expect(fetch).toHaveBeenCalledTimes(4)
+})
+
+type TerminalProbe = NonNullable<Parameters<typeof readMatroskaCues>[2]>
+
+function deferTail(read: RangeReader, probe: TerminalProbe) {
+  probe.defer!(async () => {
+    const tail = await read(900, 1000)
+    const packetEnds = await probe.measure(tail)
+    return packetEnds ? { ...value, packetEnds } : value
+  })
+}
+
+it('upgrades a parsed index with the same reader when the original viewer leaves', async () => {
+  const timer = vi.spyOn(AbortSignal, 'timeout')
+  const direct = new AbortController()
+  const hls = new AbortController()
+  const packetEnds = new Map([[0, 6]])
+  mocks.packetProbe.mockResolvedValue(packetEnds)
+  vi.mocked(fetch)
+    .mockResolvedValueOnce(response())
+    .mockResolvedValueOnce(response(900, 1000))
+  let joined!: Promise<MatroskaCues | null>
+  mocks.parse.mockImplementationOnce(
+    async (read: RangeReader, _size: number, probe: TerminalProbe) => {
+      await read(0, 8)
+      deferTail(read, probe)
+      joined = loadTorrentCues(torrent(), 0, hls.signal, true)
+      direct.abort()
+      return value
+    },
+  )
+
+  try {
+    expect(await loadTorrentCues(torrent(), 0, direct.signal)).toMatchObject({
+      packetEnds,
+    })
+    expect(await joined).toMatchObject({ packetEnds })
+    expect(mocks.parse).toHaveBeenCalledOnce()
+    expect(mocks.packetProbe).toHaveBeenCalledOnce()
+    expect(fetch).toHaveBeenCalledTimes(2)
+    expect(timer.mock.calls).toEqual([[30_000]])
+    expect(peekPacketEnds('synthetic', 0, 1000)).toBe(packetEnds)
+  }
+  finally {
+    timer.mockRestore()
+  }
+})
+
+it.each(['shared deadline', 'last viewer'])(
+  'cancels a deferred terminal read at the %s',
+  async (stop) => {
+    const deadline = new AbortController()
+    const timer = vi
+      .spyOn(AbortSignal, 'timeout')
+      .mockReturnValue(deadline.signal)
+    const direct = new AbortController()
+    const hls = new AbortController()
+    let signal!: AbortSignal
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(response())
+      .mockImplementationOnce((_url, options) => {
+        signal = options!.signal!
+        return new Promise((_done, reject) => {
+          signal.addEventListener(
+            'abort',
+            () => reject(new Error('cancelled')),
+            { once: true },
+          )
+        })
+      })
+    mocks.parse.mockImplementationOnce(
+      async (read: RangeReader, _size: number, probe: TerminalProbe) => {
+        await read(0, 8)
+        deferTail(read, probe)
+        return value
+      },
+    )
+    const first = loadTorrentCues(torrent(), 0, direct.signal)
+    const second = loadTorrentCues(torrent(), 0, hls.signal, true)
+    try {
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2))
+      direct.abort()
+      expect(signal.aborted).toBe(false)
+      if (stop === 'shared deadline')
+        deadline.abort()
+      else hls.abort()
+      expect(await Promise.all([first, second])).toEqual([null, null])
+      expect(mocks.parse).toHaveBeenCalledOnce()
+      expect(mocks.packetProbe).not.toHaveBeenCalled()
+      expect(timer.mock.calls).toEqual([[30_000]])
+      expect(peekPacketEnds('synthetic', 0, 1000)).toBeUndefined()
+      expect(
+        mocks.releases.every(release => release.mock.calls.length === 1),
+      ).toBe(true)
+    }
+    finally {
+      hls.abort()
+      direct.abort()
+      timer.mockRestore()
+    }
+  },
+)

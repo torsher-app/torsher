@@ -255,6 +255,8 @@ export const updateWatchState = z
       })
       .optional(),
     profileId: z.string().min(1).max(100).optional(),
+    sessionId: z.string().min(1).max(100).optional(),
+    appliedAudioStream: z.number().int().min(0).max(9999).nullable().optional(),
     torrentId: z.string().min(1).max(100).optional(),
     fileIndex: fileIndex.optional(),
     mediaFileId: z.string().min(1).max(100).optional(),

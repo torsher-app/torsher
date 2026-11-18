@@ -1,7 +1,11 @@
 import type { LibraryFile } from '@torsher/api-client'
 
 /** Уникальные серии сезона: версии и перекрытия диапазонов считаются один раз. */
-export function libraryEpisodeCount(files: LibraryFile[], season?: number) {
+export function libraryEpisodeCount(
+  files: LibraryFile[],
+  season?: number,
+  through?: number,
+) {
   const episodes = new Set<number>()
 
   if (season === undefined)
@@ -12,8 +16,9 @@ export function libraryEpisodeCount(files: LibraryFile[], season?: number) {
       continue
 
     for (
-      let episode = file.episode;
-      episode <= (file.episodeTo ?? file.episode);
+      let episode
+        = through === undefined ? file.episode : Math.max(1, file.episode);
+      episode <= Math.min(file.episodeTo ?? file.episode, through ?? Infinity);
       episode++
     )
       episodes.add(episode)

@@ -36,7 +36,10 @@ import {
   sampleTorrentFile,
 } from '../services/engine/fixtures/index.ts'
 import { checkDeps, waitForCheck } from '../services/net/check.ts'
-import { serverAttention } from '../services/overview/index.ts'
+import {
+  serverAttention,
+  serverAttentionSnapshot,
+} from '../services/overview/index.ts'
 import * as resourceMonitor from '../services/overview/monitor.ts'
 import { trackPlayback } from '../services/segments/activity.ts'
 import { routesChanged } from '../services/net/index.ts'
@@ -326,6 +329,7 @@ describe('обзор', () => {
       expect.objectContaining({ kind: 'storage_low' }),
     )
     expect(await serverAttention()).toEqual(fault.attention)
+    expect((await serverAttentionSnapshot()).unknown).toEqual(['storage_low'])
     // Settings Storage remains strict: unknown capacity must not become zero.
     expect(
       (await app.inject({ url: '/api/storage', cookies: owner })).statusCode,

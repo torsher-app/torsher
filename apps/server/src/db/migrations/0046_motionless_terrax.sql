@@ -1,0 +1,2 @@
+ALTER TABLE `title_progress` ADD `played_source` text;--> statement-breakpoint
+CREATE INDEX `title_progress_unfrozen_media_idx` ON `title_progress` (`media_file_id`) WHERE "title_progress"."played_source" is null;

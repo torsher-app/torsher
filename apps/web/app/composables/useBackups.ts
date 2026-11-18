@@ -52,6 +52,10 @@ const status = shallowRef<BackupStatus | null>(null)
 const state = ref<LoadState>('idle')
 let pollTimer: ReturnType<typeof setTimeout> | undefined
 let polling = false
+let revision = 0
+let reads = 0
+let mutating = 0
+let mutationQueue: Promise<void> = Promise.resolve()
 
 function needsFastPoll(value: BackupStatus | null) {
   return !!value?.state.running || value?.restore?.state === 'checking'
@@ -60,7 +64,7 @@ function needsFastPoll(value: BackupStatus | null) {
 function schedulePoll() {
   clearTimeout(pollTimer)
 
-  if (!polling)
+  if (!polling || mutating > 0)
     return
 
   pollTimer = setTimeout(
@@ -74,51 +78,82 @@ function schedulePoll() {
 
 function apply(next: BackupStatus) {
   status.value = next
+  state.value = 'ready'
   schedulePoll()
 }
 
-async function load() {
-  // Показанное остаётся на экране, пока идёт новый запрос, и ошибка его не прячет
-  if (state.value !== 'ready')
-    state.value = 'loading'
+function fetchStatus() {
+  return withErrorMode('silent', () => api.backups.getBackups())
+}
 
+async function readStatus(initial: boolean) {
+  const started = revision
+  const request = ++reads
+  if (initial && state.value !== 'ready')
+    state.value = 'loading'
   try {
-    apply(await withErrorMode('silent', () => api.backups.getBackups()))
-    state.value = 'ready'
+    const next = await fetchStatus()
+    if (started !== revision || request !== reads || mutating > 0)
+      return
+    apply(next)
   }
   catch {
-    if (state.value === 'loading')
+    if (started === revision && request === reads && state.value === 'loading')
       state.value = 'error'
   }
 }
 
-/** Фоновое обновление: ошибка не прячет прошлое состояние */
-async function refresh() {
-  try {
-    apply(await withErrorMode('silent', () => api.backups.getBackups()))
-    state.value = 'ready'
-  }
-  catch {}
+function load() {
+  return readStatus(true)
+}
+
+/** Фоновый ответ, начатый до мутации, не заменяет подтверждённые настройки. */
+function refresh() {
+  return readStatus(false)
+}
+
+function enqueue(action: () => Promise<void>) {
+  revision++
+  mutating++
+  clearTimeout(pollTimer)
+  const result = mutationQueue.then(action)
+  // Разные карточки страницы не должны перезаписывать ответы друг друга.
+  mutationQueue = result.catch(() => {})
+  return result.finally(() => {
+    revision++
+    mutating--
+    schedulePoll()
+  })
+}
+
+function mutate(action: () => Promise<BackupStatus>) {
+  return enqueue(async () => apply(await action()))
+}
+
+/** Чтение внутри очереди относится к только что подтверждённой операции. */
+async function refreshAfterMutation() {
+  const next = await fetchStatus().catch(() => null)
+  if (next)
+    apply(next)
 }
 
 /** Расписание; каталог передаёт только диалог каталога */
 async function saveSettings(patch: Partial<UpdateBackupSettingsInput>) {
-  const current = status.value?.settings
-
-  if (!current)
+  if (!status.value?.settings)
     return
 
   try {
-    apply(
-      await withErrorMode('silent', () =>
+    await mutate(() => {
+      const current = status.value!.settings
+      return withErrorMode('silent', () =>
         api.backups.putBackupSettings({
           enabled: patch.enabled ?? current.enabled,
           time: patch.time ?? current.time,
           keepDaily: patch.keepDaily ?? current.keepDaily,
           keepWeekly: patch.keepWeekly ?? current.keepWeekly,
           ...('dir' in patch ? { dir: patch.dir } : {}),
-        })),
-    )
+        }))
+    })
   }
   catch (err) {
     throw await toBackupRequestError(err)
@@ -131,21 +166,31 @@ function checkDir(path: string): Promise<BackupDirCheck> {
 }
 
 async function setPassword(password: string) {
-  apply(await api.backups.putBackupEncryption({ mode: 'password', password }))
+  await mutate(() =>
+    api.backups.putBackupEncryption({ mode: 'password', password }),
+  )
 }
 
 async function removePassword() {
-  apply(await api.backups.putBackupEncryption({ mode: 'key' }))
+  await mutate(() => api.backups.putBackupEncryption({ mode: 'key' }))
 }
 
 /** Ручная копия: сервер снимает её в фоне, итог — по опросу */
 async function backupNow() {
-  apply(await api.backups.postBackup())
+  await mutate(() => api.backups.postBackup())
 }
 
-async function removeBackup(name: string) {
-  await api.backups.deleteBackup(name)
-  await refresh()
+function removeBackup(name: string) {
+  return enqueue(async () => {
+    await api.backups.deleteBackup(name)
+    if (status.value) {
+      apply({
+        ...status.value,
+        items: status.value.items.filter(item => item.name !== name),
+      })
+    }
+    await refreshAfterMutation()
+  })
 }
 
 function sendUpload(file: File) {
@@ -190,14 +235,16 @@ async function uploadFile(file: File): Promise<BackupItem> {
 async function upload(file: File) {
   const item = await uploadFile(file)
 
-  await refresh()
+  await enqueue(refreshAfterMutation)
 
   return item
 }
 
-async function dismissRestore() {
-  await api.backups.deleteBackupRestore()
-  await refresh()
+function dismissRestore() {
+  return enqueue(async () => {
+    await api.backups.deleteBackupRestore()
+    await refreshAfterMutation()
+  })
 }
 
 export function useBackups() {

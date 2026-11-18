@@ -2,8 +2,11 @@ import { updateFollow } from './index.ts'
 import * as refreshFiles from '../torrents/refresh.ts'
 import type { Follow, Torrent } from '../../db/schema.ts'
 import type { EngineTorrentState } from '../engine/index.ts'
+import * as libraryLink from '../library/link.ts'
+import { constants } from 'node:fs'
 import { Buffer } from 'node:buffer'
 import {
+  copyFile,
   link,
   mkdir,
   mkdtemp,
@@ -50,12 +53,17 @@ import { clearSearchCache } from '../sources/cache.ts'
 import { saveSourceProfile } from '../sources/profile.ts'
 import { pinVoice } from '../sources/voices.ts'
 import { tvOngoing } from '../tmdb/fixtures/index.ts'
+import {
+  NotInEngineError,
+  pauseDownload,
+  resumeDownload,
+} from '../torrents/index.ts'
 import { carryMap } from '../torrents/refresh.ts'
 import { resetGrabRetries } from './grab.ts'
 import { followAutomation } from './schedule.ts'
 import { resetFollowSearch } from './search.ts'
 import { resetStallTracking } from './stalled.ts'
-import { continueRefreshes, isTopicUpdate } from './topics.ts'
+import { continueRefreshes, isTopicUpdate, startRefresh } from './topics.ts'
 import { localDay } from './wanted.ts'
 
 const disk = vi.hoisted(() => ({ total: 1024 ** 4, free: 512 * 1024 ** 3 }))
@@ -582,6 +590,7 @@ beforeEach(async () => {
 afterEach(async () => {
   // Подмена запускает связыватель в фоне: он не должен писать в удаляемый каталог
   await syncLibrary()
+  vi.restoreAllMocks()
   vi.unstubAllGlobals()
   vi.unstubAllEnvs()
   setEngineDown('stopped')
@@ -644,6 +653,121 @@ describe('ключ и разбор темы', () => {
 })
 
 describe('подмена раздачи темы', () => {
+  it.each([
+    ['E.mkv.part', 'E.mkv.PART', false],
+    ['E.mkv.part', 'E.mkv.PART', true],
+    ['source.ος.mkv.part', 'source.οσ.mkv.PART', true],
+  ] as const)(
+    'keeps active payload aliases from %s to %s; legacy=%s',
+    async (oldName, activeName, legacy) => {
+      const follow = insertFollow()
+      await seedOld(follow)
+      newVersion()
+      failAdd = 1
+      const now = new Date()
+      await followAutomation(now)
+      const refresh = topicRow().refresh!
+      expect(refresh.stage).toBe('relinked')
+      const next = torrentByHash(NEW)!
+      const oldPath = downloadsPath(NAME, oldName)
+      const activePath = downloadsPath(NAME, activeName)
+      await writeFile(activePath, 'active payload')
+      const sameEntry = !!(await stat(oldPath).catch(() => undefined))
+      if (!sameEntry)
+        await writeFile(oldPath, 'retired payload')
+      getDb()
+        .update(torrents)
+        .set({
+          files: [
+            ...next.files!,
+            { path: activeName, size: 14, padding: false },
+          ],
+        })
+        .where(eq(torrents.id, next.id))
+        .run()
+      getDb()
+        .update(trackedTopics)
+        .set({
+          refresh: {
+            ...refresh,
+            stage: 'added',
+            cleanup: { root: downloadsPath(NAME), paths: [oldPath] },
+            protectedPaths: legacy ? undefined : [oldPath, activePath],
+          },
+        })
+        .run()
+
+      await continueRefreshes(new Date(now.getTime() + 16 * 60_000))
+
+      expect(topicRow().refresh).toBeNull()
+      expect(await readFile(activePath, 'utf8')).toBe('active payload')
+      if (!sameEntry)
+        await expect(stat(oldPath)).rejects.toMatchObject({ code: 'ENOENT' })
+    },
+  )
+
+  it.each(['pause', 'resume'] as const)(
+    'preserves %s accepted during topic inspection',
+    async (action) => {
+      const follow = insertFollow()
+      const { old } = await seedOld(follow)
+      if (action === 'resume') {
+        getDb()
+          .update(torrents)
+          .set({ pauseReason: 'user' })
+          .where(eq(torrents.id, old.id))
+          .run()
+      }
+      newVersion()
+      const entered = Promise.withResolvers<void>()
+      const resume = Promise.withResolvers<void>()
+      const compare = refreshFiles.compareOnDisk
+      vi.spyOn(refreshFiles, 'compareOnDisk').mockImplementation(
+        async (...args) => {
+          entered.resolve()
+          await resume.promise
+          return compare(...args)
+        },
+      )
+      const fetch = fetchMock.getMockImplementation()!
+      const commands: string[] = []
+      fetchMock.mockImplementation(async (input, init = {}) => {
+        const match = new URL(String(input)).pathname.match(
+          new RegExp(`^/torrents/${OLD}/(pause|resume)$`),
+        )
+        if (match) {
+          commands.push(match[1]!)
+          return new Response(null, { status: 204 })
+        }
+        return fetch(input, init)
+      })
+      const running = followAutomation(new Date())
+      const expected = action === 'pause' ? 'user' : null
+      try {
+        await entered.promise
+        await (action === 'pause' ? pauseDownload(old) : resumeDownload(old))
+        expect(torrentByHash(OLD)?.pauseReason).toBe(expected)
+      }
+      finally {
+        resume.resolve()
+        await running
+      }
+
+      expect(torrentByHash(NEW)?.pauseReason).toBe(expected)
+      expect(
+        engineCalls.some(
+          call =>
+            call.startsWith('POST /torrents?') && call.includes('paused=true'),
+        ),
+      ).toBe(action === 'pause')
+      await expect(pauseDownload(old)).rejects.toBeInstanceOf(NotInEngineError)
+      await expect(resumeDownload(old)).rejects.toBeInstanceOf(
+        NotInEngineError,
+      )
+      expect(commands).toEqual([action])
+    },
+  )
+
   it('то же имя: серии 1–8 не качаются заново, прогресс и библиотека переходят к новой', async () => {
     const follow = insertFollow()
     const { old } = await seedOld(follow)
@@ -826,8 +950,17 @@ describe('подмена раздачи темы', () => {
         await rm(downloadsPath(NAME, episodeFile(7)))
       await rm(libraryPath(7))
       newVersion(name)
+      const removal = vi.spyOn(refreshFiles, 'removeFiles')
       await followAutomation(new Date())
       const next = torrentByHash(NEW)!
+      expect(removal.mock.calls.flatMap(call => call[0])).not.toContain(
+        downloadsPath(name, episodeFile(7)),
+      )
+      expect(
+        removal.mock.calls.some(call =>
+          call[2]?.includes(downloadsPath(name, episodeFile(1))),
+        ),
+      ).toBe(true)
       expect(next.selectedFiles).toEqual([5, 6, 7, 8])
       expect(libraryRows().find(row => row.id === before.id)).toMatchObject({
         torrentId: next.id,
@@ -877,6 +1010,162 @@ describe('подмена раздачи темы', () => {
         fileIndex: 6,
         position: 1200,
       })
+    },
+  )
+
+  it('keeps copy downloads selected until the missing carried episode is restored', async () => {
+    const follow = insertFollow()
+    await seedOld(follow)
+    await rm(libraryPath(7))
+    await rm(downloadsPath(NAME, episodeFile(7)))
+    vi.spyOn(libraryLink.linkDeps, 'link').mockRejectedValue(
+      Object.assign(new Error('EXDEV'), { code: 'EXDEV' }),
+    )
+    vi.spyOn(libraryLink.linkDeps, 'copyFile').mockImplementation(
+      async (a, b, mode) => {
+        if (mode === constants.COPYFILE_FICLONE_FORCE)
+          throw Object.assign(new Error('ENOTSUP'), { code: 'ENOTSUP' })
+        await copyFile(a, b)
+      },
+    )
+    newVersion()
+    await followAutomation(new Date())
+    const next = torrentByHash(NEW)!
+    await writeFile(downloadsPath(NAME, episodeFile(9)), content(9))
+    const partial = completeState(next)
+    partial.fileProgress[6] = 0
+    partial.bytesCompleted -= next.files![6]!.size
+    live = [partial]
+    await syncLibrary()
+    await syncLibrary()
+    expect(libraryRows().find(row => row.episode === 9)?.linkMode).toBe(
+      'copy',
+    )
+    expect(torrentByHash(NEW)).toMatchObject({
+      retention: 'keep',
+      selectedFiles: [5, 6, 7, 8],
+    })
+    expect(libraryRows().find(row => row.episode === 7)).toMatchObject({
+      state: 'missing',
+      stale: true,
+    })
+
+    await writeFile(downloadsPath(NAME, episodeFile(7)), content(7))
+    live = [completeState(next)]
+    await syncLibrary()
+    await syncLibrary()
+    expect(await readFile(libraryPath(7), 'utf8')).toBe(content(7))
+    expect(libraryRows().find(row => row.episode === 7)).toMatchObject({
+      state: 'present',
+      stale: false,
+    })
+    expect(torrentByHash(NEW)?.retention).toBe('cache')
+  })
+
+  it('carries a pending physical replacement through a second matching refresh', async () => {
+    const follow = insertFollow()
+    await seedOld(follow)
+    const before = libraryRows().find(row => row.episode === 7)!
+    reuploaded = new Set([7])
+    newVersion()
+    await followAutomation(new Date())
+    const next = torrentByHash(NEW)!
+    await writeFile(downloadsPath(NAME, episodeFile(7)), content(7, 2))
+    await writeFile(downloadsPath(NAME, episodeFile(9)), content(9))
+    const replacement = vi
+      .spyOn(libraryLink, 'replaceFile')
+      .mockRejectedValue(new Error('read-only library'))
+    live = [completeState(next)]
+    await syncLibrary()
+    expect(libraryRows().find(row => row.id === before.id)?.stale).toBe(true)
+    expect(await readFile(libraryPath(7), 'utf8')).toBe(content(7))
+
+    const thirdHash = 'd'.repeat(40)
+    versions.set(thirdHash, {
+      name: NAME,
+      episodes: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    })
+    feed = { title: NEW_TITLE.replace('1-9', '1-10'), hash: thirdHash }
+    const thirdRow = getDb()
+      .insert(torrents)
+      .values({
+        ...next,
+        id: undefined,
+        infoHash: thirdHash,
+        inEngine: false,
+        torrentFile: torrentBytes(thirdHash),
+        files: details(thirdHash).files.map(file => ({
+          path: file.path,
+          size: file.length,
+          padding: false,
+        })),
+      })
+      .returning()
+      .get()
+    await startRefresh(
+      follow,
+      topicRow(),
+      thirdRow,
+      {
+        id: 'third',
+        title: feed.title,
+        infoHash: thirdHash,
+        seeders: 30,
+        indexerId,
+        detailsUrl: TOPIC,
+        studio: 'LostFilm',
+        language: 'ru',
+      },
+      [{ season: 2, episode: 10 }],
+      new Date(Date.now() + 16 * 60_000),
+    )
+    const third = torrentByHash(thirdHash)!
+    expect(third).toBeDefined()
+    expect(libraryRows().find(row => row.id === before.id)).toMatchObject({
+      torrentId: third.id,
+      stale: true,
+    })
+    replacement.mockRestore()
+    await writeFile(downloadsPath(NAME, episodeFile(10)), content(10))
+    live = [completeState(third)]
+    await syncLibrary()
+    await syncLibrary()
+    expect(await readFile(libraryPath(7), 'utf8')).toBe(content(7, 2))
+    expect(libraryRows().find(row => row.id === before.id)).toMatchObject({
+      stale: false,
+      state: 'present',
+    })
+  })
+
+  it.each([false, true])(
+    'preserves user pause through topic replacement and add retry=%s',
+    async (retry) => {
+      const follow = insertFollow()
+      const { old } = await seedOld(follow)
+      getDb()
+        .update(torrents)
+        .set({ pauseReason: 'user' })
+        .where(eq(torrents.id, old.id))
+        .run()
+      newVersion()
+      failAdd = retry ? 1 : 0
+      const now = new Date()
+      await followAutomation(now)
+      expect(torrentByHash(NEW)?.pauseReason).toBe('user')
+      if (retry)
+        await continueRefreshes(new Date(now.getTime() + 16 * 60_000))
+      expect(torrentByHash(OLD)).toBeUndefined()
+      expect(torrentByHash(NEW)).toMatchObject({
+        inEngine: true,
+        pauseReason: 'user',
+        selectedFiles: [5, 6, 7, 8],
+      })
+      const adds = engineCalls.filter(call =>
+        call.startsWith('POST /torrents?'),
+      )
+      expect(adds.length).toBeGreaterThan(0)
+      expect(adds.every(call => call.includes('paused=true'))).toBe(true)
+      expect(engineCalls).not.toContain(`POST /torrents/${NEW}/resume`)
     },
   )
 
@@ -930,6 +1219,42 @@ describe('подмена раздачи темы', () => {
     expect(getDb().select().from(titleProgress).get()).toMatchObject({
       position: 1200,
     })
+  })
+
+  it('revalidates a legacy committing journal and holds it on comparison failure', async () => {
+    const follow = insertFollow()
+    const { old } = await seedOld(follow)
+    await rm(downloadsPath(NAME, episodeFile(7)))
+    newVersion()
+    const original = refreshFiles.removeFiles
+    const removal = vi
+      .spyOn(refreshFiles, 'removeFiles')
+      .mockImplementationOnce(async (...args) => {
+        await original(...args)
+        throw new Error('simulated restart before relink')
+      })
+    const now = new Date()
+    await followAutomation(now)
+    const legacy = { ...topicRow().refresh! }
+    expect(legacy.stage).toBe('committing')
+    delete legacy.unlink
+    delete legacy.protectedPaths
+    getDb().update(trackedTopics).set({ refresh: legacy }).run()
+    removal.mockRestore()
+    failCompare = true
+    await continueRefreshes(new Date(now.getTime() + 16 * 60_000))
+    expect(topicRow().refresh?.stage).toBe('committing')
+    expect(torrentByHash(OLD)?.id).toBe(old.id)
+    expect(await readFile(libraryPath(7), 'utf8')).toBe(content(7))
+    failCompare = false
+    await continueRefreshes(new Date(now.getTime() + 32 * 60_000))
+    expect(topicRow().refresh).toBeNull()
+    expect(torrentByHash(OLD)).toBeUndefined()
+    expect(libraryRows().find(row => row.episode === 7)).toMatchObject({
+      torrentId: torrentByHash(NEW)!.id,
+      stale: true,
+    })
+    expect(await readFile(libraryPath(7), 'utf8')).toBe(content(7))
   })
 
   it.each([false, true])(

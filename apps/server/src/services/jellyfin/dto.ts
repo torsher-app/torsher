@@ -53,6 +53,7 @@ export const body = z
     UserId: z.string().optional(),
     ItemId: z.string().optional(),
     MediaSourceId: z.string().optional(),
+    AudioStreamIndex: z.number().int().nullish().catch(undefined),
     PositionTicks: ticks.optional(),
     RunTimeTicks: ticks.optional(),
     PlaySessionId: z.string().optional(),

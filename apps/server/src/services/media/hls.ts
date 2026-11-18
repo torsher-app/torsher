@@ -105,6 +105,20 @@ export function segmentStarts(
   return starts
 }
 
+/** Whether a segment boundary is too close to its next indexed keyframe for copy seek preroll. */
+export function hasDenseCues(starts: number[], cues: number[]) {
+  // Both arrays are sorted; each cue is visited at most once even for long files.
+  let cue = 0
+  for (let i = 1; i < starts.length; i++) {
+    const start = starts[i]!
+    while (cue < cues.length && cues[cue]! <= start) cue++
+    const next = cues[cue]
+    if (next !== undefined && next - start <= 1)
+      return true
+  }
+  return false
+}
+
 /** VOD-плейлист: все сегменты известны заранее, перемотка — любым сегментом */
 export function buildPlaylist(
   starts: number[],
@@ -133,15 +147,20 @@ export function buildPlaylist(
  * сегмента: с B-кадрами он отступает назад на задержку декодера и без
  * запаса попадает на предыдущую точку перемотки.
  */
-export function seekTargetOf(starts: number[], index: number) {
+export function seekTargetOf(
+  starts: number[],
+  index: number,
+  cues = starts,
+  videoDelay?: number,
+) {
   const start = starts[index] ?? 0
 
   if (index === 0)
     return 0
 
-  const next = starts[index + 1] ?? start + 1
+  const next = cues.find(time => time > start) ?? start + 1
 
-  return start + Math.min(0.5, (next - start) / 2)
+  return start + Math.min(videoDelay === 0 ? 0.001 : 0.5, (next - start) / 2)
 }
 
 export interface HlsInput {
@@ -154,6 +173,9 @@ export interface HlsInput {
   subtitleStreams: number[]
   starts: number[]
   duration: number
+  /** Full normalized keyframe index, including points between segment boundaries. */
+  cues?: number[] | null
+  videoDelay?: number
   /** PTS первого ключевого кадра MKV: segment muxer считает разрезы от него */
   firstVideoTime?: number
   /** Перекодирование видео; без него — видео копией */
@@ -283,8 +305,16 @@ export class HlsTranscode {
     return this.plan
   }
 
+  get audioStream() {
+    return this.input.audioStream
+  }
+
   get segmentCount() {
     return this.input.starts.length
+  }
+
+  get duration() {
+    return this.input.duration
   }
 
   get starts() {
@@ -715,8 +745,20 @@ export class HlsTranscode {
 
     // Перекодирование встаёт точно на начало сегмента (декодер отбрасывает
     // кадры до него), копия — на ключевой кадр, поэтому чуть позже начала
-    if (from > 0)
-      args.push('-ss', (plan ? origin : seekTargetOf(starts, from)).toFixed(3))
+    if (from > 0) {
+      args.push(
+        '-ss',
+        (plan
+          ? origin
+          : seekTargetOf(
+              starts,
+              from,
+              this.input.cues ?? starts,
+              this.input.videoDelay,
+            )
+        ).toFixed(3),
+      )
+    }
 
     args.push(...inputArgs(url))
 
@@ -754,6 +796,7 @@ export class HlsTranscode {
 
     args.push(
       '-copyts',
+      '-start_at_zero',
       '-avoid_negative_ts',
       'disabled',
       '-muxdelay',

@@ -314,7 +314,12 @@ func (a *api) inspect(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		for i, state := range compareOnDisk(r.Context(), &info, filepath.Clean(raw)) {
+		states, err := compareOnDisk(r.Context(), &info, filepath.Clean(raw))
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "storage", errors.New("unable to compare files on disk"))
+			return
+		}
+		for i, state := range states {
 			details.Files[i].OnDisk = state
 		}
 	}

@@ -20,7 +20,8 @@ import type {
 import type { EngineTorrentState } from '../engine/index.ts'
 import type { TitleIdentity } from '../tmdb/index.ts'
 import type { LayoutEpisode, LayoutTitle } from './layout.ts'
-import { readdir, stat, unlink } from 'node:fs/promises'
+import type { Stats } from 'node:fs'
+import { lstat, readdir, realpath, stat, unlink } from 'node:fs/promises'
 import {
   basename,
   dirname,
@@ -37,9 +38,13 @@ import { mediaFiles, profiles, torrents } from '../../db/schema.ts'
 import { isEngineReady } from '../engine/index.ts'
 import { logFor } from '../logs/index.ts'
 import { findSidecars } from '../media/subtitles.ts'
+import { sameDirectory } from '../storage/folders.ts'
 import { torrentDir } from '../storage/paths.ts'
 import { getTitleIdentity } from '../tmdb/index.ts'
-import { moveFileProgress } from '../sources/progress.ts'
+import {
+  freezeLibraryProgress,
+  moveFileProgress,
+} from '../sources/progress.ts'
 import {
   downloadFiles,
   getTorrent,
@@ -255,9 +260,29 @@ export function isComplete(
 }
 
 async function exists(path: string) {
-  return stat(path).then(
-    found => found,
-    () => undefined,
+  return lstat(path).catch((err: NodeJS.ErrnoException) => {
+    if (err.code !== 'ENOENT')
+      throw err
+    return undefined
+  })
+}
+
+async function independentHardLink(
+  source: string,
+  from: Stats,
+  target: string,
+  to: Stats,
+) {
+  return (
+    from.isFile()
+    && to.isFile()
+    && from.dev === to.dev
+    && from.ino === to.ino
+    && (await realpath(source)) !== (await realpath(target))
+    && !(
+      basename(source).toLowerCase() === basename(target).toLowerCase()
+      && (await sameDirectory(dirname(source), dirname(target)))
+    )
   )
 }
 
@@ -271,23 +296,27 @@ async function freeVideoPath(
   source: string,
   quality: string | undefined,
 ) {
-  const sourceInfo = await stat(source)
+  const sourceInfo = await lstat(source)
   const versions = [undefined, quality, '2', '3', '4', '5']
+
+  let available:
+    | { relPath: string, version: string | undefined, adopt: boolean }
+    | undefined
 
   for (const version of versions) {
     const relPath = make(version)
-    const found = await exists(libraryPath(folder, relPath))
+    const path = libraryPath(folder, relPath)
+    const found = await exists(path)
 
     // Тот же файл уже лежит (база потеряла запись) — регистрируем его
-    if (
-      !found
-      || (found.dev === sourceInfo.dev && found.ino === sourceInfo.ino)
-    ) {
-      return { relPath, version, adopt: !!found }
-    }
+    if (found && (await independentHardLink(source, sourceInfo, path, found)))
+      return { relPath, version, adopt: true }
+
+    if (!found && !available)
+      available = { relPath, version, adopt: false }
   }
 
-  return undefined
+  return available
 }
 
 /** Повторный add сохраняет media ID и метаданные существующего hardlink. */
@@ -393,6 +422,18 @@ async function placeVideo(
 
   try {
     absolute = libraryPath(folder, target.relPath)
+    if (
+      target.adopt
+      && !(await independentHardLink(
+        source,
+        await lstat(source),
+        absolute,
+        await lstat(absolute),
+      ))
+    ) {
+      return
+    }
+
     linkMode = target.adopt ? 'hardlink' : await placeFile(source, absolute)
   }
   catch (err) {
@@ -538,6 +579,7 @@ async function replaceVersions(torrent: Torrent, state: EngineTorrentState) {
       if (upgrade)
         await removeSidecars(folder, row.relPath)
 
+      freezeLibraryProgress(row.id)
       const linkMode = await replaceFile(source, absolute)
 
       if (relPath !== row.relPath)
@@ -560,6 +602,7 @@ async function replaceVersions(torrent: Torrent, state: EngineTorrentState) {
           size: placed.size,
           mtime: placed.mtime,
           inode: placed.ino,
+          probeKey: null,
           linkMode,
           state: 'present',
           missingSince: null,
@@ -684,7 +727,11 @@ async function releaseCopies(torrent: Torrent, planned: PlannedVideo[]) {
   if (!files.some(file => file.linkMode === 'copy'))
     return
 
-  const placed = new Set(files.map(file => file.fileIndex))
+  const placed = new Set(
+    files
+      .filter(file => file.state === 'present' && !file.stale)
+      .map(file => file.fileIndex),
+  )
   const selected = new Set(torrent.selectedFiles ?? [])
   const waiting = planned.some(
     item => selected.has(item.fileIndex) && !placed.has(item.fileIndex),
@@ -744,9 +791,16 @@ async function linkOther(
       absolute = libraryPath(folder, relPath)
       const found = await exists(absolute)
       if (found) {
-        const sourceInfo = await stat(source)
-        if (found.dev !== sourceInfo.dev || found.ino !== sourceInfo.ino)
+        if (
+          !(await independentHardLink(
+            source,
+            await lstat(source),
+            absolute,
+            found,
+          ))
+        ) {
           continue
+        }
         adopt = true
       }
       linkMode = adopt ? 'hardlink' : await placeFile(source, absolute)

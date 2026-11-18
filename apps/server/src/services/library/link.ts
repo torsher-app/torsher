@@ -1,9 +1,11 @@
+import type { Stats } from 'node:fs'
 import type { MediaLinkMode } from '../../db/schema.ts'
 import { randomBytes } from 'node:crypto'
 import { constants } from 'node:fs'
 import {
   copyFile,
   link,
+  lstat,
   mkdir,
   readdir,
   rename,
@@ -57,11 +59,21 @@ export async function placeFile(
   source: string,
   target: string,
 ): Promise<MediaLinkMode> {
+  return (await placeFileWithReceipt(source, target)).mode
+}
+
+/** The target identity is captured before publishing the target name. */
+export async function placeFileWithReceipt(
+  source: string,
+  target: string,
+  sourceInfo?: Stats,
+): Promise<{ mode: MediaLinkMode, target: Stats }> {
   await mkdir(dirname(target), { recursive: true })
+  const identity = sourceInfo ?? (await lstat(source))
 
   try {
     await linkDeps.link(source, target)
-    return 'hardlink'
+    return { mode: 'hardlink', target: identity }
   }
   catch (err) {
     if (!NO_LINK_CODES.has(codeOf(err)))
@@ -75,14 +87,17 @@ export async function placeFile(
 
   try {
     const mode = await copyTo(source, temp)
-    const [from, to] = await Promise.all([stat(source), stat(temp)])
+    const [from, to] = await Promise.all([
+      sourceInfo ?? stat(source),
+      lstat(temp),
+    ])
 
-    if (from.size !== to.size)
+    if (!to.isFile() || from.size !== to.size)
       throw new Error('Copy size mismatch')
 
     // `link` вместо `rename`: занятое за время копии имя не перезаписывается
     await link(temp, target)
-    return mode
+    return { mode, target: to }
   }
   finally {
     await unlink(temp).catch(() => {})
@@ -193,11 +208,11 @@ let sameDevice = true
  * Как файлы загрузок попадают в библиотеку на этом сервере. Проверяется при
  * старте пробным файлом и запоминается; `null` — каталоги недоступны.
  */
-export async function checkLinkMode(
-  downloadsDir = storagePath('downloads'),
-  libraryDir = storagePath('library'),
+export async function probeLibraryStorage(
+  downloadsDir: string,
+  libraryDir: string,
 ) {
-  linkMode = await probeLinkMode(downloadsDir, libraryDir)
+  const mode = await probeLinkMode(downloadsDir, libraryDir)
 
   const dirs = await Promise.all([
     nearestDir(downloadsDir),
@@ -207,7 +222,17 @@ export async function checkLinkMode(
     dirs.map(dir => (dir ? stat(dir).catch(() => undefined) : undefined)),
   )
 
-  sameDevice = !downloads || !library || downloads.dev === library.dev
+  return {
+    mode,
+    sameDevice: !downloads || !library || downloads.dev === library.dev,
+  }
+}
+
+export function publishLibraryStorage(
+  result: Awaited<ReturnType<typeof probeLibraryStorage>>,
+) {
+  linkMode = result.mode
+  sameDevice = result.sameDevice
 
   if (linkMode === 'copy') {
     logFor('storage').warn(
@@ -216,6 +241,15 @@ export async function checkLinkMode(
   }
 
   return linkMode
+}
+
+export async function checkLinkMode(
+  downloadsDir = storagePath('downloads'),
+  libraryDir = storagePath('library'),
+) {
+  return publishLibraryStorage(
+    await probeLibraryStorage(downloadsDir, libraryDir),
+  )
 }
 
 /** Последний результат проверки; до неё — `undefined` */

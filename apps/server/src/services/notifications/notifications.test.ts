@@ -177,6 +177,37 @@ describe('монитор проблем', () => {
     ])
   })
 
+  it('does not resolve storage_low while disk observations are unknown', async () => {
+    channel({ notifyResolved: true })
+    const monitor = settled()
+    const now = Date.now()
+    const low: AttentionItem = {
+      kind: 'storage_low',
+      severity: 'error',
+      section: 'storage',
+      params: { free: 1, minFree: 10 },
+    }
+    confirm(monitor, [low, indexerDown], now)
+    monitor.tick([], now + 3 * MINUTE, ['storage_low'])
+    monitor.tick([], now + 4 * MINUTE, ['storage_low'])
+    monitor.tick([], now + 5 * MINUTE + REOPEN_QUIET_MS, ['storage_low'])
+    await idleDelivery()
+    expect(
+      inbox().find(row => row.problem === 'storage_low')?.resolvedAt,
+    ).toBeUndefined()
+    expect(
+      inbox().find(row => row.problem === 'indexer_error')?.resolvedAt,
+    ).toBeDefined()
+    monitor.tick([], now + 6 * MINUTE + REOPEN_QUIET_MS)
+    expect(
+      inbox().find(row => row.problem === 'storage_low')?.resolvedAt,
+    ).toBeUndefined()
+    monitor.tick([], now + 7 * MINUTE + REOPEN_QUIET_MS)
+    expect(
+      inbox().find(row => row.problem === 'storage_low')?.resolvedAt,
+    ).toBeDefined()
+  })
+
   it('запуск движка не проблема', () => {
     const monitor = settled()
     const starting: AttentionItem = {

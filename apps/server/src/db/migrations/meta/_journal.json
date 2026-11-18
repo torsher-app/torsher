@@ -323,6 +323,27 @@
       "when": 1794922323849,
       "tag": "0045_chemical_kingpin",
       "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "6",
+      "when": 1794931183374,
+      "tag": "0046_motionless_terrax",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "6",
+      "when": 1794980744551,
+      "tag": "0047_voice-selection-revision",
+      "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "6",
+      "when": 1794981858322,
+      "tag": "0048_storage-move-recovery",
+      "breakpoints": true
     }
   ]
 }

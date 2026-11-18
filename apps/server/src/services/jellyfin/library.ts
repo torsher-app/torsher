@@ -1,5 +1,6 @@
 import type { MediaFile, TitleProgress } from '../../db/schema.ts'
 import type { TitleDetails } from '../../dto/catalog.ts'
+import type { TitleRef } from '../sources/progress.ts'
 import type { Query } from './dto.ts'
 import { createHash } from 'node:crypto'
 import { stat } from 'node:fs/promises'
@@ -55,7 +56,10 @@ export function isFolder(item: Item) {
 export function progressKey(titleId: string, season = 0, episode = 0) {
   return JSON.stringify([titleId, season, episode])
 }
-export function progressRef(item: Item, profileId: string) {
+export function progressRef(
+  item: Pick<Item, 'titleId' | 'season' | 'episode' | 'sources'>,
+  profileId: string,
+) {
   return {
     profileId,
     titleId: item.titleId ?? fileProgressId(item.sources[0]!.id),
@@ -91,7 +95,11 @@ function identity(file: MediaFile, libraryId: string, home: boolean) {
   return { type, id }
 }
 
-export async function projectLibrary(profileId: string, targetItemId?: string) {
+export async function projectLibrary(
+  profileId: string,
+  targetItemId?: string,
+  onTarget?: (ref: TitleRef) => void,
+) {
   const db = getDb()
   const language
     = getProfile(profileId)?.language?.replace('_', '-') ?? 'en-US'
@@ -118,6 +126,22 @@ export async function projectLibrary(profileId: string, targetItemId?: string) {
             .id === targetItemId)
       )
     })
+  const candidate = targetItemId && rows[0]
+  if (candidate && onTarget) {
+    const { library } = byFolder.get(candidate.folderId)!
+    const { type } = identity(candidate, library.id, library.kind === 'home')
+    onTarget(
+      progressRef(
+        {
+          sources: [candidate],
+          titleId: type === 'Video' ? undefined : candidate.titleId!,
+          season: type === 'Episode' ? candidate.season! : undefined,
+          episode: type === 'Episode' ? candidate.episode! : undefined,
+        },
+        profileId,
+      ),
+    )
+  }
   const allowed = await allowedTitleIds(
     profileId,
     rows

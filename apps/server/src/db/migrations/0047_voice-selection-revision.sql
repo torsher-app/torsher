@@ -1,0 +1,1 @@
+ALTER TABLE `title_progress` ADD `voice_selection_revision` integer DEFAULT 0 NOT NULL;

@@ -17,6 +17,20 @@ import { getTorrentSettings } from '../torrents/settings.ts'
 
 export { ownedIdentity } from './identity.ts'
 
+/** Evidence is valid only for the exact source root whose eviction was recorded. */
+export function isEvictedSource(
+  group: typeof maintenanceGroups.$inferSelect,
+  file: typeof maintenanceFiles.$inferSelect,
+) {
+  return (
+    !!group.sourceEvictedAt
+    && file.kind === 'source'
+    && file.root === group.sourceRoot
+    && file.rootDevice === group.sourceRootDevice
+    && file.rootInode === group.sourceRootInode
+  )
+}
+
 export function groupForTorrent(torrentId: string) {
   return getDb()
     .select()

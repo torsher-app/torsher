@@ -376,8 +376,23 @@ async function collect(known?: Map<string, EngineTorrentState>) {
 }
 
 /** «Требует внимания» без остального «Обзора»: по нему работают уведомления */
+export async function serverAttentionSnapshot(
+  live?: Map<string, EngineTorrentState>,
+) {
+  const { storage, attention } = await collect(live)
+  return {
+    items: attention,
+    unknown:
+      storage.total === null
+      || storage.free === null
+      || storage.minFree === null
+        ? ['storage_low' as const]
+        : [],
+  }
+}
+
 export async function serverAttention(live?: Map<string, EngineTorrentState>) {
-  return (await collect(live)).attention
+  return (await serverAttentionSnapshot(live)).items
 }
 
 /**

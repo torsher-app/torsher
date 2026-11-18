@@ -20,6 +20,15 @@ const NAME_TMDB = /[[({]tmdb(?:id)?[-=](\d{1,10})[\])}]/i
 const NAME_IMDB = /[[({]imdb(?:id)?[-=](tt\d{5,10})[\])}]/i
 const NAME_TVDB = /[[({]tvdb(?:id)?[-=](\d{1,10})[\])}]/i
 
+// Запас ниже SQLite bind limit, включая дополнительные условия запроса.
+const ID_BATCH_SIZE = 500
+function idBatches(ids: string[]) {
+  const batches: string[][] = []
+  for (let offset = 0; offset < ids.length; offset += ID_BATCH_SIZE)
+    batches.push(ids.slice(offset, offset + ID_BATCH_SIZE))
+  return batches
+}
+
 type Found
   = | { status: 'matched', titleId: string, source: 'name_id' | 'nfo' | 'parser' }
     | { status: 'unsure', suggestion: string }
@@ -402,34 +411,35 @@ function markGroup(
   group: string,
   values: Pick<MediaFile, 'matchStatus' | 'matchSuggestion'>,
 ) {
-  getDb()
-    .update(mediaFiles)
-    .set({
-      ...values,
-      titleId: null,
-      season: null,
-      episode: null,
-      episodeTo: null,
-      matchSource: 'parser',
-      matchGroup: group,
-    })
-    .where(
-      inArray(
-        mediaFiles.id,
-        rows.map(row => row.id),
-      ),
-    )
-    .run()
+  for (const ids of idBatches(rows.map(row => row.id))) {
+    getDb()
+      .update(mediaFiles)
+      .set({
+        ...values,
+        titleId: null,
+        season: null,
+        episode: null,
+        episodeTo: null,
+        matchSource: 'parser',
+        matchGroup: group,
+      })
+      .where(inArray(mediaFiles.id, ids))
+      .run()
+  }
 }
 
 /** Сопоставляет один релиз; уже решённый (ID, NFO, владелец) — новым файлам тот же тайтл */
 async function matchGroup(folder: LibraryFolder, group: string, ids: string[]) {
   const db = getDb()
-  const rows = db
-    .select()
-    .from(mediaFiles)
-    .where(and(eq(mediaFiles.folderId, folder.id), inArray(mediaFiles.id, ids)))
-    .all()
+  const rows = idBatches(ids).flatMap(batch =>
+    db
+      .select()
+      .from(mediaFiles)
+      .where(
+        and(eq(mediaFiles.folderId, folder.id), inArray(mediaFiles.id, batch)),
+      )
+      .all(),
+  )
 
   if (!rows.length)
     return
@@ -520,23 +530,27 @@ export function queueMatch(folderId: string, ids: string[]) {
   if (!ids.length)
     return draining ?? Promise.resolve()
 
-  const rows = getDb()
-    .select({
-      id: mediaFiles.id,
-      relPath: mediaFiles.relPath,
-      group: mediaFiles.matchGroup,
-    })
-    .from(mediaFiles)
-    .where(inArray(mediaFiles.id, ids))
-    .all()
+  const rows = idBatches(ids).flatMap(batch =>
+    getDb()
+      .select({
+        id: mediaFiles.id,
+        relPath: mediaFiles.relPath,
+        group: mediaFiles.matchGroup,
+      })
+      .from(mediaFiles)
+      .where(
+        and(eq(mediaFiles.folderId, folderId), inArray(mediaFiles.id, batch)),
+      )
+      .all(),
+  )
   const known = rows.filter(row => row.group)
   const fresh = rows.filter(row => !row.group)
 
   for (const row of known) add(folderId, row.group!, row.id)
 
+  const byPath = new Map(fresh.map(row => [row.relPath, row.id]))
   for (const [group, paths] of releaseGroups(fresh.map(row => row.relPath))) {
-    for (const path of paths)
-      add(folderId, group, fresh.find(row => row.relPath === path)!.id)
+    for (const path of paths) add(folderId, group, byPath.get(path)!)
   }
 
   draining ??= drain().finally(() => {
@@ -581,8 +595,11 @@ export function queueUnmatched(folderId?: string) {
     .all()
   const byFolder = new Map<string, string[]>()
 
-  for (const row of rows)
-    byFolder.set(row.folderId, [...(byFolder.get(row.folderId) ?? []), row.id])
+  for (const row of rows) {
+    const ids = byFolder.get(row.folderId) ?? []
+    ids.push(row.id)
+    byFolder.set(row.folderId, ids)
+  }
 
   for (const [folderId, ids] of byFolder) void queueMatch(folderId, ids)
 }
@@ -622,9 +639,9 @@ export function setGroupTitle(
         matchSource: 'user',
       })
       .where(
-        inArray(
-          mediaFiles.id,
-          rows.map(row => row.id),
+        and(
+          eq(mediaFiles.folderId, folderId),
+          eq(mediaFiles.matchGroup, group),
         ),
       )
       .run()

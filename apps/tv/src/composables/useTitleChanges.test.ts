@@ -86,6 +86,22 @@ it('consumes a failed attempt without an automatic retry loop and accepts the ne
   expect(state.refresh).toHaveBeenCalledTimes(2)
 })
 
+it('keeps a failed version dirty and retries on the next activation without a loop', async () => {
+  const state = setup()
+  state.refresh.mockRejectedValueOnce(new Error('offline'))
+  state.version.value++
+  await nextTick()
+  await nextTick()
+  expect(state.refresh).toHaveBeenCalledTimes(1)
+  state.active.value = false
+  await nextTick()
+  state.active.value = true
+  await nextTick()
+  await nextTick()
+  expect(state.refresh).toHaveBeenCalledTimes(2)
+  expect(state.sync()).toBe(false)
+})
+
 it('does not deliver accumulated changes after disposal', async () => {
   const state = setup()
   let finish!: () => void

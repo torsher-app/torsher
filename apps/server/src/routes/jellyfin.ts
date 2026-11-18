@@ -1,8 +1,14 @@
+import { preparePlayedSource } from '../services/sources/playedSource.ts'
 import type {
   FastifyPluginAsyncZod,
   ZodTypeProvider,
 } from 'fastify-type-provider-zod'
 import type { Item } from '../services/jellyfin/library.ts'
+import type {
+  LaunchSelection,
+  TitleRef,
+} from '../services/sources/progress.ts'
+import type { PreparedPlayedSource } from '../services/sources/playedSource.ts'
 import { randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import { Readable } from 'node:stream'
@@ -29,20 +35,89 @@ import {
 } from '../services/jellyfin/library.ts'
 import { sendLibraryFile } from '../services/library/stream.ts'
 import { cachedThumb } from '../services/library/thumbs.ts'
+import { voiceOfTrack } from '../services/media/decide.ts'
 import { summaryOf } from '../services/mine/cards.ts'
 import { clearMovieWatchlist, updateMine } from '../services/mine/index.ts'
 import {
   getTitleProgress,
+  launchSelectionOf,
   markWatched,
+  rememberStartedSource,
+  sameTitleRef,
   saveTitleProgress,
 } from '../services/sources/progress.ts'
 import { fetchTmdbImage } from '../services/tmdb/index.ts'
 import { isWatched } from '../services/torrents/playback.ts'
 import { verifyOwnerCredentials } from '../services/users/credentials.ts'
 
+const PLAYBACK_CONTEXT_LIMIT = 256
+const PLAYBACK_CONTEXT_IDLE_MS = 2 * 60 * 1000
+interface PlaybackContext {
+  launch?: LaunchSelection
+  expiresAt: number
+  fileId?: string
+  evidence?: Promise<PreparedPlayedSource>
+}
+
+function playbackKey(
+  device: string,
+  profile: string,
+  item: string,
+  id: string,
+) {
+  return JSON.stringify([device, profile, item, id])
+}
+
+async function projectPlaybackItem(
+  profileId: string,
+  id: string,
+  captureLaunch: boolean,
+) {
+  let baseline: { ref: TitleRef, launch: LaunchSelection } | undefined
+  const projection = await projectLibrary(
+    profileId,
+    id,
+    captureLaunch
+      ? (ref) => {
+          baseline = {
+            ref,
+            launch: launchSelectionOf(ref, getTitleProgress(ref)),
+          }
+        }
+      : undefined,
+  )
+  const item = projection.items.get(id)
+  const launch
+    = item && baseline && sameTitleRef(progressRef(item, profileId), baseline.ref)
+      ? baseline.launch
+      : undefined
+  return { item, launch }
+}
+
 /** Exact routes only: the native API and showcase SPA keep their own namespace. */
 export const jellyfinRoutes: FastifyPluginAsyncZod = async (app) => {
   const schema = { hide: true, querystring: query, params }
+  const playbacks = new Map<string, PlaybackContext>()
+  function keepPlayback(
+    key: string,
+    launch?: LaunchSelection,
+    fileId?: string,
+    evidence?: Promise<PreparedPlayedSource>,
+  ) {
+    const now = Date.now()
+    playbacks.delete(key)
+    for (const [oldKey, state] of playbacks) {
+      if (state.expiresAt > now && playbacks.size < PLAYBACK_CONTEXT_LIMIT)
+        break
+      playbacks.delete(oldKey)
+    }
+    playbacks.set(key, {
+      launch,
+      expiresAt: now + PLAYBACK_CONTEXT_IDLE_MS,
+      fileId,
+      evidence,
+    })
+  }
   for (const prefix of ['', '/emby']) {
     for (const path of ['/System/Info/Public', '/System/Info']) {
       app.get(
@@ -367,11 +442,11 @@ export const jellyfinRoutes: FastifyPluginAsyncZod = async (app) => {
           url: `${prefix}/Items/:id/PlaybackInfo`,
           schema: { ...schema, ...(method === 'POST' ? { body } : {}) },
           handler: async (request, reply) => {
-            const projection = await projectLibrary(
+            const { item, launch } = await projectPlaybackItem(
               request.profileId,
-              request.params.id,
+              request.params.id!,
+              true,
             )
-            const item = projection.items.get(request.params.id!)
             const requested
               = body.parse(request.body)?.MediaSourceId
                 ?? request.query.mediasourceid
@@ -384,9 +459,15 @@ export const jellyfinRoutes: FastifyPluginAsyncZod = async (app) => {
                 .code(404)
                 .send({ message: 'Media source not found' })
             }
+            const id = randomUUID().replaceAll('-', '')
+            keepPlayback(
+              playbackKey(request.deviceId!, request.profileId, item.id, id),
+              launch,
+              sources.length === 1 ? sources[0]!.id : undefined,
+            )
             return {
               MediaSources: sources.map(file => mediaSource(item, file)),
-              PlaySessionId: randomUUID().replaceAll('-', ''),
+              PlaySessionId: id,
             }
           },
         })
@@ -506,53 +587,109 @@ export const jellyfinRoutes: FastifyPluginAsyncZod = async (app) => {
           { schema: { ...schema, body } },
           async (request, reply) => {
             const input = request.body
-            const projection = await projectLibrary(
-              request.profileId,
-              request.body?.ItemId,
-            )
+            const starting = path === '/Sessions/Playing'
+            const id = input?.PlaySessionId
             const item = input?.ItemId
-              ? projection.items.get(input.ItemId)
+              ? await projectPlaybackItem(
+                  request.profileId,
+                  input.ItemId,
+                  starting && id === undefined,
+                )
               : undefined
-            if (!item?.sources.length) {
+            const target = item?.item
+            if (!target?.sources.length) {
               return reply
                 .code(404)
                 .send({ message: 'Media source not found' })
             }
-            const ref = progressRef(item, request.profileId)
+            const ref = progressRef(target, request.profileId)
             const previous = getTitleProgress(ref)
-            const file = input?.MediaSourceId
-              ? item?.sources.find(
+            const key
+              = id === undefined
+                ? undefined
+                : playbackKey(
+                    request.deviceId!,
+                    request.profileId,
+                    target.id,
+                    id,
+                  )
+            const cached = key && playbacks.get(key)
+            const bound
+              = cached && cached.expiresAt > Date.now() ? cached : undefined
+            const confirmed = input?.MediaSourceId
+              ? target.sources.find(
                   file => sourceId(file) === input.MediaSourceId,
                 )
-              : (item.sources.find(
-                  file => file.id === previous?.mediaFileId,
-                ) ?? item.sources[0])
-            if (!file) {
+              : (target.sources.find(file => file.id === bound?.fileId)
+                ?? (target.sources.length === 1 ? target.sources[0] : undefined))
+            if (input?.MediaSourceId && !confirmed) {
               return reply
                 .code(404)
                 .send({ message: 'Media source not found' })
+            }
+            const source = {
+              mediaFileId: confirmed?.id ?? null,
+              torrentId: confirmed?.torrentId ?? null,
+              fileIndex: confirmed?.fileIndex ?? null,
+            }
+            let launch: LaunchSelection | undefined
+            let evidence: Promise<PreparedPlayedSource> | undefined
+            if (
+              confirmed
+              && key
+              && bound
+              && (!bound.fileId || bound.fileId === confirmed.id)
+            ) {
+              launch = bound.launch
+              evidence
+                = bound.evidence
+                  ?? preparePlayedSource(source).then(prepared =>
+                    prepared?.contentKey ? prepared : { ref: source },
+                  )
+              keepPlayback(key, launch, confirmed.id, evidence)
+            }
+            else if (starting && id === undefined && confirmed) {
+              launch = item?.launch
             }
             const position
               = input?.PositionTicks === undefined
                 ? previous?.position
                 : input.PositionTicks / 10_000_000
             const duration
-              = file.duration
+              = confirmed?.duration
                 ?? (input?.RunTimeTicks === undefined
-                  ? previous?.mediaFileId === file.id
-                    ? previous.duration
-                    : null
+                  ? !confirmed || previous?.mediaFileId === confirmed.id
+                      ? (previous?.duration ?? null)
+                      : null
                   : input.RunTimeTicks / 10_000_000)
-            if (position !== undefined) {
-              saveTitleProgress(ref, {
-                position,
-                duration,
-                torrentId: file.torrentId,
-                fileIndex: file.fileIndex,
-                mediaFileId: file.id,
-              })
-              if (item.type === 'Movie' && isWatched(position, duration))
-                clearMovieWatchlist(request.profileId, item.titleId!)
+            if (starting && input?.PositionTicks === undefined) {
+              if (evidence)
+                await evidence
+              if (launch)
+                rememberStartedSource(ref, source, launch)
+            }
+            else if (
+              position !== undefined
+              && (confirmed || input?.PositionTicks !== undefined)
+            ) {
+              const preparedSource = await (evidence
+                ?? preparePlayedSource(source))
+              const track = preparedSource?.audio?.find(
+                track => track.index === input?.AudioStreamIndex,
+              )
+              const voice = track && voiceOfTrack(track)
+              saveTitleProgress(
+                ref,
+                { ...source, position, duration },
+                undefined,
+                confirmed ? preparedSource : 'unknown',
+                voice?.studio || voice?.type
+                  ? { studio: voice.studio, type: voice.type }
+                  : null,
+                launch,
+              )
+              if (target.type === 'Movie' && isWatched(position, duration))
+                clearMovieWatchlist(request.profileId, target.titleId!)
             }
             if (!path.endsWith('/Stopped'))
               markStreaming(request.deviceId!)

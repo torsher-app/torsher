@@ -22,10 +22,28 @@ const OFF = 'off'
 
 interface AudioTrackLike {
   enabled: boolean
+  label?: string
+  language?: string
 }
 
 type MediaWithAudio = HTMLVideoElement & {
   audioTracks?: { length: number, [index: number]: AudioTrackLike }
+}
+
+function audioLanguage(language?: string | null) {
+  const key = language?.toLowerCase().split('-')[0]
+  switch (key) {
+    case 'eng':
+      return 'en'
+    case 'rus':
+      return 'ru'
+    case 'ukr':
+      return 'uk'
+    case 'und':
+      return undefined
+    default:
+      return key
+  }
 }
 
 /**
@@ -46,6 +64,7 @@ export function usePlayerTracks(
   const audioStream = ref<number | null>(null)
   const subtitle = ref<string | null>(null)
   const media = computed(() => playback.value?.media ?? null)
+  let loaded: { sessionId: string, video: HTMLVideoElement } | undefined
 
   // Графические субтитры уже в кадре: реплик для слоя у них нет
   const burnedIn = (id: string | null) =>
@@ -202,6 +221,75 @@ export function usePlayerTracks(
 
     if (media.value && audioStream.value !== null && canSwitchInPlace())
       switchInPlace(audioStream.value)
+
+    const current = playback.value
+    const el = video.value
+    loaded
+      = current?.mode === 'direct' && el?.currentSrc && el.currentSrc === el.src
+        ? { sessionId: current.sessionId, video: el }
+        : undefined
+  }
+
+  function resetAppliedAudio() {
+    loaded = undefined
+  }
+
+  /** Read what is enabled on the loaded file, including failed switch attempts. */
+  function appliedAudioStream(native: boolean) {
+    const current = playback.value
+    const el = video.value as MediaWithAudio | undefined
+    if (
+      !loaded
+      || !el
+      || loaded.video !== el
+      || loaded.sessionId !== current?.sessionId
+      || el.readyState < 1
+      || !el.currentSrc
+      || el.currentSrc !== el.src
+    ) {
+      return null
+    }
+    const tracks = el.audioTracks
+    const streams = media.value?.audio
+    if (!tracks || !streams?.length || tracks.length !== streams.length)
+      return null
+
+    // Browser tracks follow the container order. Native snapshots do not
+    // expose stream IDs; for multiple tracks require unique matching labels.
+    const labels = streams.map(stream => stream.title?.trim().toLowerCase())
+    let applied: number | null = null
+    for (const [i, stream] of streams.entries()) {
+      const actual = tracks[i]
+      if (!actual || (i > 0 && streams[i - 1]!.index >= stream.index))
+        return null
+      const label = actual.label?.trim().toLowerCase()
+      if (label && labels[i] && label !== labels[i])
+        return null
+      const expectedLanguage = audioLanguage(stream.language)
+      const actualLanguage = audioLanguage(actual.language)
+      if (
+        expectedLanguage
+        && actualLanguage
+        && expectedLanguage !== actualLanguage
+      ) {
+        return null
+      }
+      if (
+        native
+        && streams.length > 1
+        && (!label
+          || label !== labels[i]
+          || labels.indexOf(label) !== labels.lastIndexOf(label))
+      ) {
+        return null
+      }
+      if (actual.enabled) {
+        if (applied !== null)
+          return null
+        applied = stream.index
+      }
+    }
+    return applied
   }
 
   function selectAudio(id: string) {
@@ -298,6 +386,8 @@ export function usePlayerTracks(
 
   return {
     refresh,
+    resetAppliedAudio,
+    appliedAudioStream,
     selection,
     hasBurnIn,
     audioOptions,

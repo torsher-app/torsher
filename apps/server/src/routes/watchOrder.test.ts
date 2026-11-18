@@ -4,7 +4,12 @@ import { ACCESS_TOKEN_COOKIE } from '../config.ts'
 import { getDb, migrateDb } from '../db/index.ts'
 import { torrents, users } from '../db/schema.ts'
 import { defaultProfile } from '../services/profiles/index.ts'
-import { getTitleProgress } from '../services/sources/progress.ts'
+import { historySource } from '../services/sources/history.ts'
+import {
+  getTitleProgress,
+  rememberChoice,
+  rememberVoice,
+} from '../services/sources/progress.ts'
 import { getWatchState } from '../services/torrents/index.ts'
 import { signToken } from '../utils/token.ts'
 
@@ -237,4 +242,77 @@ it('rolls back watermarks and both projections if the file write fails', async (
   expect((await save(100, 123)).statusCode).toBe(200)
   expect(getTitleProgress(ref)?.position).toBe(123)
   expect(getWatchState(profileId, torrentId, 0)?.position).toBe(123)
+})
+
+it('keeps factual A history across same-episode B choice, stale events and a late A checkpoint until B plays', async () => {
+  const alternate = getDb()
+    .insert(torrents)
+    .values({
+      infoHash: 'd'.repeat(40),
+      name: 'Alternate.2160p',
+      source: 'magnet',
+      status: 'ready',
+      files: [{ path: 'Alternate.2160p.mp4', size: 100, padding: false }],
+    })
+    .returning()
+    .get()
+  const ref = { profileId, titleId: 'tmdb:tv:902', season: 1, episode: 1 }
+  const put = (source: string, sequence: number, position: number) =>
+    app.inject({
+      method: 'PUT',
+      url: '/api/watch-state',
+      cookies,
+      payload: {
+        torrentId: source,
+        fileIndex: 0,
+        position,
+        duration: 2000,
+        title: { id: ref.titleId, season: 1, episode: 1 },
+        event: { clientId: 'source-history', sequence },
+      },
+    })
+  rememberChoice(ref, {
+    torrentId,
+    fileIndex: 0,
+    voice: { studio: 'Voice A' },
+  })
+  expect((await put(torrentId, 3, 200)).statusCode).toBe(200)
+  const played = getTitleProgress(ref)!
+  expect(await historySource(played)).toMatchObject({
+    torrentId,
+    voice: null,
+  })
+  expect(played.voiceStudio).toBe('Voice A')
+  rememberChoice(ref, {
+    torrentId: alternate.id,
+    fileIndex: 0,
+    voice: { studio: 'Voice B' },
+  })
+  rememberVoice(
+    ref,
+    { studio: 'Voice B' },
+    { torrentId: alternate.id, fileIndex: 0 },
+  )
+  const chosen = getTitleProgress(ref)!
+  expect(chosen.updatedAt).toEqual(played.updatedAt)
+  expect(chosen.lastPlayedAt).toEqual(played.lastPlayedAt)
+  expect(await historySource(chosen)).toEqual(await historySource(played))
+  expect((await put(alternate.id, 2, 999)).statusCode).toBe(200)
+  expect(getTitleProgress(ref)).toEqual(chosen)
+  expect((await put(torrentId, 4, 210)).statusCode).toBe(200)
+  expect(await historySource(getTitleProgress(ref)!)).toMatchObject({
+    torrentId,
+    voice: null,
+  })
+  expect(getTitleProgress(ref)).toMatchObject({
+    torrentId: alternate.id,
+    voiceStudio: 'Voice B',
+  })
+  expect((await put(alternate.id, 5, 220)).statusCode).toBe(200)
+  expect(await historySource(getTitleProgress(ref)!)).toMatchObject({
+    torrentId: alternate.id,
+    quality: '2160p',
+    voice: null,
+  })
+  expect(getTitleProgress(ref)?.voiceStudio).toBe('Voice B')
 })

@@ -2,7 +2,8 @@ import { notify } from '../notifications/index.ts'
 import process from 'node:process'
 import { statfs } from 'node:fs/promises'
 import { diskUsageFromStats } from '../storage/disk.ts'
-import { rootIdentity } from './identity.ts'
+import { rootIdentity, verifyOwnedFile } from './identity.ts'
+import { isEvictedSource } from './provenance.ts'
 import { durableMaintenance } from './durable.ts'
 import { getTorrentSettings } from '../torrents/settings.ts'
 import type {
@@ -47,6 +48,7 @@ export const maintenanceEngine = {
   finalize: engine.finalizeMaintenanceDetach,
   cancel: engine.cancelMaintenanceDetach,
   list: engine.listMaintenanceOperations,
+  torrents: engine.listEngineTorrents,
 }
 type Operation = typeof maintenanceOperations.$inferSelect
 export function executionEnabled() {
@@ -408,8 +410,13 @@ export async function retryMaintenanceOperation(id: string) {
       patch(id, { state: 'deleting' })
       const reply = await maintenanceEngine.unlink(id, index)
       assertManifest(op, reply)
-      if (reply.results[String(index)] !== 'removed')
+      if (
+        op.manifest.paths[index]!.baselineAbsent
+          ? reply.results[String(index)] !== undefined
+          : reply.results[String(index)] !== 'removed'
+      ) {
         throw new Error('unlink_not_confirmed')
+      }
       patch(id, { results: reply.results, engineStage: reply.state })
       op = operation(id)!
     }
@@ -527,10 +534,14 @@ export async function runMaintenance(now = Date.now()) {
           ) {
             continue
           }
-          const manifest: MaintenanceManifest = {
-            infoHash: row.initialInfoHash,
-            pieceCount: row.pieceCount,
-            paths: files.map(file => ({
+          const live = row.sourceEvictedAt
+            ? await maintenanceEngine.torrents()
+            : []
+          const canHaveAbsentSource
+            = !row.torrentId
+              && !live.some(item => item.infoHash === row.initialInfoHash)
+          const paths = await Promise.all(
+            files.map(async file => ({
               root: file.root,
               path: file.path,
               rootDevice: file.rootDevice!,
@@ -542,7 +553,17 @@ export async function runMaintenance(now = Date.now()) {
               fileId: file.id,
               mediaFileId: file.mediaFileId,
               kind: file.kind,
+              ...(canHaveAbsentSource
+                && isEvictedSource(row, file)
+                && (await verifyOwnedFile(file)) === 'missing'
+                ? { baselineAbsent: true as const }
+                : {}),
             })),
+          )
+          const manifest: MaintenanceManifest = {
+            infoHash: row.initialInfoHash,
+            pieceCount: row.pieceCount,
+            paths,
           }
           const volumes = await observeVolumes(manifest)
           const id = randomUUID()

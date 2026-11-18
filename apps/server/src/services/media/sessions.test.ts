@@ -1,6 +1,9 @@
 import type { Torrent } from '../../db/schema.ts'
 import type { DeviceProfile } from './decide.ts'
 import type { MediaInfo } from './probe.ts'
+import { mkdtemp, rename, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { eq } from 'drizzle-orm'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { getDb, migrateDb } from '../../db/index.ts'
@@ -13,9 +16,32 @@ import {
   sessionCues,
   stopAllSessions,
   stopSession,
+  validatedCheckpoint,
 } from './sessions.ts'
 
 const subtitleIndex = vi.hoisted(() => vi.fn())
+const keyframes = vi.hoisted(() => ({ times: null as number[] | null }))
+vi.mock('./cueCache.ts', () => ({
+  loadTorrentCues: async () =>
+    keyframes.times ? { times: keyframes.times } : null,
+}))
+vi.mock('./accel.ts', async importOriginal => ({
+  ...(await importOriginal<typeof import('./accel.ts')>()),
+  mediaAccel: async () => ({
+    mode: 'software',
+    encoder: 'software',
+    gpus: [],
+    failed: [],
+    software: true,
+    softwareFps: 100,
+    softwareMaxHeight: 720,
+    gpuToneMapping: false,
+    softwareToneMapping: false,
+    toneMappingFps: null,
+    toneMappingMaxHeight: 720,
+    checkedAt: '2026-11-17',
+  }),
+}))
 vi.mock('./matroska.ts', async importOriginal => ({
   ...(await importOriginal<typeof import('./matroska.ts')>()),
   readSubtitleIndex: subtitleIndex,
@@ -25,7 +51,8 @@ const probe = vi.hoisted(() => ({
   pending: undefined as ((media: MediaInfo) => void) | undefined,
 }))
 
-vi.mock('./probe.ts', () => ({
+vi.mock('./probe.ts', async importOriginal => ({
+  ...(await importOriginal<typeof import('./probe.ts')>()),
   probeMedia: () =>
     new Promise<MediaInfo>((resolve) => {
       probe.pending = resolve
@@ -134,6 +161,51 @@ describe('сессии воспроизведения', () => {
     expect(isStreaming(torrent.id)).toBe(false)
   })
 
+  it('discards factual metadata when a library path changes while probing', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'torsher-playback-revision-'))
+    const path = join(root, 'movie.1080p.mkv')
+    await writeFile(path, 'old')
+    const source = {
+      mediaFileId: 'checkpoint-file',
+      torrentId: null,
+      fileIndex: null,
+    }
+    const ref = { profileId: 'checkpoint-profile', titleId: 'tmdb:movie:1' }
+    const session = createSession({
+      subject: 'owner',
+      progressRef: ref,
+      library: { id: source.mediaFileId, path, size: 3 },
+      fileIndex: 0,
+      fileName: 'movie.1080p.mkv',
+      preference: {},
+      log,
+    })
+    let finish: ((result: MediaInfo) => void) | undefined
+    try {
+      finish = await probeStarted()
+      const replacement = join(root, 'replacement')
+      await writeFile(replacement, 'replacement')
+      await rename(replacement, path)
+      finish({
+        ...media,
+        video: { ...media.video!, width: 3840, height: 2160 },
+        audio: [{ ...media.audio[0]!, title: 'MVO NewStudio' }],
+      })
+      await session.ready
+      await stopSession(session.id)
+      expect(validatedCheckpoint(session.id, 'owner', ref, source, 1)).toEqual({
+        evidence: { ref: source },
+        launchSelection: undefined,
+        voice: null,
+      })
+    }
+    finally {
+      finish?.(media)
+      await stopSession(session.id)
+      await rm(root, { recursive: true, force: true })
+    }
+  })
+
   it('кадр видео из пробы запоминается у раздачи', async () => {
     const torrent = getDb()
       .insert(torrents)
@@ -226,6 +298,78 @@ describe('сессии воспроизведения', () => {
       await stopSession(session.id)
     }
   })
+
+  it.each([1, 2])(
+    'uses the selected audio end and never cuts beyond video (stream %i)',
+    async (audioStream) => {
+      keyframes.times = Array.from({ length: 31 }, (_, i) => i * 2)
+      const raw = {
+        ...media,
+        duration: 75,
+        video: { ...media.video!, startTime: 0, duration: 60, videoDelay: 0 },
+        audio: [
+          { ...media.audio[0]!, startTime: 0, duration: 60 },
+          { ...media.audio[0]!, index: 2, startTime: 0, duration: 75 },
+        ],
+      }
+      const session = createSession({
+        subject: 'owner',
+        torrent: torrentOf(`duration-${audioStream}`),
+        fileIndex: 0,
+        fileName: 'Film.mkv',
+        preference: {},
+        device: chrome,
+        audioStream,
+        log,
+      });
+      (await probeStarted())(raw)
+      try {
+        await session.ready
+        expect(session.hls!.duration).toBe(audioStream === 1 ? 60 : 75)
+        expect(session.hls!.starts.every(time => time < 60)).toBe(true)
+        expect(session.media).toBe(raw)
+        expect(raw.duration).toBe(75)
+      }
+      finally {
+        keyframes.times = null
+        await stopSession(session.id)
+      }
+    },
+  )
+
+  it.each([0, 2])(
+    'selects exact encoding only for dense reordered keyframes (%i B frames)',
+    async (videoDelay) => {
+      keyframes.times = Array.from({ length: 61 }, (_, i) => i / 5 + 4)
+      const session = createSession({
+        subject: 'owner',
+        torrent: torrentOf(`dense-${videoDelay}`),
+        fileIndex: 0,
+        fileName: 'Film.mkv',
+        preference: {},
+        device: chrome,
+        log,
+      });
+      (await probeStarted())({
+        ...media,
+        startTime: 4,
+        duration: 12,
+        video: { ...media.video!, startTime: 4, duration: 12, videoDelay },
+        audio: [{ ...media.audio[0]!, startTime: 4, duration: 12 }],
+      })
+      try {
+        await session.ready
+        expect(session.decision.mode).toBe('hls')
+        expect(session.decision.video).toBe(videoDelay ? 'encode' : 'copy')
+        expect(session.hls!.starts[1]).toBeCloseTo(2, 5)
+        expect(session.hls!.duration).toBe(12)
+      }
+      finally {
+        keyframes.times = null
+        await stopSession(session.id)
+      }
+    },
+  )
 
   describe('optional subtitle index', () => {
     const extracted = [{ start: 20, end: 25, text: 'Extracted' }]
@@ -320,6 +464,25 @@ describe('сессии воспроизведения', () => {
         })
         expect(lookup).toHaveBeenCalledWith(2, 20)
         expect(session.log.warn).not.toHaveBeenCalled()
+      }
+      finally {
+        await stopSession(session.id)
+      }
+    })
+
+    it('looks up indexed subtitles in the source clock and returns normalized cues once', async () => {
+      const lookup = vi
+        .fn()
+        .mockResolvedValue([{ start: 120, end: 125, text: 'Indexed' }])
+      subtitleIndex.mockReset().mockResolvedValue(lookup)
+      const session = await subtitleSession()
+      session.media = { ...session.media!, startTime: 100 }
+      try {
+        expect(await sessionCues(session, 's2', 20)).toEqual({
+          cues: [...extracted, { start: 20, end: 25, text: 'Indexed' }],
+          done: false,
+        })
+        expect(lookup).toHaveBeenCalledWith(2, 120)
       }
       finally {
         await stopSession(session.id)
