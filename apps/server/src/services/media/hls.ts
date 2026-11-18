@@ -17,6 +17,7 @@ import {
   encodeOutputArgs,
 } from './encode.ts'
 import { untrustedInputArgs } from './inputSafety.ts'
+import { probeSeekAnchor } from './probe.ts'
 import { mergeCues, parseWebVtt } from './webvtt.ts'
 
 /** Желаемая длина сегмента: короче — больше запросов, длиннее — дольше старт */
@@ -41,6 +42,7 @@ const AHEAD_SECONDS = 180
 const THROTTLE_CHECK_MS = 5000
 // ffmpeg ждёт куски от пиров; совсем мёртвый поток он бросит сам
 const READ_TIMEOUT_US = 120_000_000
+const MAX_SEEK_RETRIES = 2
 
 /** Вход запуска: поток движка или файл библиотеки */
 export function inputArgs(url: string) {
@@ -103,6 +105,26 @@ export function segmentStarts(
     starts.push(time)
 
   return starts
+}
+
+function frameAtOrAfter(time: number, rate: number) {
+  return Math.ceil(time * rate - 1e-7)
+}
+
+export function encodeSegmentStarts(
+  videoEnd: number,
+  videoStart: number,
+  rate: number,
+) {
+  const firstFrame = frameAtOrAfter(videoStart, rate)
+  return [
+    0,
+    ...segmentStarts(videoEnd, null)
+      .slice(1)
+      .map(time => frameAtOrAfter(time, rate))
+      .filter(frame => frame > firstFrame && frame / rate < videoEnd)
+      .map(frame => frame / rate),
+  ]
 }
 
 /** Whether a segment boundary is too close to its next indexed keyframe for copy seek preroll. */
@@ -180,6 +202,8 @@ export interface HlsInput {
   firstVideoTime?: number
   /** Перекодирование видео; без него — видео копией */
   encode?: EncodePlan | null
+  /** Start of decoded video and container origin, on their respective clocks. */
+  encodeTimeline?: { videoStart: number, sourceOrigin: number, mov: boolean }
   /** Запас перепаковки впереди плеера; меньше — только в тестах */
   ahead?: { seconds: number, checkMs: number }
   /** Ожидание сегмента; меньше — только в тестах */
@@ -237,6 +261,11 @@ interface Run {
   progress: { out: number, at: number } | null
   slowReports: number
   warnedSlow: boolean
+  controller: AbortController
+  seek: number
+  seekRetries: number
+  verified: boolean
+  seekRecovery?: { done: boolean, target?: number }
 }
 
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
@@ -379,7 +408,22 @@ export class HlsTranscode {
       if (run?.stalled)
         throw new SegmentTimeoutError()
 
-      if (run?.exited && !this.ready.has(index)) {
+      if (run?.seekRecovery?.done && Date.now() <= deadline) {
+        const seek = run.seekRecovery.target
+        if (seek === undefined) {
+          throw new TranscodeFailedError(
+            'Unable to decode the video before the segment boundary',
+          )
+        }
+        await this.serialize(async () => {
+          if (run === this.run && !signal?.aborted)
+            await this.start(run.from, seek, run.seekRetries + 1)
+        })
+        own = this.run
+        continue
+      }
+
+      if (run?.exited && !run.seekRecovery && !this.ready.has(index)) {
         if (run.failure && this.fallBack(run)) {
           await this.serialize(() => this.ensureRunFor(index))
           own = this.run
@@ -395,6 +439,7 @@ export class HlsTranscode {
       if (Date.now() > deadline) {
         if (own && own === run && !own.superseded && own.head < index) {
           own.stalled = true
+          own.controller.abort()
           this.log.warn(
             `${this.tag}: ffmpeg run ${own.id} stalled before segment ${index}, killed`,
           )
@@ -468,6 +513,7 @@ export class HlsTranscode {
     clearInterval(this.throttleTimer)
     // Старт мог быть на полпути: после него ffmpeg уже не запустится
     await this.queue
+    this.run?.controller.abort()
     this.kill()
     await rm(this.dir, { recursive: true, force: true })
   }
@@ -493,6 +539,15 @@ export class HlsTranscode {
       return
 
     const run = this.run
+
+    if (
+      run?.seekRecovery
+      && (!run.seekRecovery.done || run.seekRecovery.target !== undefined)
+      && index >= run.from
+      && index <= run.from + MAX_AHEAD_SEGMENTS
+    ) {
+      return
+    }
 
     if (run && !run.exited && !run.stalled && index >= run.from) {
       // ffmpeg этот сегмент уже прошёл, а файл удалён как старый: заново
@@ -568,7 +623,11 @@ export class HlsTranscode {
     }
   }
 
-  private async start(from: number) {
+  private async start(
+    from: number,
+    seek = this.initialSeek(from),
+    seekRetries = 0,
+  ) {
     // Адрес — до любых изменений: если движок недоступен, готовые сегменты
     // и прошлый запуск остаются как были
     let url: string
@@ -587,8 +646,10 @@ export class HlsTranscode {
     // Сегменты, которые прошлый запуск успел дописать, остаются готовыми
     await this.refreshReady()
 
-    if (this.run)
+    if (this.run) {
       this.run.superseded = true
+      this.run.controller.abort()
+    }
 
     // С места запуска новый ffmpeg перезапишет файлы: пока он их не внесёт в
     // свой список, старые не отдаём — их обрезают на ходу
@@ -616,7 +677,7 @@ export class HlsTranscode {
 
     const id = ++this.runs
     const plan = this.plan
-    const args = this.argsFor(url, from, id)
+    const args = this.argsFor(url, from, id, seek)
     const child = spawn(config.ffmpegPath, args, {
       stdio: ['ignore', plan ? 'pipe' : 'ignore', 'pipe'],
     })
@@ -633,6 +694,10 @@ export class HlsTranscode {
       progress: null,
       slowReports: 0,
       warnedSlow: false,
+      controller: new AbortController(),
+      seek,
+      seekRetries,
+      verified: !plan || !this.input.encodeTimeline,
     }
     let stderr = ''
 
@@ -656,6 +721,16 @@ export class HlsTranscode {
       progress = lines.pop() ?? ''
 
       for (const line of lines) {
+        if (
+          !run.verified
+          && !run.superseded
+          && !run.seekRecovery
+          && !run.failure
+        ) {
+          const firstFrame = /^frame:0\s+pts:(-?\d+)\s+pts_time:/.exec(line)
+          if (firstFrame)
+            this.verifyFirstFrame(run, Number(firstFrame[1]) / 1_000_000, url)
+        }
         const [key, value] = line.trim().split('=')
 
         if (!key || value === undefined)
@@ -680,7 +755,7 @@ export class HlsTranscode {
         `${this.tag}: ffmpeg did not start: ${err.code ?? err.message}`,
       )
     })
-    child.on('exit', (code, signal) => {
+    child.on('close', (code, signal) => {
       run.exited = true
 
       if (code !== 0 && signal !== 'SIGKILL') {
@@ -720,10 +795,82 @@ export class HlsTranscode {
     }
   }
 
-  private argsFor(url: string, from: number, runId: number) {
+  private initialSeek(from: number) {
+    if (from === 0)
+      return 0
+    const { starts, encodeTimeline, cues, videoDelay } = this.input
+    if (!this.plan)
+      return seekTargetOf(starts, from, cues ?? starts, videoDelay)
+    const start = starts[from]!
+    return encodeTimeline
+      ? Math.max(0, start - 1 / this.plan.frameRate)
+      : start
+  }
+
+  private verifyFirstFrame(run: Run, time: number, url: string) {
+    const timeline = this.input.encodeTimeline!
+    const rate = this.plan!.frameRate
+    const frame = Math.ceil((time - 0.0000005) * rate)
+    if (run.from === 0) {
+      run.verified = frame === frameAtOrAfter(timeline.videoStart, rate)
+      if (!run.verified)
+        run.failure = 'Decoded video start differs from the segment plan'
+    }
+    else {
+      run.verified = frame <= Math.round(this.input.starts[run.from]! * rate)
+      if (!run.verified) {
+        const recovery: NonNullable<Run['seekRecovery']> = { done: false }
+        run.seekRecovery = recovery
+        void this.earlierSeek(run, url).then((target) => {
+          recovery.target = target
+          recovery.done = true
+        })
+      }
+    }
+    if (!run.verified)
+      run.process.kill('SIGKILL')
+  }
+
+  private async earlierSeek(run: Run, url: string) {
+    if (run.seekRetries >= MAX_SEEK_RETRIES || run.seek === 0)
+      return undefined
+    const { encodeTimeline, videoStream, cues } = this.input
+    const origin = encodeTimeline!.sourceOrigin
+    if (encodeTimeline!.mov) {
+      // MOV can select an earlier DTS whose presentation time jumps past the
+      // cut. Step behind that exact index entry to recover the preceding GOP.
+      const anchor = await probeSeekAnchor(
+        url,
+        videoStream,
+        run.seek + origin,
+        run.controller.signal,
+      )
+      if (anchor !== undefined && anchor - origin < run.seek)
+        return Math.max(0, anchor - origin)
+    }
+    const cue = cues?.findLast(time => time >= 0 && time < run.seek)
+    if (cue !== undefined)
+      return cue
+    // A short prefix is a bounded fallback when the demuxer exposes no anchor.
+    if (this.input.starts[run.from]! <= 2 * SEGMENT_SECONDS)
+      return 0
+  }
+
+  private argsFor(url: string, from: number, runId: number, seek: number) {
     const { starts, videoStream, audioStream, audio } = this.input
     const plan = this.plan
     const origin = starts[from] ?? 0
+    const timeline = plan && this.input.encodeTimeline
+    const frame = timeline ? Math.round(origin * plan.frameRate) : 0
+    const frames = timeline
+      ? starts
+          .slice(from + 1)
+          .map(start => Math.round(start * plan.frameRate))
+      : []
+    const first
+      = timeline && from === 0
+        ? frameAtOrAfter(timeline.videoStart, plan.frameRate)
+        : frame
     const tolerance = plan ? ENCODE_CUT_TOLERANCE : 0
     const firstTime
       = !plan && from === 0 ? (this.input.firstVideoTime ?? 0) : 0
@@ -745,18 +892,11 @@ export class HlsTranscode {
 
     // Перекодирование встаёт точно на начало сегмента (декодер отбрасывает
     // кадры до него), копия — на ключевой кадр, поэтому чуть позже начала
-    if (from > 0) {
+    if (seek > 0) {
       args.push(
         '-ss',
-        (plan
-          ? origin
-          : seekTargetOf(
-              starts,
-              from,
-              this.input.cues ?? starts,
-              this.input.videoDelay,
-            )
-        ).toFixed(3),
+        seek.toFixed(timeline ? 6 : 3),
+        ...(timeline ? ['-noaccurate_seek'] : []),
       )
     }
 
@@ -765,7 +905,11 @@ export class HlsTranscode {
     if (plan) {
       args.push(
         '-filter_complex',
-        encodeFilterGraph(plan, videoStream),
+        encodeFilterGraph(
+          plan,
+          videoStream,
+          timeline ? { trim: from > 0 ? frame : undefined } : undefined,
+        ),
         '-map',
         '[v]',
       )
@@ -778,8 +922,26 @@ export class HlsTranscode {
       args.push('-map', `0:${audioStream}`)
 
     args.push(
-      ...(plan ? encodeOutputArgs(plan, starts.slice(from)) : ['-c:v', 'copy']),
+      ...(plan
+        ? encodeOutputArgs(
+            plan,
+            timeline
+              ? [0, ...frames.map(frame => (frame - 0.25) / plan.frameRate)]
+              : starts.slice(from),
+          )
+        : ['-c:v', 'copy']),
     )
+    if (timeline) {
+      args.push(
+        '-enc_time_base:v',
+        'filter',
+        '-fps_mode:v',
+        'passthrough',
+        // Let the held video frame arrive before sending later audio to the muxer.
+        '-max_interleave_delta',
+        '0',
+      )
+    }
 
     if (audioStream !== null) {
       args.push(
@@ -790,8 +952,13 @@ export class HlsTranscode {
 
       // Копия звука начинается с пакета до точки перемотки, а перекодированное
       // видео — точно с неё: лишнее отбрасывается, как у Jellyfin
-      if (plan && audio === 'copy' && from > 0)
-        args.push('-bsf:a', `noise=drop='lt(pts*tb\\,${origin.toFixed(3)})'`)
+      if (plan && from > 0) {
+        const cut = origin.toFixed(timeline ? 6 : 3)
+        if (audio === 'copy')
+          args.push('-bsf:a', `noise=drop='lt(pts*tb\\,${cut})'`)
+        else if (timeline)
+          args.push('-af', `atrim=start=${cut}`)
+      }
     }
 
     args.push(
@@ -815,9 +982,18 @@ export class HlsTranscode {
       'csv',
     )
 
-    if (cuts.length > 0)
+    if (frames.length > 0) {
+      args.push(
+        '-segment_frames',
+        frames.map(frame => frame - first).join(','),
+      )
+    }
+    else if (cuts.length > 0) {
       args.push('-segment_times', cuts.join(','))
-    else args.push('-segment_time', String(this.input.duration + 1))
+    }
+    else {
+      args.push('-segment_time', String(this.input.duration + 1))
+    }
 
     args.push(join(this.dir, '%d.ts'))
 
@@ -846,7 +1022,7 @@ export class HlsTranscode {
   private async refreshReady() {
     const run = this.run
 
-    if (!run || run.superseded)
+    if (!run || run.superseded || !run.verified)
       return
 
     const text = await readFile(

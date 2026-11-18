@@ -47,7 +47,12 @@ import {
   voiceOfTrack,
 } from './decide.ts'
 import { describePlan, planEncode } from './encode.ts'
-import { hasDenseCues, HlsTranscode, segmentStarts } from './hls.ts'
+import {
+  encodeSegmentStarts,
+  hasDenseCues,
+  HlsTranscode,
+  segmentStarts,
+} from './hls.ts'
 import { readSubtitleIndex } from './matroska.ts'
 import { loadLibraryCues, loadTorrentCues } from './cueCache.ts'
 import { mergeCues } from './webvtt.ts'
@@ -530,31 +535,44 @@ async function prepare(
   let decision = decide(true)
   let cues: number[] | null = null
   const matroska = isMatroska(media.container)
+  const sourceOrigin = media.startTime ?? 0
+  let videoStart
+    = media.container === 'mp4' ? media.video?.startTime : undefined
   const measureEndpoints
     = decision.mode === 'hls'
       && matroska
       && media.video !== null
       && timing.duration === null
       && media.startTime !== undefined
-  if (
-    decision.mode === 'hls'
-    && matroska
-    && (measureEndpoints
-      || (decision.video === 'copy' && timing.duration !== null))
-  ) {
-    // Header, index and optional terminal packets share one bounded preparation.
+  const prepareMatroska
+    = decision.mode === 'hls'
+      && matroska
+      && (measureEndpoints
+        || (timing.videoEnd !== null
+          && segmentStarts(timing.videoEnd, null).length > 1))
+  if (prepareMatroska) {
+    // Header, index and optional frame/packet evidence share one budget.
     const prepared = library
       ? await loadLibraryCues(
           { ...library, size: libraryStat!.size },
           probeKey,
           signal,
           measureEndpoints,
+          media.video?.index,
         )
-      : await loadTorrentCues(torrent!, fileIndex, signal, measureEndpoints)
+      : await loadTorrentCues(
+          torrent!,
+          fileIndex,
+          signal,
+          measureEndpoints,
+          media.video?.index,
+        )
     if (!isOpen(session))
       return
     timing = hlsTiming(media, session.audioStream, prepared?.packetEnds)
-    cues = prepared?.times.map(time => time - (media.startTime ?? 0)) ?? null
+    cues = prepared?.times.map(time => time - sourceOrigin) ?? null
+    if (prepared?.videoStart?.stream === media.video?.index)
+      videoStart = prepared?.videoStart?.time
   }
   else {
     prepareStatsCues()
@@ -622,7 +640,7 @@ async function prepare(
     decision = decide(false)
 
   if (decision.mode === 'hls' && duration && videoEnd !== null && media.video) {
-    if (measureEndpoints && library) {
+    if (prepareMatroska && library) {
       const current = await stat(library.path).catch(() => null)
       if (!current || libraryProbeKey(library.id, current) !== probeKey) {
         session.decision = {
@@ -637,6 +655,22 @@ async function prepare(
       = decision.video === 'encode' && caps
         ? planEncode(media.video, caps, burned?.index ?? null, software)
         : null
+    const encodeTimeline
+      = encode && videoStart !== undefined
+        ? {
+            videoStart: videoStart - sourceOrigin,
+            sourceOrigin,
+            mov: media.container === 'mp4',
+          }
+        : undefined
+    const starts
+      = encode && encodeTimeline
+        ? encodeSegmentStarts(
+            videoEnd,
+            encodeTimeline.videoStart,
+            encode.frameRate,
+          )
+        : segmentStarts(videoEnd, encode ? null : cues)
 
     if (!isOpen(session))
       return
@@ -655,12 +689,13 @@ async function prepare(
         audioStream: session.audioStream,
         audio: decision.audio ?? 'aac',
         subtitleStreams: textSubtitles(media).map(track => track.index),
-        starts: segmentStarts(videoEnd, encode ? null : cues),
+        starts,
         cues,
         videoDelay: media.video.videoDelay,
         firstVideoTime: cues?.[0],
         duration,
         encode,
+        encodeTimeline: starts.length > 1 ? encodeTimeline : undefined,
         session: session.id,
       },
       log,

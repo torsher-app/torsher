@@ -202,7 +202,11 @@ export function encodeInputArgs(plan: EncodePlan) {
  * переходят между памятью видеокарты и процессора только там, где фильтру
  * нужна другая: перевод в SDR и наложение субтитров идут в памяти процессора.
  */
-export function encodeFilterGraph(plan: EncodePlan, videoStream: number) {
+export function encodeFilterGraph(
+  plan: EncodePlan,
+  videoStream: number,
+  timeline?: { trim?: number },
+) {
   const { width, height } = plan
   const chain: string[] = []
   let onGpu = plan.hwDecode
@@ -234,6 +238,13 @@ export function encodeFilterGraph(plan: EncodePlan, videoStream: number) {
     if (onGpu)
       chain.push(plan.encoder === 'vaapi' ? 'deinterlace_vaapi' : 'yadif_cuda')
     else chain.push('yadif')
+  }
+
+  if (timeline) {
+    // Round source timestamps up so a held frame is never replaced early.
+    chain.push(`fps=${plan.frameRate}:round=up`)
+    if (timeline.trim !== undefined)
+      chain.push(`trim=start_pts=${timeline.trim}`)
   }
 
   if (plan.toneMapping) {
@@ -274,16 +285,21 @@ export function encodeFilterGraph(plan: EncodePlan, videoStream: number) {
   }
 
   const source = `[0:${videoStream}]`
+  // Report a decoded timestamp before fps can fill a gap or trim drops preroll.
+  const prefix = timeline
+    ? `${source}split[video][first];[first]select='eq(n,0)',settb=AVTB,metadata=add:key=torsher_first_video:value=1,metadata=print:key=torsher_first_video:file='pipe\\:1':direct=1,nullsink;`
+    : ''
+  const video = timeline ? '[video]' : source
   // Перевод в SDR уже кончается тем же форматом, что нужен кодировщику
   const filters = (list: string[]) =>
     list.filter((filter, i) => filter !== list[i - 1]).join(',')
 
   if (plan.burnSubtitle === null)
-    return `${source}${filters([...chain, ...tail])}[v]`
+    return `${prefix}${video}${filters([...chain, ...tail])}[v]`
 
   // Субтитры растягиваются на кадр выхода: холст PGS и VobSub — кадр исходника
   return [
-    `${source}${filters(chain)}[base]`,
+    `${prefix}${video}${filters(chain)}[base]`,
     `[0:${plan.burnSubtitle}]scale=${width}:${height}[sub]`,
     `[base][sub]${['overlay=eof_action=pass:repeatlast=0', ...tail].join(',')}[v]`,
   ].join(';')
@@ -367,7 +383,7 @@ export function encodeOutputArgs(plan: EncodePlan, keyframes: number[]) {
     '-aspect',
     `${plan.width}:${plan.height}`,
     '-force_key_frames',
-    keyframes.map(time => time.toFixed(3)).join(','),
+    keyframes.map(time => time.toFixed(6)).join(','),
   )
 
   return args

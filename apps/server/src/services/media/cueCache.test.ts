@@ -16,13 +16,17 @@ import {
 const mocks = vi.hoisted(() => ({
   parse: vi.fn(),
   packetProbe: vi.fn(),
+  videoProbe: vi.fn(),
   stats: vi.fn(),
   maintenance: vi.fn(),
   stream: vi.fn(),
   releases: [] as ReturnType<typeof vi.fn>[],
 }))
 vi.mock('./matroska.ts', () => ({ readMatroskaCues: mocks.parse }))
-vi.mock('./probe.ts', () => ({ probePacketEnds: mocks.packetProbe }))
+vi.mock('./probe.ts', () => ({
+  probePacketEnds: mocks.packetProbe,
+  probeVideoStart: mocks.videoProbe,
+}))
 vi.mock('../engine/index.ts', () => ({
   engineStreamUrl: () => 'http://synthetic.invalid/stream',
   torrentStats: mocks.stats,
@@ -93,8 +97,7 @@ it('shares one read and leases while a viewer leaves; stats peek starts no IO', 
   expect(fetch).not.toHaveBeenCalled()
   const a = loadTorrentCues(torrent(), 0, first.signal)
   const b = loadTorrentCues(torrent(), 0, second.signal)
-  await Promise.resolve()
-  await Promise.resolve()
+  await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce())
   first.abort()
   expect(signal.aborted).toBe(false)
   resolve(response())
@@ -123,8 +126,7 @@ it('aborts after the last subscriber and retries transient failures on the next 
   )
   const controller = new AbortController()
   const pending = loadTorrentCues(torrent(), 0, controller.signal)
-  await Promise.resolve()
-  await Promise.resolve()
+  await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce())
   controller.abort()
   expect(await pending).toBeNull()
   expect(
@@ -134,6 +136,44 @@ it('aborts after the last subscriber and retries transient failures on the next 
   expect(
     await loadTorrentCues(torrent(), 0, new AbortController().signal),
   ).toEqual(value)
+  expect(fetch).toHaveBeenCalledTimes(2)
+})
+
+it('upgrades an index load using its existing verified prefix', async () => {
+  const controller = new AbortController()
+  let hls: ReturnType<typeof loadTorrentCues> | undefined
+  mocks.videoProbe.mockResolvedValueOnce(10)
+  mocks.parse.mockImplementationOnce(async (read: RangeReader) => {
+    await read(0, 8)
+    hls = loadTorrentCues(torrent(), 0, controller.signal, false, 0)
+    return value
+  })
+  const direct = await loadTorrentCues(
+    torrent(),
+    0,
+    new AbortController().signal,
+  )
+  expect(direct).toEqual({ ...value, videoStart: { stream: 0, time: 10 } })
+  expect(await hls).toBe(direct)
+  expect(await loadTorrentCues(torrent(), 0, controller.signal, false, 0)).toBe(
+    direct,
+  )
+  expect(mocks.videoProbe).toHaveBeenCalledOnce()
+  expect(fetch).toHaveBeenCalledOnce()
+})
+
+it('measures video start only after torrent pieces are verified', async () => {
+  const signal = new AbortController().signal
+  mocks.stats.mockResolvedValue({ pieces: '0'.repeat(10) })
+  const unknown = await loadTorrentCues(torrent(), 0, signal, false, 0)
+  expect(unknown?.videoStart).toBeUndefined()
+  expect(mocks.videoProbe).not.toHaveBeenCalled()
+  mocks.stats.mockResolvedValue({ pieces: '1'.repeat(10) })
+  mocks.videoProbe.mockResolvedValueOnce(0)
+  expect(await loadTorrentCues(torrent(), 0, signal, false, 0)).toEqual({
+    ...value,
+    videoStart: { stream: 0, time: 0 },
+  })
   expect(fetch).toHaveBeenCalledTimes(2)
 })
 
