@@ -10,9 +10,14 @@ import { eq } from 'drizzle-orm'
 import pino from 'pino'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { createApp } from '../app.ts'
-import { ACCESS_TOKEN_COOKIE, PROFILE_COOKIE } from '../config.ts'
+import {
+  ACCESS_TOKEN_COOKIE,
+  DEVICE_TOKEN_COOKIE,
+  PROFILE_COOKIE,
+} from '../config.ts'
 import { getDb, migrateDb } from '../db/index.ts'
-import { profiles, torrents, users } from '../db/schema.ts'
+import { devices, profiles, torrents, users } from '../db/schema.ts'
+import { hashToken } from '../services/devices/index.ts'
 import { setEngineDown, setEngineReady } from '../services/engine/index.ts'
 import {
   INFO_HASH,
@@ -28,8 +33,12 @@ import { stopAllSessions } from '../services/media/index.ts'
 import { clearProbeCache } from '../services/media/probe.ts'
 import { getSession, probeDeps } from '../services/media/sessions.ts'
 import { resetMediaTools } from '../services/media/tools.ts'
-import { rememberChoice } from '../services/sources/progress.ts'
+import {
+  getTitleProgress,
+  rememberChoice,
+} from '../services/sources/progress.ts'
 import { isStreaming } from '../services/storage/index.ts'
+import * as torrentService from '../services/torrents/index.ts'
 import { signToken } from '../utils/token.ts'
 
 vi.mock('../services/storage/disk.ts', () => ({
@@ -423,6 +432,30 @@ describe.runIf(hasFfmpeg())('воспроизведение с пробой и �
     expect(segment.rawPayload[0]).toBe(0x47)
   })
 
+  it('uses the effective HLS duration in both playback state and playlist', async () => {
+    const body = await start({ device: chrome })
+    const session = getSession(body.sessionId, 'owner')!
+    const raw = session.media!
+    session.media = { ...raw, duration: 75 }
+    try {
+      const state = await app.inject({
+        url: `/api/playback/${body.sessionId}`,
+        cookies: owner,
+      })
+      expect(state.json().duration).toBeCloseTo(session.hls!.duration, 5)
+      const playlist = await app.inject({ url: body.streamUrl })
+      expect(playlist.statusCode).toBe(200)
+      const duration = [...playlist.body.matchAll(/#EXTINF:([\d.]+)/g)].reduce(
+        (sum, match) => sum + Number(match[1]),
+        0,
+      )
+      expect(duration).toBeCloseTo(session.hls!.duration, 5)
+    }
+    finally {
+      session.media = raw
+    }
+  })
+
   it('chrome: Xvid в AVI — перекодирование видео в H.264', async () => {
     const body = await start({ device: chrome, fileIndex: 2 })
 
@@ -610,6 +643,387 @@ describe.runIf(hasFfmpeg())('воспроизведение с пробой и �
       (await start({ device: webos, title: { ...title, episode: 4 } }))
         .audioStream,
     ).toBe(2)
+  })
+
+  it('does not remember a delayed explicit audio probe after a newer choice', async () => {
+    const title = { id: 'tmdb:tv:924', season: 1, episode: 1 }
+    const ref = {
+      profileId: await defaultProfileId(),
+      titleId: title.id,
+      season: 1,
+      episode: 1,
+    }
+    let entered!: () => void
+    let release!: () => void
+    const probing = new Promise<void>((resolve) => {
+      entered = resolve
+    })
+    const gate = new Promise<undefined>((resolve) => {
+      release = () => resolve(undefined)
+    })
+    const pause = vi.spyOn(probeDeps, 'pause').mockImplementation(() => {
+      entered()
+      return gate
+    })
+    clearProbeCache()
+    probeResets = 1
+    const launch = start({ device: webos, title, audioStream: 1 })
+    try {
+      await probing
+      rememberChoice(ref, {
+        torrentId: torrent.id,
+        fileIndex: 2,
+        voice: { studio: 'Newer choice' },
+      })
+      release()
+      expect(await launch).toMatchObject({ status: 'ready', audioStream: 1 })
+      expect(getTitleProgress(ref)).toMatchObject({
+        fileIndex: 2,
+        voiceStudio: 'Newer choice',
+        voiceSelectionRevision: 1,
+      })
+    }
+    finally {
+      release()
+      await launch
+      pause.mockRestore()
+      probeResets = 0
+    }
+  })
+
+  it('protects a choice made while the new torrent file is waiting for prepareStream', async () => {
+    const title = { id: 'tmdb:tv:925', season: 1, episode: 1 }
+    const ref = {
+      profileId: await defaultProfileId(),
+      titleId: title.id,
+      season: 1,
+      episode: 1,
+    }
+    let entered!: () => void
+    let release!: () => void
+    const waiting = new Promise<void>((resolve) => {
+      entered = resolve
+    })
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const original = torrentService.prepareStream
+    const preparing = vi
+      .spyOn(torrentService, 'prepareStream')
+      .mockImplementationOnce(async (...args) => {
+        entered()
+        await gate
+        return original(...args)
+      })
+    const pending = start({ device: webos, title })
+    try {
+      await waiting
+      rememberChoice(ref, {
+        torrentId: torrent.id,
+        fileIndex: 2,
+        voice: { studio: 'Newer choice' },
+      })
+      release()
+      const playing = await pending
+      const checkpoint = await app.inject({
+        method: 'PUT',
+        url: '/api/watch-state',
+        cookies: owner,
+        payload: {
+          torrentId: torrent.id,
+          fileIndex: 0,
+          title,
+          sessionId: playing.sessionId,
+          position: 5,
+          duration: 20,
+          appliedAudioStream: 1,
+        },
+      })
+      expect(checkpoint.statusCode).toBe(200)
+      expect(getTitleProgress(ref)).toMatchObject({
+        fileIndex: 2,
+        voiceStudio: 'Newer choice',
+        playedSource: { fileIndex: 0, voice: { studio: 'NewStudio' } },
+        position: 5,
+      })
+    }
+    finally {
+      release()
+      await pending
+      preparing.mockRestore()
+    }
+  })
+
+  it.each([
+    {
+      device: webos,
+      expected: 'LostFilm',
+      mode: 'direct',
+      switching: 'platform',
+    },
+    {
+      device: chrome,
+      expected: 'NewStudio',
+      mode: 'hls',
+      switching: 'restart',
+    },
+  ])(
+    'keeps the checkpoint tied to the applied audio ($mode/$switching)',
+    async ({ device, expected, mode, switching }) => {
+      const title = { id: 'tmdb:tv:919', season: 1, episode: 1 }
+      const ref = {
+        profileId: await defaultProfileId(),
+        titleId: title.id,
+        season: 1,
+        episode: 1,
+      }
+      const playing = await start({ device, title, audioStream: 1 })
+      expect(playing).toMatchObject({ mode, audioSwitch: switching })
+      const checkpoint = (
+        position: number,
+        appliedAudioStream: number | null,
+      ) =>
+        app.inject({
+          method: 'PUT',
+          url: '/api/watch-state',
+          cookies: owner,
+          payload: {
+            torrentId: torrent.id,
+            fileIndex: 0,
+            title,
+            sessionId: playing.sessionId,
+            appliedAudioStream,
+            position,
+            duration: 20,
+          },
+        })
+      expect((await checkpoint(2, 1)).statusCode).toBe(200)
+      expect(getTitleProgress(ref)?.playedSource).toMatchObject({
+        voice: { studio: 'NewStudio' },
+      })
+      const first = getTitleProgress(ref)!
+      const changed = await app.inject({
+        method: 'PUT',
+        url: `/api/playback/${playing.sessionId}/preferences`,
+        cookies: owner,
+        payload: { audioStream: 2 },
+      })
+      expect(changed.statusCode).toBe(200)
+      expect(getTitleProgress(ref)?.playedSource).toEqual(first.playedSource)
+      expect(getTitleProgress(ref)?.updatedAt).toEqual(first.updatedAt)
+      expect(getTitleProgress(ref)?.voiceSelectionRevision).toBe(
+        first.voiceSelectionRevision + 1,
+      )
+      const acceptedChoice = getTitleProgress(ref)!
+      const rejected = await app.inject({
+        method: 'PUT',
+        url: `/api/playback/${playing.sessionId}/preferences`,
+        cookies: owner,
+        payload: { audioStream: 1, subtitle: 's999' },
+      })
+      expect(rejected.statusCode).toBe(400)
+      expect(getTitleProgress(ref)).toEqual(acceptedChoice)
+      expect((await checkpoint(3, 2)).statusCode).toBe(200)
+      expect(getTitleProgress(ref)?.playedSource).toMatchObject({
+        voice: { studio: expected },
+      })
+      expect((await checkpoint(4, null)).statusCode).toBe(200)
+      expect(getTitleProgress(ref)).toMatchObject({
+        // HLS maps its selected stream. Direct can no longer attest a track.
+        playedSource: {
+          voice: mode === 'hls' ? { studio: 'NewStudio' } : null,
+        },
+        voiceStudio: mode === 'direct' ? 'LostFilm' : 'NewStudio',
+        position: 4,
+      })
+    },
+  )
+
+  it('keeps separate HLS tracks across sessions of the same file and a late save after DELETE', async () => {
+    const title = { id: 'tmdb:tv:920', season: 1, episode: 1 }
+    const ref = {
+      profileId: await defaultProfileId(),
+      titleId: title.id,
+      season: 1,
+      episode: 1,
+    }
+    rememberChoice(ref, {
+      torrentId: torrent.id,
+      fileIndex: 0,
+      voice: { studio: 'LostFilm' },
+    })
+    const a = await start({ device: chrome, title, voiceStudio: 'NewStudio' })
+    const b = await start({ device: chrome, title, voiceStudio: 'LostFilm' })
+    expect(a).toMatchObject({ status: 'ready', mode: 'hls', audioStream: 1 })
+    expect(b).toMatchObject({ status: 'ready', mode: 'hls', audioStream: 2 })
+    const checkpoint = (sessionId: string, position: number) =>
+      app.inject({
+        method: 'PUT',
+        url: '/api/watch-state',
+        cookies: owner,
+        payload: {
+          torrentId: torrent.id,
+          fileIndex: 0,
+          title,
+          sessionId,
+          position,
+          duration: 20,
+        },
+      })
+    expect((await checkpoint(b.sessionId, 2)).statusCode).toBe(200)
+    expect(getTitleProgress(ref)?.playedSource).toMatchObject({
+      voice: { studio: 'LostFilm' },
+    })
+    expect((await checkpoint(a.sessionId, 3)).statusCode).toBe(200)
+    expect(getTitleProgress(ref)?.playedSource).toMatchObject({
+      voice: { studio: 'NewStudio' },
+    })
+    rememberChoice(ref, {
+      torrentId: torrent.id,
+      fileIndex: 2,
+      voice: { studio: 'Pending' },
+    })
+    expect(
+      (
+        await app.inject({
+          method: 'DELETE',
+          url: `/api/playback/${a.sessionId}`,
+          cookies: owner,
+        })
+      ).statusCode,
+    ).toBe(200)
+    expect((await checkpoint(a.sessionId, 4)).statusCode).toBe(200)
+    expect(getTitleProgress(ref)).toMatchObject({
+      position: 4,
+      fileIndex: 2,
+      voiceStudio: 'Pending',
+      playedSource: { fileIndex: 0, voice: { studio: 'NewStudio' } },
+    })
+  })
+
+  it('ignores session facts across title, episode, file and profile boundaries', async () => {
+    const title = { id: 'tmdb:tv:921', season: 1, episode: 1 }
+    const profileId = await defaultProfileId()
+    const playing = await start({
+      device: chrome,
+      title,
+      voiceStudio: 'NewStudio',
+    })
+    const otherProfile = 'other-progress-profile'
+    getDb()
+      .insert(profiles)
+      .values({ id: otherProfile, name: 'Other progress', color: 'violet' })
+      .run()
+    const foreignDevice = 'foreign-progress-device'
+    getDb()
+      .insert(devices)
+      .values({
+        name: 'Playback fixture',
+        type: 'tv',
+        profileId,
+        tokenHash: hashToken(foreignDevice),
+      })
+      .run()
+    const cases = [
+      { profileId, title: { ...title, id: 'tmdb:tv:922' }, fileIndex: 0 },
+      { profileId, title: { ...title, episode: 2 }, fileIndex: 0 },
+      { profileId, title, fileIndex: 2 },
+      { profileId: otherProfile, title, fileIndex: 0 },
+      { profileId, title, fileIndex: 0, device: foreignDevice },
+    ]
+    for (const target of cases) {
+      const response = await app.inject({
+        method: 'PUT',
+        url: '/api/watch-state',
+        cookies: target.device
+          ? { [DEVICE_TOKEN_COOKIE]: target.device }
+          : { ...owner, [PROFILE_COOKIE]: target.profileId },
+        payload: {
+          torrentId: torrent.id,
+          fileIndex: target.fileIndex,
+          title: target.title,
+          sessionId: playing.sessionId,
+          position: 5,
+          duration: 20,
+        },
+      })
+      expect(response.statusCode).toBe(200)
+      expect(
+        getTitleProgress({
+          profileId: target.profileId,
+          titleId: target.title.id,
+          season: target.title.season,
+          episode: target.title.episode,
+        }),
+      ).toMatchObject({ position: 5, playedSource: { voice: null } })
+    }
+    const late = await app.inject({
+      method: 'PUT',
+      url: '/api/watch-state',
+      cookies: { ...owner, [PROFILE_COOKIE]: otherProfile },
+      payload: {
+        torrentId: torrent.id,
+        fileIndex: 0,
+        title,
+        profileId,
+        sessionId: playing.sessionId,
+        position: 10,
+        duration: 20,
+      },
+    })
+    expect(late.statusCode).toBe(404)
+    expect(
+      getTitleProgress({
+        profileId: otherProfile,
+        titleId: title.id,
+        season: 1,
+        episode: 1,
+      })?.position,
+    ).toBe(5)
+  })
+
+  it('keeps legacy and unapplied direct fallback audio unknown without erasing the requested choice', async () => {
+    const title = { id: 'tmdb:tv:923', season: 1, episode: 1 }
+    const ref = {
+      profileId: await defaultProfileId(),
+      titleId: title.id,
+      season: 1,
+      episode: 1,
+    }
+    const fallback = await start({
+      device: { ...chrome, hls: false },
+      title,
+      audioStream: 2,
+    })
+    expect(fallback).toMatchObject({
+      mode: 'direct',
+      audioStream: 2,
+      reasons: expect.arrayContaining(['HlsNotSupported']),
+    })
+    for (const [position, context] of [
+      [2, {}],
+      [3, { sessionId: fallback.sessionId, appliedAudioStream: null }],
+    ] as const) {
+      const checkpoint = await app.inject({
+        method: 'PUT',
+        url: '/api/watch-state',
+        cookies: owner,
+        payload: {
+          torrentId: torrent.id,
+          fileIndex: 0,
+          title,
+          position,
+          duration: 20,
+          ...context,
+        },
+      })
+      expect(checkpoint.statusCode).toBe(200)
+      expect(getTitleProgress(ref)).toMatchObject({
+        position,
+        voiceStudio: 'LostFilm',
+        playedSource: { voice: null },
+      })
+    }
   })
 
   it('saves explicit tracks for the title, restores them on another episode and preserves Off', async () => {

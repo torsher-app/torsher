@@ -3,10 +3,21 @@ import { matchesAudio, preferredSubtitle } from './trackPreferences.ts'
 import type { DiagnosticContext } from '../diagnostics/index.ts'
 import { recordDecision, recordFailure } from '../diagnostics/index.ts'
 import type { SkipSegment } from '../segments/model.ts'
+import type { PlayedVoice, SourceEvidence } from '../library/playedSource.ts'
+import type { LaunchSelection, TitleRef } from '../sources/progress.ts'
+import type {
+  PreparedPlayedSource,
+  SourceRef,
+} from '../sources/playedSource.ts'
 import { trackPlayback } from '../segments/activity.ts'
 import { readySegments } from '../segments/index.ts'
 import { open, readdir, rm, stat } from 'node:fs/promises'
 import { acquireMaintenanceLease } from '../libraryMaintenance/admission.ts'
+import {
+  libraryContentKey,
+  libraryProbeKey,
+  libraryRevisionMatches,
+} from '../library/playedSource.ts'
 import type { Torrent } from '../../db/schema.ts'
 import type {
   AudioPreference,
@@ -36,11 +47,11 @@ import {
   voiceOfTrack,
 } from './decide.ts'
 import { describePlan, planEncode } from './encode.ts'
-import { HlsTranscode, segmentStarts } from './hls.ts'
-import { readCueTimes, readSubtitleIndex } from './matroska.ts'
-import { loadTorrentCues } from './cueCache.ts'
+import { hasDenseCues, HlsTranscode, segmentStarts } from './hls.ts'
+import { readSubtitleIndex } from './matroska.ts'
+import { loadLibraryCues, loadTorrentCues } from './cueCache.ts'
 import { mergeCues } from './webvtt.ts'
-import { probeMedia } from './probe.ts'
+import { hlsTiming, isMatroska, probeMedia } from './probe.ts'
 import {
   findExternalSubtitles,
   librarySubtitles,
@@ -55,6 +66,8 @@ export interface LibrarySource {
   id: string
   path: string
   size: number
+  origin?: Pick<SourceRef, 'torrentId' | 'fileIndex'>
+  storedEvidence?: { probeKey: string, video?: SourceEvidence['video'] }
 }
 
 export interface PlaybackSession {
@@ -62,6 +75,9 @@ export interface PlaybackSession {
   id: string
   /** Чей поток: устройство или владелец, как у токена потока */
   subject: string
+  progressRef?: TitleRef
+  launchSelection?: LaunchSelection
+  playedEvidence?: { probeKey: string, source: SourceEvidence }
   /** Источник — файл раздачи (`torrent` + `fileIndex`) или файл библиотеки */
   torrent: Torrent | null
   library: LibrarySource | null
@@ -95,6 +111,8 @@ export interface SessionLog extends HlsLog {
 export interface SessionInput {
   diagnosticContext?: DiagnosticContext
   subject: string
+  progressRef?: TitleRef
+  launchSelection?: LaunchSelection
   torrent?: Torrent
   library?: LibrarySource
   fileIndex: number
@@ -128,6 +146,12 @@ export const probeDeps = {
 }
 
 const sessions = new Map<string, PlaybackSession>()
+const CLOSED_CHECKPOINT_TTL_MS = 2 * 60 * 1000
+const CLOSED_CHECKPOINT_LIMIT = 256
+const closedCheckpoints = new Map<
+  string,
+  { expiresAt: number, context: CheckpointContext }
+>()
 const releases = new Map<string, () => void>()
 /** Закрытие сессии обрывает её фоновые чтения потока */
 const closers = new Map<string, AbortController>()
@@ -210,6 +234,98 @@ function isOpen(session: PlaybackSession) {
   return sessions.get(session.id) === session
 }
 
+interface CheckpointContext {
+  subject: string
+  ref: TitleRef
+  source: SourceRef
+  launchSelection?: LaunchSelection
+  evidence: PreparedPlayedSource
+  hlsAudioStream: number | null | undefined
+  voices: { index: number, voice: PlayedVoice }[]
+}
+
+function checkpointContext(
+  session: PlaybackSession,
+): CheckpointContext | undefined {
+  if (session.status !== 'ready' || !session.progressRef)
+    return
+  const source = {
+    torrentId:
+      session.torrent?.id ?? session.library?.origin?.torrentId ?? null,
+    fileIndex: session.torrent
+      ? session.fileIndex
+      : (session.library?.origin?.fileIndex ?? null),
+    mediaFileId: session.library?.id ?? null,
+  }
+  const audio
+    = !session.library || session.playedEvidence
+      ? session.media?.audio
+      : undefined
+  return {
+    subject: session.subject,
+    ref: session.progressRef,
+    launchSelection: session.launchSelection,
+    source,
+    evidence: { ...session.playedEvidence?.source, ref: source },
+    hlsAudioStream: session.hls?.audioStream,
+    voices:
+      audio?.map((track) => {
+        const voice = voiceOfTrack(track)
+        return {
+          index: track.index,
+          voice:
+            voice?.studio || voice?.type
+              ? { studio: voice.studio, type: voice.type }
+              : null,
+        }
+      }) ?? [],
+  }
+}
+
+/** Closed sessions retain only the context needed to accept a final checkpoint. */
+export function validatedCheckpoint(
+  sessionId: string | undefined,
+  subject: string | undefined,
+  ref: TitleRef,
+  source: SourceRef,
+  appliedAudioStream?: number | null,
+) {
+  if (!sessionId || !subject)
+    return
+  const live = sessions.get(sessionId)
+  const closed = closedCheckpoints.get(sessionId)
+  const context = live
+    ? checkpointContext(live)
+    : closed && closed.expiresAt > Date.now()
+      ? closed.context
+      : undefined
+  if (
+    !context
+    || context.subject !== subject
+    || context.ref.profileId !== ref.profileId
+    || context.ref.titleId !== ref.titleId
+    || (context.ref.season ?? 0) !== (ref.season ?? 0)
+    || (context.ref.episode ?? 0) !== (ref.episode ?? 0)
+    || (context.source.mediaFileId
+      ? context.source.mediaFileId !== source.mediaFileId
+      : !!source.mediaFileId
+        || context.source.torrentId !== source.torrentId
+        || context.source.fileIndex !== source.fileIndex)
+  ) {
+    return
+  }
+  const actual
+    = context.hlsAudioStream === undefined
+      ? appliedAudioStream
+      : context.hlsAudioStream
+  return {
+    voice:
+      context.voices.find(track => track.index === actual)?.voice ?? null,
+    launchSelection: context.launchSelection,
+    evidence: context.evidence,
+  }
+}
+
 /**
  * Сбой движка или сети, а не файла: ffprobe упал на чтении потока или движок
  * недоступен. Таймаут пробы не повторяем — куски не пришли за две минуты, а
@@ -243,6 +359,23 @@ async function prepare(
 ) {
   const { torrent, library, fileIndex, device } = input
   const libraryStat = library ? await stat(library.path) : undefined
+  const probeKey = library
+    ? libraryProbeKey(library.id, libraryStat!)
+    : `${torrent!.infoHash}:${fileIndex}`
+  const confirmRevision = library
+    ? () => libraryRevisionMatches(library.path, library.id, probeKey)
+    : undefined
+  const evidence: SourceEvidence = library
+    ? {
+        path: library.path,
+        contentKey: libraryContentKey(libraryStat!),
+        video:
+          library.storedEvidence?.probeKey === probeKey
+            ? library.storedEvidence.video
+            : undefined,
+      }
+    : { path: session.fileName, contentKey: `torrent:${probeKey}` }
+  session.playedEvidence = { probeKey, source: evidence }
   if (library)
     session.skipSegments = await readySegments(library.id)
   const { log } = session
@@ -265,35 +398,27 @@ async function prepare(
     return
   }
 
-  let url = ''
-  let earlyCues: Promise<number[] | null> | undefined
-
-  // Файл библиотеки читается с диска: и ffprobe, и ffmpeg берут путь
-  const readerOf = (from: string) =>
-    library ? fileRangeReader(from) : rangeReader(from, signal)
+  const prepareStatsCues = () => {
+    if (torrent && /\.(?:mkv|webm)$/i.test(session.fileName))
+      void loadTorrentCues(torrent, fileIndex, signal)
+  }
+  if (!device)
+    prepareStatsCues()
 
   for (let attempt = 0; ; attempt++) {
     try {
-      url = library
+      const url = library
         ? library.path
         : engineStreamUrl(torrent!.infoHash, fileIndex)
-      // Индекс MKV читаем вместе с пробой, а не после: он нужен перепаковке, а
-      // у холодной раздачи это ещё одно ожидание кусков — с конца файла
-      earlyCues
-        = (torrent || device) && /\.mkv$/i.test(session.fileName)
-          ? torrent
-            ? loadTorrentCues(torrent, fileIndex, signal).then(
-                result => result?.times ?? null,
-              )
-            : readCueTimes(readerOf(url)).catch(() => null)
-          : undefined
       session.media = await probeMedia(
-        library
-          ? `library:${library.id}:${libraryStat!.size}:${libraryStat!.mtimeMs}`
-          : `${torrent!.infoHash}:${fileIndex}`,
+        probeKey,
         url,
         session.fileName,
+        confirmRevision,
       )
+      const video = session.media.video
+      if (video)
+        evidence.video = { width: video.width, height: video.height }
       break
     }
     catch (err) {
@@ -388,6 +513,7 @@ async function prepare(
     return
   }
 
+  let timing = hlsTiming(media, session.audioStream)
   let keyframeIndex = true
   const decide = (canEncode: boolean) =>
     decidePlayback({
@@ -403,20 +529,69 @@ async function prepare(
 
   let decision = decide(true)
   let cues: number[] | null = null
-  if (decision.mode === 'hls' && decision.video === 'copy' && media.duration) {
-    cues
-      = media.container === 'mkv'
-        ? await (earlyCues
-          ?? (torrent
-            ? loadTorrentCues(torrent, fileIndex, signal).then(
-                result => result?.times ?? null,
-              )
-            : readCueTimes(readerOf(url)).catch(() => null)))
-        : null
-    if (!cues || cues.length < 2) {
+  const matroska = isMatroska(media.container)
+  const measureEndpoints
+    = decision.mode === 'hls'
+      && matroska
+      && media.video !== null
+      && timing.duration === null
+      && media.startTime !== undefined
+  if (
+    decision.mode === 'hls'
+    && matroska
+    && (measureEndpoints
+      || (decision.video === 'copy' && timing.duration !== null))
+  ) {
+    // Header, index and optional terminal packets share one bounded preparation.
+    const prepared = library
+      ? await loadLibraryCues(
+          { ...library, size: libraryStat!.size },
+          probeKey,
+          signal,
+          measureEndpoints,
+        )
+      : await loadTorrentCues(torrent!, fileIndex, signal, measureEndpoints)
+    if (!isOpen(session))
+      return
+    timing = hlsTiming(media, session.audioStream, prepared?.packetEnds)
+    cues = prepared?.times.map(time => time - (media.startTime ?? 0)) ?? null
+  }
+  else {
+    prepareStatsCues()
+  }
+
+  // VOD requires both a video cut boundary and the duration of selected streams.
+  const { videoEnd, duration } = timing
+  if (
+    decision.mode === 'hls'
+    && (!media.video
+      || videoEnd === null
+      || !duration
+      || (!matroska && !media.duration))
+  ) {
+    session.decision = {
+      ...decision,
+      mode: 'direct',
+      reasons: [...decision.reasons, 'DurationUnknown'],
+    }
+    return
+  }
+
+  if (
+    decision.mode === 'hls'
+    && decision.video === 'copy'
+    && videoEnd !== null
+  ) {
+    const starts = segmentStarts(videoEnd, cues)
+    // Reordered video needs seek preroll. Dense Cues cannot safely accommodate
+    // the existing half-second bias across FFmpeg versions: encode exact cuts.
+    const denseReordered
+      = media.video?.videoDelay !== 0 && cues && hasDenseCues(starts, cues)
+    if (!cues || cues.length < 2 || denseReordered) {
       // Copy cannot cut at arbitrary timestamps. Without an index, encode the
       // keyframes required by the VOD playlist rather than repeat whole GOPs.
-      keyframeIndex = segmentStarts(media.duration, null).length === 1
+      keyframeIndex
+        = !denseReordered && segmentStarts(videoEnd, null).length === 1
       if (!keyframeIndex) {
         log.warn(
           'HLS video keyframe index unavailable; encoding to align segments',
@@ -446,16 +621,18 @@ async function prepare(
   if (decision.video === 'encode' && !caps)
     decision = decide(false)
 
-  // Плейлист HLS строится заранее: без длительности и видео его нет
-  if (decision.mode === 'hls' && (!media.duration || !media.video)) {
-    decision = {
-      ...decision,
-      mode: 'direct',
-      reasons: [...decision.reasons, 'DurationUnknown'],
+  if (decision.mode === 'hls' && duration && videoEnd !== null && media.video) {
+    if (measureEndpoints && library) {
+      const current = await stat(library.path).catch(() => null)
+      if (!current || libraryProbeKey(library.id, current) !== probeKey) {
+        session.decision = {
+          ...decision,
+          mode: 'direct',
+          reasons: [...decision.reasons, 'DurationUnknown'],
+        }
+        return
+      }
     }
-  }
-
-  if (decision.mode === 'hls' && media.duration && media.video) {
     const encode
       = decision.video === 'encode' && caps
         ? planEncode(media.video, caps, burned?.index ?? null, software)
@@ -478,9 +655,11 @@ async function prepare(
         audioStream: session.audioStream,
         audio: decision.audio ?? 'aac',
         subtitleStreams: textSubtitles(media).map(track => track.index),
-        starts: segmentStarts(media.duration, encode ? null : cues),
+        starts: segmentStarts(videoEnd, encode ? null : cues),
+        cues,
+        videoDelay: media.video.videoDelay,
         firstVideoTime: cues?.[0],
-        duration: media.duration,
+        duration,
         encode,
         session: session.id,
       },
@@ -587,6 +766,8 @@ export function createSession(input: SessionInput) {
     id,
     diagnosticContext: input.diagnosticContext,
     subject: input.subject,
+    progressRef: input.progressRef,
+    launchSelection: input.launchSelection,
     torrent: input.torrent ?? null,
     library: input.library ?? null,
     fileIndex: input.fileIndex,
@@ -628,7 +809,20 @@ export function createSession(input: SessionInput) {
       session.log.warn(`playback ${session.id}: ${err.message}`)
       session.decision = { ...DIRECT, reasons: ['ProbeFailed'] }
     })
-    .finally(() => {
+    .finally(async () => {
+      const evidence = session.playedEvidence
+      if (
+        isOpen(session)
+        && session.library
+        && evidence
+        && !(await libraryRevisionMatches(
+          session.library.path,
+          session.library.id,
+          evidence.probeKey,
+        ))
+      ) {
+        session.playedEvidence = undefined
+      }
       session.status = 'ready'
 
       const { decision } = session
@@ -706,6 +900,23 @@ export async function stopSession(
   if (!session)
     return
 
+  const checkpoint = reason !== 'shutdown' && checkpointContext(session)
+  if (checkpoint) {
+    const now = Date.now()
+    for (const [sessionId, previous] of closedCheckpoints) {
+      if (
+        previous.expiresAt > now
+        && closedCheckpoints.size < CLOSED_CHECKPOINT_LIMIT
+      ) {
+        break
+      }
+      closedCheckpoints.delete(sessionId)
+    }
+    closedCheckpoints.set(id, {
+      expiresAt: now + CLOSED_CHECKPOINT_TTL_MS,
+      context: checkpoint,
+    })
+  }
   sessions.delete(id)
   recordDecision(
     'playback',
@@ -739,6 +950,7 @@ export async function stopSession(
 }
 
 export async function stopAllSessions() {
+  closedCheckpoints.clear()
   await Promise.all(
     [...sessions.keys()].map(id => stopSession(id, 'shutdown')),
   )
@@ -823,8 +1035,18 @@ export async function sessionCues(
         subtitleIndexes.set(session, pending)
       }
       const lookup = await pending
-      if (lookup)
-        cues = mergeCues([cues, await lookup(index, from)])
+      if (lookup) {
+        const origin = session.media.startTime ?? 0
+        const indexed = await lookup(index, from + origin)
+        cues = mergeCues([
+          cues,
+          indexed.map(cue => ({
+            ...cue,
+            start: cue.start - origin,
+            end: cue.end - origin,
+          })),
+        ])
+      }
     }
     catch {
       // Индекс лишь дополняет ffmpeg: сбой не должен скрывать готовые реплики.

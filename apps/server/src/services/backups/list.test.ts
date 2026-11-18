@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -14,6 +14,26 @@ afterEach(async () => {
 })
 
 describe('critical fallback backups', () => {
+  it('lists a critical copy once when the selected directory aliases the default', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'torsher-backup-alias-'))
+    dirs.push(root)
+    const fallback = join(root, 'backups')
+    const alias = join(root, 'selected')
+    await mkdir(fallback)
+    await symlink(fallback, alias, 'dir')
+    const name = formatBackupName({
+      createdAt: new Date(),
+      reason: 'pre-import',
+      version: '1.8.0',
+      encrypted: false,
+    })
+    await writeFile(join(fallback, name), 'archive')
+    const result = await listBackupsIn(alias, fallback)
+    expect(result.available).toBe(true)
+    expect(result.items.map(item => [item.name, item.dirKind])).toEqual([
+      [name, 'main'],
+    ])
+  })
   it.each([true, false])(
     'discovers safety copies with main available=%s',
     async (available) => {

@@ -69,7 +69,7 @@ export const hlsRoutes: FastifyPluginAsyncZod = async (app) => {
       const token = encodeURIComponent(request.query.token ?? '')
       const playlist = buildPlaylist(
         hls.starts,
-        session.media.duration,
+        hls.duration,
         index => `${index}.ts${token ? `?token=${token}` : ''}`,
       )
 

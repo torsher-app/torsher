@@ -281,7 +281,11 @@ async function startLibraryProducers() {
   resumeMoves()
   checkLibrary()
   startRecognition(() => void syncLibrary())
-  void scanAllFolders().then(() => queueUnmatched())
+  void scanAllFolders()
+    .then(() => queueUnmatched())
+    .catch(err =>
+      logFor('catalog').warn({ err }, 'Pending library recognition failed'),
+    )
   startFollowScheduler()
 }
 

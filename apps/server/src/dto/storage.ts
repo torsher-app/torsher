@@ -96,6 +96,8 @@ export const storagePathCheck = z
     // Полный объём и количество элементов вне целевой папки, включая прежние
     moveTotalBytes: z.number(),
     moveItems: z.number().int(),
+    // false — объём неизвестен: путь проверен, доступен только new_only.
+    moveAvailable: z.boolean().optional(),
   })
   .meta({ id: 'storagePathCheck' })
 

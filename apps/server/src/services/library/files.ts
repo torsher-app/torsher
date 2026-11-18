@@ -204,7 +204,8 @@ export function relinkMediaFiles(
           : {
               torrentId: newId,
               fileIndex,
-              stale: row.state === 'missing' || stale.has(fileIndex),
+              stale:
+                row.stale || row.state === 'missing' || stale.has(fileIndex),
             },
       )
       .where(eq(mediaFiles.id, row.id))

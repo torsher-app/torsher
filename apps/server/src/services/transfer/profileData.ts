@@ -17,6 +17,11 @@ import {
   titleProgress,
 } from '../../db/schema.ts'
 import { fileProgressId } from '../library/files.ts'
+import { rememberedVoice } from '../library/playedSource.ts'
+import {
+  capturePlayedSource,
+  freezePlayedSource,
+} from '../sources/playedSource.ts'
 import { parseCatalogId } from '../tmdb/mappers.ts'
 import { isWatched } from '../torrents/playback.ts'
 import { mergeMine, ratingOutcome } from './merge.ts'
@@ -416,6 +421,9 @@ function progressUndo(
           duration: row.duration,
           torrentId: row.torrentId,
           fileIndex: row.fileIndex,
+          mediaFileId: row.mediaFileId,
+          playedSource: freezePlayedSource(row),
+          lastPlayedAt: row.lastPlayedAt?.getTime() ?? null,
           voiceStudio: row.voiceStudio,
           voiceType: row.voiceType,
           watchedAt: row.watchedAt?.getTime() ?? null,
@@ -423,6 +431,8 @@ function progressUndo(
         }
       : null,
     after: incoming.updatedAt.getTime(),
+    afterVoice: { studio: incoming.voiceStudio, type: incoming.voiceType },
+    afterVoiceRevision: row?.voiceSelectionRevision ?? 0,
   }
 }
 
@@ -444,6 +454,7 @@ export function applyProfileMerge(
     const values = {
       position: incoming.position,
       duration: incoming.duration,
+      playedSource: { kind: 'unknown' as const },
       voiceStudio: incoming.voiceStudio,
       voiceType: incoming.voiceType,
       watchedAt: incoming.watchedAt,
@@ -507,18 +518,68 @@ export function undoProgress(
   if (!current || current.updatedAt.getTime() !== entry.after)
     return false
 
-  if (!entry.before) {
-    db.delete(titleProgress).where(where).run()
+  const { before, afterVoice } = entry
+  if (
+    (!before || before.lastPlayedAt !== undefined)
+    && (current.lastPlayedAt?.getTime() ?? null) !== (before?.lastPlayedAt ?? null)
+  ) {
+    return false
+  }
 
+  assertMaintenancePolicyChange({ global: true })
+  const newerVoice
+    = current.voiceSelectionRevision !== (entry.afterVoiceRevision ?? 0)
+      || (afterVoice
+        && (current.voiceStudio !== afterVoice.studio
+          || current.voiceType !== afterVoice.type))
+  if (!before) {
+    if (current.torrentId || current.mediaFileId || newerVoice) {
+      db.update(titleProgress)
+        .set({
+          position: 0,
+          duration: null,
+          playedSource: null,
+          watchedAt: null,
+          ...(!newerVoice && { voiceStudio: null, voiceType: null }),
+        })
+        .where(where)
+        .run()
+    }
+    else {
+      db.delete(titleProgress).where(where).run()
+    }
     return true
   }
 
-  const { watchedAt, ...before } = entry.before
+  const { watchedAt } = before
+  const sourceChanged
+    = before.torrentId !== current.torrentId
+      || before.fileIndex !== current.fileIndex
+      || (before.mediaFileId ?? null) !== current.mediaFileId
+  // Legacy journals cannot distinguish a source-only choice from a voice choice.
+  const restoreVoice
+    = !newerVoice && (entry.afterVoiceRevision !== undefined || !sourceChanged)
+  // Older undo records could contain an unfrozen view. If the selection changed,
+  // resolve the old source from the record before restoring the viewing fields.
+  const playedSource
+    = before.playedSource
+      ?? (sourceChanged
+        ? before.position > 0 || before.lastPlayedAt
+          ? capturePlayedSource(before, rememberedVoice(before))
+          : watchedAt
+            ? { kind: 'unknown' as const }
+            : null
+        : null)
 
-  assertMaintenancePolicyChange({ global: true })
   db.update(titleProgress)
     .set({
-      ...before,
+      position: before.position,
+      duration: before.duration,
+      playedSource,
+      ...(restoreVoice && {
+        voiceStudio: before.voiceStudio,
+        voiceType: before.voiceType,
+      }),
       updatedAt: new Date(before.updatedAt),
       ...(watchedAt === undefined
         ? {}

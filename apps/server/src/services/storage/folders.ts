@@ -3,7 +3,7 @@ import type { StorageErrno } from './logDiagnostics.ts'
 import type { EngineTorrentState } from '../engine/index.ts'
 import type { StorageKind, StoragePathSource } from './paths.ts'
 import { randomBytes } from 'node:crypto'
-import { realpath, stat, unlink, writeFile } from 'node:fs/promises'
+import { mkdir, realpath, stat, unlink, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { and, eq, inArray, isNotNull, ne } from 'drizzle-orm'
 import { config } from '../../config.ts'
@@ -159,11 +159,31 @@ export function volumeKey(path: string) {
   return volumeDeps.volumeKey(path)
 }
 
-/** Две папки на одном томе: перенос между ними — хардлинки, место не нужно */
+/** Совпадает устройство; способность создавать ссылки проверяется отдельно. */
 export async function sameVolume(a: string, b: string) {
   const [first, second] = await Promise.all([volumeKey(a), volumeKey(b)])
 
   return first !== undefined && first === second
+}
+
+/** st_dev alone misses mount boundaries and filesystems without hardlinks. */
+export async function moveSharesSpace(
+  kind: StorageKind,
+  source: string,
+  target: string,
+) {
+  // Keep simulated separate volumes conservative, too: a successful probe on
+  // the test host must not turn a known cross-volume copy into a free move.
+  if (!(await sameVolume(source, target)))
+    return false
+
+  if (await sameDirectory(source, target))
+    return true
+
+  const mode = await probeLinkMode(source, target)
+
+  // Go Downloads move falls back directly to copySparse, without reflink.
+  return mode === 'hardlink' || (kind === 'library' && mode === 'reflink')
 }
 
 function otherKind(kind: StorageKind): StorageKind {
@@ -246,6 +266,18 @@ export async function pathProblem(
   return null
 }
 
+/** Validate the actual directory used by an accepted setting. */
+export async function prepareStoragePath(kind: StorageKind, path: string) {
+  const problem = await pathProblem(kind, path)
+  if (problem)
+    throw new StoragePathError(problem)
+
+  await mkdir(path, { recursive: true })
+  const probe = await probeWrite(path)
+  if (!probe.writable)
+    throw new StoragePathError('denied', probe.errorCode)
+}
+
 export interface StoragePathCheck {
   /** Внутренний результат уже выполненной пробы; API его не публикует. */
   errorCode?: StorageErrno
@@ -300,7 +332,7 @@ export async function checkStoragePath(
       ? { writable: false, errorCode: 'unknown' as StorageErrno }
       : probeWrite(existing),
     diskUsage(existing),
-    sameVolume(target, storagePath(kind)),
+    problem ? false : moveSharesSpace(kind, storagePath(kind), target),
   ])
   const writable = probe.writable
   const pair
@@ -333,14 +365,16 @@ export interface FolderContents {
  * Что лежит в папках загрузок: текущий корень включает собственные isolated
  * dirs; остальные раздачи в движке группируются по физическому каталогу.
  */
-export function downloadsContents(live: Map<string, EngineTorrentState>) {
+export function downloadsContents(
+  live: Map<string, EngineTorrentState>,
+  current = storagePath('downloads'),
+) {
   const rows = getDb()
     .select()
     .from(torrents)
     .where(eq(torrents.inEngine, true))
     .all()
   const byDir = new Map<string, FolderContents>()
-  const current = storagePath('downloads')
 
   for (const row of rows) {
     const dir = torrentAtRoot(row, current)
@@ -410,16 +444,18 @@ export interface StorageFolder {
 export async function storageFolder(
   kind: StorageKind,
   live: Map<string, EngineTorrentState>,
+  location = { path: storagePath(kind), source: storagePathSource(kind) },
+  measured?: Awaited<ReturnType<typeof diskUsage>>,
 ): Promise<StorageFolder> {
-  const path = storagePath(kind)
+  const { path, source } = location
   const contents
-    = kind === 'downloads' ? downloadsContents(live) : libraryContents()
-  const disk = await diskUsage(path)
+    = kind === 'downloads' ? downloadsContents(live, path) : libraryContents()
+  const disk = measured ?? (await diskUsage(path))
   const current = contents.get(path)
 
   return {
     path,
-    source: storagePathSource(kind),
+    source,
     envPath: envStoragePath(kind),
     total: disk.total,
     free: disk.free,

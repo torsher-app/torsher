@@ -1,8 +1,11 @@
+import type { StorageMoveRecovery } from '../services/storage/moveIntent.ts'
+import type { VideoClass, VoiceType } from '@torsher/release-parser'
 import type { SavedTrackPreferences } from '../services/media/trackPreferences.ts'
 import type { AnalysisData } from '../services/segments/model.ts'
 import type { TorznabCaps } from '../services/torznab/caps.ts'
 import type { MediaInfo } from '../services/media/probe.ts'
 import { randomUUID } from 'node:crypto'
+import { isNull } from 'drizzle-orm'
 import {
   blob,
   customType,
@@ -415,9 +418,8 @@ export const storageMoveStatuses = [
   'cancelled',
 ] as const
 
-// Перенос загрузок или своей раскладки в другую папку. Элементы не хранятся:
-// переносится всё, что лежит не в `target`, и каждый элемент переключается
-// сразу после своей копии
+// Перенос обрабатывает по одному элементу. Recovery хранит только текущий
+// файловый переход, который должен пережить перезапуск сервера.
 export const storageMoves = sqliteTable('storage_moves', {
   id: text('id')
     .primaryKey()
@@ -430,6 +432,7 @@ export const storageMoves = sqliteTable('storage_moves', {
   itemsTotal: integer('items_total').notNull().default(0),
   itemsDone: integer('items_done').notNull().default(0),
   error: text('error'),
+  recovery: text('recovery', { mode: 'json' }).$type<StorageMoveRecovery>(),
   startedAt: integer('started_at', { mode: 'timestamp_ms' })
     .notNull()
     .$defaultFn(() => new Date()),
@@ -541,6 +544,24 @@ export const titleVoices = sqliteTable(
   table => [primaryKey({ columns: [table.titleId, table.season] })],
 )
 
+/** Фактически просмотренный источник; выбор следующего источника его не меняет. */
+export type PlayedSource
+  = | { kind: 'unknown' }
+    | ({
+      quality: VideoClass | null
+      /** Идентичность версии по сохранённым metadata, без чтения ФС. */
+      contentKey?: string
+      voice: { studio?: string, type?: VoiceType } | null
+    } & (
+      | { kind: 'torrent', torrentId: string, fileIndex: number }
+      | {
+        kind: 'library'
+        mediaFileId: string
+        torrentId: string | null
+        fileIndex: number | null
+      }
+    ))
+
 // Позиция просмотра тайтла и серии (у фильма сезон и серия — 0): не зависит
 // от раздачи, поэтому смена раздачи или озвучки прогресс не сбрасывает.
 // У каждого профиля свой прогресс
@@ -555,7 +576,7 @@ export const titleProgress = sqliteTable(
     episode: integer('episode').notNull(),
     position: real('position').notNull(),
     duration: real('duration'),
-    // Чем смотрели в последний раз: по студии работает «как в прошлых сериях»
+    // Запомненный выбор для продолжения; факт просмотра хранится в playedSource
     torrentId: text('torrent_id').references(() => torrents.id, {
       onDelete: 'set null',
     }),
@@ -564,8 +585,12 @@ export const titleProgress = sqliteTable(
     // внешнего ключа: `ADD COLUMN` в SQLite не пересоздаёт таблицу, а убранный
     // из библиотеки файл просто не найдётся
     mediaFileId: text('media_file_id'),
+    playedSource: text('played_source', { mode: 'json' }).$type<PlayedSource>(),
     voiceStudio: text('voice_studio'),
     voiceType: text('voice_type'),
+    voiceSelectionRevision: integer('voice_selection_revision')
+      .notNull()
+      .default(0),
     // Досмотр в плеере или отметка с карточки. Не выводится из позиции:
     // пересмотр досмотренной серии отметку не снимает
     watchedAt: integer('watched_at', { mode: 'timestamp_ms' }),
@@ -578,6 +603,9 @@ export const titleProgress = sqliteTable(
     primaryKey({
       columns: [table.profileId, table.titleId, table.season, table.episode],
     }),
+    index('title_progress_unfrozen_media_idx')
+      .on(table.mediaFileId)
+      .where(isNull(table.playedSource)),
     index('title_progress_updated_at_idx').on(
       table.profileId,
       table.titleId,
@@ -661,11 +689,16 @@ export interface ImportProgressUndoEntry {
     fileIndex: number | null
     voiceStudio: string | null
     voiceType: string | null
+    mediaFileId?: string | null
+    playedSource?: PlayedSource | null
+    lastPlayedAt?: number | null
     // Нет у записей прошлых версий: отметку отмена тогда не трогает
     watchedAt?: number | null
     updatedAt: number
   } | null
   after: number
+  afterVoice?: { studio: string | null, type: string | null }
+  afterVoiceRevision?: number
 }
 
 // Применённый импорт оценок и «Позже» из файлов других сервисов. `undo`
@@ -1163,6 +1196,10 @@ export interface TopicRefresh {
   downloadDir?: string | null
   /** Файлы новой раздачи, которые качаются заново: не совпали с диском */
   redownload?: number[]
+  /** Подтверждённые существующие версии, которые надо убрать до новой загрузки */
+  unlink?: number[]
+  /** Собственные пути metainfo: соседний .part может быть настоящим файлом */
+  protectedPaths?: string[]
   /** Что убрать из старой папки и докуда чистить пустые каталоги */
   cleanup?: { root: string, paths: string[] }
   /** ISO: сбой сверки или движка — повтор не раньше */
@@ -1686,6 +1723,8 @@ export interface MaintenanceManifestPath {
   fileId: string
   mediaFileId: string | null
   kind: 'source' | 'library' | 'sidecar'
+  /** Доказанно отсутствовавший source до начала orphan-операции */
+  baselineAbsent?: true
 }
 export interface MaintenanceManifest {
   infoHash: string

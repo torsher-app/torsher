@@ -5,6 +5,9 @@
  * строятся границы сегментов HLS.
  */
 
+import type { PacketEnds } from './probe.ts'
+import { Buffer } from 'node:buffer'
+
 /** Байты файла `[start, end)`; конец за пределами файла обрезается */
 export type RangeReader = (start: number, end: number) => Promise<Uint8Array>
 
@@ -28,6 +31,12 @@ const ID = {
   cueTrack: 0xF7,
   cueClusterPosition: 0xF1,
   cluster: 0x1F43B675,
+  blockGroup: 0xA0,
+  attachments: 0x1941A469,
+  chapters: 0x1043A770,
+  tags: 0x1254C367,
+  void: 0xEC,
+  crc: 0xBF,
 }
 
 const VIDEO_TRACK = 1
@@ -37,6 +46,7 @@ const DEFAULT_TIMESTAMP_SCALE = 1_000_000
 
 interface Element {
   id: number
+  offset: number
   /** Начало данных элемента в буфере */
   data: number
   /** null — размер неизвестен (живой поток), элемент тянется до конца родителя */
@@ -101,7 +111,7 @@ function readElement(buffer: Uint8Array, offset: number, limit: number) {
   const data = offset + id.length + size.length
   const end = size.size === null ? limit : data + size.size
 
-  return { id: id.id, data, size: size.size, end } satisfies Element
+  return { id: id.id, offset, data, size: size.size, end } satisfies Element
 }
 
 /** Дочерние элементы в пределах `[from, to)`; обрезанный хвост буфера пропускается */
@@ -146,8 +156,14 @@ function completeChildren(buffer: Uint8Array, parent: Element) {
     return false
   let end = parent.data
   for (const child of children(buffer, parent.data, parent.end)) {
-    if (child.size === null || child.end > parent.end || child.end <= end)
+    if (
+      child.size === null
+      || child.data > child.end
+      || child.end > parent.end
+      || child.end <= end
+    ) {
       return false
+    }
     end = child.end
   }
   return end === parent.end
@@ -292,6 +308,117 @@ async function fetchElement(
   return { buffer, element: readElement(buffer, 0, buffer.length)! }
 }
 
+type BufferedElement = NonNullable<Awaited<ReturnType<typeof fetchElement>>>
+
+interface TerminalProbe {
+  maxBytes: number
+  measure: (fragment: Uint8Array) => Promise<PacketEnds | null>
+  // Let a shared preparation decide after parsing whether a viewer needs the tail.
+  defer?: (read: () => Promise<MatroskaCues | null>) => void
+}
+
+const SEGMENT_METADATA = new Set<number>([
+  ID.seekHead,
+  ID.info,
+  ID.tracks,
+  ID.cues,
+  ID.attachments,
+  ID.chapters,
+  ID.tags,
+  ID.void,
+  ID.crc,
+])
+
+function completeClusters(buffer: Uint8Array, from: number, suffix: boolean) {
+  const clusters: Uint8Array[] = []
+  let offset = from
+  for (const element of children(buffer, from, buffer.length)) {
+    if (
+      element.size === null
+      || element.data > element.end
+      || element.end > buffer.length
+    ) {
+      return null
+    }
+    if (element.id === ID.cluster) {
+      if (clusters.length >= 100_000 || !completeChildren(buffer, element))
+        return null
+      for (const child of children(buffer, element.data, element.end)) {
+        if (child.id === ID.blockGroup && !completeChildren(buffer, child))
+          return null
+      }
+      clusters.push(buffer.subarray(offset, element.end))
+    }
+    else if (
+      !SEGMENT_METADATA.has(element.id)
+      || (suffix
+        && (!clusters.length
+          || element.id === ID.info
+          || element.id === ID.tracks))
+    ) {
+      return null
+    }
+    offset = element.end
+  }
+  return offset === buffer.length && clusters.length ? clusters : null
+}
+
+async function measureTerminalPackets(
+  read: RangeReader,
+  prefix: Uint8Array,
+  size: number,
+  segment: Element,
+  info: BufferedElement | null,
+  tracks: BufferedElement | null,
+  index: CueCluster[] | null | undefined,
+  probe: TerminalProbe,
+) {
+  const ebml = readElement(prefix, 0, prefix.length)
+  if (
+    !ebml
+    || ebml.id !== ID.ebml
+    || !completeChildren(prefix, ebml)
+    || !info
+    || !completeChildren(info.buffer, info.element)
+    || !tracks
+    || !completeChildren(tracks.buffer, tracks.element)
+  ) {
+    return null
+  }
+  if (segment.size !== null && segment.end !== size)
+    return null
+  if (prefix.length === size) {
+    return completeClusters(prefix, segment.data, false)
+      ? probe.measure(prefix)
+      : null
+  }
+
+  // The index gives a cluster boundary. Validate the entire remaining span
+  // against EOF; ffprobe alone can exit successfully on a truncated file.
+  const first = index
+    ?.slice(-2)
+    .find(point => size - point.offset <= probe.maxBytes)
+  if (!first || segment.size === null)
+    return null
+  const tail = await read(first.offset, size)
+  if (tail.length !== size - first.offset)
+    return null
+  const clusters = completeClusters(tail, 0, true)
+  if (!clusters)
+    return null
+
+  return probe.measure(
+    Buffer.concat([
+      prefix.subarray(0, ebml.end),
+      // Original Segment size and SeekHead offsets no longer apply.
+      Uint8Array.of(0x18, 0x53, 0x80, 0x67, 0xFF),
+      info.buffer.subarray(info.element.offset, info.element.end),
+      tracks.buffer.subarray(tracks.element.offset, tracks.element.end),
+      ...clusters,
+    ]),
+  )
+}
+
 /**
  * Время точек `Cues` видеодорожки в секундах, по возрастанию, без повторов.
  * null — файл не MKV, индекса нет или его не удалось прочитать.
@@ -299,6 +426,7 @@ async function fetchElement(
 export async function readMatroskaCues(
   read: RangeReader,
   fileSize?: number,
+  terminalProbe?: TerminalProbe,
 ): Promise<MatroskaCues | null> {
   const prefix = await read(0, PREFIX_BYTES)
   let segment: Element | null = null
@@ -322,6 +450,8 @@ export async function readMatroskaCues(
   let strictTrack: number | undefined
   let strictScale: number | null | undefined
   let infoComplete = true
+  let info: BufferedElement | null = null
+  let tracks: BufferedElement | null = null
 
   for (const element of children(prefix, segment.data, segment.end)) {
     if (element.id === ID.cluster)
@@ -331,11 +461,13 @@ export async function readMatroskaCues(
       positions = seekPositions(prefix, element)
     }
     else if (element.id === ID.info) {
+      info = { buffer: prefix, element }
       scale = childValue(prefix, element, ID.timestampScale)
       infoComplete = completeChildren(prefix, element)
       strictScale = strictUint(prefix, element, ID.timestampScale)
     }
     else if (element.id === ID.tracks) {
+      tracks = { buffer: prefix, element }
       track = videoTrackNumber(prefix, element)
       strictTrack = strictVideoTrack(prefix, element)
     }
@@ -343,12 +475,19 @@ export async function readMatroskaCues(
 
   const cuesPosition = positions.get(ID.cues)
 
-  if (cuesPosition === undefined)
+  if (
+    cuesPosition === undefined
+    && (!terminalProbe || prefix.length !== fileSize)
+  ) {
     return null
+  }
 
   // `Tracks` и `Info` обычно в начале; если нет — тоже по `SeekHead`
-  if (track === undefined && positions.has(ID.tracks)) {
-    const tracks = await fetchElement(
+  if (
+    (track === undefined || (terminalProbe && !strictTrack))
+    && positions.has(ID.tracks)
+  ) {
+    tracks = await fetchElement(
       read,
       segment.data,
       positions.get(ID.tracks)!,
@@ -361,8 +500,12 @@ export async function readMatroskaCues(
     }
   }
 
-  if (scale === undefined && positions.has(ID.info)) {
-    const info = await fetchElement(
+  if (
+    scale === undefined
+    && (!terminalProbe || !info || !infoComplete)
+    && positions.has(ID.info)
+  ) {
+    info = await fetchElement(
       read,
       segment.data,
       positions.get(ID.info)!,
@@ -376,22 +519,27 @@ export async function readMatroskaCues(
     }
   }
 
-  const cues = await fetchElement(read, segment.data, cuesPosition, ID.cues)
+  let cues: BufferedElement | null = null
+  if (cuesPosition !== undefined) {
+    const offset = segment.data + cuesPosition
+    if (terminalProbe && prefix.length === fileSize) {
+      const element = readElement(prefix, offset, prefix.length)
+      if (element?.id === ID.cues && completeChildren(prefix, element))
+        cues = { buffer: prefix, element }
+    }
+    else {
+      cues = await fetchElement(read, segment.data, cuesPosition, ID.cues)
+    }
+  }
 
-  if (!cues)
-    return null
-
-  const nanoseconds = scale ?? DEFAULT_TIMESTAMP_SCALE
-  const times = cueTimes(cues.buffer, cues.element, track)
-    .map(time => (time * nanoseconds) / 1e9)
-    .sort((a, b) => a - b)
-
-  return {
-    times: times.filter(
-      (time, i) => Number.isFinite(time) && (i === 0 || time !== times[i - 1]),
-    ),
-    playbackIndex:
-      fileSize === undefined || !infoComplete || strictScale === null
+  let result: MatroskaCues | null = null
+  if (cues) {
+    const nanoseconds = scale ?? DEFAULT_TIMESTAMP_SCALE
+    const times = cueTimes(cues.buffer, cues.element, track)
+      .map(time => (time * nanoseconds) / 1e9)
+      .sort((a, b) => a - b)
+    const index
+      = fileSize === undefined || !infoComplete || strictScale === null
         ? null
         : playbackIndex(
             cues.buffer,
@@ -400,8 +548,38 @@ export async function readMatroskaCues(
             strictScale ?? DEFAULT_TIMESTAMP_SCALE,
             segment.data,
             fileSize,
-          ),
+          )
+    result = {
+      times: times.filter(
+        (time, i) =>
+          Number.isFinite(time) && (i === 0 || time !== times[i - 1]),
+      ),
+      playbackIndex: index,
+    }
   }
+  if (!terminalProbe || fileSize === undefined)
+    return result
+
+  const readEndpoints = async () => {
+    const packetEnds = await measureTerminalPackets(
+      read,
+      prefix,
+      fileSize,
+      segment,
+      info,
+      tracks,
+      result?.playbackIndex,
+      terminalProbe,
+    ).catch(() => null)
+    return packetEnds
+      ? { ...(result ?? { times: [], playbackIndex: null }), packetEnds }
+      : result
+  }
+  if (terminalProbe.defer) {
+    terminalProbe.defer(readEndpoints)
+    return result
+  }
+  return readEndpoints()
 }
 
 export interface CueCluster {
@@ -414,6 +592,7 @@ export interface MatroskaCues {
   /** Legacy HLS keyframe times, including the former unknown-track fallback. */
   times: number[]
   playbackIndex: CueCluster[] | null
+  packetEnds?: PacketEnds
 }
 
 /** A Cues position identifies a cluster, never an exact packet byte position. */

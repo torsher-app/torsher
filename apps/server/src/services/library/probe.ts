@@ -8,6 +8,14 @@ import { probeMedia } from '../media/probe.ts'
 import { mediaTools } from '../media/tools.ts'
 import { absolutePathOf, getMediaFile } from './files.ts'
 import { applyHomeFields } from './homeVideo.ts'
+import {
+  freezeLibraryProgress,
+  libraryProbeKey,
+  libraryRevisionMatches,
+  persistedProbeKey,
+  sameStoredMtime,
+  storedProbeMatches,
+} from './playedSource.ts'
 import { ensureThumb } from './thumbs.ts'
 import { automaticThumbnails } from './thumbnailSettings.ts'
 
@@ -51,29 +59,54 @@ async function probeOne(id: string) {
     .where(eq(mediaFiles.id, id))
     .get()
 
-  if (!found)
+  if (found?.file.state !== 'present')
     return
 
-  const path = absolutePathOf(found.folder, found.file)
+  const { file } = found
+  const path = absolutePathOf(found.folder, file)
   const info = await stat(path)
-  const key = `${info.size}:${info.mtimeMs}`
+  if (
+    !info.isFile()
+    || (file.inode !== null && file.inode !== info.ino)
+    || file.size !== info.size
+    || !sameStoredMtime(file.mtime, info.mtimeMs)
+    || storedProbeMatches(file, info)
+  ) {
+    return
+  }
 
-  if (found.file.probeKey === key)
+  const cacheKey = libraryProbeKey(id, info)
+  const confirmRevision = () => libraryRevisionMatches(path, id, cacheKey)
+  const media = await probeMedia(cacheKey, path, path, confirmRevision)
+  if (!(await confirmRevision()))
     return
 
-  const media = await probeMedia(`library:${id}:${key}`, path, path)
-
-  const updated = getDb()
-    .update(mediaFiles)
-    .set({
-      probe: media,
-      duration: media.duration,
-      probedAt: new Date(),
-      probeKey: key,
-    })
-    .where(eq(mediaFiles.id, id))
-    .returning()
-    .get()
+  const updated = getDb().transaction((tx) => {
+    const latest = getMediaFile(id)
+    if (
+      latest?.path !== path
+      || latest.file.inode !== file.inode
+      || latest.file.size !== file.size
+      || latest.file.mtime.getTime() !== file.mtime.getTime()
+      || latest.file.probeKey !== file.probeKey
+    ) {
+      return
+    }
+    if (file.inode === null || file.probeKey)
+      freezeLibraryProgress(id, file)
+    return tx
+      .update(mediaFiles)
+      .set({
+        inode: info.ino,
+        probe: media,
+        duration: media.duration,
+        probedAt: new Date(),
+        probeKey: persistedProbeKey(info),
+      })
+      .where(eq(mediaFiles.id, id))
+      .returning()
+      .get()
+  })
 
   // Домашнее видео: дата съёмки из тегов точнее имени и времени файла
   if (found.kind === 'home' && updated)
@@ -131,9 +164,15 @@ async function drain() {
 }
 
 /** Probe and thumbnail work share one serial worker. Force is never downgraded. */
-export function queueProbe(id: string, options: { forceThumb?: boolean } = {}) {
+export function queueProbe(
+  id: string,
+  options: { forceThumb?: boolean, revisionChanged?: boolean } = {},
+) {
   if (currentId === id) {
-    if (thumbnailStarted) {
+    if (options.revisionChanged) {
+      queue.set(id, !!options.forceThumb || !!queue.get(id))
+    }
+    else if (thumbnailStarted) {
       if (!options.forceThumb || !currentForce)
         queue.set(id, !!options.forceThumb || !!queue.get(id))
     }

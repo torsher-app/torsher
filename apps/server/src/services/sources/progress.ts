@@ -1,14 +1,23 @@
+import type { PreparedPlayedSource, SourceRef } from './playedSource.ts'
+import {
+  capturePlayedSource,
+  freezePlayedSource,
+  sameSource,
+} from './playedSource.ts'
+import type { PlayedVoice } from '../library/playedSource.ts'
 import type { DiagnosticContext } from '../diagnostics/index.ts'
 import { recordCheckpoint } from '../diagnostics/index.ts'
 import { assertMaintenancePolicyChange } from '../libraryMaintenance/admission.ts'
 import type { AudioTrack, VoiceType } from '@torsher/release-parser'
 import type { MediaFileRef, TitleProgress } from '../../db/schema.ts'
 import type { VoiceRef } from './profile.ts'
-import { and, desc, eq, gt, inArray, isNotNull, or } from 'drizzle-orm'
+import { and, desc, eq, gt, inArray, isNotNull, or, sql } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import { titleProgress } from '../../db/schema.ts'
 import { clearWatchedMark, watchedMarkedTitles } from '../mine/marks.ts'
 import { isWatched } from '../torrents/playback.ts'
+
+export { freezeLibraryProgress } from '../library/playedSource.ts'
 
 /** Тайтл и серия в прогрессе профиля; у фильма сезона и серии нет */
 export interface TitleRef {
@@ -54,16 +63,89 @@ export function progressSeen() {
 export function playbackSeen() {
   return and(
     progressSeen(),
-    or(
-      gt(titleProgress.position, 0),
-      isNotNull(titleProgress.torrentId),
-      isNotNull(titleProgress.mediaFileId),
-    ),
+    or(gt(titleProgress.position, 0), isNotNull(titleProgress.lastPlayedAt)),
   )
 }
 
 export function getTitleProgress(ref: TitleRef) {
   return getDb().select().from(titleProgress).where(whereRef(ref)).get()
+}
+
+function choiceKey(ref: TitleRef) {
+  const { season, episode } = keyOf(ref)
+  return JSON.stringify([ref.profileId, ref.titleId, season, episode])
+}
+
+export function sameTitleRef(a: TitleRef, b: TitleRef) {
+  return choiceKey(a) === choiceKey(b)
+}
+
+function sourceFields(row?: SourceRef) {
+  return {
+    torrentId: row?.torrentId ?? null,
+    fileIndex: row?.fileIndex ?? null,
+    mediaFileId: row?.mediaFileId ?? null,
+  }
+}
+
+const CHOICE_STAMP_LIMIT = 1024
+const choiceStamps = new Map<string, object>()
+
+export interface LaunchSelection {
+  source: ReturnType<typeof sourceFields>
+  voiceStudio: string | null
+  voiceType: string | null
+  stamp: object
+}
+
+function invalidateLaunchSelection(ref: TitleRef) {
+  choiceStamps.delete(choiceKey(ref))
+}
+
+/** An audio preference can be accepted before the replacement stream is ready. */
+export function rememberVoiceIntent(ref: TitleRef) {
+  getDb()
+    .update(titleProgress)
+    .set({
+      voiceSelectionRevision: sql`${titleProgress.voiceSelectionRevision} + 1`,
+    })
+    .where(whereRef(ref))
+    .run()
+  invalidateLaunchSelection(ref)
+}
+
+export function launchSelectionOf(
+  ref: TitleRef,
+  row?: TitleProgress,
+): LaunchSelection {
+  const key = choiceKey(ref)
+  const stamp = choiceStamps.get(key) ?? {}
+  choiceStamps.delete(key)
+  choiceStamps.set(key, stamp)
+  if (choiceStamps.size > CHOICE_STAMP_LIMIT)
+    choiceStamps.delete(choiceStamps.keys().next().value!)
+  return {
+    source: sourceFields(row),
+    voiceStudio: row?.voiceStudio ?? null,
+    voiceType: row?.voiceType ?? null,
+    stamp,
+  }
+}
+
+function launchSelectionCurrent(
+  ref: TitleRef,
+  launch: LaunchSelection,
+  row?: TitleProgress,
+) {
+  const current = sourceFields(row)
+  return (
+    choiceStamps.get(choiceKey(ref)) === launch.stamp
+    && current.torrentId === launch.source.torrentId
+    && current.fileIndex === launch.source.fileIndex
+    && current.mediaFileId === launch.source.mediaFileId
+    && (row?.voiceStudio ?? null) === launch.voiceStudio
+    && (row?.voiceType ?? null) === launch.voiceType
+  )
 }
 
 /**
@@ -77,14 +159,51 @@ export function saveTitleProgress(
     'position' | 'duration' | 'torrentId' | 'fileIndex'
   > & { mediaFileId?: string | null },
   context?: DiagnosticContext,
+  preparedSource?: PreparedPlayedSource | 'unknown',
+  playedVoice: PlayedVoice = null,
+  launch?: LaunchSelection,
 ) {
   assertMaintenancePolicyChange({ titleId: ref.titleId })
 
   const before = getTitleProgress(ref)
+  const source = { ...values, mediaFileId: values.mediaFileId ?? null }
+  const previous = before && freezePlayedSource(before)
+  const playedSource
+    = preparedSource === 'unknown'
+      ? { kind: 'unknown' as const }
+      : capturePlayedSource(source, playedVoice, previous, preparedSource)
   const updatedAt = new Date()
+  // A delayed checkpoint from the playing source must not overwrite a newer
+  // unplayed source choice (or attach that choice's voice to the old source).
+  const sourceUnchanged = !!before && sameSource(before, source)
+  const pendingChoice
+    = preparedSource === 'unknown'
+      || (!sourceUnchanged
+        && (launch
+          ? !launchSelectionCurrent(ref, launch, before)
+          : before
+            && (before.mediaFileId || before.torrentId)
+            && (!previous || !sameSource(previous, before))))
+  const keepRememberedVoice
+    = pendingChoice
+      || (before && (sourceUnchanged || (!before.mediaFileId && !before.torrentId)))
+  const checkpoint = {
+    ...source,
+    ...(pendingChoice && sourceFields(before)),
+    ...(!keepRememberedVoice && {
+      voiceStudio: playedVoice?.studio ?? null,
+      voiceType: playedVoice?.type ?? null,
+    }),
+    playedSource,
+  }
   const set = isWatched(values.position, values.duration)
-    ? { ...values, watchedAt: updatedAt, lastPlayedAt: updatedAt, updatedAt }
-    : { ...values, lastPlayedAt: updatedAt, updatedAt }
+    ? {
+        ...checkpoint,
+        watchedAt: updatedAt,
+        lastPlayedAt: updatedAt,
+        updatedAt,
+      }
+    : { ...checkpoint, lastPlayedAt: updatedAt, updatedAt }
 
   const saved = getDb().transaction(() => {
     if (values.position > 0)
@@ -110,13 +229,15 @@ export function saveTitleProgress(
       .returning()
       .get()
   })
+  if (!pendingChoice && !sourceUnchanged)
+    invalidateLaunchSelection(ref)
   recordCheckpoint('progress.saved', context, {
     ...ref,
     position: saved.position,
     duration: saved.duration,
-    torrentId: saved.torrentId,
-    fileIndex: saved.fileIndex,
-    mediaFileId: saved.mediaFileId,
+    torrentId: source.torrentId,
+    fileIndex: source.fileIndex,
+    mediaFileId: source.mediaFileId,
     previousTorrentId: before?.torrentId,
     previousFileIndex: before?.fileIndex,
     watchedBefore: before ? isProgressWatched(before) : false,
@@ -127,7 +248,7 @@ export function saveTitleProgress(
 }
 
 /**
- * Раздачу подменили новой версией: «чем смотрели» серии переходит к тому же
+ * Раздачу подменили новой версией: выбор для продолжения переходит к тому же
  * файлу новой (старый индекс → новый). Файла в новой версии нет — раздача у
  * прогресса снимается, позиция серии остаётся.
  */
@@ -150,8 +271,16 @@ export function relinkTitleProgress(
     db.update(titleProgress)
       .set(
         fileIndex === undefined
-          ? { torrentId: null, fileIndex: null }
-          : { torrentId: newId, fileIndex },
+          ? {
+              torrentId: null,
+              fileIndex: null,
+              playedSource: freezePlayedSource(row),
+            }
+          : {
+              torrentId: newId,
+              fileIndex,
+              playedSource: freezePlayedSource(row),
+            },
       )
       .where(
         and(
@@ -166,20 +295,31 @@ export function relinkTitleProgress(
 }
 
 /**
- * Файл серии заменили версией из другой раздачи: «чем смотрели» переходит к
- * новому файлу, позиция остаётся.
+ * Файл серии заменили версией из другой раздачи: выбор для продолжения
+ * переходит к новому файлу, позиция и фактическая история остаются.
  */
 export function moveFileProgress(from: MediaFileRef, to: MediaFileRef) {
-  getDb()
-    .update(titleProgress)
-    .set({ torrentId: to.torrentId, fileIndex: to.fileIndex })
+  const db = getDb()
+  const rows = db
+    .select()
+    .from(titleProgress)
     .where(
       and(
         eq(titleProgress.torrentId, from.torrentId),
         eq(titleProgress.fileIndex, from.fileIndex),
       ),
     )
-    .run()
+    .all()
+  for (const row of rows) {
+    db.update(titleProgress)
+      .set({
+        torrentId: to.torrentId,
+        fileIndex: to.fileIndex,
+        playedSource: freezePlayedSource(row),
+      })
+      .where(whereRef(row))
+      .run()
+  }
 }
 
 /**
@@ -190,9 +330,12 @@ export function rememberChoice(
   ref: TitleRef,
   choice: { torrentId: string, fileIndex: number, voice?: AudioTrack },
 ) {
+  const before = getTitleProgress(ref)
   const values = {
     torrentId: choice.torrentId,
     fileIndex: choice.fileIndex,
+    mediaFileId: null,
+    playedSource: before ? freezePlayedSource(before) : null,
     voiceStudio: choice.voice?.studio ?? null,
     voiceType: choice.voice?.type ?? null,
   }
@@ -204,8 +347,46 @@ export function rememberChoice(
       titleId: ref.titleId,
       ...keyOf(ref),
       position: 0,
+      voiceSelectionRevision: 1,
       ...values,
     })
+    .onConflictDoUpdate({
+      target: [
+        titleProgress.profileId,
+        titleProgress.titleId,
+        titleProgress.season,
+        titleProgress.episode,
+      ],
+      set: {
+        ...values,
+        voiceSelectionRevision: sql`${titleProgress.voiceSelectionRevision} + 1`,
+      },
+    })
+    .run()
+  invalidateLaunchSelection(ref)
+}
+
+/** A confirmed start can select the file before a position is reported. */
+export function rememberStartedSource(
+  ref: TitleRef,
+  source: SourceRef,
+  launch: LaunchSelection,
+) {
+  const before = getTitleProgress(ref)
+  if (
+    !launchSelectionCurrent(ref, launch, before)
+    || (before && sameSource(before, source))
+  ) {
+    return
+  }
+  assertMaintenancePolicyChange({ titleId: ref.titleId })
+  const values = {
+    ...sourceFields(source),
+    playedSource: before ? freezePlayedSource(before) : null,
+  }
+  getDb()
+    .insert(titleProgress)
+    .values({ ...ref, ...keyOf(ref), position: 0, ...values })
     .onConflictDoUpdate({
       target: [
         titleProgress.profileId,
@@ -216,14 +397,26 @@ export function rememberChoice(
       set: values,
     })
     .run()
+  invalidateLaunchSelection(ref)
 }
 
 /**
  * Озвучка, выбранная в плеере: по ней серия откроется с той же дорожкой, а
- * следующие серии сезона — «как в прошлых сериях». Позицию и раздачу не трогает.
+ * следующие серии сезона — «как в прошлых сериях». При известном источнике
+ * запоминает выбор вместе с ним; фактическую историю и позицию не меняет.
  */
-export function rememberVoice(ref: TitleRef, voice: AudioTrack) {
+export function rememberVoice(
+  ref: TitleRef,
+  voice: AudioTrack,
+  source?: SourceRef,
+  launch?: LaunchSelection,
+) {
+  const before = getTitleProgress(ref)
+  if (launch && !launchSelectionCurrent(ref, launch, before))
+    return false
   const values = {
+    ...(source && { ...source, mediaFileId: source.mediaFileId ?? null }),
+    playedSource: before ? freezePlayedSource(before) : null,
     voiceStudio: voice.studio ?? null,
     voiceType: voice.type ?? null,
   }
@@ -235,6 +428,7 @@ export function rememberVoice(ref: TitleRef, voice: AudioTrack) {
       titleId: ref.titleId,
       ...keyOf(ref),
       position: 0,
+      voiceSelectionRevision: 1,
       ...values,
     })
     .onConflictDoUpdate({
@@ -244,9 +438,14 @@ export function rememberVoice(ref: TitleRef, voice: AudioTrack) {
         titleProgress.season,
         titleProgress.episode,
       ],
-      set: values,
+      set: {
+        ...values,
+        voiceSelectionRevision: sql`${titleProgress.voiceSelectionRevision} + 1`,
+      },
     })
     .run()
+  invalidateLaunchSelection(ref)
+  return true
 }
 
 /**
@@ -257,9 +456,11 @@ export function rememberVoice(ref: TitleRef, voice: AudioTrack) {
 export function markWatched(ref: TitleRef, watched: boolean) {
   assertMaintenancePolicyChange({ titleId: ref.titleId })
 
+  const before = getTitleProgress(ref)
+  const playedSource = before ? freezePlayedSource(before) : null
   const values = watched
-    ? { position: 0, watchedAt: new Date() }
-    : { position: 0, duration: null, watchedAt: null }
+    ? { position: 0, watchedAt: new Date(), playedSource }
+    : { position: 0, duration: null, watchedAt: null, playedSource }
 
   getDb().transaction(() => {
     if (!watched)

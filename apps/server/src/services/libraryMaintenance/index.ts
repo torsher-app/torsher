@@ -14,6 +14,7 @@ import {
   maintenancePathKeys,
 } from './admission.ts'
 import { verifyOwnedFile } from './identity.ts'
+import { episodesOf, isEvictedSource, ownedIdentity } from './provenance.ts'
 import type { CandidateGroup, Reason, Rule } from './evaluate.ts'
 import { basename, join } from 'node:path'
 import { and, eq, isNotNull, notInArray, sql } from 'drizzle-orm'
@@ -38,7 +39,6 @@ import {
 import { getSetting, setSetting } from '../settings/index.ts'
 import { playbackResources } from '../media/sessions.ts'
 import { evaluateMaintenance } from './evaluate.ts'
-import { episodesOf, ownedIdentity } from './provenance.ts'
 
 export function rosterFingerprint(ids: string[]) {
   return JSON.stringify([...new Set(ids)].sort())
@@ -412,6 +412,7 @@ export async function previewMaintenance(
     ) {
       reasons.push('group_incomplete')
     }
+    const absentSources = new Set<string>()
     for (const file of files) {
       if (file.mediaFileId)
         represented.add(file.mediaFileId)
@@ -441,13 +442,19 @@ export async function previewMaintenance(
         }
       }
       const identity = await verifyOwnedFile(file)
+      if (
+        identity === 'missing'
+        && isEvictedSource(row, file)
+        && !row.torrentId
+      ) {
+        absentSources.add(file.id)
+      }
       if (identity === 'identity_changed') {
         reasons.push('identity_changed')
       }
       else if (
         identity === 'root_unavailable'
-        || (identity === 'missing'
-          && (file.kind !== 'source' || !row.sourceEvictedAt))
+        || (identity === 'missing' && !absentSources.has(file.id))
       ) {
         reasons.push('file_unavailable')
       }
@@ -471,7 +478,7 @@ export async function previewMaintenance(
       proven: row.origin === 'follow',
       episodes: [...episodes.values()],
       files: files
-        .filter(file => file.kind !== 'source' || !row.sourceEvictedAt)
+        .filter(file => !absentSources.has(file.id))
         .map(file => ({
           name: basename(file.path),
           kind: file.kind,

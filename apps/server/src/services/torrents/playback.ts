@@ -117,7 +117,7 @@ export interface PlaybackCache {
   sampledAtSeconds: number
   anchorOffset: number
   contiguousEndOffset: number
-  /** Conservative absolute end time; null means no proven time bound. */
+  /** Conservative end in the player clock; null means no proven time bound. */
   bufferedUntilSeconds: number | null
   /** All bytes from anchor through EOF passed piece hash verification. */
   verifiedToEnd: boolean
@@ -129,7 +129,10 @@ export function playbackCacheAt(
   time: number,
   duration: number | null,
   index: CueCluster[] | null,
+  sourceOrigin: number | null = 0,
 ): PlaybackCache | null {
+  // The cached index stays in the source clock; only the sampled position and
+  // proven end cross the boundary. Never rebuild the index on a stats poll.
   const durationKnown
     = duration !== null && Number.isFinite(duration) && duration > 0
   const full = verifiedBufferedAheadBytes(input, 0) === input.fileSize
@@ -144,21 +147,24 @@ export function playbackCacheAt(
       verifiedToEnd: true,
     }
   }
+  if (sourceOrigin === null || !Number.isFinite(sourceOrigin))
+    return null
+  const sourceTime = time + sourceOrigin
   if (
     !index?.length
-    || time < index[0]!.minTime
-    || (durationKnown && index.at(-1)!.maxTime > duration! + 1)
+    || sourceTime < index[0]!.minTime
+    || (durationKnown && index.at(-1)!.maxTime - sourceOrigin > duration! + 1)
   ) {
     return null
   }
   let anchor = 0
-  for (let i = 1; i < index.length && index[i]!.minTime <= time; i++)
+  for (let i = 1; i < index.length && index[i]!.minTime <= sourceTime; i++)
     anchor = i
   const cluster = index[anchor]!
   const end
     = cluster.offset + (verifiedBufferedAheadBytes(input, cluster.offset) ?? 0)
   const verifiedToEnd = end === input.fileSize
-  if (time > index.at(-1)!.maxTime && !verifiedToEnd)
+  if (sourceTime > index.at(-1)!.maxTime && !verifiedToEnd)
     return null
   let bufferedUntilSeconds: number | null = null
   // A cue can lie anywhere inside its cluster. Its time is proven only after
@@ -168,8 +174,8 @@ export function playbackCacheAt(
     if (end < boundary)
       break
     bufferedUntilSeconds = durationKnown
-      ? Math.min(duration!, index[i]!.maxTime)
-      : index[i]!.maxTime
+      ? Math.min(duration!, index[i]!.maxTime - sourceOrigin)
+      : index[i]!.maxTime - sourceOrigin
   }
   if (verifiedToEnd && durationKnown)
     bufferedUntilSeconds = duration

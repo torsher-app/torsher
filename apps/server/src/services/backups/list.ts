@@ -46,7 +46,20 @@ export async function listBackupsIn(dir: string, defaultDir: string) {
     available = false
   }
 
-  if (resolve(dir) !== resolve(defaultDir)) {
+  const [mainInfo, fallbackInfo]
+    = resolve(dir) === resolve(defaultDir)
+      ? [undefined, undefined]
+      : await Promise.all([
+          stat(dir).catch(() => undefined),
+          stat(defaultDir).catch(() => undefined),
+        ])
+  const sameDirectory
+    = resolve(dir) === resolve(defaultDir)
+      || (mainInfo?.isDirectory()
+        && fallbackInfo?.isDirectory()
+        && mainInfo.dev === fallbackInfo.dev
+        && mainInfo.ino === fallbackInfo.ino)
+  if (!sameDirectory) {
     const fallback = await readDir(defaultDir, 'fallback').catch(() => [])
 
     items.push(

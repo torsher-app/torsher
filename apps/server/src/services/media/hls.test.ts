@@ -15,6 +15,7 @@ import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import {
   buildPlaylist,
+  hasDenseCues,
   HlsTranscode,
   secondsAhead,
   seekTargetOf,
@@ -25,6 +26,8 @@ import {
 } from './hls.ts'
 import { EngineError } from '../engine/client.ts'
 import { readCueTimes } from './matroska.ts'
+import { hlsTiming, parseProbe } from './probe.ts'
+import { planEncode } from './encode.ts'
 
 describe('segmentStarts', () => {
   it('первый разрез — не раньше 2 с, дальше не раньше 2 + k × 6 с', () => {
@@ -103,11 +106,39 @@ describe('buildPlaylist', () => {
   })
 })
 
+describe('dense cue detection', () => {
+  it('checks a long sparse index in linear work and finds a dense gap near the end', () => {
+    const cues = Array.from({ length: 21_601 }, (_, i) => i * 2)
+    const starts = Array.from({ length: 7200 }, (_, i) => i * 6)
+    let reads = 0
+    const counted = new Proxy(cues, {
+      get(target, key, receiver) {
+        if (typeof key === 'string' && /^\d+$/.test(key))
+          reads++
+        return Reflect.get(target, key, receiver)
+      },
+    })
+    expect(hasDenseCues(starts, counted)).toBe(false)
+    expect(reads).toBeLessThan(cues.length * 3 + starts.length * 3)
+    const last = starts.at(-1)!
+    cues.splice(
+      cues.findIndex(time => time > last),
+      0,
+      last + 0.2,
+    )
+    reads = 0
+    expect(hasDenseCues(starts, counted)).toBe(true)
+    expect(reads).toBeLessThan(cues.length * 3 + starts.length * 3)
+  })
+})
+
 describe('seekTargetOf', () => {
   it('чуть позже начала сегмента, но до следующего', () => {
     expect(seekTargetOf([0, 9.4, 15.8], 0)).toBe(0)
     expect(seekTargetOf([0, 9.4, 15.8], 1)).toBeCloseTo(9.9)
     expect(seekTargetOf([0, 9.4, 9.6], 1)).toBeCloseTo(9.5)
+    expect(seekTargetOf([0, 2, 8], 1, [0, 2, 2.2, 8], 0)).toBeCloseTo(2.001)
+    expect(seekTargetOf([0, 2, 8], 1, [0, 2, 2.2, 8], 2)).toBeCloseTo(2.1)
   })
 })
 
@@ -157,6 +188,23 @@ function packetTimes(path: string, stream: string) {
     .map(line => Number.parseFloat(line))
     .filter(Number.isFinite)
     .sort((a, b) => a - b)
+}
+
+function probeFile(path: string) {
+  return parseProbe(
+    JSON.parse(
+      execFileSync('ffprobe', [
+        '-v',
+        'error',
+        '-show_format',
+        '-show_streams',
+        '-of',
+        'json',
+        path,
+      ]).toString(),
+    ),
+    path,
+  )
 }
 
 // Настоящий ffmpeg: синтетический MKV с неровными ключевыми кадрами,
@@ -236,9 +284,10 @@ describe.runIf(hasFfmpeg())('hlsTranscode на ffmpeg', () => {
   })
 
   async function job(url = file) {
-    const cues = await readCueTimes(async (start, end) =>
+    const media = probeFile(file)
+    const cues = (await readCueTimes(async (start, end) =>
       bytes.subarray(start, Math.min(end, bytes.length)),
-    )
+    ))!.map(time => time - (media.startTime ?? 0))
     const starts = segmentStarts(40, cues)
     const transcode = new HlsTranscode(
       join(dir, `out-${transcodes.length}`),
@@ -249,6 +298,9 @@ describe.runIf(hasFfmpeg())('hlsTranscode на ffmpeg', () => {
         audio: 'aac',
         subtitleStreams: [2],
         starts,
+        cues,
+        videoDelay: media.video?.videoDelay,
+        firstVideoTime: cues[0],
         duration: 40,
       },
       { debug: () => {}, warn: () => {} },
@@ -325,8 +377,11 @@ describe.runIf(hasFfmpeg())('hlsTranscode на ffmpeg', () => {
       delayed,
     ])
     const bytes = readFileSync(delayed)
-    const cues = await readCueTimes(async (a, b) => bytes.subarray(a, b))
-    expect(cues![0]).toBeGreaterThan(0)
+    const media = probeFile(delayed)
+    const cues = (await readCueTimes(async (a, b) =>
+      bytes.subarray(a, b),
+    ))!.map(time => time - (media.startTime ?? 0))
+    expect(cues[0]).toBeGreaterThan(0)
     const starts = segmentStarts(40.1, cues)
     const transcode = new HlsTranscode(
       join(dir, `out-${transcodes.length}`),
@@ -343,7 +398,9 @@ describe.runIf(hasFfmpeg())('hlsTranscode на ffmpeg', () => {
       { debug: () => {}, warn: () => {} },
     )
     transcodes.push(transcode)
-    const sourcePackets = packetTimes(delayed, 'v').sort((a, b) => a - b)
+    const sourcePackets = packetTimes(delayed, 'v')
+      .map(time => time - (media.startTime ?? 0))
+      .sort((a, b) => a - b)
     const outputPackets: number[] = []
     for (const index of [...starts.keys(), starts.length - 1, 2]) {
       const path = await segmentPath(transcode, index)
@@ -386,6 +443,318 @@ describe.runIf(hasFfmpeg())('hlsTranscode на ffmpeg', () => {
 
     expect(Math.max(...offsets) - Math.min(...offsets)).toBeLessThan(0.01)
   }, 60_000)
+
+  it('bounds cuts by video and keeps only the selected audio tail in the final segment', async () => {
+    const path = join(dir, 'different-lengths.mkv')
+    execFileSync('ffmpeg', [
+      '-v',
+      'error',
+      '-y',
+      '-f',
+      'lavfi',
+      '-i',
+      'color=s=80x48:r=10:d=60',
+      '-f',
+      'lavfi',
+      '-i',
+      'sine=r=8000:d=60',
+      '-f',
+      'lavfi',
+      '-i',
+      'sine=r=8000:d=75',
+      '-map',
+      '0:v',
+      '-map',
+      '1:a',
+      '-map',
+      '2:a',
+      '-c:v',
+      'libx264',
+      '-preset',
+      'ultrafast',
+      '-bf',
+      '0',
+      '-g',
+      '20',
+      '-sc_threshold',
+      '0',
+      '-c:a',
+      'aac',
+      path,
+    ])
+    const media = probeFile(path)
+    const bytes = readFileSync(path)
+    const cues = (await readCueTimes(async (a, b) =>
+      bytes.subarray(a, b),
+    ))!.map(time => time - (media.startTime ?? 0))
+    const rawDuration = media.duration
+    for (const audioStream of [1, 2]) {
+      const timing = hlsTiming(media, audioStream)
+      expect(timing.videoEnd).toBeCloseTo(60, 0)
+      expect(timing.duration).toBeCloseTo(audioStream === 1 ? 60 : 75, 0)
+      const starts = segmentStarts(timing.videoEnd!, cues)
+      expect(starts.every(time => time < timing.videoEnd!)).toBe(true)
+      const transcode = new HlsTranscode(
+        join(dir, `out-${transcodes.length}`),
+        {
+          url: () => path,
+          videoStream: 0,
+          audioStream,
+          audio: 'copy',
+          subtitleStreams: [],
+          starts,
+          cues,
+          videoDelay: 0,
+          firstVideoTime: cues[0],
+          duration: timing.duration!,
+        },
+        { debug: () => {}, warn: () => {} },
+      )
+      transcodes.push(transcode)
+      const last = starts.length - 1
+      for (const index of [last, 0, 3]) {
+        const output = await segmentPath(transcode, index)
+        const video = packetTimes(output, 'v')
+        const first = index === 0 ? cues[0]! : starts[index]!
+        expect(video[0]! - TS_OFFSET_SECONDS).toBeCloseTo(first, 2)
+        if (index === last) {
+          const audio = packetTimes(output, 'a')
+          expect(audio.at(-1)! - TS_OFFSET_SECONDS).toBeCloseTo(
+            timing.duration!,
+            0,
+          )
+          expect(video.at(-1)! - TS_OFFSET_SECONDS).toBeLessThan(
+            timing.videoEnd!,
+          )
+        }
+      }
+      const playlist = buildPlaylist(
+        starts,
+        transcode.duration,
+        i => `${i}.ts`,
+      )
+      const total = [...playlist.matchAll(/#EXTINF:([\d.]+)/g)].reduce(
+        (sum, match) => sum + Number(match[1]),
+        0,
+      )
+      expect(total).toBeCloseTo(timing.duration!, 4)
+    }
+    expect(media.duration).toBe(rawDuration)
+  }, 30_000)
+
+  it.each([0, 2])(
+    'dense 0.2-second Cues with %i B frames preserve fresh seek PTS',
+    async (bframes) => {
+      const path = join(dir, `dense-${bframes}.mkv`)
+      execFileSync('ffmpeg', [
+        '-v',
+        'error',
+        '-y',
+        '-f',
+        'lavfi',
+        '-i',
+        'testsrc2=s=80x48:r=25:d=12',
+        '-c:v',
+        'libx264',
+        '-preset',
+        'ultrafast',
+        '-bf',
+        String(bframes),
+        '-g',
+        '5',
+        '-keyint_min',
+        '5',
+        '-sc_threshold',
+        '0',
+        path,
+      ])
+      const media = probeFile(path)
+      const bytes = readFileSync(path)
+      const cues = (await readCueTimes(async (a, b) =>
+        bytes.subarray(a, b),
+      ))!.map(time => time - (media.startTime ?? 0))
+      const encode = bframes
+        ? planEncode(
+            media.video!,
+            {
+              encoder: 'software',
+              device: null,
+              lowPower: false,
+              decode: [],
+              maxHeight: 720,
+              toneMapping: null,
+              toneMappingMaxHeight: 720,
+            },
+            null,
+            null,
+          )
+        : null
+      const starts = segmentStarts(media.duration!, encode ? null : cues)
+      const transcode = new HlsTranscode(
+        join(dir, `out-${transcodes.length}`),
+        {
+          url: () => path,
+          videoStream: 0,
+          audioStream: null,
+          audio: 'copy',
+          subtitleStreams: [],
+          starts,
+          cues,
+          videoDelay: media.video?.videoDelay,
+          firstVideoTime: cues[0],
+          duration: media.duration!,
+          encode,
+        },
+        { debug: () => {}, warn: () => {} },
+      )
+      transcodes.push(transcode)
+      for (const index of [starts.length - 1, 0, 1]) {
+        const output = await segmentPath(transcode, index)
+        const pts = packetTimes(output, 'v').map(
+          time => time - TS_OFFSET_SECONDS,
+        )
+        expect(pts[0]).toBeCloseTo(starts[index]!, 2)
+        expect(pts.at(-1)!).toBeLessThan(starts[index + 1] ?? media.duration!)
+      }
+    },
+    30_000,
+  )
+
+  it('normalizes a TS origin near one hour and keeps encoded seeks on the same clock', async () => {
+    const path = join(dir, 'origin.ts')
+    execFileSync('ffmpeg', [
+      '-v',
+      'error',
+      '-y',
+      '-f',
+      'lavfi',
+      '-i',
+      'testsrc2=s=80x48:r=25:d=6',
+      '-f',
+      'lavfi',
+      '-i',
+      'sine=r=48000:d=6',
+      '-c:v',
+      'libx264',
+      '-preset',
+      'ultrafast',
+      '-bf',
+      '0',
+      '-g',
+      '25',
+      '-c:a',
+      'aac',
+      '-muxdelay',
+      '0',
+      '-output_ts_offset',
+      '3600',
+      path,
+    ])
+    const media = probeFile(path)
+    expect(media.startTime).toBeGreaterThan(3599)
+    const timing = hlsTiming(media, 1)
+    const starts = segmentStarts(timing.videoEnd!, null, 2)
+    const encode = planEncode(
+      media.video!,
+      {
+        encoder: 'software',
+        device: null,
+        lowPower: false,
+        decode: [],
+        maxHeight: 720,
+        toneMapping: null,
+        toneMappingMaxHeight: 720,
+      },
+      null,
+      null,
+    )
+    const transcode = new HlsTranscode(
+      join(dir, `out-${transcodes.length}`),
+      {
+        url: () => path,
+        videoStream: 0,
+        audioStream: 1,
+        audio: 'copy',
+        subtitleStreams: [],
+        starts,
+        duration: timing.duration!,
+        encode,
+      },
+      { debug: () => {}, warn: () => {} },
+    )
+    transcodes.push(transcode)
+    for (const index of [starts.length - 1, 0, 1]) {
+      const output = await segmentPath(transcode, index)
+      const pts = packetTimes(output, 'v').map(
+        time => time - TS_OFFSET_SECONDS,
+      )
+      expect(Math.abs(pts[0]! - starts[index]!)).toBeLessThan(0.05)
+      expect(pts.at(-1)!).toBeLessThan(
+        (starts[index + 1] ?? timing.duration!) + 0.05,
+      )
+      const audio = packetTimes(output, 'a').map(
+        time => time - TS_OFFSET_SECONDS,
+      )
+      // A fresh encoded seek trims copied audio; cached sequential segments
+      // may include the muxer's small audio preroll around the cut.
+      const preroll = index === starts.length - 1 ? 0.03 : 0.15
+      expect(audio[0]!).toBeGreaterThanOrEqual(starts[index]! - preroll)
+      expect(audio.at(-1)!).toBeLessThan(timing.duration! + 0.05)
+    }
+  }, 30_000)
+
+  it('normalizes extracted embedded subtitle timestamps with a nonzero Matroska origin', async () => {
+    const path = join(dir, 'subtitle-origin.mkv')
+    execFileSync('ffmpeg', [
+      '-v',
+      'error',
+      '-y',
+      '-i',
+      file,
+      '-map',
+      '0',
+      '-c',
+      'copy',
+      '-output_ts_offset',
+      '100',
+      path,
+    ])
+    const media = probeFile(path)
+    const bytes = readFileSync(path)
+    const cues = (await readCueTimes(async (a, b) =>
+      bytes.subarray(a, b),
+    ))!.map(time => time - (media.startTime ?? 0))
+    const timing = hlsTiming(media, 1)
+    const starts = segmentStarts(timing.videoEnd!, cues)
+    const transcode = new HlsTranscode(
+      join(dir, `out-${transcodes.length}`),
+      {
+        url: () => path,
+        videoStream: 0,
+        audioStream: 1,
+        audio: 'aac',
+        subtitleStreams: [2],
+        starts,
+        cues,
+        videoDelay: media.video?.videoDelay,
+        firstVideoTime: cues[0],
+        duration: timing.duration!,
+      },
+      { debug: () => {}, warn: () => {} },
+    )
+    transcodes.push(transcode)
+    await segmentPath(transcode, starts.length - 1)
+    const extracted = await transcode.cues(2)
+    expect(extracted.length).toBeGreaterThan(0)
+    const first = extracted[0]!
+    expect(first.start).toBeGreaterThan(starts.at(-1)! - 2)
+    expect(first.end).toBeLessThan(41)
+    const pts = packetTimes(
+      join(transcode.dir, `${starts.length - 1}.ts`),
+      'v',
+    )
+    expect(pts[0]! - TS_OFFSET_SECONDS).toBeCloseTo(starts.at(-1)!, 2)
+  }, 30_000)
 
   it('на месте данных нули — ошибка, а не пустой сегмент', async () => {
     // Так выглядит недокачанный кусок, который движок считает готовым

@@ -34,6 +34,33 @@ describe('indexed playback cache', () => {
       verifiedToEnd: false,
     })
   })
+  it('maps a relative player position into raw indexed timestamps without shifting the sampled clock', () => {
+    const rawIndex = [
+      { offset: 100, minTime: 100, maxTime: 100 },
+      { offset: 700, minTime: 110, maxTime: 112 },
+      { offset: 800, minTime: 120, maxTime: 120 },
+      { offset: 900, minTime: 140, maxTime: 140 },
+    ]
+    expect(playbackCacheAt(base, 10, 60, rawIndex, 100)).toEqual({
+      sampledAtSeconds: 10,
+      anchorOffset: 700,
+      contiguousEndOffset: 900,
+      bufferedUntilSeconds: 20,
+      verifiedToEnd: false,
+    })
+    expect(rawIndex[1]).toEqual({ offset: 700, minTime: 110, maxTime: 112 })
+    expect(
+      playbackCacheAt({ ...base, pieces: '0000000100' }, 10, 60, rawIndex, 100),
+    ).toMatchObject({ sampledAtSeconds: 10, bufferedUntilSeconds: 12 })
+    expect(
+      playbackCacheAt({ ...base, pieces: '0000000111' }, 45, 60, rawIndex, 100),
+    ).toMatchObject({
+      sampledAtSeconds: 45,
+      bufferedUntilSeconds: 60,
+      verifiedToEnd: true,
+    })
+  })
+
   it('never uses a cue inside an incomplete cluster as the cached end', () => {
     expect(
       playbackCacheAt({ ...base, pieces: '0000000100' }, 25, 100, index),

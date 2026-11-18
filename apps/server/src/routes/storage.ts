@@ -21,12 +21,12 @@ import {
   updateStoragePolicy,
 } from '../dto/storage.ts'
 import { engineUnavailableResponse } from '../dto/torrents.ts'
+import { EngineError } from '../services/engine/index.ts'
 import { requireOwner } from '../middleware/auth.ts'
 import { browseFolders } from '../services/library/folders.ts'
 import { currentLinkMode } from '../services/library/index.ts'
 import {
   checkStoragePath,
-  pathProblem,
   StoragePathError,
 } from '../services/storage/folders.ts'
 import { getStorageOverview, updatePolicy } from '../services/storage/index.ts'
@@ -35,6 +35,7 @@ import {
   changeStoragePath,
   startMove,
   StorageMoveError,
+  storageMoveItemCount,
   storageMovePreview,
   storageMoveState,
 } from '../services/storage/move.ts'
@@ -60,7 +61,10 @@ function toMoveResponse(move: StorageMoveState | null) {
   )
 }
 
-function toOverviewResponse(overview: StorageOverview) {
+function toOverviewResponse(
+  overview: StorageOverview,
+  move = storageMoveState(),
+) {
   return {
     path: overview.path,
     total: overview.total,
@@ -77,7 +81,7 @@ function toOverviewResponse(overview: StorageOverview) {
       lastAccessAt: torrent.lastAccessAt?.toISOString() ?? null,
     })),
     folders: overview.folders,
-    move: toMoveResponse(storageMoveState()),
+    move: toMoveResponse(move),
   }
 }
 
@@ -234,9 +238,29 @@ export const storageRoutes: FastifyPluginAsyncZod = async (app) => {
       const { kind, path } = request.body
       try {
         const check = await checkStoragePath(kind, path)
-        const preview = check.problem
-          ? { moveBytes: 0, moveTotalBytes: 0, moveItems: 0 }
-          : await storageMovePreview(kind, check.path)
+        let preview: {
+          moveBytes: number
+          moveTotalBytes: number
+          moveItems: number
+          moveAvailable?: false
+          sameVolume?: boolean
+        } = { moveBytes: 0, moveTotalBytes: 0, moveItems: 0 }
+        if (!check.problem) {
+          try {
+            preview = await storageMovePreview(kind, check.path)
+          }
+          catch (error) {
+            if (!(error instanceof EngineError) || error.kind !== 'unavailable')
+              throw error
+            preview = {
+              moveBytes: 0,
+              moveTotalBytes: 0,
+              moveItems: storageMoveItemCount(kind, check.path),
+              moveAvailable: false,
+              sameVolume: false,
+            }
+          }
+        }
 
         return { ...check, ...preview }
       }
@@ -260,21 +284,9 @@ export const storageRoutes: FastifyPluginAsyncZod = async (app) => {
       const { kind, path, mode } = request.body
 
       try {
-        if (path) {
-          const problem = await pathProblem(kind, path)
+        const accepted = await changeStoragePath(kind, path, mode)
 
-          if (problem)
-            throw new StoragePathError(problem)
-
-          const check = await checkStoragePath(kind, path)
-
-          if (check.problem)
-            throw new StoragePathError(check.problem, check.errorCode)
-        }
-
-        await changeStoragePath(kind, path, mode)
-
-        return toOverviewResponse(await getStorageOverview())
+        return toOverviewResponse(accepted.overview, accepted.move)
       }
       catch (err) {
         return sendPathError(reply, err, kind)
@@ -295,9 +307,9 @@ export const storageRoutes: FastifyPluginAsyncZod = async (app) => {
     },
     async (request, reply) => {
       try {
-        await startMove(request.body.kind)
+        const accepted = await startMove(request.body.kind)
 
-        return toOverviewResponse(await getStorageOverview())
+        return toOverviewResponse(accepted.overview, accepted.move)
       }
       catch (err) {
         return sendPathError(reply, err, request.body.kind)

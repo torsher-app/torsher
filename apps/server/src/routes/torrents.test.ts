@@ -25,6 +25,8 @@ import {
 } from '../services/engine/fixtures/index.ts'
 import { signToken } from '../utils/token.ts'
 import { defaultProfile } from '../services/profiles/index.ts'
+import * as mediaProbe from '../services/media/probe.ts'
+import * as mediaCues from '../services/media/cueCache.ts'
 
 const GIB = 1024 ** 3
 const disk = vi.hoisted(() => ({ total: 0, free: 0 }))
@@ -519,6 +521,128 @@ describe('статистика', () => {
       playbackCache: null,
     })
     expect(engineCalls()).toEqual([`GET /torrents/${INFO_HASH}/stats`])
+  })
+
+  it('keeps partial indexed cache bounds in the player clock for a nonzero source origin', async () => {
+    const torrent = insertTorrent({
+      pieceLength: 100,
+      files: [{ path: 'origin.mkv', size: 1000, padding: false }],
+    })
+    const probe = vi.spyOn(mediaProbe, 'peekMediaProbe').mockReturnValue(
+      mediaProbe.parseProbe(
+        {
+          format: { start_time: '100', duration: '140' },
+          streams: [
+            {
+              index: 0,
+              codec_type: 'video',
+              start_time: '100',
+              duration: '40',
+            },
+          ],
+        },
+        'origin.mkv',
+      ),
+    )
+    const index = vi.spyOn(mediaCues, 'peekPlaybackIndex').mockReturnValue([
+      { offset: 100, minTime: 100, maxTime: 100 },
+      { offset: 700, minTime: 110, maxTime: 112 },
+      { offset: 800, minTime: 120, maxTime: 120 },
+      { offset: 900, minTime: 140, maxTime: 140 },
+    ])
+    engine({
+      [`GET /torrents/${INFO_HASH}/stats`]: () =>
+        json({
+          ...liveStats,
+          fileProgress: [900],
+          pieces: '0000000110',
+        }),
+    })
+    try {
+      const response = await app.inject({
+        url: `/api/torrents/${torrent.id}/stats?fileIndex=0&time=10`,
+        cookies: owner,
+      })
+      expect(response.statusCode).toBe(200)
+      expect(response.json().file.playbackCache).toEqual({
+        sampledAtSeconds: 10,
+        anchorOffset: 700,
+        contiguousEndOffset: 900,
+        bufferedUntilSeconds: 20,
+        verifiedToEnd: false,
+      })
+      engine({
+        [`GET /torrents/${INFO_HASH}/stats`]: () =>
+          json({
+            ...liveStats,
+            fileProgress: [1000],
+            pieces: '0000000111',
+          }),
+      })
+      const tail = await app.inject({
+        url: `/api/torrents/${torrent.id}/stats?fileIndex=0&time=35`,
+        cookies: owner,
+      })
+      expect(tail.json().file.playbackCache).toMatchObject({
+        sampledAtSeconds: 35,
+        bufferedUntilSeconds: 40,
+        verifiedToEnd: true,
+      })
+      expect(engineCalls()).toEqual([
+        `GET /torrents/${INFO_HASH}/stats`,
+        `GET /torrents/${INFO_HASH}/stats`,
+      ])
+    }
+    finally {
+      probe.mockRestore()
+      index.mockRestore()
+    }
+  })
+
+  it('keeps a cached raw index without its probe from proving a partial time bound', async () => {
+    const torrent = insertTorrent({
+      pieceLength: 100,
+      files: [{ path: 'offset.mkv', size: 1000, padding: false }],
+    })
+    const index = vi.spyOn(mediaCues, 'peekPlaybackIndex').mockReturnValue([
+      { offset: 100, minTime: 100, maxTime: 100 },
+      { offset: 300, minTime: 120, maxTime: 130 },
+      { offset: 700, minTime: 220, maxTime: 230 },
+    ])
+    const probe = vi
+      .spyOn(mediaProbe, 'peekMediaProbe')
+      .mockReturnValue(undefined)
+    const sample = async (pieces: string) => {
+      engine({
+        [`GET /torrents/${INFO_HASH}/stats`]: () =>
+          json({ ...liveStats, pieces }),
+      })
+      return app.inject({
+        url: `/api/torrents/${torrent.id}/stats?fileIndex=0&time=120`,
+        cookies: owner,
+      })
+    }
+    try {
+      const partial = await sample('0001111000')
+      expect(partial.statusCode).toBe(200)
+      expect(partial.json().file.playbackCache).toBeNull()
+      const full = await sample('1111111111')
+      expect(full.json().file.playbackCache).toEqual({
+        sampledAtSeconds: 120,
+        anchorOffset: 0,
+        contiguousEndOffset: 1000,
+        bufferedUntilSeconds: null,
+        verifiedToEnd: true,
+      })
+      expect(engineCalls()).toEqual([
+        `GET /torrents/${INFO_HASH}/stats`,
+        `GET /torrents/${INFO_HASH}/stats`,
+      ])
+    }
+    finally {
+      index.mockRestore()
+      probe.mockRestore()
+    }
   })
 
   it('uses the verified bitmap for complete files, without trusting downloaded bytes or client duration', async () => {

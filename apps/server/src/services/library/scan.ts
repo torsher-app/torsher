@@ -7,6 +7,11 @@ import { and, eq } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import { libraries, libraryFolders, mediaFiles } from '../../db/schema.ts'
 import { logFor } from '../logs/index.ts'
+import {
+  freezeLibraryProgress,
+  persistedProbeKey,
+  sameStoredMtime,
+} from './playedSource.ts'
 import { queueProbe } from './probe.ts'
 
 // Служебные папки NAS и систем: в них видео пользователя не бывает
@@ -90,7 +95,7 @@ export async function listVideos(root: string, exclude: string[]) {
       files.push({
         relPath,
         size: info.size,
-        mtime: Math.trunc(info.mtimeMs),
+        mtime: info.mtimeMs,
         inode: info.ino,
       })
     }
@@ -154,32 +159,49 @@ export function applyScan(
   const now = new Date()
   const unseen = () => existing.filter(row => !seen.has(row.id))
 
+  function update(known: MediaFile, file: ScannedFile) {
+    const modified
+      = known.size !== file.size
+        || known.inode !== file.inode
+        || !sameStoredMtime(known.mtime, file.mtime)
+        || (known.probeKey !== null
+          && known.probeKey
+          !== persistedProbeKey({ size: file.size, mtimeMs: file.mtime }))
+    if (
+      !modified
+      && known.state === 'present'
+      && known.relPath === file.relPath
+    ) {
+      return
+    }
+
+    db.transaction((tx) => {
+      if (modified || known.relPath !== file.relPath)
+        freezeLibraryProgress(known.id, known)
+      tx.update(mediaFiles)
+        .set({
+          relPath: file.relPath,
+          size: file.size,
+          mtime: new Date(Math.trunc(file.mtime)),
+          inode: file.inode,
+          state: 'present',
+          missingSince: null,
+          probeKey: modified ? null : known.probeKey,
+        })
+        .where(eq(mediaFiles.id, known.id))
+        .run()
+    })
+    if (modified)
+      changed.push(known.id)
+  }
+
   for (const file of scanned) {
     const known = byPath.get(file.relPath)
 
     if (known) {
       seen.add(known.id)
 
-      const modified
-        = known.size !== file.size || known.mtime.getTime() !== file.mtime
-
-      if (modified || known.state === 'missing' || known.inode !== file.inode) {
-        db.update(mediaFiles)
-          .set({
-            size: file.size,
-            mtime: new Date(file.mtime),
-            inode: file.inode,
-            state: 'present',
-            missingSince: null,
-            probeKey: modified ? null : known.probeKey,
-          })
-          .where(eq(mediaFiles.id, known.id))
-          .run()
-
-        if (modified)
-          changed.push(known.id)
-      }
-
+      update(known, file)
       continue
     }
 
@@ -194,15 +216,7 @@ export function applyScan(
 
     if (moved) {
       seen.add(moved.id)
-      db.update(mediaFiles)
-        .set({
-          relPath: file.relPath,
-          mtime: new Date(file.mtime),
-          state: 'present',
-          missingSince: null,
-        })
-        .where(eq(mediaFiles.id, moved.id))
-        .run()
+      update(moved, file)
       continue
     }
 
@@ -212,7 +226,7 @@ export function applyScan(
         folderId,
         relPath: file.relPath,
         size: file.size,
-        mtime: new Date(file.mtime),
+        mtime: new Date(Math.trunc(file.mtime)),
         inode: file.inode,
         addedAt: now,
       })
@@ -299,6 +313,7 @@ async function scan(
     error: null,
   })
 
+  const changed = new Set(result.changed)
   for (const row of getDb()
     .select({ id: mediaFiles.id })
     .from(mediaFiles)
@@ -306,7 +321,7 @@ async function scan(
       and(eq(mediaFiles.folderId, folder.id), eq(mediaFiles.state, 'present')),
     )
     .all())
-    void queueProbe(row.id)
+    void queueProbe(row.id, { revisionChanged: changed.has(row.id) })
 
   return { status, ...result }
 }

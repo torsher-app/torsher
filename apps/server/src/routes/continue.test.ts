@@ -23,6 +23,7 @@ import { liveState } from '../services/engine/fixtures/index.ts'
 import { setEngineDown, setEngineReady } from '../services/engine/index.ts'
 import { createApp } from '../app.ts'
 import { ACCESS_TOKEN_COOKIE } from '../config.ts'
+import { libraryProbeKey } from '../services/library/playedSource.ts'
 import { getDb, migrateDb } from '../db/index.ts'
 import {
   libraries,
@@ -36,7 +37,14 @@ import {
   users,
 } from '../db/schema.ts'
 import {
+  freezeLibraryProgress,
+  getTitleProgress,
+  lastVoiceOfSeason,
   markWatched,
+  moveFileProgress,
+  relinkTitleProgress,
+  rememberChoice,
+  rememberVoice,
   saveTitleProgress,
 } from '../services/sources/progress.ts'
 import { CONTINUE_MAX_AGE_DAYS } from '../services/sources/continue.ts'
@@ -1163,6 +1171,7 @@ describe('continuation preference preserves factual history', () => {
           relPath: 'episode.mkv',
           size: info.size,
           mtime: info.mtime,
+          inode: info.ino,
           probeKey: `${info.size}:${info.mtimeMs}`,
           probe: {
             duration: EPISODE,
@@ -1241,6 +1250,18 @@ describe('continuation preference preserves factual history', () => {
         quality: '1080p',
         torrentId: null,
       })
+      db.update(mediaFiles)
+        .set({ inode: info.ino + 1 })
+        .where(eq(mediaFiles.id, file.id))
+        .run()
+      expect(
+        (await continuationFor(profileId, SERIES, target)).baseline?.video,
+      ).toBeNull()
+      expect(await historySource(history)).toMatchObject({ quality: null })
+      db.update(mediaFiles)
+        .set({ inode: info.ino })
+        .where(eq(mediaFiles.id, file.id))
+        .run()
       writeFileSync(join(dir, 'episode.mkv'), 'changed fixture')
       expect(
         (await continuationFor(profileId, SERIES, target)).baseline?.video,
@@ -1656,4 +1677,473 @@ describe('last-file history metadata', () => {
     })
     expect(result.json().last.source).toBeNull()
   })
+})
+
+it('freezes legacy played identity before same-episode choice and torrent replacement without changing resume preferences', async () => {
+  watched(SERIES, 1, 1, 120, new Date(), 's1', 0)
+  const ref = { profileId, titleId: SERIES, season: 1, episode: 1 }
+  probeFrames.set(`${'s1'.padEnd(40, '0')}:0`, {
+    video: { width: 640, height: 360 },
+  })
+  rememberChoice(ref, {
+    torrentId: 's2',
+    fileIndex: 0,
+    voice: { studio: 'Choice B' },
+  })
+  expect(await historySource(getTitleProgress(ref)!)).toMatchObject({
+    torrentId: 's1',
+    quality: 'SD',
+    voice: null,
+  })
+  expect(lastVoiceOfSeason(profileId, SERIES, 1)).toEqual({
+    studio: 'Choice B',
+  })
+  expect(getTitleProgress(ref)?.torrentId).toBe('s2')
+  relinkTitleProgress('s2', 's1', new Map([[0, 1]]))
+  moveFileProgress(
+    { torrentId: 's1', fileIndex: 1 },
+    { torrentId: 's2', fileIndex: 1 },
+  )
+  expect(await historySource(getTitleProgress(ref)!)).toMatchObject({
+    torrentId: 's1',
+    quality: 'SD',
+  })
+  probeFrames.set(`${'s1'.padEnd(40, '0')}:0`, {
+    video: { width: 3840, height: 2160 },
+  })
+  expect(await historySource(getTitleProgress(ref)!)).toMatchObject({
+    quality: 'SD',
+  })
+  getDb().delete(torrents).where(eq(torrents.id, 's1')).run()
+  expect(await historySource(getTitleProgress(ref)!)).toBeNull()
+})
+
+it('keeps source-free imported history unknown after a new choice or voice until playback', async () => {
+  const ref = { profileId, titleId: SERIES, season: 1, episode: 1 }
+  getDb()
+    .insert(titleProgress)
+    .values({ ...ref, position: 100, duration: EPISODE })
+    .run()
+  rememberChoice(ref, { torrentId: 's2', fileIndex: 0 })
+  rememberVoice(
+    ref,
+    { studio: 'Unplayed B' },
+    { torrentId: 's2', fileIndex: 0 },
+  )
+  expect(await historySource(getTitleProgress(ref)!)).toBeNull()
+  expect(getTitleProgress(ref)?.playedSource).toEqual({ kind: 'unknown' })
+  saveTitleProgress(ref, {
+    position: 150,
+    duration: EPISODE,
+    torrentId: 's2',
+    fileIndex: 0,
+  })
+  expect(await historySource(getTitleProgress(ref)!)).toMatchObject({
+    torrentId: 's2',
+    voice: null,
+  })
+  expect(getTitleProgress(ref)?.voiceStudio).toBe('Unplayed B')
+})
+
+it.each([false, true])(
+  'keeps library quality immutable through same-ID content replacement; legacy=%s',
+  async (legacy) => {
+    const dir = mkdtempSync(join(tmpdir(), 'torsher-played-source-'))
+    try {
+      const path = join(dir, 'episode.mkv')
+      writeFileSync(path, 'old content')
+      const info = statSync(path)
+      const library = getDb()
+        .insert(libraries)
+        .values({ kind: 'video', name: 'History fixture' })
+        .returning()
+        .get()
+      const folder = getDb()
+        .insert(libraryFolders)
+        .values({ libraryId: library.id, path: dir })
+        .returning()
+        .get()
+      const file = getDb()
+        .insert(mediaFiles)
+        .values({
+          folderId: folder.id,
+          relPath: 'episode.mkv',
+          size: info.size,
+          mtime: info.mtime,
+          probeKey: `${info.size}:${info.mtimeMs}`,
+          probe: { video: { width: 640, height: 360 } } as never,
+        })
+        .returning()
+        .get()
+      const ref = { profileId, titleId: SERIES, season: 1, episode: 1 }
+      if (legacy) {
+        getDb()
+          .insert(titleProgress)
+          .values({
+            ...ref,
+            position: 100,
+            duration: EPISODE,
+            mediaFileId: file.id,
+          })
+          .run()
+      }
+      else {
+        saveTitleProgress(ref, {
+          position: 100,
+          duration: EPISODE,
+          mediaFileId: file.id,
+          torrentId: null,
+          fileIndex: null,
+        })
+      }
+      if (legacy)
+        freezeLibraryProgress(file.id)
+      const playedAt = getTitleProgress(ref)!.updatedAt
+      rememberVoice(
+        ref,
+        { studio: 'Pending B' },
+        { torrentId: 's2', fileIndex: 0, mediaFileId: null },
+      )
+      expect(getTitleProgress(ref)!.updatedAt).toEqual(playedAt)
+      saveTitleProgress(ref, {
+        position: 110,
+        duration: EPISODE,
+        mediaFileId: file.id,
+        torrentId: null,
+        fileIndex: null,
+      })
+      expect(await historySource(getTitleProgress(ref)!)).toMatchObject({
+        torrentId: null,
+        quality: 'SD',
+        voice: null,
+      })
+      expect(getTitleProgress(ref)?.torrentId).toBe('s2')
+      writeFileSync(path, 'new content with a new probe')
+      const changed = statSync(path)
+      getDb()
+        .update(mediaFiles)
+        .set({
+          size: changed.size,
+          mtime: changed.mtime,
+          probeKey: `${changed.size}:${changed.mtimeMs}`,
+          probe: { video: { width: 3840, height: 2160 } } as never,
+        })
+        .where(eq(mediaFiles.id, file.id))
+        .run()
+      expect(await historySource(getTitleProgress(ref)!)).toMatchObject({
+        torrentId: null,
+        quality: 'SD',
+      })
+      getDb()
+        .insert(libraryHiddenProfiles)
+        .values({ libraryId: library.id, profileId })
+        .run()
+      expect(await historySource(getTitleProgress(ref)!)).toBeNull()
+      getDb()
+        .delete(libraryHiddenProfiles)
+        .where(eq(libraryHiddenProfiles.libraryId, library.id))
+        .run()
+      getDb().delete(mediaFiles).where(eq(mediaFiles.id, file.id)).run()
+      expect(await historySource(getTitleProgress(ref)!)).toBeNull()
+      saveTitleProgress(ref, {
+        position: 120,
+        duration: EPISODE,
+        torrentId: 's2',
+        fileIndex: 0,
+      })
+      expect(await historySource(getTitleProgress(ref)!)).toMatchObject({
+        torrentId: 's2',
+        voice: null,
+      })
+      expect(getTitleProgress(ref)?.voiceStudio).toBe('Pending B')
+    }
+    finally {
+      rmSync(dir, { recursive: true, force: true })
+    }
+  },
+)
+
+it('does not turn a manual watched mark into played history through an unplayed source choice', async () => {
+  const ref = { profileId, titleId: SERIES, season: 1, episode: 1 }
+  markWatched(ref, true)
+  rememberChoice(ref, {
+    torrentId: 's2',
+    fileIndex: 0,
+    voice: { studio: 'Unplayed voice' },
+  })
+  expect(await historySource(getTitleProgress(ref)!)).toBeNull()
+  const response = await app.inject({
+    url: `/api/titles/${SERIES}/progress`,
+    cookies: owner,
+  })
+  expect(response.json().last).toBeNull()
+  saveTitleProgress(ref, {
+    position: 100,
+    duration: EPISODE,
+    torrentId: 's2',
+    fileIndex: 0,
+  })
+  markWatched(ref, true)
+  expect(await historySource(getTitleProgress(ref)!)).toMatchObject({
+    torrentId: 's2',
+  })
+})
+
+it.each([
+  ['100:2000.456', '1080p'],
+  ['100:2000.75', '1080p'],
+  ['100:1999.9412', '1080p'],
+  ['100:2001.456', null],
+  ['101:2000.456', null],
+  ['unrelated', null],
+] as const)(
+  'captures only a probe matching stored library metadata (key=%s)',
+  (probeKey, quality) => {
+    const library = getDb()
+      .insert(libraries)
+      .values({ kind: 'video', name: 'Stored metadata' })
+      .returning()
+      .get()
+    const folder = getDb()
+      .insert(libraryFolders)
+      .values({ libraryId: library.id, path: '/unmounted/synthetic-library' })
+      .returning()
+      .get()
+    const file = getDb()
+      .insert(mediaFiles)
+      .values({
+        folderId: folder.id,
+        relPath: 'episode.mkv',
+        size: 100,
+        mtime: new Date(2000),
+        probeKey,
+        probe: { video: { width: 1920, height: 1080 } } as never,
+      })
+      .returning()
+      .get()
+    const row = saveTitleProgress(
+      { profileId, titleId: SERIES, season: 1, episode: 1 },
+      {
+        position: 100,
+        duration: EPISODE,
+        mediaFileId: file.id,
+        torrentId: null,
+        fileIndex: null,
+      },
+    )
+    expect(row.playedSource).toMatchObject({
+      kind: 'library',
+      mediaFileId: file.id,
+      quality,
+    })
+  },
+)
+
+it.each(['torrent', 'library'] as const)(
+  'keeps two direct %s checkpoints free of the previous source voice',
+  (kind) => {
+    const ref = { profileId, titleId: SERIES, season: 1, episode: 1 }
+    rememberChoice(ref, {
+      torrentId: 's1',
+      fileIndex: 0,
+      voice: { studio: 'Voice A' },
+    })
+    saveTitleProgress(ref, {
+      position: 100,
+      duration: EPISODE,
+      torrentId: 's1',
+      fileIndex: 0,
+    })
+    const source
+      = kind === 'torrent'
+        ? { torrentId: 's2', fileIndex: 0, mediaFileId: null }
+        : {
+            torrentId: null,
+            fileIndex: null,
+            mediaFileId: 'direct-alternate-library-file',
+          }
+    const first = saveTitleProgress(ref, {
+      ...source,
+      position: 110,
+      duration: EPISODE,
+    })
+    expect(first.playedSource).toMatchObject({ kind, voice: null })
+    const second = saveTitleProgress(ref, {
+      ...source,
+      position: 120,
+      duration: EPISODE,
+    })
+    expect(second.playedSource).toMatchObject({ kind, voice: null })
+    expect(second).toMatchObject({ voiceStudio: null, voiceType: null })
+  },
+)
+
+it('preserves factual probe quality through cache eviction for the same torrent version', () => {
+  const ref = { profileId, titleId: SERIES, season: 1, episode: 1 }
+  const source = { torrentId: 's1', fileIndex: 0 }
+  probeFrames.set(`${'s1'.padEnd(40, '0')}:0`, {
+    video: { width: 3840, height: 2160 },
+  })
+  const first = saveTitleProgress(ref, {
+    ...source,
+    position: 100,
+    duration: EPISODE,
+  })
+  expect(first.playedSource).toMatchObject({ quality: '2160p' })
+  probeFrames.clear()
+  const second = saveTitleProgress(ref, {
+    ...source,
+    position: 110,
+    duration: EPISODE,
+  })
+  expect(second.playedSource).toMatchObject({ quality: '2160p' })
+})
+
+it('does not transfer frozen quality to new library bytes under the same media ID', () => {
+  const library = getDb()
+    .insert(libraries)
+    .values({ kind: 'video', name: 'Content identity' })
+    .returning()
+    .get()
+  const folder = getDb()
+    .insert(libraryFolders)
+    .values({ libraryId: library.id, path: '/unmounted/content-identity' })
+    .returning()
+    .get()
+  const file = getDb()
+    .insert(mediaFiles)
+    .values({
+      folderId: folder.id,
+      relPath: 'episode.mkv',
+      size: 100,
+      inode: 1,
+      mtime: new Date(2000),
+      probeKey: '100:2000.4',
+      probe: { video: { width: 3840, height: 2160 } } as never,
+    })
+    .returning()
+    .get()
+  const ref = { profileId, titleId: SERIES, season: 1, episode: 1 }
+  const source = { mediaFileId: file.id, torrentId: null, fileIndex: null }
+  const first = saveTitleProgress(ref, {
+    ...source,
+    position: 100,
+    duration: EPISODE,
+  })
+  expect(first.playedSource).toMatchObject({ quality: '2160p' })
+  getDb()
+    .update(mediaFiles)
+    .set({ probe: null, probeKey: null })
+    .where(eq(mediaFiles.id, file.id))
+    .run()
+  const unchanged = saveTitleProgress(ref, {
+    ...source,
+    position: 105,
+    duration: EPISODE,
+  })
+  expect(unchanged.playedSource).toMatchObject({ quality: '2160p' })
+  getDb()
+    .update(mediaFiles)
+    .set({ inode: 2, mtime: new Date(3000), probe: null, probeKey: null })
+    .where(eq(mediaFiles.id, file.id))
+    .run()
+  const second = saveTitleProgress(ref, {
+    ...source,
+    position: 110,
+    duration: EPISODE,
+  })
+  expect(second.playedSource).toMatchObject({ quality: null })
+})
+
+it('captures externally replaced library bytes before the checkpoint transaction without requiring a scan', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'torsher-external-history-'))
+  try {
+    const path = join(dir, 'episode.mkv')
+    writeFileSync(path, 'old')
+    const old = statSync(path)
+    const library = getDb()
+      .insert(libraries)
+      .values({ kind: 'video', name: 'External replacement', watch: false })
+      .returning()
+      .get()
+    const folder = getDb()
+      .insert(libraryFolders)
+      .values({ libraryId: library.id, path: dir })
+      .returning()
+      .get()
+    const file = getDb()
+      .insert(mediaFiles)
+      .values({
+        folderId: folder.id,
+        relPath: 'episode.mkv',
+        size: old.size,
+        inode: old.ino,
+        mtime: old.mtime,
+        titleId: SERIES,
+        season: 1,
+        episode: 1,
+        probeKey: `${old.size}:${old.mtimeMs}`,
+        probe: { video: { width: 640, height: 360 } } as never,
+      })
+      .returning()
+      .get()
+    const ref = { profileId, titleId: SERIES, season: 1, episode: 1 }
+    saveTitleProgress(ref, {
+      position: 100,
+      duration: EPISODE,
+      mediaFileId: file.id,
+      torrentId: null,
+      fileIndex: null,
+    })
+    writeFileSync(path, 'externally replaced, larger bytes')
+    const current = statSync(path)
+    // Playback already prepared the exact current file; no scan updates media_files.
+    probeFrames.set(libraryProbeKey(file.id, current), {
+      video: { width: 3840, height: 2160 },
+    })
+    const response = await app.inject({
+      method: 'PUT',
+      url: '/api/watch-state',
+      cookies: owner,
+      payload: { mediaFileId: file.id, position: 110, duration: EPISODE },
+    })
+    expect(response.statusCode).toBe(200)
+    expect(getTitleProgress(ref)?.playedSource).toMatchObject({
+      kind: 'library',
+      quality: '2160p',
+      contentKey: `library:${current.ino}:${current.size}:${current.mtimeMs}`,
+    })
+    expect(
+      getDb().select().from(mediaFiles).where(eq(mediaFiles.id, file.id)).get()?.size,
+    ).toBe(old.size)
+    writeFileSync(
+      path,
+      'another external replacement without a prepared probe, still no scan',
+    )
+    const unknown = await app.inject({
+      method: 'PUT',
+      url: '/api/watch-state',
+      cookies: owner,
+      payload: { mediaFileId: file.id, position: 120, duration: EPISODE },
+    })
+    expect(unknown.statusCode).toBe(200)
+    expect(getTitleProgress(ref)?.playedSource).toMatchObject({
+      quality: null,
+    })
+  }
+  finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+it('uses the partial index to freeze only matching legacy library progress', () => {
+  const rows = getDb()
+    .$client
+    .prepare(
+      'EXPLAIN QUERY PLAN SELECT * FROM title_progress WHERE media_file_id = ? AND played_source IS NULL',
+    )
+    .all('synthetic-media') as { detail: string }[]
+  expect(rows.map(row => row.detail).join(' ')).toContain(
+    'title_progress_unfrozen_media_idx',
+  )
 })
