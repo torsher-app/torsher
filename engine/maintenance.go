@@ -25,14 +25,15 @@ import (
 // Manifest не меняется после prepare. Корень идентифицируется отдельно:
 // отсутствие файла на отключённом томе не считается успешным удалением.
 type maintenancePath struct {
-	Root       string  `json:"root"`
-	Path       string  `json:"path"`
-	RootDevice uint64  `json:"rootDevice,string"`
-	RootInode  uint64  `json:"rootInode"`
-	Device     uint64  `json:"device,string"`
-	Inode      uint64  `json:"inode"`
-	Size       int64   `json:"size"`
-	Mtime      float64 `json:"mtime"`
+	Root           string  `json:"root"`
+	Path           string  `json:"path"`
+	RootDevice     uint64  `json:"rootDevice,string"`
+	RootInode      uint64  `json:"rootInode"`
+	Device         uint64  `json:"device,string"`
+	Inode          uint64  `json:"inode"`
+	Size           int64   `json:"size"`
+	Mtime          float64 `json:"mtime"`
+	BaselineAbsent bool    `json:"baselineAbsent,omitempty"`
 }
 type detachManifest struct {
 	InfoHash   string            `json:"infoHash"`
@@ -303,13 +304,34 @@ func (a *api) maintenancePrepare(w http.ResponseWriter, r *http.Request) {
 	}
 	fence := m.fences[id]
 	if fence != nil {
-		if !m.confirm(w, fence) {
-			return
-		}
 		old, _ := json.Marshal(fence.Manifest)
 		next, _ := json.Marshal(manifest)
 		if !bytes.Equal(old, next) {
 			writeError(w, 409, "manifest_conflict", errors.New("operation manifest differs"))
+			return
+		}
+	}
+	if fence == nil || (fence.State != "cancelled" && fence.State != "finalized") {
+		for index, item := range manifest.Paths {
+			if !item.BaselineAbsent {
+				continue
+			}
+			var hash metainfo.Hash
+			_ = hash.FromHexString(manifest.InfoHash)
+			_, live := a.client.Torrent(hash)
+			if live || a.session.has(hash) || (fence != nil && fence.RestoreSession != nil) {
+				writeError(w, 409, "baseline_restore_conflict", errors.New("absent baseline cannot restore a session"))
+				return
+			}
+			if err := confirmMaintenanceUnchanged(item, ".torsher-maintenance-"+id+"-"+fmt.Sprint(index)); err != nil {
+				writeError(w, 409, "baseline_changed", err)
+				return
+			}
+		}
+	}
+
+	if fence != nil {
+		if !m.confirm(w, fence) {
 			return
 		}
 		if fence.State != "pending" {
@@ -496,6 +518,21 @@ func (a *api) maintenanceFinish(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, fence)
 		return
 	}
+	if next == "cancelled" {
+		for index, item := range fence.Manifest.Paths {
+			if !item.BaselineAbsent {
+				continue
+			}
+			if fence.RestoreSession != nil {
+				writeError(w, 409, "operation_partial", errors.New("absent baseline cannot restore a session"))
+				return
+			}
+			if err := confirmMaintenanceUnchanged(item, ".torsher-maintenance-"+fence.ID+"-"+fmt.Sprint(index)); err != nil {
+				writeError(w, 409, "operation_partial", err)
+				return
+			}
+		}
+	}
 	if next == "cancelled" && len(fence.Results) > 0 {
 		// A write-ahead intent can precede any filesystem effect. Only the
 		// engine can prove that every original is intact and nothing is captured.
@@ -521,6 +558,18 @@ func (a *api) maintenanceFinish(w http.ResponseWriter, r *http.Request) {
 	}
 	if next == "finalized" {
 		for index := range fence.Manifest.Paths {
+			item := fence.Manifest.Paths[index]
+			if item.BaselineAbsent {
+				if fence.RestoreSession != nil {
+					writeError(w, 409, "operation_incomplete", errors.New("absent baseline cannot restore a session"))
+					return
+				}
+				if err := confirmMaintenanceUnchanged(item, ".torsher-maintenance-"+fence.ID+"-"+fmt.Sprint(index)); err != nil {
+					writeError(w, 409, "operation_incomplete", err)
+					return
+				}
+				continue
+			}
 			if fence.Results[fmt.Sprint(index)] != "removed" {
 				writeError(w, 409, "operation_incomplete", errors.New("operation is incomplete"))
 				return
@@ -589,6 +638,27 @@ func (a *api) maintenanceUnlink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	key := fmt.Sprint(body.Index)
+	item := fence.Manifest.Paths[body.Index]
+	if item.BaselineAbsent {
+		if fence.RestoreSession != nil {
+			writeError(w, 409, "unlink_blocked", errors.New("absent baseline cannot restore a session"))
+			return
+		}
+		if err := confirmMaintenanceUnchanged(item, ".torsher-maintenance-"+fence.ID+"-"+key); err != nil {
+			writeError(w, 409, "unlink_blocked", err)
+			return
+		}
+		// Подтверждённое отсутствие не меняет файлы и не должно считаться
+		// удалением, которое помешает отменить последующий staged intent.
+		delete(fence.Results, key)
+		fence.Error = ""
+		if err := m.save(fence); err != nil {
+			writeError(w, 500, "journal_failed", errors.New("cannot persist file result"))
+			return
+		}
+		writeJSON(w, 200, fence)
+		return
+	}
 	if fence.Results[key] == "removed" {
 		a.resumeMaintenanceCancelled(fence)
 		writeJSON(w, 200, fence)

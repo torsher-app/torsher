@@ -119,6 +119,39 @@ func isNotEmpty(err error) bool {
 	return errors.Is(err, syscall.ENOTEMPTY) || errors.Is(err, syscall.EEXIST)
 }
 
+// sameStorageEntry distinguishes aliases from independently removable hardlinks.
+func sameStorageEntry(first, second string) bool {
+	a, aErr := filepath.EvalSymlinks(first)
+	b, bErr := filepath.EvalSymlinks(second)
+	if aErr != nil || bErr != nil || a == b {
+		return true
+	}
+
+	dir := filepath.Dir(a)
+	left, leftErr := os.Stat(dir)
+	right, rightErr := os.Stat(filepath.Dir(b))
+	if leftErr != nil || rightErr != nil {
+		return true
+	}
+	if !os.SameFile(left, right) {
+		return false
+	}
+	aName, bName := filepath.Base(a), filepath.Base(b)
+	if aName == bName {
+		return true
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return true
+	}
+	var foundA, foundB bool
+	for _, entry := range entries {
+		foundA = foundA || entry.Name() == aName
+		foundB = foundB || entry.Name() == bName
+	}
+	return !foundA || !foundB
+}
+
 // Недокачанные `.part` от прежних версий движка становятся файлами под
 // итоговым именем, если такого ещё нет: скачанное не пропадает, а хранилище
 // без `.part` их бы не увидело
@@ -134,17 +167,22 @@ func adoptPartFiles(downloads string, info *metainfo.Info) {
 
 	for _, file := range files {
 		path := filepath.Join(base, filePathOf(storage.FilePathMakerOpts{Info: info, File: &file}))
-		paths = append(paths, path)
-		own[path] = true
-	}
-
-	for _, path := range paths {
 		if !isInside(base, path) {
 			continue
 		}
+		paths = append(paths, path)
+		own[strings.ToLower(path)] = true
+	}
 
+	type metadataEntry struct {
+		path string
+		info os.FileInfo
+	}
+	var entries []metadataEntry
+	for _, path := range paths {
+		part := path + partFileSuffix
 		// `X.part` сам файл раздачи: это не недокачанный `X`
-		if own[path+partFileSuffix] {
+		if own[strings.ToLower(part)] {
 			continue
 		}
 
@@ -152,6 +190,30 @@ func adoptPartFiles(downloads string, info *metainfo.Info) {
 			continue
 		}
 
-		_ = os.Rename(path+partFileSuffix, path)
+		partial, err := os.Lstat(part)
+		if err != nil || !partial.Mode().IsRegular() {
+			continue
+		}
+		if entries == nil {
+			entries = make([]metadataEntry, 0, len(paths))
+			for _, name := range paths {
+				if info, err := os.Stat(name); err == nil {
+					entries = append(entries, metadataEntry{name, info})
+				} else if !errors.Is(err, fs.ErrNotExist) {
+					// An unknown owner cannot authorize adopting this candidate.
+					return
+				}
+			}
+		}
+		owned := false
+		for _, entry := range entries {
+			if os.SameFile(partial, entry.info) && sameStorageEntry(part, entry.path) {
+				owned = true
+				break
+			}
+		}
+		if !owned && os.Rename(part, path) == nil {
+			entries = append(entries, metadataEntry{path, partial})
+		}
 	}
 }

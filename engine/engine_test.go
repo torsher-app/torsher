@@ -1124,6 +1124,40 @@ func TestPartFileOfTorrentIsNotAdopted(t *testing.T) {
 	}
 }
 
+func TestCaseFoldedPartFileOfTorrentIsNotAdopted(t *testing.T) {
+	downloads := t.TempDir()
+	dir := filepath.Join(downloads, "Pack")
+	info := metainfo.Info{Name: "Pack", PieceLength: 16 << 10, Files: []metainfo.FileInfo{
+		{Path: []string{"E.mkv"}, Length: 4},
+		{Path: []string{"E.mkv.PART"}, Length: 10},
+	}}
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	owned := filepath.Join(dir, "E.mkv.PART")
+	legacy := filepath.Join(dir, "E.mkv.part")
+	if err := os.WriteFile(owned, []byte("owned-part"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := os.Stat(legacy)
+	separateLegacy := errors.Is(err, fs.ErrNotExist)
+	if separateLegacy {
+		if err := os.WriteFile(legacy, []byte("legacy-part"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	adoptPartFiles(downloads, &info)
+	if bytes, err := os.ReadFile(owned); err != nil || string(bytes) != "owned-part" {
+		t.Fatal("metadata PART renamed", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "E.mkv")); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatal("ambiguous legacy part adopted", err)
+	}
+	if _, err := os.Stat(legacy); err != nil {
+		t.Fatal("ambiguous part path changed", err)
+	}
+}
+
 // Паника в обработчике не оставляет движок жить с захваченной блокировкой
 func TestHandlerPanicExitsEngine(t *testing.T) {
 	engine, _ := newTestEngine(t, t.TempDir())
@@ -1370,5 +1404,48 @@ func exchangeRound(t *testing.T, round, parallel int) {
 			}
 			time.Sleep(20 * time.Millisecond)
 		}
+	}
+}
+
+func TestUnicodePartFileOfTorrentIsNotAdopted(t *testing.T) {
+	for _, names := range [][2]string{{"source.ος.mkv", "source.οσ.mkv.PART"}, {"Cafe\u0301.mkv", "Café.mkv.PART"}} {
+		t.Run(names[0], func(t *testing.T) {
+			downloads := t.TempDir()
+			dir := filepath.Join(downloads, "Pack")
+			if err := os.Mkdir(dir, 0700); err != nil {
+				t.Fatal(err)
+			}
+			info := metainfo.Info{Name: "Pack", PieceLength: 16 << 10, Files: []metainfo.FileInfo{
+				{Path: []string{names[0]}, Length: 4},
+				{Path: []string{names[1]}, Length: 4},
+			}}
+			base := filepath.Join(dir, names[0])
+			owned := filepath.Join(dir, names[1])
+			part := base + partFileSuffix
+			if err := os.WriteFile(owned, []byte("part"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			_, err := os.Stat(part)
+			separate := errors.Is(err, fs.ErrNotExist)
+			if separate {
+				if err := os.Link(owned, part); err != nil {
+					t.Fatal(err)
+				}
+			} else if err != nil {
+				t.Fatal(err)
+			}
+
+			adoptPartFiles(downloads, &info)
+			if data, err := os.ReadFile(owned); err != nil || string(data) != "part" {
+				t.Fatal("metadata payload was moved", err)
+			}
+			if separate {
+				if data, err := os.ReadFile(base); err != nil || string(data) != "part" {
+					t.Fatal("independent hardlink was not adopted", err)
+				}
+			} else if _, err := os.Lstat(base); !errors.Is(err, fs.ErrNotExist) {
+				t.Fatal("alias was adopted", err)
+			}
+		})
 	}
 }

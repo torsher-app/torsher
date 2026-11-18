@@ -7,6 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
+
+	"golang.org/x/sys/unix"
 )
 
 func TestMaintenanceUnlinkCaptureCrashRetry(t *testing.T) {
@@ -173,5 +176,39 @@ func TestMaintenanceUnlinkForeignStagingNeverOverwritesSource(t *testing.T) {
 	data, err = os.ReadFile(filepath.Join(stage, "file"))
 	if err != nil || string(data) != "foreign" {
 		t.Fatal("foreign staging removed", err)
+	}
+}
+
+func TestMaintenanceCancelStagedDetectsFIFOWithoutWriter(t *testing.T) {
+	item := maintenanceFixture(t)
+	stage := ".staged-fifo"
+	if err := os.Mkdir(filepath.Join(item.Root, stage), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(item.Path, item.Path+".original"); err != nil {
+		t.Fatal(err)
+	}
+	if err := unix.Mkfifo(item.Path, 0600); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- confirmMaintenanceUnchanged(item, stage) }()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("FIFO accepted as original")
+		}
+	case <-time.After(time.Second):
+		// Let a pre-fix blocking reader return before tearing the fixture down.
+		fd, err := unix.Open(item.Path, unix.O_WRONLY|unix.O_NONBLOCK, 0)
+		if err != nil {
+			t.Fatal("cannot release stuck FIFO reader", err)
+		}
+		unix.Close(fd)
+		<-done
+		t.Fatal("cancel blocked on the FIFO")
+	}
+	if _, err := os.Stat(filepath.Join(item.Root, stage)); err != nil {
+		t.Fatal("failed cancel released the staging directory", err)
 	}
 }
