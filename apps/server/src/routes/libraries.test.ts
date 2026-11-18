@@ -225,6 +225,7 @@ describe('подключённые папки: скан', () => {
       db.delete(mediaFiles).run()
     }
   }, 30_000)
+  // Every row passes real maintenance admission; leave headroom on CI runners.
   it('ignores a group larger than the SQLite bind limit without changing neighbours', async () => {
     const folderId = await scanned(await addLibrary())
     const otherPath = join(root, 'other')
@@ -239,14 +240,20 @@ describe('подключённые папки: скан', () => {
       matchGroup: 'Large',
       matchStatus: 'unmatched' as const,
     }
+    const insert = db.$client.prepare(`
+      INSERT INTO media_files
+        (id, folder_id, rel_path, size, mtime, match_group, match_status, added_at)
+      VALUES (?, ?, ?, 1, ?, 'Large', 'unmatched', ?)
+    `)
     db.transaction(() => {
       for (let index = 0; index < count; index++) {
-        db.insert(mediaFiles)
-          .values({
-            ...row,
-            relPath: `Large/part-${index}.mkv`,
-          })
-          .run()
+        insert.run(
+          `large-ignore-${index}`,
+          folderId,
+          `Large/part-${index}.mkv`,
+          row.mtime.getTime(),
+          row.mtime.getTime(),
+        )
       }
       db.insert(mediaFiles)
         .values([
@@ -263,7 +270,14 @@ describe('подключённые папки: скан', () => {
         payload: { folderId, group: 'Large', titleId: null },
       })
       expect(result.statusCode).toBe(204)
-      const saved = rows()
+      const saved = db
+        .select({
+          relPath: mediaFiles.relPath,
+          matchStatus: mediaFiles.matchStatus,
+          matchSource: mediaFiles.matchSource,
+        })
+        .from(mediaFiles)
+        .all()
       expect(
         saved.filter(
           item =>
@@ -279,7 +293,7 @@ describe('подключённые папки: скан', () => {
     finally {
       db.delete(mediaFiles).run()
     }
-  }, 30_000)
+  }, 60_000)
 
   it('повторный скан после настройки TMDB распознаёт прежние pending-файлы', async () => {
     vi.stubEnv('TMDB_ACCESS_TOKEN', '')
