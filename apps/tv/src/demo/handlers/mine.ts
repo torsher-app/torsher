@@ -393,7 +393,7 @@ function fixtureDiary() {
         note: entry.note
           ? 'The quiet scenes make the ending work.\n\n'.repeat(12).trim()
           : null,
-        viewingContext: entry.note ? 'Family movie night' : null,
+        viewingContext: null,
       },
     )
     if (row.metadata) {

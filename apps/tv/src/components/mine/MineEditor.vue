@@ -68,11 +68,9 @@ const dateControls = ref<HTMLElement>()
 const dateSave = ref<HTMLButtonElement>()
 const dateCancel = ref<HTMLButtonElement>()
 const dateNote = ref<HTMLTextAreaElement>()
-const dateContext = ref<HTMLTextAreaElement>()
 const today = ref('')
 const timeZone = ref('')
 const note = ref(original?.note ?? '')
-const viewingContext = ref(original?.viewingContext ?? '')
 const rewatch = ref(false)
 const search = ref('')
 const searchField = ref<HTMLInputElement>()
@@ -442,8 +440,7 @@ const stopDateKeys = focus.onKey((action) => {
   }
   else if (selected === dateSave.value || selected === dateCancel.value) {
     if (direction === 'up') {
-      next
-        = dateContext.value ?? dateNote.value ?? repeatButton ?? dateRow('year')
+      next = dateNote.value ?? repeatButton ?? dateRow('year')
     }
     else if (direction === 'right' && selected === dateSave.value) {
       next = dateCancel.value
@@ -492,7 +489,6 @@ async function save() {
         date: date.value,
         rewatch: rewatch.value,
         note: note.value.trim() || null,
-        viewingContext: viewingContext.value.trim() || null,
       }
       const created = await api.mine.postMineDiary({
         ...body,
@@ -547,7 +543,6 @@ async function save() {
       await api.mine.patchMineDiaryEntry(original.id, {
         ...body,
         note: note.value.trim() || null,
-        viewingContext: viewingContext.value.trim() || null,
       })
     }
     else if (
@@ -813,24 +808,6 @@ onBeforeUnmount(() => {
             />
             <div v-else v-focusable class="mine-editor__read" tabindex="-1">
               {{ note }}
-            </div>
-          </label>
-          <label v-if="request.kind !== 'titleNote'">
-            {{ t("mine.personal.viewingContext") }}
-            <textarea
-              v-if="canUseKeyboard"
-              ref="dateContext"
-              v-model="viewingContext"
-              v-focusable
-              class="mine-editor__field"
-              rows="3"
-              maxlength="1000"
-              :disabled="step === 'date' && saving"
-              :tabindex="step === 'date' ? 0 : undefined"
-              @keydown="keepDateTextKeys"
-            />
-            <div v-else v-focusable class="mine-editor__read" tabindex="-1">
-              {{ viewingContext }}
             </div>
           </label>
           <button

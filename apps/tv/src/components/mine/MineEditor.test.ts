@@ -114,7 +114,6 @@ const rewatch = button()
 const save = button()
 const cancel = button()
 const noteField = button()
-const contextField = button()
 
 let activeButton: ReturnType<typeof button> | undefined
 let handleKey: (action: KeyAction) => boolean
@@ -123,13 +122,11 @@ let controls: {
   dateSave: object
   dateCancel: object
   dateNote?: object
-  dateContext?: object
   day: string
   date: MineDiaryEntry['date']
   rewatch: boolean
   saving: boolean
   note: string
-  viewingContext: string
   keepDateTextKeys: (
     event: Pick<KeyboardEvent, 'key' | 'stopPropagation'>,
   ) => void
@@ -205,7 +202,6 @@ async function mountEditor(log = false) {
       setup.dateCancel = cancel
       if (log && mocks.platform === 'web') {
         setup.dateNote = noteField
-        setup.dateContext = contextField
       }
       return null
     },
@@ -403,7 +399,7 @@ it('holds the submitted date and rewatch flag until the pending save finishes', 
   )
 })
 
-it('renders the same three selectors in the browser and keeps the manual log text fields on the keyboard path', async () => {
+it('renders the same three selectors in the browser and keeps the single Note field on the keyboard path', async () => {
   mocks.platform = 'web'
   mocks.log.mockResolvedValue({ entry: null })
   await mountEditor(true)
@@ -420,7 +416,8 @@ it('renders the same three selectors in the browser and keeps the manual log tex
     'data-date-part="year"',
   ])
   expect(html).not.toContain('type="date"')
-  expect(html.match(/<textarea[^>]+tabindex="0"/g)).toHaveLength(2)
+  expect(html.match(/<textarea[^>]+tabindex="0"/g)).toHaveLength(1)
+  expect(html).not.toContain('mine.personal.viewingContext')
 
   expect(activeButton).toBe(day)
   mocks.mode = 'pointer'
@@ -439,9 +436,8 @@ it('renders the same three selectors in the browser and keeps the manual log tex
   controls.keepDateTextKeys({ key: 'Tab', stopPropagation })
   expect(stopPropagation).toHaveBeenCalledOnce()
   controls.note = 'A favourite scene'
-  controls.viewingContext = 'At home'
   mocks.focusOn(save)
-  move('up', contextField)
+  move('up', noteField)
   expect(mocks.log).not.toHaveBeenCalled()
 
   mocks.focusOn(save)
@@ -450,9 +446,9 @@ it('renders the same three selectors in the browser and keeps the manual log tex
     expect.objectContaining({
       date: { precision: 'day', day: '2025-01-28' },
       note: 'A favourite scene',
-      viewingContext: 'At home',
     }),
   )
+  expect(mocks.log.mock.calls[0]![0]).not.toHaveProperty('viewingContext')
 })
 
 function wheelEvent(deltaY: number) {
