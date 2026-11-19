@@ -32,6 +32,7 @@ import { isTitleViewer, noteTitleProgress } from '../../titleActions.ts'
 import AppIcon from '../AppIcon.vue'
 import OptionsPanel from '../OptionsPanel.vue'
 import ScreenState from '../ScreenState.vue'
+import SearchField from '../SearchField.vue'
 
 const props = defineProps<{ session: NonNullable<typeof mineEditor.value> }>()
 const { t, locale } = useI18n()
@@ -653,16 +654,18 @@ onBeforeUnmount(() => {
     @close="back"
   >
     <template v-if="step === 'search'" #top>
-      <input
-        ref="searchField"
-        v-model="search"
-        v-focusable
-        class="mine-editor__field"
-        type="search"
-        :aria-label="t('search.title')"
-        :placeholder="t('search.placeholder')"
-        maxlength="200"
-      >
+      <SearchField>
+        <input
+          ref="searchField"
+          v-model="search"
+          v-focusable
+          class="field"
+          type="search"
+          :aria-label="t('search.title')"
+          :placeholder="t('search.placeholder')"
+          maxlength="200"
+        >
+      </SearchField>
     </template>
     <template
       v-if="

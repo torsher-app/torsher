@@ -21,6 +21,7 @@ onBeforeUnmount(stopFocus)
     :class="{
       'mine-section--compact': !$slots.default,
       'mine-section--actions': !!$slots.actions,
+      'mine-section--search': !!$slots.search,
     }"
   >
     <header class="mine-header">
@@ -48,6 +49,9 @@ onBeforeUnmount(stopFocus)
           </div>
         </div>
       </div>
+      <div v-if="$slots.search" class="mine-header__search">
+        <slot name="search" />
+      </div>
       <div v-if="$slots.scope" class="mine-header__scope">
         <slot name="scope" />
       </div>
@@ -61,7 +65,8 @@ onBeforeUnmount(stopFocus)
   /* Конец строки чипов и зазор до содержимого прежнего «Продолжить». */
   --mine-title-height: calc(var(--font-size-l) * var(--line-height));
   --mine-content-gap: calc(var(--u) * 204 - var(--mine-title-height) - var(--u) * 90);
-  --mine-content-top: calc(var(--safe-y) + var(--u) * 204);
+  --mine-search-height: 0px;
+  --mine-content-top: calc(var(--safe-y) + var(--u) * 204 + var(--mine-search-height));
   position: absolute;
   top: 0;
   right: 0;
@@ -70,12 +75,20 @@ onBeforeUnmount(stopFocus)
 }
 
 .mine-section--compact {
-  --mine-content-top: calc(var(--safe-y) + var(--mine-title-height) + var(--mine-content-gap));
+  --mine-content-top: calc(
+    var(--safe-y) + var(--mine-title-height) + var(--mine-content-gap) + var(--mine-search-height)
+  );
 }
 
 .mine-section--compact.mine-section--actions {
   /* Действие высотой 64u центрировано относительно строки заголовка. */
-  --mine-content-top: calc(var(--safe-y) + (var(--mine-title-height) + var(--u) * 64) / 2 + var(--mine-content-gap));
+  --mine-content-top: calc(
+    var(--safe-y) + (var(--mine-title-height) + var(--u) * 64) / 2 + var(--mine-content-gap) + var(--mine-search-height)
+  );
+}
+
+.mine-section--search {
+  --mine-search-height: calc(var(--u) * 136);
 }
 
 .mine-header {
@@ -158,7 +171,8 @@ onBeforeUnmount(stopFocus)
   margin-left: calc(var(--u) * 32);
 }
 
-.mine-header__scope {
+.mine-header__scope,
+.mine-header__search {
   margin-top: calc(var(--u) * 20);
   padding: calc(var(--u) * 6) 0;
 }

@@ -40,6 +40,7 @@ import FocusSection from '../FocusSection.vue'
 import MineSectionHeader from '../MineSectionHeader.vue'
 import OptionsPanel from '../OptionsPanel.vue'
 import ScreenState from '../ScreenState.vue'
+import SearchField from '../SearchField.vue'
 
 const props = defineProps<{
   filter: DiaryFilter
@@ -552,7 +553,11 @@ function onScroll(event: Event) {
         :edges="{
           left: 'mine-sections',
           up: 'mine-preview',
-          down: scopeActive ? 'mine-diary-scope' : 'mine-diary-list',
+          down: browser
+            ? 'mine-diary-search'
+            : scopeActive
+              ? 'mine-diary-scope'
+              : 'mine-diary-list',
         }"
         manual-scroll
       >
@@ -568,23 +573,36 @@ function onScroll(event: Event) {
         >
           {{ t(`mine.preview.diary.filters.${item}`) }}
         </button>
-        <input
-          v-if="browser"
-          v-model="searchInput"
-          v-focusable
-          class="chip diary__search"
-          type="search"
-          maxlength="200"
-          :placeholder="t('search.title')"
-          :aria-label="t('search.title')"
-        >
       </FocusSection>
+      <template v-if="browser" #search>
+        <FocusSection
+          name="mine-diary-search"
+          :edges="{
+            left: 'mine-sections',
+            up: 'mine-diary-filters',
+            down: scopeActive ? 'mine-diary-scope' : 'mine-diary-list',
+          }"
+          manual-scroll
+        >
+          <SearchField>
+            <input
+              v-model="searchInput"
+              v-focusable
+              class="field"
+              type="search"
+              maxlength="200"
+              :placeholder="t('search.title')"
+              :aria-label="t('search.title')"
+            >
+          </SearchField>
+        </FocusSection>
+      </template>
       <template v-if="scopeActive" #scope>
         <FocusSection
           name="mine-diary-scope"
           :edges="{
             left: 'mine-sections',
-            up: 'mine-diary-filters',
+            up: browser ? 'mine-diary-search' : 'mine-diary-filters',
             down: 'mine-diary-list',
           }"
           manual-scroll
@@ -607,7 +625,11 @@ function onScroll(event: Event) {
             class="diary__list"
             :edges="{
               left: 'mine-sections',
-              up: scopeActive ? 'mine-diary-scope' : 'mine-diary-filters',
+              up: scopeActive
+                ? 'mine-diary-scope'
+                : browser
+                  ? 'mine-diary-search'
+                  : 'mine-diary-filters',
             }"
             @scroll.passive="onScroll"
           >
@@ -891,13 +913,6 @@ function onScroll(event: Event) {
 .diary-row:focus time {
   color: inherit;
 }
-.diary__search {
-  min-width: calc(var(--u) * 144);
-  width: calc(var(--u) * 220);
-  max-width: 24%;
-  color: var(--color-text);
-}
-
 .diary-row--skeleton {
   opacity: 0.5;
   min-height: calc(var(--u) * 108);
