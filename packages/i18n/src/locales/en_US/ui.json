@@ -2127,11 +2127,13 @@
       "deleteDialog": {
         "title": "Delete profile “{name}”?",
         "text": "Devices using it switch to the default profile, or ask who’s watching if the default profile has a PIN.",
-        "move": "Move watch history to another profile",
-        "moveText": "Positions and episode progress go to the selected profile.",
+        "move": "Move personal data to another profile",
+        "moveText": "History, positions, lists, ratings, notes and Mine settings move to the selected profile.",
         "target": "Target profile",
-        "drop": "Delete watch history",
-        "dropText": "Positions and episode progress of this profile are lost."
+        "drop": "Delete personal data",
+        "dropText": "This profile’s history, positions, lists, ratings, notes and Mine settings will be deleted.",
+        "moveConflict": "Move stopped: watches in these profiles are matched to different titles. The source profile was kept.",
+        "moveConflictOther": "Move stopped because of conflicting personal data. Both profiles were kept."
       },
       "devices": {
         "group": "Devices",
@@ -2643,7 +2645,7 @@
       },
       "dialog": {
         "title": "Import into profile",
-        "description": "Ratings, lists and positions go into “{name}”.",
+        "description": "Your personal data goes into “{name}”.",
         "files": "Files to import",
         "drop": "Drop files here or choose them",
         "dropHint": "CSV, JSON or zip — up to 20 MB",
@@ -2676,13 +2678,17 @@
         "same": "Already in the profile",
         "conflicts": "Rating differs from yours",
         "unmatched": "Not matched",
-        "skipped": "Skipped: episodes and empty rows",
+        "skipped": "Skipped rows",
         "conflictsLegend": "When a title already has a different rating",
         "sample": "{title}: yours {current}, in the file {incoming}",
         "progress": "Watch positions",
         "favorites": "New in Favorites",
         "dropped": "Dropped marks",
-        "skippedExport": "Skipped: titles outside the catalog and files missing on this server"
+        "skippedExport": "Skipped: titles outside the catalog and files missing on this server",
+        "personal": "Personal data",
+        "personalChanged": "Changes: {n}",
+        "personalUnchanged": "Unchanged: {n}",
+        "personalSkipped": "Conflicts skipped: {n}"
       },
       "policies": {
         "keep": "Keep mine",
@@ -2701,7 +2707,7 @@
       },
       "toasts": {
         "undone": "Import undone",
-        "undoneKept": "{n} title was changed after the import and stays as is | {n} titles were changed after the import and stay as they are"
+        "undoneKept": "Changes not undone: {n}"
       },
       "validation": {
         "files": "Choose at least one file",
@@ -2714,7 +2720,7 @@
         "broken": "“{file}” is damaged or isn’t a zip.",
         "tooLarge": "The files are larger than 20 MB together.",
         "tooMany": "The files have more than 20,000 rows — split them and import in parts.",
-        "empty": "The files have neither ratings nor a Watch later list.",
+        "empty": "The files contain no supported personal data.",
         "unknown": "The server didn’t accept the files. Try again.",
         "applyFailed": "Couldn’t import",
         "applyFailedText": "The server didn’t respond or the preview expired. Upload the files again.",

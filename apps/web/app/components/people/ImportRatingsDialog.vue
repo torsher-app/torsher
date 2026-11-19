@@ -32,6 +32,7 @@ import {
 } from '~/composables/useProfileImports'
 import { formatBytes } from '~/lib/format'
 import { dialogSheetClass } from '~/lib/dialog'
+import ImportPersonalCounts from './ImportPersonalCounts.vue'
 
 /**
  * Импорт своих оценок и «Позже» в профиль: файлы → сопоставление с
@@ -561,6 +562,11 @@ const conflictOptions = computed(() => [
           </dd>
         </dl>
 
+        <ImportPersonalCounts
+          :history="preview.history"
+          :personal="preview.personal"
+        />
+
         <p
           v-if="
             preview.watched && (preview.watched.new || preview.watched.same)
@@ -648,7 +654,17 @@ const conflictOptions = computed(() => [
           <dd class="text-right tabular-nums">
             {{ result.unmatched }}
           </dd>
+          <template v-if="result.skipped">
+            <dt>{{ t("panel.imports.preview.skipped") }}</dt>
+            <dd class="text-right tabular-nums">
+              {{ result.skipped }}
+            </dd>
+          </template>
         </dl>
+        <ImportPersonalCounts
+          :history="result.history"
+          :personal="result.personal"
+        />
         <Alert v-if="result.unmatched > 0" variant="info">
           <InfoIcon />
           <AlertDescription>

@@ -1,5 +1,11 @@
 <script setup lang="ts">
-import type { Profile } from '@torsher/api-client'
+import type { Profile, ProfileMoveConflict } from '@torsher/api-client'
+import {
+  getErrorBody,
+  getErrorMessage,
+  getErrorStatus,
+} from '@torsher/api-client'
+import { CircleAlertIcon } from '@lucide/vue'
 import { toast } from 'vue-sonner'
 import { useI18n } from 'vue-i18n'
 import {
@@ -12,6 +18,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { Label } from '@/components/ui/label'
+import { Alert, AlertDescription } from '@/components/ui/alert'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import {
   Select,
@@ -37,6 +44,7 @@ const shown = useLastValue(() => props.profile)
 const mode = ref<'move' | 'drop'>('move')
 const targetId = ref('')
 const isDeleting = ref(false)
+const formError = ref('')
 
 const targets = computed(() =>
   profiles.value.filter(item => item.id !== props.profile?.id),
@@ -50,6 +58,7 @@ watch(open, (isOpen) => {
     return
 
   mode.value = 'move'
+  formError.value = ''
   targetId.value = targets.value[0]?.id ?? ''
 })
 
@@ -60,11 +69,28 @@ async function onDelete() {
   const { id, name } = props.profile
 
   isDeleting.value = true
+  formError.value = ''
 
   try {
-    await remove(id, mode.value === 'move' ? targetId.value : undefined)
+    await withErrorMode('silent', () =>
+      remove(id, mode.value === 'move' ? targetId.value : undefined))
     toast.success(t('panel.people.profiles.toasts.deleted', { name }))
     open.value = false
+  }
+  catch (err) {
+    const conflict
+      = getErrorStatus(err) === 409
+        ? await getErrorBody<ProfileMoveConflict>(err)
+        : undefined
+
+    formError.value
+      = conflict?.kind === 'personalMoveConflict'
+        ? t(
+            conflict.reason === 'originTitle'
+              ? 'panel.people.deleteDialog.moveConflict'
+              : 'panel.people.deleteDialog.moveConflictOther',
+          )
+        : await getErrorMessage(err)
   }
   finally {
     isDeleting.value = false
@@ -147,6 +173,11 @@ async function onDelete() {
           </span>
         </Label>
       </RadioGroup>
+
+      <Alert v-if="formError" variant="destructive">
+        <CircleAlertIcon />
+        <AlertDescription>{{ formError }}</AlertDescription>
+      </Alert>
 
       <AlertDialogFooter>
         <AlertDialogCancel :disabled="isDeleting">

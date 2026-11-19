@@ -33,6 +33,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import LoadingButton from '~/components/LoadingButton.vue'
+import ImportPersonalCounts from '~/components/people/ImportPersonalCounts.vue'
 import SecretInput from '~/components/SecretInput.vue'
 import {
   applyTransfer,
@@ -430,6 +431,10 @@ const policies: Policy[] = ['newer', 'keep', 'replace']
                 }}
               </template>
             </p>
+            <ImportPersonalCounts
+              v-if="!changed(profile.key) && mapping[profile.key] !== 'skip'"
+              :personal="profile.counts.personal"
+            />
           </div>
         </fieldset>
 
