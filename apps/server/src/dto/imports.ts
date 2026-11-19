@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { importConflictPolicies, importRowStatuses } from '../db/schema.ts'
-import { importSources } from '../services/transfer/formats.ts'
+import { importLists, importSources } from '../services/transfer/formats.ts'
 import { card, tmdbLanguage } from './catalog.ts'
 
 export const profileImportParams = z.object({
@@ -47,6 +47,19 @@ export const importFormatErrorResponse = z
   })
   .meta({ id: 'importFormatErrorResponse' })
 
+export const personalImportCounts = z.object({
+  changed: z.number().int(),
+  unchanged: z.number().int(),
+  skipped: z.number().int(),
+})
+
+const historyImportCounts = z.object({
+  new: z.number().int(),
+  same: z.number().int(),
+  seen: z.object({ new: z.number().int(), same: z.number().int() }),
+  skipped: z.number().int(),
+})
+
 export const importPreview = z
   .object({
     sources: z.array(z.enum(importSources)),
@@ -87,6 +100,8 @@ export const importPreview = z
     favorites: z
       .object({ new: z.number().int(), same: z.number().int() })
       .optional(),
+    personal: personalImportCounts.optional(),
+    history: historyImportCounts.optional(),
     dropped: z
       .object({ new: z.number().int(), same: z.number().int() })
       .optional(),
@@ -109,6 +124,10 @@ export const importSummary = z
     imported: z.number().int(),
     unchanged: z.number().int(),
     unmatched: z.number().int(),
+    history: historyImportCounts.optional(),
+    personal: personalImportCounts.optional(),
+    // Native conflicts are skipped, not pending manual title matching.
+    skipped: z.number().int().min(0).optional(),
   })
   .meta({ id: 'importSummary' })
 
@@ -154,12 +173,13 @@ export const unmatchedImportQuery = z.object({
 export const unmatchedImportRow = z
   .object({
     id: z.string(),
-    list: z.enum(['rating', 'watchlist', 'watched']),
+    list: z.enum(importLists),
     status: z.enum(importRowStatuses),
     title: z.string(),
     year: z.number().int().nullable(),
     kind: z.enum(['movie', 'series']).nullable(),
     rating: z.number().int().nullable(),
+    historyCount: z.number().int().min(0).optional(),
     // Похожий тайтл каталога; нет деталей — подсказки нет
     suggestion: card.nullable(),
   })
@@ -177,3 +197,10 @@ export const matchImportRow = z
     titleId: z.string().min(1).max(100),
   })
   .meta({ id: 'matchImportRow' })
+
+export const historyMatchConflict = z
+  .object({
+    kind: z.literal('historyMatchConflict'),
+    reason: z.enum(['titleKind', 'sourceIdentity']),
+  })
+  .meta({ id: 'historyMatchConflict' })

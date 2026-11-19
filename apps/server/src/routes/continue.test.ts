@@ -26,12 +26,15 @@ import { ACCESS_TOKEN_COOKIE } from '../config.ts'
 import { libraryProbeKey } from '../services/library/playedSource.ts'
 import { getDb, migrateDb } from '../db/index.ts'
 import {
+  cycleProgress,
   libraries,
   libraryFolders,
   libraryHiddenProfiles,
   mediaFiles,
   metaCache,
+  mineTitlePreferences,
   profileTitles,
+  rewatchCycles,
   titleProgress,
   torrents,
   users,
@@ -174,6 +177,8 @@ beforeEach(() => {
   probeFrames.clear()
   freshEpisodes.clear()
   tmdbDown = false
+  getDb().delete(rewatchCycles).run()
+  getDb().delete(mineTitlePreferences).run()
   getDb().delete(titleProgress).run()
   getDb().delete(profileTitles).run()
   getDb().delete(torrents).run()
@@ -2146,4 +2151,155 @@ it('uses the partial index to freeze only matching legacy library progress', () 
   expect(rows.map(row => row.detail).join(' ')).toContain(
     'title_progress_unfrozen_media_idx',
   )
+})
+
+it('opts into cycle-aware Home Continue while preserving legacy rows and following', async () => {
+  const db = getDb()
+  const now = new Date()
+  const versioned = `?personalContinue=1&expectedProfileId=${profileId}`
+  watched(MOVIE, 0, 0, 600)
+  freshEpisodes.set(SERIES, {
+    season: 2,
+    episode: 4,
+    at: now,
+    file: { torrentId: 's2', fileIndex: 3 },
+  })
+  const before = await continueItems()
+  const withPersonal = await continueItems(versioned)
+  expect(withPersonal).toEqual(before)
+  expect(before).toMatchObject([
+    { id: SERIES, season: 2, episode: 4, followNewEpisode: true },
+    { id: MOVIE, position: 600 },
+  ])
+
+  db.update(torrents)
+    .set({ titleId: SERIES })
+    .where(eq(torrents.id, 's2'))
+    .run()
+  const cycle = db
+    .insert(rewatchCycles)
+    .values({
+      profileId,
+      titleId: SERIES,
+      startSeason: 2,
+      startEpisode: 1,
+      targetSeason: 2,
+      targetEpisode: 1,
+      state: 'active',
+      createdAt: now,
+      updatedAt: now,
+    })
+    .returning()
+    .get()
+  db.insert(cycleProgress)
+    .values({
+      profileId,
+      cycleId: cycle.id,
+      season: 2,
+      episode: 1,
+      position: 420,
+      duration: EPISODE,
+      source: { kind: 'torrent', infoHash: 's2'.padEnd(40, '0'), fileIndex: 0 },
+      voiceStudio: 'Fixture studio',
+      voiceType: 'MVO',
+      updatedAt: now,
+    })
+    .run()
+  db.insert(mineTitlePreferences)
+    .values({
+      profileId,
+      titleId: MOVIE,
+      continuation: 'hidden',
+      updatedAt: now,
+    })
+    .run()
+
+  const expected = [
+    {
+      id: SERIES,
+      season: 2,
+      episode: 1,
+      position: 420,
+      duration: EPISODE,
+      next: false,
+      cycleId: cycle.id,
+      cycleVoiceStudio: 'Fixture studio',
+      cycleVoiceType: 'MVO',
+      file: { torrentId: 's2', fileIndex: 0 },
+    },
+  ]
+  expect(await continueItems(versioned)).toMatchObject(expected)
+  const home = await app.inject({
+    url: `/api/home${versioned}`,
+    cookies: owner,
+  })
+  expect(home.statusCode, home.body).toBe(200)
+  expect(
+    home.json().rows.find((row: { id: string }) => row.id === 'continue')?.items,
+  ).toMatchObject(expected)
+  expect(await continueItems()).toMatchObject(before)
+
+  db.update(mineTitlePreferences)
+    .set({ continuation: 'paused' })
+    .where(eq(mineTitlePreferences.titleId, MOVIE))
+    .run()
+  db.update(rewatchCycles)
+    .set({ state: 'paused' })
+    .where(eq(rewatchCycles.id, cycle.id))
+    .run()
+  expect(await continueItems(versioned)).toMatchObject([
+    { id: SERIES, episode: 4, followNewEpisode: true },
+  ])
+  watched(SERIES, 2, 2, 700)
+  db.update(rewatchCycles)
+    .set({ state: 'ended' })
+    .where(eq(rewatchCycles.id, cycle.id))
+    .run()
+  const ended = await continueItems(versioned)
+  expect(ended).toMatchObject([{ id: SERIES, episode: 2, position: 700 }])
+  expect(ended[0]).not.toHaveProperty('cycleId')
+
+  const foreign = await app.inject({
+    url: '/api/home/continue?personalContinue=1&expectedProfileId=another-profile',
+    cookies: owner,
+  })
+  expect(foreign.statusCode).toBe(409)
+  expect(foreign.json()).toEqual({ kind: 'profileChanged' })
+})
+
+it('fills an opt-in row past unusable following candidates and hidden progress candidates', async () => {
+  const db = getDb()
+  const now = Date.now()
+  const personal = `?personalContinue=1&expectedProfileId=${profileId}`
+  const original = fetchMock.getMockImplementation()!
+  fetchMock.mockImplementation((input, init) => {
+    if (new URL(String(input)).pathname.startsWith('/3/tv/80'))
+      return Promise.resolve(json({ status_message: 'not found' }, 404))
+    return original(input, init)
+  })
+  for (let i = 0; i < 20; i++) {
+    freshEpisodes.set(`tmdb:tv:${80000 + i}`, {
+      season: 2,
+      episode: 1,
+      at: new Date(now + 2000 + i),
+    })
+  }
+  freshEpisodes.set(SERIES, { season: 2, episode: 4, at: new Date(now) })
+  for (let i = 0; i < 40; i++) {
+    const titleId = `tmdb:movie:${80100 + i}`
+    watched(titleId, 0, 0, 500, new Date(now + i))
+    db.insert(mineTitlePreferences)
+      .values({
+        profileId,
+        titleId,
+        continuation: i % 2 ? 'paused' : 'hidden',
+        updatedAt: new Date(now + i),
+      })
+      .run()
+  }
+  watched(MOVIE, 0, 0, 600, new Date(now - 60000))
+  expect(await continueItems(personal)).toMatchObject([
+    { id: SERIES, episode: 4, followNewEpisode: true },
+    { id: MOVIE, position: 600 },
+  ])
 })

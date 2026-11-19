@@ -1,19 +1,26 @@
 import { z } from 'zod'
 import {
+  continuationPreferences,
+  diaryOrigins,
+  diaryPrecisions,
   libraryFolderHints,
   libraryKinds,
   mediaMatchStatuses,
+  mineSections,
   netRouteDns,
   netRouteVias,
   posterRatingSources,
   profileColors,
   profileLanguages,
+  rewatchCycleStates,
   subtitleBackgrounds,
   subtitleSizes,
 } from '../../db/schema.ts'
+import { parseCatalogId } from '../tmdb/mappers.ts'
+import { isDiaryTimeZone } from './diaryTimeZone.ts'
 
 export const EXPORT_FORMAT = 'torsher-export'
-export const EXPORT_VERSION = 1
+export const EXPORT_VERSION = 2
 
 /**
  * Переносимый файл данных: тайтлы — каталожными ID, профили — ключами
@@ -186,9 +193,9 @@ const exportChannel = z.object({
   notifyResolved: z.boolean(),
 })
 
-export const exportDocument = z.object({
+const exportDocumentV1 = z.object({
   format: z.literal(EXPORT_FORMAT),
-  version: z.literal(EXPORT_VERSION),
+  version: z.literal(1),
   exportedAt: at,
   torsher: z.object({
     version: z.string().max(100),
@@ -222,6 +229,215 @@ export const exportDocument = z.object({
     .partial()
     .optional(),
 })
+
+const catalogTitle = titleId.refine(
+  value => !!parseCatalogId(value),
+  'catalog title',
+)
+const seriesTitle = catalogTitle.refine(
+  value => parseCatalogId(value)?.type === 'tv',
+  'series title',
+)
+const coordinate = z.number().int().nonnegative()
+const personalRow = z.object({ profile: profileKey })
+const titleRow = personalRow.extend({ title: catalogTitle })
+const viewingTarget = titleRow.extend({
+  season: coordinate,
+  episode: coordinate,
+})
+
+function isViewingTarget(row: {
+  title: string
+  season: number
+  episode: number
+}) {
+  if (row.episode === 0)
+    return row.season === 0
+
+  return parseCatalogId(row.title)?.type === 'tv'
+}
+
+const diaryEntry = viewingTarget
+  .extend({
+    id: z.uuid(),
+    precision: z.enum(diaryPrecisions),
+    instant: at.nullable(),
+    day: z.iso.date().nullable(),
+    origin: z.enum(diaryOrigins),
+    originKey: z.string().min(1).max(500).nullable(),
+    sourceMatchKey: z
+      .string()
+      .regex(/^[0-9a-f]{64}$/)
+      .optional(),
+    rewatch: z.boolean(),
+    note: z.string().max(10_000).nullable(),
+    viewingContext: z.string().max(1000).nullable(),
+    context: z
+      .discriminatedUnion('kind', [
+        z.object({ kind: z.literal('normal') }),
+        z.object({ kind: z.literal('cycle'), cycleId: z.uuid() }),
+      ])
+      .nullable(),
+    createdAt: at,
+    updatedAt: at,
+  })
+  .refine(isViewingTarget)
+  .refine((row) => {
+    switch (row.precision) {
+      case 'instant':
+        return row.instant !== null && row.day === null
+      case 'day':
+        return row.instant === null && row.day !== null
+      case 'unknown':
+        return row.instant === null && row.day === null
+    }
+  }, 'date precision')
+
+const rewatchCycle = personalRow.extend({
+  id: z.uuid(),
+  title: seriesTitle,
+  state: z.enum(rewatchCycleStates),
+  startSeason: coordinate,
+  startEpisode: coordinate.positive(),
+  targetSeason: coordinate,
+  targetEpisode: coordinate.positive(),
+  createdAt: at,
+  updatedAt: at,
+})
+
+const cycleCursor = personalRow.extend({
+  cycleId: z.uuid(),
+  season: coordinate,
+  episode: coordinate.positive(),
+  position: z.number().nonnegative(),
+  duration: z.number().nonnegative().nullable(),
+  source: z
+    .discriminatedUnion('kind', [
+      fileRef.extend({ kind: z.literal('library') }),
+      z.object({
+        kind: z.literal('torrent'),
+        infoHash: z.string().regex(/^[0-9a-f]{40}(?:[0-9a-f]{24})?$/i),
+        fileIndex: coordinate,
+      }),
+    ])
+    .nullable(),
+  voiceStudio: z.string().max(200).nullable(),
+  voiceType: z.string().max(50).nullable(),
+  completedAt: at.nullable().optional(),
+  updatedAt: at,
+})
+
+const cyclePlayback = personalRow
+  .extend({
+    title: seriesTitle,
+    season: coordinate,
+    episode: coordinate.positive(),
+    watchedAt: at.nullable(),
+    lastPlayedAt: at.nullable(),
+    updatedAt: at,
+  })
+  .refine(row => !!(row.watchedAt || row.lastPlayedAt))
+
+const personalSpace = z.object({
+  timeZone: z.string().max(100).refine(isDiaryTimeZone),
+  diary: z.array(diaryEntry),
+  seen: z.array(viewingTarget.refine(isViewingTarget)),
+  cycles: z.array(rewatchCycle),
+  cycleProgress: z.array(cycleCursor),
+  cyclePlayback: z.array(cyclePlayback),
+  titlePreferences: z.array(
+    titleRow.extend({
+      note: z.string().max(10_000).nullable(),
+      continuation: z.enum(continuationPreferences),
+      notInterested: z.boolean(),
+      updatedAt: at,
+    }),
+  ),
+  profilePreferences: z.array(
+    personalRow.extend({
+      startSection: z.enum(mineSections),
+      startCollectionName: z.string().min(1).max(100).nullable().optional(),
+      updatedAt: at,
+    }),
+  ),
+})
+
+export const exportDocumentV2 = exportDocumentV1.extend({
+  version: z.literal(EXPORT_VERSION),
+  personalSpace,
+})
+
+export const exportDocument = z.discriminatedUnion('version', [
+  exportDocumentV1,
+  exportDocumentV2,
+])
+
+export type ExportDocumentV2 = z.infer<typeof exportDocumentV2>
+export type ExportPersonalSpace = ExportDocumentV2['personalSpace']
+
+function key(...values: (number | string)[]) {
+  return JSON.stringify(values)
+}
+
+function unique<T>(rows: T[], keyOf: (row: T) => string) {
+  return new Set(rows.map(keyOf)).size === rows.length
+}
+
+function validatePersonalSpace(document: ExportDocumentV2) {
+  const space = document.personalSpace
+  const profiles = new Set(document.profiles.map(profile => profile.key))
+  const sections = [
+    document.progress,
+    document.mine,
+    space.diary,
+    space.seen,
+    space.cycles,
+    space.cycleProgress,
+    space.cyclePlayback,
+    space.titlePreferences,
+    space.profilePreferences,
+  ]
+  const eventKey = (row: {
+    profile: string
+    title: string
+    season: number
+    episode: number
+  }) => key(row.profile, row.title, row.season, row.episode)
+  const cycles = new Map(
+    space.cycles.map(row => [key(row.profile, row.id), row.title]),
+  )
+  const originKeys = space.diary.flatMap(row =>
+    row.originKey === null ? [] : [key(row.profile, row.origin, row.originKey)],
+  )
+  const unfinishedCycles = space.cycles.filter(row => row.state !== 'ended')
+
+  return (
+    profiles.size === document.profiles.length
+    && (document.scope !== 'profile' || profiles.size === 1)
+    && sections.every(rows => rows.every(row => profiles.has(row.profile)))
+    && unique(space.diary, row => key(row.profile, row.id))
+    && unique(originKeys, value => value)
+    && unique(space.seen, eventKey)
+    && cycles.size === space.cycles.length
+    && unique(unfinishedCycles, row => key(row.profile, row.title))
+    && unique(space.cycleProgress, row =>
+      key(row.profile, row.cycleId, row.season, row.episode))
+    && space.cycleProgress.every(row =>
+      cycles.has(key(row.profile, row.cycleId)),
+    )
+    && space.diary.every((row) => {
+      if (row.context?.kind !== 'cycle')
+        return true
+
+      // Historical context can refer to an ended cycle that has been removed.
+      const title = cycles.get(key(row.profile, row.context.cycleId))
+      return row.episode > 0 && (!title || title === row.title)
+    })
+    && unique(space.cyclePlayback, eventKey)
+    && unique(space.titlePreferences, row => key(row.profile, row.title))
+    && unique(space.profilePreferences, row => row.profile)
+  )
+}
 
 export type ExportDocument = z.infer<typeof exportDocument>
 export type ExportProfile = ExportDocument['profiles'][number]
@@ -281,6 +497,9 @@ export function parseExportDocument(text: string): ExportDocument {
 
   if (!parsed.success)
     throw new DocumentError('broken', { cause: parsed.error })
+
+  if (parsed.data.version === 2 && !validatePersonalSpace(parsed.data))
+    throw new DocumentError('broken')
 
   return parsed.data
 }

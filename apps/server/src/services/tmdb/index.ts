@@ -74,9 +74,9 @@ const SEARCH_TTL_MS = HOUR_MS
 const SEARCH_PAGE_SIZE = 20
 // Каждая догадка — отдельный запрос в TMDB на каждый набранный запрос
 const MAX_YO_GUESSES = 3
-const DETAILS_TTL_MS = 7 * 24 * HOUR_MS
+export const DETAILS_TTL_MS = 7 * 24 * HOUR_MS
 // Названия и даты серий идущего сезона меняются чаще деталей
-const SEASON_TTL_MS = 24 * HOUR_MS
+export const SEASON_TTL_MS = 24 * HOUR_MS
 const TRENDING_LIMIT = 12
 
 // v2: съёмочная группа сериала и создатели; v3: жанры, студии и keywords;
@@ -182,7 +182,7 @@ export async function getTrending(language: string): Promise<Card[]> {
 
 // Логотипы, возрастной рейтинг и IMDb ID приходят вместе с деталями одним
 // запросом; у фильма IMDb ID есть в самих деталях
-function detailsParams(ref: TmdbRef, language: string) {
+export function detailsParams(ref: TmdbRef, language: string) {
   const iso = language.slice(0, 2)
   const imageLanguages = iso === 'en' ? 'en,null' : `${iso},null,en`
   const append
@@ -316,7 +316,7 @@ export async function getTitle(
   return details
 }
 
-function seasonKey(tmdbId: number, number: number, language: string) {
+export function seasonKey(tmdbId: number, number: number, language: string) {
   return `tmdb:tv:${tmdbId}:season:${number}:${language}`
 }
 

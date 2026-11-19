@@ -61,14 +61,19 @@ export function storeMetaCache(key: string, value: unknown) {
 }
 
 /** Запись кэша без запроса в сеть, любой свежести в пределах хранения */
-export function readMetaCache<T>(key: string, now = Date.now()) {
+export function readMetaCache<T>(
+  key: string,
+  now = Date.now(),
+  maxAgeMs = TMDB_MAX_CACHE_AGE_MS,
+) {
   const found = getDb()
     .select()
     .from(metaCache)
     .where(eq(metaCache.key, key))
     .get()
 
-  return found && now - found.fetchedAt.getTime() < TMDB_MAX_CACHE_AGE_MS
+  return found
+    && now - found.fetchedAt.getTime() < Math.min(maxAgeMs, TMDB_MAX_CACHE_AGE_MS)
     ? (JSON.parse(found.json) as T)
     : undefined
 }

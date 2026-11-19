@@ -344,6 +344,41 @@
       "when": 1794981858322,
       "tag": "0048_storage-move-recovery",
       "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "6",
+      "when": 1795069750912,
+      "tag": "0049_mine-personal-space",
+      "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "6",
+      "when": 1795070903061,
+      "tag": "0050_viewing-attempts",
+      "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "6",
+      "when": 1795074515910,
+      "tag": "0051_import-viewing-history",
+      "breakpoints": true
+    },
+    {
+      "idx": 52,
+      "version": "6",
+      "when": 1795075924659,
+      "tag": "0052_viewing-import-match-proof",
+      "breakpoints": true
+    },
+    {
+      "idx": 53,
+      "version": "6",
+      "when": 1795078015430,
+      "tag": "0053_mine-personal-operations",
+      "breakpoints": true
     }
   ]
 }

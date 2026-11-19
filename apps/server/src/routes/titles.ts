@@ -45,7 +45,9 @@ import {
   watchTitle as watchTitleBody,
 } from '../dto/titles.ts'
 import { titleMine, titleMineQuery, updateTitleMine } from '../dto/mine.ts'
-import { requireViewer } from '../middleware/auth.ts'
+import { requireViewer, viewerStillOnProfile } from '../middleware/auth.ts'
+import { minePersonalError } from '../dto/minePersonal.ts'
+import { seenEpisodesOf } from '../services/mine/seen.ts'
 import {
   placedFilesByTorrent,
   qualityOf,
@@ -102,7 +104,10 @@ import { getSeason, getTitle, TmdbError } from '../services/tmdb/index.ts'
 import { parseCatalogId } from '../services/tmdb/mappers.ts'
 import { sendTmdbError } from './catalog.ts'
 import { sendEngineError } from './engineResponses.ts'
-import { requireTitleAccess } from '../services/profiles/access.ts'
+import {
+  requireTitleAccess,
+  titleAllowedCached,
+} from '../services/profiles/access.ts'
 
 const guardResponses = {
   401: messageResponse,
@@ -447,6 +452,7 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
         querystring: titleProgressQuery,
         response: {
           200: titleProgress,
+          409: minePersonalError,
           404: messageResponse,
           ...guardResponses,
         },
@@ -457,6 +463,7 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
         return reply.code(404).send({ message: 'Title not found' })
 
       const { id } = request.params
+      const { profileId } = request
       const last = lastTitleProgress(request.profileId, id)
       // Без TMDB следующей серии не найти: кнопка остаётся «Смотреть»
       const resume = await resumeTarget(
@@ -492,6 +499,11 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
       ) {
         resume.file = continuation.preferredTorrent
       }
+      const lastSource = last ? await historySource(last) : null
+      if (!viewerStillOnProfile(request, profileId))
+        return reply.code(409).send({ kind: 'profileChanged' })
+      if (!titleAllowedCached(profileId, id))
+        return reply.code(404).send({ message: 'Title not found' })
       return {
         continuation,
         resume: resume
@@ -518,7 +530,7 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
               duration: last.duration,
               watched: isProgressWatched(last),
               updatedAt: last.updatedAt.toISOString(),
-              source: await historySource(last),
+              source: lastSource,
             }
           : null,
         episodes: episodeProgress(request.profileId, request.params.id).map(
@@ -530,6 +542,7 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
             watched: isProgressWatched(row),
           }),
         ),
+        seenEpisodes: seenEpisodesOf(profileId, id),
         seasonReleases: seasonReleases(
           request.profileId,
           request.params.id,

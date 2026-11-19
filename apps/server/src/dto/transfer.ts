@@ -1,7 +1,8 @@
 import { z } from 'zod'
 import { importConflictPolicies } from '../db/schema.ts'
 import { newPassword } from './auth.ts'
-import { exportDocument } from '../services/transfer/document.ts'
+import { personalImportCounts } from './imports.ts'
+import { exportDocumentV2 } from '../services/transfer/document.ts'
 
 // Пароль экспорта шифрует только секреты; правила — как у пароля копии
 const exportPassword = newPassword.max(1024)
@@ -23,7 +24,7 @@ export const createExport = z
   })
   .meta({ id: 'createExport' })
 
-export const exportFile = exportDocument.meta({ id: 'exportFile' })
+export const exportFile = exportDocumentV2.meta({ id: 'exportFile' })
 
 export const transferErrorKinds = [
   'notExport',
@@ -69,6 +70,7 @@ export const profileMergeCounts = z
     watched: newSame.optional(),
     favorites: newSame,
     dropped: newSame,
+    personal: personalImportCounts.optional(),
     skipped: z.number().int(),
     conflictSamples: z.array(
       z.object({

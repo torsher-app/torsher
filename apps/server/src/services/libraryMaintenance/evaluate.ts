@@ -108,10 +108,14 @@ export function evaluateMaintenance(snapshot: EvaluationSnapshot) {
         row => key(row) === key(episode),
       )
       for (const profileId of rule.profileIds) {
-        const watched = progress.find(
-          row => row.profileId === profileId,
-        )?.watchedAt
-        if (watched === null || watched === undefined)
+        const watched = progress.reduce(
+          (latest, row) =>
+            row.profileId === profileId && row.watchedAt !== null
+              ? Math.max(latest, row.watchedAt)
+              : latest,
+          -Infinity,
+        )
+        if (watched === -Infinity)
           reasons.add('not_watched')
         else last = Math.max(last ?? -Infinity, watched)
       }

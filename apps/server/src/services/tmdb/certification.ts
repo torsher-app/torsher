@@ -1,6 +1,8 @@
 import type { TmdbMovie, TmdbTv } from './types.ts'
 import type { TmdbRef } from './mappers.ts'
-import { readMetaCache } from './cache.ts'
+import { sql } from 'drizzle-orm'
+import { getDb } from '../../db/index.ts'
+import { TMDB_MAX_CACHE_AGE_MS } from './cache.ts'
 import { parseCatalogId } from './mappers.ts'
 
 const US: Record<string, number> = {
@@ -57,15 +59,64 @@ export function titleDetailsCacheKey(ref: TmdbRef, language: string) {
   return `tmdb:${ref.type}:${ref.tmdbId}:${language}:${DETAILS_KEY_VERSION}`
 }
 
+/** A malformed cached certification cannot grant access. */
+function ageOnCache(json: string | null) {
+  if (json === null)
+    return undefined
+  try {
+    const raw = JSON.parse(json) as TmdbMovie | TmdbTv
+    return certificationAge(raw)
+  }
+  catch (error) {
+    if (error instanceof SyntaxError || error instanceof TypeError)
+      return undefined
+    throw error
+  }
+}
+
 /** Constant-key lookups only: streaming never loads the TMDB catalog graph. */
-export function cachedTitleAge(id: string) {
+export function cachedTitleAge(id: string, now = Date.now()) {
   const ref = parseCatalogId(id)
   if (!ref)
     return undefined
-  const raw
-    = readMetaCache<TmdbMovie | TmdbTv>(titleDetailsCacheKey(ref, 'ru-RU'))
-      ?? readMetaCache<TmdbMovie | TmdbTv>(titleDetailsCacheKey(ref, 'en-US'))
-  return raw ? certificationAge(raw) : undefined
+  const ru = titleDetailsCacheKey(ref, 'ru-RU')
+  const en = titleDetailsCacheKey(ref, 'en-US')
+  const cached = getDb().get<{ json: string }>(sql`
+    SELECT json FROM meta_cache
+    WHERE key IN (${ru}, ${en}) AND fetched_at > ${now - TMDB_MAX_CACHE_AGE_MS}
+    ORDER BY key = ${ru} DESC LIMIT 1
+  `)
+  return ageOnCache(cached?.json ?? null)
+}
+
+/** One round trip for a journal scope, with the same precedence as the streaming guard. */
+export function cachedTitleAges(ids: string[], now = Date.now()) {
+  const keys = ids.flatMap((id) => {
+    const ref = parseCatalogId(id)
+    return ref
+      ? [
+          {
+            id,
+            ru: titleDetailsCacheKey(ref, 'ru-RU'),
+            en: titleDetailsCacheKey(ref, 'en-US'),
+          },
+        ]
+      : []
+  })
+  const from = now - TMDB_MAX_CACHE_AGE_MS
+  const entries = getDb().all<{ title_id: string, json: string | null }>(sql`
+    SELECT json_extract(k.value, '$.id') AS title_id, COALESCE(ru.json, en.json) AS json
+    FROM json_each(${JSON.stringify(keys)}) k
+    LEFT JOIN meta_cache ru ON ru.key = json_extract(k.value, '$.ru') AND ru.fetched_at > ${from}
+    LEFT JOIN meta_cache en ON en.key = json_extract(k.value, '$.en') AND en.fetched_at > ${from}
+  `)
+  const ages = new Map<string, number>()
+  for (const { title_id, json } of entries) {
+    const age = ageOnCache(json)
+    if (age !== undefined)
+      ages.set(title_id, age)
+  }
+  return ages
 }
 
 /** Only cold classification loads the catalog module; streaming stays synchronous. */

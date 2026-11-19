@@ -100,6 +100,15 @@ export const deleteProfileQuery = z.object({
   moveTo: z.string().min(1).max(100).optional(),
 })
 
+export const profileMoveConflict = z
+  .object({
+    kind: z.literal('personalMoveConflict'),
+    reason: z.enum(['originTitle', 'originEpisode', 'cycleIdentity']),
+  })
+  .meta({ id: 'profileMoveConflict' })
+
+export type ProfileMoveConflict = z.infer<typeof profileMoveConflict>
+
 export const pinErrorResponse = z
   .object({
     message: z.string(),

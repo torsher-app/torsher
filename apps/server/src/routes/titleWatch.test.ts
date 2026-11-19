@@ -900,6 +900,7 @@ describe('позиция по серии', () => {
       last: null,
       seasonReleases: [],
       episodes: [],
+      seenEpisodes: [],
     })
     expect(unknown.statusCode).toBe(404)
   })

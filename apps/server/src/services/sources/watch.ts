@@ -17,7 +17,15 @@ import {
 } from '../torrents/index.ts'
 import { downloadTorrent, SourceError } from '../torznab/index.ts'
 import { getTitleSources, sourceAllowed } from './index.ts'
+import type { TitleRef } from './progress.ts'
+import type { VoiceRef } from './profile.ts'
 import { rememberChoice } from './progress.ts'
+import {
+  cycleRevision,
+  exactViewingRef,
+  playableCycle,
+  saveCycleCursor,
+} from '../mine/viewing.ts'
 import { seasonReleases } from './seasonRelease.ts'
 import { titleAllowed } from '../profiles/access.ts'
 import { indexerCookie } from '../indexers/index.ts'
@@ -56,6 +64,33 @@ export interface WatchRequest {
   candidateId?: string
   /** Раздача сезона, уже в базе: серия из неё без поиска по индексаторам. */
   torrentId?: string
+  cycleId?: string
+}
+
+function rememberWatchChoice(
+  ref: TitleRef,
+  torrent: Torrent,
+  fileIndex: number,
+  voice: VoiceRef | undefined,
+  cycleId: string | undefined,
+  revision: number | undefined,
+) {
+  if (!cycleId) {
+    rememberChoice(ref, { torrentId: torrent.id, fileIndex, voice })
+    return
+  }
+  const episode = exactViewingRef(ref)
+  if (
+    !episode
+    || revision === undefined
+    || !playableCycle(episode, cycleId, revision)
+  ) {
+    throw new WatchError('candidate_gone', 'Playback is no longer available')
+  }
+  saveCycleCursor(episode, cycleId, {
+    source: { kind: 'torrent', infoHash: torrent.infoHash, fileIndex },
+    voice,
+  })
 }
 
 export type WatchResult
@@ -254,6 +289,7 @@ async function watchTorrent(
   titleId: string,
   request: WatchRequest & { torrentId: string },
   profileId: string,
+  revision: number | undefined,
 ): Promise<WatchResult | undefined> {
   const ref = parseCatalogId(titleId)
 
@@ -285,13 +321,19 @@ async function watchTorrent(
   if (fileIndex === undefined)
     throw new WatchError('not_playable', 'The episode is not in this release')
 
-  const voice = seasonReleases(profileId, titleId).find(
-    release => release.season === request.season,
-  )?.voice
+  const voice = !request.cycleId
+    ? seasonReleases(profileId, titleId).find(
+      release => release.season === request.season,
+    )?.voice
+    : undefined
 
-  rememberChoice(
+  rememberWatchChoice(
     { profileId, titleId, season: target.season, episode: target.episode },
-    { torrentId: torrent.id, fileIndex, voice },
+    torrent,
+    fileIndex,
+    voice,
+    request.cycleId,
+    revision,
   )
 
   return { status: 'ready', torrentId: torrent.id, fileIndex, candidateId: '' }
@@ -308,6 +350,24 @@ export async function watchTitle(
   profileId: string,
   context?: DiagnosticContext,
 ): Promise<WatchResult | undefined> {
+  const revision = request.cycleId
+    ? cycleRevision(profileId, request.cycleId)
+    : undefined
+  if (request.cycleId) {
+    const ref = exactViewingRef({
+      profileId,
+      titleId,
+      season: request.season,
+      episode: request.episode,
+    })
+    if (
+      !ref
+      || revision === undefined
+      || !playableCycle(ref, request.cycleId, revision)
+    ) {
+      throw new WatchError('candidate_gone', 'Playback is no longer available')
+    }
+  }
   if (request.torrentId) {
     recordDecision('sources', 'source.resolve', context, {
       titleId,
@@ -319,6 +379,7 @@ export async function watchTitle(
       titleId,
       { ...request, torrentId: request.torrentId },
       profileId,
+      revision,
     )
   }
 
@@ -457,13 +518,13 @@ export async function watchTitle(
       continue
     }
 
-    rememberChoice(
+    rememberWatchChoice(
       { profileId, titleId, season: target.season, episode: target.episode },
-      {
-        torrentId: torrent.id,
-        fileIndex,
-        voice: release.audioLanguage === 'ru' ? release.voice : undefined,
-      },
+      torrent,
+      fileIndex,
+      release.audioLanguage === 'ru' ? release.voice : undefined,
+      request.cycleId,
+      revision,
     )
 
     recordDecision('sources', 'source.selected', operation, {

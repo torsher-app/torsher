@@ -15,6 +15,7 @@ import { and, desc, eq, gt, inArray, isNotNull, or, sql } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import { titleProgress } from '../../db/schema.ts'
 import { clearWatchedMark, watchedMarkedTitles } from '../mine/marks.ts'
+import { clearViewingSeen } from '../mine/viewing.ts'
 import { isWatched } from '../torrents/playback.ts'
 
 export { freezeLibraryProgress } from '../library/playedSource.ts'
@@ -463,8 +464,10 @@ export function markWatched(ref: TitleRef, watched: boolean) {
     : { position: 0, duration: null, watchedAt: null, playedSource }
 
   getDb().transaction(() => {
-    if (!watched)
+    if (!watched) {
       clearWatchedMark(ref.profileId, ref.titleId)
+      clearViewingSeen(ref)
+    }
 
     getDb()
       .insert(titleProgress)

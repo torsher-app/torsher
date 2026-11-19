@@ -58,11 +58,16 @@ afterEach(() => {
 })
 
 /** Копия базы, созданной миграциями `migrationsFolder` */
-async function backupOf(migrationsFolder: string, target: string) {
+async function backupOf(
+  migrationsFolder: string,
+  target: string,
+  prepare?: (db: Database.Database) => void,
+) {
   const source = track(tempDataDir())
   const { db, dbPath } = createFileDb(source, migrationsFolder)
 
   seedData(db)
+  prepare?.(db)
   db.close()
 
   const created = await createBackup({
@@ -179,6 +184,81 @@ describe('восстановление', () => {
       state: 'done',
       backup: 'backup',
     })
+  })
+
+  it('restores personal data and its local versions from a current backup', async () => {
+    const { dbPath, backups, paths } = server()
+    let token: unknown
+    const backup = await backupOf(MIGRATIONS_DIR, backups, (db) => {
+      db.exec(`
+        INSERT INTO profiles (id,name,color,position,created_at)
+        VALUES ('diary-viewer','Viewer','blue',1,0);
+        INSERT INTO diary_entries
+          (profile_id,id,title_id,season,episode,precision,day,origin,note,created_at,updated_at)
+        VALUES ('diary-viewer','entry','tmdb:movie:21',0,0,'day','2024-02-29','manual','A note',1,1);
+        INSERT INTO diary_seen (profile_id,title_id,season,episode)
+        VALUES ('diary-viewer','tmdb:movie:21',0,0);
+        INSERT INTO rewatch_cycles
+          (profile_id,id,title_id,start_season,start_episode,target_season,target_episode,state,created_at,updated_at)
+        VALUES ('diary-viewer','cycle','tmdb:tv:22',1,1,2,3,'paused',1,2);
+        INSERT INTO cycle_progress (profile_id,cycle_id,season,episode,position,updated_at)
+        VALUES ('diary-viewer','cycle',2,3,350,2);
+        INSERT INTO mine_title_preferences (profile_id,title_id,note,continuation,updated_at)
+        VALUES ('diary-viewer','tmdb:tv:22','Remember', 'paused', 2);
+        INSERT INTO mine_profile_preferences (profile_id,start_section,updated_at)
+        VALUES ('diary-viewer','diary',2);
+        INSERT INTO server_settings (key,value,updated_at)
+        VALUES ('mine.diaryTimeZone','"Pacific/Auckland"',1);
+      `)
+      token = db
+        .prepare('SELECT mutation_token FROM diary_entries')
+        .pluck()
+        .get()
+    })
+
+    await request(backup, paths)
+    expect(await applyPendingRestore(paths)).toMatchObject({
+      applied: true,
+      warnings: [],
+    })
+    const db = new Database(dbPath, { readonly: true })
+    try {
+      expect(token).toEqual(expect.any(String))
+      expect(
+        db.prepare('SELECT day, note, mutation_token FROM diary_entries').get(),
+      ).toEqual({
+        day: '2024-02-29',
+        note: 'A note',
+        mutation_token: token,
+      })
+      expect(count(db, 'diary_seen')).toBe(1)
+      expect(db.prepare('SELECT state FROM rewatch_cycles').pluck().get()).toBe(
+        'paused',
+      )
+      expect(
+        db.prepare('SELECT position FROM cycle_progress').pluck().get(),
+      ).toBe(350)
+      expect(
+        db.prepare('SELECT note FROM mine_title_preferences').pluck().get(),
+      ).toBe('Remember')
+      expect(
+        db
+          .prepare('SELECT start_section FROM mine_profile_preferences')
+          .pluck()
+          .get(),
+      ).toBe('diary')
+      expect(
+        db
+          .prepare(
+            'SELECT json_extract(value,\'$\') FROM server_settings WHERE key = \'mine.diaryTimeZone\'',
+          )
+          .pluck()
+          .get(),
+      ).toBe('Pacific/Auckland')
+    }
+    finally {
+      db.close()
+    }
   })
 
   it('с TORSHER_SECRET файл ключа не трогается, другой ключ копии — предупреждение', async () => {

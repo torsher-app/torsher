@@ -1,12 +1,13 @@
 import { assertMaintenancePolicyChange } from '../libraryMaintenance/admission.ts'
 import type {
   ImportProgressUndoEntry,
-  ImportUndoEntry,
   ProfileTitle,
   TitleProgress,
 } from '../../db/schema.ts'
 import type { ExportMine, ExportProgress } from './document.ts'
 import type { ConflictPolicy, IncomingMine, MineValues } from './merge.ts'
+import type { PersonalMergePlan, PersonalRows } from './personalSpace.ts'
+import type { UndoJournalBuilder } from './undoJournal.ts'
 import { and, eq, inArray } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import {
@@ -25,6 +26,7 @@ import {
 import { parseCatalogId } from '../tmdb/mappers.ts'
 import { isWatched } from '../torrents/playback.ts'
 import { mergeMine, ratingOutcome } from './merge.ts'
+import { planPersonalMerge } from './personalSpace.ts'
 
 // SQLite ограничивает число параметров запроса
 const CHUNK = 500
@@ -34,6 +36,7 @@ const CONFLICT_SAMPLES = 5
 export interface ProfileRows {
   progress: ExportProgress[]
   mine: ExportMine[]
+  personal?: PersonalRows
 }
 
 export interface ProfileMergeCounts {
@@ -45,6 +48,7 @@ export interface ProfileMergeCounts {
   dropped: { new: number, same: number }
   // Тайтлы не из каталога и файлы библиотеки, которых нет на сервере
   skipped: number
+  personal?: { changed: number, unchanged: number, skipped: number }
   conflictSamples: Array<{
     titleId: string
     title: string
@@ -338,8 +342,10 @@ interface MergePlan {
   counts: ProfileMergeCounts
   // Позиции и тайтлы, которые остаются как есть
   unchanged: number
+  unchangedTitles: Set<string>
   progress: Array<{ incoming: IncomingProgress, current?: TitleProgress }>
   mine: Array<{ titleId: string, current?: ProfileTitle, next: MineValues }>
+  personal?: PersonalMergePlan
 }
 
 /**
@@ -360,7 +366,13 @@ export function planProfileMerge(
     progress.resolved.map(row => row.titleId),
   )
   const mineRows = currentMine(targetId, [...mine.resolved.keys()])
-  const plan: MergePlan = { counts, unchanged: 0, progress: [], mine: [] }
+  const plan: MergePlan = {
+    counts,
+    unchanged: 0,
+    unchangedTitles: new Set(),
+    progress: [],
+    mine: [],
+  }
 
   counts.skipped = progress.skipped + mine.skipped
 
@@ -370,9 +382,13 @@ export function planProfileMerge(
 
     counts.progress[outcome]++
 
-    if (outcome === 'same')
+    if (outcome === 'same') {
       plan.unchanged++
-    else plan.progress.push({ incoming, current })
+      plan.unchangedTitles.add(incoming.titleId)
+    }
+    else {
+      plan.progress.push({ incoming, current })
+    }
   }
 
   for (const [titleId, incoming] of mine.resolved) {
@@ -381,59 +397,30 @@ export function planProfileMerge(
 
     countMine(counts, titleId, current, incoming, next)
 
-    if (next)
+    if (next) {
       plan.mine.push({ titleId, current, next })
-    else plan.unchanged++
+    }
+    else {
+      plan.unchanged++
+      plan.unchangedTitles.add(titleId)
+    }
+  }
+
+  if (rows.personal) {
+    const personal = planPersonalMerge(targetId, rows.personal)
+    plan.personal = personal
+    plan.unchanged += personal.unchanged
+    for (const title of personal.unchangedTitles)
+      plan.unchangedTitles.add(title)
+    counts.skipped += personal.skipped
+    counts.personal = {
+      changed: personal.writes.length,
+      unchanged: personal.unchanged,
+      skipped: personal.skipped,
+    }
   }
 
   return plan
-}
-
-function mineUndo(titleId: string, row?: ProfileTitle): ImportUndoEntry {
-  return {
-    titleId,
-    before: row
-      ? {
-          watchlistAt: row.watchlistAt?.getTime() ?? null,
-          favoriteAt: row.favoriteAt?.getTime() ?? null,
-          rating: row.rating,
-          ratedAt: row.ratedAt?.getTime() ?? null,
-          droppedAt: row.droppedAt?.getTime() ?? null,
-          watchedMarkedAt: row.watchedMarkedAt?.getTime() ?? null,
-          updatedAt: row.updatedAt.getTime(),
-        }
-      : null,
-  }
-}
-
-function progressUndo(
-  incoming: IncomingProgress,
-  row?: TitleProgress,
-): ImportProgressUndoEntry {
-  return {
-    table: 'progress',
-    titleId: incoming.titleId,
-    season: incoming.season,
-    episode: incoming.episode,
-    before: row
-      ? {
-          position: row.position,
-          duration: row.duration,
-          torrentId: row.torrentId,
-          fileIndex: row.fileIndex,
-          mediaFileId: row.mediaFileId,
-          playedSource: freezePlayedSource(row),
-          lastPlayedAt: row.lastPlayedAt?.getTime() ?? null,
-          voiceStudio: row.voiceStudio,
-          voiceType: row.voiceType,
-          watchedAt: row.watchedAt?.getTime() ?? null,
-          updatedAt: row.updatedAt.getTime(),
-        }
-      : null,
-    after: incoming.updatedAt.getTime(),
-    afterVoice: { studio: incoming.voiceStudio, type: incoming.voiceType },
-    afterVoiceRevision: row?.voiceSelectionRevision ?? 0,
-  }
 }
 
 /**
@@ -445,12 +432,27 @@ export function applyProfileMerge(
   targetId: string,
   plan: MergePlan,
   now: Date,
+  journal?: UndoJournalBuilder,
 ) {
   const db = getDb()
   assertMaintenancePolicyChange({ global: true })
-  const undo: Array<ImportUndoEntry | ImportProgressUndoEntry> = []
 
   for (const { incoming, current } of plan.progress) {
+    if (journal) {
+      // Keep fallback metadata from before the import. A re-probe of the
+      // same media ID can change it without writing the imported progress.
+      const source = current && freezePlayedSource(current)
+      journal.record(
+        'progress',
+        [incoming.titleId, incoming.season, incoming.episode],
+        incoming.titleId,
+        {
+          beforePatch: {
+            played_source: source ? JSON.stringify(source) : null,
+          },
+        },
+      )
+    }
     const values = {
       position: incoming.position,
       duration: incoming.duration,
@@ -479,10 +481,10 @@ export function applyProfileMerge(
         set: values,
       })
       .run()
-    undo.push(progressUndo(incoming, current))
   }
 
-  for (const { titleId, current, next } of plan.mine) {
+  for (const { titleId, next } of plan.mine) {
+    journal?.record('mine', [titleId], titleId)
     const row = { profileId: targetId, titleId, ...next, updatedAt: now }
 
     db.insert(profileTitles)
@@ -492,10 +494,15 @@ export function applyProfileMerge(
         set: row,
       })
       .run()
-    undo.push(mineUndo(titleId, current))
   }
 
-  return undo
+  for (const write of plan.personal?.writes ?? []) write(targetId, journal)
+
+  return (
+    plan.progress.length
+    + plan.mine.length
+    + (plan.personal?.writes.length ?? 0)
+  )
 }
 
 /**
@@ -515,8 +522,15 @@ export function undoProgress(
   )
   const current = db.select().from(titleProgress).where(where).get()
 
-  if (!current || current.updatedAt.getTime() !== entry.after)
+  // Old journals lack a token. Their legacy checks apply only until the
+  // row's first mutation after the 0049 upgrade.
+  if (
+    !current
+    || current.mutationToken !== null
+    || current.updatedAt.getTime() !== entry.after
+  ) {
     return false
+  }
 
   const { before, afterVoice } = entry
   if (
