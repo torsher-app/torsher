@@ -15,9 +15,10 @@ import {
 } from '../transfer/diaryTimeZone.ts'
 import { calendarDayAt } from './calendar.ts'
 import { requireAvailableEpisode } from './cycles.ts'
+import { summaryOf } from './cards.ts'
 import { allowMineTitle, MinePersonalError } from './personalAccess.ts'
 import { rewatchForEntry } from './rewatch.ts'
-import { localMineMetadata } from './personalMetadata.ts'
+import { localMineMetadata, localTitleDetails } from './personalMetadata.ts'
 
 type Entry = typeof diaryEntries.$inferSelect
 export interface DiaryRef {
@@ -205,7 +206,12 @@ export async function createManualEntry(
     return replay(previous.command)
 
   await validateTarget(current, target, language, title)
+  // Search cards do not populate the details cache read by the diary and overview.
+  if (!localTitleDetails(target.titleId, language))
+    await summaryOf(target.titleId, language)
   current()
+  if (!titleAllowedCached(profileId, target.titleId))
+    throw new MinePersonalError('notFound', 404)
   return db.transaction(() => {
     const concurrent = receipt()
     if (concurrent)

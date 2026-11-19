@@ -669,6 +669,8 @@ describe('live recommendations', () => {
     expect(result.json()).toMatchObject({
       entry: { calendarDay: null, rewatch: false },
     })
+    // Logging may load this title's metadata, but must not refresh recommendation candidates.
+    expect(requestedPaths()).toEqual(['/3/movie/4101'])
     getDb()
       .insert(rewatchCycles)
       .values({
@@ -712,7 +714,7 @@ describe('live recommendations', () => {
       titleId,
       title: 'Fixture film 4101',
     })
-    expect(fetchMock).not.toHaveBeenCalled()
+    expect(requestedPaths()).toEqual(['/3/movie/4101'])
   })
 
   it('admits series seeds before applying the title quota', async () => {

@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { eq, sql } from 'drizzle-orm'
 import {
   afterAll,
+  afterEach,
   beforeAll,
   beforeEach,
   describe,
@@ -185,6 +186,162 @@ function showDetails() {
     ],
   })
 }
+
+describe('manual diary metadata', () => {
+  const details = {
+    id: 940004,
+    title: 'Cold Lantern',
+    original_title: 'Cold Lantern',
+    release_date: '2024-01-01',
+    runtime: 99,
+    poster_path: '/synthetic-cold.jpg',
+    genres: [{ id: 18, name: 'Drama' }],
+    production_countries: [{ iso_3166_1: 'GB' }],
+  }
+  const fetchMock = vi.fn<typeof fetch>()
+
+  beforeEach(() => {
+    fetchMock.mockReset()
+    vi.stubGlobal('fetch', fetchMock)
+    vi.stubEnv('TMDB_ACCESS_TOKEN', 'test-token')
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.unstubAllEnvs()
+  })
+
+  it('loads details for a movie selected from search before returning the logged watch', async () => {
+    fetchMock.mockImplementation(async (input) => {
+      const url = new URL(String(input))
+      const body
+        = url.pathname === '/3/search/multi'
+          ? { results: [{ ...details, media_type: 'movie' }] }
+          : details
+      return new Response(JSON.stringify(body))
+    })
+    const search = await app.inject({
+      url: '/api/catalog/search',
+      cookies: owner,
+      query: { query: 'Cold Lantern', language },
+    })
+    expect(search.statusCode, search.body).toBe(200)
+    expect(search.json().items[0]).toMatchObject({
+      id: cold,
+      title: details.title,
+    })
+    expect(
+      getDb()
+        .select()
+        .from(metaCache)
+        .where(eq(metaCache.key, `${cold}:en-US:v3`))
+        .get(),
+    ).toBeUndefined()
+
+    const payload = manual({
+      target: { titleId: cold, season: 0, episode: 0 },
+    })
+    const logged = await api('diary', { method: 'POST', payload })
+    expect(logged.statusCode, logged.body).toBe(200)
+    const metadata = {
+      title: details.title,
+      poster: expect.stringContaining(details.poster_path),
+      runtimeMinutes: 99,
+      genres: ['Drama'],
+      countries: ['GB'],
+    }
+    expect(logged.json()).toMatchObject({ entry: { metadata } })
+    expect(
+      (await api('overview', { query: query({ period: '2025-11' }) })).json(),
+    ).toMatchObject({
+      recent: [{ metadata }],
+      interests: { titles: 1, titlesWithMetadata: 1 },
+    })
+    expect((await api('diary', { query: query() })).json()).toMatchObject({
+      entries: [{ metadata }],
+    })
+    expect((await api('watched', { query: query() })).json()).toMatchObject({
+      items: [{ metadata }],
+    })
+    expect((await api('diary', { method: 'POST', payload })).json()).toEqual(
+      logged.json(),
+    )
+    expect(
+      fetchMock.mock.calls.map(([input]) => new URL(String(input)).pathname),
+    ).toEqual(['/3/search/multi', '/3/movie/940004'])
+    expect(getDb().select().from(diaryEntries).all()).toHaveLength(1)
+  })
+
+  it('loads title-level series details without inventing episode metadata', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          id: 940002,
+          name: 'Cold Season',
+          original_name: 'Cold Season',
+          first_air_date: '2024-01-01',
+          poster_path: '/synthetic-series.jpg',
+          origin_country: ['GB'],
+          genres: [{ id: 18, name: 'Drama' }],
+          seasons: [],
+        }),
+      ),
+    )
+    const logged = await api('diary', {
+      method: 'POST',
+      payload: manual({ target: { titleId: show, season: 0, episode: 0 } }),
+    })
+    expect(logged.statusCode, logged.body).toBe(200)
+    expect(logged.json()).toMatchObject({
+      entry: {
+        kind: 'series',
+        metadata: {
+          title: 'Cold Season',
+          runtimeMinutes: null,
+          episodeTitle: null,
+        },
+      },
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(new URL(String(fetchMock.mock.calls[0]![0])).pathname).toBe(
+      '/3/tv/940002',
+    )
+  })
+
+  it('keeps the viewing fact when metadata cannot be loaded', async () => {
+    fetchMock.mockRejectedValue(new TypeError('Offline'))
+    const logged = await api('diary', {
+      method: 'POST',
+      payload: manual({ target: { titleId: cold, season: 0, episode: 0 } }),
+    })
+    expect(logged.statusCode, logged.body).toBe(200)
+    expect(logged.json()).toMatchObject({
+      entry: { titleId: cold, metadata: null },
+    })
+    expect(getDb().select().from(diaryEntries).all()).toHaveLength(1)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not write after the viewer changes while details are loading', async () => {
+    const started = Promise.withResolvers<void>()
+    const response = Promise.withResolvers<Response>()
+    fetchMock.mockImplementation(() => {
+      started.resolve()
+      return response.promise
+    })
+    const pending = api('diary', {
+      method: 'POST',
+      payload: manual({ target: { titleId: cold, season: 0, episode: 0 } }),
+    })
+    // Inject starts on consumption; the metadata request must actually be in flight.
+    const result = Promise.resolve(pending)
+    await started.promise
+    getDb().delete(profiles).where(eq(profiles.id, profileId)).run()
+    response.resolve(new Response(JSON.stringify(details)))
+    expect((await result).json()).toEqual({ kind: 'profileChanged' })
+    expect(getDb().select().from(diaryEntries).all()).toHaveLength(0)
+  })
+})
 
 describe('personal actions', () => {
   it('projects exact seen episodes without changing ordinary positions or expanding a title mark', async () => {
