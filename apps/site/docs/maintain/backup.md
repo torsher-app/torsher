@@ -13,7 +13,7 @@ Backups on a disk that survives a failure of the server's disk, and a tested way
 
 ## What a backup holds
 
-A backup is one file with the database: the account, profiles, watch positions, ratings, lists, collections, sources and settings. It also holds the key that encrypts saved secrets (indexer API keys, proxy passwords, notification tokens), unless you protect backups with a password.
+A backup is one file with the database: the account, profiles, watch positions, diary entries, notes, rewatch cycles, ratings, lists, collections, sources and settings. It also holds the key that encrypts saved secrets (indexer API keys, proxy passwords, notification tokens), unless you protect backups with a password.
 
 Videos, downloads, the cache and the log are not in it. Protect your library with disk or NAS snapshots or your own backup tool.
 
@@ -151,7 +151,11 @@ The server makes a backup before the import, so <Ui k="panel.transfer.import.res
 
 Positions of files without a title in the library layout managed by Torsher are not exported, even with <Ui k="panel.transfer.export.libraries" />.
 
-One profile only: <Ui k="panel.imports.export" /> and <Ui k="panel.imports.start" /> in the profile card under <Ui k="panel.nav.people" />. A profile export includes title positions, but no file positions or library folder mapping.
+One profile only: <Ui k="panel.imports.export" /> and <Ui k="panel.imports.start" /> in the profile card under <Ui k="panel.nav.people" />. A profile export includes title positions, but no normal file positions or library folder mapping.
+
+Torsher exports version 2 files, including the diary with date precision and source identity, personal watched marks, viewing and title notes, rewatch cycles and their separate cursors, and Mine preferences. Local playback sessions and transport IDs are not transferred. Version 1 files still import. Update an older destination before importing a version 2 file: silently dropping the new personal data is not a supported downgrade.
+
+Catalog metadata and images remain a limited cache. Diary facts and notes survive its expiry; a title can temporarily lack its poster or description. A restricted profile can only see records whose age classification is currently known and allowed.
 
 ::: details From the command line
 Export everything with libraries and settings:

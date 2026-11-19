@@ -12,17 +12,19 @@ Torsher is software you run on your own hardware. The Torsher server and the TV 
 
 ## The Torsher server
 
-Everything Torsher stores stays on the server you run: the owner account, profiles, connected devices, your library, watch history, ratings, lists, settings and logs. The project never receives a copy. Backups and exports are files on your server that only you handle.
+Torsher stores the owner account, profiles, connected devices, your library, watch positions, viewing diary, notes, viewing context, ratings, lists, settings and logs on the server you run. The project never receives a copy. Backups and exports are files on your server that only you handle.
 
 The server connects to these services, and only for the purposes described:
 
-- **TMDB**, for movie and series information and images.
+- **TMDB**, for movie and series information, images and recommendation candidates. Requests can include title IDs chosen from your ratings, favorites or history, along with catalog filters and language. These IDs can reveal an interest in a title. Your diary timestamps, ratings themselves, notes and viewing context are not sent with recommendation requests.
 - **The indexers, proxies and notification channels you set up**, with the addresses and keys you entered.
 - **Torrent peers**, when you watch or download a torrent.
 - **GitHub**, once a day, to check the project's releases for a new version. The request carries no identifiers or data about your server. Turn it off in the panel under <Ui k="panel.nav.settings panel.settings.nav.about" />.
 - **The official IMDb ratings dataset**, once a day, only if you turn IMDb ratings on.
 
 Each of these services handles the request under its own privacy policy.
+
+History files you upload from Letterboxd or Trakt are parsed on your server. Matching their titles can query TMDB using title names or IDs. Torsher does not sign in to those services or open links from the files. Your diary facts and notes are kept separately from the limited catalog cache; removing cached metadata does not remove your personal entries.
 
 ## The Torsher app for LG TVs
 
@@ -40,4 +42,4 @@ The site is served through Cloudflare, which processes visitors' IP addresses to
 
 Questions about this policy: [GitHub Issues](https://github.com/torsher-app/torsher/issues).
 
-Last updated: 2026-10-26.
+Last updated: 2026-11-19.
