@@ -16,9 +16,11 @@ import {
   automaticPlayback,
   libraryRoute,
   resumeRoute,
+  withPlaybackCycle,
 } from '../lib/continue.ts'
 import { createLatest } from '../lib/latest.ts'
 import { libraryChoices } from '../lib/library.ts'
+import { captureTitleViewer, isTitleViewer } from '../titleActions.ts'
 import { useLibraryPicker } from './useLibraryPicker.ts'
 
 /** Общий вход из ряда «Продолжить» и карточки тайтла. */
@@ -66,13 +68,21 @@ export function useContinuePlayback(screen: Ref<EventTarget | undefined>) {
   let selectedContext: DiagnosticContext = {}
   let selectedTitle = ''
   let automatic = false
+  let selectedCycle: Pick<ResumeLike, 'cycleId' | 'cycleVoiceStudio'> = {}
+  let selectedViewer = captureTitleViewer()
   const picker = useLibraryPicker((fileId, target, explicit) => {
+    if (!isTitleViewer(selectedViewer))
+      return
     void router.push(
       diagnosticRoute(
-        libraryRoute(
-          fileId,
-          { id: selectedTitle, ...target },
-          automatic && !explicit ? automaticPlayback : undefined,
+        withPlaybackCycle(
+          libraryRoute(
+            fileId,
+            { id: selectedTitle, ...target },
+            automatic && !explicit ? automaticPlayback : undefined,
+            selectedCycle.cycleVoiceStudio ?? undefined,
+          ),
+          selectedCycle.cycleId,
         ),
         selectedContext,
       ),
@@ -85,8 +95,11 @@ export function useContinuePlayback(screen: Ref<EventTarget | undefined>) {
     currentId?: string | null,
     isAutomatic = false,
     context = diagnosticAction(),
+    cycle: Pick<ResumeLike, 'cycleId' | 'cycleVoiceStudio'> = {},
   ) {
     cancel()
+    selectedViewer = captureTitleViewer()
+    selectedCycle = cycle
     selectedContext = context
     diagnostic(
       {
@@ -107,6 +120,7 @@ export function useContinuePlayback(screen: Ref<EventTarget | undefined>) {
     intent?: 'follow-ready',
     trigger: 'remote' | 'pointer' = 'remote',
   ) {
+    const viewer = captureTitleViewer()
     const context = Object.freeze({
       ...diagnosticAction(),
       decisionId: item.decisionId,
@@ -144,7 +158,7 @@ export function useContinuePlayback(screen: Ref<EventTarget | undefined>) {
 
     const target = { season: item.season, episode: item.episode }
     const query
-      = item.season && item.episode
+      = item.season !== null && item.episode !== null && item.episode > 0
         ? { season: String(item.season), episode: String(item.episode) }
         : undefined
     diagnostic(
@@ -163,6 +177,8 @@ export function useContinuePlayback(screen: Ref<EventTarget | undefined>) {
 
     if (pending === operation)
       pending = undefined
+    if (!isTitleViewer(viewer))
+      return
     if (result.status === 'cancelled') {
       diagnostic(
         {
@@ -193,6 +209,7 @@ export function useContinuePlayback(screen: Ref<EventTarget | undefined>) {
           item.mediaFileId,
           item.next && !item.position,
           context,
+          item,
         )
         return
       }

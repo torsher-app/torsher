@@ -17,7 +17,10 @@ import { useTitleChanges } from './useTitleChanges.ts'
 
 const mocks = vi.hoisted(() => ({ put: vi.fn(), get: vi.fn() }))
 vi.mock('../api.ts', () => ({
-  api: { titles: { putTitleWatched: mocks.put, getTitleMine: mocks.get } },
+  api: {
+    mine: { putMineSeen: mocks.put },
+    titles: { getTitleMine: mocks.get },
+  },
 }))
 beforeEach(() => {
   vi.resetAllMocks()

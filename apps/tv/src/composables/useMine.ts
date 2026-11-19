@@ -1,6 +1,21 @@
-import type { Card, MineSection, ScheduleResponse } from '@torsher/api-client'
+import type {
+  Card,
+  ContinueCard,
+  MineBootstrap,
+  ScheduleResponse,
+} from '@torsher/api-client'
 import type { Ref } from 'vue'
 import type { LoadError } from '../lib/loadError.ts'
+import type {
+  ContinueState,
+  MineMenuSection,
+  WatchedScope,
+} from '../lib/minePersonal.ts'
+import {
+  mineViewer,
+  personalCard,
+  personalContinueCard,
+} from '../lib/minePersonal.ts'
 import type { MineView } from '../lib/mineView.ts'
 import { computed, onScopeDispose, ref, shallowRef, watch } from 'vue'
 import { captureTitleViewer, isTitleViewer } from '../titleActions.ts'
@@ -14,51 +29,59 @@ export type MineStatus = 'loading' | 'ready' | 'error'
 // Страница сервера: больше за раз он не отдаёт
 const PAGE_SIZE = 40
 
-/** Разделы «Моё» со счётчиками. `refresh` перечитывает их, не показывая загрузку */
-export function useMineSections() {
-  const language = useCatalogLanguage()
+/** Меню и старт читаются из локальных данных профиля. */
+export function useMineBootstrap() {
   const status = ref<MineStatus>('loading')
-  const sections = shallowRef<MineSection[]>([])
+  const bootstrap = shallowRef<MineBootstrap>()
   const error = ref<LoadError>()
   const latest = createLatest()
 
   async function load(quiet = false) {
-    const viewer = captureTitleViewer()
+    const context = mineViewer()
+    if (!context)
+      return false
     if (!quiet)
       status.value = 'loading'
-
     const outcome = await latest.run(signal =>
-      api.mine.getMine({ language: language.value }, { signal }),
+      api.mine.getMineBootstrap(
+        { expectedProfileId: context.expectedProfileId },
+        { signal },
+      ),
     )
-
-    if (!isTitleViewer(viewer) || outcome.status === 'cancelled')
+    if (!isTitleViewer(context.viewer) || outcome.status === 'cancelled')
       return false
-
     if (outcome.status === 'failed') {
       if (!quiet) {
         error.value = loadErrorOf(outcome.error)
         status.value = 'error'
       }
-
       return false
     }
-
-    sections.value = outcome.value.sections
+    if (outcome.value.profileId !== context.expectedProfileId)
+      return false
+    bootstrap.value = outcome.value
     status.value = 'ready'
     return true
   }
 
-  watch(language, () => load(), { immediate: true })
-
+  void load()
   onScopeDispose(latest.cancel)
 
   return {
     status,
-    sections,
+    bootstrap,
     error,
     retry: () => load(),
     refresh: () => load(true),
   }
+}
+
+export interface MineGridItem {
+  card: Card
+  continuation?: ContinueCard
+  cycle?: import('@torsher/api-client').MineCycle | null
+  continuationState?: ContinueState
+  canResume?: boolean
 }
 
 /**
@@ -67,37 +90,92 @@ export function useMineSections() {
  * без загрузки на экране.
  */
 export function useMineItems(
-  section: Ref<MineSection | undefined>,
+  section: Ref<MineMenuSection | undefined>,
   view: Ref<MineView>,
+  options?: {
+    state: Ref<ContinueState>
+    watched: Ref<WatchedScope | undefined>
+  },
 ) {
   const language = useCatalogLanguage()
   const status = ref<MineStatus>('loading')
-  const items = shallowRef<Card[]>([])
+  const items = shallowRef<MineGridItem[]>([])
   const total = ref(0)
   const error = ref<LoadError>()
   const latest = createLatest()
   let loadingMore: number | undefined
   let refreshing = false
 
-  function request(
-    current: MineSection,
+  async function request(
+    current: MineMenuSection,
     offset: number,
     limit: number | undefined,
     signal?: AbortSignal,
-  ) {
-    return api.mine.getMineItems(
+  ): Promise<{ items: MineGridItem[], total: number }> {
+    const context = mineViewer()
+    const query = { ...view.value, offset, limit, language: language.value }
+    if (context && current.id === 'continue') {
+      const result = await api.mine.getMinePersonalContinue(
+        {
+          ...query,
+          expectedProfileId: context.expectedProfileId,
+          state: options?.state.value,
+        },
+        { signal },
+      )
+      return {
+        items: result.items.map((row) => {
+          const continuation = personalContinueCard(row)
+          return {
+            card: continuation,
+            continuation,
+            cycle: row.cycle,
+            continuationState: row.continuation,
+            canResume:
+              row.cycle?.state === 'active'
+                ? !!row.cycle.resume
+                : !!row.normalResume,
+          }
+        }),
+        total: result.total,
+      }
+    }
+    if (context && current.id === 'watched') {
+      const scope = options?.watched.value
+      const result = await api.mine.getMinePersonalWatched(
+        {
+          ...query,
+          expectedProfileId: context.expectedProfileId,
+          source: scope?.source,
+          genre: scope?.genre,
+          country: scope?.country,
+        },
+        { signal },
+      )
+      return {
+        items: result.items.map(row => ({
+          card: personalCard(
+            row.titleId,
+            row.kind,
+            row.metadata,
+            row.ownRating,
+          ),
+        })),
+        total: result.total,
+      }
+    }
+    const result = await api.mine.getMineItems(
       {
+        ...query,
         section: current.id,
         collection: current.collectionId,
-        sort: view.value.sort,
-        kind: view.value.kind,
-        rating: view.value.rating,
-        offset,
-        limit,
-        language: language.value,
       },
       { signal },
     )
+    return {
+      items: result.items.map(card => ({ card })),
+      total: result.total,
+    }
   }
 
   // Ответ страницы, начатой до смены раздела или вида, не ложится в новый список
@@ -115,7 +193,7 @@ export function useMineItems(
       return
 
     // Пустой раздел виден по счётчику: сразу пусто, без запроса и скелетона
-    if (current.count === 0) {
+    if (current.count === 0 && !['continue', 'watched'].includes(current.id)) {
       latest.cancel()
       items.value = []
       total.value = 0
@@ -176,7 +254,8 @@ export function useMineItems(
       items.value = [
         ...items.value,
         ...page.items.filter(
-          item => !items.value.some(known => known.id === item.id),
+          item =>
+            !items.value.some(known => known.card.id === item.card.id),
         ),
       ]
       total.value = page.total
@@ -228,6 +307,9 @@ export function useMineItems(
     () => section.value?.collectionId,
     view,
     language,
+    () => (section.value?.id === 'continue' ? options?.state.value : undefined),
+    () =>
+      section.value?.id === 'watched' ? options?.watched.value : undefined,
   ]
   // Устаревший ответ теряет право на запись сразу; смена раздела и его вида
   // в одном tick при этом отправляет только один запрос с конечными параметрами.
@@ -263,14 +345,11 @@ export function useMineItems(
   }
 }
 
-/**
- * «Расписание» профиля: ближайшие и недавние серии. Грузится вместе с «Моё»:
- * счётчик раздела виден сразу; `refresh` перечитывает без загрузки на экране.
- */
-export function useSchedule() {
+/** Запрашиваем расписание при открытии раздела. */
+export function useSchedule(visible: Ref<boolean>) {
   const language = useCatalogLanguage()
   const { data, status, error, retry, refresh } = useResource<ScheduleResponse>(
-    computed(() => language.value),
+    computed(() => (visible.value ? language.value : undefined)),
     (current, signal) =>
       api.schedule.getSchedule({ language: current }, { signal }),
   )

@@ -10,6 +10,7 @@ import { api } from '../../api.ts'
 import { useCatalogLanguage } from '../../composables/useCatalogLanguage.ts'
 import { useHeldLoading } from '../../composables/useHeldLoading.ts'
 import { useResumeLabels } from '../../composables/useResumeLabels.ts'
+import { seenEpisodeKeys } from '../../lib/episodeActions.ts'
 import { loadSeason } from '../../composables/useTitleSections.ts'
 import { NATIVE_WHEEL_ATTRIBUTE, useFocus } from '../../focus/index.ts'
 import AppLoader from '../AppLoader.vue'
@@ -43,6 +44,7 @@ const { durationText } = useResumeLabels()
 const selected = ref(props.season)
 const episodes = shallowRef<Episode[]>([])
 const progress = shallowRef(new Map<string, EpisodeProgress>())
+const seen = shallowRef(new Set<string>())
 // Файлы раздачи по ключу «сезон:серия»
 const files = shallowRef(new Map<string, number>())
 const loading = ref(true)
@@ -68,6 +70,8 @@ function isCurrent(item: Episode) {
 }
 
 function shareOf(item: Episode) {
+  if (seen.value.has(keyOf(selected.value, item.number)))
+    return 1
   const row = progress.value.get(keyOf(selected.value, item.number))
 
   if (!row)
@@ -80,7 +84,7 @@ function detailOf(item: Episode) {
   const row = progress.value.get(keyOf(selected.value, item.number))
   const state = isCurrent(item)
     ? t('player.episodes.current')
-    : row?.watched
+    : seen.value.has(keyOf(selected.value, item.number))
       ? t('player.episodes.watched')
       : row && row.position > 0 && row.duration
         ? t('continue.remaining', {
@@ -157,6 +161,7 @@ onMounted(() => {
   api.titles
     .getTitleProgress(props.titleId, { language: language.value })
     .then((result) => {
+      seen.value = seenEpisodeKeys(result)
       progress.value = new Map(
         result.episodes.map(row => [keyOf(row.season, row.episode), row]),
       )

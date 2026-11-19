@@ -8,7 +8,11 @@ import type { HomeResponse, HomeRow } from '@torsher/api-client'
 import type { Ref } from 'vue'
 import type { LoadError } from '../lib/loadError.ts'
 import { onScopeDispose, ref, shallowRef, watch } from 'vue'
-import { captureTitleViewer, isTitleViewer } from '../titleActions.ts'
+import {
+  captureTitleViewer,
+  isTitleViewer,
+  titleViewerId,
+} from '../titleActions.ts'
 import { api, loadErrorOf } from '../api.ts'
 import { replaceContinueRow } from '../lib/continue.ts'
 import { createLatest } from '../lib/latest.ts'
@@ -38,6 +42,7 @@ export function useHome(mode: Ref<HomeMode>) {
     partial.cancel()
     const run = ++fullRun
     const viewer = captureTitleViewer()
+    const expectedProfileId = titleViewerId()
     const currentMode = mode.value
     const currentLanguage = language.value
     refreshing.value = true
@@ -46,7 +51,14 @@ export function useHome(mode: Ref<HomeMode>) {
 
     const outcome = await latest.run(signal =>
       api.home.getHome(
-        { mode: currentMode, language: currentLanguage },
+        {
+          mode: currentMode,
+          language: currentLanguage,
+          ...(expectedProfileId && {
+            personalContinue: '1' as const,
+            expectedProfileId,
+          }),
+        },
         { signal },
       ),
     )
@@ -98,15 +110,23 @@ export function useHome(mode: Ref<HomeMode>) {
 
     const context = diagnosticAction()
     const viewer = captureTitleViewer()
+    const expectedProfileId = titleViewerId()
     const currentMode = mode.value
     const currentLanguage = language.value
     const outcome = await partial.run(signal =>
       api.home.getHomeContinue(
-        { mode: currentMode, language: currentLanguage },
+        {
+          mode: currentMode,
+          language: currentLanguage,
+          ...(expectedProfileId && {
+            personalContinue: '1' as const,
+            expectedProfileId,
+          }),
+        },
         { ...diagnosticParams(context), signal },
       ),
     )
-    if (outcome.status === 'cancelled')
+    if (!isTitleViewer(viewer) || outcome.status === 'cancelled')
       return
     if (outcome.status === 'failed') {
       diagnostic(

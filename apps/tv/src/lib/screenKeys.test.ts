@@ -60,27 +60,37 @@ describe('createScreenKeys', () => {
 })
 
 describe('screenComponentKey', () => {
-  it('remounts the same library file for a different episode or title', () => {
-    const path = '/play/library/combined'
-    const query = { title: 'show', season: '1', episode: '2' }
-    const first = screenComponentKey({ path, query })
+  it.each(['/play/library/combined', '/play/combined/0'])(
+    'remounts %s by exact title, episode and cycle',
+    (path) => {
+      const query = { title: 'show', season: '1', episode: '2' }
+      const first = screenComponentKey({ path, query })
 
-    expect(
-      screenComponentKey({ path, query: { ...query, episode: '3' } }),
-    ).not.toBe(first)
-    expect(
-      screenComponentKey({ path, query: { ...query, season: '2' } }),
-    ).not.toBe(first)
-    expect(
-      screenComponentKey({ path, query: { ...query, title: 'other-show' } }),
-    ).not.toBe(first)
-    expect(
-      screenComponentKey({ path, query: { ...query, debug: 'keys' } }),
-    ).toBe(first)
-    expect(screenComponentKey({ path: '/play/library/other', query })).not.toBe(
-      first,
-    )
-  })
+      expect(
+        screenComponentKey({ path, query: { ...query, episode: '3' } }),
+      ).not.toBe(first)
+      expect(
+        screenComponentKey({ path, query: { ...query, season: '2' } }),
+      ).not.toBe(first)
+      expect(
+        screenComponentKey({ path, query: { ...query, title: 'other-show' } }),
+      ).not.toBe(first)
+      expect(
+        screenComponentKey({ path, query: { ...query, debug: 'keys' } }),
+      ).toBe(first)
+      expect(
+        screenComponentKey({ path, query: { ...query, cycleId: 'cycle-a' } }),
+      ).not.toBe(first)
+      expect(
+        screenComponentKey({ path, query: { ...query, cycleId: 'cycle-b' } }),
+      ).not.toBe(
+        screenComponentKey({ path, query: { ...query, cycleId: 'cycle-a' } }),
+      )
+      expect(
+        screenComponentKey({ path: '/play/library/other', query }),
+      ).not.toBe(first)
+    },
+  )
 
   it('uses the same scalar query values as library player route props', () => {
     const path = '/play/library/home-video'
@@ -100,7 +110,6 @@ describe('screenComponentKey', () => {
       '/home-video/album',
       '/mine',
       '/search',
-      '/play/torrent/0',
     ]) {
       expect(
         screenComponentKey({

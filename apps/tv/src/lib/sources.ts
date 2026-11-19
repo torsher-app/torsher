@@ -360,5 +360,9 @@ export function titleRefOf(
   if (!id)
     return undefined
 
-  return { id, season: positiveInt(season), episode: positiveInt(episode) }
+  return {
+    id,
+    season: season === '0' ? 0 : positiveInt(season),
+    episode: positiveInt(episode),
+  }
 }

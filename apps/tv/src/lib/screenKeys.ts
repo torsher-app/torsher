@@ -38,19 +38,19 @@ export function createScreenKeys() {
 }
 
 /**
- * Объединённый библиотечный файл может содержать несколько серий: смена
- * контекста должна создать новый плеер с новой позицией и ключом прогресса.
+ * Один файл может содержать несколько серий и играть в разных циклах.
+ * Смена контекста создаёт новый плеер с отдельным ключом прогресса.
  * Остальные экраны по-прежнему сохраняют ключ пути, независимо от фильтров.
  */
 export function screenComponentKey(
   route: Pick<RouteLocationNormalized, 'path' | 'query'>,
 ) {
-  if (!route.path.startsWith('/play/library/'))
+  if (!route.path.startsWith('/play/'))
     return route.path
 
   return JSON.stringify([
     route.path,
-    ...['title', 'season', 'episode'].map((key) => {
+    ...['title', 'season', 'episode', 'cycleId'].map((key) => {
       const value = route.query[key]
 
       return typeof value === 'string' ? value : null

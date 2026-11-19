@@ -120,7 +120,11 @@ function parentOf(route: RouteLike) {
     case '/title/:id/sources':
       return {
         path: `/title/${id}`,
-        accepts: (back: string) => pathOf(back) === `/title/${id}`,
+        accepts: (back: string) =>
+          pathOf(back) === `/title/${id}`
+          || (pathOf(back) === '/mine'
+            && route.query.start === '0'
+            && !!stringOf(route.query.restart)),
       }
     case '/title/:id':
       // Назад — туда, откуда открыли карточку (главная, поиск, другая карточка),

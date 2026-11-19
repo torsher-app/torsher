@@ -20,6 +20,7 @@ import type { DemoTitle } from '@torsher/demo/titles'
 import { del, DemoError, get, patch, post, put } from '@torsher/demo/router'
 import { airedEpisodes, detailsOf, seasonOf } from '@torsher/demo/titles'
 import { titleById } from '../cards.ts'
+import { demoSeenEpisodes } from './mine.ts'
 import {
   episodeFile,
   fileOf,
@@ -118,6 +119,7 @@ get<TitleProgress>('/api/titles/:id/progress', ({ params }) => {
 
   return {
     resume: resumeOf(title),
+    seenEpisodes: demoSeenEpisodes(title.id),
     last: last
       ? {
           season: last.season || null,
@@ -204,7 +206,7 @@ const DEFAULT_FOLLOW: Required<FollowTitleInput> = {
 const DEMO_SERVER_AUDIO = 'ru'
 
 function followOf(title: DemoTitle): TitleFollowResponse {
-  if (!follows.has(title.id))
+  if (!follows().has(title.id))
     return { follow: null, canEdit: true }
 
   const settings = followSettings.get(title.id) ?? DEFAULT_FOLLOW
@@ -265,7 +267,7 @@ put<TitleFollowResponse, FollowTitleInput>(
       body = { ...body, voicePolicy: { ...body.voicePolicy, studio } }
     }
 
-    follows.add(title.id)
+    follows().add(title.id)
     followSettings.set(title.id, {
       ...(followSettings.get(title.id) ?? DEFAULT_FOLLOW),
       ...body,
@@ -278,7 +280,7 @@ put<TitleFollowResponse, FollowTitleInput>(
 del<TitleFollowResponse>('/api/titles/:id/follow', ({ params }) => {
   const title = titleById(params.id!)
 
-  follows.delete(title.id)
+  follows().delete(title.id)
   return followOf(title)
 })
 

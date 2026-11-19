@@ -147,6 +147,30 @@ describe('findLegacyApis', () => {
       ),
     ).toEqual([])
   })
+
+  it('allows only the exact quoted recommendation reason keys', () => {
+    const keys = [
+      't(`mine.preview.recommendations.reason.rated`)',
+      't("mine.preview.recommendations.reason.favorite")',
+      't(\'mine.preview.recommendations.reason.watched\')',
+      't(`mine.preview.recommendations.reason.watchlist`)',
+      't(`mine.preview.recommendations.reason.genre`)',
+    ].join(';')
+
+    expect(apis(keys)).toEqual([])
+    expect(apis(`${keys};controller.signal.reason`)).toEqual([
+      'AbortSignal.reason',
+    ])
+    expect(apis('consume(mine.preview.recommendations.reason.rated)')).toEqual([
+      'AbortSignal.reason',
+    ])
+    expect(apis('t(`mine.preview.recommendations.reason.ratedExtra`)')).toEqual(
+      ['AbortSignal.reason'],
+    )
+    expect(
+      apis(`t(\`mine.preview.recommendations.reason.rated\${signal.reason}\`)`),
+    ).toEqual(['AbortSignal.reason', 'AbortSignal.reason'])
+  })
 })
 
 describe('legacyApiGuard', () => {

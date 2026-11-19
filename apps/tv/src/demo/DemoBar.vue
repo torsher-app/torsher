@@ -44,7 +44,7 @@ const text = computed(() => {
 /* Пиксели, а не `--u`: полоса — часть страницы сайта, а не экрана витрины */
 .demo-bar {
   position: fixed;
-  top: 12px;
+  bottom: 12px;
   right: 12px;
   z-index: 1000;
   display: flex;
@@ -60,10 +60,9 @@ const text = computed(() => {
   white-space: nowrap;
 }
 
-/* В плеере справа сверху часы и состояние закачки, слева название: полоса
-   встаёт по центру над ними */
+/* В плеере подпись ролика остаётся по центру нижнего края. */
 .demo-bar.player {
-  top: 8px;
+  bottom: 8px;
   right: auto;
   left: 50%;
   transform: translateX(-50%);

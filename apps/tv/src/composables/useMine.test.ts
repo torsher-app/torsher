@@ -10,12 +10,22 @@ import {
   titleActions,
 } from '../titleActions.ts'
 import { DEFAULT_MINE_VIEW } from '../lib/mineView.ts'
-import { useMineItems } from './useMine.ts'
+import { useMineBootstrap, useMineItems } from './useMine.ts'
 import { useTitleChanges } from './useTitleChanges.ts'
 
-const mocks = vi.hoisted(() => ({ items: vi.fn() }))
+const mocks = vi.hoisted(() => ({
+  items: vi.fn(),
+  bootstrap: vi.fn(),
+  personal: vi.fn(),
+}))
 vi.mock('../api.ts', () => ({
-  api: { mine: { getMineItems: mocks.items } },
+  api: {
+    mine: {
+      getMineItems: mocks.items,
+      getMineBootstrap: mocks.bootstrap,
+      getMinePersonalContinue: mocks.personal,
+    },
+  },
   loadErrorOf: () => 'unavailable',
 }))
 vi.mock('./useCatalogLanguage.ts', () => ({
@@ -58,13 +68,13 @@ it('keeps a failed quiet refresh dirty until a healthy reactivation', async () =
   version.value++
   await vi.waitFor(() => expect(mocks.items).toHaveBeenCalledTimes(2))
   await nextTick()
-  expect(mine.items.value.map(item => item.id)).toEqual(['old'])
+  expect(mine.items.value.map(item => item.card.id)).toEqual(['old'])
   mocks.items.mockResolvedValueOnce({ items: [card('fresh')], total: 1 })
   active.value = false
   await nextTick()
   active.value = true
   await vi.waitFor(() =>
-    expect(mine.items.value.map(item => item.id)).toEqual(['fresh']),
+    expect(mine.items.value.map(item => item.card.id)).toEqual(['fresh']),
   )
   expect(mocks.items).toHaveBeenCalledTimes(3)
 })
@@ -85,7 +95,7 @@ it('does not append a stale more page after a quiet refresh has removed its card
   await mine.refresh()
   finish({ items: [card('stale')], total: 3 })
   await more
-  expect(mine.items.value.map(item => item.id)).toEqual(['fresh'])
+  expect(mine.items.value.map(item => item.card.id)).toEqual(['fresh'])
   expect(mine.total.value).toBe(1)
 })
 
@@ -117,7 +127,10 @@ it('does not start pagination over old offsets while a quiet refresh is pending'
   await refresh
   mocks.items.mockResolvedValueOnce({ items: [card('next')], total: 3 })
   await mine.more()
-  expect(mine.items.value.map(item => item.id)).toEqual(['fresh', 'next'])
+  expect(mine.items.value.map(item => item.card.id)).toEqual([
+    'fresh',
+    'next',
+  ])
 })
 
 it('ignores an in-flight page after viewer changes, including A/B/A', async () => {
@@ -136,7 +149,7 @@ it('ignores an in-flight page after viewer changes, including A/B/A', async () =
   setTitleViewer('A')
   finish({ items: [card('stale')], total: 3 })
   await more
-  expect(mine.items.value.map(item => item.id)).toEqual(['old'])
+  expect(mine.items.value.map(item => item.card.id)).toEqual(['old'])
 })
 
 it('coalesces section and its saved view into one request with the final settings', async () => {
@@ -189,4 +202,31 @@ it('delivers Schedule menu changes after leaving an unfinished grid request', as
   await nextTick()
   await nextTick()
   expect(mine.items.value).toEqual([])
+})
+
+it('reads an unknown count and never short-circuits the personal Continue endpoint on the normal count', async () => {
+  mocks.items.mockResolvedValue({ items: [card('known')], total: 1 })
+  const { mine, section } = setup()
+  section.value = { id: 'watchlist' } as MineSection
+  await vi.waitFor(() => expect(mine.items.value[0]?.card.id).toBe('known'))
+  mocks.personal.mockResolvedValue({ profileId: 'A', items: [], total: 0 })
+  section.value = { id: 'continue', count: 0 }
+  await vi.waitFor(() =>
+    expect(mocks.personal).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ expectedProfileId: 'A' }),
+      expect.any(Object),
+    ),
+  )
+})
+
+it('discards a bootstrap from the previous viewer generation even after A/B/A', async () => {
+  const result = Promise.withResolvers<object>()
+  mocks.bootstrap.mockReturnValueOnce(result.promise)
+  const mine = scope.run(() => useMineBootstrap())!
+  setTitleViewer('B')
+  setTitleViewer('A')
+  result.resolve({ profileId: 'A' })
+  await result.promise
+  await nextTick()
+  expect(mine.bootstrap.value).toBeUndefined()
 })

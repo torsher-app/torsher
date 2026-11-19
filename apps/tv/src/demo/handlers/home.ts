@@ -15,6 +15,8 @@ import {
   titleNamed,
   TITLES,
 } from '@torsher/demo/titles'
+import { personalContinueCard } from '../../lib/minePersonal.ts'
+import { personalHomeContinue } from './mine.ts'
 import { backdropFor } from '../art.ts'
 import { cardFor, cardsOf } from '../cards.ts'
 import { isInLibrary, libraryTitleIds } from '../library.ts'
@@ -83,9 +85,26 @@ function continueCard(title: DemoTitle): ContinueCard | undefined {
 }
 
 /** Начатое за 16 недель, недавнее первым; брошенное не продолжаем */
-export function continueRow(mode: Mode = 'all'): ContinueRow {
+export function continueRow(
+  mode: Mode = 'all',
+  query = new URLSearchParams(),
+): ContinueRow {
   const since = Date.now() - CONTINUE_MAX_AGE_MS
-  const items = TITLES.filter(title => fits(title, mode))
+  const personal = personalHomeContinue(query)
+  const cycles = (personal?.cycles ?? []).flatMap((row) => {
+    const title = TITLES.find(item => item.id === row.titleId)
+    return title && fits(title, mode)
+      ? [{ ...continueCard(title), ...personalContinueCard(row) }]
+      : []
+  })
+  const cycleIds
+    = personal?.activeCycleIds ?? new Set(cycles.map(row => row.id))
+  const items = TITLES.filter(
+    title =>
+      fits(title, mode)
+      && !cycleIds.has(title.id)
+      && (!personal || personal.visible(title.id)),
+  )
     .map(title => ({ title, at: lastProgress(title.id)?.updatedAt ?? 0 }))
     .filter(({ title, at }) => at > since && statusOf(title) !== 'dropped')
     .sort((a, b) => b.at - a.at)
@@ -95,7 +114,7 @@ export function continueRow(mode: Mode = 'all'): ContinueRow {
     id: 'continue',
     kind: 'continue',
     title: 'home.rows.continue',
-    items,
+    items: [...cycles, ...items],
   }
 }
 
@@ -338,7 +357,7 @@ function personalRows(): CatalogRow[] {
 
 get<HomeResponse>('/api/home', ({ query }) => {
   const mode = modeOf(query.get('mode'))
-  const resume = continueRow(mode)
+  const resume = continueRow(mode, query)
   const personal = mode === 'all' ? personalRows() : []
   const rows: HomeRow[] = [
     ...(resume.items.length ? [resume] : []),
@@ -352,4 +371,4 @@ get<HomeResponse>('/api/home', ({ query }) => {
 })
 
 get<ContinueRow>('/api/home/continue', ({ query }) =>
-  continueRow(modeOf(query.get('mode'))))
+  continueRow(modeOf(query.get('mode')), query))

@@ -17,7 +17,9 @@ import AppToast from '../components/AppToast.vue'
 import SourcesScreen from '../components/SourcesScreen.vue'
 import {
   libraryRoute,
+  matchesRestartTarget,
   resolveRoute,
+  withPlaybackCycle,
   withStartPosition,
 } from '../lib/continue.ts'
 import { goBack } from '../lib/navigation.ts'
@@ -34,6 +36,8 @@ const props = defineProps<{
   season?: string
   episode?: string
   start?: string
+  restartRequest?: string
+  cycleId?: string
 }>()
 
 const { t } = useI18n()
@@ -100,12 +104,20 @@ async function open(candidate: SourceCandidate, choice: SourceChoice) {
     )
     void router.push(
       diagnosticRoute(
-        withStartPosition(
-          {
-            ...route,
-            query: { ...route.query, candidate: candidate.id, q: choice.query },
-          },
-          props.start === '0',
+        withPlaybackCycle(
+          withStartPosition(
+            {
+              ...route,
+              query: {
+                ...route.query,
+                candidate: candidate.id,
+                q: choice.query,
+              },
+            },
+            props.start === '0',
+            props.restartRequest,
+          ),
+          props.cycleId,
         ),
         context,
       ),
@@ -138,11 +150,22 @@ async function open(candidate: SourceCandidate, choice: SourceChoice) {
           ? undefined
           : String(choice.season)
 
-    router.push({
-      path: `/title/${props.id}/files/${result.torrentId}`,
-      state: { diagnostic: { ...context } },
-      query: { season, download: props.download ? '1' : undefined },
-    })
+    const files = withStartPosition(
+      {
+        path: `/title/${props.id}/files/${result.torrentId}`,
+        query: {
+          season,
+          download: props.download ? '1' : undefined,
+          cycleId: props.cycleId,
+        },
+      },
+      !props.download
+      && props.start === '0'
+      && props.season === undefined
+      && props.episode === undefined,
+      props.restartRequest,
+    )
+    router.push({ ...files, state: { diagnostic: { ...context } } })
   }
   catch (err) {
     if (generation !== openGeneration)
@@ -176,11 +199,15 @@ function playLibrary(
   )
   router.push(
     diagnosticRoute(
-      withStartPosition(
-        libraryRoute(fileId, { id: props.id, ...title }),
-        props.start === '0'
-        && String(title.season) === props.season
-        && String(title.episode) === props.episode,
+      withPlaybackCycle(
+        withStartPosition(
+          libraryRoute(fileId, { id: props.id, ...title }),
+          props.start === '0'
+          && !props.download
+          && matchesRestartTarget(props, title),
+          props.restartRequest,
+        ),
+        props.cycleId,
       ),
       context,
     ),

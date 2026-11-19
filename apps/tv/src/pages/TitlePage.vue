@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { seenEpisodeKeys } from '../lib/episodeActions.ts'
 import { goBack } from '../lib/navigation.ts'
 import type {
   Card,
@@ -369,6 +370,9 @@ const episodeProgress = computed(() => {
           : 0,
     })
   }
+
+  for (const key of seenEpisodeKeys(progress.value))
+    map.set(key, { watched: true, share: 1 })
 
   return map
 })

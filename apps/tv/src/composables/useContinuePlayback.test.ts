@@ -106,6 +106,31 @@ describe('continue playback', () => {
     })
   })
 
+  it('resolves a source-less cycle special as S0E1 after an empty library lookup', async () => {
+    library.mockResolvedValue({ files: [] })
+    await useContinuePlayback(shallowRef()).resume('show', {
+      ...next,
+      season: 0,
+      next: false,
+      cycleId: 'special-cycle',
+    })
+    expect(library).toHaveBeenCalledExactlyOnceWith(
+      'show',
+      { season: '0', episode: '1' },
+      { signal: expect.any(AbortSignal) },
+    )
+    expect(push).toHaveBeenCalledExactlyOnceWith({
+      path: '/title/show/play',
+      query: {
+        season: '0',
+        episode: '1',
+        torrent: undefined,
+        automatic: undefined,
+        cycleId: 'special-cycle',
+      },
+    })
+  })
+
   it.each([{ next: false }, { next: true, followNewEpisode: true }])(
     'opens the chosen torrent immediately and cancels a pending lookup %o',
     async (flags) => {

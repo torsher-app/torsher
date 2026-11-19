@@ -1,7 +1,17 @@
-import type { Playback, TorrentStats } from '@torsher/api-client'
+import type {
+  CreatePlaybackInput,
+  Playback,
+  TorrentStats,
+} from '@torsher/api-client'
 import { effectScope } from 'vue'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { usePlayback } from './usePlayback.ts'
+import {
+  restartScope,
+  saveRestart,
+  stageViewingRestart,
+  viewingRestartFor,
+} from '../lib/viewingRestart.ts'
 import {
   setTitleViewer,
   titleActions,
@@ -12,6 +22,7 @@ const mocks = vi.hoisted(() => ({
   post: vi.fn(),
   remove: vi.fn(),
   get: vi.fn(),
+  getViewingAttempt: vi.fn(),
   save: vi.fn(),
   diagnostic: vi.fn(),
   stats: vi.fn(),
@@ -24,6 +35,7 @@ vi.mock('../api.ts', () => ({
       postPlayback: mocks.post,
       deletePlayback: mocks.remove,
       getPlayback: mocks.get,
+      getViewingAttempt: mocks.getViewingAttempt,
     },
   },
 }))
@@ -426,5 +438,363 @@ it('orders checkpoints and backward seeks across player instances without waitin
   ])
   old.resolve()
   await pending
+  scope.stop()
+})
+
+it('retries a lost explicit restart with the same request ID and expected generation', async () => {
+  const storage = new Map<string, string>()
+  vi.stubGlobal('sessionStorage', {
+    getItem: (key: string) => storage.get(key) ?? null,
+    setItem: (key: string, value: string) => storage.set(key, value),
+  })
+  const previous = {
+    attemptId: 'old',
+    generation: 3,
+    state: 'completed' as const,
+  }
+  const current = { attemptId: 'new', generation: 4, state: 'open' as const }
+  mocks.getViewingAttempt.mockResolvedValue({ attempt: previous })
+  mocks.post
+    .mockRejectedValueOnce(new Error('lost response'))
+    .mockResolvedValue({ ...ready('new-session'), viewing: current })
+  const title = { id: 'tmdb:movie:10' }
+  const key = restartScope('A', title)
+  const restart = stageViewingRestart(key)
+  const create = () =>
+    usePlayback({ mediaFileId: 'file' }, title, undefined, {}, 'A')
+  const scope = effectScope()
+  const player = scope.run(create)!
+  await player.start({ startPosition: 0 }, restart)
+  scope.stop()
+  const reloaded = effectScope()
+  const retry = reloaded.run(create)!
+  const stored = viewingRestartFor(key, restart.requestId)
+  expect(stored?.expectedGeneration).toBe(3)
+  expect(await retry.start({ startPosition: 0 }, stored)).toBe('ready')
+  expect(mocks.getViewingAttempt).toHaveBeenCalledTimes(1)
+  const first = mocks.post.mock.calls[0]![0].viewing
+  expect(first).toMatchObject({ intent: 'restart', expectedGeneration: 3 })
+  expect(mocks.post.mock.calls[1]![0].viewing).toMatchObject({
+    requestId: first.requestId,
+    intent: 'restart',
+    expectedGeneration: 3,
+  })
+  expect(mocks.post.mock.calls[1]![0].viewing.playerId).not.toBe(
+    first.playerId,
+  )
+  reloaded.stop()
+  const readyReloaded = effectScope()
+  const continued = readyReloaded.run(create)!
+  expect(viewingRestartFor(key, restart.requestId)?.consumed).toBe(true)
+  await continued.start()
+  expect(mocks.post.mock.calls[2]![0].viewing).toMatchObject({
+    intent: 'join',
+  })
+  expect(mocks.post.mock.calls[2]![0].viewing.requestId).not.toBe(
+    first.requestId,
+  )
+  readyReloaded.stop()
+  vi.unstubAllGlobals()
+})
+
+it.each([false, true])(
+  'replays the newer history restart once after reload (first POST accepted: %s)',
+  async (acceptedBeforeLoss) => {
+    const storage = new Map<string, string>()
+    vi.stubGlobal('sessionStorage', {
+      getItem: (key: string) => storage.get(key) ?? null,
+      setItem: (key: string, value: string) => storage.set(key, value),
+    })
+    try {
+      const title = { id: 'tmdb:movie:10' }
+      const key = restartScope('A', title)
+      const oldRoute = stageViewingRestart(key)
+      saveRestart({ ...oldRoute, expectedGeneration: 2, consumed: true })
+      const restart = stageViewingRestart(key, 'player-history-entry')
+      let generation = 3
+      let applied: string | undefined
+      let posts = 0
+      mocks.getViewingAttempt.mockImplementation(async () => ({
+        attempt: { generation },
+      }))
+      mocks.post.mockImplementation(async (body: CreatePlaybackInput) => {
+        const request = body.viewing!
+        posts++
+        if (
+          (posts > 1 || acceptedBeforeLoss)
+          && request.intent === 'restart'
+          && applied !== request.requestId
+        ) {
+          expect(request.expectedGeneration).toBe(generation)
+          generation++
+          applied = request.requestId
+        }
+        if (posts === 1)
+          throw new Error('lost response')
+        return {
+          ...ready('reloaded'),
+          viewing: { attemptId: 'attempt', generation, state: 'open' },
+        }
+      })
+      const create = () =>
+        usePlayback({ mediaFileId: 'file' }, title, undefined, {}, 'A')
+      const original = effectScope()
+      await original.run(create)!.start({ startPosition: 0 }, restart)
+      original.stop()
+      vi.resetModules()
+      const fresh = await import('../lib/viewingRestart.ts')
+      const persisted = fresh.viewingRestartFor(
+        key,
+        oldRoute.requestId,
+        'player-history-entry',
+      )
+      expect(persisted).toMatchObject({
+        requestId: restart.requestId,
+        expectedGeneration: 3,
+      })
+      expect(
+        fresh.viewingRestartFor(key, restart.requestId, 'other-history-entry'),
+      ).toBeUndefined()
+      expect(
+        fresh.viewingRestartFor(
+          restartScope('B', title),
+          oldRoute.requestId,
+          'player-history-entry',
+        ),
+      ).toBeUndefined()
+      const reloaded = effectScope()
+      expect(
+        await reloaded.run(create)!.start({ startPosition: 0 }, persisted),
+      ).toBe('ready')
+      reloaded.stop()
+      expect(mocks.post.mock.lastCall?.[0].viewing).toMatchObject({
+        requestId: restart.requestId,
+        expectedGeneration: 3,
+      })
+      expect(mocks.getViewingAttempt).toHaveBeenCalledOnce()
+      expect(generation).toBe(4)
+      expect(
+        fresh.viewingRestartFor(key, oldRoute.requestId, 'player-history-entry')
+          ?.consumed,
+      ).toBe(true)
+    }
+    finally {
+      vi.unstubAllGlobals()
+    }
+  },
+)
+
+it('never rebases an unprepared stored restart after the pinned CAS could not be saved', async () => {
+  let stored: string | null = null
+  const writes = vi.fn((_key: string, value: string) => {
+    if (stored)
+      throw new Error('quota')
+    stored = value
+  })
+  const removeItem = vi.fn(() => {
+    throw new Error('storage unavailable')
+  })
+  vi.stubGlobal('sessionStorage', {
+    getItem: () => stored,
+    setItem: writes,
+    removeItem,
+  })
+  try {
+    const title = { id: 'tmdb:movie:10' }
+    const key = restartScope('A', title)
+    const restart = stageViewingRestart(key)
+    const create = () =>
+      usePlayback({ mediaFileId: 'file' }, title, undefined, {}, 'A')
+    let generation = 3
+    mocks.getViewingAttempt.mockImplementation(async () => ({
+      attempt: { generation },
+    }))
+    mocks.post
+      .mockRejectedValueOnce(new Error('request lost before acceptance'))
+      .mockImplementation(async (body: CreatePlaybackInput) => {
+        if (body.viewing?.intent === 'restart')
+          generation++
+        return {
+          ...ready('joined'),
+          viewing: { attemptId: 'current', generation, state: 'open' },
+        }
+      })
+    const original = effectScope()
+    await original.run(create)!.start({ startPosition: 0 }, restart)
+    original.stop()
+    expect(writes).toHaveBeenCalledTimes(2)
+    expect(removeItem).toHaveBeenCalledOnce()
+    expect(mocks.post.mock.calls[0]![0].viewing).toMatchObject({
+      requestId: restart.requestId,
+      intent: 'restart',
+      expectedGeneration: 3,
+    })
+    expect(JSON.parse(stored!)).not.toHaveProperty('expectedGeneration')
+
+    generation = 4
+    vi.resetModules()
+    const fresh = await import('../lib/viewingRestart.ts')
+    const persisted = fresh.viewingRestartFor(key, restart.requestId)
+    expect(persisted).toBeUndefined()
+    const reloaded = effectScope()
+    expect(await reloaded.run(create)!.start(undefined, persisted)).toBe(
+      'ready',
+    )
+    reloaded.stop()
+    expect(mocks.post.mock.lastCall?.[0].viewing).toMatchObject({
+      intent: 'join',
+    })
+    expect(mocks.getViewingAttempt).toHaveBeenCalledOnce()
+    expect(generation).toBe(4)
+  }
+  finally {
+    vi.unstubAllGlobals()
+  }
+})
+
+it('captures seek lines and binding identity before a new source session opens', async () => {
+  const viewing = {
+    attemptId: 'attempt',
+    generation: 1,
+    state: 'open' as const,
+  }
+  mocks.post
+    .mockResolvedValueOnce({ ...ready('before'), viewing })
+    .mockResolvedValueOnce({ ...ready('after'), viewing })
+  mocks.save.mockResolvedValue({ accepted: true })
+  const scope = effectScope()
+  const player = scope.run(() =>
+    usePlayback({ mediaFileId: 'file' }, { id: 'tmdb:movie:10' }),
+  )!
+  await player.start()
+  const old = player.captureCheckpoint('playback', 2)
+  const seek = player.captureCheckpoint('seek')
+  const seekFollowup = player.captureCheckpoint('playback')
+  await player.start({ startPosition: 350 })
+  const current = player.captureCheckpoint('playback')
+  await player.saveWatchState(950, 1000, 'exit', undefined, old)
+  await player.saveWatchState(350, 1000, 'checkpoint', undefined, current)
+  expect(seek.viewing).toMatchObject({ line: 1, kind: 'seek' })
+  expect(seekFollowup.viewing).toMatchObject({ line: 1, kind: 'playback' })
+  const playerId = mocks.post.mock.calls[0]![0].viewing.playerId
+  expect(mocks.save.mock.calls[0]![0]).toMatchObject({
+    sessionId: 'before',
+    appliedAudioStream: 2,
+    viewing: { playerId, line: 0, kind: 'playback' },
+  })
+  expect(mocks.save.mock.calls[1]![0]).toMatchObject({
+    sessionId: 'after',
+    viewing: { playerId, line: 0, kind: 'playback' },
+  })
+  scope.stop()
+})
+
+it('closes a catalog playback response missing its binding instead of sending legacy progress', async () => {
+  mocks.post.mockResolvedValue(ready('no-binding'))
+  const scope = effectScope()
+  const player = scope.run(() =>
+    usePlayback({ mediaFileId: 'file' }, { id: 'tmdb:movie:10' }),
+  )!
+  expect(await player.start()).toBe('error')
+  expect(mocks.remove).toHaveBeenCalledWith('no-binding')
+  await player.saveWatchState(
+    350,
+    1000,
+    'exit',
+    undefined,
+    player.captureCheckpoint('stop'),
+  )
+  expect(mocks.save).not.toHaveBeenCalled()
+  scope.stop()
+})
+
+it('discards the old restart lookup after the viewer changes away and back', async () => {
+  const lookup = deferred<{ attempt: null }>()
+  mocks.getViewingAttempt.mockReturnValue(lookup.promise)
+  const scope = effectScope()
+  const player = scope.run(() =>
+    usePlayback(
+      { mediaFileId: 'file' },
+      { id: 'tmdb:movie:10' },
+      undefined,
+      {},
+      'A',
+    ),
+  )!
+  const start = player.start(
+    { startPosition: 0 },
+    stageViewingRestart(restartScope('A', { id: 'tmdb:movie:10' })),
+  )
+  setTitleViewer('B')
+  setTitleViewer('A')
+  lookup.resolve({ attempt: null })
+  expect(await start).toBe('stale')
+  expect(mocks.getViewingAttempt).toHaveBeenCalledExactlyOnceWith(
+    expect.objectContaining({ profileId: 'A' }),
+  )
+  expect(mocks.post).not.toHaveBeenCalled()
+  scope.stop()
+})
+
+it('requires the original generation on reconnect and ignores a rejected obsolete session', async () => {
+  const viewing = {
+    attemptId: 'attempt',
+    generation: 3,
+    state: 'open' as const,
+  }
+  mocks.post
+    .mockResolvedValueOnce({ ...ready('old-line'), viewing })
+    .mockResolvedValueOnce({ ...ready('fresh-line'), viewing })
+    .mockResolvedValueOnce({
+      ...ready('superseded'),
+      viewing: { ...viewing, state: 'abandoned', current: false },
+    })
+  const oldRequest = deferred<{
+    accepted: false
+    rejection: 'viewingConflict'
+  }>()
+  mocks.save
+    .mockReturnValueOnce(oldRequest.promise)
+    .mockResolvedValueOnce({ accepted: false, rejection: 'stale' })
+    .mockResolvedValueOnce({ accepted: false, rejection: 'viewingConflict' })
+  const scope = effectScope()
+  const player = scope.run(() =>
+    usePlayback({ mediaFileId: 'file' }, { id: 'tmdb:movie:10' }),
+  )!
+  await player.start()
+  const old = player.saveWatchState(
+    350,
+    1000,
+    'checkpoint',
+    undefined,
+    player.captureCheckpoint('playback'),
+  )
+  await player.start({ startPosition: 350 })
+  oldRequest.resolve({ accepted: false, rejection: 'viewingConflict' })
+  await old
+  expect(player.status.value).toBe('ready')
+  await player.saveWatchState(
+    360,
+    1000,
+    'checkpoint',
+    undefined,
+    player.captureCheckpoint('playback'),
+  )
+  expect(player.status.value).toBe('ready')
+  await player.saveWatchState(
+    370,
+    1000,
+    'checkpoint',
+    undefined,
+    player.captureCheckpoint('playback'),
+  )
+  expect(player.status.value).toBe('error')
+  expect(mocks.remove).toHaveBeenCalledWith('fresh-line')
+  expect(await player.start({ startPosition: 370 })).toBe('error')
+  expect(mocks.post.mock.lastCall?.[0].viewing).toMatchObject({
+    intent: 'join',
+    expectedGeneration: 3,
+  })
+  expect(mocks.remove).toHaveBeenCalledWith('superseded')
   scope.stop()
 })

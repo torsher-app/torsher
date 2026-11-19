@@ -3,7 +3,8 @@ import { handle } from '@torsher/demo/router'
 import { join } from 'node:path'
 import { unroutedMethods, usedApiMethods } from '@torsher/demo/coverage'
 import { describe, expect, it } from 'vitest'
-import { mineEntry, progressOf } from './viewer.ts'
+import { episodeFile, knownTorrent } from './library.ts'
+import { device, mineEntry, progressAt, progressOf } from './viewer.ts'
 import './handlers/index.ts'
 
 describe('showcase demo', () => {
@@ -12,6 +13,138 @@ describe('showcase demo', () => {
 
     expect(await unroutedMethods(used)).toEqual([])
   })
+})
+
+it('validates demo playback generations, binding and rewind order without changing the normal cursor in a cycle', async () => {
+  const request = (path: string, method = 'GET', body?: object) =>
+    handle(
+      new URL(`http://demo/api${path}`),
+      { method, body: body && JSON.stringify(body) },
+      'Unavailable',
+    )
+  const catalog = titleNamed('Kites over Mareth')!
+  const title = { id: catalog.id, season: 1, episode: 1 }
+  knownTorrent(catalog, title.season)
+  const source = episodeFile(title.id, title.season, title.episode)!
+  const profileId = device.currentId
+  const clientId = 'demo-viewing-client'
+  const playerId = 'demo-viewing-player'
+  const start = {
+    requestId: 'demo-viewing-start',
+    intent: 'join',
+    clientId,
+    playerId,
+  }
+  const first = await (
+    await request('/playback', 'POST', {
+      ...source,
+      title,
+      profileId,
+      viewing: start,
+    })
+  ).json()
+  expect(first.viewing).toMatchObject({
+    generation: 1,
+    current: true,
+    attemptId: expect.stringMatching(
+      /^[\da-f]{8}-(?:[\da-f]{4}-){3}[\da-f]{12}$/i,
+    ),
+  })
+  const save = async (
+    sessionId: string,
+    sequence: number,
+    position: number,
+    more = {},
+    line = 0,
+  ) =>
+    (
+      await request('/watch-state', 'PUT', {
+        ...source,
+        title,
+        sessionId,
+        position,
+        duration: 1000,
+        event: { clientId, sequence },
+        viewing: { playerId, line, kind: 'playback' },
+        ...more,
+      })
+    ).json()
+  expect(await save(first.sessionId, 1, 350)).toMatchObject({ accepted: true })
+  expect(await save(first.sessionId, 3, 600, {}, 1)).toMatchObject({
+    accepted: true,
+  })
+  expect(await save(first.sessionId, 2, 380)).toMatchObject({
+    accepted: false,
+    rejection: 'stale',
+  })
+  expect(
+    await save(first.sessionId, 4, 990, { fileIndex: source.fileIndex + 1 }, 1),
+  ).toMatchObject({ accepted: false, rejection: 'viewingConflict' })
+
+  const second = await (
+    await request('/playback', 'POST', {
+      ...source,
+      title,
+      profileId,
+      viewing: {
+        ...start,
+        requestId: 'demo-viewing-restart',
+        intent: 'restart',
+        expectedGeneration: 1,
+      },
+    })
+  ).json()
+  expect(second.viewing).toMatchObject({ generation: 2, current: true })
+  expect(await save(first.sessionId, 400, 995)).toMatchObject({
+    accepted: false,
+    rejection: 'viewingConflict',
+  })
+  const retry = await (
+    await request('/playback', 'POST', {
+      ...source,
+      title,
+      profileId,
+      viewing: start,
+    })
+  ).json()
+  expect(retry.viewing).toMatchObject({
+    ...first.viewing,
+    current: false,
+    state: 'abandoned',
+  })
+  expect(await save(second.sessionId, 5, 390)).toMatchObject({
+    accepted: true,
+  })
+
+  const before = progressAt(title.id, title.season, title.episode)
+  const cycleId = '095955ce-a8e0-45fa-98a0-b072b799ab19'
+  const cycle = await (
+    await request('/playback', 'POST', {
+      ...source,
+      title,
+      profileId,
+      viewing: { ...start, requestId: 'demo-viewing-cycle', cycleId },
+    })
+  ).json()
+  expect(await save(cycle.sessionId, 6, 920)).toMatchObject({ accepted: true })
+  expect(progressAt(title.id, title.season, title.episode)).toEqual(before)
+  const query = `titleId=${title.id}&season=${title.season}&episode=${title.episode}&cycleId=${cycleId}`
+  expect(
+    await (await request(`/playback/viewing-attempt?${query}`)).json(),
+  ).toMatchObject({ source })
+  try {
+    device.currentId = 'profile-sam'
+    expect(await save(cycle.sessionId, 7, 930)).toMatchObject({
+      accepted: false,
+      rejection: 'viewingConflict',
+    })
+    expect(
+      await (await request(`/playback/viewing-attempt?${query}`)).json(),
+    ).toEqual({ attempt: null })
+  }
+  finally {
+    device.currentId = profileId
+  }
 })
 
 it('retains cached studio choices after an explicit demo search', async () => {

@@ -1,9 +1,14 @@
 <script setup lang="ts">
+import MineUndoToast from './components/mine/MineUndoToast.vue'
+import { mineUndo } from './lib/mineUndo.ts'
 import { onErrorCaptured, ref, watchEffect } from 'vue'
 import { useRoute } from 'vue-router'
 import AppScreensaver from './components/AppScreensaver.vue'
 import InputDebug from './components/InputDebug.vue'
 import TitleActions from './components/TitleActions.vue'
+import MineEditor from './components/mine/MineEditor.vue'
+import { mineEditor } from './lib/mineEditor.ts'
+import { titleActions } from './titleActions.ts'
 import { useScreensaver } from './composables/useScreensaver.ts'
 import { diagnosticError } from './diagnostics/index.ts'
 import { inputDebug } from './inputDebug.ts'
@@ -28,12 +33,15 @@ const STACK_DEPTH = 10
 
 const currentRoute = useRoute()
 const cacheKey = ref(session.profile?.id)
+const cacheViewer = ref(titleActions.viewer)
 
 // Пока открыт выбор профиля, ключ стоит: иначе KeepAlive пересоздал бы и сам
 // экран выбора посреди перехода дальше
 watchEffect(() => {
-  if (currentRoute.path !== '/profiles')
+  if (currentRoute.path !== '/profiles') {
     cacheKey.value = session.profile?.id
+    cacheViewer.value = titleActions.viewer
+  }
 })
 
 // В плеере заставки нет: ни при просмотре, ни на паузе — там своё затемнение
@@ -59,7 +67,7 @@ const {
   -->
   <RouterView v-slot="{ Component, route }">
     <KeepAlive
-      :key="`screens-${cacheKey}`"
+      :key="`screens-${cacheKey}-${cacheViewer}`"
       :include="[
         'HomePage',
         'HomeVideoPage',
@@ -75,7 +83,7 @@ const {
       />
     </KeepAlive>
     <KeepAlive
-      :key="`stack-${cacheKey}`"
+      :key="`stack-${cacheKey}-${cacheViewer}`"
       :include="['TitlePage', 'PersonPage', 'SourcesPage']"
       :max="STACK_DEPTH"
     >
@@ -84,6 +92,12 @@ const {
   </RouterView>
   <!-- Меню действий тайтла — поверх любого экрана: его открывает постер где угодно -->
   <TitleActions />
+  <MineEditor
+    v-if="mineEditor"
+    :key="mineEditor.revision"
+    :session="mineEditor"
+  />
+  <MineUndoToast v-if="mineUndo" :key="mineUndo.revision" :change="mineUndo" />
 
   <Transition name="screensaver">
     <AppScreensaver

@@ -1,4 +1,6 @@
+import type { MineTitlePersonal } from '@torsher/api-client'
 import { api } from '../api.ts'
+import { mineViewer } from '../lib/minePersonal.ts'
 import {
   isTitleViewer,
   noteTitleMineRefresh,
@@ -13,11 +15,22 @@ export async function saveTitleWatched(
   watched: boolean,
   language: string,
   viewer: number,
+  onSaved?: (personal: MineTitlePersonal) => void,
 ) {
-  await api.titles.putTitleWatched(id, { watched }, { language })
+  const context = mineViewer()
+  if (!context || context.viewer !== viewer)
+    return
+  const personal = await api.mine.putMineSeen(id, {
+    expectedProfileId: context.expectedProfileId,
+    language,
+    season: 0,
+    episode: 0,
+    watched,
+  })
   noteTitleProgress(viewer, id, false)
   if (!isTitleViewer(viewer))
     return
+  onSaved?.(personal)
 
   const revision = titleMineRevision(id)
   try {
