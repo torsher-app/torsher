@@ -255,13 +255,11 @@ const interests = computed(() => {
     },
     {
       field: 'country' as const,
-      values: (summary?.countries ?? [])
-        .slice(0, 6)
-        .map(row => ({
-          id: row.value,
-          count: row.count,
-          label: countryLabel(row.value, locale.value),
-        })),
+      values: (summary?.countries ?? []).slice(0, 6).map(row => ({
+        id: row.value,
+        count: row.count,
+        label: countryLabel(row.value, locale.value),
+      })),
     },
   ]
 })
@@ -411,7 +409,8 @@ onScopeDispose(() => {
             @click="openPeriod"
           >
             <AppIcon name="chevronLeft" class="chip__leading-icon" />
-            {{ monthLabel }} <AppIcon name="chevronRight" />
+            <span class="period-button__label">{{ monthLabel }}</span>
+            <AppIcon name="chevronRight" />
           </button>
         </FocusSection>
       </template>
@@ -783,8 +782,14 @@ onScopeDispose(() => {
 }
 
 .period-button {
+  justify-content: center;
   min-width: calc(var(--u) * 270);
   margin-right: 0;
+}
+
+.period-button__label {
+  line-height: 1;
+  transform: translateY(0.0625em);
 }
 
 .overview__metrics {
