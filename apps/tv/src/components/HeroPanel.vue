@@ -7,6 +7,7 @@ import { useResumeLabels } from '../composables/useResumeLabels.ts'
 import { useTitleMeta } from '../composables/useTitleMeta.ts'
 import { lacksSources } from '../serverSources.ts'
 import AppIcon from './AppIcon.vue'
+import KeyHint from './KeyHint.vue'
 import RatingList from './RatingList.vue'
 
 const props = defineProps<{
@@ -111,25 +112,28 @@ const meta = computed(() => {
         {{ hero.details.overview }}
       </p>
       <div v-if="resume" class="hero__keys">
-        <span class="hero__key">
-          <span class="hero__button">OK</span>{{ t("home.hint.resume") }}
-        </span>
+        <KeyHint class="hero__key">
+          {{ t("home.hint.resume") }}
+        </KeyHint>
       </div>
       <div v-else-if="release" class="hero__keys">
-        <span class="hero__key">
-          <span class="hero__button">OK</span>{{ t("home.hint.release") }}
-        </span>
+        <KeyHint class="hero__key">
+          {{ t("home.hint.release") }}
+        </KeyHint>
       </div>
       <div v-else class="hero__keys">
-        <span class="hero__key">
-          <span class="hero__button">OK</span>{{ t("home.hint.details") }}
-        </span>
-        <span v-if="watchable" class="hero__key">
-          <span class="hero__button"><AppIcon name="play" /></span>{{ t("home.hint.watch") }}
-        </span>
-        <span class="hero__key">
-          <span class="hero__button">OK</span>{{ t("home.hint.actions") }}
-        </span>
+        <KeyHint class="hero__key">
+          {{ t("home.hint.details") }}
+        </KeyHint>
+        <KeyHint v-if="watchable" class="hero__key">
+          <template #key>
+            <AppIcon name="play" />
+          </template>
+          {{ t("home.hint.watch") }}
+        </KeyHint>
+        <KeyHint class="hero__key">
+          {{ t("home.hint.actions") }}
+        </KeyHint>
       </div>
     </div>
   </Transition>
@@ -240,28 +244,9 @@ const meta = computed(() => {
 .hero__keys {
   display: flex;
   margin-top: calc(var(--u) * 22);
-  color: var(--color-text-dim);
-  font-size: calc(var(--u) * 22);
 }
 
 .hero__key {
-  display: inline-flex;
-  align-items: center;
   margin-right: calc(var(--u) * 26);
-}
-
-.hero__button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: calc(var(--u) * 40);
-  height: calc(var(--u) * 32);
-  margin-right: calc(var(--u) * 10);
-  padding: 0 calc(var(--u) * 8);
-  border: calc(var(--u) * 2) solid var(--color-text-dim);
-  border-radius: var(--radius-s);
-  color: var(--color-text-muted);
-  font-size: calc(var(--u) * 17);
-  font-weight: 600;
 }
 </style>

@@ -3979,7 +3979,7 @@
         "days": "day | days"
       },
       "calendar": {
-        "allDay": "All watches · {count}",
+        "openDayHint": "Press a date to open the day",
         "emptyDay": "No watches",
         "weekdays": "Mo,Tu,We,Th,Fr,Sa,Su",
         "today": "today",

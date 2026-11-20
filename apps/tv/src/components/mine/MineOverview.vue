@@ -38,6 +38,7 @@ import { platform } from '../../platform/index.ts'
 import { titleActions } from '../../titleActions.ts'
 import AppIcon from '../AppIcon.vue'
 import FocusSection from '../FocusSection.vue'
+import KeyHint from '../KeyHint.vue'
 import MineSectionHeader from '../MineSectionHeader.vue'
 import OptionsPanel from '../OptionsPanel.vue'
 import PosterCard from '../PosterCard.vue'
@@ -530,7 +531,6 @@ onScopeDispose(() => {
                       :edges="{
                         left: 'mine-sections',
                         up: 'mine-overview-metrics',
-                        right: 'mine-overview-day',
                         down: 'mine-overview-recent',
                       }"
                     >
@@ -614,29 +614,12 @@ onScopeDispose(() => {
                       </template>
                     </p>
                   </div>
-                  <FocusSection
-                    v-if="dayCount"
-                    name="mine-overview-day"
-                    class="day-card__action"
-                    :edges="{
-                      left: 'mine-overview-calendar',
-                      up: 'mine-overview-calendar',
-                      down: 'mine-overview-recent',
-                    }"
-                  >
-                    <button
-                      v-focusable
-                      type="button"
-                      class="day-card__all"
-                      @click="emit('diary', 'all', { day: selectedDay })"
-                    >
-                      {{
-                        t("mine.preview.calendar.allDay", { count: dayCount })
-                      }}
-                    </button>
-                  </FocusSection>
                 </section>
               </div>
+
+              <p class="overview__day-hint">
+                <KeyHint>{{ t("mine.preview.calendar.openDayHint") }}</KeyHint>
+              </p>
 
               <section class="overview__recent">
                 <h3>{{ t("mine.preview.recent") }}</h3>
@@ -846,7 +829,8 @@ onScopeDispose(() => {
 }
 
 .day-card {
-  position: relative;
+  display: flex;
+  flex-direction: column;
   padding: calc(var(--u) * 12);
 }
 
@@ -924,10 +908,10 @@ onScopeDispose(() => {
 
 .day-card__empty {
   display: flex;
+  flex: 1;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  height: 100%;
   text-align: center;
 }
 
@@ -985,28 +969,10 @@ onScopeDispose(() => {
   text-overflow: clip;
 }
 
-.day-card__action {
-  position: absolute;
-  right: calc(var(--u) * 12);
-  bottom: calc(var(--u) * 12);
-  left: calc(var(--u) * 12);
-}
-
-.day-card__all {
-  width: 100%;
-  height: calc(var(--u) * 44);
-  border: 0;
-  border-radius: calc(var(--u) * 10);
-  background: var(--color-surface-raised);
-  color: inherit;
-  font: inherit;
-  font-size: var(--font-size-s);
-}
-
-.day-card__all:focus {
-  background: var(--color-focus);
-  color: var(--color-bg);
-  transform: scale(var(--focus-scale));
+.overview__day-hint {
+  display: flex;
+  align-items: center;
+  margin: calc(var(--u) * 16) 0 0;
 }
 
 .overview__recent,
