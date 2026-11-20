@@ -46,7 +46,7 @@ Press OK on an entry to open its actions. You can open the title, watch it again
 
 <Ui k="mine.preview.sections.overview" /> starts with a month. Its movie and episode tiles count watches, so watching the same movie twice counts twice. Rewatches are part of those watches, not an extra set to add to the total. Active days count dates with at least one dated entry. Recording a whole series without specific episodes adds a diary entry but does not invent an episode count.
 
-Select a movie, episode or rewatch tile to open the records behind it. The days tile focuses the calendar. A calendar cell shows its date and number of watches; moving to it previews up to four records beside the calendar. The action below the preview opens the full day. The selected month applies to all these figures. In a browser, hover or focus a tile to see distinct-title details.
+Select a movie, episode or rewatch tile to open the records behind it. The days tile focuses the calendar. A calendar cell shows its date and number of watches; moving to it previews up to four records beside the calendar. This side panel is an informational preview. Press OK or click a date with watches to open the full day in the diary; the reminder below the preview is not a button. The selected month applies to all these figures. In a browser, hover or focus a tile to see distinct-title details.
 
 <Ui k="mine.preview.recent" /> opens recently watched titles. Genre and country interests count distinct titles with known metadata; their detail view also shows how many diary entries those titles produced. Missing metadata can make these groups incomplete.
 
