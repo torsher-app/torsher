@@ -42,11 +42,15 @@ import {
   recommendationPause,
   unavailableSeedList,
 } from './recommendationRefresh.ts'
-import { recommendationMetadata } from './recommendationMetadata.ts'
+import {
+  batchRecommendationMetadata,
+  recommendationMetadata,
+} from './recommendationMetadata.ts'
 import { recommendationSignals } from './recommendationSignals.ts'
 
 const SCREEN_LIMIT = 12
 const POOL_LIMIT = 24
+const METADATA_BATCH_SIZE = 64
 const COLD_SEED_LIMIT = 6
 const JOB_RETENTION_MS = 24 * 60 * 60 * 1000
 const SLOT_GC_INTERVAL_MS = 60_000
@@ -70,6 +74,7 @@ type Metadata = NonNullable<ReturnType<typeof recommendationMetadata>>
 interface CandidateView extends Candidate {
   metadata: Metadata
   age?: number
+  needsMetadata: boolean
 }
 
 function kindMatches(
@@ -318,24 +323,49 @@ function readRecommendations(
           candidates.map(row => row.id),
           now,
         )
-  const views = candidates.flatMap((row) => {
+  const available = candidates.filter((row) => {
     const age = ages?.get(row.id)
-    if (
-      profile.ageLimit !== null
-      && age !== undefined
-      && age >= profile.ageLimit
-    ) {
-      return []
-    }
-    const metadata = recommendationMetadata(
-      row.id,
+    return (
+      profile.ageLimit === null || age === undefined || age < profile.ageLimit
+    )
+  })
+  const views: CandidateView[] = []
+  const checkFreshness
+    = query.refresh === 'visible' && query.source !== 'watchlist'
+  for (
+    let offset = 0;
+    offset < available.length;
+    offset += METADATA_BATCH_SIZE
+  ) {
+    const batch = available.slice(offset, offset + METADATA_BATCH_SIZE)
+    const cache = batchRecommendationMetadata(
+      batch.map(row => row.id),
       query.language,
       today,
-      genreNames,
-      row.listed,
+      now,
     )
-    return metadata ? [{ ...row, age, metadata }] : []
-  })
+    for (const row of batch) {
+      const metadata = recommendationMetadata(
+        row.id,
+        query.language,
+        today,
+        genreNames,
+        row.listed,
+        cache,
+      )
+      if (!metadata)
+        continue
+      const candidate = { ...row, age: ages?.get(row.id), metadata }
+      views.push({
+        ...candidate,
+        needsMetadata:
+          checkFreshness
+          && hydrationWork({ query, profile }, candidate).some(
+            spec => !cache.fresh(spec),
+          ),
+      })
+    }
+  }
   return {
     profile,
     query,
@@ -363,7 +393,10 @@ function detailsLanguage(profile: Profile, language: string) {
     : 'ru-RU'
 }
 
-function hydrationWork(reading: RecommendationReading, row: CandidateView) {
+function hydrationWork(
+  reading: Pick<RecommendationReading, 'query' | 'profile'>,
+  row: Pick<CandidateView, 'metadata' | 'age'>,
+) {
   const { metadata } = row
   const { query, profile } = reading
   if (metadata.unavailable)
@@ -428,6 +461,8 @@ function seedNameWork(
 }
 
 function usefulWork(reading: RecommendationReading) {
+  if (reading.candidates.some(row => row.needsMetadata))
+    return true
   if (
     reading.pages
       .slice(0, COLD_SEED_LIMIT)
@@ -442,11 +477,7 @@ function usefulWork(reading: RecommendationReading) {
   const eligible = reading.candidates.filter(row =>
     canShow(row, reading.profile.ageLimit, reading.query),
   )
-  return (
-    reading.candidates.some(row =>
-      hydrationWork(reading, row).some(spec => !spec.read(true)),
-    ) || seedNameWork(reading, eligible.slice(0, SCREEN_LIMIT)).length > 0
-  )
+  return seedNameWork(reading, eligible.slice(0, SCREEN_LIMIT)).length > 0
 }
 
 interface WantedView {
@@ -578,7 +609,11 @@ async function warmTitles(
     let entry = candidate
     const attempted = new Set<string>()
     // A title request can reveal which exact season to hydrate.
-    for (let step = 0; step < 3 && canRequest(); step++) {
+    for (
+      let step = 0;
+      candidate.needsMetadata && step < 3 && canRequest();
+      step++
+    ) {
       const spec = hydrationWork(reading, entry).find(
         spec => !attempted.has(spec.key) && !spec.read(true),
       )

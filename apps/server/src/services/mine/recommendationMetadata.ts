@@ -1,11 +1,16 @@
 import type { Card } from '../../dto/catalog.ts'
 import type { TmdbRef } from '../tmdb/mappers.ts'
+import type { PublicRequest } from '../tmdb/recommendations.ts'
 import type {
   TmdbEpisode,
   TmdbListResult,
   TmdbMovie,
+  TmdbSeason,
   TmdbTv,
 } from '../tmdb/types.ts'
+import { readMetaCacheBatch } from '../tmdb/cache.ts'
+import { titleDetailsCacheKey } from '../tmdb/certification.ts'
+import { seasonKey } from '../tmdb/index.ts'
 import {
   listResultToBackdrop,
   listResultToCard,
@@ -28,17 +33,96 @@ function catalogDay(day: string | null | undefined) {
   return day && /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : undefined
 }
 
-function fallbackDetails(ref: TmdbRef, language: string) {
+interface MetadataCache {
+  details: (ref: TmdbRef, language: string) => TmdbMovie | TmdbTv | undefined
+  season: (
+    ref: TmdbRef,
+    season: number,
+    language: string,
+  ) => TmdbSeason | undefined
+}
+
+const scalarCache: MetadataCache = {
+  details: (ref, language) => recommendationDetails(ref, language).read(),
+  season: (ref, season, language) =>
+    recommendationSeason(ref, season, language).read(),
+}
+
+function titleDetails(
+  read: MetadataCache['details'],
+  ref: TmdbRef,
+  language: string,
+) {
+  const localized = read(ref, language)
+  let fallback: TmdbMovie | TmdbTv | undefined
   for (const locale of locales(language)) {
     if (locale === language)
       continue
-    const value = recommendationDetails(ref, locale).read()
-    if (value)
-      return value
+    fallback = read(ref, locale)
+    if (fallback)
+      break
+  }
+  return { localized, fallback }
+}
+
+function seriesSeasons(tv: TmdbTv | undefined, today: string) {
+  const regular = (tv?.seasons ?? [])
+    .filter(row => positive(row.season_number))
+    .sort((a, b) => a.season_number - b.season_number)
+  const season
+    = regular.find((row) => {
+      const air = catalogDay(row.air_date)
+      return !air || air <= today
+    })?.season_number ?? (tv && !regular.length ? 1 : undefined)
+  return { season, hasRegularSeasons: regular.length > 0 }
+}
+
+export function batchRecommendationMetadata(
+  ids: string[],
+  language: string,
+  today: string,
+  now: number,
+) {
+  const languages = [...locales(language)]
+  const refs = ids.flatMap(id => parseCatalogId(id) ?? [])
+  const details = readMetaCacheBatch<TmdbMovie | TmdbTv>(
+    refs.flatMap(ref =>
+      languages.map(locale => titleDetailsCacheKey(ref, locale)),
+    ),
+    now,
+  )
+  const readDetails: MetadataCache['details'] = (ref, locale) =>
+    details.get(titleDetailsCacheKey(ref, locale))?.value
+  const seasons = readMetaCacheBatch<TmdbSeason>(
+    refs.flatMap((ref) => {
+      if (ref.type !== 'tv')
+        return []
+      const { localized, fallback } = titleDetails(readDetails, ref, language)
+      const { season } = seriesSeasons(
+        (localized ?? fallback) as TmdbTv | undefined,
+        today,
+      )
+      return season === undefined
+        ? []
+        : languages.map(locale => seasonKey(ref.tmdbId, season, locale))
+    }),
+    now,
+  )
+  return {
+    details: readDetails,
+    season: (ref, season, locale) =>
+      seasons.get(seasonKey(ref.tmdbId, season, locale))?.value,
+    fresh: ({ key, ttlMs }: PublicRequest<unknown>) => {
+      const entry = details.get(key) ?? seasons.get(key)
+      return !!entry?.value && now - entry.fetchedAt < ttlMs
+    },
+  } satisfies MetadataCache & {
+    fresh: (spec: PublicRequest<unknown>) => boolean
   }
 }
 
 function exactFirstEpisode(
+  cache: MetadataCache,
   ref: TmdbRef,
   season: number,
   language: string,
@@ -46,7 +130,7 @@ function exactFirstEpisode(
 ) {
   const variants = new Map<number, TmdbEpisode[]>()
   for (const locale of locales(language)) {
-    const raw = recommendationSeason(ref, season, locale).read()
+    const raw = cache.season(ref, season, locale)
     for (const row of Array.isArray(raw?.episodes) ? raw.episodes : []) {
       if (!positive(row.episode_number))
         continue
@@ -70,6 +154,7 @@ function exactFirstEpisode(
 }
 
 function movieRuntime(
+  cache: MetadataCache,
   ref: TmdbRef,
   language: string,
   movie: TmdbMovie | undefined,
@@ -77,8 +162,9 @@ function movieRuntime(
   if (positive(movie?.runtime))
     return movie.runtime
   for (const locale of locales(language)) {
-    const variant = recommendationDetails(ref, locale).read() as
-      TmdbMovie | undefined
+    if (locale === language)
+      continue
+    const variant = cache.details(ref, locale) as TmdbMovie | undefined
     if (positive(variant?.runtime))
       return variant.runtime
   }
@@ -91,13 +177,13 @@ export function recommendationMetadata(
   today: string,
   names: Map<number, string>,
   listed?: TmdbListResult,
+  cache = scalarCache,
 ) {
   const ref = parseCatalogId(id)
   if (!ref)
     return
 
-  const localized = recommendationDetails(ref, language).read()
-  const fallback = fallbackDetails(ref, language)
+  const { localized, fallback } = titleDetails(cache.details, ref, language)
   const details = localized ?? fallback
   // A public list is already localized. Cached facts such as exact runtime
   // can come from another language without replacing its title or artwork.
@@ -157,7 +243,7 @@ export function recommendationMetadata(
       genres,
       genreIds: [...ids],
       episode: null,
-      runtimeMinutes: movieRuntime(ref, language, movie),
+      runtimeMinutes: movieRuntime(cache, ref, language, movie),
       franchise: movie?.belongs_to_collection?.id,
       unavailable,
       hasDetails: !!details,
@@ -168,17 +254,10 @@ export function recommendationMetadata(
   const tv = details as TmdbTv | undefined
   const aired
     = catalogDay(tv?.first_air_date) ?? catalogDay(listed?.first_air_date)
-  const regular = (tv?.seasons ?? [])
-    .filter(row => positive(row.season_number))
-    .sort((a, b) => a.season_number - b.season_number)
-  const season
-    = regular.find((row) => {
-      const air = catalogDay(row.air_date)
-      return !air || air <= today
-    })?.season_number ?? (tv && !regular.length ? 1 : undefined)
+  const { season, hasRegularSeasons } = seriesSeasons(tv, today)
   const unavailable
     = (aired !== undefined && aired > today)
-      || (regular.length > 0 && season === undefined)
+      || (hasRegularSeasons && season === undefined)
       || (!aired
         && ['Planned', 'Pilot', 'In Production', 'Canceled'].includes(
           tv?.status ?? '',
@@ -186,7 +265,7 @@ export function recommendationMetadata(
   const exact
     = season === undefined
       ? undefined
-      : exactFirstEpisode(ref, season, language, today)
+      : exactFirstEpisode(cache, ref, season, language, today)
   return {
     ref,
     card,

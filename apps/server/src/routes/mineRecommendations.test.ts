@@ -231,6 +231,71 @@ function movieList(ids: number[]) {
   return ids.map(id => ({ ...movieRaw(id), media_type: 'movie' }))
 }
 
+it('batches the metadata of a long watchlist without filtering out older matches', async () => {
+  const db = getDb()
+  const now = Date.now()
+  db.transaction(() => {
+    for (let id = 1; id <= 1000; id++) {
+      setMine(movie(id), { watchlistAt: new Date(now + id) })
+      showMovie(id, movieRaw(id, null))
+    }
+  })
+  showMovie(1, movieRaw(1, 82), 'ru-RU')
+  showMovie(1000, movieRaw(1000, 150))
+  showGenres()
+  for (const kind of ['movie', 'tv'] as const) {
+    const spec = recommendationDiscover(
+      kind,
+      language,
+      calendarDayAt(now, 'UTC'),
+      undefined,
+      90,
+    )
+    storeMetaCache(spec.key, { results: [] })
+  }
+
+  const prepare = vi.spyOn(db.$client, 'prepare')
+  const result = await read(profileId, {
+    source: 'both',
+    maxMinutes: '90',
+    refresh: 'visible',
+  })
+  expect(
+    result.items.map((item: { card: { id: string } }) => item.card.id),
+  ).toEqual([movie(1)])
+  expect(result.refresh.state).toBe('idle')
+  expect(
+    prepare.mock.calls.filter(([sql]) => sql.includes('meta_cache')).length,
+  ).toBeLessThan(30)
+  expect(fetchMock).not.toHaveBeenCalled()
+
+  const expired = recommendationDiscover(
+    'movie',
+    language,
+    calendarDayAt(now, 'UTC'),
+    undefined,
+    90,
+  )
+  db.update(metaCache)
+    .set({ fetchedAt: new Date(now - 2 * DAY_MS) })
+    .where(eq(metaCache.key, expired.key))
+    .run()
+  fetchMock.mockResolvedValueOnce(response({ results: [] }))
+  prepare.mockClear()
+  const filters = { source: 'both', maxMinutes: '90' }
+  expect(
+    (await read(profileId, { ...filters, refresh: 'visible' })).refresh.state,
+  ).toBe('pending')
+  await vi.waitFor(async () => {
+    expect((await read(profileId, filters)).refresh.state).toBe('idle')
+  })
+  expect(fetchMock).toHaveBeenCalledTimes(1)
+  const scalarMetadataReads = prepare.mock.calls.filter(
+    ([sql]) => sql.includes('meta_cache') && !sql.includes('json_each'),
+  )
+  expect(scalarMetadataReads.length).toBeLessThan(60)
+})
+
 function response(
   value: unknown,
   status = 200,
