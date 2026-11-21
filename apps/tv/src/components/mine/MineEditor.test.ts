@@ -113,10 +113,17 @@ const undated = button({ dateQuick: '' })
 const rewatch = button()
 const save = button()
 const cancel = button()
-const noteField = button()
+const noteField = Object.assign(button(), {
+  scrollTop: 0,
+  clientHeight: 200,
+  scrollHeight: 200,
+})
 
 let activeButton: ReturnType<typeof button> | undefined
-let handleKey: (action: KeyAction) => boolean
+let handleKey: (
+  action: KeyAction,
+  event?: Pick<KeyboardEvent, 'target'>,
+) => boolean
 let controls: {
   dateControls: object
   dateSave: object
@@ -128,7 +135,10 @@ let controls: {
   saving: boolean
   note: string
   keepDateTextKeys: (
-    event: Pick<KeyboardEvent, 'key' | 'stopPropagation'>,
+    event: Pick<KeyboardEvent, 'key' | 'stopPropagation'>
+      & Partial<
+        Pick<KeyboardEvent, 'keyCode' | 'preventDefault' | 'isComposing'>
+      >,
   ) => void
   focusDateRow: (event: {
     currentTarget: ReturnType<typeof button>
@@ -164,7 +174,7 @@ const entry: MineDiaryEntry = {
   updatedAt: '2024-01-31T12:00:00Z',
 }
 
-async function mountEditor(log = false) {
+async function mountEditor(log = false, editNote = false) {
   if (log) {
     openMineEditor({
       kind: 'log',
@@ -172,7 +182,7 @@ async function mountEditor(log = false) {
     })
   }
   else {
-    openMineEditor({ kind: 'diaryDate', entry })
+    openMineEditor({ kind: editNote ? 'diaryNote' : 'diaryDate', entry })
   }
   const rows = new Map([
     ['[data-date-part="day"]', day],
@@ -200,7 +210,7 @@ async function mountEditor(log = false) {
       setup.dateControls = panel
       setup.dateSave = save
       setup.dateCancel = cancel
-      if (log && mocks.platform === 'web') {
+      if (log || editNote) {
         setup.dateNote = noteField
       }
       return null
@@ -230,6 +240,8 @@ beforeEach(() => {
   mocks.mode = 'remote'
   activeButton = undefined
   focusedButton = undefined
+  noteField.scrollTop = 0
+  noteField.scrollHeight = noteField.clientHeight
   setTitleViewer('viewer-a')
   mocks.bootstrap.mockResolvedValue({
     profileId: 'viewer-a',
@@ -333,18 +345,21 @@ it.each(['Cancel', 'Back'])(
   },
 )
 
-it('keeps the manual log rewatch toggle on the remote path between Year and the footer', async () => {
+it('keeps rewatch and Note on the remote path between Year and the footer', async () => {
   mocks.log.mockResolvedValue({ entry: null })
   await mountEditor(true)
   move('down', month)
   move('down', year)
   move('down', rewatch)
   controls.toggleRewatch()
+  move('down', noteField)
   move('down', save)
   move('right', cancel)
+  move('up', noteField)
   move('up', rewatch)
   move('up', year)
   move('down', rewatch)
+  move('down', noteField)
   move('down', save)
   await controls.save()
   expect(mocks.log).toHaveBeenCalledExactlyOnceWith(
@@ -353,6 +368,129 @@ it('keeps the manual log rewatch toggle on the remote path between Year and the 
       rewatch: true,
     }),
   )
+})
+
+it.each(['webos', 'web'] as const)(
+  'edits and saves a diary note on %s using the shared field',
+  async (platform) => {
+    mocks.platform = platform
+    await mountEditor(false, true)
+    const app = createSSRApp(
+      { ...MineEditor, setup: () => controls } as Component,
+      { session: mineEditor.value },
+    )
+    app.directive('focusable', { getSSRProps: () => ({}) })
+    const html = await renderToString(app)
+    expect(html.match(/<textarea/g)).toHaveLength(1)
+    expect(html).toContain('panel.common.save')
+    expect(html).toContain('panel.common.cancel')
+    expect(html.match(/class="action(?: action--primary)?"/g)).toHaveLength(2)
+    expect(html.match(/<button[^>]+tabindex="0"/g) ?? []).toHaveLength(
+      platform === 'web' ? 2 : 0,
+    )
+    expect(html).not.toContain('mine-editor__read')
+    expect(activeButton).toBe(noteField)
+
+    controls.note = 'A note entered with the device keyboard'
+    const stopPropagation = vi.fn()
+    controls.keepDateTextKeys({ key: 'ArrowDown', stopPropagation })
+    expect(stopPropagation).toHaveBeenCalledTimes(platform === 'web' ? 1 : 0)
+    move('down', save)
+    move('right', cancel)
+    move('up', noteField)
+    move('down', save)
+    expect(mocks.patch).not.toHaveBeenCalled()
+    await controls.save()
+    expect(mocks.patch).toHaveBeenCalledExactlyOnceWith('entry-a', {
+      expectedProfileId: 'viewer-a',
+      language: 'en-US',
+      note: 'A note entered with the device keyboard',
+    })
+  },
+)
+
+it('cancels a changed TV note without saving', async () => {
+  await mountEditor(false, true)
+  controls.note = 'Unsaved note'
+  move('down', save)
+  move('right', cancel)
+  controls.back()
+  expect(mocks.patch).not.toHaveBeenCalled()
+  expect(mineEditor.value).toBeUndefined()
+})
+
+it('uses the text field receiving the key when pointer focus remembers an action', async () => {
+  await mountEditor(false, true)
+  mocks.mode = 'pointer'
+  mocks.focusOn(cancel)
+  expect(
+    handleKey(
+      { type: 'move', direction: 'down' },
+      { target: noteField as unknown as EventTarget },
+    ),
+  ).toBe(true)
+  expect(activeButton).toBe(save)
+  expect(focusedButton).toBe(save)
+  expect(mocks.focusOn).toHaveBeenLastCalledWith(save, 'pointer')
+})
+
+it('scrolls a long TV note in both directions and reaches Save only after its bottom edge', async () => {
+  await mountEditor(false, true)
+  noteField.scrollHeight = 550
+  const event = {
+    key: 'ArrowDown',
+    stopPropagation: vi.fn(),
+    preventDefault: vi.fn(),
+  }
+  for (const top of [100, 200, 300, 350]) {
+    controls.keepDateTextKeys(event)
+    expect(noteField.scrollTop).toBe(top)
+    expect(activeButton).toBe(noteField)
+  }
+  expect(event.preventDefault).toHaveBeenCalledTimes(4)
+  expect(event.stopPropagation).toHaveBeenCalledTimes(4)
+  controls.keepDateTextKeys(event)
+  expect(event.stopPropagation).toHaveBeenCalledTimes(4)
+  move('down', save)
+  move('up', noteField)
+  expect(noteField.scrollTop).toBe(350)
+
+  event.key = 'ArrowUp'
+  for (const top of [250, 150, 50, 0]) {
+    controls.keepDateTextKeys(event)
+    expect(noteField.scrollTop).toBe(top)
+    expect(activeButton).toBe(noteField)
+  }
+  controls.keepDateTextKeys(event)
+  expect(event.preventDefault).toHaveBeenCalledTimes(8)
+  expect(mocks.patch).not.toHaveBeenCalled()
+})
+
+it('supports TV arrow key codes and leaves browser/IME text navigation native', async () => {
+  await mountEditor(false, true)
+  noteField.scrollHeight = 550
+  const event = {
+    key: 'Unidentified',
+    keyCode: 40,
+    stopPropagation: vi.fn(),
+    preventDefault: vi.fn(),
+    isComposing: false,
+  }
+  controls.keepDateTextKeys(event)
+  expect(noteField.scrollTop).toBe(100)
+  event.isComposing = true
+  controls.keepDateTextKeys(event)
+  expect(noteField.scrollTop).toBe(100)
+  expect(event.preventDefault).toHaveBeenCalledOnce()
+  expect(event.stopPropagation).toHaveBeenCalledTimes(2)
+
+  unmount?.()
+  mocks.platform = 'web'
+  noteField.scrollTop = 0
+  await mountEditor(false, true)
+  controls.keepDateTextKeys({ ...event, isComposing: false })
+  expect(noteField.scrollTop).toBe(0)
+  expect(event.preventDefault).toHaveBeenCalledOnce()
 })
 
 it('holds the submitted date and rewatch flag until the pending save finishes', async () => {

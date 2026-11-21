@@ -264,6 +264,14 @@ watch(
   },
   { flush: 'post' },
 )
+watch(
+  dateNote,
+  (field) => {
+    if (field && step.value === 'note' && current())
+      focus.focusOn(field)
+  },
+  { flush: 'post' },
+)
 
 function close(force = false) {
   if ((!force && saving.value) || mineEditor.value !== props.session)
@@ -369,8 +377,8 @@ function onDateWheel(part: (typeof dateParts)[number], event: WheelEvent) {
 function syncDateFocus(event: FocusEvent) {
   const element = event.target
   if (
-    canUseKeyboard
-    && dateEditable()
+    (canUseKeyboard || element === dateNote.value)
+    && (dateEditable() || (step.value === 'note' && current()))
     && element instanceof HTMLElement
     && element !== focus.current()
   ) {
@@ -379,16 +387,37 @@ function syncDateFocus(event: FocusEvent) {
 }
 
 function keepDateTextKeys(event: KeyboardEvent) {
-  if (
-    step.value === 'date'
-    && (event.key === 'ArrowUp' || event.key === 'ArrowDown')
-  ) {
+  const direction
+    = event.key === 'ArrowDown' || event.keyCode === 40
+      ? 1
+      : event.key === 'ArrowUp' || event.keyCode === 38
+        ? -1
+        : 0
+  if (!direction)
+    return
+  if (canUseKeyboard || event.isComposing) {
     event.stopPropagation()
+    return
   }
+
+  const field = dateNote.value
+  if (!field || !current() || saving.value)
+    return
+  const maximum = Math.max(0, field.scrollHeight - field.clientHeight)
+  const next = Math.max(
+    0,
+    Math.min(maximum, field.scrollTop + (direction * field.clientHeight) / 2),
+  )
+  // At the edge, let the usual remote navigation reach the actions/date rows.
+  if (Math.abs(next - field.scrollTop) < 1)
+    return
+  event.preventDefault()
+  event.stopPropagation()
+  field.scrollTop = next
 }
 
 function focusDateWithKeys(element: HTMLElement) {
-  if (!canUseKeyboard || focus.mode !== 'pointer')
+  if (focus.mode !== 'pointer')
     return focus.focusOn(element)
 
   const focused = focus.focusOn(element, 'pointer')
@@ -397,15 +426,35 @@ function focusDateWithKeys(element: HTMLElement) {
   return focused
 }
 
-const stopDateKeys = focus.onKey((action) => {
-  if (!dateEditable() || action.type !== 'move')
+const stopDateKeys = focus.onKey((action, event) => {
+  if (!current() || saving.value || action.type !== 'move')
     return false
-  const selected = focus.current()
+  const selected
+    = dateNote.value && event?.target === dateNote.value
+      ? dateNote.value
+      : focus.current()
+  const { direction } = action
+  if (step.value === 'note') {
+    let next: HTMLElement | undefined
+    if (selected === dateNote.value && direction === 'down') {
+      next = dateSave.value
+    }
+    else if (selected === dateSave.value || selected === dateCancel.value) {
+      if (direction === 'up')
+        next = dateNote.value
+      else if (direction === 'right' && selected === dateSave.value)
+        next = dateCancel.value
+      else if (direction === 'left' && selected === dateCancel.value)
+        next = dateSave.value
+    }
+    return next ? focusDateWithKeys(next) : false
+  }
+  if (!dateEditable())
+    return false
   const controls = dateControls.value
   if (!selected || !controls)
     return false
 
-  const { direction } = action
   const part = controls.contains(selected)
     ? dateParts.indexOf(selected.dataset.datePart as (typeof dateParts)[number])
     : -1
@@ -437,6 +486,14 @@ const stopDateKeys = focus.onKey((action) => {
         ? dateRow('year')
         : direction === 'down'
           ? (dateNote.value ?? dateSave.value)
+          : undefined
+  }
+  else if (selected === dateNote.value) {
+    next
+      = direction === 'up'
+        ? (repeatButton ?? dateRow('year'))
+        : direction === 'down'
+          ? dateSave.value
           : undefined
   }
   else if (selected === dateSave.value || selected === dateCancel.value) {
@@ -782,10 +839,7 @@ onBeforeUnmount(() => {
         </div>
 
         <div
-          v-if="
-            step === 'note'
-              || (step === 'date' && request.kind === 'log' && canUseKeyboard)
-          "
+          v-if="step === 'note' || (step === 'date' && request.kind === 'log')"
           class="mine-editor"
           @focusin="syncDateFocus"
         >
@@ -798,40 +852,22 @@ onBeforeUnmount(() => {
               )
             }}
             <textarea
-              v-if="canUseKeyboard"
               ref="dateNote"
               v-model="note"
               v-focusable
               class="mine-editor__field"
-              rows="4"
+              rows="8"
               maxlength="10000"
-              :disabled="step === 'date' && saving"
-              :tabindex="step === 'date' ? 0 : undefined"
+              :disabled="saving"
+              :tabindex="canUseKeyboard ? 0 : undefined"
               @keydown="keepDateTextKeys"
             />
-            <div v-else v-focusable class="mine-editor__read" tabindex="-1">
-              {{ note }}
-            </div>
           </label>
-          <button
-            v-if="step === 'note' && !canUseKeyboard"
-            v-focusable
-            type="button"
-            class="chip"
-            @click="back"
-          >
-            {{ t("common.back") }}
-          </button>
         </div>
 
         <div
-          v-if="
-            step === 'date'
-              || (step === 'note' && canUseKeyboard)
-              || step === 'delete'
-          "
+          v-if="step === 'date' || step === 'note' || step === 'delete'"
           class="mine-editor__buttons"
-          :class="{ 'mine-editor__buttons--date': step === 'date' }"
           @focusin="syncDateFocus"
         >
           <button
@@ -839,8 +875,8 @@ onBeforeUnmount(() => {
             v-focusable
             type="button"
             class="action"
-            :class="{ 'action--primary': step === 'date' }"
-            :tabindex="canUseKeyboard && step === 'date' ? 0 : undefined"
+            :class="{ 'action--primary': step !== 'delete' }"
+            :tabindex="canUseKeyboard ? 0 : undefined"
             :aria-disabled="saving || (step === 'date' && !validDate)"
             @click="save"
           >
@@ -852,8 +888,8 @@ onBeforeUnmount(() => {
             ref="dateCancel"
             v-focusable
             type="button"
-            :class="step === 'date' ? 'action' : 'chip'"
-            :tabindex="canUseKeyboard && step === 'date' ? 0 : undefined"
+            class="action"
+            :tabindex="canUseKeyboard ? 0 : undefined"
             @click="back"
           >
             {{ t("panel.common.cancel") }}
@@ -868,8 +904,7 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.mine-editor,
-.mine-editor__read {
+.mine-editor {
   display: block;
   margin-bottom: var(--space-2);
   white-space: pre-wrap;
@@ -936,7 +971,7 @@ onBeforeUnmount(() => {
 .mine-editor__date-row:focus .icon {
   color: inherit;
 }
-.mine-editor__buttons--date .action {
+.mine-editor__buttons .action {
   min-width: calc(var(--u) * 160);
   margin-right: calc(var(--u) * 16);
   justify-content: center;
@@ -951,6 +986,7 @@ onBeforeUnmount(() => {
   background: var(--color-surface-raised);
   color: var(--color-text);
   font: inherit;
+  resize: none;
 }
 .mine-editor__field:focus {
   outline: var(--focus-ring-size) solid var(--color-focus);
