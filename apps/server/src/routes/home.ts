@@ -2,7 +2,12 @@ import { diagnosticContext } from '../services/diagnostics/index.ts'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { messageResponse } from '../dto/common.ts'
 import { continueRow, homeQuery, homeResponse } from '../dto/home.ts'
-import { canManageLibrary, requireViewer } from '../middleware/auth.ts'
+import { minePersonalError } from '../dto/minePersonal.ts'
+import {
+  canManageLibrary,
+  requireViewer,
+  viewerStillOnProfile,
+} from '../middleware/auth.ts'
 import { hasSearchableIndexers } from '../services/indexers/index.ts'
 import {
   libraryFileRows,
@@ -29,20 +34,34 @@ export const homeRoutes: FastifyPluginAsyncZod = async (app) => {
           200: homeResponse,
           400: messageResponse,
           401: messageResponse,
+          409: minePersonalError,
           502: messageResponse,
           503: messageResponse,
         },
       },
     },
     async (request, reply) => {
-      const { mode, language } = request.query
+      const { mode, language, personalContinue, expectedProfileId }
+        = request.query
       const { profileId } = request
+      const current = () =>
+        !personalContinue
+        || (!!expectedProfileId
+          && viewerStillOnProfile(request, expectedProfileId))
+      if (!current())
+        return reply.code(409).send({ kind: 'profileChanged' })
       // «Продолжить» и личные ряды (только на главной) собираются вместе с TMDB
       // и стоят перед ним; упавший свой ряд главную не роняет
       const [catalog, resume, unmatched, library, personal]
         = await Promise.allSettled([
           mode === 'library' ? [] : getHomeRows(mode, language),
-          getContinueRow(profileId, mode, language, diagnosticContext(request)),
+          getContinueRow(
+            profileId,
+            mode,
+            language,
+            diagnosticContext(request),
+            !!personalContinue,
+          ),
           unmatchedHomeRow(
             mode,
             language,
@@ -76,6 +95,8 @@ export const homeRoutes: FastifyPluginAsyncZod = async (app) => {
         ...libraryFileRows(mode, profileId),
       ]
 
+      if (!current())
+        return reply.code(409).send({ kind: 'profileChanged' })
       const hasSources = hasSearchableIndexers()
 
       if (catalog.status === 'fulfilled') {
@@ -83,6 +104,8 @@ export const homeRoutes: FastifyPluginAsyncZod = async (app) => {
           profileId,
           catalog.value.flatMap(row => row.items.map(item => item.id)),
         )
+        if (!current())
+          return reply.code(409).send({ kind: 'profileChanged' })
         return {
           rows: [
             ...own,
@@ -131,18 +154,30 @@ export const homeRoutes: FastifyPluginAsyncZod = async (app) => {
           200: continueRow,
           400: messageResponse,
           401: messageResponse,
+          409: minePersonalError,
         },
       },
     },
-    async (request) => {
-      const { mode, language } = request.query
+    async (request, reply) => {
+      const { mode, language, personalContinue, expectedProfileId }
+        = request.query
+      const current = () =>
+        !personalContinue
+        || (!!expectedProfileId
+          && viewerStillOnProfile(request, expectedProfileId))
+      if (!current())
+        return reply.code(409).send({ kind: 'profileChanged' })
 
-      return getContinueRow(
+      const row = await getContinueRow(
         request.profileId,
         mode,
         language,
         diagnosticContext(request),
+        !!personalContinue,
       )
+      if (!current())
+        return reply.code(409).send({ kind: 'profileChanged' })
+      return row
     },
   )
 }

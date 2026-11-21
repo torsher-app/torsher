@@ -28,6 +28,7 @@ import { downloadExport } from '~/composables/useTransfer'
 import { dialogSheetClass } from '~/lib/dialog'
 import { formatDate } from '~/lib/format'
 import ImportRatingsDialog from './ImportRatingsDialog.vue'
+import ImportPersonalCounts from './ImportPersonalCounts.vue'
 
 /**
  * Блок карточки профиля: экспорт профиля в файл, импорт оценок из файлов
@@ -170,6 +171,12 @@ async function onUndo() {
       </template>
       <span v-else>{{ t("panel.imports.hint") }}</span>
     </div>
+
+    <ImportPersonalCounts
+      v-if="!loading && state === 'ready' && !job && last"
+      :history="last.summary.history"
+      :personal="last.summary.personal"
+    />
 
     <NuxtLink
       v-if="!loading && overview && overview.unmatched > 0"

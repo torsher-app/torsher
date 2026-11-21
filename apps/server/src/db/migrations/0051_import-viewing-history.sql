@@ -1,0 +1,1 @@
+ALTER TABLE `profile_import_rows` ADD `viewings` text;

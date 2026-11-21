@@ -5,7 +5,7 @@ description: "Profiles for each member of the household: choosing one on the TV,
 
 # Profiles and PIN
 
-Each member of the household can have a profile: their own watch history, lists, ratings and showcase language. Profiles are created in the control panel and picked on the TV.
+Each member of the household can have a profile: their own diary, watch positions, notes, rewatches, lists, ratings and showcase language. Profiles are created in the control panel and picked on the TV.
 
 ::: tip What you'll learn
 How to choose and switch profiles on the TV, protect a profile with a PIN, set its language, and what an age limit does today.
@@ -27,11 +27,13 @@ Your avatar and name are near the bottom of the side menu. Select them to return
 
 | Per profile | Per device, shared by profiles |
 |---|---|
-| Watch history and positions | <Ui k="settings.screensaver" /> |
-| <Ui k="mine.sections.watchlist" />, <Ui k="mine.sections.favorites" />, ratings, watched and dropped titles | Sort and filters on <Ui k="sources.title" /> and in <Ui k="nav.mine" /> |
-| Showcase language | Recent searches |
+| Diary, watch positions, rewatches and notes | <Ui k="settings.screensaver" /> |
+| <Ui k="mine.sections.watchlist" />, <Ui k="mine.sections.favorites" />, ratings, watched and dropped titles | Sort and filters on <Ui k="sources.title" /> |
+| Showcase language and last chosen Mine section | Recent searches |
 | Subtitle size and background, <Ui k="player.settings.autoNext" /> | |
 | Service ratings on posters | |
+
+Mine filters are remembered on the device separately for each profile. Diary and title notes are stored on the server and follow the profile between devices.
 
 Collections, the library and [following](/docs/watch/follow) are shared by the household.
 
@@ -75,7 +77,7 @@ After an update, reopen an already open player if its old stream link no longer 
 
 ## Delete a profile
 
-In the profile's menu in the panel, delete it and choose what happens to its watch history: move it to another profile or delete it. Devices that used the profile switch to the default one, or ask <Ui k="profiles.title" /> if the default profile has a PIN.
+In the profile's menu in the panel, delete it and choose what happens to its personal data: move it to another profile or delete it. This includes diary entries, positions, lists, ratings, notes and Mine preferences. If the move reports conflicting personal data, both profiles stay in place so you can resolve the conflict or choose another action. Devices that used the profile switch to the default one, or ask <Ui k="profiles.title" /> if the default profile has a PIN.
 
 ## If something went wrong
 

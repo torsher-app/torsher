@@ -1,20 +1,27 @@
-import type { Card, MineSection } from '@torsher/api-client'
+import type { Card, MineBootstrap } from '@torsher/api-client'
 import { computed, effectScope, nextTick, ref } from 'vue'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { DEFAULT_MINE_VIEW } from '../lib/mineView.ts'
 import { setTitleViewer, titleActions } from '../titleActions.ts'
-import { useMineItems, useMineSections } from './useMine.ts'
+import { useMineBootstrap, useMineItems } from './useMine.ts'
 import { usePlayback } from './usePlayback.ts'
 import { useTitleChanges } from './useTitleChanges.ts'
 
 const mocks = vi.hoisted(() => ({
+  personal: vi.fn(),
+  watched: vi.fn(),
   save: vi.fn(),
   sections: vi.fn(),
   items: vi.fn(),
 }))
 vi.mock('../api.ts', () => ({
   api: {
-    mine: { getMine: mocks.sections, getMineItems: mocks.items },
+    mine: {
+      getMineBootstrap: mocks.sections,
+      getMineItems: mocks.items,
+      getMinePersonalContinue: mocks.personal,
+      getMinePersonalWatched: mocks.watched,
+    },
     watchState: { putWatchState: mocks.save },
   },
   loadErrorOf: () => 'unavailable',
@@ -66,22 +73,61 @@ it.each([
       originalTitle: 'Title',
     } as Card
     let saved = false
-    const sections = (): MineSection[] => [
-      { id: section, count: saved ? 0 : 1 },
-      { id: next, count: saved ? 1 : 0 },
-    ]
-    mocks.sections.mockImplementation(async () => ({ sections: sections() }))
+    const bootstrap = (): MineBootstrap => ({
+      version: 1,
+      profileId: 'viewer',
+      language: null,
+      timeZone: 'UTC',
+      today: '2026-11-19',
+      start: { kind: 'section', section: 'continue' },
+      collections: [],
+      counts: {
+        continue: 0,
+        watched: 0,
+        schedule: null,
+        favorites: 0,
+        ratings: 0,
+        watchlist: 0,
+        dropped: 0,
+        [section]: saved ? 0 : 1,
+        [next]: saved ? 1 : 0,
+      },
+    })
+    mocks.sections.mockImplementation(async () => bootstrap())
+    const row = {
+      titleId: card.id,
+      kind: card.kind,
+      metadata: { title: card.title },
+      ownRating: null,
+    }
+    mocks.personal.mockImplementation(async () => ({
+      profileId: 'viewer',
+      items: (section === 'continue' ? !saved : saved)
+        ? [{ ...row, continuation: 'normal', cycle: null, normalResume: null }]
+        : [],
+      total: (section === 'continue' ? !saved : saved) ? 1 : 0,
+    }))
+    mocks.watched.mockImplementation(async () => ({
+      profileId: 'viewer',
+      items: saved ? [row] : [],
+      total: saved ? 1 : 0,
+    }))
     mocks.items.mockImplementation(async (query: { section: string }) => ({
       items: (query.section === section ? !saved : saved) ? [card] : [],
       total: (query.section === section ? !saved : saved) ? 1 : 0,
     }))
     const active = ref(true)
     const view = ref({ ...DEFAULT_MINE_VIEW, kind, sort: 'rating' as const })
-    const selected = ref<string>(section)
+    const selected = ref<typeof section | typeof next>(section)
     const { groups, mine, player } = scope.run(() => {
-      const groups = useMineSections()
+      const groups = useMineBootstrap()
       const current = computed(() =>
-        groups.sections.value.find(item => item.id === selected.value),
+        groups.bootstrap.value
+          ? {
+              id: selected.value,
+              count: groups.bootstrap.value.counts[selected.value] ?? undefined,
+            }
+          : undefined,
       )
       const mine = useMineItems(current, view)
       useTitleChanges(
@@ -94,7 +140,9 @@ it.each([
       const player = usePlayback({ mediaFileId: 'local-file' })
       return { groups, mine, player }
     })!
-    await vi.waitFor(() => expect(mine.items.value).toEqual([card]))
+    await vi.waitFor(() =>
+      expect(mine.items.value.map(item => item.card.id)).toEqual([card.id]),
+    )
     const initialRequests = mocks.sections.mock.calls.length
     active.value = false
     await nextTick()
@@ -105,7 +153,7 @@ it.each([
     active.value = true
     await nextTick()
     expect(mocks.sections).toHaveBeenCalledTimes(initialRequests)
-    expect(mine.items.value).toEqual([card])
+    expect(mine.items.value.map(item => item.card.id)).toEqual([card.id])
     active.value = false
     await nextTick()
 
@@ -134,21 +182,25 @@ it.each([
     await saving
     await nextTick()
     expect(mocks.sections).toHaveBeenCalledTimes(initialRequests)
-    expect(mine.items.value).toEqual([card])
+    expect(mine.items.value.map(item => item.card.id)).toEqual([card.id])
 
     active.value = true
     await vi.waitFor(() => {
-      expect(groups.sections.value).toEqual(sections())
+      expect(groups.bootstrap.value).toEqual(bootstrap())
       expect(mine.items.value).toEqual([])
     })
     expect(mocks.sections).toHaveBeenCalledTimes(initialRequests + 1)
     expect(mine.status.value).toBe('ready')
     expect(view.value).toEqual({ ...DEFAULT_MINE_VIEW, kind, sort: 'rating' })
     selected.value = next
-    await vi.waitFor(() => expect(mine.items.value).toEqual([card]))
-    expect(mocks.items).toHaveBeenLastCalledWith(
+    await vi.waitFor(() =>
+      expect(mine.items.value.map(item => item.card.id)).toEqual([card.id]),
+    )
+    expect(
+      next === 'continue' ? mocks.personal : mocks.watched,
+    ).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        section: next,
+        expectedProfileId: 'viewer',
         kind,
         sort: 'rating',
       }),

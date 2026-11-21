@@ -6,6 +6,7 @@ import {
   appliedImport,
   applyProfileImport,
   createProfileImport,
+  historyMatchConflict,
   importFormatErrorResponse,
   importJob,
   importOverview,
@@ -30,6 +31,7 @@ import {
   cancelImport,
   dismissUnmatchedRow,
   getImportJob,
+  HistoryMatchConflictError,
   ImportNotFoundError,
   ImportStateError,
   matchUnmatchedRow,
@@ -171,6 +173,9 @@ export const profileImportRoutes: FastifyPluginAsyncZod = async (app) => {
           year: row.year,
           kind: row.kind,
           rating: row.rating,
+          historyCount: row.viewings?.items.filter(
+            item => item.kind === 'entry',
+          ).length,
           suggestion: (row.suggestion && cards.get(row.suggestion)) || null,
         })),
         total,
@@ -190,6 +195,7 @@ export const profileImportRoutes: FastifyPluginAsyncZod = async (app) => {
           204: z.null(),
           400: messageResponse,
           404: messageResponse,
+          409: historyMatchConflict,
           ...guardResponses,
         },
       },
@@ -208,6 +214,12 @@ export const profileImportRoutes: FastifyPluginAsyncZod = async (app) => {
       catch (err) {
         if (err instanceof ImportNotFoundError)
           return reply.code(404).send(importNotFound)
+
+        if (err instanceof HistoryMatchConflictError) {
+          return reply
+            .code(409)
+            .send({ kind: 'historyMatchConflict', reason: err.reason })
+        }
 
         throw err
       }

@@ -1,4 +1,4 @@
-import { eq, like, lte } from 'drizzle-orm'
+import { eq, like, lte, sql } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import { metaCache } from '../../db/schema.ts'
 
@@ -61,16 +61,52 @@ export function storeMetaCache(key: string, value: unknown) {
 }
 
 /** Запись кэша без запроса в сеть, любой свежести в пределах хранения */
-export function readMetaCache<T>(key: string, now = Date.now()) {
+export function readMetaCache<T>(
+  key: string,
+  now = Date.now(),
+  maxAgeMs = TMDB_MAX_CACHE_AGE_MS,
+) {
   const found = getDb()
     .select()
     .from(metaCache)
     .where(eq(metaCache.key, key))
     .get()
 
-  return found && now - found.fetchedAt.getTime() < TMDB_MAX_CACHE_AGE_MS
+  return found
+    && now - found.fetchedAt.getTime() < Math.min(maxAgeMs, TMDB_MAX_CACHE_AGE_MS)
     ? (JSON.parse(found.json) as T)
     : undefined
+}
+
+/** Indexed cache reads for a list of public keys, without one statement per key. */
+export function readMetaCacheBatch<T>(keys: string[], now: number) {
+  const values = new Map<string, { value: T, fetchedAt: number }>()
+  if (!keys.length)
+    return values
+
+  const rows = getDb().all<{
+    key: string
+    json: string
+    fetched_at: number
+  }>(sql`
+    SELECT cache.key, cache.json, cache.fetched_at
+    FROM json_each(${JSON.stringify(keys)}) requested
+    JOIN meta_cache cache ON cache.key = requested.value
+    WHERE cache.fetched_at > ${now - TMDB_MAX_CACHE_AGE_MS}
+  `)
+  for (const row of rows) {
+    try {
+      values.set(row.key, {
+        value: JSON.parse(row.json) as T,
+        fetchedAt: row.fetched_at,
+      })
+    }
+    catch (error) {
+      if (!(error instanceof SyntaxError))
+        throw error
+    }
+  }
+  return values
 }
 
 /** Ключи кэша по шаблону `LIKE` */

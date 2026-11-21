@@ -16,6 +16,8 @@ export interface StatusInput {
   rating?: number | null
   droppedAt?: Date | null
   watchedMarkedAt?: Date | null
+  // New personal surface only. No normal progress/maintenance timestamps.
+  diarySeen?: { title: boolean, episodes: Set<string> }
   // Только у сериала, из деталей TMDB
   seasons?: { number: number, airedEpisodeCount: number }[]
   ongoing?: boolean
@@ -64,7 +66,7 @@ export function titleStatus(input: StatusInput): TitleStatus | null {
   if (isDropped(input.droppedAt, lastWatchedAt(input.progress)))
     return 'dropped'
 
-  if (input.watchedMarkedAt)
+  if (input.watchedMarkedAt || input.diarySeen?.title)
     return 'watched'
 
   if (input.kind === 'movie') {
@@ -76,14 +78,17 @@ export function titleStatus(input: StatusInput): TitleStatus | null {
     return point && hasProgress(point) ? 'watching' : null
   }
 
-  const started = input.progress.some(
-    point => point.season > 0 && hasProgress(point),
-  )
+  const started
+    = !!input.diarySeen?.episodes.size
+      || input.progress.some(point => point.season > 0 && hasProgress(point))
 
   if (!started)
     return null
 
-  const watched = watchedEpisodes(input.progress)
+  const watched = new Set([
+    ...watchedEpisodes(input.progress),
+    ...(input.diarySeen?.episodes ?? []),
+  ])
   const aired = (input.seasons ?? []).flatMap(season =>
     Array.from(
       { length: season.airedEpisodeCount },

@@ -324,6 +324,9 @@ importers:
       '@fontsource/onest':
         specifier: 5.3.1
         version: 5.3.1
+      '@lucide/vue':
+        specifier: ^1.59.0
+        version: 1.59.0(vue@3.5.44(typescript@5.9.3))
       '@torsher/api-client':
         specifier: workspace:*
         version: link:../../packages/api-client

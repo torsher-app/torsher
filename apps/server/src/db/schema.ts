@@ -1,3 +1,6 @@
+import type { PendingViewingGroup } from '../services/transfer/formats.ts'
+import type { HistoryImportCounts } from '../services/transfer/personalSpace.ts'
+import type { ImportUndoJournal } from '../services/transfer/undoJournal.ts'
 import type { StorageMoveRecovery } from '../services/storage/moveIntent.ts'
 import type { VideoClass, VoiceType } from '@torsher/release-parser'
 import type { SavedTrackPreferences } from '../services/media/trackPreferences.ts'
@@ -5,10 +8,12 @@ import type { AnalysisData } from '../services/segments/model.ts'
 import type { TorznabCaps } from '../services/torznab/caps.ts'
 import type { MediaInfo } from '../services/media/probe.ts'
 import { randomUUID } from 'node:crypto'
-import { isNull } from 'drizzle-orm'
+import { isNotNull, isNull, sql } from 'drizzle-orm'
 import {
   blob,
+  check,
   customType,
+  foreignKey,
   index,
   integer,
   primaryKey,
@@ -595,6 +600,7 @@ export const titleProgress = sqliteTable(
     // пересмотр досмотренной серии отметку не снимает
     watchedAt: integer('watched_at', { mode: 'timestamp_ms' }),
     lastPlayedAt: integer('last_played_at', { mode: 'timestamp_ms' }),
+    mutationToken: text('mutation_token'),
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
       .notNull()
       .$defaultFn(() => new Date()),
@@ -635,6 +641,7 @@ export const profileTitles = sqliteTable(
     droppedAt: integer('dropped_at', { mode: 'timestamp_ms' }),
     // Время создания отметки тайтла, а не дата просмотра
     watchedMarkedAt: integer('watched_marked_at', { mode: 'timestamp_ms' }),
+    mutationToken: text('mutation_token'),
     updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
       .notNull()
       .$defaultFn(() => new Date()),
@@ -652,12 +659,344 @@ export const profileTitles = sqliteTable(
 
 export type ProfileTitle = typeof profileTitles.$inferSelect
 
+export const diaryOrigins = [
+  'playback',
+  'manual',
+  'letterboxd',
+  'trakt',
+] as const
+export const diaryPrecisions = ['instant', 'day', 'unknown'] as const
+export const rewatchCycleStates = ['active', 'paused', 'ended'] as const
+export const continuationPreferences = ['normal', 'paused', 'hidden'] as const
+export const mineSections = [
+  'continue',
+  'recommendations',
+  'schedule',
+  'overview',
+  'diary',
+  'watched',
+  'watchlist',
+  'favorites',
+  'ratings',
+  'dropped',
+] as const
+
+export type DiaryContext
+  = { kind: 'normal' } | { kind: 'cycle', cycleId: string }
+
+export const viewingAttemptStates = ['open', 'completed', 'abandoned'] as const
+
+// Kept independently from diary entries so deleting an entry cannot replay completion.
+export const viewingAttempts = sqliteTable(
+  'viewing_attempts',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => randomUUID()),
+    profileId: text('profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    titleId: text('title_id').notNull(),
+    season: integer('season').notNull(),
+    episode: integer('episode').notNull(),
+    // The empty key is normal playback. Cycles have a UUID.
+    cycleKey: text('cycle_key').notNull(),
+    generation: integer('generation').notNull(),
+    state: text('state', { enum: viewingAttemptStates }).notNull(),
+    priorLegacyCompletion: integer('prior_legacy_completion', {
+      mode: 'boolean',
+    })
+      .notNull()
+      .default(false),
+    explicitRestart: integer('explicit_restart', { mode: 'boolean' })
+      .notNull()
+      .default(false),
+  },
+  table => [
+    uniqueIndex('viewing_attempts_generation_idx').on(
+      table.profileId,
+      table.titleId,
+      table.season,
+      table.episode,
+      table.cycleKey,
+      table.generation,
+    ),
+  ],
+)
+
+export const viewingStartReceipts = sqliteTable(
+  'viewing_start_receipts',
+  {
+    profileId: text('profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    requestId: text('request_id').notNull(),
+    command: text('command').notNull(),
+    attemptId: text('attempt_id')
+      .notNull()
+      .references(() => viewingAttempts.id, { onDelete: 'cascade' }),
+  },
+  table => [primaryKey({ columns: [table.profileId, table.requestId] })],
+)
+
+export const viewingBindings = sqliteTable(
+  'viewing_bindings',
+  {
+    sessionId: text('session_id').primaryKey(),
+    attemptId: text('attempt_id')
+      .notNull()
+      .references(() => viewingAttempts.id, { onDelete: 'cascade' }),
+    subject: text('subject').notNull(),
+    clientId: text('client_id').notNull(),
+    playerId: text('player_id').notNull(),
+    sourceRevision: text('source_revision').notNull(),
+    cycleLifecycleRevision: integer('cycle_lifecycle_revision'),
+    line: integer('line').notNull().default(0),
+    baseline: real('baseline'),
+    advanced: integer('advanced', { mode: 'boolean' }).notNull().default(false),
+  },
+  table => [index('viewing_bindings_attempt_idx').on(table.attemptId)],
+)
+
+/** Stable source identity. A cursor survives until the source is available again. */
+export type CycleSource
+  = | { kind: 'library', folder: string, path: string }
+    | { kind: 'torrent', infoHash: string, fileIndex: number }
+
+export const diaryEntries = sqliteTable(
+  'diary_entries',
+  {
+    profileId: text('profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    id: text('id')
+      .notNull()
+      .$defaultFn(() => randomUUID()),
+    titleId: text('title_id').notNull(),
+    // (0, 0) is a title-level fact. Season zero can also have real episodes.
+    season: integer('season').notNull(),
+    episode: integer('episode').notNull(),
+    precision: text('precision', { enum: diaryPrecisions }).notNull(),
+    instant: integer('instant', { mode: 'timestamp_ms' }),
+    day: text('day'),
+    origin: text('origin', { enum: diaryOrigins }).notNull(),
+    originKey: text('origin_key'),
+    // Hash of the original matching key. Used to verify an unresolved replay.
+    sourceMatchKey: text('source_match_key'),
+    rewatch: integer('rewatch', { mode: 'boolean' }).notNull().default(false),
+    note: text('note'),
+    viewingContext: text('viewing_context'),
+    context: text('context', { mode: 'json' }).$type<DiaryContext>(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+    mutationToken: text('mutation_token'),
+  },
+  table => [
+    primaryKey({ columns: [table.profileId, table.id] }),
+    uniqueIndex('diary_entries_origin_idx')
+      .on(table.profileId, table.origin, table.originKey)
+      .where(isNotNull(table.originKey)),
+    index('diary_entries_instant_idx').on(
+      table.profileId,
+      table.instant,
+      table.id,
+    ),
+    index('diary_entries_day_idx').on(table.profileId, table.day, table.id),
+    index('diary_entries_title_idx').on(
+      table.profileId,
+      table.titleId,
+      table.season,
+      table.episode,
+    ),
+    check(
+      'diary_entries_date_check',
+      sql`(${table.precision} = 'instant' AND ${table.instant} IS NOT NULL AND ${table.day} IS NULL)
+        OR (${table.precision} = 'day' AND ${table.instant} IS NULL AND ${table.day} IS NOT NULL)
+        OR (${table.precision} = 'unknown' AND ${table.instant} IS NULL AND ${table.day} IS NULL)`,
+    ),
+    check(
+      'diary_entries_episode_check',
+      sql`${table.season} >= 0 AND ${table.episode} >= 0 AND (${table.episode} > 0 OR ${table.season} = 0)`,
+    ),
+  ],
+)
+
+// A manual gesture can be retried after deletion without resurrecting history.
+export const manualDiaryRequests = sqliteTable(
+  'manual_diary_requests',
+  {
+    profileId: text('profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    requestId: text('request_id').notNull(),
+    command: text('command').notNull(),
+  },
+  table => [primaryKey({ columns: [table.profileId, table.requestId] })],
+)
+
+// Removing a diary entry does not unmark an episode or a title.
+export const diarySeen = sqliteTable(
+  'diary_seen',
+  {
+    profileId: text('profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    titleId: text('title_id').notNull(),
+    season: integer('season').notNull(),
+    episode: integer('episode').notNull(),
+    mutationToken: text('mutation_token'),
+  },
+  table => [
+    primaryKey({
+      columns: [table.profileId, table.titleId, table.season, table.episode],
+    }),
+    check(
+      'diary_seen_episode_check',
+      sql`${table.season} >= 0 AND ${table.episode} >= 0 AND (${table.episode} > 0 OR ${table.season} = 0)`,
+    ),
+  ],
+)
+
+export const rewatchCycles = sqliteTable(
+  'rewatch_cycles',
+  {
+    profileId: text('profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    id: text('id')
+      .notNull()
+      .$defaultFn(() => randomUUID()),
+    titleId: text('title_id').notNull(),
+    createRequestId: text('create_request_id'),
+    lifecycleRevision: integer('lifecycle_revision').notNull().default(0),
+    startSeason: integer('start_season').notNull(),
+    startEpisode: integer('start_episode').notNull(),
+    targetSeason: integer('target_season').notNull(),
+    targetEpisode: integer('target_episode').notNull(),
+    state: text('state', { enum: rewatchCycleStates }).notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+    mutationToken: text('mutation_token'),
+  },
+  table => [
+    primaryKey({ columns: [table.profileId, table.id] }),
+    uniqueIndex('rewatch_cycles_create_request_idx')
+      .on(table.profileId, table.createRequestId)
+      .where(isNotNull(table.createRequestId)),
+    uniqueIndex('rewatch_cycles_unfinished_idx')
+      .on(table.profileId, table.titleId)
+      .where(sql`${table.state} IN ('active', 'paused')`),
+    index('rewatch_cycles_title_idx').on(table.profileId, table.titleId),
+    check(
+      'rewatch_cycles_state_check',
+      sql`${table.state} IN ('active', 'paused', 'ended')`,
+    ),
+    check(
+      'rewatch_cycles_episode_check',
+      sql`${table.startSeason} >= 0 AND ${table.startEpisode} > 0
+        AND ${table.targetSeason} >= 0 AND ${table.targetEpisode} > 0`,
+    ),
+  ],
+)
+
+export const cycleProgress = sqliteTable(
+  'cycle_progress',
+  {
+    profileId: text('profile_id').notNull(),
+    cycleId: text('cycle_id').notNull(),
+    season: integer('season').notNull(),
+    episode: integer('episode').notNull(),
+    position: real('position').notNull(),
+    duration: real('duration'),
+    source: text('source', { mode: 'json' }).$type<CycleSource>(),
+    voiceStudio: text('voice_studio'),
+    voiceType: text('voice_type'),
+    completedAt: integer('completed_at', { mode: 'timestamp_ms' }),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+    mutationToken: text('mutation_token'),
+  },
+  table => [
+    primaryKey({
+      columns: [table.profileId, table.cycleId, table.season, table.episode],
+    }),
+    foreignKey({
+      columns: [table.profileId, table.cycleId],
+      foreignColumns: [rewatchCycles.profileId, rewatchCycles.id],
+    }).onDelete('cascade'),
+    check(
+      'cycle_progress_episode_check',
+      sql`${table.season} >= 0 AND ${table.episode} > 0`,
+    ),
+    check(
+      'cycle_progress_time_check',
+      sql`${table.position} >= 0 AND ${table.duration} >= 0`,
+    ),
+  ],
+)
+
+// Real cycle playback affects file maintenance without changing the normal cursor.
+export const cyclePlaybackFacts = sqliteTable(
+  'cycle_playback_facts',
+  {
+    profileId: text('profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    titleId: text('title_id').notNull(),
+    season: integer('season').notNull(),
+    episode: integer('episode').notNull(),
+    watchedAt: integer('watched_at', { mode: 'timestamp_ms' }),
+    lastPlayedAt: integer('last_played_at', { mode: 'timestamp_ms' }),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+    mutationToken: text('mutation_token'),
+  },
+  table => [
+    primaryKey({
+      columns: [table.profileId, table.titleId, table.season, table.episode],
+    }),
+    check(
+      'cycle_playback_facts_episode_check',
+      sql`${table.season} >= 0 AND ${table.episode} > 0`,
+    ),
+    check(
+      'cycle_playback_facts_time_check',
+      sql`${table.lastPlayedAt} IS NOT NULL OR ${table.watchedAt} IS NOT NULL`,
+    ),
+  ],
+)
+
+export const mineTitlePreferences = sqliteTable(
+  'mine_title_preferences',
+  {
+    profileId: text('profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    titleId: text('title_id').notNull(),
+    note: text('note'),
+    continuation: text('continuation', { enum: continuationPreferences })
+      .notNull()
+      .default('normal'),
+    notInterested: integer('not_interested', { mode: 'boolean' })
+      .notNull()
+      .default(false),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+    mutationToken: text('mutation_token'),
+  },
+  table => [
+    primaryKey({ columns: [table.profileId, table.titleId] }),
+    check(
+      'mine_title_preferences_continuation_check',
+      sql`${table.continuation} IN ('normal', 'paused', 'hidden')`,
+    ),
+  ],
+)
+
 export const importConflictPolicies = ['keep', 'replace', 'newer'] as const
 
 export interface ImportSummary {
   imported: number
   unchanged: number
   unmatched: number
+  history?: HistoryImportCounts
 }
 
 // Строка `profile_titles` до импорта: null — строки не было
@@ -717,7 +1056,7 @@ export const profileImports = sqliteTable(
     conflicts: text('conflicts', { enum: importConflictPolicies }).notNull(),
     summary: text('summary', { mode: 'json' }).notNull().$type<ImportSummary>(),
     undo: text('undo', { mode: 'json' }).$type<
-      Array<ImportUndoEntry | ImportProgressUndoEntry>
+      Array<ImportUndoEntry | ImportProgressUndoEntry> | ImportUndoJournal
     >(),
     appliedAt: integer('applied_at', { mode: 'timestamp_ms' }).notNull(),
     undoneAt: integer('undone_at', { mode: 'timestamp_ms' }),
@@ -744,13 +1083,18 @@ export const profileImportRows = sqliteTable(
     profileId: text('profile_id')
       .notNull()
       .references(() => profiles.id, { onDelete: 'cascade' }),
-    list: text('list', { enum: ['rating', 'watchlist', 'watched'] }).notNull(),
+    list: text('list', {
+      enum: ['rating', 'watchlist', 'watched', 'history'],
+    }).notNull(),
     status: text('status', { enum: importRowStatuses }).notNull(),
     title: text('title').notNull(),
     year: integer('year'),
     kind: text('kind', { enum: ['movie', 'series'] }),
     rating: integer('rating'),
     at: integer('at', { mode: 'timestamp_ms' }),
+    // Все события одного несопоставленного тайтла. Храним до ручного
+    // разрешения, отмены или того же срока очистки, что у остальных строк.
+    viewings: text('viewings', { mode: 'json' }).$type<PendingViewingGroup>(),
     // Тайтл каталога, на который похоже
     suggestion: text('suggestion'),
     position: integer('position').notNull(),
@@ -791,6 +1135,19 @@ export const collections = sqliteTable(
 )
 
 export type Collection = typeof collections.$inferSelect
+
+export const mineProfilePreferences = sqliteTable('mine_profile_preferences', {
+  profileId: text('profile_id')
+    .primaryKey()
+    .references(() => profiles.id, { onDelete: 'cascade' }),
+  startSection: text('start_section', { enum: mineSections }).notNull(),
+  startCollectionId: text('start_collection_id').references(
+    () => collections.id,
+    { onDelete: 'set null' },
+  ),
+  updatedAt: integer('updated_at', { mode: 'timestamp_ms' }).notNull(),
+  mutationToken: text('mutation_token'),
+})
 
 export const collectionTitles = sqliteTable(
   'collection_titles',

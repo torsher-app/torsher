@@ -15,6 +15,7 @@ import {
   lastAppliedAt,
   readJournal,
 } from '../services/backups/schema-version.ts'
+import { calendarDayAt, foldForSearch } from '../services/mine/calendar.ts'
 import * as schema from './schema.ts'
 
 export const MIGRATIONS_DIR = join(import.meta.dirname, 'migrations')
@@ -27,6 +28,17 @@ function open() {
 
   sqlite.pragma('journal_mode = WAL')
   sqlite.pragma('foreign_keys = ON')
+
+  sqlite.function(
+    'mine_day_at',
+    { deterministic: true },
+    (milliseconds, timeZone) =>
+      typeof milliseconds === 'number' && typeof timeZone === 'string'
+        ? calendarDayAt(milliseconds, timeZone)
+        : null,
+  )
+  sqlite.function('mine_fold', { deterministic: true }, value =>
+    typeof value === 'string' ? foldForSearch(value) : null)
 
   return drizzle(sqlite, { schema })
 }

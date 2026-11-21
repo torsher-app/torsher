@@ -149,6 +149,26 @@ function isSpeedtestResultReason(code: string, index: number) {
   )
 }
 
+function isRecommendationReasonKey(code: string, index: number) {
+  const prefix = 'mine.preview.recommendations'
+  const from = index - prefix.length
+  const quote = code[from - 1]
+  if (
+    !quote
+    || !['`', '"', '\''].includes(quote)
+    || code.slice(from, index) !== prefix
+  ) {
+    return false
+  }
+  const suffix = code.slice(
+    index + '.reason'.length,
+    index + '.reason.watchlist'.length + 1,
+  )
+  return ['rated', 'favorite', 'watched', 'watchlist', 'genre'].some(key =>
+    suffix.startsWith(`.${key}${quote}`),
+  )
+}
+
 function isPlainReason(code: string, index: number) {
   const after = code.slice(
     index + '.reason'.length,
@@ -170,7 +190,8 @@ function isPlainReason(code: string, index: number) {
   }
 
   return (
-    /\.status\s*[!=]==?\s*["'`]rejected["'`]/.test(before)
+    isRecommendationReasonKey(code, index)
+    || /\.status\s*[!=]==?\s*["'`]rejected["'`]/.test(before)
     || isSpeedtestResultReason(code, index)
   )
 }

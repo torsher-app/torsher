@@ -3646,7 +3646,7 @@ export interface WatchTitleInput {
    */
   presetId?: string;
   /**
-   * @min 1
+   * @min 0
    * @max 999
    */
   season?: number;
@@ -3665,6 +3665,11 @@ export interface WatchTitleInput {
    * @maxLength 100
    */
   torrentId?: string;
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  cycleId?: string;
 }
 
 export interface TitleWatchInput {
@@ -3811,7 +3816,7 @@ export interface TitleFilesInput {
 
 export interface MarkWatchedInput {
   /**
-   * @min 1
+   * @min 0
    * @max 999
    */
   season?: number;
@@ -3895,6 +3900,19 @@ export interface TitleProgressInput {
   } | null;
   seasonReleases: SeasonReleaseInput[];
   episodes: EpisodeProgressInput[];
+  seenEpisodes?: {
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    season: number;
+    /**
+     * @min 0
+     * @exclusiveMin true
+     * @max 9007199254740991
+     */
+    episode: number;
+  }[];
 }
 
 export interface UpNextInput {
@@ -3914,7 +3932,7 @@ export interface PlaybackTitleInput {
    */
   id: string;
   /**
-   * @min 1
+   * @min 0
    * @max 999
    */
   season?: number;
@@ -4096,6 +4114,13 @@ export interface ContinueCardInput {
   mediaFileId?: string | null;
   followNewEpisode?: boolean;
   continuation?: ContinuationInput;
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  cycleId?: string;
+  cycleVoiceStudio?: string | null;
+  cycleVoiceType?: string | null;
   followUpdate?: {
     season: number;
     episode: number;
@@ -5405,6 +5430,120 @@ export interface ScheduleResponseInput {
   recent: ScheduleItemInput[];
 }
 
+export type ViewingStartInput =
+  | {
+      /**
+       * @minLength 1
+       * @maxLength 100
+       */
+      requestId: string;
+      /**
+       * @minLength 1
+       * @maxLength 100
+       */
+      playerId: string;
+      /**
+       * @minLength 1
+       * @maxLength 100
+       */
+      clientId: string;
+      /**
+       * @format uuid
+       * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+       */
+      cycleId?: string;
+      intent: "join";
+      /**
+       * @min 0
+       * @exclusiveMin true
+       * @max 9007199254740991
+       */
+      expectedGeneration?: number;
+    }
+  | {
+      /**
+       * @minLength 1
+       * @maxLength 100
+       */
+      requestId: string;
+      /**
+       * @minLength 1
+       * @maxLength 100
+       */
+      playerId: string;
+      /**
+       * @minLength 1
+       * @maxLength 100
+       */
+      clientId: string;
+      /**
+       * @format uuid
+       * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+       */
+      cycleId?: string;
+      intent: "restart";
+      /**
+       * @min 0
+       * @max 9007199254740991
+       */
+      expectedGeneration: number;
+    };
+
+export interface ViewingAttemptInput {
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  attemptId: string;
+  /**
+   * @min 0
+   * @exclusiveMin true
+   * @max 9007199254740991
+   */
+  generation: number;
+  state: "open" | "completed" | "abandoned";
+  current?: boolean;
+}
+
+export interface ViewingCheckpointInput {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  playerId: string;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  line: number;
+  kind: "playback" | "seek" | "pause" | "stop" | "source_switch";
+}
+
+export interface ViewingAttemptResponseInput {
+  attempt: ViewingAttemptInput | null;
+  source?:
+    | {
+        /**
+         * @minLength 1
+         * @maxLength 100
+         */
+        torrentId: string;
+        /**
+         * @min 0
+         * @max 9007199254740991
+         */
+        fileIndex: number;
+      }
+    | {
+        /**
+         * @minLength 1
+         * @maxLength 100
+         */
+        mediaFileId: string;
+      };
+  voiceStudio?: string;
+}
+
 export interface DeviceProfileInput {
   /** @maxItems 10 */
   containers: ("mp4" | "webm" | "mkv" | "avi" | "ts" | "other")[];
@@ -5453,6 +5592,17 @@ export interface CreatePlaybackInput {
    * @maxLength 200
    */
   voiceStudio?: string;
+  viewing?: ViewingStartInput;
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  profileId?: string;
+}
+
+export interface PlaybackStartConflictInput {
+  message: string;
+  kind?: "viewingAttemptConflict";
 }
 
 export interface UpdatePlaybackPreferencesInput {
@@ -5503,6 +5653,7 @@ export interface MediaInfoInput {
 
 export interface PlaybackInput {
   sessionId: string;
+  viewing?: ViewingAttemptInput;
   skipSegments?: {
     id: string;
     kind: "intro" | "credits";
@@ -5632,6 +5783,7 @@ export interface UpdateWatchStateInput {
    */
   duration?: number;
   title?: PlaybackTitleInput;
+  viewing?: ViewingCheckpointInput;
 }
 
 export interface WatchStateInput {
@@ -5641,6 +5793,676 @@ export interface WatchStateInput {
   position: number;
   duration: number | null;
   updatedAt: string;
+  accepted?: boolean;
+  rejection?: "stale" | "viewingConflict";
+}
+
+export interface TitleCollectionRefInput {
+  id: string;
+  name: string;
+  contains: boolean;
+}
+
+export interface TitleMineInput {
+  watchlist: boolean;
+  favorite: boolean;
+  /**
+   * @min 1
+   * @max 10
+   */
+  rating: number | null;
+  status: "watching" | "waiting" | "watched" | "dropped" | null;
+  collections: TitleCollectionRefInput[];
+}
+
+export interface UpdateTitleMineInput {
+  watchlist?: boolean;
+  favorite?: boolean;
+  /**
+   * @min 1
+   * @max 10
+   */
+  rating?: number | null;
+  dropped?: boolean;
+}
+
+export interface MineSectionInput {
+  id:
+    | "continue"
+    | "watchlist"
+    | "favorites"
+    | "ratings"
+    | "collection"
+    | "watched"
+    | "dropped";
+  collectionId?: string;
+  name?: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  count: number;
+}
+
+export interface MineResponseInput {
+  sections: MineSectionInput[];
+}
+
+export interface MineItemsInput {
+  items: CardInput[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  total: number;
+}
+
+export interface HistoryEntryInput {
+  title: CardInput;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  season: number | null;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  episode: number | null;
+  position: number;
+  duration: number | null;
+  watched: boolean;
+  watchedAt: string;
+}
+
+export interface ProfileHistoryInput {
+  items: HistoryEntryInput[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  total: number;
+}
+
+export interface MinePersonalErrorInput {
+  kind:
+    | "profileChanged"
+    | "notFound"
+    | "conflict"
+    | "invalidDate"
+    | "invalidEpisode"
+    | "catalogUnavailable";
+}
+
+export interface MineBootstrapInput {
+  version: 1;
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  profileId: string;
+  language: "ru_RU" | "en_US" | null;
+  timeZone: string;
+  /**
+   * @format date
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+   */
+  today: string;
+  start:
+    | {
+        kind: "section";
+        section:
+          | "continue"
+          | "recommendations"
+          | "schedule"
+          | "overview"
+          | "diary"
+          | "watched"
+          | "watchlist"
+          | "favorites"
+          | "ratings"
+          | "dropped";
+      }
+    | {
+        kind: "collection";
+        /**
+         * @minLength 1
+         * @maxLength 100
+         */
+        collectionId: string;
+      };
+  collections: {
+    id: string;
+    name: string;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    count: number | null;
+  }[];
+  counts: {
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    continue: number | null;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    schedule: number | null;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    watched: number | null;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    watchlist: number | null;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    favorites: number | null;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    ratings: number | null;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    dropped: number | null;
+  };
+}
+
+export interface MineStartResponseInput {
+  start:
+    | {
+        kind: "section";
+        section:
+          | "continue"
+          | "recommendations"
+          | "schedule"
+          | "overview"
+          | "diary"
+          | "watched"
+          | "watchlist"
+          | "favorites"
+          | "ratings"
+          | "dropped";
+      }
+    | {
+        kind: "collection";
+        /**
+         * @minLength 1
+         * @maxLength 100
+         */
+        collectionId: string;
+      };
+}
+
+export interface MineEntryMetadataInput {
+  title: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  year: number | null;
+  poster: string | null;
+  episodeTitle: string | null;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  runtimeMinutes: number | null;
+  genres: string[];
+  countries: string[];
+}
+
+export interface MineDiaryEntryInput {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  titleId: string;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  season: number;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  episode: number;
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  id: string;
+  kind: "movie" | "episode" | "series";
+  date:
+    | {
+        precision: "instant";
+        /**
+         * @format date-time
+         * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+         */
+        instant: string;
+      }
+    | {
+        precision: "day";
+        /**
+         * @format date
+         * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+         */
+        day: string;
+      }
+    | {
+        precision: "unknown";
+      };
+  /**
+   * @format date
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+   */
+  calendarDay: string | null;
+  origin: "playback" | "manual" | "letterboxd" | "trakt";
+  rewatch: boolean;
+  /** @maxLength 10000 */
+  note: string | null;
+  /** @maxLength 1000 */
+  viewingContext: string | null;
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  cycleId: string | null;
+  /**
+   * @format date-time
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+   */
+  createdAt: string;
+  /**
+   * @format date-time
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+   */
+  updatedAt: string;
+  metadata: MineEntryMetadataInput | null;
+}
+
+export interface MineDiaryCreatedInput {
+  entry: MineDiaryEntryInput | null;
+}
+
+export interface MineDiaryPageInput {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  profileId: string;
+  entries: MineDiaryEntryInput[];
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  total: number;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  distinctTitles: number;
+  olderCursor: string | null;
+  newerCursor: string | null;
+  months: {
+    /** @pattern ^\d{4}-(?:0[1-9]|1[0-2])$ */
+    month: string | null;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    count: number;
+  }[];
+}
+
+export interface MineDiaryMonthsInput {
+  months: {
+    /** @pattern ^\d{4}-(?:0[1-9]|1[0-2])$ */
+    month: string | null;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    count: number;
+  }[];
+}
+
+export interface MineOverviewInput {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  profileId: string;
+  timeZone: string;
+  /**
+   * @format date
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+   */
+  today: string;
+  period: string;
+  totals: {
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    movies: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    episodes: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    series: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    rewatch: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    days: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    distinctMovies: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    distinctEpisodes: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    runtimeMinutes: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    runtimeKnown: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    runtimeUnknown: number;
+  };
+  days: {
+    /**
+     * @format date
+     * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+     */
+    day: string;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    count: number;
+  }[];
+  recent: MineDiaryEntryInput[];
+  interests: {
+    source: "diary" | "ratingsAndFavorites";
+    genres: {
+      /**
+       * @min 0
+       * @exclusiveMin true
+       * @max 9007199254740991
+       */
+      value: number;
+      label: string;
+      /**
+       * @min 0
+       * @max 9007199254740991
+       */
+      count: number;
+    }[];
+    countries: {
+      value: string;
+      /**
+       * @min 0
+       * @max 9007199254740991
+       */
+      count: number;
+    }[];
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    titlesWithMetadata: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    titles: number;
+  };
+  previousMarks: {
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    movies: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    series: number;
+    examples: {
+      /**
+       * @minLength 1
+       * @maxLength 100
+       */
+      titleId: string;
+      metadata: MineEntryMetadataInput | null;
+    }[];
+  };
+}
+
+export interface MineCycleInput {
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  id: string;
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  titleId: string;
+  state: "active" | "paused" | "ended";
+  start: {
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    season: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    episode: number;
+  };
+  target: {
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    season: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    episode: number;
+  };
+  /**
+   * @format date-time
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+   */
+  updatedAt: string;
+  resume: {
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    season: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    episode: number;
+    /** @min 0 */
+    position: number;
+    /** @min 0 */
+    duration: number | null;
+    source:
+      | {
+          kind: "torrent";
+          torrentId: string;
+          /**
+           * @min 0
+           * @max 9007199254740991
+           */
+          fileIndex: number;
+        }
+      | {
+          kind: "library";
+          mediaFileId: string;
+        }
+      | null;
+    voiceStudio: string | null;
+    voiceType: string | null;
+    next: boolean;
+  } | null;
+}
+
+export interface MineTitlePersonalInput {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  titleId: string;
+  /** @maxLength 10000 */
+  note: string | null;
+  continuation: "normal" | "paused" | "hidden";
+  notInterested: boolean;
+  status: "watching" | "waiting" | "watched" | "dropped" | null;
+  seen: {
+    title: boolean;
+    episode: boolean | null;
+  };
+  cycle: MineCycleInput | null;
+}
+
+export interface MinePersonalContinueInput {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  profileId: string;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  total: number;
+  items: {
+    /**
+     * @minLength 1
+     * @maxLength 100
+     */
+    titleId: string;
+    kind: "movie" | "series";
+    metadata: MineEntryMetadataInput | null;
+    continuation: "normal" | "paused" | "hidden";
+    cycle: MineCycleInput | null;
+    normalResume: {
+      /**
+       * @min 0
+       * @max 9007199254740991
+       */
+      season: number;
+      /**
+       * @min 0
+       * @max 9007199254740991
+       */
+      episode: number;
+      /** @min 0 */
+      position: number;
+      /** @min 0 */
+      duration: number | null;
+      source:
+        | {
+            kind: "torrent";
+            torrentId: string;
+            /**
+             * @min 0
+             * @max 9007199254740991
+             */
+            fileIndex: number;
+          }
+        | {
+            kind: "library";
+            mediaFileId: string;
+          }
+        | null;
+      voiceStudio: string | null;
+      voiceType: string | null;
+      next: boolean;
+    } | null;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    ownRating: number | null;
+    /**
+     * @format date-time
+     * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+     */
+    updatedAt: string;
+  }[];
+}
+
+export interface MinePersonalWatchedInput {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  profileId: string;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  total: number;
+  items: {
+    /**
+     * @minLength 1
+     * @maxLength 100
+     */
+    titleId: string;
+    kind: "movie" | "series";
+    metadata: MineEntryMetadataInput | null;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    ownRating: number | null;
+  }[];
 }
 
 export interface LibraryFolderInput {
@@ -5920,91 +6742,130 @@ export interface LogLevelResponseInput {
   level: "debug" | "info" | "warn" | "error";
 }
 
-export interface TitleCollectionRefInput {
-  id: string;
-  name: string;
-  contains: boolean;
-}
-
-export interface TitleMineInput {
-  watchlist: boolean;
-  favorite: boolean;
+export interface MineRecommendationItemInput {
+  card: CardInput;
+  backdrop: string | null;
+  genres: {
+    /**
+     * @min 0
+     * @exclusiveMin true
+     * @max 9007199254740991
+     */
+    id: number;
+    name: string;
+  }[];
   /**
-   * @min 1
-   * @max 10
-   */
-  rating: number | null;
-  status: "watching" | "waiting" | "watched" | "dropped" | null;
-  collections: TitleCollectionRefInput[];
-}
-
-export interface UpdateTitleMineInput {
-  watchlist?: boolean;
-  favorite?: boolean;
-  /**
-   * @min 1
-   * @max 10
-   */
-  rating?: number | null;
-  dropped?: boolean;
-}
-
-export interface MineSectionInput {
-  id:
-    | "continue"
-    | "watchlist"
-    | "favorites"
-    | "ratings"
-    | "collection"
-    | "watched"
-    | "dropped";
-  collectionId?: string;
-  name?: string;
-  /**
-   * @min -9007199254740991
+   * @min 0
+   * @exclusiveMin true
    * @max 9007199254740991
    */
-  count: number;
+  runtimeMinutes: number | null;
+  episode: {
+    /**
+     * @min 0
+     * @exclusiveMin true
+     * @max 9007199254740991
+     */
+    season: number;
+    /**
+     * @min 0
+     * @exclusiveMin true
+     * @max 9007199254740991
+     */
+    episode: number;
+  } | null;
+  reason:
+    | {
+        kind: "ratedSeed";
+        titleId: string;
+        title: string;
+        /**
+         * @min 6
+         * @max 10
+         */
+        rating: number;
+      }
+    | {
+        kind: "favoriteSeed";
+        titleId: string;
+        title: string;
+      }
+    | {
+        kind: "watchedSeed";
+        titleId: string;
+        title: string;
+      }
+    | {
+        kind: "watchlistSince";
+        /**
+         * @format date
+         * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+         */
+        day: string;
+      }
+    | {
+        kind: "selectedGenre";
+        genre: {
+          /**
+           * @min 0
+           * @exclusiveMin true
+           * @max 9007199254740991
+           */
+          id: number;
+          name: string;
+        };
+      }
+    | null;
 }
 
-export interface MineResponseInput {
-  sections: MineSectionInput[];
+export interface MineRecommendationsInput {
+  profileId: string;
+  /** @maxItems 12 */
+  items: MineRecommendationItemInput[];
+  genres: {
+    /**
+     * @min 0
+     * @exclusiveMin true
+     * @max 9007199254740991
+     */
+    id: number;
+    name: string;
+  }[];
+  hasPersonalSignals: boolean;
+  refresh:
+    | {
+        state: "idle";
+      }
+    | {
+        state: "pending";
+      }
+    | {
+        state: "backoff";
+        /**
+         * @min 0
+         * @max 9007199254740991
+         */
+        retryAfterMs: number;
+      }
+    | {
+        state: "unavailable";
+        /**
+         * @min 0
+         * @max 9007199254740991
+         */
+        retryAfterMs: number;
+        cause: "config" | "network";
+      };
 }
 
-export interface MineItemsInput {
+export interface MineRecommendationExclusionsInput {
+  profileId: string;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  total: number;
   items: CardInput[];
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  total: number;
-}
-
-export interface HistoryEntryInput {
-  title: CardInput;
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  season: number | null;
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  episode: number | null;
-  position: number;
-  duration: number | null;
-  watched: boolean;
-  watchedAt: string;
-}
-
-export interface ProfileHistoryInput {
-  items: HistoryEntryInput[];
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  total: number;
 }
 
 export interface NetRouteErrorResponseInput {
@@ -6746,6 +7607,52 @@ export interface ImportPreviewInput {
      */
     same: number;
   };
+  personal?: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    changed: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    unchanged: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    skipped: number;
+  };
+  history?: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    new: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    same: number;
+    seen: {
+      /**
+       * @min -9007199254740991
+       * @max 9007199254740991
+       */
+      new: number;
+      /**
+       * @min -9007199254740991
+       * @max 9007199254740991
+       */
+      same: number;
+    };
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    skipped: number;
+  };
   dropped?: {
     /**
      * @min -9007199254740991
@@ -6795,6 +7702,57 @@ export interface ImportSummaryInput {
    * @max 9007199254740991
    */
   unmatched: number;
+  history?: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    new: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    same: number;
+    seen: {
+      /**
+       * @min -9007199254740991
+       * @max 9007199254740991
+       */
+      new: number;
+      /**
+       * @min -9007199254740991
+       * @max 9007199254740991
+       */
+      same: number;
+    };
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    skipped: number;
+  };
+  personal?: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    changed: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    unchanged: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    skipped: number;
+  };
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  skipped?: number;
 }
 
 export interface ImportOverviewInput {
@@ -6836,6 +7794,57 @@ export interface AppliedImportInput {
    * @max 9007199254740991
    */
   unmatched: number;
+  history?: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    new: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    same: number;
+    seen: {
+      /**
+       * @min -9007199254740991
+       * @max 9007199254740991
+       */
+      new: number;
+      /**
+       * @min -9007199254740991
+       * @max 9007199254740991
+       */
+      same: number;
+    };
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    skipped: number;
+  };
+  personal?: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    changed: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    unchanged: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    skipped: number;
+  };
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  skipped?: number;
   id: string;
 }
 
@@ -6854,7 +7863,7 @@ export interface UndoneImportInput {
 
 export interface UnmatchedImportRowInput {
   id: string;
-  list: "rating" | "watchlist" | "watched";
+  list: "rating" | "watchlist" | "watched" | "history";
   status: "unsure" | "notFound";
   title: string;
   /**
@@ -6868,6 +7877,11 @@ export interface UnmatchedImportRowInput {
    * @max 9007199254740991
    */
   rating: number | null;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  historyCount?: number;
   suggestion: CardInput | null;
 }
 
@@ -6886,6 +7900,11 @@ export interface MatchImportRowInput {
    * @maxLength 100
    */
   titleId: string;
+}
+
+export interface HistoryMatchConflictInput {
+  kind: "historyMatchConflict";
+  reason: "titleKind" | "sourceIdentity";
 }
 
 export interface PlayerSettingsInput {
@@ -6977,6 +7996,11 @@ export interface SetProfilePinInput {
 export interface SelectProfileInput {
   /** @pattern ^\d{4}$ */
   pin?: string;
+}
+
+export interface ProfileMoveConflictInput {
+  kind: "personalMoveConflict";
+  reason: "originTitle" | "originEpisode" | "cycleIdentity";
 }
 
 export interface PinErrorResponseInput {
@@ -7321,7 +8345,7 @@ export interface CreateExportInput {
 
 export interface ExportFileInput {
   format: "torsher-export";
-  version: 1;
+  version: 2;
   /**
    * @format date-time
    * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
@@ -7714,6 +8738,309 @@ export interface ExportFileInput {
      */
     tmdbKey?: string | null;
   };
+  personalSpace: {
+    /** @maxLength 100 */
+    timeZone: string;
+    diary: {
+      /**
+       * @minLength 1
+       * @maxLength 20
+       */
+      profile: string;
+      /**
+       * @minLength 1
+       * @maxLength 100
+       */
+      title: string;
+      /**
+       * @min 0
+       * @max 9007199254740991
+       */
+      season: number;
+      /**
+       * @min 0
+       * @max 9007199254740991
+       */
+      episode: number;
+      /**
+       * @format uuid
+       * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+       */
+      id: string;
+      precision: "instant" | "day" | "unknown";
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      instant: string | null;
+      /**
+       * @format date
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+       */
+      day: string | null;
+      origin: "playback" | "manual" | "letterboxd" | "trakt";
+      /**
+       * @minLength 1
+       * @maxLength 500
+       */
+      originKey: string | null;
+      /** @pattern ^[0-9a-f]{64}$ */
+      sourceMatchKey?: string;
+      rewatch: boolean;
+      /** @maxLength 10000 */
+      note: string | null;
+      /** @maxLength 1000 */
+      viewingContext: string | null;
+      context:
+        | {
+            kind: "normal";
+          }
+        | {
+            kind: "cycle";
+            /**
+             * @format uuid
+             * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+             */
+            cycleId: string;
+          }
+        | null;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      createdAt: string;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      updatedAt: string;
+    }[];
+    seen: {
+      /**
+       * @minLength 1
+       * @maxLength 20
+       */
+      profile: string;
+      /**
+       * @minLength 1
+       * @maxLength 100
+       */
+      title: string;
+      /**
+       * @min 0
+       * @max 9007199254740991
+       */
+      season: number;
+      /**
+       * @min 0
+       * @max 9007199254740991
+       */
+      episode: number;
+    }[];
+    cycles: {
+      /**
+       * @minLength 1
+       * @maxLength 20
+       */
+      profile: string;
+      /**
+       * @format uuid
+       * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+       */
+      id: string;
+      /**
+       * @minLength 1
+       * @maxLength 100
+       */
+      title: string;
+      state: "active" | "paused" | "ended";
+      /**
+       * @min 0
+       * @max 9007199254740991
+       */
+      startSeason: number;
+      /**
+       * @min 0
+       * @exclusiveMin true
+       * @max 9007199254740991
+       */
+      startEpisode: number;
+      /**
+       * @min 0
+       * @max 9007199254740991
+       */
+      targetSeason: number;
+      /**
+       * @min 0
+       * @exclusiveMin true
+       * @max 9007199254740991
+       */
+      targetEpisode: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      createdAt: string;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      updatedAt: string;
+    }[];
+    cycleProgress: {
+      /**
+       * @minLength 1
+       * @maxLength 20
+       */
+      profile: string;
+      /**
+       * @format uuid
+       * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+       */
+      cycleId: string;
+      /**
+       * @min 0
+       * @max 9007199254740991
+       */
+      season: number;
+      /**
+       * @min 0
+       * @exclusiveMin true
+       * @max 9007199254740991
+       */
+      episode: number;
+      /** @min 0 */
+      position: number;
+      /** @min 0 */
+      duration: number | null;
+      source:
+        | {
+            /**
+             * @minLength 1
+             * @maxLength 4096
+             */
+            folder: string;
+            /**
+             * @minLength 1
+             * @maxLength 4096
+             */
+            path: string;
+            kind: "library";
+          }
+        | {
+            kind: "torrent";
+            /** @pattern ^[0-9a-f]{40}(?:[0-9a-f]{24})?$ */
+            infoHash: string;
+            /**
+             * @min 0
+             * @max 9007199254740991
+             */
+            fileIndex: number;
+          }
+        | null;
+      /** @maxLength 200 */
+      voiceStudio: string | null;
+      /** @maxLength 50 */
+      voiceType: string | null;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      completedAt?: string | null;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      updatedAt: string;
+    }[];
+    cyclePlayback: {
+      /**
+       * @minLength 1
+       * @maxLength 20
+       */
+      profile: string;
+      /**
+       * @minLength 1
+       * @maxLength 100
+       */
+      title: string;
+      /**
+       * @min 0
+       * @max 9007199254740991
+       */
+      season: number;
+      /**
+       * @min 0
+       * @exclusiveMin true
+       * @max 9007199254740991
+       */
+      episode: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      watchedAt: string | null;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      lastPlayedAt: string | null;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      updatedAt: string;
+    }[];
+    titlePreferences: {
+      /**
+       * @minLength 1
+       * @maxLength 20
+       */
+      profile: string;
+      /**
+       * @minLength 1
+       * @maxLength 100
+       */
+      title: string;
+      /** @maxLength 10000 */
+      note: string | null;
+      continuation: "normal" | "paused" | "hidden";
+      notInterested: boolean;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      updatedAt: string;
+    }[];
+    profilePreferences: {
+      /**
+       * @minLength 1
+       * @maxLength 20
+       */
+      profile: string;
+      startSection:
+        | "continue"
+        | "recommendations"
+        | "schedule"
+        | "overview"
+        | "diary"
+        | "watched"
+        | "watchlist"
+        | "favorites"
+        | "ratings"
+        | "dropped";
+      /**
+       * @minLength 1
+       * @maxLength 100
+       */
+      startCollectionName?: string | null;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      updatedAt: string;
+    }[];
+  };
 }
 
 export interface TransferErrorResponseInput {
@@ -7813,6 +9140,23 @@ export interface ProfileMergeCountsInput {
      * @max 9007199254740991
      */
     same: number;
+  };
+  personal?: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    changed: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    unchanged: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    skipped: number;
   };
   /**
    * @min -9007199254740991
@@ -11621,7 +12965,7 @@ export interface WatchTitle {
    */
   presetId?: string;
   /**
-   * @min 1
+   * @min 0
    * @max 999
    */
   season?: number;
@@ -11640,6 +12984,11 @@ export interface WatchTitle {
    * @maxLength 100
    */
   torrentId?: string;
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  cycleId?: string;
 }
 
 export interface TitleWatch {
@@ -11786,7 +13135,7 @@ export interface TitleFiles {
 
 export interface MarkWatched {
   /**
-   * @min 1
+   * @min 0
    * @max 999
    */
   season?: number;
@@ -11870,6 +13219,19 @@ export interface TitleProgress {
   } | null;
   seasonReleases: SeasonRelease[];
   episodes: EpisodeProgress[];
+  seenEpisodes?: {
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    season: number;
+    /**
+     * @min 0
+     * @exclusiveMin true
+     * @max 9007199254740991
+     */
+    episode: number;
+  }[];
 }
 
 export interface UpNext {
@@ -11889,7 +13251,7 @@ export interface PlaybackTitle {
    */
   id: string;
   /**
-   * @min 1
+   * @min 0
    * @max 999
    */
   season?: number;
@@ -12071,6 +13433,13 @@ export interface ContinueCard {
   mediaFileId?: string | null;
   followNewEpisode?: boolean;
   continuation?: Continuation;
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  cycleId?: string;
+  cycleVoiceStudio?: string | null;
+  cycleVoiceType?: string | null;
   followUpdate?: {
     season: number;
     episode: number;
@@ -13379,6 +14748,120 @@ export interface ScheduleResponse {
   recent: ScheduleItem[];
 }
 
+export type ViewingStart =
+  | {
+      /**
+       * @minLength 1
+       * @maxLength 100
+       */
+      requestId: string;
+      /**
+       * @minLength 1
+       * @maxLength 100
+       */
+      playerId: string;
+      /**
+       * @minLength 1
+       * @maxLength 100
+       */
+      clientId: string;
+      /**
+       * @format uuid
+       * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+       */
+      cycleId?: string;
+      intent: "join";
+      /**
+       * @min 0
+       * @exclusiveMin true
+       * @max 9007199254740991
+       */
+      expectedGeneration?: number;
+    }
+  | {
+      /**
+       * @minLength 1
+       * @maxLength 100
+       */
+      requestId: string;
+      /**
+       * @minLength 1
+       * @maxLength 100
+       */
+      playerId: string;
+      /**
+       * @minLength 1
+       * @maxLength 100
+       */
+      clientId: string;
+      /**
+       * @format uuid
+       * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+       */
+      cycleId?: string;
+      intent: "restart";
+      /**
+       * @min 0
+       * @max 9007199254740991
+       */
+      expectedGeneration: number;
+    };
+
+export interface ViewingAttempt {
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  attemptId: string;
+  /**
+   * @min 0
+   * @exclusiveMin true
+   * @max 9007199254740991
+   */
+  generation: number;
+  state: "open" | "completed" | "abandoned";
+  current?: boolean;
+}
+
+export interface ViewingCheckpoint {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  playerId: string;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  line: number;
+  kind: "playback" | "seek" | "pause" | "stop" | "source_switch";
+}
+
+export interface ViewingAttemptResponse {
+  attempt: ViewingAttempt | null;
+  source?:
+    | {
+        /**
+         * @minLength 1
+         * @maxLength 100
+         */
+        torrentId: string;
+        /**
+         * @min 0
+         * @max 9007199254740991
+         */
+        fileIndex: number;
+      }
+    | {
+        /**
+         * @minLength 1
+         * @maxLength 100
+         */
+        mediaFileId: string;
+      };
+  voiceStudio?: string;
+}
+
 export interface DeviceProfile {
   /** @maxItems 10 */
   containers: ("mp4" | "webm" | "mkv" | "avi" | "ts" | "other")[];
@@ -13427,6 +14910,17 @@ export interface CreatePlayback {
    * @maxLength 200
    */
   voiceStudio?: string;
+  viewing?: ViewingStart;
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  profileId?: string;
+}
+
+export interface PlaybackStartConflict {
+  message: string;
+  kind?: "viewingAttemptConflict";
 }
 
 export interface UpdatePlaybackPreferences {
@@ -13477,6 +14971,7 @@ export interface MediaInfo {
 
 export interface Playback {
   sessionId: string;
+  viewing?: ViewingAttempt;
   skipSegments?: {
     id: string;
     kind: "intro" | "credits";
@@ -13606,6 +15101,7 @@ export interface UpdateWatchState {
    */
   duration?: number;
   title?: PlaybackTitle;
+  viewing?: ViewingCheckpoint;
 }
 
 export interface WatchState {
@@ -13615,6 +15111,676 @@ export interface WatchState {
   position: number;
   duration: number | null;
   updatedAt: string;
+  accepted?: boolean;
+  rejection?: "stale" | "viewingConflict";
+}
+
+export interface TitleCollectionRef {
+  id: string;
+  name: string;
+  contains: boolean;
+}
+
+export interface TitleMine {
+  watchlist: boolean;
+  favorite: boolean;
+  /**
+   * @min 1
+   * @max 10
+   */
+  rating: number | null;
+  status: "watching" | "waiting" | "watched" | "dropped" | null;
+  collections: TitleCollectionRef[];
+}
+
+export interface UpdateTitleMine {
+  watchlist?: boolean;
+  favorite?: boolean;
+  /**
+   * @min 1
+   * @max 10
+   */
+  rating?: number | null;
+  dropped?: boolean;
+}
+
+export interface MineSection {
+  id:
+    | "continue"
+    | "watchlist"
+    | "favorites"
+    | "ratings"
+    | "collection"
+    | "watched"
+    | "dropped";
+  collectionId?: string;
+  name?: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  count: number;
+}
+
+export interface MineResponse {
+  sections: MineSection[];
+}
+
+export interface MineItems {
+  items: Card[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  total: number;
+}
+
+export interface HistoryEntry {
+  title: Card;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  season: number | null;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  episode: number | null;
+  position: number;
+  duration: number | null;
+  watched: boolean;
+  watchedAt: string;
+}
+
+export interface ProfileHistory {
+  items: HistoryEntry[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  total: number;
+}
+
+export interface MinePersonalError {
+  kind:
+    | "profileChanged"
+    | "notFound"
+    | "conflict"
+    | "invalidDate"
+    | "invalidEpisode"
+    | "catalogUnavailable";
+}
+
+export interface MineBootstrap {
+  version: 1;
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  profileId: string;
+  language: "ru_RU" | "en_US" | null;
+  timeZone: string;
+  /**
+   * @format date
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+   */
+  today: string;
+  start:
+    | {
+        kind: "section";
+        section:
+          | "continue"
+          | "recommendations"
+          | "schedule"
+          | "overview"
+          | "diary"
+          | "watched"
+          | "watchlist"
+          | "favorites"
+          | "ratings"
+          | "dropped";
+      }
+    | {
+        kind: "collection";
+        /**
+         * @minLength 1
+         * @maxLength 100
+         */
+        collectionId: string;
+      };
+  collections: {
+    id: string;
+    name: string;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    count: number | null;
+  }[];
+  counts: {
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    continue: number | null;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    schedule: number | null;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    watched: number | null;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    watchlist: number | null;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    favorites: number | null;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    ratings: number | null;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    dropped: number | null;
+  };
+}
+
+export interface MineStartResponse {
+  start:
+    | {
+        kind: "section";
+        section:
+          | "continue"
+          | "recommendations"
+          | "schedule"
+          | "overview"
+          | "diary"
+          | "watched"
+          | "watchlist"
+          | "favorites"
+          | "ratings"
+          | "dropped";
+      }
+    | {
+        kind: "collection";
+        /**
+         * @minLength 1
+         * @maxLength 100
+         */
+        collectionId: string;
+      };
+}
+
+export interface MineEntryMetadata {
+  title: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  year: number | null;
+  poster: string | null;
+  episodeTitle: string | null;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  runtimeMinutes: number | null;
+  genres: string[];
+  countries: string[];
+}
+
+export interface MineDiaryEntry {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  titleId: string;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  season: number;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  episode: number;
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  id: string;
+  kind: "movie" | "episode" | "series";
+  date:
+    | {
+        precision: "instant";
+        /**
+         * @format date-time
+         * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+         */
+        instant: string;
+      }
+    | {
+        precision: "day";
+        /**
+         * @format date
+         * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+         */
+        day: string;
+      }
+    | {
+        precision: "unknown";
+      };
+  /**
+   * @format date
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+   */
+  calendarDay: string | null;
+  origin: "playback" | "manual" | "letterboxd" | "trakt";
+  rewatch: boolean;
+  /** @maxLength 10000 */
+  note: string | null;
+  /** @maxLength 1000 */
+  viewingContext: string | null;
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  cycleId: string | null;
+  /**
+   * @format date-time
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+   */
+  createdAt: string;
+  /**
+   * @format date-time
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+   */
+  updatedAt: string;
+  metadata: MineEntryMetadata | null;
+}
+
+export interface MineDiaryCreated {
+  entry: MineDiaryEntry | null;
+}
+
+export interface MineDiaryPage {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  profileId: string;
+  entries: MineDiaryEntry[];
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  total: number;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  distinctTitles: number;
+  olderCursor: string | null;
+  newerCursor: string | null;
+  months: {
+    /** @pattern ^\d{4}-(?:0[1-9]|1[0-2])$ */
+    month: string | null;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    count: number;
+  }[];
+}
+
+export interface MineDiaryMonths {
+  months: {
+    /** @pattern ^\d{4}-(?:0[1-9]|1[0-2])$ */
+    month: string | null;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    count: number;
+  }[];
+}
+
+export interface MineOverview {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  profileId: string;
+  timeZone: string;
+  /**
+   * @format date
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+   */
+  today: string;
+  period: string;
+  totals: {
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    movies: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    episodes: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    series: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    rewatch: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    days: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    distinctMovies: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    distinctEpisodes: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    runtimeMinutes: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    runtimeKnown: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    runtimeUnknown: number;
+  };
+  days: {
+    /**
+     * @format date
+     * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+     */
+    day: string;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    count: number;
+  }[];
+  recent: MineDiaryEntry[];
+  interests: {
+    source: "diary" | "ratingsAndFavorites";
+    genres: {
+      /**
+       * @min 0
+       * @exclusiveMin true
+       * @max 9007199254740991
+       */
+      value: number;
+      label: string;
+      /**
+       * @min 0
+       * @max 9007199254740991
+       */
+      count: number;
+    }[];
+    countries: {
+      value: string;
+      /**
+       * @min 0
+       * @max 9007199254740991
+       */
+      count: number;
+    }[];
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    titlesWithMetadata: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    titles: number;
+  };
+  previousMarks: {
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    movies: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    series: number;
+    examples: {
+      /**
+       * @minLength 1
+       * @maxLength 100
+       */
+      titleId: string;
+      metadata: MineEntryMetadata | null;
+    }[];
+  };
+}
+
+export interface MineCycle {
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  id: string;
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  titleId: string;
+  state: "active" | "paused" | "ended";
+  start: {
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    season: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    episode: number;
+  };
+  target: {
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    season: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    episode: number;
+  };
+  /**
+   * @format date-time
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+   */
+  updatedAt: string;
+  resume: {
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    season: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    episode: number;
+    /** @min 0 */
+    position: number;
+    /** @min 0 */
+    duration: number | null;
+    source:
+      | {
+          kind: "torrent";
+          torrentId: string;
+          /**
+           * @min 0
+           * @max 9007199254740991
+           */
+          fileIndex: number;
+        }
+      | {
+          kind: "library";
+          mediaFileId: string;
+        }
+      | null;
+    voiceStudio: string | null;
+    voiceType: string | null;
+    next: boolean;
+  } | null;
+}
+
+export interface MineTitlePersonal {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  titleId: string;
+  /** @maxLength 10000 */
+  note: string | null;
+  continuation: "normal" | "paused" | "hidden";
+  notInterested: boolean;
+  status: "watching" | "waiting" | "watched" | "dropped" | null;
+  seen: {
+    title: boolean;
+    episode: boolean | null;
+  };
+  cycle: MineCycle | null;
+}
+
+export interface MinePersonalContinue {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  profileId: string;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  total: number;
+  items: {
+    /**
+     * @minLength 1
+     * @maxLength 100
+     */
+    titleId: string;
+    kind: "movie" | "series";
+    metadata: MineEntryMetadata | null;
+    continuation: "normal" | "paused" | "hidden";
+    cycle: MineCycle | null;
+    normalResume: {
+      /**
+       * @min 0
+       * @max 9007199254740991
+       */
+      season: number;
+      /**
+       * @min 0
+       * @max 9007199254740991
+       */
+      episode: number;
+      /** @min 0 */
+      position: number;
+      /** @min 0 */
+      duration: number | null;
+      source:
+        | {
+            kind: "torrent";
+            torrentId: string;
+            /**
+             * @min 0
+             * @max 9007199254740991
+             */
+            fileIndex: number;
+          }
+        | {
+            kind: "library";
+            mediaFileId: string;
+          }
+        | null;
+      voiceStudio: string | null;
+      voiceType: string | null;
+      next: boolean;
+    } | null;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    ownRating: number | null;
+    /**
+     * @format date-time
+     * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+     */
+    updatedAt: string;
+  }[];
+}
+
+export interface MinePersonalWatched {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  profileId: string;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  total: number;
+  items: {
+    /**
+     * @minLength 1
+     * @maxLength 100
+     */
+    titleId: string;
+    kind: "movie" | "series";
+    metadata: MineEntryMetadata | null;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    ownRating: number | null;
+  }[];
 }
 
 export interface LibraryFolder {
@@ -13894,91 +16060,130 @@ export interface LogLevelResponse {
   level: "debug" | "info" | "warn" | "error";
 }
 
-export interface TitleCollectionRef {
-  id: string;
-  name: string;
-  contains: boolean;
-}
-
-export interface TitleMine {
-  watchlist: boolean;
-  favorite: boolean;
+export interface MineRecommendationItem {
+  card: Card;
+  backdrop: string | null;
+  genres: {
+    /**
+     * @min 0
+     * @exclusiveMin true
+     * @max 9007199254740991
+     */
+    id: number;
+    name: string;
+  }[];
   /**
-   * @min 1
-   * @max 10
-   */
-  rating: number | null;
-  status: "watching" | "waiting" | "watched" | "dropped" | null;
-  collections: TitleCollectionRef[];
-}
-
-export interface UpdateTitleMine {
-  watchlist?: boolean;
-  favorite?: boolean;
-  /**
-   * @min 1
-   * @max 10
-   */
-  rating?: number | null;
-  dropped?: boolean;
-}
-
-export interface MineSection {
-  id:
-    | "continue"
-    | "watchlist"
-    | "favorites"
-    | "ratings"
-    | "collection"
-    | "watched"
-    | "dropped";
-  collectionId?: string;
-  name?: string;
-  /**
-   * @min -9007199254740991
+   * @min 0
+   * @exclusiveMin true
    * @max 9007199254740991
    */
-  count: number;
+  runtimeMinutes: number | null;
+  episode: {
+    /**
+     * @min 0
+     * @exclusiveMin true
+     * @max 9007199254740991
+     */
+    season: number;
+    /**
+     * @min 0
+     * @exclusiveMin true
+     * @max 9007199254740991
+     */
+    episode: number;
+  } | null;
+  reason:
+    | {
+        kind: "ratedSeed";
+        titleId: string;
+        title: string;
+        /**
+         * @min 6
+         * @max 10
+         */
+        rating: number;
+      }
+    | {
+        kind: "favoriteSeed";
+        titleId: string;
+        title: string;
+      }
+    | {
+        kind: "watchedSeed";
+        titleId: string;
+        title: string;
+      }
+    | {
+        kind: "watchlistSince";
+        /**
+         * @format date
+         * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+         */
+        day: string;
+      }
+    | {
+        kind: "selectedGenre";
+        genre: {
+          /**
+           * @min 0
+           * @exclusiveMin true
+           * @max 9007199254740991
+           */
+          id: number;
+          name: string;
+        };
+      }
+    | null;
 }
 
-export interface MineResponse {
-  sections: MineSection[];
+export interface MineRecommendations {
+  profileId: string;
+  /** @maxItems 12 */
+  items: MineRecommendationItem[];
+  genres: {
+    /**
+     * @min 0
+     * @exclusiveMin true
+     * @max 9007199254740991
+     */
+    id: number;
+    name: string;
+  }[];
+  hasPersonalSignals: boolean;
+  refresh:
+    | {
+        state: "idle";
+      }
+    | {
+        state: "pending";
+      }
+    | {
+        state: "backoff";
+        /**
+         * @min 0
+         * @max 9007199254740991
+         */
+        retryAfterMs: number;
+      }
+    | {
+        state: "unavailable";
+        /**
+         * @min 0
+         * @max 9007199254740991
+         */
+        retryAfterMs: number;
+        cause: "config" | "network";
+      };
 }
 
-export interface MineItems {
+export interface MineRecommendationExclusions {
+  profileId: string;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  total: number;
   items: Card[];
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  total: number;
-}
-
-export interface HistoryEntry {
-  title: Card;
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  season: number | null;
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  episode: number | null;
-  position: number;
-  duration: number | null;
-  watched: boolean;
-  watchedAt: string;
-}
-
-export interface ProfileHistory {
-  items: HistoryEntry[];
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  total: number;
 }
 
 export interface NetRouteErrorResponse {
@@ -14720,6 +16925,52 @@ export interface ImportPreview {
      */
     same: number;
   };
+  personal?: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    changed: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    unchanged: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    skipped: number;
+  };
+  history?: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    new: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    same: number;
+    seen: {
+      /**
+       * @min -9007199254740991
+       * @max 9007199254740991
+       */
+      new: number;
+      /**
+       * @min -9007199254740991
+       * @max 9007199254740991
+       */
+      same: number;
+    };
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    skipped: number;
+  };
   dropped?: {
     /**
      * @min -9007199254740991
@@ -14769,6 +17020,57 @@ export interface ImportSummary {
    * @max 9007199254740991
    */
   unmatched: number;
+  history?: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    new: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    same: number;
+    seen: {
+      /**
+       * @min -9007199254740991
+       * @max 9007199254740991
+       */
+      new: number;
+      /**
+       * @min -9007199254740991
+       * @max 9007199254740991
+       */
+      same: number;
+    };
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    skipped: number;
+  };
+  personal?: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    changed: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    unchanged: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    skipped: number;
+  };
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  skipped?: number;
 }
 
 export interface ImportOverview {
@@ -14810,6 +17112,57 @@ export interface AppliedImport {
    * @max 9007199254740991
    */
   unmatched: number;
+  history?: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    new: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    same: number;
+    seen: {
+      /**
+       * @min -9007199254740991
+       * @max 9007199254740991
+       */
+      new: number;
+      /**
+       * @min -9007199254740991
+       * @max 9007199254740991
+       */
+      same: number;
+    };
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    skipped: number;
+  };
+  personal?: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    changed: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    unchanged: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    skipped: number;
+  };
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  skipped?: number;
   id: string;
 }
 
@@ -14828,7 +17181,7 @@ export interface UndoneImport {
 
 export interface UnmatchedImportRow {
   id: string;
-  list: "rating" | "watchlist" | "watched";
+  list: "rating" | "watchlist" | "watched" | "history";
   status: "unsure" | "notFound";
   title: string;
   /**
@@ -14842,6 +17195,11 @@ export interface UnmatchedImportRow {
    * @max 9007199254740991
    */
   rating: number | null;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  historyCount?: number;
   suggestion: Card | null;
 }
 
@@ -14860,6 +17218,11 @@ export interface MatchImportRow {
    * @maxLength 100
    */
   titleId: string;
+}
+
+export interface HistoryMatchConflict {
+  kind: "historyMatchConflict";
+  reason: "titleKind" | "sourceIdentity";
 }
 
 export interface PlayerSettings {
@@ -14951,6 +17314,11 @@ export interface SetProfilePin {
 export interface SelectProfile {
   /** @pattern ^\d{4}$ */
   pin?: string;
+}
+
+export interface ProfileMoveConflict {
+  kind: "personalMoveConflict";
+  reason: "originTitle" | "originEpisode" | "cycleIdentity";
 }
 
 export interface PinErrorResponse {
@@ -15295,7 +17663,7 @@ export interface CreateExport {
 
 export interface ExportFile {
   format: "torsher-export";
-  version: 1;
+  version: 2;
   /**
    * @format date-time
    * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
@@ -15688,6 +18056,309 @@ export interface ExportFile {
      */
     tmdbKey?: string | null;
   };
+  personalSpace: {
+    /** @maxLength 100 */
+    timeZone: string;
+    diary: {
+      /**
+       * @minLength 1
+       * @maxLength 20
+       */
+      profile: string;
+      /**
+       * @minLength 1
+       * @maxLength 100
+       */
+      title: string;
+      /**
+       * @min 0
+       * @max 9007199254740991
+       */
+      season: number;
+      /**
+       * @min 0
+       * @max 9007199254740991
+       */
+      episode: number;
+      /**
+       * @format uuid
+       * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+       */
+      id: string;
+      precision: "instant" | "day" | "unknown";
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      instant: string | null;
+      /**
+       * @format date
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+       */
+      day: string | null;
+      origin: "playback" | "manual" | "letterboxd" | "trakt";
+      /**
+       * @minLength 1
+       * @maxLength 500
+       */
+      originKey: string | null;
+      /** @pattern ^[0-9a-f]{64}$ */
+      sourceMatchKey?: string;
+      rewatch: boolean;
+      /** @maxLength 10000 */
+      note: string | null;
+      /** @maxLength 1000 */
+      viewingContext: string | null;
+      context:
+        | {
+            kind: "normal";
+          }
+        | {
+            kind: "cycle";
+            /**
+             * @format uuid
+             * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+             */
+            cycleId: string;
+          }
+        | null;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      createdAt: string;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      updatedAt: string;
+    }[];
+    seen: {
+      /**
+       * @minLength 1
+       * @maxLength 20
+       */
+      profile: string;
+      /**
+       * @minLength 1
+       * @maxLength 100
+       */
+      title: string;
+      /**
+       * @min 0
+       * @max 9007199254740991
+       */
+      season: number;
+      /**
+       * @min 0
+       * @max 9007199254740991
+       */
+      episode: number;
+    }[];
+    cycles: {
+      /**
+       * @minLength 1
+       * @maxLength 20
+       */
+      profile: string;
+      /**
+       * @format uuid
+       * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+       */
+      id: string;
+      /**
+       * @minLength 1
+       * @maxLength 100
+       */
+      title: string;
+      state: "active" | "paused" | "ended";
+      /**
+       * @min 0
+       * @max 9007199254740991
+       */
+      startSeason: number;
+      /**
+       * @min 0
+       * @exclusiveMin true
+       * @max 9007199254740991
+       */
+      startEpisode: number;
+      /**
+       * @min 0
+       * @max 9007199254740991
+       */
+      targetSeason: number;
+      /**
+       * @min 0
+       * @exclusiveMin true
+       * @max 9007199254740991
+       */
+      targetEpisode: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      createdAt: string;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      updatedAt: string;
+    }[];
+    cycleProgress: {
+      /**
+       * @minLength 1
+       * @maxLength 20
+       */
+      profile: string;
+      /**
+       * @format uuid
+       * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+       */
+      cycleId: string;
+      /**
+       * @min 0
+       * @max 9007199254740991
+       */
+      season: number;
+      /**
+       * @min 0
+       * @exclusiveMin true
+       * @max 9007199254740991
+       */
+      episode: number;
+      /** @min 0 */
+      position: number;
+      /** @min 0 */
+      duration: number | null;
+      source:
+        | {
+            /**
+             * @minLength 1
+             * @maxLength 4096
+             */
+            folder: string;
+            /**
+             * @minLength 1
+             * @maxLength 4096
+             */
+            path: string;
+            kind: "library";
+          }
+        | {
+            kind: "torrent";
+            /** @pattern ^[0-9a-f]{40}(?:[0-9a-f]{24})?$ */
+            infoHash: string;
+            /**
+             * @min 0
+             * @max 9007199254740991
+             */
+            fileIndex: number;
+          }
+        | null;
+      /** @maxLength 200 */
+      voiceStudio: string | null;
+      /** @maxLength 50 */
+      voiceType: string | null;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      completedAt?: string | null;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      updatedAt: string;
+    }[];
+    cyclePlayback: {
+      /**
+       * @minLength 1
+       * @maxLength 20
+       */
+      profile: string;
+      /**
+       * @minLength 1
+       * @maxLength 100
+       */
+      title: string;
+      /**
+       * @min 0
+       * @max 9007199254740991
+       */
+      season: number;
+      /**
+       * @min 0
+       * @exclusiveMin true
+       * @max 9007199254740991
+       */
+      episode: number;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      watchedAt: string | null;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      lastPlayedAt: string | null;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      updatedAt: string;
+    }[];
+    titlePreferences: {
+      /**
+       * @minLength 1
+       * @maxLength 20
+       */
+      profile: string;
+      /**
+       * @minLength 1
+       * @maxLength 100
+       */
+      title: string;
+      /** @maxLength 10000 */
+      note: string | null;
+      continuation: "normal" | "paused" | "hidden";
+      notInterested: boolean;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      updatedAt: string;
+    }[];
+    profilePreferences: {
+      /**
+       * @minLength 1
+       * @maxLength 20
+       */
+      profile: string;
+      startSection:
+        | "continue"
+        | "recommendations"
+        | "schedule"
+        | "overview"
+        | "diary"
+        | "watched"
+        | "watchlist"
+        | "favorites"
+        | "ratings"
+        | "dropped";
+      /**
+       * @minLength 1
+       * @maxLength 100
+       */
+      startCollectionName?: string | null;
+      /**
+       * @format date-time
+       * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+       */
+      updatedAt: string;
+    }[];
+  };
 }
 
 export interface TransferErrorResponse {
@@ -15787,6 +18458,23 @@ export interface ProfileMergeCounts {
      * @max 9007199254740991
      */
     same: number;
+  };
+  personal?: {
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    changed: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    unchanged: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    skipped: number;
   };
   /**
    * @min -9007199254740991
@@ -16084,9 +18772,9 @@ export type GetAdminCatalogSearchError = MessageResponse;
 
 export type GetAdminCatalogTitleError = MessageResponse;
 
-export type GetHomeError = MessageResponse;
+export type GetHomeError = MessageResponse | MinePersonalError;
 
-export type GetHomeContinueError = MessageResponse;
+export type GetHomeContinueError = MessageResponse | MinePersonalError;
 
 export type GetIndexersError = MessageResponse;
 
@@ -16115,7 +18803,7 @@ export type PutTitleVoiceError = MessageResponse;
 export type PostTitleWatchError =
   MessageResponse | WatchErrorResponse | EngineUnavailableResponse;
 
-export type GetTitleProgressError = MessageResponse;
+export type GetTitleProgressError = MessageResponse | MinePersonalError;
 
 export type GetTitleUpNextError = MessageResponse;
 
@@ -16149,6 +18837,57 @@ export type PatchTitleMineError = MessageResponse;
 export type GetMineError = MessageResponse;
 
 export type GetMineItemsError = MessageResponse;
+
+export type GetMineBootstrapError =
+  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
+
+export type PutMineStartError =
+  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
+
+export type GetMineDiaryError =
+  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
+
+export type PostMineDiaryError =
+  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
+
+export type GetMineDiaryMonthsError =
+  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
+
+export type PatchMineDiaryEntryError =
+  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
+
+export type DeleteMineDiaryEntryError =
+  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
+
+export type GetMineOverviewError =
+  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
+
+export type GetMineTitlePersonalError =
+  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
+
+export type PatchMineTitlePersonalError =
+  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
+
+export type PutMineSeenError =
+  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
+
+export type PostMineCycleError =
+  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
+
+export type PatchMineCycleError =
+  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
+
+export type GetMinePersonalContinueError =
+  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
+
+export type GetMinePersonalWatchedError =
+  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
+
+export type GetMineRecommendationsError =
+  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
+
+export type GetMineRecommendationExclusionsError =
+  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
 
 export type GetCollectionsError = MessageResponse;
 
@@ -16385,8 +19124,13 @@ export type GetSetupStorageCheckError = MessageResponse;
 
 export type PostSetupDiscoverManagersError = MessageResponse;
 
+export type GetViewingAttemptError = MessageResponse;
+
 export type PostPlaybackError =
-  MessageResponse | EngineUnavailableResponse | InsufficientStorageResponse;
+  | MessageResponse
+  | PlaybackStartConflict
+  | EngineUnavailableResponse
+  | InsufficientStorageResponse;
 
 export type PutPlaybackPreferencesError = MessageResponse;
 
@@ -16455,7 +19199,8 @@ export type PutCurrentPlayerSettingsError = MessageResponse;
 
 export type PatchProfileError = MessageResponse;
 
-export type DeleteProfileError = MessageResponse;
+export type DeleteProfileError =
+  MessageResponse | (MessageResponse | ProfileMoveConflict);
 
 export type GetProfileHistoryError = MessageResponse;
 
@@ -16472,7 +19217,8 @@ export type PostProfileImportError =
 
 export type GetProfileImportUnmatchedError = MessageResponse;
 
-export type PostProfileImportMatchError = MessageResponse;
+export type PostProfileImportMatchError =
+  MessageResponse | HistoryMatchConflict;
 
 export type DeleteProfileImportUnmatchedError = MessageResponse;
 
@@ -17600,6 +20346,12 @@ export class Api<
          * @pattern ^[a-z]{2}-[A-Z]{2}$
          */
         language?: string;
+        personalContinue?: "1";
+        /**
+         * @minLength 1
+         * @maxLength 100
+         */
+        expectedProfileId?: string;
       },
       params: RequestParams = {},
     ) =>
@@ -17627,6 +20379,12 @@ export class Api<
          * @pattern ^[a-z]{2}-[A-Z]{2}$
          */
         language?: string;
+        personalContinue?: "1";
+        /**
+         * @minLength 1
+         * @maxLength 100
+         */
+        expectedProfileId?: string;
       },
       params: RequestParams = {},
     ) =>
@@ -18390,6 +21148,802 @@ export class Api<
     ) =>
       this.request<MineItems, GetMineItemsError>({
         path: `/api/mine/items`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Mine
+     * @name GetMineBootstrap
+     * @request GET:/api/mine/v1/bootstrap
+     */
+    getMineBootstrap: (
+      query?: {
+        /**
+         * @minLength 1
+         * @maxLength 100
+         */
+        expectedProfileId?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<MineBootstrap, GetMineBootstrapError>({
+        path: `/api/mine/v1/bootstrap`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Mine
+     * @name PutMineStart
+     * @request PUT:/api/mine/v1/start-section
+     */
+    putMineStart: (
+      data: {
+        /**
+         * @minLength 1
+         * @maxLength 100
+         */
+        expectedProfileId: string;
+        start:
+          | {
+              kind: "section";
+              section:
+                | "continue"
+                | "recommendations"
+                | "schedule"
+                | "overview"
+                | "diary"
+                | "watched"
+                | "watchlist"
+                | "favorites"
+                | "ratings"
+                | "dropped";
+            }
+          | {
+              kind: "collection";
+              /**
+               * @minLength 1
+               * @maxLength 100
+               */
+              collectionId: string;
+            };
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<MineStartResponse, PutMineStartError>({
+        path: `/api/mine/v1/start-section`,
+        method: "PUT",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Mine
+     * @name GetMineDiary
+     * @request GET:/api/mine/v1/diary
+     */
+    getMineDiary: (
+      query: {
+        /**
+         * @minLength 1
+         * @maxLength 100
+         */
+        expectedProfileId: string;
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+        /** @default "all" */
+        kind?: "all" | "movie" | "episode" | "series";
+        /** @default "any" */
+        rewatch?: "any" | "only";
+        /** @default "any" */
+        date?: "any" | "dated" | "unknown";
+        /**
+         * @format date
+         * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+         */
+        day?: string;
+        /** @pattern ^\d{4}-(?:0[1-9]|1[0-2])$ */
+        month?: string;
+        /** @pattern ^\d{4}$ */
+        year?: string;
+        /**
+         * @min 0
+         * @exclusiveMin true
+         * @max 9007199254740991
+         */
+        genre?: number;
+        /** @pattern ^[A-Z]{2}$ */
+        country?: string;
+        /**
+         * @minLength 1
+         * @maxLength 200
+         */
+        search?: string;
+        /**
+         * @minLength 1
+         * @maxLength 500
+         */
+        cursor?: string;
+        /** @default "older" */
+        direction?: "older" | "newer";
+        /** @pattern ^\d{4}-(?:0[1-9]|1[0-2])$ */
+        anchorMonth?: string;
+        /**
+         * @min 1
+         * @max 40
+         * @default 40
+         */
+        limit?: number;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<MineDiaryPage, GetMineDiaryError>({
+        path: `/api/mine/v1/diary`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Mine
+     * @name PostMineDiary
+     * @request POST:/api/mine/v1/diary
+     */
+    postMineDiary: (
+      data: {
+        /**
+         * @minLength 1
+         * @maxLength 100
+         */
+        expectedProfileId: string;
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+        /**
+         * @format uuid
+         * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+         */
+        requestId: string;
+        target: {
+          /**
+           * @minLength 1
+           * @maxLength 100
+           */
+          titleId: string;
+          /**
+           * @min 0
+           * @max 9007199254740991
+           */
+          season: number;
+          /**
+           * @min 0
+           * @max 9007199254740991
+           */
+          episode: number;
+        };
+        date:
+          | {
+              precision: "instant";
+              /**
+               * @format date-time
+               * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+               */
+              instant: string;
+            }
+          | {
+              precision: "day";
+              /**
+               * @format date
+               * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+               */
+              day: string;
+            }
+          | {
+              precision: "unknown";
+            };
+        rewatch?: boolean;
+        /** @maxLength 10000 */
+        note?: string | null;
+        /** @maxLength 1000 */
+        viewingContext?: string | null;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<MineDiaryCreated, PostMineDiaryError>({
+        path: `/api/mine/v1/diary`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Mine
+     * @name GetMineDiaryMonths
+     * @request GET:/api/mine/v1/diary/months
+     */
+    getMineDiaryMonths: (
+      query: {
+        /**
+         * @minLength 1
+         * @maxLength 100
+         */
+        expectedProfileId: string;
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+        /** @default "all" */
+        kind?: "all" | "movie" | "episode" | "series";
+        /** @default "any" */
+        rewatch?: "any" | "only";
+        /** @default "any" */
+        date?: "any" | "dated" | "unknown";
+        /**
+         * @format date
+         * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+         */
+        day?: string;
+        /** @pattern ^\d{4}-(?:0[1-9]|1[0-2])$ */
+        month?: string;
+        /** @pattern ^\d{4}$ */
+        year?: string;
+        /**
+         * @min 0
+         * @exclusiveMin true
+         * @max 9007199254740991
+         */
+        genre?: number;
+        /** @pattern ^[A-Z]{2}$ */
+        country?: string;
+        /**
+         * @minLength 1
+         * @maxLength 200
+         */
+        search?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<MineDiaryMonths, GetMineDiaryMonthsError>({
+        path: `/api/mine/v1/diary/months`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Mine
+     * @name PatchMineDiaryEntry
+     * @request PATCH:/api/mine/v1/diary/{entryId}
+     */
+    patchMineDiaryEntry: (
+      entryId: string,
+      data: {
+        /**
+         * @minLength 1
+         * @maxLength 100
+         */
+        expectedProfileId: string;
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+        date?:
+          | {
+              precision: "instant";
+              /**
+               * @format date-time
+               * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+               */
+              instant: string;
+            }
+          | {
+              precision: "day";
+              /**
+               * @format date
+               * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
+               */
+              day: string;
+            }
+          | {
+              precision: "unknown";
+            };
+        rewatch?: boolean;
+        /** @maxLength 10000 */
+        note?: string | null;
+        /** @maxLength 1000 */
+        viewingContext?: string | null;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<MineDiaryEntry, PatchMineDiaryEntryError>({
+        path: `/api/mine/v1/diary/${entryId}`,
+        method: "PATCH",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Mine
+     * @name DeleteMineDiaryEntry
+     * @request DELETE:/api/mine/v1/diary/{entryId}
+     */
+    deleteMineDiaryEntry: (
+      entryId: string,
+      query: {
+        /**
+         * @minLength 1
+         * @maxLength 100
+         */
+        expectedProfileId: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<null, DeleteMineDiaryEntryError>({
+        path: `/api/mine/v1/diary/${entryId}`,
+        method: "DELETE",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Mine
+     * @name GetMineOverview
+     * @request GET:/api/mine/v1/overview
+     */
+    getMineOverview: (
+      query: {
+        /**
+         * @minLength 1
+         * @maxLength 100
+         */
+        expectedProfileId: string;
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+        period?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<MineOverview, GetMineOverviewError>({
+        path: `/api/mine/v1/overview`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Mine
+     * @name GetMineTitlePersonal
+     * @request GET:/api/mine/v1/title/{titleId}
+     */
+    getMineTitlePersonal: (
+      titleId: string,
+      query: {
+        /**
+         * @minLength 1
+         * @maxLength 100
+         */
+        expectedProfileId: string;
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+        /**
+         * @min 0
+         * @max 9007199254740991
+         */
+        season?: number;
+        /**
+         * @min 0
+         * @exclusiveMin true
+         * @max 9007199254740991
+         */
+        episode?: number;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<MineTitlePersonal, GetMineTitlePersonalError>({
+        path: `/api/mine/v1/title/${titleId}`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Mine
+     * @name PatchMineTitlePersonal
+     * @request PATCH:/api/mine/v1/title/{titleId}
+     */
+    patchMineTitlePersonal: (
+      titleId: string,
+      data: {
+        /**
+         * @minLength 1
+         * @maxLength 100
+         */
+        expectedProfileId: string;
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+        /** @maxLength 10000 */
+        note?: string | null;
+        continuation?: "normal" | "paused" | "hidden";
+        notInterested?: boolean;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<MineTitlePersonal, PatchMineTitlePersonalError>({
+        path: `/api/mine/v1/title/${titleId}`,
+        method: "PATCH",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Mine
+     * @name PutMineSeen
+     * @request PUT:/api/mine/v1/title/{titleId}/seen
+     */
+    putMineSeen: (
+      titleId: string,
+      data: {
+        /**
+         * @minLength 1
+         * @maxLength 100
+         */
+        expectedProfileId: string;
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+        /**
+         * @min 0
+         * @max 9007199254740991
+         */
+        season: number;
+        /**
+         * @min 0
+         * @max 9007199254740991
+         */
+        episode: number;
+        watched: boolean;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<MineTitlePersonal, PutMineSeenError>({
+        path: `/api/mine/v1/title/${titleId}/seen`,
+        method: "PUT",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Mine
+     * @name PostMineCycle
+     * @request POST:/api/mine/v1/title/{titleId}/cycles
+     */
+    postMineCycle: (
+      titleId: string,
+      data: {
+        /**
+         * @minLength 1
+         * @maxLength 100
+         */
+        expectedProfileId: string;
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+        /**
+         * @format uuid
+         * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+         */
+        requestId: string;
+        /**
+         * @min 0
+         * @max 9007199254740991
+         */
+        season: number;
+        /**
+         * @min 0
+         * @exclusiveMin true
+         * @max 9007199254740991
+         */
+        episode: number;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<MineCycle, PostMineCycleError>({
+        path: `/api/mine/v1/title/${titleId}/cycles`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Mine
+     * @name PatchMineCycle
+     * @request PATCH:/api/mine/v1/cycles/{cycleId}
+     */
+    patchMineCycle: (
+      cycleId: string,
+      data: {
+        /**
+         * @minLength 1
+         * @maxLength 100
+         */
+        expectedProfileId: string;
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+        action: "pause" | "resume" | "end";
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<MineCycle, PatchMineCycleError>({
+        path: `/api/mine/v1/cycles/${cycleId}`,
+        method: "PATCH",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Mine
+     * @name GetMinePersonalContinue
+     * @request GET:/api/mine/v1/continue
+     */
+    getMinePersonalContinue: (
+      query: {
+        /**
+         * @minLength 1
+         * @maxLength 100
+         */
+        expectedProfileId: string;
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+        /** @default "added" */
+        sort?: "added" | "rating";
+        /** @default "all" */
+        kind?: "all" | "movie" | "series";
+        /** @default "any" */
+        rating?: "any" | "rated" | "unrated" | "9-10" | "7-8" | "5-6" | "1-4";
+        /** @default "normal" */
+        state?: "normal" | "paused" | "hidden";
+        /**
+         * @min 0
+         * @max 9007199254740991
+         * @default 0
+         */
+        offset?: number;
+        /**
+         * @min 1
+         * @max 40
+         * @default 40
+         */
+        limit?: number;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<MinePersonalContinue, GetMinePersonalContinueError>({
+        path: `/api/mine/v1/continue`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Mine
+     * @name GetMinePersonalWatched
+     * @request GET:/api/mine/v1/watched
+     */
+    getMinePersonalWatched: (
+      query: {
+        /**
+         * @minLength 1
+         * @maxLength 100
+         */
+        expectedProfileId: string;
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+        /** @default "added" */
+        sort?: "added" | "rating";
+        /** @default "all" */
+        kind?: "all" | "movie" | "series";
+        /** @default "any" */
+        rating?: "any" | "rated" | "unrated" | "9-10" | "7-8" | "5-6" | "1-4";
+        /** @default "watched" */
+        source?: "watched" | "ratingsAndFavorites" | "earlierMarks";
+        /**
+         * @min 0
+         * @exclusiveMin true
+         * @max 9007199254740991
+         */
+        genre?: number;
+        /** @pattern ^[A-Z]{2}$ */
+        country?: string;
+        /**
+         * @min 0
+         * @max 9007199254740991
+         * @default 0
+         */
+        offset?: number;
+        /**
+         * @min 1
+         * @max 40
+         * @default 40
+         */
+        limit?: number;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<MinePersonalWatched, GetMinePersonalWatchedError>({
+        path: `/api/mine/v1/watched`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Mine
+     * @name GetMineRecommendations
+     * @request GET:/api/mine/v1/recommendations
+     */
+    getMineRecommendations: (
+      query: {
+        /**
+         * @minLength 1
+         * @maxLength 100
+         */
+        expectedProfileId: string;
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+        /** @default "both" */
+        source?: "both" | "watchlist" | "new";
+        /** @default "all" */
+        kind?: "all" | "movie" | "series";
+        /** @default "any" */
+        maxMinutes?: "90" | "120" | "150" | "any";
+        /**
+         * @min 0
+         * @exclusiveMin true
+         * @max 9007199254740991
+         */
+        genre?: number;
+        /** @default "visible" */
+        refresh?: "visible" | "poll";
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<MineRecommendations, GetMineRecommendationsError>({
+        path: `/api/mine/v1/recommendations`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Mine
+     * @name GetMineRecommendationExclusions
+     * @request GET:/api/mine/v1/recommendation-exclusions
+     */
+    getMineRecommendationExclusions: (
+      query: {
+        /**
+         * @minLength 1
+         * @maxLength 100
+         */
+        expectedProfileId: string;
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+        /**
+         * @min 0
+         * @max 9007199254740991
+         * @default 0
+         */
+        offset?: number;
+        /**
+         * @min 1
+         * @max 40
+         * @default 40
+         */
+        limit?: number;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<
+        MineRecommendationExclusions,
+        GetMineRecommendationExclusionsError
+      >({
+        path: `/api/mine/v1/recommendation-exclusions`,
         method: "GET",
         query: query,
         format: "json",
@@ -20489,6 +24043,51 @@ export class Api<
       }),
   };
   playback = {
+    /**
+     * No description
+     *
+     * @tags Playback
+     * @name GetViewingAttempt
+     * @request GET:/api/playback/viewing-attempt
+     */
+    getViewingAttempt: (
+      query: {
+        /**
+         * @minLength 1
+         * @maxLength 100
+         */
+        titleId: string;
+        /**
+         * @min 0
+         * @max 999
+         */
+        season?: number;
+        /**
+         * @min 1
+         * @max 9999
+         */
+        episode?: number;
+        /**
+         * @format uuid
+         * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+         */
+        cycleId?: string;
+        /**
+         * @minLength 1
+         * @maxLength 100
+         */
+        profileId?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<ViewingAttemptResponse, GetViewingAttemptError>({
+        path: `/api/playback/viewing-attempt`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
     /**
      * No description
      *

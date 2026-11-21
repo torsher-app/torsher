@@ -20,6 +20,7 @@ import { basename, join } from 'node:path'
 import { and, eq, isNotNull, notInArray, sql } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import {
+  cyclePlaybackFacts,
   follows,
   libraries,
   libraryFolders,
@@ -579,16 +580,22 @@ export async function previewMaintenance(
         ): file is { id: string, episodes: ReturnType<typeof episodesOf> } =>
           file !== null,
       ),
-      progress: db
-        .select()
-        .from(titleProgress)
-        .where(eq(titleProgress.titleId, titleId))
-        .all()
-        .map(row => ({
-          ...row,
-          watchedAt: row.watchedAt?.getTime() ?? null,
-          lastPlayedAt: row.lastPlayedAt?.getTime() ?? null,
-        })),
+      progress: [
+        ...db
+          .select()
+          .from(titleProgress)
+          .where(eq(titleProgress.titleId, titleId))
+          .all(),
+        ...db
+          .select()
+          .from(cyclePlaybackFacts)
+          .where(eq(cyclePlaybackFacts.titleId, titleId))
+          .all(),
+      ].map(row => ({
+        ...row,
+        watchedAt: row.watchedAt?.getTime() ?? null,
+        lastPlayedAt: row.lastPlayedAt?.getTime() ?? null,
+      })),
       groups,
     }),
     executorAvailable: executorAvailable(),

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import type { Card, MineSection } from '@torsher/api-client'
+import type { Card, MineBootstrap } from '@torsher/api-client'
 import type { PanelOption } from '../components/OptionsPanel.vue'
+import type { MineGridItem } from '../composables/useMine.ts'
 import type { MineView } from '../lib/mineView.ts'
 import {
   computed,
@@ -15,9 +16,24 @@ import {
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import AppIcon from '../components/AppIcon.vue'
+import ContinueCard from '../components/ContinueCard.vue'
+import LibraryVersionPicker from '../components/LibraryVersionPicker.vue'
+import MinePersonalSections from '../components/mine/MinePersonalSections.vue'
+import { api } from '../api.ts'
+import { useContinuePlayback } from '../composables/useContinuePlayback.ts'
+import { mineEditor } from '../lib/mineEditor.ts'
+import type {
+  ContinueState,
+  DiaryFilter,
+  DiaryScope,
+  MineMenuSection,
+  WatchedScope,
+} from '../lib/minePersonal.ts'
+import { isMineViewer, mineStartKey, mineViewer } from '../lib/minePersonal.ts'
 import AppRail from '../components/AppRail.vue'
 import FocusSection from '../components/FocusSection.vue'
 import MineSchedule from '../components/MineSchedule.vue'
+import MineSectionHeader from '../components/MineSectionHeader.vue'
 import OptionsPanel from '../components/OptionsPanel.vue'
 import PosterCard from '../components/PosterCard.vue'
 import PosterSkeleton from '../components/PosterSkeleton.vue'
@@ -25,8 +41,8 @@ import ScreenState from '../components/ScreenState.vue'
 import { useHeldLoading } from '../composables/useHeldLoading.ts'
 import { useTitleChanges } from '../composables/useTitleChanges.ts'
 import {
+  useMineBootstrap,
   useMineItems,
-  useMineSections,
   useSchedule,
 } from '../composables/useMine.ts'
 import { useStackScroll } from '../composables/useStackScroll.ts'
@@ -66,20 +82,42 @@ const ROWS_BEFORE = 3
 const ROWS_AFTER = 5
 const PREFETCH = 8
 
-type Control = 'sort' | 'kind' | 'rating'
+type Control = 'sort' | 'kind' | 'rating' | 'state'
+type PersonalSection = 'overview' | 'diary' | 'recommendations'
+const PERSONAL_SECTIONS: PersonalSection[] = [
+  'overview',
+  'diary',
+  'recommendations',
+]
 
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const focus = useFocus()
+const root = ref<HTMLElement>()
+const sectionsRoot = ref<HTMLElement>()
+const isActive = ref(false)
+const { resume, picker: libraryPicker } = useContinuePlayback(root)
+const { selection: librarySelection } = libraryPicker
+const selectedKey = ref('continue')
+const continueState = ref<ContinueState>('normal')
+const watchedScope = shallowRef<WatchedScope>()
+const diaryFilter = ref<DiaryFilter>('all')
+const diaryScope = shallowRef<DiaryScope>({})
+const diaryDrilldown = ref(0)
+let menuRevision = 0
+let startApplied = false
+let startWrite = Promise.resolve()
+let queuedStart: string | undefined
+let gridFocusPending = false
 
 const {
   status: sectionsStatus,
-  sections,
+  bootstrap,
   error: sectionsError,
   retry: retrySections,
   refresh: refreshSections,
-} = useMineSections()
+} = useMineBootstrap()
 
 const {
   schedule,
@@ -87,20 +125,43 @@ const {
   error: scheduleError,
   retry: retrySchedule,
   refresh: refreshSchedule,
-} = useSchedule()
+} = useSchedule(
+  computed(() => isActive.value && selectedKey.value === SCHEDULE),
+)
 const scheduleTab = ref<ScheduleTab>('upcoming')
 const scheduleEmpty = computed(
   () => !!schedule.value && schedule.value[scheduleTab.value].length === 0,
 )
 
-const selectedKey = ref('continue')
+const standardSections = [
+  'continue',
+  'watchlist',
+  'favorites',
+  'ratings',
+  'watched',
+  'dropped',
+] as const
+const sections = computed<MineMenuSection[]>(() => [
+  ...standardSections.map(id => ({
+    id,
+    count: bootstrap.value?.counts[id] ?? undefined,
+  })),
+  ...(bootstrap.value?.collections ?? []).map(item => ({
+    id: 'collection' as const,
+    collectionId: item.id,
+    name: item.name,
+    count: item.count ?? undefined,
+  })),
+])
 const selected = computed(() =>
-  sections.value.find(item => sectionKey(item) === selectedKey.value),
+  bootstrap.value
+    ? sections.value.find(item => sectionKey(item) === selectedKey.value)
+    : undefined,
 )
 const view = shallowRef<MineView>(loadMineView(selectedKey.value))
 
 const { status, items, total, error, retry, more, refresh, refreshReady }
-  = useMineItems(selected, view)
+  = useMineItems(selected, view, { state: continueState, watched: watchedScope })
 
 // Шапка, сетка и счётчик меняются вместе, когда пришли карточки нового раздела
 const shownKey = ref<string>()
@@ -129,7 +190,7 @@ watch(
   { flush: 'post' },
 )
 
-function sectionLabel(section: MineSection) {
+function sectionLabel(section: MineMenuSection) {
   return section.id === 'collection'
     ? (section.name ?? '')
     : t(`mine.sections.${section.id}`)
@@ -142,7 +203,7 @@ interface SectionEntry {
   count?: number
 }
 
-function entryOf(section: MineSection): SectionEntry {
+function entryOf(section: MineMenuSection): SectionEntry {
   return {
     key: sectionKey(section),
     label: sectionLabel(section),
@@ -150,58 +211,179 @@ function entryOf(section: MineSection): SectionEntry {
   }
 }
 
-// Подборки — отдельной группой между «Моими оценками» и «Просмотрено»;
-// «Расписание» — сразу после «Продолжить» и только вместе с разделами
-// сервера: одна эта строка до их ответа забрала бы фокус и выбор раздела
-const groups = computed(() => {
-  const own = sections.value.filter(item => item.id !== 'collection')
-  const collections = sections.value.filter(item => item.id === 'collection')
-  const split = own.findIndex(item => item.id === 'watched')
-  const before = (split < 0 ? own : own.slice(0, split)).map(entryOf)
-  const value = schedule.value
-
-  if (own.length) {
-    before.splice(before.findIndex(item => item.key === 'continue') + 1, 0, {
-      key: SCHEDULE,
-      label: t('mine.sections.schedule'),
-      count: value ? value.upcoming.length + value.recent.length : undefined,
-    })
-  }
-
-  return {
-    before,
-    collections: collections.map(entryOf),
-    after: split < 0 ? [] : own.slice(split).map(entryOf),
-  }
-})
-
-function select(key: string) {
-  if (key === selectedKey.value)
-    return
-
-  selectedKey.value = key
-
-  // Расписание уже загружено вместе с «Моё»: показываем сразу
-  if (key === SCHEDULE)
-    shownKey.value = SCHEDULE
-  else view.value = loadMineView(key)
+interface MenuGroup {
+  key: string
+  label?: string
+  spacerBefore?: boolean
+  entries: SectionEntry[]
 }
+
+const menuGroups = computed<MenuGroup[]>(() => {
+  const system = new Map(
+    sections.value.map(section => [sectionKey(section), entryOf(section)]),
+  )
+  const scheduleCount = schedule.value
+  const scheduleEntry: SectionEntry = {
+    key: SCHEDULE,
+    label: t('mine.sections.schedule'),
+    count: scheduleCount
+      ? scheduleCount.upcoming.length + scheduleCount.recent.length
+      : (bootstrap.value?.counts.schedule ?? undefined),
+  }
+  const personal = (key: PersonalSection): SectionEntry => ({
+    key,
+    label: t(`mine.preview.sections.${key}`),
+  })
+  const take = (...keys: string[]) =>
+    keys.map(key => system.get(key)).filter(entry => entry !== undefined)
+
+  return [
+    {
+      key: 'watch',
+      entries: [
+        ...take('continue'),
+        personal('recommendations'),
+        scheduleEntry,
+      ],
+    },
+    {
+      key: 'history',
+      spacerBefore: true,
+      entries: [personal('overview'), personal('diary'), ...take('watched')],
+    },
+    {
+      key: 'lists',
+      spacerBefore: true,
+      entries: take('watchlist', 'favorites', 'ratings', 'dropped'),
+    },
+    {
+      key: 'collections',
+      spacerBefore: true,
+      label: t('mine.collections'),
+      entries: sections.value
+        .filter(item => item.id === 'collection')
+        .map(entryOf),
+    },
+  ].filter(group => group.entries.length)
+})
 
 let selectTimer = 0
 
-const root = ref<HTMLElement>()
-const sectionsRoot = ref<HTMLElement>()
+function select(key: string) {
+  clearTimeout(selectTimer)
+  if (key === selectedKey.value)
+    return
+  if (key !== 'watched')
+    watchedScope.value = undefined
+  selectedKey.value = key
+  if (isPersonalSection(key) || key === SCHEDULE)
+    shownKey.value = key
+  else view.value = loadMineView(key)
+}
+
+function isPersonalSection(key: string): key is PersonalSection {
+  return PERSONAL_SECTIONS.includes(key as PersonalSection)
+}
+
+function selectFromMenu(key: string) {
+  menuRevision++
+  watchedScope.value = undefined
+  select(key)
+  if (key === queuedStart)
+    return
+  queuedStart = key
+  const context = mineViewer()
+  const start: MineBootstrap['start'] = key.startsWith('collection:')
+    ? { kind: 'collection', collectionId: key.slice(11) }
+    : {
+        kind: 'section',
+        section: key as Extract<
+          MineBootstrap['start'],
+          { kind: 'section' }
+        >['section'],
+      }
+  startWrite = startWrite.then(async () => {
+    if (!isMineViewer(context))
+      return
+    try {
+      await api.mine.putMineStart({
+        expectedProfileId: context.expectedProfileId,
+        start,
+      })
+    }
+    catch {
+      if (isMineViewer(context) && queuedStart === key)
+        queuedStart = undefined
+    }
+  })
+}
+
+const openedAt = menuRevision
+watch(
+  bootstrap,
+  (data) => {
+    if (!data || startApplied)
+      return
+    startApplied = true
+    if (menuRevision !== openedAt)
+      return
+    const key = mineStartKey(data.start)
+    if (
+      menuGroups.value.some(group =>
+        group.entries.some(entry => entry.key === key),
+      )
+    ) {
+      select(key)
+      queuedStart = key
+      void nextTick(() => {
+        if (
+          menuRevision === openedAt
+          && isActive.value
+          && sectionsRoot.value?.contains(focus.current() ?? null)
+        ) {
+          focusSelectedSection()
+        }
+      })
+    }
+  },
+  { flush: 'sync' },
+)
+
+async function openDiary(filter: DiaryFilter, scope: DiaryScope = {}) {
+  diaryFilter.value = filter
+  diaryScope.value = scope
+  diaryDrilldown.value++
+  select('diary')
+  const context = mineViewer()
+  await nextTick()
+  if (isMineViewer(context) && isActive.value)
+    focus.activate('mine-diary-list') || focus.activate('mine-preview')
+}
+
+async function openWatched(scope: WatchedScope) {
+  select('watched')
+  watchedScope.value = scope
+  view.value = { ...DEFAULT_MINE_VIEW }
+  gridFocusPending = true
+  await focusPendingGrid()
+}
+
 const gridRoot = ref<HTMLElement>()
 const focusedIndex = ref(0)
 const panel = ref<Control>()
-const isActive = ref(false)
 
 const stopFocus = focus.onFocus((el, via) => {
+  if (!isActive.value)
+    return
   const key = el.dataset.section
 
   if (key && sectionsRoot.value?.contains(el) && via !== 'pointer') {
     clearTimeout(selectTimer)
-    selectTimer = window.setTimeout(select, SECTION_DELAY_MS, key)
+    const context = mineViewer()
+    selectTimer = window.setTimeout(() => {
+      if (isMineViewer(context) && isActive.value)
+        select(key)
+    }, SECTION_DELAY_MS)
 
     return
   }
@@ -235,7 +417,7 @@ const {
 } = useStackScroll(column)
 
 // Новый раздел или вид: сетка с начала
-watch([selectedKey, view], () => {
+watch([selectedKey, view, continueState, watchedScope], () => {
   focusedIndex.value = 0
   followsFocus.value = false
   scrollGridTo(0)
@@ -290,6 +472,7 @@ const gridPadding = computed(() => {
 
 // Шаг строки сетки меряется по DOM: размеры карточки заданы токенами
 watch(items, async () => {
+  const context = mineViewer()
   const previous = focus.current()
   const lostGridCard = !!previous && !!gridRoot.value?.contains(previous)
   const oldIndex = focusedIndex.value
@@ -304,7 +487,9 @@ watch(items, async () => {
   const canRestore = () => {
     const current = focus.current()
     return (
-      isActive.value
+      isMineViewer(context)
+      && isActive.value
+      && !mineEditor.value
       && !titleActions.target
       && !panel.value
       && lostGridCard
@@ -360,9 +545,10 @@ async function focusCard(index: number, canFocus = () => true) {
     onColumnScroll()
   }
 
+  const context = mineViewer()
   await nextTick()
 
-  if (!canFocus())
+  if (!isMineViewer(context) || !isActive.value || !canFocus())
     return false
 
   const card = gridRoot.value?.querySelector<HTMLElement>(
@@ -382,8 +568,6 @@ async function focusCard(index: number, canFocus = () => true) {
 // раздел выбирается сразу, без задержки пролёта, а тип — только на этот
 // показ, без записи в сохранённый вид раздела. Адрес сразу очищается: вход
 // из рейла не возвращает в тот же раздел
-let gridFocusPending = false
-
 function openTarget() {
   const target = parseMineTarget(route.query)
 
@@ -391,6 +575,10 @@ function openTarget() {
     return false
 
   clearTimeout(selectTimer)
+  menuRevision++
+  watchedScope.value = undefined
+  if (target.key === 'continue')
+    continueState.value = 'normal'
   selectedKey.value = target.key
 
   const saved = loadMineView(target.key)
@@ -412,6 +600,7 @@ async function focusPendingGrid() {
 
   if (
     !gridFocusPending
+    || !isActive.value
     || shownKey.value !== selectedKey.value
     || status.value === 'loading'
     || showSkeleton.value
@@ -440,7 +629,16 @@ function sortLabel(id: MineView['sort']) {
   )
 }
 
+const continuationFilters: ContinueState[] = ['normal', 'paused', 'hidden']
+function continueLabel(id: ContinueState) {
+  return t(
+    id === 'normal' ? 'mine.preview.diary.filters.all' : `mine.personal.${id}`,
+  )
+}
 const controls = computed(() => [
+  ...(shownKey.value === 'continue'
+    ? [{ id: 'state' as const, label: continueLabel(continueState.value) }]
+    : []),
   { id: 'sort' as const, label: sortLabel(view.value.sort) },
   { id: 'kind' as const, label: t(`mine.kind.${view.value.kind}`) },
   {
@@ -451,6 +649,12 @@ const controls = computed(() => [
 
 const panelOptions = computed<PanelOption[]>(() => {
   switch (panel.value) {
+    case 'state':
+      return continuationFilters.map(id => ({
+        id,
+        label: continueLabel(id),
+        selected: id === continueState.value,
+      }))
     case 'sort':
       return MINE_SORTS.map(id => ({
         id,
@@ -495,7 +699,9 @@ function closePanel() {
 }
 
 function choose(id: string) {
-  if (panel.value)
+  if (panel.value === 'state')
+    continueState.value = id as ContinueState
+  else if (panel.value)
     setView({ ...view.value, [panel.value]: id })
 
   closePanel()
@@ -511,7 +717,11 @@ const isEmpty = computed(
 )
 
 const scheduleShown = computed(() => shownKey.value === SCHEDULE)
+const previewShown = computed(() => isPersonalSection(shownKey.value ?? ''))
 const sectionsRight = computed(() => {
+  if (previewShown.value)
+    return 'mine-preview'
+
   if (scheduleShown.value)
     return scheduleEmpty.value ? 'mine-schedule-tabs' : 'mine-schedule'
 
@@ -534,8 +744,51 @@ const emptyText = computed(() => {
   }
 })
 
-function open(card: Card) {
+let personalReturn:
+  | {
+    opener: HTMLElement
+    section?: string
+    tab: string
+    viewer: ReturnType<typeof mineViewer>
+  }
+  | undefined
+
+function rememberPersonalFocus(opener?: HTMLElement) {
+  if (
+    !shownKey.value
+    || !previewShown.value
+    || !opener
+    || !root.value?.contains(opener)
+  ) {
+    return
+  }
+  personalReturn = {
+    opener,
+    section:
+      opener
+        .closest('[data-focus-section]')
+        ?.getAttribute('data-focus-section') ?? undefined,
+    tab: shownKey.value,
+    viewer: mineViewer(),
+  }
+}
+
+function open(card: Card, opener?: HTMLElement) {
+  rememberPersonalFocus(opener)
   router.push(`/title/${card.id}`)
+}
+
+function selectGridItem(item: MineGridItem, event: MouseEvent) {
+  if (item.continuation && item.canResume) {
+    void resume(
+      item.card.id,
+      item.continuation,
+      undefined,
+      event.detail > 0 ? 'pointer' : 'remote',
+    )
+    return
+  }
+  open(item.card)
 }
 
 // Правки из меню действий: списки перечитываются тихо, на месте
@@ -543,20 +796,63 @@ const syncChanges = useTitleChanges(
   () => titleActions.version,
   () => sectionsStatus.value === 'ready' && refreshReady.value,
   async () => {
+    if (previewShown.value)
+      return refreshSections()
     const outcomes = await Promise.all([
       refreshSections(),
-      refresh(),
-      refreshSchedule(),
+      scheduleShown.value ? refreshSchedule() : refresh(),
     ])
     return outcomes.every(outcome => outcome !== false)
   },
   () => isActive.value,
-  () => !!titleActions.target || !!panel.value,
+  () => !!titleActions.target || !!panel.value || !!mineEditor.value,
 )
 
 // Back в глубине сетки — к её началу, с первой строки — как обычно, на
 // главную; PageUp/PageDown — на экран строк в той же колонке
 const offKey = focus.onKey((action) => {
+  const current = focus.current()
+  if (
+    isActive.value
+    && !panel.value
+    && !mineEditor.value
+    && !titleActions.target
+    && current
+    && action.type === 'move'
+    && action.direction === 'right'
+    && sectionsRoot.value?.contains(current)
+  ) {
+    const key = current.dataset.section
+    if (key) {
+      const changed = key !== selectedKey.value
+      selectFromMenu(key)
+      if (changed) {
+        const context = mineViewer()
+        void nextTick(() => {
+          if (
+            isMineViewer(context)
+            && isActive.value
+            && focus.current() === current
+          ) {
+            focus.activate(sectionsRight.value)
+          }
+        })
+        return true
+      }
+    }
+  }
+  if (
+    isActive.value
+    && watchedScope.value
+    && action.type === 'back'
+    && !panel.value
+    && !mineEditor.value
+    && !titleActions.target
+  ) {
+    select('overview')
+    void nextTick(() => focus.activate('mine-preview'))
+    return true
+  }
   if (
     !isActive.value
     || panel.value
@@ -564,8 +860,6 @@ const offKey = focus.onKey((action) => {
   ) {
     return false
   }
-
-  const current = focus.current()
 
   if (!current || !gridRoot.value?.contains(current))
     return false
@@ -607,15 +901,23 @@ watch(sectionsStatus, async (value, previous) => {
   if (value !== 'ready' || previous !== 'loading' || !isActive.value)
     return
 
+  const context = mineViewer()
   await nextTick()
 
-  if (!root.value?.contains(focus.current() ?? null))
+  if (
+    isMineViewer(context)
+    && isActive.value
+    && !root.value?.contains(focus.current() ?? null)
+  ) {
     focusSelectedSection()
+  }
 })
 
 onActivated(() => {
   isActive.value = true
 
+  const returning = personalReturn
+  personalReturn = undefined
   const targeted = openTarget()
 
   const syncing = syncChanges()
@@ -627,12 +929,33 @@ onActivated(() => {
   if (targeted)
     return
 
-  if (!focus.activate(scheduleShown.value ? 'mine-schedule' : 'mine-grid'))
+  if (
+    returning
+    && returning.tab === shownKey.value
+    && isMineViewer(returning.viewer)
+  ) {
+    const { opener, section } = returning
+    if (
+      (opener.isConnected && focus.focusOn(opener))
+      || (section && focus.activate(section))
+    ) {
+      return
+    }
+  }
+
+  const target = previewShown.value
+    ? 'mine-preview'
+    : scheduleShown.value
+      ? 'mine-schedule'
+      : 'mine-grid'
+
+  if (!focus.activate(target))
     focusSelectedSection()
 })
 
 onDeactivated(() => {
   isActive.value = false
+  clearTimeout(selectTimer)
 })
 
 onBeforeUnmount(() => {
@@ -653,25 +976,24 @@ onBeforeUnmount(() => {
         :kind="sectionsError"
         @retry="retrySections"
       />
-      <div v-else ref="sectionsRoot">
+      <div v-else ref="sectionsRoot" class="mine__sections-frame">
         <FocusSection
           name="mine-sections"
           class="mine__sections"
           :edges="{ left: RAIL_SECTION, right: sectionsRight }"
           autofocus
         >
-          <template
-            v-for="group in ['before', 'collections', 'after'] as const"
-            :key="group"
-          >
-            <h2
-              v-if="group === 'collections' && groups.collections.length"
-              class="mine__label"
-            >
-              {{ t("mine.collections") }}
+          <template v-for="group in menuGroups" :key="group.key">
+            <div
+              v-if="group.spacerBefore"
+              class="mine__section-spacer"
+              aria-hidden="true"
+            />
+            <h2 v-if="group.label" class="mine__label mine__label--preview">
+              {{ group.label }}
             </h2>
             <button
-              v-for="section in groups[group]"
+              v-for="section in group.entries"
               :key="section.key"
               v-focusable
               class="mine__section"
@@ -681,7 +1003,7 @@ onBeforeUnmount(() => {
               :data-section="section.key"
               type="button"
               :aria-pressed="section.key === selectedKey"
-              @click="select(section.key)"
+              @click="selectFromMenu(section.key)"
             >
               <span class="mine__section-name">{{ section.label }}</span>
               <span class="mine__section-count">{{ section.count }}</span>
@@ -691,6 +1013,26 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
+    <MinePersonalSections
+      v-if="bootstrap"
+      v-show="previewShown"
+      :active="isActive && previewShown"
+      :section="previewShown ? (shownKey as PersonalSection) : undefined"
+      :bootstrap="bootstrap"
+      :diary-filter="diaryFilter"
+      :diary-scope="diaryScope"
+      :diary-drilldown="diaryDrilldown"
+      @diary="openDiary"
+      @watched="openWatched"
+      @update-filter="
+        diaryFilter = $event;
+        diaryScope = {};
+      "
+      @clear-scope="diaryScope = {}"
+      @open="open"
+      @remember-focus="rememberPersonalFocus"
+      @return-sections="focusSelectedSection"
+    />
     <MineSchedule
       v-if="scheduleShown"
       v-model:tab="scheduleTab"
@@ -699,16 +1041,22 @@ onBeforeUnmount(() => {
       :error="scheduleStatus === 'error' ? scheduleError : undefined"
       @retry="retrySchedule"
     />
-    <div v-else class="mine__right" @wheel.passive="onRightWheel">
-      <div class="mine__head">
-        <h2 class="mine__title">
-          {{ shown ? sectionLabel(shown) : "" }}
-          <span
-            v-if="shown && status === 'ready' && !showSkeleton"
-            class="mine__total"
-          >{{ total }}</span>
-        </h2>
+    <div
+      v-else-if="!previewShown"
+      class="mine__right"
+      @wheel.passive="onRightWheel"
+    >
+      <MineSectionHeader
+        :title="
+          watchedScope?.label
+            ?? (shown ? sectionLabel(shown) : t('mine.sections.continue'))
+        "
+        :total="
+          shown && status === 'ready' && !showSkeleton ? total : undefined
+        "
+      >
         <FocusSection
+          v-if="!watchedScope"
           name="mine-controls"
           class="mine__controls"
           manual-scroll
@@ -736,67 +1084,96 @@ onBeforeUnmount(() => {
             <AppIcon name="close" />
           </button>
         </FocusSection>
-      </div>
-
-      <div ref="viewport" class="mine__viewport">
-        <div
-          ref="column"
-          class="mine__column"
-          :class="{ 'mine__column--native': nativeScroll }"
-          :style="{ transform: columnTransform }"
-          @scroll="onColumnScroll"
-        >
-          <div ref="gridRoot">
-            <FocusSection
-              name="mine-grid"
-              manual-scroll
-              :edges="{ left: 'mine-sections', up: 'mine-controls' }"
+        <template #content>
+          <div ref="viewport" class="mine__viewport">
+            <div
+              ref="column"
+              class="mine__column"
+              :class="{ 'mine__column--native': nativeScroll }"
+              :style="{ transform: columnTransform }"
+              @scroll="onColumnScroll"
             >
-              <ScreenState
-                v-if="status === 'error' && error && !showSkeleton"
-                :kind="error"
-                @retry="retry"
-              />
-              <div
-                v-else-if="showSkeleton"
-                class="mine__grid"
-                aria-hidden="true"
-              >
-                <PosterSkeleton v-for="index in SKELETON_COUNT" :key="index" />
-              </div>
-              <div v-else-if="isEmpty" class="mine__empty">
-                <p class="mine__empty-title">
-                  {{ emptyText.title }}
-                </p>
-                <p class="mine__empty-text">
-                  {{ emptyText.text }}
-                </p>
-              </div>
-              <div
-                v-else
-                class="mine__grid"
-                :class="{ 'mine__grid--stale': stale }"
-                :style="gridPadding"
-              >
-                <div
-                  v-for="{ item, index } in visible"
-                  :key="item.id"
-                  :data-index="index"
+              <div ref="gridRoot">
+                <FocusSection
+                  name="mine-grid"
+                  manual-scroll
+                  :edges="{ left: 'mine-sections', up: 'mine-controls' }"
                 >
-                  <PosterCard :card="item" caption @select="open(item)" />
-                </div>
+                  <ScreenState
+                    v-if="status === 'error' && error && !showSkeleton"
+                    :kind="error"
+                    @retry="retry"
+                  />
+                  <div
+                    v-else-if="showSkeleton"
+                    class="mine__grid"
+                    aria-hidden="true"
+                  >
+                    <PosterSkeleton
+                      v-for="index in SKELETON_COUNT"
+                      :key="index"
+                    />
+                  </div>
+                  <div v-else-if="isEmpty" class="mine__empty">
+                    <p class="mine__empty-title">
+                      {{ emptyText.title }}
+                    </p>
+                    <p class="mine__empty-text">
+                      {{ emptyText.text }}
+                    </p>
+                  </div>
+                  <div
+                    v-else
+                    class="mine__grid"
+                    :class="{
+                      'mine__grid--stale': stale,
+                      'mine__grid--continue': shownKey === 'continue',
+                    }"
+                    :style="gridPadding"
+                  >
+                    <div
+                      v-for="{ item, index } in visible"
+                      :key="item.card.id"
+                      :data-index="index"
+                    >
+                      <ContinueCard
+                        v-if="item.continuation"
+                        :item="item.continuation"
+                        :continuation-state="item.continuationState"
+                        :cycle="item.cycle"
+                        @select="selectGridItem(item, $event)"
+                      />
+                      <PosterCard
+                        v-else
+                        :card="item.card"
+                        caption
+                        @select="open(item.card)"
+                      />
+                    </div>
+                  </div>
+                </FocusSection>
               </div>
-            </FocusSection>
+            </div>
           </div>
-        </div>
-      </div>
+        </template>
+      </MineSectionHeader>
     </div>
 
+    <LibraryVersionPicker
+      v-if="librarySelection"
+      :files="librarySelection.files"
+      @select="libraryPicker.select"
+      @close="libraryPicker.close"
+    />
     <AppRail current="mine" :section="RAIL_SECTION" content="mine-sections" />
 
     <OptionsPanel
       v-if="panel"
-      :title="t(`mine.panel.${panel}`)"
+      :title="
+        panel === 'state'
+          ? t('mine.sections.continue')
+          : t(`mine.panel.${panel}`)
+      "
       :options="panelOptions"
       @select="choose"
       @close="closePanel"
@@ -831,9 +1208,13 @@ onBeforeUnmount(() => {
 }
 
 /* Разделы прокручиваются нативно: подборок бывает много, движок зовёт scrollIntoView */
-.mine__sections {
+.mine__sections-frame {
   flex: 1;
-  max-height: calc(var(--u) * 860);
+  min-height: 0;
+}
+
+.mine__sections {
+  height: 100%;
   margin: 0 calc(var(--focus-ring-gap) * -1);
   padding: calc(var(--u) * 8) var(--focus-ring-gap) var(--safe-y);
   overflow-y: auto;
@@ -844,12 +1225,20 @@ onBeforeUnmount(() => {
 }
 
 .mine__label {
-  margin: calc(var(--u) * 24) 0 calc(var(--u) * 12) calc(var(--u) * 22);
+  margin: 0 0 calc(var(--u) * 12) calc(var(--u) * 22);
   color: var(--color-text-dim);
   font-size: calc(var(--u) * 22);
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.mine__label--preview {
+  font-size: var(--font-size-s);
+}
+
+.mine__section-spacer {
+  height: calc(var(--u) * 32);
 }
 
 /* Строка раздела — фокус-язык строк, как недавние запросы поиска */
@@ -904,37 +1293,10 @@ onBeforeUnmount(() => {
   left: calc(var(--u) * 760);
 }
 
-.mine__head {
-  position: absolute;
-  top: var(--safe-y);
-  right: 0;
-  left: 0;
-}
-
-.mine__title {
-  display: flex;
-  align-items: baseline;
-  height: calc(var(--font-size-l) * var(--line-height));
-  margin: 0;
-  overflow: hidden;
-  font-size: var(--font-size-l);
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.mine__total {
-  margin-left: calc(var(--u) * 16);
-  color: var(--color-text-dim);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
 .mine__controls {
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
-  margin-top: calc(var(--u) * 20);
-  padding: calc(var(--u) * 6) 0;
 }
 
 .mine__reset {
@@ -948,7 +1310,7 @@ onBeforeUnmount(() => {
    окна слева и сверху — кольцу фокуса */
 .mine__viewport {
   position: absolute;
-  top: calc(var(--safe-y) + var(--u) * 204 - var(--focus-ring-gap));
+  top: calc(var(--mine-content-top) - var(--focus-ring-gap));
   right: 0;
   bottom: 0;
   left: calc(var(--focus-ring-gap) * -1);
@@ -1004,5 +1366,8 @@ onBeforeUnmount(() => {
   margin: 0;
   color: var(--color-text-muted);
   line-height: 1.45;
+}
+.mine__grid--continue :deep(.continue-card) {
+  width: 100%;
 }
 </style>

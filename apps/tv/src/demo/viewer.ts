@@ -10,9 +10,7 @@ import { airedEpisodes, titleNamed } from '@torsher/demo/titles'
 import { episodeFile, knownTorrent } from './library.ts'
 
 /**
- * Зритель демо: профили, просмотры, «Моё», подборки и «Следить». Одно
- * состояние на все профили: демо показывает экраны, а не разделение
- * профилей.
+ * Зритель демо: отдельное состояние профилей и общие коллекции.
  */
 
 const PLAYER: PlayerSettings = {
@@ -76,18 +74,40 @@ export interface Progress {
   mediaFileId?: string
 }
 
-const progress = new Map<string, Progress>()
+const progressProfiles = new Map<string, Map<string, Progress>>()
+const mineProfiles = new Map<string, Map<string, MineEntry>>()
+const followProfiles = new Map<string, Set<string>>()
+
+function profileState<T>(profiles: Map<string, T>, create: () => T) {
+  const id = currentProfile().id
+  let state = profiles.get(id)
+  if (!state) {
+    state = create()
+    profiles.set(id, state)
+  }
+  return state
+}
+
+function progress() {
+  return profileState(progressProfiles, () => new Map<string, Progress>())
+}
+function mine() {
+  return profileState(mineProfiles, () => new Map<string, MineEntry>())
+}
+export function follows() {
+  return profileState(followProfiles, () => new Set<string>())
+}
 
 function keyOf(titleId: string, season: number, episode: number) {
   return `${titleId}:${season}:${episode}`
 }
 
 export function progressAt(titleId: string, season = 0, episode = 0) {
-  return progress.get(keyOf(titleId, season, episode))
+  return progress().get(keyOf(titleId, season, episode))
 }
 
 export function progressOf(titleId: string) {
-  return [...progress.values()].filter(item => item.titleId === titleId)
+  return [...progress().values()].filter(item => item.titleId === titleId)
 }
 
 export function lastProgress(titleId: string) {
@@ -134,7 +154,7 @@ export function resumePosition(item: Progress) {
 /** Позиция из плеера; пересмотр не снимает отметку «просмотрено» */
 export function savePosition(values: Omit<Progress, 'watched' | 'updatedAt'>) {
   const key = keyOf(values.titleId, values.season, values.episode)
-  const before = progress.get(key)
+  const before = progress().get(key)
   const item: Progress = {
     ...values,
     watched:
@@ -143,7 +163,7 @@ export function savePosition(values: Omit<Progress, 'watched' | 'updatedAt'>) {
     updatedAt: Date.now(),
   }
 
-  progress.set(key, item)
+  progress().set(key, item)
   return item
 }
 
@@ -157,13 +177,13 @@ export function setWatched(
   const key = keyOf(titleId, season, episode)
 
   if (!watched) {
-    progress.delete(key)
+    progress().delete(key)
     return
   }
 
-  const before = progress.get(key)
+  const before = progress().get(key)
 
-  progress.set(key, {
+  progress().set(key, {
     ...before,
     titleId,
     season,
@@ -259,21 +279,19 @@ interface MineEntry {
   droppedAt?: number
 }
 
-const mine = new Map<string, MineEntry>()
-
 export function mineEntry(titleId: string) {
-  let entry = mine.get(titleId)
+  let entry = mine().get(titleId)
 
   if (!entry) {
     entry = {}
-    mine.set(titleId, entry)
+    mine().set(titleId, entry)
   }
 
   return entry
 }
 
 export function mineTitleIds() {
-  return [...mine.keys()]
+  return [...mine().keys()]
 }
 
 export interface DemoCollection {
@@ -314,10 +332,8 @@ export const collections: DemoCollection[] = [
   titles: item.titles.map(name => titleNamed(name).id),
 }))
 
-export const follows = new Set<string>()
-
 export function isFollowed(titleId: string) {
-  return follows.has(titleId)
+  return follows().has(titleId)
 }
 
 /**
@@ -326,7 +342,7 @@ export function isFollowed(titleId: string) {
  * выходит), завершённый — «Просмотрено»
  */
 export function statusOf(title: DemoTitle): TitleMine['status'] {
-  const entry = mine.get(title.id)
+  const entry = mine().get(title.id)
   const last = lastProgress(title.id)
 
   if (entry?.droppedAt && (!last || entry.droppedAt >= last.updatedAt))
@@ -356,7 +372,7 @@ export function statusOf(title: DemoTitle): TitleMine['status'] {
 
 /** Время последнего просмотра или отметки: по нему сортируются разделы */
 export function touchedAt(titleId: string) {
-  const entry = mine.get(titleId)
+  const entry = mine().get(titleId)
 
   return Math.max(
     lastProgress(titleId)?.updatedAt ?? 0,
@@ -394,7 +410,7 @@ function seed(
   )
   const watched = values.share === undefined && values.position === undefined
 
-  progress.set(keyOf(title.id, season, episode), {
+  progress().set(keyOf(title.id, season, episode), {
     titleId: title.id,
     season,
     episode,
@@ -509,5 +525,5 @@ for (const [name, rating, days] of [
 
 mineEntry(titleNamed('Starling Protocol').id).droppedAt = ago(18 * DAY)
 
-follows.add(titleNamed('Glasswing').id)
-follows.add(titleNamed('Ninefold Harbor').id)
+follows().add(titleNamed('Glasswing').id)
+follows().add(titleNamed('Ninefold Harbor').id)

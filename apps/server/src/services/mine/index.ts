@@ -1,4 +1,5 @@
 import { assertMaintenancePolicyChange } from '../libraryMaintenance/admission.ts'
+import { clearViewingSeen } from './viewing.ts'
 import type { ProfileTitle } from '../../db/schema.ts'
 import type {
   MineKind,
@@ -59,7 +60,9 @@ export function getMineRow(profileId: string, titleId: string) {
     .get()
 }
 
-function isEmpty(row: ProfileTitle) {
+type MineState = Omit<ProfileTitle, 'mutationToken'>
+
+function isEmpty(row: MineState) {
   return (
     !row.watchlistAt
     && !row.favoriteAt
@@ -98,7 +101,7 @@ export function updateMine(
     const ratedNow = patch.rating !== undefined && patch.rating !== null
     const clearsWatchlist
       = ratedNow && kindOf(titleId) === 'movie' && patch.watchlist !== true
-    const next: ProfileTitle = {
+    const next: MineState = {
       profileId,
       titleId,
       watchlistAt: clearsWatchlist
@@ -324,8 +327,10 @@ export async function markTitleWatched(
   titleId: string,
   watched: boolean,
   language: string,
+  beforeWrite?: () => void,
 ) {
   if (kindOf(titleId) === 'movie') {
+    beforeWrite?.()
     markWatched({ profileId, titleId }, watched)
 
     if (watched)
@@ -335,15 +340,19 @@ export async function markTitleWatched(
   }
 
   if (!watched) {
+    beforeWrite?.()
     assertMaintenancePolicyChange({ titleId })
-    clearWatchedMark(profileId, titleId)
+    getDb().transaction(() => {
+      clearWatchedMark(profileId, titleId)
+      clearViewingSeen({ profileId, titleId }, true)
 
-    for (const point of episodeProgress(profileId, titleId)) {
-      markWatched(
-        { profileId, titleId, season: point.season, episode: point.episode },
-        false,
-      )
-    }
+      for (const point of episodeProgress(profileId, titleId)) {
+        markWatched(
+          { profileId, titleId, season: point.season, episode: point.episode },
+          false,
+        )
+      }
+    })
 
     return
   }
@@ -353,6 +362,7 @@ export async function markTitleWatched(
   if (!summary)
     throw new MineNotFoundError('Title details unavailable')
 
+  beforeWrite?.()
   for (const season of summary.details.seasons ?? []) {
     for (let episode = 1; episode <= season.airedEpisodeCount; episode++)
       markWatched({ profileId, titleId, season: season.number, episode }, true)

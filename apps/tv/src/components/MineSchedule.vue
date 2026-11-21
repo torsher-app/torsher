@@ -24,6 +24,7 @@ import { stackOffset } from '../lib/rowStack.ts'
 import { formatAirDate, isUpcoming } from '../lib/titleInfo.ts'
 import { lacksSources } from '../serverSources.ts'
 import FocusSection from './FocusSection.vue'
+import MineSectionHeader from './MineSectionHeader.vue'
 import ScheduleCard from './ScheduleCard.vue'
 import ScreenState from './ScreenState.vue'
 
@@ -238,11 +239,10 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="schedule" @wheel.passive="onScheduleWheel">
-    <div class="schedule__head">
-      <h2 class="schedule__title">
-        {{ t("mine.sections.schedule") }}
-        <span v-if="schedule" class="schedule__total">{{ items.length }}</span>
-      </h2>
+    <MineSectionHeader
+      :title="t('mine.sections.schedule')"
+      :total="schedule ? items.length : undefined"
+    >
       <FocusSection
         name="mine-schedule-tabs"
         class="schedule__tabs"
@@ -262,73 +262,82 @@ onBeforeUnmount(() => {
           {{ t(`mine.schedule.${item}`) }}
         </button>
       </FocusSection>
-    </div>
-
-    <div ref="viewport" class="schedule__viewport">
-      <div
-        ref="column"
-        class="schedule__column"
-        :class="{ 'schedule__column--native': nativeScroll }"
-        :style="{ transform: columnTransform }"
-        @scroll="onColumnScroll"
-      >
-        <div ref="gridRoot">
-          <FocusSection
-            name="mine-schedule"
-            manual-scroll
-            :edges="{ left: SECTIONS, up: 'mine-schedule-tabs' }"
+      <template #content>
+        <div ref="viewport" class="schedule__viewport">
+          <div
+            ref="column"
+            class="schedule__column"
+            :class="{ 'schedule__column--native': nativeScroll }"
+            :style="{ transform: columnTransform }"
+            @scroll="onColumnScroll"
           >
-            <ScreenState v-if="error" :kind="error" @retry="emit('retry')" />
-            <div v-else-if="!schedule" class="schedule__row" aria-hidden="true">
-              <span
-                v-for="index in SKELETON_COUNT"
-                :key="index"
-                class="schedule__skeleton skeleton"
-              />
-            </div>
-            <div v-else-if="isEmpty" class="schedule__empty">
-              <p class="schedule__empty-title">
-                {{ t(`mine.schedule.empty.${tab}.title`) }}
-              </p>
-              <p class="schedule__empty-text">
-                {{ t(`mine.schedule.empty.${tab}.text`) }}
-              </p>
-            </div>
-            <!-- Окно строк: в DOM только строки вокруг фокуса, место остальных
-                 держат отступы -->
-            <div
-              v-else
-              :style="{
-                paddingTop: `${windowed.top}px`,
-                paddingBottom: `${windowed.bottom}px`,
-              }"
-            >
-              <template v-for="(row, offset) in visibleRows" :key="row.key">
-                <h3
-                  v-if="row.kind === 'header'"
-                  class="schedule__day"
-                  :data-row="windowed.from + offset"
-                >
-                  {{ row.label }}
-                </h3>
+            <div ref="gridRoot">
+              <FocusSection
+                name="mine-schedule"
+                manual-scroll
+                :edges="{ left: SECTIONS, up: 'mine-schedule-tabs' }"
+              >
+                <ScreenState
+                  v-if="error"
+                  :kind="error"
+                  @retry="emit('retry')"
+                />
                 <div
-                  v-else
+                  v-else-if="!schedule"
                   class="schedule__row"
-                  :data-row="windowed.from + offset"
+                  aria-hidden="true"
                 >
-                  <ScheduleCard
-                    v-for="item in row.items"
-                    :key="itemKey(item)"
-                    :item="item"
-                    @select="open(item)"
+                  <span
+                    v-for="index in SKELETON_COUNT"
+                    :key="index"
+                    class="schedule__skeleton skeleton"
                   />
                 </div>
-              </template>
+                <div v-else-if="isEmpty" class="schedule__empty">
+                  <p class="schedule__empty-title">
+                    {{ t(`mine.schedule.empty.${tab}.title`) }}
+                  </p>
+                  <p class="schedule__empty-text">
+                    {{ t(`mine.schedule.empty.${tab}.text`) }}
+                  </p>
+                </div>
+                <!-- Окно строк: в DOM только строки вокруг фокуса, место остальных
+                     держат отступы -->
+                <div
+                  v-else
+                  :style="{
+                    paddingTop: `${windowed.top}px`,
+                    paddingBottom: `${windowed.bottom}px`,
+                  }"
+                >
+                  <template v-for="(row, offset) in visibleRows" :key="row.key">
+                    <h3
+                      v-if="row.kind === 'header'"
+                      class="schedule__day"
+                      :data-row="windowed.from + offset"
+                    >
+                      {{ row.label }}
+                    </h3>
+                    <div
+                      v-else
+                      class="schedule__row"
+                      :data-row="windowed.from + offset"
+                    >
+                      <ScheduleCard
+                        v-for="item in row.items"
+                        :key="itemKey(item)"
+                        :item="item"
+                        @select="open(item)"
+                      />
+                    </div>
+                  </template>
+                </div>
+              </FocusSection>
             </div>
-          </FocusSection>
+          </div>
         </div>
-      </div>
-    </div>
+      </template>
+    </MineSectionHeader>
   </div>
 </template>
 
@@ -341,44 +350,17 @@ onBeforeUnmount(() => {
   left: calc(var(--u) * 760);
 }
 
-.schedule__head {
-  position: absolute;
-  top: var(--safe-y);
-  right: 0;
-  left: 0;
-}
-
-.schedule__title {
-  display: flex;
-  align-items: baseline;
-  height: calc(var(--font-size-l) * var(--line-height));
-  margin: 0;
-  overflow: hidden;
-  font-size: var(--font-size-l);
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.schedule__total {
-  margin-left: calc(var(--u) * 16);
-  color: var(--color-text-dim);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
 .schedule__tabs {
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
-  margin-top: calc(var(--u) * 20);
-  padding: calc(var(--u) * 6) 0;
 }
 
 /* Сетка уезжает под шапку: окно обрезает её по верху, без clip-path; запас
    окна слева и сверху — кольцу фокуса */
 .schedule__viewport {
   position: absolute;
-  top: calc(var(--safe-y) + var(--u) * 204 - var(--focus-ring-gap));
+  top: calc(var(--mine-content-top) - var(--focus-ring-gap));
   right: 0;
   bottom: 0;
   left: calc(var(--focus-ring-gap) * -1);

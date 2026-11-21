@@ -2127,11 +2127,13 @@
       "deleteDialog": {
         "title": "Delete profile “{name}”?",
         "text": "Devices using it switch to the default profile, or ask who’s watching if the default profile has a PIN.",
-        "move": "Move watch history to another profile",
-        "moveText": "Positions and episode progress go to the selected profile.",
+        "move": "Move personal data to another profile",
+        "moveText": "History, positions, lists, ratings, notes and Mine settings move to the selected profile.",
         "target": "Target profile",
-        "drop": "Delete watch history",
-        "dropText": "Positions and episode progress of this profile are lost."
+        "drop": "Delete personal data",
+        "dropText": "This profile’s history, positions, lists, ratings, notes and Mine settings will be deleted.",
+        "moveConflict": "Move stopped: watches in these profiles are matched to different titles. The source profile was kept.",
+        "moveConflictOther": "Move stopped because of conflicting personal data. Both profiles were kept."
       },
       "devices": {
         "group": "Devices",
@@ -2643,7 +2645,7 @@
       },
       "dialog": {
         "title": "Import into profile",
-        "description": "Ratings, lists and positions go into “{name}”.",
+        "description": "Your personal data goes into “{name}”.",
         "files": "Files to import",
         "drop": "Drop files here or choose them",
         "dropHint": "CSV, JSON or zip — up to 20 MB",
@@ -2676,13 +2678,17 @@
         "same": "Already in the profile",
         "conflicts": "Rating differs from yours",
         "unmatched": "Not matched",
-        "skipped": "Skipped: episodes and empty rows",
+        "skipped": "Skipped rows",
         "conflictsLegend": "When a title already has a different rating",
         "sample": "{title}: yours {current}, in the file {incoming}",
         "progress": "Watch positions",
         "favorites": "New in Favorites",
         "dropped": "Dropped marks",
-        "skippedExport": "Skipped: titles outside the catalog and files missing on this server"
+        "skippedExport": "Skipped: titles outside the catalog and files missing on this server",
+        "personal": "Personal data",
+        "personalChanged": "Changes: {n}",
+        "personalUnchanged": "Unchanged: {n}",
+        "personalSkipped": "Conflicts skipped: {n}"
       },
       "policies": {
         "keep": "Keep mine",
@@ -2701,7 +2707,7 @@
       },
       "toasts": {
         "undone": "Import undone",
-        "undoneKept": "{n} title was changed after the import and stays as is | {n} titles were changed after the import and stay as they are"
+        "undoneKept": "Changes not undone: {n}"
       },
       "validation": {
         "files": "Choose at least one file",
@@ -2714,7 +2720,7 @@
         "broken": "“{file}” is damaged or isn’t a zip.",
         "tooLarge": "The files are larger than 20 MB together.",
         "tooMany": "The files have more than 20,000 rows — split them and import in parts.",
-        "empty": "The files have neither ratings nor a Watch later list.",
+        "empty": "The files contain no supported personal data.",
         "unknown": "The server didn’t accept the files. Try again.",
         "applyFailed": "Couldn’t import",
         "applyFailedText": "The server didn’t respond or the preview expired. Upload the files again.",
@@ -3920,6 +3926,164 @@
       "watched": "Watched",
       "dropped": "Dropped",
       "ratings": "My ratings"
+    },
+    "personal": {
+      "logWatch": "Log a watch",
+      "watchDate": "Watch date",
+      "titleNote": "Title note",
+      "seriesWithoutEpisodes": "Series without specific episodes",
+      "startRewatch": "Start rewatch",
+      "startingEpisode": "Starting episode",
+      "pauseRewatch": "Pause rewatch",
+      "resumeRewatch": "Resume rewatch",
+      "endRewatch": "End rewatch",
+      "hideContinue": "Hide from Continue",
+      "restoreContinue": "Restore to Continue",
+      "pauseContinue": "Pause continuation",
+      "paused": "Paused",
+      "hidden": "Hidden",
+      "legacyMarks": "Earlier watched marks",
+      "distinctMovies": "{n} distinct movie | {n} distinct movies",
+      "distinctEpisodes": "{n} distinct episode | {n} distinct episodes",
+      "deleteEntry": "Delete this entry?",
+      "empty": {
+        "title": "Your diary is empty",
+        "text": "New watches will appear here. You can log a past watch or import your history."
+      },
+      "distinctTitles": "{n} distinct title | {n} distinct titles",
+      "dateParts": {
+        "day": "Day",
+        "month": "Month",
+        "year": "Year"
+      },
+      "metadataMissing": "Missing metadata: {n}",
+      "interestsSource": "Based on ratings and favorites",
+      "feedback": {
+        "logged": "Watch logged",
+        "paused": "Continuation paused",
+        "hidden": "Hidden from Continue",
+        "cyclePaused": "Rewatch paused"
+      }
+    },
+    "preview": {
+      "sections": {
+        "overview": "Overview",
+        "diary": "Diary",
+        "recommendations": "What to watch"
+      },
+      "views": "{n} watch | {n} watches",
+      "metrics": {
+        "movies": "film watch | film watches",
+        "episodes": "episode watch | episode watches",
+        "rewatches": "rewatch | rewatches",
+        "days": "day | days"
+      },
+      "calendar": {
+        "openDayHint": "Press a date to open the day",
+        "more": "{n} more",
+        "emptyDay": "No watches",
+        "weekdays": "Mo,Tu,We,Th,Fr,Sa,Su",
+        "today": "today",
+        "dayLabel": "{day}, {count} watches {today}"
+      },
+      "recent": "Recently watched",
+      "allDiary": "Full diary",
+      "interests": "Interests this month",
+      "interest": {
+        "scienceFiction": "Science fiction",
+        "drama": "Drama",
+        "adventure": "Adventure",
+        "unitedKingdom": "United Kingdom",
+        "unitedStates": "United States"
+      },
+      "diary": {
+        "jumpMonth": "Jump to month",
+        "filters": {
+          "all": "All",
+          "movies": "Movies",
+          "episodes": "Episodes",
+          "rewatches": "Rewatches",
+          "undated": "No date"
+        },
+        "undated": "No date",
+        "rewatch": "rewatch",
+        "note": "note",
+        "imported": "imported",
+        "actions": {
+          "open": "Open title",
+          "rewatch": "Watch again",
+          "date": "Change date",
+          "note": "Note",
+          "delete": "Delete entry"
+        },
+        "demoAction": {
+          "rewatch": "A new watch would start in the full feature",
+          "date": "The date picker would open in the full feature",
+          "note": "The note would open in the full feature",
+          "delete": "A delete confirmation would open in the full feature"
+        }
+      },
+      "recommendations": {
+        "random": "Random",
+        "type": {
+          "all": "Any type",
+          "movie": "Movie",
+          "series": "Series"
+        },
+        "duration": {
+          "90": "Up to 1.5 h",
+          "120": "Up to 2 hours",
+          "150": "Up to 2.5 h",
+          "any": "Any length"
+        },
+        "source": {
+          "both": "Watch later and new",
+          "watchlist": "Watch later only",
+          "new": "New only",
+          "hidden": "Hidden recommendations"
+        },
+        "genre": {
+          "any": "Any genre",
+          "action": "Action",
+          "adventure": "Adventure",
+          "animation": "Animation",
+          "comedy": "Comedy",
+          "crime": "Crime",
+          "drama": "Drama",
+          "family": "Family",
+          "fantasy": "Fantasy",
+          "horror": "Horror",
+          "mystery": "Mystery",
+          "romance": "Romance",
+          "scifi": "Science fiction",
+          "thriller": "Thriller"
+        },
+        "reason": {
+          "rated": "Similar to “{title}”, which you rated {rating}",
+          "watchlist": "In your Watch later since {date}",
+          "genre": "Popular in {genre}, the genre you selected",
+          "favorite": "Similar to “{title}” from your favorites",
+          "watched": "Because you watched “{title}”."
+        },
+        "panels": {
+          "type": "Type",
+          "duration": "Length",
+          "genre": "Genre",
+          "source": "Source"
+        },
+        "actions": {
+          "watchlist": "Add to Watch later",
+          "hide": "Not interested",
+          "watched": "Already watched"
+        },
+        "hidden": "“{title}” hidden",
+        "undo": "Undo",
+        "empty": {
+          "title": "Nothing matches the filters",
+          "text": "Remove the genre or increase the allowed length",
+          "reset": "Reset filters"
+        }
+      }
     },
     "collections": "Collections",
     "sort": {

@@ -2,6 +2,8 @@ import type { ExportDocument, ExportSettings } from './document.ts'
 import type { ConflictPolicy } from './merge.ts'
 import type { PasswordKey } from './passwords.ts'
 import type { ProfileMergeCounts, ProfileRows } from './profileData.ts'
+import { ensureDiaryTimeZone } from './diaryTimeZone.ts'
+import { personalRowsOf } from './personalSpace.ts'
 import { randomUUID } from 'node:crypto'
 import { access } from 'node:fs/promises'
 import { titleKey } from '@torsher/release-parser'
@@ -82,6 +84,7 @@ function rowsOf(document: ExportDocument, key: string): ProfileRows {
   return {
     progress: document.progress.filter(row => row.profile === key),
     mine: document.mine.filter(row => row.profile === key),
+    personal: personalRowsOf(document, key),
   }
 }
 
@@ -778,6 +781,14 @@ export async function applyServerImport(
   let newFolders: string[] = []
 
   db.transaction(() => {
+    if (document.version === 2) {
+      ensureDiaryTimeZone(
+        document.scope === 'server'
+          ? document.personalSpace.timeZone
+          : undefined,
+      )
+    }
+
     const profileIds = new Map<string, string>()
     const existing = new Set(
       db
@@ -812,7 +823,13 @@ export async function applyServerImport(
       }
 
       profileIds.set(profile.key, id)
+    }
 
+    result.collections = importCollections(document, profileIds)
+    for (const profile of document.profiles) {
+      const id = profileIds.get(profile.key)
+      if (!id)
+        continue
       const plan = planProfileMerge(
         id,
         rowsOf(document, profile.key),
@@ -820,11 +837,10 @@ export async function applyServerImport(
         now,
       )
 
-      result.profiles.changed += applyProfileMerge(id, plan, now).length
+      result.profiles.changed += applyProfileMerge(id, plan, now)
       result.skipped += plan.counts.skipped
     }
 
-    result.collections = importCollections(document, profileIds)
     importVoices(document)
     importAliases(document, now)
     newFolders = importLibraries(document, profileIds)

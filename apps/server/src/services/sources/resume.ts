@@ -1,3 +1,4 @@
+import type { SQL } from 'drizzle-orm'
 import type { EpisodeSkips } from '../diagnostics/episodes.ts'
 import { episodeSkips, skippedEpisode } from '../diagnostics/episodes.ts'
 import type { DiagnosticContext } from '../diagnostics/index.ts'
@@ -323,15 +324,24 @@ function playedFrom(profileId: string) {
 }
 
 /** Тайтлы, которые профиль смотрел в плеере с `since`, — свежие первыми */
-export function watchedTitles(profileId: string, limit: number, since: Date) {
+export function recentWatchedTitles(
+  profileId: string,
+  since: Date,
+  filter?: SQL,
+) {
   const latest = max(titleProgress.updatedAt)
-
   return getDb()
     .select({ titleId: titleProgress.titleId, updatedAt: latest })
     .from(titleProgress)
-    .where(and(playedFrom(profileId), gte(titleProgress.updatedAt, since)))
+    .where(
+      and(playedFrom(profileId), gte(titleProgress.updatedAt, since), filter),
+    )
     .groupBy(titleProgress.titleId)
     .orderBy(desc(latest))
+}
+
+export function watchedTitles(profileId: string, limit: number, since: Date) {
+  return recentWatchedTitles(profileId, since)
     .limit(limit)
     .all()
     .map(row => row.titleId)

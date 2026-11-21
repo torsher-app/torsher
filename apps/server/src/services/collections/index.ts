@@ -117,6 +117,35 @@ export function visibleCollections(profileId: string) {
   )
 }
 
+export function visibleCollectionRef(
+  profileId: string,
+  lookup: { id: string } | { name: string },
+) {
+  const db = getDb()
+  return db
+    .select({ id: collections.id, name: collections.name })
+    .from(collections)
+    .where(
+      and(
+        'id' in lookup
+          ? eq(collections.id, lookup.id)
+          : eq(collections.nameKey, nameKeyOf(lookup.name)),
+        notExists(
+          db
+            .select()
+            .from(collectionHiddenProfiles)
+            .where(
+              and(
+                eq(collectionHiddenProfiles.profileId, profileId),
+                eq(collectionHiddenProfiles.collectionId, collections.id),
+              ),
+            ),
+        ),
+      ),
+    )
+    .get()
+}
+
 export function getCollection(id: string) {
   return getDb().select().from(collections).where(eq(collections.id, id)).get()
 }

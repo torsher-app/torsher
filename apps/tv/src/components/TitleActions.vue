@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type {
+  MineTitlePersonal,
   TitleDownload,
   TitleMine,
   UpdateTitleMineInput,
@@ -24,6 +25,10 @@ import {
 import { saveTitleWatched } from '../composables/useTitleWatched.ts'
 import { useCatalogLanguage } from '../composables/useCatalogLanguage.ts'
 import { useDownloadTexts } from '../composables/useTitleDownload.ts'
+import { openMineEditor } from '../lib/mineEditor.ts'
+import type { MineUndoInput } from '../lib/mineUndo.ts'
+import { showMineUndo } from '../lib/mineUndo.ts'
+import { isMineViewer, mineViewer } from '../lib/minePersonal.ts'
 import { useFocus } from '../focus/index.ts'
 import { captureTitleActionReturn } from '../focus/titleActionReturn.ts'
 import {
@@ -33,6 +38,7 @@ import {
   isTitleViewer,
   knownTitleMine,
   noteTitleDownload,
+  noteTitleProgress,
   rememberTitleMine,
   titleActions,
   titleMineProgressVersion,
@@ -54,10 +60,14 @@ const mine = computed(() =>
 )
 // «Оставить»: есть ли что сохранить и не оставлено ли уже
 const download = shallowRef<TitleDownload>()
+const personal = shallowRef<MineTitlePersonal>()
+const personalError = ref(false)
+let personalRequest = 0
 const texts = useDownloadTexts()
 const busy = ref(false)
 const toast = ref('')
 let returnFocus = () => false
+let opener: HTMLElement | undefined
 let loadToken = 0
 const rereadMine = ref(false)
 
@@ -67,6 +77,8 @@ async function load(item: ActionTarget) {
   const revision = titleMineRevision(item.id)
 
   download.value = undefined
+  personal.value = undefined
+  void loadPersonal(item.id, token)
   void loadDownload(item.id, token, viewer)
 
   try {
@@ -91,6 +103,36 @@ async function load(item: ActionTarget) {
       && !knownTitleMine(item.id)
     ) {
       toast.value = t('actions.errors.load')
+    }
+  }
+}
+
+async function loadPersonal(id: string, token: number) {
+  const context = mineViewer()
+  if (!context)
+    return
+  const request = ++personalRequest
+  personalError.value = false
+  try {
+    const data = await api.mine.getMineTitlePersonal(id, {
+      expectedProfileId: context.expectedProfileId,
+      language: language.value,
+    })
+    if (
+      isMineViewer(context)
+      && token === loadToken
+      && request === personalRequest
+    ) {
+      personal.value = data
+    }
+  }
+  catch {
+    if (
+      isMineViewer(context)
+      && token === loadToken
+      && request === personalRequest
+    ) {
+      personalError.value = true
     }
   }
 }
@@ -146,12 +188,14 @@ watch(
       loadToken++
       busy.value = false
       download.value = undefined
+      personal.value = undefined
       rereadMine.value = false
       return
     }
 
     rereadMine.value = false
-    returnFocus = captureTitleActionReturn(focus, focus.current())
+    opener = focus.current()
+    returnFocus = captureTitleActionReturn(focus, opener)
     step.value = titleActions.step
     void load(item)
   },
@@ -234,17 +278,27 @@ function patch(body: UpdateTitleMineInput) {
 }
 
 function toggleWatched() {
-  const current = mine.value
-  if (!current)
+  if (!personal.value)
     return
-  const watched = current.status !== 'watched'
+  const watched = !personal.value.seen.title
   const currentLanguage = language.value
+  const token = loadToken
 
   return run((id, viewer) =>
     mutateTitleMine(
       id,
       viewer,
-      () => saveTitleWatched(id, watched, currentLanguage, viewer),
+      () =>
+        saveTitleWatched(id, watched, currentLanguage, viewer, (updated) => {
+          if (
+            isTitleViewer(viewer)
+            && token === loadToken
+            && target.value?.id === id
+          ) {
+            personalRequest++
+            personal.value = updated
+          }
+        }),
       undefined,
       false,
     ),
@@ -375,6 +429,127 @@ function openTitle() {
   router.push(`/title/${item.id}`)
 }
 
+const cycleOptions = computed<PanelOption[]>(() => {
+  const item = target.value
+  if (!item)
+    return []
+  const choices: PanelOption[] = []
+  const state = personal.value?.continuation ?? item.continuation?.state
+  const cycle = personal.value?.cycle ?? item.continuation
+  const cycleState
+    = cycle
+      && ('state' in cycle && 'id' in cycle
+        ? cycle.state
+        : item.continuation?.cycleState)
+  const add = (id: string, label: string) =>
+    choices.push({
+      id,
+      label: t(`mine.personal.${label}`),
+      selected: false,
+      disabled: busy.value,
+    })
+  if (item.continuation) {
+    if (state === 'normal') {
+      add('pauseContinue', 'pauseContinue')
+      add('hideContinue', 'hideContinue')
+    }
+    else {
+      add('restoreContinue', 'restoreContinue')
+    }
+  }
+  if (cycleState === 'active')
+    add('pauseCycle', 'pauseRewatch')
+  if (cycleState === 'paused')
+    add('resumeCycle', 'resumeRewatch')
+  if (cycleState === 'active' || cycleState === 'paused')
+    add('endCycle', 'endRewatch')
+  else if (item.kind === 'series' && personal.value)
+    add('startCycle', 'startRewatch')
+  return choices
+})
+
+async function changeContinuation(id: string) {
+  const item = target.value
+  const context = mineViewer()
+  if (!item || !context || busy.value)
+    return
+  const token = loadToken
+  const body = {
+    expectedProfileId: context.expectedProfileId,
+    language: language.value,
+  }
+  let undo: MineUndoInput | undefined
+  const undoBase = {
+    titleId: item.id,
+    title: item.title,
+    language: language.value,
+    context,
+    opener,
+  }
+  busy.value = true
+  try {
+    if (id.endsWith('Cycle')) {
+      const cycleId = personal.value?.cycle?.id ?? item.continuation?.cycleId
+      if (!cycleId)
+        return
+      const action
+        = id === 'pauseCycle' ? 'pause' : id === 'resumeCycle' ? 'resume' : 'end'
+      const cycle = await api.mine.patchMineCycle(cycleId, { ...body, action })
+      if (action === 'pause') {
+        undo = {
+          ...undoBase,
+          kind: 'cyclePaused',
+          cycleId,
+          updatedAt: cycle.updatedAt,
+        }
+      }
+    }
+    else {
+      const continuation
+        = id === 'pauseContinue'
+          ? 'paused'
+          : id === 'hideContinue'
+            ? 'hidden'
+            : 'normal'
+      const before
+        = personal.value?.continuation ?? item.continuation?.state ?? 'normal'
+      await api.mine.patchMineTitlePersonal(item.id, { ...body, continuation })
+      if (continuation !== 'normal') {
+        undo = {
+          ...undoBase,
+          kind: continuation === 'hidden' ? 'hidden' : 'paused',
+          before,
+          after: continuation,
+        }
+      }
+    }
+    if (!isMineViewer(context))
+      return
+    noteTitleProgress(context.viewer, item.id, false)
+    if (token === loadToken) {
+      close()
+      if (undo)
+        showMineUndo(undo)
+    }
+  }
+  catch {
+    if (isMineViewer(context) && token === loadToken)
+      toast.value = t('actions.errors.save')
+  }
+  finally {
+    if (isMineViewer(context) && token === loadToken)
+      busy.value = false
+  }
+}
+
+function personalEditor(kind: 'log' | 'titleNote' | 'cycle') {
+  const item = target.value
+  if (!item)
+    return
+  closeTitleActions()
+  openMineEditor({ kind, title: item }, opener)
+}
+
 const mainOptions = computed<PanelOption[]>(() => {
   const state = mine.value
   const rating = state?.rating
@@ -413,12 +588,25 @@ const mainOptions = computed<PanelOption[]>(() => {
     {
       id: 'watched',
       label: t(
-        state?.status === 'watched'
+        (personal.value?.seen.title ?? state?.status === 'watched')
           ? 'actions.unmarkWatched'
           : 'actions.markWatched',
       ),
       selected: false,
+      disabled: !personal.value,
     },
+    { id: 'logWatch', label: t('mine.personal.logWatch'), selected: false },
+    ...(personalError.value
+      ? [
+          {
+            id: 'retryPersonal',
+            label: t('panel.common.retry'),
+            selected: false,
+          },
+        ]
+      : []),
+    { id: 'titleNote', label: t('mine.personal.titleNote'), selected: false },
+    ...cycleOptions.value,
     // Последним: пункт появляется, когда пришло состояние, и не сдвигает верх
     ...keepOptions.value,
     ...redownloadOptions.value,
@@ -443,6 +631,27 @@ function select(id: string) {
   }
 
   switch (id) {
+    case 'retryPersonal':
+      if (!busy.value && target.value)
+        void loadPersonal(target.value.id, loadToken)
+      break
+    case 'logWatch':
+      personalEditor('log')
+      break
+    case 'titleNote':
+      personalEditor('titleNote')
+      break
+    case 'startCycle':
+      personalEditor('cycle')
+      break
+    case 'pauseContinue':
+    case 'restoreContinue':
+    case 'hideContinue':
+    case 'pauseCycle':
+    case 'resumeCycle':
+    case 'endCycle':
+      void changeContinuation(id)
+      break
     case 'openTitle':
       openTitle()
       break

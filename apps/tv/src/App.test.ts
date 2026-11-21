@@ -11,6 +11,12 @@ import type { DiagnosticInput } from './diagnostics/collector.ts'
 import { createSupportRuntime } from './diagnostics/support.ts'
 import App from './App.vue'
 
+vi.mock('./components/mine/MineUndoToast.vue', () => ({ default: {} }))
+vi.mock('./lib/mineUndo.ts', async () => {
+  const { shallowRef } = await import('vue')
+  return { mineUndo: shallowRef() }
+})
+
 const mocks = vi.hoisted(() => ({ diagnosticError: vi.fn() }))
 vi.mock('./diagnostics/index.ts', () => ({
   diagnosticError: mocks.diagnosticError,
@@ -30,6 +36,7 @@ vi.mock('./composables/useScreensaver.ts', () => ({
 vi.mock('./components/AppScreensaver.vue', () => ({ default: {} }))
 vi.mock('./components/InputDebug.vue', () => ({ default: {} }))
 vi.mock('./components/TitleActions.vue', () => ({ default: {} }))
+vi.mock('./components/mine/MineEditor.vue', () => ({ default: {} }))
 
 interface Element {
   children: Element[]

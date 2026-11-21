@@ -46,7 +46,7 @@ export function cardsOf(titles: DemoTitle[]) {
 }
 
 export function followBrief(title: DemoTitle) {
-  if (!follows.has(title.id))
+  if (!follows().has(title.id))
     return null
 
   const last = title.seasons?.length ?? 1

@@ -4,7 +4,11 @@ import type {
   MediaFile,
   Profile,
 } from '../../db/schema.ts'
-import type { ExportDocument, ExportSettings } from './document.ts'
+import type {
+  ExportDocument,
+  ExportDocumentV2,
+  ExportSettings,
+} from './document.ts'
 import type { PasswordKey } from './passwords.ts'
 import { and, asc, eq, inArray, or } from 'drizzle-orm'
 import { config } from '../../config.ts'
@@ -31,6 +35,8 @@ import { logFor } from '../logs/index.ts'
 import { providerOf } from '../notifications/channels/index.ts'
 import { decryptSecret, SecretError } from '../secrets/index.ts'
 import { getSetting } from '../settings/index.ts'
+import { diaryTimeZone } from './diaryTimeZone.ts'
+import { exportPersonalRows } from './personalSpace.ts'
 import { EXPORT_FORMAT, EXPORT_VERSION } from './document.ts'
 import {
   encryptWithPassword,
@@ -437,7 +443,7 @@ function exportSettings(secret: SecretWriter): ExportSettings {
 export function buildExport(
   options: ExportOptions,
   now = new Date(),
-): ExportDocument {
+): ExportDocumentV2 {
   const db = getDb()
   const all = db.select().from(profiles).orderBy(asc(profiles.position)).all()
   const chosen
@@ -457,7 +463,7 @@ export function buildExport(
       ? newPasswordKey(options.password)
       : undefined
   const secret = secretWriter(passwordKey)
-  const document: ExportDocument = {
+  const document: ExportDocumentV2 = {
     format: EXPORT_FORMAT,
     version: EXPORT_VERSION,
     exportedAt: now.toISOString(),
@@ -484,6 +490,10 @@ export function buildExport(
     })),
     progress: exportProgress(ids, keys, !!include.libraries),
     mine: exportMine(ids, keys),
+    personalSpace: {
+      timeZone: diaryTimeZone(),
+      ...exportPersonalRows(ids, keys),
+    },
   }
 
   if (server) {

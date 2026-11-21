@@ -24,12 +24,32 @@ export type TmdbErrorKind = 'config' | 'not_found' | 'unavailable'
 
 export class TmdbError extends Error {
   readonly kind: TmdbErrorKind
+  readonly upstreamStatus?: number
+  readonly retryAfterMs?: number
 
-  constructor(kind: TmdbErrorKind, message: string, options?: ErrorOptions) {
+  constructor(
+    kind: TmdbErrorKind,
+    message: string,
+    options?: ErrorOptions & { upstreamStatus?: number, retryAfterMs?: number },
+  ) {
     super(message, options)
     this.name = 'TmdbError'
     this.kind = kind
+    this.upstreamStatus = options?.upstreamStatus
+    this.retryAfterMs = options?.retryAfterMs
   }
+}
+
+function retryDelay(header: string | null, now = Date.now()) {
+  const value = header?.trim()
+  const milliseconds = !value
+    ? NaN
+    : /^\d+$/.test(value)
+      ? Number(value) * 1000
+      : Date.parse(value) - now
+  return Number.isNaN(milliseconds)
+    ? 60_000
+    : Math.max(1000, Math.min(600_000, milliseconds))
 }
 
 // Все запросы к TMDB выходят в сеть только отсюда
@@ -110,8 +130,15 @@ export async function tmdbGet<T>(
   if (res.status === 404)
     throw new TmdbError('not_found', 'Not found in TMDB')
 
-  if (!res.ok)
-    throw new TmdbError('unavailable', `TMDB responded with ${res.status}`)
+  if (!res.ok) {
+    throw new TmdbError('unavailable', `TMDB responded with ${res.status}`, {
+      upstreamStatus: res.status,
+      retryAfterMs:
+        res.status === 429
+          ? retryDelay(res.headers.get('retry-after'))
+          : undefined,
+    })
+  }
 
   try {
     return (await res.json()) as T

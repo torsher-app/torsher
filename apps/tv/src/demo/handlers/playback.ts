@@ -1,3 +1,4 @@
+import { demoCycle, demoPlaybackSample } from './mine.ts'
 import type {
   CreatePlaybackInput,
   HomeVideoList,
@@ -10,6 +11,8 @@ import type {
   TorrentStats,
   UpdatePlaybackPreferencesInput,
   UpdateWatchStateInput,
+  ViewingAttempt,
+  ViewingAttemptResponse,
   WatchState,
 } from '@torsher/api-client'
 import type { DemoTitle } from '@torsher/demo/titles'
@@ -28,7 +31,7 @@ import { nextId } from '@torsher/demo/state'
 import { findTitle, releaseName, titleNamed } from '@torsher/demo/titles'
 import { libraryEntry, peersOf, streamSpeed, torrentById } from '../library.ts'
 import { playingFilm } from '../playing.ts'
-import { savePosition } from '../viewer.ts'
+import { currentProfile, savePosition } from '../viewer.ts'
 
 interface Film {
   title: DemoTitle
@@ -101,16 +104,188 @@ function targetOf(source: Source, title?: PlaybackTitleInput) {
 const FOOTAGE_AT = 312
 
 const sessions = new Map<string, Playback>()
+const attempts = new Map<string, ViewingAttempt>()
+const receipt = new Map<string, { attempt: ViewingAttempt, command: string }>()
+const bindings = new Map<
+  string,
+  {
+    profileId: string
+    key: string
+    source: string
+    attempt: ViewingAttempt
+    clientId: string
+    playerId: string
+    cycleId?: string
+    line: number
+    baseline: number | null
+    advanced: boolean
+  }
+>()
+const watermarks = new Map<string, number>()
+const cyclePositions = new Map<
+  string,
+  { source: Source, position: number, duration: number | null }
+>()
+let viewingSerial = 0
+
+function viewingKey(
+  profileId: string,
+  id: string | undefined,
+  season: number,
+  episode: number,
+  cycleId?: string,
+) {
+  return JSON.stringify([profileId, id, season, episode, cycleId])
+}
+
+function sourceKey(source: Source) {
+  return JSON.stringify(
+    source.mediaFileId
+      ? ['library', source.mediaFileId]
+      : ['torrent', source.torrentId, source.fileIndex],
+  )
+}
+
+function assertViewer(requested?: string | null) {
+  const profileId = currentProfile().id
+  if (requested && requested !== profileId)
+    throw new DemoError(404, { message: 'Playback not found' })
+  return profileId
+}
+
+function demoViewing(
+  binding: NonNullable<ReturnType<typeof bindings.get>>,
+): ViewingAttempt {
+  return {
+    ...binding.attempt,
+    current: attempts.get(binding.key) === binding.attempt,
+  }
+}
+
+get<ViewingAttemptResponse>('/api/playback/viewing-attempt', ({ query }) => {
+  const profileId = assertViewer(query.get('profileId'))
+  const cycleId = query.get('cycleId') ?? undefined
+  const key = viewingKey(
+    profileId,
+    query.get('titleId') ?? undefined,
+    Number(query.get('season')),
+    Number(query.get('episode')),
+    cycleId,
+  )
+  const attempt = attempts.get(key)
+  const cursor = cycleId ? cyclePositions.get(key) : undefined
+  return {
+    attempt: attempt ? { ...attempt, current: true } : null,
+    source: cursor?.source.mediaFileId
+      ? { mediaFileId: cursor.source.mediaFileId }
+      : cursor?.source.torrentId && cursor.source.fileIndex !== undefined
+        ? {
+            torrentId: cursor.source.torrentId,
+            fileIndex: cursor.source.fileIndex,
+          }
+        : undefined,
+  }
+})
 
 post<Playback, CreatePlaybackInput>('/api/playback', ({ body }) => {
+  const profileId = assertViewer(body.profileId)
+  if (body.viewing === null)
+    throw new DemoError(400, { message: 'Invalid viewing request' })
   const target = targetOf(body, body.title)
   const film = filmOf(target.title)
   const title = target.title ?? film.title
+  const key = viewingKey(
+    profileId,
+    title.id,
+    target.season,
+    target.episode,
+    body.viewing?.cycleId,
+  )
+  const sessionId = nextId('playback')
+  if (body.viewing) {
+    if (
+      body.mediaFileId
+        ? !libraryEntry(body.mediaFileId)
+        : !body.torrentId
+          || !torrentById(body.torrentId)?.files.some(
+            file => file.fileIndex === body.fileIndex,
+          )
+    ) {
+      throw new DemoError(404, { message: 'Playback not found' })
+    }
+    const {
+      requestId,
+      clientId,
+      playerId,
+      cycleId,
+      intent,
+      expectedGeneration,
+    } = body.viewing
+    if (
+      !requestId
+      || !clientId
+      || !playerId
+      || !['join', 'restart'].includes(intent)
+      || (intent === 'restart' && !Number.isSafeInteger(expectedGeneration))
+      || !target.title
+      || (cycleId && !target.episode)
+    ) {
+      throw new DemoError(400, { message: 'Invalid viewing request' })
+    }
+    const receiptKey = JSON.stringify([profileId, requestId])
+    const source = sourceKey(body)
+    const command = JSON.stringify([
+      key,
+      source,
+      intent,
+      expectedGeneration ?? null,
+    ])
+    const before = receipt.get(receiptKey)
+    const current = attempts.get(key)
+    if (
+      before
+        ? before.command !== command
+        : expectedGeneration !== undefined
+          && expectedGeneration !== (current?.generation ?? 0)
+    ) {
+      throw new DemoError(409, {
+        message: 'Viewing attempt conflict',
+        kind: 'viewingAttemptConflict',
+      })
+    }
+    let attempt = before?.attempt ?? (intent === 'join' ? current : undefined)
+    if (!attempt) {
+      if (current?.state === 'open')
+        current.state = 'abandoned'
+      attempt = {
+        attemptId: `00000000-0000-4000-8000-${(++viewingSerial).toString(16).padStart(12, '0')}`,
+        generation: (current?.generation ?? 0) + 1,
+        state: 'open',
+      }
+      attempts.set(key, attempt)
+    }
+    receipt.set(receiptKey, { attempt, command })
+    bindings.set(sessionId, {
+      profileId,
+      key,
+      attempt,
+      source,
+      clientId,
+      playerId,
+      cycleId,
+      line: 0,
+      baseline: null,
+      advanced: false,
+    })
+  }
 
   playingFilm.value = film.title.title
 
+  const binding = bindings.get(sessionId)
+  const cursor = binding?.cycleId ? cyclePositions.get(key) : undefined
   const playback: Playback = {
-    sessionId: nextId('playback'),
+    sessionId,
+    viewing: binding && demoViewing(binding),
     status: 'ready',
     mode: 'direct',
     streamUrl: film.url,
@@ -119,7 +294,7 @@ post<Playback, CreatePlaybackInput>('/api/playback', ({ body }) => {
     fileName: target.name ?? `${releaseName(film.title)}.mkv`,
     size: target.size ?? film.size,
     duration: film.seconds,
-    startPosition: body.startPosition ?? FOOTAGE_AT,
+    startPosition: body.startPosition ?? cursor?.position ?? FOOTAGE_AT,
     media: {
       container: 'mp4',
       video: { codec: 'h264', width: 1280, height: 720, hdr: false },
@@ -151,11 +326,12 @@ post<Playback, CreatePlaybackInput>('/api/playback', ({ body }) => {
 
 get<Playback>('/api/playback/:id', ({ params }) => {
   const playback = sessions.get(params.id!)
+  const binding = bindings.get(params.id!)
 
-  if (!playback)
+  if (!playback || (binding && binding.profileId !== currentProfile().id))
     throw new DemoError(404, { message: 'Playback not found' })
 
-  return playback
+  return binding ? { ...playback, viewing: demoViewing(binding) } : playback
 })
 
 // Demo media has one audio track and no subtitles. Validate explicit choices.
@@ -195,7 +371,136 @@ get<SubtitleCues>('/api/playback/:id/subtitles/:trackId', () => ({
 }))
 
 put<WatchState, UpdateWatchStateInput>('/api/watch-state', ({ body }) => {
+  const profileId = assertViewer(body.profileId)
+  if (body.viewing === null)
+    throw new DemoError(400, { message: 'Invalid viewing checkpoint' })
   const target = targetOf(body, body.title)
+  const binding = body.sessionId ? bindings.get(body.sessionId) : undefined
+  const response = {
+    torrentId: body.torrentId ?? null,
+    fileIndex: body.fileIndex ?? null,
+    mediaFileId: body.mediaFileId ?? null,
+    position: body.position,
+    duration: body.duration ?? null,
+    updatedAt: new Date().toISOString(),
+  }
+  if (binding && !body.viewing)
+    throw new DemoError(404, { message: 'Playback not found' })
+  if (body.viewing) {
+    const { line, playerId, kind } = body.viewing
+    const event = body.event
+    if (
+      !body.sessionId
+      || !event
+      || !playerId
+      || !Number.isSafeInteger(event.sequence)
+      || event.sequence < 1
+      || !Number.isSafeInteger(line)
+      || line < 0
+      || !['playback', 'seek', 'pause', 'stop', 'source_switch'].includes(kind)
+    ) {
+      throw new DemoError(400, { message: 'Invalid viewing checkpoint' })
+    }
+    if (
+      !binding
+      || profileId !== binding.profileId
+      || binding.playerId !== playerId
+      || binding.clientId !== event.clientId
+      || binding.source !== sourceKey(body)
+      || binding.key
+      !== viewingKey(
+        profileId,
+        target.title?.id,
+        target.season,
+        target.episode,
+        binding.cycleId,
+      )
+      || !demoViewing(binding).current
+      || binding.attempt.state === 'abandoned'
+    ) {
+      return {
+        ...response,
+        position: 0,
+        duration: null,
+        accepted: false,
+        rejection: 'viewingConflict',
+      }
+    }
+    const resource = binding.cycleId
+      ? [profileId, binding.cycleId]
+      : binding.key
+    const watermark = JSON.stringify([resource, event.clientId])
+    if (
+      line < binding.line
+      || event.sequence <= (watermarks.get(watermark) ?? 0)
+    ) {
+      return { ...response, accepted: false, rejection: 'stale' }
+    }
+    const cycle = binding.cycleId
+      ? demoCycle(profileId, binding.cycleId)
+      : undefined
+    if (cycle && cycle.state !== 'active')
+      return { ...response, accepted: false, rejection: 'viewingConflict' }
+    const previous = line === binding.line ? binding.baseline : null
+    const reset = kind === 'seek' || kind === 'source_switch'
+    const playing = kind === 'playback'
+    const forward = playing && previous !== null && body.position > previous
+    const backward = playing && previous !== null && body.position < previous
+    binding.advanced
+      = !reset
+        && !backward
+        && (forward || (line === binding.line && binding.advanced))
+    binding.baseline = reset ? null : playing ? body.position : previous
+    binding.line = line
+    watermarks.set(watermark, event.sequence)
+    const duration = body.duration ?? null
+    const completed
+      = binding.attempt.state === 'open'
+        && binding.advanced
+        && (playing || kind === 'stop')
+        && duration !== null
+        && duration > 0
+        && body.position >= duration * 0.9
+        && body.position <= duration
+    if (target.title) {
+      demoPlaybackSample(
+        profileId,
+        {
+          titleId: target.title.id,
+          season: target.season,
+          episode: target.episode,
+        },
+        body.mediaFileId
+          ? { kind: 'library', mediaFileId: body.mediaFileId }
+          : body.torrentId && body.fileIndex !== undefined
+            ? {
+                kind: 'torrent',
+                torrentId: body.torrentId,
+                fileIndex: body.fileIndex,
+              }
+            : null,
+        body.position,
+        duration,
+        forward,
+        completed,
+        binding.cycleId,
+      )
+      if (completed)
+        binding.attempt.state = 'completed'
+    }
+    if (binding.cycleId) {
+      cyclePositions.set(binding.key, {
+        source: {
+          mediaFileId: body.mediaFileId,
+          torrentId: body.torrentId,
+          fileIndex: body.fileIndex,
+        },
+        position: body.position,
+        duration: body.duration ?? null,
+      })
+      return { ...response, accepted: true }
+    }
+  }
 
   if (target.title) {
     savePosition({
@@ -211,12 +516,8 @@ put<WatchState, UpdateWatchStateInput>('/api/watch-state', ({ body }) => {
   }
 
   return {
-    torrentId: body.torrentId ?? null,
-    fileIndex: body.fileIndex ?? null,
-    mediaFileId: body.mediaFileId ?? null,
-    position: body.position,
-    duration: body.duration ?? null,
-    updatedAt: new Date().toISOString(),
+    ...response,
+    accepted: body.viewing ? true : undefined,
   }
 })
 

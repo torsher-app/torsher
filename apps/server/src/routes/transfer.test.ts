@@ -22,16 +22,23 @@ import {
   collectionHiddenProfiles,
   collections,
   collectionTitles,
+  cyclePlaybackFacts,
+  cycleProgress,
   devices,
+  diaryEntries,
+  diarySeen,
   indexerManagers,
   indexers,
   libraries,
   libraryFolders,
   mediaFiles,
+  mineProfilePreferences,
+  mineTitlePreferences,
   netRoutes,
-  profileImports,
   profiles,
   profileTitles,
+  rewatchCycles,
+  serverSettings,
   titleAliases,
   titleProgress,
   titleVoices,
@@ -44,9 +51,15 @@ import { parseProbe } from '../services/media/probe.ts'
 import {
   getTitleProgress,
   launchSelectionOf,
+  markWatched,
   rememberStartedSource,
   rememberVoice,
 } from '../services/sources/progress.ts'
+import { deleteProfile } from '../services/profiles/index.ts'
+import {
+  diaryTimeZone,
+  ensureDiaryTimeZone,
+} from '../services/transfer/diaryTimeZone.ts'
 import { resumeTarget } from '../services/sources/resume.ts'
 import { resetImportJobs } from '../services/transfer/imports.ts'
 import { applyPendingDecisions } from '../services/transfer/libraryMatches.ts'
@@ -114,6 +127,9 @@ function clearViewerData() {
   ]) {
     db.delete(table).run()
   }
+  db.delete(serverSettings)
+    .where(eq(serverSettings.key, 'mine.diaryTimeZone'))
+    .run()
 }
 
 function seed() {
@@ -306,7 +322,7 @@ describe('export', () => {
 
     expect(document).toMatchObject({
       format: 'torsher-export',
-      version: 1,
+      version: 2,
       scope: 'server',
     })
     expect(document.profiles.map((row: { name: string }) => row.name)).toEqual([
@@ -669,7 +685,1431 @@ describe('profile import', () => {
     })
   }
 
-  it('round-trips title marks in profile v1, preserves old v1 compatibility and restores marks through profile undo', async () => {
+  const FIRST = 'ebc39ec1-f1c6-4511-8d96-1af3ab9d3eec'
+  const SECOND = '01f82536-8a2b-4789-ad62-4c771d2a917c'
+  const UNKNOWN = '88455bc2-89d9-44e0-87ae-968fc38a9c4c'
+  const INSTANT = '73f3bc9e-eacf-452c-8f41-070b5de66ce0'
+  const CYCLE = 'e923947b-888f-4ab9-b330-ffa2bf80cfe6'
+  const ACTIVE = '18cc17fd-593d-4c7a-ba77-ccc70c7dc875'
+
+  function seedPersonalSpace(profileId: string) {
+    const db = getDb()
+    const exact = { profileId, titleId: SHOW, season: 0, episode: 1 }
+    const mark = { profileId, titleId: OTHER, season: 0, episode: 0 }
+    const dates = { createdAt: at(5), updatedAt: at(6) }
+    db.insert(rewatchCycles)
+      .values({
+        ...dates,
+        profileId,
+        id: CYCLE,
+        titleId: SHOW,
+        startSeason: 0,
+        startEpisode: 1,
+        targetSeason: 2,
+        targetEpisode: 3,
+        state: 'paused',
+      })
+      .run()
+    db.insert(diaryEntries)
+      .values([
+        {
+          ...exact,
+          ...dates,
+          id: FIRST,
+          precision: 'day',
+          day: '2024-02-29',
+          origin: 'trakt',
+          originKey: '9007199254740997',
+          note: 'First note',
+          viewingContext: 'Balcony with Sam',
+        },
+        {
+          ...exact,
+          ...dates,
+          id: SECOND,
+          precision: 'day',
+          day: '2024-02-29',
+          origin: 'trakt',
+          originKey: '9007199254740998',
+          rewatch: true,
+        },
+        {
+          ...mark,
+          ...dates,
+          id: UNKNOWN,
+          precision: 'unknown',
+          origin: 'manual',
+        },
+        {
+          ...exact,
+          ...dates,
+          id: INSTANT,
+          precision: 'instant',
+          instant: at(5),
+          origin: 'playback',
+          context: { kind: 'cycle', cycleId: CYCLE },
+        },
+      ])
+      .run()
+    db.insert(diarySeen)
+      .values([
+        exact,
+        mark,
+        { profileId, titleId: SHOW, season: 0, episode: 0 },
+      ])
+      .run()
+    db.insert(cycleProgress)
+      .values([
+        {
+          profileId,
+          cycleId: CYCLE,
+          season: 0,
+          episode: 1,
+          position: 5,
+          duration: 300,
+          source: {
+            kind: 'library',
+            folder: '/test/source',
+            path: 'special.mkv',
+          },
+          voiceStudio: 'Original',
+          voiceType: 'MVO',
+          completedAt: at(4),
+          updatedAt: at(3),
+        },
+        {
+          profileId,
+          cycleId: CYCLE,
+          season: 2,
+          episode: 3,
+          position: 125,
+          source: { kind: 'torrent', infoHash: 'b'.repeat(40), fileIndex: 7 },
+          updatedAt: at(6),
+        },
+      ])
+      .run()
+    db.insert(cyclePlaybackFacts)
+      .values({
+        ...exact,
+        watchedAt: at(1),
+        lastPlayedAt: at(2),
+        updatedAt: at(2),
+      })
+      .run()
+    db.insert(mineTitlePreferences)
+      .values({
+        profileId,
+        titleId: SHOW,
+        note: 'Title note',
+        continuation: 'hidden',
+        notInterested: true,
+        updatedAt: at(6),
+      })
+      .run()
+    db.insert(mineProfilePreferences)
+      .values({
+        profileId,
+        startSection: 'overview',
+        updatedAt: at(6),
+      })
+      .run()
+  }
+
+  async function applyProfileFile(id: string, body: string) {
+    const opened = await upload(id, body)
+    expect(opened.statusCode).toBe(202)
+    const job = opened.json()
+    const applied = await app.inject({
+      method: 'POST',
+      url: `/api/profiles/${id}/imports/${job.id}/apply`,
+      cookies: authed(),
+      payload: { conflicts: 'newer' },
+    })
+    expect(applied.statusCode).toBe(200)
+    return { preview: job.preview, ...applied.json() }
+  }
+
+  function undoBatch(profileId: string, id: string) {
+    return app.inject({
+      method: 'POST',
+      url: `/api/profiles/${profileId}/imports/${id}/undo`,
+      cookies: authed(),
+    })
+  }
+
+  it('keeps native personal row counts separate from unique changed and unchanged titles', async () => {
+    seedPersonalSpace(ANNA)
+    const document = JSON.parse(await profileExport(ANNA))
+    document.progress = []
+    document.mine = []
+    const body = JSON.stringify(document)
+    const first = await applyProfileFile(DAD, body)
+    expect(first).toMatchObject({
+      imported: 2,
+      unchanged: 0,
+      unmatched: 0,
+      personal: { changed: 13, unchanged: 0, skipped: 0 },
+    })
+    const repeated = await applyProfileFile(DAD, body)
+    expect(repeated).toMatchObject({
+      imported: 0,
+      unchanged: 2,
+      unmatched: 0,
+      personal: { changed: 0, unchanged: 13, skipped: 0 },
+    })
+    const overview = await app.inject({
+      url: `/api/profiles/${DAD}/imports`,
+      cookies: authed(),
+    })
+    expect(overview.json().last.summary).toMatchObject({
+      imported: 0,
+      unchanged: 2,
+      unmatched: 0,
+      personal: { changed: 0, unchanged: 13, skipped: 0 },
+    })
+  })
+
+  it('reports a native source conflict as skipped without promising manual matching', async () => {
+    seedPersonalSpace(ANNA)
+    const document = JSON.parse(await profileExport(ANNA))
+    const event = document.personalSpace.diary.find(
+      (row: { id: string }) => row.id === FIRST,
+    )
+    document.progress = []
+    document.mine = []
+    for (const key of Object.keys(document.personalSpace)) {
+      if (key !== 'timeZone')
+        document.personalSpace[key] = key === 'diary' ? [event] : []
+    }
+    getDb()
+      .insert(diaryEntries)
+      .values({
+        profileId: DAD,
+        titleId: OTHER,
+        id: FIRST,
+        season: 0,
+        episode: 0,
+        precision: 'day',
+        day: '2024-02-29',
+        origin: 'trakt',
+        originKey: '9007199254740997',
+        createdAt: at(5),
+        updatedAt: at(6),
+      })
+      .run()
+    expect(await applyProfileFile(DAD, JSON.stringify(document))).toMatchObject(
+      {
+        imported: 0,
+        unchanged: 0,
+        unmatched: 0,
+        skipped: 1,
+        personal: { changed: 0, unchanged: 0, skipped: 1 },
+      },
+    )
+    const pending = await app.inject({
+      url: `/api/profiles/${DAD}/imports/unmatched`,
+      cookies: authed(),
+    })
+    expect(pending.statusCode).toBe(200)
+    expect(pending.json()).toMatchObject({ total: 0, items: [] })
+  })
+
+  it('reports an applied start-section preference even when no title changes', async () => {
+    getDb()
+      .insert(mineProfilePreferences)
+      .values({
+        profileId: ANNA,
+        startSection: 'diary',
+        updatedAt: at(6),
+      })
+      .run()
+    const document = JSON.parse(await profileExport(ANNA))
+    document.progress = []
+    document.mine = []
+    const result = await applyProfileFile(DAD, JSON.stringify(document))
+    expect(result).toMatchObject({
+      imported: 0,
+      unchanged: 0,
+      unmatched: 0,
+      personal: { changed: 1, unchanged: 0, skipped: 0 },
+    })
+    expect(
+      getDb()
+        .select()
+        .from(mineProfilePreferences)
+        .where(eq(mineProfilePreferences.profileId, DAD))
+        .get()
+        ?.startSection,
+    ).toBe('diary')
+  })
+
+  it('round-trips every personal section across both import paths and keeps profile zones local', async () => {
+    const db = getDb()
+    seedPersonalSpace(ANNA)
+    const collectionId = 'portable-start'
+    db.insert(collections)
+      .values({
+        id: collectionId,
+        name: 'Portable start',
+        nameKey: 'portable start',
+      })
+      .run()
+    db.update(mineProfilePreferences)
+      .set({
+        startSection: 'continue',
+        startCollectionId: collectionId,
+      })
+      .where(eq(mineProfilePreferences.profileId, ANNA))
+      .run()
+    expect(ensureDiaryTimeZone('Pacific/Auckland')).toBe('Pacific/Auckland')
+    const body = await profileExport(ANNA)
+    const serverBody = await exportServer()
+    const before = parseExportDocument(body)
+    if (before.version !== 2)
+      throw new Error('Expected a v2 export')
+
+    expect(body).not.toContain('mutationToken')
+    expect(body).not.toContain('mutation_token')
+    expect(body).not.toContain(ANNA)
+    expect(before.personalSpace).toMatchObject({
+      timeZone: 'Pacific/Auckland',
+      profilePreferences: [
+        { startSection: 'continue', startCollectionName: 'Portable start' },
+      ],
+      cycleProgress: [
+        { completedAt: at(4).toISOString() },
+        { completedAt: null },
+      ],
+    })
+    expect(body).not.toContain(collectionId)
+    expect(body).not.toContain('lifecycleRevision')
+
+    db.delete(serverSettings)
+      .where(eq(serverSettings.key, 'mine.diaryTimeZone'))
+      .run()
+    expect(ensureDiaryTimeZone('America/Los_Angeles')).toBe(
+      'America/Los_Angeles',
+    )
+    const first = await applyProfileFile(DAD, body)
+    expect(first.preview.personal).toEqual({
+      changed: 13,
+      unchanged: 0,
+      skipped: 0,
+    })
+    const target = parseExportDocument(await profileExport(DAD))
+    expect(target).toMatchObject({
+      personalSpace: {
+        ...before.personalSpace,
+        timeZone: 'America/Los_Angeles',
+      },
+    })
+    expect(diaryTimeZone()).toBe('America/Los_Angeles')
+
+    // Equal portable event UUIDs are valid in two profiles, with different local versions.
+    const tokens = db
+      .select()
+      .from(diaryEntries)
+      .where(eq(diaryEntries.id, FIRST))
+      .all()
+    expect(tokens).toHaveLength(2)
+    expect(new Set(tokens.map(row => row.mutationToken)).size).toBe(2)
+    const again = await applyProfileFile(DAD, body)
+    expect(again.preview.personal).toEqual({
+      changed: 0,
+      unchanged: 13,
+      skipped: 0,
+    })
+    expect(again.imported).toBe(0)
+    expect(
+      db.select().from(diaryEntries).where(eq(diaryEntries.id, FIRST)).all(),
+    ).toEqual(tokens)
+
+    clearViewerData()
+    seed()
+    const restored = await importServer(serverBody, {
+      mapping: { p1: DAD, p2: 'skip' },
+    })
+    expect(restored.preview.profiles[0].counts.personal).toEqual({
+      changed: 13,
+      unchanged: 0,
+      skipped: 0,
+    })
+    expect(parseExportDocument(await profileExport(DAD))).toMatchObject({
+      personalSpace: before.personalSpace,
+    })
+    expect(diaryTimeZone()).toBe('Pacific/Auckland')
+    expect(
+      db
+        .select()
+        .from(diaryEntries)
+        .where(eq(diaryEntries.profileId, ANNA))
+        .all(),
+    ).toEqual([])
+  })
+
+  it('resolves a collection preference for the target profile and conditionally restores it on undo', async () => {
+    const db = getDb()
+    const newCollection = 'native-same-name'
+    db.insert(collections)
+      .values({ id: newCollection, name: 'Portable', nameKey: 'portable' })
+      .run()
+    db.insert(mineProfilePreferences)
+      .values([
+        {
+          profileId: ANNA,
+          startSection: 'continue',
+          startCollectionId: newCollection,
+          updatedAt: at(6),
+        },
+        {
+          profileId: DAD,
+          startSection: 'continue',
+          startCollectionId: 'c1',
+          updatedAt: at(5),
+        },
+      ])
+      .run()
+    const incoming = await profileExport(ANNA)
+    const targetPreference = () =>
+      db
+        .select()
+        .from(mineProfilePreferences)
+        .where(eq(mineProfilePreferences.profileId, DAD))
+        .get()
+    const one = await applyProfileFile(DAD, incoming)
+    expect(targetPreference()?.startCollectionId).toBe(newCollection)
+    expect((await undoBatch(DAD, one.id)).statusCode).toBe(200)
+    expect(targetPreference()?.startCollectionId).toBe('c1')
+
+    // A hidden collection is never selected by another profile's file.
+    db.insert(collectionHiddenProfiles)
+      .values({ profileId: DAD, collectionId: newCollection })
+      .run()
+    const two = await applyProfileFile(DAD, incoming)
+    expect(targetPreference()).toMatchObject({
+      startSection: 'continue',
+      startCollectionId: null,
+    })
+    db.delete(collections).where(eq(collections.id, 'c1')).run()
+    expect((await undoBatch(DAD, two.id)).statusCode).toBe(200)
+    expect(targetPreference()).toMatchObject({
+      startSection: 'continue',
+      startCollectionId: null,
+    })
+
+    db.delete(collections).where(eq(collections.id, newCollection)).run()
+    await applyProfileFile(DAD, incoming)
+    expect(targetPreference()).toMatchObject({
+      startSection: 'continue',
+      startCollectionId: null,
+    })
+  })
+
+  it('falls back after the previous start collection is deleted and undoes independent data', async () => {
+    const db = getDb()
+    db.insert(collections)
+      .values({ id: 'new-start', name: 'New start', nameKey: 'new start' })
+      .run()
+    db.insert(mineProfilePreferences)
+      .values([
+        {
+          profileId: ANNA,
+          startSection: 'continue',
+          startCollectionId: 'new-start',
+          updatedAt: at(6),
+        },
+        {
+          profileId: DAD,
+          startSection: 'continue',
+          startCollectionId: 'c1',
+          updatedAt: at(5),
+        },
+      ])
+      .run()
+    db.insert(mineTitlePreferences)
+      .values({
+        profileId: ANNA,
+        titleId: SHOW,
+        note: 'Independent imported note',
+        updatedAt: at(6),
+      })
+      .run()
+    const applied = await applyProfileFile(DAD, await profileExport(ANNA))
+    const prefs = () =>
+      db
+        .select()
+        .from(mineProfilePreferences)
+        .where(eq(mineProfilePreferences.profileId, DAD))
+        .get()!
+    const after = prefs()
+    expect(after.startCollectionId).toBe('new-start')
+    db.delete(collections).where(eq(collections.id, 'c1')).run()
+    expect(prefs().mutationToken).toBe(after.mutationToken)
+    const undone = await undoBatch(DAD, applied.id)
+    expect(undone.statusCode, undone.body).toBe(200)
+    expect(prefs()).toMatchObject({
+      startSection: 'continue',
+      startCollectionId: null,
+    })
+    expect(prefs().mutationToken).not.toBe(after.mutationToken)
+    expect(
+      db
+        .select()
+        .from(mineTitlePreferences)
+        .where(eq(mineTitlePreferences.profileId, DAD))
+        .all(),
+    ).toHaveLength(0)
+  })
+
+  it('transfers a newer explicit cycle restart and keeps omitted legacy completion unknown', async () => {
+    seedPersonalSpace(ANNA)
+    const db = getDb()
+    const first = await profileExport(ANNA)
+    await applyProfileFile(DAD, first)
+    const cursor = (profileId: string) =>
+      and(
+        eq(cycleProgress.profileId, profileId),
+        eq(cycleProgress.season, 0),
+        eq(cycleProgress.episode, 1),
+      )
+    const current = () =>
+      db.select().from(cycleProgress).where(cursor(DAD)).get()!
+    expect(current().completedAt).toEqual(at(4))
+
+    const omitted = parseExportDocument(first)
+    if (omitted.version !== 2)
+      throw new Error('Expected a v2 document')
+    omitted.personalSpace.cycleProgress[0]!.updatedAt = at(7).toISOString()
+    delete omitted.personalSpace.cycleProgress[0]!.completedAt
+    await applyProfileFile(DAD, JSON.stringify(omitted))
+    expect(current()).toMatchObject({ completedAt: at(4), updatedAt: at(7) })
+
+    db.update(cycleProgress)
+      .set({ position: 50, completedAt: null, updatedAt: at(8) })
+      .where(cursor(ANNA))
+      .run()
+    const reset = await profileExport(ANNA)
+    const changed = await applyProfileFile(DAD, reset)
+    expect(current()).toMatchObject({
+      completedAt: null,
+      position: 50,
+      updatedAt: at(8),
+    })
+    const token = current().mutationToken
+    await applyProfileFile(DAD, first)
+    expect(current().mutationToken).toBe(token)
+    expect(current().completedAt).toBeNull()
+    expect((await undoBatch(DAD, changed.id)).statusCode).toBe(200)
+    expect(current()).toMatchObject({ completedAt: at(4), updatedAt: at(7) })
+    deleteProfile(ANNA, DAD)
+    expect(current()).toMatchObject({
+      completedAt: null,
+      position: 50,
+      updatedAt: at(8),
+    })
+    expect(parseExportDocument(await profileExport(DAD))).toMatchObject({
+      personalSpace: {
+        cycleProgress: expect.arrayContaining([
+          expect.objectContaining({ completedAt: null, position: 50 }),
+        ]),
+      },
+    })
+  })
+
+  it('recalculates a Trakt repeat after native transfer and undo without storing the derived flag', async () => {
+    const db = getDb()
+    db.update(profiles)
+      .set({ ageLimit: null })
+      .where(eq(profiles.id, ANNA))
+      .run()
+    const fact = {
+      titleId: MOVIE,
+      season: 0,
+      episode: 0,
+      precision: 'instant' as const,
+      origin: 'trakt' as const,
+    }
+    db.insert(diaryEntries)
+      .values([
+        {
+          ...fact,
+          profileId: ANNA,
+          id: FIRST,
+          originKey: 'id:1',
+          instant: at(1),
+          createdAt: at(3),
+          updatedAt: at(3),
+        },
+        {
+          ...fact,
+          profileId: DAD,
+          id: SECOND,
+          originKey: 'id:2',
+          instant: at(2),
+          createdAt: at(2),
+          updatedAt: at(2),
+        },
+      ])
+      .run()
+    const repeats = async (id: string) => {
+      const response = await app.inject({
+        url: '/api/mine/v1/diary',
+        query: { expectedProfileId: id, rewatch: 'only' },
+        cookies: { ...authed(), [PROFILE_COOKIE]: id },
+      })
+      expect(response.statusCode, response.body).toBe(200)
+      return response.json()
+    }
+    expect(await repeats(DAD)).toMatchObject({ total: 0 })
+    const introduced = await applyProfileFile(DAD, await profileExport(ANNA))
+    expect(await repeats(DAD)).toMatchObject({
+      total: 1,
+      entries: [{ id: SECOND, rewatch: true }],
+    })
+    const exported = await profileExport(DAD)
+    expect(parseExportDocument(exported)).toMatchObject({
+      personalSpace: {
+        diary: [
+          expect.objectContaining({ origin: 'trakt', rewatch: false }),
+          expect.objectContaining({ origin: 'trakt', rewatch: false }),
+        ],
+      },
+    })
+    await applyProfileFile(ANNA, exported)
+    expect(await repeats(ANNA)).toMatchObject({
+      total: 1,
+      entries: [{ id: SECOND }],
+    })
+    expect((await undoBatch(DAD, introduced.id)).statusCode).toBe(200)
+    expect(await repeats(DAD)).toMatchObject({ total: 0 })
+  })
+
+  async function viewingFile(id: string) {
+    const document = parseExportDocument(await profileExport(ANNA))
+    if (document.version !== 2)
+      throw new Error('Expected a v2 export')
+
+    const { diary, seen, timeZone } = document.personalSpace
+    return JSON.stringify({
+      ...document,
+      progress: [],
+      mine: [],
+      personalSpace: {
+        ...document.personalSpace,
+        timeZone,
+        diary: diary.filter(row => row.id === id),
+        seen: seen.filter(row => row.title === SHOW && row.episode === 1),
+        cycles: [],
+        cycleProgress: [],
+        cyclePlayback: [],
+        titlePreferences: [],
+        profilePreferences: [],
+      },
+    })
+  }
+
+  it('keeps the mark created by one import after a different event claims it', async () => {
+    const db = getDb()
+    seedPersonalSpace(ANNA)
+    const first = await applyProfileFile(DAD, await viewingFile(FIRST))
+    const mark = () =>
+      db.select().from(diarySeen).where(eq(diarySeen.profileId, DAD)).get()!
+    const firstToken = mark().mutationToken
+    const laterFile = await viewingFile(SECOND)
+    const later = await applyProfileFile(DAD, laterFile)
+    const laterToken = mark().mutationToken
+    expect(laterToken).not.toBe(firstToken)
+    const repeated = await applyProfileFile(DAD, laterFile)
+    expect(repeated.preview.personal).toEqual({
+      changed: 0,
+      unchanged: 2,
+      skipped: 0,
+    })
+    expect(mark().mutationToken).toBe(laterToken)
+
+    expect((await undoBatch(DAD, first.id)).json()).toEqual({
+      restored: 0,
+      kept: 2,
+    })
+    expect(mark().mutationToken).toBe(laterToken)
+    expect(
+      db
+        .select()
+        .from(diaryEntries)
+        .where(eq(diaryEntries.profileId, DAD))
+        .all(),
+    ).toHaveLength(2)
+    expect((await undoBatch(DAD, later.id)).json()).toEqual({
+      restored: 1,
+      kept: 0,
+    })
+    expect(mark().mutationToken).toBe(laterToken)
+  })
+
+  it('keeps a restored seen mark when the unchanged diary entry was edited later', async () => {
+    const db = getDb()
+    seedPersonalSpace(ANNA)
+    const file = await viewingFile(FIRST)
+    await applyProfileFile(DAD, file)
+    db.delete(diarySeen).where(eq(diarySeen.profileId, DAD)).run()
+    const restored = await applyProfileFile(DAD, file)
+    expect(restored.preview.personal).toEqual({
+      changed: 1,
+      unchanged: 1,
+      skipped: 0,
+    })
+    const entry = and(
+      eq(diaryEntries.profileId, DAD),
+      eq(diaryEntries.id, FIRST),
+    )
+    db.update(diaryEntries).set({ note: 'Newer note' }).where(entry).run()
+
+    expect((await undoBatch(DAD, restored.id)).json()).toEqual({
+      restored: 0,
+      kept: 1,
+    })
+    expect(
+      db.select().from(diarySeen).where(eq(diarySeen.profileId, DAD)).get(),
+    ).toBeDefined()
+    expect(db.select().from(diaryEntries).where(entry).get()?.note).toBe(
+      'Newer note',
+    )
+  })
+
+  const cycleImportCases = (['profile', 'server'] as const).flatMap(via =>
+    (['full first', 'history first'] as const).flatMap(order =>
+      [false, true].map(occupied => ({ via, order, occupied })),
+    ),
+  )
+
+  it.each(cycleImportCases)(
+    'keeps cycle identity through both snapshots ($via / $order / occupied=$occupied)',
+    async ({ via, order, occupied }) => {
+      const db = getDb()
+      seedPersonalSpace(ANNA)
+      const otherSeries = 'tmdb:tv:9910'
+      if (occupied) {
+        db.insert(rewatchCycles)
+          .values({
+            id: CYCLE,
+            profileId: DAD,
+            titleId: otherSeries,
+            state: 'active',
+            startSeason: 3,
+            startEpisode: 2,
+            targetSeason: 3,
+            targetEpisode: 2,
+            createdAt: at(3),
+            updatedAt: at(3),
+          })
+          .run()
+      }
+      const file
+        = via === 'profile' ? await profileExport(ANNA) : await exportServer()
+      const source = parseExportDocument(file)
+      if (source.version !== 2)
+        throw new Error('Expected a v2 export')
+
+      const { personalSpace: space } = source
+      const earlierEntry = space.diary.find(entry => entry.id === INSTANT)!
+      const historyEntry = {
+        ...earlierEntry,
+        id: '4db928c5-bf0b-4ef2-b20c-4597a5fa60cc',
+      }
+      const history = JSON.stringify({
+        ...source,
+        personalSpace: {
+          ...space,
+          diary: [historyEntry],
+          cycles: [],
+          cycleProgress: [],
+        },
+      })
+      const full = JSON.stringify({
+        ...source,
+        personalSpace: {
+          ...space,
+          diary:
+            order === 'history first'
+              ? [...space.diary, historyEntry]
+              : space.diary,
+        },
+      })
+      const apply = (snapshot: string) =>
+        via === 'profile'
+          ? applyProfileFile(DAD, snapshot)
+          : importServer(snapshot, { mapping: { p1: DAD, p2: 'skip' } })
+
+      const initialSnapshot = order === 'full first' ? full : history
+      const laterSnapshot = order === 'full first' ? history : full
+      await apply(initialSnapshot)
+      const interim = parseExportDocument(await profileExport(DAD))
+      if (interim.version !== 2)
+        throw new Error('Expected a v2 export')
+
+      const initialEntryId = order === 'full first' ? INSTANT : historyEntry.id
+      const initial = interim.personalSpace.diary.find(
+        row => row.id === initialEntryId,
+      )?.context
+      if (initial?.kind !== 'cycle')
+        throw new Error('Expected a cycle context')
+
+      await apply(laterSnapshot)
+      const final = parseExportDocument(await profileExport(DAD))
+      if (final.version !== 2)
+        throw new Error('Expected a v2 export')
+
+      const cycle = final.personalSpace.cycles.find(
+        row => row.title === SHOW,
+      )
+      expect(cycle?.id).toBe(initial.cycleId)
+      expect(cycle?.id === CYCLE).toBe(!occupied)
+      if (occupied) {
+        expect(
+          final.personalSpace.cycles.find(row => row.id === CYCLE)?.title,
+        ).toBe(otherSeries)
+      }
+      for (const id of [INSTANT, historyEntry.id]) {
+        expect(
+          final.personalSpace.diary.find(row => row.id === id)?.context,
+        ).toEqual({
+          kind: 'cycle',
+          cycleId: cycle!.id,
+        })
+      }
+      expect(
+        final.personalSpace.cycleProgress.map(row => row.cycleId),
+      ).toEqual([cycle!.id, cycle!.id])
+
+      for (const snapshot of [initialSnapshot, laterSnapshot]) {
+        const replay = await apply(snapshot)
+        if (via === 'profile') {
+          expect(replay.preview.personal).toMatchObject({
+            changed: 0,
+            skipped: 0,
+          })
+        }
+        else {
+          // Preview suggests the profile with the original name. Apply above
+          // overrides that suggestion, so check the actual merge result.
+          expect(replay.result.profiles.changed).toBe(0)
+          expect(replay.result.skipped).toBe(0)
+        }
+      }
+      expect(parseExportDocument(await profileExport(DAD))).toMatchObject({
+        personalSpace: final.personalSpace,
+      })
+    },
+  )
+
+  it('skips a cycle whose immutable starting episode conflicts and preserves both profiles on move', async () => {
+    const db = getDb()
+    seedPersonalSpace(ANNA)
+    db.insert(rewatchCycles)
+      .values({
+        id: CYCLE,
+        profileId: DAD,
+        titleId: SHOW,
+        state: 'active',
+        startSeason: 1,
+        startEpisode: 2,
+        targetSeason: 1,
+        targetEpisode: 2,
+        createdAt: at(3),
+        updatedAt: at(3),
+      })
+      .run()
+    const imported = await applyProfileFile(DAD, await profileExport(ANNA))
+    expect(imported.preview.personal.skipped).toBe(4)
+    const target = parseExportDocument(await profileExport(DAD))
+    if (target.version !== 2)
+      throw new Error('Expected a v2 export')
+    expect(target.personalSpace.cycles).toEqual([
+      expect.objectContaining({
+        id: CYCLE,
+        startSeason: 1,
+        startEpisode: 2,
+        state: 'active',
+      }),
+    ])
+    expect(target.personalSpace.diary.some(row => row.id === INSTANT)).toBe(
+      false,
+    )
+    expect(target.personalSpace.cycleProgress).toEqual([])
+
+    const entries = db.select().from(diaryEntries).all()
+    const cycles = db.select().from(rewatchCycles).all()
+    const moved = await app.inject({
+      method: 'DELETE',
+      url: `/api/profiles/${ANNA}?moveTo=${DAD}`,
+      cookies: authed(),
+    })
+    expect(moved.statusCode).toBe(409)
+    expect(moved.json()).toEqual({
+      kind: 'personalMoveConflict',
+      reason: 'cycleIdentity',
+    })
+    expect(
+      db.select().from(profiles).where(eq(profiles.id, ANNA)).get(),
+    ).toBeDefined()
+    expect(db.select().from(diaryEntries).all()).toEqual(entries)
+    expect(db.select().from(rewatchCycles).all()).toEqual(cycles)
+  })
+
+  it.each([
+    { titleId: OTHER, episode: 0, reason: 'originTitle' },
+    { titleId: SHOW, episode: 2, reason: 'originEpisode' },
+  ])(
+    'rejects a profile move with a different match for an imported event ($reason)',
+    async ({ titleId, episode, reason }) => {
+      const db = getDb()
+      seedPersonalSpace(ANNA)
+      db.insert(diaryEntries)
+        .values({
+          profileId: DAD,
+          id: ACTIVE,
+          titleId,
+          season: 0,
+          episode,
+          precision: 'day',
+          day: '2024-02-29',
+          origin: 'trakt',
+          originKey: '9007199254740997',
+          note: 'Different match',
+          createdAt: at(6),
+          updatedAt: at(7),
+        })
+        .run()
+      const before = {
+        entries: db.select().from(diaryEntries).all(),
+        cursors: db.select().from(titleProgress).all(),
+        profiles: db.select().from(profiles).all(),
+        cycles: db.select().from(rewatchCycles).all(),
+      }
+      const moved = await app.inject({
+        method: 'DELETE',
+        url: `/api/profiles/${ANNA}?moveTo=${DAD}`,
+        cookies: authed(),
+      })
+      expect(moved.statusCode).toBe(409)
+      expect(moved.json()).toEqual({ kind: 'personalMoveConflict', reason })
+      expect(db.select().from(diaryEntries).all()).toEqual(before.entries)
+      expect(db.select().from(titleProgress).all()).toEqual(before.cursors)
+      expect(db.select().from(profiles).all()).toEqual(before.profiles)
+      expect(db.select().from(rewatchCycles).all()).toEqual(before.cycles)
+    },
+  )
+
+  const proof = 'a'.repeat(64)
+
+  function seedProofSource(targetDay: number, localProof?: string) {
+    const db = getDb()
+    const event = {
+      titleId: SHOW,
+      season: 1,
+      episode: 3,
+      origin: 'trakt' as const,
+      originKey: 'id:92352',
+      createdAt: at(5),
+      updatedAt: at(6),
+    }
+    db.insert(diaryEntries)
+      .values([
+        {
+          ...event,
+          profileId: ANNA,
+          id: FIRST,
+          precision: 'day',
+          day: '2024-04-28',
+          note: 'Source note',
+          viewingContext: 'Cinema',
+          sourceMatchKey: proof,
+        },
+        {
+          ...event,
+          profileId: DAD,
+          id: SECOND,
+          precision: 'day',
+          day: '2024-04-29',
+          note: 'Local note',
+          viewingContext: 'At home',
+          context: { kind: 'normal' },
+          sourceMatchKey: localProof,
+          updatedAt: at(targetDay),
+        },
+      ])
+      .run()
+    db.insert(diarySeen)
+      .values({ profileId: DAD, titleId: SHOW, season: 1, episode: 3 })
+      .run()
+    return {
+      where: and(eq(diaryEntries.profileId, DAD), eq(diaryEntries.id, SECOND)),
+      mark: db
+        .select()
+        .from(diarySeen)
+        .where(eq(diarySeen.profileId, DAD))
+        .get(),
+    }
+  }
+
+  function proofFile(body: string) {
+    const document = parseExportDocument(body)
+    return JSON.stringify({ ...document, progress: [], mine: [] })
+  }
+
+  it.each([
+    { targetDay: 6, edit: false },
+    { targetDay: 8, edit: true },
+  ])(
+    'fills a missing match proof without replacing local fields and guards undo ($targetDay / edit=$edit)',
+    async ({ targetDay, edit }) => {
+      const db = getDb()
+      const { where, mark } = seedProofSource(targetDay)
+      const entry = () => db.select().from(diaryEntries).where(where).get()!
+      const before = entry()
+      const body = proofFile(await profileExport(ANNA))
+      const first = await applyProfileFile(DAD, body)
+      expect(first.preview.personal).toEqual({
+        changed: 1,
+        unchanged: 0,
+        skipped: 0,
+      })
+      const filled = entry()
+      expect(filled).toEqual({
+        ...before,
+        sourceMatchKey: proof,
+        mutationToken: expect.any(String),
+      })
+      expect(filled.mutationToken).not.toBe(before.mutationToken)
+      expect(
+        db.select().from(diarySeen).where(eq(diarySeen.profileId, DAD)).get(),
+      ).toEqual(mark)
+
+      const replay = await applyProfileFile(DAD, body)
+      expect(replay.preview.personal).toEqual({
+        changed: 0,
+        unchanged: 1,
+        skipped: 0,
+      })
+      expect(entry()).toEqual(filled)
+      if (edit)
+        db.update(diaryEntries).set({ note: 'Later edit' }).where(where).run()
+      const expected = entry()
+      const undone = await undoBatch(DAD, first.id)
+      expect(undone.statusCode).toBe(200)
+      if (edit) {
+        expect(undone.json()).toEqual({ restored: 0, kept: 1 })
+        expect(entry()).toEqual(expected)
+      }
+      else {
+        expect(undone.json()).toEqual({ restored: 1, kept: 0 })
+        expect(entry()).toEqual({
+          ...before,
+          mutationToken: expect.any(String),
+        })
+        expect(entry().mutationToken).not.toBe(before.mutationToken)
+      }
+    },
+  )
+
+  it('fills the same missing proof through server import without overwriting the newer diary entry', async () => {
+    const db = getDb()
+    const { where } = seedProofSource(8)
+    const before = db.select().from(diaryEntries).where(where).get()!
+    const body = proofFile(await exportServer())
+    const first = await importServer(body, {
+      mapping: { p1: DAD, p2: 'skip' },
+    })
+    expect(first.result.profiles.changed).toBe(1)
+    const filled = db.select().from(diaryEntries).where(where).get()!
+    expect(filled).toEqual({
+      ...before,
+      sourceMatchKey: proof,
+      mutationToken: expect.any(String),
+    })
+    const repeated = await importServer(body, {
+      mapping: { p1: DAD, p2: 'skip' },
+    })
+    expect(repeated.result.profiles.changed).toBe(0)
+    expect(db.select().from(diaryEntries).where(where).get()).toEqual(filled)
+  })
+
+  it.each([
+    { targetDay: 6, localProof: undefined },
+    { targetDay: 8, localProof: undefined },
+    { targetDay: 8, localProof: 'b'.repeat(64) },
+  ])(
+    'moves proof from an equal or older entry without replacing existing proof ($targetDay / $localProof)',
+    ({ targetDay, localProof }) => {
+      const db = getDb()
+      const { where, mark } = seedProofSource(targetDay, localProof)
+      const before = db.select().from(diaryEntries).where(where).get()!
+
+      deleteProfile(ANNA, DAD)
+
+      expect(
+        db.select().from(profiles).where(eq(profiles.id, ANNA)).get(),
+      ).toBeUndefined()
+      const moved = db.select().from(diaryEntries).where(where).get()!
+      expect(moved).toEqual({
+        ...before,
+        sourceMatchKey: localProof ?? proof,
+        mutationToken: localProof ? before.mutationToken : expect.any(String),
+      })
+      if (!localProof)
+        expect(moved.mutationToken).not.toBe(before.mutationToken)
+      expect(
+        db.select().from(diarySeen).where(eq(diarySeen.profileId, DAD)).get(),
+      ).toEqual(mark)
+    },
+  )
+
+  it('restores a previous viewing context when the replacement was untouched after import', async () => {
+    const db = getDb()
+    seedPersonalSpace(ANNA)
+    const entry = and(
+      eq(diaryEntries.profileId, ANNA),
+      eq(diaryEntries.id, FIRST),
+    )
+    await applyProfileFile(DAD, await viewingFile(FIRST))
+    db.update(diaryEntries)
+      .set({ viewingContext: 'At home', updatedAt: at(7) })
+      .where(entry)
+      .run()
+    const applied = await applyProfileFile(DAD, await viewingFile(FIRST))
+    const target = and(
+      eq(diaryEntries.profileId, DAD),
+      eq(diaryEntries.id, FIRST),
+    )
+    expect(
+      db.select().from(diaryEntries).where(target).get()?.viewingContext,
+    ).toBe('At home')
+    expect((await undoBatch(DAD, applied.id)).json()).toEqual({
+      restored: 1,
+      kept: 0,
+    })
+    expect(
+      db.select().from(diaryEntries).where(target).get()?.viewingContext,
+    ).toBe('Balcony with Sam')
+  })
+
+  it('restores the legacy source evidence from before import after a file is re-probed', async () => {
+    const db = getDb()
+    const libraryId = 'legacy-lib'
+    const folderId = 'legacy-folder'
+    const mediaFileId = 'legacy-file'
+    const relPath = 'movie.mkv'
+    function probe(width: number, height: number) {
+      return parseProbe(
+        { streams: [{ index: 0, codec_type: 'video', width, height }] },
+        relPath,
+      )
+    }
+    db.insert(libraries)
+      .values({ id: libraryId, kind: 'video', name: 'Movies' })
+      .run()
+    db.insert(libraryFolders)
+      .values({ id: folderId, libraryId, path: '/test/movies' })
+      .run()
+    const original = db
+      .insert(mediaFiles)
+      .values({
+        id: mediaFileId,
+        folderId,
+        relPath,
+        titleId: MOVIE,
+        size: 10,
+        mtime: at(1),
+        inode: 1,
+        probeKey: persistedProbeKey({ size: 10, mtimeMs: at(1).getTime() }),
+        probe: probe(1920, 1080),
+      })
+      .returning()
+      .get()
+    const ref = { profileId: DAD, titleId: MOVIE, season: 0, episode: 0 }
+    db.insert(titleProgress)
+      .values({
+        ...ref,
+        mediaFileId,
+        position: 25,
+        duration: 100,
+        voiceStudio: 'Old studio',
+        lastPlayedAt: at(2),
+        updatedAt: at(2),
+      })
+      .run()
+    expect(getTitleProgress(ref)?.playedSource).toBeNull()
+    const applied = await applyProfileFile(DAD, await profileExport(ANNA))
+    const beforeProbe = getTitleProgress(ref)
+    expect(beforeProbe?.playedSource).toEqual({ kind: 'unknown' })
+
+    const nextFile = { relPath, size: 20, inode: 2, mtime: at(3).getTime() }
+    expect(applyScan(folderId, [nextFile], [original]).changed).toEqual([
+      mediaFileId,
+    ])
+    db.update(mediaFiles)
+      .set({
+        probeKey: persistedProbeKey({
+          size: nextFile.size,
+          mtimeMs: nextFile.mtime,
+        }),
+        probe: probe(3840, 2160),
+      })
+      .where(eq(mediaFiles.id, mediaFileId))
+      .run()
+    expect(getTitleProgress(ref)).toEqual(beforeProbe)
+
+    expect((await undoBatch(DAD, applied.id)).json()).toEqual({
+      restored: 3,
+      kept: 0,
+    })
+    expect(getTitleProgress(ref)).toMatchObject({
+      position: 25,
+      playedSource: {
+        kind: 'library',
+        mediaFileId,
+        quality: '1080p',
+        voice: { studio: 'Old studio' },
+      },
+    })
+  })
+
+  it('uses the local zone for a profile file uploaded through server import as well', async () => {
+    seedPersonalSpace(ANNA)
+    const local = diaryTimeZone()
+    const foreign
+      = local === 'Pacific/Auckland' ? 'America/Los_Angeles' : 'Pacific/Auckland'
+    ensureDiaryTimeZone(foreign)
+    const file = await profileExport(ANNA)
+    clearViewerData()
+    seed()
+
+    await importServer(file, { mapping: { p1: DAD } })
+
+    expect(diaryTimeZone()).toBe(local)
+  })
+
+  it('rejects incomplete v2 and a cursor pointing to another profile before applying anything', async () => {
+    const db = getDb()
+    seedPersonalSpace(ANNA)
+    const profileFile = JSON.parse(await profileExport(ANNA))
+    delete profileFile.personalSpace.titlePreferences
+    expect(
+      (await upload(DAD, JSON.stringify(profileFile))).json(),
+    ).toMatchObject({ kind: 'broken' })
+
+    const source = JSON.parse(await exportServer())
+    source.personalSpace.cycleProgress[0].profile = source.profiles[1].key
+    const checked = await preview(JSON.stringify(source))
+    expect(checked.statusCode).toBe(400)
+    expect(checked.json()).toMatchObject({ kind: 'broken' })
+    expect(
+      db
+        .select()
+        .from(diaryEntries)
+        .where(eq(diaryEntries.profileId, DAD))
+        .all(),
+    ).toEqual([])
+    expect(serverImportDeps.backup).not.toHaveBeenCalled()
+  })
+
+  it.each(['note', 'unwatch', 'recreate'] as const)(
+    'keeps every linked entry and seen effect after %s but rolls back independent changes',
+    async (edit) => {
+      const db = getDb()
+      seedPersonalSpace(ANNA)
+      // Leave a pre-existing seen mark in this target to exercise the witness-only case.
+      if (edit === 'unwatch') {
+        db.insert(diarySeen)
+          .values({ profileId: DAD, titleId: SHOW, season: 0, episode: 1 })
+          .run()
+      }
+      const applied = await applyProfileFile(DAD, await profileExport(ANNA))
+      const diaryKey = and(
+        eq(diaryEntries.profileId, DAD),
+        eq(diaryEntries.id, FIRST),
+      )
+      const seenKey = and(
+        eq(diarySeen.profileId, DAD),
+        eq(diarySeen.titleId, SHOW),
+        eq(diarySeen.episode, 1),
+      )
+      if (edit === 'note') {
+        db.update(diaryEntries)
+          .set({ note: 'Later edit' })
+          .where(diaryKey)
+          .run()
+      }
+      else if (edit === 'unwatch') {
+        db.delete(diarySeen).where(seenKey).run()
+      }
+      else {
+        const { mutationToken: _token, ...row } = db
+          .select()
+          .from(diaryEntries)
+          .where(diaryKey)
+          .get()!
+        db.delete(diaryEntries).where(diaryKey).run()
+        db.insert(diaryEntries).values(row).run()
+      }
+      const current = db.select().from(diaryEntries).where(diaryKey).get()
+      const undone = await undoBatch(DAD, applied.id)
+      expect(undone.statusCode).toBe(200)
+      expect(undone.json()).toEqual({
+        restored: 12,
+        kept: edit === 'unwatch' ? 3 : 4,
+      })
+      expect(db.select().from(diaryEntries).where(diaryKey).get()).toEqual(
+        current,
+      )
+      expect(
+        db
+          .select()
+          .from(diaryEntries)
+          .where(eq(diaryEntries.profileId, DAD))
+          .all(),
+      ).toHaveLength(3)
+      expect(!!db.select().from(diarySeen).where(seenKey).get()).toBe(
+        edit !== 'unwatch',
+      )
+      expect(
+        db
+          .select()
+          .from(mineTitlePreferences)
+          .where(eq(mineTitlePreferences.profileId, DAD))
+          .get(),
+      ).toBeUndefined()
+      const repeated = await undoBatch(DAD, applied.id)
+      expect(repeated.statusCode).toBe(409)
+      expect(db.select().from(diaryEntries).where(diaryKey).get()).toEqual(
+        current,
+      )
+    },
+  )
+
+  it('preserves a manual unwatch even when the sort timestamp is unchanged', async () => {
+    const db = getDb()
+    db.update(titleProgress)
+      .set({ watchedAt: at(6) })
+      .where(
+        and(
+          eq(titleProgress.profileId, ANNA),
+          eq(titleProgress.titleId, MOVIE),
+        ),
+      )
+      .run()
+    const applied = await applyProfileFile(DAD, await profileExport(ANNA))
+    const ref = { profileId: DAD, titleId: MOVIE }
+    const imported = getTitleProgress(ref)!
+    expect(imported.watchedAt).toEqual(at(6))
+    markWatched(ref, false)
+    const unwatched = getTitleProgress(ref)!
+    expect(unwatched.watchedAt).toBeNull()
+    expect(unwatched.updatedAt).toEqual(imported.updatedAt)
+    const undone = await undoBatch(DAD, applied.id)
+    expect(undone.json()).toEqual({ restored: 2, kept: 1 })
+    expect(getTitleProgress(ref)).toEqual(unwatched)
+  })
+
+  it('keeps a cycle and its imported positions if a new cursor appeared after import', async () => {
+    const db = getDb()
+    seedPersonalSpace(ANNA)
+    const applied = await applyProfileFile(DAD, await profileExport(ANNA))
+    db.insert(cycleProgress)
+      .values({
+        profileId: DAD,
+        cycleId: CYCLE,
+        season: 3,
+        episode: 1,
+        position: 25,
+        updatedAt: at(7),
+      })
+      .run()
+    const undone = await undoBatch(DAD, applied.id)
+    expect(undone.statusCode).toBe(200)
+    expect(undone.json().kept).toBe(3)
+    expect(
+      db
+        .select()
+        .from(cycleProgress)
+        .where(eq(cycleProgress.profileId, DAD))
+        .all(),
+    ).toHaveLength(3)
+    expect(
+      db
+        .select()
+        .from(rewatchCycles)
+        .where(eq(rewatchCycles.profileId, DAD))
+        .get(),
+    ).toMatchObject({ state: 'paused' })
+  })
+
+  it('moves all personal records and preserves both sets of cursors when active cycles collide', async () => {
+    const db = getDb()
+    seedPersonalSpace(ANNA)
+    db.insert(rewatchCycles)
+      .values({
+        id: ACTIVE,
+        profileId: DAD,
+        titleId: SHOW,
+        state: 'active',
+        startSeason: 1,
+        startEpisode: 1,
+        targetSeason: 1,
+        targetEpisode: 2,
+        createdAt: at(4),
+        updatedAt: at(6),
+      })
+      .run()
+    const before = db
+      .select()
+      .from(diaryEntries)
+      .where(eq(diaryEntries.id, FIRST))
+      .get()!
+    const previewed = await upload(DAD, await profileExport(ANNA))
+    expect(previewed.json().preview.personal.skipped).toBe(1)
+
+    deleteProfile(ANNA, DAD)
+
+    const moved = parseExportDocument(await profileExport(DAD))
+    expect(moved).toMatchObject({
+      personalSpace: {
+        diary: expect.arrayContaining([
+          expect.objectContaining({
+            id: FIRST,
+            viewingContext: 'Balcony with Sam',
+          }),
+        ]),
+        seen: expect.arrayContaining([
+          expect.objectContaining({ title: OTHER }),
+        ]),
+        cycles: expect.arrayContaining([
+          expect.objectContaining({ id: ACTIVE, state: 'active' }),
+          expect.objectContaining({ id: CYCLE, state: 'ended' }),
+        ]),
+        cycleProgress: expect.arrayContaining([
+          expect.objectContaining({ cycleId: CYCLE, position: 125 }),
+        ]),
+        cyclePlayback: [expect.objectContaining({ title: SHOW })],
+        titlePreferences: [expect.objectContaining({ note: 'Title note' })],
+        profilePreferences: [
+          expect.objectContaining({ startSection: 'overview' }),
+        ],
+      },
+    })
+    const after = db
+      .select()
+      .from(diaryEntries)
+      .where(eq(diaryEntries.id, FIRST))
+      .get()!
+    expect(after.mutationToken).not.toBe(before.mutationToken)
+    expect(after.profileId).toBe(DAD)
+    expect(
+      db.select().from(profiles).where(eq(profiles.id, ANNA)).get(),
+    ).toBeUndefined()
+  })
+
+  it('round-trips title marks in profile v2, reads older v1 marks, and restores marks through profile undo', async () => {
     const mark = at(5)
     getDb()
       .insert(profileTitles)
@@ -680,7 +2120,10 @@ describe('profile import', () => {
     expect(
       document.mine.find(row => row.title === SHOW)?.watchedMarkedAt,
     ).toBe(mark.toISOString())
-    const old = structuredClone(document)
+    if (document.version !== 2)
+      throw new Error('Expected a v2 export')
+    const { personalSpace: _personalSpace, ...legacy } = document
+    const old = { ...structuredClone(legacy), version: 1 }
     for (const row of old.mine) delete row.watchedMarkedAt
     expect(parseExportDocument(JSON.stringify(old)).version).toBe(1)
     const job = (await upload(DAD, body)).json()
@@ -764,9 +2207,8 @@ describe('profile import', () => {
     'new voice',
     'same imported voice',
     'round trip',
-    'legacy journal',
   ] as const)(
-    'undo restores the factual source and preserves selection changes (%s)',
+    'undo restores an untouched snapshot and skips later source or voice changes (%s)',
     async (selection) => {
       const db = getDb()
       const localSource = {
@@ -831,9 +2273,7 @@ describe('profile import', () => {
       const voiceStudio
         = selection === 'unchanged'
           ? before.voiceStudio
-          : selection === 'same imported voice'
-            || selection === 'round trip'
-            || selection === 'legacy journal'
+          : selection === 'same imported voice' || selection === 'round trip'
             ? 'Imported'
             : 'More recent voice'
       if (selection === 'round trip')
@@ -849,41 +2289,35 @@ describe('profile import', () => {
           },
         )
       }
-      if (selection === 'legacy journal') {
-        const entry = db
-          .select()
-          .from(profileImports)
-          .where(eq(profileImports.id, id))
-          .get()!
-        for (const item of entry.undo!) {
-          if ('table' in item) {
-            delete item.afterVoice
-            delete item.afterVoiceRevision
-          }
-        }
-        db.update(profileImports)
-          .set({ undo: entry.undo })
-          .where(eq(profileImports.id, id))
-          .run()
-      }
+      const afterSelection = db
+        .select()
+        .from(titleProgress)
+        .where(where)
+        .get()!
       const undone = await app.inject({
         method: 'POST',
         url: `/api/profiles/${DAD}/imports/${id}/undo`,
         cookies: authed(),
       })
       expect(undone.statusCode).toBe(200)
-      expect(db.select().from(titleProgress).where(where).get()).toEqual({
-        ...before,
-        mediaFileId,
-        voiceStudio,
-        voiceSelectionRevision:
-          selection === 'unchanged' ? 0 : selection === 'round trip' ? 2 : 1,
-      })
+      const actual = db.select().from(titleProgress).where(where).get()
+      if (selection === 'unchanged') {
+        expect(undone.json()).toEqual({ restored: 3, kept: 0 })
+        expect(actual).toEqual({
+          ...before,
+          mutationToken: expect.any(String),
+        })
+        expect(actual!.mutationToken).not.toBe(before.mutationToken)
+      }
+      else {
+        expect(undone.json()).toEqual({ restored: 2, kept: 1 })
+        expect(actual).toEqual(afterSelection)
+      }
     },
   )
 
   it.each([false, true])(
-    'keeps a new file choice while removing its imported view; explicit voice=%s',
+    'skips an imported view after a later file choice; explicit voice=%s',
     async (explicit) => {
       getDb()
         .update(titleProgress)
@@ -915,36 +2349,25 @@ describe('profile import', () => {
       if (explicit)
         rememberVoice(ref, { studio: 'Imported' }, source)
       else rememberStartedSource(ref, source, launchSelectionOf(ref, imported))
-      expect(
-        (
-          await app.inject({
-            method: 'POST',
-            url: `/api/profiles/${DAD}/imports/${applied.json().id}/undo`,
-            cookies: authed(),
-          })
-        ).statusCode,
-      ).toBe(200)
-      expect(getTitleProgress(ref)).toMatchObject({
-        mediaFileId: 'local-selected-file',
-        voiceStudio: explicit ? 'Imported' : null,
-        voiceSelectionRevision: explicit ? 1 : 0,
-        position: 0,
-        duration: null,
-        watchedAt: null,
-        lastPlayedAt: null,
-        playedSource: null,
-        updatedAt: imported.updatedAt,
+      const afterSelection = getTitleProgress(ref)
+      expect(afterSelection?.mediaFileId).toBe(source.mediaFileId)
+      const result = await app.inject({
+        method: 'POST',
+        url: `/api/profiles/${DAD}/imports/${applied.json().id}/undo`,
+        cookies: authed(),
       })
+      expect(result.statusCode).toBe(200)
+      expect(result.json()).toEqual({ restored: 2, kept: 1 })
+      expect(getTitleProgress(ref)).toEqual(afterSelection)
     },
   )
 
   it.each([
-    { name: 'empty original voice', studio: null, type: null, legacy: false },
-    { name: 'original voice', studio: 'Before', type: 'MVO', legacy: false },
-    { name: 'legacy journal', studio: 'Before', type: 'MVO', legacy: true },
+    { name: 'empty original voice', studio: null, type: null },
+    { name: 'original voice', studio: 'Before', type: 'MVO' },
   ])(
     'undo keeps the later source-only choice with $name',
-    async ({ studio, type, legacy }) => {
+    async ({ studio, type }) => {
       const db = getDb()
       const ref = { profileId: DAD, titleId: MOVIE, season: 0, episode: 0 }
       const playedSource = {
@@ -998,31 +2421,15 @@ describe('profile import', () => {
         voiceSelectionRevision: 0,
       })
       const id = applied.json().id
-      if (legacy) {
-        const where = eq(profileImports.id, id)
-        const journal = db.select().from(profileImports).where(where).get()!.undo!
-        for (const entry of journal) {
-          if ('table' in entry)
-            delete entry.afterVoiceRevision
-        }
-        db.update(profileImports).set({ undo: journal }).where(where).run()
-      }
+      const afterSelection = getTitleProgress(ref)
       const undone = await app.inject({
         method: 'POST',
         url: `/api/profiles/${DAD}/imports/${id}/undo`,
         cookies: authed(),
       })
       expect(undone.statusCode).toBe(200)
-      expect(getTitleProgress(ref)).toMatchObject({
-        mediaFileId: 'selected-file',
-        position: 21,
-        duration: 100,
-        playedSource,
-        voiceStudio: legacy ? 'Imported' : studio,
-        voiceType: legacy ? 'DVO' : type,
-        voiceSelectionRevision: 0,
-        updatedAt: at(1),
-      })
+      expect(undone.json()).toEqual({ restored: 2, kept: 1 })
+      expect(getTitleProgress(ref)).toEqual(afterSelection)
     },
   )
 
@@ -1313,6 +2720,7 @@ describe('profile import', () => {
       imported: 2,
       unchanged: 0,
       unmatched: 0,
+      personal: { changed: 0, unchanged: 0, skipped: 0 },
     })
     expect(
       getDb()
@@ -1332,7 +2740,7 @@ describe('profile import', () => {
       payload: { conflicts: 'newer' },
     })
 
-    expect(repeated.json()).toMatchObject({ imported: 0, unchanged: 3 })
+    expect(repeated.json()).toMatchObject({ imported: 0, unchanged: 2 })
 
     const undone = await app.inject({
       method: 'POST',

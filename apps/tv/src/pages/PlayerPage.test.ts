@@ -8,6 +8,11 @@ import { createRenderer, nextTick, ref, ssrContextKey } from 'vue'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { PAUSE_DIM_MS } from '../lib/player.ts'
 import PlayerPage from './PlayerPage.vue'
+import {
+  restartScope,
+  saveRestart,
+  stageViewingRestart,
+} from '../lib/viewingRestart.ts'
 
 const mocks = vi.hoisted(() => ({
   clockOffset: 0,
@@ -25,6 +30,7 @@ const mocks = vi.hoisted(() => ({
   detach: vi.fn(),
   fail: vi.fn(),
   save: vi.fn(),
+  capture: vi.fn(),
   appliedAudioStream: vi.fn(),
   progress: vi.fn(),
   upNext: vi.fn(),
@@ -43,7 +49,7 @@ vi.mock('../api.ts', () => ({
   },
 }))
 vi.mock('../session.ts', () => ({
-  session: {},
+  session: { profile: { id: 'viewer' } },
   updatePlayerSettings: vi.fn(),
 }))
 vi.mock('../serverSources.ts', () => ({ lacksSources: () => true }))
@@ -145,6 +151,7 @@ vi.mock('../composables/usePlayback.ts', () => ({
     close: vi.fn(),
     fail: mocks.fail,
     saveWatchState: mocks.save,
+    captureCheckpoint: mocks.capture,
   }),
 }))
 vi.mock('../composables/usePlayerTracks.ts', () => ({
@@ -193,6 +200,7 @@ const renderer = createRenderer<Element, Element>({
 })
 interface Controls {
   seekTo: (seconds: number) => void
+  onSeeked: () => void
   start: () => Promise<void>
   exit: () => void
   recover: (cause?: 'unknown') => void
@@ -233,7 +241,12 @@ let cleanup: () => void
 async function settle() {
   for (let i = 0; i < 12; i++) await nextTick()
 }
-async function mount(playing = true, episodic = false, library = false) {
+async function mount(
+  playing = true,
+  episodic = false,
+  library = false,
+  props = {},
+) {
   // SFCs are compiled for SSR in this test environment. Keep the real setup,
   // lifecycle and media handlers;
   // only the DOM and streaming transport are fakes.
@@ -251,6 +264,7 @@ async function mount(playing = true, episodic = false, library = false) {
         : { torrentId: 'fixture', fileIndex: '0' }),
       ...(library ? {} : { titleId: 'tmdb:tv:1' }),
       ...(episodic ? { season: '1', episode: '2' } : {}),
+      ...props,
     },
   )
   app.provide(ssrContextKey, {})
@@ -286,6 +300,10 @@ beforeEach(() => {
   mocks.saveTracks.mockResolvedValue({ saved: true })
   mocks.save.mockResolvedValue(undefined)
   mocks.appliedAudioStream.mockReturnValue(null)
+  mocks.capture.mockImplementation((_kind, appliedAudioStream) => ({
+    sessionId: 'playback-fixture',
+    appliedAudioStream,
+  }))
   mocks.progress.mockResolvedValue({ seasonReleases: [] })
   mocks.upNext.mockResolvedValue({ next: null })
   mocks.native = false
@@ -307,6 +325,48 @@ beforeEach(() => {
     removeAttribute: vi.fn(),
     load: vi.fn(),
   } as unknown as HTMLVideoElement
+})
+
+it('resumes a consumed route restart on reload and treats the old zero flag as a position', async () => {
+  const title = { id: 'tmdb:tv:1', season: 1, episode: 2 }
+  const restart = stageViewingRestart(restartScope('viewer', title))
+  saveRestart({ ...restart, expectedGeneration: 4, consumed: true })
+  await mount(false, true, false, {
+    start: '0',
+    restartRequest: restart.requestId,
+  })
+  expect(mocks.start).toHaveBeenCalledExactlyOnceWith(undefined, undefined)
+  cleanup()
+  mocks.start.mockClear()
+  await mount(false, true, false, { start: '0' })
+  expect(mocks.start).toHaveBeenCalledExactlyOnceWith(
+    { startPosition: 0 },
+    undefined,
+  )
+})
+
+it('replays the pending OSD restart over a consumed route intent in the same history entry', async () => {
+  mocks.historyState = { position: 3 }
+  const title = { id: 'tmdb:tv:1', season: 1, episode: 2 }
+  const scope = restartScope('viewer', title)
+  const routeRestart = stageViewingRestart(scope)
+  saveRestart({ ...routeRestart, expectedGeneration: 1, consumed: true })
+  const restart = stageViewingRestart(
+    scope,
+    JSON.stringify(['/play/current/0', 3]),
+  )
+  saveRestart({ ...restart, expectedGeneration: 2 })
+  await mount(false, true, false, {
+    start: '0',
+    restartRequest: routeRestart.requestId,
+  })
+  expect(mocks.start).toHaveBeenCalledExactlyOnceWith(
+    { startPosition: 0 },
+    expect.objectContaining({
+      requestId: restart.requestId,
+      expectedGeneration: 2,
+    }),
+  )
 })
 afterEach(() => {
   cleanup?.()
@@ -603,7 +663,7 @@ it('hides failed or stale OSD stats and restores them after a successful poll', 
 it('restores the position and pause after cancelling a source switch', async () => {
   mocks.historyState = { resumePlayback: { position: 123.5, paused: true } }
   await mount(false)
-  expect(mocks.start).toHaveBeenCalledWith({ startPosition: 123.5 })
+  expect(mocks.start).toHaveBeenCalledWith({ startPosition: 123.5 }, undefined)
   expect(controls.paused).toBe(true)
   expect(mocks.replace).toHaveBeenCalledWith({
     path: '/play/current/0',
@@ -657,10 +717,13 @@ it.each(['direct', 'hls', 'native'])(
       expect(controls.paused).toBe(true)
       expect(controls.phase).toBe('playing')
       expect(mocks.media.currentTime).toBe(42)
-      expect(mocks.start).toHaveBeenLastCalledWith({
-        ...change,
-        startPosition: 42,
-      })
+      expect(mocks.start).toHaveBeenLastCalledWith(
+        {
+          ...change,
+          startPosition: 42,
+        },
+        undefined,
+      )
     }
     controls.onPlay()
     controls.onPlaying()
@@ -1444,6 +1507,23 @@ it('starts a fresh picture grace period after retrying the same file', async () 
   await vi.advanceTimersByTimeAsync(5100)
   controls.onTimeUpdate()
   expect(mocks.fail).toHaveBeenCalledOnce()
+})
+
+it('labels real HLS samples, seek and stop separately on the source timeline', async () => {
+  mode = 'hls'
+  mocks.clockOffset = 2
+  Object.assign(mocks.media, { duration: 182 })
+  await mount()
+  expect(mocks.capture).toHaveBeenLastCalledWith('playback', null)
+  controls.seekTo(174)
+  expect(mocks.capture).toHaveBeenLastCalledWith('seek', null)
+  expect(mocks.media.currentTime).toBe(176)
+  expect(mocks.save.mock.lastCall?.[0]).toBe(174)
+  controls.onSeeked()
+  mocks.media.currentTime = 182
+  controls.onEnded()
+  expect(mocks.capture).toHaveBeenLastCalledWith('stop', null)
+  expect(mocks.save.mock.lastCall?.[0]).toBe(180)
 })
 
 it('saves HLS progress in source time and bounds packet padding by source duration', async () => {

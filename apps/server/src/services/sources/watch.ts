@@ -6,6 +6,7 @@ import type { Torrent, TorrentOrigin } from '../../db/schema.ts'
 import type { RankedRelease } from './rank.ts'
 import { matchFiles, parseRelease } from '@torsher/release-parser'
 import { EngineError } from '../engine/index.ts'
+import { unavailableTorrentFiles } from '../library/folders.ts'
 import { parseCatalogId } from '../tmdb/mappers.ts'
 import {
   addMagnet,
@@ -17,9 +18,17 @@ import {
 } from '../torrents/index.ts'
 import { downloadTorrent, SourceError } from '../torznab/index.ts'
 import { getTitleSources, sourceAllowed } from './index.ts'
+import type { TitleRef } from './progress.ts'
+import type { VoiceRef } from './profile.ts'
 import { rememberChoice } from './progress.ts'
+import {
+  cycleRevision,
+  exactViewingRef,
+  playableCycle,
+  saveCycleCursor,
+} from '../mine/viewing.ts'
 import { seasonReleases } from './seasonRelease.ts'
-import { titleAllowed } from '../profiles/access.ts'
+import { titleAllowed, titleAllowedCached } from '../profiles/access.ts'
 import { indexerCookie } from '../indexers/index.ts'
 
 // Столько кандидатов пробуем за один запрос: каждый стоит загрузки
@@ -56,6 +65,33 @@ export interface WatchRequest {
   candidateId?: string
   /** Раздача сезона, уже в базе: серия из неё без поиска по индексаторам. */
   torrentId?: string
+  cycleId?: string
+}
+
+function rememberWatchChoice(
+  ref: TitleRef,
+  torrent: Torrent,
+  fileIndex: number,
+  voice: VoiceRef | undefined,
+  cycleId: string | undefined,
+  revision: number | undefined,
+) {
+  if (!cycleId) {
+    rememberChoice(ref, { torrentId: torrent.id, fileIndex, voice })
+    return
+  }
+  const episode = exactViewingRef(ref)
+  if (
+    !episode
+    || revision === undefined
+    || !playableCycle(episode, cycleId, revision)
+  ) {
+    throw new WatchError('candidate_gone', 'Playback is no longer available')
+  }
+  saveCycleCursor(episode, cycleId, {
+    source: { kind: 'torrent', infoHash: torrent.infoHash, fileIndex },
+    voice,
+  })
 }
 
 export type WatchResult
@@ -254,44 +290,70 @@ async function watchTorrent(
   titleId: string,
   request: WatchRequest & { torrentId: string },
   profileId: string,
+  revision: number | undefined,
+  current: () => boolean,
+  checkCycle: () => void,
 ): Promise<WatchResult | undefined> {
   const ref = parseCatalogId(titleId)
 
   if (!ref)
     return undefined
 
-  const found = getTorrent(request.torrentId)
+  const initial = getTorrent(request.torrentId)
+  const allowed
+    = initial
+      && initial.status !== 'failed'
+      && (await titleAllowed(profileId, initial.titleId))
+  if (!current())
+    return undefined
 
+  const found = getTorrent(request.torrentId)
   if (
-    !found
+    !allowed
+    || !found
     || found.status === 'failed'
-    || !(await titleAllowed(profileId, found.titleId))
+    || !titleAllowedCached(profileId, found.titleId)
   ) {
     throw new WatchError('candidate_gone', 'Release is no longer available')
   }
 
-  const torrent = linkTitle(found, titleId)
-
-  if (torrent.status === 'resolving')
-    return { status: 'resolving', torrentId: torrent.id, candidateId: '' }
-
+  checkCycle()
   const target = {
     kind: ref.type === 'movie' ? ('movie' as const) : ('series' as const),
     season: request.season,
     episode: request.episode,
   }
-  const fileIndex = pickFile(torrent, parseRelease(torrent.name), target)
+  const fileIndex
+    = found.status === 'ready'
+      ? pickFile(found, parseRelease(found.name), target)
+      : undefined
+  if (
+    request.cycleId
+    && fileIndex !== undefined
+    && unavailableTorrentFiles(profileId, found.id).has(fileIndex)
+  ) {
+    throw new WatchError('candidate_gone', 'Release is no longer available')
+  }
 
+  const torrent = linkTitle(found, titleId)
+  if (torrent.status === 'resolving')
+    return { status: 'resolving', torrentId: torrent.id, candidateId: '' }
   if (fileIndex === undefined)
     throw new WatchError('not_playable', 'The episode is not in this release')
 
-  const voice = seasonReleases(profileId, titleId).find(
-    release => release.season === request.season,
-  )?.voice
+  const voice = !request.cycleId
+    ? seasonReleases(profileId, titleId).find(
+      release => release.season === request.season,
+    )?.voice
+    : undefined
 
-  rememberChoice(
+  rememberWatchChoice(
     { profileId, titleId, season: target.season, episode: target.episode },
-    { torrentId: torrent.id, fileIndex, voice },
+    torrent,
+    fileIndex,
+    voice,
+    request.cycleId,
+    revision,
   )
 
   return { status: 'ready', torrentId: torrent.id, fileIndex, candidateId: '' }
@@ -306,8 +368,33 @@ export async function watchTitle(
   titleId: string,
   request: WatchRequest,
   profileId: string,
+  viewerCurrent: () => boolean,
   context?: DiagnosticContext,
 ): Promise<WatchResult | undefined> {
+  const { cycleId } = request
+  const revision = cycleId ? cycleRevision(profileId, cycleId) : undefined
+  const current = () =>
+    viewerCurrent() && titleAllowedCached(profileId, titleId)
+  const checkCycle = () => {
+    if (!cycleId)
+      return
+    const ref = exactViewingRef({
+      profileId,
+      titleId,
+      season: request.season,
+      episode: request.episode,
+    })
+    if (
+      !ref
+      || revision === undefined
+      || !playableCycle(ref, cycleId, revision)
+    ) {
+      throw new WatchError('candidate_gone', 'Playback is no longer available')
+    }
+  }
+  if (!current())
+    return undefined
+  checkCycle()
   if (request.torrentId) {
     recordDecision('sources', 'source.resolve', context, {
       titleId,
@@ -319,6 +406,9 @@ export async function watchTitle(
       titleId,
       { ...request, torrentId: request.torrentId },
       profileId,
+      revision,
+      current,
+      checkCycle,
     )
   }
 
@@ -330,9 +420,10 @@ export async function watchTitle(
     presetId: request.presetId,
   })
 
-  if (!sources)
+  if (!sources || !current())
     return undefined
 
+  checkCycle()
   const { ranked } = sources.ranking
   const byId = new Map(ranked.map(release => [release.id, release]))
   let queue: RankedRelease[]
@@ -401,17 +492,23 @@ export async function watchTitle(
       outcome: 'started',
     })
     let torrent: Torrent | undefined
+    let existing = false
 
     try {
       torrent = await acquire(
         release,
         hasTime,
         'search',
-        () => true,
-        torrent => titleAllowed(profileId, torrent.titleId),
+        () => current() && sourceAllowed(profileId, release),
+        (torrent) => {
+          existing = true
+          return titleAllowed(profileId, torrent.titleId)
+        },
       )
     }
     catch (err) {
+      if (!current())
+        return undefined
       if (isSkippable(err)) {
         recordDecision('sources', 'source.attempt', operation, {
           ...facts,
@@ -423,7 +520,17 @@ export async function watchTitle(
       throw err
     }
 
-    if (!torrent || torrent.status === 'failed') {
+    if (!current())
+      return undefined
+    checkCycle()
+    torrent = torrent && getTorrent(torrent.id)
+    if (
+      !torrent
+      || torrent.status === 'failed'
+      || !sourceAllowed(profileId, release)
+      || ((existing || torrent.titleId !== null)
+        && !titleAllowedCached(profileId, torrent.titleId))
+    ) {
       recordDecision('sources', 'source.attempt', operation, {
         ...facts,
         outcome: 'open_rejected',
@@ -431,8 +538,24 @@ export async function watchTitle(
       continue
     }
 
-    torrent = linkTitle(torrent, titleId)
+    const fileIndex
+      = torrent.status === 'ready'
+        ? pickFile(torrent, release.parsed, target)
+        : undefined
+    if (
+      cycleId
+      && fileIndex !== undefined
+      && unavailableTorrentFiles(profileId, torrent.id).has(fileIndex)
+    ) {
+      recordDecision('sources', 'source.attempt', operation, {
+        ...facts,
+        torrentId: torrent.id,
+        outcome: 'open_rejected',
+      })
+      continue
+    }
 
+    torrent = linkTitle(torrent, titleId)
     if (torrent.status === 'resolving') {
       recordDecision('sources', 'source.selected', operation, {
         ...facts,
@@ -446,8 +569,6 @@ export async function watchTitle(
       }
     }
 
-    const fileIndex = pickFile(torrent, release.parsed, target)
-
     if (fileIndex === undefined) {
       recordDecision('sources', 'source.attempt', operation, {
         ...facts,
@@ -456,14 +577,13 @@ export async function watchTitle(
       })
       continue
     }
-
-    rememberChoice(
+    rememberWatchChoice(
       { profileId, titleId, season: target.season, episode: target.episode },
-      {
-        torrentId: torrent.id,
-        fileIndex,
-        voice: release.audioLanguage === 'ru' ? release.voice : undefined,
-      },
+      torrent,
+      fileIndex,
+      release.audioLanguage === 'ru' ? release.voice : undefined,
+      request.cycleId,
+      revision,
     )
 
     recordDecision('sources', 'source.selected', operation, {

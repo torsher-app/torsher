@@ -11,9 +11,10 @@ import type {
   MaintenanceVolumeObservation,
 } from '../../db/schema.ts'
 import { createHash, randomUUID } from 'node:crypto'
-import { eq, inArray } from 'drizzle-orm'
+import { asc, eq, inArray } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import {
+  cyclePlaybackFacts,
   follows,
   maintenanceFiles,
   maintenanceGroups,
@@ -72,6 +73,10 @@ export function maintenanceNextRunAt() {
 
 /** Состояние grace/results не входит: сравниваются исходные факты политики. */
 export function eligibilityFingerprint(groupId: string) {
+  return getDb().transaction(() => readEligibilityFingerprint(groupId))
+}
+
+function readEligibilityFingerprint(groupId: string) {
   const db = getDb()
   const group = db
     .select()
@@ -86,6 +91,22 @@ export function eligibilityFingerprint(groupId: string) {
     uploaded: _uploaded,
     ...facts
   } = group
+  const cyclePlayback = db
+    .select({
+      profileId: cyclePlaybackFacts.profileId,
+      season: cyclePlaybackFacts.season,
+      episode: cyclePlaybackFacts.episode,
+      watchedAt: cyclePlaybackFacts.watchedAt,
+      lastPlayedAt: cyclePlaybackFacts.lastPlayedAt,
+    })
+    .from(cyclePlaybackFacts)
+    .where(eq(cyclePlaybackFacts.titleId, group.titleId))
+    .orderBy(
+      asc(cyclePlaybackFacts.profileId),
+      asc(cyclePlaybackFacts.season),
+      asc(cyclePlaybackFacts.episode),
+    )
+    .all()
   const value = {
     group: facts,
     seedDefault: getTorrentSettings().seedRule,
@@ -138,6 +159,8 @@ export function eligibilityFingerprint(groupId: string) {
           `${b.profileId}:${b.season}:${b.episode}`,
         ),
       ),
+    // Preserve the fingerprint of existing work when there are no cycle facts.
+    ...(cyclePlayback.length && { cyclePlayback }),
   }
   return createHash('sha256').update(JSON.stringify(value)).digest('hex')
 }

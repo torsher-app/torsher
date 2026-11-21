@@ -18,6 +18,7 @@ import PersonCard from '../components/PersonCard.vue'
 import PosterCard from '../components/PosterCard.vue'
 import PosterSkeleton from '../components/PosterSkeleton.vue'
 import ScreenState from '../components/ScreenState.vue'
+import SearchField from '../components/SearchField.vue'
 import { useCatalogSearch } from '../composables/useCatalogSearch.ts'
 import { useHeldLoading } from '../composables/useHeldLoading.ts'
 import { useReleaseTexts } from '../composables/useReleaseTexts.ts'
@@ -263,17 +264,16 @@ onBeforeUnmount(stopFocus)
   <main ref="screen" class="search">
     <div class="search__left">
       <FocusSection name="search-input" :edges="inputEdges" autofocus>
-        <label class="search__field">
-          <AppIcon name="search" class="search__field-icon" />
+        <SearchField class="search__field">
           <input
             v-model="query"
             v-focusable
-            class="field search__input"
+            class="field"
             type="search"
             :aria-label="t('nav.search')"
             :placeholder="t('search.placeholder')"
           >
-        </label>
+        </SearchField>
       </FocusSection>
 
       <p class="search__note" :class="{ 'search__note--pick': isPick }">
@@ -394,26 +394,7 @@ onBeforeUnmount(stopFocus)
 }
 
 .search__field {
-  position: relative;
-  display: block;
   margin-bottom: calc(var(--u) * 18);
-}
-
-.search__field-icon {
-  position: absolute;
-  top: 50%;
-  left: calc(var(--u) * 30);
-  margin-top: calc(var(--u) * -20);
-  font-size: calc(var(--u) * 40);
-  pointer-events: none;
-}
-
-.search__input {
-  width: 100%;
-  height: calc(var(--u) * 104);
-  padding: 0 calc(var(--u) * 30) 0 calc(var(--u) * 92);
-  font-size: var(--font-size-l);
-  font-weight: 600;
 }
 
 .search__note {

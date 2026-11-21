@@ -25,6 +25,8 @@ export interface TmdbSearchResponse {
 /** Элемент списка: в trending/all есть media_type, в списках фильмов и сериалов — нет. */
 export type TmdbListResult = Omit<TmdbMultiResult, 'media_type'> & {
   media_type?: TmdbMultiResult['media_type']
+  genre_ids?: number[]
+  adult?: boolean
 }
 
 export interface TmdbListResponse {
@@ -81,6 +83,7 @@ export interface TmdbMovie extends TmdbDetailsBase {
   status?: string
   // Доллары; 0 — неизвестно
   budget?: number
+  belongs_to_collection?: TmdbNamed | null
   revenue?: number
   // append_to_response=release_dates
   release_dates?: {

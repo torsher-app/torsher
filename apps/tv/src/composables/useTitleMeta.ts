@@ -19,7 +19,12 @@ export function useTitleMeta() {
       : t('title.runtimeMinutes', { minutes: rest })
   }
 
-  function metaParts(value: TitleDetails) {
+  function metaParts(
+    value: Pick<
+      TitleDetails,
+      'year' | 'kind' | 'runtime' | 'seasons' | 'genres'
+    >,
+  ) {
     const parts: string[] = []
 
     if (value.year)

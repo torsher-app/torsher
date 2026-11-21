@@ -224,11 +224,12 @@ export type SourceCandidate = z.output<typeof sourceCandidate>
 export const watchTitle = z
   .object({
     presetId: z.string().min(1).max(100).optional(),
-    season: z.number().int().min(1).max(999).optional(),
+    season: z.number().int().min(0).max(999).optional(),
     episode: z.number().int().min(1).max(9999).optional(),
     candidateId: z.string().min(1).max(64).optional(),
     // Раздача сезона из прогресса: серия из неё без поиска по индексаторам
     torrentId: z.string().min(1).max(100).optional(),
+    cycleId: z.uuid().optional(),
   })
   .meta({ id: 'watchTitle' })
 
@@ -421,7 +422,7 @@ export const titleFiles = z
 
 export const markWatched = z
   .object({
-    season: z.number().int().min(1).max(999).optional(),
+    season: z.number().int().min(0).max(999).optional(),
     episode: z.number().int().min(1).max(9999).optional(),
     watched: z.boolean(),
   })
@@ -531,6 +532,15 @@ export const titleProgress = z
     seasonReleases: z.array(seasonRelease),
     // Прогресс по сериям: полосы и отметки «просмотрено» на карточке
     episodes: z.array(episodeProgress),
+    // Exact personal marks, including specials; never a playback cursor.
+    seenEpisodes: z
+      .array(
+        z.object({
+          season: z.number().int().nonnegative(),
+          episode: z.number().int().positive(),
+        }),
+      )
+      .optional(),
   })
   .meta({ id: 'titleProgress' })
 
@@ -562,7 +572,7 @@ export const upNext = z
 export const playbackTitle = z
   .object({
     id: z.string().min(1).max(100),
-    season: z.number().int().min(1).max(999).optional(),
+    season: z.number().int().min(0).max(999).optional(),
     episode: z.number().int().min(1).max(9999).optional(),
   })
   .meta({ id: 'playbackTitle' })

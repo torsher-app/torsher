@@ -15,6 +15,7 @@ import type {
   PlaybackErrorInput,
   TorrentStats,
   UpdateWatchStateInput,
+  ViewingStartInput,
 } from '@torsher/api-client'
 import {
   correlationHeaders,
@@ -25,8 +26,18 @@ import {
 } from '@torsher/api-client'
 import { onScopeDispose, ref, shallowRef } from 'vue'
 import type { PlaybackTitle } from '../lib/sources.ts'
+import type { ViewingRestart } from '../lib/viewingRestart.ts'
+import {
+  playbackIdentity,
+  restartScope,
+  saveRestart,
+} from '../lib/viewingRestart.ts'
 import { api } from '../api.ts'
-import { captureTitleViewer, noteTitleProgress } from '../titleActions.ts'
+import {
+  captureTitleViewer,
+  isTitleViewer,
+  noteTitleProgress,
+} from '../titleActions.ts'
 import { i18n } from '../i18n.ts'
 import { browserMediaSupport, deviceProfileOf } from '../lib/deviceProfile.ts'
 import { startErrorAction } from '../lib/player.ts'
@@ -57,11 +68,12 @@ export type PlaybackRestart = Pick<
 
 export type CheckpointSession = Pick<
   UpdateWatchStateInput,
-  'sessionId' | 'appliedAudioStream'
+  'sessionId' | 'appliedAudioStream' | 'viewing'
 >
+type CheckpointKind = NonNullable<CheckpointSession['viewing']>['kind']
 
 // Один порядок для всех плееров этого запуска, включая A → B → A.
-const progressClientId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`
+const progressClientId = playbackIdentity()
 let progressSequence = 0
 
 let profile: CreatePlaybackInput['device'] | undefined
@@ -134,8 +146,12 @@ async function playerErrorOf(err: unknown) {
       return { error: 'unauthorized' as const }
     case 404:
       return { error: 'notFound' as const }
-    case 409:
-      return { error: 'notReady' as const }
+    case 409: {
+      const body = await getErrorBody<{ kind?: string }>(err)
+      return body?.kind === 'viewingAttemptConflict'
+        ? { error: 'unknown' as const }
+        : { error: 'notReady' as const }
+    }
     case 503: {
       const body = await getErrorBody<Partial<EngineUnavailableResponse>>(err)
 
@@ -177,8 +193,23 @@ export function usePlayback(
   voiceStudio?: string,
   context: DiagnosticContext = currentDiagnosticContext(),
   viewerProfileId?: string,
+  cycleId?: string,
 ) {
   const viewer = captureTitleViewer()
+  const tracksViewing
+    = !!title
+      && (/^tmdb:movie:\d+$/.test(title.id)
+        || (/^tmdb:tv:\d+$/.test(title.id)
+          && title.season !== undefined
+          && !!title.episode))
+  const playerId = playbackIdentity()
+  let pendingViewing: ViewingStartInput | undefined
+  const sourceKey = JSON.stringify(
+    'mediaFileId' in source
+      ? ['library', source.mediaFileId]
+      : ['torrent', source.torrentId, source.fileIndex],
+  )
+  let line = 0
   const diagnosticTarget = {
     ...source,
     titleId: title?.id,
@@ -192,6 +223,7 @@ export function usePlayback(
   // Сессия, пока сервер читает файл: экран показывает подготовку с названием
   const pending = shallowRef<Playback>()
   const error = ref<PlayerError>()
+  const viewingConflict = ref(false)
   const engineKind = ref<EngineKind>()
   const storage = shallowRef<StorageShortage>()
   const stats = shallowRef<TorrentStats>()
@@ -332,7 +364,10 @@ export function usePlayback(
    * субтитрами с позиции плеера. Прежняя сессия закрывается всегда, и при
    * повторе после ошибки тоже.
    */
-  async function start(restart?: PlaybackRestart): Promise<StartOutcome> {
+  async function start(
+    restart?: PlaybackRestart,
+    viewingRestart?: ViewingRestart,
+  ): Promise<StartOutcome> {
     const run = generation + 1
     const previousSession = playback.value?.sessionId
     diagnostic(
@@ -344,7 +379,7 @@ export function usePlayback(
       },
       context,
     )
-    const outcome = await startInternal(restart)
+    const outcome = await startInternal(restart, viewingRestart)
     if (outcome === 'stale') {
       diagnostic(
         {
@@ -379,16 +414,77 @@ export function usePlayback(
 
   async function startInternal(
     restart?: PlaybackRestart,
+    viewingRestart?: ViewingRestart,
   ): Promise<StartOutcome> {
     const run = ++generation
 
     status.value = 'loading'
     error.value = undefined
+    viewingConflict.value = false
     closeSessions()
 
     let created: Playback | undefined
 
     try {
+      if (!isTitleViewer(viewer))
+        return 'stale'
+      if (cycleId && !tracksViewing)
+        throw new Error('Cycle playback requires a catalog episode')
+      if (tracksViewing && title) {
+        const base = { playerId, clientId: progressClientId, cycleId }
+        if (viewingRestart) {
+          if (
+            !viewerProfileId
+            || viewingRestart.scope
+            !== restartScope(viewerProfileId, title, cycleId)
+            || (viewingRestart.sourceKey
+              && viewingRestart.sourceKey !== sourceKey)
+            || viewingRestart.consumed
+          ) {
+            throw new Error('Viewing restart is no longer available')
+          }
+          if (
+            pendingViewing?.intent !== 'restart'
+            || pendingViewing.requestId !== viewingRestart.requestId
+          ) {
+            const expectedGeneration
+              = viewingRestart.expectedGeneration
+                ?? playback.value?.viewing?.generation
+                ?? (
+                  await api.playback.getViewingAttempt({
+                    titleId: title.id,
+                    season: title.season,
+                    episode: title.episode,
+                    cycleId,
+                    profileId: viewerProfileId,
+                  })
+                ).attempt?.generation
+                ?? 0
+            if (run !== generation || !isTitleViewer(viewer))
+              return 'stale'
+            viewingRestart = saveRestart({
+              ...viewingRestart,
+              sourceKey,
+              expectedGeneration,
+            })
+            pendingViewing = {
+              ...base,
+              requestId: viewingRestart.requestId,
+              intent: 'restart',
+              expectedGeneration,
+            }
+          }
+        }
+        else if (pendingViewing?.intent !== 'join') {
+          pendingViewing = {
+            ...base,
+            requestId: playbackIdentity(),
+            intent: 'join',
+            // A reconnect keeps its original generation even if another viewer restarted it.
+            expectedGeneration: playback.value?.viewing?.generation,
+          }
+        }
+      }
       created = await api.playback.postPlayback(
         {
           ...source,
@@ -396,6 +492,8 @@ export function usePlayback(
           device: deviceProfile(),
           language: i18n.global.locale.value as CreatePlaybackInput['language'],
           voiceStudio,
+          viewing: pendingViewing,
+          profileId: pendingViewing ? viewerProfileId : undefined,
           ...restart,
           // До семантических предпочтений Off задавался отсутствием поля.
           subtitle:
@@ -408,7 +506,7 @@ export function usePlayback(
       )
       const ready = await waitProbe(created, () => run === generation)
 
-      if (run !== generation) {
+      if (run !== generation || !isTitleViewer(viewer)) {
         closeSession(created.sessionId)
         return 'stale'
       }
@@ -420,7 +518,32 @@ export function usePlayback(
         return 'retry'
       }
 
+      if (
+        tracksViewing
+        && (!ready.viewing
+          || !ready.viewing.attemptId
+          || !Number.isSafeInteger(ready.viewing.generation)
+          || ready.viewing.generation < 1
+          || !['open', 'completed'].includes(ready.viewing.state)
+          || ready.viewing.current === false)
+      ) {
+        closeSession(ready.sessionId)
+        pending.value = undefined
+        error.value = 'unknown'
+        status.value = 'error'
+        return 'error'
+      }
       pending.value = undefined
+      if (viewingRestart && pendingViewing?.intent === 'restart') {
+        saveRestart({
+          ...viewingRestart,
+          expectedGeneration: pendingViewing.expectedGeneration,
+          sourceKey,
+          consumed: true,
+        })
+      }
+      pendingViewing = undefined
+      line = 0
       playback.value = ready
       status.value = 'ready'
       startHeartbeat(ready.sessionId)
@@ -595,6 +718,20 @@ export function usePlayback(
 
   /** Позиция не критична: не сохранилась — сохранится в следующий раз */
   /** Ошибка сохранения молча пропускается; промис — чтобы дождаться записи */
+  function captureCheckpoint(
+    kind: CheckpointKind,
+    appliedAudioStream?: number | null,
+  ): CheckpointSession {
+    const current = playback.value
+    if (kind === 'seek' || kind === 'source_switch')
+      line++
+    return {
+      sessionId: current?.sessionId,
+      appliedAudioStream,
+      viewing: current?.viewing ? { playerId, line, kind } : undefined,
+    }
+  }
+
   function saveWatchState(
     position: number,
     duration: number,
@@ -603,8 +740,26 @@ export function usePlayback(
     captured: DiagnosticContext = context,
     checkpoint?: CheckpointSession,
   ) {
-    if (!Number.isFinite(position))
+    if (!Number.isFinite(position) || (tracksViewing && !checkpoint?.viewing))
       return Promise.resolve()
+    const run = generation
+    function rejectCurrentBinding() {
+      if (
+        !checkpoint?.viewing
+        || !checkpoint.sessionId
+        || run !== generation
+        || status.value !== 'ready'
+        || playback.value?.sessionId !== checkpoint.sessionId
+        || !isTitleViewer(viewer)
+      ) {
+        return
+      }
+      stopStats()
+      close()
+      error.value = 'unknown'
+      status.value = 'error'
+      viewingConflict.value = true
+    }
 
     const trace
       = reason !== 'checkpoint' || Date.now() - checkpointAt >= 180_000
@@ -644,7 +799,12 @@ export function usePlayback(
           : {},
       )
       .then(
-        () => {
+        (result) => {
+          if (result?.accepted === false) {
+            if (result.rejection === 'viewingConflict')
+              rejectCurrentBinding()
+            return
+          }
           noteTitleProgress(viewer, title?.id)
           if (trace) {
             diagnostic(
@@ -655,6 +815,8 @@ export function usePlayback(
           }
         },
         (error) => {
+          if (getErrorStatus(error) === 404)
+            rejectCurrentBinding()
           diagnostic(
             {
               event: 'progress.result',
@@ -693,5 +855,7 @@ export function usePlayback(
     statsReceivedAt: () => statsAt.value,
     statsOffset: () => statsOffset,
     saveWatchState,
+    captureCheckpoint,
+    viewingConflict,
   }
 }

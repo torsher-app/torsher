@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../api.ts', () => ({
   api: {
     titles: { getTitleLibrary: mocks.library, putTitleWatched: mocks.mark },
+    mine: { putMineSeen: mocks.mark },
   },
 }))
 vi.mock('../focus/index.ts', () => ({
@@ -22,6 +23,9 @@ vi.mock('../focus/index.ts', () => ({
 }))
 vi.mock('vue-router', () => ({ useRouter: () => ({ push: mocks.push }) }))
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
+vi.mock('./useCatalogLanguage.ts', () => ({
+  useCatalogLanguage: () => ref('en-US'),
+}))
 vi.mock('vue', async original => ({
   ...(await original<typeof import('vue')>()),
   onBeforeUnmount: vi.fn(),
@@ -62,6 +66,63 @@ beforeEach(() => {
 })
 
 describe('episode actions', () => {
+  it('removes a personal episode mark without creating an ordinary playback row', async () => {
+    const actions = setup()
+    actions.progress.value = {
+      ...actions.progress.value,
+      episodes: [],
+      seenEpisodes: [{ season: 2, episode: 6 }],
+    }
+    expect(
+      actions.options.value.find(item => item.id === 'mark')?.label,
+    ).toBe('actions.unmarkWatched')
+    await actions.select('mark')
+    expect(mocks.mark).toHaveBeenCalledWith('show', {
+      expectedProfileId: 'A',
+      language: 'en-US',
+      season: 2,
+      episode: 6,
+      watched: false,
+    })
+    expect(actions.progress.value.episodes).toEqual([])
+    expect(actions.progress.value.seenEpisodes).toEqual([])
+  })
+
+  it('preserves ordinary resume while displaying a personal seen mark', () => {
+    const actions = setup()
+    actions.progress.value = {
+      ...actions.progress.value,
+      seenEpisodes: [{ season: 2, episode: 6 }],
+    }
+    expect(
+      actions.options.value.find(item => item.id === 'mark')?.label,
+    ).toBe('actions.unmarkWatched')
+    expect(
+      actions.options.value.find(item => item.id === 'play')?.label,
+    ).toBe('title.resume')
+    expect(actions.progress.value.episodes[0]).toEqual(point)
+  })
+
+  it('does not invert an unknown mark after the initial progress request failed', async () => {
+    const season = ref(2)
+    const progress = shallowRef<TitleProgress>()
+    const actions = useEpisodeActions(
+      ref('show'),
+      season,
+      progress,
+      () => true,
+    )
+    actions.open(episode)
+    expect(
+      actions.options.value.find(item => item.id === 'mark')?.disabled,
+    ).toBe(true)
+    expect(
+      actions.options.value.find(item => item.id === 'logWatch')?.disabled,
+    ).toBe(false)
+    actions.hold(episode)
+    await actions.select('mark')
+    expect(mocks.mark).not.toHaveBeenCalled()
+  })
   it('plays an exact episode inside a library range, independently of title resume', async () => {
     mocks.library.mockResolvedValue({
       files: [{ ...version, season: 1 }, version],
@@ -91,7 +152,13 @@ describe('episode actions', () => {
     actions.picker.select('other')
     expect(mocks.push).toHaveBeenCalledExactlyOnceWith({
       path: '/play/library/other',
-      query: { title: 'show', season: '2', episode: '6', start: '0' },
+      query: {
+        title: 'show',
+        season: '2',
+        episode: '6',
+        start: '0',
+        restart: expect.any(String),
+      },
     })
   })
   it('preserves the exact goal and zero intent in downloaded-file and source-selection routes', async () => {
@@ -110,6 +177,9 @@ describe('episode actions', () => {
       path: '/title/show/sources',
       query: { season: '2', episode: '6', start: '0' },
     })
+    expect(mocks.push.mock.calls[0]![0].query.restart).not.toBe(
+      mocks.push.mock.calls[1]![0].query.restart,
+    )
   })
   it.each([false, true])(
     'asks for a source without playback history, including manual watched=%s',
@@ -184,6 +254,7 @@ describe('episode actions', () => {
     actions.open(episode)
     expect(actions.options.value.map(option => option.id)).toEqual([
       'play',
+      'logWatch',
       'mark',
     ])
     await actions.select('mark')

@@ -1,6 +1,8 @@
 import { z } from 'zod'
 import { profileLanguages } from '../db/schema.ts'
 import { playbackTitle } from './titles.ts'
+import { messageResponse } from './common.ts'
+import { viewingAttempt, viewingCheckpoint, viewingStart } from './viewing.ts'
 
 const fileIndex = z.number().int().min(0).max(99_999)
 const seconds = z.number().min(0).max(1_000_000)
@@ -32,10 +34,9 @@ function oneSource(body: {
   fileIndex?: number
   mediaFileId?: string
 }) {
-  const torrent = body.torrentId !== undefined && body.fileIndex !== undefined
-  const library = body.mediaFileId !== undefined
-
-  return torrent !== library
+  return body.mediaFileId === undefined
+    ? body.torrentId !== undefined && body.fileIndex !== undefined
+    : body.torrentId === undefined && body.fileIndex === undefined
 }
 
 const sourceMessage = {
@@ -60,9 +61,17 @@ export const createPlayback = z
     startPosition: seconds.optional(),
     // Студия, которую слушали в прошлой раздаче: при смене раздачи — её дорожка
     voiceStudio: z.string().min(1).max(200).optional(),
+    viewing: viewingStart.optional(),
+    profileId: z.string().min(1).max(100).optional(),
   })
   .refine(oneSource, sourceMessage)
   .meta({ id: 'createPlayback' })
+
+export const playbackStartConflict = messageResponse
+  .extend({
+    kind: z.literal('viewingAttemptConflict').optional(),
+  })
+  .meta({ id: 'playbackStartConflict' })
 
 export const updatePlaybackPreferences = z
   .object({
@@ -126,6 +135,7 @@ const mediaInfo = z
 export const playback = z
   .object({
     sessionId: z.string(),
+    viewing: viewingAttempt.optional(),
     skipSegments: z
       .array(
         z.object({
@@ -263,8 +273,13 @@ export const updateWatchState = z
     position: seconds,
     duration: seconds.optional(),
     title: playbackTitle.optional(),
+    viewing: viewingCheckpoint.optional(),
   })
   .refine(oneSource, sourceMessage)
+  .refine(
+    value => !value.viewing || !!(value.sessionId && value.event),
+    'Viewing requires session and event',
+  )
   .meta({ id: 'updateWatchState' })
 
 export const watchState = z
@@ -276,6 +291,8 @@ export const watchState = z
     position: z.number(),
     duration: z.number().nullable(),
     updatedAt: z.string(),
+    accepted: z.boolean().optional(),
+    rejection: z.enum(['stale', 'viewingConflict']).optional(),
   })
   .meta({ id: 'watchState' })
 

@@ -47,9 +47,11 @@ Click a profile to open its card: color, language, PIN, age limit, devices, and:
 - **<Ui k="panel.history.recent" />.** The last titles watched. The link below them opens the full watch history: every movie and series with the last episode, when it was watched, and how much is left.
 - **<Ui k="panel.imports.section" />.** See below.
 
-## Import ratings, lists and watched titles
+This position history is separate from the personal viewing diary in <Ui k="nav.mine mine.preview.sections.diary" />. The diary keeps individual viewing entries, their dates and notes rather than treating an updated playback position as another viewing.
 
-Bring a profile's ratings and Watchlist from another service, or move a profile from another Torsher server.
+## Import personal history and lists {#import-ratings-lists-and-watched-titles}
+
+Bring a profile's ratings, lists and viewing history from supported Letterboxd or Trakt files, or move a profile from another Torsher server. IMDb files supply ratings and Watchlist, not a dated viewing diary.
 
 1. In the profile's card, select <Ui k="panel.imports.start" />.
 2. Drop the files, up to 20 MB together:
@@ -59,14 +61,24 @@ Bring a profile's ratings and Watchlist from another service, or move a profile 
    - a CSV in the Letterboxd import format with `tmdbID` or `imdbID` columns, which converters for other services produce;
    - <Ui k="panel.imports.sources.torsher" />: a profile export `.json` from another Torsher server, or a watched title file in the format below.
 3. Select <Ui k="panel.imports.dialog.upload" />. Torsher matches the rows with the catalog. You can close the window meanwhile: the profile card shows the progress.
-4. Check the preview: new ratings, new titles for the lists, new watched marks, what is already in the profile, and ratings that differ from yours. For those, choose <Ui k="panel.imports.policies.keep" />, <Ui k="panel.imports.policies.replace" /> or <Ui k="panel.imports.policies.newer" />.
+4. Check the preview: ratings, list entries, watched marks and diary entries are separate. Native Torsher files also show changes to <Ui k="panel.imports.preview.personal" />. For conflicting ratings, choose <Ui k="panel.imports.policies.keep" />, <Ui k="panel.imports.policies.replace" /> or <Ui k="panel.imports.policies.newer" />.
 5. Select <Ui k="panel.imports.dialog.apply" />.
 
-Only your own data is read from the files: title IDs, your ratings, dates and lists.
+Only your own data is read from the files: title IDs, your ratings, dates, lists and viewing notes. Torsher does not sign in to these services or open URLs in the files.
 
 - **Rows that didn't match.** The profile card links to them. Confirm a suggested title or find one yourself. Use <Ui k="panel.titlePreview.details" /> to check the poster and overview, then <Ui k="panel.titlePreview.select" /> to return with that title selected. Save the match in the search dialog. Unmatched rows wait there for 90 days.
-- **Undo.** The card shows the last import with <Ui k="panel.imports.undo" />. Everything it changed goes back, except titles you changed after the import.
+- **Undo.** The card shows the last import with <Ui k="panel.imports.undo" />. An imported change is undone only if its affected data has stayed untouched. A later edit, explicit watched/unwatched action or manual confirmation is kept. Related diary and seen changes are checked together. A match you confirm later is a separate action, outside the original batch's undo.
 - **<Ui k="panel.imports.export" />** saves the profile as a file to import on another Torsher server. To move the whole server, see [Backup and move](/docs/maintain/backup#move-data-into-another-server).
+
+### Dates and repeated imports
+
+Letterboxd diary rows use the watch date, without inventing a time of day. Recognized Trakt history rows keep each event's identity and exact episode. Events with no known watch date remain undated. A watched list or an aggregate play count confirms that you have seen something; it does not manufacture dated watches or repeats.
+
+Repeating a recognized file does not add the same events again or overwrite diary edits made in Torsher. Without a source event ID, identical rows are distinguished within one uploaded dataset; separate exports with indistinguishable rows cannot prove additional viewings. Separately exported Letterboxd reviews enrich a diary entry only when their association is reliable. Deleted data and unrelated list contents are not restored as diary entries.
+
+Imported diary entries and their personal watched marks do not create playback positions, start following a series or make files eligible for automatic cleanup. Removing a diary entry leaves its watched mark; explicitly clearing watched leaves the diary entry. The neutral watched-title file below keeps its earlier, separate behavior.
+
+Export layouts can change. Torsher supports the recognized files and reports skipped or unresolved rows; support for every Trakt export variant is not guaranteed.
 
 ### Watched title file
 

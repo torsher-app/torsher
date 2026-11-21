@@ -20,10 +20,16 @@ import { resolveEpisode } from '../composables/resolveEpisode.ts'
 import { useCatalogLanguage } from '../composables/useCatalogLanguage.ts'
 import { usePlayerArt } from '../composables/usePlayerArt.ts'
 import { useFocus } from '../focus/index.ts'
-import { playerRoute, withStartPosition } from '../lib/continue.ts'
+import {
+  libraryRoute,
+  playerRoute,
+  withPlaybackCycle,
+  withStartPosition,
+} from '../lib/continue.ts'
 import { lastVoiceKey } from '../lib/episodes.ts'
 import { LOADER_DELAY_MS } from '../lib/loader.ts'
 import { goBack, sourcesAfterResolve } from '../lib/navigation.ts'
+import { session } from '../session.ts'
 
 /**
  * Экран подготовки: серия, файла которой ещё нет, — следующая после
@@ -37,6 +43,8 @@ const props = defineProps<{
   season?: string
   episode?: string
   start?: string
+  restartRequest?: string
+  cycleId?: string
   // Раздача, где серию ищем первой: та, которой смотрели прошлую
   torrent?: string
   candidate?: string
@@ -150,7 +158,13 @@ function onChoice(choice: 'sources' | 'back' | 'retry') {
   }
   void router.replace({
     path: `/title/${props.id}/sources`,
-    query: { season: props.season, episode: props.episode, start: props.start },
+    query: {
+      season: props.season,
+      episode: props.episode,
+      start: props.start,
+      restart: props.restartRequest,
+      cycleId: props.cycleId,
+    },
   })
 }
 
@@ -163,19 +177,72 @@ async function run() {
   failureReason.value = undefined
   followFailure.value = undefined
   try {
+    const cycle = props.cycleId
+      ? await api.playback
+          .getViewingAttempt({
+            ...target,
+            cycleId: props.cycleId,
+            profileId: session.profile?.id,
+          })
+          .catch(() => null)
+      : undefined
+    if (cancelled)
+      return
+    if (cycle === null) {
+      failureReason.value = 'searchFailed'
+      notFound.value = true
+      return
+    }
+    const playbackTitle = {
+      id: props.id,
+      season: target.season,
+      episode: target.episode,
+    }
+    const voice = props.voice ?? cycle?.voiceStudio
+    function open(route: ReturnType<typeof playerRoute>) {
+      void router.replace({
+        ...withPlaybackCycle(
+          withStartPosition(route, props.start === '0', props.restartRequest),
+          props.cycleId,
+        ),
+        state: {
+          sourceReturn: null,
+          sourcePanelReturn: sourceReturn ? true : null,
+          resumePlayback: null,
+          diagnostic: { ...diagnosticContext },
+          loaderShown: performance.now() - mountedAt >= LOADER_DELAY_MS,
+        },
+      })
+    }
+    if (cycle?.source && !props.candidate && !props.torrent) {
+      operation = 'completed'
+      open(
+        'mediaFileId' in cycle.source
+          ? libraryRoute(
+              cycle.source.mediaFileId,
+              playbackTitle,
+              props.automatic,
+              voice,
+            )
+          : playerRoute(cycle.source, playbackTitle, voice, props.automatic),
+      )
+      return
+    }
     // Раздача сезона и озвучка прошлых серий — из прогресса; без него ищем по
     // порядку сервера
-    const progress = await api.titles
-      .getTitleProgress(
-        props.id,
-        {
-          language: language.value,
-          season: props.season,
-          episode: props.episode,
-        },
-        diagnosticParams(diagnosticContext),
-      )
-      .catch(() => undefined)
+    const progress = cycle
+      ? undefined
+      : await api.titles
+          .getTitleProgress(
+            props.id,
+            {
+              language: language.value,
+              season: props.season,
+              episode: props.episode,
+            },
+            diagnosticParams(diagnosticContext),
+          )
+          .catch(() => undefined)
     const releases = progress?.seasonReleases ?? []
     const season = target.season ?? 0
     const outcome = await resolveEpisode(target, {
@@ -193,9 +260,7 @@ async function run() {
               && (!target.episode || item.episodes.includes(target.episode)),
           )?.torrentId,
       ],
-      voiceKey: props.voice
-        ? `studio:${props.voice}`
-        : lastVoiceKey(releases, season),
+      voiceKey: voice ? `studio:${voice}` : lastVoiceKey(releases, season),
       cancelled: () => cancelled,
       onStep: (next) => {
         step.value = next
@@ -208,28 +273,14 @@ async function run() {
       operation = 'completed'
     if (outcome.kind === 'found') {
       // Торшер уже на экране — плеер не прячет его на вторую задержку
-      void router.replace({
-        ...withStartPosition(
-          playerRoute(
-            outcome.file,
-            {
-              id: props.id,
-              season: target.season,
-              episode: target.episode,
-            },
-            props.voice,
-            props.candidate ? undefined : props.automatic,
-          ),
-          props.start === '0',
+      open(
+        playerRoute(
+          outcome.file,
+          playbackTitle,
+          voice,
+          props.candidate ? undefined : props.automatic,
         ),
-        state: {
-          sourceReturn: null,
-          sourcePanelReturn: sourceReturn ? true : null,
-          resumePlayback: null,
-          diagnostic: { ...diagnosticContext },
-          loaderShown: performance.now() - mountedAt >= LOADER_DELAY_MS,
-        },
-      })
+      )
     }
     else if (
       outcome.kind === 'followUnavailable'

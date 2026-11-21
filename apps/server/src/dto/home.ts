@@ -56,6 +56,8 @@ export const homeRowIds = [
 export const homeQuery = z.object({
   mode: z.enum(homeModes).default('all'),
   language: tmdbLanguage,
+  personalContinue: z.literal('1').optional(),
+  expectedProfileId: z.string().min(1).max(100).optional(),
 })
 
 // Серия в ряду 16:9: «S2E5 · Название», кадр серии или бэкдроп тайтла
@@ -206,6 +208,9 @@ export const continueCard = card
     // Новая серия «Следить», которую профиль ещё не смотрел: колокольчик
     followNewEpisode: z.boolean().optional(),
     continuation: continuation.optional(),
+    cycleId: z.uuid().optional(),
+    cycleVoiceStudio: z.string().nullable().optional(),
+    cycleVoiceType: z.string().nullable().optional(),
     followUpdate: z
       .object({ season: z.number(), episode: z.number() })
       .optional(),

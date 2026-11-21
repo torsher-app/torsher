@@ -22,6 +22,7 @@ const props = withDefaults(
     current?: boolean
     // Долгое нажатие открывает меню действий; при выборе тайтла для раздачи — нет
     actions?: boolean
+    customMenu?: boolean
   }>(),
   {
     caption: false,
@@ -32,9 +33,15 @@ const props = withDefaults(
   },
 )
 
-defineEmits<{ select: [] }>()
+const emit = defineEmits<{ select: [event: MouseEvent], menu: [] }>()
 
 function openActions() {
+  if (props.customMenu) {
+    emit('menu')
+    return
+  }
+  if (!props.actions)
+    return
   openTitleActions({
     id: props.card.id,
     title: props.card.title,
@@ -61,10 +68,10 @@ const meta = computed(() => {
     v-focusable
     class="card poster-card"
     type="button"
-    :data-long-press="actions ? '' : undefined"
+    :data-long-press="actions || customMenu ? '' : undefined"
     :aria-current="current ? 'true' : undefined"
     :aria-label="`${card.title} · ${meta}`"
-    @click="$emit('select')"
+    @click="$emit('select', $event)"
     @longpress="openActions"
   >
     <span class="poster-card__frame">

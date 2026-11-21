@@ -13,13 +13,20 @@ const mocks = vi.hoisted(() => ({
   historyState: {} as Record<string, unknown>,
   resolve: vi.fn(),
   progress: vi.fn(),
+  viewing: vi.fn(),
   replace: vi.fn(),
   back: vi.fn(),
   diagnostic: vi.fn(),
   onKey: vi.fn(),
 }))
 vi.mock('../api.ts', () => ({
-  api: { titles: { getTitleProgress: mocks.progress } },
+  api: {
+    titles: { getTitleProgress: mocks.progress },
+    playback: { getViewingAttempt: mocks.viewing },
+  },
+}))
+vi.mock('../session.ts', () => ({
+  session: { profile: { id: 'viewer-profile' } },
 }))
 vi.mock('../composables/resolveEpisode.ts', () => ({
   resolveEpisode: mocks.resolve,
@@ -135,6 +142,56 @@ beforeEach(() => {
   mocks.historyState = {}
   mocks.progress.mockResolvedValue({ seasonReleases: [] })
   mocks.onKey.mockReturnValue(() => {})
+})
+
+it('opens the portable cycle source with the cycle and originating viewer context', async () => {
+  const cycleId = 'ea90209a-f6e0-464b-a058-b17fb5360db7'
+  mocks.viewing.mockResolvedValue({
+    attempt: null,
+    source: { mediaFileId: 'cycle-file' },
+    voiceStudio: 'Cycle studio',
+  })
+  const app = await mount({ cycleId })
+  expect(mocks.viewing).toHaveBeenCalledExactlyOnceWith({
+    titleId: 'tmdb:tv:100',
+    season: 1,
+    episode: 2,
+    profileId: 'viewer-profile',
+    cycleId,
+  })
+  expect(mocks.replace).toHaveBeenCalledExactlyOnceWith(
+    expect.objectContaining({
+      path: '/play/library/cycle-file',
+      query: expect.objectContaining({ cycleId, voice: 'Cycle studio' }),
+    }),
+  )
+  expect(mocks.progress).not.toHaveBeenCalled()
+  expect(mocks.resolve).not.toHaveBeenCalled()
+  app.unmount()
+})
+
+it('keeps the original restart request after resolving an explicit source', async () => {
+  mocks.resolve.mockResolvedValue({
+    kind: 'found',
+    file: { torrentId: 'other', fileIndex: 3 },
+  })
+  const app = await mount({
+    candidate: 'new-source',
+    start: '0',
+    restartRequest: 'restorable-intent',
+  })
+  expect(mocks.replace).toHaveBeenCalledExactlyOnceWith(
+    expect.objectContaining({
+      path: '/play/other/3',
+      query: expect.objectContaining({
+        season: '1',
+        episode: '2',
+        start: '0',
+        restart: 'restorable-intent',
+      }),
+    }),
+  )
+  app.unmount()
 })
 
 it('cancels a pending source switch back to the same paused file and ignores its late success', async () => {

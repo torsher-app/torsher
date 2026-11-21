@@ -1,4 +1,5 @@
 import type { Episode, TitleProgress } from '@torsher/api-client'
+import { restartScope, stageViewingRestart } from '../lib/viewingRestart.ts'
 import type { Ref } from 'vue'
 import {
   computed,
@@ -15,6 +16,7 @@ import {
   captureTitleViewer,
   isTitleViewer,
   noteTitleProgress,
+  titleViewerId,
 } from '../titleActions.ts'
 import { useFocus } from '../focus/index.ts'
 import {
@@ -23,7 +25,14 @@ import {
   resolveRoute,
   withStartPosition,
 } from '../lib/continue.ts'
-import { episodeActions, markedEpisode } from '../lib/episodeActions.ts'
+import { openMineEditor } from '../lib/mineEditor.ts'
+import { mineViewer } from '../lib/minePersonal.ts'
+import {
+  episodeActions,
+  markedEpisode,
+  seenEpisodeKeys,
+} from '../lib/episodeActions.ts'
+import { useCatalogLanguage } from './useCatalogLanguage.ts'
 import { createLatest } from '../lib/latest.ts'
 import { libraryChoices } from '../lib/library.ts'
 import { isUpcoming } from '../lib/titleInfo.ts'
@@ -45,6 +54,7 @@ export function useEpisodeActions(
 ) {
   const { t } = useI18n()
   const router = useRouter()
+  const language = useCatalogLanguage()
   const focus = useFocus()
   const context = shallowRef<EpisodeContext>()
   const busy = ref(false)
@@ -53,7 +63,13 @@ export function useEpisodeActions(
   const lookup = createLatest()
   const saving = new Set<string>()
   let fromStart = false
+  let restartRequest: string | undefined
   let live = true
+  const seen = computed(() => seenEpisodeKeys(progress.value))
+
+  function isSeen(value: EpisodeContext) {
+    return seen.value.has(`${value.season}:${value.episode.number}`)
+  }
 
   function pointOf(value: EpisodeContext) {
     return progress.value?.episodes.find(
@@ -84,20 +100,31 @@ export function useEpisodeActions(
         ? [{ id: 'start', label: t('player.fromStart'), selected: false }]
         : []),
       {
+        id: 'logWatch',
+        label: t('mine.personal.logWatch'),
+        selected: false,
+      },
+      {
         id: 'mark',
         label: t(
-          state.watched ? 'actions.unmarkWatched' : 'actions.markWatched',
+          context.value && isSeen(context.value)
+            ? 'actions.unmarkWatched'
+            : 'actions.markWatched',
         ),
         selected: false,
       },
-    ].map(item => ({ ...item, disabled: busy.value || !ready() }))
+    ].map(item => ({
+      ...item,
+      disabled:
+        busy.value || !ready() || (item.id === 'mark' && !progress.value),
+    }))
   })
 
   function navigate(route: ReturnType<typeof resolveRoute>) {
     lookup.cancel()
     busy.value = false
     // Панель сохраняет контекст при Back из resolver или плеера.
-    void router.push(withStartPosition(route, fromStart))
+    void router.push(withStartPosition(route, fromStart, restartRequest))
   }
 
   const picker = useLibraryPicker((fileId, target) => {
@@ -134,20 +161,24 @@ export function useEpisodeActions(
 
   async function toggle(value: EpisodeContext, closeAfter: boolean) {
     const key = `${value.titleId}:${value.season}:${value.episode.number}`
-    if (!ready() || saving.has(key) || isUpcoming(value.episode.airDate))
+    const actor = mineViewer()
+    if (
+      !ready()
+      || !progress.value
+      || !actor
+      || saving.has(key)
+      || isUpcoming(value.episode.airDate)
+    ) {
       return
+    }
     const viewer = captureTitleViewer()
     saving.add(key)
-    const previous = pointOf(value) ?? {
-      season: value.season,
-      episode: value.episode.number,
-      position: 0,
-      duration: null,
-      watched: false,
-    }
-    const watched = !previous.watched
+    const previous = pointOf(value)
+    const watched = !isSeen(value)
     try {
-      await api.titles.putTitleWatched(value.titleId, {
+      await api.mine.putMineSeen(value.titleId, {
+        expectedProfileId: actor.expectedProfileId,
+        language: language.value,
         season: value.season,
         episode: value.episode.number,
         watched,
@@ -163,14 +194,26 @@ export function useEpisodeActions(
       }
       progress.value = {
         ...current,
-        episodes: [
-          ...current.episodes.filter(
+        seenEpisodes: [
+          ...(current.seenEpisodes ?? []).filter(
             item =>
               item.season !== value.season
               || item.episode !== value.episode.number,
           ),
-          markedEpisode(previous, watched),
+          ...(watched
+            ? [{ season: value.season, episode: value.episode.number }]
+            : []),
         ],
+        episodes: previous
+          ? [
+              ...current.episodes.filter(
+                item =>
+                  item.season !== value.season
+                  || item.episode !== value.episode.number,
+              ),
+              markedEpisode(previous, watched),
+            ]
+          : current.episodes,
       }
       if (closeAfter && context.value === value)
         close()
@@ -196,6 +239,22 @@ export function useEpisodeActions(
       return
     focusOption.value = action
     error.value = ''
+    if (action === 'logWatch') {
+      context.value = undefined
+      openMineEditor(
+        {
+          kind: 'log',
+          title: {
+            id: value.titleId,
+            title: value.episode.title,
+            kind: 'series',
+          },
+          episode: { season: value.season, episode: value.episode.number },
+        },
+        value.opener,
+      )
+      return
+    }
     busy.value = true
     if (action === 'mark') {
       await toggle(value, true)
@@ -207,6 +266,13 @@ export function useEpisodeActions(
     }
     fromStart = action === 'start'
     const target = { season: value.season, episode: value.episode.number }
+    const profile = titleViewerId()
+    restartRequest
+      = fromStart && profile
+        ? stageViewingRestart(
+          restartScope(profile, { id: value.titleId, ...target }),
+        ).requestId
+        : undefined
     const result = await lookup.run(signal =>
       api.titles.getTitleLibrary(
         value.titleId,

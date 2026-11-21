@@ -1,0 +1,1 @@
+ALTER TABLE `diary_entries` ADD `source_match_key` text;

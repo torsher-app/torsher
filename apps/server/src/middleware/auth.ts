@@ -142,6 +142,32 @@ function asDevice(request: FastifyRequest, device: Device) {
   setProfile(request, device.profileId, true)
 }
 
+/**
+ * Checks the viewer captured by a new personal request. Device selection
+ * may change while a guard awaits catalog data. An owner's cookie belongs
+ * to this request; the explicit expected profile catches cookie refresh.
+ */
+export function viewerStillOnProfile(
+  request: FastifyRequest,
+  expectedProfileId: string,
+) {
+  if (request.profileId !== expectedProfileId || !getProfile(expectedProfileId))
+    return false
+
+  if (request.deviceId) {
+    const device = getDevice(request.deviceId)
+    if (device?.purpose !== 'viewer')
+      return false
+    const selected = device.profileId && getProfile(device.profileId)
+    if (selected)
+      return selected.id === expectedProfileId
+    const fallback = defaultProfile()
+    return !fallback.pinHash && fallback.id === expectedProfileId
+  }
+
+  return !!request.userId && ownerIdOf(request) === request.userId
+}
+
 function profileRequired(reply: FastifyReply) {
   return reply
     .code(403)

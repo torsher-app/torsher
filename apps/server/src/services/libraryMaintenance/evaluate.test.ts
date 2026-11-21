@@ -72,6 +72,21 @@ describe('maintenance evaluator', () => {
       new Date(now + 2 * DAY).toISOString(),
     )
   })
+  it('uses confirmed cycle watched and activity even when the normal cursor is unwatched', () => {
+    const input = snapshot()
+    input.progress[0]!.watchedAt = null
+    input.progress.push({
+      profileId: 'a',
+      season: 1,
+      episode: 1,
+      watchedAt: now - DAY,
+      lastPlayedAt: now,
+    })
+    expect(result(input).reasons).not.toContain('not_watched')
+    expect(result(input).eligibleAt).toBe(
+      new Date(now + 2 * DAY).toISOString(),
+    )
+  })
   it('collects independent blockers and handles roster changes and future clocks', () => {
     const input = snapshot()
     input.rule.enabled = false

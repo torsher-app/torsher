@@ -1,4 +1,10 @@
-import type { Card, TitleDownload, TitleMine } from '@torsher/api-client'
+import type {
+  Card,
+  MineCycle,
+  TitleDownload,
+  TitleMine,
+} from '@torsher/api-client'
+import type { ContinueState } from './lib/minePersonal.ts'
 import { reactive, readonly } from 'vue'
 
 /** Тайтл, для которого открыто меню действий */
@@ -8,6 +14,11 @@ export interface ActionTarget {
   kind: Card['kind']
   // Карточка с быстрым запуском просмотра: отдельный переход к тайтлу
   canOpenTitle?: boolean
+  continuation?: {
+    state: ContinueState
+    cycleId?: string
+    cycleState?: MineCycle['state']
+  }
   // С карточки, где всё уже в библиотеке: пункт «Скачать другую раздачу»
   // (у сериала — выбранного сезона)
   redownload?: { season?: number }
@@ -64,6 +75,10 @@ export function setTitleViewer(id: string | undefined) {
 
 export function captureTitleViewer() {
   return state.viewer
+}
+
+export function titleViewerId() {
+  return viewerId
 }
 
 export function isTitleViewer(viewer: number) {

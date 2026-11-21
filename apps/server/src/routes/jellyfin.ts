@@ -12,10 +12,12 @@ import type { PreparedPlayedSource } from '../services/sources/playedSource.ts'
 import { randomUUID } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import { Readable } from 'node:stream'
+import { getDb } from '../db/index.ts'
 import { markStreaming, revokeDevice } from '../services/devices/index.ts'
 import {
   COMPATIBILITY_VERSION,
   issueDevice,
+  jellyfinStillOnProfile,
   requireJellyfin,
   serverId,
   userDto,
@@ -33,11 +35,14 @@ import {
   sourceId,
   userData,
 } from '../services/jellyfin/library.ts'
+import { playableMediaFile } from '../services/library/folders.ts'
 import { sendLibraryFile } from '../services/library/stream.ts'
 import { cachedThumb } from '../services/library/thumbs.ts'
 import { voiceOfTrack } from '../services/media/decide.ts'
 import { summaryOf } from '../services/mine/cards.ts'
 import { clearMovieWatchlist, updateMine } from '../services/mine/index.ts'
+import { rememberLegacyCompletion } from '../services/mine/viewing.ts'
+import { hasAgeLimit } from '../services/profiles/access.ts'
 import {
   getTitleProgress,
   launchSelectionOf,
@@ -632,6 +637,25 @@ export const jellyfinRoutes: FastifyPluginAsyncZod = async (app) => {
               torrentId: confirmed?.torrentId ?? null,
               fileIndex: confirmed?.fileIndex ?? null,
             }
+            const sourceStillVisible = (file: Item['sources'][number]) => {
+              const current = playableMediaFile(file.id, request.profileId)
+              return (
+                current?.folder.status === 'ok'
+                && current.file.folderId === file.folderId
+                && current.file.relPath === file.relPath
+                && current.file.titleId === file.titleId
+                && current.file.season === file.season
+                && current.file.episode === file.episode
+                && current.file.episodeTo === file.episodeTo
+                && current.file.matchStatus === file.matchStatus
+                && (!hasAgeLimit(request.profileId)
+                  || file.matchStatus === 'matched')
+              )
+            }
+            const playbackStillVisible = () =>
+              confirmed
+                ? sourceStillVisible(confirmed)
+                : target.sources.some(sourceStillVisible)
             let launch: LaunchSelection | undefined
             let evidence: Promise<PreparedPlayedSource> | undefined
             if (
@@ -665,6 +689,13 @@ export const jellyfinRoutes: FastifyPluginAsyncZod = async (app) => {
             if (starting && input?.PositionTicks === undefined) {
               if (evidence)
                 await evidence
+              if (!jellyfinStillOnProfile(request))
+                return reply.code(401).send({ message: 'Unauthorized' })
+              if (!playbackStillVisible()) {
+                return reply
+                  .code(404)
+                  .send({ message: 'Media source not found' })
+              }
               if (launch)
                 rememberStartedSource(ref, source, launch)
             }
@@ -674,22 +705,38 @@ export const jellyfinRoutes: FastifyPluginAsyncZod = async (app) => {
             ) {
               const preparedSource = await (evidence
                 ?? preparePlayedSource(source))
+              if (!jellyfinStillOnProfile(request))
+                return reply.code(401).send({ message: 'Unauthorized' })
+              if (!playbackStillVisible()) {
+                return reply
+                  .code(404)
+                  .send({ message: 'Media source not found' })
+              }
               const track = preparedSource?.audio?.find(
                 track => track.index === input?.AudioStreamIndex,
               )
               const voice = track && voiceOfTrack(track)
-              saveTitleProgress(
-                ref,
-                { ...source, position, duration },
-                undefined,
-                confirmed ? preparedSource : 'unknown',
-                voice?.studio || voice?.type
-                  ? { studio: voice.studio, type: voice.type }
-                  : null,
-                launch,
-              )
-              if (target.type === 'Movie' && isWatched(position, duration))
-                clearMovieWatchlist(request.profileId, target.titleId!)
+              getDb().transaction(() => {
+                const saved = saveTitleProgress(
+                  ref,
+                  { ...source, position, duration },
+                  undefined,
+                  confirmed ? preparedSource : 'unknown',
+                  voice?.studio || voice?.type
+                    ? { studio: voice.studio, type: voice.type }
+                    : null,
+                  launch,
+                )
+                if (
+                  confirmed
+                  && input?.PositionTicks !== undefined
+                  && preparedSource?.contentKey
+                ) {
+                  rememberLegacyCompletion(saved)
+                }
+                if (target.type === 'Movie' && isWatched(position, duration))
+                  clearMovieWatchlist(request.profileId, target.titleId!)
+              })
             }
             if (!path.endsWith('/Stopped'))
               markStreaming(request.deviceId!)

@@ -1,4 +1,12 @@
 <script setup lang="ts">
+import {
+  CalendarDays,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+  Shuffle,
+} from '@lucide/vue'
 import { computed } from 'vue'
 
 export type IconName
@@ -11,6 +19,7 @@ export type IconName
     | 'chevronLeft'
     | 'chevronRight'
     | 'chevronDown'
+    | 'chevronUp'
     | 'play'
     | 'pause'
     | 'fromStart'
@@ -38,6 +47,8 @@ export type IconName
     | 'gauge'
     | 'timer'
     | 'bell'
+    | 'shuffle'
+    | 'calendar'
 
 const props = defineProps<{ name: IconName }>()
 
@@ -49,7 +60,27 @@ interface IconPart {
 }
 
 // Контурные иконки 24×24; размер и цвет задаёт родитель (font-size, color)
-const PATHS: Record<IconName, (string | IconPart)[]> = {
+const LUCIDE = {
+  calendar: CalendarDays,
+  chevronDown: ChevronDown,
+  chevronLeft: ChevronLeft,
+  chevronRight: ChevronRight,
+  chevronUp: ChevronUp,
+  shuffle: Shuffle,
+}
+
+function isLucideName(name: IconName): name is keyof typeof LUCIDE {
+  return name in LUCIDE
+}
+
+const libraryIcon = computed(() =>
+  isLucideName(props.name) ? LUCIDE[props.name] : undefined,
+)
+
+const PATHS: Record<
+  Exclude<IconName, keyof typeof LUCIDE>,
+  (string | IconPart)[]
+> = {
   // Та же геометрия, что у AppLoader. Шнурок первым: его кончик прячется под
   // кромку абажура. Ножка доходит до середины площадки, иначе на тонкой линии
   // они расходятся
@@ -72,9 +103,6 @@ const PATHS: Record<IconName, (string | IconPart)[]> = {
     'm8.5 2.5 3.5 3 3.5-3M8 21.5h8',
   ],
   about: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z', 'M12 11v5.5M12 7.5h.01'],
-  chevronLeft: ['m15 5-7 7 7 7'],
-  chevronRight: ['m9 5 7 7-7 7'],
-  chevronDown: ['m6 9 6 6 6-6'],
   recent: [
     'M3.5 12a8.5 8.5 0 1 0 2.6-6.1L3.5 8.5',
     'M3.5 3.5v5h5M12 7.5V12l3 2',
@@ -155,14 +183,23 @@ const PATHS: Record<IconName, (string | IconPart)[]> = {
 const filled = computed(() => props.name === 'play' || props.name === 'pause')
 
 const parts = computed<IconPart[]>(() =>
-  PATHS[props.name].map(part =>
-    typeof part === 'string' ? { d: part } : part,
-  ),
+  isLucideName(props.name)
+    ? []
+    : PATHS[props.name].map(part =>
+        typeof part === 'string' ? { d: part } : part,
+      ),
 )
 </script>
 
 <template>
+  <component
+    :is="libraryIcon"
+    v-if="libraryIcon"
+    class="icon"
+    aria-hidden="true"
+  />
   <svg
+    v-else
     class="icon"
     viewBox="0 0 24 24"
     :fill="filled ? 'currentColor' : 'none'"

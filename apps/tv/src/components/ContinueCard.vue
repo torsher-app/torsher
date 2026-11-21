@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import type { ContinueCard } from '@torsher/api-client'
+import type { ContinueCard, MineCycle } from '@torsher/api-client'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { continueSnapshot } from '../diagnostics/continue.ts'
 import { useImageError } from '../composables/useImageError.ts'
 import { useResumeLabels } from '../composables/useResumeLabels.ts'
 import { watchedShare } from '../lib/continue.ts'
+import type { ContinueState } from '../lib/minePersonal.ts'
 import { openTitleActions } from '../titleActions.ts'
 import AppIcon from './AppIcon.vue'
 import ProgressTrack from './ProgressTrack.vue'
@@ -13,6 +14,8 @@ import ProgressTrack from './ProgressTrack.vue'
 const props = withDefaults(
   defineProps<{
     item: ContinueCard
+    continuationState?: ContinueState
+    cycle?: MineCycle | null
     // Далёкие от фокуса ряды не держат картинки в памяти ТВ
     loadImage?: boolean
   }>(),
@@ -57,6 +60,12 @@ function openActions() {
     title: props.item.title,
     kind: props.item.kind,
     canOpenTitle: true,
+    continuation: {
+      state: props.continuationState ?? 'normal',
+      cycleId: props.cycle?.id ?? props.item.cycleId,
+      cycleState:
+        props.cycle?.state ?? (props.item.cycleId ? 'active' : undefined),
+    },
   })
 }
 
@@ -101,7 +110,8 @@ const share = computed(() => watchedShare(props.item))
       <span class="card__ring" />
     </span>
     <span class="continue-card__title">{{ item.title }}</span>
-    <span class="continue-card__meta">{{ resumeLine(item) }}</span>
+    <span class="continue-card__meta">{{ item.cycleId ? `${t("mine.preview.diary.rewatch")} · ` : ""
+    }}{{ resumeLine(item) }}</span>
   </button>
 </template>
 

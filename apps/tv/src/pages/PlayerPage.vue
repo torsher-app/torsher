@@ -111,6 +111,7 @@ import {
   automaticEpisodeRoute,
   episodeCode,
   libraryRoute,
+  withPlaybackCycle,
 } from '../lib/continue.ts'
 import {
   LOADER_DELAY_MS,
@@ -124,6 +125,12 @@ import { attachNativeVideo } from '../platform/nativeVideo.ts'
 import { heardStudio, unconfirmedStudio } from '../lib/tracks.ts'
 import { lacksSources } from '../serverSources.ts'
 import { session, updatePlayerSettings } from '../session.ts'
+import type { ViewingRestart } from '../lib/viewingRestart.ts'
+import {
+  restartScope,
+  stageViewingRestart,
+  viewingRestartFor,
+} from '../lib/viewingRestart.ts'
 
 const props = defineProps<{
   // Файл раздачи — `torrentId` и `fileIndex`, файл библиотеки — `mediaFileId`
@@ -135,6 +142,8 @@ const props = defineProps<{
   season?: string
   episode?: string
   start?: string
+  restartRequest?: string
+  cycleId?: string
   // Озвучка, которую слушали в прошлой раздаче: после смены раздачи
   voice?: string
   automatic?: AutomaticPlayback
@@ -148,14 +157,25 @@ const router = useRouter()
 const diagnosticContext = currentDiagnosticContext()
 const focus = useFocus()
 const isLibrary = !!props.mediaFileId
+const playbackTitle = titleRefOf(props.titleId, props.season, props.episode)
+const profileId = session.profile?.id
+const viewingScope
+  = profileId && playbackTitle
+    ? restartScope(profileId, playbackTitle, props.cycleId)
+    : undefined
+const historyEntry = JSON.stringify([
+  router.currentRoute.value.path,
+  router.options.history.state.position,
+])
 const player = usePlayback(
   props.mediaFileId
     ? { mediaFileId: props.mediaFileId }
     : { torrentId: props.torrentId!, fileIndex: Number(props.fileIndex) },
-  titleRefOf(props.titleId, props.season, props.episode),
+  playbackTitle,
   props.voice,
   diagnosticContext,
-  session.profile?.id,
+  profileId,
+  props.cycleId,
 )
 const { playback, stats } = player
 // Пиры и скорость — только у раздачи: файл библиотеки играется с диска
@@ -271,6 +291,8 @@ const slow = ref(false)
 
 let startAt = 0
 let savedAt = 0
+let viewingBaseline: number | undefined
+let observedAdvance = false
 let clockTimer: ReturnType<typeof setInterval> | undefined
 let offKey: (() => void) | undefined
 // Поток хоть раз ставился в видео: повтор продолжает его с места зрителя, а
@@ -304,6 +326,7 @@ let metadataTimer: ReturnType<typeof setTimeout> | undefined
 // Дорожки, с которыми запрошен перезапуск: если он сорвался, повтор берёт их,
 // а не прежние из сессии
 let requested: PlaybackRestart | undefined
+let requestedViewingRestart: ViewingRestart | undefined
 
 // Сторож прогресса: состояние с прошлого тика
 let armed = false
@@ -575,6 +598,16 @@ function holdError() {
 // Тот же отказ, пока ошибку ещё держали: экран не менялся, и отклик —
 // тряска кнопки «Повторить»
 const retryRejections = ref(0)
+
+watch(
+  () => player.viewingConflict?.value,
+  (conflict) => {
+    if (conflict) {
+      hls.detach()
+      video.value?.pause()
+    }
+  },
+)
 
 watch(
   () => player.status.value,
@@ -977,7 +1010,14 @@ function save(
   reason:
     'exit' | 'next' | 'source_switch' | 'pause' | 'checkpoint' = 'checkpoint',
   context: DiagnosticContext = diagnosticContext,
-  checkpoint = checkpointSession(),
+  checkpoint?: ReturnType<typeof player.captureCheckpoint>,
+  kind: NonNullable<
+    ReturnType<typeof player.captureCheckpoint>['viewing']
+  >['kind'] = reason === 'source_switch' || reason === 'pause'
+    ? reason
+    : reason === 'exit' || reason === 'next'
+      ? 'stop'
+      : 'pause',
 ) {
   if (
     !awaitingPicture()
@@ -988,18 +1028,30 @@ function save(
       knownDuration.value,
       reason,
       context,
-      checkpoint,
+      checkpoint ?? checkpointSession(kind),
     )
   }
 
   return Promise.resolve()
 }
 
-function checkpointSession() {
-  return {
-    sessionId: playback.value?.sessionId,
-    appliedAudioStream: tracks.appliedAudioStream(hasNativePlayer),
-  }
+function checkpointSession(
+  kind: NonNullable<
+    ReturnType<typeof player.captureCheckpoint>['viewing']
+  >['kind'],
+) {
+  // An uncommitted timeline preview is useful as a resume position, but
+  // cannot provide evidence that playback reached its suggested target.
+  const event = osd.scrub.value ? 'seek' : kind
+  return player.captureCheckpoint(
+    event,
+    tracks.appliedAudioStream(hasNativePlayer),
+  )
+}
+
+function resetViewingSamples() {
+  viewingBaseline = undefined
+  observedAdvance = false
 }
 
 function automaticContext(): AutomaticPlayback {
@@ -1120,12 +1172,15 @@ async function switchTo(
 
   void router.replace(
     diagnosticRoute(
-      automaticEpisodeRoute(
-        title,
-        file,
-        props.torrentId,
-        automaticContext(),
-        voice,
+      withPlaybackCycle(
+        automaticEpisodeRoute(
+          title,
+          file,
+          props.torrentId,
+          automaticContext(),
+          voice,
+        ),
+        props.cycleId,
       ),
       context,
     ),
@@ -1203,6 +1258,7 @@ async function switchSource(candidate: SourceCandidate, choice: SourceChoice) {
       season: props.season,
       episode: props.episode,
       candidate: candidate.id,
+      cycleId: props.cycleId,
       q: choice.query,
       voice: heardStudio(tracks.audioTrack.value, choice.playingVoice),
     },
@@ -1236,11 +1292,16 @@ async function switchToLibrary(
     return
   void router.replace(
     diagnosticRoute(
-      libraryRoute(
-        fileId,
-        { id: props.titleId, ...title },
-        automatic,
-        automatic ? heardStudio(tracks.audioTrack.value, undefined) : undefined,
+      withPlaybackCycle(
+        libraryRoute(
+          fileId,
+          { id: props.titleId, ...title },
+          automatic,
+          automatic
+            ? heardStudio(tracks.audioTrack.value, undefined)
+            : undefined,
+        ),
+        props.cycleId,
       ),
       context,
     ),
@@ -1248,7 +1309,7 @@ async function switchToLibrary(
 }
 
 function exit() {
-  const checkpoint = checkpointSession()
+  const checkpoint = checkpointSession('stop')
   backDiagnostic('exit')
   playerSummary('exit')
   launch++
@@ -1313,6 +1374,13 @@ function onSeeked() {
   )
   pendingSeek = undefined
 }
+
+function onSeeking() {
+  if (pendingSeek)
+    return
+  resetViewingSamples()
+  save('checkpoint', diagnosticContext, undefined, 'seek')
+}
 function seekTo(
   seconds: number,
   trigger: 'remote' | 'pointer' | 'automatic' = 'remote',
@@ -1333,12 +1401,21 @@ function seekTo(
 
   if (target < knownDuration.value - 1)
     ended.value = false
-  save()
+  resetViewingSamples()
+  save('checkpoint', diagnosticContext, undefined, 'seek')
 }
 
 // Кнопка пропадает из-под фокуса: он уходит на таймлайн
 function playFromStart() {
-  seekTo(0)
+  if (playback.value?.viewing && viewingScope) {
+    void restartWith(
+      { ...tracks.selection(), startPosition: 0 },
+      stageViewingRestart(viewingScope, historyEntry),
+    )
+  }
+  else {
+    seekTo(0)
+  }
   void nextTick(() => focus.activate('player-timeline'))
 }
 
@@ -1524,6 +1601,8 @@ async function begin(from: number) {
 
   if (!el || !current?.streamUrl)
     return
+  pendingSeek = undefined
+  resetViewingSamples()
   tracks.resetAppliedAudio()
 
   // Свёрнутое приложение ставит паузу и на остановленном видео, без события
@@ -1629,13 +1708,14 @@ function relaunch() {
     return
 
   if (begun)
-    void restartWith(requested ?? tracks.selection())
+    void restartWith(requested ?? tracks.selection(), requestedViewingRestart)
   else void start()
 }
 
 /** Остановить поток до нового: позиция сохраняется до отключения hls.js */
 function holdStream() {
-  save()
+  resetViewingSamples()
+  save('checkpoint', diagnosticContext, undefined, 'source_switch')
   // Не снимается при ошибке нового старта: при выходе остаётся позиция,
   // сохранённая выше, а не 0 от отцепленного видео
   restarting.value = true
@@ -1656,16 +1736,23 @@ function holdStream() {
  * Озвучка или субтитры, которые плеер не переключит сам, и повтор после
  * сбоя: новый поток с этими дорожками с текущего места
  */
-async function restartWith(change: PlaybackRestart) {
+async function restartWith(
+  change: PlaybackRestart,
+  restartViewing?: ViewingRestart,
+) {
   if (!restarting.value)
     keepPaused = viewerPaused
   const run = ++launch
-  const at = resumeAt()
+  const at = change.startPosition ?? resumeAt()
 
   requested = change
+  requestedViewingRestart = restartViewing
   reloadArt()
   holdStream()
-  const startup = player.start({ ...change, startPosition: at })
+  const startup = player.start(
+    { ...change, startPosition: at },
+    restartViewing,
+  )
   // Проба тоже может ждать пиров: статистика нужна до playback.ready.
   // start() уже сменил generation, поэтому опрос принадлежит новой попытке.
   startStats()
@@ -1676,6 +1763,7 @@ async function restartWith(change: PlaybackRestart) {
 
   if (outcome === 'ready') {
     requested = undefined
+    requestedViewingRestart = undefined
     await begin(at)
   }
   else if (outcome === 'retry') {
@@ -1998,7 +2086,7 @@ function onWaiting() {
 }
 
 function onPause() {
-  if (holding)
+  if (holding || player.viewingConflict?.value)
     return
 
   // Паузу при перезапуске ставит сам плеер, конец файла ставит её перед
@@ -2020,7 +2108,7 @@ function onTimeUpdate() {
   const el = video.value
 
   // Teardown can queue media events on a detached video after the ref is cleared.
-  if (leaving || !el)
+  if (leaving || !el || player.viewingConflict?.value)
     return
 
   // До метаданных `currentTime` нового потока — 0, а не позиция
@@ -2048,9 +2136,26 @@ function onTimeUpdate() {
     Number.isFinite(knownDuration.value) ? knownDuration.value : Infinity,
   )
 
-  if (Math.abs(el.currentTime - savedAt) >= SAVE_EVERY_S) {
+  if (
+    el.paused
+    || el.seeking
+    || pendingSeek
+    || stalled.value
+    || osd.scrub.value
+  ) {
+    return
+  }
+
+  const first = playback.value?.viewing && viewingBaseline === undefined
+  const advance
+    = viewingBaseline !== undefined
+      && position.value > viewingBaseline
+      && !observedAdvance
+  if (first || advance || Math.abs(el.currentTime - savedAt) >= SAVE_EVERY_S) {
     savedAt = el.currentTime
-    save()
+    viewingBaseline = position.value
+    observedAdvance ||= advance
+    save('checkpoint', diagnosticContext, undefined, 'playback')
   }
 }
 
@@ -2155,6 +2260,11 @@ function onEnded() {
   }
 
   ended.value = true
+  position.value = Math.min(
+    hls.sourceTime(el.currentTime),
+    Number.isFinite(knownDuration.value) ? knownDuration.value : Infinity,
+  )
+  save('checkpoint', diagnosticContext, undefined, 'stop')
 
   if (upNext.value && playerSettings.value.autoNext && !upNextDismissed.value)
     void playNext('ended')
@@ -2297,6 +2407,16 @@ function chooseQuality(choice: string) {
   }
 }
 
+const initialRestart = viewingScope
+  ? viewingRestartFor(viewingScope, props.restartRequest, historyEntry)
+  : undefined
+let openingRestart = initialRestart?.consumed ? undefined : initialRestart
+let startFromBeginning
+  = !!openingRestart
+    || (props.start === '0'
+      && !props.restartRequest
+      && initialRestart?.consumed !== true)
+
 async function start() {
   resetBack()
   const run = ++launch
@@ -2318,15 +2438,21 @@ async function start() {
   }
   if (run !== launch || leaving)
     return
+  const fromBeginning = startFromBeginning && !returnedPlayback
   const startup = player.start(
     returnedPlayback
       ? { startPosition: returnedPlayback.position }
-      : props.start === '0'
+      : fromBeginning
         ? { startPosition: 0 }
         : undefined,
+    fromBeginning ? openingRestart : undefined,
   )
   startStats()
   const outcome = await startup
+  if (outcome === 'ready') {
+    startFromBeginning = false
+    openingRestart = undefined
+  }
 
   if (run !== launch || leaving)
     return
@@ -2343,7 +2469,7 @@ async function start() {
   // Сервер не даёт позицию в самом начале и в хвосте файла: там с начала
   const from
     = returnedPlayback?.position
-      ?? (props.start === '0' ? 0 : (playback.value?.startPosition ?? 0))
+      ?? (fromBeginning ? 0 : (playback.value?.startPosition ?? 0))
 
   fromStart.value = from > 0
   diagnostic(
@@ -2425,7 +2551,7 @@ onBeforeUnmount(() => {
   playerSummary('unmounted')
   consent.cancel()
   if (!exiting)
-    save()
+    save('checkpoint', diagnosticContext, undefined, 'stop')
   offKey?.()
   clearInterval(clockTimer)
   clearTimeout(retryTimer)
@@ -2464,6 +2590,7 @@ onBeforeUnmount(() => {
       @loadedmetadata="onLoadedMetadata"
       @play="onPlay"
       @playing="onPlaying"
+      @seeking="onSeeking"
       @seeked="onSeeked"
       @waiting="onWaiting"
       @pause="onPause"

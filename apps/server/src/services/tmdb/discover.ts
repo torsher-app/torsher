@@ -13,7 +13,7 @@ import { capitalized, listResultToCard } from './mappers.ts'
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const LIST_TTL_MS = DAY_MS
-const GENRES_TTL_MS = 7 * DAY_MS
+export const GENRES_TTL_MS = 7 * DAY_MS
 
 // Дальше TMDB страницы discover не отдаёт
 export const MAX_PAGES = 500
@@ -127,7 +127,7 @@ export function discoverRequest(
   return { path: `/discover/${spec.media}`, media: spec.media, params }
 }
 
-function cacheKey(path: string, params: Record<string, string>) {
+export function listCacheKey(path: string, params: Record<string, string>) {
   const query = new URLSearchParams(params)
 
   query.sort()
@@ -159,7 +159,7 @@ export async function discoverTitles(
     page: String(query.page),
   }
   const response = await withMetaCache(
-    cacheKey(request.path, params),
+    listCacheKey(request.path, params),
     LIST_TTL_MS,
     () => tmdbGet<TmdbPageResponse>(request.path, params),
   )

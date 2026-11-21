@@ -848,3 +848,280 @@ it('preserves an existing storage move across migration 0048', () => {
     sqlite.close()
   }
 })
+
+it('upgrades 0048 without fabricating history and versions every subsequent progress mutation', () => {
+  const index = journal.entries.findIndex(
+    entry => entry.tag === '0049_mine-personal-space',
+  )
+  expect(index).toBeGreaterThan(0)
+  const sqlite = new Database(':memory:')
+  sqlite.pragma('foreign_keys = ON')
+  sqlite.pragma('recursive_triggers = ON')
+  try {
+    const db = drizzle(sqlite)
+    migrate(db, { migrationsFolder: migrationsBefore(index) })
+    sqlite.exec(`
+      INSERT INTO profiles (id,name,color,position,created_at)
+      VALUES ('viewer','Viewer','blue',0,0);
+      INSERT INTO torrents (id,info_hash,name,source,status,added_at)
+      VALUES ('source','hash','Example','magnet','ready',1);
+      INSERT INTO title_progress
+        (profile_id,title_id,season,episode,position,torrent_id,watched_at,last_played_at,updated_at)
+      VALUES ('viewer','tmdb:movie:1',0,0,95,'source',1,1,2);
+      INSERT INTO profile_titles (profile_id,title_id,rating,updated_at)
+      VALUES ('viewer','tmdb:movie:1',8,3);
+    `)
+    migrate(db, { migrationsFolder: MIGRATIONS_DIR })
+    for (const table of [
+      'diary_entries',
+      'diary_seen',
+      'cycle_playback_facts',
+    ]) {
+      expect(
+        sqlite.prepare(`SELECT count(*) FROM ${table}`).pluck().get(),
+      ).toBe(0)
+    }
+
+    const read = () =>
+      sqlite
+        .prepare(
+          'SELECT watched_at, updated_at, torrent_id, mutation_token FROM title_progress',
+        )
+        .get() as {
+        watched_at: number | null
+        updated_at: number
+        torrent_id: string | null
+        mutation_token: string | null
+      }
+    expect(read()).toEqual({
+      watched_at: 1,
+      updated_at: 2,
+      torrent_id: 'source',
+      mutation_token: null,
+    })
+    sqlite.exec('UPDATE title_progress SET watched_at = NULL')
+    const unwatch = read()
+    expect(unwatch).toMatchObject({
+      watched_at: null,
+      updated_at: 2,
+      mutation_token: expect.any(String),
+    })
+    sqlite.exec('UPDATE title_progress SET watched_at = NULL WHERE 0')
+    expect(read()).toEqual(unwatch)
+    sqlite.exec('UPDATE title_progress SET watched_at = NULL')
+    const repeated = read()
+    expect(repeated.mutation_token).not.toBe(unwatch.mutation_token)
+    sqlite.exec('DELETE FROM torrents WHERE id = \'source\'')
+    expect(read()).toMatchObject({ torrent_id: null, updated_at: 2 })
+    expect(read().mutation_token).not.toBe(repeated.mutation_token)
+
+    const mineToken = sqlite
+      .prepare('SELECT mutation_token FROM profile_titles')
+      .pluck()
+    expect(mineToken.get()).toBeNull()
+    sqlite.exec(`
+      DELETE FROM profile_titles;
+      INSERT INTO profile_titles (profile_id,title_id,rating,updated_at,mutation_token)
+      VALUES ('viewer','tmdb:movie:1',8,3,'copied-token');
+    `)
+    expect(mineToken.get()).toEqual(expect.any(String))
+    expect(mineToken.get()).not.toBe('copied-token')
+    const token = mineToken.get()
+    migrate(db, { migrationsFolder: MIGRATIONS_DIR })
+    expect(mineToken.get()).toBe(token)
+  }
+  finally {
+    sqlite.close()
+  }
+})
+
+it('keeps unresolved legacy import rows when adding viewing groups after 0050', () => {
+  const index = journal.entries.findIndex(
+    entry => entry.tag === '0051_import-viewing-history',
+  )
+  expect(index).toBeGreaterThan(0)
+  const sqlite = new Database(':memory:')
+  sqlite.pragma('foreign_keys = ON')
+  try {
+    const db = drizzle(sqlite)
+    migrate(db, { migrationsFolder: migrationsBefore(index) })
+    sqlite.exec(`
+      INSERT INTO profiles (id,name,color,position,created_at)
+      VALUES ('viewer','Viewer','blue',0,0);
+      INSERT INTO profile_imports (id,profile_id,sources,conflicts,summary,applied_at)
+      VALUES ('batch','viewer','imdb','keep','{"imported":0,"unchanged":0,"unmatched":1}',1);
+      INSERT INTO profile_import_rows
+        (id,import_id,profile_id,list,status,title,year,kind,rating,position)
+      VALUES ('row','batch','viewer','rating','notFound','Unresolved',2018,'movie',7,0);
+    `)
+    migrate(db, { migrationsFolder: MIGRATIONS_DIR })
+    migrate(db, { migrationsFolder: MIGRATIONS_DIR })
+    expect(
+      sqlite
+        .prepare('SELECT list,title,rating,viewings FROM profile_import_rows')
+        .get(),
+    ).toEqual({
+      list: 'rating',
+      title: 'Unresolved',
+      rating: 7,
+      viewings: null,
+    })
+  }
+  finally {
+    sqlite.close()
+  }
+})
+
+it('keeps older diary facts when adding matching proof after 0051', () => {
+  const index = journal.entries.findIndex(
+    entry => entry.tag === '0052_viewing-import-match-proof',
+  )
+  expect(index).toBeGreaterThan(0)
+  const sqlite = new Database(':memory:')
+  sqlite.pragma('foreign_keys = ON')
+  try {
+    const db = drizzle(sqlite)
+    migrate(db, { migrationsFolder: migrationsBefore(index) })
+    sqlite.exec(`
+      INSERT INTO profiles (id,name,color,position,created_at)
+      VALUES ('viewer','Viewer','blue',0,0);
+      INSERT INTO diary_entries
+        (profile_id,id,title_id,season,episode,precision,origin,origin_key,note,created_at,updated_at)
+      VALUES ('viewer','entry','tmdb:tv:9',1,1,'unknown','trakt','id:5','Kept note',1,1);
+    `)
+    const token = sqlite
+      .prepare('SELECT mutation_token FROM diary_entries')
+      .pluck()
+      .get()
+    migrate(db, { migrationsFolder: MIGRATIONS_DIR })
+    expect(
+      sqlite
+        .prepare(
+          'SELECT origin_key, note, mutation_token, source_match_key FROM diary_entries',
+        )
+        .get(),
+    ).toEqual({
+      origin_key: 'id:5',
+      note: 'Kept note',
+      mutation_token: token,
+      source_match_key: null,
+    })
+  }
+  finally {
+    sqlite.close()
+  }
+})
+
+it('preserves prior personal rows and adds local lifecycle and collection FK guards after 0052', () => {
+  const index = journal.entries.findIndex(
+    entry => entry.tag === '0053_mine-personal-operations',
+  )
+  expect(index).toBeGreaterThan(0)
+  const sqlite = new Database(':memory:')
+  sqlite.pragma('foreign_keys = ON')
+  try {
+    const db = drizzle(sqlite)
+    migrate(db, { migrationsFolder: migrationsBefore(index) })
+    sqlite.exec(`
+      INSERT INTO profiles (id,name,color,position,created_at)
+      VALUES ('viewer','Viewer','blue',0,0);
+      INSERT INTO rewatch_cycles
+        (profile_id,id,title_id,state,start_season,start_episode,target_season,target_episode,created_at,updated_at)
+      VALUES ('viewer','cycle','tmdb:tv:9','active',2,1,2,1,1,1);
+      INSERT INTO cycle_progress
+        (profile_id,cycle_id,season,episode,position,updated_at)
+      VALUES ('viewer','cycle',2,1,420,1);
+      INSERT INTO mine_profile_preferences (profile_id,start_section,updated_at)
+      VALUES ('viewer','overview',1);
+    `)
+    const tokenOf = (table: string) =>
+      sqlite.prepare(`SELECT mutation_token FROM ${table}`).pluck().get()
+    const beforeCycle = tokenOf('rewatch_cycles')
+    const beforePreferences = tokenOf('mine_profile_preferences')
+    migrate(db, { migrationsFolder: MIGRATIONS_DIR })
+    expect(tokenOf('rewatch_cycles')).toBe(beforeCycle)
+    expect(tokenOf('mine_profile_preferences')).toBe(beforePreferences)
+    expect(
+      sqlite.prepare('SELECT position, completed_at FROM cycle_progress').get(),
+    ).toEqual({ position: 420, completed_at: null })
+    const epoch = () =>
+      sqlite
+        .prepare('SELECT lifecycle_revision FROM rewatch_cycles')
+        .pluck()
+        .get()
+    expect(epoch()).toBe(0)
+    sqlite.exec(
+      'UPDATE rewatch_cycles SET state = \'paused\' WHERE id = \'cycle\'',
+    )
+    sqlite.exec(
+      'UPDATE rewatch_cycles SET state = \'active\' WHERE id = \'cycle\'',
+    )
+    expect(epoch()).toBe(2)
+    expect(tokenOf('rewatch_cycles')).not.toBe(beforeCycle)
+    sqlite.exec(`
+      INSERT INTO collections (id,name,name_key,created_at,updated_at) VALUES ('c','Saved','saved',1,1);
+      UPDATE mine_profile_preferences SET start_collection_id = 'c', start_section = 'continue';
+    `)
+    const selected = tokenOf('mine_profile_preferences')
+    sqlite.exec('DELETE FROM collections WHERE id = \'c\'')
+    expect(
+      sqlite
+        .prepare(
+          'SELECT start_section, start_collection_id FROM mine_profile_preferences',
+        )
+        .get(),
+    ).toEqual({ start_section: 'continue', start_collection_id: null })
+    expect(tokenOf('mine_profile_preferences')).not.toBe(selected)
+    expect(sqlite.pragma('foreign_key_check')).toEqual([])
+  }
+  finally {
+    sqlite.close()
+  }
+})
+
+it('preserves durable viewing bindings when adding legacy proof after 0053', () => {
+  const index = journal.entries.findIndex(
+    entry => entry.tag === '0054_legacy-viewing-proof',
+  )
+  expect(index).toBeGreaterThan(0)
+  const sqlite = new Database(':memory:')
+  sqlite.pragma('foreign_keys = ON')
+  try {
+    const db = drizzle(sqlite)
+    migrate(db, { migrationsFolder: migrationsBefore(index) })
+    sqlite.exec(`
+      INSERT INTO profiles (id,name,color,position,created_at)
+      VALUES ('viewer','Viewer','blue',0,0);
+      INSERT INTO viewing_attempts (id,profile_id,title_id,season,episode,cycle_key,generation,state)
+      VALUES ('attempt','viewer','tmdb:movie:9',0,0,'',2,'open');
+      INSERT INTO viewing_bindings (session_id,attempt_id,subject,client_id,player_id,source_revision,baseline)
+      VALUES ('session','attempt','subject','client','player','revision',850);
+      INSERT INTO viewing_start_receipts (profile_id,request_id,command,attempt_id)
+      VALUES ('viewer','request','command','attempt');
+    `)
+    migrate(db, { migrationsFolder: MIGRATIONS_DIR })
+    migrate(db, { migrationsFolder: MIGRATIONS_DIR })
+    expect(
+      sqlite
+        .prepare(
+          'SELECT generation, state, prior_legacy_completion, explicit_restart FROM viewing_attempts',
+        )
+        .get(),
+    ).toEqual({
+      generation: 2,
+      state: 'open',
+      prior_legacy_completion: 0,
+      explicit_restart: 0,
+    })
+    expect(
+      sqlite.prepare('SELECT attempt_id, baseline FROM viewing_bindings').get(),
+    ).toEqual({ attempt_id: 'attempt', baseline: 850 })
+    expect(
+      sqlite.prepare('SELECT attempt_id FROM viewing_start_receipts').get(),
+    ).toEqual({ attempt_id: 'attempt' })
+    expect(sqlite.pragma('foreign_key_check')).toEqual([])
+  }
+  finally {
+    sqlite.close()
+  }
+})

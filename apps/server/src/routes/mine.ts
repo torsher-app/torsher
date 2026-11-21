@@ -13,6 +13,7 @@ import {
   mineSections,
   withPosterRatings,
 } from '../services/mine/index.ts'
+import { minePersonalRoutes } from './minePersonal.ts'
 
 const guardResponses = {
   401: messageResponse,
@@ -21,6 +22,7 @@ const guardResponses = {
 /** Экран «Моё»: разделы профиля и их содержимое */
 export const mineRoutes: FastifyPluginAsyncZod = async (app) => {
   app.addHook('onRequest', requireViewer)
+  app.register(minePersonalRoutes, { prefix: '/v1' })
 
   app.get(
     '',

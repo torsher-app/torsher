@@ -16,11 +16,24 @@ import { episodeProgress, lastTitleProgress } from './progress.ts'
 import {
   excludedFromContinue,
   playedBefore,
+  recentWatchedTitles,
   resumeTarget,
   visibleResumeSource,
   watchedTitles,
 } from './resume.ts'
 import { allowedTitleIds } from '../profiles/access.ts'
+import { and, eq, ne, sql } from 'drizzle-orm'
+import { getDb } from '../../db/index.ts'
+import {
+  mineTitlePreferences,
+  rewatchCycles,
+  titleProgress,
+} from '../../db/schema.ts'
+import { cycleWire } from '../mine/cycles.ts'
+import { localTitleDetails } from '../mine/personalMetadata.ts'
+import { getProfile } from '../profiles/index.ts'
+import { cachedTitleAges } from '../tmdb/certification.ts'
+import { personalContinueCount } from '../mine/personal.ts'
 
 const ROW_LIMIT = 20
 // С запасом: часть тайтлов отсеется — досмотрены, брошены или без метаданных
@@ -80,33 +93,55 @@ async function continueCard(
   language: string,
   fresh?: FollowNewEpisode,
   context?: DiagnosticContext,
+  selectedCycle?: typeof rewatchCycles.$inferSelect,
+  cachedDetails?: NonNullable<ReturnType<typeof localTitleDetails>>,
 ): Promise<ContinueCard | undefined> {
   // Детали и сезоны — из кэша TMDB: без сети ряд собирается из него, а тайтл
   // без кэша пропускается
-  const details = await getTitle(titleId, language)
+  const details = cachedDetails ?? (await getTitle(titleId, language))
 
   if (!details)
     return undefined
 
-  const fromFollow = !!fresh && !lastTitleProgress(profileId, titleId)
-  const target = fromFollow
-    ? followTarget(profileId, titleId, fresh)
-    : await resumeTarget(
-        profileId,
-        titleId,
-        async () =>
-          details.seasons?.map(season => ({
-            number: season.number,
-            airedEpisodeCount: season.airedEpisodeCount,
-          })),
-        context,
-      )
+  const cycle = selectedCycle ? cycleWire(selectedCycle, language) : undefined
+  if (cycle && !cycle.resume)
+    return undefined
+
+  const fromFollow
+    = !cycle && !!fresh && !lastTitleProgress(profileId, titleId)
+  let target: CardTarget | undefined
+  if (cycle?.resume) {
+    const { season, episode, position, duration, next, source } = cycle.resume
+    target = {
+      season,
+      episode,
+      position,
+      duration,
+      next,
+      file:
+        source?.kind === 'torrent'
+          ? { torrentId: source.torrentId, fileIndex: source.fileIndex }
+          : null,
+      mediaFileId: source?.kind === 'library' ? source.mediaFileId : null,
+    }
+  }
+  else if (fromFollow && fresh) {
+    target = followTarget(profileId, titleId, fresh)
+  }
+  else {
+    target = await resumeTarget(
+      profileId,
+      titleId,
+      async () => details.seasons,
+      context,
+    )
+  }
 
   if (!target)
     return undefined
 
   const continuation
-    = target.season && target.episode
+    = !cycle && target.season && target.episode
       ? await continuationFor(
           profileId,
           titleId,
@@ -121,18 +156,22 @@ async function continueCard(
     target.file = continuation.preferredTorrent
 
   if (
-    !target.file
+    !cycle
+    && !target.file
     && fresh?.season === target.season
     && fresh.episode === target.episode
   ) {
     target.file = fresh.file ?? null
   }
 
-  const episode = target.season
-    ? (
-        await getSeason(titleId, target.season, language).catch(() => undefined)
-      )?.episodes.find(item => item.number === target.episode)
-    : undefined
+  const episode
+    = target.season !== null
+      ? (
+          await getSeason(titleId, target.season, language).catch(
+            () => undefined,
+          )
+        )?.episodes.find(item => item.number === target.episode)
+      : undefined
   const runtime = episode ? episode.runtime : details.runtime
   const backdrop = details.backdrop
     ? withImageSize(details.backdrop, CARD_BACKDROP_SIZE)
@@ -174,18 +213,19 @@ async function continueCard(
     originalTitle: details.originalTitle,
     year: details.year,
     poster: details.poster,
-    image: target.season
-      ? (episode?.still
-        ?? localTitleImage(
-          profileId,
-          titleId,
-          target.season,
-          target.episode,
-          target.mediaFileId,
-        )
-        ?? backdrop)
-      : (backdrop
-        ?? localTitleImage(profileId, titleId, null, null, target.mediaFileId)),
+    image:
+      target.season !== null
+        ? (episode?.still
+          ?? localTitleImage(
+            profileId,
+            titleId,
+            target.season,
+            target.episode,
+            target.mediaFileId,
+          )
+          ?? backdrop)
+        : (backdrop
+          ?? localTitleImage(profileId, titleId, null, null, target.mediaFileId)),
     season: target.season,
     episode: target.episode,
     episodeTitle: episode?.title || undefined,
@@ -198,6 +238,11 @@ async function continueCard(
       followUpdate: { season: fresh.season, episode: fresh.episode },
     }),
     ...(fromFollow && { followNewEpisode: true }),
+    ...(cycle?.resume && {
+      cycleId: cycle.id,
+      cycleVoiceStudio: cycle.resume.voiceStudio,
+      cycleVoiceType: cycle.resume.voiceType,
+    }),
   }
 }
 
@@ -230,6 +275,7 @@ export async function getContinueRow(
   mode: HomeMode,
   language: string,
   context?: DiagnosticContext,
+  personal = false,
 ): Promise<ContinueRow> {
   const excluded = excludedFromContinue(profileId)
   const type = MODE_TYPE[mode]
@@ -243,6 +289,18 @@ export async function getContinueRow(
     )
   }
   const since = new Date(Date.now() - CONTINUE_MAX_AGE_DAYS * DAY_MS)
+  if (personal) {
+    return personalContinueRow(
+      profileId,
+      mode,
+      language,
+      context,
+      since,
+      fits,
+      excluded,
+    )
+  }
+
   const fresh = freshFollowEpisodes(profileId).filter(([id]) => fits(id))
   const freshIds = new Set(fresh.map(([id]) => id))
   const ids = watchedTitles(profileId, CANDIDATE_LIMIT, since).filter(
@@ -280,5 +338,158 @@ export async function getContinueRow(
     title: 'home.rows.continue',
     items,
     ...(total !== undefined && { total }),
+  }
+}
+
+interface PersonalCandidate {
+  id: string
+  fresh?: FollowNewEpisode
+}
+
+async function personalContinueRow(
+  profileId: string,
+  mode: HomeMode,
+  language: string,
+  context: DiagnosticContext | undefined,
+  since: Date,
+  fits: (id: string) => boolean,
+  excluded: Set<string>,
+): Promise<ContinueRow> {
+  const db = getDb()
+  const blocked = new Set(
+    db
+      .select({ titleId: mineTitlePreferences.titleId })
+      .from(mineTitlePreferences)
+      .where(
+        and(
+          eq(mineTitlePreferences.profileId, profileId),
+          ne(mineTitlePreferences.continuation, 'normal'),
+        ),
+      )
+      .all()
+      .map(row => row.titleId),
+  )
+  const matches = (id: string) => fits(id) && !blocked.has(id)
+  const follows = freshFollowEpisodes(profileId).filter(([id]) => matches(id))
+  const freshIds = new Set(follows.map(([id]) => id))
+  const cycles = new Map(
+    db
+      .select()
+      .from(rewatchCycles)
+      .where(
+        and(
+          eq(rewatchCycles.profileId, profileId),
+          eq(rewatchCycles.state, 'active'),
+        ),
+      )
+      .all()
+      .filter(row => matches(row.titleId))
+      .map(row => [row.titleId, row]),
+  )
+
+  const excludedIds = JSON.stringify([
+    ...new Set([...blocked, ...freshIds, ...excluded]),
+  ])
+  const ordinary = recentWatchedTitles(
+    profileId,
+    since,
+    sql`
+    ${titleProgress.titleId} NOT IN (SELECT value FROM json_each(${excludedIds}))
+  `,
+  )
+    .all()
+    .filter(row => fits(row.titleId))
+  const recent = new Map(
+    ordinary.map(row => [row.titleId, row.updatedAt?.getTime() ?? 0]),
+  )
+  for (const cycle of cycles.values()) {
+    if (cycle.updatedAt >= since && !freshIds.has(cycle.titleId)) {
+      recent.set(
+        cycle.titleId,
+        Math.max(cycle.updatedAt.getTime(), recent.get(cycle.titleId) ?? 0),
+      )
+    }
+  }
+  const candidates: PersonalCandidate[] = [
+    ...follows.map(([id, fresh]) => ({ id, fresh })),
+    ...[...recent].sort((a, b) => b[1] - a[1]).map(([id]) => ({ id })),
+  ]
+
+  const items: ContinueCard[] = []
+  let coldBudget = CANDIDATE_LIMIT
+  // Following remains first. Failed ACL or catalog candidates leave room for
+  // the next batch. Cached candidates can fill a row after the network budget.
+  for (
+    let offset = 0;
+    offset < candidates.length && items.length < ROW_LIMIT;
+    offset += ROW_LIMIT
+  ) {
+    const batch = candidates.slice(offset, offset + ROW_LIMIT)
+    const limit = getProfile(profileId)?.ageLimit
+    if (limit === undefined)
+      break
+    const ages
+      = limit === null
+        ? new Map<string, number>()
+        : cachedTitleAges(batch.map(row => row.id))
+    const results = await Promise.allSettled(
+      batch.map(async ({ id, fresh }) => {
+        const age = ages.get(id)
+        if (limit !== null && age !== undefined && age >= limit)
+          return
+        const details = localTitleDetails(id, language)
+        const needsClassification = limit !== null && age === undefined
+        if (needsClassification || !details) {
+          if (coldBudget <= 0)
+            return
+          coldBudget--
+        }
+        if (
+          needsClassification
+          && !(await allowedTitleIds(profileId, [id])).has(id)
+        ) {
+          return
+        }
+        return continueCard(
+          profileId,
+          id,
+          language,
+          fresh,
+          context,
+          cycles.get(id),
+          details,
+        )
+      }),
+    )
+    for (const result of results) {
+      if (
+        result.status === 'fulfilled'
+        && result.value
+        && items.length < ROW_LIMIT
+      ) {
+        items.push(result.value)
+      }
+    }
+  }
+
+  const limit = getProfile(profileId)?.ageLimit
+  const currentAges
+    = limit === null ? undefined : cachedTitleAges(items.map(row => row.id))
+  const visible
+    = limit === null
+      ? items
+      : limit === undefined
+        ? []
+        : items.filter(
+            item => (currentAges?.get(item.id) ?? Infinity) < limit,
+          )
+  const kind = MODE_KIND[mode]
+  const available = kind ? personalContinueCount(profileId, language, kind) : 0
+  return {
+    id: 'continue',
+    kind: 'continue',
+    title: 'home.rows.continue',
+    items: visible,
+    ...(available > visible.length && { total: available }),
   }
 }

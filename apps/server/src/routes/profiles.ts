@@ -1,4 +1,5 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
+import { z } from 'zod'
 import type { Profile } from '../db/schema.ts'
 import { PROFILE_COOKIE, sessionCookieOptions } from '../config.ts'
 import { messageResponse } from '../dto/common.ts'
@@ -10,6 +11,7 @@ import {
   profile,
   profileIdParams,
   profileList,
+  profileMoveConflict,
   selectProfile,
   setProfilePin,
   updatePlayerSettings as updatePlayerSettingsBody,
@@ -36,6 +38,7 @@ import {
   updateProfile,
   verifyPin,
 } from '../services/profiles/index.ts'
+import { PersonalSpaceMoveConflictError } from '../services/transfer/personalSpace.ts'
 import { hashPassword } from '../utils/password.ts'
 
 const guardResponses = {
@@ -201,7 +204,7 @@ export const profileRoutes: FastifyPluginAsyncZod = async (app) => {
           200: messageResponse,
           400: messageResponse,
           404: messageResponse,
-          409: messageResponse,
+          409: z.union([messageResponse, profileMoveConflict]),
           ...guardResponses,
         },
       },
@@ -225,6 +228,11 @@ export const profileRoutes: FastifyPluginAsyncZod = async (app) => {
       catch (err) {
         if (err instanceof LastProfileError)
           return reply.code(409).send({ message: err.message })
+        if (err instanceof PersonalSpaceMoveConflictError) {
+          return reply
+            .code(409)
+            .send({ kind: 'personalMoveConflict', reason: err.reason })
+        }
 
         throw err
       }

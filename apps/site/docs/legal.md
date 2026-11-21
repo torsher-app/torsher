@@ -39,6 +39,7 @@ Movie and series information and images in the catalog come from [The Movie Data
 The <Ui k="about.title" /> screen in the panel and on the TV shows this notice next to the TMDB logo. The logo is smaller and less prominent than the Torsher mark, with its colors and proportions unchanged, as TMDB's terms require.
 
 - Your server keeps data and images from TMDB for no longer than 6 months, and tells browsers to keep cached images no longer than that either.
+- Your own viewing diary and notes are stored separately from this catalog cache. Recommendation requests can send title IDs that reflect your interests, but not diary dates or note text. See [Privacy](/privacy) for the data flow.
 - The image comes with an app key for TMDB. You can use your own key instead, and TMDB can withdraw the app key at any time. See [TMDB key](/docs/setup/tmdb).
 - TMDB's own terms: [API Terms of Use](https://www.themoviedb.org/api-terms-of-use).
 

@@ -1,0 +1,2 @@
+ALTER TABLE `viewing_attempts` ADD `prior_legacy_completion` integer DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE `viewing_attempts` ADD `explicit_restart` integer DEFAULT false NOT NULL;

@@ -1,4 +1,3 @@
-import type { ImportUndoEntry } from '../db/schema.ts'
 import { Buffer } from 'node:buffer'
 import { and, eq } from 'drizzle-orm'
 import {
@@ -11,18 +10,29 @@ import {
   vi,
 } from 'vitest'
 import { createApp } from '../app.ts'
-import { ACCESS_TOKEN_COOKIE } from '../config.ts'
+import { ACCESS_TOKEN_COOKIE, PROFILE_COOKIE } from '../config.ts'
 import { getDb, migrateDb } from '../db/index.ts'
 import {
+  cyclePlaybackFacts,
+  diaryEntries,
+  diarySeen,
+  followProfiles,
+  follows,
   metaCache,
   profileImports,
+  profiles,
   profileTitles,
   titleExternalIds,
   titleProgress,
   torrents,
   users,
+  watchStates,
 } from '../db/schema.ts'
+import { storeMetaCache } from '../services/tmdb/cache.ts'
 import { movie } from '../services/tmdb/fixtures/index.ts'
+import { recommendationList } from '../services/tmdb/recommendations.ts'
+import { recommendationSignals } from '../services/mine/recommendationSignals.ts'
+import { parseExportDocument } from '../services/transfer/document.ts'
 import { buildZip } from '../services/transfer/fixtures/zip.ts'
 import {
   importJobSettled,
@@ -127,10 +137,13 @@ const LETTERBOXD = buildZip({
     'Date,Name,Year,Letterboxd URI,Rating\n2020-01-01,Paper Lanterns,2018,https://boxd.it/a,3.5\n2020-01-02,Unknown Thing,1990,https://boxd.it/b,2\n2020-01-03,Moon Harbor,2011,https://boxd.it/c,4\n',
 })
 
-function upload(files: Array<{ name: string, data: string | Buffer }>) {
+function upload(
+  files: Array<{ name: string, data: string | Buffer }>,
+  target = profileId,
+) {
   return app.inject({
     method: 'POST',
-    url: `/api/profiles/${profileId}/imports`,
+    url: `/api/profiles/${target}/imports`,
     cookies: authed(),
     payload: {
       files: files.map(file => ({
@@ -141,8 +154,11 @@ function upload(files: Array<{ name: string, data: string | Buffer }>) {
   })
 }
 
-async function readyJob(files: Array<{ name: string, data: string | Buffer }>) {
-  const res = await upload(files)
+async function readyJob(
+  files: Array<{ name: string, data: string | Buffer }>,
+  target = profileId,
+) {
+  const res = await upload(files, target)
 
   expect(res.statusCode).toBe(202)
 
@@ -152,16 +168,16 @@ async function readyJob(files: Array<{ name: string, data: string | Buffer }>) {
 
   return (
     await app.inject({
-      url: `/api/profiles/${profileId}/imports/${id}`,
+      url: `/api/profiles/${target}/imports/${id}`,
       cookies: authed(),
     })
   ).json()
 }
 
-function apply(id: string, conflicts: string) {
+function apply(id: string, conflicts: string, target = profileId) {
   return app.inject({
     method: 'POST',
-    url: `/api/profiles/${profileId}/imports/${id}/apply`,
+    url: `/api/profiles/${target}/imports/${id}/apply`,
     cookies: authed(),
     payload: { conflicts },
   })
@@ -202,6 +218,10 @@ beforeEach(() => {
 
   const db = getDb()
 
+  db.delete(cyclePlaybackFacts).run()
+  db.delete(diaryEntries).run()
+  db.delete(diarySeen).run()
+  db.delete(follows).run()
   db.delete(titleProgress).run()
   db.delete(profileTitles).run()
   db.delete(profileImports).run()
@@ -603,45 +623,6 @@ describe('импорт title-level watched', () => {
       vi.useRealTimers()
     }
   })
-
-  it('старый undo без нового поля сохраняет current mark при восстановлении остальных полей', async () => {
-    const job = await readyJob([watchedFile()])
-    const applied = await apply(job.id, 'keep')
-    const db = getDb()
-    const row = db
-      .select()
-      .from(profileImports)
-      .where(eq(profileImports.id, applied.json().id))
-      .get()!
-    const undoRows = row.undo!.filter(
-      (item): item is ImportUndoEntry => !('table' in item),
-    )
-    for (const entry of undoRows) {
-      if (entry.before)
-        delete entry.before.watchedMarkedAt
-    }
-    db.update(profileImports)
-      .set({ undo: undoRows })
-      .where(eq(profileImports.id, row.id))
-      .run()
-    expect((await undo(row.id)).statusCode).toBe(200)
-    expect(ratingOf(WATCHED_MOVIE)).toMatchObject({
-      rating: 5,
-      watchedMarkedAt: expect.any(Date),
-    })
-    expect(
-      db
-        .select()
-        .from(titleProgress)
-        .where(
-          and(
-            eq(titleProgress.profileId, profileId),
-            eq(titleProgress.titleId, WATCHED_MOVIE),
-          ),
-        )
-        .all(),
-    ).toEqual([])
-  })
 })
 
 it('обычные правки списков и снятие оценки сохраняют marker-only строку и приоритет dropped', async () => {
@@ -664,4 +645,767 @@ it('обычные правки списков и снятие оценки со
   expect((await getTitleMine(profileId, WATCHED_SERIES, 'en-US')).status).toBe(
     'watched',
   )
+})
+
+describe('external viewing history', () => {
+  const annotated
+    = 'Date,Name,Year,Letterboxd URI,Rating,Rewatch,Note,Context,Watched Date'
+  const lanterns = 'tmdb:movie:9003'
+  const watchedAt = '2026-03-21T13:00:00.000Z'
+
+  function traktMovie(id: number, titleId = 9001) {
+    return {
+      id,
+      type: 'movie',
+      watched_at: watchedAt,
+      movie: { title: 'Synthetic movie', ids: { tmdb: titleId } },
+    }
+  }
+
+  function historyFile(items: unknown[]) {
+    return { name: 'history.json', data: JSON.stringify(items) }
+  }
+
+  async function imported(
+    files: Array<{ name: string, data: string | Buffer }>,
+    policy = 'keep',
+  ) {
+    const job = await readyJob(files)
+    const result = await apply(job.id, policy)
+    expect(result.statusCode).toBe(200)
+    return { job, result: result.json() }
+  }
+
+  function entries() {
+    return getDb()
+      .select()
+      .from(diaryEntries)
+      .where(eq(diaryEntries.profileId, profileId))
+      .all()
+  }
+
+  function seen() {
+    return getDb()
+      .select()
+      .from(diarySeen)
+      .where(eq(diarySeen.profileId, profileId))
+      .all()
+  }
+
+  async function pending(target = profileId) {
+    const response = await app.inject({
+      url: `/api/profiles/${target}/imports/unmatched?language=en-US`,
+      cookies: authed(),
+    })
+    expect(response.statusCode).toBe(200)
+    return response.json()
+  }
+
+  function manualMatch(rowId: string, titleId: string, target = profileId) {
+    return app.inject({
+      method: 'POST',
+      url: `/api/profiles/${target}/imports/unmatched/${rowId}`,
+      cookies: authed(),
+      payload: { titleId },
+    })
+  }
+
+  it('uses a Letterboxd watched-only import as a weak seed without inventing a date', async () => {
+    const target = getDb()
+      .insert(profiles)
+      .values({ name: 'Separate viewer', color: 'blue' })
+      .returning()
+      .get()
+    const job = await readyJob(
+      [
+        {
+          name: 'watched.csv',
+          data: 'Date,Name,Year,Letterboxd URI\n2024-03-04,Paper Lanterns,2018,https://letterboxd.com/film/paper-lanterns/\n',
+        },
+      ],
+      target.id,
+    )
+    expect((await apply(job.id, 'keep', target.id)).statusCode).toBe(200)
+    expect(
+      getDb()
+        .select()
+        .from(diaryEntries)
+        .where(eq(diaryEntries.profileId, target.id))
+        .all(),
+    ).toEqual([])
+    expect(
+      getDb()
+        .select()
+        .from(diarySeen)
+        .where(eq(diarySeen.profileId, target.id))
+        .all(),
+    ).toMatchObject([{ titleId: lanterns, season: 0, episode: 0 }])
+    expect(
+      recommendationSignals(target, 'en-US', 'UTC', Date.now()).seeds,
+    ).toEqual([
+      {
+        id: lanterns,
+        strength: 24,
+        at: 0,
+        rating: null,
+        favorite: false,
+        watched: true,
+      },
+    ])
+    storeMetaCache('tmdb:movie:9003:en-US:v3', {
+      ...movie,
+      id: 9003,
+      title: 'Paper Lanterns',
+    })
+    storeMetaCache(
+      recommendationList({ type: 'movie', tmdbId: 9003 }, 'en-US').key,
+      {
+        results: [
+          { id: 9195, title: 'Evening Signal', release_date: '2024-01-02' },
+        ],
+      },
+    )
+    const network = fetchMock.mock.calls.length
+    const result = await app.inject({
+      url: '/api/mine/v1/recommendations',
+      query: { expectedProfileId: target.id, refresh: 'poll' },
+      cookies: { ...authed(), [PROFILE_COOKIE]: target.id },
+    })
+    expect(result.statusCode, result.body).toBe(200)
+    expect(result.json()).toMatchObject({
+      hasPersonalSignals: true,
+      items: [
+        {
+          card: { id: 'tmdb:movie:9195' },
+          reason: {
+            kind: 'watchedSeed',
+            titleId: lanterns,
+            title: 'Paper Lanterns',
+          },
+        },
+      ],
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(network)
+  })
+
+  it('keeps Letterboxd diary viewings separate from watched flags and explicit rating/watchlist edits', async () => {
+    const row
+      = '2024-03-04,Paper Lanterns,2018,https://letterboxd.com/film/paper-lanterns/,,Yes,Own note,Balcony,2024-03-03'
+    const diary = `${annotated}\n${row}\n${row}\n`
+    const archive = buildZip({
+      'diary.csv': diary,
+      'watched.csv':
+        'Date,Name,Year,Letterboxd URI\n2024-03-04,Paper Lanterns,2018,https://letterboxd.com/film/paper-lanterns/\n',
+    })
+    const db = getDb()
+    updateMine(profileId, lanterns, { watchlist: true })
+    const follow = db
+      .insert(follows)
+      .values({
+        titleId: lanterns,
+        kind: 'movie',
+        state: 'active',
+        startSeason: 0,
+        startEpisode: 0,
+        requireRussian: false,
+        waitHours: 1,
+      })
+      .returning()
+      .get()
+    db.insert(followProfiles).values({ followId: follow.id, profileId }).run()
+    const ref = { profileId, titleId: lanterns, season: 0, episode: 0 }
+    db.insert(titleProgress)
+      .values({
+        ...ref,
+        position: 10,
+        duration: 200,
+        voiceStudio: 'Existing choice',
+        mediaFileId: 'fixture-cursor',
+      })
+      .run()
+    const progress = getTitleProgress(ref)
+    const priorMine = ratingOf(lanterns)
+
+    const { job, result } = await imported([
+      { name: 'letterboxd.zip', data: archive },
+      {
+        name: 'ratings-movies.json',
+        data: JSON.stringify([
+          { ...traktMovie(2), watched_at: undefined, rating: 8 },
+        ]),
+      },
+      {
+        name: 'watchlist.json',
+        data: JSON.stringify([
+          {
+            ...traktMovie(2, 9004),
+            watched_at: undefined,
+            listed_at: watchedAt,
+          },
+        ]),
+      },
+    ])
+
+    expect(job.preview.ratings.conflicts).toBe(1)
+    expect(job.preview.history).toEqual({
+      new: 2,
+      same: 0,
+      seen: { new: 1, same: 0 },
+      skipped: 0,
+    })
+    expect(result.history).toEqual(job.preview.history)
+    expect(entries()).toHaveLength(2)
+    expect(entries()[0]).toMatchObject({
+      titleId: lanterns,
+      precision: 'day',
+      day: '2024-03-03',
+      instant: null,
+      note: 'Own note',
+      viewingContext: 'Balcony',
+      rewatch: true,
+    })
+    expect(new Set(entries().map(row => row.originKey)).size).toBe(2)
+    expect(seen()).toEqual([
+      expect.objectContaining({ titleId: lanterns, season: 0, episode: 0 }),
+    ])
+    expect(getTitleProgress(ref)).toEqual(progress)
+    expect(ratingOf(lanterns)).toEqual(priorMine)
+    expect(ratingOf(WATCHED_MOVIE)?.rating).toBe(5)
+    expect(ratingOf('tmdb:movie:9004')?.watchlistAt).toBeInstanceOf(Date)
+    expect(
+      db.select().from(follows).where(eq(follows.id, follow.id)).get(),
+    ).toEqual(follow)
+    expect(
+      db
+        .select()
+        .from(watchStates)
+        .where(eq(watchStates.profileId, profileId))
+        .all(),
+    ).toEqual([])
+    expect(
+      db
+        .select()
+        .from(cyclePlaybackFacts)
+        .where(eq(cyclePlaybackFacts.profileId, profileId))
+        .all(),
+    ).toEqual([])
+
+    expect((await apply(job.id, 'keep')).statusCode).toBe(404)
+    const local = entries()[0]!
+    db.update(diaryEntries)
+      .set({ note: 'Local edit', day: '2024-03-02' })
+      .where(
+        and(
+          eq(diaryEntries.profileId, profileId),
+          eq(diaryEntries.id, local.id),
+        ),
+      )
+      .run()
+    const afterEdit = entries()
+    const seenAfterEdit = seen()
+    const replay = await imported([
+      {
+        name: 'renamed-diary.csv',
+        data: diary
+          .replaceAll('Own note', 'Edited in export')
+          .replaceAll(',,Yes', ',3,Yes'),
+      },
+    ])
+    expect(replay.result.history).toMatchObject({
+      new: 0,
+      same: 2,
+      skipped: 0,
+    })
+    expect(entries()).toEqual(afterEdit)
+    expect(seen()).toEqual(seenAfterEdit)
+  })
+
+  it('imports Trakt events and whole-show seen separately, then round-trips exact facts through native v2', async () => {
+    const movie = JSON.stringify({ ...traktMovie(1), notes: 'Own Trakt note' })
+    const data = `[${movie.replace('"id":1', '"id":9007199254740992')},
+      ${movie.replace('"id":1', '"id":9007199254740993')},
+      {"id":9223372036854775807,"type":"episode","episode":{"season":0,"number":2,"ids":{"tmdb":9942}},"show":{"title":"Synthetic Ward","ids":{"tmdb":9002}}},
+      {"type":"show","show":{"title":"Synthetic Ward","ids":{"tmdb":9002}},"plays":15,"last_watched_at":"2026-03-22T13:00:00Z"}]`
+    const file = { name: 'history-2.json', data }
+    const { result } = await imported([
+      file,
+      { ...file, name: 'history-copy.json' },
+    ])
+    expect(result.history).toEqual({
+      new: 3,
+      same: 0,
+      seen: { new: 3, same: 0 },
+      skipped: 0,
+    })
+    expect(
+      entries()
+        .map(row => [
+          row.originKey,
+          row.titleId,
+          row.season,
+          row.episode,
+          row.precision,
+          row.instant?.toISOString(),
+        ])
+        .sort(),
+    ).toEqual([
+      ['id:9007199254740992', WATCHED_MOVIE, 0, 0, 'instant', watchedAt],
+      ['id:9007199254740993', WATCHED_MOVIE, 0, 0, 'instant', watchedAt],
+      ['id:9223372036854775807', WATCHED_SERIES, 0, 2, 'unknown', undefined],
+    ])
+    expect(
+      seen()
+        .map(row => [row.titleId, row.season, row.episode])
+        .sort(),
+    ).toEqual([
+      [WATCHED_MOVIE, 0, 0],
+      [WATCHED_SERIES, 0, 0],
+      [WATCHED_SERIES, 0, 2],
+    ])
+    expect(entries().every(row => !row.rewatch)).toBe(true)
+
+    const exported = await app.inject({
+      method: 'POST',
+      url: '/api/transfer/export',
+      cookies: authed(),
+      payload: { scope: 'profile', profileId },
+    })
+    expect(exported.statusCode).toBe(200)
+    const document = parseExportDocument(exported.body)
+    if (document.version !== 2)
+      throw new Error('Expected v2 export')
+
+    expect(
+      document.personalSpace.diary.map(row => row.sourceMatchKey),
+    ).toEqual([
+      expect.stringMatching(/^[0-9a-f]{64}$/),
+      expect.stringMatching(/^[0-9a-f]{64}$/),
+      expect.stringMatching(/^[0-9a-f]{64}$/),
+    ])
+
+    const db = getDb()
+    const target = db
+      .insert(profiles)
+      .values({ name: 'Restore target', color: 'blue' })
+      .returning()
+      .get()
+      .id
+    try {
+      const job = await app.inject({
+        method: 'POST',
+        url: `/api/profiles/${target}/imports`,
+        cookies: authed(),
+        payload: {
+          files: [
+            {
+              name: 'native.json',
+              data: Buffer.from(exported.body).toString('base64'),
+            },
+          ],
+        },
+      })
+      expect(job.statusCode).toBe(202)
+      const restored = await app.inject({
+        method: 'POST',
+        url: `/api/profiles/${target}/imports/${job.json().id}/apply`,
+        cookies: authed(),
+        payload: { conflicts: 'newer' },
+      })
+      expect(restored.statusCode).toBe(200)
+      const again = await app.inject({
+        method: 'POST',
+        url: '/api/transfer/export',
+        cookies: authed(),
+        payload: { scope: 'profile', profileId: target },
+      })
+      expect(parseExportDocument(again.body)).toMatchObject({
+        personalSpace: document.personalSpace,
+      })
+    }
+    finally {
+      db.delete(profiles).where(eq(profiles.id, target)).run()
+    }
+  })
+
+  it('queues a group of unresolved viewings once and applies all related batches on manual match', async () => {
+    const row
+      = '2024-03-04,Unresolved Movie,2018,https://letterboxd.com/film/unresolved/,,,,,2024-03-03'
+    const diary = { name: 'diary.csv', data: `${annotated}\n${row}\n${row}\n` }
+    const first = await imported([diary])
+    expect(first.result.unmatched).toBe(1)
+    expect(
+      (await imported([{ ...diary, name: 'copy.csv' }])).result.unmatched,
+    ).toBe(0)
+    const later = await imported([
+      {
+        name: 'diary.csv',
+        data: `${annotated}\n${row.replace('2024-03-03', '2024-03-02')}\n`,
+      },
+    ])
+
+    const unresolved = await pending()
+    expect(unresolved.total).toBe(2)
+    expect(
+      unresolved.items
+        .map((row: { historyCount: number }) => row.historyCount)
+        .sort(),
+    ).toEqual([1, 2])
+    expect(
+      await manualMatch(unresolved.items[0].id, WATCHED_SERIES).then(res =>
+        res.json(),
+      ),
+    ).toEqual({ kind: 'historyMatchConflict', reason: 'titleKind' })
+    expect(
+      (await manualMatch(unresolved.items[0].id, WATCHED_MOVIE)).statusCode,
+    ).toBe(204)
+    expect(entries()).toHaveLength(3)
+    expect((await pending()).total).toBe(0)
+    expect((await imported([diary])).result).toMatchObject({
+      unmatched: 0,
+      history: { same: 2 },
+    })
+
+    expect((await undo(first.result.id)).statusCode).toBe(200)
+    expect((await undo(later.result.id)).statusCode).toBe(200)
+    expect(entries()).toHaveLength(3)
+    expect(seen()).toHaveLength(1)
+  })
+
+  it('reports a manual mapping conflict without deleting the unresolved group or overwriting the event', async () => {
+    const event = traktMovie(199)
+    const first = await imported([
+      historyFile([{ ...event, movie: { title: 'Still Unknown' } }]),
+    ])
+    expect(first.result.unmatched).toBe(1)
+    const second = await imported([historyFile([event])])
+    const firstSeen = seen()[0]!
+    const [unresolved] = (await pending()).items
+    const original = entries()
+
+    const conflict = await manualMatch(unresolved.id, lanterns)
+    expect(conflict.statusCode).toBe(409)
+    expect(conflict.json()).toEqual({
+      kind: 'historyMatchConflict',
+      reason: 'sourceIdentity',
+    })
+    expect((await pending()).total).toBe(1)
+    expect(entries()).toEqual(original)
+    expect((await manualMatch(unresolved.id, WATCHED_MOVIE)).statusCode).toBe(
+      204,
+    )
+    const [confirmed] = entries()
+    expect(entries()).toHaveLength(1)
+    expect(confirmed).toEqual({
+      ...original[0],
+      mutationToken: expect.any(String),
+      sourceMatchKey: expect.stringMatching(/^[0-9a-f]{64}$/),
+    })
+    expect(confirmed!.mutationToken).not.toBe(original[0]!.mutationToken)
+    expect(seen()[0]?.mutationToken).not.toBe(firstSeen.mutationToken)
+    expect((await pending()).total).toBe(0)
+    expect((await undo(second.result.id)).json()).toEqual({
+      kept: 2,
+      restored: 0,
+    })
+    expect(entries()).toEqual([confirmed])
+    expect(seen()).toHaveLength(1)
+
+    const replay = await imported([
+      historyFile([{ ...event, movie: { title: 'Still Unknown' } }]),
+    ])
+    expect(replay.result).toMatchObject({
+      unmatched: 0,
+      history: { same: 1, skipped: 0 },
+    })
+    expect(entries()).toEqual([confirmed])
+  })
+
+  function unknownEpisode(
+    id: number,
+    episode: number,
+    title = 'Unresolved series',
+  ) {
+    return {
+      id,
+      type: 'episode',
+      watched_at: watchedAt,
+      show: { title },
+      episode: { season: 1, number: episode },
+    }
+  }
+
+  it('moves a distinct origin with its own match proof when another entry has the same UUID', async () => {
+    await imported([
+      historyFile([
+        {
+          ...unknownEpisode(101, 1),
+          show: { title: 'Known series', ids: { tmdb: 9002 } },
+          note: 'Local event note',
+        },
+      ]),
+    ])
+    const [local] = entries()
+    const db = getDb()
+    const source = db
+      .insert(profiles)
+      .values({ name: 'Move source', color: 'blue' })
+      .returning()
+      .get()
+      .id
+    try {
+      const file = historyFile([
+        {
+          ...unknownEpisode(202, 1, 'Imported series'),
+          note: 'Source event note',
+        },
+      ])
+      const ready = await readyJob([file], source)
+      expect((await apply(ready.id, 'keep', source)).statusCode).toBe(200)
+      const [item] = (await pending(source)).items
+      expect(
+        (await manualMatch(item.id, WATCHED_SERIES, source)).statusCode,
+      ).toBe(204)
+
+      // Two independent profiles can legally use the same local UUID.
+      const sourceEntry = eq(diaryEntries.profileId, source)
+      db.update(diaryEntries).set({ id: local!.id }).where(sourceEntry).run()
+      const existing = db.select().from(diaryEntries).where(sourceEntry).get()!
+      expect(existing.sourceMatchKey).toEqual(expect.any(String))
+      expect(existing.sourceMatchKey).not.toBe(local!.sourceMatchKey)
+
+      const moved = await app.inject({
+        method: 'DELETE',
+        url: `/api/profiles/${source}?moveTo=${profileId}`,
+        cookies: authed(),
+      })
+      expect(moved.statusCode).toBe(200)
+      const matches = entries()
+      expect(matches).toHaveLength(2)
+      expect(matches.find(row => row.originKey === 'id:101')).toEqual(local)
+      const copied = matches.find(row => row.originKey === 'id:202')!
+      expect(copied).toEqual({
+        ...existing,
+        id: expect.any(String),
+        profileId,
+        mutationToken: expect.any(String),
+      })
+      expect(copied.id).not.toBe(local!.id)
+
+      const replay = await imported([file])
+      expect(replay.result).toMatchObject({
+        unmatched: 0,
+        history: { new: 0, same: 1, skipped: 0 },
+      })
+      expect(entries()).toEqual(matches)
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/transfer/export',
+        cookies: authed(),
+        payload: { scope: 'profile', profileId },
+      })
+      expect(response.statusCode).toBe(200)
+      expect(parseExportDocument(response.body)).toMatchObject({
+        personalSpace: {
+          diary: expect.arrayContaining([
+            expect.objectContaining({
+              id: local!.id,
+              originKey: 'id:101',
+              sourceMatchKey: local!.sourceMatchKey,
+              note: 'Local event note',
+            }),
+            expect.objectContaining({
+              id: copied.id,
+              originKey: 'id:202',
+              sourceMatchKey: existing.sourceMatchKey,
+              note: 'Source event note',
+            }),
+          ]),
+        },
+      })
+    }
+    finally {
+      db.delete(profiles).where(eq(profiles.id, source)).run()
+    }
+  })
+
+  it('uses both the recorded matching proof and episode coordinates for unresolved replays', async () => {
+    const original = unknownEpisode(77, 1)
+    await imported([historyFile([original])])
+    const row = (await pending()).items[0]
+    expect((await manualMatch(row.id, WATCHED_SERIES)).statusCode).toBe(204)
+    const previous = entries()
+    expect(previous[0]?.sourceMatchKey).toMatch(/^[0-9a-f]{64}$/)
+
+    const exact = await imported([historyFile([original])])
+    expect(exact.result).toMatchObject({
+      unmatched: 0,
+      history: { new: 0, same: 1, skipped: 0 },
+    })
+
+    for (const conflicting of [
+      unknownEpisode(77, 2),
+      unknownEpisode(77, 1, 'Another unresolved series'),
+    ]) {
+      const clash = await imported([historyFile([conflicting])])
+      expect(clash.job.preview.skipped).toBe(1)
+      expect(clash.result).toMatchObject({
+        unmatched: 0,
+        history: { new: 0, same: 0, skipped: 1 },
+      })
+    }
+    expect(entries()).toEqual(previous)
+    expect(seen()).toEqual([
+      expect.objectContaining({
+        titleId: WATCHED_SERIES,
+        season: 1,
+        episode: 1,
+      }),
+    ])
+    expect((await pending()).total).toBe(0)
+  })
+
+  it('does not merge a conflicting unresolved duplicate into a pending group', async () => {
+    const original = unknownEpisode(78, 1)
+    expect((await imported([historyFile([original])])).result.unmatched).toBe(
+      1,
+    )
+    const [row] = (await pending()).items
+
+    const exact = await imported([historyFile([original])])
+    expect(exact.result).toMatchObject({
+      unmatched: 0,
+      history: { new: 0, same: 0, skipped: 0 },
+    })
+    const anotherKind = {
+      id: 78,
+      type: 'movie',
+      movie: { title: 'Unresolved movie' },
+      watched_at: watchedAt,
+    }
+    for (const conflicting of [
+      unknownEpisode(78, 2),
+      unknownEpisode(78, 1, 'Another series'),
+      anotherKind,
+    ]) {
+      const clash = await imported([historyFile([conflicting])])
+      expect(clash.job.preview.skipped).toBe(1)
+      expect(clash.result).toMatchObject({
+        unmatched: 0,
+        history: { new: 0, same: 0, skipped: 1 },
+      })
+    }
+
+    expect((await pending()).items).toEqual([row])
+    expect((await manualMatch(row.id, WATCHED_SERIES)).statusCode).toBe(204)
+    expect(entries()).toEqual([
+      expect.objectContaining({
+        season: 1,
+        episode: 1,
+        titleId: WATCHED_SERIES,
+        originKey: 'id:78',
+      }),
+    ])
+  })
+
+  it('keeps the multiplicity across pages of one archive and makes replay a no-op', async () => {
+    const data = JSON.stringify([{ ...traktMovie(1), id: undefined }])
+    const archive = buildZip({
+      'Export/history-2.json': data,
+      'Export/history-1.json': data,
+    })
+    const first = await imported([{ name: 'first.zip', data: archive }])
+    expect(first.result.history).toMatchObject({ new: 2, same: 0 })
+    const previous = entries()
+    expect(previous).toHaveLength(2)
+    expect(seen()).toHaveLength(1)
+
+    const repacked = buildZip({
+      'Another/history-1.json': data,
+      'Another/history-2.json': data,
+    })
+    const replay = await imported([{ name: 'renamed.zip', data: repacked }])
+    expect(replay.result.history).toMatchObject({ new: 0, same: 2 })
+    expect(entries()).toEqual(previous)
+  })
+
+  it('does not add indistinguishable rows across independent history archives', async () => {
+    const data = JSON.stringify([{ ...traktMovie(1), id: undefined }])
+    const first = buildZip({ 'history-1.json': data })
+    const second = buildZip({ 'history-2.json': data })
+    const batch = await imported([
+      { name: 'first.zip', data: first },
+      { name: 'second.zip', data: second },
+    ])
+    expect(batch.result.history).toMatchObject({ new: 1, same: 0 })
+    expect(entries()).toHaveLength(1)
+    expect(seen()).toHaveLength(1)
+  })
+
+  it('keeps a mark in use by a later batch', async () => {
+    const first = await imported([historyFile([traktMovie(10)])])
+    const firstMark = seen()[0]!.mutationToken
+    await imported([historyFile([traktMovie(11)])])
+    const laterMark = seen()[0]!.mutationToken
+
+    expect(laterMark).not.toBe(firstMark)
+    expect((await undo(first.result.id)).json()).toEqual({
+      kept: 2,
+      restored: 0,
+    })
+    expect(entries()).toHaveLength(2)
+    expect(seen()[0]?.mutationToken).toBe(laterMark)
+  })
+
+  it.each(['note', 'unwatch', 'recreate'] as const)(
+    'preserves a group edited after import (%s) and rolls back an independent event',
+    async (change) => {
+      const db = getDb()
+      const applied = await imported([
+        historyFile([traktMovie(12), traktMovie(13, 9003)]),
+      ])
+      const current = entries().find(row => row.titleId === WATCHED_MOVIE)!
+      const ref = and(
+        eq(diaryEntries.profileId, profileId),
+        eq(diaryEntries.id, current.id),
+      )
+      if (change === 'unwatch') {
+        await markTitleWatched(profileId, WATCHED_MOVIE, false, 'en-US')
+      }
+      else if (change === 'note') {
+        db.update(diaryEntries).set({ note: 'Later note' }).where(ref).run()
+      }
+      else {
+        db.delete(diaryEntries).where(ref).run()
+        db.insert(diaryEntries).values(current).run()
+      }
+      const expected = db.select().from(diaryEntries).where(ref).get()
+      const undone = await undo(applied.result.id)
+
+      expect(undone.json()).toEqual({ kept: 2, restored: 2 })
+      expect(entries()).toEqual([expected])
+      expect(seen().map(row => row.titleId)).toEqual(
+        change === 'unwatch' ? [] : [WATCHED_MOVIE],
+      )
+      expect((await undo(applied.result.id)).statusCode).toBe(409)
+    },
+  )
+
+  it('does not apply cancelled history and ages out unresolved groups', async () => {
+    const file = historyFile([
+      { ...traktMovie(77), movie: { title: 'Unknown Film' } },
+    ])
+    const job = await readyJob([file])
+    const cancelled = await app.inject({
+      method: 'DELETE',
+      url: `/api/profiles/${profileId}/imports/${job.id}`,
+      cookies: authed(),
+    })
+    expect(cancelled.statusCode).toBe(204)
+    expect((await apply(job.id, 'keep')).statusCode).toBe(404)
+    expect(entries()).toEqual([])
+    await imported([file])
+    expect((await pending()).total).toBe(1)
+    purgeImports(Date.now() + 91 * 24 * 60 * 60 * 1000)
+    expect((await pending()).total).toBe(0)
+  })
 })

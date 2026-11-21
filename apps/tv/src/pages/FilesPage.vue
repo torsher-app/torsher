@@ -40,7 +40,12 @@ import {
   diagnosticPoll,
   diagnosticRoute,
 } from '../diagnostics/index.ts'
-import { playerRoute, withStartPosition } from '../lib/continue.ts'
+import {
+  matchesRestartTarget,
+  playerRoute,
+  withPlaybackCycle,
+  withStartPosition,
+} from '../lib/continue.ts'
 import {
   downloadPercent,
   isSelectable,
@@ -73,6 +78,8 @@ const props = defineProps<{
   season?: string
   episode?: string
   start?: string
+  restartRequest?: string
+  cycleId?: string
   // Пришли с «Скачать»: выбор файлов сразу включён, серии сезона отмечены
   download?: boolean
 }>()
@@ -352,14 +359,16 @@ function play(file: TitleFile, replace = false) {
     true,
   )
   const to = diagnosticRoute(
-    withStartPosition(
-      playerRoute(
-        { torrentId: props.torrentId, fileIndex: file.fileIndex },
-        { id: props.id, season: file.season, episode: file.episode },
+    withPlaybackCycle(
+      withStartPosition(
+        playerRoute(
+          { torrentId: props.torrentId, fileIndex: file.fileIndex },
+          { id: props.id, season: file.season, episode: file.episode },
+        ),
+        props.start === '0' && matchesRestartTarget(props, file),
+        props.restartRequest,
       ),
-      props.start === '0'
-      && String(file.season) === props.season
-      && String(file.episode) === props.episode,
+      props.cycleId,
     ),
     context,
   )

@@ -44,6 +44,7 @@ import {
 } from 'vitest'
 import { getDb, migrateDb } from '../../db/index.ts'
 import {
+  cyclePlaybackFacts,
   follows,
   libraries,
   libraryFolders,
@@ -124,6 +125,7 @@ beforeEach(async () => {
     maintenanceGroups,
     maintenanceRules,
     titleProgress,
+    cyclePlaybackFacts,
     profileTitles,
     mediaFiles,
     follows,
@@ -906,6 +908,115 @@ it('policy change after one confirmed unlink stops the remaining manifest', asyn
   expect(await retryMaintenanceOperation(op.id)).toBe(false)
   expect(await readFile(f.path, 'utf8')).toBe('test')
   expect(hasSuppressed(f.titleId, [f.episode])).toBe(true)
+})
+
+it.each([
+  ['playback', 'staged'],
+  ['unwatch', 'removed'],
+] as const)(
+  'does not continue %s changes in cycle eligibility after a %s path',
+  async (change, result) => {
+    const f = await fixture()
+    const stamp = new Date(now - 3 * DAY)
+    db.delete(titleProgress).where(eq(titleProgress.titleId, f.titleId)).run()
+    db.insert(cyclePlaybackFacts)
+      .values({
+        profileId,
+        titleId: f.titleId,
+        ...f.episode,
+        watchedAt: stamp,
+        lastPlayedAt: stamp,
+        updatedAt: stamp,
+      })
+      .run()
+    const unlink = vi.mocked(maintenanceEngine.unlink)
+    const original = unlink.getMockImplementation()!
+    unlink.mockImplementationOnce(async (id, index) => {
+      if (result === 'removed') {
+        await original(id, index)
+      }
+      else {
+        const detached = engineOps.get(id)!
+        detached.results[String(index)] = result
+        detached.state = 'deleting'
+      }
+      throw new Error('response_lost')
+    })
+    await mature()
+    const op = db.select().from(maintenanceOperations).get()!
+    expect(op.state).toBe('partial')
+    expect(Object.values(engineOps.get(op.id)!.results)).toEqual([result])
+    const remaining = op.manifest.paths.find(
+      (_, index) => engineOps.get(op.id)!.results[String(index)] !== 'removed',
+    )!
+    expect(await readFile(remaining.path, 'utf8')).toBe('test')
+
+    if (change === 'unwatch') {
+      const outcome = await app.inject({
+        method: 'PUT',
+        url: `/api/titles/${f.titleId}/watched`,
+        headers: { cookie },
+        payload: { watched: false },
+      })
+      expect(outcome.statusCode, outcome.body).toBe(200)
+      expect(db.select().from(cyclePlaybackFacts).get()?.watchedAt).toBeNull()
+    }
+    else {
+      db.update(cyclePlaybackFacts)
+        .set({
+          lastPlayedAt: new Date(now + DAY),
+          updatedAt: new Date(now + DAY),
+        })
+        .run()
+    }
+    expect(db.select().from(titleProgress).all()).toEqual([])
+    if (result === 'staged') {
+      vi.mocked(maintenanceEngine.cancel).mockImplementationOnce(async (id) => {
+        const detached = engineOps.get(id)!
+        detached.state = 'cancelled'
+        detached.results = {}
+        return structuredClone(detached)
+      })
+    }
+    expect(await retryMaintenanceOperation(op.id)).toBe(false)
+    expect(db.select().from(maintenanceOperations).get()).toMatchObject(
+      result === 'staged'
+        ? { state: 'cancelled' }
+        : { state: 'partial', error: 'policy_changed' },
+    )
+    expect(await readFile(remaining.path, 'utf8')).toBe('test')
+    expect(unlink).toHaveBeenCalledOnce()
+  },
+)
+
+it('restarts retention and the grace period on new real cycle activity', async () => {
+  const f = await fixture()
+  db.delete(titleProgress).where(eq(titleProgress.titleId, f.titleId)).run()
+  db.insert(cyclePlaybackFacts)
+    .values({
+      profileId,
+      titleId: f.titleId,
+      ...f.episode,
+      watchedAt: new Date(now - 3 * DAY),
+      lastPlayedAt: new Date(now - 3 * DAY),
+      updatedAt: new Date(now - 3 * DAY),
+    })
+    .run()
+  setMaintenanceExecution(true)
+  await runMaintenance(now)
+  expect(db.select().from(maintenanceGroups).get()?.eligibleSince).toEqual(
+    new Date(now),
+  )
+  db.update(cyclePlaybackFacts)
+    .set({ lastPlayedAt: new Date(now + DAY / 2) })
+    .run()
+  await runMaintenance(now + DAY)
+  expect(db.select().from(maintenanceGroups).get()?.eligibleSince).toBeNull()
+  await runMaintenance(now + DAY * 2)
+  expect(db.select().from(maintenanceGroups).get()?.eligibleSince).toEqual(
+    new Date(now + DAY * 2),
+  )
+  expect(maintenanceEngine.prepare).not.toHaveBeenCalled()
 })
 it('finalize failure keeps the fence after durable cleaned suppression and can be retried', async () => {
   const f = await fixture()

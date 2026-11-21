@@ -17,6 +17,8 @@ export interface ResumeLike {
   /** Новая серия «Следить»: её раздачу выбрал слежение */
   followNewEpisode?: boolean
   continuation?: Continuation
+  cycleId?: string
+  cycleVoiceStudio?: string | null
 }
 
 /** «S2E5»; у фильма — пусто */
@@ -188,14 +190,41 @@ export function automaticEpisodeRoute(
       )
 }
 
-/** Явное намерение запуска относится только к выбранной серии. */
+/** Явное намерение запуска относится только к выбранному фильму или серии. */
 export function withStartPosition(
   route: ScreenRoute,
   fromStart: boolean,
+  restartRequest?: string,
 ): ScreenRoute {
   return fromStart
-    ? { ...route, query: { ...route.query, start: '0' } }
+    ? {
+        ...route,
+        query: {
+          ...route.query,
+          start: '0',
+          ...(restartRequest && { restart: restartRequest }),
+        },
+      }
     : route
+}
+
+export function matchesRestartTarget(
+  request: { season?: string, episode?: string },
+  target: { season?: number | null, episode?: number | null },
+) {
+  if (request.season === undefined && request.episode === undefined)
+    return target.season == null && target.episode == null
+  return (
+    request.season === String(target.season)
+    && request.episode === String(target.episode)
+  )
+}
+
+export function withPlaybackCycle(
+  route: ScreenRoute,
+  cycleId?: string,
+): ScreenRoute {
+  return cycleId ? { ...route, query: { ...route.query, cycleId } } : route
 }
 
 /**
@@ -222,32 +251,39 @@ export function resumeRoute(
 
   const automatic = item.next && !item.position ? automaticPlayback : undefined
   if (item.file) {
-    return playerRoute(
-      item.file,
-      {
-        id: titleId,
-        season: item.season,
-        episode: item.episode,
-      },
-      undefined,
-      automatic,
+    return withPlaybackCycle(
+      playerRoute(
+        item.file,
+        {
+          id: titleId,
+          season: item.season,
+          episode: item.episode,
+        },
+        item.cycleVoiceStudio ?? undefined,
+        automatic,
+      ),
+      item.cycleId,
     )
   }
 
-  if (item.season && item.episode) {
-    return resolveRoute(
-      titleId,
-      item.season,
-      item.episode,
-      undefined,
-      automatic,
+  if (item.season !== null && item.episode !== null && item.episode > 0) {
+    return withPlaybackCycle(
+      resolveRoute(
+        titleId,
+        item.season,
+        item.episode,
+        undefined,
+        automatic,
+        item.cycleVoiceStudio ?? undefined,
+      ),
+      item.cycleId,
     )
   }
 
   if (item.followNewEpisode)
     return { path: `/title/${titleId}/play` }
 
-  return { path: `/title/${titleId}/sources` }
+  return withPlaybackCycle({ path: `/title/${titleId}/sources` }, item.cycleId)
 }
 
 /**

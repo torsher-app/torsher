@@ -1,5 +1,6 @@
 import { assertMaintenancePolicyChange } from '../libraryMaintenance/admission.ts'
 import type { PlayerSettings, Profile } from '../../db/schema.ts'
+import { movePersonalSpace } from '../transfer/personalSpace.ts'
 import { and, asc, desc, eq, inArray, lt, notExists, sql } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import {
@@ -175,13 +176,16 @@ export function deleteProfile(id: string, moveTo?: string) {
       throw new LastProfileError()
 
     if (moveTo) {
+      movePersonalSpace(id, moveTo)
+
       for (const row of tx
         .select()
         .from(titleProgress)
         .where(eq(titleProgress.profileId, id))
         .all()) {
+        const { mutationToken: _token, ...progress } = row
         tx.insert(titleProgress)
-          .values({ ...row, profileId: moveTo })
+          .values({ ...progress, profileId: moveTo })
           .onConflictDoUpdate({
             target: [
               titleProgress.profileId,
@@ -189,7 +193,7 @@ export function deleteProfile(id: string, moveTo?: string) {
               titleProgress.season,
               titleProgress.episode,
             ],
-            set: { ...row, profileId: moveTo },
+            set: { ...progress, profileId: moveTo },
             setWhere: lt(titleProgress.updatedAt, row.updatedAt),
           })
           .run()
