@@ -3980,6 +3980,7 @@
       },
       "calendar": {
         "openDayHint": "Press a date to open the day",
+        "more": "{n} more",
         "emptyDay": "No watches",
         "weekdays": "Mo,Tu,We,Th,Fr,Sa,Su",
         "today": "today",

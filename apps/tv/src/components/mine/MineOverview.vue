@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Card, MineDiaryEntry } from '@torsher/api-client'
+import type { Card, MineDiaryEntry, MineDiaryPage } from '@torsher/api-client'
 import type {
   DiaryFilter,
   DiaryScope,
@@ -24,6 +24,7 @@ import { useTitleMeta } from '../../composables/useTitleMeta.ts'
 import { useFocus } from '../../focus/index.ts'
 import { episodeCode } from '../../lib/continue.ts'
 import { createLatest } from '../../lib/latest.ts'
+import { dayPreviewRows } from '../../lib/mineDayPreview.ts'
 import {
   countryLabel,
   formatMineDate,
@@ -57,6 +58,9 @@ const focus = useFocus()
 const browser = platform === 'web'
 const periodButton = ref<HTMLElement>()
 const scroll = ref<HTMLElement>()
+const dayCard = ref<HTMLElement>()
+const dayMore = ref<HTMLElement>()
+const previewRows = ref(1)
 const active = ref(false)
 const monthPanel = ref(false)
 const monthRequest = createLatest()
@@ -117,14 +121,88 @@ const {
   ),
   (key, signal) =>
     api.mine.getMineDiary(
-      { ...query(), day: key.split('|')[0], limit: 4 },
+      { ...query(), day: key.split('|')[0], limit: 40 },
       { signal },
     ),
 )
 const dayError = computed(() =>
   dayStatus.value === 'error' ? lastDayError.value : undefined,
 )
-const dayEntries = computed(() => day.value?.entries ?? [])
+// Changing focus cancels the old read immediately; keep its completed panel
+// through the debounce and the new request, then replace the whole page.
+const displayedDay = shallowRef<MineDiaryPage>()
+watch(
+  day,
+  (data) => {
+    if (data)
+      displayedDay.value = data
+  },
+  { flush: 'sync' },
+)
+watch(
+  [() => titleActions.viewer, language, selectedPeriod],
+  () => {
+    displayedDay.value = undefined
+  },
+  { flush: 'sync' },
+)
+watch(
+  dayCount,
+  (count) => {
+    if (!count)
+      displayedDay.value = undefined
+  },
+  { flush: 'sync' },
+)
+const dayEntries = computed(() =>
+  dayError.value ? [] : (displayedDay.value?.entries ?? []),
+)
+const previewEntries = computed(() =>
+  dayEntries.value.slice(0, previewRows.value),
+)
+const remainingEntries = computed(() =>
+  dayError.value
+    ? 0
+    : Math.max(
+        0,
+        (displayedDay.value?.total ?? 0) - previewEntries.value.length,
+      ),
+)
+
+function fitDayPreview() {
+  const card = dayCard.value
+  const row = card?.querySelector<HTMLElement>('.day-entry')
+  const more = dayMore.value
+  if (!card || !row || !more || !card.clientHeight)
+    return
+
+  const style = getComputedStyle(card)
+  const height
+    = card.getBoundingClientRect().height
+      - Number.parseFloat(style.borderTopWidth)
+      - Number.parseFloat(style.borderBottomWidth)
+      - Number.parseFloat(style.paddingTop)
+      - Number.parseFloat(style.paddingBottom)
+  previewRows.value = dayPreviewRows(
+    displayedDay.value?.total ?? 0,
+    height,
+    row.getBoundingClientRect().height,
+    Number.parseFloat(getComputedStyle(more).height),
+  )
+}
+
+const dayResizes = new ResizeObserver(fitDayPreview)
+watch(
+  dayCard,
+  (card, previous) => {
+    if (previous)
+      dayResizes.unobserve(previous)
+    if (card)
+      dayResizes.observe(card)
+  },
+  { flush: 'post' },
+)
+watch([dayEntries, active, locale], fitDayPreview, { flush: 'post' })
 const firstDay = computed(
   () => overview.value?.interests.source === 'ratingsAndFavorites',
 )
@@ -386,6 +464,7 @@ watch(overview, (data) => {
   visibleDay.value = latest
 })
 onScopeDispose(() => {
+  dayResizes.disconnect()
   clearTimeout(dayTimer)
   monthRequest.cancel()
   stopKey()
@@ -580,10 +659,10 @@ onScopeDispose(() => {
                   </div>
                 </section>
 
-                <section class="day-card">
+                <section ref="dayCard" class="day-card">
                   <div v-if="dayEntries.length" class="day-card__entries">
                     <div
-                      v-for="entry in dayEntries.slice(0, 4)"
+                      v-for="entry in previewEntries"
                       :key="entry.id"
                       class="day-entry"
                     >
@@ -606,7 +685,10 @@ onScopeDispose(() => {
                     :kind="dayError"
                     @retry="retryDay"
                   />
-                  <div v-else class="day-card__empty">
+                  <div
+                    v-else-if="!dayCount || day?.total === 0"
+                    class="day-card__empty"
+                  >
                     <AppIcon name="calendar" />
                     <p class="day-card__count">
                       <template v-if="!dayCount">
@@ -614,6 +696,15 @@ onScopeDispose(() => {
                       </template>
                     </p>
                   </div>
+                  <p
+                    v-show="remainingEntries > 0"
+                    ref="dayMore"
+                    class="day-card__more"
+                  >
+                    {{
+                      t("mine.preview.calendar.more", { n: remainingEntries })
+                    }}
+                  </p>
                 </section>
               </div>
 
@@ -826,6 +917,21 @@ onScopeDispose(() => {
   border: 1px solid rgba(242, 244, 248, 0.08);
   border-radius: calc(var(--u) * 18);
   background: var(--color-surface);
+}
+
+.day-card__entries {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.day-card__more {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  height: calc(var(--u) * 48);
+  margin: auto 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-s);
 }
 
 .day-card {

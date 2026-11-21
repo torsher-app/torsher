@@ -25,7 +25,11 @@ import { mineEditor, openMineEditor } from '../lib/mineEditor.ts'
 import MinePage from './MinePage.vue'
 import { titleActions } from '../titleActions.ts'
 
-const actions = titleActions as unknown as { version: number, target?: object }
+const actions = titleActions as unknown as {
+  version: number
+  viewer: number
+  target?: object
+}
 
 const mocks = vi.hoisted(() => ({
   mine: {} as any,
@@ -202,6 +206,8 @@ let recommendations: {
 let overview: {
   months: { id: string }[]
   dayError?: string
+  dayEntries: MineDiaryPage['entries']
+  remainingEntries: number
   visibleDay: string
   previewDay: (day: string) => void
   chooseMonth: (month: string) => void
@@ -417,6 +423,14 @@ function replace(ids: string[]) {
   mocks.mine.items.value = ids.map(id => ({ card: { id } }))
 }
 beforeEach(() => {
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  )
   vi.stubGlobal('window', {
     setTimeout,
     innerWidth: 1920,
@@ -437,6 +451,7 @@ beforeEach(() => {
   mocks.readRecommendations.mockReset()
   mocks.patchMine.mockReset()
   actions.version = 0
+  actions.viewer = 0
   actions.target = undefined
   mocks.sections = {
     status: ref('ready'),
@@ -861,7 +876,7 @@ it('discards the old day preview timer when choosing another month', async () =>
   expect(overview.visibleDay).toBe('2026-10-01')
   expect(mocks.readDiary.mock.lastCall?.[0]).toMatchObject({
     day: '2026-10-01',
-    limit: 4,
+    limit: 40,
   })
 })
 
@@ -881,7 +896,7 @@ it('selects the latest day with activity once when opening a month and preserves
   expect(overview.visibleDay).toBe('2026-10-13')
   expect(mocks.readDiary.mock.lastCall?.[0]).toMatchObject({
     day: '2026-10-13',
-    limit: 4,
+    limit: 40,
   })
 
   overview.previewDay('2026-10-08')
@@ -931,4 +946,92 @@ it('drops the previous day error when the selected calendar day is empty', async
   await vi.advanceTimersByTimeAsync(150)
   expect(overview.dayError).toBeUndefined()
   expect(mocks.readDiary).toHaveBeenCalledOnce()
+})
+
+it('keeps the completed day through debounce and loading, then replaces entries and remainder together', async () => {
+  vi.useFakeTimers()
+  diaryFixture()
+  const page: MineDiaryPage = await mocks.readDiary({ limit: 2 })
+  mocks.readDiary.mockReset()
+  mocks.readDiary.mockResolvedValueOnce(page)
+  const next = Promise.withResolvers<MineDiaryPage>()
+  mocks.readDiary.mockReturnValueOnce(next.promise)
+  mocks.readOverview.mockResolvedValue(
+    overviewData('2026-11', [
+      { day: '2026-11-19', count: 2 },
+      { day: '2026-11-18', count: 10 },
+    ]),
+  )
+  await mount('overview', true)
+  const initialRemainder = overview.remainingEntries
+
+  overview.previewDay('2026-11-18')
+  await settle()
+  expect(overview.dayEntries).toEqual(page.entries)
+  expect(overview.remainingEntries).toBe(initialRemainder)
+  await vi.advanceTimersByTimeAsync(150)
+  expect(overview.dayEntries).toEqual(page.entries)
+  expect(overview.remainingEntries).toBe(initialRemainder)
+
+  const entries = page.entries.map(entry => ({
+    ...entry,
+    id: `next-${entry.id}`,
+  }))
+  next.resolve({ ...page, entries, total: 10 })
+  await settle()
+  expect(overview.dayEntries).toEqual(entries)
+  expect(overview.remainingEntries).toBe(9)
+})
+
+it('clears the completed preview for an empty day and never restores a cancelled response', async () => {
+  vi.useFakeTimers()
+  diaryFixture()
+  const page: MineDiaryPage = await mocks.readDiary({ limit: 2 })
+  mocks.readDiary.mockReset()
+  mocks.readDiary.mockResolvedValueOnce(page)
+  const pending = Promise.withResolvers<MineDiaryPage>()
+  mocks.readDiary.mockReturnValueOnce(pending.promise)
+  mocks.readOverview.mockResolvedValue(
+    overviewData('2026-11', [
+      { day: '2026-11-19', count: 2 },
+      { day: '2026-11-18', count: 2 },
+    ]),
+  )
+  await mount('overview', true)
+  overview.previewDay('2026-11-18')
+  await vi.advanceTimersByTimeAsync(150)
+  overview.previewDay('2026-11-17')
+  await settle()
+  expect(overview.dayEntries).toEqual([])
+  expect(overview.remainingEntries).toBe(0)
+  expect(mocks.readDiary.mock.lastCall?.[1].signal.aborted).toBe(true)
+  pending.resolve(page)
+  await settle()
+  expect(overview.dayEntries).toEqual([])
+})
+
+it('replaces a retained preview with a failed-day error and clears it across viewer changes', async () => {
+  vi.useFakeTimers()
+  diaryFixture()
+  mocks.readOverview.mockResolvedValue(
+    overviewData('2026-11', [
+      { day: '2026-11-19', count: 1 },
+      { day: '2026-11-18', count: 1 },
+    ]),
+  )
+  await mount('overview', true)
+  expect(overview.dayEntries.length).toBeGreaterThan(0)
+  actions.viewer++
+  await settle()
+  expect(overview.dayEntries).toEqual([])
+
+  overview.previewDay('2026-11-18')
+  await vi.advanceTimersByTimeAsync(150)
+  expect(overview.dayEntries.length).toBeGreaterThan(0)
+  mocks.readDiary.mockRejectedValueOnce(new Error('failed next day'))
+  overview.previewDay('2026-11-19')
+  await vi.advanceTimersByTimeAsync(150)
+  expect(overview.dayError).toBe('unavailable')
+  expect(overview.dayEntries).toEqual([])
+  expect(overview.remainingEntries).toBe(0)
 })
