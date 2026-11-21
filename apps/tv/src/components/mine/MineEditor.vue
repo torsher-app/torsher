@@ -78,6 +78,8 @@ const searchField = ref<HTMLInputElement>()
 const results = shallowRef<Card[]>([])
 const seasons = shallowRef<PanelOption[]>([])
 const episodes = shallowRef<PanelOption[]>([])
+const airedBySeason = new Map<number, number>()
+const localEpisodes = new Map<number, Set<number>>()
 const selectedSeason = ref(0)
 const failure = ref<ReturnType<typeof loadErrorOf>>()
 const error = ref('')
@@ -137,6 +139,16 @@ async function runLoad<T>(
     focus.activate('options-panel')
 }
 
+// Catalogue and local files are independent sources. Use Promise.all on webOS 5.
+async function loadOptionSource<T>(source: Promise<T>) {
+  try {
+    return { ok: true as const, data: await source }
+  }
+  catch (error) {
+    return { ok: false as const, error }
+  }
+}
+
 function loadStep() {
   if (!current())
     return
@@ -157,42 +169,118 @@ function loadStep() {
   else if (step.value === 'season' && title.value) {
     const id = title.value.id
     void runLoad(
-      signal =>
-        api.catalog.getCatalogTitle(
-          id,
-          { language: language.value },
-          { signal },
-        ),
-      (data) => {
-        seasons.value = (data.seasons ?? [])
-          .filter(season => season.airedEpisodeCount > 0)
-          .map(season => option(String(season.number), season.name))
+      async (signal) => {
+        const [catalog, library] = await Promise.all([
+          loadOptionSource(
+            api.catalog.getCatalogTitle(
+              id,
+              { language: language.value },
+              { signal },
+            ),
+          ),
+          loadOptionSource(
+            api.titles.getTitleLibrary(id, undefined, { signal }),
+          ),
+        ])
+        const files = library.data?.files ?? []
+        if (!catalog.ok && !files.some(file => file.episode))
+          throw catalog.error
+        const seasons = catalog.data?.seasons ?? []
+        if (
+          request.kind === 'cycle'
+          && !library.ok
+          && !seasons.some(season => season.airedEpisodeCount > 0)
+        ) {
+          throw library.error
+        }
+        return { catalog: seasons, files }
+      },
+      ({ catalog, files }) => {
+        airedBySeason.clear()
+        localEpisodes.clear()
+        const names = new Map<number, string>()
+        for (const season of catalog) {
+          airedBySeason.set(season.number, season.airedEpisodeCount)
+          if (season.airedEpisodeCount > 0)
+            names.set(season.number, season.name)
+        }
+        for (const file of files) {
+          if (file.episode === null || file.episode < 1)
+            continue
+          const season = file.season ?? 0
+          const numbers = localEpisodes.get(season) ?? new Set<number>()
+          for (
+            let number = file.episode;
+            number <= (file.episodeTo ?? file.episode);
+            number++
+          )
+            numbers.add(number)
+          localEpisodes.set(season, numbers)
+          if (!names.has(season)) {
+            const name = catalog.find(row => row.number === season)?.name
+            names.set(
+              season,
+              name ?? t('player.episodes.season', { n: season }),
+            )
+          }
+        }
+        seasons.value = [...names]
+          .sort(([a], [b]) => a - b)
+          .map(([number, name]) => option(String(number), name))
       },
     )
   }
   else if (step.value === 'episode' && title.value) {
     const id = title.value.id
+    const season = selectedSeason.value
+    const local = localEpisodes.get(season)
     void runLoad(
-      signal =>
-        api.catalog.getCatalogSeason(
-          id,
-          String(selectedSeason.value),
-          { language: language.value },
-          { signal },
-        ),
-      (data) => {
-        episodes.value = data.episodes
-          .filter(
-            episode =>
-              episode.number > 0
-              && (!episode.airDate
-                || !today.value
-                || episode.airDate <= today.value),
-          )
-          .map(episode =>
+      async (signal) => {
+        const [catalog, clock] = await Promise.all([
+          loadOptionSource(
+            api.catalog.getCatalogSeason(
+              id,
+              String(season),
+              { language: language.value },
+              { signal },
+            ),
+          ),
+          loadOptionSource(
+            api.mine.getMineBootstrap(
+              { expectedProfileId: context.expectedProfileId },
+              { signal },
+            ),
+          ),
+        ])
+        if (!local?.size) {
+          if (!catalog.ok)
+            throw catalog.error
+          if (!clock.ok)
+            throw clock.error
+        }
+        return { episodes: catalog.data?.episodes ?? [], clock: clock.data }
+      },
+      ({ episodes: listed, clock }) => {
+        const day
+          = clock?.profileId === context.expectedProfileId
+            ? clock.today
+            : undefined
+        const airedCount = airedBySeason.get(season) ?? 0
+        const names = new Map<number, string>()
+        for (const number of local ?? []) names.set(number, '')
+        for (const episode of listed) {
+          const aired = episode.airDate
+            ? !!day && episode.airDate <= day
+            : episode.number <= airedCount
+          if (episode.number > 0 && (aired || local?.has(episode.number)))
+            names.set(episode.number, episode.title)
+        }
+        episodes.value = [...names]
+          .sort(([a], [b]) => a - b)
+          .map(([number, name]) =>
             option(
-              String(episode.number),
-              `S${selectedSeason.value}E${episode.number} · ${episode.title}`,
+              String(number),
+              name ? `S${season}E${number} · ${name}` : `S${season}E${number}`,
             ),
           )
       },
@@ -639,12 +727,14 @@ async function save() {
 }
 
 function select(id: string) {
-  if (!current() || saving.value)
+  if (!current() || saving.value || loading.value)
     return
   if (step.value === 'search') {
     title.value = results.value.find(result => result.id === id)
-    if (title.value)
+    if (title.value) {
+      target.value = undefined
       step.value = title.value.kind === 'series' ? 'season' : 'date'
+    }
   }
   else if (id === 'whole') {
     target.value = undefined
@@ -673,8 +763,16 @@ const options = computed(() => {
         ]
       : seasons.value
   }
-  if (step.value === 'episode')
-    return episodes.value
+  if (step.value === 'episode') {
+    const failedEpisode = error.value && target.value?.episode
+    return failedEpisode
+      ? episodes.value.map(row =>
+          row.id === String(failedEpisode)
+            ? { ...row, hint: error.value }
+            : row,
+        )
+      : episodes.value
+  }
   return []
 })
 const heading = computed(() => {

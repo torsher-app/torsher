@@ -577,6 +577,8 @@ function openTarget() {
   clearTimeout(selectTimer)
   menuRevision++
   watchedScope.value = undefined
+  if (target.key === 'continue')
+    continueState.value = 'normal'
   selectedKey.value = target.key
 
   const saved = loadMineView(target.key)
@@ -629,7 +631,9 @@ function sortLabel(id: MineView['sort']) {
 
 const continuationFilters: ContinueState[] = ['normal', 'paused', 'hidden']
 function continueLabel(id: ContinueState) {
-  return t(id === 'normal' ? 'mine.preview.diary.filters.all' : `mine.personal.${id}`)
+  return t(
+    id === 'normal' ? 'mine.preview.diary.filters.all' : `mine.personal.${id}`,
+  )
 }
 const controls = computed(() => [
   ...(shownKey.value === 'continue'

@@ -51,7 +51,12 @@ const focus = useFocus()
 const { metaParts } = useTitleMeta()
 const root = ref<HTMLElement>()
 const active = ref(false)
-const { data, filters, loading, error, read } = useMineRecommendations(active)
+const removed = shallowRef(new Set<string>())
+const { data, filters, loading, error, read, cancelRead }
+  = useMineRecommendations(active, () => {
+    if (removed.value.size)
+      removed.value = new Set()
+  })
 const typeFilter = computed(() => filters.value.kind)
 const durationFilter = computed(() => filters.value.maxMinutes)
 const genreFilter = computed(() => filters.value.genre)
@@ -64,7 +69,6 @@ const hiddenLoading = ref(false)
 const hiddenError = ref(false)
 const hiddenTotal = ref(0)
 const exclusions = shallowRef<Card[]>([])
-const removed = shallowRef(new Set<string>())
 const selectedIndex = ref(0)
 const flashId = ref<string>()
 const toast = ref('')
@@ -160,6 +164,11 @@ const screenError = computed(() => {
     return refresh.cause === 'config' ? 'notConfigured' : 'unavailable'
   return refresh?.state === 'backoff' ? 'unavailable' : undefined
 })
+const showSkeletons = computed(
+  () =>
+    !screenError.value
+    && (loading.value || data.value?.refresh.state === 'pending'),
+)
 
 watch(filtered, async () => {
   const context = mineViewer()
@@ -456,8 +465,10 @@ async function chooseAction(id: string) {
         language: language.value,
         notInterested: true,
       })
-      if (isMineViewer(context))
+      if (isMineViewer(context)) {
+        cancelRead()
         noteTitleProgress(context.viewer, target.card.id, false)
+      }
     }
     if (!isMineViewer(context) || !active.value)
       return
@@ -498,10 +509,11 @@ async function restore(id: string) {
     })
     if (!isMineViewer(context))
       return false
+    cancelRead()
     noteTitleProgress(context.viewer, id, false)
+    removed.value = new Set([...removed.value].filter(value => value !== id))
     if (!active.value)
       return false
-    removed.value = new Set([...removed.value].filter(value => value !== id))
     return true
   }
   catch {
@@ -791,7 +803,7 @@ onScopeDispose(() => {
                 </FocusSection>
 
                 <div
-                  v-else-if="loading || data?.refresh.state === 'pending'"
+                  v-else-if="showSkeletons"
                   class="recommendations__grid"
                   aria-hidden="true"
                 >

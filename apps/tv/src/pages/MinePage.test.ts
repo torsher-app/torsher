@@ -22,6 +22,7 @@ import MineEditor from '../components/mine/MineEditor.vue'
 import MineOverview from '../components/mine/MineOverview.vue'
 import MineRecommendations from '../components/mine/MineRecommendations.vue'
 import { mineEditor, openMineEditor } from '../lib/mineEditor.ts'
+import { personalContinueCard } from '../lib/minePersonal.ts'
 import MinePage from './MinePage.vue'
 import { titleActions } from '../titleActions.ts'
 
@@ -46,6 +47,10 @@ const mocks = vi.hoisted(() => ({
   readMonths: vi.fn(),
   readRecommendations: vi.fn(),
   patchMine: vi.fn(),
+  patchPersonal: vi.fn(),
+  query: {} as Record<string, string>,
+  chooseContinueState: (_state: string) => {},
+  continueState: () => '',
   selectGridItem: (_item: object, _event: object) => {},
   selectedKey: () => '',
 }))
@@ -70,7 +75,11 @@ vi.mock('../composables/useCatalogLanguage.ts', () => ({
   useCatalogLanguage: () => ref('en-US'),
 }))
 vi.mock('vue-router', () => ({
-  useRoute: () => ({ query: {} }),
+  useRoute: () => ({
+    get query() {
+      return mocks.query
+    },
+  }),
   useRouter: () => ({ push: mocks.push, replace: vi.fn() }),
 }))
 vi.mock('../focus/index.ts', () => ({ useFocus: () => mocks.focus }))
@@ -115,6 +124,7 @@ vi.mock('../api.ts', () => ({
       getMineOverview: mocks.readOverview,
       getMineDiaryMonths: mocks.readMonths,
       getMineRecommendations: mocks.readRecommendations,
+      patchMineTitlePersonal: mocks.patchPersonal,
     },
     titles: { patchTitleMine: mocks.patchMine },
   },
@@ -202,6 +212,9 @@ let recommendations: {
   emit: (event: 'open', card: Card, opener: Button) => void
   openActions: (entry: MineRecommendationItem) => void
   chooseAction: (id: string) => Promise<void>
+  read: () => Promise<boolean>
+  screenError?: string
+  showSkeletons: boolean
 }
 let overview: {
   months: { id: string }[]
@@ -213,6 +226,8 @@ let overview: {
   chooseMonth: (month: string) => void
   openPeriod: () => Promise<void>
   closePeriod: () => void
+  overviewError?: string
+  retryOverview: () => Promise<boolean>
 }
 let drillDown: (filter: string, scope: object) => Promise<void>
 const scroller = {
@@ -359,6 +374,11 @@ async function mount(key = 'favorites', renderPersonal = false) {
       mocks.selectFromMenu = setup.selectFromMenu
       drillDown = setup.openDiary
       mocks.selectedKey = () => setup.selectedKey
+      mocks.continueState = () => setup.continueState
+      mocks.chooseContinueState = (state) => {
+        setup.openPanel('state')
+        setup.choose(state)
+      }
       const ids = (setup.items as { card: Card }[]).map(item => item.card.id)
       const previous = cards
       cards = ids.map((id, index) => {
@@ -450,6 +470,8 @@ beforeEach(() => {
   mocks.readMonths.mockReset()
   mocks.readRecommendations.mockReset()
   mocks.patchMine.mockReset()
+  mocks.patchPersonal.mockReset()
+  mocks.query = {}
   actions.version = 0
   actions.viewer = 0
   actions.target = undefined
@@ -511,6 +533,52 @@ it('keeps an explicit selection when an earlier focus selection is pending', asy
   await vi.advanceTimersByTimeAsync(250)
   expect(mocks.selectedKey()).toBe('favorites')
   delete section.dataset.section
+})
+
+it('opens ordinary continuation from the Home row after viewing hidden titles', async () => {
+  await mount('continue')
+  mocks.chooseContinueState('hidden')
+  expect(mocks.continueState()).toBe('hidden')
+  visible.value = false
+  await settle()
+  mocks.query = { section: 'continue' }
+  visible.value = true
+  await settle()
+  expect(mocks.continueState()).toBe('normal')
+})
+
+it('omits movie coordinates without losing season zero for series', () => {
+  const row = {
+    titleId: 'movie-1',
+    kind: 'movie',
+    continuation: 'normal',
+    metadata: null,
+    normalResume: {
+      season: 0,
+      episode: 0,
+      position: 20,
+      duration: 100,
+      next: false,
+      source: { kind: 'torrent', torrentId: 'file', fileIndex: 1 },
+      voiceStudio: null,
+      voiceType: null,
+    },
+    cycle: null,
+    ownRating: null,
+    updatedAt: '2026-11-19T00:00:00Z',
+  } as const
+  expect(personalContinueCard(row)).toMatchObject({
+    season: null,
+    episode: null,
+    file: { torrentId: 'file', fileIndex: 1 },
+  })
+  expect(
+    personalContinueCard({
+      ...row,
+      kind: 'series',
+      normalResume: { ...row.normalResume, episode: 2 },
+    }),
+  ).toMatchObject({ season: 0, episode: 2 })
 })
 
 it.each(['favorites', 'watchlist', 'ratings', 'collection:own'])(
@@ -780,6 +848,42 @@ it('restores the second recommendation row and can add an uncached candidate to 
   )
 })
 
+it('exposes a failed recommendation poll and recovers on retry', async () => {
+  vi.useFakeTimers()
+  mocks.readRecommendations.mockResolvedValueOnce({
+    profileId: 'viewer',
+    items: [],
+    genres: [],
+    refresh: { state: 'pending' },
+  })
+  mocks.readRecommendations.mockRejectedValueOnce(new Error('offline'))
+  recommendationFixture()
+  await mount('recommendations', true)
+  expect(recommendations.showSkeletons).toBe(true)
+  await vi.advanceTimersByTimeAsync(750)
+  expect(recommendations.showSkeletons).toBe(false)
+  expect(recommendations.screenError).toBe('unavailable')
+  await recommendations.read()
+  expect(recommendations.screenError).toBeUndefined()
+  expect(recommendations.filtered).toHaveLength(8)
+})
+
+it('shows a hidden candidate again when another device restores it', async () => {
+  recommendationFixture()
+  mocks.patchPersonal.mockResolvedValue({})
+  await mount('recommendations', true)
+  const item = recommendations.filtered[0]!
+  recommendations.openActions(item)
+  await recommendations.chooseAction('hide')
+  expect(recommendations.filtered).not.toContainEqual(item)
+  visible.value = false
+  await settle()
+  // A new read contains the title again once it has been restored elsewhere.
+  visible.value = true
+  await settle()
+  expect(recommendations.filtered).toContainEqual(item)
+})
+
 it('focuses the empty title search when logging a watch from the diary', async () => {
   diaryFixture()
   await mount('diary', true)
@@ -829,6 +933,15 @@ function overviewFixture() {
     async ({ period }: { period: string }) => overviewData(period),
   )
 }
+
+it('clears the overview error after successful retry', async () => {
+  mocks.readOverview.mockRejectedValueOnce(new Error('offline'))
+  overviewFixture()
+  await mount('overview', true)
+  expect(overview.overviewError).toBe('unavailable')
+  await overview.retryOverview()
+  expect(overview.overviewError).toBeUndefined()
+})
 
 it('keeps a reopened month picker on its latest response and cancels its request when leaving', async () => {
   diaryFixture()

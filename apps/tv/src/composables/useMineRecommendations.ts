@@ -18,7 +18,10 @@ export const DEFAULT_RECOMMENDATION_FILTERS: RecommendationFilters = {
   source: 'both',
 }
 
-export function useMineRecommendations(active: Ref<boolean>) {
+export function useMineRecommendations(
+  active: Ref<boolean>,
+  onLoaded: () => void,
+) {
   const language = useCatalogLanguage()
   const storageKey = `torsher.mine.recommendations.${mineViewer()?.expectedProfileId ?? ''}`
   const filters = shallowRef(loadFilters())
@@ -96,7 +99,9 @@ export function useMineRecommendations(active: Ref<boolean>) {
     }
     if (result.value.profileId !== context.expectedProfileId)
       return false
+    error.value = undefined
     data.value = result.value
+    onLoaded()
     if (result.value.refresh.state === 'pending') {
       timer = setTimeout(() => {
         if (isMineViewer(context) && active.value && filters.value === query)
@@ -130,5 +135,5 @@ export function useMineRecommendations(active: Ref<boolean>) {
       void read()
   })
   onScopeDispose(stop)
-  return { filters, data, loading, error, read }
+  return { filters, data, loading, error, read, cancelRead: stop }
 }

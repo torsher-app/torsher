@@ -80,7 +80,7 @@ function query() {
 const {
   data: overview,
   status: overviewStatus,
-  error: overviewError,
+  error: lastOverviewError,
   retry: retryOverview,
   refresh: refreshOverview,
   cancel: cancelOverview,
@@ -95,6 +95,9 @@ const {
       { ...query(), period: key.split('|')[0] },
       { signal },
     ),
+)
+const overviewError = computed(() =>
+  overviewStatus.value === 'error' ? lastOverviewError.value : undefined,
 )
 const today = computed(() => overview.value?.today ?? props.today)
 const counts = computed(() => {

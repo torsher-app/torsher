@@ -19,6 +19,11 @@ const mocks = vi.hoisted(() => ({
   bootstrap: vi.fn(),
   patch: vi.fn(),
   log: vi.fn(),
+  cycle: vi.fn(),
+  search: vi.fn(),
+  title: vi.fn(),
+  season: vi.fn(),
+  library: vi.fn(),
   onKey: vi.fn(),
   current: vi.fn(),
   focusOn: vi.fn(),
@@ -32,7 +37,14 @@ vi.mock('../../api.ts', () => ({
       getMineBootstrap: mocks.bootstrap,
       patchMineDiaryEntry: mocks.patch,
       postMineDiary: mocks.log,
+      postMineCycle: mocks.cycle,
     },
+    catalog: {
+      getCatalogSearch: mocks.search,
+      getCatalogTitle: mocks.title,
+      getCatalogSeason: mocks.season,
+    },
+    titles: { getTitleLibrary: mocks.library },
   },
   loadErrorOf: () => 'unavailable',
 }))
@@ -134,6 +146,13 @@ let controls: {
   rewatch: boolean
   saving: boolean
   note: string
+  step: string
+  search: string
+  options: { id: string }[]
+  error: string
+  failure?: string
+  loadStep: () => void
+  select: (id: string) => void
   keepDateTextKeys: (
     event: Pick<KeyboardEvent, 'key' | 'stopPropagation'>
       & Partial<
@@ -174,8 +193,19 @@ const entry: MineDiaryEntry = {
   updatedAt: '2024-01-31T12:00:00Z',
 }
 
-async function mountEditor(log = false, editNote = false) {
-  if (log) {
+async function settleEditor() {
+  for (let tick = 0; tick < 12; tick++) await nextTick()
+}
+
+async function mountEditor(
+  log = false,
+  editNote = false,
+  request?: Parameters<typeof openMineEditor>[0],
+) {
+  if (request) {
+    openMineEditor(request)
+  }
+  else if (log) {
     openMineEditor({
       kind: 'log',
       title: { id: entry.titleId, title: 'Movie', kind: 'movie' },
@@ -223,7 +253,7 @@ async function mountEditor(log = false, editNote = false) {
   app.mount(node())
   handleKey = mocks.onKey.mock.calls[0]![0]
   unmount = () => app.unmount()
-  for (let tick = 0; tick < 6; tick++) await nextTick()
+  await settleEditor()
 }
 
 function move(
@@ -248,6 +278,7 @@ beforeEach(() => {
     today: '2025-02-28',
     timeZone: 'UTC',
   })
+  mocks.library.mockResolvedValue({ files: [] })
   mocks.onKey.mockReturnValue(() => {})
   mocks.current.mockImplementation(() => activeButton)
   mocks.focusOn.mockImplementation(
@@ -261,9 +292,101 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  vi.useRealTimers()
   unmount?.()
   unmount = undefined
   setTitleViewer(undefined)
+})
+
+it('clears the previously selected episode when logging another title', async () => {
+  vi.useFakeTimers()
+  const series = { id: 'series-a', kind: 'series', title: 'Series' }
+  const movie = { id: 'movie-a', kind: 'movie', title: 'Movie' }
+  mocks.search.mockResolvedValue({ items: [series, movie] })
+  mocks.title.mockResolvedValue({
+    seasons: [{ number: 1, name: 'Season 1', airedEpisodeCount: 1 }],
+  })
+  mocks.season.mockResolvedValue({
+    episodes: [{ number: 1, title: 'Pilot', airDate: '2025-02-27' }],
+  })
+  mocks.log.mockResolvedValue({ entry: null })
+  await mountEditor(true, false, { kind: 'log' })
+  controls.search = 'a'
+  await vi.advanceTimersByTimeAsync(300)
+  controls.select(series.id)
+  await settleEditor()
+  controls.select('1')
+  await settleEditor()
+  controls.select('1')
+  await settleEditor()
+  expect(controls.step).toBe('date')
+  for (const step of ['episode', 'season', 'search']) {
+    controls.back()
+    await settleEditor()
+    expect(controls.step).toBe(step)
+  }
+  controls.select(movie.id)
+  await settleEditor()
+  await controls.save()
+  expect(mocks.log.mock.lastCall?.[0].target).toEqual({
+    titleId: movie.id,
+    season: 0,
+    episode: 0,
+  })
+})
+
+it('offers aired and local episodes for a rewatch and exposes a retryable save error', async () => {
+  const title = { id: 'series-a', kind: 'series', title: 'Series' } as const
+  mocks.title.mockResolvedValue({
+    seasons: [{ number: 1, name: 'Season 1', airedEpisodeCount: 1 }],
+  })
+  mocks.season.mockResolvedValue({
+    episodes: [
+      { number: 1, title: 'Aired', airDate: '2025-02-28' },
+      { number: 2, title: 'Future', airDate: '2025-03-01' },
+      { number: 3, title: 'Local', airDate: '2025-03-10' },
+      { number: 5, title: 'Unconfirmed', airDate: null },
+    ],
+  })
+  mocks.library.mockResolvedValue({
+    files: [{ season: 1, episode: 3, episodeTo: 4 }],
+  })
+  mocks.cycle.mockRejectedValue(new Error('offline'))
+  await mountEditor(false, false, { kind: 'cycle', title })
+  controls.select('1')
+  await settleEditor()
+  expect(controls.options.map(row => row.id)).toEqual(['1', '3', '4'])
+  controls.select('1')
+  await settleEditor()
+  expect(controls.error).toBe('actions.errors.save')
+  expect(controls.options[0]).toMatchObject({
+    id: '1',
+    hint: 'actions.errors.save',
+  })
+  expect(controls.step).toBe('episode')
+  controls.select('3')
+  await settleEditor()
+  expect(mocks.cycle.mock.lastCall?.[1]).toMatchObject({
+    season: 1,
+    episode: 3,
+  })
+})
+
+it('offers retry if the library was unavailable and the catalog has no aired seasons', async () => {
+  const title = { id: 'series-a', kind: 'series', title: 'Series' } as const
+  mocks.title.mockResolvedValue({
+    seasons: [{ number: 1, name: 'Season 1', airedEpisodeCount: 0 }],
+  })
+  mocks.library.mockRejectedValueOnce(new Error('offline'))
+  mocks.library.mockResolvedValue({
+    files: [{ season: 1, episode: 1, episodeTo: null }],
+  })
+  await mountEditor(false, false, { kind: 'cycle', title })
+  expect(controls.failure).toBe('unavailable')
+  controls.loadStep()
+  await settleEditor()
+  expect(controls.failure).toBeUndefined()
+  expect(controls.options.map(row => row.id)).toEqual(['1'])
 })
 
 it('moves between quick dates, rows and footer without changing the date', async () => {

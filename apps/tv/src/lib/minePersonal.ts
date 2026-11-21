@@ -88,8 +88,8 @@ export function personalContinueCard(
     position: cursor?.position ?? 0,
     duration: cursor?.duration ?? null,
     next: cursor?.next ?? false,
-    season: cursor?.season ?? null,
-    episode: cursor?.episode ?? null,
+    season: row.kind === 'series' ? (cursor?.season ?? null) : null,
+    episode: row.kind === 'series' ? (cursor?.episode ?? null) : null,
     episodeTitle: row.metadata?.episodeTitle ?? undefined,
     mediaFileId: source?.kind === 'library' ? source.mediaFileId : undefined,
     file:
