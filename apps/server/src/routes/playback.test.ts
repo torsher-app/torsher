@@ -16,7 +16,19 @@ import {
   PROFILE_COOKIE,
 } from '../config.ts'
 import { getDb, migrateDb } from '../db/index.ts'
-import { devices, profiles, torrents, users } from '../db/schema.ts'
+import {
+  cycleProgress,
+  devices,
+  libraries,
+  libraryFolders,
+  libraryHiddenProfiles,
+  mediaFiles,
+  profiles,
+  rewatchCycles,
+  torrents,
+  users,
+  viewingAttempts,
+} from '../db/schema.ts'
 import { hashToken } from '../services/devices/index.ts'
 import { setEngineDown, setEngineReady } from '../services/engine/index.ts'
 import {
@@ -691,6 +703,93 @@ describe.runIf(hasFfmpeg())('воспроизведение с пробой и �
     }
   })
 
+  it.each([false, true])(
+    'rechecks playback access when the probe finishes (after response=%s)',
+    async (afterResponse) => {
+      const suffix = afterResponse ? 'late' : 'initial'
+      const title = {
+        id: `tmdb:tv:${afterResponse ? 928 : 929}`,
+        season: 1,
+        episode: 1,
+      }
+      const ref = {
+        profileId: `playback-probe-${suffix}`,
+        titleId: title.id,
+        season: 1,
+        episode: 1,
+      }
+      const db = getDb()
+      db.insert(profiles)
+        .values({ id: ref.profileId, name: 'Viewer', color: 'blue' })
+        .run()
+      const entered = Promise.withResolvers<void>()
+      const release = Promise.withResolvers<undefined>()
+      const pause = vi.spyOn(probeDeps, 'pause').mockImplementation(() => {
+        entered.resolve()
+        return release.promise
+      })
+      clearProbeCache()
+      probeResets = 1
+      const pending = app.inject({
+        method: 'POST',
+        url: '/api/playback',
+        cookies: { ...owner, [PROFILE_COOKIE]: ref.profileId },
+        payload: {
+          torrentId: torrent.id,
+          fileIndex: 0,
+          title,
+          device: webos,
+          audioStream: 2,
+          viewing: {
+            requestId: `probe-${suffix}`,
+            clientId: 'probe-client',
+            playerId: 'probe-player',
+            intent: 'join',
+          },
+        },
+      })
+      try {
+        expect(
+          await Promise.race([
+            entered.promise.then(() => true),
+            pending.then(() => false),
+          ]),
+        ).toBe(true)
+        const early = afterResponse ? await pending : undefined
+        if (early)
+          expect(early.json().status).toBe('probing')
+        db.update(profiles)
+          .set({ ageLimit: 6 })
+          .where(eq(profiles.id, ref.profileId))
+          .run()
+        release.resolve(undefined)
+        if (early) {
+          const { sessionId } = early.json()
+          await getSession(sessionId, 'owner')!.ready
+        }
+        else {
+          const denied = await pending
+          expect(denied.statusCode, denied.body).toBe(404)
+          expect(
+            db
+              .select()
+              .from(viewingAttempts)
+              .where(eq(viewingAttempts.profileId, ref.profileId))
+              .all(),
+          ).toEqual([])
+        }
+        expect(getTitleProgress(ref)).toBeUndefined()
+      }
+      finally {
+        release.resolve(undefined)
+        await pending
+        pause.mockRestore()
+        probeResets = 0
+      }
+    },
+    10_000,
+  )
+
   it('protects a choice made while the new torrent file is waiting for prepareStream', async () => {
     const title = { id: 'tmdb:tv:925', season: 1, episode: 1 }
     const ref = {
@@ -1082,6 +1181,205 @@ describe.runIf(hasFfmpeg())('воспроизведение с пробой и �
       cookies: owner,
     })
     expect((await save({ subtitle: 'f1' })).statusCode).toBe(404)
+  })
+
+  it('keeps cycle subtitles across episodes and restarts with independent cycle audio', async () => {
+    const title = { id: 'tmdb:tv:926', season: 1, episode: 1 }
+    const profileId = await defaultProfileId()
+    const now = new Date()
+    const cycleId = getDb()
+      .insert(rewatchCycles)
+      .values({
+        profileId,
+        titleId: title.id,
+        startSeason: 1,
+        startEpisode: 1,
+        targetSeason: 1,
+        targetEpisode: 1,
+        state: 'active',
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning()
+      .get()
+      .id
+    const save = (sessionId: string, payload: object) =>
+      app.inject({
+        method: 'PUT',
+        url: `/api/playback/${sessionId}/preferences`,
+        cookies: owner,
+        payload,
+      })
+    const normal = await start({ device: webos, title })
+    expect(
+      (await save(normal.sessionId, { audioStream: 2, subtitle: 'f1' }))
+        .statusCode,
+    ).toBe(200)
+    const command = {
+      cycleId,
+      clientId: 'cycle-tracks',
+      playerId: 'cycle-player',
+    }
+    const first = await start({
+      device: webos,
+      title,
+      voiceStudio: 'NewStudio',
+      viewing: {
+        ...command,
+        requestId: 'cycle-preferences-first',
+        intent: 'join',
+      },
+    })
+    expect(first).toMatchObject({ audioStream: 1, subtitle: 'f1' })
+    expect(
+      (await save(first.sessionId, { audioStream: 1, subtitle: null }))
+        .statusCode,
+    ).toBe(200)
+    const nextTitle = { ...title, episode: 2 }
+    const next = await start({
+      device: webos,
+      title: nextTitle,
+      viewing: {
+        ...command,
+        requestId: 'cycle-preferences-next',
+        intent: 'join',
+      },
+    })
+    expect(next.subtitle).toBeNull()
+    expect((await save(next.sessionId, { subtitle: 'f1' })).statusCode).toBe(
+      200,
+    )
+    const reset = await start({
+      device: webos,
+      title: nextTitle,
+      viewing: {
+        ...command,
+        requestId: 'cycle-preferences-restart',
+        intent: 'restart',
+        expectedGeneration: 1,
+      },
+    })
+    expect(reset.subtitle).toBe('f1')
+    expect(await start({ device: webos, title: nextTitle })).toMatchObject({
+      audioStream: 2,
+      subtitle: 'f1',
+    })
+  })
+
+  it('rechecks a cycle torrent file against current library visibility', async () => {
+    const db = getDb()
+    const profileId = await defaultProfileId()
+    const title = { id: 'tmdb:tv:930', season: 1, episode: 1 }
+    const now = new Date()
+    const cycleId = db
+      .insert(rewatchCycles)
+      .values({
+        profileId,
+        titleId: title.id,
+        startSeason: 1,
+        startEpisode: 1,
+        targetSeason: 1,
+        targetEpisode: 1,
+        state: 'active',
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning()
+      .get()
+      .id
+    const command = {
+      cycleId,
+      clientId: 'cycle-visibility',
+      playerId: 'cycle-visibility-player',
+      intent: 'join',
+    }
+    const started = await start({
+      device: webos,
+      title,
+      viewing: { ...command, requestId: 'cycle-visible' },
+    })
+    const { id: libraryId } = db
+      .insert(libraries)
+      .values({ kind: 'video', name: 'Cycle test library' })
+      .returning()
+      .get()
+    const folder = db
+      .insert(libraryFolders)
+      .values({ libraryId, path: join(dir, 'cycle-files') })
+      .returning()
+      .get()
+    try {
+      db.insert(mediaFiles)
+        .values({
+          folderId: folder.id,
+          relPath: 'episode.mkv',
+          size: 1024,
+          mtime: now,
+          torrentId: torrent.id,
+          fileIndex: 0,
+        })
+        .run()
+      db.insert(libraryHiddenProfiles).values({ libraryId, profileId }).run()
+      const sessionUrl = `/api/playback/${started.sessionId}`
+      const status = await app.inject({ url: sessionUrl, cookies: owner })
+      expect(status.statusCode, status.body).toBe(404)
+      const preferences = await app.inject({
+        method: 'PUT',
+        url: `${sessionUrl}/preferences`,
+        cookies: owner,
+        payload: { subtitle: 'f1' },
+      })
+      expect(preferences.statusCode, preferences.body).toBe(404)
+      const checkpoint = await app.inject({
+        method: 'PUT',
+        url: '/api/watch-state',
+        cookies: owner,
+        payload: {
+          torrentId: torrent.id,
+          fileIndex: 0,
+          title,
+          sessionId: started.sessionId,
+          position: 12,
+          duration: 20,
+          event: { clientId: command.clientId, sequence: 1 },
+          viewing: { kind: 'playback', line: 0, playerId: command.playerId },
+        },
+      })
+      expect(checkpoint.statusCode, checkpoint.body).toBe(404)
+      expect(
+        db
+          .select()
+          .from(cycleProgress)
+          .where(eq(cycleProgress.cycleId, cycleId))
+          .all(),
+      ).toEqual([])
+      expect(
+        (
+          await app.inject({
+            method: 'DELETE',
+            url: sessionUrl,
+            cookies: owner,
+          })
+        ).statusCode,
+      ).toBe(200)
+      const next = await app.inject({
+        method: 'POST',
+        url: '/api/playback',
+        cookies: owner,
+        payload: {
+          torrentId: torrent.id,
+          fileIndex: 0,
+          device: webos,
+          title,
+          viewing: { ...command, requestId: 'cycle-hidden' },
+        },
+      })
+      expect(next.statusCode, next.body).toBe(404)
+      expect((await start({ device: webos, title })).status).toBe('ready')
+    }
+    finally {
+      db.delete(libraries).where(eq(libraries.id, libraryId)).run()
+    }
   })
 
   it('смена озвучки перезапуском продолжает с позиции', async () => {

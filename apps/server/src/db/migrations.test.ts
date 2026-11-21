@@ -1078,3 +1078,50 @@ it('preserves prior personal rows and adds local lifecycle and collection FK gua
     sqlite.close()
   }
 })
+
+it('preserves durable viewing bindings when adding legacy proof after 0053', () => {
+  const index = journal.entries.findIndex(
+    entry => entry.tag === '0054_legacy-viewing-proof',
+  )
+  expect(index).toBeGreaterThan(0)
+  const sqlite = new Database(':memory:')
+  sqlite.pragma('foreign_keys = ON')
+  try {
+    const db = drizzle(sqlite)
+    migrate(db, { migrationsFolder: migrationsBefore(index) })
+    sqlite.exec(`
+      INSERT INTO profiles (id,name,color,position,created_at)
+      VALUES ('viewer','Viewer','blue',0,0);
+      INSERT INTO viewing_attempts (id,profile_id,title_id,season,episode,cycle_key,generation,state)
+      VALUES ('attempt','viewer','tmdb:movie:9',0,0,'',2,'open');
+      INSERT INTO viewing_bindings (session_id,attempt_id,subject,client_id,player_id,source_revision,baseline)
+      VALUES ('session','attempt','subject','client','player','revision',850);
+      INSERT INTO viewing_start_receipts (profile_id,request_id,command,attempt_id)
+      VALUES ('viewer','request','command','attempt');
+    `)
+    migrate(db, { migrationsFolder: MIGRATIONS_DIR })
+    migrate(db, { migrationsFolder: MIGRATIONS_DIR })
+    expect(
+      sqlite
+        .prepare(
+          'SELECT generation, state, prior_legacy_completion, explicit_restart FROM viewing_attempts',
+        )
+        .get(),
+    ).toEqual({
+      generation: 2,
+      state: 'open',
+      prior_legacy_completion: 0,
+      explicit_restart: 0,
+    })
+    expect(
+      sqlite.prepare('SELECT attempt_id, baseline FROM viewing_bindings').get(),
+    ).toEqual({ attempt_id: 'attempt', baseline: 850 })
+    expect(
+      sqlite.prepare('SELECT attempt_id FROM viewing_start_receipts').get(),
+    ).toEqual({ attempt_id: 'attempt' })
+    expect(sqlite.pragma('foreign_key_check')).toEqual([])
+  }
+  finally {
+    sqlite.close()
+  }
+})

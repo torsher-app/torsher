@@ -32,6 +32,7 @@ import {
   diarySeen,
   libraries,
   libraryFolders,
+  libraryHiddenProfiles,
   mediaFiles,
   mineTitlePreferences,
   profileTitles,
@@ -39,6 +40,8 @@ import {
   serverSettings,
   titleProgress,
   users,
+  viewingAttempts,
+  viewingBindings,
   watchEvents,
 } from '../db/schema.ts'
 import { calendarDayAt } from '../services/mine/calendar.ts'
@@ -225,6 +228,181 @@ async function accepted(
   expect(result.json().accepted).toBe(expected)
   return result.json()
 }
+
+it.each(['start', 'checkpoint', 'legacy checkpoint'] as const)(
+  'rejects %s if library access changes during stat',
+  async (operation) => {
+    const fixture = file(movie)
+    const db = getDb()
+    const folder = db.select().from(libraryFolders).get()!
+    const command = intent('revoked-library')
+    const session
+      = operation === 'checkpoint'
+        ? await play(fixture.mediaFileId, movie, command)
+        : undefined
+    dbHolder.beforeStat = (path) => {
+      if (path !== fixture.path)
+        return
+      dbHolder.beforeStat = undefined
+      db.insert(libraryHiddenProfiles)
+        .values({ libraryId: folder.libraryId, profileId })
+        .run()
+    }
+    const response
+      = operation === 'start'
+        ? await start(fixture.mediaFileId, movie, command)
+        : session
+          ? await checkpoint(
+              session.sessionId,
+              fixture.mediaFileId,
+              movie,
+              command,
+              1,
+              950,
+            )
+          : await put({
+              mediaFileId: fixture.mediaFileId,
+              title: movie,
+              position: 950,
+              duration: 1000,
+            })
+    expect(response.statusCode, response.body).toBe(404)
+    expect(db.select().from(viewingAttempts).all()).toHaveLength(
+      session ? 1 : 0,
+    )
+    expect(db.select().from(viewingBindings).all()).toHaveLength(
+      session ? 1 : 0,
+    )
+    expect(db.select().from(watchEvents).all()).toEqual([])
+    expect(db.select().from(titleProgress).all()).toEqual([])
+    expect(db.select().from(diaryEntries).all()).toEqual([])
+  },
+)
+
+it.each([
+  { prior: 'legacy playback', restart: true, rewatch: true },
+  { prior: 'legacy playback', restart: false, rewatch: false },
+  { prior: 'legacy playback after join', restart: true, rewatch: true },
+  { prior: 'seek in this protocol', restart: true, rewatch: false },
+  { prior: 'manual mark', restart: true, rewatch: false },
+  { prior: 'imported progress', restart: true, rewatch: false },
+])(
+  'records $prior and restart=$restart as rewatch=$rewatch',
+  async ({ prior, restart, rewatch }) => {
+    const fixture = file(movie)
+    const db = getDb()
+    const ref = { profileId, titleId: movie.id, season: 0, episode: 0 }
+    const completeWithLegacy = async () => {
+      const response = await put({
+        mediaFileId: fixture.mediaFileId,
+        title: movie,
+        position: 950,
+        duration: 1000,
+      })
+      expect(response.statusCode, response.body).toBe(200)
+    }
+    if (
+      prior !== 'seek in this protocol'
+      && prior !== 'legacy playback after join'
+    ) {
+      await completeWithLegacy()
+      if (prior === 'manual mark')
+        db.update(titleProgress).set({ position: 0 }).run()
+      if (prior === 'imported progress') {
+        db.update(titleProgress)
+          .set({ playedSource: { kind: 'unknown' } })
+          .run()
+      }
+    }
+
+    const firstCommand = intent('legacy-proof')
+    const first = await play(fixture.mediaFileId, movie, firstCommand)
+    if (restart) {
+      if (prior === 'legacy playback after join') {
+        await accepted(
+          checkpoint(
+            first.sessionId,
+            fixture.mediaFileId,
+            movie,
+            firstCommand,
+            1,
+            100,
+          ),
+        )
+        expect(
+          db.select().from(viewingAttempts).get()?.priorLegacyCompletion,
+        ).toBe(false)
+        await completeWithLegacy()
+      }
+      // A checkpoint can change the legacy proof in either direction. Later starts use the snapshot.
+      await accepted(
+        checkpoint(
+          first.sessionId,
+          fixture.mediaFileId,
+          movie,
+          firstCommand,
+          2,
+          prior === 'seek in this protocol' ? 950 : 200,
+          'seek',
+        ),
+      )
+      if (prior === 'seek in this protocol')
+        expect(getTitleProgress(ref)?.watchedAt).toBeInstanceOf(Date)
+      expect(db.select().from(diaryEntries).all()).toEqual([])
+    }
+    const command = restart
+      ? {
+          ...intent('explicit-restart'),
+          intent: 'restart' as const,
+          expectedGeneration: 1,
+        }
+      : firstCommand
+    const session = restart
+      ? await play(fixture.mediaFileId, movie, command)
+      : first
+    await accepted(
+      checkpoint(
+        session.sessionId,
+        fixture.mediaFileId,
+        movie,
+        command,
+        3,
+        850,
+      ),
+    )
+    await accepted(
+      checkpoint(
+        session.sessionId,
+        fixture.mediaFileId,
+        movie,
+        command,
+        4,
+        950,
+      ),
+    )
+    expect(db.select().from(diaryEntries).all()).toMatchObject([
+      { origin: 'playback', rewatch },
+    ])
+  },
+)
+
+it('rejects a library revision replaced while preparing a viewing session', async () => {
+  const fixture = file(movie)
+  let inspected = 0
+  dbHolder.beforeStat = (path) => {
+    if (path === fixture.path && ++inspected === 2)
+      writeFileSync(path, 'replacement bytes with a different size')
+  }
+  const response = await start(
+    fixture.mediaFileId,
+    movie,
+    intent('replaced-file'),
+  )
+  expect(response.statusCode, response.body).toBe(409)
+  expect(response.json()).toMatchObject({ kind: 'viewingAttemptConflict' })
+  expect(getDb().select().from(viewingAttempts).all()).toEqual([])
+  expect(getDb().select().from(viewingBindings).all()).toEqual([])
+})
 
 it('keeps a durable receipt, accepts stop after reopening and does not recreate a deleted entry', async () => {
   const { mediaFileId } = file(movie)
@@ -919,95 +1097,112 @@ it('resumes cycle episodes independently, ignores older episode tails and revoke
   })
 })
 
-it('discards a delayed viewing-attempt lookup after the paired device selects another profile', async () => {
-  const fixture = file(episode)
-  const db = getDb()
-  const now = new Date()
-  const cycle = db
-    .insert(rewatchCycles)
-    .values({
-      profileId,
-      titleId: episode.id,
-      startSeason: 1,
-      startEpisode: 1,
-      targetSeason: 1,
-      targetEpisode: 1,
-      state: 'active',
-      createdAt: now,
-      updatedAt: now,
-    })
-    .returning()
-    .get()
-  const command = { ...intent('for-device'), cycleId: cycle.id }
-  const session = await play(fixture.mediaFileId, episode, command)
-  await accepted(
-    checkpoint(
-      session.sessionId,
-      fixture.mediaFileId,
-      episode,
-      command,
-      1,
-      100,
-    ),
-  )
+it.each(['profile switch', 'hidden library'] as const)(
+  'rechecks a delayed cycle source lookup after %s',
+  async (change) => {
+    const fixture = file(episode)
+    const db = getDb()
+    const now = new Date()
+    const cycle = db
+      .insert(rewatchCycles)
+      .values({
+        profileId,
+        titleId: episode.id,
+        startSeason: 1,
+        startEpisode: 1,
+        targetSeason: 1,
+        targetEpisode: 1,
+        state: 'active',
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning()
+      .get()
+    const command = { ...intent('for-device'), cycleId: cycle.id }
+    const session = await play(fixture.mediaFileId, episode, command)
+    await accepted(
+      checkpoint(
+        session.sessionId,
+        fixture.mediaFileId,
+        episode,
+        command,
+        1,
+        100,
+      ),
+    )
 
-  const token = 'test-device-token'
-  const paired = db
-    .insert(devices)
-    .values({
-      name: 'TV',
-      type: 'tv',
-      profileId,
-      tokenHash: createHash('sha256').update(token).digest('hex'),
+    const token = 'test-device-token'
+    const paired = db
+      .insert(devices)
+      .values({
+        name: 'TV',
+        type: 'tv',
+        profileId,
+        tokenHash: createHash('sha256').update(token).digest('hex'),
+      })
+      .returning()
+      .get()
+    const guest = createProfile({
+      name: 'Guest',
+      color: 'blue',
+      ageLimit: null,
+      language: null,
     })
-    .returning()
-    .get()
-  const guest = createProfile({
-    name: 'Guest',
-    color: 'blue',
-    ageLimit: null,
-    language: null,
-  })
-  const entered = Promise.withResolvers<void>()
-  const release = Promise.withResolvers<void>()
-  dbHolder.beforeStat = async (path) => {
-    if (path === fixture.path) {
-      entered.resolve()
-      await release.promise
+    const entered = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    dbHolder.beforeStat = async (path) => {
+      if (path === fixture.path) {
+        entered.resolve()
+        await release.promise
+      }
     }
-  }
-  const pending = app.inject({
-    url: '/api/playback/viewing-attempt',
-    query: {
-      titleId: episode.id,
-      season: '1',
-      episode: '1',
-      cycleId: cycle.id,
-      profileId,
-    },
-    cookies: { [DEVICE_TOKEN_COOKIE]: token },
-  })
-  try {
-    expect(
-      await Promise.race([
-        entered.promise.then(() => true),
-        pending.then(() => false),
-      ]),
-    ).toBe(true)
-    db.update(devices)
-      .set({ profileId: guest.id })
-      .where(eq(devices.id, paired.id))
-      .run()
-  }
-  finally {
-    release.resolve()
-    dbHolder.beforeStat = undefined
-  }
-  const response = await pending
-  expect(response.statusCode, response.body).toBe(404)
-  expect(response.json()).not.toHaveProperty('attempt')
-  expect(response.json()).not.toHaveProperty('source')
-})
+    const pending = app.inject({
+      url: '/api/playback/viewing-attempt',
+      query: {
+        titleId: episode.id,
+        season: '1',
+        episode: '1',
+        cycleId: cycle.id,
+        profileId,
+      },
+      cookies: { [DEVICE_TOKEN_COOKIE]: token },
+    })
+    try {
+      expect(
+        await Promise.race([
+          entered.promise.then(() => true),
+          pending.then(() => false),
+        ]),
+      ).toBe(true)
+      if (change === 'profile switch') {
+        db.update(devices)
+          .set({ profileId: guest.id })
+          .where(eq(devices.id, paired.id))
+          .run()
+      }
+      else {
+        const folder = db.select().from(libraryFolders).get()!
+        db.insert(libraryHiddenProfiles)
+          .values({ libraryId: folder.libraryId, profileId })
+          .run()
+      }
+    }
+    finally {
+      release.resolve()
+      dbHolder.beforeStat = undefined
+    }
+    const response = await pending
+    if (change === 'profile switch') {
+      expect(response.statusCode, response.body).toBe(404)
+      expect(response.json()).not.toHaveProperty('attempt')
+    }
+    else {
+      expect(response.statusCode, response.body).toBe(200)
+      expect(response.json().attempt.attemptId).toBe(session.viewing.attemptId)
+    }
+    expect(response.json()).not.toHaveProperty('source')
+  },
+)
 
 it('resets only the cycle cursor on an explicit restart of a completed episode', async () => {
   const fixture = file(episode)

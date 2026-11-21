@@ -404,17 +404,23 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
     },
     async (request, reply) => {
       const context = diagnosticContext(request)
+      const { profileId } = request
+      const { id } = request.params
+      const current = () => viewerStillOnProfile(request, profileId)
       let result
 
       try {
         result = await watchTitle(
-          request.params.id,
+          id,
           request.body,
-          request.profileId,
+          profileId,
+          current,
           context,
         )
       }
       catch (err) {
+        if (!current() || !titleAllowedCached(profileId, id))
+          return reply.code(404).send({ message: 'Title not found' })
         if (err instanceof WatchError)
           return reply.code(422).send({ message: err.message, kind: err.kind })
 
@@ -424,7 +430,7 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
         return sendEngineError(reply, err)
       }
 
-      if (!result)
+      if (!result || !current() || !titleAllowedCached(profileId, id))
         return reply.code(404).send({ message: 'Title not found' })
 
       if (result.status === 'resolving') {

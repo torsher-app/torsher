@@ -1,6 +1,8 @@
 import { setSetting } from '../services/settings/index.ts'
 import * as sources from '../services/sources/index.ts'
+import * as contentAccess from '../services/profiles/access.ts'
 import { Buffer } from 'node:buffer'
+import { eq } from 'drizzle-orm'
 import {
   afterEach,
   beforeAll,
@@ -15,6 +17,11 @@ import { ACCESS_TOKEN_COOKIE, PROFILE_COOKIE } from '../config.ts'
 import { getDb, migrateDb } from '../db/index.ts'
 import {
   indexers,
+  libraries,
+  libraryFolders,
+  libraryHiddenProfiles,
+  mediaFiles,
+  rewatchCycles,
   titleProgress,
   titleVoices,
   torrents,
@@ -30,7 +37,7 @@ import { tvIdentity } from '../services/tmdb/fixtures/index.ts'
 import { searchXml } from '../services/torznab/fixtures/index.ts'
 import { signToken } from '../utils/token.ts'
 
-import { createProfile } from '../services/profiles/index.ts'
+import { createProfile, updateProfile } from '../services/profiles/index.ts'
 import { storeMetaCache } from '../services/tmdb/cache.ts'
 
 // Место на диске для проверки перед просмотром — с запасом
@@ -433,6 +440,251 @@ describe('post /api/titles/:id/watch', () => {
     expect(missing.statusCode).toBe(422)
     expect(missing.json().kind).toBe('not_playable')
   })
+
+  it('rechecks the current direct torrent before linking or saving the selection', async () => {
+    const requested = 'tmdb:tv:101'
+    const formerlyAllowed = 'tmdb:tv:102'
+    const unavailable = 'tmdb:tv:103'
+    const child = createProfile({
+      name: 'Direct viewer',
+      color: 'blue',
+      ageLimit: 12,
+      language: null,
+    })
+    for (const id of [requested, formerlyAllowed]) {
+      storeMetaCache(`${id}:ru-RU:v3`, {
+        content_ratings: { results: [{ iso_3166_1: 'RU', rating: '6+' }] },
+      })
+    }
+    const db = getDb()
+    const torrent = db
+      .insert(torrents)
+      .values({
+        name: packDetails.name,
+        infoHash: packDetails.infoHash,
+        titleId: formerlyAllowed,
+        status: 'ready',
+        source: 'file',
+        files: packDetails.files.map(item => ({
+          path: item.path,
+          size: item.length,
+          padding: item.padding,
+        })),
+      })
+      .returning()
+      .get()
+    const entered = Promise.withResolvers<void>()
+    const release = Promise.withResolvers<void>()
+    const original = contentAccess.titleAllowed
+    const guard = vi
+      .spyOn(contentAccess, 'titleAllowed')
+      .mockImplementation(async (profileId, id) => {
+        const allowed = await original(profileId, id)
+        if (id === formerlyAllowed) {
+          entered.resolve()
+          await release.promise
+        }
+        return allowed
+      })
+    const pending = app.inject({
+      method: 'POST',
+      url: `/api/titles/${requested}/watch`,
+      cookies: { ...owner, [PROFILE_COOKIE]: child.id },
+      payload: { torrentId: torrent.id, season: 2, episode: 5 },
+    })
+    try {
+      expect(
+        await Promise.race([
+          entered.promise.then(() => true),
+          pending.then(() => false),
+        ]),
+      ).toBe(true)
+      db.update(torrents)
+        .set({ titleId: unavailable })
+        .where(eq(torrents.id, torrent.id))
+        .run()
+      release.resolve()
+      const response = await pending
+      expect(response.statusCode, response.body).toBe(422)
+      expect(response.json().kind).toBe('candidate_gone')
+      expect(db.select().from(torrents).get()?.titleId).toBe(unavailable)
+      expect(db.select().from(titleProgress).all()).toEqual([])
+    }
+    finally {
+      release.resolve()
+      await pending
+      guard.mockRestore()
+    }
+  })
+
+  it.each(['ready', 'resolving'] as const)(
+    'discards a %s ranked result after title access changes',
+    async (status) => {
+      const profile = createProfile({
+        name: `Ranked viewer ${status}`,
+        color: 'blue',
+        ageLimit: null,
+        language: null,
+      })
+      const cookies = { ...owner, [PROFILE_COOKIE]: profile.id }
+      const sources = await app.inject({
+        url: `/api/titles/${TITLE}/sources?season=2&episode=5`,
+        cookies,
+      })
+      expect(sources.statusCode, sources.body).toBe(200)
+      const candidate = sources
+        .json()
+        .candidates
+        .find(
+          (item: { quality: string }) =>
+            item.quality === (status === 'ready' ? '1080p' : '2160p'),
+        )
+      expect(candidate).toBeDefined()
+      const entered = Promise.withResolvers<void>()
+      const release = Promise.withResolvers<Response>()
+      const path = status === 'ready' ? 'inspect' : 'resolve'
+      overrides[`POST 127.0.0.1:4000/torrents/${path}`] = () => {
+        entered.resolve()
+        return release.promise
+      }
+      if (status === 'resolving')
+        vi.useFakeTimers({ toFake: ['setTimeout'] })
+      const pending = app.inject({
+        method: 'POST',
+        url: `/api/titles/${TITLE}/watch`,
+        cookies,
+        payload: { season: 2, episode: 5, candidateId: candidate.id },
+      })
+      try {
+        const entering = Promise.race([
+          entered.promise.then(() => true),
+          pending.then(() => false),
+        ])
+        expect(
+          status === 'resolving' ? await settle(entering) : await entering,
+        ).toBe(true)
+        storeMetaCache(`${TITLE}:ru-RU:v3`, {
+          content_ratings: { results: [{ iso_3166_1: 'RU', rating: '6+' }] },
+        })
+        updateProfile(profile.id, { ageLimit: 6 })
+        if (status === 'ready')
+          release.resolve(json(packDetails))
+        const response
+          = status === 'resolving' ? await settle(pending) : await pending
+        expect(response.statusCode, response.body).toBe(404)
+        expect(getDb().select().from(torrents).get()).toMatchObject({
+          titleId: null,
+          status,
+        })
+        expect(getDb().select().from(titleProgress).all()).toEqual([])
+      }
+      finally {
+        release.resolve(
+          json(engineError('torrent_not_found', 'not found'), 404),
+        )
+        await (status === 'resolving' ? settle(pending) : pending)
+      }
+    },
+  )
+
+  it.each(['direct', 'ranked'] as const)(
+    'does not select a hidden torrent file for a cycle (%s)',
+    async (mode) => {
+      const db = getDb()
+      const profile = createProfile({
+        name: `Cycle viewer ${mode}`,
+        color: 'blue',
+        ageLimit: null,
+        language: null,
+      })
+      const library = db
+        .insert(libraries)
+        .values({ name: `Cycle library ${mode}`, kind: 'video' })
+        .returning()
+        .get()
+      const folder = db
+        .insert(libraryFolders)
+        .values({ libraryId: library.id, path: `/fixture/${library.id}` })
+        .returning()
+        .get()
+      const torrent = db
+        .insert(torrents)
+        .values({
+          name: packDetails.name,
+          infoHash: packDetails.infoHash,
+          status: 'ready',
+          source: 'file',
+          files: packDetails.files.map(item => ({
+            path: item.path,
+            size: item.length,
+            padding: item.padding,
+          })),
+        })
+        .returning()
+        .get()
+      db.insert(libraryHiddenProfiles)
+        .values({ libraryId: library.id, profileId: profile.id })
+        .run()
+      db.insert(mediaFiles)
+        .values({
+          folderId: folder.id,
+          relPath: packDetails.files[5]!.path,
+          size: 1024,
+          mtime: new Date(),
+          torrentId: torrent.id,
+          fileIndex: 5,
+        })
+        .run()
+      const now = new Date()
+      const cycleId = db
+        .insert(rewatchCycles)
+        .values({
+          profileId: profile.id,
+          titleId: TITLE,
+          state: 'active',
+          startSeason: 2,
+          startEpisode: 5,
+          targetSeason: 2,
+          targetEpisode: 5,
+          createdAt: now,
+          updatedAt: now,
+        })
+        .returning()
+        .get()
+        .id
+      const cookies = { ...owner, [PROFILE_COOKIE]: profile.id }
+      const list = await app.inject({
+        url: `/api/titles/${TITLE}/sources?season=2&episode=5`,
+        cookies,
+      })
+      expect(list.statusCode, list.body).toBe(200)
+      const candidate = list
+        .json()
+        .candidates
+        .find(
+          (item: { quality: string }) => item.quality === '1080p',
+        )
+      expect(candidate).toBeDefined()
+      const response = await app.inject({
+        method: 'POST',
+        url: `/api/titles/${TITLE}/watch`,
+        cookies,
+        payload: {
+          season: 2,
+          episode: 5,
+          cycleId,
+          ...(mode === 'direct'
+            ? { torrentId: torrent.id }
+            : { candidateId: candidate.id }),
+        },
+      })
+      expect(response.statusCode, response.body).toBe(422)
+      expect(
+        db.select().from(torrents).where(eq(torrents.id, torrent.id)).get()?.titleId,
+      ).toBeNull()
+      expect(db.select().from(titleProgress).all()).toEqual([])
+    },
+  )
 
   it('серии нет ни в одной раздаче — 422 no_sources', async () => {
     const res = await watch({ season: 2, episode: 9 })

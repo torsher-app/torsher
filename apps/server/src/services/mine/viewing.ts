@@ -1,4 +1,4 @@
-import type { CycleSource } from '../../db/schema.ts'
+import type { CycleSource, TitleProgress } from '../../db/schema.ts'
 import type { ViewingCheckpoint, ViewingStart } from '../../dto/viewing.ts'
 import type { PlayedVoice } from '../library/playedSource.ts'
 import type { TitleRef } from '../sources/progress.ts'
@@ -12,12 +12,14 @@ import {
   diarySeen,
   mineTitlePreferences,
   rewatchCycles,
+  titleProgress,
   viewingAttempts,
   viewingBindings,
   viewingStartReceipts,
 } from '../../db/schema.ts'
 import { assertMaintenancePolicyChange } from '../libraryMaintenance/admission.ts'
 import { parseCatalogId } from '../tmdb/mappers.ts'
+import { isWatched } from '../torrents/playback.ts'
 import { ensureDiaryTimeZone } from '../transfer/diaryTimeZone.ts'
 
 type Attempt = typeof viewingAttempts.$inferSelect
@@ -191,6 +193,44 @@ export function saveCycleCursor(
   }
 }
 
+function completedLegacyPlayback(progress?: TitleProgress) {
+  // Only an exact row last written as completed playback can seed a rewatch.
+  return (
+    !!progress?.watchedAt
+    && progress.watchedAt.getTime() === progress.lastPlayedAt?.getTime()
+    && progress.playedSource?.kind !== 'unknown'
+    && progress.duration !== null
+    && Number.isFinite(progress.duration)
+    && progress.position > 0
+    && progress.position <= progress.duration
+    && isWatched(progress.position, progress.duration)
+  )
+}
+
+function priorLegacyCompletion(ref: ExactViewingRef) {
+  const progress = getDb()
+    .select()
+    .from(titleProgress)
+    .where(viewingScope(titleProgress, ref, false))
+    .get()
+  return completedLegacyPlayback(progress)
+}
+
+/** Call only for an accepted legacy checkpoint in the progress transaction. */
+export function rememberLegacyCompletion(progress: TitleProgress) {
+  if (!progress.playedSource || !completedLegacyPlayback(progress))
+    return
+  const ref = exactViewingRef(progress)
+  const attempt = ref && currentViewingAttempt(ref)
+  if (attempt && !attempt.priorLegacyCompletion) {
+    getDb()
+      .update(viewingAttempts)
+      .set({ priorLegacyCompletion: true })
+      .where(eq(viewingAttempts.id, attempt.id))
+      .run()
+  }
+}
+
 /** Call within a synchronous transaction. Every successful request gets a durable receipt. */
 export function beginViewing(
   ref: ExactViewingRef,
@@ -260,6 +300,11 @@ export function beginViewing(
         cycleKey,
         generation: (attempt?.generation ?? 0) + 1,
         state: 'open',
+        // Once playback starts, its own checkpoints can mark legacy progress watched.
+        priorLegacyCompletion:
+          !cycleKey
+          && (attempt?.priorLegacyCompletion ?? priorLegacyCompletion(ref)),
+        explicitRestart: !cycleKey && start.intent === 'restart',
       })
       .returning()
       .get()
@@ -401,7 +446,11 @@ export function validateViewing(
 }
 
 function viewingScope<
-  T extends typeof diarySeen | typeof cyclePlaybackFacts | typeof diaryEntries,
+  T extends
+  | typeof diarySeen
+  | typeof cyclePlaybackFacts
+  | typeof diaryEntries
+  | typeof titleProgress,
 >(table: T, ref: TitleRef, allEpisodes: boolean) {
   return and(
     eq(table.profileId, ref.profileId),
@@ -494,7 +543,11 @@ export function applyViewingCheckpoint(
         context: attempt.cycleKey
           ? { kind: 'cycle', cycleId: attempt.cycleKey }
           : { kind: 'normal' },
-        rewatch: !!attempt.cycleKey || !!prior || !!seen,
+        rewatch:
+          !!attempt.cycleKey
+          || !!prior
+          || !!seen
+          || (attempt.explicitRestart && attempt.priorLegacyCompletion),
         createdAt: now,
         updatedAt: now,
       })

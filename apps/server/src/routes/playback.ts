@@ -23,11 +23,12 @@ import { diagnosticContext } from '../services/diagnostics/index.ts'
 import type { FastifyRequest } from 'fastify'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import type { PlaybackSession } from '../services/media/index.ts'
-import type { CycleSource, MediaFile } from '../db/schema.ts'
+import type { CycleSource, MediaFile, Torrent } from '../db/schema.ts'
 import type { SessionInput } from '../services/media/sessions.ts'
 import { validatedCheckpoint } from '../services/media/sessions.ts'
 import {
   libraryProbeKey,
+  libraryRevisionMatches,
   storedProbeMatches,
 } from '../services/library/playedSource.ts'
 import { viewingAttemptQuery, viewingAttemptResponse } from '../dto/viewing.ts'
@@ -42,6 +43,7 @@ import {
   isCurrentViewing,
   liveViewingAttempt,
   playableCycle,
+  rememberLegacyCompletion,
   saveCycleCursor,
   validateViewing,
   viewingAttemptWire,
@@ -295,6 +297,21 @@ const preferenceOwners = new WeakMap<
   NonNullable<SessionInput['progressRef']>
 >()
 const sessionCycleSources = new WeakMap<PlaybackSession, CycleSource>()
+
+function playbackSessionAccessible(
+  session: PlaybackSession,
+  profileId: string,
+) {
+  const cycle = sessionCycleSources.get(session)
+  return (
+    sessionAccessible(session, profileId)
+    && (cycle?.kind !== 'torrent'
+      || (!!session.torrent
+        && !unavailableTorrentFiles(profileId, session.torrent.id).has(
+          session.fileIndex,
+        )))
+  )
+}
 function sessionViewingResponse(id: string) {
   const attempt = liveViewingAttempt(id)
   return (
@@ -314,6 +331,42 @@ function linkedPlaybackTitle(file?: MediaFile) {
         episode: file.episode || undefined,
       }
     : undefined
+}
+
+function libraryFileStillPlayable(
+  snapshot: NonNullable<ReturnType<typeof playableMediaFile>>,
+  profileId: string,
+  titleId?: string,
+) {
+  const current = playableMediaFile(snapshot.file.id, profileId)
+  return (
+    current?.path === snapshot.path
+    && current.file.folderId === snapshot.file.folderId
+    && current.file.titleId === snapshot.file.titleId
+    && current.file.season === snapshot.file.season
+    && current.file.episode === snapshot.file.episode
+    && current.file.episodeTo === snapshot.file.episodeTo
+    && current.file.torrentId === snapshot.file.torrentId
+    && current.file.fileIndex === snapshot.file.fileIndex
+    && (!titleId || !hasAgeLimit(profileId) || titleId === current.file.titleId)
+  )
+}
+
+function torrentFileStillPlayable(
+  snapshot: Torrent,
+  fileIndex: number,
+  profileId: string,
+  titleId?: string,
+  cycle = false,
+) {
+  const current = getTorrent(snapshot.id)
+  return (
+    current?.infoHash === snapshot.infoHash
+    && !!playableFile(current, fileIndex)
+    && titleAllowedCached(profileId, current.titleId)
+    && (!titleId || !hasAgeLimit(profileId) || titleId === current.titleId)
+    && (!cycle || !unavailableTorrentFiles(profileId, current.id).has(fileIndex))
+  )
 }
 
 function playbackOwner(
@@ -361,7 +414,9 @@ async function cycleResumeSource(
       return undefined
     }
     const info = await stat(file.path).catch(() => undefined)
-    return info?.isFile() ? { mediaFileId: file.file.id } : undefined
+    return info?.isFile() && libraryFileStillPlayable(file, ref.profileId)
+      ? { mediaFileId: file.file.id }
+      : undefined
   }
   const torrent = torrentsByInfoHash([source.infoHash]).get(source.infoHash)
   if (
@@ -483,6 +538,9 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
         viewing,
       } = request.body
       const cycleId = viewing?.cycleId
+      const { profileId } = request
+      const currentViewer = () =>
+        viewerStillOnProfile(request, request.body.profileId ?? profileId)
       const revisionAtStart = cycleId
         ? cycleRevision(request.profileId, cycleId)
         : undefined
@@ -502,6 +560,7 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
           : undefined
       let source: Pick<SessionInput, 'torrent' | 'library' | 'fileIndex'>
       let fileName: string
+      let libraryAtStart: ReturnType<typeof playableMediaFile>
       let viewingSource: { source: CycleSource, revision: string } | undefined
 
       if (mediaFileId) {
@@ -538,6 +597,7 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
         }
 
         // Серия файла библиотеки известна из сопоставления
+        libraryAtStart = found
         title = requestedTitle ?? linkedPlaybackTitle(found.file)
         source = {
           library: {
@@ -616,6 +676,18 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
           }
         }
         catch (err) {
+          if (
+            !currentViewer()
+            || !torrentFileStillPlayable(
+              found,
+              fileIndex!,
+              profileId,
+              title?.id,
+              !!cycleId,
+            )
+          ) {
+            return reply.code(404).send({ message: 'File not found' })
+          }
           const failure = engineFailureOf(err)
 
           if (failure) {
@@ -656,50 +728,37 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
         viewing
         && (!viewingSource
           || !viewingRef
-          || !(await titleAllowed(request.profileId, viewingRef.titleId))
-          || !viewerStillOnProfile(
-            request,
-            request.body.profileId ?? request.profileId,
-          )
-          || (cycleId && !playableCycle(viewingRef, cycleId, revisionAtStart)))
+          || !(await titleAllowed(profileId, viewingRef.titleId)))
       ) {
         return reply.code(404).send({ message: 'Playback not found' })
       }
-      const attempt
-        = viewing && viewingRef && viewingSource
-          ? getDb().transaction(() =>
-              beginViewing(
-                viewingRef,
-                viewing,
-                viewingSource.source,
-                revisionAtStart,
-              ),
+      const sourceAccessible = () =>
+        libraryAtStart
+          ? libraryFileStillPlayable(libraryAtStart, profileId, title?.id)
+          : torrentFileStillPlayable(
+              source.torrent!,
+              source.fileIndex,
+              profileId,
+              title?.id,
+              !!cycleId,
             )
-          : undefined
-      if (viewing && !attempt) {
-        return reply
-          .code(409)
-          .send({
-            message: 'Viewing attempt conflict',
-            kind: 'viewingAttemptConflict',
-          })
+      const current = () =>
+        currentViewer() && (!title || titleAllowedCached(profileId, title.id))
+      if (
+        !current()
+        || !sourceAccessible()
+        || (cycleId
+          && viewingRef
+          && !playableCycle(viewingRef, cycleId, revisionAtStart))
+      ) {
+        return reply.code(404).send({ message: 'Playback not found' })
       }
-
-      const cycleCursor
+      const cycleCursorAtStart
         = cycleId && viewingRef ? getCycleCursor(viewingRef, cycleId) : undefined
-      // Прогресс серии сильнее позиции файла: раздачу могли сменить. Отметка
-      // с карточки тоже: отмеченную серию не продолжаем с позиции файла
       const progress
         = !cycleId && preferenceOwner
           ? getTitleProgress(preferenceOwner)
           : undefined
-      const state = cycleId
-        ? cycleCursor
-        : progress && hasProgress(progress)
-          ? progress
-          : torrentId
-            ? getWatchState(request.profileId, torrentId, fileIndex!)
-            : undefined
       // Озвучка прошлой раздачи при её смене, иначе серии (выбранная в
       // источниках или в плеере), иначе последних серий сезона, иначе
       // закреплённая за сезоном
@@ -710,19 +769,19 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
       const studio
         = voiceStudio
           ?? progress?.voiceStudio
-          ?? cycleCursor?.voiceStudio
+          ?? cycleCursorAtStart?.voiceStudio
           ?? (lastVoice && 'studio' in lastVoice ? lastVoice.studio : undefined)
           ?? (title
             ? getPinnedVoice(title.id, title.season ?? 0)?.studio
             : undefined)
 
-      const saved
-        = preferenceOwner && !cycleId
-          ? getPlaybackPreferences(
-              preferenceOwner.profileId,
-              preferenceOwner.titleId,
-            )
-          : undefined
+      const saved = preferenceOwner
+        ? getPlaybackPreferences(
+            preferenceOwner.profileId,
+            preferenceOwner.titleId,
+          )
+        : undefined
+      const audio = !cycleId ? saved?.audio : undefined
       const session = createSession({
         diagnosticContext: {
           ...diagnosticContext(request),
@@ -747,12 +806,94 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
         subtitle,
         subtitlePreference: saved?.subtitles,
         preference: {
-          selected: saved?.audio,
-          studio: saved?.audio ? undefined : studio,
+          selected: audio,
+          studio: audio ? undefined : studio,
           locale: language ?? getProfile(request.profileId)?.language,
         },
         log: request.log.child({ source: 'playback' }),
       })
+      bindSessionProfile(session, profileId)
+      await Promise.race([
+        session.ready,
+        new Promise(resolve => setTimeout(resolve, PROBE_WAIT_MS)),
+      ])
+      const sourceRevisionCurrent
+        = !libraryAtStart
+          || !viewingSource
+          || (await libraryRevisionMatches(
+            libraryAtStart.path,
+            libraryAtStart.file.id,
+            viewingSource.revision,
+          ))
+
+      const sessionStillAccessible = () =>
+        current()
+        && sessionAccessible(session, profileId)
+        && sourceAccessible()
+      if (!sessionStillAccessible()) {
+        await stopSession(session.id, 'client', diagnosticContext(request))
+        return reply.code(404).send({ message: 'Playback not found' })
+      }
+      if (
+        !sourceRevisionCurrent
+        || (cycleId
+          && viewingRef
+          && !playableCycle(viewingRef, cycleId, revisionAtStart))
+      ) {
+        await stopSession(session.id, 'client', diagnosticContext(request))
+        return reply.code(409).send({
+          message: 'Viewing attempt conflict',
+          kind: 'viewingAttemptConflict',
+        })
+      }
+
+      let attempt: ReturnType<typeof beginViewing>
+      try {
+        if (viewing && viewingRef && viewingSource) {
+          attempt = getDb().transaction(() => {
+            const attempt = beginViewing(
+              viewingRef,
+              viewing,
+              viewingSource.source,
+              revisionAtStart,
+            )
+            if (attempt) {
+              bindViewing(
+                session.id,
+                attempt,
+                viewing,
+                session.subject,
+                viewingSource.revision,
+                revisionAtStart,
+              )
+            }
+            return attempt
+          })
+        }
+      }
+      catch (error) {
+        await stopSession(session.id, 'client', diagnosticContext(request))
+        throw error
+      }
+      if (viewing && !attempt) {
+        await stopSession(session.id, 'client', diagnosticContext(request))
+        return reply.code(409).send({
+          message: 'Viewing attempt conflict',
+          kind: 'viewingAttemptConflict',
+        })
+      }
+
+      const cycleCursor
+        = cycleId && viewingRef ? getCycleCursor(viewingRef, cycleId) : undefined
+      // Прогресс серии сильнее позиции файла: раздачу могли сменить. Отметка
+      // с карточки тоже: отмеченную серию не продолжаем с позиции файла
+      const state = cycleId
+        ? cycleCursor
+        : progress && hasProgress(progress)
+          ? progress
+          : torrentId
+            ? getWatchState(request.profileId, torrentId, fileIndex!)
+            : undefined
       // Перезапуск с новой дорожкой продолжает с позиции плеера
       const resume: Resume = {
         duration: state?.duration ?? null,
@@ -765,17 +906,8 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
           ?? (state ? resumePosition(state.position, state.duration) : null),
       }
 
-      bindSessionProfile(session, request.profileId)
       resumes.set(session, resume)
-      if (attempt && viewing && viewingSource) {
-        bindViewing(
-          session.id,
-          attempt,
-          viewing,
-          session.subject,
-          viewingSource.revision,
-          revisionAtStart,
-        )
+      if (attempt && viewingSource) {
         sessionViewings.add(session)
         if (cycleId)
           sessionCycleSources.set(session, viewingSource.source)
@@ -798,6 +930,7 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
               (voice?.studio || voice?.type)
               && (!session.library || session.playedEvidence)
               && getSession(session.id, session.subject)
+              && sessionStillAccessible()
               && (!attempt || isCurrentViewing(attempt, revisionAtStart))
             ) {
               const saved = rememberVoice(
@@ -828,35 +961,6 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
             // Проба не удалась — запоминать нечего, ошибку покажет сама сессия
           })
       }
-      await Promise.race([
-        session.ready,
-        new Promise(resolve => setTimeout(resolve, PROBE_WAIT_MS)),
-      ])
-
-      if (
-        viewing
-        && !viewerStillOnProfile(
-          request,
-          request.body.profileId ?? request.profileId,
-        )
-      ) {
-        await stopSession(session.id, 'client', diagnosticContext(request))
-        return reply.code(404).send({ message: 'Playback not found' })
-      }
-      if (
-        cycleId
-        && viewingRef
-        && !playableCycle(viewingRef, cycleId, revisionAtStart)
-      ) {
-        await stopSession(session.id, 'client', diagnosticContext(request))
-        return reply
-          .code(409)
-          .send({
-            message: 'Viewing attempt conflict',
-            kind: 'viewingAttemptConflict',
-          })
-      }
-
       return toPlaybackResponse(session, request, resume)
     },
   )
@@ -883,7 +987,7 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
       const owner = session && preferenceOwners.get(session)
       if (
         !session
-        || !sessionAccessible(session, request.profileId)
+        || !playbackSessionAccessible(session, request.profileId)
         || !owner
         || owner.profileId !== request.profileId
       ) {
@@ -926,6 +1030,11 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
             return
           const cycleSource = sessionCycleSources.get(session)
           if (attempt.cycleKey && cycleSource) {
+            if (change.subtitles) {
+              savePlaybackPreferences(owner.profileId, owner.titleId, {
+                subtitles: change.subtitles,
+              })
+            }
             if (
               request.body.audioStream !== undefined
               && session.decision.audioSwitch === 'platform'
@@ -988,7 +1097,7 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
     async (request, reply) => {
       const session = getSession(request.params.id, streamSubjectOf(request))
 
-      if (!session || !sessionAccessible(session, request.profileId))
+      if (!session || !playbackSessionAccessible(session, request.profileId))
         return reply.code(404).send({ message: 'Playback not found' })
 
       // Статус — пульс плеера: пока он идёт, раздача считается используемой,
@@ -1245,13 +1354,27 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
         }
 
       if (
-        viewing
-        && !viewerStillOnProfile(
+        !viewerStillOnProfile(
           request,
           request.body.profileId ?? request.profileId,
         )
       ) {
         return reply.code(404).send({ message: 'Playback not found' })
+      }
+      if (
+        (title && !titleAllowedCached(request.profileId, title.id))
+        || (library
+          && !libraryFileStillPlayable(library, request.profileId, title?.id))
+        || (torrent
+          && !torrentFileStillPlayable(
+            torrent,
+            fileIndex!,
+            request.profileId,
+            title?.id,
+            !!boundAttempt?.cycleKey,
+          ))
+      ) {
+        return reply.code(404).send({ message: 'File not found' })
       }
 
       return getDb().transaction(() => {
@@ -1351,7 +1474,7 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
           }
         }
         if (titleRef) {
-          saveTitleProgress(
+          const saved = saveTitleProgress(
             titleRef,
             {
               ...source,
@@ -1363,6 +1486,8 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
             checkpoint?.voice,
             checkpoint?.launchSelection,
           )
+          if (!viewing && (!library || preparedSource?.contentKey))
+            rememberLegacyCompletion(saved)
 
           if (
             title

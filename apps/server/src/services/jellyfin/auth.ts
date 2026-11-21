@@ -66,10 +66,7 @@ export function facadeToken(request: FastifyRequest) {
     : undefined
 }
 
-export async function requireJellyfin(
-  request: FastifyRequest,
-  reply: FastifyReply,
-) {
+function authorizedJellyfinDevice(request: FastifyRequest) {
   const token = facadeToken(request)
   const device = token ? deviceByToken(token) : undefined
   const owner = device?.purpose === 'jellyfin' ? findOwner() : undefined
@@ -84,10 +81,29 @@ export async function requireJellyfin(
     || !device.profileId
     || !getProfile(device.profileId)
   ) {
-    return reply.code(401).send({ message: 'Unauthorized' })
+    return undefined
   }
+  return device
+}
+
+export function jellyfinStillOnProfile(request: FastifyRequest) {
+  const device = authorizedJellyfinDevice(request)
+  return (
+    !!device
+    && device.id === request.deviceId
+    && device.profileId === request.profileId
+  )
+}
+
+export async function requireJellyfin(
+  request: FastifyRequest,
+  reply: FastifyReply,
+) {
+  const device = authorizedJellyfinDevice(request)
+  if (!device)
+    return reply.code(401).send({ message: 'Unauthorized' })
   request.deviceId = device.id
-  request.profileId = device.profileId
+  request.profileId = device.profileId!
   request.profileSelected = true
   touchDevice(device, {
     ip: request.ip,

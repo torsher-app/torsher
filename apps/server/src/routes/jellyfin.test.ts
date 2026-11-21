@@ -27,6 +27,7 @@ import {
   titleProgress,
   torrents,
   users,
+  viewingAttempts,
 } from '../db/schema.ts'
 import { hashToken, revokeDevice } from '../services/devices/index.ts'
 import { itemId } from '../services/jellyfin/library.ts'
@@ -591,6 +592,69 @@ describe('jellyfin library and direct play', () => {
 })
 
 describe('jellyfin shared progress', () => {
+  it.each(['confirmed', 'ambiguous', 'hidden'] as const)(
+    'updates legacy completion proof for a %s source',
+    async (scenario) => {
+      const db = getDb()
+      const ref = {
+        profileId,
+        titleId: 'tmdb:movie:900001',
+        season: 0,
+        episode: 0,
+      }
+      const attempt = db
+        .insert(viewingAttempts)
+        .values({ ...ref, cycleKey: '', generation: 1, state: 'open' })
+        .returning()
+        .get()
+      if (scenario === 'hidden') {
+        let statCalls = 0
+        fsControl.beforeStat = (path) => {
+          if (path === join(root, 'Example.Movie.mkv') && ++statCalls === 2) {
+            db.insert(libraryHiddenProfiles)
+              .values({ libraryId, profileId })
+              .run()
+          }
+        }
+      }
+      try {
+        const response = await app.inject({
+          method: 'POST',
+          url: '/Sessions/Playing/Stopped',
+          headers: auth(),
+          payload: {
+            ItemId: movieId,
+            MediaSourceId:
+              scenario === 'ambiguous'
+                ? undefined
+                : movieFile.replaceAll('-', ''),
+            PositionTicks: 3500 * 10_000_000,
+            RunTimeTicks: 3600 * 10_000_000,
+          },
+        })
+        expect(response.statusCode, response.body).toBe(
+          scenario === 'hidden' ? 404 : 204,
+        )
+        expect(
+          db
+            .select()
+            .from(viewingAttempts)
+            .where(eq(viewingAttempts.id, attempt.id))
+            .get()
+            ?.priorLegacyCompletion,
+        ).toBe(scenario === 'confirmed')
+        if (scenario === 'hidden')
+          expect(getTitleProgress(ref)).toBeUndefined()
+      }
+      finally {
+        db.delete(viewingAttempts)
+          .where(eq(viewingAttempts.id, attempt.id))
+          .run()
+        fsControl.beforeStat = undefined
+      }
+    },
+  )
+
   it('keeps title marks out of file Played/Resume/NextUp and clears them through real playback', async () => {
     const db = getDb()
     for (const titleId of ['tmdb:movie:900001', 'tmdb:tv:900002']) {

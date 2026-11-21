@@ -703,6 +703,14 @@ export const viewingAttempts = sqliteTable(
     cycleKey: text('cycle_key').notNull(),
     generation: integer('generation').notNull(),
     state: text('state', { enum: viewingAttemptStates }).notNull(),
+    priorLegacyCompletion: integer('prior_legacy_completion', {
+      mode: 'boolean',
+    })
+      .notNull()
+      .default(false),
+    explicitRestart: integer('explicit_restart', { mode: 'boolean' })
+      .notNull()
+      .default(false),
   },
   table => [
     uniqueIndex('viewing_attempts_generation_idx').on(

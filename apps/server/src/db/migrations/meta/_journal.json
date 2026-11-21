@@ -379,6 +379,13 @@
       "when": 1795078015430,
       "tag": "0053_mine-personal-operations",
       "breakpoints": true
+    },
+    {
+      "idx": 54,
+      "version": "6",
+      "when": 1795240656661,
+      "tag": "0054_legacy-viewing-proof",
+      "breakpoints": true
     }
   ]
 }
