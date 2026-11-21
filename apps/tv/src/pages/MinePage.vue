@@ -258,6 +258,7 @@ const menuGroups = computed<MenuGroup[]>(() => {
     },
     {
       key: 'collections',
+      spacerBefore: true,
       label: t('mine.collections'),
       entries: sections.value
         .filter(item => item.id === 'collection')
@@ -1220,7 +1221,7 @@ onBeforeUnmount(() => {
 }
 
 .mine__label {
-  margin: calc(var(--u) * 24) 0 calc(var(--u) * 12) calc(var(--u) * 22);
+  margin: 0 0 calc(var(--u) * 12) calc(var(--u) * 22);
   color: var(--color-text-dim);
   font-size: calc(var(--u) * 22);
   font-weight: 600;
