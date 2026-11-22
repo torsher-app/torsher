@@ -74,6 +74,7 @@ const VIEWER = new Set([
   'GET /api/mine',
   'GET /api/mine/items',
   'GET /api/mine/v1/bootstrap',
+  'GET /api/mine/v1/section-counts',
   'PUT /api/mine/v1/start-section',
   'GET /api/mine/v1/diary',
   'GET /api/mine/v1/diary/months',
