@@ -1055,35 +1055,36 @@ onBeforeUnmount(() => {
           shown && status === 'ready' && !showSkeleton ? total : undefined
         "
       >
-        <FocusSection
-          v-if="!watchedScope"
-          name="mine-controls"
-          class="mine__controls"
-          manual-scroll
-          :edges="{ left: 'mine-sections', down: 'mine-grid' }"
-        >
-          <button
-            v-for="control in controls"
-            :key="control.id"
-            v-focusable
-            class="chip"
-            type="button"
-            @click="openPanel(control.id)"
+        <template v-if="!watchedScope" #default>
+          <FocusSection
+            name="mine-controls"
+            class="mine__controls"
+            manual-scroll
+            :edges="{ left: 'mine-sections', down: 'mine-grid' }"
           >
-            {{ control.label }}
-          </button>
-          <button
-            v-if="isFiltered(view)"
-            v-focusable
-            class="chip mine__reset"
-            type="button"
-            :aria-label="t('mine.resetFilters')"
-            :title="t('mine.resetFilters')"
-            @click="resetFilters"
-          >
-            <AppIcon name="close" />
-          </button>
-        </FocusSection>
+            <button
+              v-for="control in controls"
+              :key="control.id"
+              v-focusable
+              class="chip"
+              type="button"
+              @click="openPanel(control.id)"
+            >
+              {{ control.label }}
+            </button>
+            <button
+              v-if="isFiltered(view)"
+              v-focusable
+              class="chip mine__reset"
+              type="button"
+              :aria-label="t('mine.resetFilters')"
+              :title="t('mine.resetFilters')"
+              @click="resetFilters"
+            >
+              <AppIcon name="close" />
+            </button>
+          </FocusSection>
+        </template>
         <template #content>
           <div ref="viewport" class="mine__viewport">
             <div
