@@ -8,6 +8,7 @@ import type {
 import type { PanelOption } from '../OptionsPanel.vue'
 import {
   computed,
+  nextTick,
   onActivated,
   onDeactivated,
   onScopeDispose,
@@ -209,6 +210,26 @@ watch([dayEntries, active, locale], fitDayPreview, { flush: 'post' })
 const firstDay = computed(
   () => overview.value?.interests.source === 'ratingsAndFavorites',
 )
+watch(firstDay, async () => {
+  const previous = focus.current()
+  if (
+    !previous
+    || !scroll.value?.contains(previous)
+    || !previous.closest('[data-focus-section="mine-overview-metrics"]')
+  ) {
+    return
+  }
+  const context = mineViewer()
+  await nextTick()
+  if (
+    active.value
+    && isMineViewer(context)
+    && !previous.isConnected
+    && !focus.current()?.isConnected
+  ) {
+    focus.activate('mine-overview-metrics')
+  }
+})
 const missingMetadata = computed(() => {
   const summary = overview.value?.interests
   return summary ? summary.titles - summary.titlesWithMetadata : 0

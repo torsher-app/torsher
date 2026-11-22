@@ -72,6 +72,21 @@ it('restores only the prior continuation value and preserves unrelated notes', a
   )
 })
 
+it('restores a hidden recommendation without updating continuation or diary data', async () => {
+  const controller = new AbortController()
+  await applyMineUndo(
+    operation({ kind: 'recommendationHidden' }),
+    controller.signal,
+  )
+  expect(mocks.patch).toHaveBeenCalledExactlyOnceWith(
+    'film',
+    { expectedProfileId: 'A', language: 'en-US', notInterested: false },
+    { signal: controller.signal },
+  )
+  expect(mocks.remove).not.toHaveBeenCalled()
+  expect(mineUndo.value).toBeUndefined()
+})
+
 it('does not replace a later continuation or a different cycle', async () => {
   mocks.get.mockResolvedValueOnce({ continuation: 'paused' })
   await applyMineUndo(

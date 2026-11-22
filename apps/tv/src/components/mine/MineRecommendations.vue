@@ -27,6 +27,7 @@ import { useFocus } from '../../focus/index.ts'
 import { formatMineDate } from '../../lib/mineDates.ts'
 import { mineEditor, openMineEditor } from '../../lib/mineEditor.ts'
 import { isMineViewer, mineViewer } from '../../lib/minePersonal.ts'
+import { clearMineUndo, mineUndo, showMineUndo } from '../../lib/mineUndo.ts'
 import { lastRowPadding, stackOffset } from '../../lib/rowStack.ts'
 import {
   knownTitleMine,
@@ -63,7 +64,6 @@ const genreFilter = computed(() => filters.value.genre)
 const sourceFilter = computed(() => filters.value.source)
 const panel = ref<FilterPanel>()
 const actionTarget = shallowRef<MineRecommendationItem>()
-const undoItem = shallowRef<MineRecommendationItem>()
 const hiddenPanel = ref(false)
 const hiddenLoading = ref(false)
 const hiddenError = ref(false)
@@ -334,7 +334,14 @@ function meta(item: MineRecommendationItem) {
   }).join(' · ')
 }
 
+function dismissRecommendationUndo() {
+  const change = mineUndo.value
+  if (change?.kind === 'recommendationHidden')
+    clearMineUndo(change)
+}
+
 function openPanel(next: FilterPanel) {
+  dismissRecommendationUndo()
   panelOpener = focus.current() ?? undefined
   panel.value = next
 }
@@ -381,6 +388,7 @@ function chooseFilter(id: string) {
 }
 
 function resetFilters() {
+  dismissRecommendationUndo()
   changeFilters({ ...DEFAULT_RECOMMENDATION_FILTERS })
   focus.activate('mine-preview')
 }
@@ -390,9 +398,10 @@ function focusNeighbor(index: number) {
     '[data-recommendation] button',
   )
   const neighbor = buttons?.[Math.min(Math.max(0, index), buttons.length - 1)]
-  if (neighbor)
-    focus.focusOn(neighbor)
-  else focus.activate('mine-preview')
+  if (neighbor && focus.focusOn(neighbor))
+    return
+  if (!focus.activate('mine-recommendations-grid'))
+    focus.activate('mine-preview')
 }
 
 function random() {
@@ -417,6 +426,7 @@ function random() {
 }
 
 function openActions(item: MineRecommendationItem) {
+  dismissRecommendationUndo()
   panelOpener = focus.current() ?? undefined
   actionTarget.value = item
 }
@@ -472,15 +482,22 @@ async function chooseAction(id: string) {
     }
     if (!isMineViewer(context) || !active.value)
       return
-    if (id === 'hide') {
+    if (id === 'hide')
       removed.value = new Set([...removed.value, target.card.id])
-      undoItem.value = target
-    }
     actionTarget.value = undefined
     if (id === 'hide') {
       await nextTick()
-      if (active.value && isMineViewer(context))
+      if (active.value && isMineViewer(context)) {
         focusNeighbor(index)
+        showMineUndo({
+          kind: 'recommendationHidden',
+          titleId: target.card.id,
+          title: target.card.title,
+          language: language.value,
+          context,
+          opener: focus.current(),
+        })
+      }
     }
     else {
       restorePanelOpener()
@@ -525,25 +542,6 @@ async function restore(id: string) {
     if (isMineViewer(context))
       saving.value = false
   }
-}
-
-async function undoHide() {
-  const item = undoItem.value
-  const context = mineViewer()
-  if (
-    !item
-    || !(await restore(item.card.id))
-    || !isMineViewer(context)
-    || !active.value
-  ) {
-    return
-  }
-  undoItem.value = undefined
-  await nextTick()
-  if (!isMineViewer(context) || !active.value)
-    return
-  const index = filtered.value.findIndex(row => row.card.id === item.card.id)
-  focusNeighbor(index)
 }
 
 async function loadHidden(append = false) {
@@ -612,8 +610,6 @@ async function restoreHidden(id: string) {
     && active.value
     && hiddenPanel.value
   ) {
-    if (undoItem.value?.card.id === id)
-      undoItem.value = undefined
     await loadHidden()
     if (
       isMineViewer(context)
@@ -661,6 +657,7 @@ onActivated(() => {
 })
 onDeactivated(() => {
   active.value = false
+  dismissRecommendationUndo()
   window.removeEventListener('resize', refreshRows)
   clearTimeout(flashTimer)
   flashId.value = undefined
@@ -773,7 +770,6 @@ onScopeDispose(() => {
                   :edges="{
                     left: 'mine-sections',
                     up: 'mine-preview',
-                    down: undoItem ? 'mine-recommendations-undo' : undefined,
                   }"
                 >
                   <div
@@ -838,22 +834,6 @@ onScopeDispose(() => {
             </div>
           </div>
         </div>
-
-        <FocusSection
-          v-if="undoItem"
-          name="mine-recommendations-undo"
-          class="undo-toast"
-          :edges="{ up: 'mine-recommendations-grid' }"
-        >
-          <span>{{
-            t("mine.preview.recommendations.hidden", {
-              title: undoItem.card.title,
-            })
-          }}</span>
-          <button v-focusable type="button" @click="undoHide">
-            {{ t("mine.preview.recommendations.undo") }}
-          </button>
-        </FocusSection>
 
         <OptionsPanel
           v-if="panel"
@@ -1050,30 +1030,5 @@ onScopeDispose(() => {
   max-width: calc(var(--u) * 760);
   color: var(--color-text-muted);
   font-size: var(--font-size-m);
-}
-
-.undo-toast {
-  position: fixed;
-  z-index: 10;
-  bottom: var(--safe-y);
-  left: 50%;
-  display: flex;
-  align-items: center;
-  padding: calc(var(--u) * 12) calc(var(--u) * 18);
-  border-radius: calc(var(--u) * 14);
-  background: var(--color-surface-raised-2);
-  font-size: var(--font-size-s);
-  transform: translateX(-50%);
-}
-
-.undo-toast button {
-  margin-left: calc(var(--u) * 24);
-  padding: calc(var(--u) * 10) calc(var(--u) * 16);
-  border: 0;
-  border-radius: calc(var(--u) * 10);
-  background: var(--color-accent);
-  color: var(--color-accent-ink);
-  font: inherit;
-  font-weight: 700;
 }
 </style>
