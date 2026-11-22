@@ -42,8 +42,8 @@ afterEach(() => scope.stop())
 function card(id: string) {
   return { id, kind: 'movie', title: id, originalTitle: id } as Card
 }
-function setup() {
-  const section = ref<MineSection | undefined>({ id: 'watchlist', count: 3 })
+function setup(count = 3) {
+  const section = ref<MineSection | undefined>({ id: 'watchlist', count })
   const view = ref({ ...DEFAULT_MINE_VIEW })
   const mine = scope.run(() => useMineItems(section, view))!
   return { mine, section, view }
@@ -217,6 +217,13 @@ it('reads an unknown count and never short-circuits the personal Continue endpoi
       expect.any(Object),
     ),
   )
+})
+
+it('requests list items even if the menu shows zero', async () => {
+  mocks.items.mockResolvedValue({ items: [card('allowed')], total: 1 })
+  const { mine } = setup(0)
+  await vi.waitFor(() => expect(mine.items.value[0]?.card.id).toBe('allowed'))
+  expect(mine.total.value).toBe(1)
 })
 
 it('discards a bootstrap from the previous viewer generation even after A/B/A', async () => {

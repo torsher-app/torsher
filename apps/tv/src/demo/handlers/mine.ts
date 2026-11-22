@@ -16,6 +16,7 @@ import type {
   MineRecommendations,
   MineResponse,
   MineSection,
+  MineSectionCounts,
   MineStartResponse,
   MineTitlePersonal,
   ScheduleItem,
@@ -601,19 +602,11 @@ function existingReceipt<T>(
   return previous?.result
 }
 
-get<MineBootstrap>(`${MINE}/bootstrap`, ({ query }) => {
-  const state = profileQuery(query)
-  const profile = currentProfile()
+function sectionCounts(state: DemoMine): MineSectionCounts {
   return {
-    version: 1,
-    profileId: profile.id,
-    language: profile.language,
-    today: today(),
-    timeZone,
-    start: state.start,
+    profileId: currentProfile().id,
     collections: collections.map(item => ({
       id: item.id,
-      name: item.name,
       count: item.titles.filter((id) => {
         const title = titleOf(id)
         return !!title && accessible(title)
@@ -622,12 +615,35 @@ get<MineBootstrap>(`${MINE}/bootstrap`, ({ query }) => {
     counts: {
       continue: continueItems(state, new URLSearchParams()).length,
       watched: watchedTitles(state, new URLSearchParams()).length,
-      schedule: null,
       watchlist: entriesOf('watchlist').filter(row => accessible(row.title)).length,
       favorites: entriesOf('favorites').filter(row => accessible(row.title)).length,
       ratings: entriesOf('ratings').filter(row => accessible(row.title)).length,
       dropped: entriesOf('dropped').filter(row => accessible(row.title)).length,
     },
+  }
+}
+
+get<MineSectionCounts>(`${MINE}/section-counts`, ({ query }) =>
+  sectionCounts(profileQuery(query)))
+
+get<MineBootstrap>(`${MINE}/bootstrap`, ({ query }) => {
+  const state = profileQuery(query)
+  const profile = currentProfile()
+  const data = sectionCounts(state)
+  const counts = new Map(data.collections.map(({ id, count }) => [id, count]))
+  return {
+    version: 1,
+    profileId: profile.id,
+    language: profile.language,
+    today: today(),
+    timeZone,
+    start: state.start,
+    collections: collections.map(({ id, name }) => ({
+      id,
+      name,
+      count: counts.get(id) ?? null,
+    })),
+    counts: { ...data.counts, schedule: null },
   }
 })
 
