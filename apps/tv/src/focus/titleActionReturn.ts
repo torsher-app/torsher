@@ -20,8 +20,17 @@ export function captureTitleActionReturn(
       return false
     if (opener?.isConnected && focus.focusOn(opener))
       return true
-    if (section?.isConnected && name && focus.activate(name))
+    // После обновления список может заменить секцию с тем же именем.
+    if (
+      name
+      && (section?.isConnected
+        || [...screen.querySelectorAll<HTMLElement>('[data-focus-section]')].some(
+          el => el.getAttribute('data-focus-section') === name,
+        ))
+        && focus.activate(name)
+    ) {
       return true
+    }
     // Ряд мог исчезнуть целиком: ищем доступную цель только в живом экране,
     // а service проверяет регистрацию и видимость каждого кандидата.
     for (const candidate of screen.querySelectorAll<HTMLElement>(

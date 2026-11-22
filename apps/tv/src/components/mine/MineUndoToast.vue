@@ -1,6 +1,13 @@
 <script setup lang="ts">
 import type { MineUndo } from '../../lib/mineUndo.ts'
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from 'vue'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useFocus } from '../../focus/index.ts'
@@ -10,6 +17,7 @@ import { formatMineDate } from '../../lib/mineDates.ts'
 import { applyMineUndo, clearMineUndo, mineUndo } from '../../lib/mineUndo.ts'
 import { isMineViewer } from '../../lib/minePersonal.ts'
 import { titleActions } from '../../titleActions.ts'
+import AppIcon from '../AppIcon.vue'
 import FocusSection from '../FocusSection.vue'
 
 const props = defineProps<{ change: MineUndo }>()
@@ -27,6 +35,16 @@ let anchor = props.change.opener
 let timer: ReturnType<typeof setTimeout> | undefined
 const originalScreen = anchor?.closest<HTMLElement>('main')
 const restore = captureTitleActionReturn(focus, anchor)
+const message = computed(() => {
+  if (error.value)
+    return `${t('actions.errors.save')} · ${props.change.title}`
+  if (props.change.kind === 'recommendationHidden') {
+    return t('mine.preview.recommendations.hidden', {
+      title: props.change.title,
+    })
+  }
+  return `${t(`mine.personal.feedback.${props.change.kind}`)} · ${props.change.title}`
+})
 
 function schedule() {
   clearTimeout(timer)
@@ -69,7 +87,8 @@ const stopFocus = focus.onFocus((element) => {
   }
 })
 const stopKey = focus.onKey((action) => {
-  const inside = root.value?.contains(focus.current() ?? null)
+  const current = focus.current()
+  const inside = root.value?.contains(current ?? null)
   if (
     inside
     && (action.type === 'back'
@@ -83,10 +102,15 @@ const stopKey = focus.onKey((action) => {
     !inside
     && action.type === 'move'
     && action.direction === 'down'
-    && anchor?.isConnected
-    && focus.current() === anchor
+    && ((anchor?.isConnected && current === anchor)
+      || (!current?.isConnected && restore()))
   ) {
-    return focus.activate('mine-undo', 'nav')
+    if (!focus.activate('mine-undo', 'nav'))
+      return false
+    // После указки первый шаг проявляет тихий фокус на кнопке отмены.
+    if (focus.mode === 'pointer')
+      focus.key('down')
+    return true
   }
   return false
 })
@@ -150,6 +174,8 @@ onMounted(() => {
     ) {
       anchor = current
     }
+    if (!current?.isConnected)
+      restore()
     schedule()
   })
 })
@@ -166,12 +192,7 @@ onBeforeUnmount(() => {
   <div ref="root" class="mine-undo" :class="{ 'mine-undo--demo': demo }">
     <FocusSection name="mine-undo" class="mine-undo__content" manual-scroll>
       <span role="status">
-        {{
-          error
-            ? t("actions.errors.save")
-            : t(`mine.personal.feedback.${change.kind}`)
-        }}
-        · {{ change.title }}
+        {{ message }}
         <template v-if="change.kind === 'logged'">
           ·
           {{
@@ -184,6 +205,7 @@ onBeforeUnmount(() => {
           }}</template>
       </span>
       <button v-focusable type="button" :aria-disabled="busy" @click="undo">
+        <AppIcon name="arrowDown" />
         {{ t("mine.preview.recommendations.undo") }}
       </button>
     </FocusSection>
@@ -217,6 +239,9 @@ onBeforeUnmount(() => {
   word-wrap: break-word;
 }
 .mine-undo button {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--u) * 8);
   flex-shrink: 0;
   padding: calc(var(--u) * 12) calc(var(--u) * 20);
   border: 0;

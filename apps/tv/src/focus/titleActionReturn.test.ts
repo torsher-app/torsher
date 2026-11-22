@@ -3,10 +3,12 @@ import { captureTitleActionReturn } from './titleActionReturn.ts'
 
 function setup() {
   const fallback = {} as HTMLElement
+  const replacementSections: { getAttribute: () => string }[] = []
   const screen = {
     isConnected: true,
     getClientRects: () => [{}],
-    querySelectorAll: () => [fallback],
+    querySelectorAll: (selector: string) =>
+      selector === '[data-focus-section]' ? replacementSections : [fallback],
   }
   const section = { isConnected: true, getAttribute: () => 'home-continue' }
   const opener = {
@@ -34,6 +36,7 @@ function setup() {
   )
   return {
     fallback,
+    replacementSections,
     opener,
     section,
     screen,
@@ -54,6 +57,17 @@ it('returns to a surviving opener through the existing focus service', () => {
 it('returns to the surviving row after the opener was removed while the menu was open', () => {
   const state = setup()
   state.opener.isConnected = false
+  state.focus.activate.mockReturnValueOnce(true)
+  expect(state.restore()).toBe(true)
+  expect(state.focus.activate).toHaveBeenCalledExactlyOnceWith('home-continue')
+  expect(state.focus.focusOn).not.toHaveBeenCalled()
+})
+
+it('returns to the same focus section after its DOM was replaced', () => {
+  const state = setup()
+  state.opener.isConnected = false
+  state.section.isConnected = false
+  state.replacementSections.push({ getAttribute: () => 'home-continue' })
   state.focus.activate.mockReturnValueOnce(true)
   expect(state.restore()).toBe(true)
   expect(state.focus.activate).toHaveBeenCalledExactlyOnceWith('home-continue')

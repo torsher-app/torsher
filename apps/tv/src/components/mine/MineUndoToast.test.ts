@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
   current: undefined as any,
   focusOn: vi.fn(),
   activate: vi.fn(),
+  revealKey: vi.fn(),
+  mode: 'remote' as 'pointer' | 'remote',
   remove: vi.fn(),
 }))
 vi.mock('../../api.ts', () => ({
@@ -21,6 +23,10 @@ vi.mock('../../focus/index.ts', () => ({
     current: () => mocks.current,
     activate: mocks.activate,
     focusOn: mocks.focusOn,
+    key: mocks.revealKey,
+    get mode() {
+      return mocks.mode
+    },
     onKey: (fn: typeof mocks.key) => {
       mocks.key = fn
       return () => {}
@@ -39,6 +45,7 @@ vi.mock('vue-i18n', () => ({
   useI18n: () => ({ t: (key: string) => key, locale: 'en_US' }),
 }))
 vi.mock('../FocusSection.vue', () => ({ default: {} }))
+vi.mock('../AppIcon.vue', () => ({ default: {} }))
 const renderer = createRenderer<object, object>({
   patchProp() {},
   insert() {},
@@ -56,6 +63,7 @@ beforeEach(() => {
   vi.useFakeTimers()
   vi.stubGlobal('__DEMO__', false)
   vi.resetAllMocks()
+  mocks.mode = 'remote'
   setTitleViewer(undefined)
   setTitleViewer('A')
 })
@@ -119,6 +127,17 @@ it('leaves focus on the opener, reaches Undo with Down, and pauses expiry until 
   await nextTick()
   expect(mocks.focusOn).toHaveBeenCalledWith(opener)
   expect(mineUndo.value).toBeUndefined()
+})
+
+it('reveals the Undo focus on the first Down after using the pointer', async () => {
+  mocks.mode = 'pointer'
+  const { opener } = await mount()
+  expect(mocks.key({ type: 'move', direction: 'down' })).toBe(true)
+  expect(mocks.revealKey).toHaveBeenCalledExactlyOnceWith('down')
+  expect(mocks.key({ type: 'move', direction: 'up' })).toBe(true)
+  await nextTick()
+  expect(mocks.current).toBe(opener)
+  expect(mocks.remove).not.toHaveBeenCalled()
 })
 
 it('does not recreate an expiry timer after an in-flight undo unmounts', async () => {

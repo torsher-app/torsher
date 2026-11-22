@@ -14,6 +14,7 @@ type UndoChange
       after: 'paused' | 'hidden'
     }
     | { kind: 'cyclePaused', cycleId: string, updatedAt: string }
+    | { kind: 'recommendationHidden' }
 
 export type MineUndoInput = UndoChange & {
   titleId: string
@@ -66,6 +67,13 @@ export async function applyMineUndo(change: MineUndo, signal?: AbortSignal) {
       if (getErrorStatus(error) !== 404)
         throw error
     }
+  }
+  else if (change.kind === 'recommendationHidden') {
+    await api.mine.patchMineTitlePersonal(
+      change.titleId,
+      { ...query, notInterested: false },
+      { signal },
+    )
   }
   else {
     const fresh = await api.mine.getMineTitlePersonal(change.titleId, query, {
