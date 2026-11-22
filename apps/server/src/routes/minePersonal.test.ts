@@ -22,6 +22,7 @@ import { getDb, migrateDb } from '../db/index.ts'
 import {
   collectionHiddenProfiles,
   collections,
+  collectionTitles,
   cyclePlaybackFacts,
   devices,
   diaryEntries,
@@ -831,6 +832,137 @@ describe('personal actions', () => {
     }
     finally {
       fetch.mockRestore()
+    }
+  })
+
+  it('fills Mine counts and lists with permitted titles on a cold age cache', async () => {
+    const db = getDb()
+    const unknown = 'tmdb:movie:940005'
+    const dropped = 'tmdb:movie:940006'
+    const at = new Date()
+    db.update(profiles)
+      .set({ ageLimit: 12 })
+      .where(eq(profiles.id, profileId))
+      .run()
+    db.insert(profileTitles)
+      .values([
+        ...[movie, other, unknown].map(titleId => ({
+          profileId,
+          titleId,
+          watchlistAt: at,
+          favoriteAt: at,
+          rating: 8,
+          ratedAt: at,
+        })),
+        { profileId, titleId: dropped, droppedAt: at },
+      ])
+      .run()
+    db.insert(titleProgress)
+      .values({
+        profileId,
+        titleId: cold,
+        season: 0,
+        episode: 0,
+        position: 120,
+        duration: 3600,
+      })
+      .run()
+    const [visible, hidden, empty] = db
+      .insert(collections)
+      .values([
+        { name: 'Visible', nameKey: 'visible' },
+        { name: 'Hidden', nameKey: 'hidden' },
+        { name: 'Empty', nameKey: 'empty' },
+      ])
+      .returning()
+      .all()
+    db.insert(collectionHiddenProfiles)
+      .values({ profileId, collectionId: hidden!.id })
+      .run()
+    db.insert(collectionTitles)
+      .values(
+        [movie, other, unknown].map(titleId => ({
+          collectionId: visible!.id,
+          titleId,
+        })),
+      )
+      .run()
+
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = new URL(String(input))
+      expect(url.pathname).toMatch(/\/movie\/94000[1-6]$/)
+      const id = Number(url.pathname.split('/').at(-1))
+      const releases
+        = id === 940005 ? [] : [{ certification: id === 940003 ? '12+' : '6+' }]
+      return Response.json({
+        id,
+        title: `Movie ${id}`,
+        original_title: `Movie ${id}`,
+        release_date: '2024-01-01',
+        genres: [],
+        runtime: 60,
+        release_dates: {
+          results: [{ iso_3166_1: 'RU', release_dates: releases }],
+        },
+      })
+    })
+    vi.stubEnv('TMDB_ACCESS_TOKEN', 'fixture')
+    vi.stubGlobal('fetch', fetchMock)
+    try {
+      const bootstrap = await api('bootstrap', {
+        query: { expectedProfileId: profileId },
+      })
+      expect(bootstrap.json().counts).toMatchObject({
+        watchlist: null,
+        favorites: null,
+        ratings: null,
+      })
+      expect(fetchMock).not.toHaveBeenCalled()
+
+      for (const [path, titleId] of [
+        ['continue', cold],
+        ['watched', movie],
+      ] as const) {
+        db.delete(metaCache).run()
+        const list = await api(path, { query: query() })
+        expect(list.statusCode, list.body).toBe(200)
+        expect(list.json()).toMatchObject({ total: 1, items: [{ titleId }] })
+      }
+
+      db.delete(metaCache).run()
+      const favorites = await app.inject({
+        url: '/api/mine/items',
+        cookies: owner,
+        query: { section: 'favorites', language },
+      })
+      expect(favorites.statusCode, favorites.body).toBe(200)
+      expect(favorites.json()).toMatchObject({
+        total: 1,
+        items: [{ id: movie }],
+      })
+
+      db.delete(metaCache).run()
+      const result = await api('section-counts', { query: query() })
+      expect(result.statusCode, result.body).toBe(200)
+      expect(result.json()).toEqual({
+        profileId,
+        counts: {
+          continue: 1,
+          watched: 1,
+          dropped: 1,
+          watchlist: 1,
+          favorites: 1,
+          ratings: 1,
+        },
+        collections: [
+          { id: empty!.id, count: 0 },
+          { id: visible!.id, count: 1 },
+        ],
+      })
+    }
+    finally {
+      vi.unstubAllGlobals()
+      vi.unstubAllEnvs()
     }
   })
 

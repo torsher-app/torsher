@@ -83,6 +83,21 @@ export const mineBootstrap = z
   })
   .meta({ id: 'mineBootstrap' })
 
+export const mineSectionCounts = z
+  .object({
+    profileId,
+    counts: z.object({
+      continue: count,
+      watched: count,
+      watchlist: count,
+      favorites: count,
+      ratings: count,
+      dropped: count,
+    }),
+    collections: z.array(z.object({ id: z.string(), count })),
+  })
+  .meta({ id: 'mineSectionCounts' })
+
 export const mineStartInput = mineExpectedProfile.extend({ start: mineStart })
 export const mineStartResponse = z
   .object({ start: mineStart })

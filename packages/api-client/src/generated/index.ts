@@ -5979,6 +5979,54 @@ export interface MineBootstrapInput {
   };
 }
 
+export interface MineSectionCountsInput {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  profileId: string;
+  counts: {
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    continue: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    watched: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    watchlist: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    favorites: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    ratings: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    dropped: number;
+  };
+  collections: {
+    id: string;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    count: number;
+  }[];
+}
+
 export interface MineStartResponseInput {
   start:
     | {
@@ -15297,6 +15345,54 @@ export interface MineBootstrap {
   };
 }
 
+export interface MineSectionCounts {
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  profileId: string;
+  counts: {
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    continue: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    watched: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    watchlist: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    favorites: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    ratings: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    dropped: number;
+  };
+  collections: {
+    id: string;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    count: number;
+  }[];
+}
+
 export interface MineStartResponse {
   start:
     | {
@@ -18841,6 +18937,9 @@ export type GetMineItemsError = MessageResponse;
 export type GetMineBootstrapError =
   (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
 
+export type GetMineSectionCountsError =
+  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
+
 export type PutMineStartError =
   (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
 
@@ -21173,6 +21272,36 @@ export class Api<
     ) =>
       this.request<MineBootstrap, GetMineBootstrapError>({
         path: `/api/mine/v1/bootstrap`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Mine
+     * @name GetMineSectionCounts
+     * @request GET:/api/mine/v1/section-counts
+     */
+    getMineSectionCounts: (
+      query: {
+        /**
+         * @minLength 1
+         * @maxLength 100
+         */
+        expectedProfileId: string;
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<MineSectionCounts, GetMineSectionCountsError>({
+        path: `/api/mine/v1/section-counts`,
         method: "GET",
         query: query,
         format: "json",
