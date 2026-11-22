@@ -560,7 +560,7 @@ onScopeDispose(() => {
                 v-if="earlierCount"
                 v-focusable
                 type="button"
-                class="chip overview__earlier"
+                class="action"
                 @click="
                   emit('watched', {
                     source: 'earlierMarks',
@@ -887,7 +887,6 @@ onScopeDispose(() => {
 
 .period-button__label {
   line-height: 1;
-  transform: translateY(0.0625em);
 }
 
 .overview__metrics {
@@ -1236,9 +1235,5 @@ onScopeDispose(() => {
 .metric-item:hover .metric__distinct,
 .metric:focus + .metric__distinct {
   visibility: visible;
-}
-
-.overview__earlier {
-  margin-left: var(--space-2);
 }
 </style>
