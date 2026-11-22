@@ -23,7 +23,9 @@ import {
   mineOverviewQuery,
   minePersonalContinue,
   minePersonalError,
+  minePersonalLanguage,
   minePersonalWatched,
+  mineSectionCounts,
   mineSeenUpdate,
   mineStartInput,
   mineStartResponse,
@@ -55,6 +57,7 @@ import {
   getMineBootstrap,
   getMinePersonalContinue,
   getMinePersonalWatched,
+  getMineSectionCounts,
   getMineTitlePersonal,
   patchMineTitle,
   putMineSeen,
@@ -97,6 +100,25 @@ export const minePersonalRoutes: FastifyPluginAsyncZod = async (app) => {
       getMineBootstrap(
         capturedProfile(request, request.query.expectedProfileId),
       ),
+  )
+
+  app.get(
+    '/section-counts',
+    {
+      schema: {
+        operationId: 'getMineSectionCounts',
+        tags,
+        querystring: minePersonalLanguage,
+        response: { 200: mineSectionCounts, ...errors },
+      },
+    },
+    async (request) => {
+      const { expectedProfileId, language } = request.query
+      return getMineSectionCounts(
+        capturedProfile(request, expectedProfileId),
+        language,
+      )
+    },
   )
 
   app.put(

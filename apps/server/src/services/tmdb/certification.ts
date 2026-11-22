@@ -126,8 +126,13 @@ export async function loadTitleAge(id: string) {
     return await titleAge(id)
   }
   catch (err) {
-    if (err instanceof TmdbError)
+    if (
+      err instanceof TmdbError
+      || err instanceof SyntaxError
+      || err instanceof TypeError
+    ) {
       return undefined
+    }
     throw err
   }
 }

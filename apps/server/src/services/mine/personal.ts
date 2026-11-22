@@ -5,6 +5,7 @@ import type {
   MineStart,
   mineWatchedQuery,
 } from '../../dto/minePersonal.ts'
+import type { ProfileTitle } from '../../db/schema.ts'
 import type { CurrentProfile } from './personalAccess.ts'
 import type { ProgressPoint } from './status.ts'
 import { and, eq, notExists, sql } from 'drizzle-orm'
@@ -18,8 +19,12 @@ import {
   rewatchCycles,
   titleProgress,
 } from '../../db/schema.ts'
-import { visibleCollectionRef } from '../collections/index.ts'
-import { titleAllowedCached } from '../profiles/access.ts'
+import {
+  collectionItems,
+  visibleCollectionRef,
+  visibleCollections,
+} from '../collections/index.ts'
+import { allowedTitleIds, titleAllowedCached } from '../profiles/access.ts'
 import { getProfile } from '../profiles/index.ts'
 import { getTitleProgress, markWatched } from '../sources/progress.ts'
 import { resumeTarget, visibleResumeSource } from '../sources/resume.ts'
@@ -30,7 +35,12 @@ import { ensureDiaryTimeZone } from '../transfer/diaryTimeZone.ts'
 import { calendarDayAt } from './calendar.ts'
 import { cycleWire, unfinishedCycle } from './cycles.ts'
 import { validateDiaryTarget } from './diaryWrites.ts'
-import { kindOf, markTitleWatched, MineNotFoundError } from './index.ts'
+import {
+  droppedSince,
+  kindOf,
+  markTitleWatched,
+  MineNotFoundError,
+} from './index.ts'
 import {
   facetsFilter,
   firstDayInterestScope,
@@ -60,6 +70,21 @@ function startOf(profileId: string): MineStart {
   }
 }
 
+function listCounts(
+  rows: Iterable<ProfileTitle>,
+  allowed?: ReadonlySet<string>,
+) {
+  const counts = { watchlist: 0, favorites: 0, ratings: 0 }
+  for (const row of rows) {
+    if (allowed && !allowed.has(row.titleId))
+      continue
+    counts.watchlist += Number(!!row.watchlistAt)
+    counts.favorites += Number(!!row.favoriteAt)
+    counts.ratings += Number(row.rating !== null)
+  }
+  return counts
+}
+
 export function getMineBootstrap(current: CurrentProfile) {
   const profileId = current()
   const profile = getProfile(profileId)!
@@ -83,22 +108,16 @@ export function getMineBootstrap(current: CurrentProfile) {
     )
     .all()
     .sort((a, b) => a.name.localeCompare(b.name))
-  const simple = { watchlist: 0, favorites: 0, ratings: 0 }
-  for (const row of db
-    .select()
-    .from(profileTitles)
-    .where(eq(profileTitles.profileId, profileId))
-    .all()) {
-    if (
-      profile.ageLimit !== null
-      && !titleAllowedCached(profileId, row.titleId)
-    ) {
-      continue
-    }
-    simple.watchlist += Number(!!row.watchlistAt)
-    simple.favorites += Number(!!row.favoriteAt)
-    simple.ratings += Number(row.rating !== null)
-  }
+  const simple
+    = profile.ageLimit === null
+      ? listCounts(
+          db
+            .select()
+            .from(profileTitles)
+            .where(eq(profileTitles.profileId, profileId))
+            .all(),
+        )
+      : { watchlist: null, favorites: null, ratings: null }
   return {
     version: 1 as const,
     profileId,
@@ -243,6 +262,7 @@ function personalScope(profileId: string, language: string, titleId?: string) {
   }
   return {
     item,
+    mine,
     ids: new Set([
       ...mine.keys(),
       ...progress.keys(),
@@ -393,19 +413,15 @@ function ratingMatches(
   return rating != null && rating >= min! && rating <= max!
 }
 
-function personalContinueCandidates(
+function catalogIds(ids: Iterable<string>) {
+  return [...ids].filter(id => /^tmdb:(?:movie|tv):[1-9]\d*$/.test(id))
+}
+
+function personalContinueScope(
   profileId: string,
-  {
-    language,
-    state,
-    kind,
-    rating,
-  }: Pick<
-    z.infer<typeof mineContinueQuery>,
-    'language' | 'state' | 'kind' | 'rating'
-  >,
+  language: string,
+  scope = personalScope(profileId, language),
 ) {
-  const scope = personalScope(profileId, language)
   const cycles = new Map(
     getDb()
       .select()
@@ -415,12 +431,23 @@ function personalContinueCandidates(
       .filter(row => row.state !== 'ended')
       .map(row => [row.titleId, row]),
   )
-  return [...new Set([...scope.ids, ...cycles.keys()])]
-    .filter(
-      id =>
-        /^tmdb:(?:movie|tv):[1-9]\d*$/.test(id)
-        && titleAllowedCached(profileId, id),
-    )
+  return {
+    scope,
+    cycles,
+    ids: catalogIds(new Set([...scope.ids, ...cycles.keys()])),
+  }
+}
+
+function personalContinueCandidates(
+  { scope, cycles }: ReturnType<typeof personalContinueScope>,
+  ids: string[],
+  {
+    state,
+    kind,
+    rating,
+  }: Pick<z.infer<typeof mineContinueQuery>, 'state' | 'kind' | 'rating'>,
+) {
+  return ids
     .map((id) => {
       const item = scope.item(id)
       return {
@@ -445,12 +472,12 @@ export function personalContinueCount(
   language: string,
   kind: MineKind,
 ) {
-  return personalContinueCandidates(profileId, {
-    language,
-    state: 'normal',
-    kind,
-    rating: 'any',
-  }).length
+  const continuing = personalContinueScope(profileId, language)
+  return personalContinueCandidates(
+    continuing,
+    allowedLocalIds(profileId, continuing.ids),
+    { state: 'normal', kind, rating: 'any' },
+  ).length
 }
 
 export async function getMinePersonalContinue(
@@ -458,7 +485,14 @@ export async function getMinePersonalContinue(
   query: z.infer<typeof mineContinueQuery>,
 ) {
   const profileId = current()
-  const candidates = personalContinueCandidates(profileId, query)
+  const continuing = personalContinueScope(profileId, query.language)
+  await loadMissingMineAges(profileId, continuing.ids)
+  current()
+  const candidates = personalContinueCandidates(
+    continuing,
+    allowedLocalIds(profileId, continuing.ids),
+    query,
+  )
     .map((row) => {
       const at
         = query.state !== 'normal'
@@ -557,6 +591,15 @@ function allowedLocalIds(profileId: string, ids: string[]) {
   return ids.filter(id => (ages.get(id) ?? Infinity) < limit)
 }
 
+async function loadMissingMineAges(profileId: string, ids: string[]) {
+  if (getProfile(profileId)?.ageLimit === null)
+    return
+  const cached = cachedTitleAges(ids)
+  const missing = ids.filter(id => !cached.has(id))
+  if (missing.length)
+    await allowedTitleIds(profileId, missing)
+}
+
 export function earlierMarkedTitles(profileId: string, language: string) {
   const rows = getDb().all<{ title_id: string }>(sql`
     SELECT title_id FROM (
@@ -619,16 +662,55 @@ function matchingFacets(rows: DisplayTitle[], query: WatchedQuery) {
   return rows.filter(row => matching.has(row.titleId))
 }
 
-function watchedTitles(profileId: string, language: string) {
-  const scope = personalScope(profileId, language)
-  const ids = allowedLocalIds(
-    profileId,
-    [...scope.ids].filter(id => /^tmdb:(?:movie|tv):[1-9]\d*$/.test(id)),
-  )
+function watchedTitles(scope: ReturnType<typeof personalScope>, ids: string[]) {
   return ids.map(scope.item).filter(row => row.status === 'watched')
 }
 
-export function getMinePersonalWatched(
+export async function getMineSectionCounts(
+  current: CurrentProfile,
+  language: string,
+) {
+  const profileId = current()
+  const scope = personalScope(profileId, language)
+  const continuing = personalContinueScope(profileId, language, scope)
+  const collections = visibleCollections(profileId).map(({ id }) => ({
+    id,
+    titles: collectionItems(id).map(item => item.titleId),
+  }))
+  const ids = [
+    ...new Set([
+      ...scope.ids,
+      ...continuing.ids,
+      ...collections.flatMap(item => item.titles),
+    ]),
+  ]
+  await loadMissingMineAges(profileId, ids)
+  current()
+  const allowed = new Set(allowedLocalIds(profileId, ids))
+  const dropped = droppedSince(profileId)
+  return {
+    profileId,
+    counts: {
+      ...listCounts(scope.mine.values(), allowed),
+      continue: personalContinueCandidates(
+        continuing,
+        continuing.ids.filter(id => allowed.has(id)),
+        { state: 'normal', kind: 'all', rating: 'any' },
+      ).length,
+      watched: watchedTitles(
+        scope,
+        catalogIds(scope.ids).filter(id => allowed.has(id)),
+      ).length,
+      dropped: [...dropped.keys()].filter(id => allowed.has(id)).length,
+    },
+    collections: collections.map(({ id, titles }) => ({
+      id,
+      count: titles.filter(titleId => allowed.has(titleId)).length,
+    })),
+  }
+}
+
+export async function getMinePersonalWatched(
   current: CurrentProfile,
   query: WatchedQuery,
 ) {
@@ -638,10 +720,17 @@ export function getMinePersonalWatched(
     rows = firstDayInterestTitles(profileId, query)
   }
   else {
-    const watched
-      = query.source === 'earlierMarks'
-        ? earlierMarkedTitles(profileId, query.language)
-        : watchedTitles(profileId, query.language)
+    let watched
+    if (query.source === 'earlierMarks') {
+      watched = earlierMarkedTitles(profileId, query.language)
+    }
+    else {
+      const scope = personalScope(profileId, query.language)
+      const ids = catalogIds(scope.ids)
+      await loadMissingMineAges(profileId, ids)
+      current()
+      watched = watchedTitles(scope, allowedLocalIds(profileId, ids))
+    }
     rows = matchingFacets(
       watched
         .sort(

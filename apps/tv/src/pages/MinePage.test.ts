@@ -3,7 +3,10 @@ import type {
   MineDiaryMonths,
   MineDiaryPage,
   MineRecommendationItem,
+  MineSectionCounts,
   MineOverview as OverviewData,
+  ScheduleItem,
+  ScheduleResponse,
 } from '@torsher/api-client'
 import type { Component } from 'vue'
 import {
@@ -46,6 +49,8 @@ const mocks = vi.hoisted(() => ({
   readOverview: vi.fn(),
   readMonths: vi.fn(),
   readRecommendations: vi.fn(),
+  readSchedule: vi.fn<() => Promise<ScheduleResponse>>(),
+  readSectionCounts: vi.fn<() => Promise<MineSectionCounts>>(),
   patchMine: vi.fn(),
   patchPersonal: vi.fn(),
   query: {} as Record<string, string>,
@@ -53,6 +58,7 @@ const mocks = vi.hoisted(() => ({
   continueState: () => '',
   selectGridItem: (_item: object, _event: object) => {},
   selectedKey: () => '',
+  sectionCount: (_key: string) => undefined as number | undefined,
 }))
 vi.mock('../titleActions.ts', async () => {
   const { reactive } = await import('vue')
@@ -84,18 +90,11 @@ vi.mock('vue-router', () => ({
 }))
 vi.mock('../focus/index.ts', () => ({ useFocus: () => mocks.focus }))
 vi.mock('../platform/index.ts', () => ({ platform: 'web' }))
-vi.mock('../composables/useMine.ts', async () => {
-  const { ref } = await import('vue')
-  return {
-    useMineItems: () => mocks.mine,
-    useMineBootstrap: () => mocks.sections,
-    useSchedule: () => ({
-      schedule: ref(),
-      status: ref('ready'),
-      refresh: vi.fn(),
-    }),
-  }
-})
+vi.mock(import('../composables/useMine.ts'), async importOriginal => ({
+  ...(await importOriginal()),
+  useMineItems: () => mocks.mine,
+  useMineBootstrap: () => mocks.sections,
+}))
 vi.mock('../composables/useStackScroll.ts', async () => {
   const { ref } = await import('vue')
   return {
@@ -125,8 +124,10 @@ vi.mock('../api.ts', () => ({
       getMineDiaryMonths: mocks.readMonths,
       getMineRecommendations: mocks.readRecommendations,
       patchMineTitlePersonal: mocks.patchPersonal,
+      getMineSectionCounts: mocks.readSectionCounts,
     },
     titles: { patchTitleMine: mocks.patchMine },
+    schedule: { getSchedule: mocks.readSchedule },
   },
   loadErrorOf: () => 'unavailable',
 }))
@@ -374,6 +375,14 @@ async function mount(key = 'favorites', renderPersonal = false) {
       mocks.selectFromMenu = setup.selectFromMenu
       drillDown = setup.openDiary
       mocks.selectedKey = () => setup.selectedKey
+      mocks.sectionCount = (key) => {
+        const groups: { entries: { key: string, count?: number }[] }[]
+          = setup.menuGroups
+        const entry = groups
+          .flatMap(group => group.entries)
+          .find(entry => entry.key === key)
+        return entry?.count
+      }
       mocks.continueState = () => setup.continueState
       mocks.chooseContinueState = (state) => {
         setup.openPanel('state')
@@ -469,6 +478,12 @@ beforeEach(() => {
   mocks.readOverview.mockReset()
   mocks.readMonths.mockReset()
   mocks.readRecommendations.mockReset()
+  mocks.readSchedule
+    .mockReset()
+    .mockResolvedValue({ upcoming: [], recent: [] })
+  mocks.readSectionCounts
+    .mockReset()
+    .mockRejectedValue(new Error('Old server'))
   mocks.patchMine.mockReset()
   mocks.patchPersonal.mockReset()
   mocks.query = {}
@@ -480,7 +495,13 @@ beforeEach(() => {
     bootstrap: shallowRef({
       profileId: 'viewer',
       start: { kind: 'section', section: 'continue' },
-      counts: { continue: 3, favorites: 3, watchlist: 3, ratings: 3 },
+      counts: {
+        continue: 3,
+        favorites: 3,
+        watchlist: 3,
+        ratings: 3,
+        schedule: null,
+      },
       collections: [{ id: 'own', name: 'Own', count: 3 }],
     }),
     refresh: vi.fn(),
@@ -545,6 +566,89 @@ it('opens ordinary continuation from the Home row after viewing hidden titles', 
   visible.value = true
   await settle()
   expect(mocks.continueState()).toBe('normal')
+})
+
+it('keeps the Schedule count visible across Mine sections', async () => {
+  await mount('diary')
+  expect(mocks.sectionCount('schedule')).toBe(0)
+
+  mocks.selectFromMenu('schedule')
+  await settle()
+  mocks.selectFromMenu('diary')
+  await settle()
+
+  expect(mocks.sectionCount('schedule')).toBe(0)
+  expect(mocks.readSchedule).toHaveBeenCalledTimes(1)
+})
+
+it('refreshes the Schedule count on return to a different Mine section', async () => {
+  const upcoming: ScheduleItem = {
+    titleId: 'series-1',
+    title: 'Series',
+    season: 1,
+    episode: 2,
+    airDate: '2026-11-25',
+    followed: true,
+    state: 'upcoming',
+  }
+  const recent = { ...upcoming, episode: 1, airDate: '2026-11-18' }
+  mocks.readSchedule.mockResolvedValueOnce({
+    upcoming: [upcoming],
+    recent: [recent],
+  })
+  await mount('diary')
+  expect(mocks.sectionCount('schedule')).toBe(2)
+
+  visible.value = false
+  await settle()
+  const response = Promise.withResolvers<ScheduleResponse>()
+  mocks.readSchedule.mockReturnValueOnce(response.promise)
+  visible.value = true
+  await settle()
+  expect(mocks.readSchedule).toHaveBeenCalledTimes(2)
+  expect(mocks.sectionCount('schedule')).toBe(2)
+
+  response.resolve({ upcoming: [], recent: [recent] })
+  await settle()
+  expect(mocks.sectionCount('schedule')).toBe(1)
+})
+
+it('fills all list counts without opening them and updates them after title changes', async () => {
+  const response = Promise.withResolvers<MineSectionCounts>()
+  const counts: MineSectionCounts = {
+    profileId: 'viewer',
+    counts: {
+      continue: 1,
+      watched: 2,
+      dropped: 3,
+      watchlist: 4,
+      favorites: 0,
+      ratings: 6,
+    },
+    collections: [{ id: 'own', count: 7 }],
+  }
+  mocks.readSectionCounts.mockReturnValueOnce(response.promise)
+  await mount('diary')
+  expect(mocks.sectionCount('watched')).toBeUndefined()
+
+  response.resolve(counts)
+  await settle()
+  for (const [key, count] of Object.entries(counts.counts))
+    expect(mocks.sectionCount(key)).toBe(count)
+  expect(mocks.sectionCount('collection:own')).toBe(7)
+
+  mocks.selectFromMenu('recommendations')
+  await settle()
+  expect(mocks.sectionCount('watched')).toBe(2)
+  expect(mocks.readSectionCounts).toHaveBeenCalledTimes(1)
+
+  mocks.readSectionCounts.mockResolvedValueOnce({
+    ...counts,
+    counts: { ...counts.counts, watched: 3 },
+  })
+  actions.version++
+  await settle()
+  expect(mocks.sectionCount('watched')).toBe(3)
 })
 
 it('omits movie coordinates without losing season zero for series', () => {

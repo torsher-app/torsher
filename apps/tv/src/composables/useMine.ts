@@ -2,6 +2,7 @@ import type {
   Card,
   ContinueCard,
   MineBootstrap,
+  MineSectionCounts,
   ScheduleResponse,
 } from '@torsher/api-client'
 import type { Ref } from 'vue'
@@ -73,6 +74,29 @@ export function useMineBootstrap() {
     error,
     retry: () => load(),
     refresh: () => load(true),
+  }
+}
+
+export function useMineSectionCounts() {
+  const language = useCatalogLanguage()
+  const context = mineViewer()
+  const { data, status, retry, refresh } = useResource(
+    computed(() => context && language.value),
+    async (language, signal): Promise<MineSectionCounts | undefined> => {
+      if (!context)
+        return
+      const counts = await api.mine.getMineSectionCounts(
+        { language, expectedProfileId: context.expectedProfileId },
+        { signal },
+      )
+      if (counts.profileId === context.expectedProfileId)
+        return counts
+    },
+  )
+  return {
+    counts: data,
+    status,
+    refresh: () => (status.value === 'ready' ? refresh() : retry()),
   }
 }
 
@@ -191,16 +215,6 @@ export function useMineItems(
 
     if (!current)
       return
-
-    // Пустой раздел виден по счётчику: сразу пусто, без запроса и скелетона
-    if (current.count === 0 && !['continue', 'watched'].includes(current.id)) {
-      latest.cancel()
-      items.value = []
-      total.value = 0
-      status.value = 'ready'
-
-      return
-    }
 
     status.value = 'loading'
 
@@ -345,14 +359,20 @@ export function useMineItems(
   }
 }
 
-/** Запрашиваем расписание при открытии раздела. */
-export function useSchedule(visible: Ref<boolean>) {
+/** Расписание загружается вместе с «Моё» для счётчика в меню. */
+export function useSchedule() {
   const language = useCatalogLanguage()
   const { data, status, error, retry, refresh } = useResource<ScheduleResponse>(
-    computed(() => (visible.value ? language.value : undefined)),
+    language,
     (current, signal) =>
       api.schedule.getSchedule({ language: current }, { signal }),
   )
 
-  return { schedule: data, status, error, retry, refresh }
+  return {
+    schedule: data,
+    status,
+    error,
+    retry,
+    refresh: () => (status.value === 'ready' ? refresh() : retry()),
+  }
 }

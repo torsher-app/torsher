@@ -43,6 +43,7 @@ import { useTitleChanges } from '../composables/useTitleChanges.ts'
 import {
   useMineBootstrap,
   useMineItems,
+  useMineSectionCounts,
   useSchedule,
 } from '../composables/useMine.ts'
 import { useStackScroll } from '../composables/useStackScroll.ts'
@@ -118,6 +119,11 @@ const {
   retry: retrySections,
   refresh: refreshSections,
 } = useMineBootstrap()
+const {
+  counts: sectionCounts,
+  status: sectionCountsStatus,
+  refresh: refreshSectionCounts,
+} = useMineSectionCounts()
 
 const {
   schedule,
@@ -125,9 +131,7 @@ const {
   error: scheduleError,
   retry: retrySchedule,
   refresh: refreshSchedule,
-} = useSchedule(
-  computed(() => isActive.value && selectedKey.value === SCHEDULE),
-)
+} = useSchedule()
 const scheduleTab = ref<ScheduleTab>('upcoming')
 const scheduleEmpty = computed(
   () => !!schedule.value && schedule.value[scheduleTab.value].length === 0,
@@ -141,16 +145,25 @@ const standardSections = [
   'watched',
   'dropped',
 ] as const
+const collectionCounts = computed(
+  () =>
+    new Map(
+      sectionCounts.value?.collections.map(({ id, count }) => [id, count]),
+    ),
+)
 const sections = computed<MineMenuSection[]>(() => [
   ...standardSections.map(id => ({
     id,
-    count: bootstrap.value?.counts[id] ?? undefined,
+    count:
+      sectionCounts.value?.counts[id]
+      ?? bootstrap.value?.counts[id]
+      ?? undefined,
   })),
   ...(bootstrap.value?.collections ?? []).map(item => ({
     id: 'collection' as const,
     collectionId: item.id,
     name: item.name,
-    count: item.count ?? undefined,
+    count: collectionCounts.value.get(item.id) ?? item.count ?? undefined,
   })),
 ])
 const selected = computed(() =>
@@ -796,11 +809,11 @@ const syncChanges = useTitleChanges(
   () => titleActions.version,
   () => sectionsStatus.value === 'ready' && refreshReady.value,
   async () => {
-    if (previewShown.value)
-      return refreshSections()
+    void refreshSectionCounts()
     const outcomes = await Promise.all([
       refreshSections(),
-      scheduleShown.value ? refreshSchedule() : refresh(),
+      refreshSchedule(),
+      ...(!previewShown.value && !scheduleShown.value ? [refresh()] : []),
     ])
     return outcomes.every(outcome => outcome !== false)
   },
@@ -922,9 +935,13 @@ onActivated(() => {
 
   const syncing = syncChanges()
 
-  // Из плеера и карточки — с новыми состояниями серий
-  if (scheduleShown.value && !syncing && !titleActions.target)
-    void refreshSchedule()
+  // Из плеера и карточки — с новыми состояниями тайтлов и серий
+  if (!syncing && !titleActions.target) {
+    if (scheduleStatus.value !== 'loading')
+      void refreshSchedule()
+    if (sectionCountsStatus.value !== 'loading')
+      void refreshSectionCounts()
+  }
 
   if (targeted)
     return
