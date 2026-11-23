@@ -20,7 +20,9 @@ At least one indexer is connected. See [Indexers](/docs/setup/indexers). Without
 - On a title page, select <Ui k="title.watch" />. When it reads <Ui k="title.resume" /> and plays right away, use the <Ui k="title.sources" /> icon next to it.
 - In the player, select <Ui k="player.source.button" /> to switch releases without stopping. See [Player](/docs/watch/player#switch-the-release).
 
-Torsher searches all your indexers by every name of the title: the translated one, the original and other names from TMDB. For a series, it also tries the first name with the start year, then keeps searching without the year so later seasons can be found. Results with an unconfirmed match are shown when a complete known title appears in the release name and its year does not conflict with the title. The header shows how many releases were found and when, and how many indexers didn't answer. <Ui k="sources.refresh" /> at the end of the list searches again.
+Torsher searches available indexers using the translated title, the original title and other names from TMDB. For a series, it also tries the first name with the start year, then keeps searching without the year so later seasons can be found. Results with an unconfirmed match are shown when a complete known title appears in the release name and its year does not conflict with the title. The header shows how many releases were found and when, and counts indexers that failed or were skipped during a pause.
+
+<Ui k="sources.refresh" /> at the end of the list searches again. It can retry each indexer on a Torsher pause once per minute. If an indexer asks Torsher to wait before retrying, the search respects that pause for up to 24 hours.
 
 When opened for a specific episode, the header names that season and episode. <Ui k="sources.showAll" /> expands the results to the whole title while keeping the episode as the playback target; <Ui k="sources.showEpisode" /> narrows them again. If automatic selection excludes all candidates, the player explains this and offers a manual choice.
 
