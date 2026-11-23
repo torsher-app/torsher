@@ -1,4 +1,5 @@
 import { deleteSetting, setSetting } from '../services/settings/index.ts'
+import { eq } from 'drizzle-orm'
 import {
   afterEach,
   beforeAll,
@@ -13,8 +14,14 @@ import { ACCESS_TOKEN_COOKIE } from '../config.ts'
 import { getDb, migrateDb } from '../db/index.ts'
 import { indexers, users } from '../db/schema.ts'
 import { saveFollowSettings } from '../services/follow/settings.ts'
+import {
+  availableForBackground,
+  recordBackgroundOutcome,
+} from '../services/indexers/backoff.ts'
+import { listSearchableIndexers } from '../services/indexers/index.ts'
 import { encryptSecret } from '../services/secrets/index.ts'
 import { clearSearchCache } from '../services/sources/cache.ts'
+import { SEARCH_CONCURRENCY } from '../services/sources/search.ts'
 import { tvIdentity } from '../services/tmdb/fixtures/index.ts'
 import {
   searchXml,
@@ -88,7 +95,12 @@ beforeEach(() => {
   clearSearchCache()
   getDb()
     .update(indexers)
-    .set({ backoffUntil: null, backoffSince: null, failureCount: 0 })
+    .set({
+      backoffUntil: null,
+      backoffSince: null,
+      failureCount: 0,
+      retryAfterUntil: null,
+    })
     .run()
   requested.length = 0
   fetchMock.mockReset()
@@ -336,22 +348,382 @@ describe('get /api/titles/:id/sources', () => {
     )
   })
 
-  it('индексатор после ошибки пропускается до конца паузы и считается не ответившим', async () => {
-    const url = '/api/titles/tmdb:tv:101/sources?season=2&refresh=1'
+  it('обычный поиск пропускает индексатор на паузе, а ручное обновление проверяет его снова', async () => {
+    const url = '/api/titles/tmdb:tv:101/sources?season=2'
 
     await app.inject({ url, cookies: authed() })
     requested.length = 0
 
-    const body = (await app.inject({ url, cookies: authed() })).json()
+    const body = (
+      await app.inject({ url: `${url}&query=Dune`, cookies: authed() })
+    ).json()
 
     expect(
       requested.some(item => item.hostname === 'b.indexer.example'),
     ).toBe(false)
-    expect(body.candidates).toHaveLength(2)
     expect(body.indexers).toEqual({
       total: 2,
       failed: [{ name: 'Indexer B', kind: 'skipped' }],
     })
+
+    const original = fetchMock.getMockImplementation()!
+    fetchMock.mockImplementation(async (input, init) => {
+      if (new URL(String(input)).hostname === 'b.indexer.example') {
+        requested.push(new URL(String(input)))
+        return new Response(searchXml)
+      }
+
+      return original(input, init)
+    })
+
+    const refreshed = await app.inject({
+      url: `${url}&refresh=1`,
+      cookies: authed(),
+    })
+    expect(refreshed.json().indexers.failed).toEqual([])
+    expect(
+      requested.some(item => item.hostname === 'b.indexer.example'),
+    ).toBe(true)
+    expect(
+      availableForBackground(listSearchableIndexers()).available,
+    ).toHaveLength(2)
+  })
+
+  it.each([false, true])(
+    'ручное обновление опрашивает индексатор до завершения обычного поиска (здоровый теперь на паузе: %s)',
+    async (limited) => {
+      const until = new Date(Date.now() + 5 * 60_000)
+      const setRetryAfter = (name: string) =>
+        getDb()
+          .update(indexers)
+          .set({ retryAfterUntil: until })
+          .where(eq(indexers.name, name))
+          .run()
+      setRetryAfter('Indexer B')
+      const source = getDb()
+        .insert(indexers)
+        .values({
+          name: 'Paused indexer',
+          url: 'https://paused.indexer.example/torznab',
+          caps: textCaps,
+          backoffUntil: until,
+        })
+        .returning()
+        .get()
+      const firstReply = Promise.withResolvers<Response>()
+      const original = fetchMock.getMockImplementation()!
+      let healthyCalls = 0
+      let pausedCalls = 0
+      fetchMock.mockImplementation(async (input, init) => {
+        const host = new URL(String(input)).hostname
+        if (host === 'a.indexer.example' && ++healthyCalls === 1)
+          return firstReply.promise
+        if (host === 'paused.indexer.example') {
+          pausedCalls++
+          return new Response(searchXml)
+        }
+        return original(input, init)
+      })
+
+      const url
+        = '/api/titles/tmdb:tv:101/sources?season=2&query=Quiet%20Harbor'
+      const first = app
+        .inject({ url, cookies: authed() })
+        .then(response => response.json())
+      try {
+        await vi.waitFor(() => expect(healthyCalls).toBe(1))
+        if (limited)
+          setRetryAfter('Indexer A')
+        const refreshed = app
+          .inject({ url: `${url}&refresh=1`, cookies: authed() })
+          .then(response => response.json())
+        await vi.waitFor(() => expect(pausedCalls).toBe(1))
+        expect((await refreshed).candidates).toHaveLength(2)
+        firstReply.resolve(new Response('<rss><channel /></rss>'))
+        expect((await first).candidates).toEqual([])
+        expect(
+          (await app.inject({ url, cookies: authed() })).json(),
+        ).toMatchObject({
+          candidates: expect.arrayContaining([
+            expect.objectContaining({ quality: '1080p' }),
+          ]),
+        })
+        expect(healthyCalls).toBe(limited ? 1 : 2)
+      }
+      finally {
+        firstReply.resolve(new Response('<rss><channel /></rss>'))
+        await first
+        getDb().delete(indexers).where(eq(indexers.id, source.id)).run()
+      }
+    },
+  )
+
+  it.each(['ordinary', 'promoted', 'refresh'])(
+    'очередь соблюдает новую локальную паузу (%s)',
+    async (mode) => {
+      const pausedAt = new Date()
+      const until = new Date(pausedAt.getTime() + 5 * 60_000)
+      getDb().update(indexers).set({ retryAfterUntil: until }).run()
+      const blockers = Array.from(
+        { length: SEARCH_CONCURRENCY },
+        (_, index) => ({
+          name: `Blocker ${index}`,
+          url: `https://blocker-${index}.indexer.example/torznab`,
+          caps: textCaps,
+        }),
+      )
+      const last = {
+        name: 'Queued indexer',
+        url: 'https://queued.indexer.example/torznab',
+        caps: textCaps,
+      }
+      const added = getDb()
+        .insert(indexers)
+        .values([...blockers, last])
+        .returning()
+        .all()
+      const queued = added.find(item => item.name === last.name)!
+      const unblock = Promise.withResolvers<void>()
+      const original = fetchMock.getMockImplementation()!
+      const held = new Set<string>()
+      let queuedCalls = 0
+      fetchMock.mockImplementation(async (input, init) => {
+        const url = new URL(String(input))
+        if (url.hostname === 'queued.indexer.example') {
+          queuedCalls++
+          return new Response(null, { status: 503 })
+        }
+        if (url.hostname.startsWith('blocker-')) {
+          if (
+            url.searchParams.get('q') === 'initial'
+            && !held.has(url.hostname)
+          ) {
+            held.add(url.hostname)
+            await unblock.promise
+          }
+          return new Response('<rss><channel /></rss>')
+        }
+        return original(input, init)
+      })
+
+      const url = '/api/titles/tmdb:tv:101/sources?season=2'
+      const first = app
+        .inject({
+          url: `${url}&query=initial${mode === 'refresh' ? '&refresh=1' : ''}`,
+          cookies: authed(),
+        })
+        .then(response => response.json())
+      try {
+        await vi.waitFor(() => expect(held.size).toBe(SEARCH_CONCURRENCY))
+        getDb()
+          .update(indexers)
+          .set({ backoffUntil: until, failureCount: 2 })
+          .where(eq(indexers.id, queued.id))
+          .run()
+        if (mode !== 'ordinary') {
+          const probe = app
+            .inject({
+              url: `${url}&query=${mode === 'promoted' ? 'initial' : 'probe'}&refresh=1`,
+              cookies: authed(),
+            })
+            .then(response => response.json())
+          await vi.waitFor(() => expect(queuedCalls).toBe(1))
+          expect((await probe).indexers.failed).toContainEqual({
+            name: last.name,
+            kind: 'remote',
+          })
+        }
+
+        const readQueued = () =>
+          getDb()
+            .select()
+            .from(indexers)
+            .where(eq(indexers.id, queued.id))
+            .get()!
+        const paused = readQueued()
+        unblock.resolve()
+        expect((await first).indexers.failed).toContainEqual({
+          name: last.name,
+          kind: 'skipped',
+        })
+        expect(queuedCalls).toBe(mode === 'ordinary' ? 0 : 1)
+        expect(readQueued()).toMatchObject({
+          backoffUntil: paused.backoffUntil,
+          failureCount: paused.failureCount,
+        })
+      }
+      finally {
+        unblock.resolve()
+        await first
+        for (const indexer of added)
+          getDb().delete(indexers).where(eq(indexers.id, indexer.id)).run()
+      }
+    },
+  )
+
+  it('поиск без запросов сохраняет предыдущий кэш и не мешает поиску после паузы', async () => {
+    const url = '/api/titles/tmdb:tv:101/sources?season=2'
+    const request = async (path: string) =>
+      (await app.inject({ url: path, cookies: authed() })).json()
+    const initial = await request(url)
+    expect(initial.candidates).toHaveLength(2)
+    getDb()
+      .update(indexers)
+      .set({ retryAfterUntil: new Date(Date.now() + 60_000) })
+      .run()
+    requested.length = 0
+
+    expect(await request(`${url}&refresh=1`)).toMatchObject({
+      candidates: [],
+      indexers: {
+        failed: [
+          { name: 'Indexer A', kind: 'skipped' },
+          { name: 'Indexer B', kind: 'skipped' },
+        ],
+      },
+    })
+    expect(await request(url)).toMatchObject({
+      candidates: initial.candidates,
+    })
+
+    clearSearchCache()
+    expect(await request(url)).toMatchObject({ candidates: [] })
+    expect(
+      requested.filter(item => item.hostname.endsWith('.indexer.example')),
+    ).toEqual([])
+    getDb()
+      .update(indexers)
+      .set({ retryAfterUntil: new Date(0) })
+      .run()
+    expect(await request(url)).toMatchObject({
+      candidates: initial.candidates,
+    })
+    expect(
+      requested.some(item => item.hostname === 'a.indexer.example'),
+    ).toBe(true)
+  })
+
+  it('несовместимый запрос не расходует минутную квоту индексатора на паузе', async () => {
+    const source = getDb()
+      .insert(indexers)
+      .values({
+        name: 'Paused indexer',
+        url: 'https://paused.indexer.example/torznab',
+        caps: { ...textCaps, search: { available: false, params: [] } },
+        backoffUntil: new Date(Date.now() + 5 * 60_000),
+        failureCount: 2,
+      })
+      .returning()
+      .get()
+    const url
+      = '/api/titles/tmdb:tv:101/sources?season=2&refresh=1&query=Quiet%20Harbor'
+    try {
+      const first = await app.inject({ url, cookies: authed() })
+      expect(first.json().indexers.failed).toContainEqual({
+        name: source.name,
+        kind: 'unsupported',
+      })
+      expect(
+        requested.some(item => item.hostname === 'paused.indexer.example'),
+      ).toBe(false)
+      expect(
+        getDb().select().from(indexers).where(eq(indexers.id, source.id)).get(),
+      ).toMatchObject({ failureCount: 2, backoffUntil: source.backoffUntil })
+
+      getDb()
+        .update(indexers)
+        .set({ caps: textCaps })
+        .where(eq(indexers.id, source.id))
+        .run()
+      await app.inject({ url, cookies: authed() })
+      expect(
+        requested.filter(item => item.hostname === 'paused.indexer.example'),
+      ).toHaveLength(1)
+    }
+    finally {
+      getDb().delete(indexers).where(eq(indexers.id, source.id)).run()
+    }
+  })
+
+  it('параллельные и повторные обновления делят лимит проверки индексатора', async () => {
+    const source = getDb()
+      .select()
+      .from(indexers)
+      .where(eq(indexers.name, 'Indexer C'))
+      .get()!
+    const enableSource = (enabled: boolean) =>
+      getDb()
+        .update(indexers)
+        .set({ enabled })
+        .where(eq(indexers.id, source.id))
+        .run()
+    const url = '/api/titles/tmdb:tv:101/sources?season=2&refresh=1&query='
+
+    enableSource(true)
+    try {
+      recordBackgroundOutcome([source], [{ id: source.id, kind: 'timeout' }])
+      const responses = await Promise.all(
+        ['first', 'second'].map(query =>
+          app.inject({ url: url + query, cookies: authed() }),
+        ),
+      )
+      const subsequent = await app.inject({
+        url: `${url}third`,
+        cookies: authed(),
+      })
+      expect(responses.map(response => response.statusCode)).toEqual([
+        200,
+        200,
+      ])
+      expect(subsequent.json().indexers.failed).toContainEqual({
+        name: 'Indexer C',
+        kind: 'skipped',
+      })
+      expect(
+        requested.filter(item => item.hostname === 'c.indexer.example'),
+      ).toHaveLength(1)
+    }
+    finally {
+      enableSource(false)
+    }
+  })
+
+  it('останавливает запросы по Retry-After, сохраняя частичный результат', async () => {
+    const original = fetchMock.getMockImplementation()!
+    let calls = 0
+    fetchMock.mockImplementation(async (input, init) => {
+      if (new URL(String(input)).hostname !== 'a.indexer.example')
+        return original(input, init)
+      calls++
+      if (calls === 1)
+        return new Response(searchXml)
+      return new Response(null, {
+        status: 429,
+        headers: { 'Retry-After': '7200' },
+      })
+    })
+
+    const url = '/api/titles/tmdb:tv:101/sources?season=2'
+    const initial = (await app.inject({ url, cookies: authed() })).json()
+    expect(initial.candidates).toHaveLength(2)
+    expect(calls).toBe(2)
+
+    const all = listSearchableIndexers()
+    const source = all.find(item => item.name === 'Indexer A')!
+    recordBackgroundOutcome([source], [])
+    expect(
+      availableForBackground(all).locallyPaused.map(item => item.name),
+    ).not.toContain('Indexer A')
+    expect(availableForBackground(all).available).not.toContain(source)
+
+    for (const path of [`${url}&query=ordinary`, `${url}&refresh=1`]) {
+      const response = await app.inject({ url: path, cookies: authed() })
+      expect(response.json().indexers.failed).toContainEqual({
+        name: 'Indexer A',
+        kind: 'skipped',
+      })
+    }
+    expect(calls).toBe(2)
   })
 
   it('на паузе все индексаторы — спрашиваем всех', async () => {

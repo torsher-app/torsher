@@ -12,7 +12,14 @@ export interface CachedSearch {
 }
 
 const entries = new Map<string, CachedSearch>()
-const running = new Map<string, Promise<CachedSearch>>()
+const running = new Map<
+  string,
+  {
+    task: Promise<CachedSearch>
+    refresh: boolean
+    indexerScope?: ReadonlySet<string>
+  }
+>()
 
 /**
  * Свежий результат отдаётся из памяти, одинаковые запросы во время поиска
@@ -21,7 +28,12 @@ const running = new Map<string, Promise<CachedSearch>>()
 export function cachedSearch(
   key: string,
   load: () => Promise<SearchOutcome>,
-  options: { refresh?: boolean, now?: number } = {},
+  options: {
+    refresh?: boolean
+    indexerScope?: ReadonlySet<string>
+    shouldPromote?: (runningScope?: ReadonlySet<string>) => boolean
+    now?: number
+  } = {},
 ): Promise<CachedSearch> {
   const now = options.now ?? Date.now()
   const found = entries.get(key)
@@ -37,17 +49,28 @@ export function cachedSearch(
 
   const inFlight = running.get(key)
 
-  if (inFlight)
-    return inFlight
+  if (
+    inFlight
+    && (inFlight.refresh
+      || !options.refresh
+      || !options.shouldPromote?.(inFlight.indexerScope))
+  ) {
+    return inFlight.task
+  }
 
   const task = load()
     .then((outcome) => {
       const entry = { outcome, updatedAt: new Date() }
 
-      // Без индексаторов искать было не по чему: повтор бесплатный, а
-      // сохранённый пустой ответ скрыл бы индексатор, подключённый позже
-      if (outcome.indexerCount === 0)
+      // Пустой ответ без запросов не должен скрыть результаты или
+      // помешать повторить поиск сразу после окончания паузы.
+      if (
+        running.get(key)?.task !== task
+        || outcome.indexerCount === 0
+        || outcome.diagnostics?.asked === 0
+      ) {
         return entry
+      }
 
       entries.delete(key)
       entries.set(key, entry)
@@ -58,9 +81,16 @@ export function cachedSearch(
 
       return entry
     })
-    .finally(() => running.delete(key))
+    .finally(() => {
+      if (running.get(key)?.task === task)
+        running.delete(key)
+    })
 
-  running.set(key, task)
+  running.set(key, {
+    task,
+    refresh: !!options.refresh,
+    indexerScope: options.indexerScope,
+  })
   return task
 }
 

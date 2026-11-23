@@ -19,6 +19,7 @@ import {
 } from '../torznab/index.ts'
 import { listManagerIndexers, normalizeManagerUrl } from './managers.ts'
 import { isSessionCookie } from '../torznab/cookie.ts'
+import { rememberIndexerRetryAfter } from './backoff.ts'
 
 export { normalizeManagerUrl } from './managers.ts'
 
@@ -307,6 +308,7 @@ export async function checkIndexer(id: string) {
     return undefined
 
   let values: Partial<typeof indexers.$inferInsert>
+  let retryAt: Date | undefined
 
   try {
     const apiKey = indexer.apiKey ? readStoredKey(indexer.apiKey) : undefined
@@ -323,10 +325,12 @@ export async function checkIndexer(id: string) {
     const kind = checkStatusOf(err)
 
     values = { checkStatus: kind }
+    if (err instanceof SourceError)
+      retryAt = err.retryAt
     logSourceCheckError(err, { operation: 'indexer_check', indexerId: id })
   }
 
-  getDb()
+  const result = getDb()
     .update(indexers)
     .set({ ...values, checkedAt: new Date() })
     .where(
@@ -342,6 +346,9 @@ export async function checkIndexer(id: string) {
       ),
     )
     .run()
+
+  if (result.changes && retryAt)
+    rememberIndexerRetryAfter(id, retryAt)
 
   return getIndexer(id)
 }

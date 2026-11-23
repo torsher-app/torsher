@@ -1,4 +1,5 @@
 import type { TitleAlias } from '../../db/schema.ts'
+import type { indexerPause } from '../indexers/backoff.ts'
 import type { SearchableIndexer } from '../indexers/index.ts'
 import type { TitleIdentity } from '../tmdb/index.ts'
 import type {
@@ -51,7 +52,7 @@ export interface SearchTarget {
 export interface IndexerFailure {
   id: string
   name: string
-  /** `skipped` — на паузе после ошибок подряд, в этот раз не спрашивали */
+  /** `skipped` — в этот раз индексатор не спрашивали */
   kind: SourceErrorKind | 'skipped'
   /** Индексатор просит повторить не раньше (`Retry-After`) */
   retryAt?: Date
@@ -67,6 +68,11 @@ export interface SearchOptions {
   textQueries?: number
   /** Дополнительный запрос сериала с годом начала только для выдачи зрителя. */
   seriesYearQuery?: boolean
+  indexerPause?: typeof indexerPause
+  onRetryAfter?: (indexerId: string, retryAt: Date) => void
+  /** Подтвердить расход квоты перед первым запросом к индексатору. */
+  claimPausedRequest?: (indexerId: string) => boolean
+  onFirstRequest?: (indexerId: string) => void
 }
 
 export interface SearchOutcome {
@@ -88,6 +94,7 @@ interface Hit {
 
 interface IndexerState {
   ok: boolean
+  blocked?: boolean
   startedAt?: number
   mode?: 'id' | 'text'
   pending?: boolean
@@ -252,24 +259,13 @@ function relevantUnmatched(
   )
 }
 
-/**
- * Поиск раздач тайтла по всем индексаторам: запросы по ID и названиям,
- * склейка повторов, разбор названий и матчер. Несопоставленные раздачи
- * (`low`) сохраняются отдельно для ручного выбора. Индексатор, не ответивший
- * к сроку, попадает в `failed`.
- */
-export async function searchReleases(
+export function searchRequestsFor(
   target: SearchTarget,
-  indexers: SearchableIndexer[],
-  options: SearchOptions = {},
-): Promise<SearchOutcome> {
-  const startedAt = Date.now()
-  const {
-    deadlineMs = SEARCH_DEADLINE_MS,
-    concurrency = SEARCH_CONCURRENCY,
+  {
     textQueries,
     seriesYearQuery = false,
-  } = options
+  }: Pick<SearchOptions, 'textQueries' | 'seriesYearQuery'> = {},
+) {
   const { identity, aliases, season } = target
   const manual = target.query?.trim()
   const query = manual
@@ -286,8 +282,30 @@ export async function searchReleases(
         season,
         seriesYearQuery,
       }
+
+  return (indexer: SearchableIndexer) =>
+    buildSearchRequests(indexer.caps, query)
+}
+
+/**
+ * Поиск раздач тайтла по всем индексаторам: запросы по ID и названиям,
+ * склейка повторов, разбор названий и матчер. Несопоставленные раздачи
+ * (`low`) сохраняются отдельно для ручного выбора. Индексатор, не ответивший
+ * к сроку, попадает в `failed`.
+ */
+export async function searchReleases(
+  target: SearchTarget,
+  indexers: SearchableIndexer[],
+  options: SearchOptions = {},
+): Promise<SearchOutcome> {
+  const startedAt = Date.now()
+  const { deadlineMs = SEARCH_DEADLINE_MS, concurrency = SEARCH_CONCURRENCY }
+    = options
+  const { identity, aliases, season } = target
+  const manual = target.query?.trim()
+  const requestsFor = searchRequestsFor(target, options)
   const tasks = indexers.flatMap(indexer =>
-    buildSearchRequests(indexer.caps, query).map(params => ({
+    requestsFor(indexer).map(params => ({
       indexer,
       params,
     })),
@@ -308,15 +326,36 @@ export async function searchReleases(
 
   async function run(indexer: SearchableIndexer, params: SearchParams) {
     const state = states.get(indexer.id)!
-    state.startedAt ??= Date.now()
+    const pause = options.indexerPause?.(indexer.id)
+    const localProbe = state.startedAt === undefined && pause === 'local'
+
+    if (
+      pause === 'retry_after'
+      || (localProbe && !options.claimPausedRequest)
+    ) {
+      state.blocked = true
+      return
+    }
+
     state.mode = params.q === undefined ? 'id' : 'text'
-    state.pending = true
     try {
+      const apiKey = indexer.apiKey()
+      const sessionCookie = indexer.sessionCookie?.()
+      if (localProbe && !options.claimPausedRequest?.(indexer.id)) {
+        state.blocked = true
+        return
+      }
+
+      if (state.startedAt === undefined) {
+        state.startedAt = Date.now()
+        options.onFirstRequest?.(indexer.id)
+      }
+      state.pending = true
       const releases = await searchIndexer(
         indexer.url,
         params,
-        indexer.apiKey(),
-        indexer.sessionCookie?.(),
+        apiKey,
+        sessionCookie,
       )
 
       if (deadline.expired)
@@ -326,13 +365,17 @@ export async function searchReleases(
       hits.push(...releases.map(release => ({ indexer, release })))
     }
     catch (err) {
+      if (err instanceof SourceError && err.retryAt) {
+        state.retryAt = err.retryAt
+        options.onRetryAfter?.(indexer.id, err.retryAt)
+      }
+
       if (deadline.expired)
         return
       state.failure ??= { ...sourceErrorFacts(err), mode: state.mode }
       state.error ??= errorKind(err)
-
-      if (err instanceof SourceError && err.retryAt)
-        state.retryAt ??= err.retryAt
+      if (state.startedAt === undefined)
+        state.blocked = true
     }
     finally {
       if (!deadline.expired)
@@ -343,7 +386,10 @@ export async function searchReleases(
   // Оставшиеся запросы — индексаторов, занятых другими потоками: их доведут те
   async function worker() {
     while (!deadline.expired) {
-      const index = tasks.findIndex(task => !busy.has(task.indexer.id))
+      const index = tasks.findIndex(({ indexer }) => {
+        const state = states.get(indexer.id)!
+        return !busy.has(indexer.id) && !state.blocked && !state.retryAt
+      })
 
       if (index === -1)
         return
@@ -369,7 +415,7 @@ export async function searchReleases(
   await Promise.race([Promise.all(workers), sleep(deadlineMs)])
   deadline.expired = true
 
-  const failed = indexers.flatMap((indexer) => {
+  const failed = indexers.flatMap<IndexerFailure>((indexer) => {
     const state = states.get(indexer.id)!
 
     if (state.ok)
@@ -379,7 +425,9 @@ export async function searchReleases(
       {
         id: indexer.id,
         name: indexer.name,
-        kind: state.error ?? 'timeout',
+        kind:
+          state.error
+          ?? (state.startedAt === undefined ? 'skipped' : 'timeout'),
         ...(state.retryAt && { retryAt: state.retryAt }),
       },
     ]
@@ -390,7 +438,7 @@ export async function searchReleases(
   }
   for (const indexer of indexers) {
     const state = states.get(indexer.id)!
-    if (state.startedAt === undefined || (!state.failure && !state.pending))
+    if (!state.failure && !state.pending)
       continue
     const failure = state.pending
       ? { errorKind: 'late', mode: state.mode! }
@@ -402,7 +450,7 @@ export async function searchReleases(
         ...context,
         indexerId: indexer.id,
         ...failure,
-        ms: Date.now() - state.startedAt,
+        ms: Date.now() - (state.startedAt ?? startedAt),
       },
       'Indexer search failed',
     )

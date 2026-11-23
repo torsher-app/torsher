@@ -384,6 +384,7 @@ beforeEach(() => {
     .set({
       backoffUntil: null,
       backoffSince: null,
+      retryAfterUntil: null,
       failureCount: 0,
       checkStatus: null,
       rssCursor: null,
@@ -1575,9 +1576,11 @@ describe('автоматика «Следить»', () => {
 
     await followAutomation(now)
 
-    expect(
-      getDb().select().from(indexers).get()!.backoffUntil!.getTime(),
-    ).toBeGreaterThan(now.getTime() + 50 * 60_000)
+    const indexer = getDb().select().from(indexers).get()!
+    expect(indexer.backoffUntil!.getTime()).toBeGreaterThan(
+      now.getTime() + 50 * 60_000,
+    )
+    expect(indexer.retryAfterUntil).toEqual(indexer.backoffUntil)
 
     const requests = indexerRequests
 

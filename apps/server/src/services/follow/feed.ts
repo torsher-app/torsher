@@ -28,7 +28,9 @@ import {
 } from '../../db/schema.ts'
 import {
   availableForBackground,
+  indexerPause,
   recordBackgroundOutcome,
+  rememberIndexerRetryAfter,
 } from '../indexers/backoff.ts'
 import { listFeedIndexers } from '../indexers/index.ts'
 import { rememberUserAlias } from '../library/recognize.ts'
@@ -167,7 +169,8 @@ export interface FeedGap {
 }
 
 export type FeedRead
-  = | { kind: 'failed', failure: IndexerFailure }
+  = | { kind: 'skipped' }
+    | { kind: 'failed', failure: IndexerFailure }
     | { kind: 'empty' }
     | {
       kind: 'ok'
@@ -175,6 +178,7 @@ export type FeedRead
       items: TorznabRelease[]
       cursor: FeedCursor
       gap?: FeedGap
+      retryFailure?: IndexerFailure
     }
 
 function failureOf(indexer: FeedIndexer, err: unknown): IndexerFailure {
@@ -212,10 +216,18 @@ export async function readFeed(
   let reached = !cursor
   let oldest: Date | undefined
   let offset = 0
+  let retryFailure: IndexerFailure | undefined
 
   for (let page = 0; page < MAX_PAGES; page++) {
     if (page > 0)
       await wait(PAGE_GAP_MS)
+
+    const pause = indexerPause(indexer.id)
+    if (pause === 'retry_after' || (page === 0 && pause === 'local')) {
+      if (page === 0)
+        return { kind: 'skipped' }
+      break
+    }
 
     let list: TorznabRelease[]
 
@@ -232,8 +244,13 @@ export async function readFeed(
       )
     }
     catch (err) {
+      const failure = failureOf(indexer, err)
+      if (failure.retryAt) {
+        rememberIndexerRetryAfter(indexer.id, failure.retryAt)
+        retryFailure = failure
+      }
       if (page === 0)
-        return { kind: 'failed', failure: failureOf(indexer, err) }
+        return { kind: 'failed', failure }
 
       break
     }
@@ -298,6 +315,7 @@ export async function readFeed(
         ? cursor
         : cursorOf(newest),
     ...(!reached && { gap: { from: cursorDate, to: oldest } }),
+    ...(retryFailure && { retryFailure }),
   }
 }
 
@@ -311,16 +329,21 @@ function countsAsFeedFailure(failure: IndexerFailure) {
   )
 }
 
-function saveFeed(indexer: FeedIndexer, read: FeedRead, now: Date) {
+function saveFeed(
+  indexer: FeedIndexer,
+  read: Exclude<FeedRead, { kind: 'skipped' }>,
+  now: Date,
+) {
+  const failure = read.kind === 'failed' ? read.failure : undefined
+  const backgroundFailure = read.kind === 'ok' ? read.retryFailure : failure
   recordBackgroundOutcome(
     [indexer],
-    read.kind === 'failed' ? [read.failure] : [],
+    backgroundFailure ? [backgroundFailure] : [],
     now,
   )
 
   const failed
-    = read.kind === 'empty'
-      || (read.kind === 'failed' && countsAsFeedFailure(read.failure))
+    = read.kind === 'empty' || (failure && countsAsFeedFailure(failure))
   const failures
     = read.kind === 'ok' ? 0 : indexer.rssFailures + (failed ? 1 : 0)
 
@@ -741,13 +764,17 @@ export async function feedPass(
     return false
 
   const hits: { indexer: FeedIndexer, release: TorznabRelease }[] = []
+  let readAny = false
 
   for (const indexer of available) {
     if (isViewerSearching())
       break
 
     const read = await readFeed(indexer, options.wait)
+    if (read.kind === 'skipped')
+      continue
 
+    readAny = true
     saveFeed(indexer, read, now)
 
     if (read.kind !== 'ok')
@@ -764,7 +791,7 @@ export async function feedPass(
   }
 
   if (!hits.length)
-    return true
+    return readAny
 
   const found = await followIndex(active)
   const confident = new Map<string, FoundRelease[]>()

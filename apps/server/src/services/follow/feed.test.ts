@@ -22,6 +22,7 @@ import {
   serverSettings,
   titleAliases,
 } from '../../db/schema.ts'
+import { rememberIndexerRetryAfter } from '../indexers/backoff.ts'
 import { setSetting } from '../settings/index.ts'
 import { clearSearchCache } from '../sources/cache.ts'
 import { saveSourceProfile } from '../sources/profile.ts'
@@ -415,6 +416,101 @@ describe('проход ленты', () => {
     expect(requestedSearch(follow.id)).toBe('gap')
     // Курсор — самая свежая позиция первой страницы
     expect(indexerRow(indexer.id).rssCursor?.infoHash).toBe(hash(200))
+  })
+
+  it.each(['page', 'shared deadline'])(
+    'сохраняет раздачи и пробел при паузе после первой страницы (%s)',
+    async (origin) => {
+      libraryEpisodes(1, 2, 3, 4, 5, 6, 7)
+      const cursor = cursorAt(filler(100, 1, 600)[0]!)
+      const indexer = insertIndexer('Indexer A', 'a.indexer.example', {
+        rssCursor: cursor,
+        rssCheckedAt: new Date(Date.now() - DAY_MS),
+      })
+      const follow = insertFollow()
+      feeds.set('a.indexer.example', [
+        { title: EPISODE_8, hash: hash(1), age: 5 },
+        ...filler(200, 4, 10),
+      ])
+
+      const original = fetchMock.getMockImplementation()!
+      fetchMock.mockImplementation(async (input, init) => {
+        const url = new URL(String(input))
+        if (
+          url.hostname !== 'a.indexer.example'
+          || !url.searchParams.has('offset')
+        ) {
+          return original(input, init)
+        }
+
+        requests.push({ host: url.hostname, params: url.searchParams })
+        return new Response(null, {
+          status: 429,
+          headers: { 'Retry-After': '3600' },
+        })
+      })
+
+      const now = new Date()
+      const wait = async () => {
+        if (origin === 'shared deadline') {
+          rememberIndexerRetryAfter(
+            indexer.id,
+            new Date(now.getTime() + 60 * MINUTE_MS),
+          )
+        }
+      }
+      await feedPass(activeFollows(), now, { wait })
+
+      expect(requests.map(item => item.params.get('offset'))).toEqual(
+        origin === 'page' ? [null, '5'] : [null],
+      )
+      expect(indexerRow(indexer.id)).toMatchObject({
+        rssCursor: { infoHash: hash(1) },
+        rssCheckedAt: now,
+        rssFailures: 0,
+        failureCount: origin === 'page' ? 1 : 0,
+      })
+      const saved = indexerRow(indexer.id)
+      expect(saved.retryAfterUntil!.getTime()).toBeGreaterThanOrEqual(
+        now.getTime() + 60 * MINUTE_MS,
+      )
+      if (origin === 'page')
+        expect(saved.backoffUntil).toEqual(saved.retryAfterUntil)
+      expect(history().find(item => item.kind === 'gap')?.params.from).toBe(
+        cursor.publishedAt,
+      )
+      expect(requestedSearch(follow.id)).toBe('gap')
+      expect(episodeRows(follow.id)[0]?.pending?.title).toBe(EPISODE_8)
+    },
+  )
+
+  it('не записывает проверку ленты, если срок появился перед первой страницей', async () => {
+    insertIndexer('Indexer A', 'a.indexer.example')
+    const paused = insertIndexer('Indexer B', 'b.indexer.example', {
+      rssFailures: 1,
+    })
+    insertFollow()
+    const now = new Date()
+    const retryAt = new Date(now.getTime() + 60 * MINUTE_MS)
+    const original = fetchMock.getMockImplementation()!
+    fetchMock.mockImplementation(async (input, init) => {
+      if (new URL(String(input)).hostname === 'a.indexer.example')
+        rememberIndexerRetryAfter(paused.id, retryAt)
+      return original(input, init)
+    })
+
+    await feedPass(activeFollows(), now, { wait: noWait })
+
+    expect(requests.map(request => request.host)).toEqual([
+      'a.indexer.example',
+    ])
+    expect(indexerRow(paused.id)).toMatchObject({
+      retryAfterUntil: retryAt,
+      rssCursor: null,
+      rssFailures: 1,
+      rssCheckedAt: null,
+      failureCount: 0,
+    })
   })
 
   it('индексатор без offset: вторая страница повторяет первую — пробел', async () => {

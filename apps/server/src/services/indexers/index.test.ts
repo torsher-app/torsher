@@ -19,6 +19,7 @@ import {
   torznabErrorXml,
 } from '../torznab/fixtures/index.ts'
 import { SourceError } from '../torznab/index.ts'
+import { indexerPause } from './backoff.ts'
 import {
   checkIndexer,
   checkIndexers,
@@ -29,6 +30,7 @@ import {
   listIndexers,
   listManagers,
   syncManager,
+  updateIndexer,
   updateManager,
 } from './index.ts'
 import { listManagerIndexers } from './managers.ts'
@@ -506,6 +508,50 @@ describe('ключ, который нельзя расшифровать', () =>
 })
 
 describe('checkIndexers', () => {
+  it('сохраняет Retry-After от caps для поиска в пределах суток', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(capsXml))
+    const source = await createManualIndexer({
+      name: 'Indexer A',
+      url: 'https://indexer.example',
+    })
+    const start = Date.now()
+    fetchMock.mockResolvedValueOnce(
+      new Response(null, { status: 503, headers: { 'Retry-After': '172800' } }),
+    )
+
+    const checked = await checkIndexer(source.id)
+
+    expect(checked?.checkStatus).toBe('remote')
+    expect(indexerPause(source.id)).toBe('retry_after')
+    const deadline = checked!.retryAfterUntil!.getTime()
+    expect(deadline).toBeGreaterThanOrEqual(start + 86_400_000)
+    expect(deadline).toBeLessThanOrEqual(Date.now() + 86_400_000)
+
+    fetchMock.mockResolvedValueOnce(new Response(capsXml))
+    expect((await checkIndexer(source.id))?.checkStatus).toBe('ok')
+    expect(indexerPause(source.id)).toBe('retry_after')
+  })
+
+  it('отбрасывает Retry-After старой проверки после смены конфигурации', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(capsXml))
+    const source = await createManualIndexer({
+      name: 'Indexer A',
+      url: 'https://indexer.example',
+    })
+    const response = Promise.withResolvers<Response>()
+    fetchMock.mockImplementationOnce(() => response.promise)
+    const checking = checkIndexer(source.id)
+    updateIndexer(source.id, { apiKey: 'replacement' })
+    response.resolve(
+      new Response(null, { status: 429, headers: { 'Retry-After': '3600' } }),
+    )
+
+    const checked = await checking
+
+    expect(checked?.checkStatus).toBeNull()
+    expect(checked?.retryAfterUntil).toBeNull()
+  })
+
   it('записывает результат каждой проверки', async () => {
     fetchMock.mockResolvedValueOnce(json(prowlarrIndexers))
     const { toCheck } = await importManager({
