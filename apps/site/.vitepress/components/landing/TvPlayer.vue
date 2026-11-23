@@ -35,7 +35,7 @@ const buttons = [
   <div
     class="screen"
     role="img"
-    aria-label="Torsher player playing a movie with the on-screen controls: Back, the title and file name, the clock, download speed, buffer and connected seeders, the timeline in focus, and the Audio, Subtitles, Source and Settings buttons"
+    aria-label="Torsher player playing a movie with the on-screen controls: Back, the title and file name, the clock, download speed, buffer and connected peers, the timeline in focus, and the Audio, Subtitles, Source and Settings buttons"
   >
     <div class="picture" aria-hidden="true">
       <div class="moon" />
@@ -78,21 +78,9 @@ const buttons = [
               </svg>
               <span>{{ format("player.stats.minutes", { n: 3 }) }}</span>
             </span>
-            <span class="net-stat">
-              <svg
-                class="net-icon"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M12 19.5v-14M6 11.5l6-6 6 6" />
-              </svg>
-              <span>3</span>
-            </span>
+            <span class="net-stat">{{
+              format("player.peers", { n: 12 })
+            }}</span>
           </span>
         </div>
       </header>

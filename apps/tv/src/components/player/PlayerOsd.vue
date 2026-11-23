@@ -79,7 +79,7 @@ function bufferText(seconds: number) {
     : t('player.stats.seconds', { n: Math.floor(seconds) })
 }
 
-// Скачанному файлу скорость и сиды уже не нужны.
+// Скачанному файлу торрентная статистика уже не нужна.
 const network = computed(() => {
   const stats = props.stats
 
@@ -109,11 +109,9 @@ const speedText = computed(() =>
   }),
 )
 const bufferedText = computed(() => bufferText(props.bufferSeconds))
-const seedersText = computed(() => {
-  const count = props.stats?.peers.seeders
-  return props.stats?.peers.seedersKnown !== false && isPeerCount(count)
-    ? String(count)
-    : '—'
+const peersText = computed(() => {
+  const count = props.stats?.peers.connected
+  return isPeerCount(count) ? t('player.peers', count) : ''
 })
 </script>
 
@@ -167,14 +165,8 @@ const seedersText = computed(() => {
               <AppIcon name="timer" class="osd__pill-icon" />
               {{ bufferedText }}
             </span>
-            <span
-              class="osd__metric"
-              role="img"
-              :aria-label="t('player.stats.seeders', { n: seedersText })"
-              :title="t('player.stats.seeders', { n: seedersText })"
-            >
-              <AppIcon name="arrowUp" class="osd__pill-icon" />
-              {{ seedersText }}
+            <span v-if="peersText" class="osd__metric">
+              {{ peersText }}
             </span>
           </template>
         </span>

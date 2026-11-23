@@ -4,7 +4,6 @@ import type { StageStep } from '../../lib/player.ts'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { formatMegabits, isPeerCount } from '../../lib/player.ts'
-import AppIcon from '../AppIcon.vue'
 
 // Статус под торшером сцены подготовки (`PlayerStage`): шаг и под ним подробности
 const props = defineProps<{
@@ -31,6 +30,7 @@ const status = computed(() => {
     return { step, data: [] }
   }
 
+  const connected = stats.peers.connected
   const parts
     = props.step === 'buffering' || props.step === 'slow'
       ? [
@@ -42,10 +42,11 @@ const status = computed(() => {
               locale.value,
             ),
           }),
+          ...(isPeerCount(connected) ? [t('player.peers', connected)] : []),
         ]
       : [
-          isPeerCount(stats.peers.connected) && stats.peers.connected > 0
-            ? t('player.peers', stats.peers.connected)
+          isPeerCount(connected) && connected > 0
+            ? t('player.peers', connected)
             : isPeerCount(stats.peers.found)
               ? t('player.found', stats.peers.found)
               : '—',
@@ -54,22 +55,6 @@ const status = computed(() => {
   return { step, data: parts }
 })
 
-const seeders = computed(() => {
-  if (
-    props.label
-    || props.stats?.activity !== 'downloading'
-    || (props.step !== 'buffering' && props.step !== 'slow')
-  ) {
-    return undefined
-  }
-
-  const count = props.stats?.peers.seeders
-  return props.stats?.peers.seedersKnown !== false && isPeerCount(count)
-    ? count
-    : undefined
-})
-
-// Ноль соединений не доказывает отсутствие сидов: описываем только наблюдаемое.
 const hint = computed(() => {
   if (props.label)
     return ''
@@ -144,16 +129,6 @@ const dataParts = computed(() =>
               }"
             >{{ part.text }}</span>
           </span>
-          <span
-            v-if="seeders !== undefined"
-            class="buffering__metric buffering__metric--seeders"
-            role="img"
-            :aria-label="t('player.stats.seeders', { n: seeders })"
-            :title="t('player.stats.seeders', { n: seeders })"
-          >
-            <AppIcon name="arrowUp" class="buffering__stat-icon" />
-            <span>{{ seeders }}</span>
-          </span>
         </p>
       </Transition>
     </div>
@@ -209,20 +184,13 @@ const dataParts = computed(() =>
   white-space: normal;
 }
 
-.buffering__metrics,
-.buffering__metric--seeders {
+.buffering__metrics {
   display: inline-flex;
   align-items: center;
 }
 
 .buffering__metric + .buffering__metric {
   margin-left: var(--space-3);
-}
-
-.buffering__stat-icon {
-  width: calc(var(--u) * 22);
-  height: calc(var(--u) * 22);
-  margin-right: calc(var(--u) * 8);
 }
 
 /* Цифры одной ширины (tabular-nums), поэтому ch — ширина любой цифры */

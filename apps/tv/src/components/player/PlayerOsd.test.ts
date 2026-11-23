@@ -60,17 +60,32 @@ async function render(
   return renderToString(app)
 }
 
-it('shows Mbps, buffer and connected seeders together with accessible names', async () => {
+it('shows Mbps, buffer and the labeled count of connected peers', async () => {
   const html = await render()
   expect(html).toContain('Server download: 46 Mbps')
   expect(html).toContain('Buffered: 24 s')
-  expect(html).toContain('Connected seeders: 3')
-  expect(html).not.toContain('Connected seeders: 9')
-  expect(html).not.toContain('Connected seeders: 40')
+  expect(html).toContain('9 peers')
+  expect(html).not.toMatch(/3 peers|40 peers|seeders/)
   expect(html).not.toContain('MB/s')
 })
 
-it('keeps zero speed and zero seeders neutral with a full buffer', async () => {
+it.each([
+  ['en_US', 1, '1 peer'],
+  ['en_US', 2, '2 peers'],
+  ['ru_RU', 1, '1 пир'],
+  ['ru_RU', 2, '2 пира'],
+] as const)(
+  'pluralizes connected peers in %s for %d',
+  async (locale, connected, expected) => {
+    const html = await render(
+      { stats: { ...stats, peers: { ...stats.peers, connected } } },
+      locale,
+    )
+    expect(html).toContain(expected)
+  },
+)
+
+it('keeps zero speed and zero connected peers neutral with a full buffer', async () => {
   const html = await render(
     {
       stats: {
@@ -84,7 +99,7 @@ it('keeps zero speed and zero seeders neutral with a full buffer', async () => {
   )
   expect(html).toContain('Загрузка сервером: 0,0 Мбит/с')
   expect(html).toContain('Запас видео: 7 мин')
-  expect(html).toContain('Подключённые сиды: 0')
+  expect(html).toContain('0 пиров')
   expect(html).not.toContain('osd__pill--low')
 })
 
@@ -97,7 +112,7 @@ it('warns only when speed is insufficient and buffer is running out', async () =
   expect(html).toContain('osd__pill--low')
   expect(html).toContain('0.0 Mbps')
   expect(html).toContain('Buffered: 24 s')
-  expect(html).toContain('Connected seeders: 3')
+  expect(html).toContain('9 peers')
 })
 
 it.each([{ verifiedToEnd: true }])(
@@ -106,7 +121,7 @@ it.each([{ verifiedToEnd: true }])(
     const html = await render(changes)
     expect(html).toContain('Downloaded')
     expect(html).not.toContain('Mbps')
-    expect(html).not.toContain('Connected seeders')
+    expect(html).not.toContain('9 peers')
   },
 )
 
@@ -121,13 +136,13 @@ it('does not turn unknown measurements into zero', async () => {
     stats: {
       ...stats,
       downloadSpeed: Number.NaN,
-      peers: { ...stats.peers, seeders: Number.NaN },
+      peers: { ...stats.peers, connected: Number.NaN },
     },
     bufferSeconds: Number.NaN,
   })
   expect(html).toContain('Server download: — Mbps')
   expect(html).toContain('Buffered: —')
-  expect(html).toContain('Connected seeders: —')
+  expect(html).not.toMatch(/\d+ peers?\b/)
   expect(html).not.toContain('NaN')
 })
 
@@ -144,9 +159,7 @@ it('shows one timer buffer without player or cache labels or combining their val
   expect(html.indexOf('Server download:')).toBeLessThan(
     html.indexOf('Buffered:'),
   )
-  expect(html.indexOf('Buffered:')).toBeLessThan(
-    html.indexOf('Connected seeders:'),
-  )
+  expect(html.indexOf('Buffered:')).toBeLessThan(html.indexOf('9 peers'))
 })
 
 it('keeps missing or zero cache bounds neutral until playback actually stalls', async () => {
@@ -165,7 +178,7 @@ const locales = [
     buffer: 'Buffered:',
     speed: 'Server download:',
     speedUnit: 'Mbps',
-    seeders: 'Connected seeders:',
+    peers: 'peers',
     seconds: 's',
     minutes: 'min',
     decimal: '.',
@@ -176,7 +189,7 @@ const locales = [
     buffer: 'Запас видео:',
     speed: 'Загрузка сервером:',
     speedUnit: 'Мбит/с',
-    seeders: 'Подключённые сиды:',
+    peers: 'пиров',
     seconds: 'с',
     minutes: 'мин',
     decimal: ',',
@@ -240,7 +253,7 @@ it.each(locales)(
 )
 
 it.each(locales)(
-  'formats speed decimal boundaries and connected seeder counts in $locale',
+  'formats speed decimal boundaries and connected peer counts in $locale',
   async (text) => {
     for (const [speed, expected] of [
       [0, `0${text.decimal}0`],
@@ -257,13 +270,13 @@ it.each(locales)(
           stats: {
             ...stats,
             downloadSpeed: speed,
-            peers: { ...stats.peers, seeders: 0 },
+            peers: { ...stats.peers, connected: 0, seeders: 0 },
           },
         },
         text.locale,
       )
       expect(html).toContain(`${text.speed} ${expected} ${text.speedUnit}`)
-      expect(html).toContain(`${text.seeders} 0`)
+      expect(html).toContain(`0 ${text.peers}`)
     }
     for (const value of [
       Number.NaN,
@@ -277,13 +290,13 @@ it.each(locales)(
           stats: {
             ...stats,
             downloadSpeed: Number.NaN,
-            peers: { ...stats.peers, seeders: value },
+            peers: { ...stats.peers, connected: value },
           },
         },
         text.locale,
       )
       expect(html).toContain(`${text.speed} — ${text.speedUnit}`)
-      expect(html).toContain(`${text.seeders} —`)
+      expect(html).not.toContain(text.peers)
       expect(html).not.toMatch(/NaN|Infinity/)
     }
   },
@@ -321,7 +334,7 @@ it.each(locales)(
       expect(html).toContain(text.downloaded)
       expect(html).not.toContain(text.buffer)
       expect(html).not.toContain(text.speedUnit)
-      expect(html).not.toContain(text.seeders)
+      expect(html).not.toContain(text.peers)
     }
   },
 )
@@ -393,14 +406,14 @@ it.each(locales)(
 )
 
 it.each(['en_US', 'ru_RU'])(
-  'shows honest cached playback 0 Mbps, six seeders and 29 seconds in %s',
+  'shows honest cached playback 0 Mbps, six connected peers and 29 seconds in %s',
   async (locale) => {
     const html = await render(
       {
         stats: {
           ...stats,
           downloadSpeed: 0,
-          peers: { connected: 6, found: 40, seeders: 6 },
+          peers: { connected: 6, found: 40, seeders: 0 },
         },
         bufferSeconds: 29,
         cacheSeconds: null,
@@ -416,9 +429,7 @@ it.each(['en_US', 'ru_RU'])(
     expect(html).toContain(
       locale === 'en_US' ? 'Buffered: 29 s' : 'Запас видео: 29 с',
     )
-    expect(html).toContain(
-      locale === 'en_US' ? 'Connected seeders: 6' : 'Подключённые сиды: 6',
-    )
+    expect(html).toContain(locale === 'en_US' ? '6 peers' : '6 пиров')
     expect(html).not.toContain('osd__pill--low')
   },
 )
@@ -453,7 +464,7 @@ it('does not claim a zero signal when speed or average bitrate is unknown', asyn
     },
   })
   expect(cold).toContain('Server download: — Mbps')
-  expect(cold).toContain('Connected seeders: —')
+  expect(cold).toContain('9 peers')
   expect(await render({ stats: { ...stats, downloadSpeed: 0 } })).toContain(
     'Network: 0 of 4',
   )

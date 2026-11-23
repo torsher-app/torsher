@@ -10,7 +10,6 @@ import {
   formatBitrate,
   hdrLabels,
   isProfilePick,
-  leechersOf,
   resolutionBadge,
   sourceKindOf,
 } from '../lib/sources.ts'
@@ -20,7 +19,7 @@ import AppLoader from './AppLoader.vue'
 
 /**
  * Строка раздачи в «Источниках» на всю ширину, в три строки: исходное имя;
- * бейджи и озвучка; причина, дата и индексатор · битрейт, сиды, качают, размер.
+ * бейджи и озвучка; причина, дата и индексатор · битрейт, сиды, размер.
  */
 const props = defineProps<{
   candidate: SourceCandidate
@@ -37,7 +36,7 @@ const props = defineProps<{
 const emit = defineEmits<{ select: [] }>()
 
 const { t, locale } = useI18n()
-const { voiceLabel, tracksLabel, otherTracksLine, sizeLabel }
+const { voiceLabel, tracksLabel, otherTracksLine, sizeLabel, seedersLabel }
   = useSourceLabels()
 
 // Студии и «Озвучка не распознана» — русская модель. Другому языку озвучки
@@ -120,8 +119,6 @@ const voiceType = computed(() => {
     : ''
 })
 
-const leechers = computed(() => leechersOf(props.candidate))
-
 const seedersTone = computed(() => {
   const count = props.candidate.seeders
 
@@ -197,7 +194,6 @@ const seedersTone = computed(() => {
         <span class="source__meta-text">{{ meta }}</span>
       </span>
       <span class="source__stats">
-        <!-- Значки вместо подписей: стрелки отдачи и закачки, как в торрент-клиентах -->
         <span v-if="bitrate" class="source__stat">
           <AppIcon name="gauge" class="source__stat-icon" />
           {{ bitrate }}
@@ -206,12 +202,7 @@ const seedersTone = computed(() => {
           class="source__stat"
           :class="`source__seeders source__seeders--${seedersTone}`"
         >
-          <AppIcon name="arrowUp" class="source__stat-icon" />
-          {{ candidate.seeders }}
-        </span>
-        <span v-if="leechers !== undefined" class="source__stat">
-          <AppIcon name="arrowDown" class="source__stat-icon" />
-          {{ leechers }}
+          {{ seedersLabel(candidate.seeders) }}
         </span>
         <span v-if="candidate.size !== null" class="source__size">
           {{ sizeLabel(candidate.size) }}

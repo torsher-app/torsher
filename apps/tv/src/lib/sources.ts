@@ -311,18 +311,6 @@ export function formatBitrate(mbps: number, locale: string) {
   return formatNumber(mbps, mbps < 10 ? 1 : 0, locale)
 }
 
-/** Качают: в Torznab `peers` — все пиры вместе с сидами */
-export function leechersOf(
-  candidate: Pick<SourceCandidate, 'peers' | 'seeders'>,
-) {
-  if (candidate.peers === null)
-    return undefined
-
-  const count = candidate.peers - candidate.seeders
-
-  return count > 0 ? count : undefined
-}
-
 /** Минуты с момента поиска для «обновлено N мин назад» */
 export function minutesSince(iso: string, now: Date) {
   const time = new Date(iso).getTime()

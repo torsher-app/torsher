@@ -11,7 +11,6 @@ import {
   hdrLabels,
   isProfilePick,
   isQuality,
-  leechersOf,
   minutesSince,
   profileParts,
   qualityOptions,
@@ -394,11 +393,5 @@ describe('строка раздачи', () => {
     expect(bitrateOf({ episodeSize: 1024 ** 3 }, undefined)).toBeUndefined()
     expect(formatBitrate(4.96, 'ru_RU')).toBe('5,0')
     expect(formatBitrate(37.25, 'ru_RU')).toBe('37')
-  })
-
-  it('качают: пиры без сидов, без пиров или с перекосом — ничего', () => {
-    expect(leechersOf({ peers: 70, seeders: 58 })).toBe(12)
-    expect(leechersOf({ peers: null, seeders: 58 })).toBeUndefined()
-    expect(leechersOf({ peers: 10, seeders: 58 })).toBeUndefined()
   })
 })

@@ -49,7 +49,7 @@ it('does not show stale peer counters while reconnecting', async () => {
   const html = await render('reconnecting')
   expect(html).toContain(copy.steps.reconnecting)
   expect(html).not.toContain('buffering__number')
-  expect(html).not.toContain('Connected seeders')
+  expect(html.replace(/<[^>]*>/g, '')).not.toMatch(/\d+ peers?\b/)
   expect(html).not.toContain(copy.waitingHint)
 })
 
@@ -60,7 +60,7 @@ it('preserves a custom preparation label without a peer diagnosis', async () => 
 })
 
 it.each(['buffering', 'slow'] as const)(
-  'shows Mbps and connected seeders without a readiness percentage during %s',
+  'shows Mbps and connected peers without a readiness percentage during %s',
   async (step) => {
     const html = await render(step, undefined, {
       ...stats,
@@ -70,39 +70,38 @@ it.each(['buffering', 'slow'] as const)(
     const text = html.replace(/<[^>]*>/g, '')
     expect(text).not.toContain('%')
     expect(text).toContain('46 Mbps')
-    expect(html).toContain('Connected seeders: 3')
-    expect(html).not.toContain('Connected seeders: 9')
-    expect(html).not.toContain('Connected seeders: 40')
+    expect(text).toContain('9 peers')
+    expect(text).not.toMatch(/3 peers|40 peers|seeders/)
     expect(text).not.toContain('MB/s')
     expect(text).not.toContain('·')
   },
 )
 
-it('preserves known zero speed and zero seeders', async () => {
+it('preserves known zero speed and zero peers', async () => {
   const html = await render('buffering')
   expect(html.replace(/<[^>]*>/g, '')).toContain('0.0 Mbps')
-  expect(html).toContain('Connected seeders: 0')
+  expect(html.replace(/<[^>]*>/g, '')).toContain('0 peers')
 })
 
-it('hides unknown seeder counts without inventing zero', async () => {
+it('hides unknown peer counts without inventing zero', async () => {
   const html = await render('buffering', undefined, {
     ...stats,
-    peers: { ...stats.peers, seeders: Number.NaN },
+    peers: { ...stats.peers, connected: Number.NaN },
   })
-  expect(html).not.toContain('Connected seeders')
+  expect(html.replace(/<[^>]*>/g, '')).not.toMatch(/\d+ peers?\b/)
   expect(html).not.toContain('NaN')
 })
 
 it('keeps the custom preparation label free of torrent metrics', async () => {
   const html = await render('buffering', 'Preparing episode')
   expect(html).not.toContain('Mbps')
-  expect(html).not.toContain('Connected seeders')
+  expect(html.replace(/<[^>]*>/g, '')).not.toMatch(/\d+ peers?\b/)
 })
 
 it('does not invent statistics before the first response', async () => {
   const html = await render('buffering', undefined, null)
   expect(html).not.toContain('Mbps')
-  expect(html).not.toContain('Connected seeders')
+  expect(html.replace(/<[^>]*>/g, '')).not.toMatch(/\d+ peers?\b/)
   expect(html).not.toContain('buffering__number')
 })
 
@@ -120,32 +119,32 @@ it.each(['en_US', 'ru_RU'])(
           ...stats,
           downloadSpeed,
           file: { size: 100, downloaded: 100, bufferedAhead: 100 },
-          peers: { connected: 6, found: 40, seeders: 6 },
+          peers: { connected: 6, found: 40, seeders: 0 },
         },
         locale,
       )
       expect(html.replace(/<[^>]*>/g, '')).toContain(expected)
       expect(html).not.toContain('%')
       expect(html.replace(/<[^>]*>/g, '')).not.toMatch(/Torrent|Торрент/)
-      expect(html).toContain(
-        locale === 'en_US' ? 'Connected seeders: 6' : 'Подключённые сиды: 6',
+      expect(html.replace(/<[^>]*>/g, '')).toContain(
+        locale === 'en_US' ? '6 peers' : '6 пиров',
       )
     }
   },
 )
 
-it('omits idle, cold speed and unavailable legacy seeder measurements', async () => {
+it('omits idle stats and shows peers with a cold speed and legacy engine', async () => {
   const cold = await render('buffering', undefined, {
     ...stats,
     downloadSpeedMeasured: false,
     peers: { ...stats.peers, seedersKnown: false },
   })
   expect(cold.replace(/<[^>]*>/g, '')).toContain('— Mbps')
-  expect(cold).not.toContain('Connected seeders')
+  expect(cold.replace(/<[^>]*>/g, '')).toContain('0 peers')
   const idle = await render('buffering', undefined, {
     ...stats,
     activity: 'idle',
   })
   expect(idle).not.toContain('Mbps')
-  expect(idle).not.toContain('Connected seeders')
+  expect(idle.replace(/<[^>]*>/g, '')).not.toMatch(/\d+ peers?\b/)
 })
