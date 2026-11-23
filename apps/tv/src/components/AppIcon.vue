@@ -42,7 +42,6 @@ export type IconName
     | 'library'
     | 'homeVideo'
     | 'minus'
-    | 'arrowUp'
     | 'arrowDown'
     | 'gauge'
     | 'timer'
@@ -146,7 +145,6 @@ const PATHS: Record<
   ],
   source: ['M4 8h14l-3.5-3.5', 'M20 16H6l3.5 3.5'],
   next: [{ d: 'M5 5v14l10-7z', fill: true }, 'M19 5v14'],
-  arrowUp: ['M12 19.5v-14M6 11.5l6-6 6 6'],
   arrowDown: ['M12 4.5v14M6 12.5l6 6 6-6'],
   timer: [
     'M12 6a7.5 7.5 0 1 0 0 15 7.5 7.5 0 0 0 0-15z',

@@ -519,8 +519,7 @@
       "player": "Player",
       "cache": "Cache",
       "playerBuffer": "Player buffer: {time}",
-      "cacheBuffer": "Server cache: {time}",
-      "seeders": "Connected seeders: {n}"
+      "cacheBuffer": "Server cache: {time}"
     },
     "timeline": "Position {position}. OK plays or pauses, left and right seek",
     "peers": "{n} peer | {n} peers",
