@@ -34,14 +34,14 @@ Each row has three lines:
 
 1. **The release name**, as the indexer has it.
 2. **Badges.** First the resolution: 4K, 1080p, 720p or SD. A question mark means it was guessed from other hints in the name, and a lone `?` means unknown. Then what the release covers, such as `S1 · 1–8` or `S1–3`, the source (Remux, Blu-ray, Web, TV, DVD; <Ui k="sources.sourceKinds.cam" /> is a recording from a cinema screen), HDR, the codec and the audio channels. Then the audio. When the selected preset's first audio language is Russian, it's the voice-over studio or language and its type, such as <Ui k="sources.voiceTypes.D" />, <Ui k="sources.voiceTypes.MVO" /> or <Ui k="sources.voiceTypes.Original" />, and other audio tracks after it. With any other audio language, it's the tracks named in the release, such as <Ui k="audioLanguages.en" />, <Ui k="audioLanguages.original" /> or <Ui k="audioLanguages.ru" /> for a Russian voice-over; a release that names none shows nothing here, and that's normal for most English-language indexers. <Ui k="sources.unsure" /> warns about an uncertain match. <Ui k="sources.unmatched" /> means Torsher could not match the result to this title; check the release name before opening it.
-3. **Details.** A mark on the left, then the publish date, subtitles and the indexer. On the right, the bitrate, seeders (green from 10, amber below, red at 0), leechers and the size of the whole release.
+3. **Details.** A mark on the left, then the publish date, subtitles and the indexer. On the right, the bitrate, seeders (green from 10, amber below, red at 0) and the size of the whole release.
 
 For example, a row could read:
 
 ```
 Example.Show.S01.1080p.WEB-DL.H264.MVO
 1080p   S1 · 1–8   Web   5.1   Example Studio · Multi-voice
-By profile · Oct 12, 2026 · subtitles: ENG · My indexer      6 Mbps  ↑ 42  ↓ 3  14.2 GB
+By profile · Oct 12, 2026 · subtitles: ENG · My indexer      6 Mbps  42 seeders  14.2 GB
 ```
 
 ## Which release comes first
