@@ -7,8 +7,11 @@ import type { IndexerFailure, SearchTarget } from './search.ts'
 import { recordTrackerEpisodes } from '../follow/trackerEpisodes.ts'
 import {
   availableForBackground,
+  indexerPause,
   recordBackgroundOutcome,
+  rememberIndexerRetryAfter,
 } from '../indexers/backoff.ts'
+import { createRateLimiter } from '../../utils/rateLimit.ts'
 import { listSearchableIndexers } from '../indexers/index.ts'
 import { getTitleIdentity } from '../tmdb/index.ts'
 import { normalizeTitle } from '@torsher/release-parser'
@@ -17,7 +20,7 @@ import { cachedSearch, peekSearch, SEARCH_TTL_MS } from './cache.ts'
 import { resolveSourcePreset } from './profile.ts'
 import { coversEpisode, rankReleases, RESOLUTION_RANK } from './rank.ts'
 import { knownResolutions } from './resolution.ts'
-import { asViewerSearch, searchReleases } from './search.ts'
+import { asViewerSearch, searchReleases, searchRequestsFor } from './search.ts'
 import { lastTitleProgress, lastVoiceOfSeason } from './progress.ts'
 import { getPinnedVoice } from './voices.ts'
 import { seasonReleases } from './seasonRelease.ts'
@@ -152,25 +155,48 @@ export function voiceOptions(
   )
 }
 
-/**
- * Поиск зрителя, как у Sonarr: индексатор после ошибок подряд не спрашиваем,
- * пока не кончится пауза, и считаем не ответившим. Итог двигает ту же лестницу
- * пауз, что и фоновые поиски. На паузе все — спрашиваем всех: зрителю всё
- * равно нечего показать.
- */
-async function viewerSearch(target: SearchTarget) {
+const pausedIndexerRetries = createRateLimiter({ limit: 1, windowMs: 60_000 })
+
+function planViewerSearch(refresh?: boolean) {
   const all = listSearchableIndexers()
-  const { available } = availableForBackground(all)
-  const asked = available.length > 0 ? available : all
-  const outcome = await searchReleases(target, asked, {
+  const { available, locallyPaused } = availableForBackground(all)
+  const allowPausedRetries = refresh || available.length === 0
+  const candidates = allowPausedRetries
+    ? [...available, ...locallyPaused]
+    : available
+  return { all, candidates, allowPausedRetries, locallyPaused }
+}
+
+/** Ручное обновление может раньше проверить индексатор на внутренней паузе. */
+async function viewerSearch(
+  target: SearchTarget,
+  { all, candidates, allowPausedRetries }: ReturnType<typeof planViewerSearch>,
+  coveredIndexerIds?: Set<string>,
+) {
+  // Обычный резервный поиск уже планирует локальные пробы, включая очередь.
+  if (coveredIndexerIds && allowPausedRetries) {
+    const requestsFor = searchRequestsFor(target, { seriesYearQuery: true })
+    for (const indexer of candidates) {
+      if (requestsFor(indexer).length)
+        coveredIndexerIds.add(indexer.id)
+    }
+  }
+
+  const outcome = await searchReleases(target, candidates, {
     seriesYearQuery: true,
-    skipped: all.length - asked.length,
+    skipped: all.length - candidates.length,
+    indexerPause,
+    onRetryAfter: rememberIndexerRetryAfter,
+    claimPausedRequest: allowPausedRetries
+      ? id => pausedIndexerRetries.hit(id)
+      : undefined,
+    onFirstRequest: id => coveredIndexerIds?.add(id),
   })
 
-  recordBackgroundOutcome(asked, outcome.failed)
+  recordBackgroundOutcome(candidates, outcome.failed)
 
   const skipped = all
-    .filter(indexer => !asked.includes(indexer))
+    .filter(indexer => !candidates.includes(indexer))
     .map(({ id, name }) => ({ id, name, kind: 'skipped' as const }))
 
   return {
@@ -209,13 +235,29 @@ export async function getTitleSources(
     = !!cached
       && !request.refresh
       && Date.now() - cached.updatedAt.getTime() < SEARCH_TTL_MS
+  const target = { titleId, identity, aliases, season, query }
+  const coveredIndexerIds = request.refresh ? undefined : new Set<string>()
+  let plan: ReturnType<typeof planViewerSearch> | undefined
+  const getPlan = () => (plan ??= planViewerSearch(request.refresh))
   const search = await cachedSearch(
     searchKey,
     () =>
-      asViewerSearch(() =>
-        viewerSearch({ titleId, identity, aliases, season, query }),
-      ),
-    { refresh: request.refresh },
+      asViewerSearch(() => viewerSearch(target, getPlan(), coveredIndexerIds)),
+    {
+      refresh: request.refresh,
+      indexerScope: coveredIndexerIds,
+      shouldPromote: (runningScope) => {
+        const requestsFor = searchRequestsFor(target, {
+          seriesYearQuery: true,
+        })
+        return getPlan().locallyPaused.some(
+          indexer =>
+            !runningScope?.has(indexer.id)
+            && !pausedIndexerRetries.isLimited(indexer.id)
+            && requestsFor(indexer).length > 0,
+        )
+      },
+    },
   )
 
   if (identity.kind === 'series')

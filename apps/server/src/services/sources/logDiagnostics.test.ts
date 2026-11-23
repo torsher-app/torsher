@@ -214,12 +214,22 @@ describe('source subsystem diagnostics', () => {
             resolve = ok
           }),
       )
+      const claimPausedRequest = vi.fn(() => true)
       const outcome = await searchReleases(
         target,
         [indexer('late-001'), indexer('queued-001')],
-        { deadlineMs: 15, concurrency: 1 },
+        {
+          deadlineMs: 15,
+          concurrency: 1,
+          indexerPause: () => 'local',
+          claimPausedRequest,
+        },
       )
-      expect(outcome.failed[0]!.kind).toBe('timeout')
+      expect(outcome.failed.map(item => item.kind)).toEqual([
+        'timeout',
+        'skipped',
+      ])
+      expect(claimPausedRequest.mock.calls).toEqual([['late-001']])
       expect(outcome.diagnostics).toMatchObject({
         asked: 1,
         ok: 0,

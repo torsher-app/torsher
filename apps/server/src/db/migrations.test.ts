@@ -47,6 +47,35 @@ describe('журнал миграций', () => {
   })
 })
 
+it('сохраняет срок старой паузы с неизвестным происхождением при обновлении базы', () => {
+  const index = journal.entries.findIndex(
+    entry => entry.tag === '0055_indexer-retry-after',
+  )
+  expect(index).toBeGreaterThan(0)
+  const sqlite = new Database(':memory:')
+  const until = Date.now() + 3_600_000
+
+  try {
+    migrate(drizzle(sqlite), { migrationsFolder: migrationsBefore(index) })
+    sqlite
+      .prepare(
+        'INSERT INTO indexers (id,name,url,created_at,backoff_until) VALUES (?,?,?,?,?)',
+      )
+      .run('old', 'Indexer', 'https://indexer.example', 0, until)
+    migrate(drizzle(sqlite), { migrationsFolder: MIGRATIONS_DIR })
+    migrate(drizzle(sqlite), { migrationsFolder: MIGRATIONS_DIR })
+
+    expect(
+      sqlite
+        .prepare('SELECT backoff_until, retry_after_until FROM indexers')
+        .get(),
+    ).toEqual({ backoff_until: until, retry_after_until: until })
+  }
+  finally {
+    sqlite.close()
+  }
+})
+
 it('upgrades a 0046 view and keeps explicit voice revision across a database reopen', () => {
   const index = journal.entries.findIndex(
     entry => entry.tag === '0047_voice-selection-revision',

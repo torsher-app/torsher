@@ -31,4 +31,31 @@ describe('cachedSearch', () => {
     expect(peekSearch('title')).toBeUndefined()
     expect((await cachedSearch('title', load)).outcome.indexerCount).toBe(1)
   })
+
+  it.each([true, false])(
+    'поздний обычный поиск не заменяет ручной запрос (%s)',
+    async (normalFinishesFirst) => {
+      const normal = Promise.withResolvers<SearchOutcome>()
+      const manual = Promise.withResolvers<SearchOutcome>()
+      const load = vi.fn(() => manual.promise)
+      const options = { refresh: true, shouldPromote: () => true }
+      const first = cachedSearch('title', () => normal.promise)
+      const refreshed = cachedSearch('title', load, options)
+
+      if (normalFinishesFirst) {
+        normal.resolve(outcome(1))
+        await first
+        expect(cachedSearch('title', load, options)).toBe(refreshed)
+        expect(peekSearch('title')).toBeUndefined()
+      }
+
+      manual.resolve(outcome(2))
+      await refreshed
+      normal.resolve(outcome(1))
+      await first
+
+      expect(load).toHaveBeenCalledTimes(1)
+      expect(peekSearch('title')?.outcome.indexerCount).toBe(2)
+    },
+  )
 })

@@ -9,7 +9,9 @@ import { getDb } from '../../db/index.ts'
 import { follows, followSeasons, trackedTopics } from '../../db/schema.ts'
 import {
   availableForBackground,
+  indexerPause,
   recordBackgroundOutcome,
+  rememberIndexerRetryAfter,
 } from '../indexers/backoff.ts'
 import { listSearchableIndexers } from '../indexers/index.ts'
 import { logFor, throttleLog } from '../logs/index.ts'
@@ -452,6 +454,8 @@ export async function followReleases(
           deadlineMs: SEARCH_DEADLINE_MS,
           concurrency: SEARCH_CONCURRENCY,
           textQueries: TEXT_QUERIES,
+          indexerPause,
+          onRetryAfter: rememberIndexerRetryAfter,
         },
       )
 
@@ -460,6 +464,14 @@ export async function followReleases(
     },
     { refresh: true, now: now.getTime() },
   )
+
+  if (
+    search.outcome.failed.every(item => item.kind === 'skipped')
+    && search.outcome.diagnostics?.asked === 0
+  ) {
+    const { nextAt } = availableForBackground(all)
+    return { nextAt, paused: true }
+  }
 
   return { outcome: search.outcome, network: true }
 }

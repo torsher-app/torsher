@@ -16,7 +16,7 @@ import {
   backoffUntil,
   recordBackgroundOutcome,
 } from '../indexers/backoff.ts'
-import { listSearchableIndexers } from '../indexers/index.ts'
+import { checkIndexer, listSearchableIndexers } from '../indexers/index.ts'
 import { cachedSearch, clearSearchCache } from '../sources/cache.ts'
 import { parseRelease } from '@torsher/release-parser'
 import { asViewerSearch, searchReleases } from '../sources/search.ts'
@@ -593,45 +593,60 @@ describe('кэш поиска зрителя', () => {
 })
 
 describe('сетевой поиск слежения', () => {
-  it('сохраняет бюджет двух текстовых запросов без дополнительного года', async () => {
-    clearSearchCache()
-    getDb().delete(indexers).run()
-    getDb()
-      .insert(indexers)
-      .values({
-        name: 'Follow indexer',
-        url: 'https://follow.indexer.example/torznab',
-        caps: {
-          search: { available: true, params: ['q'] },
-          tvSearch: { available: false, params: [] },
-          movieSearch: { available: false, params: [] },
-          categories: [],
-        },
-      })
-      .run()
-    const queries: string[] = []
-    vi.stubEnv('TMDB_ACCESS_TOKEN', 'test-token')
-    vi.stubGlobal('fetch', async (input: string | URL | Request) => {
-      const url = new URL(String(input))
-      if (url.hostname === 'api.themoviedb.org')
-        return new Response(JSON.stringify(tvIdentity))
-      queries.push(url.searchParams.get('q') ?? '')
-      return new Response('<rss><channel /></rss>')
-    })
-    try {
-      const result = await followReleases(
-        follow({ titleId: 'tmdb:tv:101' }),
-        new Date(),
-        true,
-      )
-      expect(result && 'outcome' in result && result.network).toBe(true)
-      expect(queries).toEqual(['Тихая гавань', 'Quiet Harbor'])
-    }
-    finally {
+  it.each([
+    { limited: false, queries: ['Тихая гавань', 'Quiet Harbor'] },
+    { limited: true, queries: ['Тихая гавань'] },
+  ])(
+    'ограничивает текстовый поиск двумя запросами и соблюдает общую паузу: $limited',
+    async ({ limited, queries: expected }) => {
       clearSearchCache()
       getDb().delete(indexers).run()
-      vi.unstubAllGlobals()
-      vi.unstubAllEnvs()
-    }
-  })
+      const source = getDb()
+        .insert(indexers)
+        .values({
+          name: 'Follow indexer',
+          url: 'https://follow.indexer.example/torznab',
+          caps: {
+            search: { available: true, params: ['q'] },
+            tvSearch: { available: false, params: [] },
+            movieSearch: { available: false, params: [] },
+            categories: [],
+          },
+        })
+        .returning()
+        .get()
+      const queries: string[] = []
+      vi.stubEnv('TMDB_ACCESS_TOKEN', 'test-token')
+      vi.stubGlobal('fetch', async (input: string | URL | Request) => {
+        const url = new URL(String(input))
+        if (url.hostname === 'api.themoviedb.org')
+          return new Response(JSON.stringify(tvIdentity))
+        if (url.searchParams.get('t') === 'caps') {
+          return new Response(null, {
+            status: 429,
+            headers: { 'Retry-After': '3600' },
+          })
+        }
+        queries.push(url.searchParams.get('q') ?? '')
+        if (limited)
+          await checkIndexer(source.id)
+        return new Response('<rss><channel /></rss>')
+      })
+      try {
+        const result = await followReleases(
+          follow({ titleId: 'tmdb:tv:101' }),
+          new Date(),
+          true,
+        )
+        expect(result && 'outcome' in result && result.network).toBe(true)
+        expect(queries).toEqual(expected)
+      }
+      finally {
+        clearSearchCache()
+        getDb().delete(indexers).run()
+        vi.unstubAllGlobals()
+        vi.unstubAllEnvs()
+      }
+    },
+  )
 })

@@ -1,7 +1,7 @@
 import { logFor } from '../logs/index.ts'
 import type { IndexerFailure } from '../sources/search.ts'
 import type { SearchableIndexer } from './index.ts'
-import { eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, isNull, lt, or } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import { indexers } from '../../db/schema.ts'
 
@@ -43,28 +43,85 @@ export function availableForBackground<T extends SearchableIndexer>(
 ) {
   const ids = list.map(item => item.id)
 
-  if (!ids.length)
-    return { available: [] as T[], nextAt: undefined }
+  if (!ids.length) {
+    return {
+      available: [] as T[],
+      locallyPaused: [] as T[],
+      nextAt: undefined,
+    }
+  }
 
   const rows = getDb()
-    .select({ id: indexers.id, backoffUntil: indexers.backoffUntil })
+    .select({
+      id: indexers.id,
+      backoffUntil: indexers.backoffUntil,
+      retryAfterUntil: indexers.retryAfterUntil,
+    })
     .from(indexers)
     .where(inArray(indexers.id, ids))
     .all()
-  const blocked = new Map(
-    rows.flatMap(row =>
-      row.backoffUntil && row.backoffUntil > now
-        ? [[row.id, row.backoffUntil] as const]
-        : [],
-    ),
-  )
-  const waits = [...blocked.values()].map(date => date.getTime())
+  const blocked = new Map<string, number>()
+  const local = new Set<string>()
+  const nowMs = now.getTime()
+
+  for (const row of rows) {
+    const backoff = row.backoffUntil?.getTime() ?? 0
+    const retryAfter = row.retryAfterUntil?.getTime() ?? 0
+    const until = Math.max(backoff, retryAfter)
+
+    if (until <= nowMs)
+      continue
+
+    blocked.set(row.id, until)
+    if (retryAfter <= nowMs)
+      local.add(row.id)
+  }
 
   return {
     available: list.filter(item => !blocked.has(item.id)),
+    locallyPaused: list.filter(item => local.has(item.id)),
     /** Когда освободится первый индексатор в бэкоффе */
-    nextAt: waits.length ? new Date(Math.min(...waits)) : undefined,
+    nextAt: blocked.size ? new Date(Math.min(...blocked.values())) : undefined,
   }
+}
+
+/** Пауза может появиться, пока запрос ждёт в очереди поиска. */
+export function indexerPause(
+  id: string,
+  now = new Date(),
+): 'retry_after' | 'local' | undefined {
+  const row = getDb()
+    .select({
+      backoffUntil: indexers.backoffUntil,
+      retryAfterUntil: indexers.retryAfterUntil,
+    })
+    .from(indexers)
+    .where(eq(indexers.id, id))
+    .get()
+
+  if (row?.retryAfterUntil && row.retryAfterUntil > now)
+    return 'retry_after'
+  if (row?.backoffUntil && row.backoffUntil > now)
+    return 'local'
+}
+
+/** Срок провайдера действует сразу, даже если поиск уже вернул часть раздач. */
+export function rememberIndexerRetryAfter(id: string, retryAt: Date) {
+  const until = backoffUntil(1, new Date(), retryAt)
+
+  getDb()
+    .update(indexers)
+    .set({ retryAfterUntil: until })
+    .where(
+      and(
+        eq(indexers.id, id),
+        or(
+          isNull(indexers.retryAfterUntil),
+          lt(indexers.retryAfterUntil, until),
+        ),
+      ),
+    )
+    .run()
 }
 
 /**
@@ -85,20 +142,32 @@ export function recordBackgroundOutcome(
   for (const indexer of asked) {
     const failure = failures.get(indexer.id)
 
-    if (failure?.kind === 'unsupported')
+    if (failure?.kind === 'unsupported' || failure?.kind === 'skipped')
       continue
 
     const row = db
       .select({
         failureCount: indexers.failureCount,
         backoffSince: indexers.backoffSince,
+        retryAfterUntil: indexers.retryAfterUntil,
       })
       .from(indexers)
       .where(eq(indexers.id, indexer.id))
       .get()
+
+    const protectedUntil = row?.retryAfterUntil
+    // Параллельный результат мог начаться раньше ответа с Retry-After.
+    if (protectedUntil && protectedUntil > now && !failure?.retryAt)
+      continue
+
     if (!failure) {
       db.update(indexers)
-        .set({ backoffUntil: null, backoffSince: null, failureCount: 0 })
+        .set({
+          backoffUntil: null,
+          backoffSince: null,
+          failureCount: 0,
+          retryAfterUntil: null,
+        })
         .where(eq(indexers.id, indexer.id))
         .run()
       if (row && row.failureCount > 0) {
@@ -116,13 +185,16 @@ export function recordBackgroundOutcome(
     }
 
     const count = (row?.failureCount ?? 0) + 1
-    const until = backoffUntil(count, now, failure.retryAt)
+    const next = backoffUntil(count, now, failure.retryAt)
+    const until
+      = protectedUntil && protectedUntil > next ? protectedUntil : next
 
     db.update(indexers)
       .set({
         failureCount: count,
         backoffUntil: until,
         backoffSince: row?.backoffSince ?? now,
+        retryAfterUntil: failure.retryAt ? until : null,
       })
       .where(eq(indexers.id, indexer.id))
       .run()

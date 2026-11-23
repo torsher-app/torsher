@@ -281,10 +281,10 @@ export const indexers = sqliteTable(
     caps: text('caps', { mode: 'json' }).$type<TorznabCaps>(),
     checkStatus: text('check_status', { enum: indexerCheckStatuses }),
     checkedAt: integer('checked_at', { mode: 'timestamp_ms' }),
-    // Фоновый поиск «Следить» пропускает индексатор до срока: `Retry-After`
-    // из ответа 429 или ступень лестницы по числу ошибок подряд. Поиск
-    // зрителя на них не смотрит
+    // Общая пауза поиска после ошибки. Срок, заданный самим источником,
+    // хранится также отдельно, чтобы его учитывало ручное обновление.
     backoffUntil: integer('backoff_until', { mode: 'timestamp_ms' }),
+    retryAfterUntil: integer('retry_after_until', { mode: 'timestamp_ms' }),
     failureCount: integer('failure_count').notNull().default(0),
     // Первая ошибка серии подряд: по ней «Требует внимания» видит индексатор,
     // который не отвечает фону часами
