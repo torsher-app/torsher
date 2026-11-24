@@ -13,6 +13,32 @@ describe('panel demo', () => {
   })
 })
 
+it('keeps subtitle provider credentials write-only in the settings demo', async () => {
+  const request = (path: string, method = 'GET', body?: object) =>
+    handle(
+      new URL(`http://demo/api/settings/subtitles${path}`),
+      { method, body: body && JSON.stringify(body) },
+      'Unavailable',
+    )
+  const saved = await (
+    await request('', 'PUT', { subdl: { apiKey: 'demo-key' } })
+  ).json()
+  expect(saved.subdl).toEqual({ configured: true })
+  expect(await (await request('/subdl/test', 'POST')).json()).toEqual({
+    kind: 'ready',
+    remainingDownloads: 12,
+  })
+  const read = await (await request('')).json()
+  expect(read.subdl).toEqual({
+    configured: true,
+    connection: { kind: 'ready', remainingDownloads: 12 },
+  })
+  expect(JSON.stringify(read)).not.toContain('demo-key')
+  expect(
+    await (await request('', 'PUT', { subdl: { disconnect: true } })).json(),
+  ).toMatchObject({ subdl: { configured: false } })
+})
+
 async function notifications(query = ''): Promise<NotificationList> {
   const response = await handle(
     new URL(`http://demo/api/notifications${query}`),
