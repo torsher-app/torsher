@@ -75,6 +75,7 @@ describe('listManagerIndexers', () => {
         enabled: true,
         supportsRss: true,
         priority: 10,
+        knownPrivacy: 'public',
       },
       {
         externalId: '2',
@@ -83,6 +84,7 @@ describe('listManagerIndexers', () => {
         enabled: false,
         supportsRss: false,
         priority: 25,
+        knownPrivacy: 'private',
       },
     ])
 
@@ -127,12 +129,14 @@ describe('listManagerIndexers', () => {
         name: 'Indexer A',
         url: 'http://manager.example:9117/api/v2.0/indexers/indexer-a/results/torznab',
         enabled: true,
+        knownPrivacy: 'public',
       },
       {
         externalId: 'indexer-b',
         name: 'Indexer B',
         url: 'http://manager.example:9117/api/v2.0/indexers/indexer-b/results/torznab',
         enabled: true,
+        knownPrivacy: 'private',
       },
     ])
     expect(list[0]!.caps?.movieSearch).toEqual({
@@ -166,6 +170,39 @@ describe('listManagerIndexers', () => {
 })
 
 describe('importManager', () => {
+  it('learns privacy for untouched policies and preserves automation and manual overrides', async () => {
+    fetchMock.mockResolvedValueOnce(
+      json(prowlarrIndexers.map(row => ({ ...row, privacy: undefined }))),
+    )
+    const { manager } = await importManager({
+      kind: 'prowlarr',
+      url: 'http://manager.example:9696',
+      apiKey: 'key',
+    })
+    const [first, second] = listIndexers()
+    getDb().update(indexers).set({ allowAutomation: false }).run()
+    updateIndexer(second!.id, { minSeedRatio: 1.5 })
+
+    fetchMock.mockResolvedValueOnce(
+      json(prowlarrIndexers.map(row => ({ ...row, privacy: 'private' }))),
+    )
+    await syncManager(manager.id)
+
+    expect(listIndexers().find(row => row.id === first!.id)).toMatchObject({
+      knownPrivacy: 'private',
+      isPrivate: true,
+      allowAutomation: false,
+      seedCriteriaMode: null,
+    })
+    expect(listIndexers().find(row => row.id === second!.id)).toMatchObject({
+      knownPrivacy: 'private',
+      isPrivate: false,
+      allowAutomation: false,
+      seedCriteriaMode: null,
+      minSeedRatio: 1.5,
+      policyCustomized: true,
+    })
+  })
   it.each(['prowlarr', 'jackett'] as const)(
     'keeps %s browser links independent of API calls and reimports',
     async (kind) => {

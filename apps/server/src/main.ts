@@ -88,7 +88,9 @@ import {
   startUpdateSchedule,
 } from './services/updates/index.ts'
 import {
+  backfillEnginePrivacy,
   clearStreamSelections,
+  enginePrivacyReady,
   liveTorrents,
   onTorrentReady,
   reconcileEngineStorage,
@@ -312,7 +314,7 @@ const app = createApp(
 // Заодно раскладывает докачанное в библиотеку и применяет правила раздачи:
 // докачанный выбор начинает отсчёт «раздавать N часов»
 function checkStorage() {
-  if (!isEngineReady() || !producersStarted || restoreHeld())
+  if (!enginePrivacyReady() || !producersStarted || restoreHeld())
     return
 
   // Повторяет отложенные изоляции/технические паузы после освобождения места.
@@ -340,13 +342,13 @@ let reconcilePending = restoreResult.applied
 const maintenanceStartup = createMaintenanceStartup({
   ready: isEngineReady,
   held: restoreHeld,
-  recover: recoverMaintenance,
+  recover: async () => {
+    await backfillEnginePrivacy()
+    await recoverMaintenance()
+  },
   library: startLibraryProducers,
   safeWithoutEngine: libraryStartupWithoutEngine,
   resume: async () => {
-    await reconcileEngineStorage()
-    if (restoreHeld())
-      return
     if (reconcilePending) {
       const result = await reconcileTorrentsAfterRestore()
       reconcilePending = false
@@ -364,6 +366,9 @@ const maintenanceStartup = createMaintenanceStartup({
         logFor('backups').info(counts, 'Torrents reconciled after restore')
       }
     }
+    if (restoreHeld())
+      return
+    await reconcileEngineStorage()
     if (restoreHeld())
       return
     await startLibraryProducers()

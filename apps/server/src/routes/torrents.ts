@@ -1,4 +1,3 @@
-import { protectTorrent } from '../services/libraryMaintenance/provenance.ts'
 import { assertMaintenanceMutation } from '../services/libraryMaintenance/admission.ts'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { Buffer } from 'node:buffer'
@@ -53,7 +52,11 @@ import {
   setRetention,
   streamStats,
 } from '../services/torrents/index.ts'
-import { enforceSeeding, setSeedRule } from '../services/torrents/seeding.ts'
+import {
+  enforceSeeding,
+  isSeedObligationMet,
+  setSeedRule,
+} from '../services/torrents/seeding.ts'
 import { getTorrentSettings } from '../services/torrents/settings.ts'
 import { sendEngineError, toTorrentResponse } from './engineResponses.ts'
 import { titleAllowed } from '../services/profiles/access.ts'
@@ -150,6 +153,7 @@ export const torrentRoutes: FastifyPluginAsyncZod = async (app) => {
           200: torrent,
           201: torrent,
           400: messageResponse,
+          409: messageResponse,
           ...guardResponses,
           ...engineResponses,
         },
@@ -222,10 +226,17 @@ export const torrentRoutes: FastifyPluginAsyncZod = async (app) => {
       const found = getTorrent(request.params.id)
       if (!found)
         return reply.code(404).send({ message: 'Torrent not found' })
+      const live = found.isPrivate
+        ? (await liveTorrents()).get(found.infoHash)
+        : undefined
+      const requiresObligationConfirmation = !isSeedObligationMet(found, live)
       if (!found.inEngine)
-        return { reclaimableBytes: 0 }
+        return { reclaimableBytes: 0, requiresObligationConfirmation }
       try {
-        return await previewTorrentDeletion(found.infoHash)
+        return {
+          ...(await previewTorrentDeletion(found.infoHash)),
+          requiresObligationConfirmation,
+        }
       }
       catch (err) {
         if (
@@ -233,7 +244,7 @@ export const torrentRoutes: FastifyPluginAsyncZod = async (app) => {
           && err.kind === 'not_found'
           && err.engineCode === 'torrent_not_found'
         ) {
-          return { reclaimableBytes: 0 }
+          return { reclaimableBytes: 0, requiresObligationConfirmation }
         }
         return sendEngineError(reply, err, found)
       }
@@ -252,6 +263,7 @@ export const torrentRoutes: FastifyPluginAsyncZod = async (app) => {
         response: {
           200: messageResponse,
           404: messageResponse,
+          409: messageResponse,
           ...guardResponses,
           ...engineResponses,
         },
@@ -266,9 +278,9 @@ export const torrentRoutes: FastifyPluginAsyncZod = async (app) => {
       try {
         // Явный owner forget сохраняет оставшуюся библиотеку вне автоматики.
         assertMaintenanceMutation({ torrentId: found.id })
-        protectTorrent(found.id)
         await deleteTorrent(found, {
           deleteFiles: request.query.files === 'delete',
+          confirmObligation: request.query.confirmObligation === 'true',
         })
       }
       catch (err) {

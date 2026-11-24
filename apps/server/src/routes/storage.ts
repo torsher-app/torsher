@@ -70,6 +70,7 @@ function toOverviewResponse(
     total: overview.total,
     free: overview.free,
     cacheUsed: overview.cacheUsed,
+    obligatedUsed: overview.obligatedUsed,
     keptUsed: overview.keptUsed,
     library: { ...overview.library, linkMode: currentLinkMode() ?? null },
     other: overview.other,

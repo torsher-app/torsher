@@ -244,7 +244,7 @@ async function seed(
       infoHash: HASH,
       name,
       source: 'file',
-      torrentFile: Buffer.from('d4:infoe'),
+      torrentFile: Buffer.from('d4:infodee'),
       files: files.map<TorrentFileEntry>(file => ({
         ...file,
         padding: false,

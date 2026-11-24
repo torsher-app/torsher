@@ -122,34 +122,46 @@ func (a *api) storageFor(dir string) storage.ClientImpl {
 }
 
 // Добавляет раздачу в клиент с хранилищем её каталога
-func (a *api) addIn(mi *metainfo.MetaInfo, dir string, paused ...bool) (*torrent.Torrent, error) {
+func (a *api) addIn(mi *metainfo.MetaInfo, dir string) (*torrent.Torrent, error) {
+	return a.addWithPolicy(mi, dir, a.session.get(mi.HashInfoBytes()))
+}
+
+func (a *api) addWithPolicy(mi *metainfo.MetaInfo, dir string, policy savedTorrent) (*torrent.Torrent, error) {
 	if a.maintenanceBlocked(mi.HashInfoBytes(), metadataPaths(mi, dir)) {
 		return nil, errMaintenance
+	}
+	info, err := mi.UnmarshalInfo()
+	if err != nil {
+		return nil, err
+	}
+	policy.Private = policy.Private || privateInfo(&info)
+	spec, err := torrent.TorrentSpecFromMetaInfoErr(mi)
+	if err != nil {
+		return nil, err
 	}
 	if len(a.session.get(mi.HashInfoBytes()).GuardedPaths) > 0 {
 		if t, ok := a.client.Torrent(mi.HashInfoBytes()); ok && samePath(a.dirOf(mi.HashInfoBytes()), dir) {
 			if guarded, ok := a.guarded.Load(mi.HashInfoBytes()); ok && guarded == t {
+				if policy.Private || a.private.contains(t.InfoHash()) {
+					t, _, err := a.addChecked(spec, mi, policy.Private)
+					return t, err
+				}
 				return t, nil
 			}
 		}
 		return nil, errors.New("guarded session requires maintenance recovery")
 	}
 
-	spec, err := torrent.TorrentSpecFromMetaInfoErr(mi)
-	if err != nil {
-		return nil, err
-	}
-
 	spec.Storage = a.storageFor(dir)
 	if err := a.ownership.reserve(mi.HashInfoBytes(), dir, metadataPaths(mi, dir)); err != nil {
 		return nil, err
 	}
-	if a.session.get(mi.HashInfoBytes()).Paused || (len(paused) > 0 && paused[0]) {
+	if policy.paused() || policy.Private {
 		spec.DisallowDataDownload = true
 		spec.DisallowDataUpload = true
 	}
 
-	t, _, err := a.client.AddTorrentSpec(spec)
+	t, _, err := a.addChecked(spec, mi, policy.Private)
 	if err != nil {
 		return nil, err
 	}
@@ -331,6 +343,7 @@ func (a *api) startMove(w http.ResponseWriter, r *http.Request) {
 		}
 
 		a.flushUploaded(t)
+		a.dropPrivateTracker(t)
 		complete := dropTorrent(t)
 		a.windows.forget(hash)
 		if !a.lifecycle.settled(hash) {
@@ -367,6 +380,7 @@ func (a *api) startMove(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		defer unlock()
 		a.flushUploaded(t)
+		a.dropPrivateTracker(t)
 		complete := dropTorrent(t)
 		if !a.lifecycle.settled(hash) {
 			job.update(func(state *moveState) { state.State = "failed"; state.Error = "torrent storage has not closed" })
@@ -553,8 +567,13 @@ func (a *api) reopen(mi *metainfo.MetaInfo, dir string, saved savedTorrent, comp
 		a.verifyPieces(t, lost)
 	}
 
-	if saved.Paused {
+	if saved.paused() {
 		a.setPaused(t, true, saved.Selected)
+		return nil
+	}
+	if saved.Private {
+		a.setPaused(t, false, saved.Selected)
+		a.sched.poke()
 		return nil
 	}
 

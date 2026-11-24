@@ -237,6 +237,9 @@ function overview(): StorageOverview {
     total: MAIN_DISK.total,
     free,
     cacheUsed,
+    obligatedUsed: torrents
+      .filter(torrent => torrent.isPrivate && !torrent.seedObligation?.met)
+      .reduce((total, torrent) => total + torrent.sizeOnDisk, 0),
     keptUsed,
     library: {
       path: pathOf('library'),

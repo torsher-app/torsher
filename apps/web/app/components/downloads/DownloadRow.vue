@@ -105,6 +105,9 @@ const progressClass = {
       </button>
       <span class="truncate text-[12.5px] text-muted-foreground">
         {{ status.meta(torrent) }}
+        <template v-if="torrent.isPrivate">
+          · {{ t("panel.torrents.privatePolicy.private") }}
+        </template>
       </span>
     </span>
 

@@ -6,12 +6,17 @@ import type { EngineTorrentState } from '../services/engine/index.ts'
 import type { TorrentSettings } from '../services/torrents/settings.ts'
 import { EngineError } from '../services/engine/index.ts'
 import { isStreaming } from '../services/storage/index.ts'
-import { seedingOf } from '../services/torrents/seeding.ts'
+import {
+  evaluateSeedObligation,
+  seedingOf,
+} from '../services/torrents/seeding.ts'
 import { getTorrentSettings } from '../services/torrents/settings.ts'
 import {
   downloadStateOf,
   InsufficientStorageError,
   isVideoFile,
+  TorrentObligationError,
+  TorrentSessionConflictError,
 } from '../services/torrents/index.ts'
 
 /**
@@ -24,6 +29,12 @@ export function sendEngineError(
   err: unknown,
   torrent?: Pick<Torrent, 'id' | 'infoHash'>,
 ) {
+  if (
+    err instanceof TorrentObligationError
+    || err instanceof TorrentSessionConflictError
+  ) {
+    return reply.code(409).send({ message: err.message })
+  }
   if (err instanceof InsufficientStorageError) {
     return reply.code(507).send({ message: err.message, ...err.shortage })
   }
@@ -159,6 +170,10 @@ export function toTorrentResponse(
     matchStatus: torrent.matchStatus,
     matchSuggestion: torrent.matchSuggestion,
     retention: torrent.retention,
+    isPrivate: torrent.isPrivate || live?.isPrivate === true,
+    fullDownload: torrent.fullDownload || live?.fullDownload === true,
+    primaryTrackerHost: torrent.primaryTrackerHost,
+    seedObligation: evaluateSeedObligation(torrent, live),
     inLibrary: placed.size > 0 && !waiting,
     pauseReason: live?.paused ? (torrent.pauseReason ?? 'user') : null,
     state: downloadStateOf(live, streaming),

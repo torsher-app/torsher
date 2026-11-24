@@ -479,6 +479,13 @@ function importIndexers(settings: ExportSettings, secrets: SecretReader) {
         apiKey: secrets.read(indexer.apiKey),
         sessionCookie: secrets.read(indexer.sessionCookie ?? null),
         enabled: indexer.enabled,
+        knownPrivacy: indexer.knownPrivacy,
+        isPrivate: indexer.isPrivate,
+        allowAutomation: indexer.allowAutomation,
+        minSeedRatio: indexer.minSeedRatio,
+        minSeedTimeMinutes: indexer.minSeedTimeMinutes,
+        seedCriteriaMode: indexer.seedCriteriaMode,
+        policyCustomized: indexer.policyCustomized,
         managerId: managerId ?? null,
         externalId: managerId ? indexer.externalId : null,
       })

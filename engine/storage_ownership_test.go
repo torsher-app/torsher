@@ -236,10 +236,11 @@ func TestRestoreConflictsPreservesSessionsAndAllowsIsolatedRecovery(t *testing.T
 		t.Fatal(err)
 	}
 	spec.Storage = metadataOnlyStorage{}
-	if _, _, err := engine.client.AddTorrentSpec(spec); err != nil {
+	temporary, _, err := engine.client.AddTorrentSpec(spec)
+	if err != nil {
 		t.Fatal(err)
 	}
-	engine.metadataOnly.Store(first.meta.HashInfoBytes(), true)
+	engine.metadataOnly.Store(first.meta.HashInfoBytes(), temporary)
 	response = post(t, server.URL+"/torrents?dir="+dir+"&paused=true&files=0", first.raw)
 	var details torrentDetails
 	if err := json.NewDecoder(response.Body).Decode(&details); err != nil {

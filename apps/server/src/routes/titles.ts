@@ -394,6 +394,7 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
           200: titleWatch,
           202: titleWatch,
           400: messageResponse,
+          409: messageResponse,
           ...guardResponses,
           ...tmdbResponses,
           422: watchErrorResponse,
@@ -664,6 +665,7 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
         response: {
           200: titleOpen,
           400: messageResponse,
+          409: messageResponse,
           ...guardResponses,
           ...tmdbResponses,
           422: watchErrorResponse,
@@ -841,6 +843,7 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
           200: titleDownloadStart,
           202: titleDownloadStart,
           400: messageResponse,
+          409: messageResponse,
           ...guardResponses,
           ...tmdbResponses,
           422: watchErrorResponse,

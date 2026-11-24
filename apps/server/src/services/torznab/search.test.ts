@@ -48,6 +48,24 @@ const movie: SearchQuery = {
   year: 2021,
 }
 
+it('normalizes seeding time to whole minutes and keeps the declared mode', async () => {
+  fetchMock.mockResolvedValue(
+    new Response(
+      '<rss xmlns:torznab="http://torznab.example"><channel><item>'
+      + '<title>Synthetic release</title>'
+      + '<torznab:attr name="minimumratio" value="1.5" />'
+      + '<torznab:attr name="minimumseedtime" value="61" />'
+      + '<torznab:attr name="seedtype" value=" Either " />'
+      + '</item></channel></rss>',
+    ),
+  )
+  await expect(
+    searchIndexer('https://indexer.example', { t: 'search' }),
+  ).resolves.toMatchObject([
+    { minimumRatio: 1.5, minimumSeedTimeMinutes: 2, seedType: 'either' },
+  ])
+})
+
 describe('buildSearchRequests', () => {
   it.each([undefined, 1])(
     'сериал season=%s: ID, один вариант с годом, затем все названия без года',

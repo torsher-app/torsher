@@ -101,5 +101,14 @@ const segments = computed(() => [
         }}
       </li>
     </ul>
+    <p
+      v-if="overview.obligatedUsed > 0"
+      class="flex justify-between gap-3 text-[12.5px] text-muted-foreground"
+    >
+      <span>{{ t("panel.torrents.privatePolicy.protected") }}</span>
+      <span class="shrink-0 tabular-nums">{{
+        bytes(overview.obligatedUsed)
+      }}</span>
+    </p>
   </Card>
 </template>

@@ -423,7 +423,8 @@ describe('mergeHits', () => {
       seeders: 9,
       size: 100,
       infoHash: hash,
-      magnet: `magnet:?xt=urn:btih:${hash}`,
+      sourceIndexerId: 'a',
+      magnet: undefined,
       link: {
         url: 'https://a.indexer.example/download/1',
         indexerId: 'a',

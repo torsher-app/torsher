@@ -98,6 +98,8 @@ export interface SearchableIndexer {
   /** Расшифровывает ключ при запросе: битый ключ ломает только этот индексатор. */
   apiKey: () => string | undefined
   sessionCookie?: () => string | undefined
+  isPrivate?: boolean
+  allowAutomation?: boolean
 }
 
 /** Включённые индексаторы с известными caps, которые менеджер ещё отдаёт */
@@ -108,20 +110,32 @@ export function listSearchableIndexers(): SearchableIndexer[] {
     .where(and(eq(indexers.enabled, true), eq(indexers.missing, false)))
     .orderBy(indexers.name)
     .all()
-    .flatMap(({ id, name, url, caps, apiKey, sessionCookie }) =>
-      caps
-        ? [
-            {
-              id,
-              name,
-              url,
-              caps,
-              apiKey: () => (apiKey ? readStoredKey(apiKey) : undefined),
-              sessionCookie: () =>
-                sessionCookie ? readStoredKey(sessionCookie) : undefined,
-            },
-          ]
-        : [],
+    .flatMap(
+      ({
+        id,
+        name,
+        url,
+        caps,
+        apiKey,
+        sessionCookie,
+        isPrivate,
+        allowAutomation,
+      }) =>
+        caps
+          ? [
+              {
+                id,
+                name,
+                url,
+                caps,
+                isPrivate,
+                allowAutomation,
+                apiKey: () => (apiKey ? readStoredKey(apiKey) : undefined),
+                sessionCookie: () =>
+                  sessionCookie ? readStoredKey(sessionCookie) : undefined,
+              },
+            ]
+          : [],
     )
 }
 
@@ -169,6 +183,7 @@ export function listFeedIndexers(): FeedIndexer[] {
         eq(indexers.enabled, true),
         eq(indexers.missing, false),
         eq(indexers.checkStatus, 'ok'),
+        eq(indexers.allowAutomation, true),
       ),
     )
     .orderBy(indexers.name)
@@ -183,6 +198,8 @@ export function listFeedIndexers(): FeedIndexer[] {
               name: row.name,
               url: row.url,
               caps: row.caps,
+              isPrivate: row.isPrivate,
+              allowAutomation: row.allowAutomation,
               apiKey: () =>
                 row.apiKey ? readStoredKey(row.apiKey) : undefined,
               sessionCookie: () =>
@@ -208,7 +225,41 @@ export function getIndexer(id: string): IndexerWithManager | undefined {
   return listIndexers().find(indexer => indexer.id === id)
 }
 
-export interface NewIndexer {
+type PrivatePolicyPatch = Partial<
+  Pick<
+    Indexer,
+    | 'isPrivate'
+    | 'allowAutomation'
+    | 'minSeedRatio'
+    | 'minSeedTimeMinutes'
+    | 'seedCriteriaMode'
+  >
+>
+
+function privatePolicyPatch(patch: PrivatePolicyPatch) {
+  const {
+    isPrivate,
+    allowAutomation,
+    minSeedRatio,
+    minSeedTimeMinutes,
+    seedCriteriaMode,
+  } = patch
+  const policy = {
+    isPrivate,
+    allowAutomation,
+    minSeedRatio,
+    minSeedTimeMinutes,
+    seedCriteriaMode,
+  }
+  return {
+    ...policy,
+    policyCustomized: Object.values(policy).some(value => value !== undefined)
+      ? true
+      : undefined,
+  }
+}
+
+export interface NewIndexer extends PrivatePolicyPatch {
   name: string
   url: string
   apiKey?: string
@@ -240,6 +291,7 @@ export async function createManualIndexer(input: NewIndexer) {
       caps,
       checkStatus: 'ok',
       checkedAt: new Date(),
+      ...privatePolicyPatch(input),
     })
     .returning({ id: indexers.id })
     .get()
@@ -247,7 +299,7 @@ export async function createManualIndexer(input: NewIndexer) {
   return getIndexer(row.id)!
 }
 
-export interface IndexerPatch {
+export interface IndexerPatch extends PrivatePolicyPatch {
   name?: string
   enabled?: boolean
   apiKey?: string
@@ -258,7 +310,11 @@ export interface IndexerPatch {
 export function updateIndexer(id: string, patch: IndexerPatch) {
   if (patch.sessionCookie != null && !isSessionCookie(patch.sessionCookie))
     throw new SourceError('auth', 'Invalid session cookie')
-  const values: Partial<typeof indexers.$inferInsert> = {}
+  const values: Partial<typeof indexers.$inferInsert> = Object.fromEntries(
+    Object.entries(privatePolicyPatch(patch)).filter(
+      ([, value]) => value !== undefined,
+    ),
+  )
 
   if (patch.name !== undefined)
     values.name = patch.name
@@ -465,6 +521,10 @@ function applyRemoteIndexers(
             enabled: item.enabled,
             managerId: manager.id,
             externalId: item.externalId,
+            knownPrivacy: item.knownPrivacy,
+            isPrivate: item.knownPrivacy === 'private',
+            minSeedRatio: item.minSeedRatio,
+            minSeedTimeMinutes: item.minSeedTimeMinutes,
             ...caps,
             ...feed,
           })
@@ -488,6 +548,10 @@ function applyRemoteIndexers(
           url: item.url,
           apiKey: encryptedKey,
           missing: false,
+          ...(item.knownPrivacy && { knownPrivacy: item.knownPrivacy }),
+          ...(item.knownPrivacy === 'private'
+            && known.knownPrivacy !== 'private'
+            && !known.policyCustomized && { isPrivate: true }),
           ...(new URL(known.url).origin !== new URL(item.url).origin && {
             sessionCookie: null,
             checkStatus: null,

@@ -1048,3 +1048,51 @@ func TestMaintenanceCancelStagedJournalFailure(t *testing.T) {
 		t.Fatal("payload changed", err)
 	}
 }
+
+func TestMaintenancePrivateRestoreRetainsAndRedactsTracker(t *testing.T) {
+	fx := newNamedFixture(t, "Synthetic.Private.mkv", 4096)
+	data := t.TempDir()
+	a, server := newTestEngine(t, data)
+	const endpoint = "http://127.0.0.1:1/announce?passkey=synthetic-maintenance-marker"
+	raw := encodePrivateTestMeta(t, *fx.meta, false, endpoint)
+	privateTestCall(t, 200, post(t, server.URL+"/torrents?files=0&private=true&admitted=true", raw))
+	hash := fx.meta.HashInfoBytes()
+	live, _ := a.client.Torrent(hash)
+	live.AddClientPeer(fx.seeder)
+	waitFor(t, 15*time.Second, func() bool { return live.Complete().Bool() })
+
+	item := maintenanceIdentity(t, a.downloads, filepath.Join(a.downloads, "Synthetic.Private.mkv"))
+	manifest := detachManifest{InfoHash: hash.HexString(), PieceCount: live.NumPieces(), Paths: []maintenancePath{item}}
+	if result := maintenanceRequest(t, a, "POST", "/maintenance/cancel-private/prepare?require_verified=true", manifest); result.Code != http.StatusConflict || !strings.Contains(result.Body.String(), "torrent_obligation_unmet") {
+		t.Fatal("private torrent detached without an accepted left=0", result.Code, result.Body.String())
+	}
+	if current, ok := a.client.Torrent(hash); !ok || current != live {
+		t.Fatal("a rejected detach removed the live private torrent")
+	}
+	a.maintenance.mu.Lock()
+	fence := a.maintenance.fences["cancel-private"]
+	a.maintenance.mu.Unlock()
+	if fence != nil {
+		t.Fatal("a rejected detach left a maintenance fence")
+	}
+
+	for _, step := range []string{"prepare", "cancel"} {
+		result := maintenanceRequest(t, a, "POST", "/maintenance/cancel-private/"+step, manifest)
+		if result.Code != 200 && result.Code != 202 {
+			t.Fatal(result.Code, result.Body.String())
+		}
+		if strings.Contains(result.Body.String(), "restoreMeta") || strings.Contains(result.Body.String(), "restoreSession") {
+			t.Fatal("maintenance response includes private restore recipe")
+		}
+	}
+	waitFor(t, 10*time.Second, func() bool {
+		a.maintenance.mu.Lock()
+		defer a.maintenance.mu.Unlock()
+		return !a.maintenance.fences["cancel-private"].reattaching
+	})
+	restored, ok := a.client.Torrent(hash)
+	primary, private := a.privateEndpoints.Load(restored)
+	if !ok || restored == live || !private || primary != endpoint || !a.session.get(hash).AwaitingAdmission {
+		t.Fatal("private tracker or admission hold lost across maintenance")
+	}
+}

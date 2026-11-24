@@ -28,7 +28,11 @@ import {
   torrents,
   trackedTopics,
 } from '../../db/schema.ts'
-import { EngineError, isEngineReady } from '../engine/index.ts'
+import {
+  EngineError,
+  isEngineReady,
+  listEngineTorrents,
+} from '../engine/index.ts'
 import {
   checkManagedFiles,
   relinkMediaFiles,
@@ -37,6 +41,7 @@ import {
 import { syncLibrary } from '../library/linker.ts'
 import { logFor } from '../logs/index.ts'
 import { relinkTitleProgress } from '../sources/progress.ts'
+import { automationIndexer } from '../sources/search.ts'
 import { ensureSpaceFor, InsufficientStorageError } from '../storage/index.ts'
 import {
   isMovingTorrent,
@@ -45,6 +50,7 @@ import {
 import { torrentDir } from '../storage/paths.ts'
 import { isStreaming } from '../storage/streams.ts'
 import { downloadFiles, getTorrent } from '../torrents/index.ts'
+import { isSeedObligationMet } from '../torrents/seeding.ts'
 import {
   carryMap,
   compareOnDisk,
@@ -61,6 +67,7 @@ import {
 import {
   blockTorrent,
   filesFor,
+  pendingSourceAllowed,
   resetEpisodes,
   retryLater,
   startGrab,
@@ -297,8 +304,14 @@ export function updatedTopicFor(
   candidate: FollowPendingCandidate,
   infoHash: string | undefined,
 ) {
-  if (!candidate.indexerId || !candidate.detailsUrl)
+  if (
+    !candidate.indexerId
+    || !candidate.detailsUrl
+    || !automationIndexer(candidate.indexerId)
+    || !pendingSourceAllowed(candidate)
+  ) {
     return undefined
+  }
 
   const topic = topicByKey({
     indexerId: candidate.indexerId,
@@ -505,10 +518,23 @@ async function prepare(
   if (!ctx.isCurrent())
     return cancelRefresh(ctx)
 
-  // Новую версию уже смотрели: в движке она лежит в чужом каталоге
-  if (next.inEngine)
-    await forgetKeepingFiles(next)
-  if (!ctx.isCurrent())
+  const replace = await withTorrentStorageMutation(next.id, async () => {
+    const current = getTorrent(next.id)
+    if (!current || !ctx.isCurrent())
+      return 'cancel'
+    if (!(await replacementAllowed(getTorrent(old.id) ?? old, current)))
+      return 'fallback'
+    if (!ctx.isCurrent())
+      return 'cancel'
+
+    // Новую версию уже смотрели: в движке она лежит в чужом каталоге.
+    if (current.inEngine)
+      await forgetKeepingFiles(current)
+    return 'ready'
+  })
+  if (replace === 'fallback')
+    return fallBack(ctx, now)
+  if (replace === 'cancel' || !ctx.isCurrent())
     return cancelRefresh(ctx)
 
   if (!sameName) {
@@ -630,6 +656,23 @@ async function prepare(
     protectedPaths: [...metadataPaths(old, dir), ...metadataPaths(next, dir)],
   })
   return undefined
+}
+
+async function replacementAllowed(old: Torrent, next: Torrent) {
+  if (!old.isPrivate && !(next.inEngine && next.isPrivate))
+    return true
+  const live = await listEngineTorrents()
+  return (
+    isSeedObligationMet(
+      old,
+      live.find(state => state.infoHash === old.infoHash),
+    )
+    && (!next.inEngine
+      || isSeedObligationMet(
+        next,
+        live.find(state => state.infoHash === next.infoHash),
+      ))
+  )
 }
 
 /**
@@ -766,6 +809,10 @@ async function commitRefresh(ctx: RefreshContext, now: Date) {
         return 'later'
       if (!ctx.isCurrent())
         return 'cancel'
+      if (!(await replacementAllowed(current, getTorrent(next.id) ?? next)))
+        return 'fallback'
+      if (!ctx.isCurrent())
+        return 'cancel'
 
       if (current.inEngine) {
         await forgetKeepingFiles(current)
@@ -820,6 +867,8 @@ async function commitRefresh(ctx: RefreshContext, now: Date) {
   }
   if (result === 'later')
     return result
+  if (result === 'fallback')
+    return fallBack({ ...ctx, old: getTorrent(old.id) ?? old }, now)
 
   await announceUpdate(follow, topic, ctx.refresh)
   return runRefresh(topic.id, now)
@@ -913,6 +962,8 @@ async function runRefreshImpl(
   )
   const isCurrent = () =>
     guard()
+    && !!automationIndexer(topic.indexerId)
+    && pendingSourceAllowed(refresh.candidate)
     && follow.state === 'active'
     && (!refresh.rulesFingerprint
       || refresh.rulesFingerprint

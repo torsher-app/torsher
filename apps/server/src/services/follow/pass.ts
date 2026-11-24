@@ -47,6 +47,7 @@ import { followEpisodeStates, movieState, stateInputs } from './episodes.ts'
 import {
   grabCandidate,
   pendingOf,
+  pendingSourceAllowed,
   resetEpisodes,
   updateEpisodes,
 } from './grab.ts'
@@ -462,7 +463,7 @@ export function completeMovie(...args: Parameters<typeof completeMovieImpl>) {
  * Захват кандидата или, в режиме `notify`, его выбор вместо захвата. Режим
  * читается заново: его могли сменить, пока шёл проход.
  */
-function takeCandidate(
+async function takeCandidate(
   follow: Follow,
   candidate: FollowPendingCandidate,
   episodes: EpisodeRef[],
@@ -473,6 +474,10 @@ function takeCandidate(
     diagnostics?: FollowChoiceDiagnostics
   },
 ) {
+  if (!pendingSourceAllowed(candidate)) {
+    resetEpisodes(follow, episodes)
+    return 'blocked' as const
+  }
   const mode = followById(follow.id)?.mode ?? follow.mode
 
   return mode === 'notify'

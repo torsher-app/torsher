@@ -33,6 +33,82 @@ export interface SeedingState {
   seed: boolean
 }
 
+type ObligationTorrent = Pick<
+  Torrent,
+  | 'isPrivate'
+  | 'files'
+  | 'seedObligations'
+  | 'seededSeconds'
+  | 'trackerErrorCode'
+  | 'startAnnounceState'
+>
+type ObligationLive = Pick<
+  EngineTorrentState,
+  | 'isPrivate'
+  | 'uploaded'
+  | 'seededSeconds'
+  | 'verifiedComplete'
+  | 'leftZeroAccepted'
+  | 'trackerErrorCode'
+  | 'startAnnounceState'
+>
+
+export function evaluateSeedObligation(
+  torrent: ObligationTorrent,
+  live?: ObligationLive,
+) {
+  const isPrivate = torrent.isPrivate || live?.isPrivate === true
+  if (!isPrivate)
+    return null
+
+  const requirements = torrent.seedObligations ?? []
+  const unknown
+    = requirements.length === 0 || requirements.some(rule => rule.unknown)
+  const size
+    = torrent.files?.reduce((total, file) => total + file.size, 0) ?? 0
+  const ratio = live && size > 0 ? live.uploaded / size : null
+  const seededSeconds = live
+    ? (live.seededSeconds ?? 0)
+    : torrent.seededSeconds
+  const verifiedComplete = live?.verifiedComplete === true
+  const leftZeroAccepted = live?.leftZeroAccepted === true
+  const trackerErrorCode
+    = live?.trackerErrorCode || (!live ? torrent.trackerErrorCode : null)
+  const meetsThreshold = requirements.every((rule) => {
+    const checks = []
+    if (rule.ratio !== null)
+      checks.push(ratio !== null && ratio >= rule.ratio)
+    if (rule.minutes !== null)
+      checks.push(seededSeconds >= rule.minutes * 60)
+    return (
+      checks.length > 0
+      && (rule.mode === 'and' ? checks.every(Boolean) : checks.some(Boolean))
+    )
+  })
+  const met
+    = !unknown && verifiedComplete && leftZeroAccepted && meetsThreshold
+  return {
+    met,
+    unknown,
+    requirements,
+    ratio,
+    seededSeconds,
+    verifiedComplete,
+    leftZeroAccepted,
+    trackerErrorCode,
+    startAnnounceState: live
+      ? (live.startAnnounceState ?? null)
+      : torrent.startAnnounceState,
+  }
+}
+
+export function isSeedObligationMet(
+  torrent: Torrent,
+  live?: EngineTorrentState,
+) {
+  return evaluateSeedObligation(torrent, live)?.met ?? true
+}
+
 function selectionDone(live: EngineTorrentState) {
   return live.bytesWanted === 0 || live.wantedCompleted >= live.bytesWanted
 }
@@ -51,6 +127,18 @@ export function seedingOf(
   const size = live ? live.bytesWanted || live.bytesCompleted : 0
   const ratio = size > 0 ? uploaded / size : null
   const base = { rule: torrent.seedRule, uploaded, ratio }
+
+  if (!isSeedObligationMet(torrent, live)) {
+    return {
+      ...base,
+      effective:
+        torrent.retention === 'cache'
+          ? null
+          : (torrent.seedRule ?? settings.seedRule),
+      stopped: null,
+      seed: true,
+    }
+  }
 
   if (torrent.retention === 'cache') {
     return {
@@ -131,6 +219,27 @@ export async function enforceSeeding(live: Map<string, EngineTorrentState>) {
     }
     try {
       const state = live.get(row.infoHash)
+
+      if (state && row.isPrivate) {
+        const progress = {
+          verifiedComplete: state.verifiedComplete ?? false,
+          startAnnounceState: state.startAnnounceState || null,
+          leftZeroAccepted: state.leftZeroAccepted ?? false,
+          seededSeconds: state.seededSeconds ?? 0,
+          trackerErrorCode: state.trackerErrorCode || null,
+        }
+        if (
+          Object.entries(progress).some(
+            ([key, value]) => row[key as keyof typeof progress] !== value,
+          )
+        ) {
+          getDb()
+            .update(torrents)
+            .set(progress)
+            .where(eq(torrents.id, row.id))
+            .run()
+        }
+      }
 
       if (!state || state.paused)
         continue

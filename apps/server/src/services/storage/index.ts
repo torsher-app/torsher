@@ -19,11 +19,13 @@ import { getDb } from '../../db/index.ts'
 import { torrents } from '../../db/schema.ts'
 import {
   EngineError,
+  engineGeneration,
+  engineUnavailableError,
   forgetTorrent,
   isEngineReady,
   listEngineTorrents,
   pauseTorrent,
-  resumeTorrent,
+  torrentStats,
 } from '../engine/index.ts'
 import { libraryUsage, linkedBytesByTorrent } from '../library/files.ts'
 import { librarySharesVolume } from '../library/link.ts'
@@ -34,7 +36,9 @@ import { diskUsage } from './disk.ts'
 import { storageFolder, volumeKey } from './folders.ts'
 import { evictionQueue, planEviction, withoutSkipped } from './eviction.ts'
 import { defaultPolicy, getPolicy, GIB, savePolicy } from './policy.ts'
-import { isMovingTorrent } from './moving.ts'
+import { isMovingTorrent, tryTorrentStorageMutation } from './moving.ts'
+import { isSeedObligationMet } from '../torrents/seeding.ts'
+import { resumeStorageDownload } from '../torrents/index.ts'
 import { isStreaming } from './streams.ts'
 
 export { GIB } from './policy.ts'
@@ -80,6 +84,22 @@ interface Volume {
   free: number
 }
 
+interface PendingSpace {
+  torrent: Torrent
+  dir: string
+  volume: string
+  generation: number
+  bytes: number
+  files?: number[]
+  verifiedFiles?: number[]
+  full: boolean
+  cache: boolean
+  state: 'inflight' | 'confirmed' | 'uncertain'
+  playbackLastSeen?: number
+}
+
+const pending = new Map<string, PendingSpace>()
+
 interface Snapshot {
   rows: Torrent[]
   live: Map<string, EngineTorrentState>
@@ -89,6 +109,8 @@ interface Snapshot {
   volumeOf: Map<string, string>
   /** Том действующего каталога загрузок */
   current: string
+  dirKeys: Map<string, string>
+  requestDir?: string
 }
 
 async function snapshot(request?: SpaceRequest): Promise<Snapshot> {
@@ -99,27 +121,33 @@ async function snapshot(request?: SpaceRequest): Promise<Snapshot> {
   const dirOf = new Map<string, string>()
 
   for (const row of rows) {
-    if (live.has(row.infoHash))
-      dirOf.set(row.id, resolve(torrentDir(row)))
+    const state = live.get(row.infoHash)
+    if (state)
+      dirOf.set(row.id, resolve(state.dir ?? torrentDir(row)))
   }
 
-  // Сохранённый custom/isolated каталог переживает eviction и не зависит
-  // от inEngine. Только новая раздача без своего пути получает текущий.
-  if (request && !dirOf.has(request.torrent.id)) {
-    dirOf.set(
-      request.torrent.id,
-      request.torrent.inEngine || request.torrent.downloadDir
-        ? resolve(torrentDir(request.torrent))
-        : current,
-    )
-  }
-
+  const liveDir = request?.forceDirectory
+    ? undefined
+    : request && live.get(request.torrent.infoHash)?.dir
+  const requestDir
+    = request
+      && resolve(
+        liveDir
+        ?? request.downloadDir
+        ?? (request.torrent.inEngine || request.torrent.downloadDir
+          ? torrentDir(request.torrent)
+          : current),
+      )
   const keys = new Map<string, string>()
   const volumes = new Map<string, Volume>()
-  const requestDir = request && dirOf.get(request.torrent.id)
   const unavailable = new Set<string>()
 
-  for (const dir of new Set([current, ...dirOf.values()])) {
+  for (const dir of new Set([
+    current,
+    ...(requestDir ? [requestDir] : []),
+    ...dirOf.values(),
+    ...[...pending.values()].map(item => item.dir),
+  ])) {
     try {
       const key = (await volumeKey(dir)) ?? dir
 
@@ -163,6 +191,8 @@ async function snapshot(request?: SpaceRequest): Promise<Snapshot> {
         .map(([id, dir]) => [id, keys.get(dir)!] as const),
     ),
     current: keys.get(current)!,
+    dirKeys: keys,
+    requestDir,
   }
 }
 
@@ -218,6 +248,8 @@ function storedOf(
       protected:
         isStreaming(row.id)
         || isMovingTorrent(row.id)
+        || pending.has(row.id)
+        || !isSeedObligationMet(row, state)
         || now - lastUsedAt < RECENT_USE_MS,
       volume: volumeOf?.get(row.id),
     })
@@ -231,15 +263,48 @@ function update(id: string, values: Partial<typeof torrents.$inferInsert>) {
 }
 
 /** Убирает раздачу из движка вместе с файлами; строка и позиция просмотра остаются */
-async function evictImpl(row: Torrent) {
-  // План строился по снимку, а поток мог открыться, пока вытеснялись другие
-  if (isStreaming(row.id) || isMovingTorrent(row.id))
+async function evictImpl(id: string, live?: EngineTorrentState) {
+  const row = getDb().select().from(torrents).where(eq(torrents.id, id)).get()
+  if (
+    !row
+    || row.retention !== 'cache'
+    || isStreaming(id)
+    || isMovingTorrent(id)
+  ) {
     return false
+  }
 
   try {
-    await forgetTorrent(row.infoHash, { deleteFiles: true })
+    if (
+      (row.isPrivate || live?.isPrivate)
+      && !isSeedObligationMet(row, await torrentStats(row.infoHash))
+    ) {
+      return false
+    }
   }
   catch (err) {
+    if (
+      !(err instanceof EngineError)
+      || err.kind !== 'not_found'
+      || row.isPrivate
+    ) {
+      return false
+    }
+  }
+
+  try {
+    await forgetTorrent(row.infoHash, {
+      deleteFiles: true,
+      requireVerified: row.isPrivate || live?.isPrivate,
+    })
+  }
+  catch (err) {
+    if (
+      err instanceof EngineError
+      && err.engineCode === 'torrent_obligation_unmet'
+    ) {
+      return false
+    }
     if (!(err instanceof EngineError) || err.kind !== 'not_found')
       throw err
   }
@@ -254,13 +319,16 @@ async function evictImpl(row: Torrent) {
   })
   return true
 }
-function evict(...args: Parameters<typeof evictImpl>) {
-  return withMaintenanceLease({ torrentId: args[0].id, producer: true }, () =>
-    evictImpl(...args)).catch((error) => {
-    if (error instanceof MaintenanceBusyError)
-      return false
-    throw error
-  })
+async function evict(id: string, live?: EngineTorrentState) {
+  return (
+    (await tryTorrentStorageMutation(id, () =>
+      withMaintenanceLease({ torrentId: id, producer: true }, () =>
+        evictImpl(id, live)).catch((error) => {
+        if (error instanceof MaintenanceBusyError)
+          return false
+        throw error
+      }))) ?? false
+  )
 }
 
 /**
@@ -294,54 +362,60 @@ async function balanceDownloads(
   free: number,
   minFree: number,
   evicted: Set<string>,
+  resume: Set<string> | undefined,
 ) {
   const paused: string[] = []
-  const resumed: string[] = []
-
   for (const row of rows) {
-    let maintenanceRelease: () => void
-    try {
-      maintenanceRelease = acquireMaintenanceLease({
-        torrentId: row.id,
-        producer: true,
-      })
-    }
-    catch (error) {
-      if (error instanceof MaintenanceBusyError)
-        continue
-      throw error
-    }
-    try {
-      const live = lives.get(row.infoHash)
+    const live = lives.get(row.infoHash)
+    if (!live || evicted.has(row.id))
+      continue
 
-      if (!live || evicted.has(row.id))
-        continue
+    if (free >= minFree + RESUME_MARGIN && row.pauseReason === 'storage')
+      resume?.add(row.id)
 
-      // Просмотру место уже выделено перед стартом: его поток не останавливаем
-      const downloading
-        = !live.paused
-          && live.wantedCompleted < live.bytesWanted
-          && !isStreaming(row.id)
+    const downloading = !live.paused && live.wantedCompleted < live.bytesWanted
+    if (free >= minFree || !downloading || isStreaming(row.id))
+      continue
 
-      if (free < minFree && downloading) {
-        if (await ignoreMissing(pauseTorrent(row.infoHash))) {
-          update(row.id, { pauseReason: 'storage' })
-          paused.push(row.id)
-        }
+    const changed = await tryTorrentStorageMutation(row.id, async () => {
+      let release: () => void
+      try {
+        release = acquireMaintenanceLease({
+          torrentId: row.id,
+          producer: true,
+        })
       }
-      else if (
-        free >= minFree + RESUME_MARGIN
-        && row.pauseReason === 'storage'
-      ) {
-        if (await ignoreMissing(resumeTorrent(row.infoHash))) {
-          update(row.id, { pauseReason: null })
-          resumed.push(row.id)
-        }
+      catch (error) {
+        if (error instanceof MaintenanceBusyError)
+          return false
+        throw error
       }
-    }
-    finally {
-      maintenanceRelease()
-    }
+      try {
+        const current = getDb()
+          .select()
+          .from(torrents)
+          .where(eq(torrents.id, row.id))
+          .get()
+        if (
+          !current?.inEngine
+          || current.pauseReason
+          || isStreaming(row.id)
+          || isMovingTorrent(row.id)
+        ) {
+          return false
+        }
+        if (!(await ignoreMissing(pauseTorrent(row.infoHash))))
+          return false
+        pending.delete(row.id)
+        update(row.id, { pauseReason: 'storage' })
+        return true
+      }
+      finally {
+        release()
+      }
+    })
+    if (changed)
+      paused.push(row.id)
   }
 
   if (paused.length) {
@@ -350,21 +424,145 @@ async function balanceDownloads(
       'Downloads paused: low disk space',
     )
   }
-
-  if (resumed.length) {
-    logFor('storage').info(
-      { count: resumed.length, torrentIds: resumed, free, minFree },
-      'Downloads resumed: disk space is back',
-    )
-  }
 }
 
 export interface SpaceRequest {
   /** Наблюдательный контекст: не влияет на admission и число байт. */
   kind?: 'stream' | 'download' | 'unknown'
   torrent: Torrent
-  /** Сколько ещё скачает просмотр */
+  /** Preliminary remaining bytes when detailed targets are unavailable. */
   bytes: number
+  files?: number[]
+  downloadDir?: string
+  forceDirectory?: boolean
+  diskProgress?: { dir: string, files: number[] }
+  retention?: Torrent['retention']
+}
+
+function diskProgress(
+  entry: Pick<PendingSpace, 'torrent' | 'dir'>,
+  state?: EngineTorrentState,
+) {
+  if (!state || resolve(state.dir ?? torrentDir(entry.torrent)) !== entry.dir)
+    return undefined
+  return state
+}
+
+function remainingSpace(
+  entry: Pick<
+    PendingSpace,
+    'torrent' | 'files' | 'full' | 'bytes' | 'verifiedFiles'
+  >,
+  live?: EngineTorrentState,
+) {
+  if (entry.full) {
+    const size
+      = entry.torrent.files?.reduce((sum, file) => sum + file.size, 0) ?? 0
+    const verifiedBytes
+      = entry.verifiedFiles?.reduce((total, bytes) => total + bytes, 0) ?? 0
+    return Math.max(
+      0,
+      size - Math.max(live?.bytesCompleted ?? 0, verifiedBytes),
+    )
+  }
+  if (entry.files) {
+    return entry.files.reduce(
+      (sum, index) =>
+        sum
+        + Math.max(
+          0,
+          (entry.torrent.files?.[index]?.size ?? 0)
+          - Math.max(
+            live?.fileProgress[index] ?? 0,
+            entry.verifiedFiles?.[index] ?? 0,
+          ),
+        ),
+      0,
+    )
+  }
+  return entry.bytes
+}
+
+function reservations(state: Snapshot, excludeId?: string) {
+  const volumes = new Map<string, number>()
+  const rows = new Map(state.rows.map(row => [row.id, row]))
+  let cache = 0
+  const add = (volume: string, bytes: number, cached: boolean) => {
+    volumes.set(volume, (volumes.get(volume) ?? 0) + bytes)
+    if (cached)
+      cache += bytes
+  }
+  for (const row of rows.values()) {
+    const live = state.live.get(row.infoHash)
+    const volume = state.volumeOf.get(row.id)
+    if (row.id !== excludeId && volume && live && !live.paused) {
+      add(
+        volume,
+        Math.max(0, live.bytesWanted - live.wantedCompleted),
+        row.retention === 'cache',
+      )
+    }
+  }
+  for (const [id, reservation] of pending) {
+    const live = diskProgress(
+      reservation,
+      state.live.get(reservation.torrent.infoHash),
+    )
+    const remaining = remainingSpace(reservation, live)
+    if (reservation.playbackLastSeen !== undefined && isStreaming(id))
+      reservation.playbackLastSeen = Date.now()
+    const covered
+      = live
+        && !live.paused
+        && ((reservation.full && live.fullDownload === true)
+          || reservation.files?.every(
+            index =>
+              live.selected.includes(index)
+              || (live.fileProgress[index] ?? 0)
+              >= (reservation.torrent.files?.[index]?.size ?? 0),
+          ))
+    if (
+      reservation.generation !== engineGeneration()
+      || (reservation.state !== 'inflight'
+        && (covered || (live && remaining === 0)))
+      || (reservation.state === 'confirmed'
+        && (live?.paused
+          || (reservation.playbackLastSeen !== undefined
+            && Date.now() - reservation.playbackLastSeen > RECENT_USE_MS)))
+    ) {
+      pending.delete(id)
+      continue
+    }
+    if (id === excludeId)
+      continue
+
+    // Active selection already reserves its remaining files on this volume.
+    const overlap
+      = live && !live.paused
+        ? reservation.full
+          ? Math.min(
+              remaining,
+              Math.max(0, live.bytesWanted - live.wantedCompleted),
+            )
+          : reservation.files
+            ? remainingSpace(
+                {
+                  ...reservation,
+                  files: reservation.files.filter(index =>
+                    live.selected.includes(index),
+                  ),
+                },
+                live,
+              )
+            : 0
+        : 0
+    add(
+      state.dirKeys.get(reservation.dir) ?? reservation.volume,
+      remaining - overlap,
+      reservation.cache,
+    )
+  }
+  return { volumes, cache }
 }
 
 export interface EnforceResult {
@@ -375,6 +573,7 @@ export interface EnforceResult {
   free: number
   minFree: number
   cacheLimit: number
+  needed?: number
 }
 
 function sizeOf(items: StoredTorrent[]) {
@@ -385,24 +584,70 @@ function sizeOf(items: StoredTorrent[]) {
  * Лимит кэша — один на все тома, запас свободного места — на каждом томе
  * свой: удаление кэша с другого тома место на этом не освобождает
  */
-async function runEnforce(request?: SpaceRequest): Promise<EnforceResult> {
+async function runEnforce(
+  request?: SpaceRequest,
+  publish?: (entry: PendingSpace) => void,
+  resume?: Set<string>,
+): Promise<EnforceResult> {
+  const generation = engineGeneration()
   const state = await snapshot(request)
+  if (generation !== engineGeneration())
+    throw engineUnavailableError()
   const policy = getPolicy(state.volumes.get(state.current)!.total)
   const minFreeOf = (volume: Volume) =>
     policy.custom ? policy.minFree : defaultPolicy(volume.total).minFree
   const stored = storedOf(state.rows, state.live, Date.now(), state.volumeOf)
-  const need = request && {
-    bytes: request.bytes,
-    torrentId: request.torrent.id,
-    cache: request.torrent.retention === 'cache',
+  const outstanding = reservations(state, request?.torrent.id)
+  const dir = state.requestDir
+  const needVolume = dir ? state.dirKeys.get(dir)! : state.current
+  const previous = request && pending.get(request.torrent.id)
+  const entry: PendingSpace | undefined
+    = request && dir
+      ? {
+          torrent: request.torrent,
+          dir,
+          volume: needVolume,
+          generation,
+          bytes: Math.max(
+            request.bytes,
+            previous?.dir === dir ? previous.bytes : 0,
+          ),
+          files: request.files && [
+            ...new Set([
+              ...request.files,
+              ...(previous?.dir === dir ? (previous.files ?? []) : []),
+            ]),
+          ],
+          verifiedFiles:
+            request.diskProgress?.dir === dir
+              ? request.diskProgress.files
+              : undefined,
+          full: request.torrent.fullDownload || request.torrent.isPrivate,
+          cache: (request.retention ?? request.torrent.retention) === 'cache',
+          state: 'inflight',
+          ...(request.kind === 'stream' && { playbackLastSeen: Date.now() }),
+        }
+      : undefined
+  const need = entry && {
+    bytes: remainingSpace(
+      entry,
+      diskProgress(entry, state.live.get(entry.torrent.infoHash)),
+    ),
+    torrentId: entry.torrent.id,
+    cache: entry.cache,
   }
-  const needVolume = request
-    ? state.volumeOf.get(request.torrent.id)!
-    : state.current
+  if (publish && previous && entry && previous.dir !== entry.dir) {
+    // An unresolved start in a different directory can still publish. Do not
+    // overwrite its reservation with a different destination.
+    throw new EngineError(
+      'moving',
+      'Previous download start is still unconfirmed',
+    )
+  }
 
   const cacheInput: EvictionInput = {
     torrents: stored,
-    cacheLimit: policy.cacheLimit,
+    cacheLimit: policy.cacheLimit - outstanding.cache,
     minFree: 0,
     free: Number.POSITIVE_INFINITY,
     need,
@@ -410,6 +655,8 @@ async function runEnforce(request?: SpaceRequest): Promise<EnforceResult> {
   const cachePlan = planEviction(cacheInput)
   const fromCache = new Set(cachePlan.evict)
   const volumes = [...state.volumes].map(([key, volume]) => {
+    const reserved = outstanding.volumes.get(key) ?? 0
+    volume = { ...volume, free: volume.free - reserved }
     const onVolume = stored.filter(item => item.volume === key)
     const input: EvictionInput = {
       torrents: onVolume.filter(item => !fromCache.has(item.id)),
@@ -438,7 +685,7 @@ async function runEnforce(request?: SpaceRequest): Promise<EnforceResult> {
   for (const id of planned) {
     const row = byId.get(id)
 
-    if (row && (await evict(row)))
+    if (row && (await evict(row.id, state.live.get(row.infoHash))))
       evicted.add(id)
     else skipped.add(id)
   }
@@ -497,18 +744,29 @@ async function runEnforce(request?: SpaceRequest): Promise<EnforceResult> {
     await balanceDownloads(
       state.rows.filter(row => state.volumeOf.get(row.id) === key),
       state.live,
-      plan.free,
+      plan.free + (outstanding.volumes.get(key) ?? 0),
       minFree,
       evicted,
+      resume,
     )
   }
 
-  const shortage = !target.plan.ok ? target.plan : cache.ok ? undefined : cache
+  const shortage
+    = publish && need?.bytes === 0
+      ? undefined
+      : !target.plan.ok
+          ? target.plan
+          : cache.ok
+            ? undefined
+            : cache
+  if (!shortage && entry)
+    publish?.(entry)
 
   return {
     evicted: [...evicted],
-    ok: target.plan.ok && cache.ok,
+    ok: shortage === undefined,
     shortage: shortage?.shortage,
+    needed: need?.bytes,
     available: (shortage ?? target.plan).available,
     free: target.plan.free,
     minFree: target.minFree,
@@ -522,24 +780,130 @@ let queue: Promise<unknown> = Promise.resolve()
  * Соблюдает лимит кэша и запас свободного места. Проверки идут по одной:
  * два просмотра одновременно не решат, что им обоим хватает одного места.
  */
-export function enforceStorage(request?: SpaceRequest): Promise<EnforceResult> {
-  const task = queue.then(() => runEnforce(request))
-
+function inStorageQueue<T>(run: () => Promise<T> | T) {
+  const task = queue.then(run)
   queue = task.catch(() => {})
   return task
 }
 
-/** Перед просмотром: освобождает место под остаток файла или объясняет, почему нельзя */
-export async function ensureSpaceFor(request: SpaceRequest) {
+const automaticResumes = new Set<string>()
+
+export function enforceStorage(request?: SpaceRequest): Promise<EnforceResult> {
+  const candidates = new Set<string>()
+  const task = inStorageQueue(() =>
+    runEnforce(request, undefined, request ? undefined : candidates),
+  )
+  void task
+    .then(async () => {
+      const resumed = await Promise.all(
+        [...candidates].map(async (id) => {
+          if (automaticResumes.has(id))
+            return undefined
+          automaticResumes.add(id)
+          try {
+            return (await resumeStorageDownload(id)) ? id : undefined
+          }
+          catch (err) {
+            if (!(
+              err instanceof InsufficientStorageError
+              || err instanceof MaintenanceBusyError
+            )) {
+              logFor('storage').warn(
+                { err, torrentId: id },
+                'Download resume deferred',
+              )
+            }
+            return undefined
+          }
+          finally {
+            automaticResumes.delete(id)
+          }
+        }),
+      )
+      const torrentIds = resumed.filter(id => id !== undefined)
+      if (torrentIds.length) {
+        logFor('storage').info(
+          { count: torrentIds.length, torrentIds },
+          'Downloads resumed: disk space is back',
+        )
+      }
+    })
+    .catch(() => {})
+  return task
+}
+
+export function hasPendingTorrentSpace(id: string) {
+  return pending.has(id)
+}
+
+export function releaseTorrentSpace(id: string) {
+  return inStorageQueue(() => {
+    pending.delete(id)
+  })
+}
+
+/** The pending download must be visible to the next admission before engine I/O. */
+export async function admitTorrentSpace<T>(
+  request: SpaceRequest,
+  start: (dir: string) => Promise<T>,
+) {
   if (!isEngineReady())
-    return
+    throw engineUnavailableError()
 
-  const result = await enforceStorage(request)
+  let reservation: PendingSpace | undefined
+  let previous: PendingSpace | undefined
+  const result = await inStorageQueue(() =>
+    runEnforce(request, (entry) => {
+      reservation = entry
+      previous = pending.get(entry.torrent.id)
+      pending.set(entry.torrent.id, entry)
+    }),
+  )
+  requireSpace(request, result)
 
+  try {
+    if (reservation?.generation !== engineGeneration())
+      throw engineUnavailableError()
+    const result = await start(reservation.dir)
+    await inStorageQueue(() => {
+      // Older snapshots may still see the previous paused selection.
+      if (reservation && pending.get(request.torrent.id) === reservation)
+        reservation.state = 'confirmed'
+    })
+    return result
+  }
+  catch (err) {
+    await inStorageQueue(() => {
+      const id = request.torrent.id
+      if (!reservation || pending.get(id) !== reservation)
+        return
+      if (
+        err instanceof EngineError
+        && ['rejected', 'not_found', 'moving'].includes(err.kind)
+      ) {
+        if (previous)
+          pending.set(id, previous)
+        else pending.delete(id)
+      }
+      else {
+        reservation.state = 'uncertain'
+      }
+    })
+    throw err
+  }
+}
+
+/** Preliminary check for callers without a validated metainfo/selection. */
+export async function ensureSpaceFor(request: SpaceRequest) {
+  if (isEngineReady())
+    requireSpace(request, await enforceStorage(request))
+}
+
+function requireSpace(request: SpaceRequest, result: EnforceResult) {
   if (!result.ok) {
     const shortage: StorageShortage = {
       kind: result.shortage ?? 'no_space',
-      needed: request.bytes,
+      needed: result.needed ?? request.bytes,
       available: result.available,
       free: result.free,
       minFree: result.minFree,
@@ -571,6 +935,7 @@ export interface StorageOverview {
   free: number
   cacheUsed: number
   keptUsed: number
+  obligatedUsed: number
   /** Своя раскладка библиотеки; `shared` — общие с раздачами байты */
   library: { path: string, used: number, shared: number, own: number }
   /** Занято на томе не загрузками Torsher (или файлами, которые он не знает) */
@@ -624,6 +989,13 @@ export async function getStorageOverview(
     free: disk.free,
     cacheUsed,
     keptUsed,
+    obligatedUsed: rows.reduce((sum, row) => {
+      const state = live.get(row.infoHash)
+      return (
+        sum
+        + (isSeedObligationMet(row, state) ? 0 : (state?.bytesCompleted ?? 0))
+      )
+    }, 0),
     library: { path: libraryLocation.path, ...library, own: libraryOwn },
     other: Math.max(
       0,

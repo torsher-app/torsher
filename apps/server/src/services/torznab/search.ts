@@ -29,7 +29,13 @@ export interface SearchQuery {
 export type SearchParams = Record<string, string>
 
 /** Раздача из ответа поиска Torznab */
-export interface TorznabRelease {
+export interface TorznabSeedRequirements {
+  minimumRatio?: number
+  minimumSeedTimeMinutes?: number
+  seedType?: 'ratio' | 'seedtime' | 'both' | 'either'
+}
+
+export interface TorznabRelease extends TorznabSeedRequirements {
   title: string
   guid?: string
   /**
@@ -214,6 +220,9 @@ function toRelease(item: XmlNode): TorznabRelease | undefined {
   const seeders = toNumber(attrs.get('seeders'))
   // `peers` в Torznab — сиды вместе с личерами
   const peers = toNumber(attrs.get('peers'))
+  const minimumRatio = toNumber(attrs.get('minimumratio'))
+  const minimumSeedTime = toNumber(attrs.get('minimumseedtime'))
+  const seedType = attrs.get('seedtype')?.trim().toLowerCase()
 
   return {
     title,
@@ -229,6 +238,14 @@ function toRelease(item: XmlNode): TorznabRelease | undefined {
     ),
     seeders,
     peers,
+    ...(minimumRatio && { minimumRatio }),
+    ...(minimumSeedTime && {
+      minimumSeedTimeMinutes: Math.ceil(minimumSeedTime / 60),
+    }),
+    ...((seedType === 'ratio'
+      || seedType === 'seedtime'
+      || seedType === 'both'
+      || seedType === 'either') && { seedType }),
     publishedAt: dateOf(text(item, 'pubDate')),
     categories: categoriesOf(item, attrs),
   }

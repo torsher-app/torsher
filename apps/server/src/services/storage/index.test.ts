@@ -13,7 +13,7 @@ import {
 } from 'vitest'
 import { getDb, migrateDb } from '../../db/index.ts'
 import { storagePolicy, torrents } from '../../db/schema.ts'
-import { setEngineDown, setEngineReady } from '../engine/index.ts'
+import { EngineError, setEngineDown, setEngineReady } from '../engine/index.ts'
 import {
   engineError,
   INFO_HASH,
@@ -22,12 +22,15 @@ import {
   sampleTorrentFile,
 } from '../engine/fixtures/index.ts'
 import { installLogger } from '../logs/index.ts'
+import { downloadFiles } from '../torrents/index.ts'
 import { volumeDeps } from './folders.ts'
 import {
+  admitTorrentSpace,
   enforceStorage,
   ensureSpaceFor,
   GIB,
   InsufficientStorageError,
+  releaseTorrentSpace,
 } from './index.ts'
 
 const OTHER_HASH = 'fedcba9876543210fedcba9876543210fedcba98'
@@ -283,4 +286,146 @@ describe('место по томам', () => {
       expect(error).toMatchObject({ code: 'ESTALE' })
     })
   })
+})
+
+describe('atomic download reservations', () => {
+  function pair() {
+    const first = insertTorrent({ inEngine: false, retention: 'keep' })
+    const next = insertTorrent({
+      inEngine: false,
+      retention: 'keep',
+      infoHash: OTHER_HASH,
+    })
+    disks.a.free = 16 * GIB
+    engine([])
+    return [first, next] as const
+  }
+
+  it('reserves during engine I/O and transfers to the live snapshot without double counting', async () => {
+    const [first, next] = pair()
+    const entered = Promise.withResolvers<void>()
+    const reply = Promise.withResolvers<void>()
+    const withFiles = {
+      ...first,
+      files: [{ path: 'synthetic.bin', size: 4 * GIB, padding: false }],
+    }
+    const firstStart = admitTorrentSpace(
+      { torrent: withFiles, bytes: 0, files: [0] },
+      () => {
+        entered.resolve()
+        return reply.promise
+      },
+    )
+    await entered.promise
+    const secondStart = vi.fn(async () => {})
+    await expect(
+      admitTorrentSpace({ torrent: next, bytes: 4 * GIB }, secondStart),
+    ).rejects.toBeInstanceOf(InsufficientStorageError)
+    expect(secondStart).not.toHaveBeenCalled()
+
+    reply.resolve()
+    await firstStart
+    engine([
+      {
+        ...liveState,
+        fileProgress: [0],
+        selected: [0],
+        bytesWanted: 4 * GIB,
+        wantedCompleted: 0,
+      },
+    ])
+    disks.a.free = 18 * GIB
+    await admitTorrentSpace({ torrent: next, bytes: 4 * GIB }, secondStart)
+    expect(secondStart).toHaveBeenCalledTimes(1)
+  })
+
+  it('holds a timed-out start through an absent snapshot and releases a definite refusal', async () => {
+    const [first, next] = pair()
+    const request = { torrent: first, bytes: 4 * GIB }
+    const nextRequest = { torrent: next, bytes: 4 * GIB }
+    await expect(
+      admitTorrentSpace(request, async () => {
+        throw new EngineError('rejected', 'storage claim rejected', {
+          status: 409,
+        })
+      }),
+    ).rejects.toMatchObject({ kind: 'rejected' })
+    await expect(
+      admitTorrentSpace(nextRequest, async () => {}),
+    ).resolves.toBeUndefined()
+    await releaseTorrentSpace(next.id)
+    await expect(
+      admitTorrentSpace(request, async () => {
+        throw new EngineError('timeout', 'engine reply timed out')
+      }),
+    ).rejects.toMatchObject({ kind: 'timeout' })
+    await expect(
+      admitTorrentSpace(nextRequest, async () => {}),
+    ).rejects.toBeInstanceOf(InsufficientStorageError)
+    setEngineReady('http://127.0.0.1:4001')
+    await expect(
+      admitTorrentSpace(nextRequest, async () => {}),
+    ).resolves.toBeUndefined()
+  })
+})
+
+it('admits the entire private payload before the first add, even after selecting only one file', async () => {
+  const torrent = insertTorrent({
+    inEngine: false,
+    isPrivate: true,
+    fullDownload: true,
+    files: [
+      { path: 'synthetic.mkv', size: GIB, padding: false },
+      { path: 'extra.bin', size: 6 * GIB, padding: false },
+    ],
+  })
+  disks.a.free = 16 * GIB
+  const adds: URL[] = []
+  fetchMock.mockImplementation(async (input, init = {}) => {
+    const url = new URL(String(input))
+    if (init.method === 'POST' && url.pathname === '/torrents') {
+      adds.push(url)
+      return json(movieDetails)
+    }
+    return json([])
+  })
+  await expect(downloadFiles(torrent, [0])).rejects.toMatchObject({
+    shortage: { needed: 7 * GIB },
+  })
+  expect(adds).toHaveLength(0)
+  disks.a.free = 20 * GIB
+  await downloadFiles(torrent, [0])
+  expect(adds).toHaveLength(1)
+  expect(Object.fromEntries(adds[0]!.searchParams)).toMatchObject({
+    files: '0',
+    private: 'true',
+    admitted: 'true',
+  })
+})
+
+it('credits verified pieces only in the exact admitted destination', async () => {
+  const existing = join(ROOT, 'a', 'existing')
+  const isolated = join(ROOT, 'b', 'isolated')
+  const torrent = insertTorrent({
+    inEngine: false,
+    isPrivate: true,
+    fullDownload: true,
+    files: [{ path: 'synthetic.mkv', size: 7 * GIB, padding: false }],
+  })
+  disks.a.free = disks.b.free = 15 * GIB
+  engine([])
+  const start = vi.fn(async () => {})
+  const request = {
+    torrent,
+    bytes: 0,
+    diskProgress: { dir: existing, files: [3 * GIB] },
+  }
+  await expect(
+    admitTorrentSpace(
+      { ...request, downloadDir: isolated, forceDirectory: true },
+      start,
+    ),
+  ).rejects.toMatchObject({ shortage: { needed: 7 * GIB } })
+  await admitTorrentSpace({ ...request, downloadDir: existing }, start)
+  expect(start).toHaveBeenCalledExactlyOnceWith(existing)
 })

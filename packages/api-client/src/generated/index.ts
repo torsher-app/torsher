@@ -3379,6 +3379,21 @@ export interface IndexerInput {
   hasApiKey: boolean;
   hasCookie?: boolean;
   enabled: boolean;
+  isPrivate: boolean;
+  allowAutomation: boolean;
+  /**
+   * @min 0
+   * @exclusiveMin true
+   */
+  minSeedRatio: number | null;
+  /**
+   * @min 0
+   * @exclusiveMin true
+   * @max 9007199254740991
+   */
+  minSeedTimeMinutes: number | null;
+  seedCriteriaMode: "or" | "and" | null;
+  knownPrivacy: "public" | "semi_private" | "private" | null;
   managerId: string | null;
   managerKind: "prowlarr" | "jackett" | null;
   missing: boolean;
@@ -3417,6 +3432,20 @@ export interface CreateIndexerInput {
    * @maxLength 100
    */
   name: string;
+  isPrivate?: boolean;
+  allowAutomation?: boolean;
+  /**
+   * @min 0
+   * @exclusiveMin true
+   */
+  minSeedRatio?: number | null;
+  /**
+   * @min 0
+   * @exclusiveMin true
+   * @max 9007199254740991
+   */
+  minSeedTimeMinutes?: number | null;
+  seedCriteriaMode?: "or" | "and" | null;
   /**
    * @format uri
    * @maxLength 2000
@@ -3437,6 +3466,20 @@ export interface UpdateIndexerInput {
    * @maxLength 100
    */
   name?: string;
+  isPrivate?: boolean;
+  allowAutomation?: boolean;
+  /**
+   * @min 0
+   * @exclusiveMin true
+   */
+  minSeedRatio?: number | null;
+  /**
+   * @min 0
+   * @exclusiveMin true
+   * @max 9007199254740991
+   */
+  minSeedTimeMinutes?: number | null;
+  seedCriteriaMode?: "or" | "and" | null;
   enabled?: boolean;
   /**
    * @minLength 1
@@ -4396,7 +4439,7 @@ export interface UpdateTorrentSettingsInput {
   encryption?: "prefer" | "require";
   /**
    * @maxLength 15
-   * @pattern ^(?!\.{1,2}$)[a-zA-Z0-9_.@-]*$
+   * @pattern ^(?!\.{1,2}$)[\w.@-]*$
    */
   bindInterface?: string;
 }
@@ -4442,6 +4485,7 @@ export interface EngineUnavailableResponseInput {
 export interface TorrentDeletePreviewInput {
   /** @min 0 */
   reclaimableBytes: number;
+  requiresObligationConfirmation: boolean;
 }
 
 export interface TorrentFileInput {
@@ -4471,6 +4515,26 @@ export interface TorrentInput {
   matchStatus: "matched" | "unsure" | "unmatched" | "ignored" | "user" | null;
   matchSuggestion: string | null;
   retention: "cache" | "keep";
+  isPrivate: boolean;
+  fullDownload: boolean;
+  primaryTrackerHost: string | null;
+  seedObligation: {
+    met: boolean;
+    unknown: boolean;
+    requirements: {
+      origin: "source" | "tracker";
+      mode: "or" | "and";
+      ratio: number | null;
+      minutes: number | null;
+      unknown?: boolean;
+    }[];
+    ratio: number | null;
+    seededSeconds: number;
+    verifiedComplete: boolean;
+    leftZeroAccepted: boolean;
+    startAnnounceState: "not_sent" | "attempted" | "accepted" | null;
+    trackerErrorCode: string | null;
+  } | null;
   inLibrary: boolean;
   pauseReason: "user" | "storage" | null;
   state:
@@ -8380,6 +8444,7 @@ export interface StorageOverviewInput {
   total: number;
   free: number;
   cacheUsed: number;
+  obligatedUsed: number;
   keptUsed: number;
   library: {
     path: string;
@@ -8797,6 +8862,22 @@ export interface ExportFileInput {
        */
       sessionCookie?: string | null;
       enabled: boolean;
+      knownPrivacy?: "public" | "semi_private" | "private" | null;
+      isPrivate?: boolean;
+      allowAutomation?: boolean;
+      /**
+       * @min 0
+       * @exclusiveMin true
+       */
+      minSeedRatio?: number | null;
+      /**
+       * @min 0
+       * @exclusiveMin true
+       * @max 9007199254740991
+       */
+      minSeedTimeMinutes?: number | null;
+      seedCriteriaMode?: "or" | "and" | null;
+      policyCustomized?: boolean;
       /** @maxLength 20 */
       manager: string | null;
       /** @maxLength 200 */
@@ -12791,6 +12872,21 @@ export interface Indexer {
   hasApiKey: boolean;
   hasCookie?: boolean;
   enabled: boolean;
+  isPrivate: boolean;
+  allowAutomation: boolean;
+  /**
+   * @min 0
+   * @exclusiveMin true
+   */
+  minSeedRatio: number | null;
+  /**
+   * @min 0
+   * @exclusiveMin true
+   * @max 9007199254740991
+   */
+  minSeedTimeMinutes: number | null;
+  seedCriteriaMode: "or" | "and" | null;
+  knownPrivacy: "public" | "semi_private" | "private" | null;
   managerId: string | null;
   managerKind: "prowlarr" | "jackett" | null;
   missing: boolean;
@@ -12829,6 +12925,20 @@ export interface CreateIndexer {
    * @maxLength 100
    */
   name: string;
+  isPrivate?: boolean;
+  allowAutomation?: boolean;
+  /**
+   * @min 0
+   * @exclusiveMin true
+   */
+  minSeedRatio?: number | null;
+  /**
+   * @min 0
+   * @exclusiveMin true
+   * @max 9007199254740991
+   */
+  minSeedTimeMinutes?: number | null;
+  seedCriteriaMode?: "or" | "and" | null;
   /**
    * @format uri
    * @maxLength 2000
@@ -12848,6 +12958,20 @@ export interface UpdateIndexer {
    * @maxLength 100
    */
   name?: string;
+  isPrivate?: boolean;
+  allowAutomation?: boolean;
+  /**
+   * @min 0
+   * @exclusiveMin true
+   */
+  minSeedRatio?: number | null;
+  /**
+   * @min 0
+   * @exclusiveMin true
+   * @max 9007199254740991
+   */
+  minSeedTimeMinutes?: number | null;
+  seedCriteriaMode?: "or" | "and" | null;
   enabled?: boolean;
   /**
    * @minLength 1
@@ -13805,7 +13929,7 @@ export interface UpdateTorrentSettings {
   encryption?: "prefer" | "require";
   /**
    * @maxLength 15
-   * @pattern ^(?!\.{1,2}$)[a-zA-Z0-9_.@-]*$
+   * @pattern ^(?!\.{1,2}$)[\w.@-]*$
    */
   bindInterface?: string;
 }
@@ -13851,6 +13975,7 @@ export interface EngineUnavailableResponse {
 export interface TorrentDeletePreview {
   /** @min 0 */
   reclaimableBytes: number;
+  requiresObligationConfirmation: boolean;
 }
 
 export interface TorrentFile {
@@ -13880,6 +14005,26 @@ export interface Torrent {
   matchStatus: "matched" | "unsure" | "unmatched" | "ignored" | "user" | null;
   matchSuggestion: string | null;
   retention: "cache" | "keep";
+  isPrivate: boolean;
+  fullDownload: boolean;
+  primaryTrackerHost: string | null;
+  seedObligation: {
+    met: boolean;
+    unknown: boolean;
+    requirements: {
+      origin: "source" | "tracker";
+      mode: "or" | "and";
+      ratio: number | null;
+      minutes: number | null;
+      unknown?: boolean;
+    }[];
+    ratio: number | null;
+    seededSeconds: number;
+    verifiedComplete: boolean;
+    leftZeroAccepted: boolean;
+    startAnnounceState: "not_sent" | "attempted" | "accepted" | null;
+    trackerErrorCode: string | null;
+  } | null;
   inLibrary: boolean;
   pauseReason: "user" | "storage" | null;
   state:
@@ -17789,6 +17934,7 @@ export interface StorageOverview {
   total: number;
   free: number;
   cacheUsed: number;
+  obligatedUsed: number;
   keptUsed: number;
   library: {
     path: string;
@@ -18206,6 +18352,22 @@ export interface ExportFile {
        */
       sessionCookie?: string | null;
       enabled: boolean;
+      knownPrivacy?: "public" | "semi_private" | "private" | null;
+      isPrivate?: boolean;
+      allowAutomation?: boolean;
+      /**
+       * @min 0
+       * @exclusiveMin true
+       */
+      minSeedRatio?: number | null;
+      /**
+       * @min 0
+       * @exclusiveMin true
+       * @max 9007199254740991
+       */
+      minSeedTimeMinutes?: number | null;
+      seedCriteriaMode?: "or" | "and" | null;
+      policyCustomized?: boolean;
       /** @maxLength 20 */
       manager: string | null;
       /** @maxLength 200 */
@@ -22376,6 +22538,7 @@ export class Api<
       id: string,
       query?: {
         files?: "keep" | "delete";
+        confirmObligation?: "true";
       },
       params: RequestParams = {},
     ) =>

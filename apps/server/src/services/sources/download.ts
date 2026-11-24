@@ -17,6 +17,7 @@ import {
   linkTitle,
   liveTorrents,
   setRetention,
+  TorrentSessionConflictError,
 } from '../torrents/index.ts'
 import { getTitleSources, sourceAllowed } from './index.ts'
 import {
@@ -321,6 +322,8 @@ export async function downloadTitle(
       )
     }
     catch (err) {
+      if (request.candidateId && err instanceof TorrentSessionConflictError)
+        throw err
       if (isSkippable(err))
         continue
 

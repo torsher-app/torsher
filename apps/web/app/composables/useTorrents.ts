@@ -143,9 +143,16 @@ async function retryTorrent(id: string) {
 }
 
 /** Ошибку удаления показывает диалог: запрос в `silent` */
-async function deleteTorrent(id: string, withFiles: boolean) {
+async function deleteTorrent(
+  id: string,
+  withFiles: boolean,
+  confirmObligation = false,
+) {
   await withErrorMode('silent', () =>
-    api.torrents.deleteTorrent(id, { files: withFiles ? 'delete' : 'keep' }))
+    api.torrents.deleteTorrent(id, {
+      files: withFiles ? 'delete' : 'keep',
+      ...(confirmObligation && { confirmObligation: 'true' }),
+    }))
   torrents.value = torrents.value.filter(item => item.id !== id)
 }
 

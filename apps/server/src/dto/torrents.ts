@@ -33,6 +33,7 @@ export const torrentIdParams = z.object({
 export const torrentDeletePreview = z
   .object({
     reclaimableBytes: z.number().nonnegative(),
+    requiresObligationConfirmation: z.boolean(),
   })
   .meta({ id: 'torrentDeletePreview' })
 
@@ -93,6 +94,32 @@ export const torrent = z
     // `unsure`: на какой тайтл похоже, подтвердить его — владелец
     matchSuggestion: z.string().nullable(),
     retention: z.enum(torrentRetentions),
+    isPrivate: z.boolean(),
+    fullDownload: z.boolean(),
+    primaryTrackerHost: z.string().nullable(),
+    seedObligation: z
+      .object({
+        met: z.boolean(),
+        unknown: z.boolean(),
+        requirements: z.array(
+          z.object({
+            origin: z.enum(['source', 'tracker']),
+            mode: z.enum(['or', 'and']),
+            ratio: z.number().nullable(),
+            minutes: z.number().nullable(),
+            unknown: z.boolean().optional(),
+          }),
+        ),
+        ratio: z.number().nullable(),
+        seededSeconds: z.number(),
+        verifiedComplete: z.boolean(),
+        leftZeroAccepted: z.boolean(),
+        startAnnounceState: z
+          .enum(['not_sent', 'attempted', 'accepted'])
+          .nullable(),
+        trackerErrorCode: z.string().nullable(),
+      })
+      .nullable(),
     // Файлы раздачи лежат в библиотеке, и выбранное видео — всё
     inLibrary: z.boolean(),
     pauseReason: z.enum(torrentPauseReasons).nullable(),
@@ -135,6 +162,7 @@ export const torrentList = z
 export const deleteTorrentQuery = z.object({
   // `delete` удаляет и скачанные файлы
   files: z.enum(['keep', 'delete']).optional(),
+  confirmObligation: z.enum(['true']).optional(),
 })
 
 export const downloadTorrent = z

@@ -488,6 +488,9 @@ export async function previewMaintenance(
           allocationKey: `${file.device}:${file.inode}`,
         })),
       reasons,
+      privateObligationMet: torrent?.isPrivate
+        ? row.privateObligationMet === true
+        : row.privateObligationMet,
       seedRule:
         torrent?.retention === 'keep'
           ? (torrent.seedRule ?? getTorrentSettings().seedRule)

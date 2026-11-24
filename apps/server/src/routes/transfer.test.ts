@@ -215,6 +215,12 @@ function seed() {
       url: 'http://indexer.example/torznab',
       apiKey: encryptSecret('indexer-secret-value'),
       sessionCookie: encryptSecret('sid=transfer-cookie-secret'),
+      isPrivate: true,
+      allowAutomation: false,
+      minSeedRatio: 1.5,
+      minSeedTimeMinutes: 120,
+      seedCriteriaMode: 'or',
+      policyCustomized: true,
     })
     .run()
   db.insert(devices)
@@ -527,6 +533,14 @@ describe('server import', () => {
 
     const indexer = getDb().select().from(indexers).get()!
 
+    expect(indexer).toMatchObject({
+      isPrivate: true,
+      allowAutomation: false,
+      minSeedRatio: 1.5,
+      minSeedTimeMinutes: 120,
+      seedCriteriaMode: 'or',
+      policyCustomized: true,
+    })
     expect(decryptSecret(indexer.apiKey!)).toBe('indexer-secret-value')
     expect(decryptSecret(indexer.sessionCookie!)).toBe(
       'sid=transfer-cookie-secret',

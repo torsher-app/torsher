@@ -24,6 +24,7 @@ export interface CandidateGroup {
   }[]
   reasons: Reason[]
   seedRule: SeedRule | null
+  privateObligationMet?: boolean | null
   completedAt: number | null
   uploaded: number | null
   denominator: number | null
@@ -135,6 +136,8 @@ export function evaluateMaintenance(snapshot: EvaluationSnapshot) {
     if (eligibleAt !== null && now < eligibleAt)
       reasons.add('retention_period')
     const seed = group.seedRule
+    if (group.privateObligationMet === false)
+      reasons.add('seeding_incomplete')
     if (!seed) {
       reasons.add('seeding_unknown')
     }

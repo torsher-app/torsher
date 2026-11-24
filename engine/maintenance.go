@@ -41,18 +41,30 @@ type detachManifest struct {
 	Paths      []maintenancePath `json:"paths"`
 }
 type detachFence struct {
-	ID             string            `json:"id"`
-	Manifest       detachManifest    `json:"manifest"`
-	State          string            `json:"state"`
-	Results        map[string]string `json:"results"`
-	Error          string            `json:"error,omitempty"`
-	dirty          bool
-	reattaching    bool
-	resumed        bool
-	RestoreMeta    []byte        `json:"restoreMeta,omitempty"`
-	RestoreSession *savedTorrent `json:"restoreSession,omitempty"`
-	EntryKeys      []string      `json:"entryKeys,omitempty"`
+	ID                string            `json:"id"`
+	Manifest          detachManifest    `json:"manifest"`
+	State             string            `json:"state"`
+	Results           map[string]string `json:"results"`
+	Error             string            `json:"error,omitempty"`
+	dirty             bool
+	reattaching       bool
+	resumed           bool
+	RestoreMeta       []byte        `json:"restoreMeta,omitempty"`
+	RestoreSession    *savedTorrent `json:"restoreSession,omitempty"`
+	EntryKeys         []string      `json:"entryKeys,omitempty"`
+	RequireVerified   bool          `json:"requireVerified,omitempty"`
+	VerifiedForDetach bool          `json:"verifiedForDetach,omitempty"`
 }
+
+// The journal's detached restore recipe may contain tracker credentials.
+func (f *detachFence) response() detachFence {
+	out := *f
+	out.RestoreMeta = nil
+	out.RestoreSession = nil
+	out.RequireVerified = false
+	return out
+}
+
 type maintenanceFences struct {
 	mu            sync.Mutex
 	dir           string
@@ -103,7 +115,11 @@ func durableJSON(path string, value any) error {
 	if err != nil {
 		return err
 	}
-	file, err := os.CreateTemp(filepath.Dir(path), ".maintenance-")
+	return durableFile(path, data)
+}
+
+func durableFile(path string, data []byte) error {
+	file, err := os.CreateTemp(filepath.Dir(path), ".atomic-")
 	if err != nil {
 		return err
 	}
@@ -303,6 +319,7 @@ func (a *api) maintenancePrepare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	fence := m.fences[id]
+	newFence := fence == nil
 	if fence != nil {
 		old, _ := json.Marshal(fence.Manifest)
 		next, _ := json.Marshal(manifest)
@@ -336,10 +353,49 @@ func (a *api) maintenancePrepare(w http.ResponseWriter, r *http.Request) {
 		}
 		if fence.State != "pending" {
 			a.resumeMaintenanceCancelled(fence)
-			writeJSON(w, 200, fence)
+			writeJSON(w, 200, fence.response())
 			return
 		}
-	} else {
+	}
+
+	var hash metainfo.Hash
+	_ = hash.FromHexString(manifest.InfoHash)
+	unlock, acquired := a.ownership.tryOperation(hash)
+	if !acquired {
+		writeMoving(w)
+		return
+	}
+	defer unlock()
+
+	rejectMissingAck := func(live bool) {
+		if !newFence && live {
+			// This pending fence never detached the live torrent or unlinked files.
+			fence.State = "cancelled"
+			fence.RestoreMeta = nil
+			fence.RestoreSession = nil
+			fence.VerifiedForDetach = false
+			if err := m.save(fence); err != nil {
+				writeError(w, 500, "journal_failed", errors.New("cannot roll back maintenance fence"))
+				return
+			}
+		}
+		writeError(w, http.StatusConflict, "torrent_obligation_unmet", errors.New("private torrent no longer has a verified tracker acknowledgement"))
+	}
+
+	requireVerified := r.URL.Query().Get("require_verified") == "true" || (fence != nil && fence.RequireVerified)
+	if requireVerified {
+		live, exists := a.client.Torrent(hash)
+		verified := exists && a.stateOf(live).LeftZeroAccepted
+		if !exists && fence != nil {
+			verified = fence.VerifiedForDetach
+		}
+		if !verified {
+			rejectMissingAck(exists)
+			return
+		}
+	}
+
+	if fence == nil {
 		paths := []string{}
 		for _, item := range manifest.Paths {
 			paths = append(paths, item.Path)
@@ -399,34 +455,51 @@ func (a *api) maintenancePrepare(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-		fence = &detachFence{ID: id, Manifest: manifest, State: "pending", Results: map[string]string{}}
+		fence = &detachFence{ID: id, Manifest: manifest, State: "pending", Results: map[string]string{}, RequireVerified: requireVerified}
 		var originalHash metainfo.Hash
 		_ = originalHash.FromHexString(manifest.InfoHash)
 		if original, live := a.client.Torrent(originalHash); live && a.session.has(originalHash) {
-			var buffer bytes.Buffer
-			meta := original.Metainfo()
-			if err := meta.Write(&buffer); err != nil {
-				writeError(w, 409, "metadata_unavailable", err)
-				return
-			}
 			saved := a.session.get(originalHash)
+			var metadata []byte
+			if saved.Private || privateInfo(original.Info()) || a.private.contains(originalHash) {
+				// The library's metainfo omits the private tracker we own.
+				originalFile, err := os.ReadFile(a.session.path(originalHash, ".torrent"))
+				if err != nil {
+					writeError(w, 409, "metadata_unavailable", errors.New("private metainfo is unavailable"))
+					return
+				}
+				meta, err := metainfo.Load(bytes.NewReader(originalFile))
+				if err != nil || meta.HashInfoBytes() != originalHash {
+					writeError(w, 409, "metadata_unavailable", errors.New("private metainfo hash differs"))
+					return
+				}
+				saved.Private = true
+				metadata = originalFile
+			} else {
+				var buffer bytes.Buffer
+				meta := original.Metainfo()
+				if err := meta.Write(&buffer); err != nil {
+					writeError(w, 409, "metadata_unavailable", err)
+					return
+				}
+				metadata = buffer.Bytes()
+			}
 			saved.Dir = a.dirOf(originalHash)
-			fence.RestoreMeta = buffer.Bytes()
+			fence.RestoreMeta = metadata
 			fence.RestoreSession = &saved
 		}
 
 		for _, path := range paths {
 			fence.EntryKeys = append(fence.EntryKeys, maintenanceEntryKey(path))
 		}
-		m.fences[id] = fence
-		if err := m.save(fence); err != nil {
-			writeError(w, 500, "journal_failed", errors.New("cannot persist maintenance fence"))
-			return
+		if !requireVerified {
+			m.fences[id] = fence
+			if err := m.save(fence); err != nil {
+				writeError(w, 500, "journal_failed", errors.New("cannot persist maintenance fence"))
+				return
+			}
 		}
-		m.fences[id] = fence
 	}
-	var hash metainfo.Hash
-	_ = hash.FromHexString(manifest.InfoHash)
 	if torrent, ok := a.client.Torrent(hash); ok {
 		if a.windows.streaming(hash) || a.isMoving(hash) {
 			writeError(w, 409, "resource_busy", errors.New("resource is active"))
@@ -436,16 +509,55 @@ func (a *api) maintenancePrepare(w http.ResponseWriter, r *http.Request) {
 			writeError(w, 409, "metadata_mismatch", errors.New("torrent metadata differs"))
 			return
 		}
-		torrent.DisallowDataDownload()
-		torrent.DisallowDataUpload()
+		saved := a.session.get(hash)
+		restoreLive := func() {
+			a.setPaused(torrent, saved.paused(), saved.Selected)
+			if !saved.paused() && saved.Seed != nil && !*saved.Seed && torrent.Complete().Bool() {
+				torrent.DisallowDataUpload()
+			}
+		}
+		if requireVerified {
+			a.setPaused(torrent, true, saved.Selected)
+		} else {
+			torrent.DisallowDataDownload()
+			torrent.DisallowDataUpload()
+		}
 		deadline := time.Now().Add(5 * time.Second)
 		for piecesBusy(torrent) && time.Now().Before(deadline) {
 			time.Sleep(20 * time.Millisecond)
 		}
 		if piecesBusy(torrent) {
+			if requireVerified {
+				restoreLive()
+			}
 			writeError(w, 409, "resource_busy", errors.New("piece verification is active"))
 			return
 		}
+		if requireVerified {
+			if !a.stateOf(torrent).LeftZeroAccepted {
+				restoreLive()
+				rejectMissingAck(true)
+				return
+			}
+			fence.RequireVerified = true
+			fence.VerifiedForDetach = true
+			m.fences[id] = fence
+			if err := m.save(fence); err != nil {
+				writeError(w, 500, "journal_failed", errors.New("cannot persist verified detach"))
+				return
+			}
+		}
+		a.stopPrivateTracker(torrent)
+		if restore := fence.RestoreSession; restore != nil && restore.Private {
+			latest := a.session.get(hash)
+			restore.SeededSeconds = max(restore.SeededSeconds, latest.SeededSeconds)
+			restore.StartAnnounceState = latest.StartAnnounceState
+			if err := m.save(fence); err != nil {
+				writeError(w, 500, "journal_failed", errors.New("cannot persist private tracker state"))
+				return
+			}
+		}
+		a.dropPrivateTracker(torrent)
 		torrent.Drop()
 		a.guarded.Delete(hash)
 		if !a.lifecycle.settled(hash) {
@@ -480,7 +592,7 @@ func (a *api) maintenancePrepare(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.resumeMaintenanceCancelled(fence)
-	writeJSON(w, 200, fence)
+	writeJSON(w, 200, fence.response())
 }
 func (a *api) maintenanceStatus(w http.ResponseWriter, r *http.Request) {
 	m := a.maintenance
@@ -495,7 +607,7 @@ func (a *api) maintenanceStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.resumeMaintenanceCancelled(fence)
-	writeJSON(w, 200, fence)
+	writeJSON(w, 200, fence.response())
 }
 func (a *api) maintenanceFinish(w http.ResponseWriter, r *http.Request) {
 	m := a.maintenance
@@ -515,7 +627,7 @@ func (a *api) maintenanceFinish(w http.ResponseWriter, r *http.Request) {
 	}
 	if fence.State == next {
 		a.resumeMaintenanceCancelled(fence)
-		writeJSON(w, 200, fence)
+		writeJSON(w, 200, fence.response())
 		return
 	}
 	if next == "cancelled" {
@@ -582,7 +694,7 @@ func (a *api) maintenanceFinish(w http.ResponseWriter, r *http.Request) {
 	}
 	if next == "cancelled" && fence.RestoreSession != nil {
 		if fence.reattaching {
-			writeJSON(w, http.StatusAccepted, fence)
+			writeJSON(w, http.StatusAccepted, fence.response())
 			return
 		}
 		fence.Error = ""
@@ -592,7 +704,7 @@ func (a *api) maintenanceFinish(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		a.startMaintenanceReattach(fence)
-		writeJSON(w, http.StatusAccepted, fence)
+		writeJSON(w, http.StatusAccepted, fence.response())
 		return
 	}
 	fence.State = next
@@ -608,7 +720,7 @@ func (a *api) maintenanceFinish(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	a.resumeMaintenanceCancelled(fence)
-	writeJSON(w, 200, fence)
+	writeJSON(w, 200, fence.response())
 }
 func (a *api) maintenanceUnlink(w http.ResponseWriter, r *http.Request) {
 	var body struct {
@@ -656,12 +768,12 @@ func (a *api) maintenanceUnlink(w http.ResponseWriter, r *http.Request) {
 			writeError(w, 500, "journal_failed", errors.New("cannot persist file result"))
 			return
 		}
-		writeJSON(w, 200, fence)
+		writeJSON(w, 200, fence.response())
 		return
 	}
 	if fence.Results[key] == "removed" {
 		a.resumeMaintenanceCancelled(fence)
-		writeJSON(w, 200, fence)
+		writeJSON(w, 200, fence.response())
 		return
 	}
 	fence.State = "deleting"
@@ -683,7 +795,7 @@ func (a *api) maintenanceUnlink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.resumeMaintenanceCancelled(fence)
-	writeJSON(w, 200, fence)
+	writeJSON(w, 200, fence.response())
 }
 
 // Восстановленная база может не знать более новый fence: перечень нужен до ack.
@@ -695,13 +807,13 @@ func (a *api) maintenanceInventory(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 503, "journal_unavailable", errors.New("maintenance journal unavailable"))
 		return
 	}
-	fences := make([]*detachFence, 0, len(m.fences))
+	fences := make([]detachFence, 0, len(m.fences))
 	for _, fence := range m.fences {
 		if !m.confirm(w, fence) {
 			return
 		}
 		a.resumeMaintenanceCancelled(fence)
-		fences = append(fences, fence)
+		fences = append(fences, fence.response())
 	}
 	writeJSON(w, 200, fences)
 }
@@ -775,7 +887,15 @@ func (a *api) reattachMaintenance(fence *detachFence) error {
 		pinned.Close()
 		return err
 	}
-	t, created, err := a.client.AddTorrentSpec(spec)
+	if saved.Private || privateInfo(&info) {
+		saved.Private = true
+		saved.AwaitingAdmission = true
+		saved.LeftZeroAccepted = false
+		if saved.StartAnnounceState == "" {
+			saved.StartAnnounceState = announceAttempted
+		}
+	}
+	t, created, err := a.addChecked(spec, meta, saved.Private)
 	if err != nil || !created {
 		pinned.Close()
 		return errors.New("guarded_add_failed")
@@ -785,6 +905,7 @@ func (a *api) reattachMaintenance(fence *detachFence) error {
 	defer func() {
 		if !success {
 			a.guarded.Delete(t.InfoHash())
+			a.dropPrivateTracker(t)
 			t.Drop()
 		}
 	}()
@@ -926,7 +1047,7 @@ func (a *api) resumeMaintenanceCancelled(fence *detachFence) {
 	if t, ok := a.client.Torrent(hash); ok {
 		saved := a.session.get(hash)
 		if len(saved.GuardedPaths) > 0 && saved.GuardedOperationID == fence.ID {
-			a.setPaused(t, saved.Paused, saved.Selected)
+			a.setPaused(t, saved.paused(), saved.Selected)
 			fence.resumed = true
 		}
 	}

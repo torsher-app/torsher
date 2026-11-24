@@ -6,16 +6,31 @@ import type {
   VideoResolution,
 } from '@torsher/release-parser'
 import type { FollowAudio } from '../../db/schema.ts'
+import type { TorznabSeedRequirements } from '../torznab/search.ts'
 import type { RankingProfile, VoiceRef } from './profile.ts'
 import { videoResolution } from '@torsher/release-parser'
 
 /** Раздача после поиска, склейки повторов и матчера */
-export interface FoundRelease {
+export interface ReleaseSource extends TorznabSeedRequirements {
+  id: string
+  name: string
+  detailsUrl?: string
+  link?: { url: string, indexerId: string, indexerOrigin: string }
+  magnet?: string
+  seeders: number
+  isPrivate?: boolean
+}
+
+export interface FoundRelease extends TorznabSeedRequirements {
   /** Стабильный между поисками: по infohash, без него — по названию и размеру. */
   id: string
   title: string
   /** `detailsUrl` — страница раздачи у этого индексатора (`<comments>`). */
   indexers: { id: string, name: string, detailsUrl?: string }[]
+  /** Полные варианты захвата; не включаются в ответы клиентам. */
+  sources?: ReleaseSource[]
+  sourceIndexerId?: string
+  sourceIsPrivate?: boolean
   /**
    * Ссылка на `.torrent` у индексатора — только на сервере: в ней бывает ключ.
    * `indexerOrigin` — origin индексатора: только туда ссылка может вести на loopback.

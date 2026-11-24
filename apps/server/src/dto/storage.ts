@@ -130,6 +130,7 @@ export const storageOverview = z
     free: z.number(),
     // Кэш просмотров, закреплённое («Оставить») и всё остальное на томе
     cacheUsed: z.number(),
+    obligatedUsed: z.number(),
     keptUsed: z.number(),
     // Своя раскладка библиотеки: `shared` — байты, общие с раздачами
     // (хардлинк, reflink); `linkMode` — как туда кладутся файлы, null — не

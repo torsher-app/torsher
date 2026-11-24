@@ -268,18 +268,12 @@ func (b *boundTransport) configure(cfg *torrent.ClientConfig) {
 	}
 }
 
-func (b *boundTransport) attach(client *torrent.Client, dht bool) error {
+func (b *boundTransport) attach(client *torrent.Client, dht bool, private *privateRegistry) error {
 	for _, socket := range b.listeners {
 		if dht {
-			server, err := client.NewAnacrolixDhtServer(socket.udp)
-			if err != nil {
+			if err := private.attachDHT(client, socket.udp); err != nil {
 				return err
 			}
-			client.AddDhtServer(torrent.AnacrolixDhtServerWrapper{Server: server})
-			go func() {
-				<-client.Closed()
-				server.Close()
-			}()
 		}
 		client.AddListener(boundPeerAccept{Listener: socket.tcp, scope: b.socketScope, clientClosed: client.Closed(), stopped: b.stopped})
 		client.AddDialer(dialer.WithNetwork{Network: "tcp" + socket.network, Dialer: boundTCPDialer{binding: b}})

@@ -134,6 +134,26 @@ type planned struct {
 	complete bool
 }
 
+// Приоритет файла, в отличие от DownloadAll, подчиняется очереди и паузе.
+func effectiveSelection(t *torrent.Torrent, saved savedTorrent, selected []int) (files, low []int) {
+	if !saved.Private {
+		return selected, saved.Low
+	}
+	files = append([]int(nil), selected...)
+	low = append([]int(nil), saved.Low...)
+	wanted := make(map[int]bool, len(selected))
+	for _, index := range selected {
+		wanted[index] = true
+	}
+	for index := range t.Files() {
+		if !wanted[index] {
+			files = append(files, index)
+			low = append(low, index)
+		}
+	}
+	return
+}
+
 func selectionComplete(t *torrent.Torrent, selected []int) bool {
 	files := t.Files()
 
@@ -212,7 +232,7 @@ func (a *api) reschedule() {
 		}
 
 		saved, known := a.session.lookup(hash)
-		if known && saved.Paused {
+		if known && saved.paused() {
 			continue
 		}
 
@@ -222,7 +242,11 @@ func (a *api) reschedule() {
 			continue
 		}
 
-		item := planned{t: t, saved: saved, complete: selectionComplete(t, saved.Selected)}
+		complete := selectionComplete(t, saved.Selected)
+		if saved.Private {
+			complete = t.Complete().Bool()
+		}
+		item := planned{t: t, saved: saved, complete: complete}
 		managed = append(managed, item)
 
 		if !item.complete {
@@ -250,19 +274,19 @@ func (a *api) reschedule() {
 		hash := item.t.InfoHash()
 		state, seen := a.sched.applied[item.t]
 
-		files := item.saved.Selected
+		files, low := effectiveSelection(item.t, item.saved, item.saved.Selected)
 		if !item.complete && (queued[hash] || held) {
 			files = nil
 		}
 
 		var high []int
 		if len(files) > 0 && !item.complete {
-			high = highFiles(item.t, files, item.saved.First, item.saved.Low)
+			high = highFiles(item.t, files, item.saved.First, low)
 			highs[hash] = high
 		}
 
-		if key := filesKey(files) + "/" + filesKey(high) + "/" + filesKey(item.saved.Low); key != state.files || !seen {
-			if err := setFiles(item.t, files, high, item.saved.Low); err != nil {
+		if key := filesKey(files) + "/" + filesKey(high) + "/" + filesKey(low); key != state.files || !seen {
+			if err := setFiles(item.t, files, high, low); err != nil {
 				a.logger.Warn("schedule files", "infoHash", hash.HexString(), "err", err)
 			}
 			state.files = key
@@ -389,6 +413,7 @@ func (a *api) schedule(ctx context.Context) {
 		}
 
 		a.reschedule()
+		a.tickPrivateTrackers()
 
 		if ticks >= uploadedFlushEvery {
 			ticks = 0

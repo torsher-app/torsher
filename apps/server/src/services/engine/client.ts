@@ -44,12 +44,14 @@ export class EngineError extends Error {
 }
 
 let baseUrl: string | null = null
+let generation = 0
 let downKind: EngineUnavailableKind = 'stopped'
 let networkBinding: EngineNetworkBinding | null = null
 
 /** Адрес HTTP API движка ставит супервизор, когда движок ответил */
 export function setEngineReady(url: string) {
   baseUrl = url
+  generation++
   networkBinding = null
 }
 
@@ -57,6 +59,10 @@ export function setEngineDown(kind: EngineUnavailableKind) {
   baseUrl = null
   downKind = kind
   networkBinding = null
+}
+
+export function engineGeneration() {
+  return generation
 }
 
 export function isEngineReady() {
@@ -129,7 +135,17 @@ const engineErrorBody = z.object({
   message: z.string().optional(),
 })
 
+const engineAnnouncementState = z.enum(['not_sent', 'attempted', 'accepted'])
+const enginePrivacy = {
+  isPrivate: z.boolean().optional(),
+  awaitingAdmission: z.boolean().optional(),
+}
+
 const engineTorrentDetails = z.object({
+  ...enginePrivacy,
+  fullDownload: z.boolean().optional(),
+  primaryTrackerHost: z.string().optional(),
+  trackerFingerprint: z.string().optional(),
   paused: z.boolean().optional(),
   dir: z.string().optional(),
   infoHash: z.string(),
@@ -146,11 +162,20 @@ const engineTorrentDetails = z.object({
       // хэшу, `differs` — другой размер или кусок не сошёлся, `unknown` —
       // проверить нечем (нет кусков целиком внутри файла)
       onDisk: z.enum(['match', 'differs', 'missing', 'unknown']).optional(),
+      verifiedBytes: z.number().nonnegative().optional(),
     }),
   ),
 })
 
 const engineTorrentState = z.object({
+  dir: z.string().optional(),
+  ...enginePrivacy,
+  fullDownload: z.boolean().optional(),
+  verifiedComplete: z.boolean().optional(),
+  startAnnounceState: engineAnnouncementState.optional(),
+  leftZeroAccepted: z.boolean().optional(),
+  seededSeconds: z.number().optional(),
+  trackerErrorCode: z.string().optional(),
   infoHash: z.string(),
   paused: z.boolean(),
   // Файлы, которые качаются целиком; остальное качают только окна потоков
@@ -213,6 +238,15 @@ export type EngineTorrentDetails = z.infer<typeof engineTorrentDetails>
 
 /** Раздача в движке: пауза, выбор, сколько скачано, пиры и скорость */
 export interface EngineTorrentState {
+  dir?: string
+  isPrivate?: boolean
+  fullDownload?: boolean
+  awaitingAdmission?: boolean
+  verifiedComplete?: boolean
+  startAnnounceState?: z.infer<typeof engineAnnouncementState>
+  leftZeroAccepted?: boolean
+  seededSeconds?: number
+  trackerErrorCode?: string
   infoHash: string
   paused: boolean
   selected: number[]
@@ -246,6 +280,29 @@ function toState(raw: z.infer<typeof engineTorrentState>): EngineTorrentState {
   return {
     infoHash: raw.infoHash.toLowerCase(),
     paused: raw.paused,
+    ...(raw.dir === undefined ? {} : { dir: raw.dir }),
+    ...(raw.isPrivate === undefined ? {} : { isPrivate: raw.isPrivate }),
+    ...(raw.fullDownload === undefined
+      ? {}
+      : { fullDownload: raw.fullDownload }),
+    ...(raw.awaitingAdmission === undefined
+      ? {}
+      : { awaitingAdmission: raw.awaitingAdmission }),
+    ...(raw.verifiedComplete === undefined
+      ? {}
+      : { verifiedComplete: raw.verifiedComplete }),
+    ...(raw.startAnnounceState === undefined
+      ? {}
+      : { startAnnounceState: raw.startAnnounceState }),
+    ...(raw.leftZeroAccepted === undefined
+      ? {}
+      : { leftZeroAccepted: raw.leftZeroAccepted }),
+    ...(raw.seededSeconds === undefined
+      ? {}
+      : { seededSeconds: raw.seededSeconds }),
+    ...(raw.trackerErrorCode === undefined
+      ? {}
+      : { trackerErrorCode: raw.trackerErrorCode }),
     selected: raw.selected ?? [],
     high: raw.high ?? [],
     bytesCompleted: raw.bytesCompleted,
@@ -437,10 +494,15 @@ export async function addTorrent(
   first: number[] = [],
   low: number[] = [],
   paused = false,
+  options: { isPrivate?: boolean, admitted?: boolean } = {},
 ) {
   const query = new URLSearchParams({ files: onlyFiles.join(',') })
   if (paused)
     query.set('paused', 'true')
+  if (options.isPrivate)
+    query.set('private', 'true')
+  if (options.admitted)
+    query.set('admitted', 'true')
 
   if (first.length)
     query.set('first', first.join(','))
@@ -463,6 +525,9 @@ export async function addTorrent(
 }
 
 const engineStorageEntry = z.object({
+  ...enginePrivacy,
+  userPaused: z.boolean().optional(),
+  startAnnounceState: engineAnnouncementState.optional(),
   paused: z.boolean().optional(),
   infoHash: z.string(),
   dir: z.string(),
@@ -540,8 +605,9 @@ export async function pauseTorrent(infoHash: string) {
   await engineEmpty(`/torrents/${infoHash}/pause`, { method: 'POST' })
 }
 
-export async function resumeTorrent(infoHash: string) {
-  await engineEmpty(`/torrents/${infoHash}/resume`, { method: 'POST' })
+export async function resumeTorrent(infoHash: string, admitted = false) {
+  const query = admitted ? '?admitted=true' : ''
+  await engineEmpty(`/torrents/${infoHash}/resume${query}`, { method: 'POST' })
 }
 
 /**
@@ -550,9 +616,20 @@ export async function resumeTorrent(infoHash: string) {
  */
 export async function forgetTorrent(
   infoHash: string,
-  options: { deleteFiles?: boolean } = {},
+  options: {
+    deleteFiles?: boolean
+    privateUnstartedOnly?: boolean
+    requireVerified?: boolean
+  } = {},
 ) {
-  const query = options.deleteFiles ? '?delete_files=true' : ''
+  const params = new URLSearchParams()
+  if (options.deleteFiles)
+    params.set('delete_files', 'true')
+  if (options.privateUnstartedOnly)
+    params.set('private_unstarted_only', 'true')
+  if (options.requireVerified)
+    params.set('require_verified', 'true')
+  const query = params.size ? `?${params}` : ''
   const result = await engineJson(
     `/torrents/${infoHash}${query}`,
     engineForget,
@@ -675,6 +752,7 @@ const engineMaintenanceOperation = z.object({
     'cancelled',
   ]),
   results: z.record(z.string(), z.enum(['staged', 'removed'])),
+  verifiedForDetach: z.literal(true).optional(),
   error: z.string().optional(),
 })
 export type EngineDetachManifest = z.infer<typeof engineDetachManifest>
@@ -686,9 +764,11 @@ export type EngineMaintenanceOperation = z.infer<
 export function prepareMaintenanceDetach(
   id: string,
   manifest: EngineDetachManifest,
+  requireVerified = false,
 ) {
+  const query = requireVerified ? '?require_verified=true' : ''
   return engineJson(
-    `/maintenance/${encodeURIComponent(id)}/prepare`,
+    `/maintenance/${encodeURIComponent(id)}/prepare${query}`,
     engineMaintenanceOperation,
     {
       method: 'POST',

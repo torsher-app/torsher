@@ -70,6 +70,14 @@ Buttons at the bottom: <Ui k="panel.sources.indexers.test" />, <Ui k="panel.sour
 
 The menu at the end of each row has the same actions, plus <Ui k="panel.sources.indexers.disable" /> or <Ui k="panel.sources.indexers.enableSearch" /> and <Ui k="panel.sources.indexers.copyUrl" />.
 
+## Private sources
+
+Open the indexer's card and select <Ui k="panel.sources.indexers.edit" /> to set <Ui k="panel.sources.privatePolicy.private" />. Torsher also enables this setting the first time Prowlarr or Jackett reports an indexer as private if you haven't changed its policy. Sync preserves your policy and the current permission for Following.
+
+Use <Ui k="panel.sources.privatePolicy.automation" /> to control background search and grabs. You can still choose this source yourself with that switch off. A private source must provide a .torrent file. The file's own private flag also applies when the indexer is configured as public.
+
+Set <Ui k="panel.sources.privatePolicy.ratio" /> and <Ui k="panel.sources.privatePolicy.time" /> if your tracker publishes those rules. With <Ui k="panel.sources.privatePolicy.automatic" />, two entered minimums both apply. A requirement supplied by the indexer for a specific release applies independently. See [Seeding requirements](/docs/panel/downloads#seeding-requirements).
+
 ## Disable or delete an indexer
 
 - **Disable** keeps the indexer in the list but leaves it out of every search.
