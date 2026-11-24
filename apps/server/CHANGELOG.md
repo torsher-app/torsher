@@ -1,5 +1,73 @@
 # Changelog
 
+## 1.9.0 (2026-11-24)
+
+### Features
+
+- **mine:** add personal viewing space (#256) ([8cf154c](https://github.com/torsher-app/torsher/commit/8cf154c27bffd2c05a41f8e9681f2032a360a118))
+- **tv:** add title page links to playback card menus (#208) ([f53e363](https://github.com/torsher-app/torsher/commit/f53e3637d6985ead203e595569be14d620c89d81))
+
+### Bug Fixes
+
+- **webos:** recover from transient startup connection failures (#264) ([0db5876](https://github.com/torsher-app/torsher/commit/0db587612db3fc8684886fe825d48c871542f098))
+- **tv:** clarify torrent counters (#263) ([aee208f](https://github.com/torsher-app/torsher/commit/aee208fb54cfd142003c3b1e98ec1fc1a0c740bc))
+- **server:** retry paused indexers on manual refresh (#261) ([bc2609e](https://github.com/torsher-app/torsher/commit/bc2609ee4a60940cd487100ddde934cb72e9990e))
+- **mine:** restore section counters (#259) ([517408a](https://github.com/torsher-app/torsher/commit/517408af20f3bf120954182fe697ea9eacc94bc3))
+- **tv:** align Mine controls and headers (#258) ([bf10c05](https://github.com/torsher-app/torsher/commit/bf10c05237f8fdba5b4cb0503f0d33f3a58faff6))
+- **tv:** unify Mine undo navigation (#257) ([0e11cb7](https://github.com/torsher-app/torsher/commit/0e11cb7e283dc6b60476b0b1fbaba5a9487a9cab))
+- **server:** align HLS segments with decoded video (#255) ([e5b76e1](https://github.com/torsher-app/torsher/commit/e5b76e19c5d1495c2828b9419a09ee33f5516566))
+- resolve storage, playback and state regressions (#254) ([f7190b8](https://github.com/torsher-app/torsher/commit/f7190b8354a72841b1c3280db153572592469fc5))
+- **follow:** restore missing library files on topic refresh (#251) ([0cd2918](https://github.com/torsher-app/torsher/commit/0cd291849935281a67701d532a988f10e281afc6))
+- **storage:** use fundamental blocks for disk capacity (#253) ([e78dd01](https://github.com/torsher-app/torsher/commit/e78dd01f8ce049ae9eaf3878e3e2b675215c46b6))
+- **tv:** use exact watched file metadata in history captions (#250) ([5b8055c](https://github.com/torsher-app/torsher/commit/5b8055c0827dd080a849dbb8b120fe624c7a21d6))
+- **playback:** align HLS segments with source time (#249) ([6affeff](https://github.com/torsher-app/torsher/commit/6affeff0e15ad61baf759d63813b6b6a91aa2441))
+- **playback:** reject out-of-order progress saves (#248) ([0482e26](https://github.com/torsher-app/torsher/commit/0482e26b275b5094c604d4bbbc3fbe2d959fd28d))
+- **overview:** isolate unavailable disk metrics (#246) ([67de785](https://github.com/torsher-app/torsher/commit/67de78536bbcecff02292ea89da74670f9700f47))
+- **tv:** preserve retryable source file-list failures (#247) ([82e5ba9](https://github.com/torsher-app/torsher/commit/82e5ba94ade77bef4f28483ca61726e8e1cff397))
+- **web:** report TMDB key check transport failures (#245) ([bab5069](https://github.com/torsher-app/torsher/commit/bab506935b54164e9744a928be383f01c38b65a4))
+- **network:** invalidate checks after route changes (#244) ([2724fd9](https://github.com/torsher-app/torsher/commit/2724fd91b909c74bea84574167bf7ab6d6337b4f))
+- **tv:** count unique library episodes per season (#242) ([10041d0](https://github.com/torsher-app/torsher/commit/10041d01b71fed912aa0dfcacf7495565c8d262d))
+- **server:** preserve torrent pause during episode upgrades (#243) ([35e667b](https://github.com/torsher-app/torsher/commit/35e667b7cb2158d687180efb6827dadb90604c16))
+- **tv:** distinguish transient catalog failures (#241) ([ff307c9](https://github.com/torsher-app/torsher/commit/ff307c9ef9d7b84bd0b71982eb3517ac47899875))
+- **tv:** reject direct playback without video dimensions (#239) ([ca48cd7](https://github.com/torsher-app/torsher/commit/ca48cd7448c6cb40ea491cf9fb45735e3d6069b5))
+- **follow:** distinguish picked releases in upgrade explanations (#238) ([c586f90](https://github.com/torsher-app/torsher/commit/c586f90d68d7fc86c6668743210ace1d4426ecf2))
+- **media:** merge short terminal HLS segments (#237) ([5901f34](https://github.com/torsher-app/torsher/commit/5901f3463edf2006e726fae31fc06d8ab4bcc660))
+- **tv:** ignore media updates after player exit (#236) ([77c8eeb](https://github.com/torsher-app/torsher/commit/77c8eebe79212288879c1f68b1f116f650efd83c))
+- **web:** reset notification provider defaults completely (#235) ([b475a02](https://github.com/torsher-app/torsher/commit/b475a029a7eeabfbdc1620415d14ffacc04bd049))
+- **web:** preserve string values in notification channel fields (#233) ([8f1e186](https://github.com/torsher-app/torsher/commit/8f1e186c81659fcba683597b63da5a0cfb16d07c))
+- **web:** refresh idle backup status while visible (#231) ([6027de0](https://github.com/torsher-app/torsher/commit/6027de052a89d9701d2972a844e3c4ef011f776f))
+- **tv:** account for playback speed in end time (#230) ([b9b9e0f](https://github.com/torsher-app/torsher/commit/b9b9e0fc5f45a67a52453870a9f8018387d5b169))
+- **server:** reject invalid Torznab search response structure (#232) ([237b954](https://github.com/torsher-app/torsher/commit/237b95448324955f5d7bd228b56259c8cfa7245b))
+- **maintenance:** cancel intact staged intents after policy changes (#229) ([e981ea1](https://github.com/torsher-app/torsher/commit/e981ea1f7b80974c60fa54b1fefa34b150cb388d))
+- **transfer:** count unique titles in profile import results (#228) ([a00aba3](https://github.com/torsher-app/torsher/commit/a00aba3d68877d1bb6159102d146a794727cc204))
+- **storage:** classify isolated torrents under the current root (#227) ([8d46c32](https://github.com/torsher-app/torsher/commit/8d46c3275c75c77538542bfbf1efdb600ab23878))
+- **backups:** expose critical fallback safety copies (#225) ([71e873b](https://github.com/torsher-app/torsher/commit/71e873becd9789e09e3c2d7828d77f674a84cbe0))
+- **storage:** account for hardlinks in deletion estimates (#224) ([eb26c52](https://github.com/torsher-app/torsher/commit/eb26c52e53b71e0f49011c81b692223d74b995be))
+- **transfer:** clarify file position export scope (#220) ([1b29947](https://github.com/torsher-app/torsher/commit/1b29947a6fc26297b467e0974de75dbb806b7aa0))
+- **tv:** synchronize personal state and playback updates (#223) ([958cd2a](https://github.com/torsher-app/torsher/commit/958cd2a34f0ec34e5280237d64990a2f1ad06817))
+- **library:** rebind existing hardlinks after readding torrents (#222) ([bf4c32c](https://github.com/torsher-app/torsher/commit/bf4c32cb6316dffaeb58196ad23f6b5b648177d8))
+- **profiles:** keep history counts and metadata failures consistent (#221) ([45fb0aa](https://github.com/torsher-app/torsher/commit/45fb0aa6541960383193409e2415e80e9a68ad41))
+- **storage:** include previous folders in move previews (#219) ([4fc4924](https://github.com/torsher-app/torsher/commit/4fc4924a15c6e258bd58885ebce025f2ce674f9e))
+- **web:** sync untouched download selection with server (#218) ([53ae83a](https://github.com/torsher-app/torsher/commit/53ae83a920943f0d5fe1bc394bb30455d8414a92))
+- **tv:** refresh viewer profile before navigation (#216) ([0465efd](https://github.com/torsher-app/torsher/commit/0465efdff6082778b756c17b277da5b2fba70a0a))
+- **sources:** exclude missing indexers from check summary (#217) ([2ce134e](https://github.com/torsher-app/torsher/commit/2ce134eeb3917cafc97e5943d10e152615cb967f))
+- **web:** keep folder dialog actions visible (#215) ([3860692](https://github.com/torsher-app/torsher/commit/386069297640a79093a3c5a00fe337d77376b730))
+- **release-parser:** exclude audio scores from video sources (#214) ([8513eb9](https://github.com/torsher-app/torsher/commit/8513eb93d7441b5af43e6ce9a1b02aa2813269b9))
+- **web:** refresh open follow search details (#213) ([6c9c3a7](https://github.com/torsher-app/torsher/commit/6c9c3a75a2438b95ba1c46549f0931f0d1e55d94))
+- **tracker:** prevent phantom episodes in completed and older seasons (#212) ([518271a](https://github.com/torsher-app/torsher/commit/518271a2ea267f4e3bce4e25c6cd6df9262e0690))
+- **progress:** resume imported watch positions without source references (#211) ([76d29ef](https://github.com/torsher-app/torsher/commit/76d29ef4375af2a4ac71710a1cf0f3ea7b91be2c))
+- **library:** retry pending file recognition after scans (#210) ([24e03be](https://github.com/torsher-app/torsher/commit/24e03be92c5d034fd187834f110fc937ccd8cf8d))
+- **home:** preserve personal rows without TMDB (#209) ([65932d5](https://github.com/torsher-app/torsher/commit/65932d521099750e8040e7ba53b7506131cb5e1a))
+- **playback:** keep playback statistics current across restarts (#205) ([924fa00](https://github.com/torsher-app/torsher/commit/924fa006faa4159f3c3e594dd8ec8c2a228687e8))
+- **tv:** restore single timer buffer indicator (#204) ([3f9314e](https://github.com/torsher-app/torsher/commit/3f9314e6e1eaefa5f98072a33c1d7d8d900bc07e))
+- **tv:** restore screensaver protection after interruptions (#203) ([a01777d](https://github.com/torsher-app/torsher/commit/a01777da7c80921ddfc3524667c3f48e2b4f9d3c))
+
+### Other
+
+- **tv:** cover focus after removing a Mine card (#240) ([44ae295](https://github.com/torsher-app/torsher/commit/44ae2950659849fc00737cafef41b81ecb866948))
+- **tv:** cover cached mine refresh after playback (#234) ([75b7d2f](https://github.com/torsher-app/torsher/commit/75b7d2f4f7ce02ad402ecf04a24c574cea8daefc))
+- **tv:** cover personal rating after profile selection (#226) ([543b140](https://github.com/torsher-app/torsher/commit/543b14089f225dedf8292e7fd1dbd7b0bd86bb68))
+
 ## 1.8.0 (2026-11-14)
 
 ### Features
