@@ -1,3 +1,4 @@
+import { runSubtitleJobs } from './services/subtitles/automation.ts'
 import {
   startResourceMonitor,
   stopResourceMonitor,
@@ -326,6 +327,10 @@ function checkStorage() {
     .catch(err => logFor('storage').error({ err }, 'Storage check failed'))
     .finally(() => {
       void syncLibrary()
+        .then(() => runSubtitleJobs())
+        .catch(() =>
+          logFor('storage').warn('Subtitle automation check failed'),
+        )
       liveTorrents()
         .then(enforceSeeding)
         .catch(err =>

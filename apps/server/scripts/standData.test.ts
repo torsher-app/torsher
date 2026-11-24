@@ -52,6 +52,39 @@ beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'torsher-stand-test-'))
 })
 
+it('clears subtitle credentials, queued jobs and library bindings on the stand copy', async () => {
+  const source = dataAt(join(root, 'source'))
+  const stand = dataAt(join(root, 'stand'))
+  mkdirSync(source.dataDir, { recursive: true })
+  const db = createSourceDb(source.databasePath)
+  const tables = ['subtitle_jobs', 'subtitle_offsets', 'downloaded_subtitles']
+  for (const table of tables) {
+    db.exec(`CREATE TABLE ${table} (id TEXT PRIMARY KEY)`)
+    db.prepare(`INSERT INTO ${table} VALUES (?)`).run('synthetic')
+  }
+  db.prepare('INSERT INTO server_settings VALUES (?,?,0)').run(
+    'subtitles.providers',
+    '{"encrypted":"synthetic"}',
+  )
+  db.close()
+
+  await copyData(source, stand, false)
+  sanitizeDb(stand.databasePath, source, stand, 'stand')
+  const copy = new Database(stand.databasePath, { readonly: true })
+  try {
+    for (const table of tables)
+      expect(copy.prepare(`SELECT * FROM ${table}`).all()).toEqual([])
+    expect(
+      copy
+        .prepare('SELECT * FROM server_settings WHERE key LIKE \'subtitles.%\'')
+        .all(),
+    ).toEqual([])
+  }
+  finally {
+    copy.close()
+  }
+})
+
 afterEach(() => {
   rmSync(root, { recursive: true, force: true })
 })

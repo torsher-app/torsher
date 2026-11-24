@@ -3,11 +3,17 @@ import type {
   CreatePlaybackInput,
   HomeVideoList,
   HomeVideoSection,
+  MediaSubtitleTrack,
   MessageResponse,
   Playback,
   PlaybackErrorInput,
   PlaybackTitleInput,
+  SubtitleApplyInputInput,
   SubtitleCues,
+  SubtitleOffset,
+  SubtitleOffsetInput,
+  SubtitleSearchInputInput,
+  SubtitleSearchResponse,
   TorrentStats,
   UpdatePlaybackPreferencesInput,
   UpdateWatchStateInput,
@@ -103,7 +109,68 @@ function targetOf(source: Source, title?: PlaybackTitleInput) {
  */
 const FOOTAGE_AT = 312
 
-const sessions = new Map<string, Playback>()
+type SubtitleLanguage = SubtitleSearchInputInput['language']
+const sessions = new Map<
+  string,
+  {
+    playback: Playback
+    profileId: string
+    subtitleKey: string
+    subtitleLanguage?: SubtitleLanguage
+  }
+>()
+const subtitleId = 'f0'
+const downloadId = 'm00000000-0000-4000-8000-000000000001'
+const resultId = '00000000-0000-4000-8000-000000000002'
+const downloads = new Map<string, SubtitleLanguage>()
+const subtitleOffsets = new Map<string, number>()
+const subtitleCues = [
+  {
+    start: FOOTAGE_AT,
+    end: FOOTAGE_AT + 6,
+    text: 'The road leads back to the village.',
+  },
+  {
+    start: FOOTAGE_AT + 10,
+    end: FOOTAGE_AT + 17,
+    text: 'We should be there by morning.',
+  },
+]
+const russianCues = [
+  {
+    start: FOOTAGE_AT,
+    end: FOOTAGE_AT + 6,
+    text: 'Эта дорога ведёт обратно в деревню.',
+  },
+  {
+    start: FOOTAGE_AT + 10,
+    end: FOOTAGE_AT + 17,
+    text: 'К утру будем на месте.',
+  },
+]
+
+function subtitleOffsetKey(source: string, id: string) {
+  return JSON.stringify([source, id])
+}
+
+function subtitleTrack(
+  source: string,
+  id: string,
+  language: SubtitleLanguage,
+): MediaSubtitleTrack {
+  return {
+    id,
+    language,
+    title: null,
+    codec: 'srt',
+    external: true,
+    forced: false,
+    default: false,
+    burnIn: false,
+    downloaded: id === downloadId,
+    offsetMs: subtitleOffsets.get(subtitleOffsetKey(source, id)) ?? 0,
+  }
+}
 const attempts = new Map<string, ViewingAttempt>()
 const receipt = new Map<string, { attempt: ViewingAttempt, command: string }>()
 const bindings = new Map<
@@ -283,6 +350,14 @@ post<Playback, CreatePlaybackInput>('/api/playback', ({ body }) => {
 
   const binding = bindings.get(sessionId)
   const cursor = binding?.cycleId ? cyclePositions.get(key) : undefined
+  const subtitleKey = JSON.stringify([profileId, sourceKey(body)])
+  const downloaded = downloads.get(subtitleKey)
+  const subtitles
+    = film.title.title === 'Big Buck Bunny'
+      ? [subtitleTrack(subtitleKey, subtitleId, 'en')]
+      : []
+  if (downloaded)
+    subtitles.push(subtitleTrack(subtitleKey, downloadId, downloaded))
   const playback: Playback = {
     sessionId,
     viewing: binding && demoViewing(binding),
@@ -311,42 +386,52 @@ post<Playback, CreatePlaybackInput>('/api/playback', ({ body }) => {
           voiceType: null,
         },
       ],
-      subtitles: [],
+      subtitles,
     },
     audioStream: 1,
-    subtitle: null,
+    subtitle: subtitles.some(track => track.id === body.subtitle)
+      ? body.subtitle!
+      : null,
+    subtitleSearch: {
+      providers: ['opensubtitles'],
+      languages: ['en', 'ru'],
+      defaultLanguage: currentProfile().language === 'en_US' ? 'en' : 'ru',
+      canRemove: true,
+    },
     audioSwitch: 'platform',
     reasons: [],
     transcode: null,
   }
 
-  sessions.set(playback.sessionId, playback)
+  sessions.set(playback.sessionId, { playback, profileId, subtitleKey })
   return playback
 })
 
 get<Playback>('/api/playback/:id', ({ params }) => {
-  const playback = sessions.get(params.id!)
+  const { playback } = playbackSession(params.id!)
   const binding = bindings.get(params.id!)
-
-  if (!playback || (binding && binding.profileId !== currentProfile().id))
-    throw new DemoError(404, { message: 'Playback not found' })
 
   return binding ? { ...playback, viewing: demoViewing(binding) } : playback
 })
 
-// Demo media has one audio track and no subtitles. Validate explicit choices.
+function playbackSession(id: string) {
+  const session = sessions.get(id)
+  if (!session || session.profileId !== currentProfile().id)
+    throw new DemoError(404, { message: 'Playback not found' })
+  return session
+}
+
 put<MessageResponse, UpdatePlaybackPreferencesInput>(
   '/api/playback/:id/preferences',
   ({ params, body }) => {
-    const session = sessions.get(params.id!)
-    if (!session)
-      throw new DemoError(404, { message: 'Playback not found' })
+    const { playback } = playbackSession(params.id!)
     if (
       (body.audioStream !== undefined
-        && !session.media?.audio.some(
+        && !playback.media?.audio.some(
           track => track.index === body.audioStream,
         ))
-        || body.subtitle
+        || (body.subtitle
+          && !playback.media?.subtitles.some(track => track.id === body.subtitle))
     ) {
       throw new DemoError(400, { message: 'Track not found' })
     }
@@ -365,10 +450,98 @@ post<MessageResponse, PlaybackErrorInput>(
   () => NO_CONTENT,
 )
 
-get<SubtitleCues>('/api/playback/:id/subtitles/:trackId', () => ({
-  cues: [],
-  done: true,
-}))
+get<SubtitleCues>(
+  '/api/playback/:id/subtitles/:trackId',
+  ({ params, query }) => {
+    const { playback } = playbackSession(params.id!)
+    const track = playback.media?.subtitles.find(
+      item => item.id === params.trackId,
+    )
+    if (!track)
+      throw new DemoError(404, { message: 'Subtitle track not found' })
+    const from = Number(query.get('from') ?? 0)
+    const cues = track.language === 'ru' ? russianCues : subtitleCues
+    return { cues: cues.filter(cue => cue.end > from), done: true }
+  },
+)
+
+post<SubtitleSearchResponse, SubtitleSearchInputInput>(
+  '/api/playback/:id/subtitles/search',
+  ({ params, body }) => {
+    const session = playbackSession(params.id!)
+    if (!session.playback.subtitleSearch?.languages.includes(body.language))
+      throw new DemoError(400, { message: 'Unsupported subtitle language' })
+    session.subtitleLanguage = body.language
+    return {
+      items: [
+        {
+          id: resultId,
+          provider: 'opensubtitles',
+          language: body.language,
+          release: session.playback.fileName,
+          match: 'release',
+        },
+      ],
+      issues: [],
+    }
+  },
+)
+
+post<MediaSubtitleTrack, SubtitleApplyInputInput>(
+  '/api/playback/:id/subtitles/apply',
+  ({ params, body }) => {
+    const { playback, subtitleKey, subtitleLanguage } = playbackSession(
+      params.id!,
+    )
+    if (body.resultId !== resultId || !subtitleLanguage || !playback.media)
+      throw new DemoError(404, { message: 'Subtitle result not found' })
+    downloads.set(subtitleKey, subtitleLanguage)
+    const track = subtitleTrack(subtitleKey, downloadId, subtitleLanguage)
+    playback.media.subtitles = [
+      ...playback.media.subtitles.filter(item => item.id !== downloadId),
+      track,
+    ]
+    return track
+  },
+)
+
+del<MessageResponse>('/api/playback/:id/subtitles/:trackId', ({ params }) => {
+  const { playback, subtitleKey } = playbackSession(params.id!)
+  if (
+    params.trackId !== downloadId
+    || !playback.media?.subtitles.some(item => item.id === downloadId)
+  ) {
+    throw new DemoError(404, { message: 'Subtitle track not found' })
+  }
+  downloads.delete(subtitleKey)
+  subtitleOffsets.delete(subtitleOffsetKey(subtitleKey, downloadId))
+  playback.media.subtitles = playback.media.subtitles.filter(
+    item => item.id !== downloadId,
+  )
+  if (playback.subtitle === downloadId)
+    playback.subtitle = null
+  return NO_CONTENT
+})
+
+put<SubtitleOffset, SubtitleOffsetInput>(
+  '/api/playback/:id/subtitles/:trackId/offset',
+  ({ params, body }) => {
+    const { playback, subtitleKey } = playbackSession(params.id!)
+    const track = playback.media?.subtitles.find(
+      track => track.id === params.trackId,
+    )
+    if (!track)
+      throw new DemoError(404, { message: 'Subtitle track not found' })
+    if (!Number.isInteger(body.offsetMs) || Math.abs(body.offsetMs) > 30_000)
+      throw new DemoError(400, { message: 'Invalid subtitle offset' })
+    subtitleOffsets.set(
+      subtitleOffsetKey(subtitleKey, track.id),
+      body.offsetMs,
+    )
+    track.offsetMs = body.offsetMs
+    return { offsetMs: body.offsetMs }
+  },
+)
 
 put<WatchState, UpdateWatchStateInput>('/api/watch-state', ({ body }) => {
   const profileId = assertViewer(body.profileId)

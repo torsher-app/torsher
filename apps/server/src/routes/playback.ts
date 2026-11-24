@@ -1,3 +1,17 @@
+import { z } from 'zod'
+import {
+  subtitleApplyInput,
+  subtitleSearchInput,
+  subtitleSearchResponse,
+} from '../dto/subtitles.ts'
+import {
+  applyPlaybackSubtitle,
+  downloadedSubtitleView,
+  removePlaybackSubtitle,
+  searchPlaybackSubtitles,
+  SubtitlePlaybackError,
+  subtitleSearchContextOf,
+} from '../services/subtitles/playback.ts'
 import { preparePlayedSource } from '../services/sources/playedSource.ts'
 import { acceptWatchEvent } from '../services/watchEvents.ts'
 import { and, eq } from 'drizzle-orm'
@@ -25,7 +39,17 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import type { PlaybackSession } from '../services/media/index.ts'
 import type { CycleSource, MediaFile, Torrent } from '../db/schema.ts'
 import type { SessionInput } from '../services/media/sessions.ts'
-import { validatedCheckpoint } from '../services/media/sessions.ts'
+import {
+  currentSubtitleKey,
+  currentSubtitleSource,
+  validatedCheckpoint,
+} from '../services/media/sessions.ts'
+import {
+  availableDownloadedSubtitles,
+  downloadedSubtitleId,
+  saveSubtitleOffset,
+  subtitleOffsetsOf,
+} from '../services/media/downloadedSubtitles.ts'
 import {
   libraryProbeKey,
   libraryRevisionMatches,
@@ -57,14 +81,17 @@ import {
   playbackParams,
   playbackStartConflict,
   subtitleCues,
+  subtitleOffset,
   subtitleParams,
   subtitleQuery,
+  subtitleTrack,
   updatePlaybackPreferences,
   updateWatchState,
   watchState,
 } from '../dto/playback.ts'
 import { engineUnavailableResponse } from '../dto/torrents.ts'
 import {
+  requireSameOrigin,
   requireViewer,
   streamSubjectOf,
   viewerStillOnProfile,
@@ -194,14 +221,45 @@ interface Resume {
 
 const sessionViewings = new WeakSet<PlaybackSession>()
 
-function toPlaybackResponse(
+async function toPlaybackResponse(
   session: PlaybackSession,
   request: FastifyRequest,
   resume: Resume,
 ) {
+  const { profileId } = request
+  let downloaded = session.downloadedSubtitles
+  if (downloaded.length) {
+    const present = await availableDownloadedSubtitles(downloaded)
+    const revision = await currentSubtitleSource(session)
+    if (
+      getSession(session.id, streamSubjectOf(request)) !== session
+      || !viewerStillOnProfile(request, profileId)
+      || !playbackSessionAccessible(session, profileId)
+    ) {
+      return undefined
+    }
+
+    downloaded = revision ? present : []
+  }
+  const selected
+    = session.subtitle?.startsWith('m')
+      && !downloaded.some(
+        track => downloadedSubtitleId(track) === session.subtitle,
+      )
+      ? null
+      : session.subtitle
   const ready = session.status === 'ready'
   const { media, decision } = session
   const token = streamTokenOf(request)
+  const revision = session.playedEvidence?.probeKey
+  const offsets
+    = media && revision && session.subtitleKeys.size
+      ? subtitleOffsetsOf(request.profileId, revision)
+      : undefined
+  const subtitleOffsetMs = (id: string) => {
+    const key = session.subtitleKeys.get(id)
+    return key && offsets ? (offsets.get(key) ?? 0) : undefined
+  }
 
   return {
     sessionId: session.id,
@@ -252,6 +310,7 @@ function toPlaybackResponse(
             forced: track.forced,
             default: track.default,
             burnIn: track.image,
+            offsetMs: subtitleOffsetMs(`s${track.index}`),
           })),
         ...session.external.map(track => ({
           id: `f${track.fileIndex}`,
@@ -262,12 +321,25 @@ function toPlaybackResponse(
           forced: track.forced,
           default: false,
           burnIn: false,
+          offsetMs: subtitleOffsetMs(`f${track.fileIndex}`),
         })),
+        ...downloaded.map(track =>
+          downloadedSubtitleView(
+            track,
+            subtitleOffsetMs(downloadedSubtitleId(track)) ?? 0,
+          ),
+        ),
       ],
     },
     preferenceMismatch: session.preferenceMismatch,
     audioStream: session.audioStream,
-    subtitle: session.subtitle,
+    subtitle: selected,
+    subtitleSearch: subtitleSearchContextOf(
+      session,
+      !!request.userId && !request.deviceId,
+      profileId,
+      downloaded,
+    ),
     audioSwitch: decision.audioSwitch,
     reasons: decision.reasons,
     transcode:
@@ -312,6 +384,35 @@ function playbackSessionAccessible(
         )))
   )
 }
+const subtitleActionErrors = {
+  ...guardResponses,
+  403: messageResponse,
+  404: messageResponse,
+  409: messageResponse,
+  429: messageResponse,
+  502: messageResponse,
+}
+
+function subtitleActionContext(request: FastifyRequest, id: string) {
+  const subject = streamSubjectOf(request)
+  const { profileId } = request
+  const session = getSession(id, subject)
+  if (!session || !playbackSessionAccessible(session, profileId))
+    return undefined
+
+  return {
+    session,
+    viewer: {
+      owner: !!request.userId && !request.deviceId,
+      profileId,
+      current: () =>
+        getSession(id, subject) === session
+        && viewerStillOnProfile(request, profileId)
+        && playbackSessionAccessible(session, profileId),
+    },
+  }
+}
+
 function sessionViewingResponse(id: string) {
   const attempt = liveViewingAttempt(id)
   return (
@@ -790,6 +891,7 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
           episode: title?.episode,
         },
         subject: streamSubjectOf(request)!,
+        owner: !!request.userId && !request.deviceId,
         progressRef: preferenceOwner,
         launchSelection:
           !cycleId
@@ -961,7 +1063,12 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
             // Проба не удалась — запоминать нечего, ошибку покажет сама сессия
           })
       }
-      return toPlaybackResponse(session, request, resume)
+      const response = await toPlaybackResponse(session, request, resume)
+      if (!response) {
+        await stopSession(session.id, 'client', diagnosticContext(request))
+        return reply.code(404).send({ message: 'Playback not found' })
+      }
+      return response
     },
   )
 
@@ -1015,8 +1122,20 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
               `s${item.index}` === subtitle && (item.text || item.image),
           )
           ?? session.external.find(item => `f${item.fileIndex}` === subtitle)
+          ?? session.downloadedSubtitles.find(
+            item => downloadedSubtitleId(item) === subtitle,
+          )
         if (subtitle !== null && !track)
           return reply.code(400).send({ message: 'Subtitle track not found' })
+        if (
+          subtitle?.startsWith('m')
+          && (!(await currentSubtitleKey(session, subtitle))
+            || !viewerStillOnProfile(request, owner.profileId)
+            || !playbackSessionAccessible(session, owner.profileId)
+            || getSession(session.id, streamSubjectOf(request)) !== session)
+        ) {
+          return reply.code(404).send({ message: 'Playback not found' })
+        }
         change.subtitles = {
           enabled: subtitle !== null,
           language: trackLanguage(track?.language ?? null),
@@ -1105,10 +1224,13 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
       if (session.torrent)
         touchTorrent(session.torrent.id)
 
-      return toPlaybackResponse(
+      const response = await toPlaybackResponse(
         session,
         request,
         resumes.get(session) ?? { duration: null, startPosition: null },
+      )
+      return (
+        response ?? reply.code(404).send({ message: 'Playback not found' })
       )
     },
   )
@@ -1180,6 +1302,139 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
     },
   )
 
+  app.post(
+    '/playback/:id/subtitles/search',
+    {
+      onRequest: requireSameOrigin,
+      schema: {
+        operationId: 'postPlaybackSubtitleSearch',
+        tags: ['Playback'],
+        params: playbackParams,
+        body: subtitleSearchInput,
+        response: { 200: subtitleSearchResponse, ...subtitleActionErrors },
+      },
+    },
+    async (request, reply) => {
+      const context = subtitleActionContext(request, request.params.id)
+      if (!context)
+        return reply.code(404).send({ message: 'Playback not found' })
+      try {
+        return await searchPlaybackSubtitles(
+          context.session,
+          context.viewer,
+          request.body.language,
+        )
+      }
+      catch (error) {
+        if (!(error instanceof SubtitlePlaybackError))
+          throw error
+        return reply.code(error.status).send({ message: error.message })
+      }
+    },
+  )
+
+  app.post(
+    '/playback/:id/subtitles/apply',
+    {
+      onRequest: requireSameOrigin,
+      schema: {
+        operationId: 'postPlaybackSubtitleApply',
+        tags: ['Playback'],
+        params: playbackParams,
+        body: subtitleApplyInput,
+        response: { 200: subtitleTrack, ...subtitleActionErrors },
+      },
+    },
+    async (request, reply) => {
+      const context = subtitleActionContext(request, request.params.id)
+      if (!context)
+        return reply.code(404).send({ message: 'Playback not found' })
+      try {
+        return await applyPlaybackSubtitle(
+          context.session,
+          context.viewer,
+          request.body.resultId,
+        )
+      }
+      catch (error) {
+        if (!(error instanceof SubtitlePlaybackError))
+          throw error
+        return reply.code(error.status).send({ message: error.message })
+      }
+    },
+  )
+
+  app.delete(
+    '/playback/:id/subtitles/:trackId',
+    {
+      onRequest: requireSameOrigin,
+      schema: {
+        operationId: 'deletePlaybackSubtitle',
+        tags: ['Playback'],
+        params: subtitleParams,
+        response: { 204: z.void(), ...subtitleActionErrors },
+      },
+    },
+    async (request, reply) => {
+      const context = subtitleActionContext(request, request.params.id)
+      if (!context || !context.viewer.owner)
+        return reply.code(404).send({ message: 'Playback not found' })
+      try {
+        await removePlaybackSubtitle(
+          context.session,
+          context.viewer,
+          request.params.trackId,
+        )
+        return reply.code(204).send()
+      }
+      catch (error) {
+        if (!(error instanceof SubtitlePlaybackError))
+          throw error
+        return reply.code(error.status).send({ message: error.message })
+      }
+    },
+  )
+
+  app.put(
+    '/playback/:id/subtitles/:trackId/offset',
+    {
+      onRequest: requireSameOrigin,
+      schema: {
+        operationId: 'putPlaybackSubtitleOffset',
+        tags: ['Playback'],
+        params: subtitleParams,
+        body: subtitleOffset,
+        response: {
+          200: subtitleOffset,
+          403: messageResponse,
+          404: messageResponse,
+          ...guardResponses,
+        },
+      },
+    },
+    async (request, reply) => {
+      const subject = streamSubjectOf(request)
+      const { profileId } = request
+      const session = getSession(request.params.id, subject)
+      if (!session || !playbackSessionAccessible(session, profileId))
+        return reply.code(404).send({ message: 'Playback not found' })
+
+      const target = await currentSubtitleKey(session, request.params.trackId)
+      if (
+        !target
+        || getSession(session.id, subject) !== session
+        || !viewerStillOnProfile(request, profileId)
+        || !playbackSessionAccessible(session, profileId)
+      ) {
+        return reply.code(404).send({ message: 'Subtitle track not found' })
+      }
+
+      const { offsetMs } = request.body
+      saveSubtitleOffset(profileId, target.revision, target.key, offsetMs)
+      return { offsetMs }
+    },
+  )
+
   app.get(
     '/playback/:id/subtitles/:trackId',
     {
@@ -1197,9 +1452,18 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
       },
     },
     async (request, reply) => {
-      const session = getSession(request.params.id, streamSubjectOf(request))
+      const subject = streamSubjectOf(request)
+      const { profileId } = request
+      const session = getSession(request.params.id, subject)
+      if (!session || !sessionAccessible(session, profileId))
+        return reply.code(404).send({ message: 'Playback not found' })
 
-      if (!session || !sessionAccessible(session, request.profileId))
+      const managed = request.params.trackId.startsWith('m')
+      const current = () =>
+        getSession(session.id, subject) === session
+        && viewerStillOnProfile(request, profileId)
+        && playbackSessionAccessible(session, profileId)
+      if (managed && (!(await currentSubtitleSource(session)) || !current()))
         return reply.code(404).send({ message: 'Playback not found' })
 
       let result
@@ -1212,11 +1476,17 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
         )
       }
       catch (err) {
+        if (managed && !current())
+          return reply.code(404).send({ message: 'Playback not found' })
+
         session.log.warn(
           `playback ${session.id}: subtitles ${request.params.trackId}: ${(err as Error).message}`,
         )
         return reply.code(502).send({ message: 'Subtitles are not available' })
       }
+
+      if (managed && (!(await currentSubtitleSource(session)) || !current()))
+        return reply.code(404).send({ message: 'Playback not found' })
 
       if (!result)
         return reply.code(404).send({ message: 'Subtitle track not found' })

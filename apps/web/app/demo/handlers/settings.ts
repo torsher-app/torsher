@@ -8,6 +8,8 @@ import type {
   MetadataSettings,
   PlaybackSettings,
   SourceSettings,
+  SubtitleProviderStatus,
+  SubtitleSettings,
   ThumbnailSettings,
   TorrentSettings,
   TorrentSettingValues,
@@ -16,6 +18,7 @@ import type {
   UpdatePlaybackSettingsInput,
   UpdateSourcePresetInput,
   UpdateSourceSettingsInput,
+  UpdateSubtitleSettingsInput,
   UpdateThumbnailSettingsInput,
   UpdateTorrentSettingsInput,
 } from '@torsher/api-client'
@@ -204,6 +207,72 @@ post<PlaybackSettings>('/api/settings/playback/check', async () => {
 
   return playbackSettings()
 })
+
+const subtitleSettings: SubtitleSettings = {
+  languages: ['en', 'ru', 'uk', 'es', 'fr', 'de', 'pt-br', 'pt-pt'],
+  openSubtitles: {
+    configured: false,
+    deviceSearch: false,
+    autoDownload: false,
+    languages: [],
+  },
+  subdl: { configured: false },
+}
+
+get<SubtitleSettings>('/api/settings/subtitles', () => subtitleSettings)
+
+put<SubtitleSettings, UpdateSubtitleSettingsInput>(
+  '/api/settings/subtitles',
+  ({ body }) => {
+    if (body.openSubtitles) {
+      const {
+        apiKey,
+        username,
+        password,
+        disconnect,
+        autoDownload,
+        deviceSearch,
+        languages,
+      } = body.openSubtitles
+      const settings = subtitleSettings.openSubtitles
+      if (disconnect) {
+        subtitleSettings.openSubtitles = {
+          configured: false,
+          deviceSearch: false,
+          autoDownload: false,
+          languages: [],
+        }
+      }
+      else {
+        settings.configured ||= !!(apiKey && username && password)
+        settings.deviceSearch = deviceSearch ?? settings.deviceSearch
+        settings.autoDownload = autoDownload ?? settings.autoDownload
+        settings.languages = languages ?? settings.languages
+        if (apiKey || username || password)
+          settings.connection = undefined
+      }
+    }
+    if (body.subdl?.disconnect)
+      subtitleSettings.subdl = { configured: false }
+    else if (body.subdl?.apiKey)
+      subtitleSettings.subdl = { configured: true }
+    return subtitleSettings
+  },
+)
+
+post<SubtitleProviderStatus>(
+  '/api/settings/subtitles/:provider/test',
+  ({ params }) => {
+    const settings
+      = params.provider === 'subdl'
+        ? subtitleSettings.subdl
+        : subtitleSettings.openSubtitles
+    settings.connection = settings.configured
+      ? { kind: 'ready', remainingDownloads: 12 }
+      : { kind: 'auth' }
+    return settings.connection
+  },
+)
 
 // --- Торрент ---
 

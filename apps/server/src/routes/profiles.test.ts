@@ -309,6 +309,8 @@ describe('настройки плеера', () => {
       autoNext: true,
       subtitleSize: 'm',
       subtitleBackground: 'box',
+      subtitlePosition: 'default',
+      subtitleColor: 'default',
     })
   })
 
@@ -319,13 +321,19 @@ describe('настройки плеера', () => {
     await select(tv, viewer.id)
 
     const first = await putPlayer(tv, { autoNext: false })
-    const second = await putPlayer(tv, { subtitleSize: 'l' })
+    const second = await putPlayer(tv, {
+      subtitleSize: 'l',
+      subtitlePosition: 'higher',
+      subtitleColor: 'dimmed',
+    })
 
     expect(first.statusCode).toBe(200)
     expect(second.json()).toEqual({
       autoNext: false,
       subtitleSize: 'l',
       subtitleBackground: 'box',
+      subtitlePosition: 'higher',
+      subtitleColor: 'dimmed',
     })
 
     const { items } = (

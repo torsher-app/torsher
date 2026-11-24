@@ -18,7 +18,7 @@ import {
   libraryProbeKey,
   libraryRevisionMatches,
 } from '../library/playedSource.ts'
-import type { Torrent } from '../../db/schema.ts'
+import type { DownloadedSubtitle, Torrent } from '../../db/schema.ts'
 import type {
   AudioPreference,
   DeviceProfile,
@@ -64,6 +64,14 @@ import {
   loadSubtitleFile,
 } from './subtitles.ts'
 import { mediaTools } from './tools.ts'
+import {
+  downloadedSubtitleId,
+  downloadedSubtitleRevision,
+  downloadedSubtitlesOf,
+  loadDownloadedSubtitle,
+  ownedManagedSubtitleNames,
+  touchDownloadedSubtitle,
+} from './downloadedSubtitles.ts'
 
 /** Файл библиотеки: играется с диска, без движка */
 export interface LibrarySource {
@@ -92,6 +100,8 @@ export interface PlaybackSession {
   skipSegments?: SkipSegment[]
   media: MediaInfo | null
   external: ExternalSubtitle[]
+  downloadedSubtitles: DownloadedSubtitle[]
+  subtitleKeys: Map<string, string>
   audioStream: number | null
   subtitle: string | null
   preferenceMismatch?: ('audio' | 'subtitles')[]
@@ -116,6 +126,7 @@ export interface SessionLog extends HlsLog {
 export interface SessionInput {
   diagnosticContext?: DiagnosticContext
   subject: string
+  owner?: boolean
   progressRef?: TitleRef
   launchSelection?: LaunchSelection
   torrent?: Torrent
@@ -392,7 +403,10 @@ async function prepare(
   if (library) {
     const names = await readdir(dirname(library.path)).catch(() => [])
 
-    session.external = librarySubtitles(basename(library.path), names)
+    const owned = ownedManagedSubtitleNames(library.id)
+    session.external = librarySubtitles(basename(library.path), names).filter(
+      track => !owned.has(track.path),
+    )
   }
   else if (torrent) {
     session.external = findExternalSubtitles(torrent.files ?? [], fileIndex)
@@ -453,6 +467,32 @@ async function prepare(
     return
 
   const media = session.media
+  session.downloadedSubtitles = await downloadedSubtitlesOf(
+    probeKey,
+    input.owner === true,
+  )
+  for (const track of media.subtitles) {
+    if (track.text && !track.image) {
+      const id = `s${track.index}`
+      session.subtitleKeys.set(id, id)
+    }
+  }
+  const externalKeys = await Promise.all(
+    session.external.map(async (track) => {
+      const id = `f${track.fileIndex}`
+      return [id, await externalSubtitleKey(session, track)] as const
+    }),
+  )
+  if (!isOpen(session))
+    return
+  for (const [id, key] of externalKeys) {
+    if (key)
+      session.subtitleKeys.set(id, key)
+  }
+  for (const track of session.downloadedSubtitles) {
+    const id = downloadedSubtitleId(track)
+    session.subtitleKeys.set(id, id)
+  }
 
   if (torrent && media.video?.width && media.video.height)
     rememberVideoSize(torrent, media.video.width, media.video.height)
@@ -467,7 +507,12 @@ async function prepare(
   const subtitle
     = input.subtitle !== undefined
       ? input.subtitle
-      : preferredSubtitle(media, session.external, input.subtitlePreference)
+      : preferredSubtitle(
+          media,
+          session.external,
+          input.subtitlePreference,
+          session.downloadedSubtitles,
+        )
   session.preferenceMismatch = []
   if (
     input.audioStream === undefined
@@ -507,9 +552,11 @@ async function prepare(
   const burned = media.subtitles.find(
     track => track.image && `s${track.index}` === subtitle,
   )
-  const external = session.external.find(
-    track => `f${track.fileIndex}` === subtitle,
-  )
+  const external
+    = session.external.some(track => `f${track.fileIndex}` === subtitle)
+      || session.downloadedSubtitles.some(
+        track => downloadedSubtitleId(track) === subtitle,
+      )
 
   session.subtitle = embedded || burned || external ? subtitle! : null
 
@@ -810,6 +857,8 @@ export function createSession(input: SessionInput) {
     status: 'probing',
     media: null,
     external: [],
+    downloadedSubtitles: [],
+    subtitleKeys: new Map(),
     audioStream: null,
     subtitle: null,
     decision: DIRECT,
@@ -996,6 +1045,124 @@ export async function cleanTranscodes() {
   await rm(config.transcodesPath, { recursive: true, force: true })
 }
 
+async function externalSubtitleKey(
+  session: PlaybackSession,
+  track: ExternalSubtitle,
+) {
+  if (!session.library)
+    return `f${track.fileIndex}`
+
+  const info = await stat(
+    join(dirname(session.library.path), track.path),
+  ).catch(() => undefined)
+  if (!info?.isFile())
+    return undefined
+
+  return JSON.stringify([
+    track.path,
+    info.dev,
+    info.ino,
+    info.size,
+    info.mtimeMs,
+    info.ctimeMs,
+  ])
+}
+
+export function activeDownloadedSubtitleIds() {
+  return new Set(
+    [...sessions.values()].flatMap(session =>
+      session.downloadedSubtitles.map(track => track.id),
+    ),
+  )
+}
+
+export function attachDownloadedSubtitle(
+  session: PlaybackSession,
+  track: DownloadedSubtitle,
+) {
+  const id = downloadedSubtitleId(track)
+  session.downloadedSubtitles = [
+    ...session.downloadedSubtitles.filter(item => item.id !== track.id),
+    track,
+  ]
+  session.subtitleKeys.set(id, id)
+}
+
+export function detachDownloadedSubtitle(track: DownloadedSubtitle) {
+  const id = downloadedSubtitleId(track)
+  for (const session of sessions.values()) {
+    session.downloadedSubtitles = session.downloadedSubtitles.filter(
+      item => item.id !== track.id,
+    )
+    session.subtitleKeys.delete(id)
+    if (session.subtitle === id)
+      session.subtitle = null
+  }
+  for (const key of externalCues.keys()) {
+    if (key.startsWith(`${id}:`))
+      externalCues.delete(key)
+  }
+}
+
+export async function currentSubtitleSource(session: PlaybackSession) {
+  const revision = session.playedEvidence?.probeKey
+  if (!revision || !isOpen(session))
+    return undefined
+  if (
+    session.library
+    && !(await libraryRevisionMatches(
+      session.library.path,
+      session.library.id,
+      revision,
+    ))
+  ) {
+    return undefined
+  }
+  return isOpen(session) ? revision : undefined
+}
+
+export async function currentSubtitleKey(
+  session: PlaybackSession,
+  trackId: string,
+) {
+  const key = session.subtitleKeys.get(trackId)
+  if (session.status !== 'ready' || !key)
+    return undefined
+
+  const downloaded = session.downloadedSubtitles.find(
+    track => downloadedSubtitleId(track) === trackId,
+  )
+  if (downloaded && !(await downloadedSubtitleRevision(downloaded)))
+    return undefined
+
+  const sidecar = session.external.find(
+    track => `f${track.fileIndex}` === trackId,
+  )
+  if (sidecar && key !== (await externalSubtitleKey(session, sidecar)))
+    return undefined
+
+  const revision = await currentSubtitleSource(session)
+  return revision ? { revision, key } : undefined
+}
+
+function cachedExternalCues(key: string, load: () => Promise<Cue[]>) {
+  const cached = externalCues.get(key)
+  if (cached)
+    return cached
+
+  const pending = load()
+  externalCues.set(key, pending)
+  void pending.catch(() => {
+    if (externalCues.get(key) === pending)
+      externalCues.delete(key)
+  })
+
+  if (externalCues.size > EXTERNAL_CACHE_SIZE)
+    externalCues.delete(externalCues.keys().next().value!)
+
+  return pending
+}
+
 /**
  * Реплики дорожки субтитров. Внешний файл читается целиком один раз,
  * встроенные копит перепаковка по ходу просмотра.
@@ -1005,6 +1172,28 @@ export async function sessionCues(
   trackId: string,
   from = 0,
 ): Promise<{ cues: Cue[], done: boolean } | undefined> {
+  if (trackId.startsWith('m')) {
+    const track = session.downloadedSubtitles.find(
+      item => downloadedSubtitleId(item) === trackId,
+    )
+    if (!track)
+      return undefined
+
+    const revision = await downloadedSubtitleRevision(track)
+    if (!revision)
+      return undefined
+    const cues = await cachedExternalCues(`${trackId}:${revision}`, () =>
+      loadDownloadedSubtitle(track))
+    if (
+      revision !== (await downloadedSubtitleRevision(track))
+      || !session.downloadedSubtitles.includes(track)
+    ) {
+      return undefined
+    }
+    touchDownloadedSubtitle(track)
+    return { cues, done: true }
+  }
+
   const index = Number(trackId.slice(1))
 
   if (trackId.startsWith('f')) {
@@ -1016,27 +1205,30 @@ export async function sessionCues(
       return undefined
 
     const { library, torrent } = session
+    const revision = await externalSubtitleKey(session, subtitle)
+    const expected = session.subtitleKeys.get(trackId)
+    if (!revision || (expected && revision !== expected))
+      return undefined
     const key = library
-      ? `library:${library.id}:${subtitle.path}`
+      ? `library:${library.id}:${revision}`
       : `${torrent!.infoHash}:${index}`
-    let cues = externalCues.get(key)
-
-    if (!cues) {
-      cues = library
+    const cues = await cachedExternalCues(key, () =>
+      library
         ? loadSubtitleFile(join(dirname(library.path), subtitle.path), subtitle)
         : loadExternalSubtitle(
             engineStreamUrl(torrent!.infoHash, index),
             subtitle,
-          )
-      externalCues.set(key, cues)
-      cues.catch(() => externalCues.delete(key))
+          ))
 
-      // Файлы субтитров маленькие, но раздач много: держим последние
-      if (externalCues.size > EXTERNAL_CACHE_SIZE)
-        externalCues.delete(externalCues.keys().next().value!)
+    if (
+      library
+      && revision !== (await externalSubtitleKey(session, subtitle))
+    ) {
+      externalCues.delete(key)
+      return undefined
     }
 
-    return { cues: await cues, done: true }
+    return { cues, done: true }
   }
 
   const track = session.media?.subtitles.find(

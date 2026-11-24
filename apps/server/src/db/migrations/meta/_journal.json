@@ -400,6 +400,20 @@
       "when": 1795512426496,
       "tag": "0056_private-trackers-seeding-rules",
       "breakpoints": true
+    },
+    {
+      "idx": 57,
+      "version": "6",
+      "when": 1795525495750,
+      "tag": "0057_subtitle-library",
+      "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "6",
+      "when": 1795531649366,
+      "tag": "0058_subtitle-provider-jobs",
+      "breakpoints": true
     }
   ]
 }

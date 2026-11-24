@@ -16,6 +16,8 @@ import {
   rewatchCycleStates,
   seedCriteriaModes,
   subtitleBackgrounds,
+  subtitleColors,
+  subtitlePositions,
   subtitleSizes,
 } from '../../db/schema.ts'
 import { parseCatalogId } from '../tmdb/mappers.ts'
@@ -50,6 +52,8 @@ const exportProfile = z.object({
       autoNext: z.boolean(),
       subtitleSize: z.enum(subtitleSizes),
       subtitleBackground: z.enum(subtitleBackgrounds),
+      subtitlePosition: z.enum(subtitlePositions),
+      subtitleColor: z.enum(subtitleColors),
     })
     .partial()
     .nullable(),

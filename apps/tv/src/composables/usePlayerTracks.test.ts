@@ -4,7 +4,10 @@ import { expect, it, vi } from 'vitest'
 import { usePlayerTracks } from './usePlayerTracks.ts'
 
 vi.mock('vue-i18n', () => ({
-  useI18n: () => ({ t: (key: string) => key, te: () => false }),
+  useI18n: () => ({
+    t: (key: string) => key,
+    te: (key: string) => key === 'subtitleLanguages.pt-br',
+  }),
 }))
 vi.mock('./useSubtitles.ts', () => ({
   useSubtitles: () => ({ show: vi.fn(), hide: vi.fn() }),
@@ -21,18 +24,41 @@ function setup() {
     src: 'http://test.invalid/video',
     currentSrc: 'http://test.invalid/video',
   }
-  const current = {
+  const current: Playback = {
     sessionId: 'first',
+    status: 'ready',
     mode: 'direct',
+    streamUrl: element.src,
+    externalUrl: element.src,
+    title: 'Fixture',
+    fileName: 'fixture.mkv',
+    size: 1000,
+    duration: null,
+    startPosition: null,
     audioStream: 6,
     audioSwitch: 'restart',
+    subtitle: null,
+    reasons: [],
+    transcode: null,
     media: {
+      container: 'mkv',
+      video: null,
       audio: [
-        { index: 2, title: 'NewStudio', language: 'rus' },
-        { index: 6, title: 'LostFilm', language: 'rus' },
-      ],
+        { index: 2, title: 'NewStudio' },
+        { index: 6, title: 'LostFilm' },
+      ].map(track => ({
+        ...track,
+        language: 'rus',
+        codec: 'aac',
+        channels: 2,
+        bitrate: null,
+        default: track.index === 2,
+        studio: null,
+        voiceType: null,
+      })),
+      subtitles: [],
     },
-  } as Playback
+  }
   const playback = shallowRef(current)
   const video = shallowRef(element as unknown as HTMLVideoElement)
   const scope = effectScope()
@@ -41,6 +67,29 @@ function setup() {
   )!
   return { tracks, audio, element, playback, stop: () => scope.stop() }
 }
+
+it('labels a searched subtitle using the regional provider language', () => {
+  const { tracks, stop } = setup()
+  try {
+    tracks.setSubtitleTrack('found', {
+      id: 'found',
+      language: 'pt-BR',
+      title: null,
+      codec: 'srt',
+      external: true,
+      forced: false,
+      default: false,
+      burnIn: false,
+      downloaded: true,
+    })
+    expect(
+      tracks.subtitleOptions.value.find(track => track.id === 'found')?.label,
+    ).toBe('subtitleLanguages.pt-br')
+  }
+  finally {
+    stop()
+  }
+})
 
 it('reads the enabled stream after metadata and ignores the requested fallback stream', () => {
   const { tracks, audio, element, playback, stop } = setup()

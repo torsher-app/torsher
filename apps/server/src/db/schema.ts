@@ -113,6 +113,8 @@ const posterRatingSet = customType<{
 
 export const subtitleSizes = ['s', 'm', 'l'] as const
 export const subtitleBackgrounds = ['none', 'shadow', 'box'] as const
+export const subtitlePositions = ['default', 'higher'] as const
+export const subtitleColors = ['default', 'dimmed'] as const
 
 /** Настройки плеера профиля; чего нет в записи — умолчания сервиса профилей */
 export interface PlayerSettings {
@@ -120,6 +122,8 @@ export interface PlayerSettings {
   autoNext: boolean
   subtitleSize: (typeof subtitleSizes)[number]
   subtitleBackground: (typeof subtitleBackgrounds)[number]
+  subtitlePosition: (typeof subtitlePositions)[number]
+  subtitleColor: (typeof subtitleColors)[number]
 }
 
 // Профиль смотрящего: свой прогресс, язык витрины и ограничения. Профиль по
@@ -151,6 +155,27 @@ export const profiles = sqliteTable('profiles', {
 })
 
 export type Profile = typeof profiles.$inferSelect
+
+export const subtitleOffsets = sqliteTable(
+  'subtitle_offsets',
+  {
+    profileId: text('profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    sourceRevision: text('source_revision').notNull(),
+    trackKey: text('track_key').notNull(),
+    offsetMs: integer('offset_ms').notNull(),
+  },
+  table => [
+    primaryKey({
+      columns: [table.profileId, table.sourceRevision, table.trackKey],
+    }),
+    check(
+      'subtitle_offsets_range',
+      sql`${table.offsetMs} BETWEEN -30000 AND 30000`,
+    ),
+  ],
+)
 
 export const deviceTypes = ['tv', 'browser', 'other'] as const
 
@@ -1481,6 +1506,72 @@ export const mediaFiles = sqliteTable(
 )
 
 export type MediaFile = typeof mediaFiles.$inferSelect
+
+/** Привязки SRT под каталогом данных. Имя файла определяется только id. */
+export const downloadedSubtitles = sqliteTable(
+  'downloaded_subtitles',
+  {
+    id: text('id').primaryKey(),
+    sourceRevision: text('source_revision').notNull(),
+    language: text('language'),
+    title: text('title'),
+    forced: integer('forced', { mode: 'boolean' }).notNull(),
+    mediaFileId: text('media_file_id').references(() => mediaFiles.id, {
+      onDelete: 'cascade',
+    }),
+    provider: text('provider', { enum: ['opensubtitles', 'subdl'] }),
+    providerFile: text('provider_file'),
+    managedName: text('managed_name'),
+    hearingImpaired: integer('hearing_impaired', { mode: 'boolean' }),
+    lastUsedAt: integer('last_used_at', { mode: 'timestamp_ms' }),
+    ownerOnly: integer('owner_only', { mode: 'boolean' })
+      .notNull()
+      .default(false),
+    bytes: integer('bytes').notNull(),
+    sha256: text('sha256').notNull(),
+  },
+  table => [
+    index('downloaded_subtitles_media_idx').on(table.mediaFileId),
+    uniqueIndex('downloaded_subtitles_provider_idx').on(
+      table.sourceRevision,
+      table.provider,
+      table.providerFile,
+      table.ownerOnly,
+    ),
+    uniqueIndex('downloaded_subtitles_content_idx').on(
+      table.sourceRevision,
+      table.ownerOnly,
+      table.sha256,
+      table.language,
+      table.forced,
+    ),
+  ],
+)
+
+export type DownloadedSubtitle = typeof downloadedSubtitles.$inferSelect
+
+/** Новые файлы managed: задача создаётся при размещении видео, до probe. */
+export const subtitleJobs = sqliteTable(
+  'subtitle_jobs',
+  {
+    mediaFileId: text('media_file_id')
+      .notNull()
+      .references(() => mediaFiles.id, { onDelete: 'cascade' }),
+    sourceRevision: text('source_revision').notNull(),
+    language: text('language').notNull(),
+    nextAt: integer('next_at', { mode: 'timestamp_ms' }).notNull(),
+    attempts: integer('attempts').notNull().default(0),
+    state: text('state', { enum: ['queued', 'done', 'suppressed'] })
+      .notNull()
+      .default('queued'),
+  },
+  table => [
+    primaryKey({
+      columns: [table.mediaFileId, table.sourceRevision, table.language],
+    }),
+    index('subtitle_jobs_next_idx').on(table.state, table.nextAt),
+  ],
+)
 
 // `paused` — остановил владелец, правила и подписки остаются; `stopped` —
 // отписался последний профиль; `done` — фильм в библиотеке, ждать нечего

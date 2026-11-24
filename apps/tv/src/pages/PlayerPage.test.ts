@@ -21,6 +21,12 @@ const mocks = vi.hoisted(() => ({
   replace: vi.fn(),
   start: vi.fn(),
   saveTracks: vi.fn(),
+  saveSubtitleOffset: vi.fn(),
+  rememberSubtitleOffset: vi.fn(),
+  applySubtitle: vi.fn(),
+  readSubtitle: vi.fn(),
+  setSubtitleTrack: vi.fn(),
+  selectedSubtitle: undefined as string | undefined,
   selectAudio: vi.fn(),
   selectSubtitles: vi.fn(),
   play: vi.fn(),
@@ -44,7 +50,12 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../lib/navigation.ts', () => ({ goBack: mocks.goBack }))
 vi.mock('../api.ts', () => ({
   api: {
-    playback: { putPlaybackPreferences: mocks.saveTracks },
+    playback: {
+      putPlaybackPreferences: mocks.saveTracks,
+      putPlaybackSubtitleOffset: mocks.saveSubtitleOffset,
+      postPlaybackSubtitleApply: mocks.applySubtitle,
+      getPlaybackSubtitles: mocks.readSubtitle,
+    },
     titles: { getTitleProgress: mocks.progress, getTitleUpNext: mocks.upNext },
   },
 }))
@@ -166,12 +177,18 @@ vi.mock('../composables/usePlayerTracks.ts', () => ({
     mocks.restart = restart
     return {
       audioTrack: ref(undefined),
-      selection: () => ({}),
+      selection: () =>
+        mocks.selectedSubtitle ? { subtitle: mocks.selectedSubtitle } : {},
       refresh: vi.fn(),
       resetAppliedAudio: vi.fn(),
       appliedAudioStream: mocks.appliedAudioStream,
       selectAudio: mocks.selectAudio,
       selectSubtitles: mocks.selectSubtitles,
+      subtitleOffset: ref(
+        mocks.selectedSubtitle === undefined ? undefined : 100,
+      ),
+      rememberSubtitleOffset: mocks.rememberSubtitleOffset,
+      setSubtitleTrack: mocks.setSubtitleTrack,
     }
   },
 }))
@@ -211,6 +228,8 @@ interface Controls {
     choice: SourceChoice,
   ) => Promise<void>
   onTracksSelect: (id: string) => Promise<void>
+  onSubtitleOffset: (change: number | 'reset') => Promise<void>
+  applySubtitleResult: (id: string) => Promise<void>
   openPanel: (kind: 'audio' | 'subtitles' | 'source') => void
   closePanel: () => void
   onKey: (action: KeyAction, event: KeyboardEvent) => boolean
@@ -298,6 +317,10 @@ beforeEach(() => {
   })
   vi.stubGlobal('window', { setTimeout, clearTimeout })
   mocks.saveTracks.mockResolvedValue({ saved: true })
+  mocks.selectedSubtitle = undefined
+  mocks.saveSubtitleOffset.mockReset()
+  mocks.applySubtitle.mockReset()
+  mocks.readSubtitle.mockReset()
   mocks.save.mockResolvedValue(undefined)
   mocks.appliedAudioStream.mockReturnValue(null)
   mocks.capture.mockImplementation((_kind, appliedAudioStream) => ({
@@ -765,6 +788,77 @@ it('saves explicit subtitle Off before applying it', async () => {
   })
   expect(mocks.selectSubtitles).toHaveBeenCalledWith('off')
 })
+
+it('applies a confirmed timing change only to the open playback', async () => {
+  mocks.selectedSubtitle = 'f1'
+  let finish!: (value: { offsetMs: number }) => void
+  mocks.saveSubtitleOffset.mockImplementationOnce(
+    () => new Promise(resolve => (finish = resolve)),
+  )
+  await mount()
+  const pending = controls.onSubtitleOffset(500)
+  await controls.onSubtitleOffset(-100)
+  expect(mocks.saveSubtitleOffset).toHaveBeenCalledExactlyOnceWith(
+    'playback-fixture',
+    'f1',
+    { offsetMs: 600 },
+  )
+  expect(mocks.rememberSubtitleOffset).not.toHaveBeenCalled()
+  finish({ offsetMs: 600 })
+  await pending
+  expect(mocks.rememberSubtitleOffset).toHaveBeenCalledExactlyOnceWith(
+    'f1',
+    600,
+  )
+
+  mocks.saveSubtitleOffset.mockImplementationOnce(
+    () => new Promise(resolve => (finish = resolve)),
+  )
+  const reset = controls.onSubtitleOffset('reset')
+  controls.exit()
+  finish({ offsetMs: 0 })
+  await reset
+  expect(mocks.rememberSubtitleOffset).toHaveBeenCalledOnce()
+})
+
+it('attaches a searched subtitle in place after confirming its cues and preference', async () => {
+  const track = { id: 'm00000000-0000-4000-8000-000000000001', external: true }
+  mocks.applySubtitle.mockResolvedValue(track)
+  mocks.readSubtitle.mockResolvedValue({ cues: [], done: true })
+  await mount()
+  controls.openPanel('subtitles')
+  await controls.applySubtitleResult('result')
+  expect(mocks.applySubtitle).toHaveBeenCalledWith('playback-fixture', {
+    resultId: 'result',
+  })
+  expect(mocks.readSubtitle).toHaveBeenCalledWith(
+    'playback-fixture',
+    track.id,
+    { from: '42' },
+  )
+  expect(mocks.saveTracks).toHaveBeenCalledWith('playback-fixture', {
+    subtitle: track.id,
+  })
+  expect(mocks.setSubtitleTrack).toHaveBeenCalledWith(track.id, track)
+  expect(mocks.selectSubtitles).toHaveBeenCalledWith(track.id)
+  expect(mocks.start).toHaveBeenCalledTimes(1)
+})
+
+it('ignores a downloaded result after leaving the search', async () => {
+  let finish!: (track: { id: string }) => void
+  mocks.applySubtitle.mockImplementationOnce(
+    () => new Promise(resolve => (finish = resolve)),
+  )
+  await mount()
+  controls.openPanel('subtitles')
+  const pending = controls.applySubtitleResult('result')
+  controls.closePanel()
+  finish({ id: 'old-track' })
+  await pending
+  expect(mocks.readSubtitle).not.toHaveBeenCalled()
+  expect(mocks.selectSubtitles).not.toHaveBeenCalled()
+})
+
 it('does not apply a pending selection after Back and reopening the same panel', async () => {
   await mount()
   let saved!: () => void

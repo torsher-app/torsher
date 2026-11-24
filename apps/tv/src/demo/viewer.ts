@@ -17,6 +17,8 @@ const PLAYER: PlayerSettings = {
   autoNext: true,
   subtitleSize: 'm',
   subtitleBackground: 'box',
+  subtitlePosition: 'default',
+  subtitleColor: 'default',
 }
 
 function profile(

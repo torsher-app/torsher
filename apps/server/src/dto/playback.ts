@@ -1,3 +1,4 @@
+import { subtitleSearchContext } from './subtitles.ts'
 import { z } from 'zod'
 import { profileLanguages } from '../db/schema.ts'
 import { playbackTitle } from './titles.ts'
@@ -26,7 +27,15 @@ export const deviceProfile = z
   .meta({ id: 'deviceProfile' })
 
 // Дорожка субтитров: `s<поток>` — встроенная, `f<файл раздачи>` — внешняя
-const subtitleId = z.string().regex(/^[sf]\d{1,5}$/)
+const subtitleId = z
+  .string()
+  .regex(/^(?:[sf]\d{1,5}|m[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/)
+
+const offsetMs = z.number().int().min(-30000).max(30000)
+
+export const subtitleOffset = z
+  .object({ offsetMs })
+  .meta({ id: 'subtitleOffset' })
 
 // Источник — файл раздачи (`torrentId` и `fileIndex`) или файл библиотеки
 function oneSource(body: {
@@ -101,7 +110,7 @@ const audioTrack = z
   })
   .meta({ id: 'mediaAudioTrack' })
 
-const subtitleTrack = z
+export const subtitleTrack = z
   .object({
     id: subtitleId,
     language: z.string().nullable(),
@@ -112,6 +121,8 @@ const subtitleTrack = z
     default: z.boolean(),
     // Графические (PGS, VobSub): выбор перезапускает поток с прожигом в кадр
     burnIn: z.boolean(),
+    offsetMs: offsetMs.optional(),
+    downloaded: z.boolean().optional(),
   })
   .meta({ id: 'mediaSubtitleTrack' })
 
@@ -167,6 +178,7 @@ export const playback = z
     media: mediaInfo.nullable(),
     audioStream: z.number().nullable(),
     subtitle: subtitleId.nullable(),
+    subtitleSearch: subtitleSearchContext.optional(),
     // `platform` — озвучку меняет плеер, `restart` — новый `POST /playback`
     preferenceMismatch: z.array(z.enum(['audio', 'subtitles'])).optional(),
     audioSwitch: z.enum(['platform', 'restart']),

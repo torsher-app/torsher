@@ -4,6 +4,8 @@ import {
   profileColors,
   profileLanguages,
   subtitleBackgrounds,
+  subtitleColors,
+  subtitlePositions,
   subtitleSizes,
 } from '../db/schema.ts'
 
@@ -25,6 +27,8 @@ export const playerSettings = z
     autoNext: z.boolean(),
     subtitleSize: z.enum(subtitleSizes),
     subtitleBackground: z.enum(subtitleBackgrounds),
+    subtitlePosition: z.enum(subtitlePositions).optional(),
+    subtitleColor: z.enum(subtitleColors).optional(),
   })
   .meta({ id: 'playerSettings' })
 

@@ -15,6 +15,90 @@ describe('showcase demo', () => {
   })
 })
 
+it('persists a demo subtitle offset for its profile and source without shifting the cue data', async () => {
+  const request = (path: string, method = 'GET', body?: object) =>
+    handle(
+      new URL(`http://demo/api${path}`),
+      { method, body: body && JSON.stringify(body) },
+      'Unavailable',
+    )
+  const source = {
+    mediaFileId: 'demo-subtitle-sample',
+    title: { id: titleNamed('Big Buck Bunny').id, season: 0, episode: 0 },
+    subtitle: 'f0',
+  }
+  const first = await (await request('/playback', 'POST', source)).json()
+  const subtitlePath = `/playback/${first.sessionId}/subtitles/f0`
+  const before = await (await request(`${subtitlePath}?from=312`)).json()
+  expect(before.cues[0]?.start).toBe(312)
+  expect(
+    await (
+      await request(`${subtitlePath}/offset`, 'PUT', { offsetMs: 500 })
+    ).json(),
+  ).toEqual({ offsetMs: 500 })
+  expect(await (await request(`${subtitlePath}?from=312`)).json()).toEqual(
+    before,
+  )
+
+  const reopened = await (await request('/playback', 'POST', source)).json()
+  expect(reopened.subtitle).toBe('f0')
+  expect(reopened.media.subtitles[0]?.offsetMs).toBe(500)
+  const originalProfile = device.currentId
+  device.currentId = 'profile-sam'
+  try {
+    expect(
+      (await request(`${subtitlePath}/offset`, 'PUT', { offsetMs: 100 }))
+        .status,
+    ).toBe(404)
+    const other = await (await request('/playback', 'POST', source)).json()
+    expect(other.media.subtitles[0]?.offsetMs).toBe(0)
+  }
+  finally {
+    device.currentId = originalProfile
+  }
+})
+
+it('finds, applies and removes a download from a demo playback without existing subtitles', async () => {
+  const request = (path: string, method = 'GET', body?: object) =>
+    handle(
+      new URL(`http://demo/api${path}`),
+      { method, body: body && JSON.stringify(body) },
+      'Unavailable',
+    )
+  const source = { mediaFileId: 'demo-subtitle-search' }
+  const playback = await (await request('/playback', 'POST', source)).json()
+  expect(playback.media.subtitles).toEqual([])
+  expect(playback.subtitleSearch.providers).toEqual(['opensubtitles'])
+  const subtitles = `/playback/${playback.sessionId}/subtitles`
+  const found = await (
+    await request(`${subtitles}/search`, 'POST', { language: 'ru' })
+  ).json()
+  expect(found.items[0]).toMatchObject({
+    provider: 'opensubtitles',
+    language: 'ru',
+  })
+  const track = await (
+    await request(`${subtitles}/apply`, 'POST', { resultId: found.items[0].id })
+  ).json()
+  expect(track).toMatchObject({
+    downloaded: true,
+    external: true,
+    language: 'ru',
+  })
+  expect(
+    await (await request(`${subtitles}/${track.id}?from=312`)).json(),
+  ).toMatchObject({
+    cues: [
+      expect.objectContaining({ start: 312 }),
+      expect.objectContaining({ start: 322 }),
+    ],
+  })
+  expect((await request(`${subtitles}/${track.id}`, 'DELETE')).status).toBe(
+    204,
+  )
+  expect((await request(`${subtitles}/${track.id}?from=312`)).status).toBe(404)
+})
+
 it('validates demo playback generations, binding and rewind order without changing the normal cursor in a cycle', async () => {
   const request = (path: string, method = 'GET', body?: object) =>
     handle(

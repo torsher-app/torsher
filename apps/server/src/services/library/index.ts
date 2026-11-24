@@ -1,3 +1,8 @@
+import {
+  ownedManagedSubtitleNames,
+  reconcilePrivateSubtitleStorage,
+  removeManagedSubtitlesForReplacement,
+} from '../media/downloadedSubtitles.ts'
 import { withMaintenanceLease } from '../libraryMaintenance/admission.ts'
 import type { Torrent } from '../../db/schema.ts'
 import { join } from 'node:path'
@@ -50,7 +55,18 @@ async function unplaceFiles(torrent: Torrent) {
     const absolute = join(folder.path, ...file.relPath.split('/'))
     const base = absolute.slice(0, absolute.lastIndexOf('.'))
 
-    await removeFile(absolute, folder.path, `${base}.`)
+    await removeFile(
+      absolute,
+      folder.path,
+      `${base}.`,
+      ownedManagedSubtitleNames(file.id),
+    )
+    try {
+      removeManagedSubtitlesForReplacement(file.id)
+    }
+    catch {
+      logFor('storage').warn('Subtitle sidecar cleanup failed')
+    }
     const deleted = getDb()
       .delete(mediaFiles)
       .where(eq(mediaFiles.id, file.id))
@@ -60,6 +76,12 @@ async function unplaceFiles(torrent: Torrent) {
   }
 
   if (files.length) {
+    try {
+      reconcilePrivateSubtitleStorage()
+    }
+    catch {
+      logFor('storage').warn('Private subtitle cleanup failed')
+    }
     logFor('storage').info(
       { torrentId: torrent.id, count: files.length },
       'Library files removed',

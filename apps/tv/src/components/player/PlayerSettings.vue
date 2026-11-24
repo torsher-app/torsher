@@ -14,6 +14,8 @@ type View
     | 'speed'
     | 'subtitleSize'
     | 'subtitleBackground'
+    | 'subtitlePosition'
+    | 'subtitleColor'
     | 'autoNext'
     | 'link'
 
@@ -46,37 +48,55 @@ function speedLabel(value: number) {
     : `${value.toLocaleString(locale.value.replace('_', '-'))}×`
 }
 
-const rows = computed(() => [
-  {
-    id: 'speed' as const,
-    label: t('player.settings.speed'),
-    detail: speedLabel(props.speed),
-  },
-  {
-    id: 'subtitleSize' as const,
-    label: t('player.settings.subtitleSize'),
-    detail: t(`player.settings.sizes.${props.settings.subtitleSize}`),
-  },
-  {
-    id: 'subtitleBackground' as const,
-    label: t('player.settings.subtitleBackground'),
-    detail: t(
-      `player.settings.backgrounds.${props.settings.subtitleBackground}`,
-    ),
-  },
-  {
-    id: 'autoNext' as const,
-    label: t('player.settings.autoNext'),
-    detail: t(
-      props.settings.autoNext ? 'player.settings.on' : 'player.settings.off',
-    ),
-  },
-  {
-    id: 'link' as const,
-    label: t('player.settings.link'),
-    detail: t('player.settings.linkHint'),
-  },
-])
+const rows = computed(() =>
+  [
+    {
+      id: 'speed' as const,
+      label: t('player.settings.speed'),
+      detail: speedLabel(props.speed),
+    },
+    {
+      id: 'subtitleSize' as const,
+      label: t('player.settings.subtitleSize'),
+      detail: t(`player.settings.sizes.${props.settings.subtitleSize}`),
+    },
+    {
+      id: 'subtitleBackground' as const,
+      label: t('player.settings.subtitleBackground'),
+      detail: t(
+        `player.settings.backgrounds.${props.settings.subtitleBackground}`,
+      ),
+    },
+    {
+      id: 'subtitlePosition' as const,
+      label: t('player.settings.subtitlePosition'),
+      detail: t(
+        `player.settings.positions.${props.settings.subtitlePosition ?? 'default'}`,
+      ),
+      visible: props.settings.subtitlePosition !== undefined,
+    },
+    {
+      id: 'subtitleColor' as const,
+      label: t('player.settings.subtitleColor'),
+      detail: t(
+        `player.settings.colors.${props.settings.subtitleColor ?? 'default'}`,
+      ),
+      visible: props.settings.subtitleColor !== undefined,
+    },
+    {
+      id: 'autoNext' as const,
+      label: t('player.settings.autoNext'),
+      detail: t(
+        props.settings.autoNext ? 'player.settings.on' : 'player.settings.off',
+      ),
+    },
+    {
+      id: 'link' as const,
+      label: t('player.settings.link'),
+      detail: t('player.settings.linkHint'),
+    },
+  ].filter(row => row.visible !== false),
+)
 
 const options = computed<Option[]>(() => {
   const { settings } = props
@@ -99,6 +119,18 @@ const options = computed<Option[]>(() => {
         id: background,
         label: t(`player.settings.backgrounds.${background}`),
         selected: background === settings.subtitleBackground,
+      }))
+    case 'subtitlePosition':
+      return (['default', 'higher'] as const).map(position => ({
+        id: position,
+        label: t(`player.settings.positions.${position}`),
+        selected: position === (settings.subtitlePosition ?? 'default'),
+      }))
+    case 'subtitleColor':
+      return (['default', 'dimmed'] as const).map(color => ({
+        id: color,
+        label: t(`player.settings.colors.${color}`),
+        selected: color === (settings.subtitleColor ?? 'default'),
       }))
     case 'autoNext':
       return [true, false].map(on => ({
@@ -135,6 +167,14 @@ function choose(id: string) {
     emit('update', {
       subtitleBackground: id as PlayerSettings['subtitleBackground'],
     })
+  }
+  else if (view.value === 'subtitlePosition') {
+    emit('update', {
+      subtitlePosition: id as PlayerSettings['subtitlePosition'],
+    })
+  }
+  else if (view.value === 'subtitleColor') {
+    emit('update', { subtitleColor: id as PlayerSettings['subtitleColor'] })
   }
   else if (view.value === 'autoNext') {
     emit('update', { autoNext: id === 'true' })

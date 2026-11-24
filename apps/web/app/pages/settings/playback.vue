@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import AccelCard from '~/components/settings/AccelCard.vue'
+import SubtitleProviders from '~/components/settings/SubtitleProviders.vue'
 import TranscodeCard from '~/components/settings/TranscodeCard.vue'
 
 definePageMeta({
@@ -63,5 +64,6 @@ onMounted(load)
       <AccelCard :settings="settings" />
       <TranscodeCard :settings="settings" />
     </template>
+    <SubtitleProviders />
   </div>
 </template>

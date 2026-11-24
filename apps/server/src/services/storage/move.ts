@@ -1,3 +1,5 @@
+import { libraryProbeKey } from '../library/playedSource.ts'
+import { rebindMovedSubtitles } from '../media/downloadedSubtitles.ts'
 import {
   assertMaintenanceMutation,
   MaintenanceBusyError,
@@ -1470,7 +1472,7 @@ async function recoverLibrary(state: Running, saved: LibraryIntent) {
     transitionIntent(state, intent, committed, () => {
       requireLibraryIntent(state, intent)
       if (!intent.orphan) {
-        const target = intent.files[0]!.target
+        const { source, target } = intent.files[0]!
         getDb()
           .update(mediaFiles)
           .set({
@@ -1481,6 +1483,16 @@ async function recoverLibrary(state: Running, saved: LibraryIntent) {
           })
           .where(eq(mediaFiles.id, file.id))
           .run()
+        rebindMovedSubtitles(
+          file.id,
+          libraryProbeKey(file.id, source),
+          libraryProbeKey(file.id, target),
+          new Set(
+            intent.files
+              .slice(1)
+              .map(receipt => basename(receipt.target.path)),
+          ),
+        )
       }
     })
     intent = committed

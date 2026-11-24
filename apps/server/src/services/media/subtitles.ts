@@ -48,7 +48,7 @@ const LANGUAGES: Record<string, string> = {
 // Слова пути, которые ничего не говорят о дорожке
 const NOISE = new Set(['sub', 'subs', 'subtitle', 'subtitles', 'субтитры'])
 
-const MAX_SUBTITLE_BYTES = 5 * 1024 * 1024
+export const MAX_SUBTITLE_BYTES = 5 * 1024 * 1024
 const CONVERT_TIMEOUT_MS = 30_000
 
 function splitPath(path: string) {

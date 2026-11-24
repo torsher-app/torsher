@@ -263,6 +263,25 @@ type Panel
 
 const panel = ref<Panel | null>(null)
 const settingsPanel = ref<InstanceType<typeof PlayerSettings>>()
+const tracksPanel = ref<InstanceType<typeof PlayerTracks>>()
+const subtitleActionSession = ref<string>()
+const subtitleBusy = computed(
+  () =>
+    !!subtitleActionSession.value
+    && playback.value?.sessionId === subtitleActionSession.value,
+)
+const subtitleSearch = computed(() => playback.value?.subtitleSearch)
+const subtitleSearchLabel = computed(
+  () =>
+    tracks.subtitlesLabel.value
+    ?? (subtitleSearch.value?.providers.length ? t('player.subtitlesOff') : null),
+)
+const offsetWriteSession = ref<string>()
+const savingSubtitleOffset = computed(
+  () =>
+    !!offsetWriteSession.value
+    && playback.value?.sessionId === offsetWriteSession.value,
+)
 const now = ref(new Date())
 // One current torrent sample feeds every visible statistic. The clock only triggers
 // reevaluation: a response can arrive between its ticks.
@@ -1433,9 +1452,22 @@ function closePanelFromScreen() {
   backDiagnostic('close_panel')
   closePanel()
 }
+
+function backFromPanelStep() {
+  if (panel.value === 'settings')
+    return settingsPanel.value?.back()
+  if (panel.value === 'subtitles')
+    return tracksPanel.value?.back()
+  return false
+}
+
 let trackSelectionGeneration = 0
-function closePanel() {
+function invalidateTrackSelection() {
   trackSelectionGeneration++
+}
+
+function closePanel() {
+  invalidateTrackSelection()
   librarySelection.value = undefined
   panel.value = null
   focus.activate(
@@ -1498,7 +1530,7 @@ function onKey(action: KeyAction, event: KeyboardEvent) {
 
   if (action.type === 'back') {
     // Из выбора настройки — к списку, а не из панели
-    if (panel.value === 'settings' && settingsPanel.value?.back()) {
+    if (backFromPanelStep()) {
       backDiagnostic('settings_step')
       return true
     }
@@ -1546,7 +1578,7 @@ function onKey(action: KeyAction, event: KeyboardEvent) {
     && !hasLeftInPanel()
   ) {
     // Из шага настройки — сначала к списку, как Back
-    if (!(panel.value === 'settings' && settingsPanel.value?.back()))
+    if (!backFromPanelStep())
       closePanel()
 
     return true
@@ -1905,6 +1937,117 @@ function watchProgress() {
 }
 
 let savingTrack = false
+async function applySubtitleResult(resultId: string) {
+  const current = playback.value
+  if (subtitleBusy.value || !current)
+    return
+  const { sessionId } = current
+  const generation = trackSelectionGeneration
+  const isCurrent = () =>
+    !leaving
+    && playback.value?.sessionId === sessionId
+    && panel.value === 'subtitles'
+    && generation === trackSelectionGeneration
+
+  subtitleActionSession.value = sessionId
+  try {
+    const track = await api.playback.postPlaybackSubtitleApply(sessionId, {
+      resultId,
+    })
+    if (!isCurrent())
+      return
+    await api.playback.getPlaybackSubtitles(sessionId, track.id, {
+      from: String(Math.max(0, Math.floor(position.value))),
+    })
+    if (!isCurrent())
+      return
+    await api.playback.putPlaybackPreferences(sessionId, {
+      subtitle: track.id,
+    })
+    if (!isCurrent())
+      return
+    tracks.setSubtitleTrack(track.id, track)
+    tracks.selectSubtitles(track.id)
+    closePanel()
+  }
+  catch (error) {
+    if (isCurrent()) {
+      voiceNotice.value = t(
+        getErrorStatus(error) === 429
+          ? 'player.subtitleSearch.quota'
+          : 'player.subtitleSearch.applyFailed',
+      )
+    }
+  }
+  finally {
+    if (subtitleActionSession.value === sessionId)
+      subtitleActionSession.value = undefined
+  }
+}
+
+async function removeDownloadedSubtitle() {
+  const current = playback.value
+  const trackId = tracks.downloadedSubtitle.value
+  if (subtitleBusy.value || !current || !trackId)
+    return
+  const { sessionId } = current
+  subtitleActionSession.value = sessionId
+  try {
+    await api.playback.deletePlaybackSubtitle(sessionId, trackId)
+    if (!leaving && playback.value?.sessionId === sessionId)
+      tracks.setSubtitleTrack(trackId, null)
+  }
+  catch {
+    if (!leaving && playback.value?.sessionId === sessionId)
+      voiceNotice.value = t('player.subtitleSearch.removeFailed')
+  }
+  finally {
+    if (subtitleActionSession.value === sessionId)
+      subtitleActionSession.value = undefined
+  }
+}
+
+async function onSubtitleOffset(change: number | 'reset') {
+  const current = playback.value
+  const trackId = tracks.selection().subtitle
+  const previous = tracks.subtitleOffset.value
+  if (
+    savingSubtitleOffset.value
+    || !current
+    || !trackId
+    || previous === undefined
+  ) {
+    return
+  }
+
+  const offsetMs
+    = change === 'reset'
+      ? 0
+      : Math.min(30_000, Math.max(-30_000, previous + change))
+  if (offsetMs === previous)
+    return
+
+  const isCurrent = () =>
+    !leaving && playback.value?.sessionId === current.sessionId
+  offsetWriteSession.value = current.sessionId
+  try {
+    const saved = await api.playback.putPlaybackSubtitleOffset(
+      current.sessionId,
+      trackId,
+      { offsetMs },
+    )
+    if (isCurrent())
+      tracks.rememberSubtitleOffset(trackId, saved.offsetMs)
+  }
+  catch {
+    // Keep the last saved timing if the write is rejected.
+  }
+  finally {
+    if (offsetWriteSession.value === current.sessionId)
+      offsetWriteSession.value = undefined
+  }
+}
+
 async function onTracksSelect(id: string) {
   if (savingTrack)
     return
@@ -2688,7 +2831,7 @@ onBeforeUnmount(() => {
         :stalled="stalled"
         :now="now"
         :audio-label="tracks.audioLabel.value"
-        :subtitles-label="tracks.subtitlesLabel.value"
+        :subtitles-label="subtitleSearchLabel"
         :from-start="fromStart"
         :titled="!!titleId && (!lacksSources() || hasLibraryVersions)"
         :series="!!(titleId && season && episode)"
@@ -2722,10 +2865,24 @@ onBeforeUnmount(() => {
 
       <PlayerTracks
         v-if="panel === 'audio' || panel === 'subtitles'"
+        ref="tracksPanel"
+        :key="`${panel}:${playback?.sessionId ?? ''}`"
         :kind="panel"
         :options="trackOptions"
         :caption="tracks.caption.value"
+        :offset-ms="tracks.subtitleOffset.value"
+        :saving-offset="savingSubtitleOffset"
+        :session-id="playback?.sessionId"
+        :search="subtitleSearch"
+        :removable="
+          subtitleSearch?.canRemove && !!tracks.downloadedSubtitle.value
+        "
+        :subtitle-busy="subtitleBusy"
         @select="onTracksSelect"
+        @offset="onSubtitleOffset"
+        @apply="applySubtitleResult"
+        @remove="removeDownloadedSubtitle"
+        @search-closed="invalidateTrackSelection"
         @close="closePanelFromScreen"
       />
       <PlayerEpisodes
@@ -2763,7 +2920,13 @@ onBeforeUnmount(() => {
       :class="[
         `player__subtitles--${playerSettings.subtitleSize}`,
         `player__subtitles--${playerSettings.subtitleBackground}`,
-        { 'player__subtitles--lifted': osd.visible.value },
+        {
+          'player__subtitles--lifted': osd.visible.value,
+          'player__subtitles--higher':
+            playerSettings.subtitlePosition === 'higher',
+          'player__subtitles--dimmed':
+            playerSettings.subtitleColor === 'dimmed',
+        },
       ]"
     >
       <!-- Разметку реплики чистит subtitleHtml: остаются только i, b, u -->
@@ -2910,6 +3073,14 @@ onBeforeUnmount(() => {
 /* С OSD реплика поднимается над таймлайном и кнопками */
 .player__subtitles--lifted {
   transform: translateY(calc(var(--u) * -230));
+}
+
+.player__subtitles--higher {
+  bottom: calc(var(--u) * 180);
+}
+
+.player__subtitles--dimmed .player__cue {
+  color: var(--color-text-muted);
 }
 
 .player__cue {

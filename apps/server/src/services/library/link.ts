@@ -267,7 +267,12 @@ export function librarySharesVolume() {
  * `….`: субтитры и дорожки), затем поднимается вверх и убирает опустевшие
  * каталоги, но не выше корня. Каталог с чужими файлами остаётся.
  */
-export async function removeFile(path: string, root: string, prefix?: string) {
+export async function removeFile(
+  path: string,
+  root: string,
+  prefix?: string,
+  preserve?: Set<string>,
+) {
   const ignoreMissing = (err: unknown) => {
     if (codeOf(err) !== 'ENOENT')
       throw err
@@ -280,7 +285,7 @@ export async function removeFile(path: string, root: string, prefix?: string) {
     const start = basename(prefix)
 
     for (const name of names) {
-      if (name.startsWith(start))
+      if (name.startsWith(start) && !preserve?.has(name))
         await unlink(join(dirname(prefix), name)).catch(ignoreMissing)
     }
   }
