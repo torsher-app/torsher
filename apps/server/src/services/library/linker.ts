@@ -1,3 +1,9 @@
+import { libraryProbeKey } from './playedSource.ts'
+import { enqueueSubtitlesForNewFile } from '../subtitles/automation.ts'
+import {
+  ownedManagedSubtitleNames,
+  removeManagedSubtitlesForReplacement,
+} from '../media/downloadedSubtitles.ts'
 import {
   MaintenanceBusyError,
   withMaintenanceLease,
@@ -320,7 +326,11 @@ async function freeVideoPath(
 }
 
 /** Повторный add сохраняет media ID и метаданные существующего hardlink. */
-function registerVideo(values: typeof mediaFiles.$inferInsert, adopt: boolean) {
+function registerVideo(
+  values: typeof mediaFiles.$inferInsert,
+  adopt: boolean,
+  insertedNew?: (id: string) => void,
+) {
   return getDb().transaction((tx) => {
     const inserted = tx
       .insert(mediaFiles)
@@ -328,6 +338,8 @@ function registerVideo(values: typeof mediaFiles.$inferInsert, adopt: boolean) {
       .onConflictDoNothing()
       .returning()
       .get()
+    if (inserted)
+      insertedNew?.(inserted.id)
     if (inserted || !adopt)
       return inserted
 
@@ -461,6 +473,7 @@ async function placeVideo(
       matchSource: 'torrent',
     },
     target.adopt,
+    id => enqueueSubtitlesForNewFile(id, libraryProbeKey(id, placed)),
   )
 
   if (!row)
@@ -488,14 +501,18 @@ async function placeVideo(
 }
 
 /** Субтитры и дорожки рядом с видео (`<база>.…`), само видео остаётся */
-async function removeSidecars(folder: LibraryFolder, relPath: string) {
+async function removeSidecars(
+  folder: LibraryFolder,
+  relPath: string,
+  reserved: Set<string>,
+) {
   const absolute = libraryPath(folder, relPath)
   const name = basename(absolute)
   const prefix = `${name.slice(0, name.lastIndexOf('.'))}.`
   const names = await readdir(dirname(absolute)).catch(() => [] as string[])
 
   for (const item of names) {
-    if (item !== name && item.startsWith(prefix))
+    if (item !== name && item.startsWith(prefix) && !reserved.has(item))
       await unlink(join(dirname(absolute), item)).catch(() => {})
   }
 }
@@ -576,8 +593,13 @@ async function replaceVersions(torrent: Torrent, state: EngineTorrentState) {
       if (relPath !== row.relPath && (await exists(absolute)))
         throw new Error('Library path of the new version is taken')
 
-      if (upgrade)
-        await removeSidecars(folder, row.relPath)
+      if (upgrade) {
+        await removeSidecars(
+          folder,
+          row.relPath,
+          ownedManagedSubtitleNames(row.id),
+        )
+      }
 
       freezeLibraryProgress(row.id)
       const linkMode = await replaceFile(source, absolute)
@@ -609,6 +631,18 @@ async function replaceVersions(torrent: Torrent, state: EngineTorrentState) {
         })
         .where(eq(mediaFiles.id, row.id))
         .run()
+
+      try {
+        removeManagedSubtitlesForReplacement(
+          row.id,
+          libraryProbeKey(row.id, placed),
+        )
+      }
+      catch {
+        // Старая связь всё равно скрыта по ревизии. Ошибка удаления SRT
+        // не должна откатывать успешно размещённое видео.
+        logFor('storage').warn('Old subtitle sidecar cleanup failed')
+      }
 
       if (previous) {
         moveFileProgress(previous, { torrentId: torrent.id, fileIndex })

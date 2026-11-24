@@ -248,6 +248,16 @@ export function sanitizeDb(
       if (hasTable(db, 'storage_moves'))
         db.prepare('DELETE FROM storage_moves').run()
 
+      // Состояние провайдеров и привязки к реальным файлам не переносятся на стенд.
+      for (const table of [
+        'subtitle_jobs',
+        'subtitle_offsets',
+        'downloaded_subtitles',
+      ]) {
+        if (hasTable(db, table))
+          db.prepare(`DELETE FROM ${table}`).run()
+      }
+
       if (hasTable(db, 'notification_channels'))
         db.prepare('UPDATE notification_channels SET enabled = 0').run()
 
@@ -269,6 +279,9 @@ export function sanitizeDb(
       }
 
       if (hasTable(db, 'server_settings')) {
+        db.prepare(
+          'DELETE FROM server_settings WHERE key LIKE \'subtitles.%\'',
+        ).run()
         db.prepare(
           'DELETE FROM server_settings WHERE key LIKE \'maintenance%\'',
         ).run()

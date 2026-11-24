@@ -108,6 +108,8 @@ export const DEFAULT_PLAYER_SETTINGS: PlayerSettings = {
   autoNext: true,
   subtitleSize: 'm',
   subtitleBackground: 'box',
+  subtitlePosition: 'default',
+  subtitleColor: 'default',
 }
 
 export function playerSettingsOf(row: Pick<Profile, 'player'>): PlayerSettings {

@@ -27,6 +27,7 @@ import { playbackRoutes } from './playback.ts'
 import { profileImportRoutes } from './profileImports.ts'
 import { profileRoutes } from './profiles.ts'
 import { settingsRoutes } from './settings.ts'
+import { subtitleSettingsRoutes } from './subtitleSettings.ts'
 import { setupRoutes } from './setup.ts'
 import { storageRoutes } from './storage.ts'
 import { streamRoutes } from './stream.ts'
@@ -85,6 +86,7 @@ export const apiRoutes: FastifyPluginAsyncZod = async (app) => {
   app.register(netRoutes, { prefix: '/net' })
   app.register(speedtestRoutes, { prefix: '/speedtest' })
   app.register(settingsRoutes, { prefix: '/settings' })
+  app.register(subtitleSettingsRoutes, { prefix: '/settings' })
   app.register(setupRoutes, { prefix: '/setup' })
   app.register(playbackRoutes)
   app.register(followRoutes)

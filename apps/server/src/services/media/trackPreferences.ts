@@ -1,6 +1,8 @@
+import type { DownloadedSubtitle } from '../../db/schema.ts'
 import type { AudioStreamInfo, MediaInfo } from './probe.ts'
 import type { ExternalSubtitle } from './subtitles.ts'
 import { parseAudioLabel } from '@torsher/release-parser'
+import { downloadedSubtitleId } from './downloadedSubtitles.ts'
 
 function voiceOfTrack(track: AudioStreamInfo) {
   return track.title ? parseAudioLabel(track.title) : undefined
@@ -76,6 +78,7 @@ export function preferredSubtitle(
   media: MediaInfo,
   external: ExternalSubtitle[],
   preference?: SavedSubtitlePreference | null,
+  downloaded: DownloadedSubtitle[] = [],
 ) {
   if (!preference?.enabled || !preference.language)
     return null
@@ -92,5 +95,12 @@ export function preferredSubtitle(
       trackLanguage(track.language) === preference.language
       && track.forced === preference.forced,
   )
-  return sidecar ? `f${sidecar.fileIndex}` : null
+  if (sidecar)
+    return `f${sidecar.fileIndex}`
+  const managed = downloaded.find(
+    track =>
+      trackLanguage(track.language) === preference.language
+      && track.forced === preference.forced,
+  )
+  return managed ? downloadedSubtitleId(managed) : null
 }

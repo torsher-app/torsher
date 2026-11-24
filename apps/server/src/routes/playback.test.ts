@@ -2,7 +2,15 @@ import type { AddressInfo } from 'node:net'
 import type { Torrent } from '../db/schema.ts'
 import { Buffer } from 'node:buffer'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -12,6 +20,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { createApp } from '../app.ts'
 import {
   ACCESS_TOKEN_COOKIE,
+  config,
   DEVICE_TOKEN_COOKIE,
   PROFILE_COOKIE,
 } from '../config.ts'
@@ -19,18 +28,28 @@ import { getDb, migrateDb } from '../db/index.ts'
 import {
   cycleProgress,
   devices,
+  downloadedSubtitles,
   libraries,
   libraryFolders,
   libraryHiddenProfiles,
   mediaFiles,
   profiles,
   rewatchCycles,
+  subtitleJobs,
+  subtitleOffsets,
   torrents,
   users,
   viewingAttempts,
 } from '../db/schema.ts'
 import { hashToken } from '../services/devices/index.ts'
 import { setEngineDown, setEngineReady } from '../services/engine/index.ts'
+import { setNetTransport } from '../services/net/index.ts'
+import {
+  deleteSetting,
+  getSetting,
+  setSetting,
+} from '../services/settings/index.ts'
+import { SUBTITLE_SETTINGS_KEY } from '../services/subtitles/settings.ts'
 import {
   INFO_HASH,
   liveStats,
@@ -42,6 +61,14 @@ import {
   queryLogs,
 } from '../services/logs/index.ts'
 import { stopAllSessions } from '../services/media/index.ts'
+import { libraryProbeKey } from '../services/library/playedSource.ts'
+import { removeFromLibrary } from '../services/library/index.ts'
+import {
+  downloadedSubtitleId,
+  registerDownloadedSubtitle,
+  saveSubtitleOffset,
+} from '../services/media/downloadedSubtitles.ts'
+import * as subtitleService from '../services/media/downloadedSubtitles.ts'
 import { clearProbeCache } from '../services/media/probe.ts'
 import { getSession, probeDeps } from '../services/media/sessions.ts'
 import { resetMediaTools } from '../services/media/tools.ts'
@@ -337,15 +364,18 @@ describe.runIf(hasFfmpeg())('воспроизведение с пробой и �
     rmSync(dir, { recursive: true, force: true })
   })
 
-  async function start(payload: Record<string, unknown> = {}) {
+  async function start(payload: Record<string, unknown> = {}, cookies = owner) {
     const response = await app.inject({
       method: 'POST',
       url: '/api/playback',
-      cookies: owner,
-      payload: { torrentId: torrent.id, fileIndex: 0, ...payload },
+      cookies,
+      payload:
+        'mediaFileId' in payload
+          ? payload
+          : { torrentId: torrent.id, fileIndex: 0, ...payload },
     })
 
-    expect(response.statusCode).toBe(200)
+    expect(response.statusCode, response.body).toBe(200)
 
     let body = response.json()
 
@@ -354,7 +384,7 @@ describe.runIf(hasFfmpeg())('воспроизведение с пробой и �
       body = (
         await app.inject({
           url: `/api/playback/${body.sessionId}`,
-          cookies: owner,
+          cookies,
         })
       ).json()
     }
@@ -1407,6 +1437,553 @@ describe.runIf(hasFfmpeg())('воспроизведение с пробой и �
       cues: [{ start: 1, end: 2, text: 'Привет' }],
       done: true,
     })
+  })
+
+  it('keeps imported text and subtitle timing bound to the source and profile', async () => {
+    const dataDir = vi.spyOn(config, 'dataDir', 'get').mockReturnValue(dir)
+    const primaryCookies = {
+      ...owner,
+      [PROFILE_COOKIE]: await defaultProfileId(),
+    }
+    const otherProfile = 'subtitle-offset-other-profile'
+    const otherCookies = { ...owner, [PROFILE_COOKIE]: otherProfile }
+    const db = getDb()
+    const video = join(dir, 'Synthetic.mkv')
+    writeFileSync(video, mkv)
+    const videoStat = statSync(video)
+    const { id: libraryId } = db
+      .insert(libraries)
+      .values({ kind: 'video', name: 'Subtitle fixtures' })
+      .returning()
+      .get()
+    const { id: folderId } = db
+      .insert(libraryFolders)
+      .values({ libraryId, path: dir })
+      .returning()
+      .get()
+    const { id: mediaFileId } = db
+      .insert(mediaFiles)
+      .values({
+        folderId,
+        relPath: 'Synthetic.mkv',
+        size: videoStat.size,
+        mtime: videoStat.mtime,
+      })
+      .returning()
+      .get()
+    const source = libraryProbeKey(mediaFileId, videoStat)
+
+    db.insert(profiles)
+      .values({ id: otherProfile, name: 'Other', color: 'teal', position: 100 })
+      .run()
+
+    try {
+      const payload = {
+        language: 'eng',
+        title: null,
+        forced: false,
+        ownerOnly: false,
+      }
+      const bytes = Buffer.from('1\n00:00:01,000 --> 00:00:02,000\nHello\n\n')
+      const imported = await registerDownloadedSubtitle(source, payload, bytes)
+      const duplicate = await registerDownloadedSubtitle(
+        source,
+        payload,
+        bytes,
+      )
+      expect(duplicate.id).toBe(imported.id)
+      const trackId = downloadedSubtitleId(imported)
+      const playback = { mediaFileId, device: webos, subtitle: trackId }
+      const body = await start(playback, primaryCookies)
+      expect(body).toMatchObject({ mode: 'direct', subtitle: trackId })
+      expect(body.media.subtitles).toContainEqual(
+        expect.objectContaining({
+          id: trackId,
+          offsetMs: 0,
+          external: true,
+          burnIn: false,
+        }),
+      )
+
+      const cueUrl = [
+        '/api/playback',
+        body.sessionId,
+        'subtitles',
+        trackId,
+      ].join('/')
+      const cueResponse = await app.inject({
+        url: cueUrl,
+        cookies: primaryCookies,
+      })
+      expect(cueResponse.statusCode, cueResponse.body).toBe(200)
+      expect(cueResponse.json()).toEqual({
+        cues: [{ start: 1, end: 2, text: 'Hello' }],
+        done: true,
+      })
+
+      const setOffset = (
+        offsetMs: number,
+        cookies = primaryCookies,
+        headers?: Record<string, string>,
+      ) =>
+        app.inject({
+          method: 'PUT',
+          url: `${cueUrl}/offset`,
+          cookies,
+          headers,
+          payload: { offsetMs },
+        })
+      expect((await setOffset(500, otherCookies)).statusCode).toBe(404)
+      expect(
+        (
+          await setOffset(500, primaryCookies, {
+            'sec-fetch-site': 'cross-site',
+          })
+        ).statusCode,
+      ).toBe(403)
+      expect((await setOffset(30001)).statusCode).toBe(400)
+      expect((await setOffset(-600)).json()).toEqual({ offsetMs: -600 })
+      expect(
+        (await app.inject({ url: cueUrl, cookies: primaryCookies })).json(),
+      ).toEqual(cueResponse.json())
+
+      const reopened = await start(
+        { ...playback, startPosition: 4.5 },
+        primaryCookies,
+      )
+      expect(reopened).toMatchObject({ subtitle: trackId, startPosition: 4.5 })
+      expect(reopened.media.subtitles).toContainEqual(
+        expect.objectContaining({ id: trackId, offsetMs: -600 }),
+      )
+
+      const statusUrl = ['/api/playback', body.sessionId].join('/')
+      const status = () =>
+        app.inject({ url: statusUrl, cookies: primaryCookies })
+      const cues = () => app.inject({ url: cueUrl, cookies: primaryCookies })
+      const privateDir = join(dir, 'subtitles')
+      const subtitleFile = join(privateDir, `${imported.id}.srt`)
+      rmSync(subtitleFile)
+      expect((await cues()).statusCode).toBe(404)
+      expect((await status()).json().subtitle).toBeNull()
+      expect((await status()).json().media.subtitles).not.toContainEqual(
+        expect.objectContaining({ id: trackId }),
+      )
+      expect((await setOffset(500)).statusCode).toBe(404)
+
+      db.insert(downloadedSubtitles)
+        .values({
+          ...imported,
+          id: '11111111-1111-4111-a111-111111111111',
+          sha256: '0'.repeat(64),
+          bytes: 128 * 1024 * 1024,
+        })
+        .run()
+      const orphan = join(
+        privateDir,
+        '22222222-2222-4222-a222-222222222222.srt',
+      )
+      const temp = join(
+        privateDir,
+        '.33333333-3333-4333-a333-333333333333.tmp',
+      )
+      const unrelated = join(privateDir, 'preserve.tmp')
+      for (const path of [orphan, temp, unrelated]) writeFileSync(path, 'text')
+
+      const restored = await registerDownloadedSubtitle(source, payload, bytes)
+      expect(restored.id).toBe(imported.id)
+      expect(existsSync(orphan)).toBe(false)
+      expect(existsSync(temp)).toBe(false)
+      expect(existsSync(unrelated)).toBe(true)
+      expect((await cues()).json()).toEqual(cueResponse.json())
+      expect((await status()).json().media.subtitles).toContainEqual(
+        expect.objectContaining({ id: trackId, offsetMs: -600 }),
+      )
+
+      const other = await start(playback, otherCookies)
+      expect(other.media.subtitles).toContainEqual(
+        expect.objectContaining({ id: trackId, offsetMs: 0 }),
+      )
+      expect((await setOffset(0)).json()).toEqual({ offsetMs: 0 })
+
+      const entered = Promise.withResolvers<void>()
+      const resumeProjection = Promise.withResolvers<void>()
+      const checkPresent = subtitleService.availableDownloadedSubtitles
+      const projection = vi
+        .spyOn(subtitleService, 'availableDownloadedSubtitles')
+        .mockImplementationOnce(async (tracks) => {
+          entered.resolve()
+          await resumeProjection.promise
+          return checkPresent(tracks)
+        })
+      const reopenedUrl = ['/api/playback', reopened.sessionId].join('/')
+      const pending = app.inject({ url: reopenedUrl, cookies: primaryCookies })
+      try {
+        await entered.promise
+        const closed = await app.inject({
+          method: 'DELETE',
+          url: reopenedUrl,
+          cookies: primaryCookies,
+        })
+        expect(closed.statusCode).toBe(200)
+      }
+      finally {
+        resumeProjection.resolve()
+        projection.mockRestore()
+      }
+      expect((await pending).statusCode).toBe(404)
+
+      const replacement = join(dir, 'Replacement.mkv')
+      writeFileSync(replacement, mkv)
+      renameSync(replacement, video)
+      expect((await status()).json().subtitle).toBeNull()
+      expect((await status()).json().media.subtitles).not.toContainEqual(
+        expect.objectContaining({ id: trackId }),
+      )
+      expect(
+        (await app.inject({ url: cueUrl, cookies: primaryCookies })).statusCode,
+      ).toBe(404)
+      expect((await setOffset(1000)).statusCode).toBe(404)
+      expect((await start(playback, primaryCookies)).subtitle).toBeNull()
+    }
+    finally {
+      dataDir.mockRestore()
+      db.delete(subtitleOffsets)
+        .where(eq(subtitleOffsets.sourceRevision, source))
+        .run()
+      db.delete(downloadedSubtitles)
+        .where(eq(downloadedSubtitles.sourceRevision, source))
+        .run()
+      db.delete(profiles).where(eq(profiles.id, otherProfile)).run()
+      db.delete(libraries).where(eq(libraries.id, libraryId)).run()
+    }
+  })
+
+  it('finds, attaches and removes a provider sidecar for the confirmed managed video', async () => {
+    const video = join(dir, 'Synthetic.Release.1080p.WEB-DL.mkv')
+    writeFileSync(video, mkv)
+    const info = statSync(video)
+    const db = getDb()
+    const library = db
+      .insert(libraries)
+      .values({ name: 'Subtitle test', kind: 'video', managed: true })
+      .returning()
+      .get()
+    const folder = db
+      .insert(libraryFolders)
+      .values({ libraryId: library.id, path: dir })
+      .returning()
+      .get()
+    const file = db
+      .insert(mediaFiles)
+      .values({
+        folderId: folder.id,
+        relPath: 'Synthetic.Release.1080p.WEB-DL.mkv',
+        size: info.size,
+        mtime: info.mtime,
+        inode: info.ino,
+        titleId: 'tmdb:movie:767',
+        matchStatus: 'matched',
+      })
+      .returning()
+      .get()
+    const sidecar = join(dir, 'Synthetic.Release.1080p.WEB-DL.en.srt')
+    const cues = '1\n00:00:01,000 --> 00:00:03,000\nMocked subtitle\n'
+    const transfer = vi.fn(async (address: string, options: RequestInit) => {
+      const url = new URL(address)
+      if (url.pathname === '/api/v1/login')
+        return Response.json({ token: 'private-provider-auth' })
+      if (url.pathname === '/api/v1/infos/user')
+        return Response.json({ data: { remaining_downloads: 5 } })
+      if (url.pathname === '/api/v1/subtitles') {
+        expect(url.searchParams.get('tmdb_id')).toBe('767')
+        return Response.json({
+          data: [
+            {
+              attributes: {
+                language: 'en',
+                release: 'Synthetic.Release.1080p.WEB-DL',
+                feature_details: { tmdb_id: 767 },
+                files: [{ file_id: 425 }],
+              },
+            },
+          ],
+        })
+      }
+      if (url.pathname === '/api/v1/download') {
+        return Response.json({
+          link: 'https://www.opensubtitles.com/file.srt',
+          remaining: 4,
+        })
+      }
+      expect(new Headers(options.headers).get('api-key')).toBeNull()
+      return new Response(cues)
+    })
+    setNetTransport(transfer)
+    const settingsUrl = '/api/settings/subtitles'
+    const settings = (payload: object) =>
+      app.inject({ url: settingsUrl, method: 'PUT', cookies: owner, payload })
+    try {
+      const configured = await settings({
+        openSubtitles: {
+          apiKey: 'private-key',
+          username: 'private-name',
+          password: 'private-password',
+          languages: ['en'],
+          autoDownload: true,
+        },
+      })
+      expect(configured.statusCode, configured.body).toBe(200)
+      expect(configured.body).not.toContain('private')
+      expect(JSON.stringify(getSetting(SUBTITLE_SETTINGS_KEY))).not.toContain(
+        'private-password',
+      )
+      const status = await app.inject({
+        method: 'POST',
+        url: `${settingsUrl}/opensubtitles/test`,
+        cookies: owner,
+      })
+      expect(status.json()).toMatchObject({
+        kind: 'ready',
+        remainingDownloads: 5,
+      })
+      const player = await start({ mediaFileId: file.id, device: webos })
+      expect(player.subtitleSearch.providers).toEqual(['opensubtitles'])
+      const apiUrl = ['/api/playback', player.sessionId, 'subtitles'].join('/')
+      const search = await app.inject({
+        method: 'POST',
+        url: `${apiUrl}/search`,
+        payload: { language: 'en' },
+        cookies: owner,
+      })
+      expect(search.statusCode, search.body).toBe(200)
+      const [item] = search.json().items
+      expect(item).toMatchObject({
+        provider: 'opensubtitles',
+        match: 'release',
+      })
+      expect(item).not.toHaveProperty('remoteId')
+
+      const apply = () =>
+        app.inject({
+          method: 'POST',
+          url: `${apiUrl}/apply`,
+          cookies: owner,
+          payload: { resultId: item.id },
+        })
+      setSetting('maintenanceRestoreHold', true)
+      try {
+        const held = await apply()
+        expect(held.statusCode, held.body).toBe(409)
+        expect(
+          transfer.mock.calls.some(([url]) => url.endsWith('/api/v1/download')),
+        ).toBe(false)
+      }
+      finally {
+        deleteSetting('maintenanceRestoreHold')
+      }
+
+      const entered = Promise.withResolvers<void>()
+      const resume = Promise.withResolvers<void>()
+      const register = subtitleService.registerDownloadedSubtitle
+      const paused = vi
+        .spyOn(subtitleService, 'registerDownloadedSubtitle')
+        .mockImplementationOnce(async (...args) => {
+          entered.resolve()
+          await resume.promise
+          return register(...args)
+        })
+      const pending = apply()
+      try {
+        await entered.promise
+        const concurrent = await apply()
+        expect(concurrent.statusCode, concurrent.body).toBe(200)
+        expect(
+          transfer.mock.calls.filter(([url]) =>
+            url.endsWith('/api/v1/download'),
+          ),
+        ).toHaveLength(1)
+      }
+      finally {
+        resume.resolve()
+        paused.mockRestore()
+      }
+      const applied = await pending
+      expect(applied.statusCode, applied.body).toBe(200)
+      const track = applied.json()
+      expect(track).toMatchObject({
+        downloaded: true,
+        external: true,
+        offsetMs: 0,
+      })
+      expect(player.sessionId).toBe(getSession(player.sessionId, 'owner')?.id)
+      expect(readFileSync(sidecar, 'utf8')).toBe(cues)
+      expect((await apply()).json().id).toBe(track.id)
+      expect(
+        transfer.mock.calls.filter(([url]) => url.endsWith('/api/v1/download')),
+      ).toHaveLength(1)
+
+      const reopened = await start({
+        mediaFileId: file.id,
+        device: webos,
+        subtitle: track.id,
+      })
+      expect(
+        reopened.media.subtitles.filter(
+          (item: { external: boolean }) => item.external,
+        ),
+      ).toEqual([expect.objectContaining({ id: track.id, downloaded: true })])
+      const cueResponse = await app.inject({
+        url: `${apiUrl}/${track.id}`,
+        cookies: owner,
+      })
+      expect(cueResponse.json()).toMatchObject({
+        cues: [{ start: 1, end: 3, text: 'Mocked subtitle' }],
+      })
+
+      const edited = cues.replace('Mocked', 'Edited')
+      writeFileSync(sidecar, edited)
+      expect((await apply()).statusCode).toBe(409)
+      expect(
+        transfer.mock.calls.filter(([url]) => url.endsWith('/api/v1/download')),
+      ).toHaveLength(1)
+
+      expect(
+        (await settings({ openSubtitles: { disconnect: true } })).statusCode,
+      ).toBe(200)
+      const afterDisconnect = await app.inject({
+        url: `/api/playback/${player.sessionId}`,
+        cookies: owner,
+      })
+      expect(afterDisconnect.json().subtitleSearch).toMatchObject({
+        providers: [],
+        canRemove: true,
+      })
+      expect((await apply()).statusCode).toBe(404)
+      const removed = await app.inject({
+        method: 'DELETE',
+        url: `${apiUrl}/${track.id}`,
+        cookies: owner,
+      })
+      expect(removed.statusCode, removed.body).toBe(204)
+      expect(readFileSync(sidecar, 'utf8')).toBe(edited)
+      const queued = db
+        .select()
+        .from(subtitleJobs)
+        .where(eq(subtitleJobs.mediaFileId, file.id))
+        .all()
+      expect(queued).toMatchObject([{ language: 'en', state: 'suppressed' }])
+      expect(
+        (await app.inject({ url: `${apiUrl}/${track.id}`, cookies: owner }))
+          .statusCode,
+      ).toBe(404)
+    }
+    finally {
+      setNetTransport(null)
+      deleteSetting(SUBTITLE_SETTINGS_KEY)
+      db.delete(libraries).where(eq(libraries.id, library.id)).run()
+      rmSync(sidecar, { force: true })
+    }
+  })
+
+  it('removes private payloads and offsets on ordinary library file deletion while preserving edited sidecars', async () => {
+    const dataDir = vi.spyOn(config, 'dataDir', 'get').mockReturnValue(dir)
+    const relPath = 'Ordinary.Remove.1080p.WEB-DL.mkv'
+    const path = join(dir, relPath)
+    writeFileSync(path, mkv)
+    const info = statSync(path)
+    const db = getDb()
+    const profileId = await defaultProfileId()
+    const library = db
+      .insert(libraries)
+      .values({ name: 'Subtitle deletion test', kind: 'video', managed: true })
+      .returning()
+      .get()
+    const folder = db
+      .insert(libraryFolders)
+      .values({ libraryId: library.id, path: dir })
+      .returning()
+      .get()
+    const file = db
+      .insert(mediaFiles)
+      .values({
+        folderId: folder.id,
+        relPath,
+        size: info.size,
+        mtime: info.mtime,
+        inode: info.ino,
+        titleId: 'tmdb:movie:768',
+        matchStatus: 'matched',
+        torrentId: torrent.id,
+        fileIndex: 0,
+      })
+      .returning()
+      .get()
+    const revision = libraryProbeKey(file.id, info)
+    const bytes = Buffer.from('1\n00:00:01,000 --> 00:00:03,000\nSubtitle\n')
+    const target = { id: file.id, path, managed: true }
+    try {
+      const artifact = await registerDownloadedSubtitle(
+        revision,
+        {
+          language: 'en',
+          title: null,
+          forced: false,
+          ownerOnly: false,
+        },
+        bytes,
+        {
+          library: target,
+          provider: 'opensubtitles',
+          providerFile: 'fixture-open',
+        },
+      )
+      const privateTrack = await registerDownloadedSubtitle(
+        revision,
+        {
+          language: 'en',
+          title: null,
+          forced: false,
+          ownerOnly: true,
+        },
+        bytes,
+        { library: target, provider: 'subdl', providerFile: 'fixture-subdl' },
+      )
+      const managedPath = join(dir, artifact.managedName!)
+      const privatePath = join(dir, 'subtitles', `${privateTrack.id}.srt`)
+      saveSubtitleOffset(
+        profileId,
+        revision,
+        downloadedSubtitleId(privateTrack),
+        100,
+      )
+      saveSubtitleOffset(profileId, revision, 's2', 200)
+      writeFileSync(managedPath, 'Owner’s local subtitle edit')
+
+      await removeFromLibrary(torrent)
+      expect(existsSync(path)).toBe(false)
+      expect(existsSync(privatePath)).toBe(false)
+      expect(readFileSync(managedPath, 'utf8')).toBe(
+        'Owner’s local subtitle edit',
+      )
+      expect(
+        db
+          .select()
+          .from(downloadedSubtitles)
+          .where(eq(downloadedSubtitles.sourceRevision, revision))
+          .all(),
+      ).toEqual([])
+      expect(
+        db
+          .select()
+          .from(subtitleOffsets)
+          .where(eq(subtitleOffsets.sourceRevision, revision))
+          .all(),
+      ).toEqual([])
+    }
+    finally {
+      dataDir.mockRestore()
+      db.delete(libraries).where(eq(libraries.id, library.id)).run()
+    }
   })
 
   it('статус сессии продлевает использование раздачи', async () => {

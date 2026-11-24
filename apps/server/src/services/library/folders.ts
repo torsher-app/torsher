@@ -1,3 +1,5 @@
+import { logFor } from '../logs/index.ts'
+import { reconcilePrivateSubtitleStorage } from '../media/downloadedSubtitles.ts'
 import type { Library, LibraryFolder } from '../../db/schema.ts'
 import { constants } from 'node:fs'
 import { access, readdir, stat } from 'node:fs/promises'
@@ -261,6 +263,12 @@ export async function removeLibrary(id: string) {
     tx.delete(libraries).where(eq(libraries.id, id)).run()
     return rows.map(row => row.thumb)
   })
+  try {
+    reconcilePrivateSubtitleStorage()
+  }
+  catch {
+    logFor('storage').warn('Private subtitle cleanup failed')
+  }
   await removeThumbs(thumbs)
 }
 
@@ -281,6 +289,12 @@ export async function removeFolder(folderId: string) {
     tx.delete(libraryFolders).where(eq(libraryFolders.id, folderId)).run()
     return rows.map(row => row.thumb)
   })
+  try {
+    reconcilePrivateSubtitleStorage()
+  }
+  catch {
+    logFor('storage').warn('Private subtitle cleanup failed')
+  }
   await removeThumbs(thumbs)
 }
 

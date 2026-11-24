@@ -5535,6 +5535,410 @@ export interface ScheduleResponseInput {
   recent: ScheduleItemInput[];
 }
 
+export interface SubtitleProviderStatusInput {
+  kind: "ready" | "auth" | "unavailable" | "quota";
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  remainingDownloads?: number;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  remainingSearches?: number;
+  /**
+   * @format date-time
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+   */
+  resetAt?: string;
+}
+
+export interface SubtitleSettingsInput {
+  languages: (
+    | "ar"
+    | "bg"
+    | "ca"
+    | "cs"
+    | "da"
+    | "de"
+    | "el"
+    | "en"
+    | "es"
+    | "et"
+    | "fa"
+    | "fi"
+    | "fr"
+    | "he"
+    | "hi"
+    | "hr"
+    | "hu"
+    | "id"
+    | "is"
+    | "it"
+    | "ja"
+    | "ko"
+    | "lt"
+    | "lv"
+    | "ms"
+    | "nl"
+    | "no"
+    | "pl"
+    | "pt-br"
+    | "pt-pt"
+    | "ro"
+    | "ru"
+    | "sk"
+    | "sl"
+    | "sr"
+    | "sv"
+    | "th"
+    | "tr"
+    | "uk"
+    | "vi"
+    | "zh-cn"
+    | "zh-tw"
+  )[];
+  openSubtitles: {
+    configured: boolean;
+    deviceSearch: boolean;
+    autoDownload: boolean;
+    languages: (
+      | "ar"
+      | "bg"
+      | "ca"
+      | "cs"
+      | "da"
+      | "de"
+      | "el"
+      | "en"
+      | "es"
+      | "et"
+      | "fa"
+      | "fi"
+      | "fr"
+      | "he"
+      | "hi"
+      | "hr"
+      | "hu"
+      | "id"
+      | "is"
+      | "it"
+      | "ja"
+      | "ko"
+      | "lt"
+      | "lv"
+      | "ms"
+      | "nl"
+      | "no"
+      | "pl"
+      | "pt-br"
+      | "pt-pt"
+      | "ro"
+      | "ru"
+      | "sk"
+      | "sl"
+      | "sr"
+      | "sv"
+      | "th"
+      | "tr"
+      | "uk"
+      | "vi"
+      | "zh-cn"
+      | "zh-tw"
+    )[];
+    connection?: SubtitleProviderStatusInput;
+  };
+  subdl: {
+    configured: boolean;
+    connection?: SubtitleProviderStatusInput;
+  };
+}
+
+export interface UpdateSubtitleSettingsInput {
+  openSubtitles?: {
+    /**
+     * @minLength 1
+     * @maxLength 1024
+     */
+    apiKey?: string;
+    /**
+     * @minLength 1
+     * @maxLength 1024
+     */
+    username?: string;
+    /**
+     * @minLength 1
+     * @maxLength 1024
+     */
+    password?: string;
+    deviceSearch?: boolean;
+    autoDownload?: boolean;
+    /** @maxItems 12 */
+    languages?: (
+      | "ar"
+      | "bg"
+      | "ca"
+      | "cs"
+      | "da"
+      | "de"
+      | "el"
+      | "en"
+      | "es"
+      | "et"
+      | "fa"
+      | "fi"
+      | "fr"
+      | "he"
+      | "hi"
+      | "hr"
+      | "hu"
+      | "id"
+      | "is"
+      | "it"
+      | "ja"
+      | "ko"
+      | "lt"
+      | "lv"
+      | "ms"
+      | "nl"
+      | "no"
+      | "pl"
+      | "pt-br"
+      | "pt-pt"
+      | "ro"
+      | "ru"
+      | "sk"
+      | "sl"
+      | "sr"
+      | "sv"
+      | "th"
+      | "tr"
+      | "uk"
+      | "vi"
+      | "zh-cn"
+      | "zh-tw"
+    )[];
+    disconnect?: boolean;
+  };
+  subdl?: {
+    /**
+     * @minLength 1
+     * @maxLength 1024
+     */
+    apiKey?: string;
+    disconnect?: boolean;
+  };
+}
+
+export interface SubtitleSearchContextInput {
+  providers: ("opensubtitles" | "subdl")[];
+  languages: (
+    | "ar"
+    | "bg"
+    | "ca"
+    | "cs"
+    | "da"
+    | "de"
+    | "el"
+    | "en"
+    | "es"
+    | "et"
+    | "fa"
+    | "fi"
+    | "fr"
+    | "he"
+    | "hi"
+    | "hr"
+    | "hu"
+    | "id"
+    | "is"
+    | "it"
+    | "ja"
+    | "ko"
+    | "lt"
+    | "lv"
+    | "ms"
+    | "nl"
+    | "no"
+    | "pl"
+    | "pt-br"
+    | "pt-pt"
+    | "ro"
+    | "ru"
+    | "sk"
+    | "sl"
+    | "sr"
+    | "sv"
+    | "th"
+    | "tr"
+    | "uk"
+    | "vi"
+    | "zh-cn"
+    | "zh-tw"
+  )[];
+  defaultLanguage:
+    | "ar"
+    | "bg"
+    | "ca"
+    | "cs"
+    | "da"
+    | "de"
+    | "el"
+    | "en"
+    | "es"
+    | "et"
+    | "fa"
+    | "fi"
+    | "fr"
+    | "he"
+    | "hi"
+    | "hr"
+    | "hu"
+    | "id"
+    | "is"
+    | "it"
+    | "ja"
+    | "ko"
+    | "lt"
+    | "lv"
+    | "ms"
+    | "nl"
+    | "no"
+    | "pl"
+    | "pt-br"
+    | "pt-pt"
+    | "ro"
+    | "ru"
+    | "sk"
+    | "sl"
+    | "sr"
+    | "sv"
+    | "th"
+    | "tr"
+    | "uk"
+    | "vi"
+    | "zh-cn"
+    | "zh-tw";
+  canRemove: boolean;
+}
+
+export interface SubtitleSearchInputInput {
+  language:
+    | "ar"
+    | "bg"
+    | "ca"
+    | "cs"
+    | "da"
+    | "de"
+    | "el"
+    | "en"
+    | "es"
+    | "et"
+    | "fa"
+    | "fi"
+    | "fr"
+    | "he"
+    | "hi"
+    | "hr"
+    | "hu"
+    | "id"
+    | "is"
+    | "it"
+    | "ja"
+    | "ko"
+    | "lt"
+    | "lv"
+    | "ms"
+    | "nl"
+    | "no"
+    | "pl"
+    | "pt-br"
+    | "pt-pt"
+    | "ro"
+    | "ru"
+    | "sk"
+    | "sl"
+    | "sr"
+    | "sv"
+    | "th"
+    | "tr"
+    | "uk"
+    | "vi"
+    | "zh-cn"
+    | "zh-tw";
+}
+
+export interface SubtitleApplyInputInput {
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  resultId: string;
+}
+
+export interface SubtitleSearchResponseInput {
+  items: {
+    /**
+     * @format uuid
+     * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+     */
+    id: string;
+    provider: "opensubtitles" | "subdl";
+    language:
+      | "ar"
+      | "bg"
+      | "ca"
+      | "cs"
+      | "da"
+      | "de"
+      | "el"
+      | "en"
+      | "es"
+      | "et"
+      | "fa"
+      | "fi"
+      | "fr"
+      | "he"
+      | "hi"
+      | "hr"
+      | "hu"
+      | "id"
+      | "is"
+      | "it"
+      | "ja"
+      | "ko"
+      | "lt"
+      | "lv"
+      | "ms"
+      | "nl"
+      | "no"
+      | "pl"
+      | "pt-br"
+      | "pt-pt"
+      | "ro"
+      | "ru"
+      | "sk"
+      | "sl"
+      | "sr"
+      | "sv"
+      | "th"
+      | "tr"
+      | "uk"
+      | "vi"
+      | "zh-cn"
+      | "zh-tw";
+    release: string;
+    match: "hash" | "release" | "title";
+    forced?: boolean;
+    hearingImpaired?: boolean;
+  }[];
+  issues: {
+    provider: "opensubtitles" | "subdl";
+    kind: "unavailable" | "quota" | "auth";
+  }[];
+}
+
 export type ViewingStartInput =
   | {
       /**
@@ -5661,6 +6065,14 @@ export interface DeviceProfileInput {
   hls: boolean;
 }
 
+export interface SubtitleOffsetInput {
+  /**
+   * @min -30000
+   * @max 30000
+   */
+  offsetMs: number;
+}
+
 export interface CreatePlaybackInput {
   /**
    * @minLength 1
@@ -5685,7 +6097,7 @@ export interface CreatePlaybackInput {
    * @max 9999
    */
   audioStream?: number;
-  /** @pattern ^[sf]\d{1,5}$ */
+  /** @pattern ^(?:[sf]\d{1,5}|m[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$ */
   subtitle?: string | null;
   /**
    * @min 0
@@ -5716,7 +6128,7 @@ export interface UpdatePlaybackPreferencesInput {
    * @max 9999
    */
   audioStream?: number;
-  /** @pattern ^[sf]\d{1,5}$ */
+  /** @pattern ^(?:[sf]\d{1,5}|m[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$ */
   subtitle?: string | null;
 }
 
@@ -5733,7 +6145,7 @@ export interface MediaAudioTrackInput {
 }
 
 export interface MediaSubtitleTrackInput {
-  /** @pattern ^[sf]\d{1,5}$ */
+  /** @pattern ^(?:[sf]\d{1,5}|m[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$ */
   id: string;
   language: string | null;
   title: string | null;
@@ -5742,6 +6154,12 @@ export interface MediaSubtitleTrackInput {
   forced: boolean;
   default: boolean;
   burnIn: boolean;
+  /**
+   * @min -30000
+   * @max 30000
+   */
+  offsetMs?: number;
+  downloaded?: boolean;
 }
 
 export interface MediaInfoInput {
@@ -5783,8 +6201,9 @@ export interface PlaybackInput {
   startPosition: number | null;
   media: MediaInfoInput | null;
   audioStream: number | null;
-  /** @pattern ^[sf]\d{1,5}$ */
+  /** @pattern ^(?:[sf]\d{1,5}|m[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$ */
   subtitle: string | null;
+  subtitleSearch?: SubtitleSearchContextInput;
   preferenceMismatch?: ("audio" | "subtitles")[];
   audioSwitch: "platform" | "restart";
   reasons: string[];
@@ -8066,12 +8485,16 @@ export interface PlayerSettingsInput {
   autoNext: boolean;
   subtitleSize: "s" | "m" | "l";
   subtitleBackground: "none" | "shadow" | "box";
+  subtitlePosition?: "default" | "higher";
+  subtitleColor?: "default" | "dimmed";
 }
 
 export interface UpdatePlayerSettingsInput {
   autoNext?: boolean;
   subtitleSize?: "s" | "m" | "l";
   subtitleBackground?: "none" | "shadow" | "box";
+  subtitlePosition?: "default" | "higher";
+  subtitleColor?: "default" | "dimmed";
 }
 
 export interface ProfileInput {
@@ -8560,6 +8983,8 @@ export interface ExportFileInput {
       autoNext?: boolean;
       subtitleSize?: "s" | "m" | "l";
       subtitleBackground?: "none" | "shadow" | "box";
+      subtitlePosition?: "default" | "higher";
+      subtitleColor?: "default" | "dimmed";
     } | null;
     /**
      * @min -9007199254740991
@@ -15025,6 +15450,410 @@ export interface ScheduleResponse {
   recent: ScheduleItem[];
 }
 
+export interface SubtitleProviderStatus {
+  kind: "ready" | "auth" | "unavailable" | "quota";
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  remainingDownloads?: number;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  remainingSearches?: number;
+  /**
+   * @format date-time
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+   */
+  resetAt?: string;
+}
+
+export interface SubtitleSettings {
+  languages: (
+    | "ar"
+    | "bg"
+    | "ca"
+    | "cs"
+    | "da"
+    | "de"
+    | "el"
+    | "en"
+    | "es"
+    | "et"
+    | "fa"
+    | "fi"
+    | "fr"
+    | "he"
+    | "hi"
+    | "hr"
+    | "hu"
+    | "id"
+    | "is"
+    | "it"
+    | "ja"
+    | "ko"
+    | "lt"
+    | "lv"
+    | "ms"
+    | "nl"
+    | "no"
+    | "pl"
+    | "pt-br"
+    | "pt-pt"
+    | "ro"
+    | "ru"
+    | "sk"
+    | "sl"
+    | "sr"
+    | "sv"
+    | "th"
+    | "tr"
+    | "uk"
+    | "vi"
+    | "zh-cn"
+    | "zh-tw"
+  )[];
+  openSubtitles: {
+    configured: boolean;
+    deviceSearch: boolean;
+    autoDownload: boolean;
+    languages: (
+      | "ar"
+      | "bg"
+      | "ca"
+      | "cs"
+      | "da"
+      | "de"
+      | "el"
+      | "en"
+      | "es"
+      | "et"
+      | "fa"
+      | "fi"
+      | "fr"
+      | "he"
+      | "hi"
+      | "hr"
+      | "hu"
+      | "id"
+      | "is"
+      | "it"
+      | "ja"
+      | "ko"
+      | "lt"
+      | "lv"
+      | "ms"
+      | "nl"
+      | "no"
+      | "pl"
+      | "pt-br"
+      | "pt-pt"
+      | "ro"
+      | "ru"
+      | "sk"
+      | "sl"
+      | "sr"
+      | "sv"
+      | "th"
+      | "tr"
+      | "uk"
+      | "vi"
+      | "zh-cn"
+      | "zh-tw"
+    )[];
+    connection?: SubtitleProviderStatus;
+  };
+  subdl: {
+    configured: boolean;
+    connection?: SubtitleProviderStatus;
+  };
+}
+
+export interface UpdateSubtitleSettings {
+  openSubtitles?: {
+    /**
+     * @minLength 1
+     * @maxLength 1024
+     */
+    apiKey?: string;
+    /**
+     * @minLength 1
+     * @maxLength 1024
+     */
+    username?: string;
+    /**
+     * @minLength 1
+     * @maxLength 1024
+     */
+    password?: string;
+    deviceSearch?: boolean;
+    autoDownload?: boolean;
+    /** @maxItems 12 */
+    languages?: (
+      | "ar"
+      | "bg"
+      | "ca"
+      | "cs"
+      | "da"
+      | "de"
+      | "el"
+      | "en"
+      | "es"
+      | "et"
+      | "fa"
+      | "fi"
+      | "fr"
+      | "he"
+      | "hi"
+      | "hr"
+      | "hu"
+      | "id"
+      | "is"
+      | "it"
+      | "ja"
+      | "ko"
+      | "lt"
+      | "lv"
+      | "ms"
+      | "nl"
+      | "no"
+      | "pl"
+      | "pt-br"
+      | "pt-pt"
+      | "ro"
+      | "ru"
+      | "sk"
+      | "sl"
+      | "sr"
+      | "sv"
+      | "th"
+      | "tr"
+      | "uk"
+      | "vi"
+      | "zh-cn"
+      | "zh-tw"
+    )[];
+    disconnect?: boolean;
+  };
+  subdl?: {
+    /**
+     * @minLength 1
+     * @maxLength 1024
+     */
+    apiKey?: string;
+    disconnect?: boolean;
+  };
+}
+
+export interface SubtitleSearchContext {
+  providers: ("opensubtitles" | "subdl")[];
+  languages: (
+    | "ar"
+    | "bg"
+    | "ca"
+    | "cs"
+    | "da"
+    | "de"
+    | "el"
+    | "en"
+    | "es"
+    | "et"
+    | "fa"
+    | "fi"
+    | "fr"
+    | "he"
+    | "hi"
+    | "hr"
+    | "hu"
+    | "id"
+    | "is"
+    | "it"
+    | "ja"
+    | "ko"
+    | "lt"
+    | "lv"
+    | "ms"
+    | "nl"
+    | "no"
+    | "pl"
+    | "pt-br"
+    | "pt-pt"
+    | "ro"
+    | "ru"
+    | "sk"
+    | "sl"
+    | "sr"
+    | "sv"
+    | "th"
+    | "tr"
+    | "uk"
+    | "vi"
+    | "zh-cn"
+    | "zh-tw"
+  )[];
+  defaultLanguage:
+    | "ar"
+    | "bg"
+    | "ca"
+    | "cs"
+    | "da"
+    | "de"
+    | "el"
+    | "en"
+    | "es"
+    | "et"
+    | "fa"
+    | "fi"
+    | "fr"
+    | "he"
+    | "hi"
+    | "hr"
+    | "hu"
+    | "id"
+    | "is"
+    | "it"
+    | "ja"
+    | "ko"
+    | "lt"
+    | "lv"
+    | "ms"
+    | "nl"
+    | "no"
+    | "pl"
+    | "pt-br"
+    | "pt-pt"
+    | "ro"
+    | "ru"
+    | "sk"
+    | "sl"
+    | "sr"
+    | "sv"
+    | "th"
+    | "tr"
+    | "uk"
+    | "vi"
+    | "zh-cn"
+    | "zh-tw";
+  canRemove: boolean;
+}
+
+export interface SubtitleSearchInput {
+  language:
+    | "ar"
+    | "bg"
+    | "ca"
+    | "cs"
+    | "da"
+    | "de"
+    | "el"
+    | "en"
+    | "es"
+    | "et"
+    | "fa"
+    | "fi"
+    | "fr"
+    | "he"
+    | "hi"
+    | "hr"
+    | "hu"
+    | "id"
+    | "is"
+    | "it"
+    | "ja"
+    | "ko"
+    | "lt"
+    | "lv"
+    | "ms"
+    | "nl"
+    | "no"
+    | "pl"
+    | "pt-br"
+    | "pt-pt"
+    | "ro"
+    | "ru"
+    | "sk"
+    | "sl"
+    | "sr"
+    | "sv"
+    | "th"
+    | "tr"
+    | "uk"
+    | "vi"
+    | "zh-cn"
+    | "zh-tw";
+}
+
+export interface SubtitleApplyInput {
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  resultId: string;
+}
+
+export interface SubtitleSearchResponse {
+  items: {
+    /**
+     * @format uuid
+     * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+     */
+    id: string;
+    provider: "opensubtitles" | "subdl";
+    language:
+      | "ar"
+      | "bg"
+      | "ca"
+      | "cs"
+      | "da"
+      | "de"
+      | "el"
+      | "en"
+      | "es"
+      | "et"
+      | "fa"
+      | "fi"
+      | "fr"
+      | "he"
+      | "hi"
+      | "hr"
+      | "hu"
+      | "id"
+      | "is"
+      | "it"
+      | "ja"
+      | "ko"
+      | "lt"
+      | "lv"
+      | "ms"
+      | "nl"
+      | "no"
+      | "pl"
+      | "pt-br"
+      | "pt-pt"
+      | "ro"
+      | "ru"
+      | "sk"
+      | "sl"
+      | "sr"
+      | "sv"
+      | "th"
+      | "tr"
+      | "uk"
+      | "vi"
+      | "zh-cn"
+      | "zh-tw";
+    release: string;
+    match: "hash" | "release" | "title";
+    forced?: boolean;
+    hearingImpaired?: boolean;
+  }[];
+  issues: {
+    provider: "opensubtitles" | "subdl";
+    kind: "unavailable" | "quota" | "auth";
+  }[];
+}
+
 export type ViewingStart =
   | {
       /**
@@ -15151,6 +15980,14 @@ export interface DeviceProfile {
   hls: boolean;
 }
 
+export interface SubtitleOffset {
+  /**
+   * @min -30000
+   * @max 30000
+   */
+  offsetMs: number;
+}
+
 export interface CreatePlayback {
   /**
    * @minLength 1
@@ -15175,7 +16012,7 @@ export interface CreatePlayback {
    * @max 9999
    */
   audioStream?: number;
-  /** @pattern ^[sf]\d{1,5}$ */
+  /** @pattern ^(?:[sf]\d{1,5}|m[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$ */
   subtitle?: string | null;
   /**
    * @min 0
@@ -15206,7 +16043,7 @@ export interface UpdatePlaybackPreferences {
    * @max 9999
    */
   audioStream?: number;
-  /** @pattern ^[sf]\d{1,5}$ */
+  /** @pattern ^(?:[sf]\d{1,5}|m[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$ */
   subtitle?: string | null;
 }
 
@@ -15223,7 +16060,7 @@ export interface MediaAudioTrack {
 }
 
 export interface MediaSubtitleTrack {
-  /** @pattern ^[sf]\d{1,5}$ */
+  /** @pattern ^(?:[sf]\d{1,5}|m[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$ */
   id: string;
   language: string | null;
   title: string | null;
@@ -15232,6 +16069,12 @@ export interface MediaSubtitleTrack {
   forced: boolean;
   default: boolean;
   burnIn: boolean;
+  /**
+   * @min -30000
+   * @max 30000
+   */
+  offsetMs?: number;
+  downloaded?: boolean;
 }
 
 export interface MediaInfo {
@@ -15273,8 +16116,9 @@ export interface Playback {
   startPosition: number | null;
   media: MediaInfo | null;
   audioStream: number | null;
-  /** @pattern ^[sf]\d{1,5}$ */
+  /** @pattern ^(?:[sf]\d{1,5}|m[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$ */
   subtitle: string | null;
+  subtitleSearch?: SubtitleSearchContext;
   preferenceMismatch?: ("audio" | "subtitles")[];
   audioSwitch: "platform" | "restart";
   reasons: string[];
@@ -17556,12 +18400,16 @@ export interface PlayerSettings {
   autoNext: boolean;
   subtitleSize: "s" | "m" | "l";
   subtitleBackground: "none" | "shadow" | "box";
+  subtitlePosition?: "default" | "higher";
+  subtitleColor?: "default" | "dimmed";
 }
 
 export interface UpdatePlayerSettings {
   autoNext?: boolean;
   subtitleSize?: "s" | "m" | "l";
   subtitleBackground?: "none" | "shadow" | "box";
+  subtitlePosition?: "default" | "higher";
+  subtitleColor?: "default" | "dimmed";
 }
 
 export interface Profile {
@@ -18050,6 +18898,8 @@ export interface ExportFile {
       autoNext?: boolean;
       subtitleSize?: "s" | "m" | "l";
       subtitleBackground?: "none" | "shadow" | "box";
+      subtitlePosition?: "default" | "higher";
+      subtitleColor?: "default" | "dimmed";
     } | null;
     /**
      * @min -9007199254740991
@@ -19463,6 +20313,12 @@ export type GetFollowSettingsError = MessageResponse;
 
 export type PutFollowSettingsError = MessageResponse;
 
+export type GetSubtitleSettingsError = MessageResponse;
+
+export type PutSubtitleSettingsError = MessageResponse;
+
+export type TestSubtitleProviderError = MessageResponse;
+
 export type GetSetupWizardError = MessageResponse;
 
 export type PutSetupWizardError = MessageResponse;
@@ -19487,7 +20343,15 @@ export type DeletePlaybackError = MessageResponse;
 
 export type PostPlaybackErrorError = MessageResponse;
 
+export type PostPlaybackSubtitleSearchError = MessageResponse;
+
+export type PostPlaybackSubtitleApplyError = MessageResponse;
+
+export type DeletePlaybackSubtitleError = MessageResponse;
+
 export type GetPlaybackSubtitlesError = MessageResponse;
+
+export type PutPlaybackSubtitleOffsetError = MessageResponse;
 
 export type PutWatchStateError = MessageResponse;
 
@@ -24356,6 +25220,59 @@ export class Api<
         format: "json",
         ...params,
       }),
+
+    /**
+     * No description
+     *
+     * @tags Settings
+     * @name GetSubtitleSettings
+     * @request GET:/api/settings/subtitles
+     */
+    getSubtitleSettings: (params: RequestParams = {}) =>
+      this.request<SubtitleSettings, GetSubtitleSettingsError>({
+        path: `/api/settings/subtitles`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Settings
+     * @name PutSubtitleSettings
+     * @request PUT:/api/settings/subtitles
+     */
+    putSubtitleSettings: (
+      data: UpdateSubtitleSettingsInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<SubtitleSettings, PutSubtitleSettingsError>({
+        path: `/api/settings/subtitles`,
+        method: "PUT",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Settings
+     * @name TestSubtitleProvider
+     * @request POST:/api/settings/subtitles/{provider}/test
+     */
+    testSubtitleProvider: (
+      provider: "opensubtitles" | "subdl",
+      params: RequestParams = {},
+    ) =>
+      this.request<SubtitleProviderStatus, TestSubtitleProviderError>({
+        path: `/api/settings/subtitles/${provider}/test`,
+        method: "POST",
+        format: "json",
+        ...params,
+      }),
   };
   setup = {
     /**
@@ -24559,6 +25476,67 @@ export class Api<
      * No description
      *
      * @tags Playback
+     * @name PostPlaybackSubtitleSearch
+     * @request POST:/api/playback/{id}/subtitles/search
+     */
+    postPlaybackSubtitleSearch: (
+      id: string,
+      data: SubtitleSearchInputInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<SubtitleSearchResponse, PostPlaybackSubtitleSearchError>({
+        path: `/api/playback/${id}/subtitles/search`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Playback
+     * @name PostPlaybackSubtitleApply
+     * @request POST:/api/playback/{id}/subtitles/apply
+     */
+    postPlaybackSubtitleApply: (
+      id: string,
+      data: SubtitleApplyInputInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<MediaSubtitleTrack, PostPlaybackSubtitleApplyError>({
+        path: `/api/playback/${id}/subtitles/apply`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Playback
+     * @name DeletePlaybackSubtitle
+     * @request DELETE:/api/playback/{id}/subtitles/{trackId}
+     */
+    deletePlaybackSubtitle: (
+      id: string,
+      trackId: string,
+      params: RequestParams = {},
+    ) =>
+      this.request<any, DeletePlaybackSubtitleError>({
+        path: `/api/playback/${id}/subtitles/${trackId}`,
+        method: "DELETE",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Playback
      * @name GetPlaybackSubtitles
      * @request GET:/api/playback/{id}/subtitles/{trackId}
      */
@@ -24575,6 +25553,28 @@ export class Api<
         path: `/api/playback/${id}/subtitles/${trackId}`,
         method: "GET",
         query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Playback
+     * @name PutPlaybackSubtitleOffset
+     * @request PUT:/api/playback/{id}/subtitles/{trackId}/offset
+     */
+    putPlaybackSubtitleOffset: (
+      id: string,
+      trackId: string,
+      data: SubtitleOffsetInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<SubtitleOffset, PutPlaybackSubtitleOffsetError>({
+        path: `/api/playback/${id}/subtitles/${trackId}/offset`,
+        method: "PUT",
+        body: data,
+        type: ContentType.Json,
         format: "json",
         ...params,
       }),
