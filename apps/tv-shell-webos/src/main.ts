@@ -9,6 +9,7 @@ import {
   showcaseUrl,
 } from './server.ts'
 import {
+  checkSavedServer,
   isHistoryNavigation,
   shellHistoryIndex,
   startScreen,
@@ -66,8 +67,9 @@ function showAddress(message = '', focusOn?: HTMLElement) {
   target.focus()
 }
 
-async function connect(base: string) {
+async function connect(base: string, autoConnect = false) {
   const current = ++attempt
+  const isCurrent = () => current === attempt
   addressScreen.remove()
   connectScreen.hidden = false
   connecting.textContent = format(t.connecting, {
@@ -75,8 +77,10 @@ async function connect(base: string) {
   })
   change.focus()
 
-  const result = await checkServer(base)
-  if (current !== attempt)
+  const result = autoConnect
+    ? await checkSavedServer(() => checkServer(base), isCurrent)
+    : await checkServer(base)
+  if (!isCurrent())
     return
 
   if (result === 'ok') {
@@ -136,5 +140,5 @@ if (saved)
   input.value = displayAddress(saved)
 
 if (saved && startScreen(saved, isHistoryNavigation()) === 'connect')
-  void connect(saved)
+  void connect(saved, true)
 else showAddress()
