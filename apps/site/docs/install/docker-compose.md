@@ -7,6 +7,8 @@ description: "Install Torsher with Docker Compose on Linux: the install file, on
 
 Torsher is one container described in one `docker-compose.yml`. This page sets it up on a single disk or across several, and explains each line you may want to change.
 
+To route the container through a WireGuard VPN, use [VPN with Gluetun](/docs/install/vpn-gluetun).
+
 ::: tip What you'll get
 Torsher running on your server, its data in a folder you chose, and the control panel open in your browser.
 :::

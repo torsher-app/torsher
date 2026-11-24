@@ -18,6 +18,7 @@ export const sidebar: DefaultTheme.SidebarItem[] = [
     items: [
       { text: 'Requirements', link: '/docs/install/requirements' },
       { text: 'Docker Compose', link: '/docs/install/docker-compose' },
+      { text: 'VPN with Gluetun', link: '/docs/install/vpn-gluetun' },
       {
         text: 'Hardware transcoding',
         link: '/docs/install/hardware-acceleration',
