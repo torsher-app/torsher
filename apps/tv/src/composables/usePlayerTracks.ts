@@ -7,7 +7,7 @@ import type { Ref, ShallowRef } from 'vue'
 import type { TrackOption } from '../components/player/PlayerTracks.vue'
 import type { PlaybackRestart } from './usePlayback.ts'
 import { frameResolution } from '@torsher/release-parser/resolution'
-import { computed, ref, watch } from 'vue'
+import { computed, ref, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   audioOrder,
@@ -63,14 +63,51 @@ export function usePlayerTracks(
   const subtitles = useSubtitles(video, position)
   const audioStream = ref<number | null>(null)
   const subtitle = ref<string | null>(null)
-  const media = computed(() => playback.value?.media ?? null)
+  const subtitleOffsets = shallowRef(new Map<string, number>())
+  const subtitleChanges = shallowRef(
+    new Map<string, MediaSubtitleTrack | null>(),
+  )
+  const media = computed(() => {
+    const source = playback.value?.media
+    if (!source || !subtitleChanges.value.size)
+      return source ?? null
+    const current = source.subtitles.filter(
+      track => !subtitleChanges.value.has(track.id),
+    )
+    for (const track of subtitleChanges.value.values()) {
+      if (track)
+        current.push(track)
+    }
+    return { ...source, subtitles: current }
+  })
   let loaded: { sessionId: string, video: HTMLVideoElement } | undefined
 
   // Графические субтитры уже в кадре: реплик для слоя у них нет
   const burnedIn = (id: string | null) =>
     !!id && !!media.value?.subtitles.find(track => track.id === id)?.burnIn
 
-  watch(playback, (value) => {
+  function offsetOf(id: string | null) {
+    const track = media.value?.subtitles.find(item => item.id === id)
+    if (!track || track.burnIn || track.offsetMs === undefined)
+      return undefined
+    return subtitleOffsets.value.get(track.id) ?? track.offsetMs
+  }
+
+  const subtitleOffset = computed(() => offsetOf(subtitle.value))
+
+  function rememberSubtitleOffset(id: string, offset: number) {
+    const offsets = new Map(subtitleOffsets.value)
+    offsets.set(id, offset)
+    subtitleOffsets.value = offsets
+    if (subtitle.value === id)
+      subtitles.setOffset(offset)
+  }
+
+  watch(playback, (value, previous) => {
+    if (value?.sessionId !== previous?.sessionId) {
+      subtitleOffsets.value = new Map()
+      subtitleChanges.value = new Map()
+    }
     audioStream.value = value?.audioStream ?? null
     subtitle.value = value?.subtitle ?? null
 
@@ -79,20 +116,39 @@ export function usePlayerTracks(
       && value.subtitle
       && !burnedIn(value.subtitle)
     ) {
-      subtitles.show(value.sessionId, value.subtitle)
+      subtitles.show(value.sessionId, value.subtitle, offsetOf(value.subtitle))
     }
     else {
       subtitles.hide()
     }
   })
 
+  function setSubtitleTrack(id: string, track: MediaSubtitleTrack | null) {
+    if (!track && subtitle.value === id) {
+      subtitles.hide()
+      subtitle.value = null
+    }
+    const changes = new Map(subtitleChanges.value)
+    changes.set(id, track)
+    subtitleChanges.value = changes
+  }
+
+  const downloadedSubtitle = computed(
+    () =>
+      media.value?.subtitles.find(
+        track => track.id === subtitle.value && track.downloaded,
+      )?.id,
+  )
+
   function languageName(code: string | null) {
     if (!code)
       return null
 
-    return te(`languages.${code}`)
-      ? t(`languages.${code}`)
-      : code.toUpperCase()
+    const legacy = `languages.${code}`
+    const provider = `subtitleLanguages.${code.toLowerCase()}`
+    if (te(legacy))
+      return t(legacy)
+    return te(provider) ? t(provider) : code.toUpperCase()
   }
 
   function audioTitle(track: MediaAudioTrack, position: number) {
@@ -345,7 +401,7 @@ export function usePlayerTracks(
     }
 
     subtitle.value = id
-    subtitles.show(current.sessionId, id)
+    subtitles.show(current.sessionId, id, offsetOf(id))
   }
 
   /** Подзаголовок панели: что за файл играет */
@@ -396,6 +452,10 @@ export function usePlayerTracks(
     subtitlesLabel,
     selectAudio,
     selectSubtitles,
+    subtitleOffset,
+    rememberSubtitleOffset,
+    setSubtitleTrack,
+    downloadedSubtitle,
     caption,
     audioTrack,
     /** Видимые сейчас реплики субтитров сервера, готовый HTML */

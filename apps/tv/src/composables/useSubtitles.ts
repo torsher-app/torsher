@@ -20,98 +20,105 @@ export function useSubtitles(
   position: Ref<number>,
 ) {
   const cues = shallowRef<TimedCue[]>([])
-  let current: { sessionId: string, trackId: string } | null = null
+  const offsetMs = shallowRef(0)
+  let current:
+    | {
+      sessionId: string
+      trackId: string
+      video: HTMLVideoElement
+    }
+    | undefined
   let timer: ReturnType<typeof setTimeout> | undefined
-  let known = new Set<string>()
-  let loading = false
-
-  const html = computed(() =>
-    activeCues(cues.value, position.value)
-      .map(cue => subtitleHtml(cue.text))
-      .join('<br>'),
+  let pending: AbortController | undefined
+  const known = new Set<string>()
+  const effectiveSeconds = computed(
+    () => position.value - offsetMs.value / 1000,
   )
 
-  async function load() {
-    const el = video.value
-    const target = current
+  const html = computed(() => {
+    const seconds = effectiveSeconds.value
+    if (seconds < 0)
+      return ''
+    return activeCues(cues.value, seconds)
+      .map(cue => subtitleHtml(cue.text))
+      .join('<br>')
+  })
 
-    if (!el || !target || loading)
+  function loadWindow() {
+    const target = current
+    if (!target)
       return
 
-    loading = true
+    clearTimeout(timer)
+    pending?.abort()
+    const request = new AbortController()
+    pending = request
 
-    try {
-      const response = await api.playback.getPlaybackSubtitles(
+    void api.playback
+      .getPlaybackSubtitles(
         target.sessionId,
         target.trackId,
-        { from: String(Math.floor(position.value)) },
+        { from: String(Math.max(0, Math.floor(effectiveSeconds.value))) },
+        { signal: request.signal },
       )
-
-      // Пока ждали ответ, выбрали другую дорожку
-      if (target !== current)
-        return
-
-      const fresh = response.cues.filter((cue) => {
-        const key = `${cue.start}|${cue.text}`
-
-        if (known.has(key))
-          return false
-
-        known.add(key)
-        return true
+      .then(({ cues: window }) => {
+        if (pending !== request || current !== target)
+          return
+        const fresh = window.filter((cue) => {
+          const key = `${cue.start}|${cue.end}|${cue.text}`
+          if (known.has(key))
+            return false
+          known.add(key)
+          return true
+        })
+        if (fresh.length > 0) {
+          cues.value = [...cues.value, ...fresh].sort(
+            (a, b) => a.start - b.start,
+          )
+        }
       })
-
-      if (fresh.length > 0) {
-        cues.value = [...cues.value, ...fresh].sort(
-          (a, b) => a.start - b.start,
-        )
-      }
-    }
-    catch {
-      // Пропущенное окно дочитается следующим запросом
-    }
-    finally {
-      loading = false
-    }
-  }
-
-  function schedule() {
-    clearTimeout(timer)
-    timer = setTimeout(() => {
-      void load().then(() => {
-        if (current)
-          schedule()
+      .catch(() => {
+        // Пропущенное окно дочитается следующим запросом
       })
-    }, POLL_MS)
-  }
-
-  function onSeeked() {
-    void load()
+      .finally(() => {
+        if (pending !== request || current !== target)
+          return
+        pending = undefined
+        timer = setTimeout(loadWindow, POLL_MS)
+      })
   }
 
   function hide() {
     clearTimeout(timer)
-    current = null
+    pending?.abort()
+    pending = undefined
+    current?.video.removeEventListener('seeked', loadWindow)
+    current = undefined
     cues.value = []
-    known = new Set()
-    video.value?.removeEventListener('seeked', onSeeked)
+    known.clear()
+    offsetMs.value = 0
   }
 
-  function show(sessionId: string, trackId: string) {
+  function show(sessionId: string, trackId: string, offset = 0) {
     hide()
-
     const el = video.value
-
     if (!el)
       return
 
-    current = { sessionId, trackId }
-    el.addEventListener('seeked', onSeeked)
-    void load()
-    schedule()
+    current = { sessionId, trackId, video: el }
+    offsetMs.value = offset
+    el.addEventListener('seeked', loadWindow)
+    loadWindow()
+  }
+
+  function setOffset(offset: number) {
+    if (offsetMs.value === offset)
+      return
+    offsetMs.value = offset
+    loadWindow()
   }
 
   onScopeDispose(hide)
 
-  return { show, hide, html }
+  return { show, hide, html, setOffset }
 }
