@@ -55,6 +55,9 @@ When the cache goes over the limit, the server deletes cache torrents in order: 
 
 - kept torrents and what's in the library;
 - what is playing now or was played in the last 10 minutes.
+- private torrents with an active [seeding requirement](/docs/panel/downloads#seeding-requirements).
+
+The disk card shows <Ui k="panel.torrents.privatePolicy.protected" /> as part of the space already used by downloads.
 
 The <Ui k="panel.settings.storage.queue.title" /> card shows the next torrents in line. <Ui k="panel.settings.storage.queue.open" /> opens <Ui k="panel.nav.torrents" /> filtered to the cache.
 

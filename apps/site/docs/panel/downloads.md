@@ -75,7 +75,7 @@ Click a row to open its card on the right.
 Buttons at the bottom are grouped into two rows. Download and storage actions come first; the journal and deletion are below the divider:
 
 - **<Ui k="panel.torrents.download" />.**
-- **<Ui k="panel.torrents.keep" />** moves the torrent out of the cache. **<Ui k="panel.torrents.unkeep" />** stops the full download and returns it to the cache: what is downloaded stays until the cache fills up.
+- **<Ui k="panel.torrents.keep" />** moves the torrent out of the cache. **<Ui k="panel.torrents.unkeep" />** returns it to the cache. Public torrents stop downloading selected files. Private torrents continue their full download and retain any active seeding requirement.
 - **<Ui k="panel.torrents.removeLibrary" />,** when files are already in the library.
 - **<Ui k="panel.nav.logs" />** opens the journal filtered to this torrent.
 - **<Ui k="panel.common.delete" />.**
@@ -83,6 +83,14 @@ Buttons at the bottom are grouped into two rows. Download and storage actions co
 ### Seeding rule for one torrent
 
 A kept torrent has <Ui k="panel.torrents.card.seedRule" /> in its card. By default it follows the rule in <Ui k="panel.nav.settings panel.settings.nav.torrent" />. Choose another one for this torrent only: <Ui k="panel.settings.torrent.seedRule.modes.always" />, <Ui k="panel.settings.torrent.seedRule.modes.ratio" />, <Ui k="panel.settings.torrent.seedRule.modes.time" /> or <Ui k="panel.settings.torrent.seedRule.modes.never" />, and select <Ui k="panel.common.save" />. While a torrent downloads or someone watches it, it always seeds.
+
+### Seeding requirements
+
+A private torrent downloads in full and uses one tracker. When you start playback, the file you watch gets priority. The server reserves space for the full download before starting the private session.
+
+Open the torrent's card to see <Ui k="panel.torrents.privatePolicy.requirement" />, including any release and source minimums. While the requirement is active, the cache and automatic library cleanup protect the torrent and its files. After it is met, the usual seeding rule and cache settings apply.
+
+Ratio and seeding time are local estimates. Time counts only after the engine verifies the full download and the tracker accepts a complete announce, and it stops advancing while the torrent is paused. The tracker decides how it credits seeding. When the rules are unknown, protection stays active until you confirm removal.
 
 ### Set the title
 
@@ -110,6 +118,8 @@ Select <Ui k="panel.common.delete" /> and choose:
 - <Ui k="panel.torrents.deleteDialog.keepFiles" />: the files stay on disk, but Torsher stops counting them and never deletes them automatically.
 
 Either way, the engine stops downloading and seeding it. Files already in the library stay there. To free that space, remove them from the library first.
+
+For a private torrent with an active seeding requirement, check the warning in the dialog before confirming. Removing the torrent can count as a hit-and-run under the tracker's rules.
 
 ### Remove from the library
 
