@@ -653,6 +653,90 @@ describe('ключ и разбор темы', () => {
 })
 
 describe('подмена раздачи темы', () => {
+  it('downloads a new version alongside a torrent with unknown seeding requirements', async () => {
+    const follow = insertFollow()
+    const { old } = await seedOld(follow)
+    getDb()
+      .update(torrents)
+      .set({
+        isPrivate: true,
+        fullDownload: true,
+        seedObligations: [
+          {
+            origin: 'tracker',
+            mode: 'and',
+            ratio: null,
+            minutes: null,
+            unknown: true,
+          },
+        ],
+      })
+      .where(eq(torrents.id, old.id))
+      .run()
+    newVersion('New Synthetic Season')
+
+    await followAutomation(new Date())
+
+    expect(engineCalls).not.toContain(`DELETE /torrents/${OLD}`)
+    expect(torrentByHash(OLD)).toMatchObject({ inEngine: true })
+    expect(torrentByHash(NEW)).toMatchObject({ inEngine: true })
+    expect(await readFile(downloadsPath(NAME, episodeFile(7)), 'utf8')).toBe(
+      content(7),
+    )
+  })
+
+  it('keeps the new private session attached when a refresh arrives after playback', async () => {
+    const follow = insertFollow()
+    const { old, topic } = await seedOld(follow)
+    newVersion(OTHER_NAME)
+    const next = getDb()
+      .insert(torrents)
+      .values({
+        infoHash: NEW,
+        name: OTHER_NAME,
+        source: 'file',
+        status: 'ready',
+        torrentFile: torrentBytes(NEW),
+        files: details(NEW).files.map(file => ({
+          path: file.path,
+          size: file.length,
+          padding: false,
+        })),
+        pieceLength: 16_384,
+        titleId: SERIES,
+        inEngine: true,
+        isPrivate: true,
+        fullDownload: true,
+      })
+      .returning()
+      .get()
+    live = [
+      completeState(old),
+      { ...completeState(next), isPrivate: true, fullDownload: true },
+    ]
+    await startRefresh(
+      follow,
+      topic,
+      next,
+      {
+        id: 'next',
+        title: NEW_TITLE,
+        indexerId,
+        detailsUrl: TOPIC,
+        seeders: 30,
+        studio: 'LostFilm',
+        language: 'ru',
+      },
+      [{ season: 2, episode: 9 }],
+      new Date(),
+    )
+
+    expect(
+      engineCalls.filter(call => call.startsWith('DELETE /torrents/')),
+    ).toEqual([])
+    expect(torrentByHash(OLD)).toMatchObject({ inEngine: true })
+    expect(torrentByHash(NEW)).toMatchObject({ inEngine: true })
+  })
   it.each([
     ['E.mkv.part', 'E.mkv.PART', false],
     ['E.mkv.part', 'E.mkv.PART', true],
@@ -1523,7 +1607,12 @@ describe('подмена раздачи темы', () => {
             torrentId: next.id,
             title: NEW_TITLE,
             episodes: [{ season: 2, episode: 9 }],
-            candidate: { id: 'next', title: NEW_TITLE, seeders: 30 },
+            candidate: {
+              id: 'next',
+              title: NEW_TITLE,
+              seeders: 30,
+              indexerId: topic.indexerId,
+            },
             stage: 'prepare',
             forgotten: true,
           },

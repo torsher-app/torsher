@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"mime"
 	"net/http"
 	"path"
@@ -31,6 +32,10 @@ func newStreamReader(ctx context.Context, file *torrent.File) torrent.Reader {
 func (a *api) stream(w http.ResponseWriter, r *http.Request) {
 	t, ok := a.torrentOf(w, r)
 	if !ok {
+		return
+	}
+	if a.session.get(t.InfoHash()).AwaitingAdmission {
+		writeError(w, 409, "torrent_admission_required", errors.New("private torrent requires storage admission"))
 		return
 	}
 

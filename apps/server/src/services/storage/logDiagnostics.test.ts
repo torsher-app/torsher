@@ -345,18 +345,23 @@ describe('storage failure diagnostics', () => {
   })
   it('preserves download507 on isolation admission after actual engine path conflict', async () => {
     const torrent = row()
-    // GET /torrents is a snapshot, POST /torrents is the conflicting add.
-    fetchMock.mockImplementation(async (input, init) =>
-      init?.method === 'POST'
-        ? json({ kind: 'storage_path_conflict', message: marker }, 409)
-        : json([]),
-    )
+    disk.free = disk.total
+    let rejected = false
+    fetchMock.mockImplementation(async (_input, init) => {
+      if (init?.method === 'POST') {
+        rejected = true
+        disk.free = 0
+        return json({ kind: 'storage_path_conflict', message: marker }, 409)
+      }
+      return json([])
+    })
     const response = await app.inject({
       method: 'POST',
       url: `/api/torrents/${torrent.id}/download`,
       cookies: owner,
       payload: { files: [0] },
     })
+    expect(rejected).toBe(true)
     expect(response.statusCode).toBe(507)
     expect(response.json()).toMatchObject({
       kind: 'no_space',

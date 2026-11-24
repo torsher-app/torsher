@@ -65,6 +65,7 @@ import {
   voiceFingerprint,
   voiceGuard,
 } from './voice.ts'
+import { automationIndexer } from '../sources/search.ts'
 
 // Ссылка индексатора не ответила: следующая попытка того же кандидата — не
 // на каждом тике, скачивание `.torrent` у Prowlarr считается в его лимит.
@@ -118,7 +119,8 @@ export function pendingOf(
       ))
       || (release.link
         ? release.indexers.find(item => item.id === release.link!.indexerId)
-        : release.indexers[0])
+        : (release.indexers.find(item => item.id === release.sourceIndexerId)
+          ?? release.indexers[0]))
 
   return {
     id: release.id,
@@ -131,6 +133,12 @@ export function pendingOf(
       indexerOrigin: release.link.indexerOrigin,
     },
     indexerId: indexer?.id,
+    sourceIndexerId:
+      release.link?.indexerId ?? release.sourceIndexerId ?? indexer?.id,
+    sourceIsPrivate: release.sourceIsPrivate,
+    minimumRatio: release.minimumRatio,
+    minimumSeedTimeMinutes: release.minimumSeedTimeMinutes,
+    seedType: release.seedType,
     detailsUrl: indexer?.detailsUrl,
     size: release.size,
     seeders: release.seeders,
@@ -139,6 +147,18 @@ export function pendingOf(
     voiceType: release.voice?.type,
     language: release.audioLanguage,
   }
+}
+
+export function pendingSourceAllowed(candidate: FollowPendingCandidate) {
+  const indexer = automationIndexer(
+    candidate.link?.indexerId
+    ?? candidate.sourceIndexerId
+    ?? candidate.indexerId,
+  )
+  return (
+    !!indexer
+    && (!(indexer.isPrivate || candidate.sourceIsPrivate) || !!candidate.link)
+  )
 }
 
 export function linkOf(candidate: FollowPendingCandidate) {
@@ -175,6 +195,23 @@ export function pendingMagnet(candidate: FollowPendingCandidate) {
       return undefined
 
     throw err
+  }
+}
+
+export function acquisitionOf(candidate: FollowPendingCandidate) {
+  return {
+    title: candidate.title,
+    link: linkOf(candidate),
+    magnet: pendingMagnet(candidate),
+    infoHash: candidate.infoHash,
+    sourceIndexerId:
+      candidate.link?.indexerId
+      ?? candidate.sourceIndexerId
+      ?? candidate.indexerId,
+    sourceIsPrivate: candidate.sourceIsPrivate,
+    minimumRatio: candidate.minimumRatio,
+    minimumSeedTimeMinutes: candidate.minimumSeedTimeMinutes,
+    seedType: candidate.seedType,
   }
 }
 
@@ -394,6 +431,10 @@ async function startGrabImpl(
   } = {},
 ): Promise<GrabResult> {
   const now = options.now ?? new Date()
+  if (!pendingSourceAllowed(candidate)) {
+    resetEpisodes(follow, episodes)
+    return 'blocked'
+  }
   if (hasSuppressed(follow.titleId, episodes))
     return 'blocked'
   if (options.isCurrent && !options.isCurrent())
@@ -432,6 +473,7 @@ async function startGrabImpl(
       [...new Set(files.values())],
       () =>
         !hasSuppressed(follow.titleId, episodes)
+        && pendingSourceAllowed(candidate)
         && (options.isCurrent?.() ?? true),
       'follow',
     )
@@ -613,6 +655,10 @@ async function grabCandidateImpl(
     diagnostics?: FollowChoiceDiagnostics
   } = {},
 ): Promise<GrabResult> {
+  if (!pendingSourceAllowed(candidate)) {
+    resetEpisodes(follow, episodes)
+    return 'blocked'
+  }
   const now = options.now ?? new Date()
   const currentRules = voiceGuard(
     follow,
@@ -627,6 +673,7 @@ async function grabCandidateImpl(
   }
   const isCurrent = () =>
     currentRules()
+    && pendingSourceAllowed(candidate)
     && episodes.every(item =>
       permitsCandidate(follow, candidate, item.season),
     )
@@ -665,12 +712,7 @@ async function grabCandidateImpl(
 
   try {
     torrent = await acquire(
-      {
-        title: candidate.title,
-        link: linkOf(candidate),
-        magnet: pendingMagnet(candidate),
-        infoHash: candidate.infoHash,
-      },
+      acquisitionOf(candidate),
       () => true,
       'follow',
       isCurrent,

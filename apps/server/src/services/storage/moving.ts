@@ -20,6 +20,17 @@ export function withTorrentStorageMutation<T>(
   return task
 }
 
+/** Storage already holds its queue. Skip mutations that hold or await this row. */
+export function tryTorrentStorageMutation<T>(
+  id: string,
+  work: () => Promise<T>,
+) {
+  if (mutations.has(id))
+    return undefined
+
+  return withTorrentStorageMutation(id, work)
+}
+
 export function markMoving(torrentId: string) {
   moving.add(torrentId)
 }

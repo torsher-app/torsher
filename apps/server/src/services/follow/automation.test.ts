@@ -333,6 +333,7 @@ beforeAll(async () => {
   getDb()
     .insert(indexers)
     .values({
+      id: 'indexer-001',
       name: 'Indexer A',
       url: 'https://a.indexer.example/torznab',
       caps: {
@@ -591,6 +592,7 @@ describe('автоматика «Следить»', () => {
           waitUntil: new Date(Date.now() - HOUR_MS),
           pending: {
             id: `candidate-${episode}`,
+            indexerId: 'indexer-001',
             title: `Quiet.Harbor.S02E0${episode}.1080p.MVO`,
             seeders: 40,
           },
@@ -1172,6 +1174,7 @@ describe('автоматика «Следить»', () => {
           grabbedAt: now,
           pending: {
             id: 'magnet-candidate',
+            indexerId: 'indexer-001',
             title:
               'Тихая гавань / Quiet Harbor / Сезон: 2 / Серии: 8 из 12 (2024) WEB-DL 1080p | NewStudio',
             infoHash: SINGLE_HASH,
@@ -1544,7 +1547,13 @@ describe('автоматика «Следить»', () => {
         season: 2,
         episode: 8,
         firstSeenAt: new Date(now.getTime() - 2 * DAY_MS),
-        pending: { id: 'old', title, magnet, seeders: 30 },
+        pending: {
+          id: 'old',
+          title,
+          magnet,
+          seeders: 30,
+          indexerId: 'indexer-001',
+        },
         waitUntil: now,
       })
       .run()
@@ -1552,6 +1561,53 @@ describe('автоматика «Следить»', () => {
 
     expect(getDb().select().from(torrents).get()?.magnet).toBe(magnet)
   })
+
+  it.each(['notify', 'download'] as const)(
+    'clears a pending %s candidate once its source disables automation',
+    async (mode) => {
+      libraryEpisodes(1, 2, 3, 4, 5, 6, 7)
+      const follow = insertFollow({ mode })
+      const now = new Date()
+      getDb()
+        .insert(followEpisodes)
+        .values({
+          followId: follow.id,
+          season: 2,
+          episode: 8,
+          firstSeenAt: new Date(now.getTime() - 2 * DAY_MS),
+          waitUntil: now,
+          pending: {
+            id: 'pending-private',
+            indexerId: 'indexer-001',
+            title: EPISODE_8_TITLE,
+            infoHash: SINGLE_HASH,
+            seeders: 30,
+          },
+        })
+        .run()
+      getDb()
+        .update(indexers)
+        .set({ allowAutomation: false })
+        .where(eq(indexers.id, 'indexer-001'))
+        .run()
+      try {
+        await grabPending(followById(follow.id)!, now)
+        expect(rows(follow.id)[0]).toMatchObject({
+          pending: null,
+          torrentId: null,
+        })
+        expect(engineAdds).toEqual([])
+        expect(historyKinds(follow.id)).not.toContain('picked')
+      }
+      finally {
+        getDb()
+          .update(indexers)
+          .set({ allowAutomation: true })
+          .where(eq(indexers.id, 'indexer-001'))
+          .run()
+      }
+    },
+  )
 
   it('ссылка индексатора ответила 429 с Retry-After — фон не ходит к нему до срока', async () => {
     pinVoice(SERIES, 2, { studio: 'LostFilm' })

@@ -29,7 +29,7 @@ import {
 } from '@/components/ui/sheet'
 import LoadingButton from '~/components/LoadingButton.vue'
 import DownloadFilePriority from './DownloadFilePriority.vue'
-import { formatDateTime, formatRelative } from '~/lib/format'
+import { formatDateTime, formatDuration, formatRelative } from '~/lib/format'
 import { releaseMetaOf } from '~/lib/releaseMeta'
 import { playerUrl } from '~/lib/torrents'
 import DownloadSeedRule from './DownloadSeedRule.vue'
@@ -142,6 +142,31 @@ const matchText = computed(() => {
   )
 })
 const { ratio: formatRatio } = useSeedRuleText()
+const obligationStatus = computed(() => {
+  const obligation = shown.value?.seedObligation
+  if (!obligation)
+    return null
+  if (obligation.unknown)
+    return 'unknown'
+  if (obligation.trackerErrorCode && obligation.trackerErrorCode !== 'storage')
+    return 'failed'
+  if (obligation.met)
+    return 'met'
+  if (!obligation.verifiedComplete)
+    return 'incomplete'
+  if (!obligation.leftZeroAccepted)
+    return 'awaiting'
+  return null
+})
+function seedTime(seconds: number) {
+  return seconds > 0
+    ? formatDuration(seconds, locale.value)
+    : new Intl.NumberFormat(locale.value.replace('_', '-'), {
+        style: 'unit',
+        unit: 'minute',
+        unitDisplay: 'short',
+      }).format(0)
+}
 
 // «Отдано 1,2 ГБ · рейтинг 0,4»; остановленная раздача говорит почему
 const seedingText = computed(() => {
@@ -170,6 +195,8 @@ const seedingStop = computed(() => {
 })
 
 const storageText = computed(() => {
+  if (shown.value?.seedObligation && !shown.value.seedObligation.met)
+    return t('panel.torrents.privatePolicy.protected')
   if (shown.value?.inLibrary)
     return t('panel.torrents.card.storageLibrary')
 
@@ -448,9 +475,11 @@ function onInteractOutside(event: Event) {
             </dt>
             <dd class="tabular-nums">
               {{
-                selected
-                  ? `${selected.count} · ${status.bytes(selected.size)}`
-                  : t("panel.torrents.card.wantedNone")
+                shown.fullDownload
+                  ? status.bytes(shown.totalSize)
+                  : selected
+                    ? `${selected.count} · ${status.bytes(selected.size)}`
+                    : t("panel.torrents.card.wantedNone")
               }}
             </dd>
             <dt class="text-muted-foreground">
@@ -490,6 +519,78 @@ function onInteractOutside(event: Event) {
             <dd>
               {{ storageText }}
             </dd>
+            <template v-if="shown.seedObligation">
+              <dt class="self-start text-muted-foreground">
+                {{ t("panel.torrents.privatePolicy.requirement") }}
+              </dt>
+              <dd class="grid gap-1">
+                <Badge variant="secondary">
+                  {{ t("panel.torrents.privatePolicy.private") }}
+                </Badge>
+                <span
+                  v-if="shown.primaryTrackerHost"
+                  class="break-all text-muted-foreground"
+                >
+                  {{ shown.primaryTrackerHost }}
+                </span>
+                <span v-if="obligationStatus">
+                  {{ t(`panel.torrents.privatePolicy.${obligationStatus}`) }}
+                </span>
+                <span
+                  v-if="
+                    shown.seedObligation.unknown
+                      && shown.seedObligation.trackerErrorCode
+                      && shown.seedObligation.trackerErrorCode !== 'storage'
+                  "
+                >
+                  {{ t("panel.torrents.privatePolicy.failed") }}
+                </span>
+                <span class="text-muted-foreground tabular-nums">
+                  {{
+                    t("panel.torrents.privatePolicy.estimate", {
+                      ratio:
+                        shown.seedObligation.ratio === null
+                          ? "—"
+                          : formatRatio(shown.seedObligation.ratio),
+                      time: seedTime(shown.seedObligation.seededSeconds),
+                    })
+                  }}
+                </span>
+                <div
+                  v-for="requirement in shown.seedObligation.requirements.filter(
+                    (item) => item.ratio !== null || item.minutes !== null,
+                  )"
+                  :key="requirement.origin"
+                  class="grid gap-0.5"
+                >
+                  <span>{{
+                    t(`panel.torrents.privatePolicy.${requirement.origin}`)
+                  }}</span>
+                  <span class="text-muted-foreground tabular-nums">
+                    {{
+                      [
+                        requirement.ratio === null
+                          ? null
+                          : formatRatio(requirement.ratio),
+                        requirement.minutes === null
+                          ? null
+                          : seedTime(requirement.minutes * 60),
+                      ]
+                        .filter((value) => value !== null)
+                        .join(" · ")
+                    }}
+                  </span>
+                  <span
+                    v-if="
+                      requirement.ratio !== null && requirement.minutes !== null
+                    "
+                    class="text-muted-foreground"
+                  >
+                    {{ t(`panel.sources.privatePolicy.${requirement.mode}`) }}
+                  </span>
+                </div>
+              </dd>
+            </template>
             <dt class="text-muted-foreground">
               {{ t("panel.torrents.card.added") }}
             </dt>
@@ -524,7 +625,10 @@ function onInteractOutside(event: Event) {
               <h3 class="text-xs font-medium text-muted-foreground">
                 {{ t("panel.torrents.card.files") }}
               </h3>
-              <p class="mt-0.5 text-[12.5px] text-muted-foreground">
+              <p
+                v-if="!shown.fullDownload"
+                class="mt-0.5 text-[12.5px] text-muted-foreground"
+              >
                 {{ t("panel.torrents.card.filesHint") }}
               </p>
             </div>

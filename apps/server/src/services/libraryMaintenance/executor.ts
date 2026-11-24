@@ -40,6 +40,7 @@ import { logFor } from '../logs/index.ts'
 import { DAY } from './evaluate.ts'
 import { maintenanceConfig, policyFacts, previewMaintenance } from './index.ts'
 import { clearMaintenanceRestoreHold, restoreHeld } from './restore.ts'
+import { isSeedObligationMet } from '../torrents/seeding.ts'
 
 /** Подмена только в синтетических тестах; production всегда использует Go fence. */
 export const maintenanceEngine = {
@@ -118,6 +119,8 @@ function readEligibilityFingerprint(groupId: string) {
             selectedFiles: torrents.selectedFiles,
             downloadDir: torrents.downloadDir,
             seedRule: torrents.seedRule,
+            isPrivate: torrents.isPrivate,
+            seedObligations: torrents.seedObligations,
           })
           .from(torrents)
           .where(eq(torrents.id, group.torrentId))
@@ -224,11 +227,15 @@ async function cancelUnchanged(
   }
   if (reply.state !== 'cancelled' || Object.keys(reply.results).length)
     throw new Error('cancel_not_confirmed')
+  finishCancellation(op)
+}
+
+function finishCancellation(op: Operation) {
   durableMaintenance(() => {
     patch(op.id, {
       state: 'cancelled',
       engineStage: 'cancelled',
-      results: reply.results,
+      results: {},
       error: 'policy_changed',
     })
     getDb()
@@ -355,7 +362,10 @@ async function commitCleaned(op: Operation) {
   patch(op.id, { volumes })
 }
 /** Возобновление не обходит политику. После partial fence остаётся до решения владельца. */
-export async function retryMaintenanceOperation(id: string) {
+export async function retryMaintenanceOperation(
+  id: string,
+  newlyJournaled = false,
+) {
   let op = operation(id)
   if (!op || op.state === 'cancelled')
     return false
@@ -369,10 +379,60 @@ export async function retryMaintenanceOperation(id: string) {
       patch(id, { engineStage: 'finalized', error: null })
       return true
     }
+    const db = getDb()
+    const group = db
+      .select()
+      .from(maintenanceGroups)
+      .where(eq(maintenanceGroups.id, op.groupId))
+      .get()
+    const torrent = group?.torrentId
+      ? db.select().from(torrents).where(eq(torrents.id, group.torrentId)).get()
+      : undefined
+    if (group?.privateObligationMet === false) {
+      if (newlyJournaled)
+        finishCancellation(op)
+      return false
+    }
+    if (torrent?.isPrivate) {
+      const live = (await maintenanceEngine.torrents()).find(
+        state => state.infoHash === torrent.infoHash,
+      )
+      if (!isSeedObligationMet(torrent, live)) {
+        if (newlyJournaled) {
+          finishCancellation(op)
+          return false
+        }
+        if (live || group?.privateObligationMet !== true)
+          return false
+
+        // A lost HTTP reply can leave the engine journal ahead of SQLite.
+        // Check the actual fence before continuing a previously accepted detach.
+        let existing: engine.EngineMaintenanceOperation
+        try {
+          existing = await maintenanceEngine.status(op.id)
+        }
+        catch (error) {
+          if (error instanceof engine.EngineError && error.kind === 'not_found')
+            return false
+          throw error
+        }
+        assertManifest(op, existing)
+        const stagedWithProof
+          = existing.state === 'pending' && existing.verifiedForDetach === true
+        if (
+          !stagedWithProof
+          && existing.state !== 'detached'
+          && existing.state !== 'deleting'
+        ) {
+          return false
+        }
+      }
+    }
     // prepare идемпотентен и при потерянном HTTP-ответе; отсутствие не считается ack.
     const detached = await maintenanceEngine.prepare(
       op.id,
       wireManifest(op.manifest),
+      ...(torrent?.isPrivate ? ([true] as const) : []),
     )
     assertManifest(op, detached)
     if (
@@ -454,6 +514,27 @@ export async function retryMaintenanceOperation(id: string) {
   catch (error) {
     // Ответ unlink мог потеряться. Не снимаем hold даже если локально ещё нет results.
     const current = operation(id)!
+    if (
+      error instanceof engine.EngineError
+      && error.engineCode === 'torrent_obligation_unmet'
+      && !Object.keys(current.results).length
+    ) {
+      const status = await maintenanceEngine
+        .status(id)
+        .catch((cause: unknown) => {
+          if (cause instanceof engine.EngineError && cause.kind === 'not_found')
+            return undefined
+          throw cause
+        })
+      if (!status) {
+        finishCancellation(current)
+        return false
+      }
+      if (status.state === 'cancelled' && !Object.keys(status.results).length) {
+        await cancelUnchanged(current, status)
+        return false
+      }
+    }
     logFor('storage').warn(
       { operationId: id, reason: errorCode(error) },
       'Library maintenance needs attention',
@@ -628,7 +709,7 @@ export async function runMaintenance(now = Date.now()) {
           })
           release()
           release = undefined
-          if (await retryMaintenanceOperation(id))
+          if (await retryMaintenanceOperation(id, true))
             cleaned++
         }
         catch (error) {

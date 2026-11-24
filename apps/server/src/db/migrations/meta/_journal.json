@@ -393,6 +393,13 @@
       "when": 1795428528303,
       "tag": "0055_indexer-retry-after",
       "breakpoints": true
+    },
+    {
+      "idx": 56,
+      "version": "6",
+      "when": 1795512426496,
+      "tag": "0056_private-trackers-seeding-rules",
+      "breakpoints": true
     }
   ]
 }

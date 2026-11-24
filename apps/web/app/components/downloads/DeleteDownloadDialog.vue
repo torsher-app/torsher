@@ -41,6 +41,11 @@ const { preview, error: previewError } = useTorrentDeletePreview(
   () => open.value,
 )
 const shownError = computed(() => error.value ?? previewError.value)
+const requiresConfirmation = computed(
+  () =>
+    preview.value?.requiresObligationConfirmation
+    ?? (!!props.torrent?.isPrivate && props.torrent?.seedObligation?.met !== true),
+)
 
 watch(open, (isOpen) => {
   if (isOpen) {
@@ -69,7 +74,7 @@ async function onDelete() {
   error.value = null
 
   try {
-    await deleteTorrent(id, withFiles)
+    await deleteTorrent(id, withFiles, requiresConfirmation.value)
     open.value = false
     toast.success(t('panel.torrents.deleteDialog.deleted'), {
       description: withFiles
@@ -100,6 +105,13 @@ async function onDelete() {
           </template>
         </AlertDialogDescription>
       </AlertDialogHeader>
+
+      <Alert v-if="requiresConfirmation">
+        <CircleAlertIcon />
+        <AlertDescription>
+          {{ t("panel.torrents.privatePolicy.deleteWarning") }}
+        </AlertDescription>
+      </Alert>
 
       <!-- Два исхода — радио-опции, кнопка одна -->
       <RadioGroup v-model="outcome" class="gap-2">

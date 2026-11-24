@@ -3,12 +3,14 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime/debug"
@@ -40,7 +42,10 @@ type api struct {
 	maintenance      *maintenanceFences
 	lifecycle        *storageLifecycle
 	ownership        *storageOwnership
-	metadataOnly     sync.Map
+	metadataOnly     sync.Map // hash → temporary *torrent.Torrent
+	private          *privateRegistry
+	privateEndpoints sync.Map // *torrent.Torrent → primary tracker URL
+	trackers         *privateTrackerManager
 	client           *torrent.Client
 	session          *session
 	logger           *slog.Logger
@@ -77,9 +82,16 @@ type api struct {
 }
 
 func newAPI(client *torrent.Client, session *session, parts clientParts, logger *slog.Logger) *api {
+	if parts.private == nil {
+		parts.private = &privateRegistry{}
+	}
+	if parts.maintenance == nil {
+		parts.maintenance = loadMaintenance(filepath.Join(filepath.Dir(session.dir), "maintenance"))
+	}
 	a := &api{
+		private:          parts.private,
 		maintenanceToken: os.Getenv("TORSHER_ENGINE_MAINTENANCE_TOKEN"),
-		maintenance:      loadMaintenance(filepath.Join(filepath.Dir(session.dir), "maintenance")),
+		maintenance:      parts.maintenance,
 		lifecycle:        parts.lifecycle,
 		ownership:        newStorageOwnership(),
 		client:           client,
@@ -240,23 +252,33 @@ type fileDetails struct {
 	Length  int64  `json:"length"`
 	Padding bool   `json:"padding"`
 	// Только у `inspect` с `dir`: сверка с файлом на диске (`compareOnDisk`)
-	OnDisk string `json:"onDisk,omitempty"`
+	OnDisk        string `json:"onDisk,omitempty"`
+	VerifiedBytes int64  `json:"verifiedBytes,omitempty"`
 }
 
 type torrentDetails struct {
-	Paused      bool          `json:"paused,omitempty"`
-	Dir         string        `json:"dir,omitempty"`
-	InfoHash    string        `json:"infoHash"`
-	Name        string        `json:"name"`
-	PieceLength int64         `json:"pieceLength"`
-	PieceCount  int           `json:"pieceCount"`
-	Files       []fileDetails `json:"files"`
+	Paused             bool          `json:"paused,omitempty"`
+	IsPrivate          bool          `json:"isPrivate,omitempty"`
+	FullDownload       bool          `json:"fullDownload,omitempty"`
+	AwaitingAdmission  bool          `json:"awaitingAdmission,omitempty"`
+	PrimaryTrackerHost string        `json:"primaryTrackerHost,omitempty"`
+	TrackerFingerprint string        `json:"trackerFingerprint,omitempty"`
+	Dir                string        `json:"dir,omitempty"`
+	InfoHash           string        `json:"infoHash"`
+	Name               string        `json:"name"`
+	PieceLength        int64         `json:"pieceLength"`
+	PieceCount         int           `json:"pieceCount"`
+	Files              []fileDetails `json:"files"`
 }
 
 func detailsOf(mi *metainfo.MetaInfo) (torrentDetails, error) {
 	info, err := mi.UnmarshalInfo()
 	if err != nil {
 		return torrentDetails{}, err
+	}
+
+	if !info.HasV1() {
+		return torrentDetails{}, errTorrentV2Unsupported
 	}
 
 	// Порядок и состав файлов — как в info: индексы совпадают у всех движков
@@ -277,6 +299,7 @@ func detailsOf(mi *metainfo.MetaInfo) (torrentDetails, error) {
 	}
 
 	return torrentDetails{
+		IsPrivate:   privateInfo(&info),
 		InfoHash:    mi.HashInfoBytes().HexString(),
 		Name:        info.BestName(),
 		PieceLength: info.PieceLength,
@@ -308,6 +331,13 @@ func (a *api) inspect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if endpoint := primaryTrackerOf(mi); endpoint != "" {
+		details.TrackerFingerprint = fmt.Sprintf("%x", sha256.Sum256([]byte(endpoint)))
+		if parsed, err := url.Parse(endpoint); err == nil {
+			details.PrimaryTrackerHost = parsed.Hostname()
+		}
+	}
+
 	if raw := r.URL.Query().Get("dir"); raw != "" {
 		if !filepath.IsAbs(raw) {
 			writeError(w, http.StatusBadRequest, "invalid_dir", errors.New("dir must be an absolute path"))
@@ -325,8 +355,22 @@ func (a *api) inspect(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "storage", errors.New("unable to compare files on disk"))
 			return
 		}
+		total := info.TotalLength()
+		var offset int64
 		for i, state := range states {
-			details.Files[i].OnDisk = state
+			file := &details.Files[i]
+			file.OnDisk = state
+			end := offset + file.Length
+			if state == diskMatch {
+				// compareOnDisk verified the whole pieces contained in this file.
+				first := (offset + info.PieceLength - 1) / info.PieceLength * info.PieceLength
+				last := end / info.PieceLength * info.PieceLength
+				if end == total {
+					last = end
+				}
+				file.VerifiedBytes = max(0, last-first)
+			}
+			offset = end
 		}
 	}
 
@@ -375,19 +419,27 @@ func (a *api) resolve(w http.ResponseWriter, r *http.Request) {
 		// из xs/as даже с блокирующим транспортом.
 		spec.Sources = nil
 	}
-	t, created, err := a.client.AddTorrentSpec(spec)
+	t, created, err := a.addChecked(spec, nil, false)
 	if err == nil && created {
-		a.metadataOnly.Store(t.InfoHash(), true)
+		a.metadataOnly.Store(t.InfoHash(), t)
+		go a.watchPrivateMagnet(t)
 	}
 	unlock()
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_magnet", err)
+		writeAddError(w, "invalid_magnet", err)
 		return
 	}
 
 	started := time.Now()
 	select {
 	case <-t.GotInfo():
+	case <-t.Closed():
+		if privateInfo(t.Info()) {
+			writeAddError(w, "invalid_magnet", errPrivateMagnet)
+		} else {
+			writeAddError(w, "invalid_magnet", errTorrentSessionConflict)
+		}
+		return
 	case <-time.After(timeout):
 		facts := []any{"event", "engine.metadata_timeout", "infoHash", spec.InfoHash.HexString(), "elapsedMs", time.Since(started).Milliseconds()}
 		facts = append(facts, a.speeds.diagnosticFacts(spec.InfoHash)...)
@@ -398,6 +450,14 @@ func (a *api) resolve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	unlock = a.ownership.operation(spec.InfoHash)
+	defer unlock()
+
+	if privateInfo(t.Info()) || a.private.contains(t.InfoHash()) {
+		a.rejectPrivateMagnet(t)
+		writeAddError(w, "invalid_magnet", errPrivateMagnet)
+		return
+	}
 	mi := t.Metainfo()
 	w.Header().Set("Content-Type", "application/x-bittorrent")
 	if err := mi.Write(w); err != nil {
@@ -485,17 +545,23 @@ func (a *api) setPaused(t *torrent.Torrent, paused bool, selected []int) {
 	t.DisallowDataDownload()
 	t.DisallowDataUpload()
 
-	if err := setFiles(t, selected, nil, a.session.get(t.InfoHash()).Low); err != nil {
+	files, low := effectiveSelection(t, a.session.get(t.InfoHash()), selected)
+	if err := setFiles(t, files, nil, low); err != nil {
 		a.logger.Warn("pause files", "infoHash", t.InfoHash().HexString(), "err", err)
 	}
 }
 
 // Раздачи прошлого запуска: выбор файлов и пауза — как были
 func (a *api) restore(ctx context.Context) {
+	restored, errs := a.session.load()
+	a.restoreLoaded(ctx, restored, errs)
+}
+
+func (a *api) restoreLoaded(ctx context.Context, restored []restoredTorrent, errs []error) {
 	if a.maintenance.loadErr != nil {
 		return
 	}
-	restored, errs := a.session.load()
+	a.private.loadSessions(restored, a.maintenance)
 	a.preflightStorage(restored)
 	a.recoverMaintenanceReattachments()
 
@@ -514,7 +580,7 @@ func (a *api) restore(ctx context.Context) {
 		}
 
 		// Guarded sessions восстанавливаются отдельно: долгий rehash не задерживает чужие.
-		if len(item.saved.GuardedPaths) > 0 {
+		if item.blocked || len(item.saved.GuardedPaths) > 0 {
 			continue
 		}
 		dir := a.dirOrDefault(item.saved.Dir)
@@ -527,7 +593,26 @@ func (a *api) restore(ctx context.Context) {
 			adoptPartFiles(dir, &info)
 		}
 
-		t, err := a.addIn(item.meta, dir)
+		hash := item.meta.HashInfoBytes()
+		unlock := a.ownership.operation(hash)
+		saved := item.saved
+		if info, err := item.meta.UnmarshalInfo(); err == nil && (saved.Private || privateInfo(&info)) {
+			if err := a.session.update(hash, func(s *savedTorrent) {
+				s.Private = true
+				s.AwaitingAdmission = true
+				s.LeftZeroAccepted = false
+				if s.StartAnnounceState == "" {
+					s.StartAnnounceState = announceAttempted
+				}
+			}); err != nil {
+				unlock()
+				a.logger.Warn("save private session", "infoHash", hash.HexString(), "err", err)
+				continue
+			}
+			saved = a.session.get(hash)
+		}
+		t, err := a.addWithPolicy(item.meta, dir, saved)
+		unlock()
 		if err != nil {
 			a.logger.Warn("restore torrent", "err", err)
 			continue
@@ -536,8 +621,6 @@ func (a *api) restore(ctx context.Context) {
 
 		// До `ok` в `/health`: сервер не откроет поток, который отдал бы нули вместо данных
 		a.verifyHoles(t)
-
-		saved := item.saved
 
 		// Запись прежней версии: выбор без докачки — файлы, которые выбрал
 		// просмотр, а не скачивание; целиком их не качаем
@@ -553,7 +636,7 @@ func (a *api) restore(ctx context.Context) {
 		}
 
 		// Выбор остальных расставит планировщик: с очередью качать всё сразу нельзя
-		if saved.Paused {
+		if saved.paused() {
 			a.setPaused(t, true, saved.Selected)
 		}
 	}
@@ -600,7 +683,7 @@ func (a *api) add(w http.ResponseWriter, r *http.Request) {
 
 	details, err := detailsOf(mi)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_torrent", err)
+		writeAddError(w, "invalid_torrent", err)
 		return
 	}
 
@@ -623,6 +706,13 @@ func (a *api) add(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	policy := a.session.get(hash)
+	policy.Private = policy.Private || details.IsPrivate || r.URL.Query().Get("private") == "true"
+	if policy.Private {
+		policy.AwaitingAdmission = r.URL.Query().Get("admitted") != "true"
+	}
+	policy.Paused = policy.Paused || r.URL.Query().Get("paused") == "true"
+
 	existing, known := a.client.Torrent(hash)
 	if len(a.session.get(hash).GuardedPaths) > 0 {
 		guarded, _ := a.guarded.Load(hash)
@@ -636,8 +726,8 @@ func (a *api) add(w http.ResponseWriter, r *http.Request) {
 	// умолчанию: она ничего не записала и открывается заново в своём.
 	// Добавленная раньше остаётся в своём каталоге — сменить его может только
 	// перенос
-	_, metadataOnly := a.metadataOnly.Load(hash)
-	if known && (metadataOnly || (!a.session.has(hash) && !samePath(a.dirOf(hash), dir))) {
+	temporary, _ := a.metadataOnly.Load(hash)
+	if known && (temporary == existing || (!policy.Private && !a.private.contains(hash) && !a.session.has(hash) && !samePath(a.dirOf(hash), dir))) {
 		existing.Drop()
 		a.metadataOnly.Delete(hash)
 		a.dirs.Delete(hash)
@@ -664,9 +754,9 @@ func (a *api) add(w http.ResponseWriter, r *http.Request) {
 		adoptPartFiles(dir, &info)
 	}
 
-	t, err := a.addIn(mi, dir, r.URL.Query().Get("paused") == "true")
+	t, err := a.addWithPolicy(mi, dir, policy)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_torrent", err)
+		writeAddError(w, "invalid_torrent", err)
 		return
 	}
 	opened = true
@@ -686,6 +776,12 @@ func (a *api) add(w http.ResponseWriter, r *http.Request) {
 
 	sessionDir := a.sessionDir(dir)
 	err = a.session.save(mi, func(saved *savedTorrent) {
+		saved.Private = policy.Private
+		saved.AwaitingAdmission = policy.AwaitingAdmission
+		saved.Paused = policy.Paused
+		if saved.Private && saved.StartAnnounceState == "" {
+			saved.StartAnnounceState = announceNotSent
+		}
 		queue(saved, selected, first, low)
 		saved.Background = nil
 		saved.Dir = sessionDir
@@ -693,25 +789,31 @@ func (a *api) add(w http.ResponseWriter, r *http.Request) {
 			// Изоляция не продолжает старый перенос и не удаляет общие исходники.
 			saved.MovingTo, saved.MovedFrom, saved.Placed = "", "", nil
 		}
-		if r.URL.Query().Get("paused") == "true" {
-			saved.Paused = true
-		}
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "storage", err)
 		return
 	}
 
+	if policy.Private {
+		a.setPaused(t, policy.paused(), selected)
+		if policy.paused() {
+			a.stopPrivateTracker(t)
+		}
+	}
 	a.applySelection(t)
 
 	details.Dir = a.dirOf(hash)
-	details.Paused = a.session.get(hash).Paused
+	details.Paused = policy.paused()
+	details.IsPrivate = policy.Private
+	details.FullDownload = policy.Private
+	details.AwaitingAdmission = policy.AwaitingAdmission
 	writeJSON(w, http.StatusOK, details)
 }
 
 // Новый выбор: раздача, у которой его не было, встаёт в конец очереди
 func queue(saved *savedTorrent, selected, first, low []int) {
-	if len(selected) > 0 && (len(saved.Selected) == 0 || saved.QueuedAt == 0) {
+	if (len(selected) > 0 || saved.Private) && (saved.QueuedAt == 0 || !saved.Private && len(saved.Selected) == 0) {
 		saved.QueuedAt = time.Now().UnixMilli()
 	}
 	saved.Selected = selected
@@ -729,9 +831,10 @@ func queue(saved *savedTorrent, selected, first, low []int) {
 // Выбор сохранён: на паузе он ставится, как раньше (см. `setPaused`), иначе
 // его применяет планировщик — с очередью и привратником
 func (a *api) applySelection(t *torrent.Torrent) {
-	if saved := a.session.get(t.InfoHash()); saved.Paused {
+	if saved := a.session.get(t.InfoHash()); saved.paused() {
 		a.sched.forget(t)
-		if err := setFiles(t, saved.Selected, nil, saved.Low); err != nil {
+		files, low := effectiveSelection(t, saved, saved.Selected)
+		if err := setFiles(t, files, nil, low); err != nil {
 			a.logger.Warn("pause files", "infoHash", t.InfoHash().HexString(), "err", err)
 		}
 		return
@@ -886,16 +989,40 @@ func (a *api) setPausedHandler(w http.ResponseWriter, r *http.Request, paused bo
 		return
 	}
 
-	a.setPaused(t, paused, a.session.get(t.InfoHash()).Selected)
+	hash := t.InfoHash()
+	unlock, acquired := a.ownership.tryOperation(hash)
+	if !acquired {
+		writeMoving(w)
+		return
+	}
+	defer unlock()
+	if current, _ := a.client.Torrent(hash); current != t {
+		writeMoving(w)
+		return
+	}
 
-	if err := a.session.update(t.InfoHash(), func(saved *savedTorrent) { saved.Paused = paused }); err != nil {
+	saved := a.session.get(hash)
+	if !paused && saved.AwaitingAdmission && r.URL.Query().Get("admitted") != "true" {
+		writeError(w, 409, "torrent_admission_required", errors.New("private torrent requires storage admission"))
+		return
+	}
+	if err := a.session.update(hash, func(s *savedTorrent) {
+		s.Paused = paused
+		if !paused {
+			s.AwaitingAdmission = false
+		}
+	}); err != nil {
 		writeError(w, http.StatusInternalServerError, "storage", err)
 		return
 	}
 
-	if !paused {
+	a.setPaused(t, paused, saved.Selected)
+	if paused {
+		a.stopPrivateTracker(t)
+	} else {
 		a.reschedule()
 	}
+	a.sched.poke()
 
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -920,6 +1047,22 @@ func (a *api) forget(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer unlock()
+	if r.URL.Query().Get("private_unstarted_only") == "true" {
+		t, live := a.client.Torrent(requested)
+		saved, valid := a.session.lookup(requested)
+		if a.ownership.blocked(requested) || !live || !valid || !saved.Private ||
+			saved.StartAnnounceState != announceNotSent || t.Info() == nil || t.BytesCompleted() != 0 {
+			writeError(w, http.StatusConflict, "torrent_obligation_unmet", errors.New("private torrent cannot be stopped automatically"))
+			return
+		}
+	}
+	if r.URL.Query().Get("require_verified") == "true" {
+		t, live := a.client.Torrent(requested)
+		if !live || a.ownership.blocked(requested) || !a.stateOf(t).LeftZeroAccepted {
+			writeError(w, http.StatusConflict, "torrent_obligation_unmet", errors.New("private torrent no longer has a verified tracker acknowledgement"))
+			return
+		}
+	}
 	if a.ownership.blocked(requested) {
 		if r.URL.Query().Get("delete_files") == "true" {
 			writeError(w, 409, "storage_path_conflict", errStorageConflict)
@@ -947,6 +1090,8 @@ func (a *api) forget(w http.ResponseWriter, r *http.Request) {
 	hash := t.InfoHash()
 	dir := a.dirOf(hash)
 
+	a.dropPrivateTracker(t)
+	a.metadataOnly.CompareAndDelete(hash, t)
 	t.Drop()
 	if !a.lifecycle.settled(hash) {
 		writeError(w, 500, "storage", errors.New("torrent storage has not closed"))
@@ -995,8 +1140,17 @@ type peersResponse struct {
 
 // Общая часть списка и статистики раздачи
 type torrentState struct {
-	InfoHash string `json:"infoHash"`
-	Paused   bool   `json:"paused"`
+	Dir                string           `json:"dir"`
+	IsPrivate          bool             `json:"isPrivate,omitempty"`
+	FullDownload       bool             `json:"fullDownload,omitempty"`
+	AwaitingAdmission  bool             `json:"awaitingAdmission,omitempty"`
+	VerifiedComplete   bool             `json:"verifiedComplete"`
+	StartAnnounceState string           `json:"startAnnounceState,omitempty"`
+	LeftZeroAccepted   bool             `json:"leftZeroAccepted"`
+	SeededSeconds      int64            `json:"seededSeconds"`
+	TrackerErrorCode   trackerErrorCode `json:"trackerErrorCode,omitempty"`
+	InfoHash           string           `json:"infoHash"`
+	Paused             bool             `json:"paused"`
 	// Файлы, которые качаются целиком; остальное качают только окна потоков
 	Selected []int `json:"selected"`
 	// Файлы выбора, которые качаются раньше остальных
@@ -1022,22 +1176,40 @@ type torrentState struct {
 	BadPieces int64 `json:"badPieces"`
 }
 
+func (a *api) liveSessionState(t *torrent.Torrent) (savedTorrent, bool) {
+	saved, valid := a.session.lookup(t.InfoHash())
+	if !valid {
+		if _, private := a.privateEndpoints.Load(t); private {
+			saved.Private = true
+			saved.AwaitingAdmission = true
+		}
+	}
+	return saved, valid
+}
+
 func (a *api) stateOf(t *torrent.Torrent) torrentState {
 	hash := t.InfoHash()
-	saved := a.session.get(hash)
+	saved, valid := a.liveSessionState(t)
 	stats := t.Stats()
 	current := a.speeds.of(t)
 	files := t.Files()
 
 	state := torrentState{
-		InfoHash:       hash.HexString(),
-		Paused:         saved.Paused,
-		Selected:       saved.Selected,
-		High:           a.sched.highOf(hash),
-		BytesCompleted: t.BytesCompleted(),
-		Queued:         a.sched.isQueued(hash),
-		Seeding:        t.Seeding() && !saved.Paused,
-		Uploaded:       a.uploadedOf(t, saved),
+		InfoHash:           hash.HexString(),
+		Dir:                a.dirOf(hash),
+		IsPrivate:          saved.Private,
+		FullDownload:       saved.Private,
+		AwaitingAdmission:  saved.AwaitingAdmission,
+		VerifiedComplete:   t.Complete().Bool(),
+		StartAnnounceState: saved.StartAnnounceState,
+		SeededSeconds:      saved.SeededSeconds,
+		Paused:             saved.paused(),
+		Selected:           saved.Selected,
+		High:               a.sched.highOf(hash),
+		BytesCompleted:     t.BytesCompleted(),
+		Queued:             a.sched.isQueued(hash),
+		Seeding:            t.Seeding() && !saved.paused(),
+		Uploaded:           a.uploadedOf(t, saved),
 		Peers: peersResponse{
 			Connected: stats.ActivePeers,
 			Found:     stats.TotalPeers,
@@ -1061,7 +1233,17 @@ func (a *api) stateOf(t *torrent.Torrent) torrentState {
 		state.FileProgress = append(state.FileProgress, file.BytesCompleted())
 	}
 
-	for _, index := range state.Selected {
+	if saved.Private {
+		if !valid {
+			state.TrackerErrorCode = "storage"
+		} else if a.trackers != nil {
+			var validAck bool
+			state.SeededSeconds, state.TrackerErrorCode, validAck = a.trackers.status(t, saved.SeededSeconds)
+			state.LeftZeroAccepted = saved.LeftZeroAccepted && state.VerifiedComplete && validAck
+		}
+	}
+	effective, _ := effectiveSelection(t, saved, state.Selected)
+	for _, index := range effective {
 		if index < len(files) {
 			state.BytesWanted += files[index].Length()
 			state.WantedCompleted += state.FileProgress[index]

@@ -256,6 +256,25 @@ export const indexerCheckStatuses = [
 ] as const
 
 export type IndexerCheckStatus = (typeof indexerCheckStatuses)[number]
+export const indexerPrivacyValues = [
+  'public',
+  'semi_private',
+  'private',
+] as const
+export const seedCriteriaModes = ['or', 'and'] as const
+export const startAnnounceStates = [
+  'not_sent',
+  'attempted',
+  'accepted',
+] as const
+
+export interface SeedObligationRequirement {
+  origin: 'source' | 'tracker'
+  mode: 'or' | 'and'
+  ratio: number | null
+  minutes: number | null
+  unknown?: boolean
+}
 
 export const indexers = sqliteTable(
   'indexers',
@@ -271,6 +290,19 @@ export const indexers = sqliteTable(
     // Шифртекст заголовка Cookie; только для origin этого Torznab
     sessionCookie: text('session_cookie'),
     enabled: integer('enabled', { mode: 'boolean' }).notNull().default(true),
+    knownPrivacy: text('known_privacy', { enum: indexerPrivacyValues }),
+    isPrivate: integer('is_private', { mode: 'boolean' })
+      .notNull()
+      .default(false),
+    allowAutomation: integer('allow_automation', { mode: 'boolean' })
+      .notNull()
+      .default(true),
+    minSeedRatio: real('min_seed_ratio'),
+    minSeedTimeMinutes: integer('min_seed_time_minutes'),
+    seedCriteriaMode: text('seed_criteria_mode', { enum: seedCriteriaModes }),
+    policyCustomized: integer('policy_customized', { mode: 'boolean' })
+      .notNull()
+      .default(false),
     managerId: text('manager_id').references(() => indexerManagers.id, {
       onDelete: 'set null',
     }),
@@ -371,6 +403,30 @@ export const torrents = sqliteTable('torrents', {
   magnet: text('magnet'),
   // Сам `.torrent`: по нему раздача заново добавляется в движок, если тот её забыл
   torrentFile: blob('torrent_file', { mode: 'buffer' }),
+  sourceIndexerId: text('source_indexer_id'),
+  sourceIndexerName: text('source_indexer_name'),
+  primaryTrackerHost: text('primary_tracker_host'),
+  trackerFingerprint: text('tracker_fingerprint'),
+  isPrivate: integer('is_private', { mode: 'boolean' })
+    .notNull()
+    .default(false),
+  fullDownload: integer('full_download', { mode: 'boolean' })
+    .notNull()
+    .default(false),
+  seedObligations: text('seed_obligations', { mode: 'json' }).$type<
+    SeedObligationRequirement[]
+  >(),
+  verifiedComplete: integer('verified_complete', { mode: 'boolean' })
+    .notNull()
+    .default(false),
+  startAnnounceState: text('start_announce_state', {
+    enum: startAnnounceStates,
+  }),
+  leftZeroAccepted: integer('left_zero_accepted', { mode: 'boolean' })
+    .notNull()
+    .default(false),
+  seededSeconds: integer('seeded_seconds').notNull().default(0),
+  trackerErrorCode: text('tracker_error_code'),
   files: text('files', { mode: 'json' }).$type<TorrentFileEntry[]>(),
   pieceLength: integer('piece_length'),
   status: text('status', { enum: torrentStatuses }).notNull(),
@@ -1636,6 +1692,11 @@ export interface FollowPendingCandidate {
   magnet?: string
   link?: { secret: string, indexerId: string, indexerOrigin: string }
   indexerId?: string
+  sourceIndexerId?: string
+  sourceIsPrivate?: boolean
+  minimumRatio?: number
+  minimumSeedTimeMinutes?: number
+  seedType?: 'ratio' | 'seedtime' | 'both' | 'either'
   detailsUrl?: string
   size?: number
   seeders: number
@@ -2001,6 +2062,9 @@ export const maintenanceGroups = sqliteTable(
     completedAt: integer('completed_at', { mode: 'timestamp_ms' }),
     uploaded: integer('uploaded'),
     denominator: integer('denominator'),
+    privateObligationMet: integer('private_obligation_met', {
+      mode: 'boolean',
+    }),
     lastActivityAt: integer('last_activity_at', { mode: 'timestamp_ms' }),
     eligibleSince: integer('eligible_since', { mode: 'timestamp_ms' }),
     eligibilityFingerprint: text('eligibility_fingerprint'),

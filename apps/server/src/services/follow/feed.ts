@@ -37,11 +37,15 @@ import { rememberUserAlias } from '../library/recognize.ts'
 import { logFor } from '../logs/index.ts'
 import { syncTitleAliases } from '../sources/aliases.ts'
 import { peekSearch, SEARCH_TTL_MS } from '../sources/cache.ts'
-import { isViewerSearching, mergeHits } from '../sources/search.ts'
+import {
+  automationRelease,
+  isViewerSearching,
+  mergeHits,
+} from '../sources/search.ts'
 import { getTitleIdentity } from '../tmdb/index.ts'
 import { searchIndexer, SourceError } from '../torznab/index.ts'
 import { releaseSeasons } from './decide.ts'
-import { linkOf, pendingMagnet, pendingOf } from './grab.ts'
+import { acquisitionOf, pendingOf, pendingSourceAllowed } from './grab.ts'
 import { recordHistory } from './history.ts'
 import { followById } from './index.ts'
 import { decideFollow, followStates } from './pass.ts'
@@ -541,6 +545,7 @@ function pendingReleases(follow: Follow) {
     )
     .all()
     .map(row => row.pending!)
+    .filter(pendingSourceAllowed)
 }
 
 function indexerName(id: string) {
@@ -562,8 +567,8 @@ function releaseOfPending(
   const parsed = parseRelease(candidate.title)
 
   return {
+    ...acquisitionOf(candidate),
     id: candidate.id,
-    title: candidate.title,
     indexers: candidate.indexerId
       ? [
           {
@@ -573,9 +578,6 @@ function releaseOfPending(
           },
         ]
       : [],
-    link: linkOf(candidate),
-    magnet: pendingMagnet(candidate),
-    infoHash: candidate.infoHash,
     size: candidate.size,
     seeders: candidate.seeders,
     parsed,
@@ -594,7 +596,11 @@ function releasesForDecide(
   fromFeed: FoundRelease[],
   now: Date,
 ) {
-  const result = new Map(fromFeed.map(release => [release.id, release]))
+  const result = new Map(
+    fromFeed
+      .flatMap(release => automationRelease(release) ?? [])
+      .map(release => [release.id, release]),
+  )
   const cached = [`${follow.titleId}:all`, `follow:${follow.titleId}`]
     .map(peekSearch)
     .find(
@@ -603,8 +609,9 @@ function releasesForDecide(
     )
 
   for (const release of cached?.outcome.releases ?? []) {
-    if (!result.has(release.id))
-      result.set(release.id, release)
+    const allowed = automationRelease(release)
+    if (allowed && !result.has(allowed.id))
+      result.set(allowed.id, allowed)
   }
 
   for (const candidate of pendingReleases(follow)) {
@@ -624,6 +631,7 @@ export async function withPendingReleases(
   follow: Follow,
   releases: FoundRelease[],
 ) {
+  releases = releases.flatMap(release => automationRelease(release) ?? [])
   const ids = new Set(releases.map(release => release.id))
   const pending = pendingReleases(follow).filter((candidate) => {
     if (ids.has(candidate.id))

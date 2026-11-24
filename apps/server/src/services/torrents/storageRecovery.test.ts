@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest'
 import { getDb, migrateDb } from '../../db/index.ts'
 import { torrents } from '../../db/schema.ts'
+import type { EngineTorrentDetails } from '../engine/index.ts'
 import { setEngineDown, setEngineReady } from '../engine/index.ts'
 import {
   INFO_HASH,
@@ -10,21 +11,24 @@ import {
   movieDetails,
   sampleTorrentFile,
 } from '../engine/fixtures/index.ts'
-import { ensureSpaceFor } from '../storage/index.ts'
+import { admitTorrentSpace } from '../storage/index.ts'
 import { torrentDir } from '../storage/paths.ts'
 import {
+  addTorrentFile,
   downloadFiles,
   getTorrent,
   prepareStream,
   reconcileEngineStorage,
+  TorrentSessionConflictError,
 } from './index.ts'
 
 vi.mock('../storage/index.ts', () => ({
-  ensureSpaceFor: vi.fn(async () => {}),
+  admitTorrentSpace: vi.fn(),
   enforceStorage: vi.fn(async () => {}),
 }))
 
 const fetchMock = vi.fn<typeof fetch>()
+let inspection: EngineTorrentDetails
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -56,8 +60,15 @@ beforeAll(async () => {
 beforeEach(() => {
   getDb().delete(torrents).run()
   fetchMock.mockReset()
-  vi.mocked(ensureSpaceFor).mockReset().mockResolvedValue(undefined)
-  vi.stubGlobal('fetch', fetchMock)
+  inspection = movieDetails
+  vi.mocked(admitTorrentSpace)
+    .mockReset()
+    .mockImplementation((request, start) => start(torrentDir(request.torrent)))
+  vi.stubGlobal('fetch', ((input, init) => {
+    if (new URL(String(input)).pathname === '/torrents/inspect')
+      return Promise.resolve(json(inspection))
+    return fetchMock(input, init)
+  }) satisfies typeof fetch)
   setEngineReady('http://127.0.0.1:4000')
 })
 afterEach(() => {
@@ -95,11 +106,12 @@ it('persists isolation before retry and a stale concurrent playback reuses it', 
       result => result.downloadDir === isolated && result.inEngine,
     ),
   ).toBe(true)
-  expect(ensureSpaceFor).toHaveBeenCalledWith(
+  expect(admitTorrentSpace).toHaveBeenCalledWith(
     expect.objectContaining({
-      bytes: movieDetails.files[0]!.length,
+      files: [0],
       torrent: expect.objectContaining({ downloadDir: isolated }),
     }),
+    expect.any(Function),
   )
 })
 
@@ -194,11 +206,7 @@ it('recovers known paused conflicts before producers and preserves selection, pr
     firstFiles: [2],
     lowFiles: [0],
   })
-  expect(ensureSpaceFor).toHaveBeenCalledWith(
-    expect.objectContaining({
-      bytes: movieDetails.files[0]!.length + movieDetails.files[2]!.length,
-    }),
-  )
+  expect(admitTorrentSpace).not.toHaveBeenCalled()
 })
 
 it('synchronizes an active directory without downloading an unknown DB session', async () => {
@@ -245,10 +253,13 @@ it.each(['space', 'add'])(
     }))
     let failing = true
     const added: string[] = []
-    vi.mocked(ensureSpaceFor).mockImplementation(async ({ torrent }) => {
-      if (failure === 'space' && failing && torrent.id === blocked.id)
-        throw new Error('no space')
-    })
+    vi.mocked(admitTorrentSpace).mockImplementation(
+      async ({ torrent }, start) => {
+        if (failure === 'space' && failing && torrent.id === blocked.id)
+          throw new Error('no space')
+        return start(torrentDir(torrent))
+      },
+    )
     fetchMock.mockImplementation(async (input, init = {}) => {
       const url = new URL(String(input))
       if (url.pathname === '/torrents/storage')
@@ -506,3 +517,101 @@ it.each(['manual', 'follow'] as const)(
     expect(requests.some(url => url.pathname.endsWith('/resume'))).toBe(true)
   },
 )
+
+it('deduplicates only an identical private tracker account and preserves its original minimum', async () => {
+  const policy = {
+    id: 'first',
+    name: 'Synthetic Source',
+    isPrivate: true,
+    minSeedRatio: 1,
+    minSeedTimeMinutes: null,
+    seedCriteriaMode: 'and' as const,
+  }
+  inspection = {
+    ...movieDetails,
+    primaryTrackerHost: 'tracker.example',
+    trackerFingerprint: 'a'.repeat(64),
+  }
+  const bytes = sampleTorrentFile()
+  const [a, b] = await Promise.all([
+    addTorrentFile(bytes, 'search', policy),
+    addTorrentFile(bytes, 'search', { ...policy, minSeedRatio: 2 }),
+  ])
+  expect(a.torrent.id).toBe(b.torrent.id)
+  expect([a.created, b.created].filter(Boolean)).toHaveLength(1)
+  const original = a.created ? a.torrent : b.torrent
+  expect(original).toMatchObject({
+    isPrivate: true,
+    fullDownload: true,
+    sourceIndexerId: policy.id,
+  })
+  expect(getTorrent(original.id)?.seedObligations).toEqual(
+    original.seedObligations,
+  )
+  await expect(addTorrentFile(bytes)).rejects.toBeInstanceOf(
+    TorrentSessionConflictError,
+  )
+  inspection = { ...inspection, trackerFingerprint: 'b'.repeat(64) }
+  await expect(addTorrentFile(bytes, 'search', policy)).rejects.toBeInstanceOf(
+    TorrentSessionConflictError,
+  )
+})
+
+it('backfills a legacy private restore before admission and retains an independent user pause', async () => {
+  const legacy = Buffer.from('d4:infod7:privatei1eee')
+  const automatic = row({ torrentFile: legacy, inEngine: true })
+  const user = row({
+    infoHash: 'd'.repeat(40),
+    torrentFile: legacy,
+    inEngine: true,
+  })
+  inspection = {
+    ...movieDetails,
+    isPrivate: true,
+    primaryTrackerHost: 'tracker.example',
+    trackerFingerprint: 'a'.repeat(64),
+  }
+  const inventory = [automatic, user].map(torrent => ({
+    infoHash: torrent.infoHash,
+    dir: '/restored',
+    state: 'active',
+    conflictingHashes: [],
+    isPrivate: true,
+    awaitingAdmission: true,
+    paused: true,
+    userPaused: torrent.id === user.id,
+    startAnnounceState: 'attempted',
+  }))
+  let available = false
+  vi.mocked(admitTorrentSpace).mockImplementation(
+    async ({ torrent }, start) => {
+      expect(torrent).toMatchObject({
+        isPrivate: true,
+        fullDownload: true,
+        startAnnounceState: 'attempted',
+      })
+      if (!available)
+        throw new Error('full payload does not fit')
+      return start(torrentDir(torrent))
+    },
+  )
+  const starts: URL[] = []
+  fetchMock.mockImplementation(async (input) => {
+    const url = new URL(String(input))
+    if (url.pathname === '/torrents/storage')
+      return json(inventory)
+    starts.push(url)
+    return new Response(null, { status: 204 })
+  })
+  await reconcileEngineStorage()
+  expect(starts).toHaveLength(0)
+  expect(getTorrent(automatic.id)?.seedObligations?.[0]).toMatchObject({
+    unknown: true,
+  })
+  expect(getTorrent(user.id)?.pauseReason).toBe('user')
+  available = true
+  await reconcileEngineStorage()
+  expect(starts.map(url => url.pathname + url.search)).toEqual([
+    `/torrents/${automatic.infoHash}/resume?admitted=true`,
+  ])
+})

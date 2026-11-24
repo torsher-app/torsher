@@ -19,6 +19,14 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import LoadingButton from '~/components/LoadingButton.vue'
 import SecretInput from '~/components/SecretInput.vue'
 import { sourceErrorKind } from '~/composables/useSources'
@@ -52,6 +60,10 @@ const optionalKey = z
   .max(500)
   .optional()
   .transform(value => value || undefined)
+const thresholdInput = z.union([z.string(), z.number()]).transform((value) => {
+  const text = String(value).trim()
+  return text ? Number(text) : null
+})
 
 const schema = computed(() =>
   toTypedSchema(
@@ -74,6 +86,22 @@ const schema = computed(() =>
         .optional()
         .transform(value => value || undefined),
       removeCookie: z.boolean(),
+      isPrivate: z.boolean(),
+      allowAutomation: z.boolean(),
+      minSeedRatio: thresholdInput.pipe(
+        z
+          .number({ error: t('panel.settings.torrent.validation.number') })
+          .positive(t('panel.settings.torrent.validation.number'))
+          .nullable(),
+      ),
+      minSeedTimeMinutes: thresholdInput.pipe(
+        z
+          .number({ error: t('panel.settings.torrent.validation.integer') })
+          .int(t('panel.settings.torrent.validation.integer'))
+          .positive(t('panel.settings.torrent.validation.integer'))
+          .nullable(),
+      ),
+      seedCriteriaMode: z.enum(['automatic', 'or', 'and']),
     }),
   ),
 )
@@ -93,6 +121,11 @@ const {
     apiKey: '',
     sessionCookie: '',
     removeCookie: false,
+    isPrivate: false,
+    allowAutomation: true,
+    minSeedRatio: '',
+    minSeedTimeMinutes: '',
+    seedCriteriaMode: 'automatic',
   },
 })
 
@@ -101,6 +134,11 @@ const [url, urlProps] = defineField('url')
 const [apiKey, apiKeyProps] = defineField('apiKey')
 const [sessionCookie, sessionCookieProps] = defineField('sessionCookie')
 const [removeCookie] = defineField('removeCookie')
+const [isPrivate] = defineField('isPrivate')
+const [allowAutomation] = defineField('allowAutomation')
+const [minSeedRatio] = defineField('minSeedRatio')
+const [minSeedTimeMinutes] = defineField('minSeedTimeMinutes')
+const [seedCriteriaMode] = defineField('seedCriteriaMode')
 
 const errorField = computed(() =>
   serverError.value ? fieldOfSourceError(serverError.value) : null,
@@ -115,6 +153,11 @@ watch(open, (isOpen) => {
         apiKey: '',
         sessionCookie: '',
         removeCookie: false,
+        isPrivate: props.indexer?.isPrivate ?? false,
+        allowAutomation: props.indexer?.allowAutomation ?? true,
+        minSeedRatio: props.indexer?.minSeedRatio ?? '',
+        minSeedTimeMinutes: props.indexer?.minSeedTimeMinutes ?? '',
+        seedCriteriaMode: props.indexer?.seedCriteriaMode ?? 'automatic',
       },
     })
     serverError.value = null
@@ -123,13 +166,27 @@ watch(open, (isOpen) => {
 
 const onSubmit = handleSubmit(async (values) => {
   serverError.value = null
+  const policy = {
+    isPrivate: values.isPrivate,
+    allowAutomation: values.allowAutomation,
+    minSeedRatio: values.minSeedRatio,
+    minSeedTimeMinutes: values.minSeedTimeMinutes,
+    seedCriteriaMode:
+      values.seedCriteriaMode === 'automatic' ? null : values.seedCriteriaMode,
+  }
 
   try {
     if (props.indexer) {
-      const checked = await updateIndexer(
-        props.indexer.id,
-        indexerUpdateBody(values, managed.value),
+      const current = props.indexer
+      const changes = Object.fromEntries(
+        Object.entries(policy).filter(
+          ([key, value]) => current[key as keyof typeof policy] !== value,
+        ),
       )
+      const checked = await updateIndexer(current.id, {
+        ...indexerUpdateBody(values, managed.value),
+        ...changes,
+      })
 
       // Новый ключ не прошёл проверку: диалог остаётся открытым с причиной
       if (checked && checked.checkStatus !== 'ok') {
@@ -147,6 +204,7 @@ const onSubmit = handleSubmit(async (values) => {
       url: values.url,
       apiKey: values.apiKey,
       sessionCookie: values.sessionCookie,
+      ...policy,
     })
 
     open.value = false
@@ -349,6 +407,78 @@ const onSubmit = handleSubmit(async (values) => {
           <p class="text-[12.5px] text-muted-foreground">
             {{ t("panel.sources.cookie.scope") }}
           </p>
+        </div>
+        <div class="grid gap-4 border-t pt-4">
+          <div class="flex items-center justify-between gap-3">
+            <Label for="indexer-private">{{
+              t("panel.sources.privatePolicy.private")
+            }}</Label>
+            <Switch id="indexer-private" v-model="isPrivate" />
+          </div>
+          <div class="flex items-center justify-between gap-3">
+            <Label for="indexer-automation">{{
+              t("panel.sources.privatePolicy.automation")
+            }}</Label>
+            <Switch id="indexer-automation" v-model="allowAutomation" />
+          </div>
+          <template v-if="isPrivate">
+            <div class="grid gap-3 sm:grid-cols-2">
+              <div class="grid gap-2">
+                <Label for="indexer-seed-ratio">{{
+                  t("panel.sources.privatePolicy.ratio")
+                }}</Label>
+                <Input
+                  id="indexer-seed-ratio"
+                  v-model="minSeedRatio"
+                  type="number"
+                  step="any"
+                  inputmode="decimal"
+                  :aria-invalid="!!errors.minSeedRatio || undefined"
+                />
+                <p v-if="errors.minSeedRatio" class="text-xs text-destructive">
+                  {{ errors.minSeedRatio }}
+                </p>
+              </div>
+              <div class="grid gap-2">
+                <Label for="indexer-seed-time">{{
+                  t("panel.sources.privatePolicy.time")
+                }}</Label>
+                <Input
+                  id="indexer-seed-time"
+                  v-model="minSeedTimeMinutes"
+                  type="number"
+                  step="1"
+                  inputmode="numeric"
+                  :aria-invalid="!!errors.minSeedTimeMinutes || undefined"
+                />
+                <p
+                  v-if="errors.minSeedTimeMinutes"
+                  class="text-xs text-destructive"
+                >
+                  {{ errors.minSeedTimeMinutes }}
+                </p>
+              </div>
+            </div>
+            <div class="grid gap-2">
+              <Label for="indexer-seed-mode">{{
+                t("panel.sources.privatePolicy.mode")
+              }}</Label>
+              <Select v-model="seedCriteriaMode">
+                <SelectTrigger id="indexer-seed-mode" class="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem
+                    v-for="mode in ['automatic', 'or', 'and'] as const"
+                    :key="mode"
+                    :value="mode"
+                  >
+                    {{ t(`panel.sources.privatePolicy.${mode}`) }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </template>
         </div>
       </form>
 

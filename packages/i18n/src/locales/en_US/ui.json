@@ -1820,6 +1820,16 @@
       }
     },
     "sources": {
+      "privatePolicy": {
+        "private": "Private source",
+        "automation": "Allow search and downloads in Follow",
+        "ratio": "Minimum ratio",
+        "time": "Minimum seeding time, min",
+        "mode": "Completion condition",
+        "automatic": "Automatic",
+        "or": "Either threshold",
+        "and": "Both thresholds"
+      },
       "browserUrl": {
         "label": "Browser address",
         "hint": "Optional. Used to open the manager from Torsher. Leave empty to use its server address.",
@@ -2197,6 +2207,20 @@
       }
     },
     "torrents": {
+      "privatePolicy": {
+        "private": "Private torrent",
+        "requirement": "Seeding requirement",
+        "unknown": "Tracker rules are unknown. This torrent is protected from automatic removal.",
+        "incomplete": "Waiting for the full download",
+        "awaiting": "Waiting for tracker confirmation",
+        "failed": "Tracker announce failed",
+        "met": "Seeding requirement met",
+        "estimate": "Local estimate: ratio {ratio}, seeded {time}",
+        "tracker": "Tracker minimum",
+        "source": "Source minimum",
+        "protected": "Protected by seeding requirements",
+        "deleteWarning": "The seeding requirement is still active. The tracker may count removal as a hit-and-run."
+      },
       "title": "Downloads",
       "add": "Add torrent",
       "loadError": "Couldn't load downloads",

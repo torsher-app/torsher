@@ -1,5 +1,10 @@
 import { z } from 'zod'
-import { indexerCheckStatuses, indexerManagerKinds } from '../db/schema.ts'
+import {
+  indexerCheckStatuses,
+  indexerManagerKinds,
+  indexerPrivacyValues,
+  seedCriteriaModes,
+} from '../db/schema.ts'
 import { isSessionCookie } from '../services/torznab/cookie.ts'
 
 const httpUrl = z.url({ protocol: /^https?$/ }).max(2000)
@@ -46,6 +51,14 @@ const searchModes = z.object({
   movieSearch: z.boolean(),
 })
 
+export const indexerSeedPolicy = z.object({
+  isPrivate: z.boolean(),
+  allowAutomation: z.boolean(),
+  minSeedRatio: z.number().positive().nullable(),
+  minSeedTimeMinutes: z.number().int().positive().nullable(),
+  seedCriteriaMode: z.enum(seedCriteriaModes).nullable(),
+})
+
 export const indexer = z
   .object({
     id: z.string(),
@@ -55,6 +68,8 @@ export const indexer = z
     hasApiKey: z.boolean(),
     hasCookie: z.boolean().optional(),
     enabled: z.boolean(),
+    ...indexerSeedPolicy.shape,
+    knownPrivacy: z.enum(indexerPrivacyValues).nullable(),
     managerId: z.string().nullable(),
     managerKind: z.enum(indexerManagerKinds).nullable(),
     // Менеджер больше не отдаёт этот индексатор
@@ -84,6 +99,7 @@ export const indexerList = z
 export const createIndexer = z
   .object({
     name: indexerName,
+    ...indexerSeedPolicy.partial().shape,
     url: httpUrl,
     apiKey: apiKey.optional(),
     sessionCookie: sessionCookie.nullable().optional(),
@@ -93,6 +109,7 @@ export const createIndexer = z
 export const updateIndexer = z
   .object({
     name: indexerName.optional(),
+    ...indexerSeedPolicy.partial().shape,
     enabled: z.boolean().optional(),
     apiKey: apiKey.optional(),
     sessionCookie: sessionCookie.nullable().optional(),

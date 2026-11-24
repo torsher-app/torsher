@@ -3,11 +3,14 @@ import type { EngineTorrentState } from '../engine/index.ts'
 import { and, isNotNull, isNull } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import { followEpisodes } from '../../db/schema.ts'
+import { EngineError } from '../engine/index.ts'
 import {
+  deleteTorrent,
   downloadFiles,
   getTorrent,
   isVideoFile,
   setRetention,
+  TorrentObligationError,
 } from '../torrents/index.ts'
 import { blockRelease } from './blocklist.ts'
 import { resetEpisodes } from './grab.ts'
@@ -137,7 +140,27 @@ export async function checkStalled(
       },
       new Date(now),
     )
-    await deselect(torrentId, new Set(rows.map(row => row.fileIndex!)))
+    const state = live.get(torrent.infoHash)
+    if (torrent.isPrivate || state?.isPrivate) {
+      if (
+        state?.startAnnounceState === 'not_sent'
+        && state.bytesCompleted === 0
+      ) {
+        try {
+          await deleteTorrent(torrent, { privateUnstartedOnly: true })
+        }
+        catch (err) {
+          if (!(
+            err instanceof TorrentObligationError || err instanceof EngineError
+          )) {
+            throw err
+          }
+        }
+      }
+    }
+    else {
+      await deselect(torrentId, new Set(rows.map(row => row.fileIndex!)))
+    }
 
     for (const followId of new Set(rows.map(row => row.followId))) {
       const follow = followOf(followId)

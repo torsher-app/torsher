@@ -19,6 +19,7 @@ import {
 import { createOwner } from '../services/users/index.ts'
 import { signToken } from '../utils/token.ts'
 import { decryptSecret } from '../services/secrets/index.ts'
+import { acquire } from '../services/sources/watch.ts'
 
 const app = createApp()
 const fetchMock = vi.fn<typeof fetch>()
@@ -71,6 +72,40 @@ describe('доступ', () => {
 })
 
 describe('индексаторы', () => {
+  it('rejects magnet-only and redirect-to-magnet results from a private indexer', async () => {
+    const indexer = getDb()
+      .insert(indexers)
+      .values({
+        name: 'Private Indexer',
+        url: 'https://indexer-private.example',
+        isPrivate: true,
+      })
+      .returning()
+      .get()
+    const magnet = `magnet:?xt=urn:btih:${'0'.repeat(40)}`
+    const release = {
+      title: 'Synthetic private release',
+      magnet,
+      sourceIndexerId: indexer.id,
+    }
+    await expect(acquire(release, () => true)).rejects.toMatchObject({
+      kind: 'bad_response',
+    })
+    expect(fetchMock).not.toHaveBeenCalled()
+
+    fetchMock.mockResolvedValue(
+      new Response(null, { status: 302, headers: { Location: magnet } }),
+    )
+    const link = {
+      url: 'https://indexer-private.example/download',
+      indexerOrigin: 'https://indexer-private.example',
+      indexerId: indexer.id,
+    }
+    await expect(
+      acquire({ ...release, link }, () => true),
+    ).rejects.toMatchObject({ kind: 'bad_response' })
+    expect(fetchMock).toHaveBeenCalledOnce()
+  })
   it('ручной индексатор: проверка caps, ключ не возвращается', async () => {
     fetchMock.mockResolvedValue(new Response(capsXml))
 

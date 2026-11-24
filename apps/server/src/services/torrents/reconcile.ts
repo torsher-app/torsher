@@ -11,7 +11,14 @@ import { getDb } from '../../db/index.ts'
 import { torrents } from '../../db/schema.ts'
 import { EngineError, forgetTorrent, pauseTorrent } from '../engine/index.ts'
 import { storagePath, torrentDir } from '../storage/paths.ts'
-import { deleteTorrent, liveTorrents } from './index.ts'
+import {
+  deleteTorrent,
+  getTorrent,
+  liveTorrents,
+  TorrentObligationError,
+} from './index.ts'
+import { isSeedObligationMet } from './seeding.ts'
+import { withTorrentStorageMutation } from '../storage/moving.ts'
 
 function isInside(base: string, path: string) {
   const rel = relative(base, path)
@@ -158,8 +165,8 @@ export async function reconcileTorrentsAfterRestore(): Promise<ReconcileResult> 
   const live = await liveTorrents()
   const known = new Set(rows.map(row => row.infoHash))
 
-  for (const hash of live.keys()) {
-    if (known.has(hash))
+  for (const [hash, state] of live) {
+    if (known.has(hash) || state.isPrivate)
       continue
 
     await ignoreNotFound(forgetTorrent(hash))
@@ -177,24 +184,37 @@ export async function reconcileTorrentsAfterRestore(): Promise<ReconcileResult> 
       throw error
     }
     try {
-      const inEngine = live.has(row.infoHash)
-
-      if (row.retention === 'cache') {
-        await deleteTorrent({ ...row, inEngine })
-        counts.deleted++
-        continue
+      const state = live.get(row.infoHash)
+      if (row.retention === 'cache' && isSeedObligationMet(row, state)) {
+        try {
+          await deleteTorrent({ ...row, inEngine: Boolean(state) })
+          counts.deleted++
+          continue
+        }
+        catch (err) {
+          if (!(err instanceof TorrentObligationError))
+            throw err
+        }
       }
 
-      if (!inEngine)
-        continue
-
-      await ignoreNotFound(pauseTorrent(row.infoHash))
-      getDb()
-        .update(torrents)
-        .set({ pauseReason: 'user', inEngine: true })
-        .where(eq(torrents.id, row.id))
-        .run()
-      counts.paused++
+      await withTorrentStorageMutation(row.id, async () => {
+        const current = getTorrent(row.id)
+        if (!current || !(await dirReadable(resolve(torrentDir(current)))))
+          return
+        if (await hasData(current, resolve(torrentDir(current))))
+          return
+        if (state) {
+          await ignoreNotFound(pauseTorrent(current.infoHash))
+          counts.paused++
+        }
+        if (state || current.isPrivate) {
+          getDb()
+            .update(torrents)
+            .set({ pauseReason: 'user', inEngine: Boolean(state) })
+            .where(eq(torrents.id, row.id))
+            .run()
+        }
+      })
     }
     finally {
       release()

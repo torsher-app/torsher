@@ -153,6 +153,29 @@ function livedEntries(): Entry[] {
   })
   selectVideo(paper, 0.63)
   assign(paper, {
+    source: 'file',
+    isPrivate: true,
+    fullDownload: true,
+    primaryTrackerHost: 'indexer-private.example',
+    seedObligation: {
+      met: false,
+      unknown: true,
+      requirements: [
+        {
+          origin: 'tracker',
+          mode: 'and',
+          ratio: null,
+          minutes: null,
+          unknown: true,
+        },
+      ],
+      ratio: 0,
+      seededSeconds: 0,
+      verifiedComplete: false,
+      leftZeroAccepted: false,
+      startAnnounceState: 'accepted',
+      trackerErrorCode: null,
+    },
     retention: 'keep',
     state: 'paused',
     pauseReason: 'user',
@@ -390,6 +413,8 @@ function seedingOf(torrent: Torrent, uploaded: number): Torrent['seeding'] {
   const size = torrent.progress.wanted || torrent.sizeOnDisk
   const ratio = size > 0 ? uploaded / size : null
   const base = { rule: torrent.seeding.rule, uploaded, ratio }
+  if (torrent.seedObligation && !torrent.seedObligation.met)
+    return { ...base, effective: torrent.seeding.effective, stopped: null }
 
   if (torrent.retention === 'cache')
     return { ...base, effective: null, stopped: null }
@@ -575,6 +600,8 @@ get<TorrentDeletePreview>('/api/torrents/:id/delete-preview', ({ params }) => {
   const torrent = respond(entryById(params.id!))
   // В демо библиотека использует hardlinks; остальные файлы независимы.
   return {
+    requiresObligationConfirmation:
+      torrent.isPrivate && torrent.seedObligation?.met !== true,
     reclaimableBytes: sum(
       torrent.files.filter(file => !file.inLibrary),
       file => file.downloaded,
@@ -582,8 +609,15 @@ get<TorrentDeletePreview>('/api/torrents/:id/delete-preview', ({ params }) => {
   }
 })
 
-del<MessageResponse>('/api/torrents/:id', ({ params }) => {
+del<MessageResponse>('/api/torrents/:id', ({ params, query }) => {
   const entry = entryById(params.id!)
+  if (
+    entry.torrent.isPrivate
+    && !entry.torrent.seedObligation?.met
+    && query.get('confirmObligation') !== 'true'
+  ) {
+    throw new DemoError(409, { message: 'torrent_obligation_unmet' })
+  }
 
   entries.splice(entries.indexOf(entry), 1)
 

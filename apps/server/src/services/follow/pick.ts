@@ -15,11 +15,10 @@ import { logFor } from '../logs/index.ts'
 import { acquire, isSkippable, pickFile } from '../sources/watch.ts'
 import { linkTitle } from '../torrents/index.ts'
 import {
+  acquisitionOf,
   blockTorrent,
   candidateRelease,
   filesFor,
-  linkOf,
-  pendingMagnet,
   pinFirstVoice,
   resetEpisodes,
   updateEpisodes,
@@ -409,12 +408,7 @@ export async function openPick(
 
   try {
     torrent = await acquire(
-      {
-        title: candidate.title,
-        link: linkOf(candidate),
-        magnet: pendingMagnet(candidate),
-        infoHash: candidate.infoHash,
-      },
+      acquisitionOf(candidate),
       () => true,
       'search',
       isCurrent,

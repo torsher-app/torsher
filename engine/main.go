@@ -156,11 +156,13 @@ func (o engineOptions) validate() error {
 // Части клиента, которые нужны API: каталог загрузок и отметки скачанных
 // кусков (удаление), лимиты и окна потоков (их колбэк вшит в конфиг клиента)
 type clientParts struct {
-	lifecycle  *storageLifecycle
-	downloads  string
-	completion storage.PieceCompletion
-	limits     *limits
-	windows    *windows
+	lifecycle   *storageLifecycle
+	downloads   string
+	completion  storage.PieceCompletion
+	limits      *limits
+	windows     *windows
+	private     *privateRegistry
+	maintenance *maintenanceFences
 }
 
 // Файловое хранилище каталога. Отметки кусков общие у всех каталогов: ключ —
@@ -208,7 +210,8 @@ func newClientConfig(downloads, dataDir string, opts engineOptions) (*torrent.Cl
 	// раздавать скачанное
 	cfg.Seed = opts.seed
 	cfg.NoDefaultPortForwarding = !opts.upnp
-	cfg.NoDHT = !opts.dht
+	private := &privateRegistry{}
+	private.configure(cfg)
 	cfg.DisablePEX = !opts.pex
 	if opts.encryption == "require" {
 		// Только RC4 после обфускации заголовка: открытый текст пира отклоняется
@@ -228,7 +231,7 @@ func newClientConfig(downloads, dataDir string, opts engineOptions) (*torrent.Cl
 	// Сообщения библиотеки — только предупреждения и ошибки: остальное шумит в журнале сервера
 	cfg.Slogger = newLibraryLogger()
 
-	return cfg, clientParts{lifecycle: lifecycle, downloads: downloads, completion: completion, limits: speedLimits, windows: streams}, nil
+	return cfg, clientParts{lifecycle: lifecycle, downloads: downloads, completion: completion, limits: speedLimits, windows: streams, private: private}, nil
 }
 
 func run(listen, downloads, dataDir string, opts engineOptions, logger *slog.Logger) error {
@@ -239,13 +242,26 @@ func run(listen, downloads, dataDir string, opts engineOptions, logger *slog.Log
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	// Normal shutdown may still send a bounded stopped over this transport.
+	// The interface watcher keeps the binding fail-closed throughout it.
+	transportCtx, stopTransport := context.WithCancel(context.Background())
+	defer stopTransport()
+	var changed atomic.Bool
+
+	sess, err := newSession(filepath.Join(dataDir, "torrents"))
+	if err != nil {
+		return err
+	}
+	restoredSessions, restoreErrors := sess.load()
+	store.maintenance = loadMaintenance(filepath.Join(dataDir, "maintenance"))
+	store.private.loadSessions(restoredSessions, store.maintenance)
 
 	state := guardResponse{Status: "unbound"}
 	var binding *boundTransport
 	if opts.bindInterface != "" {
 		state = authorizeBinding(ctx, opts.bindInterface)
 		if state.Status == "bound" {
-			binding, err = openBoundTransport(ctx, opts.bindInterface, state.Device, opts.peerPort)
+			binding, err = openBoundTransport(transportCtx, opts.bindInterface, state.Device, opts.peerPort)
 			if err != nil {
 				state.Status = bindFailureStatus(err)
 			}
@@ -263,7 +279,7 @@ func run(listen, downloads, dataDir string, opts engineOptions, logger *slog.Log
 		return err
 	}
 	if binding != nil {
-		if err := binding.attach(client, opts.dht); err != nil {
+		if err := binding.attach(client, opts.dht, store.private); err != nil {
 			binding.stop()
 			client.Close()
 			binding = nil
@@ -276,10 +292,14 @@ func run(listen, downloads, dataDir string, opts engineOptions, logger *slog.Log
 		}
 	}
 	defer client.Close()
-
-	sess, err := newSession(filepath.Join(dataDir, "torrents"))
-	if err != nil {
-		return err
+	if opts.bindInterface == "" && opts.dht {
+		for _, listener := range client.Listeners() {
+			if packet, ok := listener.(net.PacketConn); ok {
+				if err := store.private.attachDHT(client, packet); err != nil {
+					return err
+				}
+			}
+		}
 	}
 
 	engine := newAPI(client, sess, store, logger)
@@ -292,6 +312,13 @@ func run(listen, downloads, dataDir string, opts engineOptions, logger *slog.Log
 	}
 	if binding != nil {
 		peerPort = binding.port
+	}
+	if !engine.networkOffline {
+		engine.trackers = newPrivateTrackerManager(ctx, cfg.TrackerDialContext, peerPort)
+		defer func() {
+			healthy := !changed.Load() && (binding == nil || binding.ctx.Err() == nil)
+			engine.trackers.close(engine, healthy)
+		}()
 	}
 	logger.Info("engine network configured", "event", "engine.network", "peerPort", peerPort, "dht", dhtEnabled, "pex", opts.pex, "upnp", upnpEnabled, "encryption", opts.encryption, "connsPerTorrent", opts.live.ConnsPerTorrent, "connsTotal", opts.live.ConnsTotal)
 	// После восстановления и до закрытия клиента: счётчики раздач живут в нём
@@ -307,10 +334,9 @@ func run(listen, downloads, dataDir string, opts engineOptions, logger *slog.Log
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
-	var changed atomic.Bool
 	if binding != nil {
 		go func() {
-			if binding.watch(ctx) {
+			if binding.watch(transportCtx) {
 				changed.Store(true)
 				stop()
 			}
@@ -322,7 +348,7 @@ func run(listen, downloads, dataDir string, opts engineOptions, logger *slog.Log
 	restoring := make(chan struct{})
 	go func() {
 		defer close(restoring)
-		engine.restore(ctx)
+		engine.restoreLoaded(ctx, restoredSessions, restoreErrors)
 	}()
 	// Клиент закрывается после восстановления: оно ещё работает с раздачами
 	defer func() {
@@ -338,7 +364,9 @@ func run(listen, downloads, dataDir string, opts engineOptions, logger *slog.Log
 	go engine.schedule(ctx)
 	go engine.limits.gate(ctx)
 
+	shutdownDone := make(chan struct{})
 	go func() {
+		defer close(shutdownDone)
 		<-ctx.Done()
 		shutdown, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
@@ -349,6 +377,9 @@ func run(listen, downloads, dataDir string, opts engineOptions, logger *slog.Log
 		return err
 	}
 
+	if ctx.Err() != nil {
+		<-shutdownDone
+	}
 	if changed.Load() {
 		return errNetworkChanged
 	}

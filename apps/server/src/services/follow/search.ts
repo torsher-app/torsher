@@ -18,7 +18,11 @@ import { logFor, throttleLog } from '../logs/index.ts'
 import { followErrorFacts, followPlanFacts } from './logDiagnostics.ts'
 import { syncTitleAliases } from '../sources/aliases.ts'
 import { cachedSearch, peekSearch, SEARCH_TTL_MS } from '../sources/cache.ts'
-import { isViewerSearching, searchReleases } from '../sources/search.ts'
+import {
+  automationRelease,
+  isViewerSearching,
+  searchReleases,
+} from '../sources/search.ts'
 import { getTitleIdentity, TmdbError } from '../tmdb/index.ts'
 import { recordHistory } from './history.ts'
 import { withPendingReleases } from './feed.ts'
@@ -416,7 +420,7 @@ export async function followReleases(
     && now.getTime() - viewer.updatedAt.getTime() < SEARCH_TTL_MS
   ) {
     logSearchCacheHit(viewer.outcome)
-    return { outcome: viewer.outcome, network: false }
+    return { outcome: automationOutcome(viewer.outcome), network: false }
   }
 
   const key = `follow:${follow.titleId}`
@@ -428,10 +432,12 @@ export async function followReleases(
     && now.getTime() - own.updatedAt.getTime() < SEARCH_TTL_MS
   ) {
     logSearchCacheHit(own.outcome)
-    return { outcome: own.outcome, network: false }
+    return { outcome: automationOutcome(own.outcome), network: false }
   }
 
-  const all = listSearchableIndexers()
+  const all = listSearchableIndexers().filter(
+    indexer => indexer.allowAutomation,
+  )
   const { available, nextAt } = availableForBackground(all, now)
 
   if (!available.length)
@@ -473,7 +479,19 @@ export async function followReleases(
     return { nextAt, paused: true }
   }
 
-  return { outcome: search.outcome, network: true }
+  return { outcome: automationOutcome(search.outcome), network: true }
+}
+
+function automationOutcome(outcome: SearchOutcome): SearchOutcome {
+  return {
+    ...outcome,
+    releases: outcome.releases.flatMap(
+      release => automationRelease(release) ?? [],
+    ),
+    unmatched: outcome.unmatched.flatMap(
+      release => automationRelease(release) ?? [],
+    ),
+  }
 }
 
 /** Целевой поиск по слежению и прогон решателя по найденному */

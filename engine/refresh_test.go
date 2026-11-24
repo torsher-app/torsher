@@ -227,6 +227,11 @@ func TestInspectComparesFilesOnDisk(t *testing.T) {
 	if got := inspectOnDisk(t, server, fx, dir); fmt.Sprint(got) != "[match differs missing]" {
 		t.Fatalf("on disk: %v", got)
 	}
+	verified := decode[torrentDetails](t, post(t, server.URL+"/torrents/inspect?dir="+url.QueryEscape(dir), fx.raw))
+	whole := int64(len(fresh[0])) / verified.PieceLength * verified.PieceLength
+	if verified.Files[0].VerifiedBytes != whole || verified.Files[1].VerifiedBytes != 0 || verified.Files[2].VerifiedBytes != 0 {
+		t.Fatalf("incorrect credit for verified pieces: %+v", verified.Files)
+	}
 
 	// Другой размер — тоже другой файл
 	if err := os.WriteFile(filepath.Join(show, "E02.mkv"), fresh[1][:100], 0o644); err != nil {

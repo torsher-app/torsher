@@ -182,6 +182,13 @@ function onInteractOutside(event: Event) {
         <div
           class="grid min-h-0 flex-1 content-start gap-5 overflow-y-auto p-4"
         >
+          <Badge
+            v-if="shown.isPrivate"
+            variant="secondary"
+            class="justify-self-start"
+          >
+            {{ t("panel.sources.privatePolicy.private") }}
+          </Badge>
           <Alert
             v-if="problem"
             :variant="view.tone === 'destructive' ? 'destructive' : 'warning'"

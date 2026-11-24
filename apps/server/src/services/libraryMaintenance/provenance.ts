@@ -14,6 +14,8 @@ import { eq, inArray, sql } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import { maintenanceFiles, maintenanceGroups } from '../../db/schema.ts'
 import { getTorrentSettings } from '../torrents/settings.ts'
+import { matchFiles, parseRelease } from '@torsher/release-parser'
+import { evaluateSeedObligation } from '../torrents/seeding.ts'
 
 export { ownedIdentity } from './identity.ts'
 
@@ -59,6 +61,9 @@ export function recordDownload(torrent: Torrent, origin: 'follow' | 'manual') {
         sourceEvictedAt: null,
         denominator: null,
         uploaded: null,
+        privateObligationMet: torrent.isPrivate
+          ? false
+          : existing.privateObligationMet,
         revision: existing.revision + 1,
         eligibleSince: null,
         eligibilityFingerprint: null,
@@ -101,6 +106,7 @@ export function recordDownload(torrent: Torrent, origin: 'follow' | 'manual') {
       selectedFiles: torrent.selectedFiles ?? [],
       seedRule: torrent.seedRule ?? getTorrentSettings().seedRule,
       completedAt: null,
+      privateObligationMet: torrent.isPrivate ? false : null,
     })
     .run()
 }
@@ -148,6 +154,7 @@ export function recordSeeding(torrent: Torrent, state: EngineTorrentState) {
             : null
           : group.completedAt,
       uploaded: state.uploaded,
+      privateObligationMet: evaluateSeedObligation(torrent, state)?.met ?? null,
       denominator:
         torrent.retention === 'keep'
           ? state.bytesWanted || state.bytesCompleted
@@ -306,7 +313,11 @@ export async function recordSourceInventory(
     .from(maintenanceFiles)
     .where(eq(maintenanceFiles.groupId, group.id))
     .all()
-  for (const [fileIndex, file] of (torrent.files ?? []).entries()) {
+  const files = torrent.files ?? []
+  const classified = torrent.fullDownload
+    ? matchFiles(files, parseRelease(torrent.name))
+    : undefined
+  for (const [fileIndex, file] of files.entries()) {
     if (
       file.padding
       || recorded.some(
@@ -315,8 +326,14 @@ export async function recordSourceInventory(
     ) {
       continue
     }
-    if (isVideoFile(file.path) || /\.vob$/i.test(file.path))
+    const kind = classified?.[fileIndex]?.kind
+    if (
+      (isVideoFile(file.path) || /\.vob$/i.test(file.path))
+      && kind !== 'sample'
+      && kind !== 'extra'
+    ) {
       continue
+    }
     if ((state.fileProgress[fileIndex] ?? 0) < file.size)
       continue
     for (const path of [

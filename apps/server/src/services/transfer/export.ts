@@ -394,6 +394,13 @@ function exportSettings(secret: SecretWriter): ExportSettings {
         apiKey: secret(row.apiKey),
         sessionCookie: secret(row.sessionCookie),
         enabled: row.enabled,
+        knownPrivacy: row.knownPrivacy,
+        isPrivate: row.isPrivate,
+        allowAutomation: row.allowAutomation,
+        minSeedRatio: row.minSeedRatio,
+        minSeedTimeMinutes: row.minSeedTimeMinutes,
+        seedCriteriaMode: row.seedCriteriaMode,
+        policyCustomized: row.policyCustomized,
         manager: row.managerId
           ? (managerKeys.get(row.managerId) ?? null)
           : null,

@@ -58,6 +58,12 @@ function indexerOf(
     hasApiKey: true,
     hasCookie: false,
     enabled: true,
+    knownPrivacy: null,
+    isPrivate: false,
+    allowAutomation: true,
+    minSeedRatio: null,
+    minSeedTimeMinutes: null,
+    seedCriteriaMode: null,
     managerId: null,
     managerKind: null,
     missing: false,
@@ -95,6 +101,9 @@ let indexers: Indexer[] = isFresh
       indexerOf({
         id: 'idx-anime',
         name: 'Anime indexer',
+        knownPrivacy: 'private',
+        isPrivate: true,
+        allowAutomation: false,
         url: managerIndexerUrl('prowlarr', DEMO_MANAGER_URL, 1),
         managerId: 'mgr-prowlarr',
         managerKind: 'prowlarr',
@@ -296,6 +305,11 @@ post<Indexer, CreateIndexerInput>('/api/indexers', async ({ body }) => {
     url: body.url,
     hasApiKey: Boolean(body.apiKey),
     hasCookie: Boolean(body.sessionCookie),
+    isPrivate: body.isPrivate ?? false,
+    allowAutomation: body.allowAutomation ?? true,
+    minSeedRatio: body.minSeedRatio ?? null,
+    minSeedTimeMinutes: body.minSeedTimeMinutes ?? null,
+    seedCriteriaMode: body.seedCriteriaMode ?? null,
     checkedAt: new Date().toISOString(),
     feed: { supported: null, checkedAt: null, probeAt: null },
   })
@@ -317,6 +331,20 @@ patch<Indexer, UpdateIndexerInput>('/api/indexers/:id', ({ params, body }) => {
     ...current,
     name: body.name ?? current.name,
     enabled: body.enabled ?? current.enabled,
+    isPrivate: body.isPrivate ?? current.isPrivate,
+    allowAutomation: body.allowAutomation ?? current.allowAutomation,
+    minSeedRatio:
+      body.minSeedRatio === undefined
+        ? current.minSeedRatio
+        : body.minSeedRatio,
+    minSeedTimeMinutes:
+      body.minSeedTimeMinutes === undefined
+        ? current.minSeedTimeMinutes
+        : body.minSeedTimeMinutes,
+    seedCriteriaMode:
+      body.seedCriteriaMode === undefined
+        ? current.seedCriteriaMode
+        : body.seedCriteriaMode,
     hasApiKey: body.apiKey ? true : current.hasApiKey,
     hasCookie:
       body.sessionCookie === undefined

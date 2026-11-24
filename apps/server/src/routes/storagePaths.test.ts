@@ -280,6 +280,12 @@ describe('пути хранения', () => {
     expect(torrentRow(old.id).downloadDir).toBeNull()
 
     getDb().delete(torrents).run()
+    vi.mocked(statfs).mockResolvedValue({
+      bsize: 1024 ** 3,
+      blocks: 100,
+      bavail: 50,
+    } as Awaited<ReturnType<typeof statfs>>)
+    engine([], { 'POST /torrents': () => json(movieDetails) })
     const fresh = insertTorrent()
 
     await app.inject({

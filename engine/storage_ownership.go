@@ -191,11 +191,15 @@ func (a *api) preflightStorage(items []restoredTorrent) {
 }
 
 type storageInventoryEntry struct {
-	InfoHash          string   `json:"infoHash"`
-	Dir               string   `json:"dir"`
-	State             string   `json:"state"`
-	ConflictingHashes []string `json:"conflictingHashes"`
-	Paused            bool     `json:"paused"`
+	InfoHash           string   `json:"infoHash"`
+	Dir                string   `json:"dir"`
+	State              string   `json:"state"`
+	ConflictingHashes  []string `json:"conflictingHashes"`
+	UserPaused         bool     `json:"userPaused"`
+	StartAnnounceState string   `json:"startAnnounceState,omitempty"`
+	Paused             bool     `json:"paused"`
+	IsPrivate          bool     `json:"isPrivate,omitempty"`
+	AwaitingAdmission  bool     `json:"awaitingAdmission,omitempty"`
 }
 
 func (a *api) storageInventory(w http.ResponseWriter, _ *http.Request) {
@@ -203,16 +207,26 @@ func (a *api) storageInventory(w http.ResponseWriter, _ *http.Request) {
 	result := make([]storageInventoryEntry, 0, len(claims))
 	for hash, claim := range claims {
 		state := "active"
+		t, live := a.client.Torrent(hash)
 		if claim.blocked {
 			state = "conflict"
-		} else if _, live := a.client.Torrent(hash); !live {
+		} else if !live {
 			continue
 		}
 		conflicts := slices.Clone(claim.conflicts)
 		if conflicts == nil {
 			conflicts = []string{}
 		}
-		result = append(result, storageInventoryEntry{hash.HexString(), claim.dir, state, conflicts, a.session.get(hash).Paused})
+		var saved savedTorrent
+		if live {
+			saved, _ = a.liveSessionState(t)
+		} else {
+			saved = a.session.get(hash)
+		}
+		result = append(result, storageInventoryEntry{
+			InfoHash: hash.HexString(), Dir: claim.dir, State: state, ConflictingHashes: conflicts,
+			Paused: saved.paused(), UserPaused: saved.Paused, StartAnnounceState: saved.StartAnnounceState, IsPrivate: saved.Private, AwaitingAdmission: saved.AwaitingAdmission,
+		})
 	}
 	slices.SortFunc(result, func(a, b storageInventoryEntry) int {
 		if a.InfoHash < b.InfoHash {

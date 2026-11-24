@@ -25,12 +25,14 @@ import type {
   EngineTorrentState,
 } from '../engine/index.ts'
 import { Buffer } from 'node:buffer'
+import { lstat } from 'node:fs/promises'
 import { and, desc, eq, inArray } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import { torrents, watchStates } from '../../db/schema.ts'
 import {
   addTorrent,
   EngineError,
+  engineGeneration,
   engineStorageInventory,
   engineUnavailableError,
   forgetTorrent,
@@ -46,7 +48,12 @@ import {
 } from '../engine/index.ts'
 import { findSidecars } from '../media/subtitles.ts'
 import { logFor } from '../logs/index.ts'
-import { enforceStorage, ensureSpaceFor } from '../storage/index.ts'
+import {
+  admitTorrentSpace,
+  enforceStorage,
+  hasPendingTorrentSpace,
+  releaseTorrentSpace,
+} from '../storage/index.ts'
 import {
   isMovingTorrent,
   withTorrentStorageMutation as withEngineMutation,
@@ -58,7 +65,12 @@ import {
   torrentDir,
 } from '../storage/paths.ts'
 import { parseMagnet } from './magnet.ts'
+import type { TorrentSourcePolicy } from './privatePolicy.ts'
+import { snapshotSeedObligations } from './privatePolicy.ts'
+import { diskPathOf } from './refresh.ts'
+import { isSeedObligationMet } from './seeding.ts'
 import { isVideoFile } from './media.ts'
+import { isPublicMetainfo } from './metainfo.ts'
 import { downloadOrder } from './order.ts'
 import type { PlaybackCache } from './playback.ts'
 import {
@@ -90,6 +102,20 @@ export class InvalidMagnetError extends Error {
   constructor() {
     super('Invalid magnet link')
     this.name = 'InvalidMagnetError'
+  }
+}
+
+export class TorrentSessionConflictError extends Error {
+  constructor() {
+    super('Torrent hash belongs to another tracker session')
+    this.name = 'TorrentSessionConflictError'
+  }
+}
+
+export class TorrentObligationError extends Error {
+  constructor() {
+    super('Torrent still has a seeding obligation')
+    this.name = 'TorrentObligationError'
   }
 }
 
@@ -158,6 +184,57 @@ function readyFields(bytes: Uint8Array, details: EngineTorrentDetails) {
   }
 }
 
+function trackerIdentity(details: EngineTorrentDetails) {
+  return {
+    trackerFingerprint: details.trackerFingerprint ?? null,
+    primaryTrackerHost: details.primaryTrackerHost ?? null,
+  }
+}
+
+function privateFields(
+  details: EngineTorrentDetails,
+  policy?: TorrentSourcePolicy,
+) {
+  return {
+    isPrivate: true,
+    fullDownload: true,
+    ...trackerIdentity(details),
+    seedObligations: snapshotSeedObligations(policy),
+    sourceIndexerId: policy?.id ?? null,
+    sourceIndexerName: policy?.name ?? null,
+  }
+}
+
+async function refreshPrivacy(torrent: Torrent, enginePrivate = false) {
+  if (
+    torrent.isPrivate
+    && torrent.fullDownload
+    && torrent.seedObligations
+    && (!torrent.torrentFile || torrent.trackerFingerprint)
+  ) {
+    return torrent
+  }
+  if (
+    !enginePrivate
+    && !torrent.isPrivate
+    && (!torrent.torrentFile || isPublicMetainfo(torrent.torrentFile))
+  ) {
+    return torrent
+  }
+  const details
+    = torrent.torrentFile && (await inspectTorrent(torrent.torrentFile))
+  if (!details?.isPrivate && !enginePrivate && !torrent.isPrivate)
+    return torrent
+  return update(torrent.id, {
+    ...(details ? trackerIdentity(details) : {}),
+    isPrivate: true,
+    fullDownload: true,
+    seedObligations: torrent.seedObligations ?? snapshotSeedObligations(),
+    startAnnounceState:
+      torrent.startAnnounceState ?? (torrent.inEngine ? 'attempted' : null),
+  })
+}
+
 function update(id: string, values: Partial<typeof torrents.$inferInsert>) {
   return getDb()
     .update(torrents)
@@ -200,7 +277,10 @@ async function runResolveImpl(id: string) {
     )
     const details = await inspectTorrent(bytes)
 
-    if (details.infoHash.toLowerCase() !== torrent.infoHash) {
+    if (
+      details.isPrivate
+      || details.infoHash.toLowerCase() !== torrent.infoHash
+    ) {
       if (update(id, { status: 'failed', error: 'rejected' }))
         logFailed('hash_mismatch')
       return
@@ -278,6 +358,9 @@ export async function addMagnet(
   assertMaintenanceMutation({ infoHash: magnet.infoHash })
   const existing = findByInfoHash(magnet.infoHash)
 
+  if (existing?.isPrivate)
+    throw new TorrentSessionConflictError()
+
   if (existing && existing.status !== 'failed')
     return { torrent: existing, created: false }
 
@@ -320,24 +403,60 @@ export async function retryTorrent(torrent: Torrent) {
 export async function addTorrentFile(
   bytes: Uint8Array,
   origin: TorrentOrigin = 'search',
+  policy?: TorrentSourcePolicy,
 ): Promise<AddResult> {
   const details = await inspectTorrent(bytes)
   const infoHash = details.infoHash.toLowerCase()
-  assertMaintenanceMutation({ infoHash })
-  const existing = findByInfoHash(infoHash)
   const name = details.name || infoHash
+  const isPrivate = details.isPrivate === true || policy?.isPrivate === true
+  const privacy = isPrivate
+    ? privateFields(details, policy)
+    : trackerIdentity(details)
 
-  if (existing) {
+  const useExisting = (existing: Torrent): AddResult => {
+    if (
+      (isPrivate || existing.isPrivate)
+      && (!isPrivate
+        || !existing.isPrivate
+        || existing.source === 'magnet'
+        || existing.trackerFingerprint !== details.trackerFingerprint
+        || !existing.trackerFingerprint)
+    ) {
+      throw new TorrentSessionConflictError()
+    }
     if (existing.status === 'ready')
       return { torrent: existing, created: false }
 
     // Magnet так и не дождался пиров — файл даёт то же самое сразу
-    const ready = update(existing.id, { ...readyFields(bytes, details), name })
-
+    const ready = update(existing.id, {
+      ...readyFields(bytes, details),
+      ...privacy,
+      name,
+    })
     notifyReady(ready)
     return { torrent: ready, created: false }
   }
 
+  assertMaintenanceMutation({ infoHash })
+  const existing = findByInfoHash(infoHash)
+  if (existing) {
+    return withMaintenanceLease({ torrentId: existing.id }, () =>
+      withEngineMutation(existing.id, async () => {
+        const current = getTorrent(existing.id)
+        if (!current)
+          throw new TorrentSessionConflictError()
+        const legacy
+          = current.torrentFile
+            && !current.isPrivate
+            && !current.trackerFingerprint
+            ? await refreshPrivacy(current)
+            : current
+        return useExisting(legacy)
+      }))
+  }
+
+  // No await between the hash lookup and insert: another request cannot claim
+  // the hash or publish a different source snapshot inside this section.
   const torrent = getDb()
     .insert(torrents)
     .values({
@@ -346,10 +465,10 @@ export async function addTorrentFile(
       source: 'file',
       origin,
       ...readyFields(bytes, details),
+      ...privacy,
     })
     .returning()
     .get()
-
   notifyReady(torrent)
   return { torrent, created: true }
 }
@@ -360,22 +479,89 @@ export async function addTorrentFile(
  */
 async function deleteTorrentImpl(
   torrent: Torrent,
-  options: { deleteFiles?: boolean } = {},
+  options: {
+    deleteFiles?: boolean
+    confirmObligation?: boolean
+    privateUnstartedOnly?: boolean
+  } = {},
 ) {
   const current = getTorrent(torrent.id)
   if (!current)
     return
-  torrent = current
-  if (torrent.inEngine) {
+  torrent
+    = current.torrentFile && !current.isPrivate && !current.trackerFingerprint
+      ? await refreshPrivacy(current)
+      : current
+  let live: EngineTorrentState | undefined
+  const pending = hasPendingTorrentSpace(torrent.id)
+  if (
+    torrent.inEngine
+    || options.privateUnstartedOnly
+    || pending
+    || (torrent.isPrivate && isEngineReady())
+  ) {
     try {
-      await forgetTorrent(torrent.infoHash, options)
+      live = await torrentStats(torrent.infoHash)
     }
     catch (err) {
       if (!(err instanceof EngineError) || err.kind !== 'not_found')
         throw err
     }
   }
+  if (live?.isPrivate && !torrent.isPrivate)
+    torrent = await refreshPrivacy(torrent, true)
+  if (options.privateUnstartedOnly) {
+    if (
+      !live
+      || live.startAnnounceState !== 'not_sent'
+      || live.bytesCompleted !== 0
+    ) {
+      throw new TorrentObligationError()
+    }
+  }
+  else if (
+    !options.confirmObligation
+    && !isSeedObligationMet(torrent, live)
+  ) {
+    throw new TorrentObligationError()
+  }
+  if (options.confirmObligation !== undefined)
+    protectTorrent(torrent.id)
 
+  if (torrent.inEngine || live || pending) {
+    try {
+      await forgetTorrent(torrent.infoHash, {
+        ...options,
+        requireVerified:
+          torrent.isPrivate
+          && !options.confirmObligation
+          && !options.privateUnstartedOnly,
+      })
+    }
+    catch (err) {
+      if (
+        err instanceof EngineError
+        && (err.engineCode === 'torrent_obligation_unmet'
+          || (options.privateUnstartedOnly && err.kind === 'not_found'))
+      ) {
+        throw new TorrentObligationError()
+      }
+      if (!(err instanceof EngineError) || err.kind !== 'not_found')
+        throw err
+      if (pending && !live) {
+        throw new EngineError(
+          'moving',
+          'Previous download start is still unconfirmed',
+        )
+      }
+    }
+  }
+  await releaseTorrentSpace(torrent.id)
+
+  if (options.privateUnstartedOnly) {
+    update(torrent.id, { inEngine: false })
+    return
+  }
   if (options.deleteFiles)
     await reconcileSourceEviction(torrent.id)
   getDb().delete(torrents).where(eq(torrents.id, torrent.id)).run()
@@ -410,22 +596,6 @@ export async function liveTorrents() {
   catch (err) {
     if (err instanceof EngineError)
       return new Map<string, EngineTorrentState>()
-
-    throw err
-  }
-}
-
-/** Сколько файла уже скачано: раздачи нет в движке — ничего */
-async function downloadedOf(torrent: Torrent, fileIndex: number) {
-  if (!torrent.inEngine)
-    return 0
-
-  try {
-    return (await torrentStats(torrent.infoHash)).fileProgress[fileIndex] ?? 0
-  }
-  catch (err) {
-    if (err instanceof EngineError && err.kind === 'not_found')
-      return 0
 
     throw err
   }
@@ -519,21 +689,55 @@ export function linkTitle(torrent: Torrent, titleId: string) {
  * Добавляет раздачу в сохранённом каталоге. Новая без своего каталога получает
  * действующий путь; изоляция переживает даже падение до сохранения engine session.
  */
+async function verifiedProgress(
+  torrent: Torrent,
+  dir: string,
+  files: number[],
+) {
+  if (!torrent.torrentFile || !torrent.files)
+    return undefined
+  for (const index of files) {
+    const path = diskPathOf(torrent, index, dir)
+    const file = path ? await lstat(path).catch(() => undefined) : undefined
+    if (
+      !file?.isFile()
+      || file.size !== torrent.files[index]?.size
+      || file.size === 0
+    ) {
+      continue
+    }
+    // File size is only a cheap reason to ask the engine to verify pieces.
+    try {
+      const details = await inspectTorrent(torrent.torrentFile, { dir })
+      if (details.infoHash.toLowerCase() === torrent.infoHash) {
+        return {
+          dir,
+          files: details.files.map(file => file.verifiedBytes ?? 0),
+        }
+      }
+    }
+    catch (err) {
+      if (!(err instanceof EngineError))
+        throw err
+    }
+    return undefined
+  }
+}
+
 async function addToEngineImpl(
   torrent: Torrent,
   files: number[],
   dir?: Torrent['downloadDir'],
-  requiredBytes?: number,
+  streamFile?: number,
   paused = false,
   spaceKind: 'stream' | 'download' | 'unknown' = 'unknown',
   priorities?: Pick<Torrent, 'firstFiles' | 'lowFiles'>,
+  recovery = false,
 ) {
   const current = getTorrent(torrent.id)
-  if (!current)
+  if (!current?.torrentFile)
     throw new NotReadyError()
   torrent = current
-  if (!torrent.torrentFile)
-    throw new NotReadyError()
 
   if (isMovingTorrent(torrent.id))
     throw new EngineError('moving', 'Torrent is being moved')
@@ -541,25 +745,63 @@ async function addToEngineImpl(
   if ((!torrent.inEngine && !torrent.downloadDir) || dir !== undefined) {
     const downloadDir
       = dir !== undefined ? dir : downloadDirValue(storagePath('downloads'))
-
-    if (downloadDir !== torrent.downloadDir) {
-      update(torrent.id, { downloadDir })
-      torrent = { ...torrent, downloadDir }
-    }
+    if (downloadDir !== torrent.downloadDir)
+      torrent = update(torrent.id, { downloadDir })
   }
 
-  const add = () =>
-    addTorrent(
+  const target = [
+    ...new Set([...files, ...(streamFile === undefined ? [] : [streamFile])]),
+  ]
+  const doAdd = async (actualDir = torrentDir(torrent)) => {
+    const details = await addTorrent(
       torrent.torrentFile!,
       downloadOrder(torrent, files),
-      torrent.downloadDir ? torrentDir(torrent) : undefined,
+      downloadDirValue(actualDir) ?? undefined,
       priorityWithin(priorities ?? torrent, files, 'firstFiles') ?? [],
       priorityWithin(priorities ?? torrent, files, 'lowFiles') ?? [],
-      paused,
+      paused || recovery,
+      {
+        isPrivate: torrent.isPrivate,
+        admitted: torrent.isPrivate && !paused && !recovery,
+      },
     )
-  let details
+    // A previous request may have reached the engine despite a lost HTTP response.
+    const updated = update(torrent.id, {
+      inEngine: true,
+      downloadDir: downloadDirValue(details.dir ?? actualDir),
+    })
+    if (!paused && (details.paused || recovery || current.pauseReason))
+      await resumeTorrent(updated.infoHash, updated.isPrivate)
+    return updated
+  }
+  const start = async (forceDirectory = recovery) => {
+    if (paused)
+      return doAdd()
+    const dir = torrentDir(torrent)
+    const inspectFiles
+      = torrent.fullDownload || torrent.isPrivate
+        ? (torrent.files?.map((_, index) => index) ?? [])
+        : target
+    const diskProgress
+      = !torrent.inEngine || forceDirectory
+        ? await verifiedProgress(torrent, dir, inspectFiles)
+        : undefined
+    return admitTorrentSpace(
+      {
+        torrent,
+        kind: spaceKind,
+        bytes: 0,
+        files: target,
+        downloadDir: dir,
+        forceDirectory,
+        diskProgress,
+        ...(spaceKind === 'download' && { retention: 'keep' }),
+      },
+      doAdd,
+    )
+  }
   try {
-    details = await add()
+    return await start()
   }
   catch (error) {
     if (
@@ -571,30 +813,10 @@ async function addToEngineImpl(
     const isolated = isolatedTorrentDir(torrentDir(torrent), torrent.infoHash)
     if (isolated === torrentDir(torrent))
       throw error
-    // До retry: restart не возвращает раздачу в общий каталог даже при потере ответа.
+    // Путь retry переживает потерю ответа. Прогресс из общего каталога не засчитывается.
     torrent = update(torrent.id, { downloadDir: isolated })
-    await ensureSpaceFor({
-      torrent,
-      kind: spaceKind,
-      bytes:
-        requiredBytes
-        ?? files.reduce(
-          (sum, index) => sum + (torrent.files?.[index]?.size ?? 0),
-          0,
-        ),
-    })
-    details = await add()
+    return start(true)
   }
-  // Engine мог уже принять предыдущий запрос, пока сервер потерял ответ.
-  const updated = update(torrent.id, {
-    inEngine: true,
-    ...(details.dir && { downloadDir: downloadDirValue(details.dir) }),
-  })
-  // Recovery мог прерваться после durable paused add. Явные PLAY/download
-  // снимают эту техническую паузу, даже если в DB pauseReason отсутствует.
-  if (!paused && details.paused && !updated.pauseReason)
-    await resumeTorrent(updated.infoHash)
-  return updated
 }
 function addToEngine(...args: Parameters<typeof addToEngineImpl>) {
   return withMaintenanceLease({ torrentId: args[0].id }, () =>
@@ -653,9 +875,6 @@ async function downloadFilesImpl(
     priorities,
   )
 
-  if (torrent.pauseReason && !pauseReason)
-    await resumeTorrent(torrent.infoHash)
-
   update(torrent.id, {
     inEngine: true,
     selectedFiles: files,
@@ -685,6 +904,7 @@ async function pauseDownloadImpl(torrent: Torrent) {
     throw new NotInEngineError()
 
   await pauseTorrent(current.infoHash)
+  await releaseTorrentSpace(current.id)
 
   return update(current.id, { pauseReason: 'user' })
 }
@@ -699,15 +919,30 @@ async function resumeDownloadImpl(torrent: Torrent) {
   if (!current?.inEngine)
     throw new NotInEngineError()
 
-  await resumeTorrent(current.infoHash)
-  update(current.id, { pauseReason: null })
-  await enforceStorage()
-
-  return getTorrent(current.id) ?? current
+  await admitTorrentSpace(
+    {
+      torrent: current,
+      kind: 'download',
+      bytes: 0,
+      files: current.selectedFiles ?? [],
+      downloadDir: torrentDir(current),
+    },
+    () => resumeTorrent(current.infoHash, current.isPrivate),
+  )
+  return update(current.id, { pauseReason: null })
 }
 export function resumeDownload(...args: Parameters<typeof resumeDownloadImpl>) {
   return withMaintenanceLease({ torrentId: args[0].id }, () =>
     withEngineMutation(args[0].id, () => resumeDownloadImpl(...args)))
+}
+
+export function resumeStorageDownload(id: string) {
+  return withMaintenanceLease({ torrentId: id, producer: true }, () =>
+    withEngineMutation(id, async () => {
+      const torrent = getTorrent(id)
+      if (torrent?.inEngine && torrent.pauseReason === 'storage')
+        return resumeDownloadImpl(torrent)
+    }))
 }
 
 /** Приоритет меняется сразу, только у выбранных файлов. */
@@ -782,8 +1017,14 @@ async function setRetentionImpl(
   torrent: Torrent,
   retention: Torrent['retention'],
 ) {
+  const current = getTorrent(torrent.id)
+  if (!current)
+    throw new NotReadyError()
+  torrent = current
   if (retention === 'keep')
     recordDownload(torrent, 'manual')
+  if (torrent.fullDownload || torrent.isPrivate)
+    return update(torrent.id, { retention })
   if (!isEngineReady())
     return update(torrent.id, { retention })
 
@@ -799,13 +1040,20 @@ async function setRetentionImpl(
   const low = priorityWithin(torrent, selected, 'lowFiles')
 
   if (torrent.inEngine) {
-    await ignoreMissing(
+    const select = () =>
       selectFiles(
         torrent.infoHash,
         downloadOrder(torrent, selected),
         first ?? [],
         low ?? [],
-      ),
+      )
+    await ignoreMissing(
+      retention === 'keep' && selected.length
+        ? admitTorrentSpace(
+            { torrent, files: selected, bytes: 0, retention },
+            select,
+          )
+        : select(),
     )
   }
 
@@ -822,7 +1070,7 @@ async function setRetentionImpl(
 }
 export function setRetention(...args: Parameters<typeof setRetentionImpl>) {
   return withMaintenanceLease({ torrentId: args[0].id }, () =>
-    setRetentionImpl(...args))
+    withEngineMutation(args[0].id, () => setRetentionImpl(...args)))
 }
 
 /**
@@ -836,7 +1084,9 @@ export async function clearStreamSelections() {
     .from(torrents)
     .where(eq(torrents.retention, 'cache'))
     .all()
-    .filter(row => row.selectedFiles?.length)
+    .filter(
+      row => row.selectedFiles?.length && !row.fullDownload && !row.isPrivate,
+    )
 
   for (const row of rows) {
     let maintenanceRelease: () => void
@@ -852,20 +1102,32 @@ export async function clearStreamSelections() {
       throw error
     }
     try {
-      if (row.inEngine) {
-        try {
-          await ignoreMissing(selectFiles(row.infoHash, []))
+      await withEngineMutation(row.id, async () => {
+        const current = getTorrent(row.id)
+        if (
+          !current
+          || current.retention !== 'cache'
+          || current.fullDownload
+          || current.isPrivate
+        ) {
+          return
         }
-        catch (err) {
-          // Раздача переезжает: выбор снимется при следующем старте движка
-          if (err instanceof EngineError && err.kind === 'moving')
-            continue
-
-          throw err
+        if (current.inEngine) {
+          try {
+            await ignoreMissing(selectFiles(row.infoHash, []))
+          }
+          catch (err) {
+            if (err instanceof EngineError && err.kind === 'moving')
+              return
+            throw err
+          }
         }
-      }
-
-      update(row.id, { selectedFiles: null, firstFiles: null, lowFiles: null })
+        update(row.id, {
+          selectedFiles: null,
+          firstFiles: null,
+          lowFiles: null,
+        })
+      })
     }
     finally {
       maintenanceRelease()
@@ -890,34 +1152,34 @@ async function prepareStreamImpl(torrent: Torrent, fileIndex: number) {
   if (!torrent.torrentFile)
     throw new EngineError('rejected', 'Torrent metadata is not ready')
 
-  const size = torrent.files?.[fileIndex]?.size ?? 0
-  const downloaded = await downloadedOf(torrent, fileIndex)
-
-  await ensureSpaceFor({
-    torrent,
-    kind: 'stream',
-    bytes: Math.max(0, size - downloaded),
-  })
-
-  const selected = streamSelection(torrent, fileIndex)
+  const selected
+    = torrent.fullDownload || torrent.isPrivate
+      ? withFiles(torrent.selectedFiles, [fileIndex])
+      : streamSelection(torrent, fileIndex)
+  const firstFiles
+    = torrent.fullDownload || torrent.isPrivate
+      ? withFiles([fileIndex], torrent.firstFiles ?? [])
+      : priorityWithin(torrent, selected, 'firstFiles')
+  const lowFiles
+    = priorityWithin(torrent, selected, 'lowFiles')?.filter(
+      index => index !== fileIndex,
+    ) ?? null
 
   torrent = await addToEngine(
     torrent,
     selected,
     undefined,
-    size,
+    fileIndex,
     false,
     'stream',
+    { firstFiles, lowFiles },
   )
-
-  if (torrent.pauseReason)
-    await resumeTorrent(torrent.infoHash)
 
   return update(torrent.id, {
     inEngine: true,
     selectedFiles: selected.length ? selected : null,
-    firstFiles: priorityWithin(torrent, selected, 'firstFiles'),
-    lowFiles: priorityWithin(torrent, selected, 'lowFiles'),
+    firstFiles,
+    lowFiles,
     pauseReason: null,
     lastAccessAt: new Date(),
   })
@@ -943,33 +1205,70 @@ export async function openFileStream(
     return await openStream(torrent.infoHash, fileIndex, range, signal, window)
   }
   catch (err) {
-    if (!(err instanceof EngineError) || err.kind !== 'not_found')
+    if (
+      !(err instanceof EngineError)
+      || (err.kind !== 'not_found'
+        && err.engineCode !== 'torrent_admission_required')
+    ) {
       throw err
+    }
+    const current = getTorrent(torrent.id)
+    if (
+      (current?.isPrivate || torrent.isPrivate)
+      && current?.pauseReason === 'user'
+    ) {
+      throw err
+    }
 
     if (!torrent.torrentFile)
       throw new EngineError('rejected', 'Torrent metadata is not ready')
 
-    // Движок потерял раздачу; место под неё проверялось при старте просмотра
-    await withEngineMutation(torrent.id, async () => {
-      torrent = getTorrent(torrent.id) ?? torrent
-      await addToEngine(
-        torrent,
-        streamSelection(torrent, fileIndex),
-        undefined,
-        torrent.files?.[fileIndex]?.size ?? 0,
-        false,
-        'stream',
-      )
-    })
+    await withMaintenanceLease({ torrentId: torrent.id }, () =>
+      withEngineMutation(torrent.id, () =>
+        prepareStreamImpl(torrent, fileIndex)))
 
     return openStream(torrent.infoHash, fileIndex, range, signal, window)
   }
 }
 
 /** На каждом engine-ready, до библиотеки/переносов/follow. Неизвестные DB сессии не запускаем. */
-async function reconcileEngineStorageImpl() {
+let backfilledGeneration: number | undefined
+
+export function enginePrivacyReady() {
+  return isEngineReady() && backfilledGeneration === engineGeneration()
+}
+
+export async function backfillEnginePrivacy() {
+  const generation = engineGeneration()
   const inventory = await engineStorageInventory()
-  for (let item of inventory) {
+  if (backfilledGeneration === generation)
+    return inventory
+
+  const inventoryByHash = new Map(
+    inventory.map(item => [item.infoHash, item]),
+  )
+  for (const row of listTorrents()) {
+    if (!row.torrentFile && !inventoryByHash.get(row.infoHash)?.isPrivate)
+      continue
+    await withEngineMutation(row.id, async () => {
+      const current = getTorrent(row.id)
+      if (!current)
+        return
+      const item = inventoryByHash.get(current.infoHash)
+      const updated = await refreshPrivacy(current, item?.isPrivate)
+      if (updated.isPrivate && item?.startAnnounceState)
+        update(row.id, { startAnnounceState: item.startAnnounceState })
+    })
+  }
+  if (generation !== engineGeneration())
+    throw engineUnavailableError()
+  backfilledGeneration = generation
+  return inventory
+}
+
+async function reconcileEngineStorageImpl() {
+  const inventory = await backfillEnginePrivacy()
+  for (const item of inventory) {
     const known = findByInfoHash(item.infoHash.toLowerCase())
     if (!known)
       continue
@@ -979,64 +1278,41 @@ async function reconcileEngineStorageImpl() {
           const torrent = getTorrent(known.id)
           if (!torrent)
             return
-          // Playback мог успеть восстановить hash после первого снимка inventory.
+          // Playback could have recovered this session since the first snapshot.
           const current = (await engineStorageInventory()).find(
             entry => entry.infoHash === item.infoHash,
           )
           if (!current)
             return
-          item = current
-          if (item.state === 'active') {
+          if (current.state === 'active') {
             const active = update(torrent.id, {
-              downloadDir: downloadDirValue(item.dir),
+              downloadDir: downloadDirValue(current.dir),
               inEngine: true,
+              ...(current.awaitingAdmission
+                && current.userPaused
+                && !torrent.pauseReason && { pauseReason: 'user' }),
             })
-            if (item.paused && !active.pauseReason) {
-              const stats = await torrentStats(active.infoHash)
-              await ensureSpaceFor({
-                torrent: active,
-                bytes: (active.selectedFiles ?? []).reduce(
-                  (sum, index) =>
-                    sum
-                    + Math.max(
-                      0,
-                      (active.files?.[index]?.size ?? 0)
-                      - (stats.fileProgress[index] ?? 0),
-                    ),
-                  0,
-                ),
-              })
-              await resumeTorrent(active.infoHash)
-            }
+            if (current.paused && !active.pauseReason)
+              await resumeDownloadImpl(active)
             return
           }
           if (!torrent.torrentFile)
             return
-          // Сначала paused add, даже если pauseReason пуст: ни одного байта до
-          // восстановления selection/приоритетов. Старые общие файлы не трогаем.
-          const isolated = isolatedTorrentDir(item.dir, torrent.infoHash)
-          const recovering = update(torrent.id, { downloadDir: isolated })
-          await ensureSpaceFor({
-            torrent: recovering,
-            bytes: (torrent.selectedFiles ?? []).reduce(
-              (sum, index) => sum + (torrent.files?.[index]?.size ?? 0),
-              0,
-            ),
-          })
+          const isolated = isolatedTorrentDir(current.dir, torrent.infoHash)
+          // A restored conflict stays paused until the new destination is admitted.
           await addToEngine(
             torrent,
             torrent.selectedFiles ?? [],
             isolated,
             undefined,
+            Boolean(torrent.pauseReason || current.userPaused),
+            'unknown',
+            undefined,
             true,
           )
-          if (!torrent.pauseReason)
-            await resumeTorrent(torrent.infoHash)
         }))
     }
     catch (err) {
-      // Одна раздача не держит всю библиотеку/follow. Inventory остаётся
-      // источником незавершённой работы; очередная проверка места повторит её.
       logFor('engine').warn(
         { err, torrentId: known.id },
         'Torrent storage recovery deferred',

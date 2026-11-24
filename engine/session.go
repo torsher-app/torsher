@@ -32,7 +32,12 @@ type savedTorrent struct {
 	// Файлы низкого приоритета: после среднего уровня
 	Low []int `json:"low,omitempty"`
 	// Пауза владельца или сервера: раздача не качает и не раздаёт
-	Paused bool `json:"paused"`
+	Paused             bool   `json:"paused"`
+	Private            bool   `json:"private,omitempty"`
+	AwaitingAdmission  bool   `json:"awaitingAdmission,omitempty"`
+	StartAnnounceState string `json:"startAnnounceState,omitempty"`
+	LeftZeroAccepted   bool   `json:"leftZeroAccepted,omitempty"`
+	SeededSeconds      int64  `json:"seededSeconds,omitempty"`
 	// Каталог файлов раздачи; пусто — каталог загрузок по умолчанию
 	Dir string `json:"dir,omitempty"`
 	// Перенос в другой каталог: `MovingTo` — файлы ставятся в новый каталог,
@@ -55,9 +60,12 @@ type savedTorrent struct {
 	Background *bool `json:"background,omitempty"`
 }
 
+func (s savedTorrent) paused() bool { return s.Paused || s.AwaitingAdmission }
+
 type restoredTorrent struct {
-	meta  *metainfo.MetaInfo
-	saved savedTorrent
+	meta    *metainfo.MetaInfo
+	saved   savedTorrent
+	blocked bool // missing or unrecognised session state
 }
 
 func newSession(dir string) (*session, error) {
@@ -92,25 +100,53 @@ func (s *session) save(meta *metainfo.MetaInfo, change func(*savedTorrent)) erro
 	}
 
 	hash := meta.HashInfoBytes()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
+	current, err := s.forMutation(hash)
+	if err != nil {
+		return err
+	}
+	saved := current
+	change(&saved)
+	saved.Private = saved.Private || current.Private
+	if saved.Private {
+		// Do not publish metainfo with a private override before the durable
+		// privacy marker. Its info dictionary may look like a public torrent.
+		if err := s.write(hash, saved, current); err != nil {
+			return err
+		}
+		return durableFile(s.path(hash, ".torrent"), buf.Bytes())
+	}
 	if err := writeFileAtomic(s.path(hash, ".torrent"), buf.Bytes()); err != nil {
 		return err
 	}
-
-	return s.update(hash, change)
+	return s.write(hash, saved, current)
 }
 
 func (s *session) saveSelection(hash metainfo.Hash, saved savedTorrent) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	return s.write(hash, saved)
+	current, err := s.forMutation(hash)
+	if err != nil {
+		return err
+	}
+	saved.Private = saved.Private || current.Private
+	saved.StartAnnounceState = current.StartAnnounceState
+	saved.LeftZeroAccepted = current.LeftZeroAccepted
+	saved.SeededSeconds = current.SeededSeconds
+	return s.write(hash, saved, current)
 }
 
 // Отданное только растёт: копия состояния, прочитанная до фоновой записи
 // отданного, его не уменьшит
-func (s *session) write(hash metainfo.Hash, saved savedTorrent) error {
-	saved.Uploaded = max(saved.Uploaded, s.get(hash).Uploaded)
+func (s *session) write(hash metainfo.Hash, saved, current savedTorrent) error {
+	saved.Uploaded = max(saved.Uploaded, current.Uploaded)
+	if saved.Private || current.Private {
+		saved.Private = true
+		return durableJSON(s.path(hash, ".json"), saved)
+	}
 
 	data, err := json.Marshal(saved)
 	if err != nil {
@@ -130,16 +166,31 @@ func (s *session) get(hash metainfo.Hash) savedTorrent {
 // Состояние раздачи и есть ли оно: раздача, у которой только искали
 // метаданные, в сессии не записана
 func (s *session) lookup(hash metainfo.Hash) (savedTorrent, bool) {
-	var saved savedTorrent
-
-	data, err := os.ReadFile(s.path(hash, ".json"))
-	if err != nil {
-		return saved, false
+	var state struct {
+		savedTorrent
+		Paused *bool `json:"paused"`
 	}
+	data, err := os.ReadFile(s.path(hash, ".json"))
+	if err != nil || json.Unmarshal(data, &state) != nil || state.Paused == nil {
+		return savedTorrent{}, false
+	}
+	state.savedTorrent.Paused = *state.Paused
+	return state.savedTorrent, true
+}
 
-	_ = json.Unmarshal(data, &saved)
+var errTorrentSessionUnavailable = errors.New("missing or invalid torrent session")
 
-	return saved, true
+// Вызывается под session.mu. Отсутствие .torrent допускает создание сессии.
+// У существующей раздачи пустой снимок мог бы снять признак приватности.
+func (s *session) forMutation(hash metainfo.Hash) (savedTorrent, error) {
+	saved, valid := s.lookup(hash)
+	if valid {
+		return saved, nil
+	}
+	if _, err := os.Stat(s.path(hash, ".torrent")); errors.Is(err, os.ErrNotExist) {
+		return savedTorrent{}, nil
+	}
+	return savedTorrent{}, errTorrentSessionUnavailable
 }
 
 // Меняет одно поле состояния, не затирая остальные
@@ -147,10 +198,27 @@ func (s *session) update(hash metainfo.Hash, change func(*savedTorrent)) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	saved := s.get(hash)
+	current, err := s.forMutation(hash)
+	if err != nil {
+		return err
+	}
+	saved := current
 	change(&saved)
+	return s.write(hash, saved, current)
+}
 
-	return s.write(hash, saved)
+// Before network I/O the private session and its attempted marker must exist.
+func (s *session) updateAnnouncement(hash metainfo.Hash, change func(*savedTorrent)) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	current, ok := s.lookup(hash)
+	if !ok || !current.Private || !s.has(hash) {
+		return errTorrentSessionUnavailable
+	}
+	saved := current
+	change(&saved)
+	return s.write(hash, saved, current)
 }
 
 // Раздача сохранена в сессии: её добавляли, а не только искали метаданные
@@ -161,6 +229,8 @@ func (s *session) has(hash metainfo.Hash) bool {
 }
 
 func (s *session) remove(hash metainfo.Hash) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return errors.Join(
 		removeIfExists(s.path(hash, ".torrent")),
 		removeIfExists(s.path(hash, ".json")),
@@ -197,13 +267,13 @@ func (s *session) load() ([]restoredTorrent, []error) {
 			continue
 		}
 
-		var saved savedTorrent
-		if data, err := os.ReadFile(filepath.Join(s.dir, base+".json")); err == nil {
-			if err := json.Unmarshal(data, &saved); err != nil {
-				errs = append(errs, err)
-			}
+		hash := meta.HashInfoBytes()
+		saved, valid := s.lookup(hash)
+		if !valid || base != hash.HexString() {
+			errs = append(errs, errTorrentSessionUnavailable)
+			restored = append(restored, restoredTorrent{meta: meta, blocked: true})
+			continue
 		}
-
 		restored = append(restored, restoredTorrent{meta: meta, saved: saved})
 	}
 

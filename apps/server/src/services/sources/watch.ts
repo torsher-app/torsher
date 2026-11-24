@@ -15,6 +15,7 @@ import {
   InvalidMagnetError,
   isVideoFile,
   linkTitle,
+  TorrentSessionConflictError,
 } from '../torrents/index.ts'
 import { downloadTorrent, SourceError } from '../torznab/index.ts'
 import { getTitleSources, sourceAllowed } from './index.ts'
@@ -29,7 +30,7 @@ import {
 } from '../mine/viewing.ts'
 import { seasonReleases } from './seasonRelease.ts'
 import { titleAllowed, titleAllowedCached } from '../profiles/access.ts'
-import { indexerCookie } from '../indexers/index.ts'
+import { getIndexer, indexerCookie } from '../indexers/index.ts'
 
 // Столько кандидатов пробуем за один запрос: каждый стоит загрузки
 // `.torrent` или ожидания метаданных
@@ -105,8 +106,13 @@ export type WatchResult
   | { status: 'resolving', torrentId: string, candidateId: string }
 
 export function isSkippable(err: unknown) {
-  if (err instanceof SourceError || err instanceof InvalidMagnetError)
+  if (
+    err instanceof SourceError
+    || err instanceof InvalidMagnetError
+    || err instanceof TorrentSessionConflictError
+  ) {
     return true
+  }
 
   // Недоступный движок — не вина раздачи: следующая упадёт так же
   return err instanceof EngineError && err.kind !== 'unavailable'
@@ -115,7 +121,15 @@ export function isSkippable(err: unknown) {
 /** Что нужно, чтобы добавить раздачу: ссылка индексатора, magnet или infohash */
 export type AcquirableRelease = Pick<
   RankedRelease,
-  'title' | 'link' | 'magnet' | 'infoHash'
+  | 'title'
+  | 'link'
+  | 'magnet'
+  | 'infoHash'
+  | 'sourceIndexerId'
+  | 'sourceIsPrivate'
+  | 'minimumRatio'
+  | 'minimumSeedTimeMinutes'
+  | 'seedType'
 >
 
 function magnetOf(release: AcquirableRelease) {
@@ -135,6 +149,31 @@ export async function acquire(
   isCurrent: () => boolean = () => true,
   canUseExisting?: (torrent: Torrent) => Promise<boolean>,
 ): Promise<Torrent | undefined> {
+  const indexerId = release.link?.indexerId ?? release.sourceIndexerId
+  const currentIndexer = () => (indexerId ? getIndexer(indexerId) : undefined)
+  const indexer = currentIndexer()
+  const sourceIsPrivate = () =>
+    !!(
+      release.sourceIsPrivate
+      || indexer?.isPrivate
+      || currentIndexer()?.isPrivate
+    )
+  const canAcquire = () => {
+    const current = currentIndexer()
+    return (
+      origin !== 'follow'
+      || !!(current?.enabled && !current.missing && current.allowAutomation)
+    )
+  }
+  if (!canAcquire())
+    return undefined
+  if (sourceIsPrivate() && !release.link) {
+    throw new SourceError(
+      'bad_response',
+      'Private sources require a torrent file',
+    )
+  }
+
   const magnet = magnetOf(release)
   const accepted = async (result: AddResult) =>
     result.created || !canUseExisting || (await canUseExisting(result.torrent))
@@ -155,20 +194,51 @@ export async function acquire(
         },
       )
 
-      if (!isCurrent())
+      if (!isCurrent() || !canAcquire())
         return undefined
-
-      return downloaded.kind === 'file'
-        ? accepted(await addTorrentFile(downloaded.bytes, origin))
-        : accepted(await addMagnet(downloaded.magnet, origin))
+      const current = currentIndexer()
+      if (sourceIsPrivate() && !current) {
+        throw new SourceError(
+          'bad_response',
+          'Private source is no longer available',
+        )
+      }
+      if (downloaded.kind === 'file') {
+        return accepted(
+          await addTorrentFile(
+            downloaded.bytes,
+            origin,
+            current && {
+              ...current,
+              isPrivate: sourceIsPrivate(),
+              minimumRatio: release.minimumRatio,
+              minimumSeedTimeMinutes: release.minimumSeedTimeMinutes,
+              seedType: release.seedType,
+            },
+          ),
+        )
+      }
+      if (sourceIsPrivate()) {
+        throw new SourceError(
+          'bad_response',
+          'Private sources require a torrent file',
+        )
+      }
+      return accepted(await addMagnet(downloaded.magnet, origin))
     }
     catch (err) {
+      if (sourceIsPrivate() && err instanceof SourceError) {
+        throw new SourceError(
+          'bad_response',
+          'Private source did not return a torrent file',
+        )
+      }
       if (!(err instanceof SourceError) || !magnet || !hasTime())
         throw err
     }
   }
 
-  return magnet && isCurrent()
+  return magnet && isCurrent() && canAcquire() && !sourceIsPrivate()
     ? accepted(await addMagnet(magnet, origin))
     : undefined
 }
@@ -268,6 +338,8 @@ export async function openCandidate(
     )
   }
   catch (err) {
+    if (err instanceof TorrentSessionConflictError)
+      throw err
     if (isSkippable(err))
       throw new WatchError('not_playable', 'The release could not be added')
 
@@ -509,6 +581,8 @@ export async function watchTitle(
     catch (err) {
       if (!current())
         return undefined
+      if (request.candidateId && err instanceof TorrentSessionConflictError)
+        throw err
       if (isSkippable(err)) {
         recordDecision('sources', 'source.attempt', operation, {
           ...facts,

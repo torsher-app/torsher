@@ -1,4 +1,4 @@
-import type { IndexerManagerKind } from '../../db/schema.ts'
+import type { Indexer, IndexerManagerKind } from '../../db/schema.ts'
 import type { TorznabCaps } from '../torznab/index.ts'
 import {
   child,
@@ -24,6 +24,34 @@ export interface RemoteIndexer {
   /** Prowlarr знает, читается ли у индексатора лента; Jackett — нет */
   supportsRss?: boolean
   priority?: number
+  knownPrivacy?: Indexer['knownPrivacy']
+  minSeedRatio?: number
+  minSeedTimeMinutes?: number
+}
+
+function privacyOf(value: unknown): Indexer['knownPrivacy'] {
+  if (typeof value !== 'string')
+    return null
+  switch (value.trim().toLowerCase()) {
+    case 'public':
+      return 'public'
+    case 'semiprivate':
+    case 'semi-private':
+    case 'semi_private':
+      return 'semi_private'
+    case 'private':
+      return 'private'
+    default:
+      return null
+  }
+}
+
+function positiveNumber(value: unknown) {
+  const number
+    = typeof value === 'number' || typeof value === 'string'
+      ? Number(value)
+      : NaN
+  return Number.isFinite(number) && number > 0 ? number : undefined
 }
 
 /**
@@ -108,8 +136,16 @@ async function listProwlarr(baseUrl: string, apiKey: string) {
     if (typeof item !== 'object' || item === null)
       return []
 
-    const { id, name, protocol, enable, supportsRss, priority }
-      = item as Record<string, unknown>
+    const {
+      id,
+      name,
+      protocol,
+      enable,
+      supportsRss,
+      priority,
+      privacy,
+      fields,
+    } = item as Record<string, unknown>
 
     // Перечисление приходит строкой, у старых версий — числом (2 — torrent)
     if (protocol !== 'torrent' && protocol !== 2)
@@ -118,12 +154,37 @@ async function listProwlarr(baseUrl: string, apiKey: string) {
     if (typeof id !== 'number' || typeof name !== 'string')
       return []
 
+    const values = new Map<string, unknown>()
+    if (Array.isArray(fields)) {
+      for (const field of fields) {
+        if (
+          field
+          && typeof field === 'object'
+          && typeof field.name === 'string'
+        ) {
+          values.set(field.name, field.value)
+        }
+      }
+    }
+    const seedTime = positiveNumber(
+      values.get('torrentBaseSettings.seedTime') ?? values.get('seedTime'),
+    )
+    const seedRatio = positiveNumber(
+      values.get('torrentBaseSettings.seedRatio') ?? values.get('seedRatio'),
+    )
+    const knownPrivacy = privacyOf(privacy)
+
     return [
       {
         externalId: String(id),
         name,
         url: `${baseUrl}/${id}`,
         enabled: enable !== false,
+        ...(knownPrivacy && { knownPrivacy }),
+        ...(seedRatio !== undefined && { minSeedRatio: seedRatio }),
+        ...(seedTime !== undefined && {
+          minSeedTimeMinutes: Math.ceil(seedTime),
+        }),
         ...(typeof supportsRss === 'boolean' && { supportsRss }),
         ...(typeof priority === 'number'
           && Number.isInteger(priority) && { priority }),
@@ -160,6 +221,7 @@ async function listJackett(baseUrl: string, apiKey: string) {
     (node): RemoteIndexer[] => {
       const id = text(node, 'id')
       const name = text(node, 'title')?.trim()
+      const knownPrivacy = privacyOf(text(node, 'type'))
 
       if (!id || !name || text(node, 'configured')?.toLowerCase() === 'false')
         return []
@@ -170,6 +232,7 @@ async function listJackett(baseUrl: string, apiKey: string) {
           name,
           url: `${baseUrl}/api/v2.0/indexers/${encodeURIComponent(id)}/results/torznab`,
           enabled: true,
+          ...(knownPrivacy && { knownPrivacy }),
           caps: parseCaps(child(node, 'caps')),
         },
       ]

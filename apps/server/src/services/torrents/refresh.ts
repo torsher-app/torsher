@@ -357,7 +357,9 @@ export async function removeRetiredFiles(
 /** Раздачу забывает движок, файлы остаются на диске */
 export async function forgetKeepingFiles(torrent: Torrent) {
   try {
-    await forgetTorrent(torrent.infoHash)
+    await forgetTorrent(torrent.infoHash, {
+      requireVerified: torrent.isPrivate,
+    })
   }
   catch (err) {
     if (!(err instanceof EngineError) || err.kind !== 'not_found')

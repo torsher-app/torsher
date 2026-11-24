@@ -107,6 +107,7 @@ describe('сверка раздач после восстановления', ()
     expect(counts).toEqual({ removedFromEngine: 1, deleted: 1, paused: 1 })
     expect(calls()).toEqual([
       `DELETE /torrents/${hash('e')}`,
+      `GET /torrents/${hash('a')}/stats`,
       `DELETE /torrents/${hash('a')}`,
       `POST /torrents/${hash('b')}/pause`,
     ])

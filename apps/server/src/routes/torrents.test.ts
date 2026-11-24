@@ -483,7 +483,10 @@ describe('список и удаление', () => {
     })
 
     expect(deleted.statusCode).toBe(200)
-    expect(engineCalls()).toEqual([`DELETE /torrents/${INFO_HASH}`])
+    expect(engineCalls()).toEqual([
+      `GET /torrents/${INFO_HASH}/stats`,
+      `DELETE /torrents/${INFO_HASH}`,
+    ])
   })
 })
 
@@ -1112,9 +1115,15 @@ describe('delete preview', () => {
         cookies: owner,
       })
       expect(response.statusCode).toBe(status)
-      if (status === 200)
-        expect(response.json()).toEqual({ reclaimableBytes: 0 })
-      else expect(response.json()).not.toHaveProperty('reclaimableBytes')
+      if (status === 200) {
+        expect(response.json()).toEqual({
+          reclaimableBytes: 0,
+          requiresObligationConfirmation: false,
+        })
+      }
+      else {
+        expect(response.json()).not.toHaveProperty('reclaimableBytes')
+      }
     },
   )
   it.each([0, 8192])(
@@ -1130,7 +1139,10 @@ describe('delete preview', () => {
         cookies: owner,
       })
       expect(response.statusCode).toBe(200)
-      expect(response.json()).toEqual({ reclaimableBytes: bytes })
+      expect(response.json()).toEqual({
+        reclaimableBytes: bytes,
+        requiresObligationConfirmation: false,
+      })
       expect(getDb().select().from(torrents).get()?.id).toBe(row.id)
       expect(engineCalls()).toEqual([
         `GET /torrents/${INFO_HASH}/delete-preview`,
@@ -1153,7 +1165,10 @@ describe('delete preview', () => {
       url: `/api/torrents/${row.id}/delete-preview`,
       cookies: owner,
     })
-    expect(response.json()).toEqual({ reclaimableBytes: 0 })
+    expect(response.json()).toEqual({
+      reclaimableBytes: 0,
+      requiresObligationConfirmation: false,
+    })
     expect(engineCalls()).toEqual([])
   })
   it('rejects missing torrents and anonymous requests', async () => {

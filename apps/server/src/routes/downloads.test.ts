@@ -480,6 +480,7 @@ describe('действия', () => {
 
     expect(response.statusCode).toBe(200)
     expect(engineCalls()).toEqual([
+      `GET /torrents/${INFO_HASH}/stats`,
       `DELETE /torrents/${INFO_HASH}?delete_files=true`,
     ])
     expect(rowOf(torrent.id)).toBeUndefined()
@@ -612,7 +613,7 @@ describe('хранилище', () => {
     disk.free = 100 * GIB
     await enforceStorage()
 
-    expect(rowOf(kept.id)?.pauseReason).toBeNull()
+    await vi.waitFor(() => expect(rowOf(kept.id)?.pauseReason).toBeNull())
     expect(engineCalls()).toEqual([`POST /torrents/${INFO_HASH}/resume`])
     expect(records()).toContainEqual(
       expect.objectContaining({
@@ -785,7 +786,6 @@ describe('просмотр и место', () => {
 
       expect(response.statusCode).toBe(200)
       expect(engineCalls()).toEqual([
-        `GET /torrents/${INFO_HASH}/stats`,
         call,
         `POST /torrents/${INFO_HASH}/resume`,
       ])

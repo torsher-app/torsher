@@ -15,7 +15,10 @@ import {
   recordPlaced,
   recordSourceInventory,
 } from './provenance.ts'
-import type { EngineMaintenanceOperation } from '../engine/client.ts'
+import type {
+  EngineMaintenanceOperation,
+  EngineTorrentState,
+} from '../engine/client.ts'
 import {
   copyFile,
   link,
@@ -627,6 +630,56 @@ describe('maintenance executor', () => {
       'cleaned',
     )
   })
+  it('recovers a lost private detach response using the matching engine fence', async () => {
+    const f = await fixture()
+    db.update(torrents)
+      .set({
+        isPrivate: true,
+        fullDownload: true,
+        seedObligations: [
+          { origin: 'source', mode: 'and', ratio: null, minutes: 1 },
+        ],
+      })
+      .where(eq(torrents.id, f.torrent.id))
+      .run()
+    db.update(maintenanceGroups)
+      .set({ privateObligationMet: true })
+      .where(eq(maintenanceGroups.id, f.groupId))
+      .run()
+    vi.spyOn(maintenanceEngine, 'torrents').mockImplementation(async () =>
+      engineOps.size
+        ? []
+        : [
+            {
+              infoHash: f.torrent.infoHash,
+              isPrivate: true,
+              uploaded: 0,
+              verifiedComplete: true,
+              leftZeroAccepted: true,
+              seededSeconds: 60,
+            } as EngineTorrentState,
+          ],
+    )
+    vi.spyOn(maintenanceEngine, 'status').mockImplementation(async id =>
+      structuredClone(engineOps.get(id)!),
+    )
+    const detach = maintenanceEngine.prepare
+    vi.spyOn(maintenanceEngine, 'prepare').mockImplementationOnce(
+      async (id, manifest, requireVerified) => {
+        expect(requireVerified).toBe(true)
+        await detach(id, manifest, requireVerified)
+        throw new Error('response_lost')
+      },
+    )
+    await mature()
+    const op = db.select().from(maintenanceOperations).get()!
+    expect(maintenanceEngine.unlink).not.toHaveBeenCalled()
+    expect(await readFile(f.path, 'utf8')).toBe('test')
+
+    expect(await retryMaintenanceOperation(op.id)).toBe(true)
+    expect(maintenanceEngine.status).toHaveBeenCalledWith(op.id)
+    await expect(lstat(f.path)).rejects.toMatchObject({ code: 'ENOENT' })
+  })
   it('global off cancels untouched pending work and does not continue partial deletion', async () => {
     await fixture()
     vi.spyOn(maintenanceEngine, 'unlink').mockRejectedValueOnce(
@@ -830,34 +883,49 @@ it('old backup discovers newer fences; owner can cancel only those without files
   )
   acquireMaintenanceLease({ titleId: 'tmdb:tv:999999', producer: true })()
 })
-it('captures only metadata-owned extras while an unknown video blocks the entire group', async () => {
-  const f = await fixture()
-  const files = [
-    ...f.torrent.files!,
-    { path: 'README.txt', size: 4, padding: false },
-    { path: 'Unknown.mkv', size: 4, padding: false },
-  ]
-  await writeFile(join(f.sourceRoot, 'README.txt'), 'text')
-  await writeFile(join(f.sourceRoot, 'Unknown.mkv'), 'test')
-  db.update(maintenanceGroups)
-    .set({ torrentFiles: files })
-    .where(eq(maintenanceGroups.id, f.groupId))
-    .run()
-  await recordSourceInventory({ ...f.torrent, files }, {
-    fileProgress: [4, 4, 4],
-  } as Parameters<typeof recordSourceInventory>[1])
-  const owned = db.select().from(maintenanceFiles).all()
-  expect(owned.some(file => file.path.endsWith('README.txt'))).toBe(true)
-  expect(owned.some(file => file.path.endsWith('Unknown.mkv'))).toBe(false)
-  const preview = await previewMaintenance(
-    f.titleId,
-    maintenanceConfig(f.titleId).rule,
-    now,
-  )
-  expect(
-    preview.groups.find(group => group.id === f.groupId)?.reasons,
-  ).toContain('group_incomplete')
-})
+it.each([false, true])(
+  'records auxiliary files and protects unrecognized video, fullDownload=%s',
+  async (fullDownload) => {
+    const f = await fixture()
+    const files = [
+      ...f.torrent.files!,
+      { path: 'README.txt', size: 4, padding: false },
+      { path: 'Unknown.mkv', size: 4, padding: false },
+      { path: 'Sample/Preview.mkv', size: 4, padding: false },
+      { path: 'Extras/Behind the scenes.mkv', size: 4, padding: false },
+    ]
+    await writeFile(join(f.sourceRoot, 'README.txt'), 'text')
+    await writeFile(join(f.sourceRoot, 'Unknown.mkv'), 'test')
+    await mkdir(join(f.sourceRoot, 'Sample'))
+    await mkdir(join(f.sourceRoot, 'Extras'))
+    await writeFile(join(f.sourceRoot, 'Sample/Preview.mkv'), 'test')
+    await writeFile(join(f.sourceRoot, 'Extras/Behind the scenes.mkv'), 'test')
+    db.update(maintenanceGroups)
+      .set({ torrentFiles: files })
+      .where(eq(maintenanceGroups.id, f.groupId))
+      .run()
+    await recordSourceInventory({ ...f.torrent, files, fullDownload }, {
+      fileProgress: files.map(file => file.size),
+    } as Parameters<typeof recordSourceInventory>[1])
+    const owned = db.select().from(maintenanceFiles).all()
+    expect(owned.some(file => file.path.endsWith('README.txt'))).toBe(true)
+    expect(owned.some(file => file.path.endsWith('Unknown.mkv'))).toBe(false)
+    expect(owned.some(file => file.path.endsWith('Sample/Preview.mkv'))).toBe(
+      fullDownload,
+    )
+    expect(
+      owned.some(file => file.path.endsWith('Extras/Behind the scenes.mkv')),
+    ).toBe(fullDownload)
+    const preview = await previewMaintenance(
+      f.titleId,
+      maintenanceConfig(f.titleId).rule,
+      now,
+    )
+    expect(
+      preview.groups.find(group => group.id === f.groupId)?.reasons,
+    ).toContain('group_incomplete')
+  },
+)
 
 it.each([
   { index: 0, after: false },

@@ -47,7 +47,7 @@ func TestDownloadSpeedMeasurementAvailability(t *testing.T) {
 		t.Fatalf("measured download speed = %d", got)
 	}
 	previous := added
-	engine.metadataOnly.Store(hash, true)
+	engine.metadataOnly.Store(hash, added)
 	post(t, server.URL+"/torrents?files=0", fx.raw).Body.Close()
 	added, _ = engine.client.Torrent(hash)
 	if added == previous {

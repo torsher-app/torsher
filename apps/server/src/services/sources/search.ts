@@ -7,7 +7,7 @@ import type {
   SourceErrorKind,
   TorznabRelease,
 } from '../torznab/index.ts'
-import type { FoundRelease } from './rank.ts'
+import type { FoundRelease, ReleaseSource } from './rank.ts'
 import { createHash } from 'node:crypto'
 import {
   matchTitle,
@@ -20,6 +20,7 @@ import {
   SourceError,
 } from '../torznab/index.ts'
 import { parseMagnet } from '../torrents/magnet.ts'
+import { getIndexer } from '../indexers/index.ts'
 import type { SearchDiagnostics } from './logDiagnostics.ts'
 import { logFor } from '../logs/index.ts'
 import { sourceErrorFacts } from './logDiagnostics.ts'
@@ -157,6 +158,9 @@ export function mergeHits(hits: Hit[]) {
   const merged = new Map<string, Omit<FoundRelease, 'parsed' | 'match'>>()
 
   for (const { indexer, release } of hits) {
+    if (indexer.isPrivate && !release.link)
+      continue
+
     const key = identityKey(release)
     const seeders = release.seeders ?? 0
     const found = merged.get(key)
@@ -172,14 +176,30 @@ export function mergeHits(hits: Hit[]) {
           indexerOrigin: new URL(indexer.url).origin,
         }
       : undefined
+    const alternative: ReleaseSource = {
+      ...source,
+      link,
+      magnet: indexer.isPrivate ? undefined : release.magnet,
+      seeders,
+      isPrivate: indexer.isPrivate,
+      minimumRatio: release.minimumRatio,
+      minimumSeedTimeMinutes: release.minimumSeedTimeMinutes,
+      seedType: release.seedType,
+    }
 
     if (!found) {
       merged.set(key, {
         id: releaseId(key),
         title: release.title,
         indexers: [source],
+        sources: [alternative],
+        sourceIndexerId: indexer.id,
+        sourceIsPrivate: alternative.isPrivate,
         link,
-        magnet: release.magnet,
+        magnet: alternative.magnet,
+        minimumRatio: alternative.minimumRatio,
+        minimumSeedTimeMinutes: alternative.minimumSeedTimeMinutes,
+        seedType: alternative.seedType,
         infoHash:
           release.infoHash
           ?? (release.magnet ? parseMagnet(release.magnet)?.infoHash : undefined),
@@ -197,21 +217,98 @@ export function mergeHits(hits: Hit[]) {
       found.indexers.push(source)
     else known.detailsUrl ??= release.detailsUrl
 
+    const alternatives = found.sources!
+    const previous = alternatives.findIndex(item => item.id === indexer.id)
+    if (previous < 0) {
+      alternatives.push(alternative)
+    }
+    else if (
+      (!alternatives[previous]!.link && link)
+      || seeders > alternatives[previous]!.seeders
+    ) {
+      alternatives[previous] = alternative
+    }
+
     if (seeders > found.seeders) {
       found.seeders = seeders
       found.peers = release.peers ?? found.peers
-      found.link = link ?? found.link
-    }
-    else {
-      found.link ??= link
     }
 
-    found.magnet ??= release.magnet
+    const selected = alternatives.reduce((best, candidate) => {
+      if (Boolean(best.link) !== Boolean(candidate.link))
+        return candidate.link ? candidate : best
+      return candidate.seeders > best.seeders ? candidate : best
+    })
+    found.sourceIndexerId = selected.id
+    found.sourceIsPrivate = selected.isPrivate
+    found.link = selected.link
+    found.magnet = selected.magnet
+    found.minimumRatio = selected.minimumRatio
+    found.minimumSeedTimeMinutes = selected.minimumSeedTimeMinutes
+    found.seedType = selected.seedType
     found.size ??= release.size
     found.publishedAt ??= release.publishedAt
   }
 
   return [...merged.values()]
+}
+
+export function automationIndexer(id: string | undefined) {
+  const indexer = id ? getIndexer(id) : undefined
+  return indexer?.enabled && !indexer.missing && indexer.allowAutomation
+    ? indexer
+    : undefined
+}
+
+/** Повторно оценивает каждый источник, в том числе при чтении кэша зрителя. */
+export function automationRelease<T extends FoundRelease>(
+  release: T,
+): T | undefined {
+  if (!release.sources?.length) {
+    const indexer = automationIndexer(
+      release.link?.indexerId
+      ?? release.sourceIndexerId
+      ?? release.indexers[0]?.id,
+    )
+    return indexer
+      && (!(indexer.isPrivate || release.sourceIsPrivate) || release.link)
+      ? release
+      : undefined
+  }
+
+  const allowed = release.sources.flatMap((source) => {
+    const indexer = automationIndexer(source.id)
+    const isPrivate = !!(indexer?.isPrivate || source.isPrivate)
+    return indexer && (!isPrivate || source.link)
+      ? [{ source, isPrivate }]
+      : []
+  })
+  allowed.sort(
+    (a, b) =>
+      Number(a.isPrivate) - Number(b.isPrivate)
+      || b.source.seeders - a.source.seeders,
+  )
+  const selected = allowed[0]
+  if (!selected)
+    return undefined
+
+  const { source } = selected
+  return {
+    ...release,
+    indexers: allowed.map(({ source }) => ({
+      id: source.id,
+      name: source.name,
+      detailsUrl: source.detailsUrl,
+    })),
+    sourceIndexerId: source.id,
+    sourceIsPrivate: selected.isPrivate,
+    link: source.link,
+    magnet: selected.isPrivate ? undefined : source.magnet,
+    seeders: source.seeders,
+    minimumRatio: source.minimumRatio,
+    minimumSeedTimeMinutes: source.minimumSeedTimeMinutes,
+    seedType: source.seedType,
+  }
 }
 
 /**
