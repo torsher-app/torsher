@@ -20,22 +20,28 @@ const t = resolveMessages(
   navigator.languages?.length ? navigator.languages : [navigator.language],
 )
 
-function byId<T extends HTMLElement = HTMLElement>(id: string) {
-  return document.getElementById(id) as T
+function byId<T extends HTMLElement = HTMLElement>(
+  id: string,
+  root: Document | DocumentFragment = document,
+) {
+  return root.getElementById(id) as T
 }
 
-const addressScreen = byId('address-screen')
+// Форма остаётся вне страницы до первого показа, в том числе до загрузки CSS.
+const addressTemplate = byId<HTMLTemplateElement>('address-template')
+const addressContent = addressTemplate.content
+const addressScreen = byId('address-screen', addressContent)
+const form = byId<HTMLFormElement>('address-form', addressContent)
+const input = byId<HTMLInputElement>('address', addressContent)
+const error = byId('error', addressContent)
+const connectButton = byId<HTMLButtonElement>('connect', addressContent)
 const connectScreen = byId('connect-screen')
-const form = byId<HTMLFormElement>('address-form')
-const input = byId<HTMLInputElement>('address')
-const error = byId('error')
 const connecting = byId('connecting')
-const connectButton = byId<HTMLButtonElement>('connect')
 const change = byId<HTMLButtonElement>('change')
 
 byId('tagline').textContent = t.tagline
-byId('address-label').textContent = t.addressLabel
-byId('address-hint').textContent = t.addressHint
+byId('address-label', addressContent).textContent = t.addressLabel
+byId('address-hint', addressContent).textContent = t.addressHint
 connectButton.textContent = t.connect
 change.textContent = t.changeAddress
 input.placeholder = '192.168.1.10:8080'
@@ -49,10 +55,11 @@ function errorText(result: Exclude<CheckResult, 'ok'>, base: string) {
 
 function showAddress(message = '', focusOn?: HTMLElement) {
   attempt++
-  connectScreen.hidden = true
-  addressScreen.hidden = false
   error.textContent = message
   error.hidden = !message
+  connectScreen.hidden = true
+  if (!addressScreen.isConnected)
+    addressTemplate.after(addressScreen)
 
   // Сервер не ответил по готовому адресу — проще повторить: фокус на кнопке
   const target = focusOn ?? (message && input.value ? connectButton : input)
@@ -61,7 +68,7 @@ function showAddress(message = '', focusOn?: HTMLElement) {
 
 async function connect(base: string) {
   const current = ++attempt
-  addressScreen.hidden = true
+  addressScreen.remove()
   connectScreen.hidden = false
   connecting.textContent = format(t.connecting, {
     address: displayAddress(base),

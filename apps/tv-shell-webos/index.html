@@ -25,28 +25,30 @@
       </div>
       <p id="tagline" class="tagline"></p>
 
-      <section id="address-screen" hidden>
-        <form id="address-form" novalidate>
-          <label id="address-label" class="label" for="address"></label>
-          <input
-            id="address"
-            class="field"
-            type="url"
-            autocomplete="off"
-            autocapitalize="off"
-            spellcheck="false"
-            data-focusable
-          />
-          <p id="address-hint" class="hint"></p>
-          <p id="error" class="error" role="alert" hidden></p>
-          <button
-            id="connect"
-            class="action action--primary"
-            type="submit"
-            data-focusable
-          ></button>
-        </form>
-      </section>
+      <template id="address-template">
+        <section id="address-screen">
+          <form id="address-form" novalidate>
+            <label id="address-label" class="label" for="address"></label>
+            <input
+              id="address"
+              class="field"
+              type="url"
+              autocomplete="off"
+              autocapitalize="off"
+              spellcheck="false"
+              data-focusable
+            />
+            <p id="address-hint" class="hint"></p>
+            <p id="error" class="error" role="alert" hidden></p>
+            <button
+              id="connect"
+              class="action action--primary"
+              type="submit"
+              data-focusable
+            ></button>
+          </form>
+        </section>
+      </template>
 
       <section id="connect-screen" class="connect" hidden>
         <div class="spinner" aria-hidden="true"></div>
