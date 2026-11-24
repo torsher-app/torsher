@@ -58,8 +58,13 @@ async function waitForRestart() {
 
       settings.value = next
 
-      if (next.pendingRestart.length === 0)
+      const binding = next.networkBinding?.bindInterface ?? ''
+      if (
+        next.pendingRestart.length === 0
+        && binding === next.values.bindInterface
+      ) {
         return
+      }
     }
     catch {}
   }

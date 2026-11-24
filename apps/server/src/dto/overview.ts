@@ -6,6 +6,7 @@ export const attentionKinds = [
   'maintenance_failed',
   'maintenance_restore_hold',
   'engine_down',
+  'engine_bind_unavailable',
   'engine_crashed',
   'storage_low',
   'storage_paused',

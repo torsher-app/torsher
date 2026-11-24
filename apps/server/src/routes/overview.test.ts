@@ -28,11 +28,16 @@ import {
   saveBackupSettings,
 } from '../services/backups/index.ts'
 import { updateBackupState } from '../services/backups/state.ts'
-import { setEngineDown, setEngineReady } from '../services/engine/index.ts'
+import {
+  setEngineDown,
+  setEngineNetwork,
+  setEngineReady,
+} from '../services/engine/index.ts'
 import { accelDeps, mediaAccel, resetAccel } from '../services/media/accel.ts'
 import {
   INFO_HASH,
   liveState,
+  recoverableNetwork,
   sampleTorrentFile,
 } from '../services/engine/fixtures/index.ts'
 import { checkDeps, waitForCheck } from '../services/net/check.ts'
@@ -44,6 +49,11 @@ import * as resourceMonitor from '../services/overview/monitor.ts'
 import { trackPlayback } from '../services/segments/activity.ts'
 import { routesChanged } from '../services/net/index.ts'
 import { saveTmdbKey } from '../services/tmdb/credentials.ts'
+import {
+  getTorrentSettings,
+  rememberLaunched,
+  resetLaunched,
+} from '../services/torrents/settings.ts'
 import { createOwner } from '../services/users/index.ts'
 import { signToken } from '../utils/token.ts'
 
@@ -228,6 +238,7 @@ afterEach(() => {
   vi.unstubAllEnvs()
   vi.restoreAllMocks()
   setEngineDown('stopped')
+  resetLaunched()
 })
 
 describe('доступ', () => {
@@ -426,6 +437,44 @@ describe('обзор', () => {
     expect(body.storage.usedByCache).toBe(liveState.bytesCompleted)
     expect(body.sources).toEqual({ ok: 1, total: 2 })
     expect(body.devices).toEqual({ total: 1, watching: 1 })
+  })
+
+  it('недоступная привязка требует внимания и не закрывается при смене процесса', async () => {
+    setEngineReady(ENGINE)
+    rememberLaunched({ ...getTorrentSettings(), bindInterface: 'wg0' })
+    setEngineNetwork(recoverableNetwork)
+
+    const failed = (await overview()).attention
+    expect(failed).toContainEqual({
+      kind: 'engine_bind_unavailable',
+      severity: 'error',
+      section: 'downloads',
+      params: { reason: 'down' },
+    })
+
+    setEngineDown('starting')
+    expect((await serverAttentionSnapshot()).unknown).toContain(
+      'engine_bind_unavailable',
+    )
+    expect((await overview()).attention).toContainEqual({
+      kind: 'engine_bind_unavailable',
+      severity: 'error',
+      section: 'downloads',
+      params: { reason: 'unavailable' },
+    })
+
+    setEngineReady(ENGINE)
+    setEngineNetwork({
+      ...recoverableNetwork,
+      status: 'bound',
+      recoverable: false,
+    })
+    expect((await overview()).attention).not.toContainEqual(
+      expect.objectContaining({ kind: 'engine_bind_unavailable' }),
+    )
+    expect((await serverAttentionSnapshot()).unknown).not.toContain(
+      'engine_bind_unavailable',
+    )
   })
 
   it('движок не запущен: engine_down, цифры загрузок — нули', async () => {

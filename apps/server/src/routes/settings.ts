@@ -42,6 +42,7 @@ import {
 } from '../dto/torrentSettings.ts'
 import { config } from '../config.ts'
 import {
+  engineNetworkSnapshot,
   engineState,
   isEngineReady,
   putEngineSettings,
@@ -118,6 +119,8 @@ function toTorrentSettingsResponse() {
     defaults: defaultTorrentSettings(),
     custom: customTorrentKeys(),
     peerPortEnv: config.enginePeerPort || null,
+    bindInterfaceEnv: config.engineBindInterface,
+    networkBinding: engineNetworkSnapshot(),
     pendingRestart: pendingRestartKeys(values),
     restartBlocked: restartBlocked(),
     activeStreams: streamingCount(),
@@ -439,7 +442,16 @@ export const settingsRoutes: FastifyPluginAsyncZod = async (app) => {
         },
       },
     },
-    async (request) => {
+    async (request, reply) => {
+      if (
+        config.engineBindInterface !== null
+        && request.body.bindInterface !== undefined
+      ) {
+        return reply
+          .code(400)
+          .send({ message: 'Set by ENGINE_BIND_INTERFACE' })
+      }
+
       const saved = saveTorrentSettings(request.body)
       const keys = Object.keys(request.body)
 
@@ -479,7 +491,7 @@ export const settingsRoutes: FastifyPluginAsyncZod = async (app) => {
     async (_request, reply) => {
       const blocked = restartBlocked()
 
-      if (blocked || !restartEngine({ graceful: true })) {
+      if (blocked || !restartEngine({ graceful: true, applySettings: true })) {
         return reply.code(409).send({
           message: 'Engine cannot be restarted now',
           reason: blocked ?? 'not_running',

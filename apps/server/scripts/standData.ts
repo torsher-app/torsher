@@ -296,6 +296,7 @@ export function sanitizeDb(
         if (torrent) {
           delete torrent.peerPort
           delete torrent.upnp
+          delete torrent.bindInterface
           db.prepare(
             `UPDATE server_settings SET value = ? WHERE key = 'torrent'`,
           ).run(JSON.stringify(torrent))

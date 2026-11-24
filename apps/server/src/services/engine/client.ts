@@ -45,15 +45,18 @@ export class EngineError extends Error {
 
 let baseUrl: string | null = null
 let downKind: EngineUnavailableKind = 'stopped'
+let networkBinding: EngineNetworkBinding | null = null
 
 /** Адрес HTTP API движка ставит супервизор, когда движок ответил */
 export function setEngineReady(url: string) {
   baseUrl = url
+  networkBinding = null
 }
 
 export function setEngineDown(kind: EngineUnavailableKind) {
   baseUrl = null
   downKind = kind
+  networkBinding = null
 }
 
 export function isEngineReady() {
@@ -71,6 +74,55 @@ export function engineUnavailableError() {
 }
 
 const CONTROL_TIMEOUT_MS = 10_000
+
+export const engineNetworkBinding = z
+  .object({
+    bindInterface: z.string(),
+    status: z.enum([
+      'unbound',
+      'bound',
+      'missing',
+      'down',
+      'changed',
+      'permission_denied',
+      'unsupported',
+    ]),
+    boundIpv4: z.ipv4().nullable(),
+    boundIpv6: z.ipv6().nullable(),
+    recoverable: z.boolean(),
+    interfaces: z.array(
+      z.object({
+        name: z.string(),
+        up: z.boolean(),
+        loopback: z.boolean(),
+        ipv4: z.array(z.ipv4()),
+        ipv6: z.array(z.ipv6()),
+      }),
+    ),
+  })
+  .meta({ id: 'engineNetworkBinding' })
+
+export type EngineNetworkBinding = z.infer<typeof engineNetworkBinding>
+
+export function engineNetworkSnapshot() {
+  return networkBinding
+}
+
+export function setEngineNetwork(network: EngineNetworkBinding | null) {
+  networkBinding = network
+}
+
+export async function getEngineNetwork(timeoutMs: number) {
+  try {
+    return await engineJson('/network', engineNetworkBinding, { timeoutMs })
+  }
+  catch (err) {
+    if (err instanceof EngineError)
+      return null
+
+    throw err
+  }
+}
 
 const engineErrorBody = z.object({
   kind: z.string().optional(),

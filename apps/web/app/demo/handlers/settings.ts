@@ -216,6 +216,7 @@ const RESTART_KEYS: RestartKey[] = [
   'dht',
   'pex',
   'encryption',
+  'bindInterface',
 ]
 
 const torrentDefaults: TorrentSettingValues = {
@@ -231,6 +232,7 @@ const torrentDefaults: TorrentSettingValues = {
   dht: true,
   pex: true,
   encryption: 'prefer',
+  bindInterface: '',
 }
 
 // Поля, которые владелец сохранил сам; остальные — умолчания
@@ -257,6 +259,15 @@ function torrentSettings(): TorrentSettings {
     defaults: torrentDefaults,
     custom: Object.keys(customTorrent) as TorrentKey[],
     peerPortEnv: null,
+    bindInterfaceEnv: null,
+    networkBinding: {
+      bindInterface: engineNetwork.bindInterface,
+      status: engineNetwork.bindInterface ? 'missing' : 'unbound',
+      boundIpv4: null,
+      boundIpv6: null,
+      recoverable: false,
+      interfaces: [],
+    },
     pendingRestart: RESTART_KEYS.filter(
       key => values[key] !== engineNetwork[key],
     ),

@@ -1,9 +1,11 @@
 import type { ChildProcess } from 'node:child_process'
 import { spawn } from 'node:child_process'
-import type { EngineHealth } from './supervisor.ts'
+import type { EngineNetworkBinding } from './client.ts'
+import type { EngineHealth, EngineSupervisorOptions } from './supervisor.ts'
 import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { recoverableNetwork } from './fixtures/index.ts'
 import { createEngineSupervisor } from './supervisor.ts'
 
 vi.mock('node:child_process', async original => ({
@@ -52,7 +54,11 @@ class FakeProcess extends EventEmitter {
 const log = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() }
 
 function setup(
-  overrides: { health?: () => EngineHealth, exists?: boolean } = {},
+  overrides: {
+    health?: () => EngineHealth
+    exists?: boolean
+    network?: EngineSupervisorOptions['network']
+  } = {},
 ) {
   const processes: FakeProcess[] = []
   const spawned: string[][] = []
@@ -67,6 +73,7 @@ function setup(
     log,
     onReady,
     onDown,
+    network: overrides.network,
     spawnProcess: (_command, args) => {
       const proc = new FakeProcess()
 
@@ -102,6 +109,68 @@ afterEach(() => {
 })
 
 describe('супервизор движка', () => {
+  it('возвращает сеть мягким перезапуском после окончания переноса, с паузой между попытками', async () => {
+    const network = {
+      check: vi.fn(async () => recoverableNetwork),
+      publish: vi.fn(),
+      restartAllowed: vi.fn(() => false),
+    }
+    const { supervisor, processes } = setup({ network })
+    await supervisor.start()
+    expect(network.publish).toHaveBeenCalledWith(recoverableNetwork)
+    expect(processes[0]!.signals).toEqual([])
+
+    network.restartAllowed.mockReturnValue(true)
+    await vi.advanceTimersByTimeAsync(10_000)
+    expect(processes[0]!.signals).toEqual(['SIGTERM'])
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(processes[1]!.signals).toEqual([])
+
+    await vi.advanceTimersByTimeAsync(30_000)
+    expect(processes[1]!.signals).toEqual(['SIGTERM'])
+    expect(supervisor.recentCrashes()).toBe(0)
+    await supervisor.stop()
+  })
+
+  it('игнорирует восстановление сети от уже вышедшего процесса', async () => {
+    let finish!: (status: EngineNetworkBinding) => void
+    const network = {
+      check: vi
+        .fn()
+        .mockImplementationOnce(
+          () =>
+            new Promise<EngineNetworkBinding>(resolve => (finish = resolve)),
+        )
+        .mockResolvedValue(null),
+      publish: vi.fn(),
+      restartAllowed: vi.fn(() => true),
+    }
+    const { supervisor, processes } = setup({ network })
+    await supervisor.start()
+
+    await processes[0]!.crash()
+    await vi.advanceTimersByTimeAsync(1000)
+    finish(recoverableNetwork)
+    await vi.advanceTimersByTimeAsync(0)
+
+    expect(network.publish).not.toHaveBeenCalledWith(recoverableNetwork)
+    expect(network.restartAllowed).not.toHaveBeenCalled()
+    expect(processes[1]!.signals).toEqual([])
+    await supervisor.stop()
+  })
+
+  it('код выхода при потере защиты перезапускает процесс без учёта падения', async () => {
+    const { supervisor, processes } = setup()
+    await supervisor.start()
+    await processes[0]!.crash(12)
+    expect(supervisor.recentCrashes()).toBe(0)
+
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(processes).toHaveLength(2)
+    expect(supervisor.status).toBe('ready')
+    await supervisor.stop()
+  })
+
   it('default spawn overrides inherited mmap mode before upstream initialization', async () => {
     vi.stubEnv('TORRENT_STORAGE_DEFAULT_FILE_IO', 'mmap')
     const process = new FakeProcess()

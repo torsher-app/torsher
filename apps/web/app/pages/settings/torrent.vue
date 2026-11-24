@@ -6,6 +6,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import TorrentConnectionsCard from '~/components/settings/TorrentConnectionsCard.vue'
 import TorrentDiscoveryCard from '~/components/settings/TorrentDiscoveryCard.vue'
 import TorrentEncryptionCard from '~/components/settings/TorrentEncryptionCard.vue'
+import TorrentInterfaceCard from '~/components/settings/TorrentInterfaceCard.vue'
 import TorrentPortCard from '~/components/settings/TorrentPortCard.vue'
 import TorrentQueueCard from '~/components/settings/TorrentQueueCard.vue'
 import TorrentRestartAlert from '~/components/settings/TorrentRestartAlert.vue'
@@ -111,6 +112,8 @@ onMounted(load)
       />
 
       <TorrentPortCard :settings="settings" />
+
+      <TorrentInterfaceCard :settings="settings" />
 
       <TorrentDiscoveryCard :values="settings.values" />
 

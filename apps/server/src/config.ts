@@ -106,6 +106,11 @@ export const config = {
     return Number(process.env.ENGINE_PEER_PORT || 0)
   },
 
+  // Принудительная привязка: значение из панели её не переопределяет
+  get engineBindInterface() {
+    return process.env.ENGINE_BIND_INTERFACE?.trim() || null
+  },
+
   // Файлы журнала с ротацией: переживают перезапуск сервера и контейнера
   get logsDir() {
     return join(this.dataDir, 'logs')

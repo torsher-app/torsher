@@ -26,6 +26,7 @@ export interface TorrentSettings {
   dht: boolean
   pex: boolean
   encryption: (typeof encryptionModes)[number]
+  bindInterface: string
 }
 
 export type TorrentSettingKey = keyof TorrentSettings
@@ -37,6 +38,7 @@ export const restartKeys = [
   'dht',
   'pex',
   'encryption',
+  'bindInterface',
 ] as const satisfies TorrentSettingKey[]
 
 const SETTINGS_KEY = 'torrent'
@@ -81,6 +83,7 @@ export function defaultTorrentSettings(): TorrentSettings {
     dht: true,
     pex: true,
     encryption: 'prefer',
+    bindInterface: config.engineBindInterface ?? '',
   }
 }
 
@@ -89,12 +92,24 @@ function savedSettings() {
 }
 
 export function getTorrentSettings(): TorrentSettings {
-  return { ...defaultTorrentSettings(), ...savedSettings() }
+  const defaults = defaultTorrentSettings()
+  const saved = savedSettings()
+
+  return {
+    ...defaults,
+    ...saved,
+    bindInterface:
+      config.engineBindInterface
+      ?? saved.bindInterface
+      ?? defaults.bindInterface,
+  }
 }
 
 /** Поля, которые владелец сохранил сам; остальные — умолчания */
 export function customTorrentKeys() {
-  return Object.keys(savedSettings()) as TorrentSettingKey[]
+  return (Object.keys(savedSettings()) as TorrentSettingKey[]).filter(
+    key => key !== 'bindInterface' || config.engineBindInterface === null,
+  )
 }
 
 /** Сохраняет только переданные поля: у каждой карточки панели — свои */
@@ -133,6 +148,9 @@ export function engineSettingsArgs(settings: TorrentSettings) {
     String(settings.connsTotal),
     '--active-downloads',
     String(settings.activeDownloads),
+    ...(settings.bindInterface
+      ? ['--bind-interface', settings.bindInterface]
+      : []),
     ...(settings.upnp ? ['--upnp'] : []),
     ...(settings.dht ? [] : ['--no-dht']),
     ...(settings.pex ? [] : ['--no-pex']),
@@ -141,13 +159,23 @@ export function engineSettingsArgs(settings: TorrentSettings) {
 
 type RestartValues = Pick<TorrentSettings, (typeof restartKeys)[number]>
 
+export function torrentRestartSettingsOf(
+  settings: TorrentSettings,
+): RestartValues {
+  return Object.fromEntries(
+    restartKeys.map(key => [key, settings[key]]),
+  ) as RestartValues
+}
+
 let launched: RestartValues | undefined
 
 /** Движок запускается с этими настройками: отличие от сохранённых — повод перезапустить */
 export function rememberLaunched(settings: TorrentSettings) {
-  launched = Object.fromEntries(
-    restartKeys.map(key => [key, settings[key]]),
-  ) as RestartValues
+  launched = torrentRestartSettingsOf(settings)
+}
+
+export function launchedBindInterface() {
+  return launched?.bindInterface
 }
 
 /** Сохранённые, но ещё не действующие настройки; движок не запускался — ничего */
