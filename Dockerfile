@@ -99,7 +99,7 @@ FROM node:${NODE_VERSION}-trixie-slim
 # в контейнер монтирует NVIDIA Container Toolkit хоста
 ARG TARGETARCH
 RUN apt-get update \
- && apt-get install -y --no-install-recommends tini ca-certificates ffmpeg libchromaprint-tools \
+ && apt-get install -y --no-install-recommends tini ca-certificates ffmpeg libchromaprint-tools nftables \
       mesa-va-drivers mesa-vulkan-drivers \
       $([ "$TARGETARCH" = amd64 ] && echo intel-media-va-driver) \
  && rm -f /usr/share/vulkan/icd.d/lvp_icd*.json \

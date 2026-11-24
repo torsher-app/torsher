@@ -65,7 +65,9 @@ type api struct {
 	limits   *limits
 	sched    *scheduler
 	// Завершение процесса после паники в обработчике; в тестах подменяется
-	exit func(code int)
+	exit           func(code int)
+	network        http.HandlerFunc
+	networkOffline bool
 	// Время последней пробы блокировки клиента (unix nano, 0 — сторож не
 	// запущен) и пороги сторожа; в тестах пороги подменяются
 	apiErrorLog   apiErrorThrottle
@@ -115,6 +117,10 @@ func (a *api) routes() http.Handler {
 	mux.HandleFunc("POST /maintenance/{id}/unlink", a.maintenanceUnlink)
 	mux.HandleFunc("POST /maintenance/{id}/finalize", a.maintenanceFinish)
 	mux.HandleFunc("POST /maintenance/{id}/cancel", a.maintenanceFinish)
+
+	if a.network != nil {
+		mux.HandleFunc("GET /network", a.network)
+	}
 
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
 		if a.lockStuck() {
@@ -364,6 +370,11 @@ func (a *api) resolve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	spec.Storage = metadataOnlyStorage{}
+	if a.networkOffline {
+		// В офлайне сетевая библиотека не должна запускать HTTP-задачи
+		// из xs/as даже с блокирующим транспортом.
+		spec.Sources = nil
+	}
 	t, created, err := a.client.AddTorrentSpec(spec)
 	if err == nil && created {
 		a.metadataOnly.Store(t.InfoHash(), true)

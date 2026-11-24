@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -35,8 +36,9 @@ type engineOptions struct {
 	dht      bool
 	pex      bool
 	// `prefer` — шифровать, если пир умеет; `require` — только с шифрованием
-	encryption string
-	live       liveSettings
+	encryption    string
+	bindInterface string
+	live          liveSettings
 }
 
 func defaultOptions() engineOptions {
@@ -66,6 +68,9 @@ func main() {
 	flag.IntVar(&opts.live.ConnsPerTorrent, "conns-per-torrent", opts.live.ConnsPerTorrent, "соединений с пирами на раздачу")
 	flag.IntVar(&opts.live.ConnsTotal, "conns-total", 0, "соединений с пирами всего (0 — без общего предела)")
 	flag.IntVar(&opts.live.ActiveDownloads, "active-downloads", 0, "сколько раздач качают выбор одновременно (0 — без очереди)")
+	flag.StringVar(&opts.bindInterface, "bind-interface", "", "сетевой интерфейс для торрент-трафика")
+	guard := flag.Bool("network-guard", false, "устанавливать правила привязки по запросам движка")
+	guardUID := flag.Uint("guard-uid", 1000, "UID процесса движка для доступа к сетевому помощнику")
 	flag.Parse()
 
 	opts.dht = !*noDHT
@@ -73,12 +78,29 @@ func main() {
 
 	logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo}))
 
+	if *guard {
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		if uint64(*guardUID) > uint64(^uint32(0)) {
+			logger.Error("invalid network helper UID")
+			os.Exit(2)
+		}
+		if err := serveNetworkGuard(ctx, guardSocketPath(), uint32(*guardUID)); err != nil {
+			logger.Error("network helper stopped", "err", err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	if err := opts.validate(); err != nil {
 		logger.Error("invalid options", "err", err)
 		os.Exit(2)
 	}
 
 	if err := run(*listen, *downloads, *dataDir, opts, logger); err != nil {
+		if errors.Is(err, errNetworkChanged) {
+			os.Exit(12)
+		}
 		logger.Error("engine stopped", "err", err)
 		os.Exit(1)
 	}
@@ -215,9 +237,43 @@ func run(listen, downloads, dataDir string, opts engineOptions, logger *slog.Log
 		return err
 	}
 
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	state := guardResponse{Status: "unbound"}
+	var binding *boundTransport
+	if opts.bindInterface != "" {
+		state = authorizeBinding(ctx, opts.bindInterface)
+		if state.Status == "bound" {
+			binding, err = openBoundTransport(ctx, opts.bindInterface, state.Device, opts.peerPort)
+			if err != nil {
+				state.Status = bindFailureStatus(err)
+			}
+		}
+		if binding == nil {
+			makeClientOffline(cfg)
+		} else {
+			defer binding.stop()
+			binding.configure(cfg)
+		}
+	}
+
 	client, err := torrent.NewClient(cfg)
 	if err != nil {
 		return err
+	}
+	if binding != nil {
+		if err := binding.attach(client, opts.dht); err != nil {
+			binding.stop()
+			client.Close()
+			binding = nil
+			state.Status = bindFailureStatus(err)
+			makeClientOffline(cfg)
+			client, err = torrent.NewClient(cfg)
+			if err != nil {
+				return err
+			}
+		}
 	}
 	defer client.Close()
 
@@ -227,7 +283,17 @@ func run(listen, downloads, dataDir string, opts engineOptions, logger *slog.Log
 	}
 
 	engine := newAPI(client, sess, store, logger)
-	logger.Info("engine network configured", "event", "engine.network", "peerPort", client.LocalPort(), "dht", opts.dht, "pex", opts.pex, "upnp", opts.upnp, "encryption", opts.encryption, "connsPerTorrent", opts.live.ConnsPerTorrent, "connsTotal", opts.live.ConnsTotal)
+	engine.network = networkHandler(opts.bindInterface, state)
+	engine.networkOffline = opts.bindInterface != "" && binding == nil
+	peerPort := client.LocalPort()
+	dhtEnabled, upnpEnabled := opts.dht, opts.upnp
+	if opts.bindInterface != "" {
+		dhtEnabled, upnpEnabled = binding != nil && opts.dht, false
+	}
+	if binding != nil {
+		peerPort = binding.port
+	}
+	logger.Info("engine network configured", "event", "engine.network", "peerPort", peerPort, "dht", dhtEnabled, "pex", opts.pex, "upnp", upnpEnabled, "encryption", opts.encryption, "connsPerTorrent", opts.live.ConnsPerTorrent, "connsTotal", opts.live.ConnsTotal)
 	// После восстановления и до закрытия клиента: счётчики раздач живут в нём
 	defer engine.flushAllUploaded()
 
@@ -241,8 +307,15 @@ func run(listen, downloads, dataDir string, opts engineOptions, logger *slog.Log
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
+	var changed atomic.Bool
+	if binding != nil {
+		go func() {
+			if binding.watch(ctx) {
+				changed.Store(true)
+				stop()
+			}
+		}()
+	}
 
 	// Восстановление сотен раздач с проверкой файлов идёт долго: API уже
 	// слушает, и супервизор видит живой процесс (`restoring`), а не молчание
@@ -276,5 +349,8 @@ func run(listen, downloads, dataDir string, opts engineOptions, logger *slog.Log
 		return err
 	}
 
+	if changed.Load() {
+		return errNetworkChanged
+	}
 	return nil
 }
