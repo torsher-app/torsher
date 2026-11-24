@@ -14,7 +14,11 @@ import {
   lastBackupAt,
 } from '../backups/index.ts'
 import { isWatching, listDevices } from '../devices/index.ts'
-import { engineCrashCount, engineState } from '../engine/index.ts'
+import {
+  engineCrashCount,
+  engineNetworkSnapshot,
+  engineState,
+} from '../engine/index.ts'
 import { followAttention } from '../follow/attention.ts'
 import { listIndexers } from '../indexers/index.ts'
 import { checkState } from '../net/check.ts'
@@ -28,6 +32,7 @@ import {
   listTorrents,
   liveTorrents,
 } from '../torrents/index.ts'
+import { launchedBindInterface } from '../torrents/settings.ts'
 import { listLibraries } from '../library/folders.ts'
 import { unmatchedGroups } from '../library/match.ts'
 
@@ -54,6 +59,25 @@ function engineAttention(): AttentionItem[] {
       severity: state === 'starting' ? 'warning' : 'error',
       section: 'downloads',
       params: { reason: state },
+    })
+  }
+
+  const network = engineNetworkSnapshot()
+  const appliedBind = launchedBindInterface()
+  if (
+    appliedBind
+    && (network?.bindInterface !== appliedBind || network.status !== 'bound')
+  ) {
+    items.push({
+      kind: 'engine_bind_unavailable',
+      severity: 'error',
+      section: 'downloads',
+      params: {
+        reason:
+          network?.bindInterface === appliedBind
+            ? network.status
+            : 'unavailable',
+      },
     })
   }
 
@@ -380,15 +404,19 @@ export async function serverAttentionSnapshot(
   live?: Map<string, EngineTorrentState>,
 ) {
   const { storage, attention } = await collect(live)
-  return {
-    items: attention,
-    unknown:
-      storage.total === null
-      || storage.free === null
-      || storage.minFree === null
-        ? ['storage_low' as const]
-        : [],
+  const unknown: AttentionItem['kind'][] = []
+  if (
+    storage.total === null
+    || storage.free === null
+    || storage.minFree === null
+  ) {
+    unknown.push('storage_low')
   }
+
+  if (launchedBindInterface() && !engineNetworkSnapshot())
+    unknown.push('engine_bind_unavailable')
+
+  return { items: attention, unknown }
 }
 
 export async function serverAttention(live?: Map<string, EngineTorrentState>) {

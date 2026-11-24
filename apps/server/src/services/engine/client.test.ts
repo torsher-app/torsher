@@ -4,6 +4,7 @@ import {
   EngineError,
   finalizeMaintenanceDetach,
   forgetTorrent,
+  getEngineNetwork,
   getMaintenanceOperation,
   inspectTorrent,
   listEngineTorrents,
@@ -32,6 +33,7 @@ import {
   maintenanceManifest,
   moveState,
   movieDetails,
+  recoverableNetwork,
 } from './fixtures/index.ts'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -56,6 +58,19 @@ afterEach(() => {
 })
 
 describe('клиент движка', () => {
+  it('читает состояние сетевой привязки, у старого движка оно неизвестно', async () => {
+    fetchMock.mockResolvedValueOnce(json(recoverableNetwork))
+    fetchMock.mockResolvedValueOnce(json({}, 404))
+    fetchMock.mockResolvedValueOnce(
+      json({ ...recoverableNetwork, status: 'other' }),
+    )
+
+    expect(await getEngineNetwork(3000)).toEqual(recoverableNetwork)
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('http://127.0.0.1:4000/network')
+    expect(await getEngineNetwork(3000)).toBeNull()
+    expect(await getEngineNetwork(3000)).toBeNull()
+  })
+
   it('без движка запрос не уходит, ошибка говорит почему', async () => {
     setEngineDown('not_installed')
 

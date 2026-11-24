@@ -167,7 +167,12 @@ describe('copy and sanitize', () => {
     setting.run('torrent.generatedPeerPort', '51413')
     setting.run(
       'torrent',
-      JSON.stringify({ peerPort: 51413, upnp: true, downloadLimit: 1024 }),
+      JSON.stringify({
+        peerPort: 51413,
+        upnp: true,
+        bindInterface: 'wg0',
+        downloadLimit: 1024,
+      }),
     )
     db.close()
 

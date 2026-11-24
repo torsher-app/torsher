@@ -13,11 +13,16 @@ import { createApp } from '../app.ts'
 import { ACCESS_TOKEN_COOKIE } from '../config.ts'
 import { getDb, migrateDb } from '../db/index.ts'
 import { serverSettings, torrents, users } from '../db/schema.ts'
-import { setEngineDown, setEngineReady } from '../services/engine/index.ts'
+import {
+  setEngineDown,
+  setEngineNetwork,
+  setEngineReady,
+} from '../services/engine/index.ts'
 import {
   INFO_HASH,
   liveState,
   movieDetails,
+  recoverableNetwork,
   sampleTorrentFile,
 } from '../services/engine/fixtures/index.ts'
 import { enforceSeeding, seedingOf } from '../services/torrents/seeding.ts'
@@ -143,9 +148,12 @@ describe('настройки торрента', () => {
         dht: true,
         pex: true,
         encryption: 'prefer',
+        bindInterface: '',
       },
       custom: [],
       peerPortEnv: null,
+      bindInterfaceEnv: null,
+      networkBinding: null,
       pendingRestart: [],
       restartBlocked: 'not_running',
       activeStreams: 0,
@@ -163,6 +171,38 @@ describe('настройки торрента', () => {
 
     expect(body.values.peerPort).toBe(51413)
     expect(body.peerPortEnv).toBe(51413)
+  })
+
+  it('привязка из окружения важнее БД и не меняется через панель', async () => {
+    await put({ bindInterface: 'wg0' })
+    vi.stubEnv('ENGINE_BIND_INTERFACE', 'vpn0')
+
+    expect(
+      (
+        await app.inject({ url: '/api/settings/torrent', cookies: owner })
+      ).json(),
+    ).toMatchObject({
+      values: { bindInterface: 'vpn0' },
+      defaults: { bindInterface: 'vpn0' },
+      bindInterfaceEnv: 'vpn0',
+      custom: [],
+    })
+    expect((await put({ bindInterface: '' })).statusCode).toBe(400)
+    vi.unstubAllEnvs()
+    expect(getTorrentSettings().bindInterface).toBe('wg0')
+  })
+
+  it('показывает применённую привязку отдельно от сохранённой', async () => {
+    await put({ bindInterface: 'wg0' })
+    rememberLaunched(getTorrentSettings())
+    setEngineReady('http://127.0.0.1:4000')
+    setEngineNetwork(recoverableNetwork)
+
+    expect((await put({ bindInterface: '' })).json()).toMatchObject({
+      values: { bindInterface: '' },
+      networkBinding: recoverableNetwork,
+      pendingRestart: ['bindInterface'],
+    })
   })
 
   it('карточка сохраняет только свои поля', async () => {
@@ -190,6 +230,9 @@ describe('настройки торрента', () => {
     [{ connsPerTorrent: 0 }],
     [{ downloadLimit: -1 }],
     [{ encryption: 'off' }],
+    [{ bindInterface: 'bad/name' }],
+    [{ bindInterface: '..' }],
+    [{ bindInterface: 'abcdefghijklmnop' }],
   ])('неверное тело %j — 400', async (payload) => {
     expect((await put(payload)).statusCode).toBe(400)
   })
@@ -243,6 +286,7 @@ describe('настройки торрента', () => {
     const args = engineSettingsArgs({
       ...defaultTorrentSettings(),
       peerPort: 50000,
+      bindInterface: 'wg0',
       upnp: true,
       dht: false,
       encryption: 'require',
@@ -264,6 +308,8 @@ describe('настройки торрента', () => {
       '200',
       '--active-downloads',
       '3',
+      '--bind-interface',
+      'wg0',
       '--upnp',
       '--no-dht',
     ])

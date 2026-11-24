@@ -177,6 +177,31 @@ describe('монитор проблем', () => {
     ])
   })
 
+  it('уведомляет о недоступной привязке после двух минутных наблюдений', async () => {
+    channel()
+    const monitor = settled()
+    const now = Date.now()
+    const failed: AttentionItem = {
+      kind: 'engine_bind_unavailable',
+      severity: 'error',
+      section: 'downloads',
+      params: { reason: 'permission_denied' },
+    }
+
+    monitor.tick([failed], now)
+    expect(inbox()).toHaveLength(0)
+
+    monitor.tick([failed], now + MINUTE)
+    await idleDelivery()
+    expect(inbox()).toMatchObject([
+      { kind: 'problem', problem: 'engine_bind_unavailable' },
+    ])
+    expect(sentTexts()).toHaveLength(1)
+    expect(sentTexts()[0]).toContain(
+      'Engine network protection is unavailable',
+    )
+  })
+
   it('does not resolve storage_low while disk observations are unknown', async () => {
     channel({ notifyResolved: true })
     const monitor = settled()

@@ -425,6 +425,7 @@ async function startStand() {
     COOKIE_PREFIX: `torsher_stand_${apiPort}`,
     ENGINE_PATH: '',
     ENGINE_PEER_PORT: '0',
+    ENGINE_BIND_INTERFACE: '',
     DOWNLOADS_PATH: '',
     LIBRARY_PATH: '',
     // Копия одноразовая: бэкап перед миграциями ветки ей не нужен

@@ -3,7 +3,7 @@ import { parseEngineDiagnostic } from './logDiagnostics.ts'
 import { engineMaintenanceToken } from './maintenanceAuth.ts'
 import type { FastifyBaseLogger } from 'fastify'
 import type { ChildProcess } from 'node:child_process'
-import type { EngineUnavailableKind } from './client.ts'
+import type { EngineNetworkBinding, EngineUnavailableKind } from './client.ts'
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { createServer } from 'node:net'
@@ -30,6 +30,11 @@ export interface EngineSupervisorOptions {
   log: EngineLog
   onReady: (baseUrl: string) => void
   onDown: (kind: EngineUnavailableKind) => void
+  network?: {
+    check: (timeoutMs: number) => Promise<EngineNetworkBinding | null>
+    publish: (status: EngineNetworkBinding | null) => void
+    restartAllowed: (status: EngineNetworkBinding) => boolean
+  }
   spawnProcess?: (command: string, args: string[]) => ChildProcess
   findFreePort?: () => Promise<number>
   checkHealth?: (baseUrl: string, timeoutMs: number) => Promise<EngineHealth>
@@ -49,6 +54,8 @@ export interface EngineSupervisorOptions {
 
 const DEFAULT_RESTART_DELAYS_MS = [1000, 2000, 5000, 10_000, 30_000]
 const START_HEALTH_TIMEOUT_MS = 1000
+const NETWORK_RESTART_INTERVAL_MS = 30_000
+const ENGINE_NETWORK_CHANGED_EXIT = 12
 // На NAS под нагрузкой секунды на ответ мало; три сбоя подряд — около 30 с
 const DEFAULT_LIVENESS = { intervalMs: 10_000, timeoutMs: 3000, failures: 3 }
 
@@ -262,6 +269,7 @@ export function createEngineSupervisor(options: EngineSupervisorOptions) {
   let runtimeTail: string[] = []
   let runtimeTailBytes = 0
   let crashes: number[] = []
+  let lastNetworkRestartAt = Number.NEGATIVE_INFINITY
 
   function setDown(next: EngineStatus) {
     status = next
@@ -340,6 +348,11 @@ export function createEngineSupervisor(options: EngineSupervisorOptions) {
       return
     }
 
+    if (code === ENGINE_NETWORK_CHANGED_EXIT) {
+      log.warn({ uptimeMs }, 'Engine stopped after a network change')
+      return
+    }
+
     noteCrash()
 
     if (code === 0) {
@@ -365,7 +378,7 @@ export function createEngineSupervisor(options: EngineSupervisorOptions) {
     )
   }
 
-  function scheduleRestart() {
+  function scheduleRestart(expectedExit = false) {
     if (readyAt && Date.now() - readyAt >= stableAfterMs)
       failures = 0
 
@@ -375,7 +388,7 @@ export function createEngineSupervisor(options: EngineSupervisorOptions) {
     readyAt = 0
     setDown('restarting')
     log.warn(
-      killReason === 'restart'
+      killReason === 'restart' || expectedExit
         ? `Restarting engine in ${delay / 1000} s`
         : `Restarting engine in ${delay / 1000} s (${ordinal(failures)} crash in a row)`,
     )
@@ -412,6 +425,48 @@ export function createEngineSupervisor(options: EngineSupervisorOptions) {
   // перезапуск пришёл бы только по выходу процесса, которого не будет
   function watchLiveness(proc: ChildProcess, baseUrl: string) {
     let misses = 0
+    let checkingNetwork = false
+
+    async function checkNetwork() {
+      const networkMonitor = options.network
+      if (
+        !networkMonitor
+        || checkingNetwork
+        || child !== proc
+        || stopping
+        || killReason
+      ) {
+        return
+      }
+
+      checkingNetwork = true
+      try {
+        const network = await networkMonitor.check(liveness.timeoutMs)
+
+        if (child !== proc || stopping || killReason)
+          return
+
+        networkMonitor.publish(network)
+        if (
+          network?.recoverable
+          && network.bindInterface
+          && network.status !== 'unbound'
+          && network.status !== 'bound'
+          && Date.now() - lastNetworkRestartAt >= NETWORK_RESTART_INTERVAL_MS
+          && networkMonitor.restartAllowed(network)
+          && restart({ graceful: true })
+        ) {
+          lastNetworkRestartAt = Date.now()
+        }
+      }
+      catch {
+        if (child === proc && !stopping && !killReason)
+          networkMonitor.publish(null)
+      }
+      finally {
+        checkingNetwork = false
+      }
+    }
 
     async function check() {
       livenessTimer = undefined
@@ -426,6 +481,7 @@ export function createEngineSupervisor(options: EngineSupervisorOptions) {
 
       if (health === 'ok' || health === 'restoring') {
         misses = 0
+        void checkNetwork()
       }
       else {
         misses += 1
@@ -443,6 +499,7 @@ export function createEngineSupervisor(options: EngineSupervisorOptions) {
     }
 
     livenessTimer = setTimeout(() => void check(), liveness.intervalMs)
+    void checkNetwork()
   }
 
   async function launch() {
@@ -497,6 +554,7 @@ export function createEngineSupervisor(options: EngineSupervisorOptions) {
     proc.on('exit', () => {
       if (child === proc) {
         child = undefined
+        options.network?.publish(null)
         clearTimeout(livenessTimer)
         livenessTimer = undefined
       }
@@ -513,7 +571,7 @@ export function createEngineSupervisor(options: EngineSupervisorOptions) {
       current = undefined
 
       logExit(code, signal)
-      scheduleRestart()
+      scheduleRestart(!killReason && code === ENGINE_NETWORK_CHANGED_EXIT)
     })
 
     if (await waitHealthy(proc, baseUrl)) {
@@ -551,6 +609,42 @@ export function createEngineSupervisor(options: EngineSupervisorOptions) {
     })
   }
 
+  /**
+   * Перезапуск по просьбе владельца или при восстановлении сети: процесс останавливается, дальше —
+   * обычный перезапуск с первой паузой. Движок, который и так запускается,
+   * не трогаем: второй процесс не нужен. `graceful` — SIGTERM и SIGKILL,
+   * только если движок не вышел за `stopTimeoutMs`: так он успевает
+   * записать состояние. Без него — сразу SIGKILL, для зависшего движка.
+   * `false` — перезапуск не начат
+   */
+  function restart(options: { graceful?: boolean } = {}) {
+    const proc = child
+
+    // Мягкий перезапуск ещё ждёт выхода процесса: второй не нужен
+    if (status !== 'ready' || !proc || stopping || killReason === 'restart')
+      return false
+
+    failures = 0
+    readyAt = 0
+    log.warn('Engine restart requested')
+
+    if (!options.graceful) {
+      kill(proc, 'restart')
+      return true
+    }
+
+    killReason = 'restart'
+    proc.kill('SIGTERM')
+
+    const force = setTimeout(() => {
+      if (proc.exitCode === null && proc.signalCode === null)
+        proc.kill('SIGKILL')
+    }, stopTimeoutMs)
+
+    proc.once('exit', () => clearTimeout(force))
+    return true
+  }
+
   return {
     get status() {
       return status
@@ -582,41 +676,7 @@ export function createEngineSupervisor(options: EngineSupervisorOptions) {
       setDown('stopped')
     },
 
-    /**
-     * Перезапуск по просьбе владельца: процесс останавливается, дальше —
-     * обычный перезапуск с первой паузой. Движок, который и так запускается,
-     * не трогаем: второй процесс не нужен. `graceful` — SIGTERM и SIGKILL,
-     * только если движок не вышел за `stopTimeoutMs`: так он успевает
-     * записать состояние. Без него — сразу SIGKILL, для зависшего движка.
-     * `false` — перезапуск не начат
-     */
-    restart(options: { graceful?: boolean } = {}) {
-      const proc = child
-
-      // Мягкий перезапуск ещё ждёт выхода процесса: второй не нужен
-      if (status !== 'ready' || !proc || stopping || killReason === 'restart')
-        return false
-
-      failures = 0
-      readyAt = 0
-      log.warn('Engine restart requested')
-
-      if (!options.graceful) {
-        kill(proc, 'restart')
-        return true
-      }
-
-      killReason = 'restart'
-      proc.kill('SIGTERM')
-
-      const force = setTimeout(() => {
-        if (proc.exitCode === null && proc.signalCode === null)
-          proc.kill('SIGKILL')
-      }, stopTimeoutMs)
-
-      proc.once('exit', () => clearTimeout(force))
-      return true
-    },
+    restart,
 
     /** Падения и зависания за последний час; перезапуск и остановка — не падения */
     recentCrashes() {

@@ -1048,6 +1048,7 @@
           "stopped": "Torrent engine isn't running: torrents can't be added or played"
         },
         "engine_crashed": "The engine crashed {n} time in the last hour | The engine crashed {n} times in the last hour",
+        "engine_bind_unavailable": "Engine network protection is unavailable",
         "storage_low": "{free} free, below the {minFree} reserve: new playback won't start",
         "storage_paused": {
           "one": "“{name}” is paused: not enough space",
@@ -1605,6 +1606,13 @@
         "unitSpeed": "MB/s",
         "defaultIs": "Default: {value}.",
         "noLimit": "no limit",
+        "binding": {
+          "title": "Network interface",
+          "any": "Any interface",
+          "env": "Set by ENGINE_BIND_INTERFACE",
+          "bound": "Bound to {interface}",
+          "offline": "Torrent traffic is stopped"
+        },
         "restartBadge": "After restart",
         "validation": {
           "number": "Enter a number",

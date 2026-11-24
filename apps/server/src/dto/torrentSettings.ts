@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { seedModes } from '../db/schema.ts'
+import { engineNetworkBinding } from '../services/engine/client.ts'
 import { encryptionModes, restartKeys } from '../services/torrents/settings.ts'
 
 // 10 ГБ/с — больше любого домашнего канала; дальше — опечатка
@@ -39,12 +40,19 @@ const values = z.object({
   dht: z.boolean(),
   pex: z.boolean(),
   encryption: z.enum(encryptionModes),
+  bindInterface: z.string(),
 })
 
 export const torrentSettingValues = values.meta({ id: 'torrentSettingValues' })
 
 /** Каждая карточка панели сохраняет только свои поля */
 export const updateTorrentSettings = values
+  .extend({
+    bindInterface: z
+      .string()
+      .max(15)
+      .regex(/^(?!\.{1,2}$)[\w.@-]*$/),
+  })
   .partial()
   .refine(body => Object.keys(body).length > 0, {
     message: 'Nothing to save',
@@ -66,6 +74,8 @@ export const torrentSettings = z
     custom: z.array(torrentSettingKeys),
     // Порт пиров из `ENGINE_PEER_PORT`: его публикует compose
     peerPortEnv: z.number().nullable(),
+    bindInterfaceEnv: z.string().nullable(),
+    networkBinding: engineNetworkBinding.nullable(),
     // Сохранено, но действует только после перезапуска движка
     pendingRestart: z.array(z.enum(restartKeys)),
     // Почему перезапуск сейчас недоступен: движок не запущен или переносит раздачи

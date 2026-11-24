@@ -1,9 +1,28 @@
+import type { EngineNetworkBinding } from '../client.ts'
 import { Buffer } from 'node:buffer'
 
 /**
  * Синтетические ответы HTTP API движка. Названия вымышленные,
  * infohash — не настоящие раздачи.
  */
+export const recoverableNetwork = {
+  bindInterface: 'wg0',
+  status: 'down',
+  boundIpv4: null,
+  boundIpv6: null,
+  recoverable: true,
+  interfaces: [
+    {
+      name: 'lo',
+      up: true,
+      loopback: true,
+      ipv4: ['127.0.0.1'],
+      ipv6: ['::1'],
+    },
+    { name: 'wg0', up: true, loopback: false, ipv4: ['192.0.2.42'], ipv6: [] },
+  ],
+} satisfies EngineNetworkBinding
+
 export const INFO_HASH = '0123456789abcdef0123456789abcdef01234567'
 
 export const movieDetails = {

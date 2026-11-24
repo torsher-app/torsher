@@ -2312,6 +2312,36 @@ export interface DiagnosticSettingsInput {
   enabled: boolean;
 }
 
+export interface EngineNetworkBindingInput {
+  bindInterface: string;
+  status:
+    | "unbound"
+    | "bound"
+    | "missing"
+    | "down"
+    | "changed"
+    | "permission_denied"
+    | "unsupported";
+  /**
+   * @format ipv4
+   * @pattern ^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])$
+   */
+  boundIpv4: string | null;
+  /**
+   * @format ipv6
+   * @pattern ^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:))$
+   */
+  boundIpv6: string | null;
+  recoverable: boolean;
+  interfaces: {
+    name: string;
+    up: boolean;
+    loopback: boolean;
+    ipv4: string[];
+    ipv6: string[];
+  }[];
+}
+
 export type SpeedtestStartInput = object;
 
 export interface SpeedtestPhaseInput {
@@ -4324,6 +4354,7 @@ export interface TorrentSettingValuesInput {
   dht: boolean;
   pex: boolean;
   encryption: "prefer" | "require";
+  bindInterface: string;
 }
 
 export interface UpdateTorrentSettingsInput {
@@ -4363,6 +4394,11 @@ export interface UpdateTorrentSettingsInput {
   dht?: boolean;
   pex?: boolean;
   encryption?: "prefer" | "require";
+  /**
+   * @maxLength 15
+   * @pattern ^(?!\.{1,2}$)[a-zA-Z0-9_.@-]*$
+   */
+  bindInterface?: string;
 }
 
 export interface TorrentSettingsInput {
@@ -4381,9 +4417,14 @@ export interface TorrentSettingsInput {
     | "dht"
     | "pex"
     | "encryption"
+    | "bindInterface"
   )[];
   peerPortEnv: number | null;
-  pendingRestart: ("peerPort" | "upnp" | "dht" | "pex" | "encryption")[];
+  bindInterfaceEnv: string | null;
+  networkBinding: EngineNetworkBindingInput | null;
+  pendingRestart: (
+    "peerPort" | "upnp" | "dht" | "pex" | "encryption" | "bindInterface"
+  )[];
   restartBlocked: "not_running" | "moving" | null;
   activeStreams: number;
 }
@@ -7198,6 +7239,7 @@ export interface AttentionItemInput {
     | "maintenance_failed"
     | "maintenance_restore_hold"
     | "engine_down"
+    | "engine_bind_unavailable"
     | "engine_crashed"
     | "storage_low"
     | "storage_paused"
@@ -7354,6 +7396,7 @@ export interface NotificationItemInput {
     | "maintenance_failed"
     | "maintenance_restore_hold"
     | "engine_down"
+    | "engine_bind_unavailable"
     | "engine_crashed"
     | "storage_low"
     | "storage_paused"
@@ -11681,6 +11724,36 @@ export interface DiagnosticSettings {
   enabled: boolean;
 }
 
+export interface EngineNetworkBinding {
+  bindInterface: string;
+  status:
+    | "unbound"
+    | "bound"
+    | "missing"
+    | "down"
+    | "changed"
+    | "permission_denied"
+    | "unsupported";
+  /**
+   * @format ipv4
+   * @pattern ^(?:(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])\.){3}(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9][0-9]|[0-9])$
+   */
+  boundIpv4: string | null;
+  /**
+   * @format ipv6
+   * @pattern ^(([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,7}:|([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}|([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}|([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}|([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}|([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}|[0-9a-fA-F]{1,4}:((:[0-9a-fA-F]{1,4}){1,6})|:((:[0-9a-fA-F]{1,4}){1,7}|:))$
+   */
+  boundIpv6: string | null;
+  recoverable: boolean;
+  interfaces: {
+    name: string;
+    up: boolean;
+    loopback: boolean;
+    ipv4: string[];
+    ipv6: string[];
+  }[];
+}
+
 export type SpeedtestStart = object;
 
 export interface SpeedtestPhase {
@@ -13690,6 +13763,7 @@ export interface TorrentSettingValues {
   dht: boolean;
   pex: boolean;
   encryption: "prefer" | "require";
+  bindInterface: string;
 }
 
 export interface UpdateTorrentSettings {
@@ -13729,6 +13803,11 @@ export interface UpdateTorrentSettings {
   dht?: boolean;
   pex?: boolean;
   encryption?: "prefer" | "require";
+  /**
+   * @maxLength 15
+   * @pattern ^(?!\.{1,2}$)[a-zA-Z0-9_.@-]*$
+   */
+  bindInterface?: string;
 }
 
 export interface TorrentSettings {
@@ -13747,9 +13826,14 @@ export interface TorrentSettings {
     | "dht"
     | "pex"
     | "encryption"
+    | "bindInterface"
   )[];
   peerPortEnv: number | null;
-  pendingRestart: ("peerPort" | "upnp" | "dht" | "pex" | "encryption")[];
+  bindInterfaceEnv: string | null;
+  networkBinding: EngineNetworkBinding | null;
+  pendingRestart: (
+    "peerPort" | "upnp" | "dht" | "pex" | "encryption" | "bindInterface"
+  )[];
   restartBlocked: "not_running" | "moving" | null;
   activeStreams: number;
 }
@@ -16564,6 +16648,7 @@ export interface AttentionItem {
     | "maintenance_failed"
     | "maintenance_restore_hold"
     | "engine_down"
+    | "engine_bind_unavailable"
     | "engine_crashed"
     | "storage_low"
     | "storage_paused"
@@ -16720,6 +16805,7 @@ export interface NotificationItem {
     | "maintenance_failed"
     | "maintenance_restore_hold"
     | "engine_down"
+    | "engine_bind_unavailable"
     | "engine_crashed"
     | "storage_low"
     | "storage_paused"

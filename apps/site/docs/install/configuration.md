@@ -20,6 +20,9 @@ Torsher keeps its settings in the database and changes them in the control panel
 | `API_PORT` | `8080` | Port inside the container |
 | `TRUST_PROXY` | — | Set it when Torsher runs behind a reverse proxy: the proxy's address or subnet (`172.18.0.0/16`, several separated by commas, or `loopback`, `uniquelocal`), or `true` to trust any. Without it, sign-in attempt limits and the log see every client as the proxy's address. Don't set it without a proxy: a client could then fake its own address |
 | `ENGINE_PEER_PORT` | a random port chosen once | Port the torrent engine accepts peer connections on. Publish it to be reachable from outside. A port changed in <Ui k="panel.nav.settings panel.settings.nav.torrent" /> takes precedence: publish that one instead |
+| `ENGINE_BIND_INTERFACE` | empty | Force a network interface for the torrent engine. See [restrict torrent traffic to an interface](/docs/setup/network#restrict-torrent-traffic-to-an-interface-on-linux) |
+| `ENGINE_BIND_GUARD_SOCKET` | `/run/torsher-network/guard.sock` | Unix socket shared with the Linux network helper |
+| `ENGINE_BIND_DNS` | system DNS servers reachable through the bound interface | Numeric DNS address for a bound engine. Set it when the system resolver is a loopback stub |
 | `DOWNLOADS_PATH`, `LIBRARY_PATH` | `/data/torrents`, `/data/library` | Default downloads and library folders. A folder chosen in <Ui k="panel.nav.settings panel.settings.nav.storage" /> takes precedence |
 | `TORSHER_SKIP_PRE_UPDATE_BACKUP` | — | Set to `1` to let an update change the database even when the backup before the update fails. Without that backup a failed update can't be undone |
 | `FPCALC_PATH` | `/usr/bin/fpcalc` in the image | Chromaprint executable for library intro detection. The image includes it; a missing executable disables intro analysis without affecting playback |
