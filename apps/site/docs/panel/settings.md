@@ -27,6 +27,8 @@ See [Storage](/docs/setup/storage).
 
 <Ui k="panel.nav.settings panel.settings.nav.torrent" /> controls speed, the download queue, seeding and the engine's network. Each card shows its default and saves on its own.
 
+For VPN routing and the peer port forwarded by your VPN provider, see [VPN with Gluetun](/docs/install/vpn-gluetun).
+
 ### Speed
 
 - **<Ui k="panel.settings.torrent.download.title" />,** in MB/s. Limits downloads and torrents added in the panel. Watching ignores the limit, so video doesn't stutter. Empty means no limit, the default.

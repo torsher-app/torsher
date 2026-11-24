@@ -27,7 +27,7 @@ Routes and DNS settings apply to every outgoing request of the server:
 
 They don't apply to:
 
-- **Torrent peers.** The torrent engine connects to peers directly.
+- **Torrent peers.** The torrent engine connects to peers directly. To route the container through a VPN, see [VPN with Gluetun](/docs/install/vpn-gluetun).
 - **Indexers inside Prowlarr or Jackett.** Torsher talks to the manager, and the manager reaches its indexers itself. If an indexer site is unreachable from your network, set up a proxy in the manager's own settings.
 - **Your browser and TV.** They connect to the Torsher server, not through it.
 
