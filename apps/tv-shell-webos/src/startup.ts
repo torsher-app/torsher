@@ -1,4 +1,20 @@
+import type { CheckResult } from './server.ts'
+
 export type StartScreen = 'address' | 'connect'
+
+const STARTUP_RETRY_DELAY_MS = 1000
+
+export async function checkSavedServer(
+  check: () => Promise<CheckResult>,
+  isCurrent: () => boolean,
+): Promise<CheckResult> {
+  const result = await check()
+  if (result === 'ok' || !isCurrent())
+    return result
+
+  await new Promise(resolve => setTimeout(resolve, STARTUP_RETRY_DELAY_MS))
+  return isCurrent() ? check() : result
+}
 
 /**
  * Сохранённый адрес проверяем и открываем сразу. Вернулись на обёртку

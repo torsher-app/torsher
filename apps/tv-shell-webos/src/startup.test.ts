@@ -1,9 +1,68 @@
-import { describe, expect, it } from 'vitest'
+import type { CheckResult } from './server.ts'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  checkSavedServer,
   isHistoryNavigation,
   shellHistoryIndex,
   startScreen,
 } from './startup.ts'
+
+describe('checkSavedServer', () => {
+  afterEach(() => vi.useRealTimers())
+
+  it('открывает витрину после успешной первой проверки', async () => {
+    const check = vi.fn<() => Promise<CheckResult>>().mockResolvedValue('ok')
+
+    await expect(checkSavedServer(check, () => true)).resolves.toBe('ok')
+    expect(check).toHaveBeenCalledOnce()
+  })
+
+  it('через секунду повторяет проверку и принимает успешный ответ', async () => {
+    vi.useFakeTimers()
+    const check = vi
+      .fn<() => Promise<CheckResult>>()
+      .mockResolvedValueOnce('unreachable')
+      .mockResolvedValueOnce('ok')
+
+    const result = checkSavedServer(check, () => true)
+
+    await vi.advanceTimersByTimeAsync(999)
+    expect(check).toHaveBeenCalledOnce()
+    await vi.advanceTimersByTimeAsync(1)
+    await expect(result).resolves.toBe('ok')
+    expect(check).toHaveBeenCalledTimes(2)
+  })
+
+  it('возвращает ошибку повтора после двух неудачных проверок', async () => {
+    vi.useFakeTimers()
+    const check = vi
+      .fn<() => Promise<CheckResult>>()
+      .mockResolvedValueOnce('notTorsher')
+      .mockResolvedValue('timeout')
+
+    const result = checkSavedServer(check, () => true)
+
+    await vi.runAllTimersAsync()
+    await expect(result).resolves.toBe('timeout')
+    expect(check).toHaveBeenCalledTimes(2)
+  })
+
+  it('пропускает повтор, если пользователь отменил подключение во время паузы', async () => {
+    vi.useFakeTimers()
+    const check = vi
+      .fn<() => Promise<CheckResult>>()
+      .mockResolvedValue('unreachable')
+    let isCurrent = true
+
+    const result = checkSavedServer(check, () => isCurrent)
+
+    await vi.advanceTimersByTimeAsync(500)
+    isCurrent = false
+    await vi.runAllTimersAsync()
+    await expect(result).resolves.toBe('unreachable')
+    expect(check).toHaveBeenCalledOnce()
+  })
+})
 
 describe('startScreen', () => {
   it('без адреса — экран адреса', () => {
