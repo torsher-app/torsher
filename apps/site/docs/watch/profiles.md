@@ -30,7 +30,7 @@ Your avatar and name are near the bottom of the side menu. Select them to return
 | Diary, watch positions, rewatches and notes | <Ui k="settings.screensaver" /> |
 | <Ui k="mine.sections.watchlist" />, <Ui k="mine.sections.favorites" />, ratings, watched and dropped titles | Sort and filters on <Ui k="sources.title" /> |
 | Showcase language and last chosen Mine section | Recent searches |
-| Subtitle size and background, <Ui k="player.settings.autoNext" /> | |
+| Subtitle size, background, position and color, <Ui k="player.settings.autoNext" /> | |
 | Service ratings on posters | |
 
 Mine filters are remembered on the device separately for each profile. Diary and title notes are stored on the server and follow the profile between devices.

@@ -81,7 +81,19 @@ Some devices can't switch tracks inside a file, so the stream restarts from the 
 
 Image subtitles can't be drawn as text: the server burns them into the picture, so turning them on or off restarts the stream from the same point and needs transcoding.
 
-The size and the background of subtitles are in <Ui k="player.settings.button" />. They belong to your profile.
+If dialogue and subtitles are out of sync, select the text track and open <Ui k="player.subtitles player.subtitleTiming.title" />. Move the subtitles earlier or later by 0.5 or 0.1 seconds, or use <Ui k="player.subtitleTiming.reset" />. The player remembers the adjustment for this track and video version in your profile.
+
+Open <Ui k="player.settings.button" /> to set the size, background, position and color of text subtitles. Use <Ui k="player.settings.colors.dimmed" /> if the text feels too bright. These settings belong to your profile.
+
+### Find subtitles
+
+Open <Ui k="player.subtitles player.subtitleSearch.title" />, choose a language and select a result for the version you are watching. An exact file or release match gives you more information about timing than a title match. Full and forced tracks are shown separately when the provider identifies them. With an active text track, selecting an external file keeps the current video stream.
+
+The server owner can connect OpenSubtitles.com in <Ui k="panel.nav.settings panel.settings.nav.playback panel.settings.playback.subtitles.title" /> with an [API consumer key and account](https://opensubtitles.tawk.help/article/getting-started). Save the credentials and use <Ui k="panel.settings.playback.subtitles.test" /> to check the connection and any reported quota. Turn on <Ui k="panel.settings.playback.subtitles.deviceSearch" /> to allow paired devices to search. The owner can also enter a [SubDL API key](https://subdl.com/developers) for manual search while signed in to the showcase in a browser.
+
+<Ui k="panel.settings.playback.subtitles.autoDownload" /> checks new, matched files in the managed library for the selected languages. It downloads a missing track when it can confirm the file or release, subject to the provider's quota. The first search for an older file is manual.
+
+Downloaded OpenSubtitles.com tracks for managed library files are stored beside the video. Connected folders stay read-only. Downloads for those folders, torrent streams and SubDL are stored on the server. In the signed-in browser showcase, select a downloaded track and use <Ui k="player.subtitleSearch.remove" /> to remove the binding and its saved copy.
 
 ## Episodes
 
@@ -113,7 +125,7 @@ With <Ui k="player.settings.autoNext" /> off, the episode ends paused with the c
 <Ui k="player.settings.button" /> is the round button at the right end of the row:
 
 - **<Ui k="player.settings.speed" />**: from 0.5× to 2×. It applies until the app is restarted.
-- **<Ui k="player.settings.subtitleSize" />** and **<Ui k="player.settings.subtitleBackground" />**.
+- **<Ui k="player.settings.subtitleSize" />**, **<Ui k="player.settings.subtitleBackground" />**, **<Ui k="player.settings.subtitlePosition" />** and **<Ui k="player.settings.subtitleColor" />**.
 - **<Ui k="player.settings.autoNext" />**.
 - **<Ui k="player.settings.link" />**: see below.
 
