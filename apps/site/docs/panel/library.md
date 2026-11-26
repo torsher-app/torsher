@@ -19,6 +19,8 @@ How to connect a folder you already have, how scans work, and how to fix release
 
 <Ui k="panel.library.managed" /> is always first. Downloads and kept torrents put their files here, so they show up on the showcase as yours. It can't be removed or edited here: its folder is set in <Ui k="panel.nav.settings panel.settings.nav.storage" />.
 
+To remove saved files and their torrents by movie or series, open <Ui k="panel.torrents.cleanup.title" />. See [Clean up by title](/docs/panel/downloads#disk-cleanup).
+
 ## Add a library
 
 1. Select <Ui k="panel.library.add.title" />.
