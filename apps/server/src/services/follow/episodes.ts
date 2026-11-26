@@ -1,3 +1,4 @@
+import { activeUsenetTargets } from '../usenet/index.ts'
 import type { FollowWait, SeasonDetails } from '../../dto/catalog.ts'
 import type { Follow } from '../../db/schema.ts'
 import type {
@@ -69,7 +70,7 @@ export function libraryEpisodes(titleId: string) {
  * (у фильма — серия 0/0). Докачанная серия, которую связыватель ещё не
  * положил, — тоже здесь, пока её нет в библиотеке.
  */
-export function downloadingEpisodes(
+export function torrentDownloadingEpisodes(
   titleId: string,
   kind: 'movie' | 'series' = 'series',
 ) {
@@ -98,6 +99,15 @@ export function downloadingEpisodes(
   }
 
   return keys
+}
+
+export function downloadingEpisodes(
+  titleId: string,
+  kind: 'movie' | 'series' = 'series',
+) {
+  const episodes = torrentDownloadingEpisodes(titleId, kind)
+  for (const key of activeUsenetTargets(titleId)) episodes.add(key)
+  return episodes
 }
 
 /** Что записал решатель о сериях слежения */

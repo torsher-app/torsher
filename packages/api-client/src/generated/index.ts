@@ -2639,6 +2639,8 @@ export interface TitleDetailsInput {
   follow?: TitleFollowBriefInput | null;
   hasSources?: boolean;
   hasAddonStreams?: boolean;
+  hasUsenetSources?: boolean;
+  hasUsenetFollow?: boolean;
 }
 
 export interface EpisodeInput {
@@ -2872,6 +2874,19 @@ export interface SourceErrorResponseInput {
 export interface IndexerInput {
   id: string;
   name: string;
+  protocol?: "torznab" | "newznab";
+  /** @maxItems 32 */
+  lanAddresses?: string[];
+  /** @maxItems 8 */
+  downloadOrigins?: {
+    /**
+     * @format uri
+     * @maxLength 2000
+     */
+    origin: string;
+    /** @maxItems 32 */
+    lanAddresses: string[];
+  }[];
   url: string;
   hasApiKey: boolean;
   hasCookie?: boolean;
@@ -2929,6 +2944,19 @@ export interface CreateIndexerInput {
    * @maxLength 100
    */
   name: string;
+  protocol?: "torznab" | "newznab";
+  /** @maxItems 32 */
+  lanAddresses?: string[];
+  /** @maxItems 8 */
+  downloadOrigins?: {
+    /**
+     * @format uri
+     * @maxLength 2000
+     */
+    origin: string;
+    /** @maxItems 32 */
+    lanAddresses: string[];
+  }[];
   isPrivate?: boolean;
   allowAutomation?: boolean;
   /**
@@ -2963,6 +2991,18 @@ export interface UpdateIndexerInput {
    * @maxLength 100
    */
   name?: string;
+  /** @maxItems 32 */
+  lanAddresses?: string[];
+  /** @maxItems 8 */
+  downloadOrigins?: {
+    /**
+     * @format uri
+     * @maxLength 2000
+     */
+    origin: string;
+    /** @maxItems 32 */
+    lanAddresses: string[];
+  }[];
   isPrivate?: boolean;
   allowAutomation?: boolean;
   /**
@@ -3004,6 +3044,7 @@ export interface IndexerManagerInput {
    * @max 9007199254740991
    */
   missingCount: number;
+  importNewznab?: boolean;
 }
 
 export interface IndexerManagerListInput {
@@ -3027,6 +3068,9 @@ export interface CreateIndexerManagerInput {
    * @maxLength 500
    */
   apiKey: string;
+  importNewznab?: boolean;
+  /** @maxItems 32 */
+  lanAddresses?: string[];
 }
 
 export interface UpdateIndexerManagerInput {
@@ -4755,6 +4799,172 @@ export interface BackupErrorResponseInput {
     | "overlaps_storage";
   params?: Record<string, string | number>;
   field?: string;
+}
+
+export interface ConfigureUsenetInput {
+  /**
+   * @format uri
+   * @maxLength 2000
+   */
+  url: string;
+  /**
+   * @minLength 1
+   * @maxLength 500
+   */
+  apiKey?: string;
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  category: string;
+  /**
+   * @minLength 1
+   * @maxLength 4096
+   */
+  remoteRoot: string;
+  /**
+   * @minLength 1
+   * @maxLength 4096
+   */
+  localRoot: string;
+  enabled: boolean;
+  followEnabled: boolean;
+  /** @maxItems 32 */
+  lanAddresses?: string[];
+}
+
+export interface UsenetConfigInput {
+  /**
+   * @format uri
+   * @maxLength 2000
+   */
+  url: string;
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  category: string;
+  /**
+   * @minLength 1
+   * @maxLength 4096
+   */
+  remoteRoot: string;
+  /**
+   * @minLength 1
+   * @maxLength 4096
+   */
+  localRoot: string;
+  enabled: boolean;
+  followEnabled: boolean;
+  /** @maxItems 32 */
+  lanAddresses: string[];
+  hasApiKey: boolean;
+  verified: boolean;
+  restoreBlocked?: boolean;
+}
+
+export interface UsenetConfigViewInput {
+  config: UsenetConfigInput | null;
+}
+
+export interface PreviewUsenetAddressInput {
+  /**
+   * @format uri
+   * @maxLength 2000
+   */
+  url: string;
+}
+
+export interface UsenetAddressInput {
+  origin: string;
+  /** @maxItems 32 */
+  lanAddresses: string[];
+}
+
+export interface UsenetCheckInput {
+  connection:
+    | "ok"
+    | "invalid"
+    | "auth"
+    | "unavailable"
+    | "category"
+    | "needs_confirmation"
+    | "address_changed"
+    | "unsupported_version";
+  pathReadable: boolean;
+  /** @maxItems 32 */
+  lanAddresses: string[];
+}
+
+export interface UsenetJobInput {
+  id: string;
+  titleId: string;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  season: number;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  episode: number;
+  releaseTitle: string;
+  origin: "manual" | "follow";
+  state:
+    | "pending"
+    | "submitting"
+    | "queued"
+    | "downloading"
+    | "postProcessing"
+    | "paused"
+    | "importing"
+    | "imported"
+    | "failed"
+    | "attention"
+    | "released";
+  problem: string | null;
+  /**
+   * @min 0
+   * @max 1
+   */
+  progress: number | null;
+  mediaFileId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UsenetJobListInput {
+  items: UsenetJobInput[];
+}
+
+export interface TitleUsenetRequestInput {
+  /**
+   * @min 0
+   * @max 999
+   */
+  season?: number;
+  /**
+   * @min 0
+   * @max 9999
+   */
+  episode?: number;
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  candidateId: string;
+}
+
+export interface TitleUsenetSourcesInput {
+  items: {
+    id: string;
+    title: string;
+    source: string;
+    quality: string | null;
+    size: number | null;
+  }[];
+  failed: boolean;
 }
 
 export interface CollectionInput {
@@ -12841,6 +13051,8 @@ export interface TitleDetails {
   follow?: TitleFollowBrief | null;
   hasSources?: boolean;
   hasAddonStreams?: boolean;
+  hasUsenetSources?: boolean;
+  hasUsenetFollow?: boolean;
 }
 
 export interface Episode {
@@ -13074,6 +13286,19 @@ export interface SourceErrorResponse {
 export interface Indexer {
   id: string;
   name: string;
+  protocol?: "torznab" | "newznab";
+  /** @maxItems 32 */
+  lanAddresses?: string[];
+  /** @maxItems 8 */
+  downloadOrigins?: {
+    /**
+     * @format uri
+     * @maxLength 2000
+     */
+    origin: string;
+    /** @maxItems 32 */
+    lanAddresses: string[];
+  }[];
   url: string;
   hasApiKey: boolean;
   hasCookie?: boolean;
@@ -13131,6 +13356,19 @@ export interface CreateIndexer {
    * @maxLength 100
    */
   name: string;
+  protocol?: "torznab" | "newznab";
+  /** @maxItems 32 */
+  lanAddresses?: string[];
+  /** @maxItems 8 */
+  downloadOrigins?: {
+    /**
+     * @format uri
+     * @maxLength 2000
+     */
+    origin: string;
+    /** @maxItems 32 */
+    lanAddresses: string[];
+  }[];
   isPrivate?: boolean;
   allowAutomation?: boolean;
   /**
@@ -13164,6 +13402,18 @@ export interface UpdateIndexer {
    * @maxLength 100
    */
   name?: string;
+  /** @maxItems 32 */
+  lanAddresses?: string[];
+  /** @maxItems 8 */
+  downloadOrigins?: {
+    /**
+     * @format uri
+     * @maxLength 2000
+     */
+    origin: string;
+    /** @maxItems 32 */
+    lanAddresses: string[];
+  }[];
   isPrivate?: boolean;
   allowAutomation?: boolean;
   /**
@@ -13204,6 +13454,7 @@ export interface IndexerManager {
    * @max 9007199254740991
    */
   missingCount: number;
+  importNewznab?: boolean;
 }
 
 export interface IndexerManagerList {
@@ -13227,6 +13478,9 @@ export interface CreateIndexerManager {
    * @maxLength 500
    */
   apiKey: string;
+  importNewznab?: boolean;
+  /** @maxItems 32 */
+  lanAddresses?: string[];
 }
 
 export interface UpdateIndexerManager {
@@ -14954,6 +15208,172 @@ export interface BackupErrorResponse {
     | "overlaps_storage";
   params?: Record<string, string | number>;
   field?: string;
+}
+
+export interface ConfigureUsenet {
+  /**
+   * @format uri
+   * @maxLength 2000
+   */
+  url: string;
+  /**
+   * @minLength 1
+   * @maxLength 500
+   */
+  apiKey?: string;
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  category: string;
+  /**
+   * @minLength 1
+   * @maxLength 4096
+   */
+  remoteRoot: string;
+  /**
+   * @minLength 1
+   * @maxLength 4096
+   */
+  localRoot: string;
+  enabled: boolean;
+  followEnabled: boolean;
+  /** @maxItems 32 */
+  lanAddresses?: string[];
+}
+
+export interface UsenetConfig {
+  /**
+   * @format uri
+   * @maxLength 2000
+   */
+  url: string;
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  category: string;
+  /**
+   * @minLength 1
+   * @maxLength 4096
+   */
+  remoteRoot: string;
+  /**
+   * @minLength 1
+   * @maxLength 4096
+   */
+  localRoot: string;
+  enabled: boolean;
+  followEnabled: boolean;
+  /** @maxItems 32 */
+  lanAddresses: string[];
+  hasApiKey: boolean;
+  verified: boolean;
+  restoreBlocked?: boolean;
+}
+
+export interface UsenetConfigView {
+  config: UsenetConfig | null;
+}
+
+export interface PreviewUsenetAddress {
+  /**
+   * @format uri
+   * @maxLength 2000
+   */
+  url: string;
+}
+
+export interface UsenetAddress {
+  origin: string;
+  /** @maxItems 32 */
+  lanAddresses: string[];
+}
+
+export interface UsenetCheck {
+  connection:
+    | "ok"
+    | "invalid"
+    | "auth"
+    | "unavailable"
+    | "category"
+    | "needs_confirmation"
+    | "address_changed"
+    | "unsupported_version";
+  pathReadable: boolean;
+  /** @maxItems 32 */
+  lanAddresses: string[];
+}
+
+export interface UsenetJob {
+  id: string;
+  titleId: string;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  season: number;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  episode: number;
+  releaseTitle: string;
+  origin: "manual" | "follow";
+  state:
+    | "pending"
+    | "submitting"
+    | "queued"
+    | "downloading"
+    | "postProcessing"
+    | "paused"
+    | "importing"
+    | "imported"
+    | "failed"
+    | "attention"
+    | "released";
+  problem: string | null;
+  /**
+   * @min 0
+   * @max 1
+   */
+  progress: number | null;
+  mediaFileId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UsenetJobList {
+  items: UsenetJob[];
+}
+
+export interface TitleUsenetRequest {
+  /**
+   * @min 0
+   * @max 999
+   */
+  season?: number;
+  /**
+   * @min 0
+   * @max 9999
+   */
+  episode?: number;
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  candidateId: string;
+}
+
+export interface TitleUsenetSources {
+  items: {
+    id: string;
+    title: string;
+    source: string;
+    quality: string | null;
+    size: number | null;
+  }[];
+  failed: boolean;
 }
 
 export interface Collection {
@@ -20542,7 +20962,7 @@ export type GetIndexersError = MessageResponse;
 
 export type PostIndexerError = MessageResponse | SourceErrorResponse;
 
-export type PatchIndexerError = MessageResponse;
+export type PatchIndexerError = MessageResponse | SourceErrorResponse;
 
 export type DeleteIndexerError = MessageResponse;
 
@@ -20749,6 +21169,26 @@ export type PutTitleWatchedError = MessageResponse;
 export type GetTitleMineError = MessageResponse;
 
 export type PatchTitleMineError = MessageResponse;
+
+export type GetTitleUsenetSourcesError = MessageResponse;
+
+export type GetTitleUsenetJobsError = MessageResponse;
+
+export type PostTitleUsenetJobError = MessageResponse;
+
+export type GetUsenetConfigError = MessageResponse;
+
+export type PutUsenetConfigError = MessageResponse;
+
+export type PostUsenetCheckError = MessageResponse;
+
+export type PostUsenetAddressError = MessageResponse;
+
+export type GetUsenetJobsError = MessageResponse;
+
+export type PostUsenetReconcileError = MessageResponse;
+
+export type PostUsenetReleaseError = MessageResponse;
 
 export type GetMineError = MessageResponse;
 
@@ -22871,6 +23311,72 @@ export class Api<
     /**
      * No description
      *
+     * @tags Titles
+     * @name GetTitleUsenetSources
+     * @request GET:/api/titles/{id}/usenet-sources
+     */
+    getTitleUsenetSources: (
+      id: string,
+      query?: {
+        /** @pattern ^\d{1,3}$ */
+        season?: string;
+        /** @pattern ^\d{1,4}$ */
+        episode?: string;
+        /**
+         * @minLength 1
+         * @maxLength 120
+         */
+        query?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<TitleUsenetSources, GetTitleUsenetSourcesError>({
+        path: `/api/titles/${id}/usenet-sources`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Titles
+     * @name GetTitleUsenetJobs
+     * @request GET:/api/titles/{id}/usenet-jobs
+     */
+    getTitleUsenetJobs: (id: string, params: RequestParams = {}) =>
+      this.request<UsenetJobList, GetTitleUsenetJobsError>({
+        path: `/api/titles/${id}/usenet-jobs`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Titles
+     * @name PostTitleUsenetJob
+     * @request POST:/api/titles/{id}/usenet-jobs
+     */
+    postTitleUsenetJob: (
+      id: string,
+      data: TitleUsenetRequestInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<UsenetJob, PostTitleUsenetJobError>({
+        path: `/api/titles/${id}/usenet-jobs`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
      * @tags Follow
      * @name GetTitleFollow
      * @request GET:/api/titles/{id}/follow
@@ -23213,6 +23719,121 @@ export class Api<
     postIndexerManagerSync: (id: string, params: RequestParams = {}) =>
       this.request<IndexerManagerSyncResult, PostIndexerManagerSyncError>({
         path: `/api/indexer-managers/${id}/sync`,
+        method: "POST",
+        format: "json",
+        ...params,
+      }),
+  };
+  usenet = {
+    /**
+     * No description
+     *
+     * @tags Sources
+     * @name GetUsenetConfig
+     * @request GET:/api/usenet
+     */
+    getUsenetConfig: (params: RequestParams = {}) =>
+      this.request<UsenetConfigView, GetUsenetConfigError>({
+        path: `/api/usenet`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Sources
+     * @name PutUsenetConfig
+     * @request PUT:/api/usenet
+     */
+    putUsenetConfig: (data: ConfigureUsenetInput, params: RequestParams = {}) =>
+      this.request<UsenetConfig, PutUsenetConfigError>({
+        path: `/api/usenet`,
+        method: "PUT",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Sources
+     * @name PostUsenetCheck
+     * @request POST:/api/usenet/check
+     */
+    postUsenetCheck: (data: ConfigureUsenetInput, params: RequestParams = {}) =>
+      this.request<UsenetCheck, PostUsenetCheckError>({
+        path: `/api/usenet/check`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Sources
+     * @name PostUsenetAddress
+     * @request POST:/api/usenet/address
+     */
+    postUsenetAddress: (
+      data: PreviewUsenetAddressInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<UsenetAddress, PostUsenetAddressError>({
+        path: `/api/usenet/address`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Sources
+     * @name GetUsenetJobs
+     * @request GET:/api/usenet/jobs
+     */
+    getUsenetJobs: (params: RequestParams = {}) =>
+      this.request<UsenetJobList, GetUsenetJobsError>({
+        path: `/api/usenet/jobs`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Sources
+     * @name PostUsenetReconcile
+     * @request POST:/api/usenet/jobs/{id}/reconcile
+     */
+    postUsenetReconcile: (id: string, params: RequestParams = {}) =>
+      this.request<UsenetJob, PostUsenetReconcileError>({
+        path: `/api/usenet/jobs/${id}/reconcile`,
+        method: "POST",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Sources
+     * @name PostUsenetRelease
+     * @request POST:/api/usenet/jobs/{id}/release
+     */
+    postUsenetRelease: (id: string, params: RequestParams = {}) =>
+      this.request<UsenetJob, PostUsenetReleaseError>({
+        path: `/api/usenet/jobs/${id}/release`,
         method: "POST",
         format: "json",
         ...params,

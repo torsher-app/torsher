@@ -3,11 +3,16 @@ import {
   indexerCheckStatuses,
   indexerManagerKinds,
   indexerPrivacyValues,
+  indexerProtocols,
   seedCriteriaModes,
 } from '../db/schema.ts'
 import { isSessionCookie } from '../services/torznab/cookie.ts'
 
 const httpUrl = z.url({ protocol: /^https?$/ }).max(2000)
+const lanAddresses = z.array(z.union([z.ipv4(), z.ipv6()])).max(32)
+const downloadOrigins = z
+  .array(z.object({ origin: httpUrl, lanAddresses }))
+  .max(8)
 const indexerName = z.string().trim().min(1).max(100)
 // Ключи только на вход: ни один ответ их не содержит
 const sessionCookie = z
@@ -63,6 +68,9 @@ export const indexer = z
   .object({
     id: z.string(),
     name: z.string(),
+    protocol: z.enum(indexerProtocols).optional(),
+    lanAddresses: lanAddresses.optional(),
+    downloadOrigins: downloadOrigins.optional(),
     // Адрес Torznab без query: ключ в нём не передаётся
     url: z.string(),
     hasApiKey: z.boolean(),
@@ -99,6 +107,9 @@ export const indexerList = z
 export const createIndexer = z
   .object({
     name: indexerName,
+    protocol: z.enum(indexerProtocols).optional(),
+    lanAddresses: lanAddresses.optional(),
+    downloadOrigins: downloadOrigins.optional(),
     ...indexerSeedPolicy.partial().shape,
     url: httpUrl,
     apiKey: apiKey.optional(),
@@ -109,6 +120,8 @@ export const createIndexer = z
 export const updateIndexer = z
   .object({
     name: indexerName.optional(),
+    lanAddresses: lanAddresses.optional(),
+    downloadOrigins: downloadOrigins.optional(),
     ...indexerSeedPolicy.partial().shape,
     enabled: z.boolean().optional(),
     apiKey: apiKey.optional(),
@@ -127,6 +140,7 @@ export const indexerManager = z
     syncedAt: z.string().nullable(),
     indexerCount: z.number().int(),
     missingCount: z.number().int(),
+    importNewznab: z.boolean().optional(),
   })
   .meta({ id: 'indexerManager' })
 
@@ -140,6 +154,8 @@ export const createIndexerManager = z
     url: httpUrl,
     browserUrl: httpUrl.nullable().optional(),
     apiKey,
+    importNewznab: z.boolean().optional(),
+    lanAddresses: lanAddresses.optional(),
   })
   .meta({ id: 'createIndexerManager' })
 

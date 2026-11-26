@@ -14,6 +14,8 @@ import type {
   SourceErrorResponse,
   UpdateIndexerInput,
   UpdateIndexerManagerInput,
+  UsenetConfigView,
+  UsenetJobList,
 } from '@torsher/api-client'
 import {
   del,
@@ -21,6 +23,7 @@ import {
   get,
   patch,
   post,
+  put,
   unavailable,
 } from '@torsher/demo/router'
 import { ago, isFresh, MINUTE, nextId } from '@torsher/demo/state'
@@ -552,3 +555,11 @@ post('/api/sources/http-addons/test', unavailable)
 patch('/api/sources/http-addons/:id', unavailable)
 post('/api/sources/http-addons/:id/check', unavailable)
 del('/api/sources/http-addons/:id', unavailable)
+
+get<UsenetConfigView>('/api/usenet', () => ({ config: null }))
+get<UsenetJobList>('/api/usenet/jobs', () => ({ items: [] }))
+put('/api/usenet', unavailable)
+post('/api/usenet/address', unavailable)
+post('/api/usenet/check', unavailable)
+post('/api/usenet/jobs/:id/reconcile', unavailable)
+post('/api/usenet/jobs/:id/release', unavailable)

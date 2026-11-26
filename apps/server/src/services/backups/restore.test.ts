@@ -209,6 +209,14 @@ describe('восстановление', () => {
       check_error: 'needs_confirmation',
     })
     expect(addon).not.toMatchObject({ revision: 'original' })
+    expect(count(restored, 'usenet_clients')).toBe(0)
+    expect(
+      restored
+        .prepare(
+          'SELECT value FROM server_settings WHERE key = \'usenetRestoreHold\'',
+        )
+        .get(),
+    ).toEqual({ value: 'true' })
     restored.close()
   })
 

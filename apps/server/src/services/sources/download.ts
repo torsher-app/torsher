@@ -1,3 +1,5 @@
+import { withDownloadAdmission } from '../newznab/admission.ts'
+import { activeUsenetTargets } from '../usenet/index.ts'
 import type { ParsedRelease } from '@torsher/release-parser'
 import type { Torrent } from '../../db/schema.ts'
 import type { RankedRelease } from './rank.ts'
@@ -176,6 +178,38 @@ export async function startDownload(
   isCurrent: () => boolean = () => true,
   origin: 'follow' | 'manual' = 'manual',
 ) {
+  const reference = torrent.titleId
+    ? parseCatalogId(torrent.titleId)
+    : undefined
+  if (reference && torrent.titleId) {
+    const active = activeUsenetTargets(torrent.titleId)
+    if (active.size) {
+      const intersects = planVideos(
+        torrent,
+        reference.type === 'movie' ? 'movie' : 'series',
+      ).some((video) => {
+        if (!files.includes(video.fileIndex))
+          return false
+        const { season, episode, episodeTo } = video.episode ?? {
+          season: 0,
+          episode: 0,
+        }
+        for (let i = episode; i <= (episodeTo ?? episode); i++) {
+          if (active.has(`${season}:${i}`))
+            return true
+        }
+        return false
+      })
+      if (intersects) {
+        if (origin === 'follow')
+          return undefined
+        throw new WatchError(
+          'not_playable',
+          'An active download owns the target',
+        )
+      }
+    }
+  }
   const bytes = await remainingBytes(torrent, files)
 
   if (!isCurrent())
@@ -227,7 +261,7 @@ function filesOf(
  * ранжирования; у сезона сначала раздачи на весь сезон), «Скачать выбранное» —
  * файлы раздачи с экрана «Файлы». `undefined` — ID не из каталога.
  */
-export async function downloadTitle(
+async function downloadTitleImpl(
   titleId: string,
   request: DownloadRequest,
   profileId: string,
@@ -353,6 +387,10 @@ export async function downloadTitle(
     'not_playable',
     'None of the releases can be downloaded',
   )
+}
+
+export function downloadTitle(...args: Parameters<typeof downloadTitleImpl>) {
+  return withDownloadAdmission(args[0], () => downloadTitleImpl(...args))
 }
 
 /**

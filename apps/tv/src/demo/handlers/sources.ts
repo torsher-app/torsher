@@ -8,8 +8,10 @@ import type {
   TitleFiles,
   TitleOpen,
   TitleSources,
+  TitleUsenetSources,
   Torrent,
   UpdateTorrentTitleInput,
+  UsenetJobList,
 } from '@torsher/api-client'
 import type { DemoTorrent } from '../library.ts'
 import {
@@ -312,3 +314,10 @@ get<AddonSources>('/api/titles/:id/addon-sources', () => ({
   failed: false,
 }))
 post('/api/titles/:id/addon-sources/play', unavailable)
+
+get<TitleUsenetSources>('/api/titles/:id/usenet-sources', () => ({
+  items: [],
+  failed: false,
+}))
+get<UsenetJobList>('/api/titles/:id/usenet-jobs', () => ({ items: [] }))
+post('/api/titles/:id/usenet-jobs', unavailable)

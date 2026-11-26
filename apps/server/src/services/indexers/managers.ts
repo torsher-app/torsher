@@ -1,4 +1,9 @@
-import type { Indexer, IndexerManagerKind } from '../../db/schema.ts'
+import type {
+  Indexer,
+  IndexerManagerKind,
+  IndexerProtocol,
+} from '../../db/schema.ts'
+import { trustedHttpRequest } from '../net/trustedHttp.ts'
 import type { TorznabCaps } from '../torznab/index.ts'
 import {
   child,
@@ -15,6 +20,7 @@ import {
 /** Индексатор, настроенный в менеджере, в виде Torznab-источника */
 export interface RemoteIndexer {
   externalId: string
+  protocol?: IndexerProtocol
   name: string
   /** Torznab-адрес индексатора у менеджера, без `/api` */
   url: string
@@ -89,25 +95,14 @@ function notFound(kind: IndexerManagerKind, status: number): never {
   )
 }
 
-/**
- * Список — `GET /api/v1/indexer` с ключом в `X-Api-Key`; Torznab индексатора —
- * `/{id}/api`. Usenet-индексаторы пропускаем: раздачи только из торрентов.
- */
-async function listProwlarr(baseUrl: string, apiKey: string) {
-  const res = await sourceGet(new URL(`${baseUrl}/api/v1/indexer`), {
-    'X-Api-Key': apiKey,
-    'Accept': 'application/json',
-  })
-
+async function parseProwlarrList(res: Response) {
   if (res.status === 401 || res.status === 403) {
     throw new SourceError('auth', 'Manager rejected the API key', {
       status: res.status,
     })
   }
-
   if (res.status === 404)
     notFound('prowlarr', res.status)
-
   if (!res.ok) {
     throw new SourceError('remote', `Manager responded with ${res.status}`, {
       status: res.status,
@@ -115,22 +110,56 @@ async function listProwlarr(baseUrl: string, apiKey: string) {
   }
 
   let list: unknown
-
   try {
     list = JSON.parse(await readBody(res))
   }
   catch (err) {
     if (err instanceof SourceError)
       throw err
-
     throw new SourceError('bad_response', 'Manager response is not JSON', {
-      cause: err,
       status: res.status,
     })
   }
-
   if (!Array.isArray(list))
     notFound('prowlarr', res.status)
+  return list as unknown[]
+}
+
+/** Managing Newznab sources requires explicit opt-in and pinned transport. */
+async function listProwlarr(
+  baseUrl: string,
+  apiKey: string,
+  newznab?: string[],
+) {
+  const url = new URL(`${baseUrl}/api/v1/indexer`)
+  const headers = { 'X-Api-Key': apiKey, 'Accept': 'application/json' }
+  let list: unknown[]
+  if (newznab === undefined) {
+    list = await parseProwlarrList(await sourceGet(url, headers))
+  }
+  else {
+    try {
+      const request = await trustedHttpRequest(
+        url,
+        { origin: url.origin, lanAddresses: newznab },
+        { headers },
+      )
+      try {
+        list = await parseProwlarrList(request.response)
+      }
+      finally {
+        await request.close()
+      }
+    }
+    catch (error) {
+      if (error instanceof SourceError)
+        throw error
+      throw new SourceError(
+        'unreachable',
+        'Manager connection was not verified',
+      )
+    }
+  }
 
   return list.flatMap((item): RemoteIndexer[] => {
     if (typeof item !== 'object' || item === null)
@@ -147,12 +176,23 @@ async function listProwlarr(baseUrl: string, apiKey: string) {
       fields,
     } = item as Record<string, unknown>
 
-    // Перечисление приходит строкой, у старых версий — числом (2 — torrent)
-    if (protocol !== 'torrent' && protocol !== 2)
+    const sourceProtocol
+      = protocol === 'torrent' || protocol === 2
+        ? 'torznab'
+        : protocol === 'usenet' && newznab !== undefined
+          ? 'newznab'
+          : undefined
+    if (!sourceProtocol)
       return []
 
-    if (typeof id !== 'number' || typeof name !== 'string')
+    if (
+      typeof id !== 'number'
+      || !Number.isSafeInteger(id)
+      || id < 1
+      || typeof name !== 'string'
+    ) {
       return []
+    }
 
     const values = new Map<string, unknown>()
     if (Array.isArray(fields)) {
@@ -177,12 +217,15 @@ async function listProwlarr(baseUrl: string, apiKey: string) {
     return [
       {
         externalId: String(id),
+        ...(sourceProtocol === 'newznab' && { protocol: sourceProtocol }),
         name,
         url: `${baseUrl}/${id}`,
         enabled: enable !== false,
         ...(knownPrivacy && { knownPrivacy }),
-        ...(seedRatio !== undefined && { minSeedRatio: seedRatio }),
-        ...(seedTime !== undefined && {
+        ...(sourceProtocol === 'torznab'
+          && seedRatio !== undefined && { minSeedRatio: seedRatio }),
+        ...(sourceProtocol === 'torznab'
+          && seedTime !== undefined && {
           minSeedTimeMinutes: Math.ceil(seedTime),
         }),
         ...(typeof supportsRss === 'boolean' && { supportsRss }),
@@ -244,8 +287,9 @@ export function listManagerIndexers(
   kind: IndexerManagerKind,
   baseUrl: string,
   apiKey: string,
+  newznab?: string[],
 ): Promise<RemoteIndexer[]> {
   return kind === 'prowlarr'
-    ? listProwlarr(baseUrl, apiKey)
+    ? listProwlarr(baseUrl, apiKey, newznab)
     : listJackett(baseUrl, apiKey)
 }

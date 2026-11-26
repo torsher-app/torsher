@@ -94,6 +94,10 @@ export const config = {
       : dirname(this.databasePath)
   },
 
+  get usenetInboxPath() {
+    return process.env.USENET_INBOX_PATH || '/usenet-inbox'
+  },
+
   // Бинарник движка. В разработке его собирает `engine:build` в каталог данных,
   // образ передаёт свой путь
   get enginePath() {

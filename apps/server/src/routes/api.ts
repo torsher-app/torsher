@@ -38,6 +38,7 @@ import { titleCleanupRoutes } from './titleCleanup.ts'
 import { torrentRoutes } from './torrents.ts'
 import { transferRoutes } from './transfer.ts'
 import { updateRoutes } from './updates.ts'
+import { usenetOwnerRoutes, usenetViewerRoutes } from './usenet.ts'
 import { userRoutes } from './users.ts'
 
 export const apiRoutes: FastifyPluginAsyncZod = async (app) => {
@@ -77,6 +78,8 @@ export const apiRoutes: FastifyPluginAsyncZod = async (app) => {
   app.register(httpAddonRoutes, { prefix: '/sources/http-addons' })
   app.register(indexerManagerRoutes, { prefix: '/indexer-managers' })
   app.register(titleRoutes, { prefix: '/titles' })
+  app.register(usenetViewerRoutes)
+  app.register(usenetOwnerRoutes, { prefix: '/usenet' })
   app.register(mineRoutes, { prefix: '/mine' })
   app.register(collectionRoutes, { prefix: '/collections' })
   app.register(torrentRoutes, { prefix: '/torrents' })

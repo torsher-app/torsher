@@ -263,6 +263,12 @@ export const indexerManagers = sqliteTable(
     kind: text('kind', { enum: indexerManagerKinds }).notNull(),
     url: text('url').notNull(),
     browserUrl: text('browser_url'),
+    importNewznab: integer('import_newznab', { mode: 'boolean' })
+      .notNull()
+      .default(false),
+    newznabLanAddresses: text('newznab_lan_addresses', { mode: 'json' }).$type<
+      string[]
+    >(),
     apiKey: text('api_key').notNull(),
     syncedAt: integer('synced_at', { mode: 'timestamp_ms' }),
     createdAt: integer('created_at', { mode: 'timestamp_ms' })
@@ -306,6 +312,14 @@ export interface SeedObligationRequirement {
   unknown?: boolean
 }
 
+export const indexerProtocols = ['torznab', 'newznab'] as const
+export type IndexerProtocol = (typeof indexerProtocols)[number]
+
+export interface NewznabOriginApproval {
+  origin: string
+  lanAddresses: string[]
+}
+
 export const indexers = sqliteTable(
   'indexers',
   {
@@ -313,6 +327,13 @@ export const indexers = sqliteTable(
       .primaryKey()
       .$defaultFn(() => randomUUID()),
     name: text('name').notNull(),
+    protocol: text('protocol', { enum: indexerProtocols })
+      .notNull()
+      .default('torznab'),
+    lanAddresses: text('lan_addresses', { mode: 'json' }).$type<string[]>(),
+    downloadOrigins: text('download_origins', { mode: 'json' }).$type<
+      NewznabOriginApproval[]
+    >(),
     // Адрес Torznab без завершающего `/api` (services/torznab)
     url: text('url').notNull(),
     // Шифртекст; null — индексатор без ключа
@@ -1532,6 +1553,87 @@ export const mediaFiles = sqliteTable(
 )
 
 export type MediaFile = typeof mediaFiles.$inferSelect
+
+export const usenetClients = sqliteTable('usenet_clients', {
+  id: text('id').primaryKey(),
+  generation: text('generation').notNull(),
+  url: text('url').notNull(),
+  encryptedApiKey: text('encrypted_api_key').notNull(),
+  category: text('category').notNull(),
+  remoteRoot: text('remote_root').notNull(),
+  localRoot: text('local_root').notNull(),
+  lanAddresses: text('lan_addresses', { mode: 'json' })
+    .$type<string[]>()
+    .notNull()
+    .default(sql`'[]'`),
+  enabled: integer('enabled', { mode: 'boolean' }).notNull().default(false),
+  followEnabled: integer('follow_enabled', { mode: 'boolean' })
+    .notNull()
+    .default(false),
+  verified: integer('verified', { mode: 'boolean' }).notNull().default(false),
+})
+
+export const usenetJobStates = [
+  'pending',
+  'submitting',
+  'queued',
+  'downloading',
+  'postProcessing',
+  'paused',
+  'importing',
+  'imported',
+  'failed',
+  'attention',
+  'released',
+] as const
+
+export const usenetJobs = sqliteTable(
+  'usenet_jobs',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => randomUUID()),
+    clientGeneration: text('client_generation').notNull(),
+    sourceId: text('source_id').notNull(),
+    sourceRevision: text('source_revision').notNull(),
+    releaseKey: text('release_key').notNull(),
+    releaseTitle: text('release_title').notNull(),
+    titleId: text('title_id').notNull(),
+    season: integer('season').notNull().default(0),
+    episode: integer('episode').notNull().default(0),
+    origin: text('origin', { enum: ['manual', 'follow'] }).notNull(),
+    profileId: text('profile_id'),
+    followId: text('follow_id'),
+    state: text('state', { enum: usenetJobStates }).notNull(),
+    active: integer('active', { mode: 'boolean' }).notNull(),
+    nzoId: text('nzo_id'),
+    progress: real('progress'),
+    problem: text('problem'),
+    storage: text('storage'),
+    receipt: text('receipt'),
+    mediaFileId: text('media_file_id').references(() => mediaFiles.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: integer('created_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    updatedAt: integer('updated_at', { mode: 'timestamp_ms' })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  table => [
+    uniqueIndex('usenet_jobs_active_target_idx')
+      .on(table.titleId, table.season, table.episode)
+      .where(sql`${table.active} = 1`),
+    uniqueIndex('usenet_jobs_nzo_idx')
+      .on(table.clientGeneration, table.nzoId)
+      .where(isNotNull(table.nzoId)),
+    index('usenet_jobs_active_idx').on(table.active, table.state),
+  ],
+)
+
+export type UsenetClient = typeof usenetClients.$inferSelect
+export type UsenetJob = typeof usenetJobs.$inferSelect
 
 /** Привязки SRT под каталогом данных. Имя файла определяется только id. */
 export const downloadedSubtitles = sqliteTable(

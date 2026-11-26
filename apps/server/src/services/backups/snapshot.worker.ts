@@ -97,6 +97,19 @@ function snapshot(job: SnapshotJob): WorkerResult {
       if (!job.includeHttpAddons && hasTable(db, 'http_addons'))
         db.exec('DELETE FROM http_addons')
 
+      if (!job.includeHttpAddons && hasTable(db, 'usenet_clients')) {
+        db.exec(`
+          DELETE FROM usenet_jobs;
+          DELETE FROM usenet_clients;
+          DELETE FROM server_settings WHERE key = 'usenetRestoreHold';
+          DELETE FROM indexers WHERE protocol = 'newznab';
+          UPDATE indexers
+          SET api_key = NULL, check_status = NULL, checked_at = NULL, enabled = 0
+          WHERE manager_id IN (SELECT id FROM indexer_managers WHERE import_newznab = 1);
+          DELETE FROM indexer_managers WHERE import_newznab = 1;
+        `)
+      }
+
       if (hasTable(db, 'meta_cache'))
         db.exec('DELETE FROM meta_cache')
 

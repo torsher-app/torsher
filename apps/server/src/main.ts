@@ -1,3 +1,4 @@
+import { startUsenetScheduler } from './services/usenet/index.ts'
 import { runSubtitleJobs } from './services/subtitles/automation.ts'
 import {
   startResourceMonitor,
@@ -258,6 +259,7 @@ setInterval(() => {
   if (!restoreHeld() && producersStarted)
     void scanAllFolders()
 }, FOLDER_SCAN_MS).unref()
+let stopUsenetScheduler: (() => void) | undefined
 async function startLibraryProducers() {
   if (producersStarted || restoreHeld())
     return
@@ -289,6 +291,7 @@ async function startLibraryProducers() {
     .catch(err =>
       logFor('catalog').warn({ err }, 'Pending library recognition failed'),
     )
+  stopUsenetScheduler = startUsenetScheduler()
   startFollowScheduler()
 }
 
@@ -428,6 +431,7 @@ const shutdown = createShutdown({
     async () => logFor('server').info('Server is stopping'),
     async () => stopBackupScheduler(),
     async () => stopFollowScheduler(),
+    async () => stopUsenetScheduler?.(),
     async () => stopMaintenanceScheduler(),
     // ffmpeg перепаковки тоже дочерний: его сегменты после выхода не нужны
     stopResourceMonitor,

@@ -1,3 +1,5 @@
+import { withDownloadAdmission } from '../newznab/admission.ts'
+import { activeUsenetTargets } from '../usenet/index.ts'
 import { followErrorFacts, rememberFollowFailure } from './logDiagnostics.ts'
 import type { FollowChoiceDiagnostics } from './decide.ts'
 import { newDecisionId, recordDecision } from '../diagnostics/index.ts'
@@ -46,8 +48,9 @@ import { followById } from './index.ts'
 import { followAudio } from './audio.ts'
 import { announceOtherVoice } from './notify.ts'
 import {
+  finishTopicRefresh,
   refreshTargets,
-  startRefresh,
+  reserveTopicRefresh,
   trackTopic,
   updatedTopicFor,
 } from './topics.ts'
@@ -435,6 +438,9 @@ async function startGrabImpl(
     resetEpisodes(follow, episodes)
     return 'blocked'
   }
+  const activeUsenet = activeUsenetTargets(follow.titleId)
+  if (episodes.some(episode => activeUsenet.has(episodeKey(episode))))
+    return 'later'
   if (hasSuppressed(follow.titleId, episodes))
     return 'blocked'
   if (options.isCurrent && !options.isCurrent())
@@ -633,6 +639,11 @@ async function startGrabImpl(
   return 'started'
 }
 export function startGrab(...args: Parameters<typeof startGrabImpl>) {
+  return withDownloadAdmission(args[0].titleId, () =>
+    startReservedGrab(...args))
+}
+
+function startReservedGrab(...args: Parameters<typeof startGrabImpl>) {
   return withMaintenanceLease(
     { titleId: args[0].titleId, torrentId: args[1].id, producer: true },
     () => startGrabImpl(...args),
@@ -654,7 +665,7 @@ async function grabCandidateImpl(
     isCurrent?: () => boolean
     diagnostics?: FollowChoiceDiagnostics
   } = {},
-): Promise<GrabResult> {
+): Promise<GrabResult | { topicId: string, now: Date }> {
   if (!pendingSourceAllowed(candidate)) {
     resetEpisodes(follow, episodes)
     return 'blocked'
@@ -683,6 +694,11 @@ async function grabCandidateImpl(
 
   // Проход начался раньше: слежение могли остановить или удалить
   if (!isCurrent())
+    return 'later'
+
+  const activeUsenet = activeUsenetTargets(follow.titleId)
+  episodes = episodes.filter(item => !activeUsenet.has(episodeKey(item)))
+  if (!episodes.length)
     return 'later'
 
   const blocks = blockedReleases(follow.titleId, now)
@@ -789,9 +805,14 @@ async function grabCandidateImpl(
     const upgrades = upgradeKeys(follow, episodes)
     const fresh = episodes.filter(item => !upgrades.has(episodeKey(item)))
 
-    return fresh.length
-      ? startRefresh(follow, topic, torrent, candidate, fresh, now)
-      : 'no_files'
+    if (!fresh.length)
+      return 'no_files'
+    return (
+      reserveTopicRefresh(follow, topic, torrent, candidate, fresh, now) ?? {
+        topicId: topic.id,
+        now,
+      }
+    )
   }
 
   beginUpgrade(follow, episodes, torrent.id)
@@ -810,7 +831,7 @@ async function grabCandidateImpl(
       return 'resolving'
     }
 
-    return await startGrab(follow, torrent, candidate, episodes, {
+    return await startReservedGrab(follow, torrent, candidate, episodes, {
       ...options,
       now,
       isCurrent,
@@ -827,7 +848,15 @@ async function grabCandidateImpl(
 export function grabCandidate(...args: Parameters<typeof grabCandidateImpl>) {
   return withMaintenanceLease(
     { titleId: args[0].titleId, producer: true },
-    () => grabCandidateImpl(...args),
+    async () => {
+      const grabbed = await withDownloadAdmission(args[0].titleId, () =>
+        grabCandidateImpl(...args))
+      // The journal already owns the episodes. Refresh can fall back to a
+      // normal grab, so it must run outside the title admission lock.
+      return typeof grabbed === 'string'
+        ? grabbed
+        : finishTopicRefresh(grabbed.topicId, grabbed.now)
+    },
   )
 }
 

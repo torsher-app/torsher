@@ -232,6 +232,8 @@ export const titleDetails = card
     // в кэш TMDB признак не попадает
     hasSources: z.boolean().optional(),
     hasAddonStreams: z.boolean().optional(),
+    hasUsenetSources: z.boolean().optional(),
+    hasUsenetFollow: z.boolean().optional(),
   })
   .meta({ id: 'titleDetails' })
 
