@@ -21,6 +21,7 @@ import type {
   WatchState,
 } from '../../db/schema.ts'
 import type {
+  EngineStorageEntry,
   EngineTorrentDetails,
   EngineTorrentState,
 } from '../engine/index.ts'
@@ -33,6 +34,7 @@ import {
   addTorrent,
   EngineError,
   engineGeneration,
+  engineStorageEntryByHash,
   engineStorageInventory,
   engineUnavailableError,
   forgetTorrent,
@@ -929,7 +931,9 @@ async function resumeDownloadImpl(torrent: Torrent) {
     },
     () => resumeTorrent(current.infoHash, current.isPrivate),
   )
-  return update(current.id, { pauseReason: null })
+  if (current.pauseReason)
+    return update(current.id, { pauseReason: null })
+  return getTorrent(current.id) ?? current
 }
 export function resumeDownload(...args: Parameters<typeof resumeDownloadImpl>) {
   return withMaintenanceLease({ torrentId: args[0].id }, () =>
@@ -1266,12 +1270,43 @@ export async function backfillEnginePrivacy() {
   return inventory
 }
 
+function storageReconciliationChanges(
+  torrent: Pick<Torrent, 'downloadDir' | 'inEngine' | 'pauseReason'>,
+  item: EngineStorageEntry,
+) {
+  const downloadDir = downloadDirValue(item.dir)
+  return {
+    ...(torrent.downloadDir !== downloadDir && { downloadDir }),
+    ...(!torrent.inEngine && { inEngine: true }),
+    ...(item.awaitingAdmission
+      && item.userPaused
+      && !torrent.pauseReason && { pauseReason: 'user' as const }),
+  }
+}
+
 async function reconcileEngineStorageImpl() {
   const inventory = await backfillEnginePrivacy()
   for (const item of inventory) {
-    const known = findByInfoHash(item.infoHash.toLowerCase())
+    const known = getDb()
+      .select({
+        id: torrents.id,
+        downloadDir: torrents.downloadDir,
+        inEngine: torrents.inEngine,
+        pauseReason: torrents.pauseReason,
+      })
+      .from(torrents)
+      .where(eq(torrents.infoHash, item.infoHash.toLowerCase()))
+      .get()
     if (!known)
       continue
+    if (
+      item.state === 'active'
+      && !(item.paused && !known.pauseReason)
+      && !Object.keys(storageReconciliationChanges(known, item)).length
+    ) {
+      continue
+    }
+
     try {
       await withMaintenanceLease({ torrentId: known.id }, () =>
         withEngineMutation(known.id, async () => {
@@ -1279,19 +1314,14 @@ async function reconcileEngineStorageImpl() {
           if (!torrent)
             return
           // Playback could have recovered this session since the first snapshot.
-          const current = (await engineStorageInventory()).find(
-            entry => entry.infoHash === item.infoHash,
-          )
+          const current = await engineStorageEntryByHash(item.infoHash)
           if (!current)
             return
           if (current.state === 'active') {
-            const active = update(torrent.id, {
-              downloadDir: downloadDirValue(current.dir),
-              inEngine: true,
-              ...(current.awaitingAdmission
-                && current.userPaused
-                && !torrent.pauseReason && { pauseReason: 'user' }),
-            })
+            const changes = storageReconciliationChanges(torrent, current)
+            const active = Object.keys(changes).length
+              ? update(torrent.id, changes)
+              : torrent
             if (current.paused && !active.pauseReason)
               await resumeDownloadImpl(active)
             return
