@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -155,5 +156,91 @@ func TestDeletePreviewEndpointDoesNotMutate(t *testing.T) {
 		if err != nil || !bytes.Equal(content, fx.content) {
 			t.Fatal("preview changed payload", err)
 		}
+	}
+}
+
+func TestMaintenanceManualSourceSnapshotRejectsNewPartialFile(t *testing.T) {
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	fx := newNamedFixture(t, "Manual.Cleanup.mkv", 32769)
+	a, server := newTestEngine(t, root)
+	hash := downloadFixture(t, a, server, fx)
+	waitFor(t, 15*time.Second, func() bool { return stateOfHash(t, a, hash).BytesCompleted == int64(len(fx.content)) })
+	route := "/maintenance/torrents/" + hash.HexString() + "/files"
+	rec := maintenanceRequest(t, a, http.MethodGet, route, nil)
+	var snapshot maintenanceSourceFiles
+	if rec.Code != 200 || json.Unmarshal(rec.Body.Bytes(), &snapshot) != nil || len(snapshot.Paths) != 2 {
+		t.Fatal(rec.Code, rec.Body.String())
+	}
+	item := maintenanceIdentity(t, snapshot.Root, snapshot.Paths[0])
+	manifest := detachManifest{InfoHash: hash.HexString(), PieceCount: snapshot.PieceCount, SourceRoot: snapshot.Root, Paths: []maintenancePath{item}}
+	if err := os.WriteFile(snapshot.Paths[1], []byte("partial"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	rec = maintenanceRequest(t, a, http.MethodPost, "/maintenance/manual-mismatch/prepare", manifest)
+	if rec.Code != 409 || !bytes.Contains(rec.Body.Bytes(), []byte("source_manifest_changed")) {
+		t.Fatal(rec.Code, rec.Body.String())
+	}
+	if _, ok := a.client.Torrent(hash); !ok {
+		t.Fatal("stale manifest detached a live torrent")
+	}
+	for _, path := range snapshot.Paths {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatal("stale manifest removed a file", err)
+		}
+	}
+	if rec = maintenanceRequest(t, a, http.MethodPost, "/maintenance/manual-mismatch/cancel", nil); rec.Code != 200 {
+		t.Fatal(rec.Code, rec.Body.String())
+	}
+	manifest.Paths = append(manifest.Paths, maintenanceIdentity(t, snapshot.Root, snapshot.Paths[1]))
+	if rec = maintenanceRequest(t, a, http.MethodPost, "/maintenance/manual-ready/prepare", manifest); rec.Code != 200 {
+		t.Fatal(rec.Code, rec.Body.String())
+	}
+	for index := range manifest.Paths {
+		rec = maintenanceRequest(t, a, http.MethodPost, "/maintenance/manual-ready/unlink", map[string]int{"index": index})
+		if rec.Code != 200 {
+			t.Fatal(rec.Code, rec.Body.String())
+		}
+	}
+	if rec = maintenanceRequest(t, a, http.MethodPost, "/maintenance/manual-ready/finalize", nil); rec.Code != 200 {
+		t.Fatal(rec.Code, rec.Body.String())
+	}
+}
+
+func TestMaintenanceLibraryOnlyPreservesLiveTorrentHardlink(t *testing.T) {
+	fx := newNamedFixture(t, "Library.Hardlink.mkv", 32769)
+	a, server := newTestEngine(t, t.TempDir())
+	hash := downloadFixture(t, a, server, fx)
+	waitFor(t, 15*time.Second, func() bool { return stateOfHash(t, a, hash).BytesCompleted == int64(len(fx.content)) })
+	source := filepath.Join(a.downloads, "Library.Hardlink.mkv")
+	library := t.TempDir()
+	copy := filepath.Join(library, "Library.Hardlink.mkv")
+	if err := os.Link(source, copy); err != nil {
+		t.Fatal(err)
+	}
+	manifest := detachManifest{LibraryOnly: true, Paths: []maintenancePath{maintenanceIdentity(t, library, copy)}}
+	const operation = "/maintenance/library-hardlink"
+	if response := maintenanceRequest(t, a, http.MethodPost, operation+"/prepare", manifest); response.Code != 200 {
+		t.Fatal(response.Code, response.Body.String())
+	}
+	if response := maintenanceRequest(t, a, http.MethodPost, operation+"/unlink", map[string]int{"index": 0}); response.Code != 200 {
+		t.Fatal(response.Code, response.Body.String())
+	}
+	if response := maintenanceRequest(t, a, http.MethodPost, operation+"/finalize", nil); response.Code != 200 {
+		t.Fatal(response.Code, response.Body.String())
+	}
+	if _, err := os.Stat(copy); !os.IsNotExist(err) {
+		t.Fatal("library entry remains", err)
+	}
+	response, err := http.Get(server.URL + "/torrents/" + hash.HexString() + "/files/0/stream")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	data, err := io.ReadAll(response.Body)
+	if err != nil || response.StatusCode != 200 || !bytes.Equal(data, fx.content) {
+		t.Fatal("live torrent lost its stream", response.StatusCode, err)
 	}
 }

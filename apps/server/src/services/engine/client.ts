@@ -1,4 +1,5 @@
 import { engineMaintenanceHeaders } from './maintenanceAuth.ts'
+import { Buffer } from 'node:buffer'
 import { z } from 'zod'
 
 /**
@@ -747,11 +748,23 @@ export const engineMaintenancePath = z.object({
   mtime: z.number(),
   baselineAbsent: z.literal(true).optional(),
 })
-export const engineDetachManifest = z.object({
-  infoHash: z.string(),
-  pieceCount: z.number().int().positive(),
-  paths: z.array(engineMaintenancePath).min(1),
-})
+export const engineDetachManifest = z
+  .object({
+    infoHash: z.string(),
+    pieceCount: z.number().int().nonnegative(),
+    paths: z.array(engineMaintenancePath),
+    sourceRoot: z.string().optional(),
+    libraryOnly: z.literal(true).optional(),
+  })
+  .refine(manifest =>
+    manifest.libraryOnly
+      ? manifest.infoHash === ''
+      && manifest.pieceCount === 0
+      && !manifest.sourceRoot
+      && manifest.paths.length > 0
+      : manifest.pieceCount > 0
+        && (manifest.paths.length > 0 || !!manifest.sourceRoot),
+  )
 const engineMaintenanceOperation = z.object({
   id: z.string(),
   manifest: engineDetachManifest,
@@ -771,6 +784,37 @@ export type EngineDetachManifest = z.infer<typeof engineDetachManifest>
 export type EngineMaintenanceOperation = z.infer<
   typeof engineMaintenanceOperation
 >
+
+const maintenanceSourceFiles = z.object({
+  root: z.string(),
+  paths: z.array(z.string()),
+  pieceCount: z.number().int().positive(),
+  private: z.boolean(),
+})
+
+export function getMaintenanceTorrentFiles(infoHash: string) {
+  return engineJson(
+    `/maintenance/torrents/${encodeURIComponent(infoHash)}/files`,
+    maintenanceSourceFiles,
+    { headers: engineMaintenanceHeaders },
+  )
+}
+
+export function getStoredMaintenanceTorrentFiles(
+  hash: string,
+  root: string,
+  meta: Uint8Array,
+) {
+  return engineJson('/maintenance/torrent-files', maintenanceSourceFiles, {
+    method: 'POST',
+    headers: engineMaintenanceHeaders,
+    body: JSON.stringify({
+      hash,
+      root,
+      meta: Buffer.from(meta).toString('base64'),
+    }),
+  })
+}
 
 /** 404/таймаут/неожиданный ответ — ошибка, никогда не подтверждение detach. */
 export function prepareMaintenanceDetach(

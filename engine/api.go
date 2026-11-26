@@ -126,6 +126,8 @@ func (a *api) routes() http.Handler {
 	mux.HandleFunc("POST /maintenance/{id}/prepare", a.maintenancePrepare)
 	mux.HandleFunc("GET /maintenance", a.maintenanceInventory)
 	mux.HandleFunc("GET /maintenance/{id}", a.maintenanceStatus)
+	mux.HandleFunc("GET /maintenance/torrents/{hash}/files", a.maintenanceTorrentFiles)
+	mux.HandleFunc("POST /maintenance/torrent-files", a.maintenanceStoredTorrentFiles)
 	mux.HandleFunc("POST /maintenance/{id}/unlink", a.maintenanceUnlink)
 	mux.HandleFunc("POST /maintenance/{id}/finalize", a.maintenanceFinish)
 	mux.HandleFunc("POST /maintenance/{id}/cancel", a.maintenanceFinish)

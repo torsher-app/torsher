@@ -64,7 +64,17 @@ export async function ownedIdentity(root: string, path: string) {
 
 /** ENOENT допустим только на том же доступном томе; symlink/offline не отсутствие. */
 export async function verifyOwnedFile(
-  file: typeof maintenanceFiles.$inferSelect,
+  file: Pick<
+    typeof maintenanceFiles.$inferSelect,
+    | 'root'
+    | 'path'
+    | 'rootDevice'
+    | 'rootInode'
+    | 'device'
+    | 'inode'
+    | 'size'
+    | 'mtime'
+  >,
 ) {
   const root = await rootIdentity(file.root)
   if (

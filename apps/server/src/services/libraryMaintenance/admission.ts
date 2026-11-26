@@ -21,6 +21,7 @@ export interface MaintenanceResource {
   infoHash?: string | null
   groupId?: string
   global?: boolean
+  libraryTopology?: boolean
   producer?: boolean
 }
 export class MaintenanceBusyError extends Error {
@@ -49,6 +50,8 @@ export function resourceKeys(ref: MaintenanceResource) {
   const keys = new Set<string>()
   if (ref.global)
     keys.add('*')
+  if (ref.libraryTopology)
+    keys.add('library-topology')
   if (ref.titleId)
     keys.add(`title:${ref.titleId}`)
   if (ref.torrentId)
@@ -235,8 +238,16 @@ export function assertMaintenancePolicyChange(ref: MaintenanceResource) {
   if ([...exclusive.values()].some(other => overlaps(keys, other)))
     throw new MaintenanceBusyError()
 }
-export function acquireMaintenanceExclusive(groupId: string) {
-  const keys = resourceKeys({ groupId })
+export function acquireMaintenanceExclusive(
+  resource: string | MaintenanceResource,
+  paths: string[] = [],
+) {
+  const keys = resourceKeys(
+    typeof resource === 'string' ? { groupId: resource } : resource,
+  )
+  for (const path of paths) {
+    for (const key of maintenancePathKeys(path)) keys.add(key)
+  }
   if (
     [...shared.values(), ...exclusive.values()].some(other =>
       overlaps(keys, other),

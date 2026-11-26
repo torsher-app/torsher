@@ -36,9 +36,11 @@ type maintenancePath struct {
 	BaselineAbsent bool    `json:"baselineAbsent,omitempty"`
 }
 type detachManifest struct {
-	InfoHash   string            `json:"infoHash"`
-	PieceCount int               `json:"pieceCount"`
-	Paths      []maintenancePath `json:"paths"`
+	InfoHash    string            `json:"infoHash"`
+	PieceCount  int               `json:"pieceCount"`
+	Paths       []maintenancePath `json:"paths"`
+	SourceRoot  string            `json:"sourceRoot,omitempty"`
+	LibraryOnly bool              `json:"libraryOnly,omitempty"`
 }
 type detachFence struct {
 	ID                string            `json:"id"`
@@ -169,12 +171,17 @@ func (m *maintenanceFences) confirm(w http.ResponseWriter, fence *detachFence) b
 
 func validateManifest(manifest detachManifest) error {
 	var hash metainfo.Hash
-	if hash.FromHexString(manifest.InfoHash) != nil || manifest.InfoHash != hash.HexString() || manifest.PieceCount <= 0 || manifest.PieceCount > 10000000 || len(manifest.Paths) == 0 || len(manifest.Paths) > 100000 {
+	validTarget := (manifest.LibraryOnly && manifest.InfoHash == "" && manifest.PieceCount == 0 && manifest.SourceRoot == "" && len(manifest.Paths) > 0) ||
+		(!manifest.LibraryOnly && hash.FromHexString(manifest.InfoHash) == nil && manifest.InfoHash == hash.HexString() && manifest.PieceCount > 0 && manifest.PieceCount <= 10000000 && (len(manifest.Paths) > 0 || manifest.SourceRoot != ""))
+	if !validTarget || len(manifest.Paths) > 100000 {
 		return errors.New("invalid manifest")
+	}
+	if manifest.SourceRoot != "" && (!filepath.IsAbs(manifest.SourceRoot) || filepath.Clean(manifest.SourceRoot) != manifest.SourceRoot) {
+		return errors.New("invalid source root")
 	}
 	seen := map[string]bool{}
 	for _, item := range manifest.Paths {
-		if !filepath.IsAbs(item.Root) || !filepath.IsAbs(item.Path) || filepath.Clean(item.Path) != item.Path || filepath.Clean(item.Root) != item.Root || !isInside(item.Root, item.Path) || item.Inode == 0 || item.RootInode == 0 || item.Size < 0 || seen[item.Path] {
+		if !filepath.IsAbs(item.Root) || !filepath.IsAbs(item.Path) || filepath.Clean(item.Path) != item.Path || filepath.Clean(item.Root) != item.Root || !isInside(item.Root, item.Path) || item.Inode == 0 || item.RootInode == 0 || item.Size < 0 || seen[item.Path] || (manifest.LibraryOnly && item.BaselineAbsent) {
 			return errors.New("invalid manifest path")
 		}
 		seen[item.Path] = true
@@ -186,7 +193,7 @@ func (m *maintenanceFences) blocked(hash string, paths []string) bool {
 		return true
 	}
 	for heldHash, owned := range m.unknownGuards {
-		if heldHash == hash {
+		if hash != "" && heldHash == hash {
 			return true
 		}
 		for _, item := range owned {
@@ -201,7 +208,7 @@ func (m *maintenanceFences) blocked(hash string, paths []string) bool {
 		if !fence.dirty && (fence.State == "finalized" || fence.State == "cancelled") {
 			continue
 		}
-		if fence.Manifest.InfoHash == hash {
+		if hash != "" && fence.Manifest.InfoHash == hash {
 			return true
 		}
 		for _, item := range fence.Manifest.Paths {
@@ -359,13 +366,15 @@ func (a *api) maintenancePrepare(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var hash metainfo.Hash
-	_ = hash.FromHexString(manifest.InfoHash)
-	unlock, acquired := a.ownership.tryOperation(hash)
-	if !acquired {
-		writeMoving(w)
-		return
+	if !manifest.LibraryOnly {
+		_ = hash.FromHexString(manifest.InfoHash)
+		unlock, acquired := a.ownership.tryOperation(hash)
+		if !acquired {
+			writeMoving(w)
+			return
+		}
+		defer unlock()
 	}
-	defer unlock()
 
 	rejectMissingAck := func(live bool) {
 		if !newFence && live {
@@ -383,6 +392,10 @@ func (a *api) maintenancePrepare(w http.ResponseWriter, r *http.Request) {
 	}
 
 	requireVerified := r.URL.Query().Get("require_verified") == "true" || (fence != nil && fence.RequireVerified)
+	if manifest.LibraryOnly && requireVerified {
+		writeError(w, 400, "invalid_manifest", errors.New("library cleanup cannot require torrent verification"))
+		return
+	}
 	if requireVerified {
 		live, exists := a.client.Torrent(hash)
 		verified := exists && a.stateOf(live).LeftZeroAccepted
@@ -429,9 +442,17 @@ func (a *api) maintenancePrepare(w http.ResponseWriter, r *http.Request) {
 		}
 		// Не разделяем владение путём с другой живой раздачей или переносом.
 		claims, _ := a.ownership.snapshot()
-		candidate := identities(paths)
+		var candidate []storageIdentity
+		if !manifest.LibraryOnly {
+			candidate = identities(paths)
+		}
 		for hash, claim := range claims {
-			if hash.HexString() != manifest.InfoHash && overlaps(candidate, identities(claim.paths)) {
+			if hash.HexString() == manifest.InfoHash {
+				continue
+			}
+			// Unlinking a standalone library entry preserves an independent
+			// hardlink even when a live torrent holds its inode open.
+			if (manifest.LibraryOnly && sharesMaintenanceEntry(paths, claim.paths)) || (!manifest.LibraryOnly && overlaps(candidate, identities(claim.paths))) {
 				writeError(w, 409, "path_conflict", errStorageConflict)
 				return
 			}
@@ -446,30 +467,26 @@ func (a *api) maintenancePrepare(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			meta := torrent.Metainfo()
-			for _, path := range metadataPaths(&meta, a.dirOf(hash)) {
-				for _, owned := range paths {
-					if sameMaintenanceEntry(path, owned) {
-						writeError(w, 409, "path_conflict", errors.New("path has another owner"))
-						return
-					}
-				}
+			if sharesMaintenanceEntry(paths, metadataPaths(&meta, a.dirOf(hash))) {
+				writeError(w, 409, "path_conflict", errors.New("path has another owner"))
+				return
 			}
 		}
 		fence = &detachFence{ID: id, Manifest: manifest, State: "pending", Results: map[string]string{}, RequireVerified: requireVerified}
-		var originalHash metainfo.Hash
-		_ = originalHash.FromHexString(manifest.InfoHash)
-		if original, live := a.client.Torrent(originalHash); live && a.session.has(originalHash) {
-			saved := a.session.get(originalHash)
+		if manifest.LibraryOnly {
+			fence.State = "detached"
+		} else if original, live := a.client.Torrent(hash); live && a.session.has(hash) {
+			saved := a.session.get(hash)
 			var metadata []byte
-			if saved.Private || privateInfo(original.Info()) || a.private.contains(originalHash) {
+			if saved.Private || privateInfo(original.Info()) || a.private.contains(hash) {
 				// The library's metainfo omits the private tracker we own.
-				originalFile, err := os.ReadFile(a.session.path(originalHash, ".torrent"))
+				originalFile, err := os.ReadFile(a.session.path(hash, ".torrent"))
 				if err != nil {
 					writeError(w, 409, "metadata_unavailable", errors.New("private metainfo is unavailable"))
 					return
 				}
 				meta, err := metainfo.Load(bytes.NewReader(originalFile))
-				if err != nil || meta.HashInfoBytes() != originalHash {
+				if err != nil || meta.HashInfoBytes() != hash {
 					writeError(w, 409, "metadata_unavailable", errors.New("private metainfo hash differs"))
 					return
 				}
@@ -484,7 +501,7 @@ func (a *api) maintenancePrepare(w http.ResponseWriter, r *http.Request) {
 				}
 				metadata = buffer.Bytes()
 			}
-			saved.Dir = a.dirOf(originalHash)
+			saved.Dir = a.dirOf(hash)
 			fence.RestoreMeta = metadata
 			fence.RestoreSession = &saved
 		}
@@ -500,6 +517,10 @@ func (a *api) maintenancePrepare(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	if manifest.LibraryOnly {
+		writeJSON(w, 200, fence.response())
+		return
+	}
 	if torrent, ok := a.client.Torrent(hash); ok {
 		if a.windows.streaming(hash) || a.isMoving(hash) {
 			writeError(w, 409, "resource_busy", errors.New("resource is active"))
@@ -507,6 +528,10 @@ func (a *api) maintenancePrepare(w http.ResponseWriter, r *http.Request) {
 		}
 		if torrent.Info() == nil || torrent.NumPieces() != manifest.PieceCount {
 			writeError(w, 409, "metadata_mismatch", errors.New("torrent metadata differs"))
+			return
+		}
+		if manifest.SourceRoot != "" && len(a.session.get(hash).GuardedPaths) != 0 {
+			writeError(w, 409, "source_identity_guarded", errMaintenance)
 			return
 		}
 		saved := a.session.get(hash)
@@ -531,6 +556,21 @@ func (a *api) maintenancePrepare(w http.ResponseWriter, r *http.Request) {
 				restoreLive()
 			}
 			writeError(w, 409, "resource_busy", errors.New("piece verification is active"))
+			return
+		}
+		if manifest.SourceRoot != "" && !exactMaintenanceSource(a.dirOf(hash), torrent.Info(), manifest) {
+			restoreLive()
+			// No detach or unlink has happened, so this intent can be closed
+			// without reattaching the still-running torrent.
+			fence.State = "cancelled"
+			fence.RestoreMeta = nil
+			fence.RestoreSession = nil
+			m.fences[id] = fence
+			if err := m.save(fence); err != nil {
+				writeError(w, 500, "journal_failed", err)
+				return
+			}
+			writeError(w, 409, "source_manifest_changed", errors.New("torrent source files changed since preview"))
 			return
 		}
 		if requireVerified {
@@ -712,7 +752,7 @@ func (a *api) maintenanceFinish(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 500, "journal_failed", errors.New("cannot persist operation result"))
 		return
 	}
-	if next == "finalized" || (next == "cancelled" && fence.RestoreSession == nil) {
+	if !fence.Manifest.LibraryOnly && (next == "finalized" || (next == "cancelled" && fence.RestoreSession == nil)) {
 		var hash metainfo.Hash
 		_ = hash.FromHexString(fence.Manifest.InfoHash)
 		if _, live := a.client.Torrent(hash); !live && a.lifecycle.settled(hash) {
@@ -835,6 +875,17 @@ func sameMaintenanceEntry(a, b string) bool {
 	}
 	key := maintenanceEntryKey(a)
 	return key != "" && key == maintenanceEntryKey(b)
+}
+
+func sharesMaintenanceEntry(a, b []string) bool {
+	for _, one := range a {
+		for _, other := range b {
+			if sameMaintenanceEntry(one, other) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 var maintenanceReattachCheckpoint = func(string) error { return nil }

@@ -2,11 +2,13 @@ import { notify } from '../notifications/index.ts'
 import process from 'node:process'
 import { statfs } from 'node:fs/promises'
 import { diskUsageFromStats } from '../storage/disk.ts'
+import { releaseTorrentSpace } from '../storage/index.ts'
 import { rootIdentity, verifyOwnedFile } from './identity.ts'
 import { isEvictedSource } from './provenance.ts'
 import { durableMaintenance } from './durable.ts'
 import { getTorrentSettings } from '../torrents/settings.ts'
 import type {
+  MaintenanceEpisode,
   MaintenanceManifest,
   MaintenanceVolumeObservation,
 } from '../../db/schema.ts'
@@ -28,6 +30,7 @@ import {
 } from '../../db/schema.ts'
 import * as engine from '../engine/client.ts'
 import { removeThumbs } from '../library/thumbs.ts'
+import { freezeLibraryProgress } from '../library/playedSource.ts'
 import { getSetting, setSetting } from '../settings/index.ts'
 import {
   acquireMaintenanceExclusive,
@@ -41,6 +44,7 @@ import { DAY } from './evaluate.ts'
 import { maintenanceConfig, policyFacts, previewMaintenance } from './index.ts'
 import { clearMaintenanceRestoreHold, restoreHeld } from './restore.ts'
 import { isSeedObligationMet } from '../torrents/seeding.ts'
+import { assertCleanupPaths } from '../titleCleanup/ownership.ts'
 
 /** Подмена только в синтетических тестах; production всегда использует Go fence. */
 export const maintenanceEngine = {
@@ -53,6 +57,21 @@ export const maintenanceEngine = {
   torrents: engine.listEngineTorrents,
 }
 type Operation = typeof maintenanceOperations.$inferSelect
+const manualTorrentPrefix = 'manual-torrent:'
+const manualLibraryPrefix = 'manual-library:'
+
+function manualTorrentId(op: Operation) {
+  return op.groupId.startsWith(manualTorrentPrefix)
+    ? op.groupId.slice(manualTorrentPrefix.length)
+    : null
+}
+
+function isManualCleanup(op: Operation) {
+  return (
+    op.groupId.startsWith(manualTorrentPrefix)
+    || op.groupId.startsWith(manualLibraryPrefix)
+  )
+}
 export function executionEnabled() {
   return getSetting<boolean>('maintenanceExecutionEnabled') === true
 }
@@ -201,6 +220,24 @@ function assertManifest(
     throw new Error('engine_manifest_mismatch')
   }
 }
+
+async function manualEngineFence(op: Operation) {
+  try {
+    const fence = await maintenanceEngine.status(op.id)
+    assertManifest(op, fence)
+    return fence
+  }
+  catch (error) {
+    if (
+      error instanceof engine.EngineError
+      && error.kind === 'not_found'
+      && error.engineCode === 'operation_not_found'
+    ) {
+      return undefined
+    }
+    throw error
+  }
+}
 function errorCode(error: unknown) {
   return error instanceof engine.EngineError
     ? (error.engineCode ?? error.kind)
@@ -307,6 +344,9 @@ async function observeVolumes(
 }
 async function commitCleaned(op: Operation) {
   const db = getDb()
+  const manualTorrent = manualTorrentId(op)
+  if (manualTorrent)
+    await releaseTorrentSpace(manualTorrent)
   const ids = [
     ...new Set(
       op.manifest.paths.flatMap(file =>
@@ -324,6 +364,9 @@ async function commitCleaned(op: Operation) {
     : []
   durableMaintenance(() => {
     if (ids.length) {
+      if (isManualCleanup(op)) {
+        for (const id of ids) freezeLibraryProgress(id)
+      }
       db.update(titleProgress)
         .set({ mediaFileId: null })
         .where(inArray(titleProgress.mediaFileId, ids))
@@ -335,12 +378,13 @@ async function commitCleaned(op: Operation) {
       .from(maintenanceGroups)
       .where(eq(maintenanceGroups.id, op.groupId))
       .get()
-    if (group?.torrentId) {
+    const torrentId = manualTorrent ?? group?.torrentId
+    if (torrentId) {
       db.update(titleProgress)
         .set({ torrentId: null, fileIndex: null })
-        .where(eq(titleProgress.torrentId, group.torrentId))
+        .where(eq(titleProgress.torrentId, torrentId))
         .run()
-      db.delete(torrents).where(eq(torrents.id, group.torrentId)).run()
+      db.delete(torrents).where(eq(torrents.id, torrentId)).run()
     }
     db.update(maintenanceSuppressions)
       .set({ status: 'cleaned' })
@@ -366,10 +410,85 @@ export async function retryMaintenanceOperation(
   id: string,
   newlyJournaled = false,
 ) {
-  let op = operation(id)
+  const op = operation(id)
   if (!op || op.state === 'cancelled')
     return false
-  const release = acquireMaintenanceExclusive(op.groupId)
+  const target = manualTorrentId(op)
+  const release = isManualCleanup(op)
+    ? acquireMaintenanceExclusive(
+        {
+          titleId: op.titleId,
+          torrentId: target,
+          infoHash: op.manifest.infoHash,
+          libraryTopology: true,
+        },
+        op.manifest.paths.map(file => file.path),
+      )
+    : acquireMaintenanceExclusive(op.groupId)
+  try {
+    return await runRecordedOperation(op, newlyJournaled)
+  }
+  finally {
+    release()
+  }
+}
+
+/** Caller holds a title-wide exclusive lease across preflight and this operation. */
+export async function removeConfirmedFiles(input: {
+  titleId: string
+  torrentId?: string
+  manifest: MaintenanceManifest
+  episodes: MaintenanceEpisode[]
+}) {
+  const id = randomUUID()
+  const volumes = await observeVolumes(input.manifest)
+  durableMaintenance(() => {
+    getDb()
+      .insert(maintenanceOperations)
+      .values({
+        id,
+        groupId: input.torrentId
+          ? `${manualTorrentPrefix}${input.torrentId}`
+          : `${manualLibraryPrefix}${id}`,
+        titleId: input.titleId,
+        groupRevision: 0,
+        ruleRevision: 0,
+        fingerprint: '',
+        manifest: input.manifest,
+        volumes,
+        episodes: input.episodes,
+        state: 'pending',
+      })
+      .run()
+    for (const episode of input.episodes) {
+      getDb()
+        .insert(maintenanceSuppressions)
+        .values({
+          titleId: input.titleId,
+          ...episode,
+          status: 'pending',
+          operationId: id,
+        })
+        .onConflictDoNothing()
+        .run()
+    }
+  })
+  const deleted = await runRecordedOperation(operation(id)!, true)
+  return { id, deleted, cancelled: operation(id)?.state === 'cancelled' }
+}
+
+async function runRecordedOperation(
+  initial: Operation,
+  newlyJournaled: boolean,
+) {
+  let op = initial
+  const { id } = op
+  const manual = isManualCleanup(op)
+  const policyChanged = () =>
+    restoreHeld()
+    || (!manual
+      && (eligibilityFingerprint(op.groupId) !== op.fingerprint
+        || !executionEnabled()))
   try {
     if (op.state === 'cleaned') {
       const reply = await maintenanceEngine.finalize(op.id)
@@ -385,9 +504,29 @@ export async function retryMaintenanceOperation(
       .from(maintenanceGroups)
       .where(eq(maintenanceGroups.id, op.groupId))
       .get()
-    const torrent = group?.torrentId
-      ? db.select().from(torrents).where(eq(torrents.id, group.torrentId)).get()
+    const torrentId = manualTorrentId(op) ?? group?.torrentId
+    const torrent = torrentId
+      ? db.select().from(torrents).where(eq(torrents.id, torrentId)).get()
       : undefined
+
+    if (manual && restoreHeld())
+      return false
+    if (manual && !newlyJournaled) {
+      // A retry can happen after a connected folder changes. The engine's
+      // results are authoritative when a previous unlink reply was lost.
+      const fence = await manualEngineFence(op)
+      if (fence?.state === 'cancelled') {
+        await cancelUnchanged(op, fence)
+        return false
+      }
+      if (!fence && op.engineStage !== 'unknown')
+        throw new Error('engine_fence_missing')
+      const remaining = op.manifest.paths.filter(
+        (_, index) => fence?.results[index] !== 'removed',
+      )
+      const target = manualTorrentId(op)
+      await assertCleanupPaths(remaining, target ? [target] : [])
+    }
     if (group?.privateObligationMet === false) {
       if (newlyJournaled)
         finishCancellation(op)
@@ -402,7 +541,7 @@ export async function retryMaintenanceOperation(
           finishCancellation(op)
           return false
         }
-        if (live || group?.privateObligationMet !== true)
+        if (live || (!manual && group?.privateObligationMet !== true))
           return false
 
         // A lost HTTP reply can leave the engine journal ahead of SQLite.
@@ -456,8 +595,9 @@ export async function retryMaintenanceOperation(
       results: detached.results,
     })
     op = operation(id)!
-    const changed = eligibilityFingerprint(op.groupId) !== op.fingerprint
-    if (changed || restoreHeld() || !executionEnabled()) {
+    const changed
+      = !manual && eligibilityFingerprint(op.groupId) !== op.fingerprint
+    if (changed || restoreHeld() || (!manual && !executionEnabled())) {
       if (Object.values(op.results).every(result => result === 'staged')) {
         // Go confirms intact originals before cancelling write-ahead intents.
         await cancelUnchanged(op)
@@ -470,7 +610,15 @@ export async function retryMaintenanceOperation(
       }
       return false
     }
-    if (!Object.keys(op.results).length) {
+    if (manual && !Object.keys(op.results).length) {
+      for (const file of op.manifest.paths) {
+        if ((await verifyOwnedFile(file)) !== 'present') {
+          await cancelUnchanged(op)
+          return false
+        }
+      }
+    }
+    else if (!manual && !Object.keys(op.results).length) {
       const config = maintenanceConfig(op.titleId)
       const preview = await previewMaintenance(op.titleId, config.rule)
       if (
@@ -483,11 +631,7 @@ export async function retryMaintenanceOperation(
     for (let index = 0; index < op.manifest.paths.length; index++) {
       if (op.results[String(index)] === 'removed')
         continue
-      if (
-        eligibilityFingerprint(op.groupId) !== op.fingerprint
-        || restoreHeld()
-        || !executionEnabled()
-      ) {
+      if (policyChanged()) {
         throw new Error('policy_changed')
       }
       patch(id, { state: 'deleting' })
@@ -514,6 +658,39 @@ export async function retryMaintenanceOperation(
   catch (error) {
     // Ответ unlink мог потеряться. Не снимаем hold даже если локально ещё нет results.
     const current = operation(id)!
+    if (
+      manual
+      && error instanceof engine.EngineError
+      && error.engineCode === 'source_manifest_changed'
+      && !Object.keys(current.results).length
+    ) {
+      // The engine closed this intent before detaching the live session.
+      finishCancellation(current)
+      return false
+    }
+    if (
+      manual
+      && newlyJournaled
+      && error instanceof engine.EngineError
+      && error.engineCode === 'invalid_manifest'
+    ) {
+      // Engines without standalone-library support reject the manifest before
+      // creating a fence. The row may be discarded without filesystem work.
+      finishCancellation(current)
+      return false
+    }
+    if (
+      manual
+      && error instanceof engine.EngineError
+      && error.engineCode === 'path_conflict'
+      && !Object.keys(current.results).length
+    ) {
+      const fence = await manualEngineFence(current).catch(() => null)
+      if (fence === undefined) {
+        finishCancellation(current)
+        return false
+      }
+    }
     if (
       error instanceof engine.EngineError
       && error.engineCode === 'torrent_obligation_unmet'
@@ -549,9 +726,6 @@ export async function retryMaintenanceOperation(
       error: errorCode(error),
     })
     return false
-  }
-  finally {
-    release()
   }
 }
 export async function runMaintenance(now = Date.now()) {
@@ -761,8 +935,13 @@ export async function recoverMaintenance() {
   for (const fence of fences) {
     if (known.has(fence.id) && fence.state === 'cancelled') {
       const op = operation(fence.id)
-      if (op?.engineStage === 'reattaching')
+      if (
+        op
+        && (op.engineStage === 'reattaching'
+          || (isManualCleanup(op) && op.state !== 'cancelled'))
+      ) {
         await cancelUnchanged(op, fence)
+      }
     }
     if (known.has(fence.id) && fence.state === 'reattaching') {
       patch(fence.id, {
@@ -790,8 +969,12 @@ export async function recoverMaintenance() {
     setSetting('maintenanceExecutionEnabled', false)
   }
   for (const op of unresolvedOperations()) {
-    if (op.engineStage !== 'reattaching')
+    if (
+      op.engineStage !== 'reattaching'
+      && (!isManualCleanup(op) || op.state === 'cleaned')
+    ) {
       await retryMaintenanceOperation(op.id)
+    }
   }
 }
 export async function acknowledgeMaintenanceRestore() {

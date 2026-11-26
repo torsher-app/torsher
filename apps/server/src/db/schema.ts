@@ -2268,6 +2268,8 @@ export interface MaintenanceManifest {
   infoHash: string
   pieceCount: number
   paths: MaintenanceManifestPath[]
+  sourceRoot?: string
+  libraryOnly?: true
 }
 export interface MaintenanceVolumeObservation {
   volume: string
