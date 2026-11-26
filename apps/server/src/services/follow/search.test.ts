@@ -32,6 +32,7 @@ import {
   requestFollowSearch,
   resetFollowSearch,
   searchPlan,
+  torznabPassAllowsUsenet,
 } from './search.ts'
 
 const MINUTE_MS = 60 * 1000
@@ -649,4 +650,36 @@ describe('сетевой поиск слежения', () => {
       }
     },
   )
+})
+
+it('allows a Usenet fallback only after an exhaustive Torznab pass', () => {
+  const complete = {
+    releases: [],
+    unmatched: [],
+    indexerCount: 2,
+    failed: [],
+    diagnostics: {
+      asked: 2,
+      ok: 2,
+      failed: 0,
+      skipped: 0,
+      raw: 0,
+      kept: 0,
+      ms: 3,
+      customQuery: false,
+    },
+  }
+  expect(torznabPassAllowsUsenet(complete)).toBe(true)
+  expect(
+    torznabPassAllowsUsenet({
+      ...complete,
+      diagnostics: { ...complete.diagnostics, skipped: 1 },
+    }),
+  ).toBe(false)
+  expect(
+    torznabPassAllowsUsenet({
+      ...complete,
+      failed: [{ id: 'fixture', name: 'Fixture', kind: 'unreachable' }],
+    }),
+  ).toBe(false)
 })

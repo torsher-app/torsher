@@ -215,28 +215,36 @@ function onInteractOutside(event: Event) {
                 @update:model-value="onToggle"
               />
             </dd>
-            <dt class="self-start text-muted-foreground">
-              <label for="indexer-card-feed">{{
-                t("panel.sources.feed.label")
-              }}</label>
-            </dt>
-            <dd class="grid justify-items-start gap-1">
-              <Switch
-                id="indexer-card-feed"
-                :model-value="shown.feed.supported !== false"
-                :disabled="isFeedSaving || feedManaged"
-                aria-describedby="indexer-card-feed-state"
-                @update:model-value="onFeed"
-              />
-              <span
-                id="indexer-card-feed-state"
-                class="text-[12.5px] text-muted-foreground"
-              >
-                {{ feedText
-                }}<template v-if="feedManaged">
-                  · {{ t("panel.sources.feed.managed") }}</template>
-              </span>
-            </dd>
+            <template v-if="shown.protocol !== 'newznab'">
+              <dt class="self-start text-muted-foreground">
+                <label for="indexer-card-feed">{{
+                  t("panel.sources.feed.label")
+                }}</label>
+              </dt>
+              <dd class="grid justify-items-start gap-1">
+                <Switch
+                  id="indexer-card-feed"
+                  :model-value="shown.feed.supported !== false"
+                  :disabled="isFeedSaving || feedManaged"
+                  aria-describedby="indexer-card-feed-state"
+                  @update:model-value="onFeed"
+                />
+                <span
+                  id="indexer-card-feed-state"
+                  class="text-[12.5px] text-muted-foreground"
+                >
+                  {{ feedText
+                  }}<template v-if="feedManaged">
+                    · {{ t("panel.sources.feed.managed") }}</template>
+                </span>
+              </dd>
+            </template>
+            <template v-else>
+              <dt class="text-muted-foreground">
+                {{ t("usenet.protocol") }}
+              </dt>
+              <dd>{{ t("usenet.newznab") }}</dd>
+            </template>
             <dt class="text-muted-foreground">
               {{ t("panel.sources.card.status") }}
             </dt>
@@ -253,7 +261,13 @@ function onInteractOutside(event: Event) {
               </span>
             </dd>
             <dt class="text-muted-foreground">
-              {{ t("panel.sources.card.url") }}
+              {{
+                t(
+                  shown.protocol === "newznab"
+                    ? "panel.sources.importDialog.url"
+                    : "panel.sources.card.url",
+                )
+              }}
             </dt>
             <dd class="font-mono text-xs break-all">
               {{ shown.url }}

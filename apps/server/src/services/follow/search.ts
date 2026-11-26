@@ -36,7 +36,13 @@ import {
   reportMissing,
   upgradeNeeded,
 } from './pass.ts'
-import { localDay, MISSING_AFTER_DAYS, WANTED_STATES } from './wanted.ts'
+import { canSearchUsenet, searchFollowUsenet } from './usenet.ts'
+import {
+  episodeKey,
+  localDay,
+  MISSING_AFTER_DAYS,
+  WANTED_STATES,
+} from './wanted.ts'
 
 const MINUTE_MS = 60 * 1000
 const HOUR_MS = 60 * MINUTE_MS
@@ -494,6 +500,13 @@ function automationOutcome(outcome: SearchOutcome): SearchOutcome {
   }
 }
 
+export function torznabPassAllowsUsenet(outcome: SearchOutcome) {
+  return (
+    outcome.diagnostics?.skipped === 0
+    && outcome.failed.every(item => item.kind === 'unsupported')
+  )
+}
+
 /** Целевой поиск по слежению и прогон решателя по найденному */
 async function runSearchImpl(due: DueSearch, now: Date) {
   const { follow } = due
@@ -509,6 +522,21 @@ async function runSearchImpl(due: DueSearch, now: Date) {
     state.requested.delete(follow.id)
     postpone(follow, new Date(now.getTime() + HOUR_MS), 'title_missing')
     return false
+  }
+
+  if (!('outcome' in found) && !found.paused && canSearchUsenet(follow)) {
+    state.requested.delete(follow.id)
+    const fallback = await searchFollowUsenet(follow, new Set(), now)
+    if (fallback.searched) {
+      followSearchStarted(now)
+      const { next } = await evaluate({ ...follow, lastSearchAt: now }, now)
+      setSchedule(follow, {
+        lastSearchAt: now,
+        nextSearchAt:
+          fallback.nextAt && fallback.nextAt < next ? fallback.nextAt : next,
+      })
+      return true
+    }
   }
 
   if (!('outcome' in found)) {
@@ -549,12 +577,19 @@ async function runSearchImpl(due: DueSearch, now: Date) {
   const summaries: Array<
     { season: number } & ReturnType<typeof followPlanFacts>
   > = []
+  const reserved = new Set<string>()
   await decideFollow(
     searched,
     await withPendingReleases(follow, outcome.releases),
     now,
-    (season, plan, episodes) =>
-      summaries.push({ season, ...followPlanFacts(plan, episodes) }),
+    (season, plan, episodes) => {
+      summaries.push({ season, ...followPlanFacts(plan, episodes) })
+      for (const grab of plan.grabs) {
+        for (const episode of grab.episodes) reserved.add(episodeKey(episode))
+      }
+      for (const pending of plan.pending)
+        reserved.add(episodeKey(pending.episode))
+    },
   )
   for (const summary of summaries) {
     logFor('catalog').info(
@@ -575,9 +610,15 @@ async function runSearchImpl(due: DueSearch, now: Date) {
     )
   }
 
+  const fallback = torznabPassAllowsUsenet(outcome)
+    ? await searchFollowUsenet(searched, reserved, now)
+    : undefined
   const { next } = await evaluate(searched, now)
 
-  setSchedule(searched, { nextSearchAt: next })
+  setSchedule(searched, {
+    nextSearchAt:
+      fallback?.nextAt && fallback.nextAt < next ? fallback.nextAt : next,
+  })
   return true
 }
 function runSearch(...args: Parameters<typeof runSearchImpl>) {
@@ -602,7 +643,12 @@ export async function searchPass(active: Follow[], now = new Date()) {
 
     const plan = await evaluate(follow, now)
 
-    if (!plan.due && !request) {
+    const usenetDue
+      = canSearchUsenet(follow)
+        && follow.nextSearchAt
+        && follow.nextSearchAt <= now
+        && plan.wanted.length > 0
+    if (!plan.due && !request && !usenetDue) {
       if (plan.notReleased)
         postpone(follow, plan.next, 'not_released')
       else setSchedule(follow, { nextSearchAt: plan.next })

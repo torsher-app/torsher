@@ -81,6 +81,26 @@ The cookie is sent for capabilities, search, the feed and torrent downloads only
 
 The access check confirms that the capabilities request works now. A request Cookie header does not specify when the session expires; replace the cookie if access is rejected. This field does not add support for searching an ordinary website, browser challenges or automatic sign-in.
 
+## Usenet with SABnzbd
+
+Use Newznab to search for material you are allowed to download. Torsher sends the selected NZB to an instance of SABnzbd you run. SABnzbd handles the Usenet connection, repair and unpacking. Torsher copies the finished video into your library.
+
+1. Use a security-patched SABnzbd 5.x release, starting with 5.1.3. Create a dedicated category with a separate completed folder for each job. Keep sorting and custom scripts off for this category and keep its history until Torsher has imported the file. The SABnzbd API key is required for queue and history access. The separate NZB key only allows adding jobs.
+2. Mount the completed category folder in the Linux Torsher container. For example, if SABnzbd writes to `/completed/torsher` in its container, bind the same host directory into Torsher at `/usenet-inbox`:
+
+   ```yaml
+   # In your Torsher service's volumes, alongside the existing data volume.
+   - ./sab-completed/torsher:/usenet-inbox:ro
+   ```
+
+   Torsher's UID and GID need read and traversal permissions. Set `USENET_INBOX_PATH` if you use a different dedicated mount point. Leave the database and the library mounted only in Torsher. The imported copy needs its own space on the library volume. SABnzbd retains its original.
+3. In <Ui k="panel.nav.sources usenet.title" />, enter the address that Torsher uses to reach SABnzbd, the API key and category, the completed category folder as SABnzbd sees it, and the same folder as Torsher sees it. Confirm any private destination and check the connection and folder. A first completed test download confirms that the two paths refer to the same data.
+4. Add an indexer and choose <Ui k="usenet.newznab" />, or enable <Ui k="usenet.importNewznab" /> when connecting Prowlarr. Prowlarr can redirect NZB downloads to an indexer. Add the expected HTTPS origin to <Ui k="usenet.downloadOrigins" /> on that source. Check the address against your own configuration. Torsher sends NZB bytes to SABnzbd and keeps indexer keys on the server.
+
+Search for a film or a specific episode and select the Usenet release from the title page. After import, play it from the library. Select <Ui k="usenet.follow" /> to let download-mode rules use Newznab after a completed torrent search with no suitable match.
+
+Usenet settings and jobs are included only in password-protected backups. After restoring one, enter the SABnzbd key again and verify the downloader and source addresses. Torsher can reconcile known jobs. It keeps new submissions on hold if the dedicated SABnzbd category contains jobs missing from the restored database, or its history could not be checked completely. Compare the category's queue and history with Torsher's jobs, handle the unexpected jobs in SABnzbd, and save the Torsher connection again to recheck. Removing a SABnzbd history entry and deleting its downloaded files are separate actions. An unprotected backup excludes Newznab and SABnzbd settings, including the key of a Prowlarr manager configured for Newznab. Reconnect that manager and provide its key again if needed.
+
 ## Releases in other languages
 
 Most indexers name releases in the scene format, such as `Show.Name.S01E02.1080p.WEB-DL.x265-GROUP`, whatever the language of the film. Torsher reads this format fully: title, year, season and episode, quality, source, codec and audio.

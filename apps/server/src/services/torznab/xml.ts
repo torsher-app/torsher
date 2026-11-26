@@ -8,6 +8,7 @@ const ALWAYS_ARRAY = new Set([
   'indexer',
   'item',
   'torznab:attr',
+  'newznab:attr',
 ])
 
 const parser = new XMLParser({

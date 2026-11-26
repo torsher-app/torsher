@@ -1,3 +1,4 @@
+import { hasUsenetSources } from './usenet.ts'
 import { hasAddonStreams } from '../services/addons/streams.ts'
 import { requireOwner, requireViewer } from '../middleware/auth.ts'
 import { localTitleImages } from '../services/library/images.ts'
@@ -144,6 +145,8 @@ export const catalogRoutes: FastifyPluginAsyncZod = async (app) => {
           ...details,
           follow: titleFollowBrief(details.id, request.profileId),
           hasSources: hasSearchableIndexers(),
+          ...(hasUsenetSources() && { hasUsenetSources: true }),
+          ...(hasUsenetSources(true) && { hasUsenetFollow: true }),
           ...(hasAddonStreams(details.kind) && { hasAddonStreams: true }),
         }
       }

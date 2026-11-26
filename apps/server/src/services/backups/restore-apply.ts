@@ -177,6 +177,18 @@ async function migrateRestored(paths: BackupPaths) {
         WHERE lan_addresses <> '[]'
       `,
       ).run()
+      db.exec(`
+        UPDATE usenet_clients SET verified = 0, lan_addresses = '[]';
+        UPDATE usenet_jobs SET state = 'submitting' WHERE state = 'pending' AND active = 1;
+        INSERT INTO server_settings (key, value, updated_at)
+        VALUES ('usenetRestoreHold', 'true', unixepoch() * 1000)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at;
+        UPDATE indexers
+        SET enabled = 0, check_status = NULL, checked_at = NULL,
+            lan_addresses = NULL, download_origins = NULL
+        WHERE protocol = 'newznab';
+        UPDATE indexer_managers SET newznab_lan_addresses = NULL WHERE import_newznab = 1;
+      `)
       db.exec(`DROP TABLE IF EXISTS "${MANIFEST_TABLE}"`)
     })()
 

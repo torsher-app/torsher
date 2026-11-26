@@ -5,6 +5,8 @@ import type {
   IndexerCheckStatus,
   IndexerManager,
   IndexerManagerKind,
+  IndexerProtocol,
+  NewznabOriginApproval,
 } from '../../db/schema.ts'
 import type { TorznabCaps } from '../torznab/index.ts'
 import type { RemoteIndexer } from './managers.ts'
@@ -17,6 +19,12 @@ import {
   normalizeTorznabUrl,
   SourceError,
 } from '../torznab/index.ts'
+import {
+  checkNewznab,
+  normalizeDownloadOrigins,
+  normalizeNewznabUrl,
+} from '../newznab/client.ts'
+import { TrustedHttpError, trustedUrl } from '../net/trustedHttp.ts'
 import { listManagerIndexers, normalizeManagerUrl } from './managers.ts'
 import { isSessionCookie } from '../torznab/cookie.ts'
 import { rememberIndexerRetryAfter } from './backoff.ts'
@@ -107,7 +115,13 @@ export function listSearchableIndexers(): SearchableIndexer[] {
   return getDb()
     .select()
     .from(indexers)
-    .where(and(eq(indexers.enabled, true), eq(indexers.missing, false)))
+    .where(
+      and(
+        eq(indexers.protocol, 'torznab'),
+        eq(indexers.enabled, true),
+        eq(indexers.missing, false),
+      ),
+    )
     .orderBy(indexers.name)
     .all()
     .flatMap(
@@ -150,6 +164,7 @@ export function hasSearchableIndexers() {
     .from(indexers)
     .where(
       and(
+        eq(indexers.protocol, 'torznab'),
         eq(indexers.enabled, true),
         eq(indexers.missing, false),
         isNotNull(indexers.caps),
@@ -180,6 +195,7 @@ export function listFeedIndexers(): FeedIndexer[] {
     .from(indexers)
     .where(
       and(
+        eq(indexers.protocol, 'torznab'),
         eq(indexers.enabled, true),
         eq(indexers.missing, false),
         eq(indexers.checkStatus, 'ok'),
@@ -264,6 +280,9 @@ export interface NewIndexer extends PrivatePolicyPatch {
   url: string
   apiKey?: string
   sessionCookie?: string | null
+  protocol?: IndexerProtocol
+  lanAddresses?: string[]
+  downloadOrigins?: NewznabOriginApproval[]
 }
 
 /**
@@ -272,18 +291,40 @@ export interface NewIndexer extends PrivatePolicyPatch {
  * адрес хранится без query.
  */
 export async function createManualIndexer(input: NewIndexer) {
-  if (input.sessionCookie != null && !isSessionCookie(input.sessionCookie))
+  const nzb = input.protocol === 'newznab'
+  if (
+    input.sessionCookie != null
+    && (nzb || !isSessionCookie(input.sessionCookie))
+  ) {
     throw new SourceError('auth', 'Invalid session cookie')
+  }
   const apiKey
-    = input.apiKey || new URL(input.url).searchParams.get('apikey') || undefined
-  const url = normalizeTorznabUrl(input.url)
-  const caps = await fetchCaps(url, apiKey, input.sessionCookie ?? undefined)
+    = input.apiKey
+      || (!nzb
+        ? new URL(input.url).searchParams.get('apikey') || undefined
+        : undefined)
+  const url = nzb
+    ? normalizeNewznabUrl(input.url)
+    : normalizeTorznabUrl(input.url)
+  const lanAddresses = nzb
+    ? [...new Set(input.lanAddresses ?? [])].sort()
+    : null
+  const downloadOrigins = nzb
+    ? normalizeDownloadOrigins(input.downloadOrigins ?? [])
+    : null
+  const caps = nzb
+    ? await checkNewznab({ url, apiKey, lanAddresses })
+    : await fetchCaps(url, apiKey, input.sessionCookie ?? undefined)
 
   const row = getDb()
     .insert(indexers)
     .values({
       name: input.name,
       url,
+      protocol: input.protocol,
+      lanAddresses,
+      downloadOrigins,
+      ...(nzb && { supportsRss: false }),
       apiKey: apiKey ? encryptSecret(apiKey) : null,
       sessionCookie: input.sessionCookie
         ? encryptSecret(input.sessionCookie)
@@ -305,16 +346,34 @@ export interface IndexerPatch extends PrivatePolicyPatch {
   apiKey?: string
   sessionCookie?: string | null
   feed?: boolean
+  lanAddresses?: string[]
+  downloadOrigins?: NewznabOriginApproval[]
 }
 
 export function updateIndexer(id: string, patch: IndexerPatch) {
-  if (patch.sessionCookie != null && !isSessionCookie(patch.sessionCookie))
+  const current = getIndexer(id)
+  if (!current)
+    return undefined
+  const nzb = current.protocol === 'newznab'
+  if (
+    patch.sessionCookie != null
+    && (nzb || !isSessionCookie(patch.sessionCookie))
+  ) {
     throw new SourceError('auth', 'Invalid session cookie')
+  }
   const values: Partial<typeof indexers.$inferInsert> = Object.fromEntries(
     Object.entries(privatePolicyPatch(patch)).filter(
       ([, value]) => value !== undefined,
     ),
   )
+
+  if (nzb && patch.lanAddresses !== undefined) {
+    values.lanAddresses = [...new Set(patch.lanAddresses)].sort()
+    values.checkStatus = null
+    values.checkedAt = null
+  }
+  if (nzb && patch.downloadOrigins !== undefined)
+    values.downloadOrigins = normalizeDownloadOrigins(patch.downloadOrigins)
 
   if (patch.name !== undefined)
     values.name = patch.name
@@ -323,7 +382,7 @@ export function updateIndexer(id: string, patch: IndexerPatch) {
     values.enabled = patch.enabled
 
   // Включённая заново лента пробуется сразу, а не через неделю после неудач
-  if (patch.feed !== undefined) {
+  if (!nzb && patch.feed !== undefined) {
     values.supportsRss = patch.feed ? null : false
     values.rssFailures = 0
   }
@@ -367,13 +426,26 @@ export async function checkIndexer(id: string) {
   let retryAt: Date | undefined
 
   try {
+    if (indexer.protocol === 'newznab' && indexer.lanAddresses === null) {
+      throw new SourceError(
+        'unreachable',
+        'Source address must be verified again',
+      )
+    }
     const apiKey = indexer.apiKey ? readStoredKey(indexer.apiKey) : undefined
 
     const cookie = indexer.sessionCookie
       ? readStoredKey(indexer.sessionCookie)
       : undefined
     values = {
-      caps: await fetchCaps(indexer.url, apiKey, cookie),
+      caps:
+        indexer.protocol === 'newznab'
+          ? await checkNewznab({
+              url: indexer.url,
+              apiKey,
+              lanAddresses: indexer.lanAddresses,
+            })
+          : await fetchCaps(indexer.url, apiKey, cookie),
       checkStatus: 'ok',
     }
   }
@@ -393,6 +465,10 @@ export async function checkIndexer(id: string) {
       and(
         eq(indexers.id, id),
         eq(indexers.url, indexer.url),
+        eq(indexers.protocol, indexer.protocol),
+        indexer.lanAddresses === null
+          ? isNull(indexers.lanAddresses)
+          : eq(indexers.lanAddresses, indexer.lanAddresses),
         indexer.apiKey === null
           ? isNull(indexers.apiKey)
           : eq(indexers.apiKey, indexer.apiKey),
@@ -483,6 +559,8 @@ function applyRemoteIndexers(
   apiKey: string,
   remote: RemoteIndexer[],
   browserUrl?: string | null,
+  importNewznab = manager.importNewznab,
+  newznabLanAddresses = manager.newznabLanAddresses,
 ) {
   const db = getDb()
   const encryptedKey = encryptSecret(apiKey)
@@ -505,9 +583,18 @@ function applyRemoteIndexers(
       seen.add(item.externalId)
 
       const known = existing.get(item.externalId)
+      const protocol = item.protocol ?? 'torznab'
+      if (known && known.protocol !== protocol) {
+        tx.update(indexers)
+          .set({ missing: true, enabled: false })
+          .where(eq(indexers.id, known.id))
+          .run()
+        continue
+      }
+      const nzb = protocol === 'newznab'
       const caps = item.caps ? { caps: item.caps } : {}
       const feed = {
-        supportsRss: item.supportsRss ?? null,
+        supportsRss: nzb ? false : (item.supportsRss ?? null),
         priority: item.priority ?? null,
       }
 
@@ -517,6 +604,8 @@ function applyRemoteIndexers(
           .values({
             name: item.name,
             url: item.url,
+            protocol,
+            lanAddresses: nzb ? newznabLanAddresses : null,
             apiKey: encryptedKey,
             enabled: item.enabled,
             managerId: manager.id,
@@ -546,6 +635,15 @@ function applyRemoteIndexers(
         .set({
           name: item.name,
           url: item.url,
+          ...(nzb && { lanAddresses: newznabLanAddresses }),
+          ...(nzb
+            && known.url !== item.url && {
+            downloadOrigins: null,
+            caps: null,
+            checkStatus: null,
+            checkedAt: null,
+            enabled: false,
+          }),
           apiKey: encryptedKey,
           missing: false,
           ...(item.knownPrivacy && { knownPrivacy: item.knownPrivacy }),
@@ -585,6 +683,8 @@ function applyRemoteIndexers(
       .set({
         apiKey: encryptedKey,
         syncedAt: new Date(),
+        importNewznab,
+        newznabLanAddresses,
         ...(browserUrl !== undefined && { browserUrl }),
       })
       .where(eq(indexerManagers.id, manager.id))
@@ -607,6 +707,8 @@ export interface NewManager {
   url: string
   apiKey: string
   browserUrl?: string | null
+  importNewznab?: boolean
+  lanAddresses?: string[]
 }
 
 /**
@@ -616,28 +718,60 @@ export interface NewManager {
  */
 export async function importManager(input: NewManager): Promise<SyncResult> {
   const url = normalizeManagerUrl(input.url, input.kind)
-  const remote = await listManagerIndexers(input.kind, url, input.apiKey)
   const db = getDb()
 
+  const existing = db
+    .select()
+    .from(indexerManagers)
+    .where(
+      and(eq(indexerManagers.kind, input.kind), eq(indexerManagers.url, url)),
+    )
+    .get()
+  const importNewznab
+    = input.kind === 'prowlarr'
+      && (input.importNewznab ?? existing?.importNewznab ?? false)
+  const addresses = importNewznab
+    ? [
+        ...new Set(input.lanAddresses ?? existing?.newznabLanAddresses ?? []),
+      ].sort()
+    : null
+  if (importNewznab) {
+    try {
+      if (trustedUrl(input.url).search) {
+        throw new SourceError(
+          'bad_response',
+          'Manager address must not contain a query',
+        )
+      }
+    }
+    catch (error) {
+      if (error instanceof TrustedHttpError)
+        throw new SourceError('bad_response', 'Invalid manager address')
+      throw error
+    }
+  }
+  const remote = await listManagerIndexers(
+    input.kind,
+    url,
+    input.apiKey,
+    addresses ?? undefined,
+  )
   const manager
-    = db
-      .select()
-      .from(indexerManagers)
-      .where(
-        and(eq(indexerManagers.kind, input.kind), eq(indexerManagers.url, url)),
-      )
-      .get()
+    = existing
       ?? db
         .insert(indexerManagers)
-        .values({
-          kind: input.kind,
-          url,
-          apiKey: encryptSecret(input.apiKey),
-        })
+        .values({ kind: input.kind, url, apiKey: encryptSecret(input.apiKey) })
         .returning()
         .get()
 
-  return applyRemoteIndexers(manager, input.apiKey, remote, input.browserUrl)
+  return applyRemoteIndexers(
+    manager,
+    input.apiKey,
+    remote,
+    input.browserUrl,
+    importNewznab,
+    addresses,
+  )
 }
 
 export async function syncManager(id: string): Promise<SyncResult | undefined> {
@@ -650,8 +784,19 @@ export async function syncManager(id: string): Promise<SyncResult | undefined> {
   if (!manager)
     return undefined
 
+  if (manager.importNewznab && manager.newznabLanAddresses === null) {
+    throw new SourceError(
+      'unreachable',
+      'Manager address must be verified again',
+    )
+  }
   const apiKey = readStoredKey(manager.apiKey)
-  const remote = await listManagerIndexers(manager.kind, manager.url, apiKey)
+  const remote = await listManagerIndexers(
+    manager.kind,
+    manager.url,
+    apiKey,
+    manager.importNewznab ? (manager.newznabLanAddresses ?? []) : undefined,
+  )
 
   return applyRemoteIndexers(manager, apiKey, remote)
 }

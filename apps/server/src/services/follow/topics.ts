@@ -166,6 +166,17 @@ export function titleTopics(titleId: string) {
     .all()
 }
 
+export function topicRefreshEpisodes(titleId: string) {
+  return new Set(
+    titleTopics(titleId).flatMap(
+      topic =>
+        topic.refresh?.episodes.map(
+          item => `${item.season}:${item.episode}`,
+        ) ?? [],
+    ),
+  )
+}
+
 function topicById(id: string) {
   return getDb()
     .select()
@@ -348,42 +359,58 @@ export function refreshTargets() {
  * кандидата «качаются»: захват есть, файла ещё нет. Magnet без метаданных —
  * подмена продолжится, когда раздача будет готова.
  */
-export async function startRefresh(
+export function reserveTopicRefresh(
   follow: Follow,
   topic: TrackedTopic,
   next: Torrent,
   candidate: FollowPendingCandidate,
   episodes: EpisodeRef[],
   now: Date,
-): Promise<GrabResult> {
+): GrabResult | undefined {
   if (hasSuppressed(follow.titleId, episodes))
     return 'blocked'
   // Тема уже подменяется другой версией: эта подождёт её конца
   if (topic.refresh && topic.refresh.torrentId !== next.id)
     return retryLater(follow, candidate, episodes, now)
 
-  setRefresh(topic.id, {
-    followId: follow.id,
-    torrentId: next.id,
-    title: candidate.title,
-    episodes,
-    candidate,
-    stage: 'prepare',
-    rulesFingerprint: voiceFingerprint(
-      follow,
-      episodes.map(item => item.season),
-    ),
+  durableSqlite(getDb().$client, () => {
+    setRefresh(topic.id, {
+      followId: follow.id,
+      torrentId: next.id,
+      title: candidate.title,
+      episodes,
+      candidate,
+      stage: 'prepare',
+      rulesFingerprint: voiceFingerprint(
+        follow,
+        episodes.map(item => item.season),
+      ),
+    })
+    updateEpisodes(follow, episodes, {
+      torrentId: next.id,
+      fileIndex: null,
+      grabbedAt: now,
+      pending: candidate,
+      waitUntil: null,
+      stateNote: null,
+    })
   })
-  updateEpisodes(follow, episodes, {
-    torrentId: next.id,
-    fileIndex: null,
-    grabbedAt: now,
-    pending: candidate,
-    waitUntil: null,
-    stateNote: null,
-  })
+}
 
-  return (await refreshSafely(topic.id, now)) ?? 'started'
+export async function finishTopicRefresh(
+  topicId: string,
+  now: Date,
+): Promise<GrabResult> {
+  return (await refreshSafely(topicId, now)) ?? 'started'
+}
+
+export async function startRefresh(
+  ...args: Parameters<typeof reserveTopicRefresh>
+): Promise<GrabResult> {
+  return (
+    reserveTopicRefresh(...args)
+    ?? (await finishTopicRefresh(args[1].id, args[5]))
+  )
 }
 
 interface RefreshContext {

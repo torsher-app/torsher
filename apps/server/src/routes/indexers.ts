@@ -81,6 +81,7 @@ export const indexerRoutes: FastifyPluginAsyncZod = async (app) => {
           200: indexer,
           400: messageResponse,
           404: messageResponse,
+          422: sourceErrorResponse,
           ...guardResponses,
         },
       },
@@ -95,12 +96,15 @@ export const indexerRoutes: FastifyPluginAsyncZod = async (app) => {
       if (request.body.feed !== undefined && current.managerKind === 'prowlarr')
         return reply.code(400).send({ message: 'feed_managed' })
 
-      const updated = patchIndexer(request.params.id, request.body)
-
-      if (!updated)
-        return reply.code(404).send({ message: 'Indexer not found' })
-
-      return toIndexerResponse(updated)
+      try {
+        const updated = patchIndexer(request.params.id, request.body)
+        if (!updated)
+          return reply.code(404).send({ message: 'Indexer not found' })
+        return toIndexerResponse(updated)
+      }
+      catch (err) {
+        return sendSourceError(reply, err)
+      }
     },
   )
 

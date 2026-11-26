@@ -22,6 +22,7 @@ import IndexerRow from './IndexerRow.vue'
 import ManagerActions from './ManagerActions.vue'
 import SourcesEmpty from './SourcesEmpty.vue'
 import SourcesFilters from './SourcesFilters.vue'
+import UsenetConfigSection from './UsenetConfigSection.vue'
 import SourcesSkeleton from './SourcesSkeleton.vue'
 
 const { t, locale } = useI18n()
@@ -113,6 +114,7 @@ onBeforeUnmount(stopPolling)
 
     <div class="min-h-0 flex-1 overflow-y-auto" data-sources-list>
       <HttpAddonSection @configured="addonsConfigured = $event" />
+      <UsenetConfigSection />
 
       <section
         v-if="state === 'error'"

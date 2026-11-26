@@ -15,6 +15,11 @@ export function toIndexerResponse(indexer: IndexerWithManager) {
     id: indexer.id,
     name: indexer.name,
     url: indexer.url,
+    ...(indexer.protocol === 'newznab' && {
+      protocol: indexer.protocol,
+      lanAddresses: indexer.lanAddresses ?? [],
+      downloadOrigins: indexer.downloadOrigins ?? [],
+    }),
     hasApiKey: indexer.apiKey !== null,
     hasCookie: indexer.sessionCookie !== null,
     enabled: indexer.enabled,
@@ -57,6 +62,7 @@ export function toManagerResponse(manager: ManagerWithCounts) {
     syncedAt: manager.syncedAt?.toISOString() ?? null,
     indexerCount: manager.indexerCount,
     missingCount: manager.missingCount,
+    ...(manager.importNewznab && { importNewznab: true }),
   }
 }
 

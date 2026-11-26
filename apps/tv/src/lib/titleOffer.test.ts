@@ -76,3 +76,13 @@ it('offers manual sources without enabling download or follow on an add-on-only 
     follow: false,
   })
 })
+
+it('exposes Follow on an opted-in Usenet-only server without playback or torrent download', () => {
+  expect(titleOffer({ ...catalog, hasUsenetFollow: true })).toEqual({
+    watch: false,
+    download: false,
+    follow: true,
+    sources: false,
+    otherRelease: false,
+  })
+})

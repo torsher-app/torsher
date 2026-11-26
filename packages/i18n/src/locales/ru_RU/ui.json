@@ -4419,6 +4419,28 @@
     "watched": "Смотрели",
     "empty": "У персоны в TMDB нет фильмов и сериалов"
   },
+  "usenet": {
+    "title": "Usenet",
+    "newznab": "Newznab",
+    "sabnzbd": "SABnzbd",
+    "protocol": "Протокол",
+    "url": "Адрес SABnzbd",
+    "category": "Категория SABnzbd",
+    "remoteRoot": "Папка завершённых загрузок в SABnzbd",
+    "localRoot": "Эта же папка в Torsher",
+    "downloadOrigins": "Разрешённые адреса скачивания",
+    "confirmAddress": "Подтвердить сетевой адрес",
+    "importNewznab": "Импортировать Newznab-индексаторы",
+    "follow": "Использовать Usenet в „Следить“",
+    "downloads": "Загрузки Usenet",
+    "postProcessing": "Постобработка",
+    "importing": "Импорт в библиотеку",
+    "checkFailed": "Не удалось проверить подключение",
+    "pathUnreadable": "Папка недоступна для чтения",
+    "reconcile": "Сверить задачу",
+    "release": "Освободить цель для новой попытки",
+    "releaseDescription": "Освободите цель только после проверки, что задачи нет в очереди и истории SABnzbd"
+  },
   "download": {
     "movie": "Скачать фильм",
     "season": "Скачать сезон {n}",

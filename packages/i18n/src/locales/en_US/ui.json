@@ -4419,6 +4419,28 @@
     "watched": "Watched",
     "empty": "TMDB has no movies or series for this person"
   },
+  "usenet": {
+    "title": "Usenet",
+    "newznab": "Newznab",
+    "sabnzbd": "SABnzbd",
+    "protocol": "Protocol",
+    "url": "SABnzbd URL",
+    "category": "SABnzbd category",
+    "remoteRoot": "Completed downloads folder in SABnzbd",
+    "localRoot": "Same folder in Torsher",
+    "downloadOrigins": "Allowed download origins",
+    "confirmAddress": "Confirm network address",
+    "importNewznab": "Import Newznab indexers",
+    "follow": "Use Usenet in Follow",
+    "downloads": "Usenet downloads",
+    "postProcessing": "Post-processing",
+    "importing": "Importing to the library",
+    "checkFailed": "Could not verify the connection",
+    "pathUnreadable": "The folder is not readable",
+    "reconcile": "Reconcile job",
+    "release": "Allow another attempt",
+    "releaseDescription": "Allow another attempt only after checking that the job is absent from the SABnzbd queue and history"
+  },
   "download": {
     "movie": "Download movie",
     "season": "Download season {n}",

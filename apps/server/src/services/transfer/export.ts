@@ -386,6 +386,7 @@ function exportSettings(secret: SecretWriter): ExportSettings {
     indexers: db
       .select()
       .from(indexers)
+      .where(eq(indexers.protocol, 'torznab'))
       .orderBy(asc(indexers.createdAt))
       .all()
       .map(row => ({
