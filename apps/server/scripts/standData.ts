@@ -54,12 +54,12 @@ export interface StandData {
   libraryPath: string
 }
 
-/** Согласованный снимок базы с содержимым WAL, даже пока в неё пишет dev */
+/** Согласованный снимок с содержимым WAL, без свободных страниц источника */
 export async function snapshotDb(source: string, target: string) {
   const db = new Database(source, { readonly: true, fileMustExist: true })
 
   try {
-    await db.backup(target)
+    db.prepare('VACUUM INTO ?').run(target)
   }
   finally {
     db.close()
@@ -328,6 +328,13 @@ export function sanitizeDb(
             `INSERT INTO server_settings (key, value, updated_at) VALUES ('backups', ?, ?)`,
           ).run(JSON.stringify({ enabled: false }), Date.now())
         }
+      }
+
+      if (hasTable(db, 'http_addons')) {
+        // Копия получает и ключ расшифровки. Очищаем записи аддонов
+        // вместе с их содержимым на освобождённых страницах SQLite.
+        db.pragma('secure_delete = ON')
+        db.prepare('DELETE FROM http_addons').run()
       }
     })()
   }
