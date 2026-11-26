@@ -22,6 +22,7 @@ import ActionButton from '../components/ActionButton.vue'
 import AppIcon from '../components/AppIcon.vue'
 import ButtonRow from '../components/ButtonRow.vue'
 import DownloadPanel from '../components/DownloadPanel.vue'
+import UsenetDownloadPanel from '../components/UsenetDownloadPanel.vue'
 import ContentRow from '../components/ContentRow.vue'
 import EpisodeCard from '../components/EpisodeCard.vue'
 import EpisodeList from '../components/EpisodeList.vue'
@@ -348,10 +349,59 @@ const episodeActions = useEpisodeActions(
   () => progressStatus.value !== 'loading',
 )
 const episodeContext = episodeActions.context
-const episodeOptions = episodeActions.options
+const usenetTarget = ref<{ season?: number, episode?: number }>()
+const usenetButton = ref<ComponentPublicInstance>()
+const episodeOptions = computed<PanelOption[]>(() => [
+  ...episodeActions.options.value,
+  ...(title.value?.hasUsenetSources
+    ? [
+        {
+          id: 'usenet',
+          label: t('usenet.title'),
+          hint: t('follow.policy.download'),
+          selected: false,
+        },
+      ]
+    : []),
+])
 const episodeActionFocus = episodeActions.focusOption
 const episodeError = episodeActions.error
 const episodeVersions = episodeActions.picker.selection
+
+function selectEpisodeAction(action: string) {
+  const context = episodeContext.value
+  if (action === 'usenet' && context) {
+    episodeActionFocus.value = 'usenet'
+    usenetTarget.value = {
+      season: context.season,
+      episode: context.episode.number,
+    }
+    return
+  }
+  if (action !== 'usenet')
+    void episodeActions.select(action)
+}
+
+function closeUsenet() {
+  const movie = usenetTarget.value?.episode === undefined
+  usenetTarget.value = undefined
+  if (movie) {
+    nextTick(() => {
+      const button = usenetButton.value?.$el as HTMLElement | undefined
+      if (button?.isConnected)
+        focus.focusOn(button)
+    })
+  }
+}
+
+function onUsenetImported() {
+  void refreshLibrary()
+  refreshSeasonStates()
+}
+
+watch([id, () => titleActions.viewer], () => {
+  usenetTarget.value = undefined
+})
 
 function progressKey(season: number | undefined, episode: number) {
   return `${season ?? 0}:${episode}`
@@ -1048,6 +1098,11 @@ const { active } = useStackedScreen(screen, {
   },
 })
 
+watch(active, (value) => {
+  if (!value)
+    usenetTarget.value = undefined
+})
+
 const syncProgress = useTitleChanges(
   () => titleProgressVersion(props.id),
   () => progressStatus.value !== 'loading' && followLoad.value !== 'loading',
@@ -1272,6 +1327,7 @@ const offer = computed(() =>
   titleOffer({
     hasSources: title.value?.hasSources,
     hasAddonStreams: title.value?.hasAddonStreams,
+    hasUsenetFollow: title.value?.hasUsenetFollow,
     inLibrary: libraryFiles.value.length > 0,
     resume: !!resume.value,
     followed: followed.value,
@@ -1428,7 +1484,10 @@ const {
   active,
   // Колесо над открытым списком серий не листает карточку под ним
   wheelHeld: () =>
-    showEpisodeList.value || !!librarySelection.value || !!episodeContext.value,
+    showEpisodeList.value
+    || !!librarySelection.value
+    || !!episodeContext.value
+    || !!usenetTarget.value,
 })
 
 // Лента чипов: у долгих сериалов десятки сезонов, фокусный чип держим в окне
@@ -1690,6 +1749,16 @@ onBeforeUnmount(() => {
               :value="downloadHint || undefined"
               class="title__secondary title__download"
               @click="onDownload"
+            />
+            <ActionButton
+              v-if="title.hasUsenetSources && !isSeries"
+              ref="usenetButton"
+              v-focusable
+              icon="download"
+              :label="t('usenet.title')"
+              :value="t('download.movie')"
+              class="title__secondary title__download"
+              @click="usenetTarget = {}"
             />
             <ActionButton
               v-if="showFollow && offer.follow"
@@ -2097,6 +2166,15 @@ onBeforeUnmount(() => {
     <AppToast :message="followToast" @hide="followToast = ''" />
     <!-- Поверх стека карточки: у него transform, fixed внутри встал бы по нему -->
     <Teleport to="body">
+      <UsenetDownloadPanel
+        v-if="usenetTarget && title && active"
+        :title-id="id"
+        :title="title.title"
+        :season="usenetTarget.season"
+        :episode="usenetTarget.episode"
+        @close="closeUsenet"
+        @imported="onUsenetImported"
+      />
       <DownloadPanel
         v-if="downloadPanel && title && activeDownload"
         :title="title.title"
@@ -2172,20 +2250,20 @@ onBeforeUnmount(() => {
         :progress-of="(item) => progressOfEpisode(item)?.share ?? 0"
         :watched-of="(item) => !!progressOfEpisode(item)?.watched"
         :hint-of="listHint"
-        :blocked="!!episodeContext || !active"
+        :blocked="!!episodeContext || !!usenetTarget || !active"
         @select="episodeActions.open"
         @hold="episodeActions.hold"
         @season="(number) => selectSeason(number, true)"
         @close="closeEpisodeList"
       />
       <OptionsPanel
-        v-if="episodeContext && !episodeVersions && active"
+        v-if="episodeContext && !episodeVersions && !usenetTarget && active"
         :title="`S${episodeContext.season}E${episodeContext.episode.number} · ${episodeContext.episode.title}`"
         :subtitle="episodeError"
         :options="episodeOptions"
         :focus-selected="false"
         :focus-option="episodeActionFocus"
-        @select="episodeActions.select"
+        @select="selectEpisodeAction"
         @close="episodeActions.close"
       />
       <LibraryVersionPicker

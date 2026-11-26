@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { UsenetNetworkApproval } from './UsenetAddressApproval.vue'
 import type { Indexer } from '@torsher/api-client'
 import type { SourceErrorKind } from '~/composables/useSources'
 import { CircleAlertIcon } from '@lucide/vue'
@@ -38,6 +39,9 @@ import {
   isSessionCookie,
 } from '~/lib/sourceForms'
 
+import UsenetAddressApproval from './UsenetAddressApproval.vue'
+import UsenetOriginsField from './UsenetOriginsField.vue'
+
 const props = defineProps<{
   /** Индексатор для правки; без него диалог добавляет новый */
   indexer?: Indexer | null
@@ -48,6 +52,10 @@ const open = defineModel<boolean>('open', { required: true })
 const { t } = useI18n()
 const { createIndexer, updateIndexer } = useSources()
 
+const usenetSupported = useState<boolean>('usenet-supported', () => false)
+const isNewznab = ref(false)
+const lanAddresses = ref<string[]>()
+const downloadOrigins = ref<UsenetNetworkApproval[]>([])
 const serverError = ref<SourceErrorKind | null>(null)
 const isEdit = computed(() => !!props.indexer)
 const managed = computed(() => !!props.indexer?.managerId)
@@ -140,12 +148,23 @@ const [minSeedRatio] = defineField('minSeedRatio')
 const [minSeedTimeMinutes] = defineField('minSeedTimeMinutes')
 const [seedCriteriaMode] = defineField('seedCriteriaMode')
 
+function approveAddress(item: UsenetNetworkApproval) {
+  lanAddresses.value = item.lanAddresses
+}
+
+watch(url, () => {
+  lanAddresses.value = undefined
+})
+
 const errorField = computed(() =>
   serverError.value ? fieldOfSourceError(serverError.value) : null,
 )
 
 watch(open, (isOpen) => {
   if (isOpen) {
+    isNewznab.value = props.indexer?.protocol === 'newznab'
+    lanAddresses.value = undefined
+    downloadOrigins.value = [...(props.indexer?.downloadOrigins ?? [])]
     resetForm({
       values: {
         name: props.indexer?.name ?? '',
@@ -167,13 +186,23 @@ watch(open, (isOpen) => {
 const onSubmit = handleSubmit(async (values) => {
   serverError.value = null
   const policy = {
-    isPrivate: values.isPrivate,
     allowAutomation: values.allowAutomation,
-    minSeedRatio: values.minSeedRatio,
-    minSeedTimeMinutes: values.minSeedTimeMinutes,
-    seedCriteriaMode:
-      values.seedCriteriaMode === 'automatic' ? null : values.seedCriteriaMode,
-  }
+    ...(!isNewznab.value && {
+      isPrivate: values.isPrivate,
+      minSeedRatio: values.minSeedRatio,
+      minSeedTimeMinutes: values.minSeedTimeMinutes,
+      seedCriteriaMode:
+        values.seedCriteriaMode === 'automatic'
+          ? null
+          : values.seedCriteriaMode,
+    }),
+  } as const
+  const approvals = isNewznab.value
+    ? {
+        lanAddresses: lanAddresses.value,
+        downloadOrigins: downloadOrigins.value,
+      }
+    : {}
 
   try {
     if (props.indexer) {
@@ -184,8 +213,14 @@ const onSubmit = handleSubmit(async (values) => {
         ),
       )
       const checked = await updateIndexer(current.id, {
-        ...indexerUpdateBody(values, managed.value),
+        ...indexerUpdateBody(
+          isNewznab.value
+            ? { ...values, sessionCookie: undefined, removeCookie: false }
+            : values,
+          managed.value,
+        ),
         ...changes,
+        ...approvals,
       })
 
       // Новый ключ не прошёл проверку: диалог остаётся открытым с причиной
@@ -203,7 +238,9 @@ const onSubmit = handleSubmit(async (values) => {
       name: values.name,
       url: values.url,
       apiKey: values.apiKey,
-      sessionCookie: values.sessionCookie,
+      ...(isNewznab.value
+        ? { protocol: 'newznab' as const, ...approvals }
+        : { sessionCookie: values.sessionCookie }),
       ...policy,
     })
 
@@ -224,7 +261,11 @@ const onSubmit = handleSubmit(async (values) => {
           {{
             isEdit
               ? t("panel.sources.editDialog.title", { name: indexer?.name })
-              : t("panel.sources.addDialog.title")
+              : t(
+                isNewznab
+                  ? "usenet.newznab"
+                  : "panel.sources.addDialog.title",
+              )
           }}
         </DialogTitle>
         <DialogDescription>
@@ -265,9 +306,27 @@ const onSubmit = handleSubmit(async (values) => {
           </p>
         </div>
 
+        <fieldset v-if="usenetSupported || isNewznab" class="grid gap-2">
+          <legend class="text-sm">
+            {{ t("usenet.protocol") }}
+          </legend>
+          <div class="flex items-center justify-between gap-3">
+            <Label for="indexer-protocol">{{ t("usenet.newznab") }}</Label>
+            <Switch
+              id="indexer-protocol"
+              v-model="isNewznab"
+              :disabled="isEdit || isSubmitting"
+            />
+          </div>
+        </fieldset>
+
         <div class="grid gap-2">
           <Label for="indexer-url">{{
-            t("panel.sources.addDialog.url")
+            t(
+              isNewznab
+                ? "panel.sources.importDialog.url"
+                : "panel.sources.addDialog.url",
+            )
           }}</Label>
           <Input
             id="indexer-url"
@@ -283,6 +342,18 @@ const onSubmit = handleSubmit(async (values) => {
           />
           <p v-if="errors.url" class="text-[12.5px] text-destructive">
             {{ errors.url }}
+          </p>
+          <UsenetAddressApproval
+            v-if="isNewznab"
+            :url="url"
+            :disabled="isSubmitting"
+            @approve="approveAddress"
+          />
+          <p
+            v-if="isNewznab && lanAddresses?.length"
+            class="font-mono text-xs break-all"
+          >
+            {{ lanAddresses.join(" · ") }}
           </p>
         </div>
 
@@ -341,7 +412,12 @@ const onSubmit = handleSubmit(async (values) => {
             }}
           </p>
         </div>
-        <div class="grid gap-2">
+        <UsenetOriginsField
+          v-if="isNewznab"
+          v-model="downloadOrigins"
+          :disabled="isSubmitting"
+        />
+        <div v-if="!isNewznab" class="grid gap-2">
           <Label for="indexer-session-cookie">{{
             t("panel.sources.cookie.label")
           }}</Label>
@@ -409,7 +485,10 @@ const onSubmit = handleSubmit(async (values) => {
           </p>
         </div>
         <div class="grid gap-4 border-t pt-4">
-          <div class="flex items-center justify-between gap-3">
+          <div
+            v-if="!isNewznab"
+            class="flex items-center justify-between gap-3"
+          >
             <Label for="indexer-private">{{
               t("panel.sources.privatePolicy.private")
             }}</Label>
@@ -421,7 +500,7 @@ const onSubmit = handleSubmit(async (values) => {
             }}</Label>
             <Switch id="indexer-automation" v-model="allowAutomation" />
           </div>
-          <template v-if="isPrivate">
+          <template v-if="isPrivate && !isNewznab">
             <div class="grid gap-3 sm:grid-cols-2">
               <div class="grid gap-2">
                 <Label for="indexer-seed-ratio">{{

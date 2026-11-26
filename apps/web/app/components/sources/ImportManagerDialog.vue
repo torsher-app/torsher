@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { UsenetNetworkApproval } from './UsenetAddressApproval.vue'
 import type { IndexerManager } from '@torsher/api-client'
 import type { SourceErrorKind } from '~/composables/useSources'
 import { CircleAlertIcon, ExternalLinkIcon } from '@lucide/vue'
@@ -19,6 +20,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import LoadingButton from '~/components/LoadingButton.vue'
 import SecretInput from '~/components/SecretInput.vue'
@@ -29,11 +31,12 @@ import {
   httpUrlSchema,
   managerBrowserUrlSchema,
 } from '~/lib/sourceForms'
+import UsenetAddressApproval from './UsenetAddressApproval.vue'
 import ManagerBrowserUrlField from './ManagerBrowserUrlField.vue'
 
 const props = defineProps<{
   /** Новый ключ подключённого менеджера: тип и адрес уже известны */
-  manager?: Pick<IndexerManager, 'kind' | 'url'>
+  manager?: Pick<IndexerManager, 'kind' | 'url' | 'importNewznab'>
 }>()
 
 const open = defineModel<boolean>('open', { required: true })
@@ -48,6 +51,9 @@ const ADDRESS_DOCS_URL = 'https://torsher.app/docs/setup/indexers?ref=panel'
 const { t } = useI18n()
 const { importManager } = useSources()
 
+const usenetSupported = useState<boolean>('usenet-supported', () => false)
+const importNewznab = ref(false)
+const lanAddresses = ref<string[]>()
 const serverError = ref<SourceErrorKind | null>(null)
 
 const schema = toTypedSchema(
@@ -79,6 +85,13 @@ const [kind, kindProps] = defineField('kind')
 const [url, urlProps] = defineField('url')
 const [apiKey, apiKeyProps] = defineField('apiKey')
 
+function approveAddress(item: UsenetNetworkApproval) {
+  lanAddresses.value = item.lanAddresses
+}
+watch(url, () => {
+  lanAddresses.value = undefined
+})
+
 const port = computed(
   () => KINDS.find(item => item.kind === kind.value)?.port ?? 9696,
 )
@@ -95,6 +108,8 @@ const errorField = computed(() =>
 
 watch(open, (isOpen) => {
   if (isOpen) {
+    importNewznab.value = props.manager?.importNewznab ?? false
+    lanAddresses.value = undefined
     resetForm(
       props.manager && {
         values: {
@@ -113,7 +128,14 @@ const onSubmit = handleSubmit(async (values) => {
   serverError.value = null
 
   try {
-    const result = await importManager(values)
+    const result = await importManager({
+      ...values,
+      ...(usenetSupported.value
+        && values.kind === 'prowlarr' && {
+        importNewznab: importNewznab.value,
+        lanAddresses: importNewznab.value ? lanAddresses.value : undefined,
+      }),
+    })
     const manager = t(`panel.kinds.${values.kind}`)
 
     open.value = false
@@ -279,6 +301,28 @@ const onSubmit = handleSubmit(async (values) => {
         </div>
 
         <ManagerBrowserUrlField v-if="!manager" />
+        <template v-if="usenetSupported && kind === 'prowlarr'">
+          <div class="flex items-center justify-between gap-3">
+            <Label for="manager-newznab">{{ t("usenet.importNewznab") }}</Label>
+            <Switch
+              id="manager-newznab"
+              v-model="importNewznab"
+              :disabled="isSubmitting"
+            />
+          </div>
+          <UsenetAddressApproval
+            v-if="importNewznab"
+            :url="url"
+            :disabled="isSubmitting"
+            @approve="approveAddress"
+          />
+          <p
+            v-if="importNewznab && lanAddresses?.length"
+            class="font-mono text-xs break-all"
+          >
+            {{ lanAddresses.join(" · ") }}
+          </p>
+        </template>
 
         <div class="grid gap-2">
           <Label for="manager-api-key">{{

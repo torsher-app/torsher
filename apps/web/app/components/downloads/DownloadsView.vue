@@ -22,6 +22,7 @@ import DownloadCard from './DownloadCard.vue'
 import DownloadRow from './DownloadRow.vue'
 import DownloadsFilters from './DownloadsFilters.vue'
 import RestartEngineDialog from './RestartEngineDialog.vue'
+import UsenetDownloads from './UsenetDownloads.vue'
 
 const { t } = useI18n()
 const { torrents, engine, state, isEmpty, load, stopPolling } = useTorrents()
@@ -148,6 +149,7 @@ onBeforeUnmount(stopPolling)
   </div>
 
   <div v-else-if="state === 'error'" class="min-h-0 flex-1 overflow-y-auto">
+    <UsenetDownloads />
     <section
       class="mx-auto grid max-w-130 justify-items-center gap-3.5 px-4 pt-[12vh] pb-8 text-center"
       role="alert"
@@ -184,35 +186,38 @@ onBeforeUnmount(stopPolling)
       </AlertDescription>
     </Alert>
 
-    <section
-      v-if="isEmpty"
-      class="mx-auto grid max-w-140 justify-items-center gap-3.5 px-4 pt-[12vh] pb-8 text-center"
-    >
-      <div
-        class="grid size-11 place-items-center rounded-xl border bg-muted"
-        aria-hidden="true"
+    <div v-if="isEmpty" class="min-h-0 flex-1 overflow-y-auto">
+      <UsenetDownloads />
+      <section
+        class="mx-auto grid max-w-140 justify-items-center gap-3.5 px-4 pt-[12vh] pb-8 text-center"
       >
-        <MagnetIcon class="size-5" />
-      </div>
-      <h2 class="text-base font-semibold">
-        {{ t("panel.torrents.empty.title") }}
-      </h2>
-      <p class="max-w-[52ch] text-pretty text-muted-foreground">
-        {{ t("panel.torrents.empty.text") }}
-      </p>
-      <Button class="mt-1" @click="isAddOpen = true">
-        <PlusIcon aria-hidden="true" />
-        {{ t("panel.torrents.add") }}
-      </Button>
-      <p class="mt-1.5 max-w-[56ch] text-[12.5px] text-muted-foreground">
-        {{ t("panel.torrents.empty.foot") }}
-      </p>
-    </section>
+        <div
+          class="grid size-11 place-items-center rounded-xl border bg-muted"
+          aria-hidden="true"
+        >
+          <MagnetIcon class="size-5" />
+        </div>
+        <h2 class="text-base font-semibold">
+          {{ t("panel.torrents.empty.title") }}
+        </h2>
+        <p class="max-w-[52ch] text-pretty text-muted-foreground">
+          {{ t("panel.torrents.empty.text") }}
+        </p>
+        <Button class="mt-1" @click="isAddOpen = true">
+          <PlusIcon aria-hidden="true" />
+          {{ t("panel.torrents.add") }}
+        </Button>
+        <p class="mt-1.5 max-w-[56ch] text-[12.5px] text-muted-foreground">
+          {{ t("panel.torrents.empty.foot") }}
+        </p>
+      </section>
+    </div>
 
     <template v-else>
       <DownloadsFilters />
 
       <div class="min-h-0 flex-1 overflow-y-auto" data-downloads-list>
+        <UsenetDownloads />
         <section
           v-for="group in groups"
           :key="group.key"

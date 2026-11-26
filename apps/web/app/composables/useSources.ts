@@ -257,7 +257,9 @@ export function useSources() {
   async function updateIndexer(id: string, body: UpdateIndexerInput) {
     replaceIndexer(await api.indexers.patchIndexer(id, body))
 
-    return body.apiKey || body.sessionCookie !== undefined
+    return body.apiKey
+      || body.sessionCookie !== undefined
+      || body.lanAddresses !== undefined
       ? testIndexer(id)
       : undefined
   }
