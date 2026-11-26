@@ -1,3 +1,5 @@
+import { hasAddonCatalogs } from '../services/addons/catalog.ts'
+import { hasAddonStreams } from '../services/addons/streams.ts'
 import { diagnosticContext } from '../services/diagnostics/index.ts'
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import { messageResponse } from '../dto/common.ts'
@@ -98,6 +100,8 @@ export const homeRoutes: FastifyPluginAsyncZod = async (app) => {
       if (!current())
         return reply.code(409).send({ kind: 'profileChanged' })
       const hasSources = hasSearchableIndexers()
+      const addonStreams = hasAddonStreams()
+      const addonCatalogs = mode !== 'library' && hasAddonCatalogs()
 
       if (catalog.status === 'fulfilled') {
         const allowed = await allowedTitleIds(
@@ -120,6 +124,8 @@ export const homeRoutes: FastifyPluginAsyncZod = async (app) => {
               .filter(row => row.items.length),
           ],
           hasSources,
+          ...(addonStreams && { hasAddonStreams: true }),
+          ...(addonCatalogs && { hasAddonCatalogs: true }),
         }
       }
 
@@ -132,6 +138,8 @@ export const homeRoutes: FastifyPluginAsyncZod = async (app) => {
         return {
           rows: own,
           hasSources,
+          ...(addonStreams && { hasAddonStreams: true }),
+          ...(addonCatalogs && { hasAddonCatalogs: true }),
           catalogError: config
             ? ('notConfigured' as const)
             : ('unavailable' as const),

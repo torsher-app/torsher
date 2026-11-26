@@ -798,3 +798,133 @@ it('requires the original generation on reconnect and ignores a rejected obsolet
   expect(mocks.remove).toHaveBeenCalledWith('superseded')
   scope.stop()
 })
+
+it('keeps an HTTP add-on session during reconfiguration and saves only its scoped checkpoint', async () => {
+  const requested = deferred<Playback>()
+  mocks.post
+    .mockResolvedValueOnce(ready('remote-first'))
+    .mockReturnValueOnce(requested.promise)
+  mocks.save.mockResolvedValue({})
+  const scope = effectScope()
+  const title = { id: 'tmdb:tv:42', season: 0, episode: 2 }
+  const player = scope.run(() =>
+    usePlayback({ addonLaunchId: 'opaque-launch' }, title, undefined, {}, 'A'),
+  )!
+  expect(await player.start()).toBe('ready')
+  expect(mocks.post.mock.calls[0]![0]).toMatchObject({
+    addonLaunchId: 'opaque-launch',
+    addonSubtitles: true,
+    profileId: 'A',
+    title,
+  })
+  expect(mocks.post.mock.calls[0]![0].viewing).toBeUndefined()
+  const selection = player.start({ audioStream: 3, startPosition: 11 })
+  expect(mocks.post.mock.calls[1]![0]).toMatchObject({
+    addonSessionId: 'remote-first',
+    addonSubtitles: true,
+    audioStream: 3,
+    startPosition: 11,
+  })
+  expect(mocks.post.mock.calls[1]![0]).not.toHaveProperty('addonLaunchId')
+  expect(mocks.remove).not.toHaveBeenCalled()
+  requested.resolve(ready('remote-new'))
+  expect(await selection).toBe('ready')
+  expect(mocks.remove).toHaveBeenCalledWith('remote-first')
+  player.pollStats(() => ({ intervalMs: 1000 }))
+  await vi.advanceTimersByTimeAsync(1000)
+  expect(mocks.stats).not.toHaveBeenCalled()
+  await player.saveWatchState(
+    12,
+    100,
+    'checkpoint',
+    {},
+    player.captureCheckpoint('pause'),
+  )
+  const checkpoint = mocks.save.mock.calls[0]![0]
+  expect(checkpoint).toMatchObject({
+    addonHttp: true,
+    sessionId: 'remote-new',
+    profileId: 'A',
+    title,
+    position: 12,
+  })
+  expect(checkpoint).not.toHaveProperty('addonLaunchId')
+  expect(checkpoint).not.toHaveProperty('torrentId')
+  expect(checkpoint).not.toHaveProperty('mediaFileId')
+  expect(checkpoint.viewing).toBeUndefined()
+  expect(JSON.stringify(mocks.diagnostic.mock.calls)).not.toContain(
+    'opaque-launch',
+  )
+  scope.stop()
+})
+
+it('coalesces the single-use HTTP launch while it is still pending', async () => {
+  const requested = deferred<Playback>()
+  mocks.post.mockReturnValue(requested.promise)
+  const scope = effectScope()
+  const player = scope.run(() =>
+    usePlayback(
+      { addonLaunchId: 'opaque-launch' },
+      { id: 'tmdb:movie:42' },
+      undefined,
+      {},
+      'A',
+    ),
+  )!
+
+  const initial = player.start()
+  const repeated = player.start()
+  expect(mocks.post).toHaveBeenCalledTimes(1)
+  requested.resolve(ready('active-http'))
+  expect(await initial).toBe('ready')
+  expect(await repeated).toBe('ready')
+  expect(mocks.remove).not.toHaveBeenCalled()
+  scope.stop()
+})
+
+it('uses distinct HTTP reconfiguration operations and closes only the obsolete result', async () => {
+  const first = deferred<Playback>()
+  const second = deferred<Playback>()
+  mocks.post
+    .mockResolvedValueOnce(ready('original-http'))
+    .mockReturnValueOnce(first.promise)
+    .mockReturnValueOnce(second.promise)
+  const scope = effectScope()
+  const player = scope.run(() =>
+    usePlayback(
+      { addonLaunchId: 'opaque-launch' },
+      { id: 'tmdb:movie:42' },
+      undefined,
+      {},
+      'A',
+    ),
+  )!
+
+  await player.start()
+  const old = player.start({ audioStream: 1 })
+  const current = player.start({ audioStream: 2 })
+  const [older, newer] = mocks.post.mock.calls.slice(1).map(([body]) => body)
+  expect(older).toMatchObject({
+    addonSessionId: 'original-http',
+    addonOperationId: expect.any(String),
+    audioStream: 1,
+  })
+  expect(newer).toMatchObject({
+    addonSessionId: 'original-http',
+    addonOperationId: expect.any(String),
+    audioStream: 2,
+  })
+  expect(older.addonOperationId).not.toBe(newer.addonOperationId)
+  expect(mocks.remove).not.toHaveBeenCalled()
+
+  second.resolve(ready('current-http'))
+  expect(await current).toBe('ready')
+  first.resolve(ready('obsolete-http'))
+  expect(await old).toBe('stale')
+  expect(player.playback.value?.sessionId).toBe('current-http')
+  expect(mocks.remove.mock.calls.map(([id]) => id)).toEqual([
+    'original-http',
+    'obsolete-http',
+  ])
+  scope.stop()
+})

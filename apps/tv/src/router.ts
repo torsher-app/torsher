@@ -87,6 +87,8 @@ export const router = createRouter({
         id: route.params.id,
         download: route.query.download === '1',
         episode: queryOf(route.query.episode),
+        addonSeason: queryOf(route.query.addonSeason),
+        addonEpisode: queryOf(route.query.addonEpisode),
         start: queryOf(route.query.start),
         restartRequest: queryOf(route.query.restart),
         cycleId: queryOf(route.query.cycleId),
@@ -106,6 +108,7 @@ export const router = createRouter({
         restartRequest: queryOf(route.query.restart),
         cycleId: queryOf(route.query.cycleId),
         download: route.query.download === '1',
+        addonSelection: route.query.addonSelection === '1',
       }),
     },
     { path: '/settings', component: SettingsPage },
@@ -137,6 +140,20 @@ export const router = createRouter({
     { path: '/connect', component: ConnectPage },
     { path: '/profiles', component: ProfilesPage },
     // Файл библиотеки играется с диска сервера, без раздачи
+    {
+      path: '/play/addon/:instance',
+      component: PlayerPage,
+      props: route => ({
+        addonInstance:
+          typeof route.params.instance === 'string'
+            ? route.params.instance
+            : undefined,
+        titleId: queryOf(route.query.title),
+        season: queryOf(route.query.season),
+        episode: queryOf(route.query.episode),
+        start: queryOf(route.query.start),
+      }),
+    },
     {
       path: '/play/library/:mediaFileId',
       component: PlayerPage,

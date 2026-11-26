@@ -1,0 +1,1 @@
+ALTER TABLE `title_progress` ADD `last_source_kind` text;

@@ -135,7 +135,7 @@ export function useContinuePlayback(screen: Ref<EventTarget | undefined>) {
       context,
     )
     continueSnapshot('continue.selected', titleId, item, context)
-    if (intent) {
+    if (intent || item.addonHttp) {
       cancel()
       void router.push(
         diagnosticRoute(resumeRoute(titleId, item, intent), context),

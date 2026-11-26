@@ -53,7 +53,7 @@ function digest(bytes: Uint8Array) {
   return createHash('sha256').update(bytes).digest('hex')
 }
 
-function decodeSrt(bytes: Uint8Array, language: string | null) {
+export function decodeSrt(bytes: Uint8Array, language: string | null) {
   const [first, second] = bytes
   if (first === 0xFF && second === 0xFE)
     return new TextDecoder('utf-16le', { fatal: true }).decode(bytes)

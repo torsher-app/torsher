@@ -82,6 +82,7 @@ const props = defineProps<{
   cycleId?: string
   // Пришли с «Скачать»: выбор файлов сразу включён, серии сезона отмечены
   download?: boolean
+  addonSelection?: boolean
 }>()
 
 // Пиры присылают метаданные не сразу: спрашиваем раз в 2 с, не дольше 90 с
@@ -93,7 +94,9 @@ const fileDiagnosticContext = currentDiagnosticContext()
 // открытый ссылкой или подставленный Back из плеера, показывает список, иначе
 // Back из плеера снова вёл бы в плеер
 const skipAllowed
-  = !props.download && openedForward(router.options.history.state)
+  = !props.download
+    && !props.addonSelection
+    && openedForward(router.options.history.state)
 const focus = useFocus()
 const language = useCatalogLanguage()
 const id = toRef(props, 'id')
@@ -344,6 +347,10 @@ function imageOf(file: TitleFile) {
 }
 
 function play(file: TitleFile, replace = false) {
+  const target
+    = props.addonSelection && file.episode == null
+      ? wanted.value
+      : { season: file.season, episode: file.episode }
   const parent = currentDiagnosticContext()
   const context = replace ? parent : diagnosticAction(parent)
   diagnostic(
@@ -363,9 +370,9 @@ function play(file: TitleFile, replace = false) {
       withStartPosition(
         playerRoute(
           { torrentId: props.torrentId, fileIndex: file.fileIndex },
-          { id: props.id, season: file.season, episode: file.episode },
+          { id: props.id, ...target },
         ),
-        props.start === '0' && matchesRestartTarget(props, file),
+        props.start === '0' && matchesRestartTarget(props, target),
         props.restartRequest,
       ),
       props.cycleId,

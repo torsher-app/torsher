@@ -17,6 +17,7 @@ export interface ResumeLike {
   /** Новая серия «Следить»: её раздачу выбрал слежение */
   followNewEpisode?: boolean
   continuation?: Continuation
+  addonHttp?: true
   cycleId?: string
   cycleVoiceStudio?: string | null
 }
@@ -249,6 +250,15 @@ export function resumeRoute(
     }
   }
 
+  if (item.addonHttp) {
+    return {
+      path: `/title/${titleId}/sources`,
+      query: {
+        season: item.season != null ? String(item.season) : undefined,
+        episode: item.episode != null ? String(item.episode) : undefined,
+      },
+    }
+  }
   const automatic = item.next && !item.position ? automaticPlayback : undefined
   if (item.file) {
     return withPlaybackCycle(

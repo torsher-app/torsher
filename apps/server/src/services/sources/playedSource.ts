@@ -19,6 +19,7 @@ export interface SourceRef {
   torrentId: string | null
   fileIndex: number | null
   mediaFileId?: string | null
+  lastSourceKind?: 'addonHttp' | null
 }
 
 export interface PreparedPlayedSource extends SourceEvidence {

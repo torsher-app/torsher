@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type {
+  AddonCatalogRow,
   Card,
   ContinueCard as ContinueItem,
   EpisodeCard,
@@ -93,7 +94,9 @@ const focus = useFocus()
 const {
   status,
   refreshing,
-  rows,
+  rows: coreRows,
+  addonRows,
+  addonError,
   loads,
   error,
   catalogError,
@@ -101,6 +104,11 @@ const {
   refresh,
   refreshContinue,
 } = useHome(computed(() => props.mode))
+type DisplayRow = HomeRow | AddonCatalogRow
+const rows = computed<DisplayRow[]>(() => [
+  ...coreRows.value,
+  ...addonRows.value,
+])
 const { hero, show, clear: clearHero } = useHero()
 const releaseTexts = useReleaseTexts()
 const screen = ref<HTMLElement>()
@@ -149,18 +157,20 @@ const footerVisible = computed(
 )
 
 // У рядов подборок один id: секцию и ключ различает подборка
-function rowKey(row: HomeRow) {
+function rowKey(row: DisplayRow) {
   return row.kind !== 'continue' && 'ref' in row && row.ref
     ? `${row.id}-${row.ref}`
     : row.id
 }
 
-function sectionOf(row: HomeRow) {
+function sectionOf(row: DisplayRow) {
   return `home-${props.mode}-${rowKey(row)}`
 }
 
-function rowTitle(row: HomeRow) {
-  return ('name' in row && row.name) || t(row.title)
+function rowTitle(row: DisplayRow) {
+  return row.kind === 'addon'
+    ? row.name || t('addons.catalogs')
+    : ('name' in row && row.name) || t(row.title)
 }
 
 // Ряд серий 16:9 держит карточки серий, «Продолжить» и раздачи без тайтла —
@@ -174,11 +184,11 @@ type Tile = typeof HOME_VIDEO_TILE | typeof ALL_TILE
 type RowItem
   = Card | ContinueItem | EpisodeCard | ReleaseItem | FileItem | Tile
 
-function itemsOf(row: HomeRow): RowItem[] {
+function itemsOf(row: DisplayRow): RowItem[] {
   if (row.kind === 'files' && row.id === 'libraryHomeVideo')
     return [HOME_VIDEO_TILE, ...row.items]
 
-  if (row.kind === 'releases' || row.kind === 'files')
+  if (row.kind === 'releases' || row.kind === 'files' || row.kind === 'addon')
     return row.items
 
   if (row.kind === 'episodes')
@@ -222,9 +232,9 @@ function heroCardOf(
 
 // «Продолжить» с новым порядком тайтлов пересоздаётся: просмотренный тайтл
 // встаёт первым, без съезжающих карточек. Секция ряда остаётся той же
-function renderKey(row: HomeRow) {
+function renderKey(row: DisplayRow) {
   return row.kind === 'continue'
-    ? `continue:${continueOrder(rows.value)}`
+    ? `continue:${continueOrder(coreRows.value)}`
     : rowKey(row)
 }
 
@@ -401,7 +411,9 @@ function open(item: Exclude<RowItem, ReleaseItem | FileItem | Tile>) {
   router.push(diagnosticRoute({ path: `/title/${titleId}` }, context))
 }
 
-function openAll(row: HomeRow) {
+function openAll(row: DisplayRow) {
+  if (row.kind === 'addon')
+    return
   const target = mineTargetOf(row, props.mode)
 
   if (target)
@@ -624,11 +636,15 @@ onBeforeUnmount(() => {
     <span v-if="serverAbout?.devStand" class="home__dev">DEV · {{ serverAbout.devStand.name }}</span>
 
     <p
-      v-if="status === 'ready' && catalogError && !showSkeleton"
+      v-if="status === 'ready' && (catalogError || addonError) && !showSkeleton"
       class="home__catalog-note"
       role="status"
     >
-      {{ t(`home.catalogError.${catalogError}`) }}
+      <span v-if="catalogError">{{
+        t(`home.catalogError.${catalogError}`)
+      }}</span>
+      <span v-if="catalogError && addonError" aria-hidden="true"> · </span>
+      <span v-if="addonError">{{ t("addons.partialFailure") }}</span>
     </p>
 
     <div class="home__hero">

@@ -4,9 +4,19 @@ import type { ContinueRow } from '@torsher/api-client'
 import { setTitleViewer } from '../titleActions.ts'
 import { useHome } from './useHome.ts'
 
-const mocks = vi.hoisted(() => ({ getHome: vi.fn(), getContinue: vi.fn() }))
+const mocks = vi.hoisted(() => ({
+  getHome: vi.fn(),
+  getContinue: vi.fn(),
+  getAddonRows: vi.fn(),
+}))
 vi.mock('../api.ts', () => ({
-  api: { home: { getHome: mocks.getHome, getHomeContinue: mocks.getContinue } },
+  api: {
+    home: {
+      getHome: mocks.getHome,
+      getHomeContinue: mocks.getContinue,
+      getHomeAddonRows: mocks.getAddonRows,
+    },
+  },
   loadErrorOf: () => 'unavailable',
 }))
 vi.mock('./useCatalogLanguage.ts', () => ({
@@ -20,7 +30,10 @@ vi.mock('../diagnostics/index.ts', () => ({
 vi.mock('../diagnostics/continue.ts', () => ({
   noteContinueReceived: vi.fn(),
 }))
-vi.mock('../serverSources.ts', () => ({ noteHasSources: vi.fn() }))
+vi.mock('../serverSources.ts', () => ({
+  noteHasSources: vi.fn(),
+  noteHasAddonStreams: vi.fn(),
+}))
 
 let scope: ReturnType<typeof effectScope>
 beforeEach(() => {
@@ -159,4 +172,42 @@ it('rejects a deferred full response after disposal', async () => {
   await nextTick()
   await nextTick()
   expect(home.rows.value).toEqual([])
+})
+
+it('shows primary rows immediately and drops deferred add-on rows after a viewer change', async () => {
+  const regular = [continueRow('regular')]
+  let finish!: (value: object) => void
+  mocks.getHome
+    .mockResolvedValueOnce({
+      rows: regular,
+      hasSources: false,
+      hasAddonCatalogs: true,
+    })
+    .mockResolvedValue({ rows: [], hasSources: true })
+  mocks.getAddonRows.mockImplementationOnce(
+    () => new Promise(resolve => (finish = resolve)),
+  )
+  const home = scope.run(() => useHome(ref('all')))!
+  await vi.waitFor(() => expect(mocks.getAddonRows).toHaveBeenCalledOnce())
+  expect(home.status.value).toBe('ready')
+  expect(home.rows.value).toEqual(regular)
+  expect(home.addonRows.value).toEqual([])
+  const { signal } = mocks.getAddonRows.mock.calls[0]![1]
+  setTitleViewer('B')
+  await vi.waitFor(() => expect(signal.aborted).toBe(true))
+  finish({
+    rows: [
+      {
+        id: 'old-viewer',
+        kind: 'addon',
+        name: 'Example',
+        type: 'movie',
+        items: [],
+      },
+    ],
+    failed: true,
+  })
+  await vi.waitFor(() => expect(home.rows.value).toEqual([]))
+  expect(home.addonRows.value).toEqual([])
+  expect(home.addonError.value).toBe(false)
 })

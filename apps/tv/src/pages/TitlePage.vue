@@ -443,7 +443,9 @@ const primaryHint = computed(() => {
   if (resume.value) {
     const line = resumeLine(resume.value)
 
-    return own ? `${line} · ${t('title.fromLibraryShort')}` : line
+    return own && !resume.value.addonHttp
+      ? `${line} · ${t('title.fromLibraryShort')}`
+      : line
   }
 
   if (own) {
@@ -472,7 +474,21 @@ const primaryHint = computed(() => {
 })
 
 function openSources() {
-  router.push(`/title/${props.id}/sources`)
+  const target
+    = title.value?.hasAddonStreams && isSeries.value
+      ? episode.value && selectedSeason.value !== undefined
+        ? { season: selectedSeason.value, episode: episode.value.number }
+        : nextEpisode.value
+      : undefined
+  void router.push({
+    path: `/title/${props.id}/sources`,
+    query: target
+      ? {
+          addonSeason: String(target.season),
+          addonEpisode: String(target.episode),
+        }
+      : undefined,
+  })
 }
 
 // Списки и своя оценка: меню действий правит то же состояние
@@ -536,7 +552,10 @@ function onPrimary(event?: MouseEvent) {
   const context = diagnosticAction()
   const own = fromLibrary.value
 
-  if (own) {
+  if (resume.value?.addonHttp) {
+    void continuePlayback(props.id, resume.value, undefined, trigger)
+  }
+  else if (own) {
     diagnostic(
       {
         event: 'selection.activated',
@@ -1252,6 +1271,7 @@ const showFollow = computed(() => {
 const offer = computed(() =>
   titleOffer({
     hasSources: title.value?.hasSources,
+    hasAddonStreams: title.value?.hasAddonStreams,
     inLibrary: libraryFiles.value.length > 0,
     resume: !!resume.value,
     followed: followed.value,

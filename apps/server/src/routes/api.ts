@@ -1,3 +1,4 @@
+import { addonViewerRoutes } from './addonViewer.ts'
 import { speedtestRoutes } from './speedtest.ts'
 import { diagnosticRoutes } from './diagnostics.ts'
 import { libraryMaintenanceRoutes } from './libraryMaintenance.ts'
@@ -15,6 +16,7 @@ import { hlsRoutes } from './hls.ts'
 import { homeRoutes } from './home.ts'
 import { imageRoutes } from './images.ts'
 import { indexerManagerRoutes } from './indexerManagers.ts'
+import { httpAddonRoutes } from './httpAddons.ts'
 import { indexerRoutes } from './indexers.ts'
 import { librariesRoutes } from './libraries.ts'
 import { libraryRoutes } from './library.ts'
@@ -70,6 +72,8 @@ export const apiRoutes: FastifyPluginAsyncZod = async (app) => {
   app.register(homeRoutes, { prefix: '/home' })
   app.register(imageRoutes, { prefix: '/img' })
   app.register(indexerRoutes, { prefix: '/indexers' })
+  app.register(addonViewerRoutes)
+  app.register(httpAddonRoutes, { prefix: '/sources/http-addons' })
   app.register(indexerManagerRoutes, { prefix: '/indexer-managers' })
   app.register(titleRoutes, { prefix: '/titles' })
   app.register(mineRoutes, { prefix: '/mine' })

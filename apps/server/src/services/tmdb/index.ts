@@ -320,6 +320,20 @@ export function seasonKey(tmdbId: number, number: number, language: string) {
   return `tmdb:tv:${tmdbId}:season:${number}:${language}`
 }
 
+/** Нумерация TMDB без эпизодов, добавленных из раздач. */
+export async function tmdbEpisodeExists(
+  tmdbId: number,
+  season: number,
+  episode: number,
+  language: string,
+) {
+  const result = await loadSeason(tmdbId, season, language)
+  return (
+    result.season_number === season
+    && result.episodes.some(item => item.episode_number === episode)
+  )
+}
+
 function loadSeason(tmdbId: number, number: number, language: string) {
   return withMetaCache(seasonKey(tmdbId, number, language), SEASON_TTL_MS, () =>
     tmdbGet<TmdbSeason>(`/tv/${tmdbId}/season/${number}`, { language }))

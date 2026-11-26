@@ -4,11 +4,12 @@ import { getDb } from '../../db/index.ts'
 import { titleExternalIds } from '../../db/schema.ts'
 import { logFor } from '../logs/index.ts'
 import { TMDB_MAX_CACHE_AGE_MS } from '../tmdb/cache.ts'
-import { tmdbGet } from '../tmdb/client.ts'
+import { TmdbError, tmdbGet } from '../tmdb/client.ts'
 
 // Холодная главная — пара сотен тайтлов: заполняем в фоне, не мешая карточке
 const CONCURRENCY = 2
 const MAX_PENDING = 500
+const MAX_INTERACTIVE = 8
 // IMDb ID может прийти из деталей TMDB, которые уже неделю лежат в кэше:
 // запас держит общий возраст в пределе условий TMDB
 const MAX_AGE_MS = TMDB_MAX_CACHE_AGE_MS - 7 * 24 * 60 * 60 * 1000
@@ -77,7 +78,7 @@ export function knownImdbIds(refs: TmdbRef[], now = Date.now()) {
 }
 
 const queued = new Map<string, TmdbRef>()
-const inflight = new Set<string>()
+const inflight = new Map<string, Promise<string | null>>()
 
 async function fetchImdbId(ref: TmdbRef) {
   const response = await tmdbGet<{ imdb_id?: string | null }>(
@@ -86,22 +87,41 @@ async function fetchImdbId(ref: TmdbRef) {
   )
 
   rememberImdbId(ref, response.imdb_id)
+  return response.imdb_id || null
+}
+
+function requestImdbId(ref: TmdbRef) {
+  const key = imdbIdKey(ref)
+  queued.delete(key)
+  const pending = fetchImdbId(ref).finally(() => {
+    inflight.delete(key)
+    drain()
+  })
+  inflight.set(key, pending)
+  return pending
+}
+
+/** Интерактивный lookup с той же базой и дедупликацией, что и очередь рейтингов. */
+export async function lookupImdbId(ref: TmdbRef) {
+  const key = imdbIdKey(ref)
+  const known = knownImdbIds([ref]).get(key)
+  if (known !== undefined)
+    return known
+  const pending = inflight.get(key)
+  if (pending)
+    return pending
+  if (inflight.size >= MAX_INTERACTIVE)
+    throw new TmdbError('unavailable', 'IMDb ID lookup is busy')
+  return requestImdbId(ref)
 }
 
 function drain() {
   while (inflight.size < CONCURRENCY && queued.size > 0) {
     const [key, ref] = queued.entries().next().value!
 
-    queued.delete(key)
-    inflight.add(key)
-    fetchImdbId(ref)
-      .catch(err =>
-        logFor('catalog').debug({ err, key }, 'IMDb id lookup failed'),
-      )
-      .finally(() => {
-        inflight.delete(key)
-        drain()
-      })
+    void requestImdbId(ref).catch(err =>
+      logFor('catalog').debug({ err, key }, 'IMDb id lookup failed'),
+    )
   }
 }
 

@@ -41,6 +41,7 @@ const VIEWER = new Set([
   'POST /api/diagnostics/events',
   'GET /api/home',
   'GET /api/home/continue',
+  'GET /api/home/addon-rows',
   'GET /api/catalog/search',
   'GET /api/catalog/trending',
   'GET /api/catalog/backdrops',
@@ -51,6 +52,8 @@ const VIEWER = new Set([
   'GET /api/catalog/titles/:id/seasons/:number',
   'GET /api/catalog/people/:id',
   'GET /api/titles/:id/sources',
+  'GET /api/titles/:id/addon-sources',
+  'POST /api/titles/:id/addon-sources/play',
   'PUT /api/titles/:id/voice',
   'POST /api/titles/:id/watch',
   'GET /api/titles/:id/progress',
@@ -108,6 +111,7 @@ const VIEWER = new Set([
   'GET /api/hls/:id/:segment',
   'PUT /api/watch-state',
   'GET /api/stream/:torrentId/:fileIndex',
+  'GET /api/stream/addon/:id',
   'GET /api/library/files/:id/stream',
   'GET /api/library/files/:id/thumb',
   'GET /api/library/home',
@@ -123,6 +127,7 @@ const VIEWER = new Set([
 // Роуты потока: токен из адреса вместо cookie (`requireStream`)
 const STREAM = [
   'GET /api/stream/:torrentId/:fileIndex',
+  'GET /api/stream/addon/:id',
   'GET /api/library/files/:id/stream',
   'GET /api/hls/:id/main.m3u8',
   'GET /api/hls/:id/:segment',

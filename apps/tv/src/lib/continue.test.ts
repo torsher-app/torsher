@@ -104,9 +104,31 @@ describe('replaceContinueRow', () => {
 it('passes explicit ready intent even if the old torrent is known', () => {
   expect(resumeRoute('title', started, 'follow-ready')).toEqual({
     path: '/title/title/play',
-    query: { intent: 'follow-ready', automatic: '1', season: '2', episode: '5' },
+    query: {
+      intent: 'follow-ready',
+      automatic: '1',
+      season: '2',
+      episode: '5',
+    },
   })
   expect(resumeRoute('title', { ...started, followNewEpisode: true })).toEqual(
     resumeRoute('title', started),
   )
+})
+
+it('returns to the source chooser on the exact unfinished HTTP add-on episode', () => {
+  expect(
+    resumeRoute('tmdb:tv:42', {
+      addonHttp: true,
+      season: 0,
+      episode: 3,
+      position: 34,
+      duration: 111,
+      next: false,
+      file: null,
+    }),
+  ).toEqual({
+    path: '/title/tmdb:tv:42/sources',
+    query: { season: '0', episode: '3' },
+  })
 })

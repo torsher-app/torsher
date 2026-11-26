@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   historyState: {} as Record<string, unknown>,
   resolve: vi.fn(),
   progress: vi.fn(),
+  catalogTitle: vi.fn(),
   viewing: vi.fn(),
   replace: vi.fn(),
   back: vi.fn(),
@@ -22,6 +23,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../api.ts', () => ({
   api: {
     titles: { getTitleProgress: mocks.progress },
+    catalog: { getCatalogTitle: mocks.catalogTitle },
     playback: { getViewingAttempt: mocks.viewing },
   },
 }))
@@ -55,7 +57,10 @@ vi.mock('../composables/usePlayerArt.ts', () => ({
 vi.mock('../focus/index.ts', () => ({
   useFocus: () => ({ onKey: mocks.onKey }),
 }))
-vi.mock('../lib/navigation.ts', () => ({ goBack: mocks.back }))
+vi.mock('../lib/navigation.ts', async original => ({
+  ...(await original<typeof import('../lib/navigation.ts')>()),
+  goBack: mocks.back,
+}))
 vi.mock('../components/player/PlayerStage.vue', () => ({
   default: defineComponent({
     setup:
@@ -142,6 +147,7 @@ beforeEach(() => {
   mocks.historyState = {}
   mocks.progress.mockResolvedValue({ seasonReleases: [] })
   mocks.onKey.mockReturnValue(() => {})
+  mocks.catalogTitle.mockResolvedValue(undefined)
 })
 
 it('opens the portable cycle source with the cycle and originating viewer context', async () => {
@@ -411,5 +417,23 @@ it('returns from a files failure to the original paused file at its captured pos
       resumePlayback: { position: 123.5, paused: true },
     },
   })
+  app.unmount()
+})
+
+it('opens the exact add-on chooser after ordinary sources are exhausted', async () => {
+  mocks.resolve.mockResolvedValue({ kind: 'notFound', noSources: true })
+  mocks.catalogTitle.mockResolvedValue({
+    kind: 'series',
+    hasAddonStreams: true,
+  })
+  const app = await mount({ season: '0', episode: '3' })
+  await vi.waitFor(() =>
+    expect(mocks.replace).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: '/title/tmdb:tv:100/sources',
+        query: expect.objectContaining({ season: '0', episode: '3' }),
+      }),
+    ),
+  )
   app.unmount()
 })

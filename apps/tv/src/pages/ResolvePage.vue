@@ -136,7 +136,7 @@ function onKey(action: KeyAction) {
   return true
 }
 
-function onChoice(choice: 'sources' | 'back' | 'retry') {
+function onChoice(choice: 'sources' | 'back' | 'retry', exact = false) {
   if (choice === 'retry') {
     void run()
     return
@@ -152,7 +152,7 @@ function onChoice(choice: 'sources' | 'back' | 'retry') {
     props.id,
     router.options.history.state.back,
   )
-  if (action.kind === 'history') {
+  if (!exact && action.kind === 'history') {
     router.back()
     return
   }
@@ -296,6 +296,23 @@ async function run() {
       }
     }
     else if (outcome.kind === 'notFound') {
+      if (!props.candidate && !props.cycleId) {
+        const title
+          = art.value
+            ?? (await api.catalog
+              .getCatalogTitle(props.id, { language: language.value })
+              .catch(() => undefined))
+        if (cancelled)
+          return
+        if (
+          title?.hasAddonStreams
+          && (title.kind !== 'series'
+            || (target.season !== undefined && !!target.episode))
+        ) {
+          onChoice('sources', true)
+          return
+        }
+      }
       noSources.value = !!outcome.noSources
       failureReason.value = outcome.failureKind
       notFound.value = true

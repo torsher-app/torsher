@@ -165,7 +165,20 @@ async function migrateRestored(paths: BackupPaths) {
     if (n === 0)
       return 'no_account'
 
-    db.exec(`DROP TABLE IF EXISTS "${MANIFEST_TABLE}"`)
+    db.transaction(() => {
+      // Адреса могут вести к другим устройствам на восстановленном сервере.
+      db.prepare(
+        `
+        UPDATE http_addons
+        SET lan_addresses = '[]',
+            enabled = 0,
+            revision = lower(hex(randomblob(16))),
+            check_error = 'needs_confirmation'
+        WHERE lan_addresses <> '[]'
+      `,
+      ).run()
+      db.exec(`DROP TABLE IF EXISTS "${MANIFEST_TABLE}"`)
+    })()
 
     return undefined
   }

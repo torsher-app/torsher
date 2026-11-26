@@ -488,6 +488,54 @@ export async function loadLibraryCues(
   )
 }
 
+/** Session-scoped immutable remote input. All reads use the guarded Range transport. */
+export function loadAddonCues(
+  key: string,
+  size: number,
+  readSource: (
+    start: number,
+    end: number,
+    signal: AbortSignal,
+  ) => Promise<Uint8Array>,
+  signal: AbortSignal,
+  measureEndpoints: boolean,
+  videoStream?: number,
+) {
+  return loadCues(
+    key,
+    size,
+    signal,
+    measureEndpoints,
+    videoStream,
+    async (loadSignal, finish) => {
+      let readEndpoints: ReadEndpoints | undefined
+      let prefix: Uint8Array | undefined
+      const read = boundedCueReader(size, loadSignal, async (start, end) => {
+        const bytes = await readSource(start, end, loadSignal)
+        if (start === 0)
+          prefix = bytes
+        return bytes
+      })
+      const result = await readMatroskaCues(read, size, {
+        maxBytes: MAX_RANGE_BYTES,
+        measure: fragment => probePacketEnds(fragment, loadSignal),
+        defer: (read) => {
+          readEndpoints = read
+        },
+      })
+      return await finish(
+        result,
+        readEndpoints,
+        (cues) => {
+          remember(key, cues)
+          return cues
+        },
+        videoStartReader(size, loadSignal, read, () => prefix),
+      )
+    },
+  )
+}
+
 export function clearCueCache() {
   for (const entry of pending.values()) entry.controller.abort()
   pending.clear()

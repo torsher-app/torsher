@@ -61,6 +61,29 @@ describe('untrustedInputArgs', () => {
       beforeInput: true,
     })
   })
+
+  it('disables external MP4 references before opening an add-on bridge', () => {
+    const bridge
+      = 'http://127.0.0.1:9/addon-media/4a9b241b-851f-4532-a10f-862a757dedf6.mp4'
+
+    for (const args of [probeArgs(bridge), inputArgs(bridge)]) {
+      expect(flagsBefore(args, bridge)).toEqual({
+        protocols: 'http,tcp',
+        beforeInput: true,
+      })
+      const input = args.indexOf(bridge)
+      for (const [flag, value] of [
+        ['-format_whitelist', 'mov'],
+        ['-enable_drefs', '0'],
+        ['-use_absolute_path', '0'],
+      ]) {
+        const index = args.indexOf(flag)
+        expect(index).toBeGreaterThanOrEqual(0)
+        expect(index).toBeLessThan(input)
+        expect(args[index + 1]).toBe(value)
+      }
+    }
+  })
 })
 
 function hasFfmpeg() {

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type {
+  AddonSources,
   AudioTrack,
   SourceCandidate,
   TitleSources,
@@ -35,6 +36,7 @@ import { useLibraryPicker } from '../composables/useLibraryPicker.ts'
 import FocusSection from './FocusSection.vue'
 import OptionsPanel from './OptionsPanel.vue'
 import SourceRow from './SourceRow.vue'
+import { useCatalogLanguage } from '../composables/useCatalogLanguage.ts'
 import { useCatalogTitle } from '../composables/useCatalogTitle.ts'
 import { useHeldLoading } from '../composables/useHeldLoading.ts'
 import { useResource } from '../composables/useResource.ts'
@@ -96,13 +98,18 @@ const props = defineProps<{
   download?: boolean
   season?: string
   episode?: string
+  addonSeason?: string
+  addonEpisode?: string
+  cycleId?: string
   playing?: PlayingSource
   // Раздачу подключают: лоадер на её строке
   opening?: string
+  addonOpening?: string
 }>()
 
 const emit = defineEmits<{
   select: [candidate: SourceCandidate, choice: SourceChoice]
+  addon: [candidateId: string, target: { season?: number, episode?: number }]
   library: [
     fileId: string,
     title: { season?: number | null, episode?: number | null },
@@ -111,6 +118,7 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const language = useCatalogLanguage()
 const router = useRouter()
 const focus = useFocus()
 const id = toRef(props, 'id')
@@ -141,6 +149,52 @@ const targetEpisode = computed(() => {
     ? { season, episode }
     : undefined
 })
+const addonEpisode = computed(
+  () =>
+    targetEpisode.value
+    ?? (props.addonSeason !== undefined && props.addonEpisode !== undefined
+      ? {
+          season: Number(props.addonSeason),
+          episode: Number(props.addonEpisode),
+        }
+      : undefined),
+)
+const addonsActive = ref(true)
+const addonsEnabled = computed(
+  () =>
+    addonsActive.value
+    && !props.download
+    && !props.cycleId
+    && !!title.value?.hasAddonStreams
+    && (!isSeries.value || !!addonEpisode.value),
+)
+const addonRequest = useResource<AddonSources>(
+  computed(() =>
+    addonsEnabled.value
+      ? JSON.stringify([
+          id.value,
+          addonEpisode.value,
+          language.value,
+          session.profile?.id,
+        ])
+      : undefined,
+  ),
+  (_, signal) =>
+    api.titles.getTitleAddonSources(
+      id.value,
+      {
+        season: addonEpisode.value?.season?.toString(),
+        episode: addonEpisode.value?.episode?.toString(),
+        language: language.value,
+      },
+      { signal },
+    ),
+)
+const addonItems = computed(() => addonRequest.data.value?.items ?? [])
+const addonsFailed = computed(
+  () =>
+    addonRequest.status.value === 'error' || addonRequest.data.value?.failed,
+)
 const showAllSources = ref(false)
 const scopeLabel = computed(() =>
   targetEpisode.value
@@ -193,6 +247,8 @@ const { data: sources, status } = useResource<TitleSources>(
 function refresh() {
   forceRefresh = true
   nonce.value += 1
+  if (addonsEnabled.value)
+    void addonRequest.retry()
 }
 
 // Источников на сервере нет: экран — только строка библиотеки, без поиска
@@ -584,8 +640,11 @@ const emptyKind = computed(() => {
   if (!sources.value || rows.value.length > 0)
     return undefined
 
-  if (noSources.value)
-    return libraryRowFiles.value.length > 0 ? undefined : 'notInLibrary'
+  if (noSources.value) {
+    return addonsEnabled.value || libraryRowFiles.value.length > 0
+      ? undefined
+      : 'notInLibrary'
+  }
 
   if (hasFilter.value)
     return 'filtered'
@@ -755,6 +814,15 @@ function focusList() {
 }
 
 // Пока идёт поиск, фокус стоит на заглушке; список показался — встаём в него
+watch(addonItems, async (items) => {
+  if (!items.length || !noSources.value || libraryRowFiles.value.length)
+    return
+  await nextTick()
+  const list = listSection.value?.$el as HTMLElement | undefined
+  const active = focus.current()
+  if (list && (!active || !active.isConnected))
+    focusList()
+})
 watch(searching, (value) => {
   if (!value)
     nextTick(focusList)
@@ -769,9 +837,11 @@ onMounted(() => {
 // Возврат из «Файлов»: экран в KeepAlive, фокус — на той же раздаче
 let returning = false
 onDeactivated(() => {
+  addonsActive.value = false
   returning = true
 })
 onActivated(() => {
+  addonsActive.value = true
   if (returning) {
     returning = false
     void refreshProgress()
@@ -990,6 +1060,58 @@ const meta = computed(() => {
         />
 
         <div
+          v-if="addonsEnabled"
+          class="sources__addons"
+          :aria-label="t('addons.title')"
+        >
+          <p class="sources__addons-title">
+            {{ t("addons.title") }}
+          </p>
+          <p v-if="addonsFailed" class="sources__state-text" role="status">
+            {{ t("addons.partialFailure") }}
+          </p>
+          <div
+            v-if="addonRequest.status.value === 'loading'"
+            class="sources__state"
+          >
+            <AppLoader :label="t('watch.searching')" />
+          </div>
+          <p
+            v-else-if="!addonItems.length && !addonsFailed"
+            class="sources__state-text"
+          >
+            {{ t("sources.empty.nothing.title") }}
+          </p>
+          <button
+            v-for="candidate in addonItems"
+            :key="candidate.id"
+            v-focusable
+            type="button"
+            class="sources__addon"
+            :aria-busy="addonOpening === candidate.id"
+            @click="emit('addon', candidate.id, addonEpisode ?? {})"
+          >
+            <span class="sources__addon-name">{{ candidate.name }}</span>
+            <span class="sources__state-text">
+              {{
+                [candidate.addonName, candidate.quality]
+                  .filter(Boolean)
+                  .join(" · ")
+              }}
+            </span>
+            <AppLoader
+              v-if="addonOpening === candidate.id"
+              :label="t('watch.searching')"
+            />
+          </button>
+          <ActionButton
+            v-if="noSources && addonRequest.status.value !== 'loading'"
+            v-focusable
+            :label="t('sources.refresh')"
+            @click="addonRequest.retry()"
+          />
+        </div>
+        <div
           v-if="searching"
           v-focusable
           class="sources__state sources__state--loading"
@@ -1082,6 +1204,48 @@ const meta = computed(() => {
 </template>
 
 <style scoped>
+.sources__addons {
+  padding: calc(var(--u) * 12);
+}
+
+.sources__addons-title {
+  margin: 0 0 calc(var(--u) * 8);
+  font-weight: 700;
+}
+
+.sources__addon {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: calc(var(--u) * 58);
+  padding: calc(var(--u) * 8) calc(var(--u) * 12);
+  text-align: left;
+  color: inherit;
+  border: 0;
+  border-radius: var(--radius-m);
+  background: transparent;
+}
+
+.sources__addon:focus {
+  color: var(--color-bg);
+  background: var(--color-focus);
+  outline: none;
+}
+
+.sources__addon-name {
+  min-width: 0;
+  margin-right: calc(var(--u) * 12);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sources__addon .sources__state-text {
+  margin: 0;
+  color: inherit;
+}
+
 .sources {
   position: fixed;
   top: 0;

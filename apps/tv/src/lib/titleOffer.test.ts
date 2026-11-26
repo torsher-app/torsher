@@ -58,3 +58,21 @@ describe('titleOffer', () => {
     })
   })
 })
+
+it('offers manual sources without enabling download or follow on an add-on-only server', () => {
+  expect(
+    titleOffer({
+      hasSources: false,
+      hasAddonStreams: true,
+      inLibrary: false,
+      resume: false,
+      followed: false,
+      slot: 'none',
+    }),
+  ).toMatchObject({
+    watch: true,
+    sources: true,
+    download: false,
+    follow: false,
+  })
+})

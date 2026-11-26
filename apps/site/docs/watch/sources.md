@@ -28,6 +28,12 @@ When opened for a specific episode, the header names that season and episode. <U
 
 Under the header is your history: what you watched last and from which release. When shown as a button, OK opens that release on the same episode. It refreshes when you return from playback, while keeping the source list and filters.
 
+## Play from an HTTP add-on
+
+When the owner has [connected an add-on](/docs/panel/sources#connect-an-http-add-on) and enabled its streams, open <Ui k="sources.title" /> from a movie or select an episode first. Choose a result under <Ui k="addons.title" />.
+
+A public BitTorrent stream opens through the usual torrent player. A direct link needs a single MP4 or MKV whose server supports byte ranges. Torsher plays it on the showcase and saves your position. If its link expires, refresh the choices and select a source for the same movie or episode. Direct links are streaming-only. Playlists and services that require their own player fall outside this format.
+
 ## Read a release row
 
 Each row has three lines:

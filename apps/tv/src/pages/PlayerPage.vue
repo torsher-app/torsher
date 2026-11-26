@@ -74,6 +74,12 @@ import {
 import { mediaSnapshot } from '../diagnostics/media.ts'
 import { networkSnapshot } from '../diagnostics/network.ts'
 import { diagnosticPlaybackMode, upNextGate } from '../diagnostics/player.ts'
+import { useAddonSelection } from '../composables/useAddonSelection.ts'
+import {
+  addonLaunchOf,
+  addonPlaybackRoute,
+  addonSourcesRoute,
+} from '../lib/addonPlayback.ts'
 import { usePlayback } from '../composables/usePlayback.ts'
 import { usePlayerTracks } from '../composables/usePlayerTracks.ts'
 import { usePlayerOsd } from '../composables/usePlayerOsd.ts'
@@ -137,6 +143,7 @@ const props = defineProps<{
   torrentId?: string
   fileIndex?: string
   mediaFileId?: string
+  addonInstance?: string
   // Открыт из карточки тайтла: позиция сохраняется по серии, а не по файлу
   titleId?: string
   season?: string
@@ -157,6 +164,8 @@ const router = useRouter()
 const diagnosticContext = currentDiagnosticContext()
 const focus = useFocus()
 const isLibrary = !!props.mediaFileId
+const addon = !!props.addonInstance
+const addons = useAddonSelection()
 const playbackTitle = titleRefOf(props.titleId, props.season, props.episode)
 const profileId = session.profile?.id
 const viewingScope
@@ -168,9 +177,11 @@ const historyEntry = JSON.stringify([
   router.options.history.state.position,
 ])
 const player = usePlayback(
-  props.mediaFileId
-    ? { mediaFileId: props.mediaFileId }
-    : { torrentId: props.torrentId!, fileIndex: Number(props.fileIndex) },
+  props.addonInstance
+    ? { addonLaunchId: addonLaunchOf(props.addonInstance) }
+    : props.mediaFileId
+      ? { mediaFileId: props.mediaFileId }
+      : { torrentId: props.torrentId!, fileIndex: Number(props.fileIndex) },
   playbackTitle,
   props.voice,
   diagnosticContext,
@@ -386,7 +397,7 @@ const step = computed<StageStep>(() => {
   if (reconnecting.value)
     return 'reconnecting'
 
-  if (isLibrary)
+  if (isLibrary || addon)
     return 'buffering'
 
   if (
@@ -498,7 +509,9 @@ watch(speed, (value) => {
 
 // Прямой адрес файла для VLC и Infuse — с origin витрины
 const externalLink = computed(() =>
-  playback.value ? new URL(playback.value.externalUrl, location.href).href : '',
+  playback.value?.externalUrl
+    ? new URL(playback.value.externalUrl, location.href).href
+    : '',
 )
 
 // Следующая вышедшая серия и её файл в этой раздаче: спрашиваем при старте
@@ -508,7 +521,7 @@ const nextAired = ref<UpNext['next']>(null)
 const upNext = computed(() => {
   const next = nextAired.value
 
-  if (!next || next.file || !lacksSources())
+  if (!next || next.file || !lacksSources() || art.value?.hasAddonStreams)
     return next
 
   return libraryFileOf(next.season, next.episode) ? next : null
@@ -644,7 +657,9 @@ const promptError = computed(() =>
     ? heldError.value
     : {
         title: t(`${errorKey.value}.title`),
-        text: t(`${errorKey.value}.text`, errorParams.value),
+        text: addon
+          ? t('addons.videoUnavailable')
+          : t(`${errorKey.value}.text`, errorParams.value),
       },
 )
 
@@ -1231,6 +1246,7 @@ function playNext(
  * озвучка — та, что слышно сейчас, если она там есть
  */
 async function switchSource(candidate: SourceCandidate, choice: SourceChoice) {
+  addons.cancel()
   if (candidate.torrentId === props.torrentId && !isLibrary) {
     closePanel()
     return
@@ -1280,6 +1296,37 @@ async function switchSource(candidate: SourceCandidate, choice: SourceChoice) {
       cycleId: props.cycleId,
       q: choice.query,
       voice: heardStudio(tracks.audioTrack.value, choice.playingVoice),
+    },
+  })
+}
+
+async function switchAddon(
+  candidateId: string,
+  target: { season?: number, episode?: number },
+) {
+  if (!props.titleId || leaving || addons.opening.value)
+    return
+
+  const titleId = props.titleId
+  const result = await addons.open(titleId, candidateId)
+  if (!result || leaving || panel.value !== 'source')
+    return
+
+  leaving = true
+  const run = ++launch
+  const context = diagnosticAction(diagnosticContext)
+  const resumePlayback = { position: position.value, paused: viewerPaused }
+  playerSummary('source_switch')
+  await save('source_switch', context)
+  if (run !== launch)
+    return
+  const route = addonPlaybackRoute(result, { id: titleId, ...target })
+  void router.replace({
+    ...route,
+    state: {
+      diagnostic: { ...context },
+      sourcePanelReturn: null,
+      resumePlayback,
     },
   })
 }
@@ -1467,6 +1514,7 @@ function invalidateTrackSelection() {
 }
 
 function closePanel() {
+  addons.cancel()
   invalidateTrackSelection()
   librarySelection.value = undefined
   panel.value = null
@@ -1713,6 +1761,25 @@ async function begin(from: number) {
 }
 
 function onPromptChoice(choice: 'retry' | 'back') {
+  if (choice === 'retry' && addon && props.titleId) {
+    const checkpoint = checkpointSession('stop')
+    leaving = true
+    launch++
+    void save('exit', diagnosticContext, checkpoint).finally(() => {
+      const before = router.options.history.state.back
+      const route = addonSourcesRoute(props.titleId!, playbackTitle)
+      if (
+        typeof before === 'string'
+        && router.resolve(before).fullPath === router.resolve(route).fullPath
+      ) {
+        router.back()
+      }
+      else {
+        void router.replace(route)
+      }
+    })
+    return
+  }
   if (choice === 'back') {
     backFromPlayer()
   }
@@ -2764,7 +2831,10 @@ onBeforeUnmount(() => {
           "
           :rejections="retryRejections"
           :actions="[
-            { id: 'retry', label: t('player.retry') },
+            {
+              id: 'retry',
+              label: t(addon ? 'resolve.toSources' : 'player.retry'),
+            },
             { id: 'back', label: t('player.back') },
           ]"
           @choose="onPromptChoice"
@@ -2796,7 +2866,10 @@ onBeforeUnmount(() => {
         mediaFileId,
         torrentId,
       }"
+      :cycle-id="cycleId"
+      :addon-opening="addons.opening.value"
       @select="switchSource"
+      @addon="switchAddon"
       @library="switchToLibrary"
       @back="closePanelFromScreen"
     />
@@ -2833,7 +2906,10 @@ onBeforeUnmount(() => {
         :audio-label="tracks.audioLabel.value"
         :subtitles-label="subtitleSearchLabel"
         :from-start="fromStart"
-        :titled="!!titleId && (!lacksSources() || hasLibraryVersions)"
+        :titled="
+          !!titleId
+            && (!lacksSources() || art?.hasAddonStreams || hasLibraryVersions)
+        "
         :series="!!(titleId && season && episode)"
         :source-label="tracks.caption.value ?? ''"
         :has-next="!!upNext"
@@ -2913,6 +2989,11 @@ onBeforeUnmount(() => {
         @close="closePanelFromScreen"
       />
     </template>
+
+    <AppToast
+      :message="addons.failed.value ? t('addons.videoUnavailable') : ''"
+      @hide="addons.cancel"
+    />
 
     <p
       v-if="phase === 'playing' && tracks.subtitleHtml.value"

@@ -1,3 +1,4 @@
+import type { AddonSubtitleCandidate } from './addons.ts'
 import type { SubtitleProvider } from '../../dto/subtitles.ts'
 import type { PlaybackSession } from '../media/sessions.ts'
 import type { DownloadedSubtitle } from '../../db/schema.ts'
@@ -6,6 +7,7 @@ import type { SubtitleCandidate } from './providerTypes.ts'
 import type { SubtitleTarget } from './target.ts'
 import { randomUUID } from 'node:crypto'
 import { createRateLimiter } from '../../utils/rateLimit.ts'
+import { AddonError } from '../addons/index.ts'
 import {
   assertMaintenanceMutation,
   MaintenanceBusyError,
@@ -25,8 +27,18 @@ import {
   attachDownloadedSubtitle,
   currentSubtitleSource,
   detachDownloadedSubtitle,
+  subtitleSessionSignal,
 } from '../media/sessions.ts'
 import { getProfile } from '../profiles/index.ts'
+import {
+  addonSubtitleCurrent,
+  addonSubtitleView,
+  attachAddonSubtitleTrack,
+  canSearchAddonSubtitles,
+  existingAddonSubtitleTrack,
+  findAddonSubtitles,
+  readAddonSubtitle,
+} from './addons.ts'
 import { subtitleLanguages } from './languages.ts'
 import { providerError } from './providerHttp.ts'
 import {
@@ -61,12 +73,12 @@ export interface SubtitleViewer {
 }
 
 interface Result {
-  candidate: SubtitleCandidate
+  candidate: SubtitleCandidate | AddonSubtitleCandidate
   profileId: string
   owner: boolean
   revision: string
-  providerRevision: string
-  target: SubtitleTarget
+  providerRevision?: string
+  target?: SubtitleTarget
   expiresAt: number
 }
 
@@ -97,10 +109,17 @@ export function subtitleSearchContextOf(
   const canRemove = owner && downloaded.length > 0
   const config = getSubtitleConfig()
   const allowed = providersForViewer(config, owner)
-  const providers
-    = allowed.length && searchable(session) && subtitleTarget(session)
-      ? allowed
-      : []
+  const ready = searchable(session)
+  const target
+    = ready && (allowed.length || session.addonSubtitles)
+      ? subtitleTarget(session)
+      : undefined
+  const providers = [
+    ...(target ? allowed : []),
+    ...(ready && canSearchAddonSubtitles(session, target)
+      ? ['addon' as const]
+      : []),
+  ]
   if (!providers.length && !canRemove)
     return undefined
   const locale = getProfile(profileId)?.language
@@ -134,14 +153,16 @@ async function currentTarget(
   session: PlaybackSession,
   viewer: SubtitleViewer,
   revision: string,
-  expected: SubtitleTarget,
+  expected: SubtitleTarget | undefined,
   provider?: SubtitleProvider,
   providerKey?: string,
 ) {
   if (
     revision !== (await currentSubtitleSource(session))
     || !viewer.current()
-    || !sameSubtitleTarget(expected, subtitleTarget(session))
+    || (expected
+      ? !sameSubtitleTarget(expected, subtitleTarget(session))
+      : !session.addonMedia)
   ) {
     return false
   }
@@ -161,49 +182,69 @@ export async function searchPlaybackSubtitles(
   language: SubtitleLanguage,
 ) {
   const config = getSubtitleConfig()
-  const providers = providersForViewer(config, viewer.owner)
-  const target = searchable(session) ? subtitleTarget(session) : undefined
+  if (!searchable(session))
+    throw notFound()
+  const target = subtitleTarget(session)
+  const providers = target ? providersForViewer(config, viewer.owner) : []
+  const addonSearch = canSearchAddonSubtitles(session, target)
   const revision = session.playedEvidence?.probeKey
-  if (!target || !revision || !providers.length)
+  if (!revision || (!providers.length && !addonSearch))
     throw notFound()
   if (!searchLimiter.hit(session.subject))
     throw new SubtitlePlaybackError(429, 'Subtitle search rate limit exceeded')
 
-  const moviehash = providers.includes('opensubtitles')
-    ? await openSubtitlesHash(target.hashPath)
-    : undefined
-  if (!(await currentTarget(session, viewer, revision, target)))
+  const current = () => currentTarget(session, viewer, revision, target)
+  const moviehash
+    = addonSearch || providers.includes('opensubtitles')
+      ? await openSubtitlesHash(target?.hashPath)
+      : undefined
+  if (!(await current()))
     throw notFound()
 
-  const found = await Promise.all(
-    providers.map(async (provider) => {
-      try {
-        const credentials = currentProviderCredentials(provider)
-        if (
-          !credentials
-          || credentials.revision !== providerRevision(config, provider)
-        ) {
-          return { provider, issue: 'auth' as const }
+  const locale
+    = getProfile(viewer.profileId)?.language === 'ru_RU' ? 'ru-RU' : 'en-US'
+  const [found, addons] = await Promise.all([
+    Promise.all(
+      providers.map(async (provider) => {
+        try {
+          const credentials = currentProviderCredentials(provider)
+          if (
+            !credentials
+            || credentials.revision !== providerRevision(config, provider)
+          ) {
+            return { provider, issue: 'auth' as const }
+          }
+          const matches = await providerSearch(
+            provider,
+            credentials,
+            target!,
+            language,
+            moviehash,
+          )
+          return {
+            provider,
+            candidates: matches,
+            providerKey: credentials.revision,
+          }
         }
-        const matches = await providerSearch(
-          provider,
-          credentials,
+        catch (error) {
+          return { provider, issue: providerError(error).kind }
+        }
+      }),
+    ),
+    addonSearch
+      ? findAddonSubtitles(
+          session,
           target,
           language,
+          locale,
           moviehash,
+          subtitleSessionSignal(session),
+          current,
         )
-        return {
-          provider,
-          candidates: matches,
-          providerKey: credentials.revision,
-        }
-      }
-      catch (error) {
-        return { provider, issue: providerError(error).kind }
-      }
-    }),
-  )
-  if (!(await currentTarget(session, viewer, revision, target)))
+      : undefined,
+  ])
+  if (!(await current()))
     throw notFound()
 
   const currentConfig = getSubtitleConfig()
@@ -214,6 +255,19 @@ export async function searchPlaybackSubtitles(
   }
   const items = []
   const issues = []
+  const register = (candidate: Result['candidate'], providerKey?: string) => {
+    const id = randomUUID()
+    currentResults.set(id, {
+      candidate,
+      profileId: viewer.profileId,
+      owner: viewer.owner,
+      revision,
+      providerRevision: providerKey,
+      target,
+      expiresAt: Date.now() + RESULT_TTL_MS,
+    })
+    return id
+  }
   for (const result of found) {
     if (result.issue) {
       issues.push({ provider: result.provider, kind: result.issue })
@@ -235,18 +289,8 @@ export async function searchPlaybackSubtitles(
       if (unique.has(candidate.remoteId))
         continue
       unique.add(candidate.remoteId)
-      const id = randomUUID()
-      currentResults.set(id, {
-        candidate,
-        profileId: viewer.profileId,
-        owner: viewer.owner,
-        revision,
-        providerRevision: result.providerKey,
-        target,
-        expiresAt: Date.now() + RESULT_TTL_MS,
-      })
       items.push({
-        id,
+        id: register(candidate, result.providerKey),
         provider: candidate.provider,
         language: candidate.language,
         release: candidate.release,
@@ -256,6 +300,20 @@ export async function searchPlaybackSubtitles(
       })
     }
   }
+  for (const candidate of addons?.candidates ?? []) {
+    if (addonSubtitleCurrent(candidate.addon)) {
+      items.push({
+        id: register(candidate),
+        provider: candidate.provider,
+        addonName: candidate.addonName || undefined,
+        language: candidate.language,
+        release: candidate.release,
+        match: candidate.match,
+      })
+    }
+  }
+  for (const kind of addons?.issues ?? [])
+    issues.push({ provider: 'addon' as const, kind })
   while (currentResults.size > 90)
     currentResults.delete(currentResults.keys().next().value!)
   results.set(session, currentResults)
@@ -277,8 +335,19 @@ export async function applyPlaybackSubtitle(
     throw notFound()
   }
   const { candidate, revision, target, providerRevision: key } = result
-  const current = () =>
-    currentTarget(session, viewer, revision, target, candidate.provider, key)
+  const current = async () =>
+    candidate.provider === 'addon'
+      ? !!(await currentTarget(session, viewer, revision, target))
+      && !!session.addonSubtitles
+      && !!addonSubtitleCurrent(candidate.addon)
+      : currentTarget(
+          session,
+          viewer,
+          revision,
+          target,
+          candidate.provider,
+          key,
+        )
   if (!(await current()))
     throw notFound()
   if (!applyLimiter.hit(session.subject)) {
@@ -289,6 +358,23 @@ export async function applyPlaybackSubtitle(
   }
 
   try {
+    if (candidate.provider === 'addon') {
+      const existing = existingAddonSubtitleTrack(session, candidate)
+      if (existing)
+        return addonSubtitleView(existing)
+      const cues = await readAddonSubtitle(
+        candidate,
+        subtitleSessionSignal(session),
+      )
+      if (!(await current()))
+        throw notFound()
+      return addonSubtitleView(
+        attachAddonSubtitleTrack(session, candidate, cues),
+      )
+    }
+
+    if (!target || !key)
+      throw notFound()
     const credentials = currentProviderCredentials(candidate.provider)
     if (!credentials || credentials.revision !== key)
       throw notFound()
@@ -358,8 +444,12 @@ export async function applyPlaybackSubtitle(
       throw new SubtitlePlaybackError(409, 'Subtitle file has changed')
     if (error instanceof MaintenanceBusyError)
       throw new SubtitlePlaybackError(409, 'Subtitle source is busy')
-    if (providerError(error).kind === 'quota')
+    if (
+      (error instanceof AddonError && error.kind === 'rate_limited')
+      || providerError(error).kind === 'quota'
+    ) {
       throw new SubtitlePlaybackError(429, 'Subtitle download quota exceeded')
+    }
     throw new SubtitlePlaybackError(502, 'Subtitle download failed')
   }
 }

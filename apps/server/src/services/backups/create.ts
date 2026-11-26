@@ -98,6 +98,7 @@ export async function createBackup(
         sourcePath: options.dbPath,
         targetPath: snapshotPath,
         tmdbAliasKinds: [...TMDB_ALIAS_KINDS],
+        includeHttpAddons: Boolean(options.keyMaterial),
         manifestTable: MANIFEST_TABLE,
         manifest: manifestOf({ ...options, createdAt }),
       },

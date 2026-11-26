@@ -3,6 +3,7 @@ import type {
   CreateIndexerInput,
   CreateIndexerManagerInput,
   DiscoverManagersResult,
+  HttpAddonList,
   Indexer,
   IndexerList,
   IndexerManager,
@@ -14,7 +15,14 @@ import type {
   UpdateIndexerInput,
   UpdateIndexerManagerInput,
 } from '@torsher/api-client'
-import { del, DemoError, get, patch, post } from '@torsher/demo/router'
+import {
+  del,
+  DemoError,
+  get,
+  patch,
+  post,
+  unavailable,
+} from '@torsher/demo/router'
 import { ago, isFresh, MINUTE, nextId } from '@torsher/demo/state'
 
 type ManagerKind = IndexerManager['kind']
@@ -536,3 +544,11 @@ export function sourceAttention(): AttentionItem[] {
 
   return items
 }
+
+get<HttpAddonList>('/api/sources/http-addons', () => ({ items: [] }))
+post('/api/sources/http-addons', unavailable)
+post('/api/sources/http-addons/preview', unavailable)
+post('/api/sources/http-addons/test', unavailable)
+patch('/api/sources/http-addons/:id', unavailable)
+post('/api/sources/http-addons/:id/check', unavailable)
+del('/api/sources/http-addons/:id', unavailable)

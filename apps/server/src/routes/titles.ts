@@ -499,6 +499,7 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
         : undefined
       if (
         resume?.next
+        && !resume.addonHttp
         && !resume.position
         && continuation?.preferredTorrent
         && resume.season === target?.season
@@ -521,6 +522,7 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
               position: resume.position,
               duration: resume.duration,
               next: resume.next,
+              addonHttp: resume.addonHttp,
               continuation:
                 resume.season === target?.season
                 && resume.episode === target?.episode

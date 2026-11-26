@@ -5,7 +5,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useResumeLabels } from '../composables/useResumeLabels.ts'
 import { useTitleMeta } from '../composables/useTitleMeta.ts'
-import { lacksSources } from '../serverSources.ts'
+import { lacksAddonStreams, lacksSources } from '../serverSources.ts'
 import AppIcon from './AppIcon.vue'
 import KeyHint from './KeyHint.vue'
 import RatingList from './RatingList.vue'
@@ -54,7 +54,8 @@ const ratings = computed(
 // «▶ Смотреть» — только если смотреть есть откуда: из библиотеки или через
 // источники раздач
 const watchable = computed(
-  () => !!props.hero.card.availability || !lacksSources(),
+  () =>
+    !!props.hero.card.availability || !lacksSources() || !lacksAddonStreams(),
 )
 
 const meta = computed(() => {

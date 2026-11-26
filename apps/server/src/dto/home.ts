@@ -202,6 +202,7 @@ export const continueCard = card
     duration: z.number().nullable(),
     // Следующая серия после досмотренной, ещё не начатая
     next: z.boolean(),
+    addonHttp: z.literal(true).optional(),
     // Файл серии в известной раздаче; null — раздачу ещё искать
     file: episodeFile.nullable(),
     mediaFileId: z.string().nullable().optional(),
@@ -238,6 +239,8 @@ export const homeResponse = z
     rows: z.array(homeRow),
     // Есть ли на сервере источники раздач, как у деталей тайтла
     hasSources: z.boolean(),
+    hasAddonStreams: z.boolean().optional(),
+    hasAddonCatalogs: z.boolean().optional(),
     // Own rows remain usable when the discovery catalog cannot load.
     catalogError: z.enum(['notConfigured', 'unavailable']).optional(),
   })

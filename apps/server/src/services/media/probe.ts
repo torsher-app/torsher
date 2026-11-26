@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process'
 import { config } from '../../config.ts'
-import { untrustedInputArgs } from './inputSafety.ts'
+import { mediaInputEnv, untrustedInputArgs } from './inputSafety.ts'
 
 export type Container = 'mp4' | 'webm' | 'mkv' | 'avi' | 'ts' | 'other'
 
@@ -426,7 +426,12 @@ function runProbe(url: string, signal?: AbortSignal) {
     execFile(
       config.ffprobePath,
       probeArgs(url),
-      { timeout: PROBE_TIMEOUT_MS, maxBuffer: 8 * 1024 * 1024, signal },
+      {
+        timeout: PROBE_TIMEOUT_MS,
+        maxBuffer: 8 * 1024 * 1024,
+        signal,
+        env: mediaInputEnv(url),
+      },
       (err, stdout) => {
         if (err) {
           reject(err)
@@ -523,7 +528,13 @@ export function probeSeekAnchor(
         'json',
         url,
       ],
-      { signal, timeout: 5000, killSignal: 'SIGKILL', maxBuffer: 64 * 1024 },
+      {
+        signal,
+        timeout: 5000,
+        killSignal: 'SIGKILL',
+        maxBuffer: 64 * 1024,
+        env: mediaInputEnv(url),
+      },
       (err, stdout) => {
         if (err || signal.aborted) {
           resolve(undefined)
@@ -636,6 +647,7 @@ export function probeMedia(
   url: string,
   fileName: string,
   confirmRevision?: () => Promise<boolean>,
+  signal?: AbortSignal,
 ) {
   const cached = cache.get(key)
 
@@ -646,7 +658,7 @@ export function probeMedia(
     return cached.promise
   }
 
-  const probe = runProbe(url).then(async (output) => {
+  const probe = runProbe(url, signal).then(async (output) => {
     if (confirmRevision && !(await confirmRevision()))
       throw new Error('Media file changed during probe')
     return parseProbe(output, fileName)

@@ -86,6 +86,7 @@ function sourceFields(row?: SourceRef) {
     torrentId: row?.torrentId ?? null,
     fileIndex: row?.fileIndex ?? null,
     mediaFileId: row?.mediaFileId ?? null,
+    lastSourceKind: row?.lastSourceKind ?? null,
   }
 }
 
@@ -133,7 +134,7 @@ export function launchSelectionOf(
   }
 }
 
-function launchSelectionCurrent(
+export function launchSelectionCurrent(
   ref: TitleRef,
   launch: LaunchSelection,
   row?: TitleProgress,
@@ -144,6 +145,7 @@ function launchSelectionCurrent(
     && current.torrentId === launch.source.torrentId
     && current.fileIndex === launch.source.fileIndex
     && current.mediaFileId === launch.source.mediaFileId
+    && current.lastSourceKind === launch.source.lastSourceKind
     && (row?.voiceStudio ?? null) === launch.voiceStudio
     && (row?.voiceType ?? null) === launch.voiceType
   )
@@ -158,7 +160,8 @@ export function saveTitleProgress(
   values: Pick<
     TitleProgress,
     'position' | 'duration' | 'torrentId' | 'fileIndex'
-  > & { mediaFileId?: string | null },
+  >
+  & Pick<SourceRef, 'mediaFileId' | 'lastSourceKind'>,
   context?: DiagnosticContext,
   preparedSource?: PreparedPlayedSource | 'unknown',
   playedVoice: PlayedVoice = null,
@@ -167,7 +170,7 @@ export function saveTitleProgress(
   assertMaintenancePolicyChange({ titleId: ref.titleId })
 
   const before = getTitleProgress(ref)
-  const source = { ...values, mediaFileId: values.mediaFileId ?? null }
+  const source = { ...values, ...sourceFields(values) }
   const previous = before && freezePlayedSource(before)
   const playedSource
     = preparedSource === 'unknown'
@@ -176,14 +179,18 @@ export function saveTitleProgress(
   const updatedAt = new Date()
   // A delayed checkpoint from the playing source must not overwrite a newer
   // unplayed source choice (or attach that choice's voice to the old source).
-  const sourceUnchanged = !!before && sameSource(before, source)
+  const sourceUnchanged
+    = !!before
+      && (source.lastSourceKind
+        ? before.lastSourceKind === source.lastSourceKind
+        : sameSource(before, source))
   const pendingChoice
     = preparedSource === 'unknown'
       || (!sourceUnchanged
         && (launch
           ? !launchSelectionCurrent(ref, launch, before)
           : before
-            && (before.mediaFileId || before.torrentId)
+            && (before.mediaFileId || before.torrentId || before.lastSourceKind)
             && (!previous || !sameSource(previous, before))))
   const keepRememberedVoice
     = pendingChoice
@@ -336,6 +343,7 @@ export function rememberChoice(
     torrentId: choice.torrentId,
     fileIndex: choice.fileIndex,
     mediaFileId: null,
+    lastSourceKind: null,
     playedSource: before ? freezePlayedSource(before) : null,
     voiceStudio: choice.voice?.studio ?? null,
     voiceType: choice.voice?.type ?? null,
@@ -416,7 +424,7 @@ export function rememberVoice(
   if (launch && !launchSelectionCurrent(ref, launch, before))
     return false
   const values = {
-    ...(source && { ...source, mediaFileId: source.mediaFileId ?? null }),
+    ...(source && sourceFields(source)),
     playedSource: before ? freezePlayedSource(before) : null,
     voiceStudio: voice.studio ?? null,
     voiceType: voice.type ?? null,

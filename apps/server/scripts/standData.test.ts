@@ -127,6 +127,84 @@ describe('mapPath', () => {
 })
 
 describe('copy and sanitize', () => {
+  it('erases HTTP add-on configuration from the stand copy', async () => {
+    const source = dataAt(join(root, 'source'))
+    const stand = dataAt(join(root, 'stand'))
+    const encryptedUrl = 'synthetic-addon-ciphertext'
+    const deletedFragment = 'previous-synthetic-addon-ciphertext'
+    const origin = 'https://addon.example'
+
+    mkdirSync(source.dataDir, { recursive: true })
+    const db = createSourceDb(source.databasePath)
+
+    try {
+      db.exec(`
+        CREATE TABLE http_addons (
+          id TEXT PRIMARY KEY, origin TEXT, encrypted_url TEXT, enabled INTEGER
+        );
+      `)
+      db.prepare('INSERT INTO http_addons VALUES (?, ?, ?, ?)').run(
+        'addon',
+        origin,
+        encryptedUrl,
+        1,
+      )
+      db.prepare('INSERT INTO users VALUES (?, ?, ?)').run(
+        'u1',
+        'Me Real',
+        'hash',
+      )
+
+      db.pragma('secure_delete = OFF')
+      db.prepare('INSERT INTO http_addons VALUES (?, ?, ?, ?)').run(
+        'deleted-addon',
+        origin,
+        deletedFragment.repeat(1024),
+        1,
+      )
+      db.pragma('wal_checkpoint(TRUNCATE)')
+      db.prepare('DELETE FROM http_addons WHERE id = ?').run('deleted-addon')
+      db.pragma('wal_checkpoint(TRUNCATE)')
+      expect(db.pragma('freelist_count', { simple: true })).toBeGreaterThan(1)
+      expect(readFileSync(source.databasePath).includes(deletedFragment)).toBe(
+        true,
+      )
+
+      await copyData(source, stand, false)
+      const snapshot = readFileSync(stand.databasePath)
+      expect(snapshot.includes(encryptedUrl)).toBe(true)
+      expect(snapshot.includes(deletedFragment)).toBe(false)
+      sanitizeDb(stand.databasePath, source, stand, 'stand')
+
+      const copy = new Database(stand.databasePath, { readonly: true })
+      try {
+        expect(copy.prepare('SELECT * FROM http_addons').all()).toEqual([])
+        expect(copy.prepare('SELECT username FROM users').pluck().get()).toBe(
+          'stand',
+        )
+      }
+      finally {
+        copy.close()
+      }
+      const file = readFileSync(stand.databasePath)
+      expect(file.includes(encryptedUrl)).toBe(false)
+      expect(file.includes(origin)).toBe(false)
+      expect(file.includes(deletedFragment)).toBe(false)
+      expect(db.prepare('SELECT * FROM http_addons').get()).toEqual({
+        id: 'addon',
+        origin,
+        encrypted_url: encryptedUrl,
+        enabled: 1,
+      })
+      expect(db.prepare('SELECT username FROM users').pluck().get()).toBe(
+        'Me Real',
+      )
+    }
+    finally {
+      db.close()
+    }
+  })
+
   it('copies a consistent snapshot without touching the source', async () => {
     const source = dataAt(join(root, 'source'))
     const stand = dataAt(join(root, 'stand'))

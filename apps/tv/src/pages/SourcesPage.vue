@@ -5,6 +5,8 @@ import { getErrorBody, getErrorStatus } from '@torsher/api-client'
 import { onBeforeUnmount, onDeactivated, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
+import { useAddonSelection } from '../composables/useAddonSelection.ts'
+import { addonPlaybackRoute } from '../lib/addonPlayback.ts'
 import {
   activationTrigger,
   diagnostic,
@@ -35,6 +37,8 @@ const props = defineProps<{
   download?: boolean
   season?: string
   episode?: string
+  addonSeason?: string
+  addonEpisode?: string
   start?: string
   restartRequest?: string
   cycleId?: string
@@ -46,12 +50,14 @@ const router = useRouter()
 // Выбор раздачи: подключаем её и переходим к «Файлам»; ошибка — тостом
 const opening = ref<string>()
 const openError = ref('')
+const addons = useAddonSelection()
 let openGeneration = 0
 
 function cancelOpen() {
   openGeneration++
   opening.value = undefined
   openError.value = ''
+  addons.cancel()
 }
 
 onDeactivated(cancelOpen)
@@ -74,7 +80,7 @@ async function openErrorKey(err: unknown) {
 }
 
 async function open(candidate: SourceCandidate, choice: SourceChoice) {
-  if (opening.value)
+  if (opening.value || addons.opening.value)
     return
 
   const context = Object.freeze({
@@ -214,6 +220,28 @@ function playLibrary(
   )
 }
 
+async function openAddon(
+  candidateId: string,
+  target: { season?: number, episode?: number },
+) {
+  if (opening.value || addons.opening.value)
+    return
+  openError.value = ''
+  const result = await addons.open(props.id, candidateId)
+  if (result) {
+    void router.push(
+      addonPlaybackRoute(
+        result,
+        { id: props.id, ...target },
+        props.start === '0',
+      ),
+    )
+  }
+  else if (addons.failed.value) {
+    openError.value = t('addons.videoUnavailable')
+  }
+}
+
 function back() {
   cancelOpen()
   goBack(router)
@@ -227,8 +255,13 @@ function back() {
       :download="download"
       :season="season"
       :episode="episode"
+      :addon-season="addonSeason"
+      :addon-episode="addonEpisode"
+      :cycle-id="cycleId"
+      :addon-opening="addons.opening.value"
       :opening="opening"
       @select="open"
+      @addon="openAddon"
       @library="playLibrary"
       @back="back"
     />

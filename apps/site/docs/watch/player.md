@@ -95,6 +95,8 @@ The server owner can connect OpenSubtitles.com in <Ui k="panel.nav.settings pane
 
 Downloaded OpenSubtitles.com tracks for managed library files are stored beside the video. Connected folders stay read-only. Downloads for those folders, torrent streams and SubDL are stored on the server. In the signed-in browser showcase, select a downloaded track and use <Ui k="player.subtitleSearch.remove" /> to remove the binding and its saved copy.
 
+A configured [HTTP add-on](/docs/panel/sources#connect-an-http-add-on) can also return SRT subtitles for the movie or episode you're watching. Search and select them from the same subtitle menu. The selected track and its timing adjustment are available for the current playback.
+
 ## Episodes
 
 You can also start a specific episode from the title page: press OK on it, then select <Ui k="title.watch" />, <Ui k="title.resume" /> or <Ui k="player.fromStart" />. See [Episode actions](/docs/watch/showcase#episode-actions).
@@ -131,7 +133,7 @@ With <Ui k="player.settings.autoNext" /> off, the episode ends paused with the c
 
 ## Watch in another player
 
-<Ui k="player.settings.link" /> shows a direct link to the original file. Open it in another player, such as VLC on a computer or a phone in the same network. The link works for 12 hours. OK copies it to the clipboard when the device allows it.
+<Ui k="player.settings.link" /> shows a direct link to the original file. Open it in another player, such as VLC on a computer or a phone in the same network. The link works for 12 hours. OK copies it to the clipboard when the device allows it. The link is available for library and torrent files. Direct HTTP add-on streams play in the showcase.
 
 The link plays the file as it is: without transcoding, with the original tracks.
 

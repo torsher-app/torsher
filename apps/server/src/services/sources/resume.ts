@@ -53,6 +53,7 @@ export interface ResumeTarget {
   file: EpisodeFile | null
   updatedAt: Date
   mediaFileId?: string | null
+  addonHttp?: true
 }
 
 /** У записи библиотечного просмотра раздача — происхождение того же файла. */
@@ -199,7 +200,7 @@ export async function resumeTarget(
   // серии не уводит «Продолжить» назад
   if (!isProgressWatched(last) || position !== null) {
     // Фильм начат, но продолжать нечего: в ряду он играл бы с начала
-    if (position === null && last.season === 0)
+    if (position === null && last.season === 0 && last.episode === 0)
       return undefined
 
     const decisionId = decisionSnapshot(
@@ -226,8 +227,9 @@ export async function resumeTarget(
     )
     return {
       ...(decisionId && { decisionId }),
-      season: last.season || null,
+      season: last.episode ? last.season : null,
       episode: last.episode || null,
+      ...(last.lastSourceKind === 'addonHttp' && { addonHttp: true as const }),
       position: position ?? 0,
       duration: last.duration,
       next: false,
@@ -237,7 +239,7 @@ export async function resumeTarget(
     }
   }
 
-  if (last.season === 0)
+  if (last.season === 0 && last.episode === 0)
     return undefined
 
   const seasons = await loadSeasons()
@@ -279,11 +281,13 @@ export async function resumeTarget(
   const ref = { profileId, titleId, ...next }
 
   const file
-    = (row && fileOf(row))
-      ?? (last.torrentId
-        && (!last.mediaFileId || playableMediaFile(last.mediaFileId, profileId))
-        ? episodeFileIn(last.torrentId, ref)
-        : null)
+    = row?.lastSourceKind === 'addonHttp'
+      ? null
+      : ((row && fileOf(row))
+        ?? (last.torrentId
+          && (!last.mediaFileId || playableMediaFile(last.mediaFileId, profileId))
+          ? episodeFileIn(last.torrentId, ref)
+          : null))
   const decisionId = decisionSnapshot(
     'resume.decided',
     `${profileId}:${titleId}`,
@@ -311,6 +315,7 @@ export async function resumeTarget(
     ...(decisionId && { decisionId }),
     ...next,
     mediaFileId: row?.mediaFileId,
+    ...(row?.lastSourceKind === 'addonHttp' && { addonHttp: true as const }),
     position: row?.position ?? 0,
     duration: row?.duration ?? null,
     next: true,

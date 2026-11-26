@@ -90,11 +90,15 @@ const rows = computed(() =>
         props.settings.autoNext ? 'player.settings.on' : 'player.settings.off',
       ),
     },
-    {
-      id: 'link' as const,
-      label: t('player.settings.link'),
-      detail: t('player.settings.linkHint'),
-    },
+    ...(props.link
+      ? [
+          {
+            id: 'link' as const,
+            label: t('player.settings.link'),
+            detail: t('player.settings.linkHint'),
+          },
+        ]
+      : []),
   ].filter(row => row.visible !== false),
 )
 
