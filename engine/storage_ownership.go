@@ -109,6 +109,13 @@ func (s *storageOwnership) snapshot() (map[metainfo.Hash]storageClaim, uint64) {
 	return copy, s.version
 }
 
+func (s *storageOwnership) claim(hash metainfo.Hash) (storageClaim, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	claim, ok := s.claims[hash]
+	return claim, ok
+}
+
 func (s *storageOwnership) reserve(hash metainfo.Hash, dir string, paths []string) error {
 	for {
 		claims, version := s.snapshot()
@@ -202,31 +209,53 @@ type storageInventoryEntry struct {
 	AwaitingAdmission  bool     `json:"awaitingAdmission,omitempty"`
 }
 
-func (a *api) storageInventory(w http.ResponseWriter, _ *http.Request) {
+func (a *api) storageEntryOf(hash metainfo.Hash, claim storageClaim) (storageInventoryEntry, bool) {
+	state := "active"
+	t, live := a.client.Torrent(hash)
+	if claim.blocked {
+		state = "conflict"
+	} else if !live {
+		return storageInventoryEntry{}, false
+	}
+	conflicts := slices.Clone(claim.conflicts)
+	if conflicts == nil {
+		conflicts = []string{}
+	}
+	var saved savedTorrent
+	if live {
+		saved, _ = a.liveSessionState(t)
+	} else {
+		saved = a.session.get(hash)
+	}
+	return storageInventoryEntry{
+		InfoHash: hash.HexString(), Dir: claim.dir, State: state, ConflictingHashes: conflicts,
+		Paused: saved.paused(), UserPaused: saved.Paused, StartAnnounceState: saved.StartAnnounceState, IsPrivate: saved.Private, AwaitingAdmission: saved.AwaitingAdmission,
+	}, true
+}
+
+func (a *api) storageInventory(w http.ResponseWriter, r *http.Request) {
+	if raw := r.URL.Query().Get("hash"); raw != "" {
+		var hash metainfo.Hash
+		if err := hash.FromHexString(raw); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_hash", err)
+			return
+		}
+		result := make([]storageInventoryEntry, 0, 1)
+		if claim, ok := a.ownership.claim(hash); ok {
+			if entry, present := a.storageEntryOf(hash, claim); present {
+				result = append(result, entry)
+			}
+		}
+		writeJSON(w, http.StatusOK, result)
+		return
+	}
+
 	claims, _ := a.ownership.snapshot()
 	result := make([]storageInventoryEntry, 0, len(claims))
 	for hash, claim := range claims {
-		state := "active"
-		t, live := a.client.Torrent(hash)
-		if claim.blocked {
-			state = "conflict"
-		} else if !live {
-			continue
+		if entry, present := a.storageEntryOf(hash, claim); present {
+			result = append(result, entry)
 		}
-		conflicts := slices.Clone(claim.conflicts)
-		if conflicts == nil {
-			conflicts = []string{}
-		}
-		var saved savedTorrent
-		if live {
-			saved, _ = a.liveSessionState(t)
-		} else {
-			saved = a.session.get(hash)
-		}
-		result = append(result, storageInventoryEntry{
-			InfoHash: hash.HexString(), Dir: claim.dir, State: state, ConflictingHashes: conflicts,
-			Paused: saved.paused(), UserPaused: saved.Paused, StartAnnounceState: saved.StartAnnounceState, IsPrivate: saved.Private, AwaitingAdmission: saved.AwaitingAdmission,
-		})
 	}
 	slices.SortFunc(result, func(a, b storageInventoryEntry) int {
 		if a.InfoHash < b.InfoHash {

@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -213,6 +214,49 @@ func TestRestoreConflictsPreservesSessionsAndAllowsIsolatedRecovery(t *testing.T
 	}
 	if _, live := engine.client.Torrent(other.meta.HashInfoBytes()); !live {
 		t.Fatal("unrelated not restored")
+	}
+	missing := metainfo.Hash{1}
+	engine.ownership.replace(missing, storageClaim{paths: []string{filepath.Join(root, "missing")}, dir: root})
+	inventoryURL := server.URL + "/torrents/storage"
+	readInventory := func(query string) []storageInventoryEntry {
+		t.Helper()
+		response, err := http.Get(inventoryURL + query)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer response.Body.Close()
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("inventory %q status = %d", query, response.StatusCode)
+		}
+		var entries []storageInventoryEntry
+		if err := json.NewDecoder(response.Body).Decode(&entries); err != nil {
+			t.Fatal(err)
+		}
+		return entries
+	}
+	inventory := readInventory("")
+	if len(inventory) != 3 {
+		t.Fatalf("inventory = %+v", inventory)
+	}
+	for _, entry := range inventory {
+		if got := readInventory("?hash=" + entry.InfoHash); !reflect.DeepEqual(got, []storageInventoryEntry{entry}) {
+			t.Fatalf("filtered inventory for %s = %+v, want %+v", entry.InfoHash, got, entry)
+		}
+	}
+	for _, hash := range []metainfo.Hash{missing, {2}} {
+		if got := readInventory("?hash=" + hash.HexString()); got == nil || len(got) != 0 {
+			t.Fatalf("filtered inventory for %s = %+v, want an empty array", hash.HexString(), got)
+		}
+	}
+	invalid, err := http.Get(inventoryURL + "?hash=invalid")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var failure map[string]string
+	err = json.NewDecoder(invalid.Body).Decode(&failure)
+	invalid.Body.Close()
+	if err != nil || invalid.StatusCode != http.StatusBadRequest || failure["kind"] != "invalid_hash" {
+		t.Fatalf("invalid inventory filter = %d, %+v, %v", invalid.StatusCode, failure, err)
 	}
 	after, _ := os.ReadFile(engine.session.path(first.meta.HashInfoBytes(), ".json"))
 	content, _ := os.ReadFile(path)
