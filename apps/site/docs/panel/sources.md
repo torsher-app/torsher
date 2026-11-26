@@ -22,6 +22,17 @@ Two buttons in the top bar:
 - **<Ui k="panel.sources.importShort" />** opens <Ui k="panel.sources.import" />. Choose the manager, enter its address and API key, and select <Ui k="panel.sources.importDialog.submit" />. Torsher adds all its indexers and checks them. The address is how the Torsher server reaches the manager, for example `http://prowlarr:9696` in the same `docker-compose.yml`, not `localhost`.
 - **<Ui k="panel.sources.add" />** adds one Torznab indexer: a <Ui k="panel.sources.addDialog.name" />, its <Ui k="panel.sources.addDialog.url" /> and <Ui k="panel.sources.addDialog.apiKey" />. Leave the key empty if the indexer needs none. <Ui k="panel.sources.addDialog.submit" /> checks the indexer before saving it.
 
+## Connect an HTTP add-on
+
+1. Open <Ui k="panel.nav.sources" /> and select <Ui k="addons.add" /> under <Ui k="addons.title" />.
+2. Paste a configured <Ui k="addons.manifestUrl" /> ending in `/manifest.json` and select <Ui k="addons.test" />. Keep any configuration in the path or query. Obtain a configured URL from the add-on first if it requires setup.
+3. For a private address, review the server addresses that Torsher resolved. Select <Ui k="addons.allowLocal" /> and check the manifest again.
+4. Enable <Ui k="addons.streams" />, <Ui k="player.subtitles" /> or individual rows under <Ui k="addons.catalogs" />, then select <Ui k="panel.common.save" />. Use the edit button to change those choices or replace the URL. The URL is kept on the server and the form opens with an empty field.
+
+The server connects to public endpoints over HTTPS on a direct route. For an add-on in the same Compose project, use its service hostname, for example `http://addon:8000/manifest.json`. Private access is restricted to the approved host, port, scheme and addresses. Check the manifest again after its addresses change or after restoring its configuration. Media and subtitle files on a different host require a reachable public HTTPS address.
+
+Torsher sends the external movie or episode ID when a viewer requests streams or subtitles. A subtitle lookup can include the known file size and, for a complete local file, its OpenSubtitles hash. A catalog adds its first page as a Home row using titles matched to TMDB. Choose add-on streams manually in the [showcase](/docs/watch/sources#play-from-an-http-add-on).
+
 ## The list
 
 Indexers are grouped:
