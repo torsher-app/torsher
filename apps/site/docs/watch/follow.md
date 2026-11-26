@@ -101,6 +101,8 @@ Switching from <Ui k="follow.panel.modes.download" /> to <Ui k="follow.panel.mod
 - **Episodes ahead of the catalog.** When releases have episodes that TMDB doesn't list yet, they show up as aired and download like the others.
 - **Movies.** A followed movie is taken once it is out digitally or on disc. Screen recordings are never taken. It waits 3 days for a better voice-over by default, and a better version replaces it within 60 days while nobody has watched it.
 
+With [Usenet configured](/docs/setup/indexers#usenet-with-sabnzbd) and enabled for Follow, a download rule can also use Newznab for a missing movie or a single released episode. It checks torrent sources first and respects the same audio and quality rules. The episode becomes available after SABnzbd finishes and Torsher imports the video. Usenet imports retain the selected version. Notify mode still picks a source you can play immediately.
+
 Want to watch an episode before Torsher takes it? <Ui k="title.watch" /> streams it right away, as always.
 
 ## Check

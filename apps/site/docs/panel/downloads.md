@@ -151,3 +151,11 @@ If the torrent's own files are already gone, the library files are the only copy
 
 - [Following](/docs/panel/follow), for series that download by themselves.
 - [Settings](/docs/panel/settings#torrent), for speed limits, the queue and seeding.
+
+## Usenet downloads
+
+<Ui k="usenet.downloads" /> shows jobs submitted by Torsher. Wait for import before opening a finished file from the library. Pause, resume and remove external jobs in SABnzbd.
+
+If Torsher loses contact when sending a job, use <Ui k="usenet.reconcile" /> after the connection returns. Use <Ui k="usenet.release" /> only after checking that the job is absent from the SABnzbd queue and both parts of its history. When the archive is present but import cannot read it, correct the mount or its permissions and reconcile the existing job.
+
+[Set up Newznab and SABnzbd](/docs/setup/indexers#usenet-with-sabnzbd).
