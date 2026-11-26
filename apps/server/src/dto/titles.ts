@@ -494,6 +494,7 @@ export const resumeTarget = z
     duration: z.number().nullable(),
     // Следующая серия после досмотренной
     next: z.boolean(),
+    addonHttp: z.literal(true).optional(),
     // Файл серии в известной раздаче; null — раздачу ещё искать
     file: episodeFile.nullable(),
     // Доступный профилю файл библиотеки, который он продолжает

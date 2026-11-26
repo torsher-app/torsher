@@ -180,7 +180,9 @@ async function playerErrorOf(err: unknown) {
 
 /** Что играем: файл раздачи или файл библиотеки с диска сервера */
 export type PlaybackSource
-  = { torrentId: string, fileIndex: number } | { mediaFileId: string }
+  = | { torrentId: string, fileIndex: number }
+    | { mediaFileId: string }
+    | { addonLaunchId: string | undefined }
 
 /**
  * Запуск файла раздачи или библиотеки, статистика движка для буферизации и
@@ -196,8 +198,11 @@ export function usePlayback(
   cycleId?: string,
 ) {
   const viewer = captureTitleViewer()
+  const addon = 'addonLaunchId' in source
+  const torrent = 'torrentId' in source ? source : undefined
   const tracksViewing
-    = !!title
+    = !addon
+      && !!title
       && (/^tmdb:movie:\d+$/.test(title.id)
         || (/^tmdb:tv:\d+$/.test(title.id)
           && title.season !== undefined
@@ -207,11 +212,13 @@ export function usePlayback(
   const sourceKey = JSON.stringify(
     'mediaFileId' in source
       ? ['library', source.mediaFileId]
-      : ['torrent', source.torrentId, source.fileIndex],
+      : torrent
+        ? ['torrent', torrent.torrentId, torrent.fileIndex]
+        : ['addon'],
   )
   let line = 0
   const diagnosticTarget = {
-    ...source,
+    ...(addon ? {} : source),
     titleId: title?.id,
     season: title?.season,
     episode: title?.episode,
@@ -359,6 +366,8 @@ export function usePlayback(
     }
   }
 
+  let initialAddonStart: Promise<StartOutcome> | undefined
+
   /**
    * Запуск файла. С `restart` — та же раздача с другой озвучкой или
    * субтитрами с позиции плеера. Прежняя сессия закрывается всегда, и при
@@ -368,6 +377,10 @@ export function usePlayback(
     restart?: PlaybackRestart,
     viewingRestart?: ViewingRestart,
   ): Promise<StartOutcome> {
+    const initialAddon = addon && !playback.value
+    if (initialAddon && initialAddonStart)
+      return initialAddonStart
+
     const run = generation + 1
     const previousSession = playback.value?.sessionId
     diagnostic(
@@ -379,7 +392,13 @@ export function usePlayback(
       },
       context,
     )
-    const outcome = await startInternal(restart, viewingRestart)
+    const starting = startInternal(restart, viewingRestart)
+    if (initialAddon)
+      initialAddonStart = starting
+    const outcome = await starting.finally(() => {
+      if (initialAddonStart === starting)
+        initialAddonStart = undefined
+    })
     if (outcome === 'stale') {
       diagnostic(
         {
@@ -421,13 +440,31 @@ export function usePlayback(
     status.value = 'loading'
     error.value = undefined
     viewingConflict.value = false
-    closeSessions()
+    const previousAddon
+      = addon && playback.value && !closed.has(playback.value.sessionId)
+        ? playback.value.sessionId
+        : undefined
+    if (previousAddon) {
+      if (pending.value && pending.value.sessionId !== previousAddon)
+        closeSession(pending.value.sessionId)
+    }
+    else {
+      closeSessions()
+    }
 
     let created: Playback | undefined
 
     try {
       if (!isTitleViewer(viewer))
         return 'stale'
+      if (
+        addon
+        && (!viewerProfileId || (!source.addonLaunchId && !previousAddon))
+      ) {
+        status.value = 'error'
+        error.value = 'notFound'
+        return 'error'
+      }
       if (cycleId && !tracksViewing)
         throw new Error('Cycle playback requires a catalog episode')
       if (tracksViewing && title) {
@@ -487,17 +524,20 @@ export function usePlayback(
       }
       created = await api.playback.postPlayback(
         {
-          ...source,
+          ...(previousAddon ? { addonSessionId: previousAddon } : source),
+          ...(addon && { addonOperationId: playbackIdentity() }),
+          addonSubtitles: true,
           title,
           device: deviceProfile(),
           language: i18n.global.locale.value as CreatePlaybackInput['language'],
           voiceStudio,
           viewing: pendingViewing,
-          profileId: pendingViewing ? viewerProfileId : undefined,
+          profileId: addon || pendingViewing ? viewerProfileId : undefined,
           ...restart,
           // До семантических предпочтений Off задавался отсутствием поля.
           subtitle:
-            restart?.subtitle === null
+            !addon
+            && restart?.subtitle === null
             && playback.value?.preferenceMismatch === undefined
               ? undefined
               : restart?.subtitle,
@@ -515,6 +555,10 @@ export function usePlayback(
         closeSession(created.sessionId)
         pending.value = undefined
         error.value = 'unknown'
+        if (addon) {
+          status.value = 'error'
+          return 'error'
+        }
         return 'retry'
       }
 
@@ -543,6 +587,8 @@ export function usePlayback(
         })
       }
       pendingViewing = undefined
+      if (previousAddon && previousAddon !== ready.sessionId)
+        closeSession(previousAddon)
       line = 0
       playback.value = ready
       status.value = 'ready'
@@ -575,7 +621,7 @@ export function usePlayback(
         engineKind: engineKind.value,
       })
 
-      if (action === 'retry')
+      if (!addon && action === 'retry')
         return 'retry'
 
       status.value = 'error'
@@ -604,7 +650,7 @@ export function usePlayback(
       .postPlaybackError(id, {
         error: kind,
         ...failure,
-        detail: failure.detail?.slice(0, 300),
+        detail: addon ? undefined : failure.detail?.slice(0, 300),
       })
       .catch(() => {})
       .finally(() => {
@@ -645,12 +691,14 @@ export function usePlayback(
   async function freshStats(time: number) {
     if (library)
       return localStats(playback.value?.size ?? 0)
+    if (!torrent)
+      return undefined
 
     const run = statsRun
     const session = generation
     try {
-      const result = await api.torrents.getTorrentStats(source.torrentId, {
-        fileIndex: String(source.fileIndex),
+      const result = await api.torrents.getTorrentStats(torrent.torrentId, {
+        fileIndex: String(torrent.fileIndex),
         time: String(Math.max(0, time)),
       })
       return run === statsRun && session === generation ? result : undefined
@@ -669,6 +717,8 @@ export function usePlayback(
     statsAt.value = 0
     statsOffset = undefined
     statsFailed.value = false
+    if (!library && !torrent)
+      return
 
     const run = statsRun
     const tick = async () => {
@@ -680,8 +730,8 @@ export function usePlayback(
       try {
         const result = library
           ? localStats(playback.value?.size ?? 0)
-          : await api.torrents.getTorrentStats(source.torrentId, {
-              fileIndex: String(source.fileIndex),
+          : await api.torrents.getTorrentStats(torrent!.torrentId, {
+              fileIndex: String(torrent!.fileIndex),
               ...(time === undefined
                 ? { offset: String(requestedOffset ?? 0) }
                 : { time: String(Math.max(0, time)) }),
@@ -740,13 +790,18 @@ export function usePlayback(
     captured: DiagnosticContext = context,
     checkpoint?: CheckpointSession,
   ) {
-    if (!Number.isFinite(position) || (tracksViewing && !checkpoint?.viewing))
+    if (
+      !Number.isFinite(position)
+      || (tracksViewing && !checkpoint?.viewing)
+      || (addon && !checkpoint?.sessionId)
+    ) {
       return Promise.resolve()
+    }
     const run = generation
     function rejectCurrentBinding() {
       if (
-        !checkpoint?.viewing
-        || !checkpoint.sessionId
+        (!addon && !checkpoint?.viewing)
+        || !checkpoint?.sessionId
         || run !== generation
         || status.value !== 'ready'
         || playback.value?.sessionId !== checkpoint.sessionId
@@ -758,7 +813,7 @@ export function usePlayback(
       close()
       error.value = 'unknown'
       status.value = 'error'
-      viewingConflict.value = true
+      viewingConflict.value = !addon
     }
 
     const trace
@@ -785,7 +840,7 @@ export function usePlayback(
     return api.watchState
       .putWatchState(
         {
-          ...source,
+          ...(addon ? { addonHttp: true as const } : source),
           event: { clientId: progressClientId, sequence: ++progressSequence },
           profileId: viewerProfileId,
           ...checkpoint,

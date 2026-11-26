@@ -4,19 +4,24 @@ import {
   diagnosticParams,
 } from '../diagnostics/index.ts'
 import { noteContinueReceived } from '../diagnostics/continue.ts'
-import type { HomeResponse, HomeRow } from '@torsher/api-client'
+import type {
+  AddonCatalogRow,
+  HomeResponse,
+  HomeRow,
+} from '@torsher/api-client'
 import type { Ref } from 'vue'
 import type { LoadError } from '../lib/loadError.ts'
 import { onScopeDispose, ref, shallowRef, watch } from 'vue'
 import {
   captureTitleViewer,
   isTitleViewer,
+  titleActions,
   titleViewerId,
 } from '../titleActions.ts'
 import { api, loadErrorOf } from '../api.ts'
 import { replaceContinueRow } from '../lib/continue.ts'
 import { createLatest } from '../lib/latest.ts'
-import { noteHasSources } from '../serverSources.ts'
+import { noteHasAddonStreams, noteHasSources } from '../serverSources.ts'
 import { useCatalogLanguage } from './useCatalogLanguage.ts'
 
 export type HomeMode = 'all' | 'movies' | 'series' | 'library'
@@ -28,6 +33,8 @@ export function useHome(mode: Ref<HomeMode>) {
   const language = useCatalogLanguage()
   const status = ref<HomeStatus>('loading')
   const rows = shallowRef<HomeRow[]>([])
+  const addonRows = shallowRef<AddonCatalogRow[]>([])
+  const addonError = ref(false)
   const error = ref<LoadError>()
   const catalogError = ref<HomeResponse['catalogError']>()
   // Загрузок с лоадером: по нему экран отличает новую главную от тихого
@@ -35,11 +42,17 @@ export function useHome(mode: Ref<HomeMode>) {
   const loads = ref(0)
   const latest = createLatest()
   const partial = createLatest()
+  const addons = createLatest()
   const refreshing = ref(false)
   let fullRun = 0
 
   async function load(quiet = false) {
     partial.cancel()
+    addons.cancel()
+    if (!quiet) {
+      addonRows.value = []
+      addonError.value = false
+    }
     const run = ++fullRun
     const viewer = captureTitleViewer()
     const expectedProfileId = titleViewerId()
@@ -86,6 +99,8 @@ export function useHome(mode: Ref<HomeMode>) {
     }
 
     noteHasSources(outcome.value.hasSources)
+    if (currentMode !== 'library')
+      noteHasAddonStreams(outcome.value.hasAddonStreams)
     for (const row of outcome.value.rows) {
       if (row.kind === 'continue')
         noteContinueReceived(row.items)
@@ -97,6 +112,31 @@ export function useHome(mode: Ref<HomeMode>) {
     // Тихое перечитывание — обновление тех же рядов, а не новая главная
     if (!quiet)
       loads.value++
+    if (outcome.value.hasAddonCatalogs && currentMode !== 'library') {
+      void addons
+        .run(signal =>
+          api.home.getHomeAddonRows(
+            { mode: currentMode, language: currentLanguage },
+            { signal },
+          ),
+        )
+        .then((result) => {
+          if (
+            run !== fullRun
+            || !isTitleViewer(viewer)
+            || result.status === 'cancelled'
+          ) {
+            return
+          }
+          if (result.status === 'done')
+            addonRows.value = result.value.rows
+          addonError.value = result.status === 'failed' || result.value.failed
+        })
+    }
+    else {
+      addonRows.value = []
+      addonError.value = false
+    }
     return true
   }
 
@@ -158,17 +198,22 @@ export function useHome(mode: Ref<HomeMode>) {
     }
   }
 
-  watch([mode, language], () => load(), { immediate: true })
+  watch([mode, language, () => titleActions.viewer], () => load(), {
+    immediate: true,
+  })
 
   onScopeDispose(() => {
     latest.cancel()
     partial.cancel()
+    addons.cancel()
   })
 
   return {
     status,
     refreshing,
     rows,
+    addonRows,
+    addonError,
     loads,
     error,
     catalogError,

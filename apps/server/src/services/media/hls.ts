@@ -16,7 +16,7 @@ import {
   encodeInputArgs,
   encodeOutputArgs,
 } from './encode.ts'
-import { untrustedInputArgs } from './inputSafety.ts'
+import { mediaInputEnv, untrustedInputArgs } from './inputSafety.ts'
 import { probeSeekAnchor } from './probe.ts'
 import { mergeCues, parseWebVtt } from './webvtt.ts'
 
@@ -210,6 +210,7 @@ export interface HlsInput {
   segmentWaitMs?: number
   /** Сессия воспроизведения — префикс записей журнала */
   session?: string
+  privateInput?: boolean
 }
 
 export interface HlsLog {
@@ -680,6 +681,7 @@ export class HlsTranscode {
     const args = this.argsFor(url, from, id, seek)
     const child = spawn(config.ffmpegPath, args, {
       stdio: ['ignore', plan ? 'pipe' : 'ignore', 'pipe'],
+      env: mediaInputEnv(url),
     })
     const run: Run = {
       id,
@@ -746,13 +748,16 @@ export class HlsTranscode {
     })
 
     child.stderr?.on('data', (chunk: Buffer) => {
-      stderr = (stderr + chunk.toString()).slice(-2000)
+      if (!this.input.privateInput)
+        stderr = (stderr + chunk.toString()).slice(-2000)
     })
     child.on('error', (err: NodeJS.ErrnoException) => {
       run.exited = true
-      run.failure = err.message
+      run.failure = this.input.privateInput
+        ? 'ffmpeg did not start'
+        : err.message
       this.log.warn(
-        `${this.tag}: ffmpeg did not start: ${err.code ?? err.message}`,
+        `${this.tag}: ffmpeg did not start: ${err.code ?? run.failure}`,
       )
     })
     child.on('close', (code, signal) => {
@@ -779,7 +784,9 @@ export class HlsTranscode {
     this.run = run
     // Команда — в подробности: по ней запуск повторяют руками
     this.log.debug(
-      { details: `${config.ffmpegPath} ${args.join(' ')}` },
+      this.input.privateInput
+        ? {}
+        : { details: `${config.ffmpegPath} ${args.join(' ')}` },
       `${this.tag}: ffmpeg run ${id} from segment ${from}${plan ? ` (${describePlan(plan)})` : ''}`,
     )
 

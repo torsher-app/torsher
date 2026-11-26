@@ -2,6 +2,7 @@ import { reactive, readonly } from 'vue'
 
 const state = reactive({
   hasSources: undefined as boolean | undefined,
+  hasAddonStreams: false,
 })
 
 /**
@@ -20,4 +21,12 @@ export function noteHasSources(value: boolean | undefined) {
 /** Источников точно нет: пути к поиску раздач витрина не показывает */
 export function lacksSources() {
   return state.hasSources === false
+}
+
+export function noteHasAddonStreams(value: boolean | undefined) {
+  state.hasAddonStreams = value === true
+}
+
+export function lacksAddonStreams() {
+  return !state.hasAddonStreams
 }

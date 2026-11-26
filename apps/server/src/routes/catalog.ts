@@ -1,3 +1,4 @@
+import { hasAddonStreams } from '../services/addons/streams.ts'
 import { requireOwner, requireViewer } from '../middleware/auth.ts'
 import { localTitleImages } from '../services/library/images.ts'
 import type { FastifyReply } from 'fastify'
@@ -143,6 +144,7 @@ export const catalogRoutes: FastifyPluginAsyncZod = async (app) => {
           ...details,
           follow: titleFollowBrief(details.id, request.profileId),
           hasSources: hasSearchableIndexers(),
+          ...(hasAddonStreams(details.kind) && { hasAddonStreams: true }),
         }
       }
       catch (err) {

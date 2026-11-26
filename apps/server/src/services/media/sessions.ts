@@ -1,3 +1,6 @@
+import type { AddonMedia } from '../addons/media.ts'
+import { AddonMediaError } from '../addons/media.ts'
+import { currentAddon, onAddonChanged } from '../addons/index.ts'
 import type { SavedSubtitlePreference } from './trackPreferences.ts'
 import { matchesAudio, preferredSubtitle } from './trackPreferences.ts'
 import type { DiagnosticContext } from '../diagnostics/index.ts'
@@ -5,6 +8,10 @@ import { recordDecision, recordFailure } from '../diagnostics/index.ts'
 import type { SkipSegment } from '../segments/model.ts'
 import type { PlayedVoice, SourceEvidence } from '../library/playedSource.ts'
 import type { LaunchSelection, TitleRef } from '../sources/progress.ts'
+import {
+  getTitleProgress,
+  launchSelectionCurrent,
+} from '../sources/progress.ts'
 import type {
   PreparedPlayedSource,
   SourceRef,
@@ -35,6 +42,11 @@ import { config } from '../../config.ts'
 import { EngineError, engineStreamUrl } from '../engine/index.ts'
 import { trackStream } from '../storage/index.ts'
 import {
+  addonSubtitleTrack,
+  clearAddonSubtitleTracks,
+  copyAddonSubtitleTracks,
+} from '../subtitles/addons.ts'
+import {
   rememberVideoSize,
   streamWindowOf,
   touchTorrent,
@@ -54,7 +66,7 @@ import {
   segmentStarts,
 } from './hls.ts'
 import { readSubtitleIndex } from './matroska.ts'
-import { loadLibraryCues, loadTorrentCues } from './cueCache.ts'
+import { loadAddonCues, loadLibraryCues, loadTorrentCues } from './cueCache.ts'
 import { mergeCues } from './webvtt.ts'
 import { hlsTiming, isMatroska, probeMedia } from './probe.ts'
 import {
@@ -94,6 +106,9 @@ export interface PlaybackSession {
   /** Источник — файл раздачи (`torrent` + `fileIndex`) или файл библиотеки */
   torrent: Torrent | null
   library: LibrarySource | null
+  addonMedia?: AddonMedia
+  addonMediaFailed?: boolean
+  addonSubtitles?: boolean
   fileIndex: number
   fileName: string
   status: 'probing' | 'ready'
@@ -131,6 +146,9 @@ export interface SessionInput {
   launchSelection?: LaunchSelection
   torrent?: Torrent
   library?: LibrarySource
+  addonMedia?: AddonMedia
+  previousAddonSession?: PlaybackSession
+  addonSubtitles?: boolean
   fileIndex: number
   fileName: string
   device?: DeviceProfile
@@ -168,6 +186,85 @@ const closedCheckpoints = new Map<
   string,
   { expiresAt: number, context: CheckpointContext }
 >()
+const CHECKPOINT_OWNERS_LIMIT = 512
+const addonCheckpoints = new Map<string, { current?: string, order: number }>()
+let playbackOrder = 0
+
+export function nextPlaybackOrder() {
+  return ++playbackOrder
+}
+
+function checkpointKey(ref: TitleRef) {
+  return JSON.stringify([
+    ref.profileId,
+    ref.titleId,
+    ref.season ?? 0,
+    ref.episode ?? 0,
+  ])
+}
+
+export function supersedeAddonCheckpoint(ref: TitleRef, order: number) {
+  const key = checkpointKey(ref)
+  const entry = addonCheckpoints.get(key)
+  if (entry && entry.order < order)
+    addonCheckpoints.delete(key)
+}
+
+function openAddonCheckpoint(session: PlaybackSession, ref: TitleRef) {
+  const key = checkpointKey(ref)
+  const previous = addonCheckpoints.get(key)
+  const entry = { current: previous?.current, order: nextPlaybackOrder() }
+  addonCheckpoints.delete(key)
+  addonCheckpoints.set(key, entry)
+  if (addonCheckpoints.size > CHECKPOINT_OWNERS_LIMIT)
+    addonCheckpoints.delete(addonCheckpoints.keys().next().value!)
+
+  void session.ready.then(() => {
+    if (addonCheckpoints.get(key) !== entry)
+      return
+    if (
+      isOpen(session)
+      && !session.addonMediaFailed
+      && session.addonMedia?.accessible
+    ) {
+      // The outgoing HTTP session can report its final position while this
+      // probe is running. Adopt that stamp only while it is still current.
+      const prior = entry.current
+      const closed = prior ? closedCheckpoints.get(prior) : undefined
+      const previousLaunch = prior
+        ? (sessions.get(prior)?.launchSelection
+          ?? (closed && closed.expiresAt > Date.now()
+            ? closed.context.launchSelection
+            : undefined))
+        : undefined
+      if (
+        previousLaunch
+        && launchSelectionCurrent(ref, previousLaunch, getTitleProgress(ref))
+      ) {
+        session.launchSelection = previousLaunch
+      }
+      entry.current = session.id
+    }
+    if (!entry.current)
+      addonCheckpoints.delete(key)
+  })
+}
+
+export function refreshAddonCheckpoint(
+  sessionId: string,
+  launch: LaunchSelection,
+) {
+  const live = sessions.get(sessionId)
+  if (live?.addonMedia) {
+    live.launchSelection = launch
+  }
+  else {
+    const closed = closedCheckpoints.get(sessionId)
+    if (closed?.context.addon)
+      closed.context.launchSelection = launch
+  }
+}
+
 const releases = new Map<string, () => void>()
 /** Закрытие сессии обрывает её фоновые чтения потока */
 const closers = new Map<string, AbortController>()
@@ -218,7 +315,8 @@ function fileRangeReader(path: string) {
 
 function fileSizeOf(session: PlaybackSession) {
   return (
-    session.library?.size
+    session.addonMedia?.size
+    ?? session.library?.size
     ?? session.torrent?.files?.[session.fileIndex]?.size
     ?? 0
   )
@@ -258,13 +356,19 @@ interface CheckpointContext {
   evidence: PreparedPlayedSource
   hlsAudioStream: number | null | undefined
   voices: { index: number, voice: PlayedVoice }[]
+  addon?: { id: string, revision: string }
 }
 
 function checkpointContext(
   session: PlaybackSession,
 ): CheckpointContext | undefined {
-  if (session.status !== 'ready' || !session.progressRef)
+  if (
+    session.status !== 'ready'
+    || !session.progressRef
+    || session.addonMediaFailed
+  ) {
     return
+  }
   const source = {
     torrentId:
       session.torrent?.id ?? session.library?.origin?.torrentId ?? null,
@@ -272,6 +376,7 @@ function checkpointContext(
       ? session.fileIndex
       : (session.library?.origin?.fileIndex ?? null),
     mediaFileId: session.library?.id ?? null,
+    ...(session.addonMedia && { lastSourceKind: 'addonHttp' as const }),
   }
   const audio
     = !session.library || session.playedEvidence
@@ -282,6 +387,10 @@ function checkpointContext(
     ref: session.progressRef,
     launchSelection: session.launchSelection,
     source,
+    addon: session.addonMedia && {
+      id: session.addonMedia.launch.addon.id,
+      revision: session.addonMedia.launch.addon.revision,
+    },
     evidence: { ...session.playedEvidence?.source, ref: source },
     hlsAudioStream: session.hls?.audioStream,
     voices:
@@ -318,18 +427,27 @@ export function validatedCheckpoint(
   if (
     !context
     || context.subject !== subject
-    || context.ref.profileId !== ref.profileId
-    || context.ref.titleId !== ref.titleId
-    || (context.ref.season ?? 0) !== (ref.season ?? 0)
-    || (context.ref.episode ?? 0) !== (ref.episode ?? 0)
-    || (context.source.mediaFileId
-      ? context.source.mediaFileId !== source.mediaFileId
-      : !!source.mediaFileId
-        || context.source.torrentId !== source.torrentId
-        || context.source.fileIndex !== source.fileIndex)
+    || (context.source.lastSourceKind ?? null)
+    !== (source.lastSourceKind ?? null)
+    || (context.addon
+      && (addonCheckpoints.get(checkpointKey(ref))?.current !== sessionId
+        || !currentAddon(context.addon.id, context.addon.revision, 'stream')))
+      || context.ref.profileId !== ref.profileId
+      || context.ref.titleId !== ref.titleId
+      || (context.ref.season ?? 0) !== (ref.season ?? 0)
+      || (context.ref.episode ?? 0) !== (ref.episode ?? 0)
   ) {
     return
   }
+  const expected = context.source
+  const sourceChanged = expected.mediaFileId
+    ? expected.mediaFileId !== source.mediaFileId
+    : !!source.mediaFileId
+      || expected.torrentId !== source.torrentId
+      || expected.fileIndex !== source.fileIndex
+  if (sourceChanged)
+    return
+
   const actual
     = context.hlsAudioStream === undefined
       ? appliedAudioStream
@@ -373,11 +491,23 @@ async function prepare(
   input: SessionInput,
   signal: AbortSignal,
 ) {
-  const { torrent, library, fileIndex, device } = input
+  const { torrent, library, addonMedia, fileIndex, device } = input
+  if (addonMedia) {
+    await addonMedia.prepare(signal, input.previousAddonSession?.addonMedia)
+    if (!isOpen(session))
+      return
+  }
+  const mediaInput = (window?: ReturnType<typeof streamWindowOf>) =>
+    addonMedia
+      ? addonMedia.url
+      : (library?.path
+        ?? engineStreamUrl(torrent!.infoHash, fileIndex, window))
   const libraryStat = library ? await stat(library.path) : undefined
-  const probeKey = library
-    ? libraryProbeKey(library.id, libraryStat!)
-    : `${torrent!.infoHash}:${fileIndex}`
+  const probeKey = addonMedia
+    ? `addon:${addonMedia.revision}`
+    : library
+      ? libraryProbeKey(library.id, libraryStat!)
+      : `${torrent!.infoHash}:${fileIndex}`
   const confirmRevision = library
     ? () => libraryRevisionMatches(library.path, library.id, probeKey)
     : undefined
@@ -390,7 +520,9 @@ async function prepare(
             ? library.storedEvidence.video
             : undefined,
       }
-    : { path: session.fileName, contentKey: `torrent:${probeKey}` }
+    : addonMedia
+      ? {}
+      : { path: session.fileName, contentKey: `torrent:${probeKey}` }
   session.playedEvidence = { probeKey, source: evidence }
   if (library)
     session.skipSegments = await readySegments(library.id)
@@ -413,6 +545,8 @@ async function prepare(
   }
 
   if (tools.status !== 'ok') {
+    if (addonMedia)
+      throw new AddonMediaError()
     session.decision = { ...DIRECT, reasons: ['ToolsMissing'] }
     return
   }
@@ -426,21 +560,30 @@ async function prepare(
 
   for (let attempt = 0; ; attempt++) {
     try {
-      const url = library
-        ? library.path
-        : engineStreamUrl(torrent!.infoHash, fileIndex)
-      session.media = await probeMedia(
+      const media = await probeMedia(
         probeKey,
-        url,
-        session.fileName,
+        mediaInput(),
+        addonMedia ? `video.${addonMedia.container}` : session.fileName,
         confirmRevision,
+        addonMedia && AbortSignal.any([signal, addonMedia.signal]),
       )
+      if (addonMedia) {
+        if (media.container !== addonMedia.container || !media.video)
+          throw new AddonMediaError()
+        for (const track of [...media.audio, ...media.subtitles]) {
+          track.title = addonMedia.safeText(track.title)
+          track.language = addonMedia.safeText(track.language)
+        }
+      }
+      session.media = media
       const video = session.media.video
       if (video)
         evidence.video = { width: video.width, height: video.height }
       break
     }
     catch (err) {
+      if (addonMedia)
+        throw new AddonMediaError()
       const message = (err as Error).message
 
       if (attempt >= PROBE_RETRIES || !isRetryableProbeError(err)) {
@@ -467,10 +610,16 @@ async function prepare(
     return
 
   const media = session.media
-  session.downloadedSubtitles = await downloadedSubtitlesOf(
-    probeKey,
-    input.owner === true,
-  )
+  if (
+    addonMedia
+    && input.previousAddonSession
+    && isOpen(input.previousAddonSession)
+  ) {
+    copyAddonSubtitleTracks(session, input.previousAddonSession)
+  }
+  session.downloadedSubtitles = addonMedia
+    ? []
+    : await downloadedSubtitlesOf(probeKey, input.owner === true)
   for (const track of media.subtitles) {
     if (track.text && !track.image) {
       const id = `s${track.index}`
@@ -507,7 +656,10 @@ async function prepare(
   const subtitle
     = input.subtitle !== undefined
       ? input.subtitle
-      : preferredSubtitle(
+      : (input.previousAddonSession?.subtitle?.startsWith('a')
+        && addonSubtitleTrack(session, input.previousAddonSession.subtitle)
+          ?.id)
+        || preferredSubtitle(
           media,
           session.external,
           input.subtitlePreference,
@@ -557,6 +709,7 @@ async function prepare(
       || session.downloadedSubtitles.some(
         track => downloadedSubtitleId(track) === subtitle,
       )
+      || (subtitle && addonSubtitleTrack(session, subtitle))
 
   session.subtitle = embedded || burned || external ? subtitle! : null
 
@@ -599,21 +752,30 @@ async function prepare(
           && segmentStarts(timing.videoEnd, null).length > 1))
   if (prepareMatroska) {
     // Header, index and optional frame/packet evidence share one budget.
-    const prepared = library
-      ? await loadLibraryCues(
-          { ...library, size: libraryStat!.size },
+    const prepared = addonMedia
+      ? await loadAddonCues(
           probeKey,
+          addonMedia.size,
+          addonMedia.read.bind(addonMedia),
           signal,
           measureEndpoints,
           media.video?.index,
         )
-      : await loadTorrentCues(
-          torrent!,
-          fileIndex,
-          signal,
-          measureEndpoints,
-          media.video?.index,
-        )
+      : library
+        ? await loadLibraryCues(
+            { ...library, size: libraryStat!.size },
+            probeKey,
+            signal,
+            measureEndpoints,
+            media.video?.index,
+          )
+        : await loadTorrentCues(
+            torrent!,
+            fileIndex,
+            signal,
+            measureEndpoints,
+            media.video?.index,
+          )
     if (!isOpen(session))
       return
     timing = hlsTiming(media, session.audioStream, prepared?.packetEnds)
@@ -634,6 +796,8 @@ async function prepare(
       || !duration
       || (!matroska && !media.duration))
   ) {
+    if (addonMedia)
+      throw new AddonMediaError()
     session.decision = {
       ...decision,
       mode: 'direct',
@@ -686,6 +850,9 @@ async function prepare(
   if (decision.video === 'encode' && !caps)
     decision = decide(false)
 
+  if (addonMedia && decision.mode === 'direct' && decision.reasons.length > 0)
+    throw new AddonMediaError()
+
   if (decision.mode === 'hls' && duration && videoEnd !== null && media.video) {
     if (prepareMatroska && library) {
       const current = await stat(library.path).catch(() => null)
@@ -728,10 +895,8 @@ async function prepare(
       join(config.transcodesPath, session.id),
       {
         // Порт движка меняется после его перезапуска: адрес берётся на каждый запуск ffmpeg
-        url: () =>
-          library
-            ? library.path
-            : engineStreamUrl(torrent!.infoHash, fileIndex, window),
+        url: () => mediaInput(window),
+        privateInput: !!addonMedia,
         videoStream: media.video.index,
         audioStream: session.audioStream,
         audio: decision.audio ?? 'aac',
@@ -776,6 +941,8 @@ function ensureSweeper() {
 // Раздача — infohash, как в журнале движка: по нему сводятся провалы хэша и
 // сессии. Имён файлов в журнале нет
 function describeSource(session: PlaybackSession) {
+  if (session.addonMedia)
+    return 'source=http-addon'
   return session.torrent
     ? `torrent=${session.torrent.infoHash} file=${session.fileIndex}`
     : `library=${session.library!.id}`
@@ -852,6 +1019,8 @@ export function createSession(input: SessionInput) {
     launchSelection: input.launchSelection,
     torrent: input.torrent ?? null,
     library: input.library ?? null,
+    addonMedia: input.addonMedia,
+    addonSubtitles: input.addonSubtitles,
     fileIndex: input.fileIndex,
     fileName: input.fileName,
     status: 'probing',
@@ -871,7 +1040,9 @@ export function createSession(input: SessionInput) {
             infoHash: input.torrent.infoHash,
             fileIndex: input.fileIndex,
           }
-        : { session: id, libraryId: input.library!.id },
+        : input.library
+          ? { session: id, libraryId: input.library.id }
+          : { session: id },
     ),
     startedAt: Date.now(),
     touchedAt: Date.now(),
@@ -890,7 +1061,16 @@ export function createSession(input: SessionInput) {
       recordFailure('playback', 'probe_failed', session.diagnosticContext, {
         session: id,
       })
-      session.log.warn(`playback ${session.id}: ${err.message}`)
+      if (session.addonMedia) {
+        session.addonMediaFailed = true
+        session.addonMedia.close()
+        session.log.warn(
+          `playback ${session.id}: HTTP video preparation failed`,
+        )
+      }
+      else {
+        session.log.warn(`playback ${session.id}: ${err.message}`)
+      }
       session.decision = { ...DIRECT, reasons: ['ProbeFailed'] }
     })
     .finally(async () => {
@@ -954,6 +1134,8 @@ export function createSession(input: SessionInput) {
   // Пока сессия открыта, раздачу не вытесняют и не ставят на паузу — и до
   // конца пробы, и в прямом режиме, где плеер переоткрывает поток при перемотке
   releases.set(session.id, releasePlayback)
+  if (session.addonMedia && session.progressRef)
+    openAddonCheckpoint(session, session.progressRef)
   ensureSweeper()
 
   return session
@@ -1002,6 +1184,7 @@ export async function stopSession(
     })
   }
   sessions.delete(id)
+  clearAddonSubtitleTracks(session)
   recordDecision(
     'playback',
     'playback.closed',
@@ -1013,6 +1196,7 @@ export async function stopSession(
   )
   // Пробу не отменяем: она общая в кэше для всех сессий этого файла
   closers.get(id)?.abort()
+  session.addonMedia?.close()
   closers.delete(id)
   releases.get(id)?.()
   releases.delete(id)
@@ -1033,8 +1217,17 @@ export async function stopSession(
   }
 }
 
+onAddonChanged((id, revision) => {
+  for (const session of sessions.values()) {
+    const addon = session.addonMedia?.launch.addon
+    if (addon?.id === id && addon.revision === revision)
+      void stopSession(session.id, 'shutdown').catch(() => {})
+  }
+})
+
 export async function stopAllSessions() {
   closedCheckpoints.clear()
+  addonCheckpoints.clear()
   await Promise.all(
     [...sessions.keys()].map(id => stopSession(id, 'shutdown')),
   )
@@ -1104,10 +1297,21 @@ export function detachDownloadedSubtitle(track: DownloadedSubtitle) {
   }
 }
 
+export function subtitleSessionSignal(session: PlaybackSession) {
+  return isOpen(session)
+    ? (closers.get(session.id)?.signal ?? AbortSignal.abort())
+    : AbortSignal.abort()
+}
+
 export async function currentSubtitleSource(session: PlaybackSession) {
   const revision = session.playedEvidence?.probeKey
-  if (!revision || !isOpen(session))
+  if (
+    !revision
+    || !isOpen(session)
+    || (session.addonMedia && !session.addonMedia.accessible)
+  ) {
     return undefined
+  }
   if (
     session.library
     && !(await libraryRevisionMatches(
@@ -1125,8 +1329,16 @@ export async function currentSubtitleKey(
   session: PlaybackSession,
   trackId: string,
 ) {
+  if (session.status !== 'ready')
+    return undefined
+  if (trackId.startsWith('a')) {
+    const revision = await currentSubtitleSource(session)
+    return revision && addonSubtitleTrack(session, trackId)
+      ? { revision, key: trackId }
+      : undefined
+  }
   const key = session.subtitleKeys.get(trackId)
-  if (session.status !== 'ready' || !key)
+  if (!key)
     return undefined
 
   const downloaded = session.downloadedSubtitles.find(
@@ -1172,6 +1384,12 @@ export async function sessionCues(
   trackId: string,
   from = 0,
 ): Promise<{ cues: Cue[], done: boolean } | undefined> {
+  if (trackId.startsWith('a')) {
+    if (!(await currentSubtitleSource(session)))
+      return
+    const track = addonSubtitleTrack(session, trackId)
+    return track ? { cues: track.cues, done: true } : undefined
+  }
   if (trackId.startsWith('m')) {
     const track = session.downloadedSubtitles.find(
       item => downloadedSubtitleId(item) === trackId,
@@ -1251,13 +1469,16 @@ export async function sessionCues(
         const signal = closers.get(session.id)?.signal
         if (!signal || signal.aborted)
           return { cues, done: true }
-        const read = session.library
-          ? fileRangeReader(session.library.path)
-          : (start: number, end: number) =>
-              rangeReader(
-                engineStreamUrl(session.torrent!.infoHash, session.fileIndex),
-                signal,
-              )(start, end)
+        const addonMedia = session.addonMedia
+        const read = addonMedia
+          ? (start: number, end: number) => addonMedia.read(start, end, signal)
+          : session.library
+            ? fileRangeReader(session.library.path)
+            : (start: number, end: number) =>
+                rangeReader(
+                  engineStreamUrl(session.torrent!.infoHash, session.fileIndex),
+                  signal,
+                )(start, end)
         pending = readSubtitleIndex(read)
         subtitleIndexes.set(session, pending)
       }
@@ -1288,6 +1509,15 @@ export async function sessionCues(
     cues,
     done: !session.hls,
   }
+}
+
+export function addonSessionCount() {
+  let count = 0
+  for (const session of sessions.values()) {
+    if (session.addonMedia)
+      count++
+  }
+  return count
 }
 
 /** Только для тестов */

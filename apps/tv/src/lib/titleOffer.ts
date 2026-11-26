@@ -3,6 +3,7 @@ import type { DownloadSlot } from './downloadSlot.ts'
 export interface TitleOfferInput {
   // false — на сервере нет источников раздач; undefined — ещё неизвестно
   hasSources: boolean | undefined
+  hasAddonStreams?: boolean
   // У тайтла есть файлы в библиотеке
   inLibrary: boolean
   // Есть что продолжить: прогресс ведёт в известную раздачу или к серии
@@ -31,10 +32,10 @@ export function titleOffer(input: TitleOfferInput) {
   }
 
   return {
-    watch: input.inLibrary || input.resume,
+    watch: input.inLibrary || input.resume || !!input.hasAddonStreams,
     download: input.slot === 'active',
     follow: input.followed,
-    sources: false,
+    sources: !!input.hasAddonStreams,
     otherRelease: false,
   }
 }

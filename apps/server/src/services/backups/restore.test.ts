@@ -18,7 +18,9 @@ import {
   readMigrationsJournal,
 } from '../../db/fixtures/index.ts'
 import { MIGRATIONS_DIR } from '../../db/index.ts'
+import { encryptWith } from '../secrets/index.ts'
 import { createBackup } from './create.ts'
+import { deriveKeyMaterial, gunzipToFile } from './crypto.ts'
 import {
   count,
   createFileDb,
@@ -132,6 +134,84 @@ function files(dbPath: string) {
 }
 
 describe('восстановление', () => {
+  it('omits HTTP add-ons from a plain backup, then restores encrypted add-ons without LAN approval', async () => {
+    const { dbPath, backups, paths } = server()
+    const source = track(tempDataDir())
+    const { db, dbPath: sourcePath } = createFileDb(source)
+    seedData(db)
+    const encryptedUrl = encryptWith(
+      backupKey,
+      'http://addon.example:8000/configured/manifest.json?key=fixture-secret',
+    )
+    db.prepare(
+      `
+      INSERT INTO http_addons
+        (id, origin, encrypted_url, manifest, selections, lan_addresses,
+         enabled, revision, created_at, checked_at, check_error)
+      VALUES (?, ?, ?, '{}', '{}', ?, 1, ?, ?, ?, NULL)
+    `,
+    ).run(
+      'example',
+      'http://addon.example:8000',
+      encryptedUrl,
+      '["192.168.10.12"]',
+      'original',
+      Date.now(),
+      Date.now(),
+    )
+    db.close()
+
+    const args = {
+      dbPath: sourcePath,
+      tmpDir: join(source, 'tmp'),
+      dir: backups,
+      reason: 'manual' as const,
+      version: '1.0.0',
+      secretKey: backupKey,
+    }
+    const plain = await createBackup(args)
+    const unpacked = join(source, 'plain.db')
+    await gunzipToFile(
+      join(backups, plain.name),
+      unpacked,
+      Number.POSITIVE_INFINITY,
+    )
+    const snapshot = new Database(unpacked, { readonly: true })
+    expect(count(snapshot, 'http_addons')).toBe(0)
+    snapshot.close()
+    expect(readFileSync(unpacked).includes(encryptedUrl)).toBe(false)
+
+    const keyMaterial = await deriveKeyMaterial('synthetic backup passphrase')
+    const encrypted = await createBackup({ ...args, keyMaterial })
+    const encryptedPath = join(backups, encrypted.name)
+    await prepareRestore({
+      path: encryptedPath,
+      backupName: encrypted.name,
+      opened: await openBackupFile(encryptedPath, { keyMaterial }),
+      paths,
+      preRestore: () =>
+        createBackup({
+          ...args,
+          dbPath,
+          secretKey: currentKey,
+          reason: 'pre-restore',
+        }),
+    })
+    expect(await applyPendingRestore(paths)).toMatchObject({ applied: true })
+    const restored = new Database(dbPath, { readonly: true })
+    const addon = restored
+      .prepare('SELECT * FROM http_addons WHERE id = ?')
+      .get('example')
+    expect(addon).toMatchObject({
+      encrypted_url: encryptedUrl,
+      lan_addresses: '[]',
+      enabled: 0,
+      check_error: 'needs_confirmation',
+    })
+    expect(addon).not.toMatchObject({ revision: 'original' })
+    restored.close()
+  })
+
   it('старая копия на новой схеме: миграции догоняют, данные и аккаунт на месте', async () => {
     const { dbPath, backups, paths } = server()
     const old = migrationsBefore(OLD_COUNT)

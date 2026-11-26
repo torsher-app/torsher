@@ -2431,510 +2431,6 @@ export interface InternetSpeedtestInput {
   samples: SpeedtestSampleInput[];
 }
 
-export interface MessageResponseInput {
-  message: string;
-}
-
-export interface TooManyAttemptsResponseInput {
-  message: "too_many_attempts";
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  retryAfter: number;
-}
-
-export interface MaintenanceRuleOptionsInput {
-  enabled: boolean;
-  /**
-   * @min 1
-   * @max 36500
-   */
-  days: number;
-  /**
-   * @min 1
-   * @max 10000
-   */
-  keepLast: number | null;
-  /**
-   * @maxItems 1000
-   * @minItems 1
-   */
-  profileIds: string[];
-}
-
-export interface MaintenanceRuleInput {
-  enabled: boolean;
-  /**
-   * @min 1
-   * @max 36500
-   */
-  days: number;
-  /**
-   * @min 1
-   * @max 10000
-   */
-  keepLast: number | null;
-  /**
-   * @maxItems 1000
-   * @minItems 1
-   */
-  profileIds: string[];
-  titleId: string;
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  revision: number;
-  rosterChanged: boolean;
-}
-
-export interface MaintenanceConfigInput {
-  rule: MaintenanceRuleInput;
-  inherited: boolean;
-  profiles: {
-    id: string;
-    name: string;
-  }[];
-  executorAvailable: boolean;
-}
-
-export interface MaintenanceSaveInput {
-  enabled: boolean;
-  /**
-   * @min 1
-   * @max 36500
-   */
-  days: number;
-  /**
-   * @min 1
-   * @max 10000
-   */
-  keepLast: number | null;
-  /**
-   * @maxItems 1000
-   * @minItems 1
-   */
-  profileIds: string[];
-  /**
-   * @min 0
-   * @max 9007199254740991
-   */
-  expectedRevision: number;
-}
-
-export interface MaintenanceGroupInput {
-  id: string;
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  revision: number;
-  titleId: string;
-  protected: boolean;
-  candidate: boolean;
-  reasons: MaintenanceReasonInput[];
-  eligibleAt: string | null;
-  eligibleSince: string | null;
-  episodes: {
-    /**
-     * @min 0
-     * @max 9007199254740991
-     */
-    season: number;
-    /**
-     * @min 0
-     * @max 9007199254740991
-     */
-    episode: number;
-  }[];
-  files: {
-    name: string;
-    kind: "source" | "library" | "sidecar";
-    size: number;
-    volume: string | null;
-  }[];
-  logicalBytes: number;
-}
-
-export interface MaintenancePreviewInput {
-  evaluatedAt: string;
-  executorAvailable: boolean;
-  estimate: true;
-  groups: MaintenanceGroupInput[];
-  volumes: {
-    volume: string | null;
-    logicalBytes: number;
-  }[];
-}
-
-export interface MaintenanceDefaultPreviewInput {
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  titleCount: number;
-  items: {
-    titleId: string;
-    preview: MaintenancePreviewInput;
-  }[];
-}
-
-export interface MaintenanceProtectionInput {
-  protected: boolean;
-  /**
-   * @min 0
-   * @max 9007199254740991
-   */
-  expectedRevision: number;
-}
-
-export interface MaintenanceUnsuppressInput {
-  /**
-   * @maxItems 1000
-   * @minItems 1
-   */
-  episodes: {
-    /**
-     * @min 0
-     * @max 9007199254740991
-     */
-    season: number;
-    /**
-     * @min 0
-     * @max 9007199254740991
-     */
-    episode: number;
-  }[];
-}
-
-export interface MaintenanceOperationInput {
-  id: string;
-  groupId: string;
-  titleId: string;
-  titleName: string | null;
-  episodes: {
-    /**
-     * @min 0
-     * @max 9007199254740991
-     */
-    season: number;
-    /**
-     * @min 0
-     * @max 9007199254740991
-     */
-    episode: number;
-  }[];
-  state:
-    | "pending"
-    | "detached"
-    | "deleting"
-    | "partial"
-    | "cleaned"
-    | "blocked"
-    | "cancelled";
-  engineStage: string;
-  error: string | null;
-  action: "none" | "retry" | "inspect_files";
-  createdAt: string;
-  updatedAt: string;
-  volumes: {
-    volume: string;
-    beforeFree: number | null;
-    afterFree: number | null;
-    observedFreeChange: number | null;
-  }[];
-  files: {
-    name: string;
-    path: string;
-    kind: "source" | "library" | "sidecar";
-    result: "pending" | "staged" | "removed";
-  }[];
-}
-
-export interface MaintenanceExternalFenceInput {
-  id: string;
-  state: string;
-  action: "inspect_files" | "cancel_preserve_files" | "review_history";
-  files: {
-    name: string;
-    path: string;
-    result: "pending" | "staged" | "removed";
-  }[];
-}
-
-export interface MaintenanceExecutionInput {
-  enabled: boolean;
-}
-
-export interface MaintenanceStatusInput {
-  executorAvailable: boolean;
-  executorEnabled: boolean;
-  restoreHold: boolean;
-  lostCleanupHistory: boolean;
-  nextRunAt: string | null;
-  operations: MaintenanceOperationInput[];
-  externalFences: MaintenanceExternalFenceInput[];
-  defaultRule: MaintenanceRuleInput;
-  rules: {
-    titleId: string;
-    enabled: boolean;
-    /**
-     * @min 1
-     * @max 36500
-     */
-    days: number;
-    /**
-     * @min 1
-     * @max 10000
-     */
-    keepLast: number | null;
-    rosterChanged: boolean;
-  }[];
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  rulesEnabled: number;
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  groups: number;
-  suppressions: {
-    /**
-     * @min 0
-     * @max 9007199254740991
-     */
-    season: number;
-    /**
-     * @min 0
-     * @max 9007199254740991
-     */
-    episode: number;
-    titleId: string;
-    status: "pending" | "cleaned";
-  }[];
-}
-
-export interface AboutResponseInput {
-  version: string;
-  commit?: string;
-  devStand?: {
-    name: string;
-    branch?: string;
-    snapshot?: string;
-    builtAt?: string;
-    dirty: boolean;
-  };
-  license: string;
-  /** @format uri */
-  sourceUrl: string;
-  imdbAttribution: boolean;
-}
-
-export interface SignupInput {
-  /**
-   * @minLength 2
-   * @maxLength 64
-   * @pattern ^\P{Cc}+$
-   */
-  username: string;
-  /** @minLength 8 */
-  password: string;
-}
-
-export interface SetupResponseInput {
-  needsSetup: boolean;
-}
-
-export interface SigninInput {
-  username: string;
-  password: string;
-}
-
-export interface BackupItemInput {
-  name: string;
-  reason:
-    | "scheduled"
-    | "manual"
-    | "pre-update"
-    | "pre-restore"
-    | "pre-import"
-    | "uploaded";
-  createdAt: string;
-  version: string;
-  size: number;
-  encrypted: boolean;
-  dirKind: "main" | "fallback";
-}
-
-export interface RestoreWarningInput {
-  kind: string;
-  params?: Record<string, string | number>;
-}
-
-export interface RestoreStatusInput {
-  state: "checking" | "pending" | "done" | "failed";
-  backup?: string;
-  at?: string;
-  reason?: string;
-  params?: Record<string, string | number>;
-  warnings: RestoreWarningInput[];
-}
-
-export interface BackupStatusInput {
-  settings: {
-    enabled: boolean;
-    time: string;
-    /**
-     * @min -9007199254740991
-     * @max 9007199254740991
-     */
-    keepDaily: number;
-    /**
-     * @min -9007199254740991
-     * @max 9007199254740991
-     */
-    keepWeekly: number;
-    mode: "key" | "password";
-    passwordSetAt?: string;
-  };
-  dir: {
-    path: string;
-    source: "default" | "panel";
-    available: boolean;
-    free?: number;
-    total?: number;
-    sameVolumeAsDatabase: boolean;
-  };
-  state: {
-    running?: {
-      reason:
-        | "scheduled"
-        | "manual"
-        | "pre-update"
-        | "pre-restore"
-        | "pre-import"
-        | "uploaded";
-      startedAt: string;
-    };
-    lastSuccessAt?: string;
-    lastAttempt?: {
-      at: string;
-      error?: {
-        kind: string;
-        params: Record<string, string | number>;
-      };
-    };
-    manual?: {
-      at: string;
-      error?: {
-        kind: string;
-        params: Record<string, string | number>;
-      };
-    };
-    nextAt?: string;
-    timezone: string;
-  };
-  restore?: RestoreStatusInput;
-  items: BackupItemInput[];
-}
-
-export interface UpdateBackupSettingsInput {
-  enabled: boolean;
-  /** @pattern ^(?:[01]\d|2[0-3]):[0-5]\d$ */
-  time: string;
-  /**
-   * @min 1
-   * @max 30
-   */
-  keepDaily: number;
-  /**
-   * @min 0
-   * @max 12
-   */
-  keepWeekly: number;
-  /**
-   * @minLength 1
-   * @maxLength 4096
-   */
-  dir?: string | null;
-}
-
-export type UpdateBackupEncryptionInput =
-  | {
-      mode: "key";
-    }
-  | {
-      mode: "password";
-      /**
-       * @minLength 8
-       * @maxLength 1024
-       */
-      password: string;
-    };
-
-export interface BackupDirCheckBodyInput {
-  /**
-   * @minLength 1
-   * @maxLength 4096
-   */
-  path: string;
-}
-
-export interface BackupDirCheckInput {
-  path: string;
-  problem:
-    | "not_absolute"
-    | "missing"
-    | "not_directory"
-    | "denied"
-    | "overlaps_storage"
-    | null;
-  free: number;
-  total: number;
-  sameVolumeAsDatabase: boolean;
-}
-
-export interface RestoreBackupBodyInput {
-  /** @maxLength 1024 */
-  password?: string;
-}
-
-export interface RestoreResponseInput {
-  restore: RestoreStatusInput;
-}
-
-export interface RestoreStateResponseInput {
-  restore?: RestoreStatusInput;
-}
-
-export interface BackupErrorResponseInput {
-  message: string;
-  kind:
-    | "no_space"
-    | "io"
-    | "integrity"
-    | "dir_unavailable"
-    | "busy"
-    | "not_found"
-    | "not_torsher"
-    | "corrupt"
-    | "wrong_password"
-    | "newer_version"
-    | "key_unavailable"
-    | "too_large"
-    | "account_created"
-    | "not_absolute"
-    | "missing"
-    | "not_directory"
-    | "denied"
-    | "overlaps_storage";
-  params?: Record<string, string | number>;
-  field?: string;
-}
-
 export interface TitleRatingInput {
   provider: string;
   label: string;
@@ -3142,6 +2638,7 @@ export interface TitleDetailsInput {
   episodeCount?: number;
   follow?: TitleFollowBriefInput | null;
   hasSources?: boolean;
+  hasAddonStreams?: boolean;
 }
 
 export interface EpisodeInput {
@@ -3950,6 +3447,7 @@ export interface ResumeTargetInput {
   position: number;
   duration: number | null;
   next: boolean;
+  addonHttp?: true;
   file: EpisodeFileInput | null;
   mediaFileId?: string | null;
   continuation?: ContinuationInput;
@@ -4183,6 +3681,7 @@ export interface ContinueCardInput {
   position: number;
   duration: number | null;
   next: boolean;
+  addonHttp?: true;
   file: EpisodeFileInput | null;
   mediaFileId?: string | null;
   followNewEpisode?: boolean;
@@ -4218,132 +3717,242 @@ export type HomeRowInput =
 export interface HomeResponseInput {
   rows: HomeRowInput[];
   hasSources: boolean;
+  hasAddonStreams?: boolean;
+  hasAddonCatalogs?: boolean;
   catalogError?: "notConfigured" | "unavailable";
 }
 
-export interface CollectionInput {
-  id: string;
+export interface HttpAddonSelectionsInput {
+  stream: boolean;
+  subtitles: boolean;
+  /** @maxItems 100 */
+  catalogs: string[];
+}
+
+export interface HttpAddonErrorInput {
+  kind:
+    | "invalid_url"
+    | "blocked_address"
+    | "needs_confirmation"
+    | "address_changed"
+    | "unsupported_route"
+    | "timeout"
+    | "unavailable"
+    | "bad_response"
+    | "unsupported_manifest"
+    | "rate_limited"
+    | "busy"
+    | "not_found"
+    | "conflict";
+  message: string;
+}
+
+export interface HttpAddonCapabilitiesInput {
   name: string;
+  stream: boolean;
+  subtitles: boolean;
+  catalogs: {
+    /** @pattern ^[0-9a-f]{64}$ */
+    key: string;
+    type: "movie" | "series";
+    name: string;
+  }[];
+}
+
+export interface HttpAddonInput {
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  id: string;
+  origin: string;
+  enabled: boolean;
+  selections: HttpAddonSelectionsInput;
+  capabilities: HttpAddonCapabilitiesInput;
+  lanAddresses: string[];
+  checkedAt: string;
+  checkError:
+    | "invalid_url"
+    | "blocked_address"
+    | "needs_confirmation"
+    | "address_changed"
+    | "unsupported_route"
+    | "timeout"
+    | "unavailable"
+    | "bad_response"
+    | "unsupported_manifest"
+    | "rate_limited"
+    | "busy"
+    | "not_found"
+    | "conflict"
+    | null;
+}
+
+export interface HttpAddonListInput {
+  items: HttpAddonInput[];
+}
+
+export interface InspectHttpAddonInput {
+  /**
+   * @minLength 1
+   * @maxLength 8192
+   */
+  url?: string;
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  id?: string;
+}
+
+export interface HttpAddonPreviewInput {
+  origin: string;
+  addresses: string[];
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  approvalId?: string;
+}
+
+export interface TestHttpAddonInput {
+  /**
+   * @minLength 1
+   * @maxLength 8192
+   */
+  url?: string;
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  id?: string;
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  approvalId?: string;
+}
+
+export interface CreateHttpAddonInput {
+  /**
+   * @minLength 1
+   * @maxLength 8192
+   */
+  url: string;
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  approvalId?: string;
+  selections?: HttpAddonSelectionsInput;
+}
+
+export interface UpdateHttpAddonInput {
+  /**
+   * @minLength 1
+   * @maxLength 8192
+   */
+  url?: string;
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  approvalId?: string;
+  enabled?: boolean;
+  selections?: HttpAddonSelectionsInput;
+}
+
+export interface RecheckHttpAddonInput {
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  approvalId?: string;
+}
+
+export interface AddonSourceInput {
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  id: string;
+  kind: "torrent" | "http";
+  addonName: string;
+  name: string;
+  quality:
+    | "2160p"
+    | "1440p"
+    | "1080p"
+    | "1080i"
+    | "720p"
+    | "576p"
+    | "480p"
+    | "360p"
+    | null;
+}
+
+export interface AddonSourcesInput {
+  items: AddonSourceInput[];
+  failed: boolean;
+}
+
+export interface PlayHttpAddonSourceInput {
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  candidateId: string;
+}
+
+export type AddonSourcePlaybackInput =
+  | {
+      kind: "http";
+      /**
+       * @format uuid
+       * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+       */
+      launchId: string;
+    }
+  | {
+      kind: "torrent";
+      status: "resolving" | "files";
+      torrentId: string;
+    }
+  | {
+      kind: "torrent";
+      status: "ready";
+      torrentId: string;
+      /**
+       * @min 0
+       * @max 9007199254740991
+       */
+      fileIndex: number;
+    };
+
+export interface AddonCatalogRowInput {
+  id: string;
+  kind: "addon";
+  name: string;
+  type: "movie" | "series";
+  items: CardInput[];
+}
+
+export interface AddonCatalogRowsInput {
+  rows: AddonCatalogRowInput[];
+  failed: boolean;
+}
+
+export interface MessageResponseInput {
+  message: string;
+}
+
+export interface TooManyAttemptsResponseInput {
+  message: "too_many_attempts";
   /**
    * @min -9007199254740991
    * @max 9007199254740991
    */
-  count: number;
-  showOnHome: boolean;
-  hiddenFrom: string[];
-}
-
-export interface CollectionListInput {
-  items: CollectionInput[];
-}
-
-export interface CreateCollectionInput {
-  /**
-   * @minLength 1
-   * @maxLength 60
-   */
-  name: string;
-  showOnHome?: boolean;
-  /** @maxItems 100 */
-  hiddenFrom?: string[];
-}
-
-export interface UpdateCollectionInput {
-  /**
-   * @minLength 1
-   * @maxLength 60
-   */
-  name?: string;
-  showOnHome?: boolean;
-  /** @maxItems 100 */
-  hiddenFrom?: string[];
-}
-
-export interface CollectionTitlesInput {
-  items: CardInput[];
-}
-
-export interface CollectionErrorResponseInput {
-  message: string;
-  kind: "duplicate";
-}
-
-export interface StartPairingInput {
-  type?: "tv" | "browser" | "other";
-}
-
-export interface PairingInput {
-  secret: string;
-  code: string;
-  expiresAt: string;
-}
-
-export interface PairingStatusInput {
-  status: "pending" | "approved" | "expired";
-  expiresAt: string;
-  device: {
-    id: string;
-    name: string;
-  } | null;
-}
-
-export interface ConfirmPairingInput {
-  /**
-   * @minLength 1
-   * @maxLength 20
-   */
-  code: string;
-  /**
-   * @minLength 1
-   * @maxLength 60
-   */
-  name: string;
-}
-
-export interface ConfirmedPairingInput {
-  name: string;
-  type: "tv" | "browser" | "other";
-}
-
-export interface PairingErrorResponseInput {
-  message: string;
-  kind: "invalid" | "expired";
-}
-
-export interface DeviceInput {
-  id: string;
-  name: string;
-  type: "tv" | "browser" | "other";
-  profile: {
-    id: string;
-    name: string;
-    color:
-      | "violet"
-      | "green"
-      | "orange"
-      | "blue"
-      | "rose"
-      | "teal"
-      | "amber"
-      | "slate";
-  } | null;
-  address: string | null;
-  userAgent: string | null;
-  createdAt: string;
-  lastSeenAt: string | null;
-  watching: boolean;
-}
-
-export interface DeviceListInput {
-  items: DeviceInput[];
-}
-
-export interface UpdateDeviceInput {
-  /**
-   * @minLength 1
-   * @maxLength 60
-   */
-  name: string;
+  retryAfter: number;
 }
 
 export interface SeedRuleInput {
@@ -4655,6 +4264,622 @@ export interface TorrentStatsInput {
     } | null;
   };
   badPieces: number;
+}
+
+export interface MaintenanceRuleOptionsInput {
+  enabled: boolean;
+  /**
+   * @min 1
+   * @max 36500
+   */
+  days: number;
+  /**
+   * @min 1
+   * @max 10000
+   */
+  keepLast: number | null;
+  /**
+   * @maxItems 1000
+   * @minItems 1
+   */
+  profileIds: string[];
+}
+
+export interface MaintenanceRuleInput {
+  enabled: boolean;
+  /**
+   * @min 1
+   * @max 36500
+   */
+  days: number;
+  /**
+   * @min 1
+   * @max 10000
+   */
+  keepLast: number | null;
+  /**
+   * @maxItems 1000
+   * @minItems 1
+   */
+  profileIds: string[];
+  titleId: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  revision: number;
+  rosterChanged: boolean;
+}
+
+export interface MaintenanceConfigInput {
+  rule: MaintenanceRuleInput;
+  inherited: boolean;
+  profiles: {
+    id: string;
+    name: string;
+  }[];
+  executorAvailable: boolean;
+}
+
+export interface MaintenanceSaveInput {
+  enabled: boolean;
+  /**
+   * @min 1
+   * @max 36500
+   */
+  days: number;
+  /**
+   * @min 1
+   * @max 10000
+   */
+  keepLast: number | null;
+  /**
+   * @maxItems 1000
+   * @minItems 1
+   */
+  profileIds: string[];
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  expectedRevision: number;
+}
+
+export interface MaintenanceGroupInput {
+  id: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  revision: number;
+  titleId: string;
+  protected: boolean;
+  candidate: boolean;
+  reasons: MaintenanceReasonInput[];
+  eligibleAt: string | null;
+  eligibleSince: string | null;
+  episodes: {
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    season: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    episode: number;
+  }[];
+  files: {
+    name: string;
+    kind: "source" | "library" | "sidecar";
+    size: number;
+    volume: string | null;
+  }[];
+  logicalBytes: number;
+}
+
+export interface MaintenancePreviewInput {
+  evaluatedAt: string;
+  executorAvailable: boolean;
+  estimate: true;
+  groups: MaintenanceGroupInput[];
+  volumes: {
+    volume: string | null;
+    logicalBytes: number;
+  }[];
+}
+
+export interface MaintenanceDefaultPreviewInput {
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  titleCount: number;
+  items: {
+    titleId: string;
+    preview: MaintenancePreviewInput;
+  }[];
+}
+
+export interface MaintenanceProtectionInput {
+  protected: boolean;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  expectedRevision: number;
+}
+
+export interface MaintenanceUnsuppressInput {
+  /**
+   * @maxItems 1000
+   * @minItems 1
+   */
+  episodes: {
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    season: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    episode: number;
+  }[];
+}
+
+export interface MaintenanceOperationInput {
+  id: string;
+  groupId: string;
+  titleId: string;
+  titleName: string | null;
+  episodes: {
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    season: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    episode: number;
+  }[];
+  state:
+    | "pending"
+    | "detached"
+    | "deleting"
+    | "partial"
+    | "cleaned"
+    | "blocked"
+    | "cancelled";
+  engineStage: string;
+  error: string | null;
+  action: "none" | "retry" | "inspect_files";
+  createdAt: string;
+  updatedAt: string;
+  volumes: {
+    volume: string;
+    beforeFree: number | null;
+    afterFree: number | null;
+    observedFreeChange: number | null;
+  }[];
+  files: {
+    name: string;
+    path: string;
+    kind: "source" | "library" | "sidecar";
+    result: "pending" | "staged" | "removed";
+  }[];
+}
+
+export interface MaintenanceExternalFenceInput {
+  id: string;
+  state: string;
+  action: "inspect_files" | "cancel_preserve_files" | "review_history";
+  files: {
+    name: string;
+    path: string;
+    result: "pending" | "staged" | "removed";
+  }[];
+}
+
+export interface MaintenanceExecutionInput {
+  enabled: boolean;
+}
+
+export interface MaintenanceStatusInput {
+  executorAvailable: boolean;
+  executorEnabled: boolean;
+  restoreHold: boolean;
+  lostCleanupHistory: boolean;
+  nextRunAt: string | null;
+  operations: MaintenanceOperationInput[];
+  externalFences: MaintenanceExternalFenceInput[];
+  defaultRule: MaintenanceRuleInput;
+  rules: {
+    titleId: string;
+    enabled: boolean;
+    /**
+     * @min 1
+     * @max 36500
+     */
+    days: number;
+    /**
+     * @min 1
+     * @max 10000
+     */
+    keepLast: number | null;
+    rosterChanged: boolean;
+  }[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  rulesEnabled: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  groups: number;
+  suppressions: {
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    season: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    episode: number;
+    titleId: string;
+    status: "pending" | "cleaned";
+  }[];
+}
+
+export interface AboutResponseInput {
+  version: string;
+  commit?: string;
+  devStand?: {
+    name: string;
+    branch?: string;
+    snapshot?: string;
+    builtAt?: string;
+    dirty: boolean;
+  };
+  license: string;
+  /** @format uri */
+  sourceUrl: string;
+  imdbAttribution: boolean;
+}
+
+export interface SignupInput {
+  /**
+   * @minLength 2
+   * @maxLength 64
+   * @pattern ^\P{Cc}+$
+   */
+  username: string;
+  /** @minLength 8 */
+  password: string;
+}
+
+export interface SetupResponseInput {
+  needsSetup: boolean;
+}
+
+export interface SigninInput {
+  username: string;
+  password: string;
+}
+
+export interface BackupItemInput {
+  name: string;
+  reason:
+    | "scheduled"
+    | "manual"
+    | "pre-update"
+    | "pre-restore"
+    | "pre-import"
+    | "uploaded";
+  createdAt: string;
+  version: string;
+  size: number;
+  encrypted: boolean;
+  dirKind: "main" | "fallback";
+}
+
+export interface RestoreWarningInput {
+  kind: string;
+  params?: Record<string, string | number>;
+}
+
+export interface RestoreStatusInput {
+  state: "checking" | "pending" | "done" | "failed";
+  backup?: string;
+  at?: string;
+  reason?: string;
+  params?: Record<string, string | number>;
+  warnings: RestoreWarningInput[];
+}
+
+export interface BackupStatusInput {
+  settings: {
+    enabled: boolean;
+    time: string;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    keepDaily: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    keepWeekly: number;
+    mode: "key" | "password";
+    passwordSetAt?: string;
+  };
+  dir: {
+    path: string;
+    source: "default" | "panel";
+    available: boolean;
+    free?: number;
+    total?: number;
+    sameVolumeAsDatabase: boolean;
+  };
+  state: {
+    running?: {
+      reason:
+        | "scheduled"
+        | "manual"
+        | "pre-update"
+        | "pre-restore"
+        | "pre-import"
+        | "uploaded";
+      startedAt: string;
+    };
+    lastSuccessAt?: string;
+    lastAttempt?: {
+      at: string;
+      error?: {
+        kind: string;
+        params: Record<string, string | number>;
+      };
+    };
+    manual?: {
+      at: string;
+      error?: {
+        kind: string;
+        params: Record<string, string | number>;
+      };
+    };
+    nextAt?: string;
+    timezone: string;
+  };
+  restore?: RestoreStatusInput;
+  items: BackupItemInput[];
+}
+
+export interface UpdateBackupSettingsInput {
+  enabled: boolean;
+  /** @pattern ^(?:[01]\d|2[0-3]):[0-5]\d$ */
+  time: string;
+  /**
+   * @min 1
+   * @max 30
+   */
+  keepDaily: number;
+  /**
+   * @min 0
+   * @max 12
+   */
+  keepWeekly: number;
+  /**
+   * @minLength 1
+   * @maxLength 4096
+   */
+  dir?: string | null;
+}
+
+export type UpdateBackupEncryptionInput =
+  | {
+      mode: "key";
+    }
+  | {
+      mode: "password";
+      /**
+       * @minLength 8
+       * @maxLength 1024
+       */
+      password: string;
+    };
+
+export interface BackupDirCheckBodyInput {
+  /**
+   * @minLength 1
+   * @maxLength 4096
+   */
+  path: string;
+}
+
+export interface BackupDirCheckInput {
+  path: string;
+  problem:
+    | "not_absolute"
+    | "missing"
+    | "not_directory"
+    | "denied"
+    | "overlaps_storage"
+    | null;
+  free: number;
+  total: number;
+  sameVolumeAsDatabase: boolean;
+}
+
+export interface RestoreBackupBodyInput {
+  /** @maxLength 1024 */
+  password?: string;
+}
+
+export interface RestoreResponseInput {
+  restore: RestoreStatusInput;
+}
+
+export interface RestoreStateResponseInput {
+  restore?: RestoreStatusInput;
+}
+
+export interface BackupErrorResponseInput {
+  message: string;
+  kind:
+    | "no_space"
+    | "io"
+    | "integrity"
+    | "dir_unavailable"
+    | "busy"
+    | "not_found"
+    | "not_torsher"
+    | "corrupt"
+    | "wrong_password"
+    | "newer_version"
+    | "key_unavailable"
+    | "too_large"
+    | "account_created"
+    | "not_absolute"
+    | "missing"
+    | "not_directory"
+    | "denied"
+    | "overlaps_storage";
+  params?: Record<string, string | number>;
+  field?: string;
+}
+
+export interface CollectionInput {
+  id: string;
+  name: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  count: number;
+  showOnHome: boolean;
+  hiddenFrom: string[];
+}
+
+export interface CollectionListInput {
+  items: CollectionInput[];
+}
+
+export interface CreateCollectionInput {
+  /**
+   * @minLength 1
+   * @maxLength 60
+   */
+  name: string;
+  showOnHome?: boolean;
+  /** @maxItems 100 */
+  hiddenFrom?: string[];
+}
+
+export interface UpdateCollectionInput {
+  /**
+   * @minLength 1
+   * @maxLength 60
+   */
+  name?: string;
+  showOnHome?: boolean;
+  /** @maxItems 100 */
+  hiddenFrom?: string[];
+}
+
+export interface CollectionTitlesInput {
+  items: CardInput[];
+}
+
+export interface CollectionErrorResponseInput {
+  message: string;
+  kind: "duplicate";
+}
+
+export interface StartPairingInput {
+  type?: "tv" | "browser" | "other";
+}
+
+export interface PairingInput {
+  secret: string;
+  code: string;
+  expiresAt: string;
+}
+
+export interface PairingStatusInput {
+  status: "pending" | "approved" | "expired";
+  expiresAt: string;
+  device: {
+    id: string;
+    name: string;
+  } | null;
+}
+
+export interface ConfirmPairingInput {
+  /**
+   * @minLength 1
+   * @maxLength 20
+   */
+  code: string;
+  /**
+   * @minLength 1
+   * @maxLength 60
+   */
+  name: string;
+}
+
+export interface ConfirmedPairingInput {
+  name: string;
+  type: "tv" | "browser" | "other";
+}
+
+export interface PairingErrorResponseInput {
+  message: string;
+  kind: "invalid" | "expired";
+}
+
+export interface DeviceInput {
+  id: string;
+  name: string;
+  type: "tv" | "browser" | "other";
+  profile: {
+    id: string;
+    name: string;
+    color:
+      | "violet"
+      | "green"
+      | "orange"
+      | "blue"
+      | "rose"
+      | "teal"
+      | "amber"
+      | "slate";
+  } | null;
+  address: string | null;
+  userAgent: string | null;
+  createdAt: string;
+  lastSeenAt: string | null;
+  watching: boolean;
+}
+
+export interface DeviceListInput {
+  items: DeviceInput[];
+}
+
+export interface UpdateDeviceInput {
+  /**
+   * @minLength 1
+   * @maxLength 60
+   */
+  name: string;
 }
 
 export type FollowVoicePolicyInput =
@@ -5732,7 +5957,7 @@ export interface UpdateSubtitleSettingsInput {
 }
 
 export interface SubtitleSearchContextInput {
-  providers: ("opensubtitles" | "subdl")[];
+  providers: ("opensubtitles" | "subdl" | "addon")[];
   languages: (
     | "ar"
     | "bg"
@@ -5884,7 +6109,7 @@ export interface SubtitleSearchResponseInput {
      * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
      */
     id: string;
-    provider: "opensubtitles" | "subdl";
+    provider: "opensubtitles" | "subdl" | "addon";
     language:
       | "ar"
       | "bg"
@@ -5928,13 +6153,14 @@ export interface SubtitleSearchResponseInput {
       | "vi"
       | "zh-cn"
       | "zh-tw";
+    addonName?: string;
     release: string;
     match: "hash" | "release" | "title";
     forced?: boolean;
     hearingImpaired?: boolean;
   }[];
   issues: {
-    provider: "opensubtitles" | "subdl";
+    provider: "opensubtitles" | "subdl" | "addon";
     kind: "unavailable" | "quota" | "auth";
   }[];
 }
@@ -6089,6 +6315,23 @@ export interface CreatePlaybackInput {
    * @maxLength 100
    */
   mediaFileId?: string;
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  addonLaunchId?: string;
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  addonSessionId?: string;
+  /**
+   * @minLength 1
+   * @maxLength 100
+   * @pattern ^[\w-]+$
+   */
+  addonOperationId?: string;
+  addonSubtitles?: true;
   title?: PlaybackTitleInput;
   device?: DeviceProfileInput;
   language?: "ru_RU" | "en_US";
@@ -6097,7 +6340,7 @@ export interface CreatePlaybackInput {
    * @max 9999
    */
   audioStream?: number;
-  /** @pattern ^(?:[sf]\d{1,5}|m[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$ */
+  /** @pattern ^(?:[sf]\d{1,5}|[am][0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$ */
   subtitle?: string | null;
   /**
    * @min 0
@@ -6128,7 +6371,7 @@ export interface UpdatePlaybackPreferencesInput {
    * @max 9999
    */
   audioStream?: number;
-  /** @pattern ^(?:[sf]\d{1,5}|m[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$ */
+  /** @pattern ^(?:[sf]\d{1,5}|[am][0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$ */
   subtitle?: string | null;
 }
 
@@ -6145,7 +6388,7 @@ export interface MediaAudioTrackInput {
 }
 
 export interface MediaSubtitleTrackInput {
-  /** @pattern ^(?:[sf]\d{1,5}|m[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$ */
+  /** @pattern ^(?:[sf]\d{1,5}|[am][0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$ */
   id: string;
   language: string | null;
   title: string | null;
@@ -6193,7 +6436,7 @@ export interface PlaybackInput {
   mode: "direct" | "hls" | null;
   streamUrl: string | null;
   hlsTimestampOffset?: number;
-  externalUrl: string;
+  externalUrl: string | null;
   title: string;
   fileName: string;
   size: number;
@@ -6201,7 +6444,7 @@ export interface PlaybackInput {
   startPosition: number | null;
   media: MediaInfoInput | null;
   audioStream: number | null;
-  /** @pattern ^(?:[sf]\d{1,5}|m[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$ */
+  /** @pattern ^(?:[sf]\d{1,5}|[am][0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$ */
   subtitle: string | null;
   subtitleSearch?: SubtitleSearchContextInput;
   preferenceMismatch?: ("audio" | "subtitles")[];
@@ -6296,6 +6539,7 @@ export interface UpdateWatchStateInput {
    * @maxLength 100
    */
   mediaFileId?: string;
+  addonHttp?: true;
   /**
    * @min 0
    * @max 1000000
@@ -12349,510 +12593,6 @@ export interface InternetSpeedtest {
   samples: SpeedtestSample[];
 }
 
-export interface MessageResponse {
-  message: string;
-}
-
-export interface TooManyAttemptsResponse {
-  message: "too_many_attempts";
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  retryAfter: number;
-}
-
-export interface MaintenanceRuleOptions {
-  enabled: boolean;
-  /**
-   * @min 1
-   * @max 36500
-   */
-  days: number;
-  /**
-   * @min 1
-   * @max 10000
-   */
-  keepLast: number | null;
-  /**
-   * @maxItems 1000
-   * @minItems 1
-   */
-  profileIds: string[];
-}
-
-export interface MaintenanceRule {
-  enabled: boolean;
-  /**
-   * @min 1
-   * @max 36500
-   */
-  days: number;
-  /**
-   * @min 1
-   * @max 10000
-   */
-  keepLast: number | null;
-  /**
-   * @maxItems 1000
-   * @minItems 1
-   */
-  profileIds: string[];
-  titleId: string;
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  revision: number;
-  rosterChanged: boolean;
-}
-
-export interface MaintenanceConfig {
-  rule: MaintenanceRule;
-  inherited: boolean;
-  profiles: {
-    id: string;
-    name: string;
-  }[];
-  executorAvailable: boolean;
-}
-
-export interface MaintenanceSave {
-  enabled: boolean;
-  /**
-   * @min 1
-   * @max 36500
-   */
-  days: number;
-  /**
-   * @min 1
-   * @max 10000
-   */
-  keepLast: number | null;
-  /**
-   * @maxItems 1000
-   * @minItems 1
-   */
-  profileIds: string[];
-  /**
-   * @min 0
-   * @max 9007199254740991
-   */
-  expectedRevision: number;
-}
-
-export interface MaintenanceGroup {
-  id: string;
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  revision: number;
-  titleId: string;
-  protected: boolean;
-  candidate: boolean;
-  reasons: MaintenanceReason[];
-  eligibleAt: string | null;
-  eligibleSince: string | null;
-  episodes: {
-    /**
-     * @min 0
-     * @max 9007199254740991
-     */
-    season: number;
-    /**
-     * @min 0
-     * @max 9007199254740991
-     */
-    episode: number;
-  }[];
-  files: {
-    name: string;
-    kind: "source" | "library" | "sidecar";
-    size: number;
-    volume: string | null;
-  }[];
-  logicalBytes: number;
-}
-
-export interface MaintenancePreview {
-  evaluatedAt: string;
-  executorAvailable: boolean;
-  estimate: true;
-  groups: MaintenanceGroup[];
-  volumes: {
-    volume: string | null;
-    logicalBytes: number;
-  }[];
-}
-
-export interface MaintenanceDefaultPreview {
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  titleCount: number;
-  items: {
-    titleId: string;
-    preview: MaintenancePreview;
-  }[];
-}
-
-export interface MaintenanceProtection {
-  protected: boolean;
-  /**
-   * @min 0
-   * @max 9007199254740991
-   */
-  expectedRevision: number;
-}
-
-export interface MaintenanceUnsuppress {
-  /**
-   * @maxItems 1000
-   * @minItems 1
-   */
-  episodes: {
-    /**
-     * @min 0
-     * @max 9007199254740991
-     */
-    season: number;
-    /**
-     * @min 0
-     * @max 9007199254740991
-     */
-    episode: number;
-  }[];
-}
-
-export interface MaintenanceOperation {
-  id: string;
-  groupId: string;
-  titleId: string;
-  titleName: string | null;
-  episodes: {
-    /**
-     * @min 0
-     * @max 9007199254740991
-     */
-    season: number;
-    /**
-     * @min 0
-     * @max 9007199254740991
-     */
-    episode: number;
-  }[];
-  state:
-    | "pending"
-    | "detached"
-    | "deleting"
-    | "partial"
-    | "cleaned"
-    | "blocked"
-    | "cancelled";
-  engineStage: string;
-  error: string | null;
-  action: "none" | "retry" | "inspect_files";
-  createdAt: string;
-  updatedAt: string;
-  volumes: {
-    volume: string;
-    beforeFree: number | null;
-    afterFree: number | null;
-    observedFreeChange: number | null;
-  }[];
-  files: {
-    name: string;
-    path: string;
-    kind: "source" | "library" | "sidecar";
-    result: "pending" | "staged" | "removed";
-  }[];
-}
-
-export interface MaintenanceExternalFence {
-  id: string;
-  state: string;
-  action: "inspect_files" | "cancel_preserve_files" | "review_history";
-  files: {
-    name: string;
-    path: string;
-    result: "pending" | "staged" | "removed";
-  }[];
-}
-
-export interface MaintenanceExecution {
-  enabled: boolean;
-}
-
-export interface MaintenanceStatus {
-  executorAvailable: boolean;
-  executorEnabled: boolean;
-  restoreHold: boolean;
-  lostCleanupHistory: boolean;
-  nextRunAt: string | null;
-  operations: MaintenanceOperation[];
-  externalFences: MaintenanceExternalFence[];
-  defaultRule: MaintenanceRule;
-  rules: {
-    titleId: string;
-    enabled: boolean;
-    /**
-     * @min 1
-     * @max 36500
-     */
-    days: number;
-    /**
-     * @min 1
-     * @max 10000
-     */
-    keepLast: number | null;
-    rosterChanged: boolean;
-  }[];
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  rulesEnabled: number;
-  /**
-   * @min -9007199254740991
-   * @max 9007199254740991
-   */
-  groups: number;
-  suppressions: {
-    /**
-     * @min 0
-     * @max 9007199254740991
-     */
-    season: number;
-    /**
-     * @min 0
-     * @max 9007199254740991
-     */
-    episode: number;
-    titleId: string;
-    status: "pending" | "cleaned";
-  }[];
-}
-
-export interface AboutResponse {
-  version: string;
-  commit?: string;
-  devStand?: {
-    name: string;
-    branch?: string;
-    snapshot?: string;
-    builtAt?: string;
-    dirty: boolean;
-  };
-  license: string;
-  /** @format uri */
-  sourceUrl: string;
-  imdbAttribution: boolean;
-}
-
-export interface Signup {
-  /**
-   * @minLength 2
-   * @maxLength 64
-   * @pattern ^\P{Cc}+$
-   */
-  username: string;
-  /** @minLength 8 */
-  password: string;
-}
-
-export interface SetupResponse {
-  needsSetup: boolean;
-}
-
-export interface Signin {
-  username: string;
-  password: string;
-}
-
-export interface BackupItem {
-  name: string;
-  reason:
-    | "scheduled"
-    | "manual"
-    | "pre-update"
-    | "pre-restore"
-    | "pre-import"
-    | "uploaded";
-  createdAt: string;
-  version: string;
-  size: number;
-  encrypted: boolean;
-  dirKind: "main" | "fallback";
-}
-
-export interface RestoreWarning {
-  kind: string;
-  params?: Record<string, string | number>;
-}
-
-export interface RestoreStatus {
-  state: "checking" | "pending" | "done" | "failed";
-  backup?: string;
-  at?: string;
-  reason?: string;
-  params?: Record<string, string | number>;
-  warnings: RestoreWarning[];
-}
-
-export interface BackupStatus {
-  settings: {
-    enabled: boolean;
-    time: string;
-    /**
-     * @min -9007199254740991
-     * @max 9007199254740991
-     */
-    keepDaily: number;
-    /**
-     * @min -9007199254740991
-     * @max 9007199254740991
-     */
-    keepWeekly: number;
-    mode: "key" | "password";
-    passwordSetAt?: string;
-  };
-  dir: {
-    path: string;
-    source: "default" | "panel";
-    available: boolean;
-    free?: number;
-    total?: number;
-    sameVolumeAsDatabase: boolean;
-  };
-  state: {
-    running?: {
-      reason:
-        | "scheduled"
-        | "manual"
-        | "pre-update"
-        | "pre-restore"
-        | "pre-import"
-        | "uploaded";
-      startedAt: string;
-    };
-    lastSuccessAt?: string;
-    lastAttempt?: {
-      at: string;
-      error?: {
-        kind: string;
-        params: Record<string, string | number>;
-      };
-    };
-    manual?: {
-      at: string;
-      error?: {
-        kind: string;
-        params: Record<string, string | number>;
-      };
-    };
-    nextAt?: string;
-    timezone: string;
-  };
-  restore?: RestoreStatus;
-  items: BackupItem[];
-}
-
-export interface UpdateBackupSettings {
-  enabled: boolean;
-  /** @pattern ^(?:[01]\d|2[0-3]):[0-5]\d$ */
-  time: string;
-  /**
-   * @min 1
-   * @max 30
-   */
-  keepDaily: number;
-  /**
-   * @min 0
-   * @max 12
-   */
-  keepWeekly: number;
-  /**
-   * @minLength 1
-   * @maxLength 4096
-   */
-  dir?: string | null;
-}
-
-export type UpdateBackupEncryption =
-  | {
-      mode: "key";
-    }
-  | {
-      mode: "password";
-      /**
-       * @minLength 8
-       * @maxLength 1024
-       */
-      password: string;
-    };
-
-export interface BackupDirCheckBody {
-  /**
-   * @minLength 1
-   * @maxLength 4096
-   */
-  path: string;
-}
-
-export interface BackupDirCheck {
-  path: string;
-  problem:
-    | "not_absolute"
-    | "missing"
-    | "not_directory"
-    | "denied"
-    | "overlaps_storage"
-    | null;
-  free: number;
-  total: number;
-  sameVolumeAsDatabase: boolean;
-}
-
-export interface RestoreBackupBody {
-  /** @maxLength 1024 */
-  password?: string;
-}
-
-export interface RestoreResponse {
-  restore: RestoreStatus;
-}
-
-export interface RestoreStateResponse {
-  restore?: RestoreStatus;
-}
-
-export interface BackupErrorResponse {
-  message: string;
-  kind:
-    | "no_space"
-    | "io"
-    | "integrity"
-    | "dir_unavailable"
-    | "busy"
-    | "not_found"
-    | "not_torsher"
-    | "corrupt"
-    | "wrong_password"
-    | "newer_version"
-    | "key_unavailable"
-    | "too_large"
-    | "account_created"
-    | "not_absolute"
-    | "missing"
-    | "not_directory"
-    | "denied"
-    | "overlaps_storage";
-  params?: Record<string, string | number>;
-  field?: string;
-}
-
 export interface TitleRating {
   provider: string;
   label: string;
@@ -13060,6 +12800,7 @@ export interface TitleDetails {
   episodeCount?: number;
   follow?: TitleFollowBrief | null;
   hasSources?: boolean;
+  hasAddonStreams?: boolean;
 }
 
 export interface Episode {
@@ -13866,6 +13607,7 @@ export interface ResumeTarget {
   position: number;
   duration: number | null;
   next: boolean;
+  addonHttp?: true;
   file: EpisodeFile | null;
   mediaFileId?: string | null;
   continuation?: Continuation;
@@ -14099,6 +13841,7 @@ export interface ContinueCard {
   position: number;
   duration: number | null;
   next: boolean;
+  addonHttp?: true;
   file: EpisodeFile | null;
   mediaFileId?: string | null;
   followNewEpisode?: boolean;
@@ -14133,132 +13876,242 @@ export type HomeRow = ContinueRow | ReleasesRow | FilesRow | CatalogRow;
 export interface HomeResponse {
   rows: HomeRow[];
   hasSources: boolean;
+  hasAddonStreams?: boolean;
+  hasAddonCatalogs?: boolean;
   catalogError?: "notConfigured" | "unavailable";
 }
 
-export interface Collection {
-  id: string;
+export interface HttpAddonSelections {
+  stream: boolean;
+  subtitles: boolean;
+  /** @maxItems 100 */
+  catalogs: string[];
+}
+
+export interface HttpAddonError {
+  kind:
+    | "invalid_url"
+    | "blocked_address"
+    | "needs_confirmation"
+    | "address_changed"
+    | "unsupported_route"
+    | "timeout"
+    | "unavailable"
+    | "bad_response"
+    | "unsupported_manifest"
+    | "rate_limited"
+    | "busy"
+    | "not_found"
+    | "conflict";
+  message: string;
+}
+
+export interface HttpAddonCapabilities {
   name: string;
+  stream: boolean;
+  subtitles: boolean;
+  catalogs: {
+    /** @pattern ^[0-9a-f]{64}$ */
+    key: string;
+    type: "movie" | "series";
+    name: string;
+  }[];
+}
+
+export interface HttpAddon {
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  id: string;
+  origin: string;
+  enabled: boolean;
+  selections: HttpAddonSelections;
+  capabilities: HttpAddonCapabilities;
+  lanAddresses: string[];
+  checkedAt: string;
+  checkError:
+    | "invalid_url"
+    | "blocked_address"
+    | "needs_confirmation"
+    | "address_changed"
+    | "unsupported_route"
+    | "timeout"
+    | "unavailable"
+    | "bad_response"
+    | "unsupported_manifest"
+    | "rate_limited"
+    | "busy"
+    | "not_found"
+    | "conflict"
+    | null;
+}
+
+export interface HttpAddonList {
+  items: HttpAddon[];
+}
+
+export interface InspectHttpAddon {
+  /**
+   * @minLength 1
+   * @maxLength 8192
+   */
+  url?: string;
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  id?: string;
+}
+
+export interface HttpAddonPreview {
+  origin: string;
+  addresses: string[];
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  approvalId?: string;
+}
+
+export interface TestHttpAddon {
+  /**
+   * @minLength 1
+   * @maxLength 8192
+   */
+  url?: string;
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  id?: string;
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  approvalId?: string;
+}
+
+export interface CreateHttpAddon {
+  /**
+   * @minLength 1
+   * @maxLength 8192
+   */
+  url: string;
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  approvalId?: string;
+  selections?: HttpAddonSelections;
+}
+
+export interface UpdateHttpAddon {
+  /**
+   * @minLength 1
+   * @maxLength 8192
+   */
+  url?: string;
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  approvalId?: string;
+  enabled?: boolean;
+  selections?: HttpAddonSelections;
+}
+
+export interface RecheckHttpAddon {
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  approvalId?: string;
+}
+
+export interface AddonSource {
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  id: string;
+  kind: "torrent" | "http";
+  addonName: string;
+  name: string;
+  quality:
+    | "2160p"
+    | "1440p"
+    | "1080p"
+    | "1080i"
+    | "720p"
+    | "576p"
+    | "480p"
+    | "360p"
+    | null;
+}
+
+export interface AddonSources {
+  items: AddonSource[];
+  failed: boolean;
+}
+
+export interface PlayHttpAddonSource {
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  candidateId: string;
+}
+
+export type AddonSourcePlayback =
+  | {
+      kind: "http";
+      /**
+       * @format uuid
+       * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+       */
+      launchId: string;
+    }
+  | {
+      kind: "torrent";
+      status: "resolving" | "files";
+      torrentId: string;
+    }
+  | {
+      kind: "torrent";
+      status: "ready";
+      torrentId: string;
+      /**
+       * @min 0
+       * @max 9007199254740991
+       */
+      fileIndex: number;
+    };
+
+export interface AddonCatalogRow {
+  id: string;
+  kind: "addon";
+  name: string;
+  type: "movie" | "series";
+  items: Card[];
+}
+
+export interface AddonCatalogRows {
+  rows: AddonCatalogRow[];
+  failed: boolean;
+}
+
+export interface MessageResponse {
+  message: string;
+}
+
+export interface TooManyAttemptsResponse {
+  message: "too_many_attempts";
   /**
    * @min -9007199254740991
    * @max 9007199254740991
    */
-  count: number;
-  showOnHome: boolean;
-  hiddenFrom: string[];
-}
-
-export interface CollectionList {
-  items: Collection[];
-}
-
-export interface CreateCollection {
-  /**
-   * @minLength 1
-   * @maxLength 60
-   */
-  name: string;
-  showOnHome?: boolean;
-  /** @maxItems 100 */
-  hiddenFrom?: string[];
-}
-
-export interface UpdateCollection {
-  /**
-   * @minLength 1
-   * @maxLength 60
-   */
-  name?: string;
-  showOnHome?: boolean;
-  /** @maxItems 100 */
-  hiddenFrom?: string[];
-}
-
-export interface CollectionTitles {
-  items: Card[];
-}
-
-export interface CollectionErrorResponse {
-  message: string;
-  kind: "duplicate";
-}
-
-export interface StartPairing {
-  type?: "tv" | "browser" | "other";
-}
-
-export interface Pairing {
-  secret: string;
-  code: string;
-  expiresAt: string;
-}
-
-export interface PairingStatus {
-  status: "pending" | "approved" | "expired";
-  expiresAt: string;
-  device: {
-    id: string;
-    name: string;
-  } | null;
-}
-
-export interface ConfirmPairing {
-  /**
-   * @minLength 1
-   * @maxLength 20
-   */
-  code: string;
-  /**
-   * @minLength 1
-   * @maxLength 60
-   */
-  name: string;
-}
-
-export interface ConfirmedPairing {
-  name: string;
-  type: "tv" | "browser" | "other";
-}
-
-export interface PairingErrorResponse {
-  message: string;
-  kind: "invalid" | "expired";
-}
-
-export interface Device {
-  id: string;
-  name: string;
-  type: "tv" | "browser" | "other";
-  profile: {
-    id: string;
-    name: string;
-    color:
-      | "violet"
-      | "green"
-      | "orange"
-      | "blue"
-      | "rose"
-      | "teal"
-      | "amber"
-      | "slate";
-  } | null;
-  address: string | null;
-  userAgent: string | null;
-  createdAt: string;
-  lastSeenAt: string | null;
-  watching: boolean;
-}
-
-export interface DeviceList {
-  items: Device[];
-}
-
-export interface UpdateDevice {
-  /**
-   * @minLength 1
-   * @maxLength 60
-   */
-  name: string;
+  retryAfter: number;
 }
 
 export interface SeedRule {
@@ -14570,6 +14423,622 @@ export interface TorrentStats {
     } | null;
   };
   badPieces: number;
+}
+
+export interface MaintenanceRuleOptions {
+  enabled: boolean;
+  /**
+   * @min 1
+   * @max 36500
+   */
+  days: number;
+  /**
+   * @min 1
+   * @max 10000
+   */
+  keepLast: number | null;
+  /**
+   * @maxItems 1000
+   * @minItems 1
+   */
+  profileIds: string[];
+}
+
+export interface MaintenanceRule {
+  enabled: boolean;
+  /**
+   * @min 1
+   * @max 36500
+   */
+  days: number;
+  /**
+   * @min 1
+   * @max 10000
+   */
+  keepLast: number | null;
+  /**
+   * @maxItems 1000
+   * @minItems 1
+   */
+  profileIds: string[];
+  titleId: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  revision: number;
+  rosterChanged: boolean;
+}
+
+export interface MaintenanceConfig {
+  rule: MaintenanceRule;
+  inherited: boolean;
+  profiles: {
+    id: string;
+    name: string;
+  }[];
+  executorAvailable: boolean;
+}
+
+export interface MaintenanceSave {
+  enabled: boolean;
+  /**
+   * @min 1
+   * @max 36500
+   */
+  days: number;
+  /**
+   * @min 1
+   * @max 10000
+   */
+  keepLast: number | null;
+  /**
+   * @maxItems 1000
+   * @minItems 1
+   */
+  profileIds: string[];
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  expectedRevision: number;
+}
+
+export interface MaintenanceGroup {
+  id: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  revision: number;
+  titleId: string;
+  protected: boolean;
+  candidate: boolean;
+  reasons: MaintenanceReason[];
+  eligibleAt: string | null;
+  eligibleSince: string | null;
+  episodes: {
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    season: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    episode: number;
+  }[];
+  files: {
+    name: string;
+    kind: "source" | "library" | "sidecar";
+    size: number;
+    volume: string | null;
+  }[];
+  logicalBytes: number;
+}
+
+export interface MaintenancePreview {
+  evaluatedAt: string;
+  executorAvailable: boolean;
+  estimate: true;
+  groups: MaintenanceGroup[];
+  volumes: {
+    volume: string | null;
+    logicalBytes: number;
+  }[];
+}
+
+export interface MaintenanceDefaultPreview {
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  titleCount: number;
+  items: {
+    titleId: string;
+    preview: MaintenancePreview;
+  }[];
+}
+
+export interface MaintenanceProtection {
+  protected: boolean;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  expectedRevision: number;
+}
+
+export interface MaintenanceUnsuppress {
+  /**
+   * @maxItems 1000
+   * @minItems 1
+   */
+  episodes: {
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    season: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    episode: number;
+  }[];
+}
+
+export interface MaintenanceOperation {
+  id: string;
+  groupId: string;
+  titleId: string;
+  titleName: string | null;
+  episodes: {
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    season: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    episode: number;
+  }[];
+  state:
+    | "pending"
+    | "detached"
+    | "deleting"
+    | "partial"
+    | "cleaned"
+    | "blocked"
+    | "cancelled";
+  engineStage: string;
+  error: string | null;
+  action: "none" | "retry" | "inspect_files";
+  createdAt: string;
+  updatedAt: string;
+  volumes: {
+    volume: string;
+    beforeFree: number | null;
+    afterFree: number | null;
+    observedFreeChange: number | null;
+  }[];
+  files: {
+    name: string;
+    path: string;
+    kind: "source" | "library" | "sidecar";
+    result: "pending" | "staged" | "removed";
+  }[];
+}
+
+export interface MaintenanceExternalFence {
+  id: string;
+  state: string;
+  action: "inspect_files" | "cancel_preserve_files" | "review_history";
+  files: {
+    name: string;
+    path: string;
+    result: "pending" | "staged" | "removed";
+  }[];
+}
+
+export interface MaintenanceExecution {
+  enabled: boolean;
+}
+
+export interface MaintenanceStatus {
+  executorAvailable: boolean;
+  executorEnabled: boolean;
+  restoreHold: boolean;
+  lostCleanupHistory: boolean;
+  nextRunAt: string | null;
+  operations: MaintenanceOperation[];
+  externalFences: MaintenanceExternalFence[];
+  defaultRule: MaintenanceRule;
+  rules: {
+    titleId: string;
+    enabled: boolean;
+    /**
+     * @min 1
+     * @max 36500
+     */
+    days: number;
+    /**
+     * @min 1
+     * @max 10000
+     */
+    keepLast: number | null;
+    rosterChanged: boolean;
+  }[];
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  rulesEnabled: number;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  groups: number;
+  suppressions: {
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    season: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    episode: number;
+    titleId: string;
+    status: "pending" | "cleaned";
+  }[];
+}
+
+export interface AboutResponse {
+  version: string;
+  commit?: string;
+  devStand?: {
+    name: string;
+    branch?: string;
+    snapshot?: string;
+    builtAt?: string;
+    dirty: boolean;
+  };
+  license: string;
+  /** @format uri */
+  sourceUrl: string;
+  imdbAttribution: boolean;
+}
+
+export interface Signup {
+  /**
+   * @minLength 2
+   * @maxLength 64
+   * @pattern ^\P{Cc}+$
+   */
+  username: string;
+  /** @minLength 8 */
+  password: string;
+}
+
+export interface SetupResponse {
+  needsSetup: boolean;
+}
+
+export interface Signin {
+  username: string;
+  password: string;
+}
+
+export interface BackupItem {
+  name: string;
+  reason:
+    | "scheduled"
+    | "manual"
+    | "pre-update"
+    | "pre-restore"
+    | "pre-import"
+    | "uploaded";
+  createdAt: string;
+  version: string;
+  size: number;
+  encrypted: boolean;
+  dirKind: "main" | "fallback";
+}
+
+export interface RestoreWarning {
+  kind: string;
+  params?: Record<string, string | number>;
+}
+
+export interface RestoreStatus {
+  state: "checking" | "pending" | "done" | "failed";
+  backup?: string;
+  at?: string;
+  reason?: string;
+  params?: Record<string, string | number>;
+  warnings: RestoreWarning[];
+}
+
+export interface BackupStatus {
+  settings: {
+    enabled: boolean;
+    time: string;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    keepDaily: number;
+    /**
+     * @min -9007199254740991
+     * @max 9007199254740991
+     */
+    keepWeekly: number;
+    mode: "key" | "password";
+    passwordSetAt?: string;
+  };
+  dir: {
+    path: string;
+    source: "default" | "panel";
+    available: boolean;
+    free?: number;
+    total?: number;
+    sameVolumeAsDatabase: boolean;
+  };
+  state: {
+    running?: {
+      reason:
+        | "scheduled"
+        | "manual"
+        | "pre-update"
+        | "pre-restore"
+        | "pre-import"
+        | "uploaded";
+      startedAt: string;
+    };
+    lastSuccessAt?: string;
+    lastAttempt?: {
+      at: string;
+      error?: {
+        kind: string;
+        params: Record<string, string | number>;
+      };
+    };
+    manual?: {
+      at: string;
+      error?: {
+        kind: string;
+        params: Record<string, string | number>;
+      };
+    };
+    nextAt?: string;
+    timezone: string;
+  };
+  restore?: RestoreStatus;
+  items: BackupItem[];
+}
+
+export interface UpdateBackupSettings {
+  enabled: boolean;
+  /** @pattern ^(?:[01]\d|2[0-3]):[0-5]\d$ */
+  time: string;
+  /**
+   * @min 1
+   * @max 30
+   */
+  keepDaily: number;
+  /**
+   * @min 0
+   * @max 12
+   */
+  keepWeekly: number;
+  /**
+   * @minLength 1
+   * @maxLength 4096
+   */
+  dir?: string | null;
+}
+
+export type UpdateBackupEncryption =
+  | {
+      mode: "key";
+    }
+  | {
+      mode: "password";
+      /**
+       * @minLength 8
+       * @maxLength 1024
+       */
+      password: string;
+    };
+
+export interface BackupDirCheckBody {
+  /**
+   * @minLength 1
+   * @maxLength 4096
+   */
+  path: string;
+}
+
+export interface BackupDirCheck {
+  path: string;
+  problem:
+    | "not_absolute"
+    | "missing"
+    | "not_directory"
+    | "denied"
+    | "overlaps_storage"
+    | null;
+  free: number;
+  total: number;
+  sameVolumeAsDatabase: boolean;
+}
+
+export interface RestoreBackupBody {
+  /** @maxLength 1024 */
+  password?: string;
+}
+
+export interface RestoreResponse {
+  restore: RestoreStatus;
+}
+
+export interface RestoreStateResponse {
+  restore?: RestoreStatus;
+}
+
+export interface BackupErrorResponse {
+  message: string;
+  kind:
+    | "no_space"
+    | "io"
+    | "integrity"
+    | "dir_unavailable"
+    | "busy"
+    | "not_found"
+    | "not_torsher"
+    | "corrupt"
+    | "wrong_password"
+    | "newer_version"
+    | "key_unavailable"
+    | "too_large"
+    | "account_created"
+    | "not_absolute"
+    | "missing"
+    | "not_directory"
+    | "denied"
+    | "overlaps_storage";
+  params?: Record<string, string | number>;
+  field?: string;
+}
+
+export interface Collection {
+  id: string;
+  name: string;
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  count: number;
+  showOnHome: boolean;
+  hiddenFrom: string[];
+}
+
+export interface CollectionList {
+  items: Collection[];
+}
+
+export interface CreateCollection {
+  /**
+   * @minLength 1
+   * @maxLength 60
+   */
+  name: string;
+  showOnHome?: boolean;
+  /** @maxItems 100 */
+  hiddenFrom?: string[];
+}
+
+export interface UpdateCollection {
+  /**
+   * @minLength 1
+   * @maxLength 60
+   */
+  name?: string;
+  showOnHome?: boolean;
+  /** @maxItems 100 */
+  hiddenFrom?: string[];
+}
+
+export interface CollectionTitles {
+  items: Card[];
+}
+
+export interface CollectionErrorResponse {
+  message: string;
+  kind: "duplicate";
+}
+
+export interface StartPairing {
+  type?: "tv" | "browser" | "other";
+}
+
+export interface Pairing {
+  secret: string;
+  code: string;
+  expiresAt: string;
+}
+
+export interface PairingStatus {
+  status: "pending" | "approved" | "expired";
+  expiresAt: string;
+  device: {
+    id: string;
+    name: string;
+  } | null;
+}
+
+export interface ConfirmPairing {
+  /**
+   * @minLength 1
+   * @maxLength 20
+   */
+  code: string;
+  /**
+   * @minLength 1
+   * @maxLength 60
+   */
+  name: string;
+}
+
+export interface ConfirmedPairing {
+  name: string;
+  type: "tv" | "browser" | "other";
+}
+
+export interface PairingErrorResponse {
+  message: string;
+  kind: "invalid" | "expired";
+}
+
+export interface Device {
+  id: string;
+  name: string;
+  type: "tv" | "browser" | "other";
+  profile: {
+    id: string;
+    name: string;
+    color:
+      | "violet"
+      | "green"
+      | "orange"
+      | "blue"
+      | "rose"
+      | "teal"
+      | "amber"
+      | "slate";
+  } | null;
+  address: string | null;
+  userAgent: string | null;
+  createdAt: string;
+  lastSeenAt: string | null;
+  watching: boolean;
+}
+
+export interface DeviceList {
+  items: Device[];
+}
+
+export interface UpdateDevice {
+  /**
+   * @minLength 1
+   * @maxLength 60
+   */
+  name: string;
 }
 
 export type FollowVoicePolicy =
@@ -15647,7 +16116,7 @@ export interface UpdateSubtitleSettings {
 }
 
 export interface SubtitleSearchContext {
-  providers: ("opensubtitles" | "subdl")[];
+  providers: ("opensubtitles" | "subdl" | "addon")[];
   languages: (
     | "ar"
     | "bg"
@@ -15799,7 +16268,7 @@ export interface SubtitleSearchResponse {
      * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
      */
     id: string;
-    provider: "opensubtitles" | "subdl";
+    provider: "opensubtitles" | "subdl" | "addon";
     language:
       | "ar"
       | "bg"
@@ -15843,13 +16312,14 @@ export interface SubtitleSearchResponse {
       | "vi"
       | "zh-cn"
       | "zh-tw";
+    addonName?: string;
     release: string;
     match: "hash" | "release" | "title";
     forced?: boolean;
     hearingImpaired?: boolean;
   }[];
   issues: {
-    provider: "opensubtitles" | "subdl";
+    provider: "opensubtitles" | "subdl" | "addon";
     kind: "unavailable" | "quota" | "auth";
   }[];
 }
@@ -16004,6 +16474,23 @@ export interface CreatePlayback {
    * @maxLength 100
    */
   mediaFileId?: string;
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  addonLaunchId?: string;
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  addonSessionId?: string;
+  /**
+   * @minLength 1
+   * @maxLength 100
+   * @pattern ^[\w-]+$
+   */
+  addonOperationId?: string;
+  addonSubtitles?: true;
   title?: PlaybackTitle;
   device?: DeviceProfile;
   language?: "ru_RU" | "en_US";
@@ -16012,7 +16499,7 @@ export interface CreatePlayback {
    * @max 9999
    */
   audioStream?: number;
-  /** @pattern ^(?:[sf]\d{1,5}|m[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$ */
+  /** @pattern ^(?:[sf]\d{1,5}|[am][0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$ */
   subtitle?: string | null;
   /**
    * @min 0
@@ -16043,7 +16530,7 @@ export interface UpdatePlaybackPreferences {
    * @max 9999
    */
   audioStream?: number;
-  /** @pattern ^(?:[sf]\d{1,5}|m[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$ */
+  /** @pattern ^(?:[sf]\d{1,5}|[am][0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$ */
   subtitle?: string | null;
 }
 
@@ -16060,7 +16547,7 @@ export interface MediaAudioTrack {
 }
 
 export interface MediaSubtitleTrack {
-  /** @pattern ^(?:[sf]\d{1,5}|m[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$ */
+  /** @pattern ^(?:[sf]\d{1,5}|[am][0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$ */
   id: string;
   language: string | null;
   title: string | null;
@@ -16108,7 +16595,7 @@ export interface Playback {
   mode: "direct" | "hls" | null;
   streamUrl: string | null;
   hlsTimestampOffset?: number;
-  externalUrl: string;
+  externalUrl: string | null;
   title: string;
   fileName: string;
   size: number;
@@ -16116,7 +16603,7 @@ export interface Playback {
   startPosition: number | null;
   media: MediaInfo | null;
   audioStream: number | null;
-  /** @pattern ^(?:[sf]\d{1,5}|m[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$ */
+  /** @pattern ^(?:[sf]\d{1,5}|[am][0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$ */
   subtitle: string | null;
   subtitleSearch?: SubtitleSearchContext;
   preferenceMismatch?: ("audio" | "subtitles")[];
@@ -16211,6 +16698,7 @@ export interface UpdateWatchState {
    * @maxLength 100
    */
   mediaFileId?: string;
+  addonHttp?: true;
   /**
    * @min 0
    * @max 1000000
@@ -19980,6 +20468,160 @@ export type DeleteIndexerError = MessageResponse;
 
 export type PostIndexerTestError = MessageResponse;
 
+export type GetTitleAddonSourcesError = MessageResponse | HttpAddonError;
+
+export type PostTitleAddonSourcePlayError =
+  MessageResponse | HttpAddonError | EngineUnavailableResponse;
+
+export type GetHomeAddonRowsError = MessageResponse | HttpAddonError;
+
+export type GetHttpAddonsError =
+  | {
+      message: string;
+      kind?:
+        | "invalid_url"
+        | "blocked_address"
+        | "needs_confirmation"
+        | "address_changed"
+        | "unsupported_route"
+        | "timeout"
+        | "unavailable"
+        | "bad_response"
+        | "unsupported_manifest"
+        | "rate_limited"
+        | "busy"
+        | "not_found"
+        | "conflict";
+    }
+  | MessageResponse
+  | HttpAddonError;
+
+export type PostHttpAddonError =
+  | {
+      message: string;
+      kind?:
+        | "invalid_url"
+        | "blocked_address"
+        | "needs_confirmation"
+        | "address_changed"
+        | "unsupported_route"
+        | "timeout"
+        | "unavailable"
+        | "bad_response"
+        | "unsupported_manifest"
+        | "rate_limited"
+        | "busy"
+        | "not_found"
+        | "conflict";
+    }
+  | MessageResponse
+  | HttpAddonError;
+
+export type PreviewHttpAddonError =
+  | {
+      message: string;
+      kind?:
+        | "invalid_url"
+        | "blocked_address"
+        | "needs_confirmation"
+        | "address_changed"
+        | "unsupported_route"
+        | "timeout"
+        | "unavailable"
+        | "bad_response"
+        | "unsupported_manifest"
+        | "rate_limited"
+        | "busy"
+        | "not_found"
+        | "conflict";
+    }
+  | MessageResponse
+  | HttpAddonError;
+
+export type TestHttpAddonError =
+  | {
+      message: string;
+      kind?:
+        | "invalid_url"
+        | "blocked_address"
+        | "needs_confirmation"
+        | "address_changed"
+        | "unsupported_route"
+        | "timeout"
+        | "unavailable"
+        | "bad_response"
+        | "unsupported_manifest"
+        | "rate_limited"
+        | "busy"
+        | "not_found"
+        | "conflict";
+    }
+  | MessageResponse
+  | HttpAddonError;
+
+export type PatchHttpAddonError =
+  | {
+      message: string;
+      kind?:
+        | "invalid_url"
+        | "blocked_address"
+        | "needs_confirmation"
+        | "address_changed"
+        | "unsupported_route"
+        | "timeout"
+        | "unavailable"
+        | "bad_response"
+        | "unsupported_manifest"
+        | "rate_limited"
+        | "busy"
+        | "not_found"
+        | "conflict";
+    }
+  | MessageResponse
+  | HttpAddonError;
+
+export type DeleteHttpAddonError =
+  | {
+      message: string;
+      kind?:
+        | "invalid_url"
+        | "blocked_address"
+        | "needs_confirmation"
+        | "address_changed"
+        | "unsupported_route"
+        | "timeout"
+        | "unavailable"
+        | "bad_response"
+        | "unsupported_manifest"
+        | "rate_limited"
+        | "busy"
+        | "not_found"
+        | "conflict";
+    }
+  | MessageResponse
+  | HttpAddonError;
+
+export type RecheckHttpAddonError =
+  | {
+      message: string;
+      kind?:
+        | "invalid_url"
+        | "blocked_address"
+        | "needs_confirmation"
+        | "address_changed"
+        | "unsupported_route"
+        | "timeout"
+        | "unavailable"
+        | "bad_response"
+        | "unsupported_manifest"
+        | "rate_limited"
+        | "busy"
+        | "not_found"
+        | "conflict";
+    }
+  | MessageResponse
+  | HttpAddonError;
+
 export type GetIndexerManagersError = MessageResponse;
 
 export type PostIndexerManagerError = MessageResponse | SourceErrorResponse;
@@ -21606,6 +22248,33 @@ export class Api<
         format: "json",
         ...params,
       }),
+
+    /**
+     * No description
+     *
+     * @tags Catalog
+     * @name GetHomeAddonRows
+     * @request GET:/api/home/addon-rows
+     */
+    getHomeAddonRows: (
+      query?: {
+        /** @default "all" */
+        mode?: "all" | "movies" | "series" | "library";
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<AddonCatalogRows, GetHomeAddonRowsError>({
+        path: `/api/home/addon-rows`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
   };
   indexers = {
     /**
@@ -21691,81 +22360,32 @@ export class Api<
         ...params,
       }),
   };
-  indexerManagers = {
+  titles = {
     /**
      * No description
      *
-     * @tags Sources
-     * @name GetIndexerManagers
-     * @request GET:/api/indexer-managers
+     * @tags Titles
+     * @name GetTitleAddonSources
+     * @request GET:/api/titles/{id}/addon-sources
      */
-    getIndexerManagers: (params: RequestParams = {}) =>
-      this.request<IndexerManagerList, GetIndexerManagersError>({
-        path: `/api/indexer-managers`,
-        method: "GET",
-        format: "json",
-        ...params,
-      }),
-
-    /**
-     * No description
-     *
-     * @tags Sources
-     * @name PostIndexerManager
-     * @request POST:/api/indexer-managers
-     */
-    postIndexerManager: (
-      data: CreateIndexerManagerInput,
-      params: RequestParams = {},
-    ) =>
-      this.request<IndexerManagerSyncResult, PostIndexerManagerError>({
-        path: `/api/indexer-managers`,
-        method: "POST",
-        body: data,
-        type: ContentType.Json,
-        format: "json",
-        ...params,
-      }),
-
-    /**
-     * No description
-     *
-     * @tags Sources
-     * @name PatchIndexerManager
-     * @request PATCH:/api/indexer-managers/{id}
-     */
-    patchIndexerManager: (
-      id: string,
-      data: UpdateIndexerManagerInput,
-      params: RequestParams = {},
-    ) =>
-      this.request<IndexerManager, PatchIndexerManagerError>({
-        path: `/api/indexer-managers/${id}`,
-        method: "PATCH",
-        body: data,
-        type: ContentType.Json,
-        format: "json",
-        ...params,
-      }),
-
-    /**
-     * No description
-     *
-     * @tags Sources
-     * @name DeleteIndexerManager
-     * @request DELETE:/api/indexer-managers/{id}
-     */
-    deleteIndexerManager: (
+    getTitleAddonSources: (
       id: string,
       query?: {
-        /** @default "keep" */
-        indexers?: "keep" | "delete";
+        /** @pattern ^(?:0|[1-9]\d{0,2})$ */
+        season?: string;
+        /** @pattern ^[1-9]\d{0,3}$ */
+        episode?: string;
+        /**
+         * @default "en-US"
+         * @pattern ^[a-z]{2}-[A-Z]{2}$
+         */
+        language?: string;
       },
       params: RequestParams = {},
     ) =>
-      this.request<MessageResponse, DeleteIndexerManagerError>({
-        path: `/api/indexer-managers/${id}`,
-        method: "DELETE",
+      this.request<AddonSources, GetTitleAddonSourcesError>({
+        path: `/api/titles/${id}/addon-sources`,
+        method: "GET",
         query: query,
         format: "json",
         ...params,
@@ -21774,19 +22394,24 @@ export class Api<
     /**
      * No description
      *
-     * @tags Sources
-     * @name PostIndexerManagerSync
-     * @request POST:/api/indexer-managers/{id}/sync
+     * @tags Titles
+     * @name PostTitleAddonSourcePlay
+     * @request POST:/api/titles/{id}/addon-sources/play
      */
-    postIndexerManagerSync: (id: string, params: RequestParams = {}) =>
-      this.request<IndexerManagerSyncResult, PostIndexerManagerSyncError>({
-        path: `/api/indexer-managers/${id}/sync`,
+    postTitleAddonSourcePlay: (
+      id: string,
+      data: PlayHttpAddonSourceInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<AddonSourcePlayback, PostTitleAddonSourcePlayError>({
+        path: `/api/titles/${id}/addon-sources/play`,
         method: "POST",
+        body: data,
+        type: ContentType.Json,
         format: "json",
         ...params,
       }),
-  };
-  titles = {
+
     /**
      * No description
      *
@@ -22282,6 +22907,227 @@ export class Api<
         method: "POST",
         body: data,
         type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+  };
+  sources = {
+    /**
+     * No description
+     *
+     * @tags Sources
+     * @name GetHttpAddons
+     * @request GET:/api/sources/http-addons/
+     */
+    getHttpAddons: (params: RequestParams = {}) =>
+      this.request<HttpAddonList, GetHttpAddonsError>({
+        path: `/api/sources/http-addons/`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Sources
+     * @name PostHttpAddon
+     * @request POST:/api/sources/http-addons/
+     */
+    postHttpAddon: (data: CreateHttpAddonInput, params: RequestParams = {}) =>
+      this.request<HttpAddon, PostHttpAddonError>({
+        path: `/api/sources/http-addons/`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Sources
+     * @name PreviewHttpAddon
+     * @request POST:/api/sources/http-addons/preview
+     */
+    previewHttpAddon: (
+      data: InspectHttpAddonInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<HttpAddonPreview, PreviewHttpAddonError>({
+        path: `/api/sources/http-addons/preview`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Sources
+     * @name TestHttpAddon
+     * @request POST:/api/sources/http-addons/test
+     */
+    testHttpAddon: (data: TestHttpAddonInput, params: RequestParams = {}) =>
+      this.request<HttpAddonCapabilities, TestHttpAddonError>({
+        path: `/api/sources/http-addons/test`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Sources
+     * @name PatchHttpAddon
+     * @request PATCH:/api/sources/http-addons/{id}
+     */
+    patchHttpAddon: (
+      id: string,
+      data: UpdateHttpAddonInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<HttpAddon, PatchHttpAddonError>({
+        path: `/api/sources/http-addons/${id}`,
+        method: "PATCH",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Sources
+     * @name DeleteHttpAddon
+     * @request DELETE:/api/sources/http-addons/{id}
+     */
+    deleteHttpAddon: (id: string, params: RequestParams = {}) =>
+      this.request<void, DeleteHttpAddonError>({
+        path: `/api/sources/http-addons/${id}`,
+        method: "DELETE",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Sources
+     * @name RecheckHttpAddon
+     * @request POST:/api/sources/http-addons/{id}/check
+     */
+    recheckHttpAddon: (
+      id: string,
+      data: RecheckHttpAddonInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<HttpAddon, RecheckHttpAddonError>({
+        path: `/api/sources/http-addons/${id}/check`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+  };
+  indexerManagers = {
+    /**
+     * No description
+     *
+     * @tags Sources
+     * @name GetIndexerManagers
+     * @request GET:/api/indexer-managers
+     */
+    getIndexerManagers: (params: RequestParams = {}) =>
+      this.request<IndexerManagerList, GetIndexerManagersError>({
+        path: `/api/indexer-managers`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Sources
+     * @name PostIndexerManager
+     * @request POST:/api/indexer-managers
+     */
+    postIndexerManager: (
+      data: CreateIndexerManagerInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<IndexerManagerSyncResult, PostIndexerManagerError>({
+        path: `/api/indexer-managers`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Sources
+     * @name PatchIndexerManager
+     * @request PATCH:/api/indexer-managers/{id}
+     */
+    patchIndexerManager: (
+      id: string,
+      data: UpdateIndexerManagerInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<IndexerManager, PatchIndexerManagerError>({
+        path: `/api/indexer-managers/${id}`,
+        method: "PATCH",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Sources
+     * @name DeleteIndexerManager
+     * @request DELETE:/api/indexer-managers/{id}
+     */
+    deleteIndexerManager: (
+      id: string,
+      query?: {
+        /** @default "keep" */
+        indexers?: "keep" | "delete";
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<MessageResponse, DeleteIndexerManagerError>({
+        path: `/api/indexer-managers/${id}`,
+        method: "DELETE",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Sources
+     * @name PostIndexerManagerSync
+     * @request POST:/api/indexer-managers/{id}/sync
+     */
+    postIndexerManagerSync: (id: string, params: RequestParams = {}) =>
+      this.request<IndexerManagerSyncResult, PostIndexerManagerSyncError>({
+        path: `/api/indexer-managers/${id}/sync`,
+        method: "POST",
         format: "json",
         ...params,
       }),

@@ -1,4 +1,5 @@
 import type {
+  AddonCatalogRows,
   CatalogRow,
   ContinueCard,
   ContinueRow,
@@ -372,3 +373,8 @@ get<HomeResponse>('/api/home', ({ query }) => {
 
 get<ContinueRow>('/api/home/continue', ({ query }) =>
   continueRow(modeOf(query.get('mode')), query))
+
+get<AddonCatalogRows>('/api/home/addon-rows', () => ({
+  rows: [],
+  failed: false,
+}))

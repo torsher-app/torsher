@@ -414,6 +414,20 @@
       "when": 1795531649366,
       "tag": "0058_subtitle-provider-jobs",
       "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "6",
+      "when": 1795545838410,
+      "tag": "0059_http-addons",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "6",
+      "when": 1795547080621,
+      "tag": "0060_addon-http-progress",
+      "breakpoints": true
     }
   ]
 }

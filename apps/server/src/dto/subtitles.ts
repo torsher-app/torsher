@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { subtitleLanguages } from '../services/subtitles/languages.ts'
 
 export const subtitleProvider = z.enum(['opensubtitles', 'subdl'])
+const playbackSubtitleProvider = z.enum(['opensubtitles', 'subdl', 'addon'])
 const language = z.enum(subtitleLanguages)
 const languages = z.array(language)
 const nonemptyCredential = z.string().trim().min(1).max(1024)
@@ -56,7 +57,7 @@ export const updateSubtitleSettings = z
 
 export const subtitleSearchContext = z
   .object({
-    providers: z.array(subtitleProvider),
+    providers: z.array(playbackSubtitleProvider),
     languages,
     defaultLanguage: language,
     canRemove: z.boolean(),
@@ -77,8 +78,9 @@ export const subtitleSearchResponse = z
     items: z.array(
       z.object({
         id: z.uuid(),
-        provider: subtitleProvider,
+        provider: playbackSubtitleProvider,
         language,
+        addonName: z.string().optional(),
         release: z.string(),
         match: z.enum(['hash', 'release', 'title']),
         forced: z.boolean().optional(),
@@ -87,7 +89,7 @@ export const subtitleSearchResponse = z
     ),
     issues: z.array(
       z.object({
-        provider: subtitleProvider,
+        provider: playbackSubtitleProvider,
         kind: z.enum(['unavailable', 'quota', 'auth']),
       }),
     ),

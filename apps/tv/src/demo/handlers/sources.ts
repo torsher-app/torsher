@@ -1,4 +1,5 @@
 import type {
+  AddonSources,
   DownloadTitleInput,
   OpenTitleInput,
   SourceCandidate,
@@ -11,7 +12,14 @@ import type {
   UpdateTorrentTitleInput,
 } from '@torsher/api-client'
 import type { DemoTorrent } from '../library.ts'
-import { del, DemoError, get, post, put } from '@torsher/demo/router'
+import {
+  del,
+  DemoError,
+  get,
+  post,
+  put,
+  unavailable,
+} from '@torsher/demo/router'
 import { fakeInfohash } from '@torsher/demo/titles'
 import { titleById } from '../cards.ts'
 import {
@@ -298,3 +306,9 @@ put<Torrent, UpdateTorrentTitleInput>(
     return torrentView(torrent, body.titleId)
   },
 )
+
+get<AddonSources>('/api/titles/:id/addon-sources', () => ({
+  items: [],
+  failed: false,
+}))
+post('/api/titles/:id/addon-sources/play', unavailable)

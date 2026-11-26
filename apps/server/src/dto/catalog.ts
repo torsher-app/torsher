@@ -231,6 +231,7 @@ export const titleDetails = card
     // смотреть, качать и «Следить» нечем. Как и `follow`, добавляет роут:
     // в кэш TMDB признак не попадает
     hasSources: z.boolean().optional(),
+    hasAddonStreams: z.boolean().optional(),
   })
   .meta({ id: 'titleDetails' })
 

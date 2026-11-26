@@ -21,6 +21,7 @@ export interface SnapshotJob {
   targetPath: string
   /** Виды алиасов, собранных из TMDB: их нельзя хранить дольше срока TMDB */
   tmdbAliasKinds: string[]
+  includeHttpAddons: boolean
   manifestTable: string
   manifest: Record<string, string>
 }
@@ -91,6 +92,11 @@ function snapshot(job: SnapshotJob): WorkerResult {
     // Данные TMDB живут не дольше полугода, а ручная копия — сколько угодно.
     // В снимке старой версии таблиц может ещё не быть
     db.transaction(() => {
+      // Снимок хранит ключ восстановления. URL аддонов допустимы только
+      // внутри архива, зашифрованного собственным паролем.
+      if (!job.includeHttpAddons && hasTable(db, 'http_addons'))
+        db.exec('DELETE FROM http_addons')
+
       if (hasTable(db, 'meta_cache'))
         db.exec('DELETE FROM meta_cache')
 

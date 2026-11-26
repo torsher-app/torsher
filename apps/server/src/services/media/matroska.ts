@@ -13,6 +13,7 @@ export type RangeReader = (start: number, end: number) => Promise<Uint8Array>
 
 const ID = {
   ebml: 0x1A45DFA3,
+  docType: 0x4282,
   segment: 0x18538067,
   seekHead: 0x114D9B74,
   seek: 0x4DBB,
@@ -131,6 +132,27 @@ function* children(buffer: Uint8Array, from: number, to: number) {
       return
     offset = element.end
   }
+}
+
+/** Distinguish MKV from other EBML documents, including WebM. */
+export function isMatroskaDocument(prefix: Uint8Array) {
+  const header = readElement(prefix, 0, prefix.length)
+  if (
+    header?.id !== ID.ebml
+    || header.size === null
+    || header.end > prefix.length
+  ) {
+    return false
+  }
+  for (const item of children(prefix, header.data, header.end)) {
+    if (item.id === ID.docType && item.end <= header.end) {
+      return (
+        new TextDecoder().decode(prefix.subarray(item.data, item.end))
+          === 'matroska'
+      )
+    }
+  }
+  return false
 }
 
 function readUint(buffer: Uint8Array, element: Element) {

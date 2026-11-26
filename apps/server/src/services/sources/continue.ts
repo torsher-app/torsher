@@ -152,11 +152,18 @@ async function continueCard(
           context,
         )
       : undefined
-  if (target.next && !target.position && continuation?.preferredTorrent)
+  if (
+    !target.addonHttp
+    && target.next
+    && !target.position
+    && continuation?.preferredTorrent
+  ) {
     target.file = continuation.preferredTorrent
+  }
 
   if (
     !cycle
+    && !target.addonHttp
     && !target.file
     && fresh?.season === target.season
     && fresh.episode === target.episode
@@ -232,6 +239,7 @@ async function continueCard(
     position: target.position,
     duration: target.duration ?? (runtime ? runtime * 60 : null),
     next: target.next,
+    addonHttp: target.addonHttp,
     continuation,
     ...visible,
     ...(fresh && {

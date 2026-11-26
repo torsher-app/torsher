@@ -1,4 +1,11 @@
+import {
+  addonSubtitleTrack,
+  addonSubtitleTracks,
+  addonSubtitleView,
+} from '../services/subtitles/addons.ts'
 import { z } from 'zod'
+import { AddonMedia } from '../services/addons/media.ts'
+import { getAddonLaunch } from '../services/addons/streams.ts'
 import {
   subtitleApplyInput,
   subtitleSearchInput,
@@ -24,6 +31,7 @@ import {
   unavailableTorrentFiles,
 } from '../services/library/folders.ts'
 import { stat } from 'node:fs/promises'
+import { setTimeout as delay } from 'node:timers/promises'
 import {
   getPlaybackPreferences,
   savePlaybackPreferences,
@@ -40,8 +48,12 @@ import type { PlaybackSession } from '../services/media/index.ts'
 import type { CycleSource, MediaFile, Torrent } from '../db/schema.ts'
 import type { SessionInput } from '../services/media/sessions.ts'
 import {
+  addonSessionCount,
   currentSubtitleKey,
   currentSubtitleSource,
+  nextPlaybackOrder,
+  refreshAddonCheckpoint,
+  supersedeAddonCheckpoint,
   validatedCheckpoint,
 } from '../services/media/sessions.ts'
 import {
@@ -113,6 +125,7 @@ import {
   getTitleProgress,
   hasProgress,
   lastVoiceOfSeason,
+  launchSelectionCurrent,
   launchSelectionOf,
   rememberVoice,
   rememberVoiceIntent,
@@ -155,6 +168,9 @@ const guardResponses = {
 const PROBE_WAIT_MS = 4000
 // Окно реплик субтитров: клиент спрашивает раз в несколько секунд
 const CUES_WINDOW_SECONDS = 120
+const ADDON_SESSION_LIMIT = 12
+const ADDON_START_LIMIT = 256
+const ADDON_START_TTL = 2 * 60_000
 
 /** Токен потока: устройство отзывается удалением строки, у владельца — версия сессий */
 function streamTokenOf(request: FastifyRequest) {
@@ -183,6 +199,9 @@ function streamUrlOf(
 ) {
   if (mode === 'hls')
     return `/api/hls/${session.id}/main.m3u8?token=${token}`
+
+  if (session.addonMedia)
+    return `/api/stream/addon/${session.id}?token=${token}`
 
   return session.library
     ? `/api/library/files/${session.library.id}/stream?token=${token}`
@@ -217,6 +236,7 @@ function oneLine(text: string) {
 interface Resume {
   duration: number | null
   startPosition: number | null
+  verifyAddonPosition?: true
 }
 
 const sessionViewings = new WeakSet<PlaybackSession>()
@@ -228,8 +248,11 @@ async function toPlaybackResponse(
 ) {
   const { profileId } = request
   let downloaded = session.downloadedSubtitles
-  if (downloaded.length) {
-    const present = await availableDownloadedSubtitles(downloaded)
+  let addons = addonSubtitleTracks(session)
+  if (downloaded.length || addons.length) {
+    const present = downloaded.length
+      ? await availableDownloadedSubtitles(downloaded)
+      : []
     const revision = await currentSubtitleSource(session)
     if (
       getSession(session.id, streamSubjectOf(request)) !== session
@@ -240,16 +263,33 @@ async function toPlaybackResponse(
     }
 
     downloaded = revision ? present : []
+    addons = revision ? addonSubtitleTracks(session) : []
   }
-  const selected
-    = session.subtitle?.startsWith('m')
-      && !downloaded.some(
-        track => downloadedSubtitleId(track) === session.subtitle,
-      )
-      ? null
-      : session.subtitle
+  let selected = session.subtitle
+  if (
+    selected?.startsWith('m')
+    && !downloaded.some(track => downloadedSubtitleId(track) === selected)
+  ) {
+    selected = null
+  }
+  if (
+    selected?.startsWith('a')
+    && !addons.some(track => track.id === selected)
+  ) {
+    selected = null
+  }
   const ready = session.status === 'ready'
   const { media, decision } = session
+  const actualDuration = session.hls?.duration ?? media?.duration
+  const startPosition = resume.verifyAddonPosition
+    ? ready
+    && resume.startPosition !== null
+    && actualDuration
+    && Number.isFinite(actualDuration)
+    && actualDuration > 0
+      ? resumePosition(resume.startPosition, actualDuration)
+      : null
+    : resume.startPosition
   const token = streamTokenOf(request)
   const revision = session.playedEvidence?.probeKey
   const offsets
@@ -260,6 +300,10 @@ async function toPlaybackResponse(
     const key = session.subtitleKeys.get(id)
     return key && offsets ? (offsets.get(key) ?? 0) : undefined
   }
+
+  const fileName = session.addonMedia
+    ? (ready && session.addonMedia.safeText(session.fileName)) || 'video'
+    : session.fileName
 
   return {
     sessionId: session.id,
@@ -272,15 +316,18 @@ async function toPlaybackResponse(
     streamUrl: ready ? streamUrlOf(session, token) : null,
     ...(session.hls ? { hlsTimestampOffset: TS_OFFSET_SECONDS } : {}),
     // Внешний плеер читает файл сам: перепаковка закрывается вместе с плеером
-    externalUrl: streamUrlOf(session, token, 'direct'),
-    title: session.torrent?.name ?? session.fileName,
-    fileName: session.fileName,
+    externalUrl: session.addonMedia
+      ? null
+      : streamUrlOf(session, token, 'direct'),
+    title: session.torrent?.name ?? fileName,
+    fileName,
     size:
-      session.library?.size
+      session.addonMedia?.size
+      ?? session.library?.size
       ?? session.torrent?.files?.[session.fileIndex]?.size
       ?? 0,
-    duration: session.hls?.duration ?? media?.duration ?? resume.duration,
-    startPosition: resume.startPosition,
+    duration: actualDuration ?? resume.duration,
+    startPosition,
     media: media && {
       container: media.container,
       video: media.video && {
@@ -329,6 +376,7 @@ async function toPlaybackResponse(
             subtitleOffsetMs(downloadedSubtitleId(track)) ?? 0,
           ),
         ),
+        ...addons.map(addonSubtitleView),
       ],
     },
     preferenceMismatch: session.preferenceMismatch,
@@ -534,6 +582,10 @@ async function cycleResumeSource(
 
 export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
   app.addHook('onRequest', requireViewer)
+  const addonStarts = new Map<
+    string,
+    { sessionId: string, expiresAt: number }
+  >()
 
   app.get(
     '/playback/viewing-attempt',
@@ -626,6 +678,170 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
         return reply.code(404).send({ message: 'Playback not found' })
       }
 
+      const { addonLaunchId, addonSessionId, addonOperationId } = request.body
+      if (addonLaunchId || addonSessionId) {
+        await requireSameOrigin(request, reply)
+        if (reply.sent)
+          return reply
+
+        const { profileId } = request
+        const subject = streamSubjectOf(request)!
+        const missing = () =>
+          reply.code(404).send({ message: 'Playback not found' })
+        if (!viewerStillOnProfile(request, profileId))
+          return missing()
+        const {
+          device,
+          language,
+          audioStream,
+          subtitle,
+          startPosition,
+          title,
+        } = request.body
+        const now = Date.now()
+        for (const [key, receipt] of addonStarts) {
+          if (receipt.expiresAt <= now)
+            addonStarts.delete(key)
+        }
+
+        const key = JSON.stringify([
+          subject,
+          profileId,
+          addonLaunchId ?? null,
+          addonSessionId ?? null,
+          addonSessionId ? addonOperationId : null,
+        ])
+        const receipt = addonStarts.get(key)
+        const grant = addonLaunchId
+          ? getAddonLaunch(addonLaunchId, { subject, profileId })
+          : undefined
+        if (addonLaunchId && !grant)
+          return missing()
+        let session: PlaybackSession
+        if (receipt) {
+          const existing = getSession(receipt.sessionId, subject)
+          const target = existing?.addonMedia?.launch.target
+          if (
+            !existing
+            || !target
+            || !playbackSessionAccessible(existing, profileId)
+            || (title
+              && (title.id !== target.titleId
+                || title.season !== target.season
+                || title.episode !== target.episode))
+          ) {
+            return missing()
+          }
+          session = existing
+        }
+        else {
+          const previous
+            = addonSessionId && getSession(addonSessionId, subject)
+          const previousMedia = previous && previous.addonMedia
+          const launch = addonLaunchId
+            ? grant
+            : previous
+              && previousMedia
+              && previous.status === 'ready'
+              && !previous.addonMediaFailed
+              && playbackSessionAccessible(previous, profileId)
+              && previousMedia.accessible
+              ? previousMedia.launch
+              : undefined
+
+          if (!launch || !titleAllowedCached(profileId, launch.target.titleId))
+            return missing()
+          const { titleId, season, episode } = launch.target
+          if (
+            title
+            && (title.id !== titleId
+              || title.season !== season
+              || title.episode !== episode)
+          ) {
+            return missing()
+          }
+          if (
+            addonStarts.size >= ADDON_START_LIMIT
+            || addonSessionCount() >= ADDON_SESSION_LIMIT
+          ) {
+            return reply
+              .code(502)
+              .send({ message: 'HTTP video is unavailable' })
+          }
+
+          const ref = { profileId, titleId, season, episode }
+          const progress = getTitleProgress(ref)
+          const saved = getPlaybackPreferences(profileId, titleId)
+          session = createSession({
+            diagnosticContext: {
+              ...diagnosticContext(request),
+              titleId,
+              season,
+              episode,
+            },
+            subject,
+            owner: !!request.userId && !request.deviceId,
+            progressRef: ref,
+            launchSelection: launchSelectionOf(ref, progress),
+            addonMedia: new AddonMedia(launch),
+            previousAddonSession: previous || undefined,
+            addonSubtitles: request.body.addonSubtitles,
+            fileIndex: 0,
+            fileName: launch.fileName,
+            device,
+            client: clientOf(request),
+            audioStream,
+            subtitle,
+            subtitlePreference: saved?.subtitles,
+            preference: {
+              selected: saved?.audio,
+              locale: language ?? getProfile(profileId)?.language,
+            },
+            log: request.log.child({ source: 'playback' }),
+          })
+          bindSessionProfile(session, profileId)
+          preferenceOwners.set(session, ref)
+          resumes.set(session, {
+            duration: progress?.duration ?? null,
+            startPosition:
+              startPosition
+              ?? (progress
+                ? resumePosition(progress.position, progress.duration)
+                : null),
+            ...(!previous
+              && startPosition === undefined && { verifyAddonPosition: true }),
+          })
+          addonStarts.set(key, {
+            sessionId: session.id,
+            expiresAt: now + ADDON_START_TTL,
+          })
+        }
+
+        await Promise.race([
+          session.ready,
+          delay(PROBE_WAIT_MS, undefined, { ref: false }),
+        ])
+        if (
+          !viewerStillOnProfile(request, profileId)
+          || getSession(session.id, subject) !== session
+          || !playbackSessionAccessible(session, profileId)
+        ) {
+          await stopSession(session.id, 'client')
+          return missing()
+        }
+        if (session.addonMediaFailed || session.addonMedia?.failed) {
+          await stopSession(session.id, 'client')
+          return reply.code(502).send({ message: 'HTTP video is unavailable' })
+        }
+        const response = await toPlaybackResponse(
+          session,
+          request,
+          resumes.get(session)!,
+        )
+        return response ?? missing()
+      }
+
+      const playbackOrder = nextPlaybackOrder()
       const {
         torrentId,
         fileIndex,
@@ -901,6 +1117,7 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
             ? initialSelection
             : undefined,
         ...source,
+        addonSubtitles: request.body.addonSubtitles,
         fileName,
         device,
         client: clientOf(request),
@@ -1068,6 +1285,8 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
         await stopSession(session.id, 'client', diagnosticContext(request))
         return reply.code(404).send({ message: 'Playback not found' })
       }
+      if (ref && !cycleId)
+        supersedeAddonCheckpoint(ref, playbackOrder)
       return response
     },
   )
@@ -1115,7 +1334,19 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
         change.audio = audioPreferenceOf(track)
       }
       const subtitle = request.body.subtitle
-      if (subtitle !== undefined) {
+      if (subtitle?.startsWith('a')) {
+        if (
+          !(await currentSubtitleKey(session, subtitle))
+          || !viewerStillOnProfile(request, owner.profileId)
+          || !playbackSessionAccessible(session, owner.profileId)
+          || getSession(session.id, streamSubjectOf(request)) !== session
+          || !addonSubtitleTrack(session, subtitle)
+        ) {
+          return reply.code(404).send({ message: 'Playback not found' })
+        }
+        session.subtitle = subtitle
+      }
+      else if (subtitle !== undefined) {
         const track
           = session.media.subtitles.find(
             item =>
@@ -1136,12 +1367,16 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
         ) {
           return reply.code(404).send({ message: 'Playback not found' })
         }
+        if (session.subtitle?.startsWith('a'))
+          session.subtitle = subtitle
         change.subtitles = {
           enabled: subtitle !== null,
           language: trackLanguage(track?.language ?? null),
           forced: track?.forced ?? false,
         }
       }
+      if (!change.audio && !change.subtitles)
+        return { message: 'Playback preferences saved' }
       getDb().transaction(() => {
         const attempt = liveViewingAttempt(session.id)
         if (attempt) {
@@ -1170,7 +1405,7 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
           }
         }
         savePlaybackPreferences(owner.profileId, owner.titleId, change)
-        if (request.body.audioStream !== undefined) {
+        if (!session.addonMedia && request.body.audioStream !== undefined) {
           if (
             session.decision.mode === 'direct'
             && session.decision.audioSwitch === 'platform'
@@ -1210,7 +1445,12 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
         operationId: 'getPlayback',
         tags: ['Playback'],
         params: playbackParams,
-        response: { 200: playback, 404: messageResponse, ...guardResponses },
+        response: {
+          200: playback,
+          404: messageResponse,
+          502: messageResponse,
+          ...guardResponses,
+        },
       },
     },
     async (request, reply) => {
@@ -1218,6 +1458,11 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
 
       if (!session || !playbackSessionAccessible(session, request.profileId))
         return reply.code(404).send({ message: 'Playback not found' })
+
+      if (session.addonMediaFailed || session.addonMedia?.failed) {
+        await stopSession(session.id, 'client')
+        return reply.code(502).send({ message: 'HTTP video is unavailable' })
+      }
 
       // Статус — пульс плеера: пока он идёт, раздача считается используемой,
       // даже если плеер на паузе и потоков не открывает
@@ -1293,7 +1538,7 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
       session.log.warn(
         `playback ${session.id}: player error ${error}${
           mediaError ? `, mediaError=${mediaError}` : ''
-        }${detail ? `, detail="${oneLine(detail)}"` : ''}${
+        }${detail && !session.addonMedia ? `, detail="${oneLine(detail)}"` : ''}${
           position !== undefined ? `, at=${Math.round(position)}s` : ''
         }${badPieces !== undefined ? `, badPieces=${badPieces}` : ''}`,
       )
@@ -1430,7 +1675,15 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
       }
 
       const { offsetMs } = request.body
-      saveSubtitleOffset(profileId, target.revision, target.key, offsetMs)
+      if (request.params.trackId.startsWith('a')) {
+        const track = addonSubtitleTrack(session, request.params.trackId)
+        if (!track)
+          return reply.code(404).send({ message: 'Subtitle track not found' })
+        track.offsetMs = offsetMs
+      }
+      else {
+        saveSubtitleOffset(profileId, target.revision, target.key, offsetMs)
+      }
       return { offsetMs }
     },
   )
@@ -1458,12 +1711,13 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
       if (!session || !sessionAccessible(session, profileId))
         return reply.code(404).send({ message: 'Playback not found' })
 
-      const managed = request.params.trackId.startsWith('m')
+      const addon = request.params.trackId.startsWith('a')
+      const scoped = addon || request.params.trackId.startsWith('m')
       const current = () =>
         getSession(session.id, subject) === session
         && viewerStillOnProfile(request, profileId)
         && playbackSessionAccessible(session, profileId)
-      if (managed && (!(await currentSubtitleSource(session)) || !current()))
+      if (scoped && (!(await currentSubtitleSource(session)) || !current()))
         return reply.code(404).send({ message: 'Playback not found' })
 
       let result
@@ -1476,7 +1730,7 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
         )
       }
       catch (err) {
-        if (managed && !current())
+        if (scoped && !current())
           return reply.code(404).send({ message: 'Playback not found' })
 
         session.log.warn(
@@ -1485,13 +1739,19 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
         return reply.code(502).send({ message: 'Subtitles are not available' })
       }
 
-      if (managed && (!(await currentSubtitleSource(session)) || !current()))
+      if (scoped && (!(await currentSubtitleSource(session)) || !current()))
         return reply.code(404).send({ message: 'Playback not found' })
 
-      if (!result)
+      if (
+        !result
+        || (addon && !addonSubtitleTrack(session, request.params.trackId))
+      ) {
         return reply.code(404).send({ message: 'Subtitle track not found' })
+      }
 
       const from = Number(request.query.from ?? 0)
+      if (addon)
+        reply.header('Cache-Control', 'no-store')
 
       return {
         cues: cuesInWindow(result.cues, from, from + CUES_WINDOW_SECONDS),
@@ -1523,6 +1783,94 @@ export const playbackRoutes: FastifyPluginAsyncZod = async (app) => {
       ) {
         return reply.code(404).send({ message: 'Playback not found' })
       }
+      if (request.body.addonHttp) {
+        await requireSameOrigin(request, reply)
+        if (reply.sent)
+          return reply
+        const { profileId } = request
+        const {
+          title,
+          sessionId,
+          event,
+          position,
+          duration,
+          appliedAudioStream,
+        } = request.body
+        const ref = playbackOwner(profileId, title)!
+        const subject = streamSubjectOf(request)
+        const source = {
+          torrentId: null,
+          fileIndex: null,
+          mediaFileId: null,
+          lastSourceKind: 'addonHttp' as const,
+        }
+        const checkpoint = validatedCheckpoint(
+          sessionId,
+          subject,
+          ref,
+          source,
+          appliedAudioStream,
+        )
+        if (
+          !checkpoint?.launchSelection
+          || !viewerStillOnProfile(request, profileId)
+          || !titleAllowedCached(profileId, ref.titleId)
+        ) {
+          return reply.code(404).send({ message: 'Playback not found' })
+        }
+
+        return getDb().transaction(() => {
+          const previous = getTitleProgress(ref)
+          const resource = JSON.stringify([
+            'title',
+            ref.titleId,
+            ref.season ?? 0,
+            ref.episode ?? 0,
+          ])
+          if (
+            !launchSelectionCurrent(
+              ref,
+              checkpoint.launchSelection!,
+              previous,
+            )
+            || !acceptWatchEvent(profileId, [resource], event)
+          ) {
+            return {
+              torrentId: null,
+              fileIndex: null,
+              mediaFileId: null,
+              position: previous?.position ?? 0,
+              duration: previous?.duration ?? null,
+              updatedAt: (previous?.updatedAt ?? new Date()).toISOString(),
+              accepted: false,
+              rejection: 'stale' as const,
+            }
+          }
+
+          const saved = saveTitleProgress(
+            ref,
+            { ...source, position, duration: duration ?? null },
+            diagnosticContext(request),
+            checkpoint.evidence,
+            checkpoint.voice,
+            checkpoint.launchSelection,
+          )
+          refreshAddonCheckpoint(sessionId!, launchSelectionOf(ref, saved))
+          rememberLegacyCompletion(saved)
+          if (ref.season === undefined && isWatched(position, duration ?? null))
+            clearMovieWatchlist(profileId, ref.titleId)
+          return {
+            torrentId: null,
+            fileIndex: null,
+            mediaFileId: null,
+            position: saved.position,
+            duration: saved.duration,
+            updatedAt: saved.updatedAt.toISOString(),
+            accepted: true,
+          }
+        })
+      }
+
       const context = diagnosticContext(request)
       const { torrentId, fileIndex, mediaFileId, position, duration }
         = request.body

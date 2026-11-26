@@ -11,31 +11,45 @@ interface FindResponse {
 
 export type ExternalSource = 'imdb_id' | 'tvdb_id'
 
+function compactMatches(matches: Array<{ id: number }> | undefined) {
+  return [...new Set(matches?.map(item => item.id))]
+    .slice(0, 2)
+    .map(id => ({ id }))
+}
+
 /**
  * Тайтл каталога по внешнему ID через `/find`. Один ID у IMDb бывает и
  * фильмом, и сериалом только по ошибке TMDB: тогда решает `prefer`,
- * без него — фильм.
+ * без него — фильм. Строгий режим получает единственное совпадение
+ * указанного типа, сохраняя прежний порядок для импорта.
  */
 export async function findByExternalId(
   id: string,
   source: ExternalSource,
   prefer?: 'movie' | 'series',
+  strict = false,
 ) {
   const found = await withMetaCache(
-    `tmdb:find:${source}:${id}`,
+    `tmdb:find:v2:${source}:${id}`,
     FIND_TTL_MS,
     () =>
       tmdbGet<FindResponse>(`/find/${id}`, { external_source: source }).then(
         response => ({
-          movie_results: response.movie_results
-            ?.slice(0, 1)
-            .map(item => ({ id: item.id })),
-          tv_results: response.tv_results
-            ?.slice(0, 1)
-            .map(item => ({ id: item.id })),
+          movie_results: compactMatches(response.movie_results),
+          tv_results: compactMatches(response.tv_results),
         }),
       ),
   )
+  if (strict) {
+    if (!prefer)
+      return undefined
+    const matches = prefer === 'movie' ? found.movie_results : found.tv_results
+    const id = matches?.length === 1 ? matches[0]?.id : undefined
+    return id && Number.isSafeInteger(id) && id > 0
+      ? toCatalogId(prefer === 'movie' ? 'movie' : 'tv', id)
+      : undefined
+  }
+
   const movie = found.movie_results?.[0]
   const tv = found.tv_results?.[0]
 

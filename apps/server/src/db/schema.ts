@@ -1,3 +1,8 @@
+import type {
+  HttpAddonErrorKind,
+  HttpAddonSelections,
+} from '../dto/httpAddons.ts'
+import type { AddonManifest } from '../services/addons/manifest.ts'
 import type { PendingViewingGroup } from '../services/transfer/formats.ts'
 import type { HistoryImportCounts } from '../services/transfer/personalSpace.ts'
 import type { ImportUndoJournal } from '../services/transfer/undoJournal.ts'
@@ -369,6 +374,26 @@ export const indexers = sqliteTable(
 
 export type Indexer = typeof indexers.$inferSelect
 
+export const httpAddons = sqliteTable('http_addons', {
+  id: text('id').primaryKey(),
+  origin: text('origin').notNull(),
+  encryptedUrl: text('encrypted_url').notNull(),
+  manifest: text('manifest', { mode: 'json' }).$type<AddonManifest>().notNull(),
+  selections: text('selections', { mode: 'json' })
+    .$type<HttpAddonSelections>()
+    .notNull(),
+  lanAddresses: text('lan_addresses', { mode: 'json' })
+    .$type<string[]>()
+    .notNull(),
+  enabled: integer('enabled', { mode: 'boolean' }).notNull(),
+  revision: text('revision').notNull(),
+  createdAt: integer('created_at', { mode: 'timestamp_ms' }).notNull(),
+  checkedAt: integer('checked_at', { mode: 'timestamp_ms' }).notNull(),
+  checkError: text('check_error').$type<HttpAddonErrorKind>(),
+})
+
+export type HttpAddon = typeof httpAddons.$inferSelect
+
 /** Самая свежая позиция прочитанной ленты индексатора */
 export interface FeedCursor {
   guid?: string
@@ -671,6 +696,7 @@ export const titleProgress = sqliteTable(
     // внешнего ключа: `ADD COLUMN` в SQLite не пересоздаёт таблицу, а убранный
     // из библиотеки файл просто не найдётся
     mediaFileId: text('media_file_id'),
+    lastSourceKind: text('last_source_kind', { enum: ['addonHttp'] }),
     playedSource: text('played_source', { mode: 'json' }).$type<PlayedSource>(),
     voiceStudio: text('voice_studio'),
     voiceType: text('voice_type'),

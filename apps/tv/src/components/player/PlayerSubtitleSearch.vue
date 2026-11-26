@@ -38,13 +38,15 @@ function languageLabel(code: string) {
 }
 
 function providerName(provider: string) {
+  if (provider === 'addon')
+    return t('addons.title')
   return provider === 'opensubtitles' ? 'OpenSubtitles.com' : 'SubDL'
 }
 
 function resultDetail(item: Results['items'][number]) {
   const match = item.match === 'title' ? 'titleMatch' : item.match
   return [
-    providerName(item.provider),
+    item.addonName || providerName(item.provider),
     languageLabel(item.language),
     t(`player.subtitleSearch.${match}`),
     item.forced && t('player.forced'),
@@ -63,8 +65,12 @@ const message = computed(() => {
   if (!found)
     return undefined
   if (found.issues.length) {
-    if (found.issues.length < props.search.providers.length)
+    if (
+      found.items.length
+      || found.issues.length < props.search.providers.length
+    ) {
       return 'partial'
+    }
     return 'unavailable'
   }
   return found.items.length ? undefined : 'empty'

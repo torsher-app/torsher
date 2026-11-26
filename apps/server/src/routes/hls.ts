@@ -7,7 +7,11 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod'
 import type { FileHandle } from 'node:fs/promises'
 import { diagnosticId } from '../dto/diagnostics.ts'
 import { hlsParams, hlsSegmentParams, streamQuery } from '../dto/playback.ts'
-import { requireStream, streamSubjectOf } from '../middleware/auth.ts'
+import {
+  requireStream,
+  streamSubjectOf,
+  viewerStillOnProfile,
+} from '../middleware/auth.ts'
 import { EngineError } from '../services/engine/index.ts'
 import { throttleLog } from '../services/logs/index.ts'
 import {
@@ -154,6 +158,17 @@ export const hlsRoutes: FastifyPluginAsyncZod = async (app) => {
         }
 
         throw err
+      }
+
+      if (
+        session.addonMedia
+        && (getSession(session.id, streamSubjectOf(request)) !== session
+          || !sessionAccessible(session, request.profileId)
+          || (request.deviceId
+            && !viewerStillOnProfile(request, request.profileId)))
+      ) {
+        await file.close()
+        return reply.code(404).send({ message: 'Segment not found' })
       }
 
       return reply

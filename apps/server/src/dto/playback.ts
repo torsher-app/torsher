@@ -29,7 +29,7 @@ export const deviceProfile = z
 // Дорожка субтитров: `s<поток>` — встроенная, `f<файл раздачи>` — внешняя
 const subtitleId = z
   .string()
-  .regex(/^(?:[sf]\d{1,5}|m[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/)
+  .regex(/^(?:[sf]\d{1,5}|[am][0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/)
 
 const offsetMs = z.number().int().min(-30000).max(30000)
 
@@ -58,6 +58,15 @@ export const createPlayback = z
     fileIndex: fileIndex.optional(),
     // Файл библиотеки: играется с диска, без движка
     mediaFileId: z.string().min(1).max(100).optional(),
+    addonLaunchId: z.uuid().optional(),
+    addonSessionId: z.uuid().optional(),
+    addonOperationId: z
+      .string()
+      .min(1)
+      .max(100)
+      .regex(/^[\w-]+$/u)
+      .optional(),
+    addonSubtitles: z.literal(true).optional(),
     // Смотрим из карточки: позиция для продолжения — по серии, а не по файлу
     title: playbackTitle.optional(),
     // Без профиля — прямое воспроизведение, как у старых клиентов
@@ -73,7 +82,19 @@ export const createPlayback = z
     viewing: viewingStart.optional(),
     profileId: z.string().min(1).max(100).optional(),
   })
-  .refine(oneSource, sourceMessage)
+  .refine(
+    body =>
+      body.addonLaunchId || body.addonSessionId
+        ? !body.torrentId
+        && body.fileIndex === undefined
+        && !body.mediaFileId
+        && !(body.addonLaunchId && body.addonSessionId)
+        && !body.viewing
+        && !!body.profileId
+        && (!body.addonSessionId || !!body.addonOperationId)
+        : !body.addonOperationId && oneSource(body),
+    sourceMessage,
+  )
   .meta({ id: 'createPlayback' })
 
 export const playbackStartConflict = messageResponse
@@ -166,7 +187,7 @@ export const playback = z
     // Общий сдвиг PTS MPEG-TS относительно шкалы исходного файла.
     hlsTimestampOffset: z.number().optional(),
     // Прямой поток файла с токеном (12 ч) для VLC и Infuse, в любом режиме
-    externalUrl: z.string(),
+    externalUrl: z.string().nullable(),
     title: z.string(),
     fileName: z.string(),
     size: z.number(),
@@ -282,12 +303,26 @@ export const updateWatchState = z
     torrentId: z.string().min(1).max(100).optional(),
     fileIndex: fileIndex.optional(),
     mediaFileId: z.string().min(1).max(100).optional(),
+    addonHttp: z.literal(true).optional(),
     position: seconds,
     duration: seconds.optional(),
     title: playbackTitle.optional(),
     viewing: viewingCheckpoint.optional(),
   })
-  .refine(oneSource, sourceMessage)
+  .refine(
+    body =>
+      body.addonHttp
+        ? !body.torrentId
+        && body.fileIndex === undefined
+        && !body.mediaFileId
+        && !body.viewing
+        && !!body.sessionId
+        && !!body.title
+        && !!body.profileId
+        && !!body.event
+        : oneSource(body),
+    sourceMessage,
+  )
   .refine(
     value => !value.viewing || !!(value.sessionId && value.event),
     'Viewing requires session and event',

@@ -1,4 +1,17 @@
 {
+  "addons": {
+    "title": "HTTP add-ons",
+    "manifestUrl": "Manifest URL",
+    "add": "Add add-on",
+    "test": "Check manifest",
+    "allowLocal": "Allow local address",
+    "confirmAddresses": "Confirm addresses for {origin}",
+    "addressChanged": "The address changed. Confirm it again.",
+    "streams": "Streams",
+    "catalogs": "Catalogs",
+    "partialFailure": "Some add-ons are unavailable",
+    "videoUnavailable": "The video link is unavailable. Choose a source again."
+  },
   "common": {
     "back": "Back",
     "about": "About"
