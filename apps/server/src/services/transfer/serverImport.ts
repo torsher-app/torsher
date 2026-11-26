@@ -27,6 +27,7 @@ import {
 } from '../../db/schema.ts'
 import { createBackupNow } from '../backups/index.ts'
 import { scanFolder } from '../library/scan.ts'
+import { assertMaintenancePolicyChange } from '../libraryMaintenance/admission.ts'
 import { logFor } from '../logs/index.ts'
 import { routesChanged } from '../net/index.ts'
 import { providerOf } from '../notifications/channels/index.ts'
@@ -772,6 +773,8 @@ export async function applyServerImport(
   // Копия не удалась — предпросмотр остаётся: владелец повторит, освободив место
   const backup = await serverImportDeps.backup()
 
+  if (document.libraries?.some(library => library.folders.length))
+    assertMaintenancePolicyChange({ libraryTopology: true })
   jobs.delete(token)
   const secrets = secretReader(job.key)
   const now = new Date()

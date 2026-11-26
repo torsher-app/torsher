@@ -121,6 +121,12 @@ Either way, the engine stops downloading and seeding it. Files already in the li
 
 For a private torrent with an active seeding requirement, check the warning in the dialog before confirming. Removing the torrent can count as a hit-and-run under the tracker's rules.
 
+### Clean up by title {#disk-cleanup}
+
+Open <Ui k="panel.torrents.cleanup.title" /> from <Ui k="panel.nav.torrents" /> or from <Ui k="panel.library.managed" /> in <Ui k="panel.nav.library" />. Search for a movie or series and select the titles to remove. One title can contain several torrents and library files, including files whose torrents are already gone.
+
+Select <Ui k="panel.maintenance.preview" /> to review the files and the torrents that will stop. Then select <Ui k="panel.torrents.deleteDialog.withFiles" />. The estimate counts shared hard links once when all their links are selected. Actual space freed can vary with the filesystem. Connected folders stay read-only.
+
 ### Remove from the library
 
 <Ui k="panel.torrents.removeLibrary" /> removes the torrent's files from the library. The torrent goes back to the cache and is removed when the cache fills up.

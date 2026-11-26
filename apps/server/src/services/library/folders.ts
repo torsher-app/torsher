@@ -1,5 +1,6 @@
 import { logFor } from '../logs/index.ts'
 import { reconcilePrivateSubtitleStorage } from '../media/downloadedSubtitles.ts'
+import { assertMaintenancePolicyChange } from '../libraryMaintenance/admission.ts'
 import type { Library, LibraryFolder } from '../../db/schema.ts'
 import { constants } from 'node:fs'
 import { access, readdir, stat } from 'node:fs/promises'
@@ -131,6 +132,7 @@ export interface LibraryInput {
 export async function createLibrary(input: LibraryInput) {
   const { path } = await checkFolderPath(input.path)
 
+  assertMaintenancePolicyChange({ libraryTopology: true })
   assertNewPath(path)
 
   const created = getDb().transaction((tx) => {
@@ -177,6 +179,7 @@ export async function addFolder(
   const library = ownLibrary(libraryId)
   const { path } = await checkFolderPath(input.path)
 
+  assertMaintenancePolicyChange({ libraryTopology: true })
   assertNewPath(path)
 
   const folder = getDb()
@@ -204,6 +207,8 @@ export interface LibraryPatch {
 export function updateLibrary(id: string, patch: LibraryPatch) {
   const library = ownLibrary(id)
 
+  if (patch.exclude)
+    assertMaintenancePolicyChange({ libraryTopology: true })
   getDb().transaction((tx) => {
     const { hiddenProfiles, ...values } = patch
 

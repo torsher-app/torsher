@@ -110,6 +110,7 @@ export const librariesRoutes: FastifyPluginAsyncZod = async (app) => {
         body: createLibrary,
         response: {
           200: library,
+          409: messageResponse,
           422: folderPathErrorResponse,
           ...guard,
         },
@@ -133,7 +134,12 @@ export const librariesRoutes: FastifyPluginAsyncZod = async (app) => {
         tags: ['Libraries'],
         params: libraryParams,
         body: updateLibrary,
-        response: { 200: library, 404: messageResponse, ...guard },
+        response: {
+          200: library,
+          404: messageResponse,
+          409: messageResponse,
+          ...guard,
+        },
       },
     },
     async (request, reply) => {
@@ -182,6 +188,7 @@ export const librariesRoutes: FastifyPluginAsyncZod = async (app) => {
         response: {
           200: library,
           404: messageResponse,
+          409: messageResponse,
           422: folderPathErrorResponse,
           ...guard,
         },

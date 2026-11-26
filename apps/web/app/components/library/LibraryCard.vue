@@ -113,7 +113,18 @@ function notes(folder: LibraryFolder) {
           }}
         </span>
       </div>
-      <DropdownMenu v-if="!library.managed">
+      <Button
+        v-if="library.managed"
+        variant="outline"
+        size="sm"
+        class="max-sm:col-start-2 max-sm:justify-self-start"
+        as-child
+      >
+        <NuxtLink to="/downloads/cleanup">
+          {{ t("panel.torrents.cleanup.title") }}
+        </NuxtLink>
+      </Button>
+      <DropdownMenu v-else>
         <DropdownMenuTrigger as-child>
           <Button
             variant="ghost"

@@ -37,6 +37,8 @@ export async function libraryStartupWithoutEngine() {
         !op
         || file !== `${op.id}.json`
         || fence.manifest?.infoHash !== op.manifest.infoHash
+        || fence.manifest?.sourceRoot !== op.manifest.sourceRoot
+        || fence.manifest?.libraryOnly !== op.manifest.libraryOnly
         || !Array.isArray(fence.manifest?.paths)
         || JSON.stringify(
           fence.manifest.paths.map((item: { path: string }) => item.path),

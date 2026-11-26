@@ -4,6 +4,9 @@ import type {
   MessageResponse,
   OverviewResponse,
   SeedRule,
+  TitleCleanupPreview,
+  TitleCleanupResult,
+  TitleCleanupTitles,
   Torrent,
   TorrentDeletePreview,
   TorrentList,
@@ -13,6 +16,7 @@ import type {
   UpdateTorrentTitleInput,
 } from '@torsher/api-client'
 import type { DemoRequest } from '@torsher/demo/router'
+import type { api } from '~/services/api'
 import {
   putInLibrary,
   releaseOf,
@@ -22,7 +26,7 @@ import {
   TYPICAL,
 } from '../fixtures/downloads'
 import { policy } from '../fixtures/storage'
-import { titleNamed, TITLES } from '@torsher/demo/titles'
+import { fakeInfohash, titleNamed, TITLES } from '@torsher/demo/titles'
 import {
   ago,
   DAY,
@@ -532,6 +536,116 @@ get<TorrentList>('/api/torrents', () => {
     },
   }
 })
+
+type CleanupPreviewInput = Parameters<
+  typeof api.torrents.postTitleCleanupPreview
+>[0]
+type CleanupExecuteInput = Parameters<
+  typeof api.torrents.postTitleCleanupExecute
+>[0]
+
+function cleanupTargets() {
+  const targets = new Map<string, Torrent[]>()
+  for (const torrent of views()) {
+    if (!torrent.titleId || !torrent.sizeOnDisk)
+      continue
+    const group = targets.get(torrent.titleId) ?? []
+    group.push(torrent)
+    targets.set(torrent.titleId, group)
+  }
+  return targets
+}
+
+function cleanupName(id: string, torrents: Torrent[]) {
+  return (
+    TITLES.find(title => title.id === id)?.title ?? torrents[0]?.name ?? id
+  )
+}
+
+function cleanupPreview(ids: string[]): TitleCleanupPreview {
+  const targets = cleanupTargets()
+  let reclaimableBytes = 0
+  const items: TitleCleanupPreview['items'] = ids.map((id) => {
+    const torrents = targets.get(id) ?? []
+    const reason = !torrents.length
+      ? 'missing'
+      : torrents.some(torrent => torrent.streaming)
+        ? 'busy'
+        : torrents.some(
+          torrent =>
+            torrent.isPrivate && torrent.seedObligation?.met !== true,
+        )
+          ? 'private'
+          : null
+    const files = torrents.flatMap(torrent =>
+      torrent.files.flatMap((file) => {
+        if (!file.downloaded)
+          return []
+        if (!reason)
+          reclaimableBytes += file.downloaded
+        return [
+          { path: file.path, size: file.downloaded, kind: 'download' as const },
+          ...(file.inLibrary
+            ? [{ path: file.path, size: file.size, kind: 'library' as const }]
+            : []),
+        ]
+      }),
+    )
+    return {
+      id,
+      name: cleanupName(id, torrents),
+      files,
+      downloads: torrents.map(({ id, name }) => ({ id, name })),
+      fingerprint: reason ? null : fakeCleanupFingerprint(torrents),
+      reason,
+    }
+  })
+  return { items, reclaimableBytes }
+}
+
+function fakeCleanupFingerprint(torrents: Torrent[]) {
+  const key = torrents
+    .map(torrent => torrent.infoHash)
+    .sort()
+    .join('')
+  return (fakeInfohash(key) + fakeInfohash(`cleanup:${key}`)).slice(0, 64)
+}
+
+get<TitleCleanupTitles>('/api/torrents/cleanup/titles', () => ({
+  items: [...cleanupTargets()].map(([id, torrents]) => ({
+    id,
+    name: cleanupName(id, torrents),
+    libraryBytes: sum(torrents, torrent =>
+      sum(
+        torrent.files.filter(file => file.inLibrary),
+        file => file.size,
+      )),
+    downloadBytes: sum(torrents, torrent => torrent.sizeOnDisk),
+  })),
+}))
+
+post<TitleCleanupPreview, CleanupPreviewInput>(
+  '/api/torrents/cleanup/preview',
+  ({ body }) => cleanupPreview(body.titleIds),
+)
+
+post<TitleCleanupResult, CleanupExecuteInput>(
+  '/api/torrents/cleanup/execute',
+  ({ body }) => ({
+    items: body.items.map(({ id, fingerprint }) => {
+      const current = cleanupPreview([id]).items[0]!
+      if (current.reason)
+        return { id, status: 'blocked', operationIds: [] }
+      if (current.fingerprint !== fingerprint)
+        return { id, status: 'stale', operationIds: [] }
+      for (const download of current.downloads) {
+        const entry = entryById(download.id)
+        entries.splice(entries.indexOf(entry), 1)
+      }
+      return { id, status: 'deleted', operationIds: [] }
+    }),
+  }),
+)
 
 /** Тайтл для новой раздачи: первый, которого ещё нет в загрузках */
 function nextTitle() {

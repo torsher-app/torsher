@@ -163,6 +163,7 @@ export const transferRoutes: FastifyPluginAsyncZod = async (app) => {
         response: {
           200: serverImportResult,
           404: messageResponse,
+          409: messageResponse,
           422: backupErrorResponse,
           ...guardResponses,
         },

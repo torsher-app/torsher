@@ -9147,6 +9147,46 @@ export interface UpdateStoragePolicyInput {
   minFree: number;
 }
 
+export interface TitleCleanupTitlesInput {
+  items: {
+    /** @pattern ^tmdb:(movie|tv):[1-9]\d{0,14}$ */
+    id: string;
+    name: string;
+    libraryBytes: number;
+    downloadBytes: number | null;
+  }[];
+}
+
+export interface TitleCleanupPreviewInput {
+  items: {
+    /** @pattern ^tmdb:(movie|tv):[1-9]\d{0,14}$ */
+    id: string;
+    name: string;
+    files: {
+      path: string;
+      size: number;
+      kind: "library" | "download";
+    }[];
+    downloads: {
+      id: string;
+      name: string;
+    }[];
+    /** @pattern ^[a-f0-9]{64}$ */
+    fingerprint: string | null;
+    reason: "busy" | "private" | "conflict" | "unavailable" | "missing" | null;
+  }[];
+  reclaimableBytes: number | null;
+}
+
+export interface TitleCleanupResultInput {
+  items: {
+    /** @pattern ^tmdb:(movie|tv):[1-9]\d{0,14}$ */
+    id: string;
+    status: "deleted" | "stale" | "blocked" | "partial";
+    operationIds: string[];
+  }[];
+}
+
 export interface CreateExportInput {
   scope: "server" | "profile";
   /**
@@ -19306,6 +19346,46 @@ export interface UpdateStoragePolicy {
   minFree: number;
 }
 
+export interface TitleCleanupTitles {
+  items: {
+    /** @pattern ^tmdb:(movie|tv):[1-9]\d{0,14}$ */
+    id: string;
+    name: string;
+    libraryBytes: number;
+    downloadBytes: number | null;
+  }[];
+}
+
+export interface TitleCleanupPreview {
+  items: {
+    /** @pattern ^tmdb:(movie|tv):[1-9]\d{0,14}$ */
+    id: string;
+    name: string;
+    files: {
+      path: string;
+      size: number;
+      kind: "library" | "download";
+    }[];
+    downloads: {
+      id: string;
+      name: string;
+    }[];
+    /** @pattern ^[a-f0-9]{64}$ */
+    fingerprint: string | null;
+    reason: "busy" | "private" | "conflict" | "unavailable" | "missing" | null;
+  }[];
+  reclaimableBytes: number | null;
+}
+
+export interface TitleCleanupResult {
+  items: {
+    /** @pattern ^tmdb:(movie|tv):[1-9]\d{0,14}$ */
+    id: string;
+    status: "deleted" | "stale" | "blocked" | "partial";
+    operationIds: string[];
+  }[];
+}
+
 export interface CreateExport {
   scope: "server" | "profile";
   /**
@@ -20779,6 +20859,12 @@ export type DeleteTorrentLibraryError =
   MessageResponse | EngineUnavailableResponse;
 
 export type GetTorrentStatsError = MessageResponse | EngineUnavailableResponse;
+
+export type GetTitleCleanupTitlesError = MessageResponse;
+
+export type PostTitleCleanupPreviewError = MessageResponse;
+
+export type PostTitleCleanupExecuteError = MessageResponse;
 
 export type GetDefaultMaintenanceRuleError = MessageResponse;
 
@@ -24466,6 +24552,78 @@ export class Api<
         path: `/api/torrents/${id}/stats`,
         method: "GET",
         query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Torrents
+     * @name GetTitleCleanupTitles
+     * @request GET:/api/torrents/cleanup/titles
+     */
+    getTitleCleanupTitles: (params: RequestParams = {}) =>
+      this.request<TitleCleanupTitles, GetTitleCleanupTitlesError>({
+        path: `/api/torrents/cleanup/titles`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Torrents
+     * @name PostTitleCleanupPreview
+     * @request POST:/api/torrents/cleanup/preview
+     */
+    postTitleCleanupPreview: (
+      data: {
+        /**
+         * @maxItems 50
+         * @minItems 1
+         */
+        titleIds: string[];
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<TitleCleanupPreview, PostTitleCleanupPreviewError>({
+        path: `/api/torrents/cleanup/preview`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Torrents
+     * @name PostTitleCleanupExecute
+     * @request POST:/api/torrents/cleanup/execute
+     */
+    postTitleCleanupExecute: (
+      data: {
+        /**
+         * @maxItems 50
+         * @minItems 1
+         */
+        items: {
+          /** @pattern ^tmdb:(movie|tv):[1-9]\d{0,14}$ */
+          id: string;
+          /** @pattern ^[a-f0-9]{64}$ */
+          fingerprint: string;
+        }[];
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<TitleCleanupResult, PostTitleCleanupExecuteError>({
+        path: `/api/torrents/cleanup/execute`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
         format: "json",
         ...params,
       }),

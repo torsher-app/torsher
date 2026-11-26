@@ -2318,6 +2318,14 @@
       }
     },
     "torrents": {
+      "cleanup": {
+        "title": "Disk cleanup",
+        "search": "Search titles",
+        "empty": "No titles to clean up",
+        "confirm": "Files for the selected titles will be deleted and their torrents will stop",
+        "estimate": "About {size} will be freed",
+        "unknownEstimate": "Estimate unavailable"
+      },
       "privatePolicy": {
         "private": "Private torrent",
         "requirement": "Seeding requirement",

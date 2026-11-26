@@ -4,6 +4,7 @@ package main
 
 import (
 	"errors"
+	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
@@ -11,6 +12,66 @@ import (
 
 	"golang.org/x/sys/unix"
 )
+
+func TestMaintenanceLibraryOnlyPinnedReplacementAndResume(t *testing.T) {
+	a, _ := newTestEngine(t, t.TempDir())
+	item := maintenanceFixture(t)
+	manifest := detachManifest{LibraryOnly: true, Paths: []maintenancePath{item}}
+	const operation = "/maintenance/library-only"
+	if response := maintenanceRequest(t, a, http.MethodPost, operation+"/prepare", manifest); response.Code != 200 {
+		t.Fatal(response.Code, response.Body.String())
+	}
+	original := item.Path + ".original"
+	maintenanceUnlinkCheckpoint = func(step string) error {
+		if step != "before_capture" {
+			return nil
+		}
+		if err := os.Rename(item.Path, original); err != nil {
+			return err
+		}
+		return os.WriteFile(item.Path, []byte("replacement"), 0600)
+	}
+	t.Cleanup(func() { maintenanceUnlinkCheckpoint = func(string) error { return nil } })
+	if response := maintenanceRequest(t, a, http.MethodPost, operation+"/unlink", map[string]int{"index": 0}); response.Code != 409 {
+		t.Fatal("unconfirmed replacement was accepted", response.Code, response.Body.String())
+	}
+	replacement := item.Path + ".replacement"
+	if err := os.Rename(item.Path, replacement); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(original, item.Path); err != nil {
+		t.Fatal(err)
+	}
+	maintenanceUnlinkCheckpoint = func(step string) error {
+		if step == "captured" {
+			return errors.New("interrupted")
+		}
+		return nil
+	}
+	if response := maintenanceRequest(t, a, http.MethodPost, operation+"/unlink", map[string]int{"index": 0}); response.Code != 409 {
+		t.Fatal("capture interruption was ignored", response.Code, response.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(item.Root, ".torsher-maintenance-library-only-0", "file")); err != nil {
+		t.Fatal("captured file lost", err)
+	}
+	reloaded := loadMaintenance(a.maintenance.dir)
+	if fence := reloaded.fences["library-only"]; reloaded.loadErr != nil || fence == nil || !fence.Manifest.LibraryOnly || fence.Results["0"] != "staged" {
+		t.Fatal("standalone fence could not be loaded", reloaded.loadErr)
+	}
+	maintenanceUnlinkCheckpoint = func(string) error { return nil }
+	if response := maintenanceRequest(t, a, http.MethodPost, operation+"/unlink", map[string]int{"index": 0}); response.Code != 200 {
+		t.Fatal(response.Code, response.Body.String())
+	}
+	if response := maintenanceRequest(t, a, http.MethodPost, operation+"/finalize", nil); response.Code != 200 {
+		t.Fatal(response.Code, response.Body.String())
+	}
+	if data, err := os.ReadFile(replacement); err != nil || string(data) != "replacement" {
+		t.Fatal("unconfirmed replacement was lost", err)
+	}
+	if _, err := os.Stat(item.Path); !os.IsNotExist(err) {
+		t.Fatal("confirmed file remains", err)
+	}
+}
 
 func TestMaintenanceUnlinkCaptureCrashRetry(t *testing.T) {
 	item := maintenanceFixture(t)

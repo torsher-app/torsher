@@ -314,6 +314,22 @@ function subtitleFileState(track: DownloadedSubtitle) {
   return 'present'
 }
 
+export function verifiedManagedSubtitlePaths(mediaFileId: string) {
+  return getDb()
+    .select()
+    .from(downloadedSubtitles)
+    .where(
+      and(
+        eq(downloadedSubtitles.mediaFileId, mediaFileId),
+        isNotNull(downloadedSubtitles.managedName),
+      ),
+    )
+    .all()
+    .flatMap(track =>
+      subtitleFileState(track) === 'present' ? [subtitlePath(track)!] : [],
+    )
+}
+
 function removeSubtitleFile(track: DownloadedSubtitle) {
   const state = subtitleFileState(track)
   if (state === 'present')

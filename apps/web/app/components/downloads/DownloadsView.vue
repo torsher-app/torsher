@@ -3,6 +3,7 @@ import { isSingleVideo, videoIndexes } from '~/lib/torrents'
 import type { Torrent } from '@torsher/api-client'
 import {
   CircleAlertIcon,
+  HardDriveIcon,
   MagnetIcon,
   PlusIcon,
   RefreshCwIcon,
@@ -75,10 +76,22 @@ onBeforeUnmount(stopPolling)
 
 <template>
   <PageBar :title="t('panel.torrents.title')" :parent="t('panel.nav.server')">
-    <template v-if="!loading && state === 'ready'" #actions>
+    <template #actions>
+      <Button
+        variant="outline"
+        size="sm"
+        class="hidden md:inline-flex"
+        as-child
+      >
+        <NuxtLink to="/downloads/cleanup">
+          <HardDriveIcon aria-hidden="true" />
+          {{ t("panel.torrents.cleanup.title") }}
+        </NuxtLink>
+      </Button>
       <!-- Запасной путь, если движок завис, а сам сервер этого не распознал.
            Пока движок запускается, перезапуск ничего не даст -->
       <Button
+        v-if="!loading && state === 'ready'"
         variant="ghost"
         size="sm"
         :disabled="engine !== 'ready'"
@@ -90,12 +103,25 @@ onBeforeUnmount(stopPolling)
           t("panel.torrents.restartEngine")
         }}</span>
       </Button>
-      <Button v-if="!isEmpty" size="sm" @click="isAddOpen = true">
+      <Button
+        v-if="!loading && state === 'ready' && !isEmpty"
+        size="sm"
+        @click="isAddOpen = true"
+      >
         <PlusIcon aria-hidden="true" />
         {{ t("panel.torrents.add") }}
       </Button>
     </template>
   </PageBar>
+
+  <div class="shrink-0 border-b px-3 py-2 md:hidden">
+    <Button variant="outline" size="sm" as-child>
+      <NuxtLink to="/downloads/cleanup">
+        <HardDriveIcon aria-hidden="true" />
+        {{ t("panel.torrents.cleanup.title") }}
+      </NuxtLink>
+    </Button>
+  </div>
 
   <!-- Скелетон повторяет строку фильтров, заголовок группы и строки той же высоты -->
   <div v-if="loading" aria-busy="true">
