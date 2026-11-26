@@ -534,9 +534,21 @@ const engineStorageEntry = z.object({
   state: z.enum(['active', 'conflict']),
   conflictingHashes: z.array(z.string()),
 })
+const engineStorageEntries = z.array(engineStorageEntry)
+export type EngineStorageEntry = z.infer<typeof engineStorageEntry>
 
 export function engineStorageInventory() {
-  return engineJson('/torrents/storage', z.array(engineStorageEntry))
+  return engineJson('/torrents/storage', engineStorageEntries)
+}
+
+export async function engineStorageEntryByHash(infoHash: string) {
+  const query = new URLSearchParams({ hash: infoHash })
+  const entries = await engineJson(
+    `/torrents/storage?${query}`,
+    engineStorageEntries,
+  )
+  // Older prebuilt engines may ignore the filter and return the full list.
+  return entries.find(entry => entry.infoHash === infoHash)
 }
 
 async function engineEmpty(path: string, request: EngineRequest) {

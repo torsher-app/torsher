@@ -15,6 +15,7 @@ import { admitTorrentSpace } from '../storage/index.ts'
 import { torrentDir } from '../storage/paths.ts'
 import {
   addTorrentFile,
+  backfillEnginePrivacy,
   downloadFiles,
   getTorrent,
   prepareStream,
@@ -211,18 +212,19 @@ it('recovers known paused conflicts before producers and preserves selection, pr
 
 it('synchronizes an active directory without downloading an unknown DB session', async () => {
   const torrent = row({ downloadDir: '/stale' })
+  // An older engine returns the full inventory even for a filtered request.
   fetchMock.mockImplementation(async () =>
     json([
-      {
-        infoHash: INFO_HASH,
-        dir: '/actual',
-        state: 'active',
-        conflictingHashes: [],
-      },
       {
         infoHash: 'b'.repeat(40),
         dir: '/unknown',
         state: 'conflict',
+        conflictingHashes: [],
+      },
+      {
+        infoHash: INFO_HASH,
+        dir: '/actual',
+        state: 'active',
         conflictingHashes: [],
       },
     ]),
@@ -232,12 +234,83 @@ it('synchronizes an active directory without downloading an unknown DB session',
     downloadDir: '/actual',
     inEngine: true,
   })
-  expect(
-    fetchMock.mock.calls.every(
-      ([input]) => new URL(String(input)).pathname === '/torrents/storage',
-    ),
-  ).toBe(true)
+  const requests = fetchMock.mock.calls.map(([input]) => {
+    const url = new URL(String(input))
+    return url.pathname + url.search
+  })
+  expect(requests).toEqual([
+    '/torrents/storage',
+    `/torrents/storage?hash=${INFO_HASH}`,
+  ])
 })
+
+it('checks fifty synchronized downloads with one inventory request and no database writes', async () => {
+  const inventory = Array.from({ length: 50 }, (_, index) => {
+    const torrent = row({
+      infoHash: index.toString(16).padStart(40, '0'),
+      inEngine: true,
+      downloadDir: index === 0 ? '/custom' : null,
+      pauseReason: index === 0 ? 'user' : null,
+    })
+    return {
+      infoHash: torrent.infoHash,
+      dir: torrentDir(torrent),
+      state: 'active',
+      conflictingHashes: [],
+      paused: index === 0,
+    }
+  })
+  fetchMock.mockImplementation(async () => json(inventory))
+  await backfillEnginePrivacy()
+  fetchMock.mockClear()
+  const changes = getDb().$client.prepare('SELECT total_changes()').pluck()
+  const before = changes.get()
+
+  await reconcileEngineStorage()
+
+  expect(fetchMock).toHaveBeenCalledExactlyOnceWith(
+    'http://127.0.0.1:4000/torrents/storage',
+    expect.objectContaining({ method: 'GET' }),
+  )
+  expect(changes.get()).toBe(before)
+  expect(admitTorrentSpace).not.toHaveBeenCalled()
+})
+
+it.each(['disappeared', 'recovered'])(
+  'leaves a candidate alone when the engine session %s after the initial inventory',
+  async (outcome) => {
+    const torrent = row({ inEngine: true, downloadDir: '/actual' })
+    const active = {
+      infoHash: torrent.infoHash,
+      dir: '/actual',
+      state: 'active',
+      conflictingHashes: [],
+    }
+    fetchMock.mockResolvedValueOnce(json([active]))
+    await backfillEnginePrivacy()
+    fetchMock.mockClear()
+    const requests: string[] = []
+    fetchMock.mockImplementation(async (input) => {
+      const url = new URL(String(input))
+      requests.push(url.pathname + url.search)
+      if (url.searchParams.has('hash'))
+        return json(outcome === 'recovered' ? [active] : [])
+      return json([{ ...active, dir: '/old', state: 'conflict' }])
+    })
+    const changes = getDb().$client.prepare('SELECT total_changes()').pluck()
+    const before = changes.get()
+
+    await reconcileEngineStorage()
+
+    expect(requests).toEqual([
+      '/torrents/storage',
+      `/torrents/storage?hash=${torrent.infoHash}`,
+    ])
+    expect(changes.get()).toBe(before)
+    expect(admitTorrentSpace).not.toHaveBeenCalled()
+    expect(getTorrent(torrent.id)?.downloadDir).toBe('/actual')
+  },
+)
 
 it.each(['space', 'add'])(
   'defers one %s failure, continues healthy recovery and retries on the next storage check',
@@ -336,10 +409,13 @@ it('repairs a durable paused add interrupted before resume, while preserving use
   expect(resumeAttempts).toBe(1)
   expect(getTorrent(recovering.id)?.pauseReason).toBeNull()
   expect(inventory[0]!.paused).toBe(true)
+  const changes = getDb().$client.prepare('SELECT total_changes()').pluck()
+  const before = changes.get()
   await reconcileEngineStorage()
   expect(resumeAttempts).toBe(2)
   expect(inventory[0]!.paused).toBe(false)
   expect(getTorrent(userPaused.id)?.pauseReason).toBe('user')
+  expect(changes.get()).toBe(before)
 })
 
 it('explicit PLAY resumes an engine technical pause even when DB has no pauseReason', async () => {
@@ -564,6 +640,7 @@ it('backfills a legacy private restore before admission and retains an independe
     infoHash: 'd'.repeat(40),
     torrentFile: legacy,
     inEngine: true,
+    downloadDir: '/restored',
   })
   inspection = {
     ...movieDetails,
@@ -578,7 +655,7 @@ it('backfills a legacy private restore before admission and retains an independe
     conflictingHashes: [],
     isPrivate: true,
     awaitingAdmission: true,
-    paused: true,
+    paused: torrent.id === automatic.id ? true : undefined,
     userPaused: torrent.id === user.id,
     startAnnounceState: 'attempted',
   }))
