@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.10.0 (2026-11-27)
+
+### Features
+
+- **usenet:** integrate Newznab and SABnzbd downloads (#272) ([3f65235](https://github.com/torsher-app/torsher/commit/3f65235007c5e9ea45a0d6649df2cbe1bb0250e6))
+- **storage:** add title-based disk cleanup (#271) ([36129bc](https://github.com/torsher-app/torsher/commit/36129bcb0a2ceb567d71df654d5dbbf0f426c896))
+- **addons:** support external HTTP add-ons (#269) ([3cdd67f](https://github.com/torsher-app/torsher/commit/3cdd67fe745e5d14469c1360e6c85dc70bd88efa))
+- **subtitles:** add subtitle manager and playback controls (#268) ([13c2f1c](https://github.com/torsher-app/torsher/commit/13c2f1cd5f23a3cf34122ff46b53ff0343ca0b9a))
+- **torrents:** support private tracker seeding requirements (#267) ([37a34ea](https://github.com/torsher-app/torsher/commit/37a34ea50cf083baf4d8b5bc75d2fad0276b6538))
+- **torrents:** add guarded network interface binding (#266) ([a0a6e9b](https://github.com/torsher-app/torsher/commit/a0a6e9b527f11cd393836da67cf2c237fcf4c279))
+
+### Bug Fixes
+
+- **storage:** reduce CPU usage during torrent reconciliation (#270) ([f796109](https://github.com/torsher-app/torsher/commit/f7961096106f031861f003c4c7f69f662c3d5d42))
+
 ## 1.9.0 (2026-11-24)
 
 ### Features
