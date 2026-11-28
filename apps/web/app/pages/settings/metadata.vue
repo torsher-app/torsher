@@ -3,6 +3,7 @@ import { CircleAlertIcon, RefreshCwIcon } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import ExternalListsCard from '~/components/settings/ExternalListsCard.vue'
 import ImdbDatasetCard from '~/components/settings/ImdbDatasetCard.vue'
 import MetadataKeyCard from '~/components/settings/MetadataKeyCard.vue'
 
@@ -12,6 +13,7 @@ definePageMeta({
 
 const { t } = useI18n()
 const { settings, state, load, stopImdbPolling } = useMetadataSettings()
+const showExternalLists = !__DEMO__
 const loading = useHeldLoading(
   () => state.value === 'loading' || state.value === 'idle',
 )
@@ -63,6 +65,7 @@ onBeforeUnmount(stopImdbPolling)
     <template v-else>
       <MetadataKeyCard :settings="settings" />
       <ImdbDatasetCard :status="settings.imdb" />
+      <ExternalListsCard v-if="showExternalLists" />
     </template>
   </div>
 </template>
