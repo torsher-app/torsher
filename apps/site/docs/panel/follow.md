@@ -26,6 +26,19 @@ Follows are grouped:
 
 Each row shows the rules in a phrase, the next episode and the state. Click a row to open its card.
 
+## Import from Sonarr or Radarr
+
+Open <Ui k="panel.nav.follow" /> in the panel and select <Ui k="panel.sources.importShort" />. The import reads one Sonarr 4.x or Radarr 5.x–7.x instance using its API v3. Choose an existing profile without an age limit.
+
+1. Enter the address as seen from the Torsher server. Use `http://sonarr:8989` or `http://radarr:7878` on a shared Docker network, or the instance's HTTPS address. Include its URL Base if set, for example `https://media.example/radarr`. The connection uses a direct route. Localhost, the Torsher server's own addresses, proxies and redirects are blocked.
+2. Select <Ui k="panel.follow.arrImport.checkAddress" />. For a private address, check the displayed host and IPs before allowing the connection. Then enter the instance's API key and select <Ui k="panel.follow.arrImport.prepare" />. Torsher uses the key to read the status and title list and discards it.
+3. Review the original titles and their TMDB matches. Only monitored titles qualify. For Sonarr, at least one regular season must be monitored. Partially monitored and ended series, plus Radarr films with a file or unknown file status, are initially unchecked. Select what to add and confirm with <Ui k="panel.sources.importDialog.submit" />.
+4. Review the per-title result. An existing follow keeps its state, rules and profiles. If the preview expires or some titles fail, start a fresh preview and try again. Successfully added titles are skipped on the next import.
+
+New follows start paused in <Ui k="panel.follow.modes.series.notify.title" /> mode with Torsher's follow defaults. Use <Ui k="panel.follow.actions.resume" /> on individual follows when you're ready for searching and notifications. Resuming can also make existing files eligible for your [automatic cleanup rules](#library-maintenance). Episodes that air during the pause may be picked up after you resume.
+
+The import carries over titles. Torsher sets its own starting episode and release rules. Sonarr's season and episode selections, external quality profiles and formats, files, queues and download history stay with the original instance.
+
 ## A follow's card
 
 Rules apply to every subscribed profile, whether changed in this panel or in the showcase. The form states this before its controls; the profiles listed in the card show who shares the follow.

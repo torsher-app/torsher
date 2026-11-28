@@ -7,7 +7,7 @@ import type {
 } from '../../db/schema.ts'
 import type { TitleSummary } from '../mine/cards.ts'
 import type { EpisodeRef, SeriesSchedule } from './wanted.ts'
-import { and, asc, count, desc, eq, gt, sql } from 'drizzle-orm'
+import { and, asc, count, desc, eq, gt, isNull, sql } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
 import {
   followEpisodes,
@@ -160,6 +160,96 @@ function defaultRules(kind: Follow['kind'], originalLanguage?: string) {
   }
 }
 
+function newFollowValues(
+  titleId: string,
+  kind: Follow['kind'],
+  profileId: string,
+  start: EpisodeRef,
+  now: Date,
+  originalLanguage?: string,
+) {
+  return {
+    titleId,
+    kind,
+    startSeason: start.season,
+    startEpisode: start.episode,
+    voiceMode: 'auto' as const,
+    ...defaultRules(kind, originalLanguage),
+    createdByProfileId: profileId,
+    createdAt: now,
+    updatedAt: now,
+  }
+}
+
+export function canImportFollowFor(
+  profileId: string,
+  db: Pick<ReturnType<typeof getDb>, 'select'> = getDb(),
+) {
+  return Boolean(
+    db
+      .select({ id: profiles.id })
+      .from(profiles)
+      .where(and(eq(profiles.id, profileId), isNull(profiles.ageLimit)))
+      .get(),
+  )
+}
+
+/** Only create new follows. Any existing follow keeps all rules and subscribers. */
+export function importPausedFollow(
+  input: {
+    titleId: string
+    start: EpisodeRef
+    originalLanguage?: string
+  },
+  profileId: string,
+) {
+  const ref = parseCatalogId(input.titleId)
+  if (!ref)
+    throw new FollowNotFoundError()
+
+  const kind = ref.type === 'movie' ? 'movie' : 'series'
+  const now = new Date()
+  return getDb().transaction((tx) => {
+    if (!canImportFollowFor(profileId, tx))
+      return 'profile' as const
+    const existing = tx
+      .select({ id: follows.id })
+      .from(follows)
+      .where(eq(follows.titleId, input.titleId))
+      .get()
+    if (existing)
+      return 'existing' as const
+
+    assertMaintenancePolicyChange({ titleId: input.titleId })
+
+    const row = tx
+      .insert(follows)
+      .values({
+        ...newFollowValues(
+          input.titleId,
+          kind,
+          profileId,
+          input.start,
+          now,
+          input.originalLanguage,
+        ),
+        state: 'paused',
+        mode: 'notify',
+      })
+      .onConflictDoNothing({ target: follows.titleId })
+      .returning({ id: follows.id })
+      .get()
+    if (!row)
+      return 'existing' as const
+
+    tx.insert(followProfiles)
+      .values({ followId: row.id, profileId, createdAt: now })
+      .run()
+
+    return 'created' as const
+  })
+}
+
 function invalidateRules(before: Follow, after: Follow) {
   if (
     JSON.stringify(savedVoicePolicy(before))
@@ -230,17 +320,16 @@ export async function followTitle(
       : tx
           .insert(follows)
           .values({
-            titleId,
-            kind,
+            ...newFollowValues(
+              titleId,
+              kind,
+              profileId,
+              start ?? startOf(undefined),
+              now,
+              summary?.details.originalLanguage,
+            ),
             state: 'active',
-            startSeason: start?.season ?? 0,
-            startEpisode: start?.episode ?? 0,
-            voiceMode: 'auto',
-            ...defaultRules(kind, summary?.details.originalLanguage),
             ...rules,
-            createdByProfileId: profileId,
-            createdAt: now,
-            updatedAt: now,
           })
           .returning()
           .get()

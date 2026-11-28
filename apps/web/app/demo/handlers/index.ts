@@ -2,6 +2,7 @@ import '@torsher/demo/speedtest'
 // Порядок импорта — порядок регистрации маршрутов: более точные пути
 // раздела регистрирует сам раздел раньше шаблонных
 import './auth'
+import './arrImport'
 import './backups'
 import './catalog'
 import './downloads'

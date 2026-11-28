@@ -10447,6 +10447,158 @@ export interface ServerImportResultInput {
   skipped: number;
 }
 
+export interface ArrConnectionInput {
+  kind: "sonarr" | "radarr";
+  /**
+   * @minLength 1
+   * @maxLength 2048
+   */
+  url: string;
+}
+
+export interface ArrConnectionResultInput {
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  id: string;
+  origin: string;
+  addresses: string[];
+}
+
+export interface ArrPreviewInput {
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  connectionId: string;
+  approveLan: boolean;
+  /**
+   * @minLength 1
+   * @maxLength 512
+   * @pattern ^[\x21-\x7E]+$
+   */
+  apiKey: string;
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  profileId: string;
+  language: "ru-RU" | "en-US";
+}
+
+export interface ArrPreviewStartedInput {
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  id: string;
+}
+
+export interface ArrPreviewRowInput {
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  id: string;
+  sourceTitle?: string;
+  sourceStatus?: "upcoming" | "continuing" | "ended" | "deleted";
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  year?: number;
+  title?: string;
+  selectable: boolean;
+  selected: boolean;
+  reasons: (
+    | "existing"
+    | "duplicate"
+    | "unmonitored"
+    | "no_monitored_seasons"
+    | "deleted"
+    | "partial_monitoring"
+    | "ended"
+    | "has_file"
+    | "unknown_file"
+    | "invalid"
+    | "unmatched"
+    | "conflict"
+    | "tmdb_unavailable"
+    | "unknown_cursor"
+  )[];
+}
+
+export interface ArrPreviewStatusInput {
+  state: "preparing" | "ready";
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  checked: number;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  total: number;
+  rows: ArrPreviewRowInput[];
+}
+
+export interface ArrApplyInput {
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  previewId: string;
+  /**
+   * @maxItems 1000
+   * @minItems 1
+   */
+  rowIds: string[];
+}
+
+export interface ArrApplyResultInput {
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  created: number;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  skipped: number;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  failed: number;
+  rows: {
+    /**
+     * @format uuid
+     * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+     */
+    id: string;
+    outcome: "created" | "skipped" | "failed";
+    reason: "created" | "existing" | "failed";
+  }[];
+}
+
+export interface ArrErrorResponseInput {
+  message: string;
+  kind:
+    | "address"
+    | "address_changed"
+    | "auth"
+    | "unsupported"
+    | "bad_response"
+    | "limit"
+    | "expired"
+    | "profile"
+    | "busy"
+    | "request";
+}
+
 export interface MeResponseInput {
   id: string;
   username: string;
@@ -20856,6 +21008,158 @@ export interface ServerImportResult {
   skipped: number;
 }
 
+export interface ArrConnection {
+  kind: "sonarr" | "radarr";
+  /**
+   * @minLength 1
+   * @maxLength 2048
+   */
+  url: string;
+}
+
+export interface ArrConnectionResult {
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  id: string;
+  origin: string;
+  addresses: string[];
+}
+
+export interface ArrPreview {
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  connectionId: string;
+  approveLan: boolean;
+  /**
+   * @minLength 1
+   * @maxLength 512
+   * @pattern ^[\x21-\x7E]+$
+   */
+  apiKey: string;
+  /**
+   * @minLength 1
+   * @maxLength 100
+   */
+  profileId: string;
+  language: "ru-RU" | "en-US";
+}
+
+export interface ArrPreviewStarted {
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  id: string;
+}
+
+export interface ArrPreviewRow {
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  id: string;
+  sourceTitle?: string;
+  sourceStatus?: "upcoming" | "continuing" | "ended" | "deleted";
+  /**
+   * @min -9007199254740991
+   * @max 9007199254740991
+   */
+  year?: number;
+  title?: string;
+  selectable: boolean;
+  selected: boolean;
+  reasons: (
+    | "existing"
+    | "duplicate"
+    | "unmonitored"
+    | "no_monitored_seasons"
+    | "deleted"
+    | "partial_monitoring"
+    | "ended"
+    | "has_file"
+    | "unknown_file"
+    | "invalid"
+    | "unmatched"
+    | "conflict"
+    | "tmdb_unavailable"
+    | "unknown_cursor"
+  )[];
+}
+
+export interface ArrPreviewStatus {
+  state: "preparing" | "ready";
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  checked: number;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  total: number;
+  rows: ArrPreviewRow[];
+}
+
+export interface ArrApply {
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  previewId: string;
+  /**
+   * @maxItems 1000
+   * @minItems 1
+   */
+  rowIds: string[];
+}
+
+export interface ArrApplyResult {
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  created: number;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  skipped: number;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  failed: number;
+  rows: {
+    /**
+     * @format uuid
+     * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+     */
+    id: string;
+    outcome: "created" | "skipped" | "failed";
+    reason: "created" | "existing" | "failed";
+  }[];
+}
+
+export interface ArrErrorResponse {
+  message: string;
+  kind:
+    | "address"
+    | "address_changed"
+    | "auth"
+    | "unsupported"
+    | "bad_response"
+    | "limit"
+    | "expired"
+    | "profile"
+    | "busy"
+    | "request";
+}
+
 export interface MeResponse {
   id: string;
   username: string;
@@ -21406,6 +21710,16 @@ export type PostTransferImportPreviewError =
 
 export type PostTransferImportApplyError =
   MessageResponse | BackupErrorResponse;
+
+export type PostArrConnectionError = MessageResponse | ArrErrorResponse;
+
+export type PostArrPreviewError = MessageResponse | ArrErrorResponse;
+
+export type GetArrPreviewError = MessageResponse | ArrErrorResponse;
+
+export type DeleteArrPreviewError = MessageResponse | ArrErrorResponse;
+
+export type PostArrApplyError = MessageResponse | ArrErrorResponse;
 
 export type GetNetRoutesError = MessageResponse;
 
@@ -26187,6 +26501,86 @@ export class Api<
     ) =>
       this.request<ServerImportResult, PostTransferImportApplyError>({
         path: `/api/transfer/import/apply`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Transfer
+     * @name PostArrConnection
+     * @request POST:/api/transfer/arr/connection
+     */
+    postArrConnection: (data: ArrConnectionInput, params: RequestParams = {}) =>
+      this.request<ArrConnectionResult, PostArrConnectionError>({
+        path: `/api/transfer/arr/connection`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Transfer
+     * @name PostArrPreview
+     * @request POST:/api/transfer/arr/preview
+     */
+    postArrPreview: (data: ArrPreviewInput, params: RequestParams = {}) =>
+      this.request<ArrPreviewStarted, PostArrPreviewError>({
+        path: `/api/transfer/arr/preview`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Transfer
+     * @name GetArrPreview
+     * @request GET:/api/transfer/arr/preview/{id}
+     */
+    getArrPreview: (id: string, params: RequestParams = {}) =>
+      this.request<ArrPreviewStatus, GetArrPreviewError>({
+        path: `/api/transfer/arr/preview/${id}`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Transfer
+     * @name DeleteArrPreview
+     * @request DELETE:/api/transfer/arr/preview/{id}
+     */
+    deleteArrPreview: (id: string, params: RequestParams = {}) =>
+      this.request<void, DeleteArrPreviewError>({
+        path: `/api/transfer/arr/preview/${id}`,
+        method: "DELETE",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Transfer
+     * @name PostArrApply
+     * @request POST:/api/transfer/arr/apply
+     */
+    postArrApply: (data: ArrApplyInput, params: RequestParams = {}) =>
+      this.request<ArrApplyResult, PostArrApplyError>({
+        path: `/api/transfer/arr/apply`,
         method: "POST",
         body: data,
         type: ContentType.Json,

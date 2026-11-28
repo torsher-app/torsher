@@ -980,6 +980,42 @@ put<FollowSettings, UpdateFollowSettingsInput>(
   },
 )
 
+export function addArrDemoFollow(
+  titleId: string,
+  profile: FollowDetails['profiles'][number],
+) {
+  const title = findTitle(titleId)
+  if (!title || follows.some(follow => follow.titleId === titleId))
+    return false
+
+  const season = title.seasons?.length ?? 0
+  const start = {
+    season,
+    episode: season ? airedEpisodes(title, season) + 1 : 0,
+  }
+  follows.push(
+    followOf({
+      id: nextId('follow'),
+      titleId,
+      kind: title.kind,
+      state: 'paused',
+      mode: 'notify',
+      start,
+      profiles: [{ id: profile.id, name: profile.name, color: profile.color }],
+      episodes:
+        title.kind === 'series'
+          ? episodesOf(title.title, start, 'upcoming')
+          : [],
+      createdAt: ago(0),
+      updatedAt: ago(0),
+      lastSearchAt: null,
+      nextSearchAt: null,
+    }),
+  )
+
+  return true
+}
+
 /**
  * Проблемы «Следить» для «Требует внимания»: серии действующих слежений,
  * которые ждут места. Без действующих слежений проблем нет: фон не качает.

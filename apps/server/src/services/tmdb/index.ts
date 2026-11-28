@@ -31,7 +31,7 @@ import {
   storeMetaCache,
   withMetaCache,
 } from './cache.ts'
-import { tmdbGet } from './client.ts'
+import { TmdbError, tmdbGet } from './client.ts'
 import { getTrendingCards } from './home.ts'
 import {
   extrasToDto,
@@ -200,6 +200,12 @@ interface LoadedTitle {
   // Только у сериала
   airing?: ReturnType<typeof tvAiring>
   imdbId?: string | null
+  tvdbId?: number | null
+}
+
+interface TitleLookupOptions {
+  requireFresh?: boolean
+  signal?: AbortSignal
 }
 
 /** Local metadata for library filtering; never triggers a network request. */
@@ -232,28 +238,55 @@ export async function titleAge(id: string) {
   return certificationAge(raw)
 }
 
-async function loadTitle(ref: TmdbRef, language: string): Promise<LoadedTitle> {
+async function loadTitle(
+  ref: TmdbRef,
+  language: string,
+  options?: TitleLookupOptions,
+): Promise<LoadedTitle> {
   const key = detailsKey(ref, language)
   const params = detailsParams(ref, language)
 
+  function verifyDetails<T extends TmdbMovie | TmdbTv>(value: T) {
+    if (options?.requireFresh) {
+      const field = ref.type === 'movie' ? 'title' : 'name'
+      const raw = value as Partial<TmdbMovie & TmdbTv> | null
+      const title = raw?.[field]
+      if (raw?.id !== ref.tmdbId || typeof title !== 'string' || !title.trim()) {
+        throw new TmdbError(
+          'unavailable',
+          'TMDB returned different title details',
+        )
+      }
+    }
+    return value
+  }
+  async function lookup<T extends TmdbMovie | TmdbTv>(path: string) {
+    return verifyDetails(
+      await withMetaCache(
+        key,
+        DETAILS_TTL_MS,
+        async () =>
+          verifyDetails(
+            await tmdbGet<T>(path, params, undefined, options?.signal),
+          ),
+        !options?.requireFresh,
+      ),
+    )
+  }
+
   if (ref.type === 'movie') {
-    const movie = await withMetaCache(key, DETAILS_TTL_MS, () =>
-      tmdbGet<TmdbMovie>(`/movie/${ref.tmdbId}`, params))
-
+    const movie = await lookup<TmdbMovie>(`/movie/${ref.tmdbId}`)
     rememberImdbIdIfChanged(ref, movie.imdb_id)
-
     return { details: movieToDetails(movie, language), imdbId: movie.imdb_id }
   }
 
-  const tv = await withMetaCache(key, DETAILS_TTL_MS, () =>
-    tmdbGet<TmdbTv>(`/tv/${ref.tmdbId}`, params))
-
+  const tv = await lookup<TmdbTv>(`/tv/${ref.tmdbId}`)
   rememberImdbIdIfChanged(ref, tv.external_ids?.imdb_id)
-
   return {
     details: tvToDetails(tv, language),
     airing: tvAiring(tv),
     imdbId: tv.external_ids?.imdb_id,
+    tvdbId: tv.external_ids?.tvdb_id,
   }
 }
 
@@ -269,10 +302,14 @@ function withTracker(title: LoadedTitle): LoadedTitle {
  * кэша, что и карточка. Описание на запасном языке не добирается: это для
  * списков и статуса, не для первого экрана.
  */
-export async function getTitleSummary(id: string, language: string) {
+export async function getTitleSummary(
+  id: string,
+  language: string,
+  options?: TitleLookupOptions,
+) {
   const ref = parseCatalogId(id)
 
-  return ref ? withTracker(await loadTitle(ref, language)) : undefined
+  return ref ? withTracker(await loadTitle(ref, language, options)) : undefined
 }
 
 /** `undefined` — ID не из каталога; отсутствие тайтла в TMDB — `TmdbError`. */

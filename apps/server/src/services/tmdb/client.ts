@@ -57,11 +57,13 @@ async function send(
   url: string,
   timeoutMs: number,
   headers?: Record<string, string>,
+  signal?: AbortSignal,
 ) {
+  const timeout = AbortSignal.timeout(timeoutMs)
   try {
     return await netFetch(url, {
       headers,
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
     })
   }
   catch (err) {
@@ -101,6 +103,7 @@ export async function tmdbGet<T>(
   path: string,
   params: Record<string, string>,
   key?: string,
+  signal?: AbortSignal,
 ): Promise<T> {
   // Ответ на ключ сервера — признак для «Обзора»; проверка чужого ключа его не меняет
   const serverKey = key === undefined
@@ -110,10 +113,12 @@ export async function tmdbGet<T>(
   for (const [name, value] of Object.entries({ ...params, ...auth.params }))
     url.searchParams.set(name, value)
 
-  const res = await send(url.href, API_TIMEOUT_MS, {
-    ...auth.headers,
-    Accept: 'application/json',
-  })
+  const res = await send(
+    url.href,
+    API_TIMEOUT_MS,
+    { ...auth.headers, Accept: 'application/json' },
+    signal,
+  )
 
   // 404 и 5xx о ключе ничего не говорят
   if (serverKey && (res.ok || res.status === 401)) {

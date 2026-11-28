@@ -65,9 +65,10 @@ const SAME_ORIGIN_FETCHES = new Set(['same-origin', 'none'])
  * заголовок не даёт.
  */
 function isCrossSite(request: FastifyRequest) {
-  if (SAFE_METHODS.has(request.method))
-    return false
+  return !SAFE_METHODS.has(request.method) && isCrossSiteOrigin(request)
+}
 
+function isCrossSiteOrigin(request: FastifyRequest) {
   const site = request.headers['sec-fetch-site']
 
   if (!site || SAME_ORIGIN_FETCHES.has(site))
@@ -92,6 +93,15 @@ export async function requireSameOrigin(
   reply: FastifyReply,
 ) {
   if (isCrossSite(request))
+    return crossSiteRejected(reply)
+}
+
+/** Same origin requirement for reads of short-lived private data. */
+export async function requireSameOriginRead(
+  request: FastifyRequest,
+  reply: FastifyReply,
+) {
+  if (isCrossSiteOrigin(request))
     return crossSiteRejected(reply)
 }
 

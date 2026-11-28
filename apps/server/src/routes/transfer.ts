@@ -13,6 +13,7 @@ import {
   serverImportResult,
   transferErrorResponse,
 } from '../dto/transfer.ts'
+import { arrTransferRoutes } from './arrTransfer.ts'
 import { requireOwner } from '../middleware/auth.ts'
 import { BackupError } from '../services/backups/index.ts'
 import {
@@ -77,6 +78,7 @@ export async function readExportText(
 /** Перенос данных между серверами: экспорт и импорт файла `torsher-export` */
 export const transferRoutes: FastifyPluginAsyncZod = async (app) => {
   app.addHook('onRequest', requireOwner)
+  app.register(arrTransferRoutes, { prefix: '/arr' })
 
   app.post(
     '/export',
