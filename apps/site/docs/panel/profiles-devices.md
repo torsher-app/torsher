@@ -98,6 +98,25 @@ Each entry needs `list: "watched"`, a non-empty `title`, and `kind: "movie"` or 
 
 Marks appear under <Ui k="mine.sections.watched" /> even for ongoing series. They do not create episode progress or viewing history. A movie leaves Watch later; a series keeps it. Existing viewing positions are preserved. Repeating the same import keeps the original mark. Starting playback or removing the mark clears it; applying a new import can add it again. Existing Dropped status keeps priority. See [Watched and dropped](/docs/watch/mine#watched-and-dropped) for the showcase and Jellyfin-compatible clients.
 
+### Import watched marks from Jellyfin
+
+Open <Ui k="panel.jellyfinImport.title" /> in the destination profile's card. The panel and the Jellyfin server both need HTTPS with trusted certificates. Torsher must be able to reach Jellyfin from its own network without using its loopback address. A Jellyfin reverse proxy with a base path is supported.
+
+1. Enter the Jellyfin address, then select <Ui k="panel.jellyfinImport.checkAddress" /> and review the destination.
+2. Sign in as the Jellyfin viewer whose watched marks you want to transfer. Select <Ui k="panel.jellyfinImport.preview" /> to compare the snapshot with the destination profile.
+3. Select <Ui k="panel.imports.dialog.apply" />. If needed, undo the applied import from the profile card.
+
+Torsher imports watched marks for matched movies and episodes. Playback position, watch dates and repeat watches stay in Jellyfin. These marks do not make files eligible for automatic cleanup. Torsher uses a temporary Jellyfin session for the import and discards the credentials after use.
+
+### Sync completed watches with Simkl
+
+Register a public Device client using [Simkl AUTH V2](https://api.simkl.org/authentication), then set its ID as `SIMKL_CLIENT_ID` in your server environment. The setting is empty by default. Open <Ui k="panel.simklSync.title" /> in the profile's card and choose <Ui k="panel.simklSync.connect" />. Open Simkl, enter the activation code, and check the account before enabling a direction.
+
+- <Ui k="panel.simklSync.pull" /> imports supported watched movies and episodes into your Torsher diary. Use <Ui k="panel.simklSync.sync" /> to check for new watches immediately.
+- <Ui k="panel.simklSync.push" /> sends future completions from the Torsher player. Simkl receives the movie or episode ID and completion time. Manual marks, existing diary entries, notes, ratings and unfinished playback are outside this sync.
+
+Simkl keeps one canonical watched entry per movie or episode. Repeat watches stay in the Torsher diary. Additions made before a disconnect stay on both sides. A restored Torsher backup needs a new connection before sync can resume. Keep system files and data-volume snapshots private because they may contain live credentials.
+
 ## Devices
 
 Each row shows the device's name, type, the profile it uses and <Ui k="panel.people.devices.watching" /> when it plays something.
