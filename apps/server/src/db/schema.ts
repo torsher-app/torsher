@@ -1,3 +1,4 @@
+import type { ExternalListLastResult } from '../dto/externalLists.ts'
 import type {
   HttpAddonErrorKind,
   HttpAddonSelections,
@@ -786,6 +787,59 @@ export const profileTitles = sqliteTable(
 )
 
 export type ProfileTitle = typeof profileTitles.$inferSelect
+
+export const externalLists = sqliteTable(
+  'external_lists',
+  {
+    id: text('id')
+      .primaryKey()
+      .$defaultFn(() => randomUUID()),
+    sourceId: integer('source_id').notNull(),
+    name: text('name').notNull(),
+    profileId: text('profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    media: text('media', { enum: ['all', 'movie', 'tv'] }).notNull(),
+    intervalHours: integer('interval_hours').$type<12 | 24 | 48>().notNull(),
+    paused: integer('paused', { mode: 'boolean' }).notNull().default(false),
+    revision: integer('revision').notNull().default(0),
+    checkOffset: integer('check_offset').notNull().default(0),
+    failures: integer('failures').notNull().default(0),
+    lastAttemptAt: integer('last_attempt_at'),
+    lastReadAt: integer('last_read_at'),
+    nextRunAt: integer('next_run_at'),
+    lastResult: text('last_result', {
+      mode: 'json',
+    }).$type<ExternalListLastResult>(),
+  },
+  table => [
+    uniqueIndex('external_lists_source_profile_idx').on(
+      table.sourceId,
+      table.profileId,
+    ),
+    index('external_lists_due_idx').on(table.paused, table.nextRunAt),
+    index('external_lists_profile_idx').on(table.profileId),
+  ],
+)
+
+export const externalListDecisions = sqliteTable(
+  'external_list_decisions',
+  {
+    profileId: text('profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    titleId: text('title_id').notNull(),
+    decision: text('decision', { enum: ['handled', 'excluded'] }).notNull(),
+  },
+  table => [
+    primaryKey({ columns: [table.profileId, table.titleId] }),
+    index('external_list_decisions_profile_kind_idx').on(
+      table.profileId,
+      table.decision,
+      table.titleId,
+    ),
+  ],
+)
 
 export const diaryOrigins = [
   'playback',
@@ -2449,36 +2503,41 @@ export interface SimklCursor {
   shows: string | null
 }
 
-export const simklConnections = sqliteTable(
-  'simkl_connections',
-  {
-    profileId: text('profile_id').primaryKey().references(() => profiles.id, { onDelete: 'cascade' }),
-    generation: text('generation').notNull(),
-    accountFingerprint: text('account_fingerprint').notNull().unique(),
-    account: text('account').notNull(),
-    clientId: text('client_id').notNull(),
-    grant: text('grant').notNull(),
-    expiresAt: integer('expires_at').notNull(),
-    scope: text('scope', { enum: ['read', 'write'] }).notNull(),
-    pull: integer('pull', { mode: 'boolean' }).notNull().default(false),
-    push: integer('push', { mode: 'boolean' }).notNull().default(false),
-    reauthorize: integer('reauthorize', { mode: 'boolean' }).notNull().default(false),
-    cursor: text('cursor', { mode: 'json' }).$type<SimklCursor>(),
-    lastSyncAt: integer('last_sync_at'),
-    lastPullAt: integer('last_pull_at'),
-    blockedUntil: integer('blocked_until').notNull().default(0),
-    syncError: integer('sync_error', { mode: 'boolean' }).notNull().default(false),
-    skipped: integer('skipped').notNull().default(0),
-    overflow: integer('overflow').notNull().default(0),
-  },
-)
+export const simklConnections = sqliteTable('simkl_connections', {
+  profileId: text('profile_id')
+    .primaryKey()
+    .references(() => profiles.id, { onDelete: 'cascade' }),
+  generation: text('generation').notNull(),
+  accountFingerprint: text('account_fingerprint').notNull().unique(),
+  account: text('account').notNull(),
+  clientId: text('client_id').notNull(),
+  grant: text('grant').notNull(),
+  expiresAt: integer('expires_at').notNull(),
+  scope: text('scope', { enum: ['read', 'write'] }).notNull(),
+  pull: integer('pull', { mode: 'boolean' }).notNull().default(false),
+  push: integer('push', { mode: 'boolean' }).notNull().default(false),
+  reauthorize: integer('reauthorize', { mode: 'boolean' })
+    .notNull()
+    .default(false),
+  cursor: text('cursor', { mode: 'json' }).$type<SimklCursor>(),
+  lastSyncAt: integer('last_sync_at'),
+  lastPullAt: integer('last_pull_at'),
+  blockedUntil: integer('blocked_until').notNull().default(0),
+  syncError: integer('sync_error', { mode: 'boolean' })
+    .notNull()
+    .default(false),
+  skipped: integer('skipped').notNull().default(0),
+  overflow: integer('overflow').notNull().default(0),
+})
 
 export type SimklConnection = typeof simklConnections.$inferSelect
 
 export const simklOutbox = sqliteTable(
   'simkl_outbox',
   {
-    profileId: text('profile_id').notNull().references(() => simklConnections.profileId, { onDelete: 'cascade' }),
+    profileId: text('profile_id')
+      .notNull()
+      .references(() => simklConnections.profileId, { onDelete: 'cascade' }),
     attemptId: text('attempt_id').notNull(),
     generation: text('generation').notNull(),
     diaryId: text('diary_id').notNull(),
@@ -2487,16 +2546,27 @@ export const simklOutbox = sqliteTable(
     episode: integer('episode').notNull(),
     watchedAt: integer('watched_at').notNull(),
     simklId: integer('simkl_id'),
-    state: text('state', { enum: ['queued', 'sending', 'uncertain', 'attention'] }).notNull().default('queued'),
+    state: text('state', {
+      enum: ['queued', 'sending', 'uncertain', 'attention'],
+    })
+      .notNull()
+      .default('queued'),
     // A dispatch might have reached Simkl, including after a process restart.
-    dispatched: integer('dispatched', { mode: 'boolean' }).notNull().default(false),
+    dispatched: integer('dispatched', { mode: 'boolean' })
+      .notNull()
+      .default(false),
     retries: integer('retries').notNull().default(0),
     nextTryAt: integer('next_try_at').notNull(),
   },
   table => [
     primaryKey({ columns: [table.profileId, table.attemptId] }),
     index('simkl_outbox_schedule_idx').on(table.state, table.nextTryAt),
-    index('simkl_outbox_media_idx').on(table.profileId, table.simklId, table.season, table.episode),
+    index('simkl_outbox_media_idx').on(
+      table.profileId,
+      table.simklId,
+      table.season,
+      table.episode,
+    ),
   ],
 )
 
@@ -2505,7 +2575,9 @@ export type SimklOutbound = typeof simklOutbox.$inferSelect
 export const simklReceipts = sqliteTable(
   'simkl_receipts',
   {
-    profileId: text('profile_id').notNull().references(() => profiles.id, { onDelete: 'cascade' }),
+    profileId: text('profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
     accountFingerprint: text('account_fingerprint').notNull(),
     remoteKey: text('remote_key').notNull(),
     diaryId: text('diary_id').notNull(),
@@ -2513,5 +2585,9 @@ export const simklReceipts = sqliteTable(
     watchedAt: integer('watched_at'),
     kind: text('kind', { enum: ['pull', 'push', 'dispatch'] }).notNull(),
   },
-  table => [primaryKey({ columns: [table.profileId, table.accountFingerprint, table.remoteKey] })],
+  table => [
+    primaryKey({
+      columns: [table.profileId, table.accountFingerprint, table.remoteKey],
+    }),
+  ],
 )

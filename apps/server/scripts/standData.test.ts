@@ -92,6 +92,35 @@ it('clears provider credentials, queued jobs and library bindings on the stand c
   }
 })
 
+it('clears the copied MDBList credential and scheduled connections', async () => {
+  const source = dataAt(join(root, 'source'))
+  const stand = dataAt(join(root, 'stand'))
+  mkdirSync(source.dataDir, { recursive: true })
+  const db = createSourceDb(source.databasePath)
+  db.exec('CREATE TABLE external_lists (id TEXT PRIMARY KEY)')
+  db.prepare('INSERT INTO external_lists VALUES (?)').run('synthetic')
+  db.prepare('INSERT INTO server_settings VALUES (?,?,0)').run(
+    'externalLists.mdblist',
+    '{"encryptedKey":"synthetic"}',
+  )
+  db.close()
+
+  await copyData(source, stand, false)
+  sanitizeDb(stand.databasePath, source, stand, 'stand')
+  const copy = new Database(stand.databasePath, { readonly: true })
+  try {
+    expect(copy.prepare('SELECT * FROM external_lists').all()).toEqual([])
+    expect(
+      copy
+        .prepare('SELECT * FROM server_settings WHERE key = ?')
+        .get('externalLists.mdblist'),
+    ).toBeUndefined()
+  }
+  finally {
+    copy.close()
+  }
+})
+
 afterEach(() => {
   rmSync(root, { recursive: true, force: true })
 })

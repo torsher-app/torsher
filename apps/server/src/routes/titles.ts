@@ -1058,7 +1058,9 @@ export const titleRoutes: FastifyPluginAsyncZod = async (app) => {
       if (!parseCatalogId(request.params.id))
         return reply.code(404).send({ message: 'Title not found' })
 
-      updateMine(request.profileId, request.params.id, request.body)
+      updateMine(request.profileId, request.params.id, request.body, {
+        manualWatchlistRemoval: true,
+      })
 
       return getTitleMine(
         request.profileId,

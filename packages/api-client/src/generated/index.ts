@@ -10,6 +10,21 @@
  * ---------------------------------------------------------------
  */
 
+export enum ExternalListsErrorCode {
+  KeyRequired = "keyRequired",
+  KeyRejected = "keyRejected",
+  SourceUnavailable = "sourceUnavailable",
+  SourceAmbiguous = "sourceAmbiguous",
+  SourceTooLarge = "sourceTooLarge",
+  ListLimit = "listLimit",
+  Duplicate = "duplicate",
+  RetryLater = "retryLater",
+  PreviewExpired = "previewExpired",
+  InvalidSource = "invalidSource",
+  ProviderError = "providerError",
+  NotFound = "notFound",
+}
+
 export enum MaintenanceReason {
   Disabled = "disabled",
   Legacy = "legacy",
@@ -34,6 +49,21 @@ export enum MaintenanceReason {
   ClockInvalid = "clock_invalid",
   GracePeriod = "grace_period",
   ActivePlayback = "active_playback",
+}
+
+export enum ExternalListsErrorCodeInput {
+  KeyRequired = "keyRequired",
+  KeyRejected = "keyRejected",
+  SourceUnavailable = "sourceUnavailable",
+  SourceAmbiguous = "sourceAmbiguous",
+  SourceTooLarge = "sourceTooLarge",
+  ListLimit = "listLimit",
+  Duplicate = "duplicate",
+  RetryLater = "retryLater",
+  PreviewExpired = "previewExpired",
+  InvalidSource = "invalidSource",
+  ProviderError = "providerError",
+  NotFound = "notFound",
 }
 
 export enum MaintenanceReasonInput {
@@ -326,13 +356,7 @@ export type DiagnosticEventInput =
       /** @pattern ^\d{1,4}(?:\.\d{1,4}){0,3}$ */
       browserVersion?: string;
       osFamily:
-        | "webos"
-        | "android"
-        | "windows"
-        | "macos"
-        | "linux"
-        | "ios"
-        | "unknown";
+        "webos" | "android" | "windows" | "macos" | "linux" | "ios" | "unknown";
       /** @pattern ^\d{1,4}(?:\.\d{1,4}){0,3}$ */
       osVersion?: string;
       deviceModel: "unsupported";
@@ -1141,12 +1165,7 @@ export type DiagnosticEventInput =
       everDisplayed?: boolean;
       autoNext?: boolean;
       trigger?:
-        | "remote"
-        | "pointer"
-        | "countdown"
-        | "ended"
-        | "OSD_next"
-        | "exit";
+        "remote" | "pointer" | "countdown" | "ended" | "OSD_next" | "exit";
     }
   | {
       /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
@@ -1364,10 +1383,7 @@ export type DiagnosticEventInput =
       session?: string;
       event: "source.resolve" | "source.attempt" | "source.selected";
       branch:
-        | "requested"
-        | "known_torrent"
-        | "follow_pick"
-        | "ranked_candidate";
+        "requested" | "known_torrent" | "follow_pick" | "ranked_candidate";
       outcome:
         | "ready"
         | "resolving"
@@ -2316,10 +2332,7 @@ export interface DiagnosticAckInput {
   rejected: {
     eventId: string;
     code:
-      | "disabled"
-      | "level_filtered"
-      | "invalid_event"
-      | "journal_unavailable";
+      "disabled" | "level_filtered" | "invalid_event" | "journal_unavailable";
   }[];
   serverInstance: string;
   fileSinkState: "enabled" | "disabled";
@@ -3773,10 +3786,7 @@ export interface ContinueRowInput {
 }
 
 export type HomeRowInput =
-  | ContinueRowInput
-  | ReleasesRowInput
-  | FilesRowInput
-  | CatalogRowInput;
+  ContinueRowInput | ReleasesRowInput | FilesRowInput | CatalogRowInput;
 
 export interface HomeResponseInput {
   rows: HomeRowInput[];
@@ -4139,12 +4149,7 @@ export interface TorrentSettingsInput {
   bindInterfaceEnv: string | null;
   networkBinding: EngineNetworkBindingInput | null;
   pendingRestart: (
-    | "peerPort"
-    | "upnp"
-    | "dht"
-    | "pex"
-    | "encryption"
-    | "bindInterface"
+    "peerPort" | "upnp" | "dht" | "pex" | "encryption" | "bindInterface"
   )[];
   restartBlocked: "not_running" | "moving" | null;
   activeStreams: number;
@@ -5115,6 +5120,209 @@ export interface UpdateDeviceInput {
    * @maxLength 60
    */
   name: string;
+}
+
+export interface ExternalListsErrorResponseInput {
+  message: ExternalListsErrorCodeInput;
+}
+
+export interface ExternalListCountsInput {
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  found: number;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  added: number;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  existing: number;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  handled: number;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  excluded: number;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  restricted: number;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  watched: number;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  unmatched: number;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  pending: number;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  deferred: number;
+}
+
+export interface ExternalListLastResultInput {
+  status: "complete" | "partial" | "error";
+  counts: ExternalListCountsInput | null;
+  error: ExternalListsErrorCodeInput | null;
+}
+
+export interface ExternalListInput {
+  /**
+   * @minLength 1
+   * @maxLength 128
+   */
+  id: string;
+  /**
+   * @min 0
+   * @exclusiveMin true
+   * @max 9007199254740991
+   */
+  sourceId: number;
+  name: string;
+  /**
+   * @minLength 1
+   * @maxLength 128
+   */
+  profileId: string;
+  media: "all" | "movie" | "tv";
+  intervalHours: 12 | 24 | 48;
+  paused: boolean;
+  running: boolean;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  lastAttemptAt: number | null;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  lastReadAt: number | null;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  nextRunAt: number | null;
+  lastResult: ExternalListLastResultInput | null;
+}
+
+export interface ExternalListSettingsInput {
+  hasKey: boolean;
+  keyRejected: boolean;
+  lists: ExternalListInput[];
+}
+
+export interface UpdateExternalListKeyInput {
+  /**
+   * @minLength 1
+   * @maxLength 256
+   * @pattern ^[\x21-\x7E]+$
+   */
+  apiKey: string | null;
+}
+
+export interface ExternalListPreviewInputInput {
+  /**
+   * @minLength 1
+   * @maxLength 512
+   */
+  source: string;
+  /**
+   * @minLength 1
+   * @maxLength 128
+   */
+  profileId: string;
+  media: "all" | "movie" | "tv";
+  intervalHours: 12 | 24 | 48;
+  /**
+   * @minLength 1
+   * @maxLength 128
+   */
+  listId?: string;
+}
+
+export interface ExternalListPreviewTokenInput {
+  /**
+   * @minLength 1
+   * @maxLength 128
+   */
+  token: string;
+}
+
+export interface ExternalListPreviewJobInput {
+  /**
+   * @minLength 1
+   * @maxLength 128
+   */
+  token: string;
+  status: "pending" | "ready" | "error";
+  preview?: {
+    name: string;
+    /**
+     * @min 0
+     * @exclusiveMin true
+     * @max 9007199254740991
+     */
+    sourceId: number;
+    /**
+     * @minLength 1
+     * @maxLength 128
+     */
+    profileId: string;
+    counts: ExternalListCountsInput;
+    items: {
+      /** @pattern ^tmdb:(?:movie|tv):[1-9]\d*$ */
+      titleId: string;
+      title: string;
+    }[];
+  };
+  error?: ExternalListsErrorCodeInput;
+}
+
+export interface UpdateExternalListInput {
+  paused: boolean;
+}
+
+export interface ExternalListExclusionInput {
+  /**
+   * @minLength 1
+   * @maxLength 128
+   */
+  profileId: string;
+  /** @pattern ^tmdb:(?:movie|tv):[1-9]\d*$ */
+  titleId: string;
+}
+
+export interface ExternalListExclusionsInput {
+  items: {
+    /** @pattern ^tmdb:(?:movie|tv):[1-9]\d*$ */
+    titleId: string;
+    title: string | null;
+  }[];
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  nextOffset: number | null;
 }
 
 export type FollowVoicePolicyInput =
@@ -11149,13 +11357,7 @@ export type DiagnosticEvent =
       /** @pattern ^\d{1,4}(?:\.\d{1,4}){0,3}$ */
       browserVersion?: string;
       osFamily:
-        | "webos"
-        | "android"
-        | "windows"
-        | "macos"
-        | "linux"
-        | "ios"
-        | "unknown";
+        "webos" | "android" | "windows" | "macos" | "linux" | "ios" | "unknown";
       /** @pattern ^\d{1,4}(?:\.\d{1,4}){0,3}$ */
       osVersion?: string;
       deviceModel: "unsupported";
@@ -11964,12 +12166,7 @@ export type DiagnosticEvent =
       everDisplayed?: boolean;
       autoNext?: boolean;
       trigger?:
-        | "remote"
-        | "pointer"
-        | "countdown"
-        | "ended"
-        | "OSD_next"
-        | "exit";
+        "remote" | "pointer" | "countdown" | "ended" | "OSD_next" | "exit";
     }
   | {
       /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
@@ -12187,10 +12384,7 @@ export type DiagnosticEvent =
       session?: string;
       event: "source.resolve" | "source.attempt" | "source.selected";
       branch:
-        | "requested"
-        | "known_torrent"
-        | "follow_pick"
-        | "ranked_candidate";
+        "requested" | "known_torrent" | "follow_pick" | "ranked_candidate";
       outcome:
         | "ready"
         | "resolving"
@@ -13139,10 +13333,7 @@ export interface DiagnosticAck {
   rejected: {
     eventId: string;
     code:
-      | "disabled"
-      | "level_filtered"
-      | "invalid_event"
-      | "journal_unavailable";
+      "disabled" | "level_filtered" | "invalid_event" | "journal_unavailable";
   }[];
   serverInstance: string;
   fileSinkState: "enabled" | "disabled";
@@ -14956,12 +15147,7 @@ export interface TorrentSettings {
   bindInterfaceEnv: string | null;
   networkBinding: EngineNetworkBinding | null;
   pendingRestart: (
-    | "peerPort"
-    | "upnp"
-    | "dht"
-    | "pex"
-    | "encryption"
-    | "bindInterface"
+    "peerPort" | "upnp" | "dht" | "pex" | "encryption" | "bindInterface"
   )[];
   restartBlocked: "not_running" | "moving" | null;
   activeStreams: number;
@@ -15932,6 +16118,209 @@ export interface UpdateDevice {
    * @maxLength 60
    */
   name: string;
+}
+
+export interface ExternalListsErrorResponse {
+  message: ExternalListsErrorCode;
+}
+
+export interface ExternalListCounts {
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  found: number;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  added: number;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  existing: number;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  handled: number;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  excluded: number;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  restricted: number;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  watched: number;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  unmatched: number;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  pending: number;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  deferred: number;
+}
+
+export interface ExternalListLastResult {
+  status: "complete" | "partial" | "error";
+  counts: ExternalListCounts | null;
+  error: ExternalListsErrorCode | null;
+}
+
+export interface ExternalList {
+  /**
+   * @minLength 1
+   * @maxLength 128
+   */
+  id: string;
+  /**
+   * @min 0
+   * @exclusiveMin true
+   * @max 9007199254740991
+   */
+  sourceId: number;
+  name: string;
+  /**
+   * @minLength 1
+   * @maxLength 128
+   */
+  profileId: string;
+  media: "all" | "movie" | "tv";
+  intervalHours: 12 | 24 | 48;
+  paused: boolean;
+  running: boolean;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  lastAttemptAt: number | null;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  lastReadAt: number | null;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  nextRunAt: number | null;
+  lastResult: ExternalListLastResult | null;
+}
+
+export interface ExternalListSettings {
+  hasKey: boolean;
+  keyRejected: boolean;
+  lists: ExternalList[];
+}
+
+export interface UpdateExternalListKey {
+  /**
+   * @minLength 1
+   * @maxLength 256
+   * @pattern ^[\x21-\x7E]+$
+   */
+  apiKey: string | null;
+}
+
+export interface ExternalListPreviewInput {
+  /**
+   * @minLength 1
+   * @maxLength 512
+   */
+  source: string;
+  /**
+   * @minLength 1
+   * @maxLength 128
+   */
+  profileId: string;
+  media: "all" | "movie" | "tv";
+  intervalHours: 12 | 24 | 48;
+  /**
+   * @minLength 1
+   * @maxLength 128
+   */
+  listId?: string;
+}
+
+export interface ExternalListPreviewToken {
+  /**
+   * @minLength 1
+   * @maxLength 128
+   */
+  token: string;
+}
+
+export interface ExternalListPreviewJob {
+  /**
+   * @minLength 1
+   * @maxLength 128
+   */
+  token: string;
+  status: "pending" | "ready" | "error";
+  preview?: {
+    name: string;
+    /**
+     * @min 0
+     * @exclusiveMin true
+     * @max 9007199254740991
+     */
+    sourceId: number;
+    /**
+     * @minLength 1
+     * @maxLength 128
+     */
+    profileId: string;
+    counts: ExternalListCounts;
+    items: {
+      /** @pattern ^tmdb:(?:movie|tv):[1-9]\d*$ */
+      titleId: string;
+      title: string;
+    }[];
+  };
+  error?: ExternalListsErrorCode;
+}
+
+export interface UpdateExternalList {
+  paused: boolean;
+}
+
+export interface ExternalListExclusion {
+  /**
+   * @minLength 1
+   * @maxLength 128
+   */
+  profileId: string;
+  /** @pattern ^tmdb:(?:movie|tv):[1-9]\d*$ */
+  titleId: string;
+}
+
+export interface ExternalListExclusions {
+  items: {
+    /** @pattern ^tmdb:(?:movie|tv):[1-9]\d*$ */
+    titleId: string;
+    title: string | null;
+  }[];
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  nextOffset: number | null;
 }
 
 export type FollowVoicePolicy =
@@ -21721,12 +22110,10 @@ export type MarkNotificationsReadError = MessageResponse;
 export type GetNotificationChannelsError = MessageResponse;
 
 export type CreateNotificationChannelError =
-  | MessageResponse
-  | NotificationChannelConfigError;
+  MessageResponse | NotificationChannelConfigError;
 
 export type UpdateNotificationChannelError =
-  | MessageResponse
-  | NotificationChannelConfigError;
+  MessageResponse | NotificationChannelConfigError;
 
 export type SetNotificationChannelEnabledError = MessageResponse;
 
@@ -21735,8 +22122,7 @@ export type DeleteNotificationChannelError = MessageResponse;
 export type TestNotificationChannelError = MessageResponse;
 
 export type TestNotificationChannelDraftError =
-  | MessageResponse
-  | NotificationChannelConfigError;
+  MessageResponse | NotificationChannelConfigError;
 
 export type FindTelegramChatsError = MessageResponse;
 
@@ -21749,14 +22135,10 @@ export type PostAuthRefreshError = MessageResponse;
 export type GetUsersMeError = MessageResponse;
 
 export type PutUsersMePasswordError =
-  | MessageResponse
-  | WrongPasswordResponse
-  | TooManyAttemptsResponse;
+  MessageResponse | WrongPasswordResponse | TooManyAttemptsResponse;
 
 export type PutUsersMeUsernameError =
-  | MessageResponse
-  | WrongPasswordResponse
-  | TooManyAttemptsResponse;
+  MessageResponse | WrongPasswordResponse | TooManyAttemptsResponse;
 
 export type GetCatalogSearchError = MessageResponse;
 
@@ -21797,9 +22179,7 @@ export type PostIndexerTestError = MessageResponse;
 export type GetTitleAddonSourcesError = MessageResponse | HttpAddonError;
 
 export type PostTitleAddonSourcePlayError =
-  | MessageResponse
-  | HttpAddonError
-  | EngineUnavailableResponse;
+  MessageResponse | HttpAddonError | EngineUnavailableResponse;
 
 export type GetHomeAddonRowsError = MessageResponse | HttpAddonError;
 
@@ -21965,18 +22345,14 @@ export type GetTitleSourcesError = MessageResponse;
 export type PutTitleVoiceError = MessageResponse;
 
 export type PostTitleWatchError =
-  | MessageResponse
-  | WatchErrorResponse
-  | EngineUnavailableResponse;
+  MessageResponse | WatchErrorResponse | EngineUnavailableResponse;
 
 export type GetTitleProgressError = MessageResponse | MinePersonalError;
 
 export type GetTitleUpNextError = MessageResponse;
 
 export type PostTitleOpenError =
-  | MessageResponse
-  | WatchErrorResponse
-  | EngineUnavailableResponse;
+  MessageResponse | WatchErrorResponse | EngineUnavailableResponse;
 
 export type GetTitleFilesError = MessageResponse;
 
@@ -21991,13 +22367,10 @@ export type PostTitleDownloadError =
   | InsufficientStorageResponse;
 
 export type DeleteTitleDownloadError =
-  | MessageResponse
-  | EngineUnavailableResponse;
+  MessageResponse | EngineUnavailableResponse;
 
 export type PostTitleKeepError =
-  | MessageResponse
-  | EngineUnavailableResponse
-  | InsufficientStorageResponse;
+  MessageResponse | EngineUnavailableResponse | InsufficientStorageResponse;
 
 export type PutTitleWatchedError = MessageResponse;
 
@@ -22030,94 +22403,58 @@ export type GetMineError = MessageResponse;
 export type GetMineItemsError = MessageResponse;
 
 export type GetMineBootstrapError =
-  | (MessageResponse | MinePersonalError)
-  | MessageResponse
-  | MinePersonalError;
+  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
 
 export type GetMineSectionCountsError =
-  | (MessageResponse | MinePersonalError)
-  | MessageResponse
-  | MinePersonalError;
+  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
 
 export type PutMineStartError =
-  | (MessageResponse | MinePersonalError)
-  | MessageResponse
-  | MinePersonalError;
+  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
 
 export type GetMineDiaryError =
-  | (MessageResponse | MinePersonalError)
-  | MessageResponse
-  | MinePersonalError;
+  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
 
 export type PostMineDiaryError =
-  | (MessageResponse | MinePersonalError)
-  | MessageResponse
-  | MinePersonalError;
+  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
 
 export type GetMineDiaryMonthsError =
-  | (MessageResponse | MinePersonalError)
-  | MessageResponse
-  | MinePersonalError;
+  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
 
 export type PatchMineDiaryEntryError =
-  | (MessageResponse | MinePersonalError)
-  | MessageResponse
-  | MinePersonalError;
+  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
 
 export type DeleteMineDiaryEntryError =
-  | (MessageResponse | MinePersonalError)
-  | MessageResponse
-  | MinePersonalError;
+  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
 
 export type GetMineOverviewError =
-  | (MessageResponse | MinePersonalError)
-  | MessageResponse
-  | MinePersonalError;
+  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
 
 export type GetMineTitlePersonalError =
-  | (MessageResponse | MinePersonalError)
-  | MessageResponse
-  | MinePersonalError;
+  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
 
 export type PatchMineTitlePersonalError =
-  | (MessageResponse | MinePersonalError)
-  | MessageResponse
-  | MinePersonalError;
+  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
 
 export type PutMineSeenError =
-  | (MessageResponse | MinePersonalError)
-  | MessageResponse
-  | MinePersonalError;
+  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
 
 export type PostMineCycleError =
-  | (MessageResponse | MinePersonalError)
-  | MessageResponse
-  | MinePersonalError;
+  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
 
 export type PatchMineCycleError =
-  | (MessageResponse | MinePersonalError)
-  | MessageResponse
-  | MinePersonalError;
+  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
 
 export type GetMinePersonalContinueError =
-  | (MessageResponse | MinePersonalError)
-  | MessageResponse
-  | MinePersonalError;
+  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
 
 export type GetMinePersonalWatchedError =
-  | (MessageResponse | MinePersonalError)
-  | MessageResponse
-  | MinePersonalError;
+  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
 
 export type GetMineRecommendationsError =
-  | (MessageResponse | MinePersonalError)
-  | MessageResponse
-  | MinePersonalError;
+  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
 
 export type GetMineRecommendationExclusionsError =
-  | (MessageResponse | MinePersonalError)
-  | MessageResponse
-  | MinePersonalError;
+  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
 
 export type GetCollectionsError = MessageResponse;
 
@@ -22144,36 +22481,30 @@ export type GetTorrentError = MessageResponse;
 export type DeleteTorrentError = MessageResponse | EngineUnavailableResponse;
 
 export type GetTorrentDeletePreviewError =
-  | MessageResponse
-  | EngineUnavailableResponse;
+  MessageResponse | EngineUnavailableResponse;
 
 export type PostTorrentRetryError = MessageResponse | EngineUnavailableResponse;
 
 export type PostTorrentDownloadError =
-  | MessageResponse
-  | EngineUnavailableResponse;
+  MessageResponse | EngineUnavailableResponse;
 
 export type PutTorrentPriorityError =
-  | MessageResponse
-  | EngineUnavailableResponse;
+  MessageResponse | EngineUnavailableResponse;
 
 export type PostTorrentPauseError = MessageResponse | EngineUnavailableResponse;
 
 export type PostTorrentResumeError =
-  | MessageResponse
-  | EngineUnavailableResponse;
+  MessageResponse | EngineUnavailableResponse;
 
 export type PutTorrentRetentionError =
-  | MessageResponse
-  | EngineUnavailableResponse;
+  MessageResponse | EngineUnavailableResponse;
 
 export type PutTorrentSeedingError = MessageResponse;
 
 export type PutTorrentTitleError = MessageResponse;
 
 export type DeleteTorrentLibraryError =
-  | MessageResponse
-  | EngineUnavailableResponse;
+  MessageResponse | EngineUnavailableResponse;
 
 export type GetTorrentStatsError = MessageResponse | EngineUnavailableResponse;
 
@@ -22250,18 +22581,13 @@ export type GetStorageBrowseError = MessageResponse;
 export type PostStorageCheckError = MessageResponse | EngineUnavailableResponse;
 
 export type PutStoragePathError =
-  | MessageResponse
-  | StoragePathErrorResponse
-  | EngineUnavailableResponse;
+  MessageResponse | StoragePathErrorResponse | EngineUnavailableResponse;
 
 export type PostStorageMoveError =
-  | MessageResponse
-  | StoragePathErrorResponse
-  | EngineUnavailableResponse;
+  MessageResponse | StoragePathErrorResponse | EngineUnavailableResponse;
 
 export type PostStorageMoveCancelError =
-  | MessageResponse
-  | EngineUnavailableResponse;
+  MessageResponse | EngineUnavailableResponse;
 
 export type GetBackupsError = MessageResponse;
 
@@ -22284,12 +22610,10 @@ export type PostBackupRestoreError = MessageResponse | BackupErrorResponse;
 export type PostTransferExportError = MessageResponse;
 
 export type PostTransferImportPreviewError =
-  | TransferErrorResponse
-  | MessageResponse;
+  TransferErrorResponse | MessageResponse;
 
 export type PostTransferImportApplyError =
-  | MessageResponse
-  | BackupErrorResponse;
+  MessageResponse | BackupErrorResponse;
 
 export type PostArrConnectionError = MessageResponse | ArrErrorResponse;
 
@@ -22374,6 +22698,34 @@ export type PostPlaybackCheckError = MessageResponse;
 export type GetFollowSettingsError = MessageResponse;
 
 export type PutFollowSettingsError = MessageResponse;
+
+export type GetExternalListsError = MessageResponse;
+
+export type PutExternalListKeyError =
+  MessageResponse | ExternalListsErrorResponse;
+
+export type StartExternalListPreviewError =
+  MessageResponse | ExternalListsErrorResponse;
+
+export type GetExternalListPreviewError =
+  MessageResponse | ExternalListsErrorResponse;
+
+export type ConfirmExternalListError =
+  MessageResponse | ExternalListsErrorResponse;
+
+export type PatchExternalListError =
+  MessageResponse | ExternalListsErrorResponse;
+
+export type DeleteExternalListError =
+  MessageResponse | ExternalListsErrorResponse;
+
+export type RunExternalListError = MessageResponse | ExternalListsErrorResponse;
+
+export type GetExternalListExclusionsError =
+  MessageResponse | ExternalListsErrorResponse;
+
+export type DeleteExternalListExclusionError =
+  MessageResponse | ExternalListsErrorResponse;
 
 export type GetSubtitleSettingsError = MessageResponse;
 
@@ -22473,8 +22825,7 @@ export type PutCurrentPlayerSettingsError = MessageResponse;
 export type PatchProfileError = MessageResponse;
 
 export type DeleteProfileError =
-  | MessageResponse
-  | (MessageResponse | ProfileMoveConflict);
+  MessageResponse | (MessageResponse | ProfileMoveConflict);
 
 export type GetProfileHistoryError = MessageResponse;
 
@@ -22487,14 +22838,12 @@ export type PostProfileSelectError = MessageResponse | PinErrorResponse;
 export type GetProfileImportsError = MessageResponse;
 
 export type PostProfileImportError =
-  | ImportFormatErrorResponse
-  | MessageResponse;
+  ImportFormatErrorResponse | MessageResponse;
 
 export type GetProfileImportUnmatchedError = MessageResponse;
 
 export type PostProfileImportMatchError =
-  | MessageResponse
-  | HistoryMatchConflict;
+  MessageResponse | HistoryMatchConflict;
 
 export type DeleteProfileImportUnmatchedError = MessageResponse;
 
@@ -22507,24 +22856,19 @@ export type PostProfileImportApplyError = MessageResponse;
 export type PostProfileImportUndoError = MessageResponse;
 
 export type PostProfileJellyfinConnectionError =
-  | MessageResponse
-  | JellyfinImportError;
+  MessageResponse | JellyfinImportError;
 
 export type PostProfileJellyfinPreviewError =
-  | MessageResponse
-  | JellyfinImportError;
+  MessageResponse | JellyfinImportError;
 
 export type GetProfileJellyfinPreviewError =
-  | MessageResponse
-  | JellyfinImportError;
+  MessageResponse | JellyfinImportError;
 
 export type DeleteProfileJellyfinPreviewError =
-  | MessageResponse
-  | JellyfinImportError;
+  MessageResponse | JellyfinImportError;
 
 export type PostProfileJellyfinApplyError =
-  | MessageResponse
-  | JellyfinImportError;
+  MessageResponse | JellyfinImportError;
 
 export type GetProfileSimklError = MessageResponse | SimklError;
 
@@ -22547,8 +22891,7 @@ export type PostDevicePairingError = MessageResponse;
 export type GetDevicePairingError = MessageResponse;
 
 export type PostDevicePairingConfirmError =
-  | MessageResponse
-  | PairingErrorResponse;
+  MessageResponse | PairingErrorResponse;
 
 export type GetDevicesError = MessageResponse;
 
@@ -22604,8 +22947,10 @@ export interface ApiConfig<SecurityDataType = unknown> {
   customFetch?: typeof fetch;
 }
 
-export interface HttpResponse<D extends unknown, E extends unknown = unknown>
-  extends Response {
+export interface HttpResponse<
+  D extends unknown,
+  E extends unknown = unknown,
+> extends Response {
   data: D;
   error: E;
 }
@@ -27855,6 +28200,192 @@ export class Api<
         body: data,
         type: ContentType.Json,
         format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags ExternalLists
+     * @name GetExternalLists
+     * @request GET:/api/settings/external-lists/
+     */
+    getExternalLists: (params: RequestParams = {}) =>
+      this.request<ExternalListSettings, GetExternalListsError>({
+        path: `/api/settings/external-lists/`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags ExternalLists
+     * @name PutExternalListKey
+     * @request PUT:/api/settings/external-lists/key
+     */
+    putExternalListKey: (
+      data: UpdateExternalListKeyInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<ExternalListSettings, PutExternalListKeyError>({
+        path: `/api/settings/external-lists/key`,
+        method: "PUT",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags ExternalLists
+     * @name StartExternalListPreview
+     * @request POST:/api/settings/external-lists/preview
+     */
+    startExternalListPreview: (
+      data: ExternalListPreviewInputInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<ExternalListPreviewJob, StartExternalListPreviewError>({
+        path: `/api/settings/external-lists/preview`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags ExternalLists
+     * @name GetExternalListPreview
+     * @request GET:/api/settings/external-lists/preview/{token}
+     */
+    getExternalListPreview: (token: string, params: RequestParams = {}) =>
+      this.request<ExternalListPreviewJob, GetExternalListPreviewError>({
+        path: `/api/settings/external-lists/preview/${token}`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags ExternalLists
+     * @name ConfirmExternalList
+     * @request POST:/api/settings/external-lists/confirm
+     */
+    confirmExternalList: (
+      data: ExternalListPreviewTokenInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<ExternalList, ConfirmExternalListError>({
+        path: `/api/settings/external-lists/confirm`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags ExternalLists
+     * @name PatchExternalList
+     * @request PATCH:/api/settings/external-lists/{listId}
+     */
+    patchExternalList: (
+      listId: string,
+      data: UpdateExternalListInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<ExternalList, PatchExternalListError>({
+        path: `/api/settings/external-lists/${listId}`,
+        method: "PATCH",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags ExternalLists
+     * @name DeleteExternalList
+     * @request DELETE:/api/settings/external-lists/{listId}
+     */
+    deleteExternalList: (listId: string, params: RequestParams = {}) =>
+      this.request<void, DeleteExternalListError>({
+        path: `/api/settings/external-lists/${listId}`,
+        method: "DELETE",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags ExternalLists
+     * @name RunExternalList
+     * @request POST:/api/settings/external-lists/{listId}/run
+     */
+    runExternalList: (listId: string, params: RequestParams = {}) =>
+      this.request<ExternalList, RunExternalListError>({
+        path: `/api/settings/external-lists/${listId}/run`,
+        method: "POST",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags ExternalLists
+     * @name GetExternalListExclusions
+     * @request GET:/api/settings/external-lists/exclusions
+     */
+    getExternalListExclusions: (
+      query: {
+        /**
+         * @minLength 1
+         * @maxLength 128
+         */
+        profileId: string;
+        /** @pattern ^\d{1,8}$ */
+        offset?: string;
+      },
+      params: RequestParams = {},
+    ) =>
+      this.request<ExternalListExclusions, GetExternalListExclusionsError>({
+        path: `/api/settings/external-lists/exclusions`,
+        method: "GET",
+        query: query,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags ExternalLists
+     * @name DeleteExternalListExclusion
+     * @request DELETE:/api/settings/external-lists/exclusions
+     */
+    deleteExternalListExclusion: (
+      data: ExternalListExclusionInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<void, DeleteExternalListExclusionError>({
+        path: `/api/settings/external-lists/exclusions`,
+        method: "DELETE",
+        body: data,
+        type: ContentType.Json,
         ...params,
       }),
 

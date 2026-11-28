@@ -26,12 +26,14 @@ function findMatches(
   source: ExternalSource,
   allowStale = true,
   signal?: AbortSignal,
+  beforeLoad?: () => void,
 ) {
   return withMetaCache(
     `tmdb:find:v2:${source}:${id}`,
     FIND_TTL_MS,
-    () =>
-      tmdbGet<FindResponse>(
+    () => {
+      beforeLoad?.()
+      return tmdbGet<FindResponse>(
         `/find/${id}`,
         { external_source: source },
         undefined,
@@ -39,7 +41,8 @@ function findMatches(
       ).then(response => ({
         movie_results: compactMatches(response.movie_results),
         tv_results: compactMatches(response.tv_results),
-      })),
+      }))
+    },
     allowStale,
   )
 }
@@ -65,8 +68,19 @@ export async function findByExternalId(
   source: ExternalSource,
   prefer?: 'movie' | 'series',
   strict = false,
+  options?: {
+    requireFresh?: boolean
+    signal?: AbortSignal
+    beforeLoad?: () => void
+  },
 ) {
-  const found = await findMatches(id, source)
+  const found = await findMatches(
+    id,
+    source,
+    !options?.requireFresh,
+    options?.signal,
+    options?.beforeLoad,
+  )
   if (strict) {
     if (!prefer)
       return undefined
