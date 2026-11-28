@@ -30,6 +30,7 @@ import { profileImportRoutes } from './profileImports.ts'
 import { profileRoutes } from './profiles.ts'
 import { settingsRoutes } from './settings.ts'
 import { subtitleSettingsRoutes } from './subtitleSettings.ts'
+import { simklRoutes } from './simkl.ts'
 import { setupRoutes } from './setup.ts'
 import { storageRoutes } from './storage.ts'
 import { streamRoutes } from './stream.ts'
@@ -101,6 +102,7 @@ export const apiRoutes: FastifyPluginAsyncZod = async (app) => {
   app.register(followRoutes)
   app.register(profileRoutes, { prefix: '/profiles' })
   app.register(profileImportRoutes, { prefix: '/profiles' })
+  app.register(simklRoutes, { prefix: '/profiles/:id/simkl' })
   app.register(deviceRoutes, { prefix: '/devices' })
   app.register(engineRoutes, { prefix: '/engine' })
   app.register(logRoutes, { prefix: '/logs' })

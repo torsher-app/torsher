@@ -6,8 +6,8 @@ import type {
 } from '../../db/schema.ts'
 import type {
   ExportDocument,
-  ExportDocumentV2,
   ExportSettings,
+  WrittenExportDocument,
 } from './document.ts'
 import type { PasswordKey } from './passwords.ts'
 import { and, asc, eq, inArray, or } from 'drizzle-orm'
@@ -451,7 +451,7 @@ function exportSettings(secret: SecretWriter): ExportSettings {
 export function buildExport(
   options: ExportOptions,
   now = new Date(),
-): ExportDocumentV2 {
+): WrittenExportDocument {
   const db = getDb()
   const all = db.select().from(profiles).orderBy(asc(profiles.position)).all()
   const chosen
@@ -471,9 +471,10 @@ export function buildExport(
       ? newPasswordKey(options.password)
       : undefined
   const secret = secretWriter(passwordKey)
-  const document: ExportDocumentV2 = {
+  const personal = exportPersonalRows(ids, keys)
+  const document: WrittenExportDocument = {
     format: EXPORT_FORMAT,
-    version: EXPORT_VERSION,
+    version: personal.diary.some(row => row.origin === 'simkl') ? EXPORT_VERSION : 2,
     exportedAt: now.toISOString(),
     torsher: { version: config.version, commit: config.commit ?? null },
     scope: options.scope,
@@ -500,7 +501,7 @@ export function buildExport(
     mine: exportMine(ids, keys),
     personalSpace: {
       timeZone: diaryTimeZone(),
-      ...exportPersonalRows(ids, keys),
+      ...personal,
     },
   }
 

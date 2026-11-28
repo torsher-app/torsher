@@ -23,6 +23,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import HistoryRow from '~/components/history/HistoryRow.vue'
 import ProfileAvatar from './ProfileAvatar.vue'
 import ProfileImportSection from './ProfileImportSection.vue'
+import ProfileSimklSection from './ProfileSimklSection.vue'
 import { keepOpenOnListClick } from '~/lib/sheet'
 
 const props = defineProps<{
@@ -220,6 +221,7 @@ function onInteractOutside(event: Event) {
           </section>
 
           <ProfileImportSection :profile="shown" @changed="recent.load" />
+          <ProfileSimklSection :key="shown.id" :profile-id="shown.id" />
         </div>
 
         <footer class="flex shrink-0 flex-wrap gap-2 border-t p-3">

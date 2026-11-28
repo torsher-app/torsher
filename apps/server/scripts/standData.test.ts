@@ -52,12 +52,19 @@ beforeEach(() => {
   root = mkdtempSync(join(tmpdir(), 'torsher-stand-test-'))
 })
 
-it('clears subtitle credentials, queued jobs and library bindings on the stand copy', async () => {
+it('clears provider credentials, queued jobs and library bindings on the stand copy', async () => {
   const source = dataAt(join(root, 'source'))
   const stand = dataAt(join(root, 'stand'))
   mkdirSync(source.dataDir, { recursive: true })
   const db = createSourceDb(source.databasePath)
-  const tables = ['subtitle_jobs', 'subtitle_offsets', 'downloaded_subtitles']
+  const tables = [
+    'subtitle_jobs',
+    'subtitle_offsets',
+    'downloaded_subtitles',
+    'simkl_outbox',
+    'simkl_connections',
+    'simkl_receipts',
+  ]
   for (const table of tables) {
     db.exec(`CREATE TABLE ${table} (id TEXT PRIMARY KEY)`)
     db.prepare(`INSERT INTO ${table} VALUES (?)`).run('synthetic')

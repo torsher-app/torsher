@@ -110,6 +110,13 @@ function snapshot(job: SnapshotJob): WorkerResult {
         `)
       }
 
+      // Watch-sync grants can be used with the installation key carried in
+      // either kind of snapshot. Preserve the diary and receipts, discard grants.
+      for (const table of ['simkl_outbox', 'simkl_connections']) {
+        if (hasTable(db, table))
+          db.exec(`DELETE FROM ${table}`)
+      }
+
       if (hasTable(db, 'meta_cache'))
         db.exec('DELETE FROM meta_cache')
 

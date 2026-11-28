@@ -136,6 +136,7 @@ export const mineDiaryEntry = mineTarget
     date: mineDate,
     calendarDay: day.nullable(),
     origin: z.enum(diaryOrigins),
+    sourceUrl: z.string().regex(/^https:\/\/simkl\.com\/(?:movies|tv)\/[1-9]\d*$/).optional(),
     rewatch: z.boolean(),
     note,
     viewingContext,

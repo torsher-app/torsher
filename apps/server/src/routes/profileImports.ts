@@ -41,6 +41,8 @@ import {
   unmatchedRows,
 } from '../services/transfer/imports.ts'
 
+import { jellyfinImportRoutes } from './jellyfinImport.ts'
+
 const guardResponses = {
   401: messageResponse,
 }
@@ -57,6 +59,7 @@ const BODY_LIMIT = Math.ceil(MAX_IMPORT_BYTES / 3) * 4 + 256 * 1024
  */
 export const profileImportRoutes: FastifyPluginAsyncZod = async (app) => {
   app.addHook('onRequest', requireOwner)
+  app.register(jellyfinImportRoutes, { prefix: '/:id/imports/jellyfin' })
 
   app.get(
     '/:id/imports',

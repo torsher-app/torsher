@@ -792,6 +792,7 @@ export const diaryOrigins = [
   'manual',
   'letterboxd',
   'trakt',
+  'simkl',
 ] as const
 export const diaryPrecisions = ['instant', 'day', 'unknown'] as const
 export const rewatchCycleStates = ['active', 'paused', 'ended'] as const
@@ -2440,4 +2441,77 @@ export const playbackPreferences = sqliteTable(
     >(),
   },
   table => [primaryKey({ columns: [table.profileId, table.titleId] })],
+)
+
+export interface SimklCursor {
+  all: string | null
+  movies: string | null
+  shows: string | null
+}
+
+export const simklConnections = sqliteTable(
+  'simkl_connections',
+  {
+    profileId: text('profile_id').primaryKey().references(() => profiles.id, { onDelete: 'cascade' }),
+    generation: text('generation').notNull(),
+    accountFingerprint: text('account_fingerprint').notNull().unique(),
+    account: text('account').notNull(),
+    clientId: text('client_id').notNull(),
+    grant: text('grant').notNull(),
+    expiresAt: integer('expires_at').notNull(),
+    scope: text('scope', { enum: ['read', 'write'] }).notNull(),
+    pull: integer('pull', { mode: 'boolean' }).notNull().default(false),
+    push: integer('push', { mode: 'boolean' }).notNull().default(false),
+    reauthorize: integer('reauthorize', { mode: 'boolean' }).notNull().default(false),
+    cursor: text('cursor', { mode: 'json' }).$type<SimklCursor>(),
+    lastSyncAt: integer('last_sync_at'),
+    lastPullAt: integer('last_pull_at'),
+    blockedUntil: integer('blocked_until').notNull().default(0),
+    syncError: integer('sync_error', { mode: 'boolean' }).notNull().default(false),
+    skipped: integer('skipped').notNull().default(0),
+    overflow: integer('overflow').notNull().default(0),
+  },
+)
+
+export type SimklConnection = typeof simklConnections.$inferSelect
+
+export const simklOutbox = sqliteTable(
+  'simkl_outbox',
+  {
+    profileId: text('profile_id').notNull().references(() => simklConnections.profileId, { onDelete: 'cascade' }),
+    attemptId: text('attempt_id').notNull(),
+    generation: text('generation').notNull(),
+    diaryId: text('diary_id').notNull(),
+    titleId: text('title_id').notNull(),
+    season: integer('season').notNull(),
+    episode: integer('episode').notNull(),
+    watchedAt: integer('watched_at').notNull(),
+    simklId: integer('simkl_id'),
+    state: text('state', { enum: ['queued', 'sending', 'uncertain', 'attention'] }).notNull().default('queued'),
+    // A dispatch might have reached Simkl, including after a process restart.
+    dispatched: integer('dispatched', { mode: 'boolean' }).notNull().default(false),
+    retries: integer('retries').notNull().default(0),
+    nextTryAt: integer('next_try_at').notNull(),
+  },
+  table => [
+    primaryKey({ columns: [table.profileId, table.attemptId] }),
+    index('simkl_outbox_schedule_idx').on(table.state, table.nextTryAt),
+    index('simkl_outbox_media_idx').on(table.profileId, table.simklId, table.season, table.episode),
+  ],
+)
+
+export type SimklOutbound = typeof simklOutbox.$inferSelect
+
+export const simklReceipts = sqliteTable(
+  'simkl_receipts',
+  {
+    profileId: text('profile_id').notNull().references(() => profiles.id, { onDelete: 'cascade' }),
+    accountFingerprint: text('account_fingerprint').notNull(),
+    remoteKey: text('remote_key').notNull(),
+    diaryId: text('diary_id').notNull(),
+    titleId: text('title_id').notNull(),
+    watchedAt: integer('watched_at'),
+    kind: text('kind', { enum: ['pull', 'push', 'dispatch'] }).notNull(),
+  },
+  table => [primaryKey({ columns: [table.profileId, table.accountFingerprint, table.remoteKey] })],
 )

@@ -1,3 +1,6 @@
+import { forgetSimklConnection } from '../simkl/index.ts'
+import { connectionOf as simklConnectionOf } from '../simkl/store.ts'
+import { cancelJellyfinProfileImports } from '../transfer/jellyfinImport.ts'
 import { assertMaintenancePolicyChange } from '../libraryMaintenance/admission.ts'
 import type { PlayerSettings, Profile } from '../../db/schema.ts'
 import { movePersonalSpace } from '../transfer/personalSpace.ts'
@@ -167,6 +170,7 @@ export function verifyPin(profile: Profile, pin: string | undefined) {
  */
 export function deleteProfile(id: string, moveTo?: string) {
   assertMaintenancePolicyChange({ global: true })
+  const simklConnection = simklConnectionOf(id)
 
   getDb().transaction((tx) => {
     const count = tx
@@ -281,4 +285,6 @@ export function deleteProfile(id: string, moveTo?: string) {
         .run()
     }
   })
+  cancelJellyfinProfileImports(id)
+  forgetSimklConnection(id, simklConnection)
 }

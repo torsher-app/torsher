@@ -79,6 +79,11 @@ export const config = {
     return process.env.TORSHER_SECRET || undefined
   },
 
+  get simklClientId() {
+    const id = process.env.SIMKL_CLIENT_ID?.trim()
+    return id && /^[\w-]{1,256}$/.test(id) ? id : undefined
+  },
+
   get secretKeyPath() {
     const databasePath = this.databasePath
 

@@ -20,11 +20,12 @@ import {
   subtitlePositions,
   subtitleSizes,
 } from '../../db/schema.ts'
+import { simklSourceUrl } from '../simkl/identity.ts'
 import { parseCatalogId } from '../tmdb/mappers.ts'
 import { isDiaryTimeZone } from './diaryTimeZone.ts'
 
 export const EXPORT_FORMAT = 'torsher-export'
-export const EXPORT_VERSION = 2
+export const EXPORT_VERSION = 3
 
 /**
  * Переносимый файл данных: тайтлы — каталожными ID, профили — ключами
@@ -375,18 +376,33 @@ const personalSpace = z.object({
   ),
 })
 
-export const exportDocumentV2 = exportDocumentV1.extend({
+const exportDocumentV2 = exportDocumentV1.extend({
+  version: z.literal(2),
+  personalSpace: personalSpace.extend({
+    diary: z.array(diaryEntry.safeExtend({
+      origin: z.enum(diaryOrigins.filter(origin => origin !== 'simkl')),
+    })),
+  }),
+})
+
+const exportDocumentV3 = exportDocumentV1.extend({
   version: z.literal(EXPORT_VERSION),
   personalSpace,
 })
 
-export const exportDocument = z.discriminatedUnion('version', [
+// The download uses the same shape for v2 and v3. The reader still validates
+// origins against the exact version when it accepts an uploaded file.
+export const writtenExportDocument = exportDocumentV3.extend({
+  version: z.union([z.literal(2), z.literal(EXPORT_VERSION)]),
+})
+const exportDocument = z.discriminatedUnion('version', [
   exportDocumentV1,
   exportDocumentV2,
+  exportDocumentV3,
 ])
 
-export type ExportDocumentV2 = z.infer<typeof exportDocumentV2>
-export type ExportPersonalSpace = ExportDocumentV2['personalSpace']
+export type WrittenExportDocument = z.infer<typeof writtenExportDocument>
+export type ExportPersonalSpace = z.infer<typeof personalSpace>
 
 function key(...values: (number | string)[]) {
   return JSON.stringify(values)
@@ -396,8 +412,10 @@ function unique<T>(rows: T[], keyOf: (row: T) => string) {
   return new Set(rows.map(keyOf)).size === rows.length
 }
 
-function validatePersonalSpace(document: ExportDocumentV2) {
+function validatePersonalSpace(document: WrittenExportDocument) {
   const space = document.personalSpace
+  if (space.diary.some(row => row.origin === 'simkl' && !simklSourceUrl(row.originKey)))
+    return false
   const profiles = new Set(document.profiles.map(profile => profile.key))
   const sections = [
     document.progress,
@@ -511,7 +529,7 @@ export function parseExportDocument(text: string): ExportDocument {
   if (!parsed.success)
     throw new DocumentError('broken', { cause: parsed.error })
 
-  if (parsed.data.version === 2 && !validatePersonalSpace(parsed.data))
+  if (parsed.data.version !== 1 && !validatePersonalSpace(parsed.data))
     throw new DocumentError('broken')
 
   return parsed.data
