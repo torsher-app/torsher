@@ -222,6 +222,7 @@ export function sanitizeDb(
   ]
 
   try {
+    db.pragma('secure_delete = ON')
     db.transaction(() => {
       if (hasTable(db, 'users')) {
         db.prepare(
@@ -261,6 +262,9 @@ export function sanitizeDb(
           db.prepare(`DELETE FROM ${table}`).run()
       }
 
+      if (hasTable(db, 'external_lists'))
+        db.prepare('DELETE FROM external_lists').run()
+
       if (hasTable(db, 'notification_channels'))
         db.prepare('UPDATE notification_channels SET enabled = 0').run()
 
@@ -282,6 +286,9 @@ export function sanitizeDb(
       }
 
       if (hasTable(db, 'server_settings')) {
+        db.prepare('DELETE FROM server_settings WHERE key = ?').run(
+          'externalLists.mdblist',
+        )
         db.prepare(
           'DELETE FROM server_settings WHERE key LIKE \'subtitles.%\'',
         ).run()
@@ -333,12 +340,8 @@ export function sanitizeDb(
         }
       }
 
-      if (hasTable(db, 'http_addons')) {
-        // Копия получает и ключ расшифровки. Очищаем записи аддонов
-        // вместе с их содержимым на освобождённых страницах SQLite.
-        db.pragma('secure_delete = ON')
+      if (hasTable(db, 'http_addons'))
         db.prepare('DELETE FROM http_addons').run()
-      }
     })()
   }
   finally {

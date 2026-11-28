@@ -13,7 +13,11 @@ import type { TitleSummary } from './cards.ts'
 import type { ProgressPoint } from './status.ts'
 import { and, eq } from 'drizzle-orm'
 import { getDb } from '../../db/index.ts'
-import { profileTitles, titleProgress } from '../../db/schema.ts'
+import {
+  externalListDecisions,
+  profileTitles,
+  titleProgress,
+} from '../../db/schema.ts'
 import {
   collectionItems,
   collectionsWith,
@@ -87,12 +91,29 @@ export function updateMine(
   profileId: string,
   titleId: string,
   patch: MinePatch,
+  options: { manualWatchlistRemoval?: boolean } = {},
 ) {
   assertMaintenancePolicyChange({ titleId })
 
   const db = getDb()
   return db.transaction(() => {
     const current = getMineRow(profileId, titleId)
+    if (
+      options.manualWatchlistRemoval
+      && patch.watchlist === false
+      && current?.watchlistAt
+    ) {
+      db.insert(externalListDecisions)
+        .values({ profileId, titleId, decision: 'excluded' })
+        .onConflictDoUpdate({
+          target: [
+            externalListDecisions.profileId,
+            externalListDecisions.titleId,
+          ],
+          set: { decision: 'excluded' },
+        })
+        .run()
+    }
     const now = new Date(
       Math.max(Date.now(), (current?.updatedAt.getTime() ?? -1) + 1),
     )

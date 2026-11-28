@@ -272,6 +272,15 @@ function personalScope(profileId: string, language: string, titleId?: string) {
   }
 }
 
+/** Shared cache-only status, including imported diary events. */
+export function personalTitleStatus(
+  profileId: string,
+  titleId: string,
+  language: string,
+) {
+  return personalScope(profileId, language, titleId).item(titleId).status
+}
+
 export function getMineTitlePersonal(
   current: CurrentProfile,
   titleId: string,

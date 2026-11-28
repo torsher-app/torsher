@@ -206,6 +206,7 @@ interface LoadedTitle {
 interface TitleLookupOptions {
   requireFresh?: boolean
   signal?: AbortSignal
+  beforeLoad?: () => void
 }
 
 /** Local metadata for library filtering; never triggers a network request. */
@@ -251,7 +252,11 @@ async function loadTitle(
       const field = ref.type === 'movie' ? 'title' : 'name'
       const raw = value as Partial<TmdbMovie & TmdbTv> | null
       const title = raw?.[field]
-      if (raw?.id !== ref.tmdbId || typeof title !== 'string' || !title.trim()) {
+      if (
+        raw?.id !== ref.tmdbId
+        || typeof title !== 'string'
+        || !title.trim()
+      ) {
         throw new TmdbError(
           'unavailable',
           'TMDB returned different title details',
@@ -265,10 +270,12 @@ async function loadTitle(
       await withMetaCache(
         key,
         DETAILS_TTL_MS,
-        async () =>
-          verifyDetails(
+        async () => {
+          options?.beforeLoad?.()
+          return verifyDetails(
             await tmdbGet<T>(path, params, undefined, options?.signal),
-          ),
+          )
+        },
         !options?.requireFresh,
       ),
     )
@@ -368,8 +375,11 @@ export async function tmdbEpisodeExists(
   const result = await loadSeason(tmdbId, season, language)
   return (
     result.season_number === season
-    && result.episodes.some(item => item.episode_number === episode
-      && (expectedEpisodeId === undefined || item.id === expectedEpisodeId))
+    && result.episodes.some(
+      item =>
+        item.episode_number === episode
+        && (expectedEpisodeId === undefined || item.id === expectedEpisodeId),
+    )
   )
 }
 

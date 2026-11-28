@@ -22,7 +22,15 @@ import type {
   UpdateThumbnailSettingsInput,
   UpdateTorrentSettingsInput,
 } from '@torsher/api-client'
-import { del, DemoError, get, patch, post, put } from '@torsher/demo/router'
+import {
+  del,
+  DemoError,
+  get,
+  patch,
+  post,
+  put,
+  unavailable,
+} from '@torsher/demo/router'
 import {
   ago,
   DAY,
@@ -137,6 +145,18 @@ post<ImdbDatasetStatus>('/api/settings/metadata/imdb/refresh', () => {
 
   return imdbStatus()
 })
+
+// В публичном демо сервер и подключение к MDBList отсутствуют.
+get('/api/settings/external-lists', unavailable)
+put('/api/settings/external-lists/key', unavailable)
+post('/api/settings/external-lists/preview', unavailable)
+get('/api/settings/external-lists/preview/:token', unavailable)
+post('/api/settings/external-lists/confirm', unavailable)
+get('/api/settings/external-lists/exclusions', unavailable)
+del('/api/settings/external-lists/exclusions', unavailable)
+patch('/api/settings/external-lists/:listId', unavailable)
+del('/api/settings/external-lists/:listId', unavailable)
+post('/api/settings/external-lists/:listId/run', unavailable)
 
 // --- Воспроизведение ---
 

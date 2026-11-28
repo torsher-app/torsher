@@ -86,6 +86,18 @@ See [Network](/docs/setup/network).
 - **<Ui k="panel.settings.metadata.tmdbTitle" />.** Choose the key the catalog uses: the server's own one, which is the <Ui k="panel.settings.metadata.env" /> from `TMDB_ACCESS_TOKEN` if it is set and the <Ui k="panel.settings.metadata.app" /> built into the image otherwise, or <Ui k="panel.settings.metadata.custom" /> from your TMDB account. <Ui k="panel.settings.metadata.check.action" /> tests it. See [TMDB key](/docs/setup/tmdb).
 - **<Ui k="panel.settings.metadata.imdb.title" />.** Off by default. With <Ui k="panel.settings.metadata.imdb.toggle" /> on, the server downloads the official IMDb ratings dataset once a day and keeps it locally, and the showcase shows the IMDb rating next to TMDB. The dataset is for personal and non-commercial use: turning it on means you accept the IMDb terms. <Ui k="panel.settings.metadata.imdb.refresh" /> downloads it right away.
 
+### External lists
+
+Use <Ui k="panel.settings.externalLists.title" /> to add movies and series from a public MDBList list to one profile's [Watch later](/docs/watch/mine). The server reads the list automatically. Adding a title leaves the library, downloads and following rules alone.
+
+1. Get a free API key from [MDBList Preferences](https://mdblist.com/preferences/), paste it into <Ui k="panel.settings.externalLists.key" /> and select <Ui k="panel.common.save" />.
+2. Select <Ui k="panel.settings.externalLists.connect" />. Enter the public list URL or numeric list ID, choose a profile and pick what to import. The default interval is 24 hours.
+3. Select <Ui k="panel.settings.externalLists.preview" />. Check the destination profile and the titles to be added, then select <Ui k="panel.settings.externalLists.enable" />.
+
+Each list can have up to 500 entries. Torsher can add up to 50 titles per run and checks the remaining titles on later runs. <Ui k="panel.settings.externalLists.run" /> checks the source between scheduled runs, subject to the API quota. If the source loses an entry or you disconnect the list, the titles already in Watch later stay there.
+
+When someone removes a title from Watch later, other connected lists also skip it for that profile. Open <Ui k="panel.settings.externalLists.exclusions" />, choose the profile, and select <Ui k="panel.settings.externalLists.resetExclusion" /> next to the title to let a later run consider it again. You can still add the title manually from the showcase.
+
 ## Playback
 
 <Ui k="panel.nav.settings panel.settings.nav.playback" /> shows how the server transcodes video a device can't play by itself.
