@@ -4,6 +4,7 @@ import {
   CircleAlertIcon,
   EyeIcon,
   HistoryIcon,
+  ImportIcon,
   RefreshCwIcon,
 } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
@@ -11,6 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import ListGroup from '~/components/ListGroup.vue'
 import PageBar from '~/components/shell/PageBar.vue'
+import ArrImportDialog from './ArrImportDialog.vue'
 import DeleteFollowDialog from './DeleteFollowDialog.vue'
 import FollowFilters from './FollowFilters.vue'
 import FollowRow from './FollowRow.vue'
@@ -27,6 +29,7 @@ const loading = useHeldLoading(
 )
 
 const selectedId = ref<string | null>(null)
+const isImportOpen = ref(false)
 const deleteTarget = ref<FollowSummary | null>(null)
 
 const selected = computed(
@@ -57,6 +60,16 @@ onMounted(load)
 <template>
   <PageBar :title="t('panel.follow.title')" :parent="t('panel.nav.server')">
     <template #actions>
+      <ArrImportDialog v-model:open="isImportOpen" @applied="load">
+        <Button
+          variant="ghost"
+          size="sm"
+          :aria-label="t('panel.follow.arrImport.title')"
+        >
+          <ImportIcon aria-hidden="true" />
+          <span>{{ t("panel.sources.importShort") }}</span>
+        </Button>
+      </ArrImportDialog>
       <Button
         as-child
         variant="ghost"
