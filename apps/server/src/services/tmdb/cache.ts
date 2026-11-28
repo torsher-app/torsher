@@ -19,6 +19,7 @@ export async function withMetaCache<T>(
   key: string,
   ttlMs: number,
   load: () => Promise<T>,
+  allowStale = true,
 ): Promise<T> {
   const db = getDb()
   const found = db.select().from(metaCache).where(eq(metaCache.key, key)).get()
@@ -34,10 +35,10 @@ export async function withMetaCache<T>(
     value = await load()
   }
   catch (err) {
-    if (entry)
+    if (entry && allowStale)
       return JSON.parse(entry.json) as T
 
-    if (found)
+    if (found && !entry)
       db.delete(metaCache).where(eq(metaCache.key, key)).run()
 
     throw err

@@ -11,10 +11,47 @@ interface FindResponse {
 
 export type ExternalSource = 'imdb_id' | 'tvdb_id'
 
+function validId(id: number) {
+  return Number.isSafeInteger(id) && id > 0
+}
+
 function compactMatches(matches: Array<{ id: number }> | undefined) {
-  return [...new Set(matches?.map(item => item.id))]
+  return [...new Set(matches?.map(item => item.id).filter(validId))]
     .slice(0, 2)
     .map(id => ({ id }))
+}
+
+function findMatches(
+  id: string,
+  source: ExternalSource,
+  allowStale = true,
+  signal?: AbortSignal,
+) {
+  return withMetaCache(
+    `tmdb:find:v2:${source}:${id}`,
+    FIND_TTL_MS,
+    () =>
+      tmdbGet<FindResponse>(
+        `/find/${id}`,
+        { external_source: source },
+        undefined,
+        signal,
+      ).then(response => ({
+        movie_results: compactMatches(response.movie_results),
+        tv_results: compactMatches(response.tv_results),
+      })),
+    allowStale,
+  )
+}
+
+/** Up to two distinct TV matches, enough to tell a unique match from ambiguity. */
+export async function findTvCandidates(
+  id: string,
+  source: ExternalSource,
+  signal: AbortSignal,
+) {
+  const found = await findMatches(id, source, false, signal)
+  return found.tv_results.map(match => match.id).filter(validId)
 }
 
 /**
@@ -29,17 +66,7 @@ export async function findByExternalId(
   prefer?: 'movie' | 'series',
   strict = false,
 ) {
-  const found = await withMetaCache(
-    `tmdb:find:v2:${source}:${id}`,
-    FIND_TTL_MS,
-    () =>
-      tmdbGet<FindResponse>(`/find/${id}`, { external_source: source }).then(
-        response => ({
-          movie_results: compactMatches(response.movie_results),
-          tv_results: compactMatches(response.tv_results),
-        }),
-      ),
-  )
+  const found = await findMatches(id, source)
   if (strict) {
     if (!prefer)
       return undefined

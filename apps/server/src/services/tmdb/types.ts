@@ -135,7 +135,7 @@ export interface TmdbTv extends TmdbDetailsBase {
   next_episode_to_air?: TmdbEpisodeRef | null
   seasons: TmdbTvSeason[]
   // append_to_response=external_ids
-  external_ids?: { imdb_id?: string | null }
+  external_ids?: { imdb_id?: string | null, tvdb_id?: number | null }
   // append_to_response=content_ratings
   content_ratings?: { results: { iso_3166_1: string, rating: string }[] }
 }
