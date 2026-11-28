@@ -9,6 +9,7 @@ import {
   manualDiaryRequests,
 } from '../../db/schema.ts'
 import { titleAllowedCached } from '../profiles/access.ts'
+import { simklSourceUrl } from '../simkl/identity.ts'
 import {
   diaryTimeZone,
   ensureDiaryTimeZone,
@@ -40,7 +41,7 @@ export function entryDate(
 export function diaryEntryWire(
   entry: Omit<
     Entry,
-    'mutationToken' | 'originKey' | 'sourceMatchKey' | 'profileId'
+    'mutationToken' | 'sourceMatchKey' | 'profileId'
   >,
   language: string,
   timeZone: string,
@@ -62,6 +63,7 @@ export function diaryEntryWire(
     note: entry.note,
     viewingContext: entry.viewingContext,
     origin: entry.origin,
+    sourceUrl: entry.origin === 'simkl' ? simklSourceUrl(entry.originKey) : undefined,
     rewatch: entry.rewatch,
     cycleId: entry.context?.kind === 'cycle' ? entry.context.cycleId : null,
     createdAt: entry.createdAt.toISOString(),

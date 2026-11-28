@@ -39,6 +39,7 @@ interface RawEntry {
   instant: number | null
   day: string | null
   origin: (typeof diaryOrigins)[number]
+  origin_key: string | null
   rewatch: number
   note: string | null
   viewing_context: string | null
@@ -307,6 +308,7 @@ export function wireFromJournal(
       instant: row.instant === null ? null : new Date(row.instant),
       day: row.day,
       origin: row.origin,
+      originKey: row.origin_key,
       rewatch: !!row.rewatch,
       note: row.note,
       viewingContext: row.viewing_context,

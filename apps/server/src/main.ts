@@ -1,3 +1,4 @@
+import { startSimklWorker, stopSimklWorker } from './services/simkl/index.ts'
 import { startUsenetScheduler } from './services/usenet/index.ts'
 import { runSubtitleJobs } from './services/subtitles/automation.ts'
 import {
@@ -432,6 +433,7 @@ const shutdown = createShutdown({
     async () => stopBackupScheduler(),
     async () => stopFollowScheduler(),
     async () => stopUsenetScheduler?.(),
+    stopSimklWorker,
     async () => stopMaintenanceScheduler(),
     // ffmpeg перепаковки тоже дочерний: его сегменты после выхода не нужны
     stopResourceMonitor,
@@ -475,6 +477,7 @@ if (restoreResult.applied)
   finalizeRestoreNow()
 
 startBackupScheduler()
+startSimklWorker()
 void engine.start()
 startNotificationMonitor()
 checkHosts()

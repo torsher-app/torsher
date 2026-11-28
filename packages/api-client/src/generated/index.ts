@@ -326,7 +326,13 @@ export type DiagnosticEventInput =
       /** @pattern ^\d{1,4}(?:\.\d{1,4}){0,3}$ */
       browserVersion?: string;
       osFamily:
-        "webos" | "android" | "windows" | "macos" | "linux" | "ios" | "unknown";
+        | "webos"
+        | "android"
+        | "windows"
+        | "macos"
+        | "linux"
+        | "ios"
+        | "unknown";
       /** @pattern ^\d{1,4}(?:\.\d{1,4}){0,3}$ */
       osVersion?: string;
       deviceModel: "unsupported";
@@ -1135,7 +1141,12 @@ export type DiagnosticEventInput =
       everDisplayed?: boolean;
       autoNext?: boolean;
       trigger?:
-        "remote" | "pointer" | "countdown" | "ended" | "OSD_next" | "exit";
+        | "remote"
+        | "pointer"
+        | "countdown"
+        | "ended"
+        | "OSD_next"
+        | "exit";
     }
   | {
       /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
@@ -1353,7 +1364,10 @@ export type DiagnosticEventInput =
       session?: string;
       event: "source.resolve" | "source.attempt" | "source.selected";
       branch:
-        "requested" | "known_torrent" | "follow_pick" | "ranked_candidate";
+        | "requested"
+        | "known_torrent"
+        | "follow_pick"
+        | "ranked_candidate";
       outcome:
         | "ready"
         | "resolving"
@@ -2302,7 +2316,10 @@ export interface DiagnosticAckInput {
   rejected: {
     eventId: string;
     code:
-      "disabled" | "level_filtered" | "invalid_event" | "journal_unavailable";
+      | "disabled"
+      | "level_filtered"
+      | "invalid_event"
+      | "journal_unavailable";
   }[];
   serverInstance: string;
   fileSinkState: "enabled" | "disabled";
@@ -3756,7 +3773,10 @@ export interface ContinueRowInput {
 }
 
 export type HomeRowInput =
-  ContinueRowInput | ReleasesRowInput | FilesRowInput | CatalogRowInput;
+  | ContinueRowInput
+  | ReleasesRowInput
+  | FilesRowInput
+  | CatalogRowInput;
 
 export interface HomeResponseInput {
   rows: HomeRowInput[];
@@ -4119,7 +4139,12 @@ export interface TorrentSettingsInput {
   bindInterfaceEnv: string | null;
   networkBinding: EngineNetworkBindingInput | null;
   pendingRestart: (
-    "peerPort" | "upnp" | "dht" | "pex" | "encryption" | "bindInterface"
+    | "peerPort"
+    | "upnp"
+    | "dht"
+    | "pex"
+    | "encryption"
+    | "bindInterface"
   )[];
   restartBlocked: "not_running" | "moving" | null;
   activeStreams: number;
@@ -7096,7 +7121,9 @@ export interface MineDiaryEntryInput {
    * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
    */
   calendarDay: string | null;
-  origin: "playback" | "manual" | "letterboxd" | "trakt";
+  origin: "playback" | "manual" | "letterboxd" | "trakt" | "simkl";
+  /** @pattern ^https:\/\/simkl\.com\/(?:movies|tv)\/[1-9]\d*$ */
+  sourceUrl?: string;
   rewatch: boolean;
   /** @maxLength 10000 */
   note: string | null;
@@ -9050,6 +9077,154 @@ export interface PinErrorResponseInput {
   retryAfter: number | null;
 }
 
+export interface JellyfinImportErrorInput {
+  kind:
+    | "address"
+    | "addressChanged"
+    | "httpsRequired"
+    | "auth"
+    | "unsupported"
+    | "response"
+    | "limit"
+    | "busy"
+    | "expired"
+    | "catalog"
+    | "profileChanged";
+}
+
+export interface JellyfinConnectionBodyInput {
+  /**
+   * @minLength 1
+   * @maxLength 2048
+   */
+  url: string;
+}
+
+export interface JellyfinConnectionInput {
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  id: string;
+  address: string;
+  addresses: string[];
+  /**
+   * @format date-time
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+   */
+  expiresAt: string;
+}
+
+export interface JellyfinPreviewBodyInput {
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  connectionId: string;
+  /**
+   * @minLength 1
+   * @maxLength 256
+   */
+  username: string;
+  /** @maxLength 1024 */
+  password: string;
+}
+
+export interface JellyfinPreviewStartedInput {
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  id: string;
+}
+
+export interface JellyfinPreviewInput {
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  id: string;
+  state: "reading" | "ready" | "failed";
+  source?: {
+    server: string;
+    user: string;
+  };
+  movies?: {
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    added: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    existing: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    skipped: number;
+  };
+  episodes?: {
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    added: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    existing: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    skipped: number;
+  };
+  skipped?: {
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    invalid: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    unmatched: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    restricted: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    duplicate: number;
+  };
+  /**
+   * @format date-time
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+   */
+  lastActivityAt?: string;
+  logoutWarning?: boolean;
+  error?:
+    | "address"
+    | "addressChanged"
+    | "httpsRequired"
+    | "auth"
+    | "unsupported"
+    | "response"
+    | "limit"
+    | "busy"
+    | "expired"
+    | "catalog"
+    | "profileChanged";
+}
+
 export interface SourcePresetInput {
   id: string;
   /**
@@ -9157,6 +9332,90 @@ export interface ThumbnailSettingsInput {
 
 export interface UpdateThumbnailSettingsInput {
   automatic: boolean;
+}
+
+export interface SimklDeviceInputInput {
+  scope: "read" | "write";
+}
+
+export interface SimklDirectionsInputInput {
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  expectedGeneration: string;
+  pull: boolean;
+  push: boolean;
+}
+
+export interface SimklSyncInputInput {
+  mode: "auto" | "manual" | "full";
+}
+
+export interface SimklStatusInput {
+  available: boolean;
+  connection: {
+    /**
+     * @format uuid
+     * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+     */
+    generation: string;
+    account: string;
+    scope: "read" | "write";
+    pull: boolean;
+    push: boolean;
+    reauthorize: boolean;
+  } | null;
+  challenge: {
+    scope: "read" | "write";
+    userCode: string;
+    verificationUri: string;
+    /**
+     * @format date-time
+     * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+     */
+    expiresAt: string;
+    /**
+     * @format date-time
+     * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+     */
+    nextPollAt: string;
+  } | null;
+  syncing: boolean;
+  syncError: boolean;
+  /**
+   * @format date-time
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+   */
+  lastSyncAt: string | null;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  pending: number;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  issues: number;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  skipped: number;
+  revokeWarning: boolean;
+}
+
+export interface SimklErrorInput {
+  kind:
+    | "unavailable"
+    | "profile"
+    | "busy"
+    | "identity"
+    | "scope"
+    | "expired"
+    | "denied"
+    | "provider";
 }
 
 export interface WizardStateInput {
@@ -9418,7 +9677,7 @@ export interface CreateExportInput {
 
 export interface ExportFileInput {
   format: "torsher-export";
-  version: 2;
+  version: 2 | 3;
   /**
    * @format date-time
    * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
@@ -9869,7 +10128,7 @@ export interface ExportFileInput {
        * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
        */
       day: string | null;
-      origin: "playback" | "manual" | "letterboxd" | "trakt";
+      origin: "playback" | "manual" | "letterboxd" | "trakt" | "simkl";
       /**
        * @minLength 1
        * @maxLength 500
@@ -10890,7 +11149,13 @@ export type DiagnosticEvent =
       /** @pattern ^\d{1,4}(?:\.\d{1,4}){0,3}$ */
       browserVersion?: string;
       osFamily:
-        "webos" | "android" | "windows" | "macos" | "linux" | "ios" | "unknown";
+        | "webos"
+        | "android"
+        | "windows"
+        | "macos"
+        | "linux"
+        | "ios"
+        | "unknown";
       /** @pattern ^\d{1,4}(?:\.\d{1,4}){0,3}$ */
       osVersion?: string;
       deviceModel: "unsupported";
@@ -11699,7 +11964,12 @@ export type DiagnosticEvent =
       everDisplayed?: boolean;
       autoNext?: boolean;
       trigger?:
-        "remote" | "pointer" | "countdown" | "ended" | "OSD_next" | "exit";
+        | "remote"
+        | "pointer"
+        | "countdown"
+        | "ended"
+        | "OSD_next"
+        | "exit";
     }
   | {
       /** @pattern ^[\w-]{8,80}:\d{1,12}$ */
@@ -11917,7 +12187,10 @@ export type DiagnosticEvent =
       session?: string;
       event: "source.resolve" | "source.attempt" | "source.selected";
       branch:
-        "requested" | "known_torrent" | "follow_pick" | "ranked_candidate";
+        | "requested"
+        | "known_torrent"
+        | "follow_pick"
+        | "ranked_candidate";
       outcome:
         | "ready"
         | "resolving"
@@ -12866,7 +13139,10 @@ export interface DiagnosticAck {
   rejected: {
     eventId: string;
     code:
-      "disabled" | "level_filtered" | "invalid_event" | "journal_unavailable";
+      | "disabled"
+      | "level_filtered"
+      | "invalid_event"
+      | "journal_unavailable";
   }[];
   serverInstance: string;
   fileSinkState: "enabled" | "disabled";
@@ -14680,7 +14956,12 @@ export interface TorrentSettings {
   bindInterfaceEnv: string | null;
   networkBinding: EngineNetworkBinding | null;
   pendingRestart: (
-    "peerPort" | "upnp" | "dht" | "pex" | "encryption" | "bindInterface"
+    | "peerPort"
+    | "upnp"
+    | "dht"
+    | "pex"
+    | "encryption"
+    | "bindInterface"
   )[];
   restartBlocked: "not_running" | "moving" | null;
   activeStreams: number;
@@ -17657,7 +17938,9 @@ export interface MineDiaryEntry {
    * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
    */
   calendarDay: string | null;
-  origin: "playback" | "manual" | "letterboxd" | "trakt";
+  origin: "playback" | "manual" | "letterboxd" | "trakt" | "simkl";
+  /** @pattern ^https:\/\/simkl\.com\/(?:movies|tv)\/[1-9]\d*$ */
+  sourceUrl?: string;
   rewatch: boolean;
   /** @maxLength 10000 */
   note: string | null;
@@ -19611,6 +19894,154 @@ export interface PinErrorResponse {
   retryAfter: number | null;
 }
 
+export interface JellyfinImportError {
+  kind:
+    | "address"
+    | "addressChanged"
+    | "httpsRequired"
+    | "auth"
+    | "unsupported"
+    | "response"
+    | "limit"
+    | "busy"
+    | "expired"
+    | "catalog"
+    | "profileChanged";
+}
+
+export interface JellyfinConnectionBody {
+  /**
+   * @minLength 1
+   * @maxLength 2048
+   */
+  url: string;
+}
+
+export interface JellyfinConnection {
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  id: string;
+  address: string;
+  addresses: string[];
+  /**
+   * @format date-time
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+   */
+  expiresAt: string;
+}
+
+export interface JellyfinPreviewBody {
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  connectionId: string;
+  /**
+   * @minLength 1
+   * @maxLength 256
+   */
+  username: string;
+  /** @maxLength 1024 */
+  password: string;
+}
+
+export interface JellyfinPreviewStarted {
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  id: string;
+}
+
+export interface JellyfinPreview {
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  id: string;
+  state: "reading" | "ready" | "failed";
+  source?: {
+    server: string;
+    user: string;
+  };
+  movies?: {
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    added: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    existing: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    skipped: number;
+  };
+  episodes?: {
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    added: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    existing: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    skipped: number;
+  };
+  skipped?: {
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    invalid: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    unmatched: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    restricted: number;
+    /**
+     * @min 0
+     * @max 9007199254740991
+     */
+    duplicate: number;
+  };
+  /**
+   * @format date-time
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+   */
+  lastActivityAt?: string;
+  logoutWarning?: boolean;
+  error?:
+    | "address"
+    | "addressChanged"
+    | "httpsRequired"
+    | "auth"
+    | "unsupported"
+    | "response"
+    | "limit"
+    | "busy"
+    | "expired"
+    | "catalog"
+    | "profileChanged";
+}
+
 export interface SourcePreset {
   id: string;
   /**
@@ -19718,6 +20149,90 @@ export interface ThumbnailSettings {
 
 export interface UpdateThumbnailSettings {
   automatic: boolean;
+}
+
+export interface SimklDeviceInput {
+  scope: "read" | "write";
+}
+
+export interface SimklDirectionsInput {
+  /**
+   * @format uuid
+   * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+   */
+  expectedGeneration: string;
+  pull: boolean;
+  push: boolean;
+}
+
+export interface SimklSyncInput {
+  mode: "auto" | "manual" | "full";
+}
+
+export interface SimklStatus {
+  available: boolean;
+  connection: {
+    /**
+     * @format uuid
+     * @pattern ^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$
+     */
+    generation: string;
+    account: string;
+    scope: "read" | "write";
+    pull: boolean;
+    push: boolean;
+    reauthorize: boolean;
+  } | null;
+  challenge: {
+    scope: "read" | "write";
+    userCode: string;
+    verificationUri: string;
+    /**
+     * @format date-time
+     * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+     */
+    expiresAt: string;
+    /**
+     * @format date-time
+     * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+     */
+    nextPollAt: string;
+  } | null;
+  syncing: boolean;
+  syncError: boolean;
+  /**
+   * @format date-time
+   * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
+   */
+  lastSyncAt: string | null;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  pending: number;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  issues: number;
+  /**
+   * @min 0
+   * @max 9007199254740991
+   */
+  skipped: number;
+  revokeWarning: boolean;
+}
+
+export interface SimklError {
+  kind:
+    | "unavailable"
+    | "profile"
+    | "busy"
+    | "identity"
+    | "scope"
+    | "expired"
+    | "denied"
+    | "provider";
 }
 
 export interface WizardState {
@@ -19979,7 +20494,7 @@ export interface CreateExport {
 
 export interface ExportFile {
   format: "torsher-export";
-  version: 2;
+  version: 2 | 3;
   /**
    * @format date-time
    * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z))$
@@ -20430,7 +20945,7 @@ export interface ExportFile {
        * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))$
        */
       day: string | null;
-      origin: "playback" | "manual" | "letterboxd" | "trakt";
+      origin: "playback" | "manual" | "letterboxd" | "trakt" | "simkl";
       /**
        * @minLength 1
        * @maxLength 500
@@ -21206,10 +21721,12 @@ export type MarkNotificationsReadError = MessageResponse;
 export type GetNotificationChannelsError = MessageResponse;
 
 export type CreateNotificationChannelError =
-  MessageResponse | NotificationChannelConfigError;
+  | MessageResponse
+  | NotificationChannelConfigError;
 
 export type UpdateNotificationChannelError =
-  MessageResponse | NotificationChannelConfigError;
+  | MessageResponse
+  | NotificationChannelConfigError;
 
 export type SetNotificationChannelEnabledError = MessageResponse;
 
@@ -21218,7 +21735,8 @@ export type DeleteNotificationChannelError = MessageResponse;
 export type TestNotificationChannelError = MessageResponse;
 
 export type TestNotificationChannelDraftError =
-  MessageResponse | NotificationChannelConfigError;
+  | MessageResponse
+  | NotificationChannelConfigError;
 
 export type FindTelegramChatsError = MessageResponse;
 
@@ -21231,10 +21749,14 @@ export type PostAuthRefreshError = MessageResponse;
 export type GetUsersMeError = MessageResponse;
 
 export type PutUsersMePasswordError =
-  MessageResponse | WrongPasswordResponse | TooManyAttemptsResponse;
+  | MessageResponse
+  | WrongPasswordResponse
+  | TooManyAttemptsResponse;
 
 export type PutUsersMeUsernameError =
-  MessageResponse | WrongPasswordResponse | TooManyAttemptsResponse;
+  | MessageResponse
+  | WrongPasswordResponse
+  | TooManyAttemptsResponse;
 
 export type GetCatalogSearchError = MessageResponse;
 
@@ -21275,7 +21797,9 @@ export type PostIndexerTestError = MessageResponse;
 export type GetTitleAddonSourcesError = MessageResponse | HttpAddonError;
 
 export type PostTitleAddonSourcePlayError =
-  MessageResponse | HttpAddonError | EngineUnavailableResponse;
+  | MessageResponse
+  | HttpAddonError
+  | EngineUnavailableResponse;
 
 export type GetHomeAddonRowsError = MessageResponse | HttpAddonError;
 
@@ -21441,14 +21965,18 @@ export type GetTitleSourcesError = MessageResponse;
 export type PutTitleVoiceError = MessageResponse;
 
 export type PostTitleWatchError =
-  MessageResponse | WatchErrorResponse | EngineUnavailableResponse;
+  | MessageResponse
+  | WatchErrorResponse
+  | EngineUnavailableResponse;
 
 export type GetTitleProgressError = MessageResponse | MinePersonalError;
 
 export type GetTitleUpNextError = MessageResponse;
 
 export type PostTitleOpenError =
-  MessageResponse | WatchErrorResponse | EngineUnavailableResponse;
+  | MessageResponse
+  | WatchErrorResponse
+  | EngineUnavailableResponse;
 
 export type GetTitleFilesError = MessageResponse;
 
@@ -21463,10 +21991,13 @@ export type PostTitleDownloadError =
   | InsufficientStorageResponse;
 
 export type DeleteTitleDownloadError =
-  MessageResponse | EngineUnavailableResponse;
+  | MessageResponse
+  | EngineUnavailableResponse;
 
 export type PostTitleKeepError =
-  MessageResponse | EngineUnavailableResponse | InsufficientStorageResponse;
+  | MessageResponse
+  | EngineUnavailableResponse
+  | InsufficientStorageResponse;
 
 export type PutTitleWatchedError = MessageResponse;
 
@@ -21499,58 +22030,94 @@ export type GetMineError = MessageResponse;
 export type GetMineItemsError = MessageResponse;
 
 export type GetMineBootstrapError =
-  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
+  | (MessageResponse | MinePersonalError)
+  | MessageResponse
+  | MinePersonalError;
 
 export type GetMineSectionCountsError =
-  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
+  | (MessageResponse | MinePersonalError)
+  | MessageResponse
+  | MinePersonalError;
 
 export type PutMineStartError =
-  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
+  | (MessageResponse | MinePersonalError)
+  | MessageResponse
+  | MinePersonalError;
 
 export type GetMineDiaryError =
-  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
+  | (MessageResponse | MinePersonalError)
+  | MessageResponse
+  | MinePersonalError;
 
 export type PostMineDiaryError =
-  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
+  | (MessageResponse | MinePersonalError)
+  | MessageResponse
+  | MinePersonalError;
 
 export type GetMineDiaryMonthsError =
-  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
+  | (MessageResponse | MinePersonalError)
+  | MessageResponse
+  | MinePersonalError;
 
 export type PatchMineDiaryEntryError =
-  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
+  | (MessageResponse | MinePersonalError)
+  | MessageResponse
+  | MinePersonalError;
 
 export type DeleteMineDiaryEntryError =
-  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
+  | (MessageResponse | MinePersonalError)
+  | MessageResponse
+  | MinePersonalError;
 
 export type GetMineOverviewError =
-  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
+  | (MessageResponse | MinePersonalError)
+  | MessageResponse
+  | MinePersonalError;
 
 export type GetMineTitlePersonalError =
-  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
+  | (MessageResponse | MinePersonalError)
+  | MessageResponse
+  | MinePersonalError;
 
 export type PatchMineTitlePersonalError =
-  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
+  | (MessageResponse | MinePersonalError)
+  | MessageResponse
+  | MinePersonalError;
 
 export type PutMineSeenError =
-  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
+  | (MessageResponse | MinePersonalError)
+  | MessageResponse
+  | MinePersonalError;
 
 export type PostMineCycleError =
-  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
+  | (MessageResponse | MinePersonalError)
+  | MessageResponse
+  | MinePersonalError;
 
 export type PatchMineCycleError =
-  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
+  | (MessageResponse | MinePersonalError)
+  | MessageResponse
+  | MinePersonalError;
 
 export type GetMinePersonalContinueError =
-  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
+  | (MessageResponse | MinePersonalError)
+  | MessageResponse
+  | MinePersonalError;
 
 export type GetMinePersonalWatchedError =
-  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
+  | (MessageResponse | MinePersonalError)
+  | MessageResponse
+  | MinePersonalError;
 
 export type GetMineRecommendationsError =
-  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
+  | (MessageResponse | MinePersonalError)
+  | MessageResponse
+  | MinePersonalError;
 
 export type GetMineRecommendationExclusionsError =
-  (MessageResponse | MinePersonalError) | MessageResponse | MinePersonalError;
+  | (MessageResponse | MinePersonalError)
+  | MessageResponse
+  | MinePersonalError;
 
 export type GetCollectionsError = MessageResponse;
 
@@ -21577,30 +22144,36 @@ export type GetTorrentError = MessageResponse;
 export type DeleteTorrentError = MessageResponse | EngineUnavailableResponse;
 
 export type GetTorrentDeletePreviewError =
-  MessageResponse | EngineUnavailableResponse;
+  | MessageResponse
+  | EngineUnavailableResponse;
 
 export type PostTorrentRetryError = MessageResponse | EngineUnavailableResponse;
 
 export type PostTorrentDownloadError =
-  MessageResponse | EngineUnavailableResponse;
+  | MessageResponse
+  | EngineUnavailableResponse;
 
 export type PutTorrentPriorityError =
-  MessageResponse | EngineUnavailableResponse;
+  | MessageResponse
+  | EngineUnavailableResponse;
 
 export type PostTorrentPauseError = MessageResponse | EngineUnavailableResponse;
 
 export type PostTorrentResumeError =
-  MessageResponse | EngineUnavailableResponse;
+  | MessageResponse
+  | EngineUnavailableResponse;
 
 export type PutTorrentRetentionError =
-  MessageResponse | EngineUnavailableResponse;
+  | MessageResponse
+  | EngineUnavailableResponse;
 
 export type PutTorrentSeedingError = MessageResponse;
 
 export type PutTorrentTitleError = MessageResponse;
 
 export type DeleteTorrentLibraryError =
-  MessageResponse | EngineUnavailableResponse;
+  | MessageResponse
+  | EngineUnavailableResponse;
 
 export type GetTorrentStatsError = MessageResponse | EngineUnavailableResponse;
 
@@ -21677,13 +22250,18 @@ export type GetStorageBrowseError = MessageResponse;
 export type PostStorageCheckError = MessageResponse | EngineUnavailableResponse;
 
 export type PutStoragePathError =
-  MessageResponse | StoragePathErrorResponse | EngineUnavailableResponse;
+  | MessageResponse
+  | StoragePathErrorResponse
+  | EngineUnavailableResponse;
 
 export type PostStorageMoveError =
-  MessageResponse | StoragePathErrorResponse | EngineUnavailableResponse;
+  | MessageResponse
+  | StoragePathErrorResponse
+  | EngineUnavailableResponse;
 
 export type PostStorageMoveCancelError =
-  MessageResponse | EngineUnavailableResponse;
+  | MessageResponse
+  | EngineUnavailableResponse;
 
 export type GetBackupsError = MessageResponse;
 
@@ -21706,10 +22284,12 @@ export type PostBackupRestoreError = MessageResponse | BackupErrorResponse;
 export type PostTransferExportError = MessageResponse;
 
 export type PostTransferImportPreviewError =
-  TransferErrorResponse | MessageResponse;
+  | TransferErrorResponse
+  | MessageResponse;
 
 export type PostTransferImportApplyError =
-  MessageResponse | BackupErrorResponse;
+  | MessageResponse
+  | BackupErrorResponse;
 
 export type PostArrConnectionError = MessageResponse | ArrErrorResponse;
 
@@ -21893,7 +22473,8 @@ export type PutCurrentPlayerSettingsError = MessageResponse;
 export type PatchProfileError = MessageResponse;
 
 export type DeleteProfileError =
-  MessageResponse | (MessageResponse | ProfileMoveConflict);
+  | MessageResponse
+  | (MessageResponse | ProfileMoveConflict);
 
 export type GetProfileHistoryError = MessageResponse;
 
@@ -21906,12 +22487,14 @@ export type PostProfileSelectError = MessageResponse | PinErrorResponse;
 export type GetProfileImportsError = MessageResponse;
 
 export type PostProfileImportError =
-  ImportFormatErrorResponse | MessageResponse;
+  | ImportFormatErrorResponse
+  | MessageResponse;
 
 export type GetProfileImportUnmatchedError = MessageResponse;
 
 export type PostProfileImportMatchError =
-  MessageResponse | HistoryMatchConflict;
+  | MessageResponse
+  | HistoryMatchConflict;
 
 export type DeleteProfileImportUnmatchedError = MessageResponse;
 
@@ -21923,12 +22506,49 @@ export type PostProfileImportApplyError = MessageResponse;
 
 export type PostProfileImportUndoError = MessageResponse;
 
+export type PostProfileJellyfinConnectionError =
+  | MessageResponse
+  | JellyfinImportError;
+
+export type PostProfileJellyfinPreviewError =
+  | MessageResponse
+  | JellyfinImportError;
+
+export type GetProfileJellyfinPreviewError =
+  | MessageResponse
+  | JellyfinImportError;
+
+export type DeleteProfileJellyfinPreviewError =
+  | MessageResponse
+  | JellyfinImportError;
+
+export type PostProfileJellyfinApplyError =
+  | MessageResponse
+  | JellyfinImportError;
+
+export type GetProfileSimklError = MessageResponse | SimklError;
+
+export type PatchProfileSimklError = MessageResponse | SimklError;
+
+export type DeleteProfileSimklError = MessageResponse | SimklError;
+
+export type PostProfileSimklDeviceError = MessageResponse | SimklError;
+
+export type DeleteProfileSimklDeviceError = MessageResponse | SimklError;
+
+export type PostProfileSimklDevicePollError = MessageResponse | SimklError;
+
+export type PostProfileSimklSyncError = MessageResponse | SimklError;
+
+export type PostProfileSimklRetryError = MessageResponse | SimklError;
+
 export type PostDevicePairingError = MessageResponse;
 
 export type GetDevicePairingError = MessageResponse;
 
 export type PostDevicePairingConfirmError =
-  MessageResponse | PairingErrorResponse;
+  | MessageResponse
+  | PairingErrorResponse;
 
 export type GetDevicesError = MessageResponse;
 
@@ -21984,10 +22604,8 @@ export interface ApiConfig<SecurityDataType = unknown> {
   customFetch?: typeof fetch;
 }
 
-export interface HttpResponse<
-  D extends unknown,
-  E extends unknown = unknown,
-> extends Response {
+export interface HttpResponse<D extends unknown, E extends unknown = unknown>
+  extends Response {
   data: D;
   error: E;
 }
@@ -28341,6 +28959,242 @@ export class Api<
     ) =>
       this.request<UndoneImport, PostProfileImportUndoError>({
         path: `/api/profiles/${id}/imports/${importId}/undo`,
+        method: "POST",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Profiles
+     * @name PostProfileJellyfinConnection
+     * @request POST:/api/profiles/{id}/imports/jellyfin/connection
+     */
+    postProfileJellyfinConnection: (
+      id: string,
+      data: JellyfinConnectionBodyInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<JellyfinConnection, PostProfileJellyfinConnectionError>({
+        path: `/api/profiles/${id}/imports/jellyfin/connection`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Profiles
+     * @name PostProfileJellyfinPreview
+     * @request POST:/api/profiles/{id}/imports/jellyfin/preview
+     */
+    postProfileJellyfinPreview: (
+      id: string,
+      data: JellyfinPreviewBodyInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<JellyfinPreviewStarted, PostProfileJellyfinPreviewError>({
+        path: `/api/profiles/${id}/imports/jellyfin/preview`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Profiles
+     * @name GetProfileJellyfinPreview
+     * @request GET:/api/profiles/{id}/imports/jellyfin/preview/{importId}
+     */
+    getProfileJellyfinPreview: (
+      id: string,
+      importId: string,
+      params: RequestParams = {},
+    ) =>
+      this.request<JellyfinPreview, GetProfileJellyfinPreviewError>({
+        path: `/api/profiles/${id}/imports/jellyfin/preview/${importId}`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Profiles
+     * @name DeleteProfileJellyfinPreview
+     * @request DELETE:/api/profiles/{id}/imports/jellyfin/preview/{importId}
+     */
+    deleteProfileJellyfinPreview: (
+      id: string,
+      importId: string,
+      params: RequestParams = {},
+    ) =>
+      this.request<void, DeleteProfileJellyfinPreviewError>({
+        path: `/api/profiles/${id}/imports/jellyfin/preview/${importId}`,
+        method: "DELETE",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Profiles
+     * @name PostProfileJellyfinApply
+     * @request POST:/api/profiles/{id}/imports/jellyfin/preview/{importId}/apply
+     */
+    postProfileJellyfinApply: (
+      id: string,
+      importId: string,
+      params: RequestParams = {},
+    ) =>
+      this.request<AppliedImport, PostProfileJellyfinApplyError>({
+        path: `/api/profiles/${id}/imports/jellyfin/preview/${importId}/apply`,
+        method: "POST",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Profiles
+     * @name GetProfileSimkl
+     * @request GET:/api/profiles/{id}/simkl
+     */
+    getProfileSimkl: (id: string, params: RequestParams = {}) =>
+      this.request<SimklStatus, GetProfileSimklError>({
+        path: `/api/profiles/${id}/simkl`,
+        method: "GET",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Profiles
+     * @name PatchProfileSimkl
+     * @request PATCH:/api/profiles/{id}/simkl
+     */
+    patchProfileSimkl: (
+      id: string,
+      data: SimklDirectionsInputInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<SimklStatus, PatchProfileSimklError>({
+        path: `/api/profiles/${id}/simkl`,
+        method: "PATCH",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Profiles
+     * @name DeleteProfileSimkl
+     * @request DELETE:/api/profiles/{id}/simkl
+     */
+    deleteProfileSimkl: (id: string, params: RequestParams = {}) =>
+      this.request<SimklStatus, DeleteProfileSimklError>({
+        path: `/api/profiles/${id}/simkl`,
+        method: "DELETE",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Profiles
+     * @name PostProfileSimklDevice
+     * @request POST:/api/profiles/{id}/simkl/device
+     */
+    postProfileSimklDevice: (
+      id: string,
+      data: SimklDeviceInputInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<SimklStatus, PostProfileSimklDeviceError>({
+        path: `/api/profiles/${id}/simkl/device`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Profiles
+     * @name DeleteProfileSimklDevice
+     * @request DELETE:/api/profiles/{id}/simkl/device
+     */
+    deleteProfileSimklDevice: (id: string, params: RequestParams = {}) =>
+      this.request<SimklStatus, DeleteProfileSimklDeviceError>({
+        path: `/api/profiles/${id}/simkl/device`,
+        method: "DELETE",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Profiles
+     * @name PostProfileSimklDevicePoll
+     * @request POST:/api/profiles/{id}/simkl/device/poll
+     */
+    postProfileSimklDevicePoll: (id: string, params: RequestParams = {}) =>
+      this.request<SimklStatus, PostProfileSimklDevicePollError>({
+        path: `/api/profiles/${id}/simkl/device/poll`,
+        method: "POST",
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Profiles
+     * @name PostProfileSimklSync
+     * @request POST:/api/profiles/{id}/simkl/sync
+     */
+    postProfileSimklSync: (
+      id: string,
+      data: SimklSyncInputInput,
+      params: RequestParams = {},
+    ) =>
+      this.request<SimklStatus, PostProfileSimklSyncError>({
+        path: `/api/profiles/${id}/simkl/sync`,
+        method: "POST",
+        body: data,
+        type: ContentType.Json,
+        format: "json",
+        ...params,
+      }),
+
+    /**
+     * No description
+     *
+     * @tags Profiles
+     * @name PostProfileSimklRetry
+     * @request POST:/api/profiles/{id}/simkl/retry
+     */
+    postProfileSimklRetry: (id: string, params: RequestParams = {}) =>
+      this.request<SimklStatus, PostProfileSimklRetryError>({
+        path: `/api/profiles/${id}/simkl/retry`,
         method: "POST",
         format: "json",
         ...params,

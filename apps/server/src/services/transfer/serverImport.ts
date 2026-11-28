@@ -791,7 +791,7 @@ export async function applyServerImport(
   let newFolders: string[] = []
 
   db.transaction(() => {
-    if (document.version === 2) {
+    if (document.version !== 1) {
       ensureDiaryTimeZone(
         document.scope === 'server'
           ? document.personalSpace.timeZone

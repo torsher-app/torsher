@@ -1,4 +1,5 @@
 import type { CycleSource, TitleProgress } from '../../db/schema.ts'
+import { afterSimklCompletion, enqueueSimklCompletion } from '../simkl/index.ts'
 import type { ViewingCheckpoint, ViewingStart } from '../../dto/viewing.ts'
 import type { PlayedVoice } from '../library/playedSource.ts'
 import type { TitleRef } from '../sources/progress.ts'
@@ -533,7 +534,7 @@ export function applyViewingCheckpoint(
       .from(diarySeen)
       .where(viewingScope(diarySeen, ref, false))
       .get()
-    db.insert(diaryEntries)
+    const diary = db.insert(diaryEntries)
       .values({
         ...ref,
         precision: 'instant',
@@ -551,7 +552,10 @@ export function applyViewingCheckpoint(
         createdAt: now,
         updatedAt: now,
       })
-      .run()
+      .returning({ id: diaryEntries.id })
+      .get()
+    enqueueSimklCompletion(ref, attempt.id, diary.id, now.getTime())
+    afterSimklCompletion(ref.profileId, diary.id)
     db.insert(diarySeen)
       .values(ref)
       .onConflictDoUpdate({

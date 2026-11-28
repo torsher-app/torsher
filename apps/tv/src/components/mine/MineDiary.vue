@@ -299,6 +299,13 @@ const emptyKey = computed(() =>
 
 const actions = computed<PanelOption[]>(() => [
   { id: 'open', label: t('mine.preview.diary.actions.open'), selected: false },
+  ...(activeEntry.value?.sourceUrl
+    ? [{
+        id: 'simkl',
+        label: t('mine.preview.diary.actions.simkl'),
+        selected: false,
+      }]
+    : []),
   {
     id: 'rewatch',
     label: t('mine.preview.diary.actions.rewatch'),
@@ -423,6 +430,13 @@ function chooseAction(id: string) {
   const entry = activeEntry.value
   if (!entry)
     return
+  if (id === 'simkl') {
+    const link = entry.sourceUrl
+    if (link)
+      window.open(link, '_blank', 'noopener,noreferrer')
+    closeActions()
+    return
+  }
   closeActions(false)
   if (id === 'open') {
     emit('open', diaryCard(entry), panelOpener)
@@ -703,7 +717,7 @@ function onScroll(event: Event) {
                     {{ t("mine.preview.diary.note") }}</span>
                   <span
                     v-if="
-                      entry.origin === 'letterboxd' || entry.origin === 'trakt'
+                      entry.origin === 'letterboxd' || entry.origin === 'trakt' || entry.origin === 'simkl'
                     "
                   ><AppIcon name="download" />
                     {{ t("mine.preview.diary.imported") }}</span>

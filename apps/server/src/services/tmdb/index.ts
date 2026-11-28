@@ -363,11 +363,13 @@ export async function tmdbEpisodeExists(
   season: number,
   episode: number,
   language: string,
+  expectedEpisodeId?: number,
 ) {
   const result = await loadSeason(tmdbId, season, language)
   return (
     result.season_number === season
-    && result.episodes.some(item => item.episode_number === episode)
+    && result.episodes.some(item => item.episode_number === episode
+      && (expectedEpisodeId === undefined || item.id === expectedEpisodeId))
   )
 }
 

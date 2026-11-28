@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdirSync,
   readdirSync,
+  readFileSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -15,7 +16,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanupBackupTemp } from './cleanup.ts'
 import { ensureBackupDir } from './dir.ts'
 import { fileDeps } from './files.ts'
-import { inspectInWorker } from './snapshot.ts'
+import { inspectInWorker, takeSnapshot } from './snapshot.ts'
 import { createBackup } from './create.ts'
 import { BackupError } from './errors.ts'
 import {
@@ -79,6 +80,51 @@ afterEach(() => {
 })
 
 describe('снимок базы', () => {
+  it.each([false, true])('excludes live Simkl grants and queue in both snapshot modes (%s)', async (includeHttpAddons) => {
+    const { db, dbPath, dataDir } = setup()
+    const now = Date.now()
+    db.prepare(
+      'INSERT INTO profiles (id, name, color, poster_rating, created_at) VALUES (\'sample\', \'Sample\', \'blue\', \'[]\', ?)',
+    ).run(now)
+    db.prepare(`
+      INSERT INTO simkl_connections (profile_id, generation, account_fingerprint, account,
+        client_id, grant, expires_at, scope, push)
+      VALUES ('sample', 'g1', 'fingerprint', 'Fixture viewer', 'fixture-client', 'fixture-ciphertext', ?, 'write', 1)
+    `).run(now)
+    db.prepare(`
+      INSERT INTO simkl_outbox (profile_id, attempt_id, generation, diary_id, title_id,
+        season, episode, watched_at, next_try_at)
+      VALUES ('sample', 'event-id', 'g1', 'diary-id', 'tmdb:movie:1', 0, 0, ?, ?)
+    `).run(now, now)
+    db.prepare(`
+      INSERT INTO simkl_receipts (profile_id, account_fingerprint, remote_key, diary_id, title_id, kind)
+      VALUES ('sample', 'fingerprint', '1:movie', 'diary-id', 'tmdb:movie:1', 'push')
+    `).run()
+
+    const targetPath = join(dataDir, 'simkl-snapshot.db')
+    await takeSnapshot({
+      sourcePath: dbPath,
+      targetPath,
+      tmdbAliasKinds: [],
+      includeHttpAddons,
+      manifestTable: MANIFEST_TABLE,
+      manifest: {},
+    })
+    const snapshot = new Database(targetPath, { readonly: true })
+    try {
+      expect(count(snapshot, 'simkl_connections')).toBe(0)
+      expect(count(snapshot, 'simkl_outbox')).toBe(0)
+      expect(count(snapshot, 'simkl_receipts')).toBe(1)
+      expect(readFileSync(targetPath).includes(Buffer.from('fixture-ciphertext'))).toBe(false)
+      expect(count(db, 'simkl_connections')).toBe(1)
+      expect(count(db, 'simkl_outbox')).toBe(1)
+    }
+    finally {
+      snapshot.close()
+      db.close()
+    }
+  })
+
   it('идёт в потоке, пока главный поток пишет: снимок цел, без данных TMDB, с манифестом', async () => {
     const { db, dataDir, dir, tmpDir, options } = setup()
     const insert = db.prepare(

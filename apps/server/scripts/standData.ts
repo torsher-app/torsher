@@ -253,6 +253,9 @@ export function sanitizeDb(
         'subtitle_jobs',
         'subtitle_offsets',
         'downloaded_subtitles',
+        'simkl_outbox',
+        'simkl_connections',
+        'simkl_receipts',
       ]) {
         if (hasTable(db, table))
           db.prepare(`DELETE FROM ${table}`).run()

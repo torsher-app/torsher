@@ -314,6 +314,35 @@ post<UndoneImport>('/api/profiles/:id/imports/:importId/undo', ({ params }) => {
   return { restored: last.imported, kept: 0 }
 })
 
+// The public demo does not send entered credentials to external services.
+const jellyfinPath = '/api/profiles/:id/imports/jellyfin'
+post(`${jellyfinPath}/connection`, () => unavailable())
+post(`${jellyfinPath}/preview`, () => unavailable())
+get(`${jellyfinPath}/preview/:importId`, () => unavailable())
+del(`${jellyfinPath}/preview/:importId`, () => unavailable())
+post(`${jellyfinPath}/preview/:importId/apply`, () => unavailable())
+
+const simklPath = '/api/profiles/:id/simkl'
+get(`${simklPath}`, () => ({
+  available: false,
+  connection: null,
+  challenge: null,
+  syncing: false,
+  syncError: false,
+  lastSyncAt: null,
+  pending: 0,
+  issues: 0,
+  skipped: 0,
+  revokeWarning: false,
+}))
+post(`${simklPath}/device`, () => unavailable())
+post(`${simklPath}/device/poll`, () => unavailable())
+del(`${simklPath}/device`, () => unavailable())
+patch(`${simklPath}`, () => unavailable())
+post(`${simklPath}/sync`, () => unavailable())
+post(`${simklPath}/retry`, () => unavailable())
+del(`${simklPath}`, () => unavailable())
+
 // Устройства
 const PAIRING_CODE = /^[A-HJ-NP-Z2-9]{6}$/
 

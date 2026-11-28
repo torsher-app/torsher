@@ -96,6 +96,7 @@ function addressScope(address: string) {
 export interface TrustedHttpPolicy {
   origin: string
   lanAddresses: string[]
+  confirmedAddresses?: string[]
 }
 
 export function trustedUrl(input: string) {
@@ -213,6 +214,8 @@ export async function allowedTrustedAddresses(
   signal: AbortSignal,
 ) {
   const target = await resolvedAddresses(url, signal)
+  if (policy.confirmedAddresses && !sameAddresses(target.addresses, policy.confirmedAddresses))
+    throw new TrustedHttpError('address_changed')
   if (target.private) {
     if (crossedOrigin || url.origin !== policy.origin)
       throw new TrustedHttpError('blocked_address')

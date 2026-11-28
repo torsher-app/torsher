@@ -1061,6 +1061,48 @@ describe('profile import', () => {
     ).toEqual([])
   })
 
+  it('uses native v3 only for profiles with Simkl provenance and restores it through both import paths', async () => {
+    const db = getDb()
+    const key = `${'a'.repeat(64)}/123:movie`
+    db.insert(diaryEntries).values({
+      profileId: ANNA,
+      id: FIRST,
+      titleId: 'tmdb:movie:99001',
+      season: 0,
+      episode: 0,
+      precision: 'instant',
+      instant: at(3),
+      origin: 'simkl',
+      originKey: key,
+      createdAt: at(3),
+      updatedAt: at(3),
+    }).run()
+    const file = await profileExport(ANNA)
+    const server = await exportServer()
+    const entry = { origin: 'simkl', originKey: key }
+    expect(parseExportDocument(file)).toMatchObject({
+      version: 3,
+      personalSpace: { diary: [entry] },
+    })
+    expect(parseExportDocument(await profileExport(DAD)).version).toBe(2)
+    const unversioned = file.replace('"version":3', '"version":2')
+    expect(() => parseExportDocument(unversioned)).toThrow('broken')
+
+    await applyProfileFile(DAD, file)
+    expect(parseExportDocument(await profileExport(DAD))).toMatchObject({
+      version: 3,
+      personalSpace: { diary: [entry] },
+    })
+
+    clearViewerData()
+    seed()
+    await importServer(server, { mapping: { p1: DAD, p2: 'skip' } })
+    expect(parseExportDocument(await profileExport(DAD))).toMatchObject({
+      version: 3,
+      personalSpace: { diary: [entry] },
+    })
+  })
+
   it('resolves a collection preference for the target profile and conditionally restores it on undo', async () => {
     const db = getDb()
     const newCollection = 'native-same-name'

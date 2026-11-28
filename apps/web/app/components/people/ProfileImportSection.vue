@@ -29,6 +29,7 @@ import { dialogSheetClass } from '~/lib/dialog'
 import { formatDate } from '~/lib/format'
 import ImportRatingsDialog from './ImportRatingsDialog.vue'
 import ImportPersonalCounts from './ImportPersonalCounts.vue'
+import JellyfinImportDialog from './JellyfinImportDialog.vue'
 
 /**
  * Блок карточки профиля: экспорт профиля в файл, импорт оценок из файлов
@@ -49,6 +50,7 @@ const { overview, state, load } = useProfileImports(() => props.profile.id)
 const loading = useHeldLoading(() => state.value === 'loading')
 
 const dialogOpen = ref(false)
+const jellyfinOpen = ref(false)
 const undoOpen = ref(false)
 const undoing = ref(false)
 const exporting = ref(false)
@@ -119,6 +121,10 @@ async function onUndo() {
         </Button>
       </div>
     </div>
+
+    <Button variant="outline" size="xs" class="w-fit" @click="jellyfinOpen = true">
+      {{ t("panel.jellyfinImport.title") }}
+    </Button>
 
     <!-- Одна строка состояния постоянной высоты: загрузка не двигает блок -->
     <div
@@ -194,6 +200,13 @@ async function onUndo() {
       :job="job"
       @changed="load"
       @applied="emit('changed')"
+    />
+
+    <JellyfinImportDialog
+      :key="profile.id"
+      v-model:open="jellyfinOpen"
+      :profile="profile"
+      @applied="load(); emit('changed')"
     />
 
     <AlertDialog v-model:open="undoOpen">
